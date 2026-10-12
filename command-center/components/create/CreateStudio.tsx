@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
-import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
+import { createAttempt, sessionAttemptStore } from "@/lib/create-attempt";
+import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
-import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
+import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
@@ -102,9 +103,7 @@ export function CreateStudio({
   const [phase, setPhase] = useState<Phase>("idle");
   // The one choice card that is open (length, voice or look): the rest stay a single line each.
   const [open, setOpen] = useState<Choice | null>(null);
-  const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
-  // A refusal about credits (not enough, no estimate, not set up) — said
-  // plainly, instead of the generic "couldn't start".
+  // Why the run did not start, in words that also say whether credits were taken or held (lib/run-answer.ts).
   const [creditError, setCreditError] = useState<string | null>(null);
   const [extraOff, setExtraOff] = useState(false);
   const [events, setEvents] = useState<Ev[]>([]);
@@ -112,6 +111,22 @@ export function CreateStudio({
   // for the worker is visible as waiting, not as a run that never started.
   const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // What the price card is saying right now. A figure on screen is sent as the run's ceiling (`max_credits`);
+  // while it is loading or unreadable the confirm waits, so a price nobody has seen is never confirmed.
+  const [price, setPrice] = useState<PriceReport>({ state: "loading" });
+  const shownPrice = price.state === "priced" ? price.credits : null;
+  const priceHold = !!channelId && (price.state === "loading" || price.state === "failed");
+  // Bumped to read the price again (the Retry of an unreadable price, or a run refused as `price_changed`).
+  const [priceNonce, setPriceNonce] = useState(0);
+  // One idempotency key per intent (lib/create-attempt.ts), per channel, kept for a retry of the same inputs.
+  const attempt = useMemo(
+    () => createAttempt(undefined, { store: sessionAttemptStore(), storeKey: `ns.create-attempt.${channelId ?? ""}` }),
+    [channelId],
+  );
+  // A press already on its way: a second click in the same tick must not post again.
+  const sending = useRef(false);
+  // The server said this exact intent had already been started: shown as started, nothing new was held.
+  const [replayed, setReplayed] = useState(false);
   // After the confirm press the button that was focused goes away; the result (started, or why not)
   // is read from here, so keyboard and screen-reader focus never drops to the page.
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -144,40 +159,59 @@ export function CreateStudio({
   }, [phase]);
 
   async function create() {
-    if (!channelId) return;
+    if (!channelId || sending.current || priceHold) return;
+    sending.current = true;
     setPhase("starting");
     setCreditError(null);
+    setExtraOff(false);
+    setReplayed(false);
     const topic = brief.trim().slice(0, 300);
     const dur = Number(duration);
+    const fields = {
+      channel_id: channelId,
+      ...(topic ? { topic } : {}),
+      ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
+      ...(language ? { language } : {}),
+      ...(style.trim() ? { visual_style: style.trim() } : {}),
+      ...(videoProvider ? { video_provider: videoProvider } : {}),
+      ...(imageProvider ? { image_provider: imageProvider } : {}),
+      ...(ttsModel ? { tts_model: ttsModel } : {}),
+      ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
+      ...(target ? { publish_hint: target } : {}),
+    };
+    // The same intent (these inputs and the price on screen) keeps its key, so a double press, a retry or a
+    // reload after an error cannot hold twice; any change is a new video and gets a new key.
+    const idempotency_key = attempt.keyFor(JSON.stringify([fields, shownPrice]));
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          channel_id: channelId,
-          ...(topic ? { topic } : {}),
-          ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
-          ...(language ? { language } : {}),
-          ...(style.trim() ? { visual_style: style.trim() } : {}),
-          ...(videoProvider ? { video_provider: videoProvider } : {}),
-          ...(imageProvider ? { image_provider: imageProvider } : {}),
-          ...(ttsModel ? { tts_model: ttsModel } : {}),
-          ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
-          ...(target ? { publish_hint: target } : {}),
+          ...fields,
+          idempotency_key,
+          // The price the card showed: a dearer estimate at the server is refused (409 price_changed), nothing held.
+          ...(shownPrice !== null ? { max_credits: shownPrice } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
-        setCreditError(creditRunError(data, t, locale));
-        setExtraOff(isExtraOffRefusal(data));
-        setPhase("error");
+      const answer = readRunAnswer(res, data, t, locale);
+      if (answer.outcome !== "failed") {
+        attempt.settle();
+        setReplayed(answer.outcome === "replay");
+        setPhase("queued");
         return;
       }
-      setPhase("queued");
-    } catch {
-      setErrorKey("failed");
+      if (answer.settled) attempt.settle();
+      if (answer.priceChanged) setPriceNonce((n) => n + 1);
+      setCreditError(answer.message);
+      setExtraOff(answer.extraOff);
       setPhase("error");
+    } catch {
+      // Unknown whether it arrived: the key is kept, so trying again is safe.
+      setCreditError(unsureRunAnswer(t).message);
+      setPhase("error");
+    } finally {
+      sending.current = false;
     }
   }
 
@@ -473,7 +507,14 @@ export function CreateStudio({
         <h2 id="fl-price-title" className="fl-q">
           {f.priceTitle}
         </h2>
-        <CreditEstimateLine variant="card" showNotEnforced={operator} channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
+        <CreditEstimateLine
+          variant="card"
+          showNotEnforced={operator}
+          channelId={channelId}
+          durationS={Number(duration) > 0 ? Number(duration) : null}
+          onPrice={setPrice}
+          refreshKey={priceNonce}
+        />
         <p className="fl-hint">{f.holdNote}</p>
 
         {/* Create — asks once, because it spends money and can produce a video. The confirm is its own
@@ -488,13 +529,23 @@ export function CreateStudio({
               key="confirm"
               type="button"
               autoFocus
-              aria-disabled={phase === "starting"}
+              // Retry (price unreadable) is a live button; only "starting" and "checking the price" are disabled.
+              aria-disabled={phase === "starting" || (priceHold && price.state === "loading")}
+              data-price-hold={priceHold ? price.state : undefined}
               onClick={() => {
-                if (phase === "confirm") void create();
+                // Unreadable: the button is the retry. Loading: nothing to do until the figure arrives.
+                if (phase === "confirm" && price.state === "failed") setPriceNonce((n) => n + 1);
+                else if (phase === "confirm") void create();
               }}
               className="studio-cta fl-go"
             >
-              {phase === "starting" ? t.create.starting : t.create.confirm}
+              {phase === "starting"
+                ? t.create.starting
+                : priceHold
+                  ? price.state === "failed"
+                    ? t.common.retry
+                    : t.credits.priceChecking
+                  : t.create.confirm}
             </button>
             {phase === "confirm" && (
               <button type="button" onClick={() => setPhase("idle")} className="btn-quiet fl-cancel">
@@ -517,10 +568,10 @@ export function CreateStudio({
         )}
         <p className="fl-status" ref={statusRef} tabIndex={-1} aria-live="polite">
           {phase === "queued" ? (
-            <span className="text-[var(--color-ok)]">{t.create.queued}</span>
+            <span className="text-[var(--color-ok)]">{replayed ? f.alreadySent : t.create.queued}</span>
           ) : phase === "error" ? (
             <span className="text-[var(--color-fail)]">
-              {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
+              {creditError ?? t.agents.runFailed}
               {extraOff && (
                 <>
                   {" "}

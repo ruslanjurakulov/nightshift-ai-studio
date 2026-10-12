@@ -925,6 +925,12 @@ export const en = {
       details: "Show every step",
       unavailable: "Making videos is not available right now.",
       confirmAnnounce: "Check the price above, then press Yes, make it to start.",
+      alreadySent: "This was already sent. If nothing shows up below in a few minutes, check Credits: a hold that did not start a video returns to your balance automatically within 3 hours.",
+      priceChanged: "The price is now about {n} credits. No credits were taken or held. Check the new price, then confirm again.",
+      priceChangedShort: "The price changed. No credits were taken or held. Check the new price, then confirm again.",
+      notTaken: "No credits were taken or held.",
+      startHeld: "The video did not start, but {n} credits are on hold for it. They return to your balance automatically within 3 hours. Making it again puts credits on hold again until then.",
+      startUnsure: "We could not tell whether this started. Look under Videos before you try again. If credits were held, trying again will not hold them twice.",
     },
   },
   voice: {

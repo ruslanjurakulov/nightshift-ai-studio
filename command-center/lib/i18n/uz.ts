@@ -915,6 +915,12 @@ export const uz: Dictionary = {
       details: "Barcha bosqichlarni koʻrsatish",
       unavailable: "Videolar yaratish hozir mavjud emas.",
       confirmAnnounce: "Yuqoridagi narxni tekshiring, boshlash uchun «Ha, yaratilsin»ni bosing.",
+      alreadySent: "Bu allaqachon yuborilgan. Quyida bir necha daqiqa ichida hech narsa koʻrinmasa, «Kreditlar» boʻlimini tekshiring: video boshlamagan band qilingan kreditlar 3 soat ichida balansga avtomatik qaytadi.",
+      priceChanged: "Narx endi taxminan {n} kredit. Kreditlar yechilmadi va band qilinmadi. Yangi narxni tekshirib, yana tasdiqlang.",
+      priceChangedShort: "Narx oʻzgardi. Kreditlar yechilmadi va band qilinmadi. Yangi narxni tekshirib, yana tasdiqlang.",
+      notTaken: "Kreditlar yechilmadi va band qilinmadi.",
+      startHeld: "Video boshlanmadi, lekin u uchun {n} kredit band qilingan. U 3 soat ichida balansga avtomatik qaytadi. Videoni qayta yaratsangiz, shu vaqtgacha kreditlar yana band qilinadi.",
+      startUnsure: "Video boshlanganini aniqlab boʻlmadi. Qayta urinishdan oldin «Videolar» boʻlimini tekshiring. Kreditlar band qilingan boʻlsa, qayta urinish ularni ikkinchi marta band qilmaydi.",
     },
   },
   voice: {
