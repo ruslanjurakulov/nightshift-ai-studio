@@ -80,7 +80,7 @@ export function PublicMobileMenu({
 
   const n = t.landing.nav;
   return (
-    <div ref={rootRef} className="lg:hidden">
+    <div ref={rootRef} className="st-menu-root">
       <button
         ref={buttonRef}
         type="button"

@@ -609,6 +609,11 @@ h1 { letter-spacing: -0.02em; }
   line-height: 1.15;
   letter-spacing: -0.02em;
   text-wrap: balance;
+  overflow-wrap: break-word;
+}
+/* The longest title word ("конфиденциальности", in Russian "Политика конфиденциальности") is 327px at 32px: a size down on the narrowest phones so it stays whole. */
+@media (max-width: 359px) {
+  .t-hero { font-size: 1.625rem; }
 }
 .t-section {
   font-size: clamp(1.5rem, 1.3rem + 0.8vw, 1.875rem);

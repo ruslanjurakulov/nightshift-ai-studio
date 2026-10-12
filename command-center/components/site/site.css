@@ -335,16 +335,17 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   .st-header-tools { gap: 4px; }
   .st-header-tools .st-key[data-size="sm"] { padding: 0 8px; }
 }
-.st-nav { display: none; align-items: center; gap: 4px; }
-@media (min-width: 1024px) { .st-nav { display: flex; } }
+.st-nav { display: none; min-width: 0; align-items: center; gap: 2px; }
 .st-nav a {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   min-height: 44px;
   min-width: 44px;
-  padding: 0 12px;
+  padding: 0 8px;
   border-radius: var(--ns-r-key);
   font-family: var(--font-display);
   font-size: 15px;
@@ -365,8 +366,28 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 }
 .st-header-tools { display: flex; align-items: center; gap: 8px; }
 .st-header-desk { display: none; align-items: center; gap: 8px; }
-@media (min-width: 1024px) { .st-header-desk { display: flex; } }
+/* The full bar (the links, language, theme, Sign in) replaces the menu button where it fits beside the wordmark and Start free,
+   and the key is never what gives way: from 1024px in English, 1100px in Uzbek, 1140px in Russian (its labels are the longest;
+   measured with the real fonts, with 15 to 30px to spare). Below that the links live in the menu, as on a tablet. */
+@media (min-width: 1024px) {
+  html:not([lang="ru"], [lang="uz"]) :is(.st-nav, .st-header-desk) { display: flex; }
+  html:not([lang="ru"], [lang="uz"]) .st-menu-root { display: none; }
+}
+@media (min-width: 1100px) {
+  html[lang="uz"] :is(.st-nav, .st-header-desk) { display: flex; }
+  html[lang="uz"] .st-menu-root { display: none; }
+}
+@media (min-width: 1140px) {
+  html[lang="ru"] :is(.st-nav, .st-header-desk) { display: flex; }
+  html[lang="ru"] .st-menu-root { display: none; }
+}
+/* From 1280px the wordmark is 36px and the view switch joins the bar; Russian's bar is 40px too wide for that, so its lockup is 30px. */
+@media (min-width: 1280px) {
+  html[lang="ru"] .st-brand { --wm-h: 30px; }
+}
 .st-signin {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1125,12 +1146,15 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 @media (min-width: 900px) {
   .st-footer-grid { padding-block: 56px; }
+}
+/* Six columns need 1024px: at 900 the Russian "Политика конфиденциальности" ran 13px past the page. */
+@media (min-width: 1024px) {
   .st-footer-grid { grid-template-columns: minmax(0, 1.2fr) repeat(5, minmax(0, 1fr)); gap: 24px; }
 }
 .st-footer-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }
 /* The fifth group (the legal documents) has the longest names ("конфиденциальности"): on a phone it takes the whole row so none of them breaks mid-phrase. */
-@media (max-width: 899px) { .st-footer-cols > :last-child { grid-column: 1 / -1; } }
-@media (min-width: 900px) { .st-footer-cols { display: contents; } }
+@media (max-width: 1023px) { .st-footer-cols > :last-child { grid-column: 1 / -1; } }
+@media (min-width: 1024px) { .st-footer-cols { display: contents; } }
 .st-footer h2 {
   margin-bottom: 8px;
   font-family: var(--font-display);
