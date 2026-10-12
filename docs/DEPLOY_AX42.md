@@ -67,6 +67,86 @@ Xavfsizlik:
 - Pull request'da workflow **ishlamaydi**.
 - Supabase **service key** bu yerga hech qachon kirmaydi (u faqat bot uchun).
 
+### Caddyfile o'zgarsa (avtomatik reload)
+
+`deploy/Caddyfile` konteynerga bitta fayl sifatida ulangan, shuning uchun faqat
+shu fayl o'zgarsa `docker compose up` Caddy'ni qayta yaratmaydi va u eski
+konfigda qolardi. Deploy'ning oxirgi qadami (`remote-deploy.sh`, "caddy: ...";
+worker qadamlaridan keyin, shuning uchun worker xato bersa reload bo'lmaydi)
+shuni tuzatadi, **restart qilmasdan**:
+
+0. **Qulf (asosiy nazorat).** Skriptda `CADDYFILE_APPROVED_SHA256` — tasdiqlangan
+   `deploy/Caddyfile`ning sha256 qiymati (baytma-bayt, normalizatsiyasiz: CRLF,
+   BOM, bo'sh qator ham "boshqa fayl"). Fayl o'zgargan bo'lsa deploy uni
+   tekshirmaydi ham, yuklamaydi ham, Caddy eski konfigda qoladi va qadam
+   **qizil** bo'ladi (logda faqat 12 belgili hash'lar). Caddyfile'ni o'zgartirgan
+   PR shu qiymatni ham yangilaydi (`sha256sum deploy/Caddyfile`) — tekshiruvchi
+   Caddyfile'ni ko'radi; CI (`tests.test_deploy_self_host`) ikkalasi mos
+   kelmasa yiqiladi.
+1. `caddy validate` (konteyner ichida, fayl `main`dagi commit'dan stdin orqali
+   beriladi). Konteyner umuman ishlamayotgan bo'lsa (to'xtagan/restart loop)
+   alohida xabar chiqadi — fayl ayblanmaydi.
+2. Himoya ro'yxati (`CADDY_HEADERS` va h.k.): HSTS, nosniff, Referrer-Policy,
+   Permissions-Policy, `-Server`, `-X-Powered-By`, `X-Frame-Options DENY` yo'q
+   bo'lsa (yoki Caddy o'zi `SAMEORIGIN` qo'ysa) yuklashdan **oldin** rad etiladi.
+3. `caddy reload` (uzilishsiz), so'ng `127.0.0.1` orqali haqiqiy javob tekshiriladi:
+   iframe bo'lmagan so'rov — bitta `DENY`; o'z sahifamiz iframe'da (`/login`) —
+   bitta `SAMEORIGIN`; `/auth/callback`, `/api/account` iframe'da — `DENY`;
+   asosiy headerlar bor.
+4. Biror narsa noto'g'ri bo'lsa — oldingi konfig qayta yuklanadi, deploy
+   **qizil** bo'ladi va logda sababi (header nomi, yo'l) ko'rinadi. Qaytarish
+   manbai (yaxshidan yomonga): oxirgi tasdiqlangan Caddyfile
+   (`/opt/nightshift/.caddyfile.loaded`) → reload oldidan olingan ishlayotgan
+   konfig (`.caddy-running.json`, Caddy admin API'dan; birinchi ishga tushishda)
+   → oldingi commit'dagi fayl (`.caddyfile.fallback`, oxirgi chora).
+
+**Nimalar TEKSHIRILMAYDI.** Himoya ro'yxati va jonli tekshiruv faqat yuqoridagi
+headerlarni va 4 ta yo'lni ko'radi. Permissions-Policy qiymati, CSP, CORS,
+routing, upstream, TLS sozlamalari va cross-site iframe tekshirilmaydi. Haqiqiy
+nazorat — qulf (0-band) va PR'ni ko'rib chiqish.
+
+Jonli tekshiruv TLS'ni tizim CA ro'yxati bilan tekshiradi: Let's Encrypt
+sertifikati bilan ishlaydi; Cloudflare Origin CA sertifikati bilan noto'g'ri
+"qizil" berardi; `DOMAIN` o'zgargandan keyin yangi sertifikat 30 soniyadan
+uzoq olinishi mumkin (qayta deploy xavfsiz).
+
+**Qulf faqat reload qadamini qo'riqlaydi.** `docker compose up -d --build`
+undan **oldin** ishlaydi va `./Caddyfile`ni ulaydi: shuning uchun `docker-compose.yml`dagi
+`caddy` servisini tahrirlash, yoki keyinroq Caddy'ning qayta ishga tushishi/qayta
+yaratilishi (masalan server reboot'i) Caddy'ni hozir checkout qilingan
+Caddyfile bilan ishga tushiradi. Rad etilgan deploy'dan keyin tasdiqlanmagan
+fayl serverda checkout qilingan holda qoladi (Caddy esa eski konfigda ishlashda
+davom etadi, reboot'gacha). Shuning uchun `docker-compose.yml`dagi `caddy`
+bloki o'zgarishlarini ham Caddyfile o'zgarishi kabi ko'rib chiqing. (Qadam
+faylni bir marta nusxalaydi va hash, validate, reload hamda saqlangan zaxira
+aynan shu nusxadan olinadi; symlink rad etiladi.)
+
+**Qulfni yangilovchi PR: birinchi deploy qizil bo'ladi.** SSH majburiy buyrug'i
+serverdagi *hozirgi* checkout'dagi `remote-deploy.sh`ni ishga tushiradi (u yangi
+commit'ni checkout qilishdan oldin). Ya'ni N-deploy skriptning N-1 versiyasini
+(ESKI hash bilan) YANGI Caddyfile'ga qarshi ishlatadi. Caddyfile va uning
+hash'ini birga o'zgartirgan har bir PR'ning merge-deploy'i bir marta
+**qizil** bo'ladi ("deploy/Caddyfile changed…"; Caddy tegilmaydi, eski konfig
+ishlaydi). Shundan keyin skript allaqachon yangi hash bilan checkout qilingan,
+shuning uchun **Actions → Deploy web → Run workflow**ni yana bir marta qo'lda
+ishga tushiring — o'tadi va Caddyfile yuklanadi.
+
+Shu (#427) PR uchun: uning merge-deploy'i ishlayotgan skript hali eski
+(Caddy qadami yo'q), shuning uchun Caddy'ga tegilmaydi. Merge'dan keyin
+**Deploy web**ni yana bir marta qo'lda ishga tushiring — shunda yangi qadam
+birinchi marta ishlaydi va #426'dagi qoidani Caddy'ga yuklaydi.
+
+Qo'lda qaytarish (serverda, `nightshift` foydalanuvchisi):
+
+```bash
+dc exec -T caddy caddy validate --config - --adapter caddyfile < /opt/nightshift/.caddyfile.loaded
+dc exec -T caddy caddy reload   --config - --adapter caddyfile < /opt/nightshift/.caddyfile.loaded
+```
+
+Tekshirish (istalgan joydan, Cloudflare orqali):
+`curl -sI https://nightshift-ai.studio/login | grep -i x-frame-options` — bitta `DENY`;
+iframe: `curl -sI -H 'Sec-Fetch-Dest: iframe' -H 'Sec-Fetch-Site: same-origin' https://nightshift-ai.studio/login | grep -i x-frame-options` — bitta `SAMEORIGIN`.
+
 ### a) Porkbun DNS: `new` subdomen
 
 1. <https://porkbun.com> → **Account → Domain Management** →
