@@ -290,7 +290,9 @@ export function AvatarUploader({ email, version }: { email: string | null; versi
       toast.success(a.removed);
       router.refresh();
     } catch (err) {
-      setError(err instanceof AvatarInputError ? err.code : "failed");
+      const code = err instanceof AvatarInputError ? err.code : "failed";
+      // A generic failure while removing says "removed", not "saved".
+      setError(code === "failed" ? "remove_failed" : code);
     } finally {
       setPhase("idle");
       setBusyKind(null);

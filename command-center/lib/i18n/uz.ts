@@ -2783,6 +2783,7 @@ export const uz: Dictionary = {
       unauthorized: "Rasmni oʻzgartirish uchun qaytadan kiring.",
       forbidden: "Rasm saqlanmadi. Sahifani yangilab, qayta urinib koʻring.",
       failed: "Rasm saqlanmadi. Qayta urinib koʻring.",
+      remove_failed: "Rasm oʻchirilmadi. Qayta urinib koʻring.",
     },
   },
   accountSecurity: {

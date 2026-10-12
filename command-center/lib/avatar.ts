@@ -53,6 +53,7 @@ export const AVATAR_ERRORS = [
   "image_too_large",
   "encode_failed",
   "failed",
+  "remove_failed",
 ] as const;
 export type AvatarErrorCode = (typeof AVATAR_ERRORS)[number];
 

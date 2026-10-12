@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UserRound } from "lucide-react";
 import { avatarInitial, avatarSrc, type AvatarSizePx } from "@/lib/avatar";
 
@@ -12,8 +12,9 @@ import { avatarInitial, avatarSrc, type AvatarSizePx } from "@/lib/avatar";
  *
  * The circle is the one AccountMenu's user card and CustomerSidebar draw: soft
  * accent ground, primary-ink letter, semibold. `ring` adds the hairline border
- * the account panel's header circle wears. (Those files still draw their own
- * circle; they swap to this in the wiring step.)
+ * the account panel's header circle wears. The bottom bar's Settings tab, the
+ * account menu (sidebar card, panel header, operator bar) and Settings → Account
+ * all draw this one component.
  *
  * `version` is the avatar_v number from the person's user_metadata
  * (lib/avatar.ts) or null. A photo that fails to load (the object is gone, the
@@ -51,6 +52,13 @@ export function Avatar({
   const initial = avatarInitial(email);
   const dims = BOX[size] ?? BOX[32];
   const showPhoto = src !== null && failed !== src;
+  // The page is rendered on the server, so the photo may already have failed (a 404, a lapsed session) before React
+  // attached onError: an image that finished without any pixels is a failure too.
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const el = imgRef.current;
+    if (src && el && el.complete && el.naturalWidth === 0) setFailed(src);
+  }, [src]);
 
   return (
     <span
@@ -64,11 +72,13 @@ export function Avatar({
         // The photo is our own private route, not a remote image: next/image would only add a proxy.
         // eslint-disable-next-line @next/next/no-img-element
         <img
+          ref={imgRef}
           src={src}
           alt=""
           aria-hidden
           width={size}
           height={size}
+          loading="lazy"
           decoding="async"
           draggable={false}
           onError={() => setFailed(src)}

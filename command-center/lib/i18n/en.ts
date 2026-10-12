@@ -2794,6 +2794,7 @@ export const en = {
       unauthorized: "Sign in again to change your photo.",
       forbidden: "The photo could not be saved. Reload the page and try again.",
       failed: "The photo could not be saved. Try again.",
+      remove_failed: "The photo could not be removed. Try again.",
     },
   },
   accountSecurity: {

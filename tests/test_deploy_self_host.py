@@ -7,6 +7,7 @@ publishes the app port, which Docker opens around ufw. Neither shows up until
 someone clicks the broken button on production.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -229,6 +230,181 @@ class CaddyFramingTests(unittest.TestCase):
     def test_nothing_wider_is_sent_here(self):
         self.assertNotIn("SAMEORIGIN", self.code)
         self.assertNotIn("frame-ancestors", self.code)
+
+
+class CaddyReloadStepTests(unittest.TestCase):
+    """deploy/remote-deploy.sh makes a Caddyfile change take effect, and only a safe one.
+
+    The Caddyfile is bind-mounted, so `compose up` does not reload Caddy when only
+    that file changed (PR #426's framing rule sat unapplied on the server). The
+    deploy now validates, guards, reloads, verifies and rolls back. Behaviour is
+    exercised in tests/test_deploy_gha.py; these pin the structure and the contract.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.script = (DEPLOY / "remote-deploy.sh").read_text(encoding="utf-8")
+        cls.code = "\n".join(l for l in cls.script.splitlines() if not l.strip().startswith("#"))
+        cls.caddyfile = "\n".join(
+            l for l in (DEPLOY / "Caddyfile").read_text(encoding="utf-8").splitlines() if not l.strip().startswith("#")
+        )
+
+    def body(self, name):
+        m = re.search(rf"^{name}\(\) \{{\n(.*?)^\}}\n", self.code, re.S | re.M)
+        self.assertIsNotNone(m, name)
+        return m.group(1)
+
+    def array(self, name):
+        m = re.search(rf"^{name}=\((.*?)\)\n", self.code, re.S | re.M)
+        self.assertIsNotNone(m, name)
+        return [a or b for a, b in re.findall(r"'([^']*)'|(\S+)", m.group(1))]
+
+    def test_it_runs_after_compose_up_and_web_is_healthy_and_before_the_script_ends(self):
+        main = self.body("main")
+        order = [main.index(x) for x in ("compose up -d --build --remove-orphans web caddy", 'status" != healthy', "caddy_apply ", "log \"deployed")]
+        self.assertEqual(order, sorted(order))
+
+    def test_validate_then_guard_then_reload_then_verify_then_remember(self):
+        body = self.body("caddy_apply")
+        steps = ["caddy_exec validate", "caddy_exec adapt", "caddy_dropped", "caddy_reload", "caddy_verify", 'mv -f "$snap" "$loaded"', 'mv -f "${marker}.tmp"']
+        idx = [body.index(x) for x in steps]
+        self.assertEqual(idx, sorted(idx), steps)
+
+    def test_the_config_comes_from_the_checkout_on_stdin_not_the_bind_mount(self):
+        # A bind-mounted single file keeps pointing at the old inode when git replaces it.
+        for name in ("caddy_apply", "caddy_reload"):
+            for line in self.body(name).splitlines():
+                if "caddy_exec " in line and "--config" in line:
+                    self.assertIn("--config -", line)
+                    self.assertRegex(line, r"<\"\$(snap|file)\"")
+        self.assertNotIn("/etc/caddy/Caddyfile", self.code)
+        self.assertIn("caddy_exec() { compose exec -T caddy caddy ", self.code)
+
+    def test_reload_is_graceful_never_a_restart(self):
+        self.assertIn("reload --config - ", self.body("caddy_reload"))
+        self.assertIn("(--adapter caddyfile)", self.body("caddy_reload"))
+        for bad in ("restart caddy", "up -d --force-recreate caddy", "stop caddy", "caddy stop", "rm --stop --force caddy"):
+            self.assertNotIn(bad, self.code)
+
+    def test_a_failure_rolls_back_and_the_deploy_step_fails(self):
+        apply_ = self.body("caddy_apply")
+        self.assertIn('caddy_reload "$snap" || caddy_rollback', apply_)
+        self.assertIn("if ! caddy_verify", apply_)
+        self.assertIn("caddy_rollback", apply_)
+        rollback = self.body("caddy_rollback")
+        self.assertLess(rollback.index('caddy_reload "$file" "$kind"'), rollback.index("caddy_verify"))
+        # Best first: the verified copy, then what Caddy was running, then the commit before.
+        order = [rollback.index(x) for x in (".caddyfile.loaded", ".caddy-running.json", ".caddyfile.fallback")]
+        self.assertEqual(order, sorted(order))
+        # Every way out of the rollback is die (exit 1): the owner sees a red step.
+        self.assertGreaterEqual(rollback.count("die "), 3)
+        self.assertNotIn("return 0", rollback)
+        self.assertRegex(self.code, r"die\(\) \{[^}]*exit 1")
+
+    def test_refusals_happen_before_anything_is_loaded(self):
+        apply_ = self.body("caddy_apply")
+        for refusal in ("validate refused", "no longer sets"):
+            self.assertLess(apply_.index(refusal), apply_.index("caddy_reload"))
+            self.assertIn("die ", apply_[apply_.index(refusal) - 120 : apply_.index(refusal)])
+
+    def test_the_marker_is_written_only_after_a_verified_load(self):
+        apply_ = self.body("caddy_apply")
+        self.assertEqual(apply_.count('> "$marker"') + apply_.count('>"${marker}.tmp"'), 1)
+        self.assertLess(apply_.index("caddy_verify"), apply_.index('>"${marker}.tmp"'))
+        # The first-run stand-in is a copy only: no marker, so the first run still loads and verifies.
+        self.assertNotIn("marker", self.body("caddy_seed_previous"))
+        self.assertLess(self.body("main").index("caddy_seed_previous"), self.body("main").index("checkout --quiet -B main"))
+
+    def test_only_the_pinned_caddyfile_is_ever_loaded(self):
+        m = re.search(r'^CADDYFILE_APPROVED_SHA256="\$\{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})\}"$', self.code, re.M)
+        self.assertIsNotNone(m, "the pinned hash constant is missing or reshaped")
+        raw = (DEPLOY / "Caddyfile").read_bytes()
+        # Exact bytes, no normalisation: keep the file free of what a checkout could rewrite.
+        self.assertNotIn(b"\r", raw)
+        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+        self.assertEqual(
+            m.group(1), hashlib.sha256(raw).hexdigest(),
+            "deploy/Caddyfile changed: review it, then put `sha256sum deploy/Caddyfile` into "
+            "CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR",
+        )
+        apply_ = self.body("caddy_apply")
+        gate = apply_.index('"$newsha" != "$CADDYFILE_APPROVED_SHA256"')
+        for later in ("compose exec", "caddy_exec", "caddy_reload"):
+            self.assertLess(gate, apply_.index(later), later)
+        self.assertIn("die ", apply_[gate : gate + 400])
+        # Names and short hashes only.
+        self.assertIn("${newsha:0:12}", apply_)
+        self.assertNotIn('${newsha}', apply_)
+        # The service is checked before the file is judged by it.
+        self.assertLess(apply_.index("caddy true"), apply_.index("caddy_exec validate"))
+
+    def test_the_file_is_copied_once_and_that_copy_is_hashed_fed_and_kept(self):
+        apply_ = self.body("caddy_apply")
+        self.assertLess(apply_.index('-L "$new"'), apply_.index('cp "$new" "$snap"'))
+        self.assertLess(apply_.index('cp "$new" "$snap"'), apply_.index('sha256sum "$snap"'))
+        # After the copy the path is never opened again: no second read of it.
+        after = apply_[apply_.index('cp "$new" "$snap"') + 20 :]
+        self.assertNotRegex(after, r'<\s*"\$new"|sha256sum "\$new"|cp "\$new"|caddy_reload "\$new"')
+        for fed in ('validate --config - --adapter caddyfile <"$snap"', 'adapt --config - --adapter caddyfile <"$snap"', 'caddy_reload "$snap"', 'mv -f "$snap" "$loaded"'):
+            self.assertIn(fed, apply_)
+        # The temporary copy is removed on every way out and the trap does not touch the exit code.
+        self.assertIn("trap \"rm -f '$snap'\" EXIT", apply_)
+        self.assertIn("trap - EXIT", apply_)
+        self.assertNotIn("exit", apply_[apply_.index("trap") : apply_.index("trap") + 40])
+
+    def test_the_running_config_is_dumped_from_inside_the_container_only(self):
+        apply_ = self.body("caddy_apply")
+        self.assertIn("exec -T caddy wget -qO- http://localhost:2019/config/", apply_)
+        self.assertLess(apply_.index("wget"), apply_.index("caddy_reload"))
+        self.assertIn('--adapter caddyfile', self.body("caddy_reload"))
+
+    def test_the_contract_is_what_the_caddyfile_sends(self):
+        header_block = re.search(r"^\theader \{\n(.*?)^\t\}", self.caddyfile, re.S | re.M).group(1)
+        sent, removed = {}, set()
+        for line in header_block.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("-"):
+                removed.add(line[1:])
+                continue
+            name, _, value = line.partition(" ")
+            sent[name] = value.strip("`\"")
+        exact = {e.split(": ", 1)[0]: e.split(": ", 1)[1] for e in self.array("CADDY_HEADERS")}
+        present = set(self.array("CADDY_HEADERS_PRESENT"))
+        self.assertEqual(set(sent), set(exact) | present)
+        for name, value in exact.items():
+            self.assertEqual(sent[name], value, name)
+        self.assertEqual(removed, set(self.array("CADDY_HEADERS_ABSENT")))
+        # And the framing rule the script verifies is the one the Caddyfile carries.
+        self.assertIn('header @notFrame >X-Frame-Options "DENY"', self.caddyfile)
+        self.assertIn("X-Frame-Options", self.body("caddy_dropped"))
+        self.assertIn("sameorigin", self.body("caddy_check"))
+
+    def test_the_guard_covers_every_contract_entry_and_nothing_widens(self):
+        dropped = self.body("caddy_dropped")
+        for arr in ("CADDY_HEADERS", "CADDY_HEADERS_PRESENT", "CADDY_HEADERS_ABSENT"):
+            self.assertIn(f"${{{arr}[@]}}", dropped)
+        self.assertIn("only DENY may be set", dropped)
+
+    def test_it_reaches_caddy_only_on_this_machine_and_adds_no_privilege_or_secret(self):
+        fetch = self.body("caddy_fetch")
+        self.assertIn("127.0.0.1", fetch)
+        self.assertIn("--resolve", fetch)
+        self.assertNotIn("-k ", fetch)
+        self.assertNotIn("--insecure", self.code)
+        self.assertNotRegex(self.code, r"https?://(?!localhost:2019/)[a-z]")
+        self.assertNotIn("sudo", self.code)
+        self.assertNotIn("set -x", self.code)
+
+    def test_nothing_caddy_or_the_app_says_is_printed(self):
+        # The log is public: caddy's own output is discarded, the response is only compared.
+        for name in ("caddy_apply", "caddy_reload"):
+            for line in self.body(name).splitlines():
+                if "caddy_exec " in line and "adapt" not in line:
+                    self.assertIn(">/dev/null 2>&1", line)
+        self.assertIn("2>/dev/null", self.body("caddy_fetch"))
+        self.assertIn("-o /dev/null", self.body("caddy_fetch"))
 
 
 if __name__ == "__main__":
