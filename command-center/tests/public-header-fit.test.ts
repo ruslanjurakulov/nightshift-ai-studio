@@ -1,18 +1,18 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // The public header's structural contract (tools/visual-qa/public-header.mjs measures the real thing in a browser;
 // this keeps the decision itself from being undone by an edit that looks harmless):
+//  - there is no menu on the public pages: no component, no st-menu rules; the links, language, theme and Sign in are
+//    always visible;
 //  - the links, Sign in and the key never wrap or shrink;
-//  - no language or width is named: from 1024px the bar is shown for everyone, and when a language's labels do not fit one
-//    row the links (the one part allowed to shrink) wrap onto a visible second line, so a new language cannot push
-//    Start free or Sign in off the page;
-//  - the existing menu keeps its original lg breakpoint.
+//  - below 1024px the wordmark and Start free are the first row and the rest (links, language, theme, Sign in) wrap onto
+//    the rows under it; from 1024px they are one row. The links are the one part allowed to shrink, so nothing names a
+//    width or a language and a new language cannot push Start free or Sign in off the page.
 
 const root = process.cwd();
 const css = readFileSync(path.join(root, "components/site/site.css"), "utf8");
-const menu = readFileSync(path.join(root, "components/legal/PublicMobileMenu.tsx"), "utf8");
 
 /** The rule body for an exact selector (the first one), or null. */
 function body(selector: string): string | null {
@@ -45,29 +45,35 @@ describe("public header fit", () => {
     expect(body('.st-key[data-size="sm"]')).toMatch(/min-height:\s*44px/);
   });
 
-  it("lets the links, and only the links, give way: they wrap onto a visible second line (no language or width is named)", () => {
-    const at1024 = /@media \(min-width: 1024px\) \{\s*\.st-nav \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(at1024).toMatch(/display:\s*flex/);
-    expect(at1024).toMatch(/flex-wrap:\s*wrap/);
-    expect(at1024).toMatch(/flex:\s*0 1 auto/);
-    expect(at1024).toMatch(/min-width:\s*0/);
-    expect(css).toMatch(/@media \(min-width: 1024px\) \{ \.st-header-desk \{ display: flex; \} \}/);
-    // The row grows with the links; it is not a fixed height.
-    expect(body(".st-header-row")).toMatch(/min-height:\s*64px/);
-    expect(body(".st-header-row")).not.toMatch(/[^-]height:\s*64px/);
-    // No per-language switch between the bar and the menu, no breakpoint named for a language's header.
+  it("has no menu: no component, no menu rules, no language-named header layout", () => {
+    expect(existsSync(path.join(root, "components/legal/PublicMobileMenu.tsx"))).toBe(false);
+    expect(css).not.toMatch(/\.st-menu/);
     expect(css).not.toContain("st-menu-root");
     expect(css).not.toMatch(/html:not\(\[lang/);
-    expect(css).not.toMatch(/html\[lang="[a-z]+"\] \.st-(nav|header-desk|header-row|menu)/);
+    expect(css).not.toMatch(/html\[lang="[a-z]+"\] \.st-(nav|header-desk|header-row|header-sub)/);
   });
 
-  it("hides the bar by default (the menu is what a narrow screen gets)", () => {
-    expect(body(".st-nav")).toMatch(/display:\s*none/);
-    expect(body(".st-header-desk")).toMatch(/display:\s*none/);
+  it("wraps the rows under the wordmark and Start free below 1024px and joins them above, with the links as the one shrinkable part", () => {
+    expect(body(".st-header-row")).toMatch(/flex-wrap:\s*wrap/);
+    expect(css).toMatch(/@media \(min-width: 1024px\) \{ \.st-header-row \{ flex-wrap: nowrap; \} \}/);
+    const sub = body(".st-header-sub") ?? "";
+    expect(sub).toMatch(/flex:\s*1 0 100%/);
+    expect(sub).toMatch(/flex-wrap:\s*wrap/);
+    expect(css).toMatch(/\.st-header-sub \{ display: contents; \}/);
+    const nav = body(".st-nav") ?? "";
+    expect(nav).toMatch(/display:\s*flex/);
+    expect(nav).toMatch(/flex:\s*0 1 auto/);
+    expect(nav).toMatch(/flex-wrap:\s*wrap/);
+    expect(nav).toMatch(/min-width:\s*0/);
+    // The row grows with its content; it is not a fixed height.
+    expect(body(".st-header-row")).toMatch(/min-height:\s*64px/);
+    expect(body(".st-header-row")).not.toMatch(/[^-]height:\s*64px/);
   });
 
-  it("the menu keeps its original breakpoint (it is not widened for any language)", () => {
-    expect(menu).toContain('className="lg:hidden"');
+  it("sticks from 1024px only (two or three rows would take a quarter of a small phone), and the language list stays on the page", () => {
+    expect(body(".st-header") ?? "").not.toMatch(/position:\s*sticky/);
+    expect(css).toMatch(/@media \(min-width: 1024px\) \{ \.st-header \{ position: sticky; top: 0; \} \}/);
+    expect(css).toMatch(/@media \(max-width: 1023px\) \{ \.st-header-desk ul\[role="listbox"\] \{ right: auto; left: 0; \} \}/);
   });
 
   it("the footer's six columns start at 1024px, not 900px (Russian's legal links need the room)", () => {

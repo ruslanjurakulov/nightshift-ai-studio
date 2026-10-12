@@ -275,19 +275,23 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 }
 .st-skip:focus { top: 10px; }
 .st-header {
-  position: sticky;
-  top: 0;
   z-index: 40;
   background: var(--ns-ground);
   border-bottom: 1px solid var(--ns-rule);
 }
+/* From 1024px the bar is one row (two lines when a language's links need them) and sticks. Below it the page has no menu:
+   row one is the wordmark and Start free, row two (or three, when the links wrap) is the links, language, theme and Sign in,
+   all visible; that is up to about 200px, too much to keep on a phone's screen, so it scrolls away with the page. */
+@media (min-width: 1024px) { .st-header { position: sticky; top: 0; } }
 .st-header-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-height: 64px;
 }
+@media (min-width: 1024px) { .st-header-row { flex-wrap: nowrap; } }
 /* The wordmark: the bare N and the lettering (components/site/Wordmark.tsx), drawn in the text
    colour. --wm-h is the N's height; the lettering is 0.49 of it. The link keeps a 44px tap target. */
 .st-brand {
@@ -297,6 +301,8 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   min-height: 44px;
   color: var(--ns-text);
 }
+/* The first row is the bar's height whether or not a second row follows. */
+.st-header-row > .st-brand { min-height: 64px; }
 /* The lockup is wider than the old tile and condensed text, so on a phone it takes what the
    header leaves it. The limit is Russian's call to action ("Начать бесплатно") and the menu
    button, which set the room beside the lockup: --wm-h is the width left over divided by the
@@ -337,12 +343,25 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   .st-header-tools { gap: 4px; }
   .st-header-tools .st-key[data-size="sm"] { padding: 0 8px; }
 }
-.st-nav { display: none; align-items: center; gap: 0 2px; }
-/* The links never wrap inside and never push Start free or Sign in off the page: when the bar is too short for a language's
-   labels (Russian's are the longest), the nav is the one part that gives way, and its links take a visible second line.
-   No width or language is named: the row simply grows. */
+.st-header-row { row-gap: 0; }
+/* Under the wordmark and Start free: the links, then language, theme and Sign in. The links never wrap inside and never push
+   Start free or Sign in off the page: the nav is the one part that gives way, and its links take another line. Nothing names a
+   width or a language, so any label length wraps instead of overflowing. */
+.st-header-sub {
+  order: 2;
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 12px;
+  padding-bottom: 8px;
+}
+.st-nav { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; min-width: 0; gap: 0 2px; margin-inline: -8px; }
 @media (min-width: 1024px) {
-  .st-nav { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: center; min-width: 0; padding-block: 4px; }
+  /* The bar: the wordmark, the links (shrinkable and wrapping), then language, theme, Sign in and Start free, in one row. */
+  .st-header-sub { display: contents; }
+  .st-nav { justify-content: center; margin-inline: 0; padding-block: 4px; }
 }
 .st-nav a {
   flex: none;
@@ -372,9 +391,11 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   border-radius: 999px;
   background: var(--ns-amber);
 }
-.st-header-tools { display: flex; align-items: center; gap: 8px; }
-.st-header-desk { display: none; align-items: center; gap: 8px; }
-@media (min-width: 1024px) { .st-header-desk { display: flex; } }
+.st-header-tools { order: 1; display: flex; align-items: center; gap: 8px; min-height: 64px; }
+.st-header-desk { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* Below 1024px the language list opens to the right of its button (it sits at the left of this group, and a list that opens to the left would leave the page). */
+@media (max-width: 1023px) { .st-header-desk ul[role="listbox"] { right: auto; left: 0; } }
+@media (min-width: 1024px) { .st-header-tools { order: 0; } .st-header-desk { margin-left: 0; } }
 /* From 1280px the wordmark is 36px and the view switch joins the bar; Russian's bar is 40px too wide for that, so its lockup is 30px. */
 @media (min-width: 1280px) {
   html[lang="ru"] .st-brand { --wm-h: 30px; }
@@ -393,48 +414,6 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 }
 .st-signin:hover { background: var(--ns-hover); }
 
-.st-menu-btn {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--ns-r-key);
-  border: 1px solid var(--ns-rule-strong);
-  color: var(--ns-text);
-  background: transparent;
-}
-.st-menu-btn:hover { background: var(--ns-hover); }
-.st-menu {
-  position: absolute;
-  inset-inline: 12px;
-  top: calc(100% + 8px);
-  z-index: 50;
-  padding: 8px;
-  border-radius: var(--ns-r-panel);
-  border: 1px solid var(--ns-rule-strong);
-  background: var(--ns-console);
-  box-shadow: var(--ns-lift);
-}
-.st-menu a {
-  display: flex;
-  align-items: center;
-  min-height: 52px;
-  padding: 0 14px;
-  border-radius: var(--ns-r-key);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-}
-.st-menu a:hover { background: var(--ns-hover); }
-.st-menu-scrim {
-  position: fixed;
-  inset: 64px 0 0;
-  z-index: 45;
-  background: var(--ns-scrim);
-}
-.st-menu a[aria-current="page"] { background: var(--ns-select); }
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 .st-hero {

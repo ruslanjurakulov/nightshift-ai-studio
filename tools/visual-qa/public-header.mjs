@@ -8,11 +8,12 @@
  *   - the page: scrollWidth <= clientWidth (no horizontal scroll), and the header on its own:
  *     nothing inside it sticks out of the viewport;
  *   - the primary key (Start free / Начать бесплатно / Bepul boshlash) and Sign in: bounding box
- *     fully inside the viewport, ONE line box (Range rects), at least 44 px tall. Below the nav
- *     breakpoint Sign in lives in the menu, so the menu is opened and its Sign in is measured;
- *   - the nav links (when shown): one line each, inside the viewport; the brand, nav and tools
- *     do not overlap; the header is one row (height <= 80); and exactly one of "nav" or "menu
- *     button" is available, so the section links are never unreachable.
+ *     fully inside the viewport, ONE line box (Range rects), at least 44 px tall. There is no menu
+ *     on the public pages, so both are in the header at every width;
+ *   - the nav links: always shown, one line each, inside the viewport; the brand, nav, language,
+ *     theme and Sign in do not overlap (2-D); the header is at most --max-header tall; nothing in it
+ *     is a menu / disclosure button; on touch (to 1024 px wide) every link and button is >= 44 px;
+ *   - the language list, opened, lies inside the viewport.
  * Exits 1 when a case fails.
  *
  *   node tools/visual-qa/fake-supabase.mjs &
@@ -23,7 +24,7 @@
  *   node tools/visual-qa/public-header.mjs --base ... --mode shots --out docs/design/public-header-fit
  *   node tools/visual-qa/public-header.mjs --mode table --json after.json --compare before.json   # merged, no browser
  *
- * Options: --mode measure|axe|shots|table|app  --max-header 150  --role customer|operator (app)  --locales en,ru,uz  --views auto,desktop,mobile  --pages /,/pricing,/solutions,/privacy,/terms
+ * Options: --mode measure|axe|shots|table|app  --max-header 260  --role customer|operator (app)  --locales en,ru,uz  --views auto,desktop,mobile  --pages /,/pricing,/solutions,/privacy,/terms
  *          --widths 320,360,...  --quiet (only failures). Screenshots only: nothing is sent anywhere.
  */
 import { createRequire } from "node:module";
@@ -46,8 +47,8 @@ const VIEWS = String(arg("views", "auto,desktop,mobile")).split(",").map((v) => 
 const PAGES = String(arg("pages", "/,/pricing,/solutions,/privacy,/terms")).split(",");
 const WIDTHS = String(arg("widths", "320,360,390,414,600,768,820,900,1023,1024,1100,1139,1140,1200,1279,1280,1440")).split(",").map(Number);
 const QUIET = flag("quiet");
-/** The tallest a header may be: one row is 64-68 px; a visible second row for the links brings it to about 120. */
-const MAX_HEADER = Number(arg("max-header", "150"));
+/** The tallest a header may be: one row is 64-68 px; below 1024 the links, language, theme and Sign in take visible rows under the wordmark (not sticky there), about 200 at most. */
+const MAX_HEADER = Number(arg("max-header", "260"));
 
 function loadPlaywright() {
   const roots = [path.join(REPO, "command-center"), REPO];
@@ -138,7 +139,7 @@ function measureInPage() {
   let maxRight = 0;
   let minLeft = 0;
   for (const el of hdr.querySelectorAll("*")) {
-    if (!shown(el) || el.closest(".st-menu")) continue;
+    if (!shown(el)) continue;
     const r = el.getBoundingClientRect();
     if (r.width === 0) continue;
     maxRight = Math.max(maxRight, r.right);
@@ -168,34 +169,34 @@ function measureInPage() {
     headerH: Math.round(hdr.getBoundingClientRect().height),
     rows: navShown && navEl.getBoundingClientRect().top >= brand.getBoundingClientRect().bottom - 2 ? 2 : 1,
     cta: item(hdr.querySelector(".st-key")),
-    signin: shown(desk) ? item(hdr.querySelector(".st-signin")) : null,
+    signin: item(hdr.querySelector(".st-signin")),
     navShown,
     navLinks,
-    menuBtn: item(hdr.querySelector(".st-menu-btn")),
+    // There is no menu on the public pages: nothing in the header may be a disclosure button.
+    menuBtn: hdr.querySelector(".st-menu-btn, [aria-expanded][aria-controls]") ? { present: true } : null,
+    coarse: matchMedia("(pointer: coarse)").matches,
+    // Every visible link and button in the header (the language chip and the theme key included) is a tap target.
+    smallTargets: [...hdr.querySelectorAll("a[href], button")].filter(shown).map((e) => ({ e, r: e.getBoundingClientRect() })).filter(({ r }) => r.width < 43.5 || r.height < 43.5).map(({ e, r }) => `${(e.getAttribute("aria-label") || e.textContent || e.tagName).trim().slice(0, 16)} ${Math.round(r.width)}x${Math.round(r.height)}`),
     overlaps,
     toggle: toggle ? shown(toggle) : false,
   };
 }
 
-async function measureMenu(frame, page) {
-  const btn = frame.locator(".st-header .st-menu-btn").first();
+/** Opens the language list and reports whether it lies inside the viewport (it is a popup anchored to the chip). */
+async function measureLanguage(frame) {
+  const btn = frame.locator('.st-header [aria-haspopup="listbox"]').first();
   await btn.click({ timeout: 3000 });
-  await frame.waitForSelector(".st-menu", { timeout: 3000 });
+  await frame.waitForSelector('.st-header ul[role="listbox"]', { timeout: 3000 });
   const r = await frame.evaluate(() => {
     const cw = document.documentElement.clientWidth;
-    const a = document.querySelector('.st-menu a[href="/login"]');
-    if (!a) return null;
-    const range = document.createRange();
-    range.selectNodeContents(a);
-    const l = new Set([...range.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top))).size;
-    const b = a.getBoundingClientRect();
-    return { l: b.left, r: b.right, h: b.height, lines: l, inside: b.left >= -0.5 && b.right <= cw + 0.5 };
+    const b = document.querySelector('.st-header ul[role="listbox"]').getBoundingClientRect();
+    return { l: Math.round(b.left), r: Math.round(b.right), inside: b.left >= -0.5 && b.right <= cw + 0.5 };
   });
-  await page.keyboard.press("Escape");
+  await frame.locator('.st-header [aria-haspopup="listbox"]').first().click();
   return r;
 }
 
-function verdict(m, menuSignin) {
+function verdict(m) {
   const f = [];
   if (m.noHeader) return ["no .st-header on the page"];
   // A phone asked for Desktop lays out at 1280 css px and is scaled to fit: the browser rounds that scale, so 1 px is noise there.
@@ -208,8 +209,8 @@ function verdict(m, menuSignin) {
     if (m.cta.lines !== 1) f.push(`Start free on ${m.cta.lines} lines`);
     if (m.cta.h < 43.5) f.push(`Start free ${m.cta.h}px tall`);
   }
-  const si = m.signin ?? menuSignin;
-  if (!si) f.push("Sign in not reachable");
+  const si = m.signin;
+  if (!si) f.push("Sign in not shown");
   else {
     if (!si.inside) f.push(`Sign in outside the viewport`);
     if (si.lines !== 1) f.push(`Sign in on ${si.lines} lines`);
@@ -220,8 +221,9 @@ function verdict(m, menuSignin) {
     if (n.lines !== 1) f.push("a nav link wraps");
   }
   if (m.overlaps.length) f.push(`overlap: ${m.overlaps.join(", ")}`);
-  if (m.navShown === Boolean(m.menuBtn)) f.push(m.navShown ? "nav and menu button both shown" : "neither nav nor menu button");
-  if (m.menuBtn && m.menuBtn.h < 43.5) f.push(`menu button ${m.menuBtn.h}px tall`);
+  if (!m.navShown) f.push("the links are not shown");
+  if (m.menuBtn) f.push("the header has a menu / disclosure button");
+  if (m.coarse && m.smallTargets.length) f.push(`touch targets under 44px: ${m.smallTargets.join(", ")}`);
   return f;
 }
 
@@ -236,7 +238,7 @@ async function runMeasure() {
         const p = await c.newPage();
         for (const pg of PAGES) {
           let m;
-          let menu = null;
+          let lang = null;
           let problems = [];
           try {
             await p.goto(BASE + pg, { waitUntil: "load" });
@@ -247,15 +249,16 @@ async function runMeasure() {
               const o = await outer.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
               if (o > 0) m.over = Math.max(m.over, o);
             }
-            if (!m.noHeader && !m.signin && m.menuBtn) menu = await measureMenu(frame, p);
+            if (!m.noHeader) lang = await measureLanguage(frame);
             m.tol = view === "desktop" && width < 700 ? 1 : 0;
-            problems = verdict(m, menu);
+            problems = verdict(m);
+            if (lang && !lang.inside) problems.push(`the language list leaves the page (${lang.l}..${lang.r} of ${m.clientWidth})`);
           } catch (e) {
             problems = [`error ${String(e.message).slice(0, 120)}`];
             m = m ?? {};
           }
           if (problems.length) failed += 1;
-          rows.push({ locale, view: view ?? "auto", width, page: pg, layout: m.clientWidth ?? null, over: m.over ?? null, headerH: m.headerH ?? null, rows: m.rows ?? null, headerOver: m.headerOver ?? null, ctaRight: m.cta?.r ?? null, ctaOk: !!m.cta && m.cta.inside && m.cta.lines === 1, signinOk: !!(m.signin ?? menu) && (m.signin ?? menu).inside && (m.signin ?? menu).lines === 1, nav: !!m.navShown, toggle: !!m.toggle, problems });
+          rows.push({ locale, view: view ?? "auto", width, page: pg, layout: m.clientWidth ?? null, over: m.over ?? null, headerH: m.headerH ?? null, rows: m.rows ?? null, headerOver: m.headerOver ?? null, ctaRight: m.cta?.r ?? null, ctaOk: !!m.cta && m.cta.inside && m.cta.lines === 1, signinOk: !!m.signin && m.signin.inside && m.signin.lines === 1, nav: !!m.navShown, toggle: !!m.toggle, problems });
           if (problems.length || !QUIET) process.stdout.write(`${problems.length ? "FAIL" : "ok  "} ${locale} ${view ?? "auto"} ${width} ${pg}${problems.length ? "  " + problems.join("; ") : ""}\n`);
         }
         await c.close();
@@ -318,12 +321,10 @@ async function runAxe() {
               return r.violations.map((v) => `${v.id}(${v.impact}) x${v.nodes.length}`);
             });
           let v = await run();
-          const btn = p.locator(".st-header .st-menu-btn").first();
-          if (await btn.isVisible()) {
-            await btn.click();
-            await p.waitForSelector(".st-menu");
-            v = v.concat((await run()).map((x) => `menu:${x}`));
-          }
+          // With the language list open as well.
+          await p.locator('.st-header [aria-haspopup="listbox"]').first().click();
+          await p.waitForSelector('.st-header ul[role="listbox"]');
+          v = v.concat((await run()).map((x) => `language-open:${x}`));
           if (v.length) bad += 1;
           process.stdout.write(`${v.length ? "FAIL" : "ok  "} axe ${scheme} ${locale} ${width} ${pg} ${v.join(",")}\n`);
         }

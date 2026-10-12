@@ -442,11 +442,8 @@ const AXE = (() => {
   await p.waitForTimeout(600);
   const fb = await p.locator("footer " + TOGGLE).first().boundingBox();
   check(fb && fb.height >= 43.5, "touch: the footer link is at least 44 tall", JSON.stringify(fb));
-  await p.getByRole("button", { name: /menu/i }).first().click();
-  await p.waitForTimeout(400);
-  const mb = await p.locator(TOGGLE).filter({ visible: true }).first().boundingBox();
-  check(mb && mb.height >= 43.5, "touch: the public menu's control is at least 44 tall", JSON.stringify(mb));
-  await shot(p, "phone-menu_en_390_light");
+  // The public header has no menu any more: the switch is the footer link on a phone (and the icon in the header from 1280px).
+  check((await p.locator("header.st-header").getByRole("button", { name: /menu/i }).count()) === 0, "phone: the public header has no menu button");
   await c.close();
   const t = await ctx({ viewport: { width: 820, height: 1000 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, { signedIn: true });
   const tp = await t.newPage();
