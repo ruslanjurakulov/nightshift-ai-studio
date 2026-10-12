@@ -1019,7 +1019,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   html[data-motion="paused"] .nx-chat .nx-dot, html[data-motion="paused"] .nx-chat .nx-chat-key { animation: none !important; }
 }
 .nx-typed { display: inline; }
-/* A phone's first screen: the headline, the button and the whole of the chat card's picture. The pricing link is in the menu and in the price block. */
+/* A phone's first screen: the headline, the button and the whole of the chat card's picture. The pricing link is in the header's links and in the price block. */
 @media (max-width: 639px) {
   .nx-hero-copy .nx-actions .nx-link { display: none; }
   .nx-hero-copy .nx-actions { margin-top: 18px; }
@@ -1031,9 +1031,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 /* Edge fades say there is more: the right one until the end, the left one once scrolled. A chevron in the right fade is the hint to swipe; it goes with the first scroll. */
 @media (prefers-reduced-motion: no-preference) {
 }
-/* One Start free at a time: the sticky bar is for phones and tablets, and while it shows the header's button steps aside (hidden, not removed: removing it moved the header's tools and counted as a layout shift every time the bar came and went). */
+/* One Start free at a time: the sticky bar is for phones and tablets, where the header is not sticky. */
 @media (min-width: 1024px) { .nx-bar { display: none; } }
-@media (max-width: 1023px) { html[data-bar="on"] .st-header-tools > .st-key { visibility: hidden; } }
 /* The plan cards fill their rows: each card's lines spread over its height, and the picture card's picture takes what is left. */
 @media (min-width: 860px) {
   .nx-try-card { display: flex; flex-direction: column; }

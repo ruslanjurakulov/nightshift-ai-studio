@@ -169,6 +169,7 @@ function measureInPage() {
     headerH: Math.round(hdr.getBoundingClientRect().height),
     rows: navShown && navEl.getBoundingClientRect().top >= brand.getBoundingClientRect().bottom - 2 ? 2 : 1,
     cta: item(hdr.querySelector(".st-key")),
+    brandBottom: brand.getBoundingClientRect().bottom,
     signin: item(hdr.querySelector(".st-signin")),
     navShown,
     navLinks,
@@ -207,6 +208,7 @@ function verdict(m) {
   else {
     if (!m.cta.inside) f.push(`Start free outside the viewport (${m.cta.l}..${m.cta.r} of ${m.clientWidth})`);
     if (m.cta.lines !== 1) f.push(`Start free on ${m.cta.lines} lines`);
+    if (m.cta.t >= m.brandBottom - 1) f.push("Start free wrapped under the wordmark");
     if (m.cta.h < 43.5) f.push(`Start free ${m.cta.h}px tall`);
   }
   const si = m.signin;

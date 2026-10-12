@@ -226,7 +226,7 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-key:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
 .st-key svg { width: 18px; height: 18px; flex-shrink: 0; }
 .st-key[data-size="sm"] { min-height: 44px; padding: 0 16px; font-size: 16px; }
-/* A phone's header holds the wordmark, the one button and the menu on one line
+/* A phone's header holds the wordmark and the one button on one line
    even when the button's words are long (Russian: "Начать бесплатно" at 360px);
    the lockup itself steps down below 380px (further down in this file). */
 @media (max-width: 420px) {
@@ -304,8 +304,8 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 /* The first row is the bar's height whether or not a second row follows. */
 .st-header-row > .st-brand { min-height: 64px; }
 /* The lockup is wider than the old tile and condensed text, so on a phone it takes what the
-   header leaves it. The limit is Russian's call to action ("Начать бесплатно") and the menu
-   button, which set the room beside the lockup: --wm-h is the width left over divided by the
+   header leaves it. The limit is Russian's call to action ("Начать бесплатно"), which sets the
+   room beside the lockup: --wm-h is the width left over divided by the
    lockup's 5.91 aspect, in a few ranges because the call to action's size and the header's gaps
    step at 420, 400, 380 and 360px. From 485px wide the full 36px fits in every language. From
    1024 to 1279px the nav and tools leave the lockup its old 148px (25px high). */
@@ -313,19 +313,19 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   .st-brand { --wm-h: 25px; }
 }
 @media (max-width: 484px) {
-  .st-brand { --wm-h: clamp(17px, calc((100vw - 272px) / 5.91), 36px); }
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 222px) / 5.91), 36px); }
 }
 @media (max-width: 420px) {
-  .st-brand { --wm-h: clamp(17px, calc((100vw - 254px) / 5.91), 36px); }
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 204px) / 5.91), 36px); }
 }
 @media (max-width: 399px) {
-  .st-brand { --wm-h: clamp(17px, calc((100vw - 246px) / 5.91), 36px); }
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 196px) / 5.91), 36px); }
 }
 @media (max-width: 379px) {
-  .st-brand { --wm-h: clamp(17px, calc((100vw - 242px) / 5.91), 36px); }
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 192px) / 5.91), 36px); }
 }
 @media (max-width: 359px) {
-  .st-brand { --wm-h: clamp(17px, calc((100vw - 240px) / 5.91), 36px); }
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 190px) / 5.91), 36px); }
 }
 @media (max-width: 379px) {
   .st-header-row { gap: 8px; }
