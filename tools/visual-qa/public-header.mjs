@@ -23,7 +23,7 @@
  *   node tools/visual-qa/public-header.mjs --base ... --mode shots --out docs/design/public-header-fit
  *   node tools/visual-qa/public-header.mjs --mode table --json after.json --compare before.json   # merged, no browser
  *
- * Options: --locales en,ru,uz  --views auto,desktop,mobile  --pages /,/pricing,/solutions,/privacy
+ * Options: --mode measure|axe|shots|table|app  --max-header 150  --role customer|operator (app)  --locales en,ru,uz  --views auto,desktop,mobile  --pages /,/pricing,/solutions,/privacy,/terms
  *          --widths 320,360,...  --quiet (only failures). Screenshots only: nothing is sent anywhere.
  */
 import { createRequire } from "node:module";
@@ -43,9 +43,11 @@ const BASE = String(arg("base", "http://localhost:3517")).replace(/\/$/, "");
 const MODE = String(arg("mode", "measure"));
 const LOCALES = String(arg("locales", "en,ru,uz")).split(",");
 const VIEWS = String(arg("views", "auto,desktop,mobile")).split(",").map((v) => (v === "auto" ? null : v));
-const PAGES = String(arg("pages", "/,/pricing,/solutions,/privacy")).split(",");
-const WIDTHS = String(arg("widths", "320,360,390,414,600,768,820,900,1024,1100,1200,1280,1440")).split(",").map(Number);
+const PAGES = String(arg("pages", "/,/pricing,/solutions,/privacy,/terms")).split(",");
+const WIDTHS = String(arg("widths", "320,360,390,414,600,768,820,900,1023,1024,1100,1139,1140,1200,1279,1280,1440")).split(",").map(Number);
 const QUIET = flag("quiet");
+/** The tallest a header may be: one row is 64-68 px; a visible second row for the links brings it to about 120. */
+const MAX_HEADER = Number(arg("max-header", "150"));
 
 function loadPlaywright() {
   const roots = [path.join(REPO, "command-center"), REPO];
@@ -89,8 +91,9 @@ async function ctx(width, { locale, view, scheme = "light", height = 800 }) {
   const context = await browser.newContext({
     viewport: { width, height },
     deviceScaleFactor: 1,
+    // A phone is a touch device with the mobile viewport; a tablet (to 1024) is touch too, so pointer: coarse applies there.
     isMobile: phone,
-    hasTouch: phone,
+    hasTouch: width <= 1024,
     colorScheme: scheme,
     reducedMotion: "reduce",
   });
@@ -152,7 +155,7 @@ function measureInPage() {
     for (let j = i + 1; j < parts.length; j++) {
       const a = parts[i][1];
       const b = parts[j][1];
-      if (Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5) overlaps.push(`${parts[i][0]}/${parts[j][0]}`);
+      if (Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5 && Math.min(a.t + a.h, b.t + b.h) - Math.max(a.t, b.t) > 0.5) overlaps.push(`${parts[i][0]}/${parts[j][0]}`);
     }
   }
   const navLinks = navShown ? [...navEl.querySelectorAll("a")].map(item) : [];
@@ -163,6 +166,7 @@ function measureInPage() {
     over: document.documentElement.scrollWidth - cw,
     headerOver: Math.max(0, +(maxRight - cw).toFixed(1)) + Math.max(0, +(-minLeft).toFixed(1)),
     headerH: Math.round(hdr.getBoundingClientRect().height),
+    rows: navShown && navEl.getBoundingClientRect().top >= brand.getBoundingClientRect().bottom - 2 ? 2 : 1,
     cta: item(hdr.querySelector(".st-key")),
     signin: shown(desk) ? item(hdr.querySelector(".st-signin")) : null,
     navShown,
@@ -197,7 +201,7 @@ function verdict(m, menuSignin) {
   // A phone asked for Desktop lays out at 1280 css px and is scaled to fit: the browser rounds that scale, so 1 px is noise there.
   if (m.over > (m.tol ?? 0)) f.push(`page scrolls sideways by ${m.over}px`);
   if (m.headerOver > 0.5) f.push(`header sticks out by ${m.headerOver}px`);
-  if (m.headerH > 80) f.push(`header is ${m.headerH}px tall (wrapped)`);
+  if (m.headerH > MAX_HEADER) f.push(`header is ${m.headerH}px tall`);
   if (!m.cta) f.push("Start free is not shown");
   else {
     if (!m.cta.inside) f.push(`Start free outside the viewport (${m.cta.l}..${m.cta.r} of ${m.clientWidth})`);
@@ -251,7 +255,7 @@ async function runMeasure() {
             m = m ?? {};
           }
           if (problems.length) failed += 1;
-          rows.push({ locale, view: view ?? "auto", width, page: pg, layout: m.clientWidth ?? null, over: m.over ?? null, headerOver: m.headerOver ?? null, ctaRight: m.cta?.r ?? null, ctaOk: !!m.cta && m.cta.inside && m.cta.lines === 1, signinOk: !!(m.signin ?? menu) && (m.signin ?? menu).inside && (m.signin ?? menu).lines === 1, nav: !!m.navShown, toggle: !!m.toggle, problems });
+          rows.push({ locale, view: view ?? "auto", width, page: pg, layout: m.clientWidth ?? null, over: m.over ?? null, headerH: m.headerH ?? null, rows: m.rows ?? null, headerOver: m.headerOver ?? null, ctaRight: m.cta?.r ?? null, ctaOk: !!m.cta && m.cta.inside && m.cta.lines === 1, signinOk: !!(m.signin ?? menu) && (m.signin ?? menu).inside && (m.signin ?? menu).lines === 1, nav: !!m.navShown, toggle: !!m.toggle, problems });
           if (problems.length || !QUIET) process.stdout.write(`${problems.length ? "FAIL" : "ok  "} ${locale} ${view ?? "auto"} ${width} ${pg}${problems.length ? "  " + problems.join("; ") : ""}\n`);
         }
         await c.close();
@@ -345,6 +349,8 @@ async function runShots() {
     ["uz", 1024, "light"],
     ["en", 1024, "light"],
     ["ru", 320, "light"],
+    ["ru", 390, "light"],
+    ["ru", 768, "light"],
     ["uz", 1440, "light"],
     ["ru", 1440, "dark"],
   ];
@@ -354,6 +360,15 @@ async function runShots() {
     await p.goto(BASE + "/", { waitUntil: "load" });
     await p.waitForTimeout(700);
     await p.screenshot({ path: path.join(tmp, `header_${locale}_${width}_${scheme}.png`), clip: { x: 0, y: 0, width, height: 240 } });
+    await c.close();
+  }
+  // The whole page at phone width (390), Russian (the longest labels), light.
+  for (const [pg, name] of [["/", "home"], ["/pricing", "pricing"]]) {
+    const c = await ctx(390, { locale: "ru", view: null, scheme: "light", height: 844 });
+    const p = await c.newPage();
+    await p.goto(BASE + pg, { waitUntil: "load" });
+    await p.waitForTimeout(900);
+    await p.screenshot({ path: path.join(tmp, `full_${name}_ru_390_light.png`), fullPage: true });
     await c.close();
   }
   await browser.close();
@@ -366,6 +381,74 @@ async function runShots() {
   process.stdout.write(`screenshots in ${OUT}\n`);
 }
 
-if (MODE === "axe") await runAxe();
+// ------------------------------------------------------------------------------------------ app
+/**
+ * The signed-in shells (customer: header + bottom tab bar; operator: header + the Menu bar, when the fake backend runs with
+ * FAKE_ADMIN=1) must not change with a public-header change: per case the page's sideways scroll, every fixed or sticky box
+ * inside the viewport, and the header's height. Run it on main and on the change and compare (--compare).
+ *   node tools/visual-qa/fake-supabase.mjs        (customer)   |   FAKE_ADMIN=1 node tools/visual-qa/fake-supabase.mjs   (operator)
+ *   node tools/visual-qa/public-header.mjs --mode app --role customer --json app-customer.json
+ */
+async function runApp() {
+  const { sessionCookie } = await import("./fake-supabase.mjs");
+  const role = String(arg("role", "customer"));
+  const APP_PAGES = String(arg("pages", "/night-owl/home,/night-owl/credits")).split(",");
+  const rows = [];
+  for (const locale of LOCALES) {
+    for (const width of WIDTHS) {
+      const c = await ctx(width, { locale, view: null });
+      await c.addCookies([{ ...sessionCookie(undefined, "videos"), url: BASE }]);
+      const p = await c.newPage();
+      for (const pg of APP_PAGES) {
+        let r;
+        try {
+          await p.goto(BASE + pg, { waitUntil: "load" });
+          await p.waitForTimeout(900);
+          r = await p.evaluate(() => {
+            const cw = document.documentElement.clientWidth;
+            const out = [];
+            for (const el of document.querySelectorAll("body *")) {
+              const cs = getComputedStyle(el);
+              if ((cs.position !== "fixed" && cs.position !== "sticky") || cs.visibility === "hidden" || el.getClientRects().length === 0) continue;
+              const b = el.getBoundingClientRect();
+              if (b.width === 0 || b.height === 0) continue;
+              if (b.left < -0.5 || b.right > cw + 0.5) out.push(`${el.tagName}.${String(el.className).slice(0, 24)} ${Math.round(b.left)}..${Math.round(b.right)}`);
+            }
+            const h = document.querySelector("header");
+            const hb = h ? h.getBoundingClientRect() : null;
+            return { over: document.documentElement.scrollWidth - cw, outside: out, headerH: hb ? Math.round(hb.height) : null, url: location.pathname };
+          });
+        } catch (e) {
+          r = { over: null, outside: [`error ${String(e.message).slice(0, 80)}`], headerH: null, url: "" };
+        }
+        const landed = r.url === pg;
+        rows.push({ role, locale, width, page: pg, landed, ...r });
+        process.stdout.write(`${r.over > 0 || r.outside.length || !landed ? "DIFF" : "ok  "} app ${role} ${locale} ${width} ${pg}${landed ? "" : " (redirected to " + r.url + ")"} over=${r.over} headerH=${r.headerH}${r.outside.length ? " outside: " + r.outside.join("; ") : ""}\n`);
+      }
+      await c.close();
+    }
+  }
+  const jsonPath = arg("json", null);
+  if (jsonPath) writeFileSync(jsonPath, JSON.stringify(rows, null, 1));
+  const cmp = arg("compare", null);
+  if (cmp && existsSync(cmp)) {
+    const was = new Map(JSON.parse(readFileSync(cmp, "utf8")).map((r) => [`${r.role}|${r.locale}|${r.width}|${r.page}`, r]));
+    let changed = 0;
+    for (const r of rows) {
+      const w = was.get(`${r.role}|${r.locale}|${r.width}|${r.page}`);
+      if (!w) continue;
+      if (w.over !== r.over || w.headerH !== r.headerH || JSON.stringify(w.outside) !== JSON.stringify(r.outside) || w.landed !== r.landed) {
+        changed += 1;
+        process.stdout.write(`CHANGED ${r.role} ${r.locale} ${r.width} ${r.page}: over ${w.over}->${r.over}, header ${w.headerH}->${r.headerH}, outside ${w.outside.length}->${r.outside.length}\n`);
+      }
+    }
+    process.stdout.write(`\napp shells vs the comparison run: ${changed} of ${rows.length} cases changed\n`);
+  }
+  await browser.close();
+  process.exit(0);
+}
+
+if (MODE === "app") await runApp();
+else if (MODE === "axe") await runAxe();
 else if (MODE === "shots") await runShots();
 else await runMeasure();

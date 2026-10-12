@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 // The public header's structural contract (tools/visual-qa/public-header.mjs measures the real thing in a browser;
 // this keeps the decision itself from being undone by an edit that looks harmless):
 //  - the links, Sign in and the key never wrap or shrink;
-//  - the full bar replaces the menu button at one breakpoint per language, and the menu button hides at exactly the
-//    widths the bar appears (so there is never a width with neither, or with both);
-//  - the longer the language's labels, the later the bar appears: en <= uz <= ru.
+//  - no language or width is named: from 1024px the bar is shown for everyone, and when a language's labels do not fit one
+//    row the links (the one part allowed to shrink) wrap onto a visible second line, so a new language cannot push
+//    Start free or Sign in off the page;
+//  - the existing menu keeps its original lg breakpoint.
 
 const root = process.cwd();
 const css = readFileSync(path.join(root, "components/site/site.css"), "utf8");
@@ -44,20 +45,20 @@ describe("public header fit", () => {
     expect(body('.st-key[data-size="sm"]')).toMatch(/min-height:\s*44px/);
   });
 
-  it("shows the bar and hides the menu button at the same width, per language", () => {
-    const barDefault = minWidthFor('html:not([lang="ru"], [lang="uz"]) :is(.st-nav, .st-header-desk) { display: flex; }');
-    const menuDefault = minWidthFor('html:not([lang="ru"], [lang="uz"]) .st-menu-root { display: none; }');
-    const barUz = minWidthFor('html[lang="uz"] :is(.st-nav, .st-header-desk) { display: flex; }');
-    const menuUz = minWidthFor('html[lang="uz"] .st-menu-root { display: none; }');
-    const barRu = minWidthFor('html[lang="ru"] :is(.st-nav, .st-header-desk) { display: flex; }');
-    const menuRu = minWidthFor('html[lang="ru"] .st-menu-root { display: none; }');
-    expect(barDefault).toBe(1024);
-    expect(menuDefault).toBe(barDefault);
-    expect(menuUz).toBe(barUz);
-    expect(menuRu).toBe(barRu);
-    // Russian has the longest labels, Uzbek next, English the shortest.
-    expect(barUz!).toBeGreaterThanOrEqual(barDefault!);
-    expect(barRu!).toBeGreaterThanOrEqual(barUz!);
+  it("lets the links, and only the links, give way: they wrap onto a visible second line (no language or width is named)", () => {
+    const at1024 = /@media \(min-width: 1024px\) \{\s*\.st-nav \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(at1024).toMatch(/display:\s*flex/);
+    expect(at1024).toMatch(/flex-wrap:\s*wrap/);
+    expect(at1024).toMatch(/flex:\s*0 1 auto/);
+    expect(at1024).toMatch(/min-width:\s*0/);
+    expect(css).toMatch(/@media \(min-width: 1024px\) \{ \.st-header-desk \{ display: flex; \} \}/);
+    // The row grows with the links; it is not a fixed height.
+    expect(body(".st-header-row")).toMatch(/min-height:\s*64px/);
+    expect(body(".st-header-row")).not.toMatch(/[^-]height:\s*64px/);
+    // No per-language switch between the bar and the menu, no breakpoint named for a language's header.
+    expect(css).not.toContain("st-menu-root");
+    expect(css).not.toMatch(/html:not\(\[lang/);
+    expect(css).not.toMatch(/html\[lang="[a-z]+"\] \.st-(nav|header-desk|header-row|menu)/);
   });
 
   it("hides the bar by default (the menu is what a narrow screen gets)", () => {
@@ -65,9 +66,8 @@ describe("public header fit", () => {
     expect(body(".st-header-desk")).toMatch(/display:\s*none/);
   });
 
-  it("the menu root no longer follows Tailwind's lg, which would put both on screen from 1024px", () => {
-    expect(menu).toContain('className="st-menu-root"');
-    expect(menu).not.toMatch(/className="lg:hidden"/);
+  it("the menu keeps its original breakpoint (it is not widened for any language)", () => {
+    expect(menu).toContain('className="lg:hidden"');
   });
 
   it("the footer's six columns start at 1024px, not 900px (Russian's legal links need the room)", () => {

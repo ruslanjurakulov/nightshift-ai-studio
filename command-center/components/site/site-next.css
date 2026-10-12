@@ -47,7 +47,7 @@
 }
 /* ── Frame: header, footer, shared scale ─────────────────────────────── */
 .nx .st-header { border-bottom-color: transparent; }
-.nx .st-header-row { height: 68px; }
+.nx .st-header-row { min-height: 68px; }
 .nx .st-nav a { font-weight: 500; }
 .nx .st-key { border-radius: 14px; }
 .nx .st-footer { border-top: 1px solid var(--ns-rule); }
