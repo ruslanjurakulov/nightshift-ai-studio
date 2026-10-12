@@ -112,7 +112,9 @@ export function RunNowButton({
       ...(language ? { language } : {}),
       ...(style ? { visual_style: style } : {}),
     };
-    // One intent = one key: the same inputs and price keep it, any change is a new video.
+    // One intent = one key: channel + topic + options, NOT the price (max_credits carries that), in memory only,
+    // 30-minute expiry. A reload loses it, so a reload after a lost answer CAN hold twice (the unstarted first
+    // hold then expires on its own, about 3 hours).
     const idempotency_key = attempt.keyFor(JSON.stringify(fields));
     try {
       const res = await fetch("/api/agent/run", {

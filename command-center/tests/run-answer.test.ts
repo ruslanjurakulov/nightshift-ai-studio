@@ -148,11 +148,25 @@ describe("the new sentences exist in every language and are filled in", () => {
     }
   });
 
-  it("the hold and the expiry are described with the real number: 3 hours (migration 0020, expire_credit_reservations)", () => {
+  it("the Russian credit sentences use the colon form, never a fixed plural after the number (1, 2-4, 5+ and decimals all read right)", () => {
+    const ru = dictionaries.ru.create.flow;
+    for (const k of ["priceChanged", "priceChangedUnsure", "startHeld"] as const) {
+      expect(ru[k], k).toContain("кредитов:");
+      expect(ru[k], k).not.toMatch(/\{n\}\s+кредит/);
+    }
+  });
+
+  it("the hold and the expiry are described with the real number: about 3 hours (migration 0020, expire_credit_reservations)", () => {
     for (const locale of LOCALES) {
       const f = dictionaries[locale].create.flow;
       expect(f.startHeld).toContain("3");
       expect(f.alreadySent).toContain("3");
+    }
+    // Age threshold, not a promise to the minute: "about".
+    expect(dictionaries.en.create.flow.startHeld).toContain("about 3 hours");
+    expect(dictionaries.en.create.flow.alreadySent).toContain("about 3 hours");
+    for (const f of [dictionaries.ru.create.flow, dictionaries.uz.create.flow]) {
+      expect(f.startHeld).not.toMatch(/в течение 3|3 soat ichida/);
     }
   });
 });

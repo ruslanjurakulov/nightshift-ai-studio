@@ -177,8 +177,10 @@ export function CreateStudio({
       ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
       ...(target ? { publish_hint: target } : {}),
     };
-    // The same intent (these inputs and the price on screen) keeps its key, so a double press, a retry or a
-    // reload after an error cannot hold twice; any change is a new video and gets a new key.
+    // One intent = one key: channel + topic + options. The price is NOT part of it (max_credits carries it), so a
+    // double press or a retry keeps the key even when the price moved; a changed topic or option is a new video
+    // and gets a new key. The key is in memory only and expires after 30 minutes, so a reload loses it: a reload
+    // after a lost answer CAN hold twice (the unstarted first hold then expires on its own, about 3 hours).
     const idempotency_key = attempt.keyFor(JSON.stringify(fields));
     try {
       const res = await fetch("/api/agent/run", {
