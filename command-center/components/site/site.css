@@ -75,6 +75,8 @@
   }
 }
 html:has(.st) { scroll-padding-top: 80px; }
+/* From 1024px the bar can be two lines tall (the links wrap, see .st-nav). */
+@media (min-width: 1024px) { html:has(.st-header-row) { scroll-padding-top: 112px; } }
 @media (prefers-reduced-motion: no-preference) {
   html:has(.st) { scroll-behavior: smooth; }
 }
@@ -284,7 +286,7 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  height: 64px;
+  min-height: 64px;
 }
 /* The wordmark: the bare N and the lettering (components/site/Wordmark.tsx), drawn in the text
    colour. --wm-h is the N's height; the lettering is 0.49 of it. The link keeps a 44px tap target. */
@@ -335,16 +337,23 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   .st-header-tools { gap: 4px; }
   .st-header-tools .st-key[data-size="sm"] { padding: 0 8px; }
 }
-.st-nav { display: none; align-items: center; gap: 4px; }
-@media (min-width: 1024px) { .st-nav { display: flex; } }
+.st-nav { display: none; align-items: center; gap: 0 2px; }
+/* The links never wrap inside and never push Start free or Sign in off the page: when the bar is too short for a language's
+   labels (Russian's are the longest), the nav is the one part that gives way, and its links take a visible second line.
+   No width or language is named: the row simply grows. */
+@media (min-width: 1024px) {
+  .st-nav { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: center; min-width: 0; padding-block: 4px; }
+}
 .st-nav a {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   min-height: 44px;
   min-width: 44px;
-  padding: 0 12px;
+  padding: 0 8px;
   border-radius: var(--ns-r-key);
   font-family: var(--font-display);
   font-size: 15px;
@@ -366,7 +375,13 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-header-tools { display: flex; align-items: center; gap: 8px; }
 .st-header-desk { display: none; align-items: center; gap: 8px; }
 @media (min-width: 1024px) { .st-header-desk { display: flex; } }
+/* From 1280px the wordmark is 36px and the view switch joins the bar; Russian's bar is 40px too wide for that, so its lockup is 30px. */
+@media (min-width: 1280px) {
+  html[lang="ru"] .st-brand { --wm-h: 30px; }
+}
 .st-signin {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1125,12 +1140,15 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 @media (min-width: 900px) {
   .st-footer-grid { padding-block: 56px; }
+}
+/* Six columns need 1024px: at 900 the Russian "Политика конфиденциальности" ran 13px past the page. */
+@media (min-width: 1024px) {
   .st-footer-grid { grid-template-columns: minmax(0, 1.2fr) repeat(5, minmax(0, 1fr)); gap: 24px; }
 }
 .st-footer-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }
 /* The fifth group (the legal documents) has the longest names ("конфиденциальности"): on a phone it takes the whole row so none of them breaks mid-phrase. */
-@media (max-width: 899px) { .st-footer-cols > :last-child { grid-column: 1 / -1; } }
-@media (min-width: 900px) { .st-footer-cols { display: contents; } }
+@media (max-width: 1023px) { .st-footer-cols > :last-child { grid-column: 1 / -1; } }
+@media (min-width: 1024px) { .st-footer-cols { display: contents; } }
 .st-footer h2 {
   margin-bottom: 8px;
   font-family: var(--font-display);
