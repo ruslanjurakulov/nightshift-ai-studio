@@ -110,6 +110,15 @@ import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
 import { SoundPreview } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
+import {
+  fitOf,
+  previewFrameStyle,
+  previewObjectFit,
+  setClipFit,
+  setFrame,
+  type Fit,
+} from "@/lib/editorFrame";
+import { FitPicker, FramePicker } from "./FrameFitControls";
 
 const HISTORY = 100;
 const POLL_MS = 4000;
@@ -662,19 +671,15 @@ export function TimelineEditor({
           {/* preview */}
           <div
             className="relative mx-auto w-full overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-black"
-            style={{
-              aspectRatio: `${model.width} / ${model.height}`,
-              maxHeight: "60vh",
-              maxWidth: `calc(60vh * ${model.width / model.height})`,
-              containerType: "inline-size",
-            }}
+            style={previewFrameStyle(model)}
           >
             {src && still ? (
               // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
               <img
                 src={src}
                 alt=""
-                className="size-full object-contain"
+                className="size-full"
+                style={{ objectFit: previewObjectFit(at?.clip, true) }}
                 onError={() => {
                   if (!refreshed.current) {
                     refreshed.current = true;
@@ -688,7 +693,8 @@ export function TimelineEditor({
                 src={src}
                 playsInline
                 preload="auto"
-                className="size-full object-contain"
+                className="size-full"
+                style={{ objectFit: previewObjectFit(at?.clip, false) }}
                 onLoadedMetadata={() => {
                   const v = video.current;
                   if (v && at) {
@@ -746,6 +752,11 @@ export function TimelineEditor({
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
           </p>
+          <FramePicker
+            width={model.width}
+            height={model.height}
+            onChange={(id) => apply(setFrame(model, id))}
+          />
           <SoundPreview
             sounds={model.sounds}
             assets={assets}
@@ -1004,6 +1015,9 @@ export function TimelineEditor({
                 apply(trimClip(model, clip.id, "out", v, srcLen(clip)))
               }
               onSpeed={(s) => apply(setSpeed(model, clip.id, s))}
+              fit={fitOf(clip)}
+              still={assets[clip.asset_id]?.kind === "image"}
+              onFit={(f) => apply(setClipFit(model, clip.id, f))}
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
               audioLocked={!clip.audio && audioFull}
               crossfade={crossfadeOf(clip)}
@@ -1207,6 +1221,9 @@ function ClipInspector({
   onIn,
   onOut,
   onSpeed,
+  fit,
+  still,
+  onFit,
   onAudio,
   audioLocked,
   crossfade,
@@ -1232,6 +1249,10 @@ function ClipInspector({
   onIn: (v: number) => void;
   onOut: (v: number) => void;
   onSpeed: (s: number) => void;
+  fit: Fit;
+  /** A picture always fills the frame in the export: no fit to choose. */
+  still: boolean;
+  onFit: (fit: Fit) => void;
   onAudio: (a: boolean) => void;
   audioLocked: boolean;
   /** The cross-fade into this clip in seconds (0 = a cut). */
@@ -1294,6 +1315,7 @@ function ClipInspector({
           ))}
         </div>
       </fieldset>
+      <FitPicker fit={fit} still={still} onChange={onFit} />
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
