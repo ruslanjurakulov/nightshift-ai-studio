@@ -50,6 +50,14 @@
     },
     "captions": {
       "$ref": "#/$defs/captions"
+    },
+    "overlays": {
+      "type": "array",
+      "maxItems": 16,
+      "description": "Pictures or videos laid over the composited picture (picture-in-picture, stickers, logos), drawn in list order (later on top), under the texts. They may overlap in time and do not lengthen the timeline. At most 16, at most 4 of them videos (checked against the files in modules/timeline.py resolve_assets). Absent or empty = none, and the render is the one a document without the field gets.",
+      "items": {
+        "$ref": "#/$defs/overlay"
+      }
     }
   },
   "$defs": {
@@ -545,6 +553,59 @@
           "minimum": 0.1,
           "maximum": 5.0,
           "default": 0.8
+        }
+      }
+    },
+    "overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "asset_id",
+        "start_s",
+        "end_s"
+      ],
+      "description": "A picture or video over the picture from start_s to end_s. (x, y) is where its CENTRE sits and w its width, as fractions of the frame; its height follows the file's own aspect ratio. A picture keeps its own transparency; a video plays from its first frame, silent, and must be at least as long as the span. end_s > start_s and at least one frame are checked in modules/timeline.py.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/asset_id"
+        },
+        "start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.5,
+          "description": "Centre, as a fraction of the frame width."
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.5,
+          "description": "Centre, as a fraction of the frame height."
+        },
+        "w": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 1.0,
+          "default": 0.3,
+          "description": "Width, as a fraction of the frame width."
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "0 = invisible (renders nothing), 1 = opaque."
         }
       }
     }

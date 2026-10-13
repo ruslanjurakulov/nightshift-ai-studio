@@ -106,6 +106,54 @@ class DocCasesTestCase(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(verdict(cases[name]), [])
 
+    def test_the_overlay_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "overlays that is not a list": "overlays must be a list",
+            "overlays that is null": "overlays must be a list",
+            "seventeen overlays": "overlays: at most 16",
+            "overlay that is not an object": "must be an object",
+            "overlay with a path field": "path is not a known field",
+            "overlay with a rotation field": "rotation is not a known field",
+            "overlay without an asset": "asset_id is missing",
+            "overlay asset that is not a uuid": "asset_id must be a uuid",
+            "overlay without an end": "end_s is missing",
+            "overlay ending before it starts": "end_s (1) must be greater than start_s (4)",
+            "overlay of zero length": "must be greater than start_s",
+            "overlay shorter than one frame": "shorter than one frame",
+            "overlay starting below zero": "start_s must be a number",
+            "overlay time as text": "start_s must be a number",
+            "overlay x below 0": "x must be a number >= 0 and <= 1",
+            "overlay x above 1": "x must be a number >= 0 and <= 1",
+            "overlay y below 0": "y must be a number >= 0 and <= 1",
+            "overlay y above 1": "y must be a number >= 0 and <= 1",
+            "overlay width below 0.05": "w must be a number >= 0.05 and <= 1",
+            "overlay width above 1": "w must be a number >= 0.05 and <= 1",
+            "overlay width zero": "w must be a number >= 0.05 and <= 1",
+            "overlay opacity below 0": "opacity must be a number >= 0 and <= 1",
+            "overlay opacity above 1": "opacity must be a number >= 0 and <= 1",
+            "overlay x as text": "x must be a number",
+            "overlay width as boolean": "w must be a number",
+            "overlay opacity null": "opacity must be a number",
+            "overlay with a bad id": "id must be 1-64 letters",
+            "overlay id used by a clip": "id 'c1' is already used",
+            "two overlays with one id": "id 'o1' is already used",
+            "overlay of another organization": "is not available",
+            "a sound as an overlay": "an overlay takes video or image",
+            "five video overlays": "at most 4 video overlays",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("overlay picture with every field", "overlay with only the required fields",
+                     "overlay at the low ends of every range", "overlay at the high ends of every range",
+                     "overlays that share time and a file", "an empty overlays list",
+                     "overlay running past the end of the picture", "overlay video",
+                     "sixteen overlays", "overlays on a document with captions", "four video overlays"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
     def test_the_ducking_cases_fail_for_the_reason_their_name_gives(self):
         cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
         needles = {

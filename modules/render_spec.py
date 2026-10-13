@@ -71,6 +71,13 @@ against the argv captured from the code before this extension):
     A sidechain compressor was not used: it lowers by a ratio of whatever the
     speech level happens to be, so "12 dB" would mean something different on
     every clip, and a track's gain would change what it does.
+  * ``RenderSpec.picture_overlays`` — a picture or a video laid over the
+    composited picture for a span of frames (picture-in-picture, a sticker, a
+    logo): placed by its centre, sized by its width, with an opacity. They
+    are inputs of the final pass (``picture_overlay_inputs`` /
+    ``picture_overlay_filters``), below the text. Every number in the filter
+    graph is formatted here from a validated float; a document's text never
+    reaches it.
 """
 
 from __future__ import annotations
@@ -163,6 +170,15 @@ FITS = (FIT_CONTAIN, FIT_COVER)
 #: modules/timeline.py GRADE_RANGES are the same numbers; a test pins them.
 GRADE_RANGES = {"brightness": (-1.0, 1.0), "contrast": (0.0, 2.0), "saturation": (0.0, 3.0)}
 GRADE_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
+
+#: Picture overlays (a picture or video laid over the picture; modules/timeline.py
+#: holds the same numbers, a test pins them). Each is an extra input and a
+#: filter chain in the final pass, so they are counted; a video overlay also
+#: keeps a decoder open for its whole span, hence the smaller cap.
+MAX_PICTURE_OVERLAYS = 16
+MAX_PICTURE_VIDEOS = 4
+PICTURE_W_MIN, PICTURE_W_MAX = 0.05, 1.0
+PICTURE_KINDS = ("video", "image")
 
 #: Text overlay anchors: which point of the text box sits at (x, y). The ASS
 #: \an numpad code for each is in ass_captions.ANCHOR_AN.
@@ -393,6 +409,41 @@ class TextOverlay:
         )
 
 
+@dataclass(frozen=True)
+class PictureOverlay:
+    """A picture (``image``) or video laid over the composited picture from
+    ``start_s`` to ``end_s`` of the output. ``x`` / ``y`` are where the CENTRE
+    of the overlay sits, ``w`` its width, all as fractions of the frame (so
+    the same overlay fits any resolution); its height follows its own aspect
+    ratio. ``opacity`` 1 is opaque (a PNG keeps its own transparency
+    underneath). A video overlay plays from its first frame, silent. Later
+    overlays are drawn on top of earlier ones."""
+    path: str
+    kind: str
+    start_s: float
+    end_s: float
+    x: float = 0.5
+    y: float = 0.5
+    w: float = 0.3
+    opacity: float = 1.0
+
+    def to_dict(self) -> dict:
+        return {"path": self.path, "kind": self.kind, "start_s": self.start_s,
+                "end_s": self.end_s, "x": self.x, "y": self.y, "w": self.w,
+                "opacity": self.opacity}
+
+    @staticmethod
+    def from_dict(d: dict) -> "PictureOverlay":
+        def num(key, default):
+            return float(d[key]) if d.get(key) is not None else default
+        return PictureOverlay(
+            path=str(d.get("path") or ""),
+            kind=str(d.get("kind") or KIND_IMAGE),
+            start_s=num("start_s", 0.0), end_s=num("end_s", 0.0),
+            x=num("x", 0.5), y=num("y", 0.5), w=num("w", 0.3), opacity=num("opacity", 1.0),
+        )
+
+
 def segment_frames(duration: float, fps: int) -> int:
     """A segment's length in whole frames under ``frame_exact`` (at least 1)."""
     return max(1, int(round(float(duration) * int(fps))))
@@ -413,6 +464,8 @@ class RenderSpec:
     frame_exact: bool = False
     audio_tracks: List[AudioTrack] = field(default_factory=list)
     overlays: List[TextOverlay] = field(default_factory=list)
+    #: Pictures / videos laid over the picture (see PictureOverlay).
+    picture_overlays: List[PictureOverlay] = field(default_factory=list)
 
     @property
     def total_duration(self) -> float:
@@ -441,6 +494,8 @@ class RenderSpec:
             d["audio_tracks"] = [t.to_dict() for t in self.audio_tracks]
         if self.overlays:
             d["overlays"] = [o.to_dict() for o in self.overlays]
+        if self.picture_overlays:
+            d["picture_overlays"] = [o.to_dict() for o in self.picture_overlays]
         return d
 
     @staticmethod
@@ -456,13 +511,15 @@ class RenderSpec:
             frame_exact=bool(d.get("frame_exact", False)),
             audio_tracks=[AudioTrack.from_dict(t) for t in (d.get("audio_tracks") or [])],
             overlays=[TextOverlay.from_dict(o) for o in (d.get("overlays") or [])],
+            picture_overlays=[PictureOverlay.from_dict(o)
+                              for o in (d.get("picture_overlays") or [])],
         )
 
     @property
     def uses_timeline_features(self) -> bool:
         """True when the final pass needs the filter-graph command (several
         audio tracks and/or text overlays) rather than the original one."""
-        return bool(self.audio_tracks or self.overlays)
+        return bool(self.audio_tracks or self.overlays or self.picture_overlays)
 
 
 def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
@@ -530,6 +587,37 @@ def _duck_problems(i: int, t: AudioTrack) -> List[str]:
     return problems
 
 
+def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
+    problems: List[str] = []
+    pics = spec.picture_overlays
+    if len(pics) > MAX_PICTURE_OVERLAYS:
+        return [f"at most {MAX_PICTURE_OVERLAYS} picture overlays (got {len(pics)})"]
+    if sum(1 for o in pics if o.kind == KIND_VIDEO) > MAX_PICTURE_VIDEOS:
+        problems.append(f"at most {MAX_PICTURE_VIDEOS} video overlays")
+    for i, o in enumerate(pics):
+        name = f"picture overlay {i}"
+        if o.kind not in PICTURE_KINDS:
+            problems.append(f"{name} must be an image or a video (got {o.kind!r})")
+        if not isinstance(o.path, str) or not o.path:
+            problems.append(f"{name} has no path")
+        nums = (o.start_s, o.end_s, o.x, o.y, o.w, o.opacity)
+        if not all(_finite(v) for v in nums):
+            problems.append(f"{name} has a non-finite number")
+            continue
+        if o.start_s < 0 or o.end_s <= o.start_s:
+            problems.append(f"{name} must end after it starts")
+        elif spec.fps > 0 and _frame_of(o.end_s, spec.fps) <= _frame_of(o.start_s, spec.fps):
+            problems.append(f"{name} is shorter than one frame")
+        if not (0 <= o.x <= 1 and 0 <= o.y <= 1):
+            problems.append(f"{name} position must be fractions of the frame (0..1)")
+        if not PICTURE_W_MIN <= o.w <= PICTURE_W_MAX:
+            problems.append(f"{name} width must be from {PICTURE_W_MIN:g} to {PICTURE_W_MAX:g} "
+                            "of the frame")
+        if not 0 <= o.opacity <= 1:
+            problems.append(f"{name} opacity must be from 0 to 1")
+    return problems
+
+
 def validate(spec: RenderSpec) -> List[str]:
     """Problems that would make this spec un-renderable, as human-readable
     strings. Empty list means the spec is well-formed. Pure — checks the data,
@@ -593,6 +681,7 @@ def validate(spec: RenderSpec) -> List[str]:
             problems.append(f"overlay {i} position must be fractions of the frame (0..1)")
         if not isinstance(o.size, int) or isinstance(o.size, bool) or o.size <= 0:
             problems.append(f"overlay {i} size must be a positive integer")
+    problems.extend(_picture_overlay_problems(spec))
     return problems
 
 
@@ -661,6 +750,11 @@ def build_ffmpeg_command(spec: RenderSpec, concat_list_path: str,
 
 def _quote_filter_path(path: str) -> str:
     return "'" + str(path).replace("'", r"'\''") + "'"
+
+
+def _frame_of(t: float, fps: int) -> int:
+    """The output frame a time falls on (the frame grid of ``frame_exact``)."""
+    return int(round(float(t) * int(fps)))
 
 
 def _t(x: float) -> str:
@@ -759,6 +853,72 @@ def audio_run_filters(tracks: List[AudioTrack], run: List[int], label: str) -> L
     return out
 
 
+def picture_overlay_inputs(spec: RenderSpec) -> List[str]:
+    """The ffmpeg input arguments of the picture overlays, in order (they come
+    after the audio tracks). A picture is read once (one frame, held by the
+    filter graph); a video is read for the length of its span, and its sound
+    is switched off (``-an``): an overlay is never heard."""
+    out: List[str] = []
+    for o in spec.picture_overlays:
+        if o.kind == KIND_VIDEO:
+            frames = _frame_of(o.end_s, spec.fps) - _frame_of(o.start_s, spec.fps)
+            out += ["-an", "-t", _t(frames / spec.fps), "-i", o.path]
+        else:
+            out += ["-i", o.path]
+    return out
+
+
+def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
+                            ) -> Tuple[List[str], str]:
+    """The filter-graph parts that lay the picture overlays over ``source`` (a
+    label such as ``[0:v]``) and the label of the result.
+
+    Per overlay: the picture is scaled to ``w`` of the frame width (inside a
+    box twice the frame's height, so a very tall picture cannot ask for an
+    enormous frame), its alpha multiplied by the opacity, converted to the YUV
+    with alpha that ``overlay`` blends in (BT.709 in an HD frame: the matrix a
+    player assumes for it) and shifted to start on the frame ``start_s`` falls
+    on. ``overlay`` then puts its centre where ``x`` / ``y`` say, for those
+    frames only (``enable`` with half-frame margins, so float noise at a frame
+    edge cannot move it). A picture is cut to its first frame and held for the
+    span by ``tpad``, so it is decoded and converted once, not per frame.
+    Every number is formatted here; the input's path is an argument, never
+    part of the graph."""
+    fps = int(spec.fps)
+    box_h = max(2, int(spec.height) * 2)
+    hd = spec.height >= 720 or spec.width >= 1280
+    matrix = "out_color_matrix=bt709:out_range=tv:" if hd else ""
+    parts: List[str] = []
+    for k, o in enumerate(spec.picture_overlays):
+        first = _frame_of(o.start_s, fps)
+        last = _frame_of(o.end_s, fps)          # the first frame it is NOT shown on
+        box_w = max(2, int(round(o.w * spec.width)) // 2 * 2)
+        fit = (f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease"
+               ":force_divisible_by=2:flags=bicubic")
+        yuva = f"scale={matrix}flags=bicubic,format=yuva420p"
+        # An opaque video stays in its own YUV: no round trip through RGB.
+        if o.kind == KIND_VIDEO and o.opacity >= 1.0:
+            colour = f"{fit},format=yuva420p"
+        elif o.opacity >= 1.0:
+            colour = f"{fit},format=rgba,{yuva}"
+        else:
+            colour = f"{fit},format=rgba,colorchannelmixer=aa={o.opacity:.3f},{yuva}"
+        if o.kind == KIND_VIDEO:
+            chain = f"setpts=PTS-STARTPTS,fps={fps},{colour}"
+        else:
+            chain = (f"trim=end_frame=1,setpts=PTS-STARTPTS,{colour},fps={fps},"
+                     f"tpad=stop={last - first - 1}:stop_mode=clone")
+        chain += f",setpts=PTS+{first}/({fps}*TB)"
+        parts.append(f"[{first_input + k}:v]{chain}[p{k}]")
+        lo, hi = (first - 0.5) / fps, (last - 0.5) / fps
+        out = f"[pv{k}]"
+        parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}-w/2)'"
+                     f":y='round({o.y * spec.height:.3f}-h/2)'"
+                     f":enable='between(t,{lo:.6f},{hi:.6f})':eof_action=pass{out}")
+        source = out
+    return parts, source
+
+
 def _timeline_command(spec: RenderSpec, concat_list_path: str,
                       overlay_path: Optional[str]) -> List[str]:
     """The final pass for a timeline spec: one filter graph that burns the
@@ -774,6 +934,9 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     cmd: List[str] = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list_path]
     for track in spec.audio_tracks:
         cmd += ["-i", track.path]
+    # The picture overlays' inputs follow the audio tracks (whose indexes
+    # stay 1..n), so a spec without them is the command it always was.
+    cmd += picture_overlay_inputs(spec)
 
     graph: List[str] = []
     burn: List[str] = []
@@ -782,8 +945,14 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     if spec.overlays:
         burn.append("subtitles=" + _quote_filter_path(overlay_path))
     video_out = "0:v"
+    picture = "[0:v]"
+    if spec.picture_overlays:
+        # Over the picture, under the text: a title stays readable on a sticker.
+        parts, picture = picture_overlay_filters(spec, 1 + len(spec.audio_tracks), picture)
+        graph.extend(parts)
+        video_out = picture
     if burn:
-        graph.append("[0:v]" + ",".join(burn) + "[vout]")
+        graph.append(picture + ",".join(burn) + "[vout]")
         video_out = "[vout]"
     labels = []
     for run in audio_runs(spec.audio_tracks):
@@ -810,6 +979,8 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     cmd.append(spec.output_path)
     # Audio tracks are read as [n:a] only, so no picture of theirs is decoded;
     # the cap is there anyway, on every input. No -xerror: a damaged audio
-    # frame is skipped, as it always was.
-    return cap_inputs(cmd, out_pixels=spec.width * spec.height)
+    # frame is skipped, as it always was. A video overlay is held to the video
+    # decoder cap, a picture to the still one.
+    return cap_inputs(cmd, out_pixels=spec.width * spec.height,
+                      video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO])
 
