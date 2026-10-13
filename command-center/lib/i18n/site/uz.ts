@@ -99,7 +99,7 @@ export const siteUz: SiteDictionary = {
     cta: "Bepul boshlash",
     more: "Barcha narxlar",
   },
-  /** The /terms search-result description. The page itself shows the document's own summary; this is only the <meta> text. */
+  /** The /terms search-result description. The page shows the full summary of the document; this is only the meta text. */
   legalMeta: {
     terms: "Nightshift’dan foydalanish qoidalari: kanal va kontent, taqiqlanganlar, oldindan toʻlangan kreditlar, toʻlov va qaytarish, javobgarlik chegaralari.",
   },
