@@ -20,6 +20,10 @@ import { fmt } from "@/lib/i18n";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { newDocForAsset, type EditorAsset } from "@/lib/editor";
 
+/** The zoom readout lives in the timeline-view toolbar; the clip colour panel also shows "N%" readouts. */
+const zoomText = (re: RegExp) => within(screen.getByRole("group", { name: en.editor.view.toolbar })).getByText(re);
+
+
 const te = en.editor;
 const tv = te.view;
 const A = "11111111-1111-4111-8111-111111111111";
@@ -134,7 +138,7 @@ describe("keyboard shortcuts", () => {
 describe("zoom and snap", () => {
   it("the buttons zoom in and out and fit; at the ends they read as unavailable but keep focus", () => {
     mount();
-    const level = () => screen.getByText(/%$/).textContent;
+    const level = () => zoomText(/%$/).textContent;
     const out = screen.getByRole("button", { name: tv.zoomOut });
     const inn = screen.getByRole("button", { name: tv.zoomIn });
     const fit = screen.getByRole("button", { name: tv.fitLabel });
@@ -154,7 +158,7 @@ describe("zoom and snap", () => {
 
   it("+ - and 0 zoom from the keyboard; Ctrl+wheel over the timeline zooms too", () => {
     mount();
-    const level = () => screen.getByText(/%$/).textContent;
+    const level = () => zoomText(/%$/).textContent;
     key("+");
     expect(level()).toBe(fmt(tv.zoomLevel, { pct: 150 }));
     key("-");

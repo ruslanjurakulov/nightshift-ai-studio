@@ -1,4 +1,5 @@
 import { siteEn } from "./site/en";
+import { editorExportEn } from "./editor-export/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -4747,6 +4748,12 @@ export const en = {
     fitCover: "Fill (crop)",
     fitHint: "Fit shows the whole picture and adds bars where the shapes differ. Fill crops the centre so no bars show. Only the centre is cropped; you cannot move the crop yet.",
     fitStill: "A photo always fills the frame, with a slow zoom, so it has no fit setting.",
+    grade: "Colour",
+    gradeBrightness: "Brightness",
+    gradeContrast: "Contrast",
+    gradeSaturation: "Saturation",
+    gradeReset: "Reset colour",
+    gradeHint: "Applies to this clip only, photos too. The preview is close to the export; the exported video is exact.",
     clipHeading: "Clip {n}",
     reload: "Reload",
     draftFound: "Unsaved changes from {when} were found on this device. Restore them or discard them.",
@@ -4868,8 +4875,7 @@ export const en = {
     crossfadeTooShort: "This clip or the one before it is too short for a cross-fade (it needs {min} s on both).",
     clipCrossfade: "cross-fade of {s} s from the previous clip",
     selectHint: "Select a clip, a sound or a text on the timeline to change it.",
-    exports: "Exports",
-    noExports: "No exports yet.",
+    exports: "Earlier exports",
     exportStatus: {
       queued: "Waiting to render",
       rendering: "Rendering",
@@ -4888,6 +4894,7 @@ export const en = {
       other: "The export failed.",
     },
     exportRev: "Version {rev}",
+    exportPanel: editorExportEn,
     viewInLibrary: "Open in Library",
     watch: "Watch",
     deleteProject: "Delete project",

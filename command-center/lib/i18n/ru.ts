@@ -1,5 +1,6 @@
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
+import { editorExportRu } from "./editor-export/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) намеренно не переводятся. */
@@ -4736,6 +4737,12 @@ export const ru: Dictionary = {
     fitCover: "Заполнить (обрезка)",
     fitHint: "«Вписать» показывает картинку целиком и добавляет полосы, если формы не совпадают. «Заполнить» обрезает края, полос нет. Обрезается только центр; сдвинуть область пока нельзя.",
     fitStill: "Фото всегда заполняет кадр и медленно приближается, поэтому настройки нет.",
+    grade: "Цвет",
+    gradeBrightness: "Яркость",
+    gradeContrast: "Контраст",
+    gradeSaturation: "Насыщенность",
+    gradeReset: "Сбросить цвет",
+    gradeHint: "Действует только на этот клип, на фото тоже. Просмотр близок к экспорту; в готовом видео цвет точный.",
     clipHeading: "Клип {n}",
     reload: "Обновить",
     draftFound: "На этом устройстве найдены несохранённые изменения от {when}. Восстановите их или отбросьте.",
@@ -4857,8 +4864,7 @@ export const ru: Dictionary = {
     crossfadeTooShort: "Этот или предыдущий клип слишком короткий для наплыва (нужно по {min} с у обоих).",
     clipCrossfade: "наплыв {s} с из предыдущего клипа",
     selectHint: "Выберите клип, звук или текст на таймлайне, чтобы изменить его.",
-    exports: "Экспорты",
-    noExports: "Экспортов пока нет.",
+    exports: "Прошлые экспорты",
     exportStatus: {
       queued: "Ожидает рендера",
       rendering: "Рендерится",
@@ -4877,6 +4883,7 @@ export const ru: Dictionary = {
       other: "Экспорт не удался.",
     },
     exportRev: "Версия {rev}",
+    exportPanel: editorExportRu,
     viewInLibrary: "Открыть в медиатеке",
     watch: "Смотреть",
     deleteProject: "Удалить проект",

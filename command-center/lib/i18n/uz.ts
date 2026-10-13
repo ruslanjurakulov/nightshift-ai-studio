@@ -1,5 +1,6 @@
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
+import { editorExportUz } from "./editor-export/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
@@ -4736,6 +4737,12 @@ export const uz: Dictionary = {
     fitCover: "Toʻldirish (qirqish)",
     fitHint: "«Sigʻdirish» tasvirni butunlay koʻrsatadi, shakllar mos kelmasa chiziqlar qoʻshadi. «Toʻldirish» chetlarini qirqadi, chiziq qolmaydi. Faqat markaz qirqiladi; qirqish joyini hozircha surib boʻlmaydi.",
     fitStill: "Rasm kadrni har doim toʻldiradi va sekin yaqinlashadi, shuning uchun sozlama yoʻq.",
+    grade: "Rang",
+    gradeBrightness: "Yorqinlik",
+    gradeContrast: "Kontrast",
+    gradeSaturation: "Toʻyinganlik",
+    gradeReset: "Rangni tiklash",
+    gradeHint: "Faqat shu klipga taʼsir qiladi, rasmga ham. Koʻrinish eksportga yaqin; tayyor videoda rang aniq.",
     clipHeading: "{n}-klip",
     reload: "Yangilash",
     draftFound: "Bu qurilmada {when} dagi saqlanmagan oʻzgarishlar topildi. Ularni tiklang yoki bekor qiling.",
@@ -4857,8 +4864,7 @@ export const uz: Dictionary = {
     crossfadeTooShort: "Bu klip yoki undan oldingisi ravon oʻtish uchun juda qisqa (ikkalasida ham {min} s kerak).",
     clipCrossfade: "oldingi klipdan {s} s ravon oʻtish",
     selectHint: "Oʻzgartirish uchun taymlayndagi klip, ovoz yoki matnni tanlang.",
-    exports: "Eksportlar",
-    noExports: "Hali eksport yoʻq.",
+    exports: "Oldingi eksportlar",
     exportStatus: {
       queued: "Render navbatida",
       rendering: "Render qilinmoqda",
@@ -4877,6 +4883,7 @@ export const uz: Dictionary = {
       other: "Eksport amalga oshmadi.",
     },
     exportRev: "{rev}-versiya",
+    exportPanel: editorExportUz,
     viewInLibrary: "Mediatekada ochish",
     watch: "Koʻrish",
     deleteProject: "Loyihani oʻchirish",
