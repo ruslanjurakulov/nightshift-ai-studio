@@ -1074,6 +1074,11 @@ function styleOf(c: Record<string, unknown> | VideoClip): { style?: XfadeStyle }
   return { style: tr.style as XfadeStyle };
 }
 
+/** The style of the cross-fade into a clip (`fade` when it has none). */
+export function crossfadeStyleOf(c: Record<string, unknown> | VideoClip): XfadeStyle {
+  return styleOf(c).style ?? XFADE_DEFAULT_STYLE;
+}
+
 /** A clip without its transition (a key set to undefined would still be a
  *  field the validator sees). */
 function withoutTransition(c: VideoClip): VideoClip {
