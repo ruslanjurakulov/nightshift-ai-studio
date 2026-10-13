@@ -261,6 +261,24 @@ export function softwareApplicationJsonLd(input: {
   };
 }
 
+/**
+ * schema.org Organization and WebSite for the homepage, in one @graph. Only
+ * what is true and public: the product name, its own address and its icon.
+ * No sameAs links, contact points, search action, ratings or reviews. With no
+ * known origin there is no address to state, so there is no graph (null).
+ */
+export function siteGraphJsonLd(input: { name: string; origin: string | null }): Record<string, unknown> | null {
+  const { name, origin } = input;
+  if (!origin) return null;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "Organization", "@id": `${origin}/#organization`, name, url: origin, logo: new URL("/icon.png", origin).toString() },
+      { "@type": "WebSite", "@id": `${origin}/#website`, name, url: origin, publisher: { "@id": `${origin}/#organization` } },
+    ],
+  };
+}
+
 /** JSON for an inline <script type="application/ld+json">: `<` is escaped so a
  *  string in the data can never close the script element. */
 export function jsonLdScript(data: unknown): string {

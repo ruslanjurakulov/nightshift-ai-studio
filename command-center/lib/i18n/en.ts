@@ -3486,7 +3486,7 @@ export const en = {
   landing: {
     meta: {
       title: "Nightshift — autonomous studio for YouTube channels",
-      description: "Turn a topic into a finished YouTube video — script, voice, visuals and edit — and make images, clips and voice-overs in one studio. The price is shown before every run, a failed run returns its credits, and nothing goes public without your approval.",
+      description: "Turn a topic into a finished YouTube video: script, voice, visuals and edit. See the price before every run; nothing goes public without your approval.",
       ogAlt: "Nightshift — from a topic to a finished YouTube video, with your approval before anything goes public.",
     },
     nav: {
@@ -3682,7 +3682,7 @@ export const en = {
     pricing: "Pricing",
   },
   pricing: {
-    metaDescription: "Top-up credit packs, what a credit buys, what a video costs per minute, and how refunds work. Every run shows its price before it starts; a failed run returns its credits.",
+    metaDescription: "Credit packs, what a credit buys, what a minute of video costs and how refunds work. Every run shows its price first; a failed run returns its credits.",
     eyebrow: "Plans and credits",
     title: "Pricing",
     lead: "Pick a monthly plan for a steady credit allowance, or top up with one-time packs. Every generation shows its price before it starts, and a failed one costs nothing.",

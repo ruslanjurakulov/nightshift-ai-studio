@@ -601,6 +601,7 @@ export const siteEn = {
     body: "The link may be old or mistyped, or it points to something this account cannot see.",
     home: "Back to the homepage",
     pricing: "See pricing",
+    more: "Other pages",
   },
 };
 

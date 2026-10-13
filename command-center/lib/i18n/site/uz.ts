@@ -590,5 +590,6 @@ export const siteUz: SiteDictionary = {
     body: "Havola eskirgan yoki xato yozilgan boʻlishi mumkin — yoki bu hisob koʻra olmaydigan narsaga olib boradi.",
     home: "Bosh sahifaga",
     pricing: "Narxlarni koʻrish",
+    more: "Boshqa sahifalar",
   },
 };

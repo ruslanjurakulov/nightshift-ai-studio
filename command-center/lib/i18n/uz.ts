@@ -3475,7 +3475,7 @@ export const uz: Dictionary = {
   landing: {
     meta: {
       title: "Nightshift — YouTube kanallari uchun avtonom studiya",
-      description: "Mavzuni tayyor YouTube videoga aylantiring — ssenariy, ovoz, tasvir va montaj — hamda bitta studiyada rasm, klip va ovozlashtirish yarating. Narx har bir ishga tushirishdan oldin koʻrinadi, muvaffaqiyatsiz ish kreditlarni qaytaradi, sizning tasdigʻingizsiz hech narsa ommaga chiqmaydi.",
+      description: "Mavzuni tayyor YouTube videoga aylantiring: ssenariy, ovoz, tasvir va montaj. Narx ishga tushirishdan oldin koʻrinadi, tasdigʻingizsiz hech narsa chiqmaydi.",
       ogAlt: "Nightshift — mavzudan tayyor YouTube videogacha, ommaga chiqishidan oldin sizning tasdigʻingiz bilan.",
     },
     nav: {
@@ -3671,7 +3671,7 @@ export const uz: Dictionary = {
     pricing: "Narxlar",
   },
   pricing: {
-    metaDescription: "Kredit toʻldirish paketlari, kredit nimaga yetishi, video daqiqasi qancha turishi va qaytarishlar qanday ishlashi. Har bir ishga tushirish narxini boshlanishidan oldin koʻrsatadi; muvaffaqiyatsiz ishga tushirish kreditlarini qaytaradi.",
+    metaDescription: "Kredit paketlari, kredit nimaga yetishi, video daqiqasi narxi va qaytarishlar. Narx ishdan oldin koʻrinadi; muvaffaqiyatsiz ish kreditni qaytaradi.",
     eyebrow: "Tariflar va kreditlar",
     title: "Narxlar",
     lead: "Doimiy kredit ajratmasi uchun oylik tarif tanlang yoki bir martalik paketlar bilan toʻldiring. Har bir generatsiya boshlanishidan oldin narxini koʻrsatadi, muvaffaqiyatsizi esa hech narsaga tushmaydi.",
