@@ -31,8 +31,12 @@
  *     `scope`: the signed-in user, the organization if known, the channel). A reload after a lost
  *     answer then finds the same key and a second press cannot hold twice. What is stored is only
  *     {v, k: the key, h: a SHA-256 of user + org + channel + the signature, t: when it was made,
- *     u: whether an answer was lost}, under a storage key that is itself a hash of user + org +
- *     channel. The signature (topic, options) is never stored, nor any id, title or prompt; the user
+ *     u: whether an answer was lost, b: the credits held after a definite start failure}, under a
+ *     storage key made of a hash of user + org + channel and the intent's hash: ONE ENTRY PER
+ *     INTENT, so what is known about topic A (its key, unsure, blocked) is still there after the
+ *     person sent topic B and typed A back. Entries touch only their own intent; expired ones are
+ *     pruned and at most MAX_ENTRIES_PER_SCOPE (the newest) are kept per user/org/channel, so
+ *     storage cannot grow. The signature (topic, options) is never stored, nor any id, title or prompt; the user
  *     id is inside the hash, so the hash of a short topic cannot be guessed without it. Another
  *     account, another channel or any changed topic or option has a different hash and never gets
  *     the key. The entry is checked again on every read (shape, hash, age), removed when the attempt
@@ -72,6 +76,9 @@ export function newAttemptKey(): string {
 
 /** How long an unanswered attempt's key is kept. */
 export const MAX_AGE_MS = 30 * 60 * 1000;
+
+/** The most intents remembered per user/org/channel (the newest); older ones are dropped. */
+export const MAX_ENTRIES_PER_SCOPE = 8;
 
 /** How long a blocked intent stays blocked: the server returns an unstarted hold about 3 hours after it was taken. */
 export const BLOCKED_MAX_AGE_MS = 3 * 60 * 60 * 1000;
@@ -124,7 +131,7 @@ interface Pending {
   unsure: boolean;
   blocked: number | null;
   /** Where this attempt is mirrored, and the hash that proves what it is for; null = memory only. */
-  store: { name: string; hash: string } | null;
+  store: { name: string; hash: string; tag: string } | null;
 }
 
 const STORED_KEY_RE = /^[A-Za-z0-9_:.-]{1,100}$/;
@@ -132,25 +139,17 @@ const HEX64 = /^[0-9a-f]{64}$/;
 /** A clock that jumped back by more than this makes an entry's age unknowable: it is not trusted. */
 const SKEW_MS = 60 * 1000;
 
-function storeNameFor(scope: AttemptScope): string {
-  return ATTEMPT_PREFIX + sha256Hex(`${scope.userId}\0${scope.orgId ?? ""}\0${scope.channelId}`);
+/** The hash of whose attempts these are: the first half of every storage name of the scope. */
+function scopeTag(scope: AttemptScope): string {
+  return sha256Hex(`${scope.userId}\0${scope.orgId ?? ""}\0${scope.channelId}`);
 }
 
 function intentHash(scope: AttemptScope, signature: string): string {
   return sha256Hex(`${scope.userId}\0${scope.orgId ?? ""}\0${scope.channelId}\0${signature}`);
 }
 
-function readStored(name: string, hash: string, t: number, maxAgeMs: number, blockedMaxAgeMs: number, prune = true): Stored | null {
-  const s = attemptStore();
-  if (!s) return null;
-  let raw: string | null;
-  try {
-    raw = s.getItem(name);
-  } catch {
-    return null;
-  }
-  if (raw === null) return null;
-  let ok: Stored | null = null;
+/** The shape of a stored entry, nothing else checked. Anything tampered with or truncated is null. */
+function parseStored(raw: string): Stored | null {
   try {
     const e = JSON.parse(raw) as Partial<Stored> | null;
     if (
@@ -164,18 +163,33 @@ function readStored(name: string, hash: string, t: number, maxAgeMs: number, blo
       typeof e.t === "number" &&
       Number.isFinite(e.t) &&
       typeof e.u === "boolean" &&
-      (e.b === undefined || (typeof e.b === "number" && Number.isFinite(e.b) && e.b >= 0 && e.b <= 1e9)) &&
-      e.h === hash &&
-      t - e.t <= (e.b === undefined ? maxAgeMs : blockedMaxAgeMs) &&
-      e.t - t <= SKEW_MS
+      (e.b === undefined || (typeof e.b === "number" && Number.isFinite(e.b) && e.b >= 0 && e.b <= 1e9))
     ) {
-      ok = { v: 1, k: e.k, h: e.h, t: e.t, u: e.u, ...(e.b === undefined ? {} : { b: e.b }) };
+      return { v: 1, k: e.k, h: e.h, t: e.t, u: e.u, ...(e.b === undefined ? {} : { b: e.b }) };
     }
   } catch {
-    /* tampered or truncated: ignored below */
+    /* tampered or truncated */
   }
-  // Whatever is under this name and is not this intent's live entry is of no use to anyone: drop it.
-  // (A read that only asks, `prune` false, leaves it: the person may still type their way back to that intent.)
+  return null;
+}
+
+const fresh = (e: Stored, t: number, maxAgeMs: number, blockedMaxAgeMs: number) =>
+  t - e.t <= (e.b === undefined ? maxAgeMs : blockedMaxAgeMs) && e.t - t <= SKEW_MS;
+
+function readStored(name: string, hash: string, t: number, maxAgeMs: number, blockedMaxAgeMs: number, prune = true): Stored | null {
+  const s = attemptStore();
+  if (!s) return null;
+  let raw: string | null;
+  try {
+    raw = s.getItem(name);
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  const e = parseStored(raw);
+  const ok = e && e.h === hash && fresh(e, t, maxAgeMs, blockedMaxAgeMs) ? e : null;
+  // Whatever is under this intent's name and is not its live entry is of no use to anyone: drop it.
+  // (A read that only asks, `prune` false, leaves it.)
   if (!ok && prune) removeStored(name);
   return ok;
 }
@@ -202,6 +216,43 @@ function removeStored(name: string): void {
   }
 }
 
+/**
+ * Keeps one scope's entries bounded: drops the ones that are expired, malformed, or from before entries were
+ * one per intent (the bare scope name), then all but the newest MAX_ENTRIES_PER_SCOPE (never `keep`).
+ */
+function pruneScope(tag: string, keep: string, t: number, maxAgeMs: number, blockedMaxAgeMs: number): void {
+  const s = attemptStore();
+  if (!s) return;
+  const mine = ATTEMPT_PREFIX + tag;
+  const names: string[] = [];
+  try {
+    for (let i = 0; i < s.length; i++) {
+      const k = s.key(i);
+      if (k && (k === mine || k.startsWith(mine + ":"))) names.push(k);
+    }
+  } catch {
+    return;
+  }
+  const live: { name: string; at: number }[] = [];
+  for (const name of names) {
+    let raw: string | null = null;
+    try {
+      raw = s.getItem(name);
+    } catch {
+      /* unreadable: dropped below */
+    }
+    const e = raw === null || name === mine ? null : parseStored(raw);
+    if (e && name === `${mine}:${e.h}` && fresh(e, t, maxAgeMs, blockedMaxAgeMs)) live.push({ name, at: e.t });
+    else if (name !== keep) removeStored(name);
+  }
+  live.sort((a, b) => b.at - a.at);
+  let kept = 0;
+  for (const l of live) {
+    if (l.name === keep || kept < MAX_ENTRIES_PER_SCOPE) kept++;
+    else removeStored(l.name);
+  }
+}
+
 export function createAttempt(
   makeKey: () => string = newAttemptKey,
   opts: { now?: () => number; maxAgeMs?: number; blockedMaxAgeMs?: number } = {},
@@ -209,32 +260,66 @@ export function createAttempt(
   const { now = Date.now, maxAgeMs = MAX_AGE_MS, blockedMaxAgeMs = BLOCKED_MAX_AGE_MS } = opts;
   // A form opening after a sign-out switches persistence back on (the sign-out had switched it off).
   allowAttemptStorage();
+  // Every intent this form has seen, each with its own key and state (the newest few), and the one asked for last.
+  const pending = new Map<string, Pending>();
   let cur: Pending | null = null;
-  const storeFor = (signature: string, scope?: AttemptScope) =>
-    scope && scope.userId && scope.channelId && !attemptStorageBlocked() ? { name: storeNameFor(scope), hash: intentHash(scope, signature) } : null;
+  const idOf = (signature: string, store: Pending["store"]) => (store ? store.name : `memory:${signature}`);
+  const storeFor = (signature: string, scope?: AttemptScope): Pending["store"] => {
+    if (!scope || !scope.userId || !scope.channelId || attemptStorageBlocked()) return null;
+    const tag = scopeTag(scope);
+    const hash = intentHash(scope, signature);
+    return { name: `${ATTEMPT_PREFIX}${tag}:${hash}`, hash, tag };
+  };
   const limit = (p: Pending) => (p.blocked === null ? maxAgeMs : blockedMaxAgeMs);
-  const same = (p: Pending | null, signature: string, store: Pending["store"], t: number) =>
-    !!p && p.sig === signature && p.store?.name === store?.name && p.store?.hash === store?.hash && t - p.at <= limit(p);
+  const alive = (p: Pending | undefined, t: number): p is Pending => !!p && t - p.at <= limit(p);
+  const byKey = (key?: string): Pending | null => {
+    if (key === undefined) return cur;
+    for (const p of pending.values()) if (p.key === key) return p;
+    return null;
+  };
+  const forget = (p: Pending) => {
+    for (const [id, q] of pending) if (q === p) pending.delete(id);
+    if (cur === p) cur = null;
+  };
+  const trim = (t: number) => {
+    for (const [id, p] of pending) if (!alive(p, t)) pending.delete(id);
+    while (pending.size > MAX_ENTRIES_PER_SCOPE) {
+      const oldest = pending.keys().next().value;
+      if (oldest === undefined) break;
+      pending.delete(oldest);
+    }
+  };
   return {
     keyFor(signature, scope) {
       const t = now();
       const store = storeFor(signature, scope);
-      if (cur && same(cur, signature, store, t)) return cur.key;
-      cur = null;
+      const id = idOf(signature, store);
+      let p = pending.get(id);
+      if (alive(p, t)) {
+        cur = p;
+        return p.key;
+      }
+      pending.delete(id);
+      p = undefined;
       if (store) {
         const found = readStored(store.name, store.hash, t, maxAgeMs, blockedMaxAgeMs);
-        if (found) cur = { key: found.k, sig: signature, at: found.t, unsure: found.u, blocked: found.b ?? null, store };
+        if (found) p = { key: found.k, sig: signature, at: found.t, unsure: found.u, blocked: found.b ?? null, store };
       }
-      if (!cur) {
-        cur = { key: makeKey(), sig: signature, at: t, unsure: false, blocked: null, store };
-        writeStored(cur);
+      if (!p) {
+        p = { key: makeKey(), sig: signature, at: t, unsure: false, blocked: null, store };
+        writeStored(p);
+        if (store) pruneScope(store.tag, store.name, t, maxAgeMs, blockedMaxAgeMs);
       }
-      return cur.key;
+      pending.set(id, p);
+      trim(t);
+      cur = p;
+      return p.key;
     },
     status(signature, scope) {
       const t = now();
       const store = storeFor(signature, scope);
-      if (cur && same(cur, signature, store, t)) return { unsure: cur.unsure, blocked: cur.blocked };
+      const p = pending.get(idOf(signature, store));
+      if (alive(p, t)) return { unsure: p.unsure, blocked: p.blocked };
       if (store) {
         const found = readStored(store.name, store.hash, t, maxAgeMs, blockedMaxAgeMs, false);
         if (found) return { unsure: found.u, blocked: found.b ?? null };
@@ -242,24 +327,27 @@ export function createAttempt(
       return { unsure: false, blocked: null };
     },
     markUnsure(key) {
-      if (!cur || (key !== undefined && key !== cur.key)) return;
-      cur.unsure = true;
-      writeStored(cur);
+      const p = byKey(key);
+      if (!p) return;
+      p.unsure = true;
+      writeStored(p);
     },
     isUnsure() {
       return cur?.unsure ?? false;
     },
     markBlocked(credits, key) {
-      if (!cur || (key !== undefined && key !== cur.key)) return;
-      cur.blocked = Number.isFinite(credits) && credits > 0 ? credits : 0;
+      const p = byKey(key);
+      if (!p) return;
+      p.blocked = Number.isFinite(credits) && credits > 0 ? credits : 0;
       // The hold's three hours run from now, not from when this key was first made.
-      cur.at = now();
-      writeStored(cur);
+      p.at = now();
+      writeStored(p);
     },
     settle(key) {
-      if (!cur || (key !== undefined && key !== cur.key)) return;
-      if (cur.store) removeStored(cur.store.name);
-      cur = null;
+      const p = byKey(key);
+      if (!p) return;
+      if (p.store) removeStored(p.store.name);
+      forget(p);
     },
   };
 }

@@ -307,6 +307,121 @@ describe("Create", () => {
     expect(status()).toContain(f.alreadySent);
   });
 
+  describe("each intent is remembered on its own (sending another one does not forget the first)", () => {
+    it("block topic A -> edit to B and send it (refused, or started and reloaded) -> back to A: A is still blocked, nothing is sent", async () => {
+      await first(() => json(START_FAILED_HELD, 502));
+      type("The Aral Sea");
+      runAnswer = () => json({ error: "insufficient_credits", needed: 120, available: 5 }, 402);
+      await press();
+      expect(runs()).toHaveLength(2);
+      expect(body(1).topic).toBe("The Aral Sea");
+      // Edit back to A: still waiting for its hold.
+      type(TOPIC);
+      expect(makeBtn().disabled).toBe(true);
+      expect(status()).toBe(f.startFailedHeld.replace("{n}", "120"));
+      fireEvent.click(makeBtn());
+      fireEvent.keyDown(topic(), { key: "Enter" });
+      await act(async () => {});
+      expect(runs()).toHaveLength(2);
+      // B starts; the tab is reloaded and A typed again: still blocked.
+      type("The Aral Sea");
+      runAnswer = () => json({ ok: true });
+      await press();
+      expect(runs()).toHaveLength(3);
+      cleanup();
+      show();
+      await priceShown();
+      type(TOPIC);
+      expect(makeBtn().disabled).toBe(true);
+      expect(status()).toBe(f.startFailedHeld.replace("{n}", "120"));
+      fireEvent.click(makeBtn());
+      await act(async () => {});
+      expect(runs()).toHaveLength(3);
+      // B started and is settled: it is free to be made again, with a new key.
+      type("The Aral Sea");
+      expect(makeBtn().disabled).toBe(false);
+    });
+
+    it("unsure A -> send B -> back to A: the SAME key goes out, and its replay is still the honest sentence (also after a reload)", async () => {
+      await first(() => json(START_UNSURE, 502));
+      type("The Aral Sea");
+      runAnswer = () => json({ error: "insufficient_credits", needed: 120, available: 5 }, 402);
+      await press();
+      type(TOPIC);
+      runAnswer = () => json({ error: "run_already_started" }, 409);
+      await press();
+      expect(runs()).toHaveLength(3);
+      expect(body(2).idempotency_key).toBe(body(0).idempotency_key);
+      expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+      expect(status()).toBe(f.startUnsureReplay);
+      // B starts, the tab is reloaded, A again.
+      type("The Aral Sea");
+      runAnswer = () => json({ ok: true });
+      await press();
+      cleanup();
+      show();
+      await priceShown();
+      type(TOPIC);
+      runAnswer = () => json({ error: "run_already_started" }, 409);
+      await press();
+      expect(body(4).idempotency_key).toBe(body(0).idempotency_key);
+      expect(status()).toBe(f.startUnsureReplay);
+    });
+  });
+
+  describe("a late success after the form was edited", () => {
+    async function pendingThenEdit() {
+      show();
+      await priceShown();
+      type(TOPIC);
+      let release: (r: Response) => void = () => {};
+      runAnswer = () => new Promise<Response>((r) => (release = r));
+      make();
+      await confirm();
+      type("The Aral Sea");
+      return (r: Response) => act(async () => release(r));
+    }
+
+    it("a late 200 says nothing about the edited form and does not disable Make; the edited form sends with its own key", async () => {
+      const answer = await pendingThenEdit();
+      await answer(new Response("{}", { status: 200 }));
+      expect(status()).toBe("");
+      expect(screen.queryByText(f.watchTitle)).toBeNull();
+      expect(makeBtn().disabled).toBe(false);
+      runAnswer = () => json({ ok: true });
+      await press();
+      expect(runs()).toHaveLength(2);
+      expect(body(1).topic).toBe("The Aral Sea");
+      expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+      expect(status()).toContain(t.create.queued);
+    });
+
+    it("a late run_already_started is the same: no message, Make stays enabled", async () => {
+      const answer = await pendingThenEdit();
+      await answer(new Response(JSON.stringify({ error: "run_already_started" }), { status: 409 }));
+      expect(status()).toBe("");
+      expect(makeBtn().disabled).toBe(false);
+    });
+
+    it("the key of the intent that started is settled: sending it again is a new key", async () => {
+      const answer = await pendingThenEdit();
+      await answer(new Response("{}", { status: 200 }));
+      type(TOPIC);
+      runAnswer = () => json({ ok: true });
+      await press();
+      expect(body(1).topic).toBe(TOPIC);
+      expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+    });
+
+    it("without an edit the start is shown as always", async () => {
+      show();
+      await priceShown();
+      type(TOPIC);
+      await press();
+      expect(status()).toContain(t.create.queued);
+    });
+  });
+
   describe("storage denied", () => {
     const original = Object.getOwnPropertyDescriptor(window, "sessionStorage");
     const deny = () =>
@@ -398,5 +513,61 @@ describe("Run now", () => {
     runAnswer = () => json({ ok: true });
     await press();
     expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+  });
+
+  describe("the panel, with a topic that can be edited while a run is on its way", () => {
+    const panel = () => (
+      <I18nProvider locale="en">
+        <RunNowButton channelId="chan-a" githubConfigured userId={USER} orgId="org-1" />
+      </I18nProvider>
+    );
+    const topicInput = () => screen.getByLabelText(t.agents.runTopicLabel) as HTMLInputElement;
+    const setTopic = (v: string) => fireEvent.change(topicInput(), { target: { value: v } });
+
+    async function pending() {
+      render(panel());
+      setTopic(TOPIC);
+      let release: (r: Response) => void = () => {};
+      runAnswer = () => new Promise<Response>((r) => (release = r));
+      arm();
+      await screen.findByText(/120 credits/);
+      await confirm();
+      setTopic("The Aral Sea");
+      return (r: Response) => act(async () => release(r));
+    }
+
+    it("block A, send B, back to A in the panel: still blocked", async () => {
+      render(panel());
+      setTopic(TOPIC);
+      runAnswer = () => json(START_FAILED_HELD, 502);
+      await press();
+      expect(runBtn().disabled).toBe(true);
+      setTopic("The Aral Sea");
+      expect(runBtn().disabled).toBe(false);
+      runAnswer = () => json({ ok: true });
+      await press();
+      // B started (the panel says so); A, typed back, is still waiting for its hold and sends nothing.
+      setTopic(TOPIC);
+      expect(runBtn().disabled).toBe(true);
+      fireEvent.click(runBtn());
+      await act(async () => {});
+      expect(runs()).toHaveLength(2);
+      cleanup();
+      render(panel());
+      setTopic(TOPIC);
+      expect(runBtn().disabled).toBe(true);
+      expect(said()).toBe(f.startFailedHeld.replace("{n}", "120"));
+    });
+
+    it("a late 200 or run_already_started after an edit says nothing about the edited form", async () => {
+      let answer = await pending();
+      await answer(new Response("{}", { status: 200 }));
+      expect(said()).toBe("");
+      expect(runBtn().disabled).toBe(false);
+      cleanup();
+      answer = await pending();
+      await answer(new Response(JSON.stringify({ error: "run_already_started" }), { status: 409 }));
+      expect(said()).toBe("");
+    });
   });
 });

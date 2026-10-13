@@ -222,6 +222,12 @@ export function CreateStudio({
       if (answer.outcome !== "failed") {
         attempt.settle(idempotency_key);
         setTick((n) => n + 1);
+        // Started (or already started) is true of the intent that was sent. If the person has since changed the form,
+        // it is not said about, and does not disable, what is on screen now.
+        if (stale) {
+          setPhase("idle");
+          return;
+        }
         setReplayed(answer.outcome === "replay");
         setPhase("queued");
         return;
