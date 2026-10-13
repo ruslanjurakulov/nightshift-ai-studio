@@ -4,10 +4,10 @@ import type { looksEn } from "./en";
 export const looksUz: typeof looksEn = {
   styleLegend: "Oʻtish uslubi",
   styleHint:
-    "Oldingi klip bunga qanday aylanadi. Koʻrib chiqishda klipler birma-bir chiqadi va oʻtish ijro etilmaydi; tayyor videoda u bor.",
+    "Oldingi klip bunga qanday aylanadi. Oldindan koʻrishda kliplar birma-bir chiqadi va oʻtish ijro etilmaydi; tayyor videoda u bor.",
   styleChosen: "Oʻtish uslubi: {name}.",
   styles: {
-    fade: "Silliq soʻnish",
+    fade: "Oddiy ravon",
     dissolve: "Donador erish",
     fadeblack: "Qora orqali",
     fadewhite: "Oq orqali",
@@ -24,7 +24,7 @@ export const looksUz: typeof looksEn = {
   },
   lookLegend: "Matn koʻrinishi",
   lookHint:
-    "Koʻrinish shu matnning shrifti, oʻlchami, rangi, konturi, soyasi, fon qutisi va joyini bir qadamda belgilaydi. Keyin istalganini oʻzgartirish mumkin. Kontur, soya va quti tayyor videoda chiziladi; koʻrib chiqishda ular taxminan koʻrsatiladi.",
+    "Koʻrinish shu matnning shrifti, oʻlchami, rangi, konturi, soyasi, fon qutisi va joyini bir qadamda belgilaydi. Keyin istalganini oʻzgartirish mumkin. Kontur, soya va quti tayyor videoda chiziladi; oldindan koʻrishda ular taxminan koʻrsatiladi.",
   lookSample: "Aa",
   looks: {
     title: "Sarlavha",
