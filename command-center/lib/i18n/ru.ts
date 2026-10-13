@@ -1,5 +1,6 @@
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
+import { editorExportRu } from "./editor-export/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) намеренно не переводятся. */
@@ -4848,6 +4849,7 @@ export const ru: Dictionary = {
       other: "Экспорт не удался.",
     },
     exportRev: "Версия {rev}",
+    exportPanel: editorExportRu,
     viewInLibrary: "Открыть в медиатеке",
     watch: "Смотреть",
     deleteProject: "Удалить проект",

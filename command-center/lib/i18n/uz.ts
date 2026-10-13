@@ -1,5 +1,6 @@
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
+import { editorExportUz } from "./editor-export/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
@@ -4848,6 +4849,7 @@ export const uz: Dictionary = {
       other: "Eksport amalga oshmadi.",
     },
     exportRev: "{rev}-versiya",
+    exportPanel: editorExportUz,
     viewInLibrary: "Mediatekada ochish",
     watch: "Koʻrish",
     deleteProject: "Loyihani oʻchirish",

@@ -121,9 +121,10 @@ import {
   type Fit,
 } from "@/lib/editorFrame";
 import { FitPicker, FramePicker } from "./FrameFitControls";
+import { ExportStatusPanel } from "./ExportStatusPanel";
+import { useExportPoll } from "./useExportPoll";
 
 const HISTORY = 100;
-const POLL_MS = 4000;
 
 const fieldClass =
   "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
@@ -401,18 +402,15 @@ export function TimelineEditor({
     }
   }
 
-  // ── exports: poll while one is on its way ─────────────────────────────────
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(async () => {
-      const out = await fetchProject(projectId);
-      if (out.ok) {
-        setExports(out.value.exports);
-        setAssets((a) => ({ ...a, ...out.value.assets }));
-      }
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [active, projectId]);
+  // ── exports: poll (with backoff) while one is on its way ──────────────────
+  const poll = useExportPoll({
+    projectId,
+    active,
+    onSnapshot: (s) => {
+      setExports(s.exports);
+      setAssets((a) => ({ ...a, ...s.assets }));
+    },
+  });
 
   // ── keyboard: undo / redo / save / play ───────────────────────────────────
   useEffect(() => {
@@ -709,6 +707,20 @@ export function TimelineEditor({
           </div>
         ) : null}
       </div>
+
+      {exports[0] ? (
+        <ExportStatusPanel
+          latest={exports[0]}
+          assets={assets}
+          currentRev={rev}
+          dirty={dirty}
+          busy={starting || active}
+          failing={poll.failing}
+          checking={poll.checking}
+          onRetry={startExport}
+          onCheckNow={poll.checkNow}
+        />
+      ) : null}
 
       <DraftBanner
         resume={draft.resume}
@@ -1104,10 +1116,10 @@ export function TimelineEditor({
         onChange={apply}
       />
 
-      {/* exports */}
+      {/* earlier exports (the latest one is the status panel above) */}
       <section
         aria-labelledby={`${ids}-exports`}
-        className="panel flex flex-col gap-2 p-5 sm:p-6"
+        className={`panel flex flex-col gap-2 p-5 sm:p-6 ${exports.length === 1 ? "hidden" : ""}`}
       >
         <h2 id={`${ids}-exports`} className="m-0 text-[15px] font-semibold">
           {te.exports}
@@ -1117,11 +1129,8 @@ export function TimelineEditor({
             {te.noExports}
           </p>
         ) : (
-          <ul
-            className="m-0 flex list-none flex-col gap-2 p-0"
-            aria-live="polite"
-          >
-            {exports.map((x) => {
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {exports.slice(1).map((x) => {
               const out = x.assetId ? assets[x.assetId] : undefined;
               const tone =
                 x.status === "done"

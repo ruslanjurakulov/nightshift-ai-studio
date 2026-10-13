@@ -1,4 +1,5 @@
 import { siteEn } from "./site/en";
+import { editorExportEn } from "./editor-export/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -4859,6 +4860,7 @@ export const en = {
       other: "The export failed.",
     },
     exportRev: "Version {rev}",
+    exportPanel: editorExportEn,
     viewInLibrary: "Open in Library",
     watch: "Watch",
     deleteProject: "Delete project",
