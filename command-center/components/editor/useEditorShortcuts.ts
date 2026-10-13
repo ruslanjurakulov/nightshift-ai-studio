@@ -31,6 +31,8 @@ export function useEditorShortcuts(p: {
   setPlayhead: (t: number) => void;
   setPlaying: (on: boolean) => void;
   apply: (next: EditorModel) => void;
+  /** Called after Delete removed an overlay: its frame is gone, so focus belongs on "Add overlay", not <body>. */
+  onOverlayRemoved?: () => void;
   view: TimelineView;
 }) {
   const ref = useRef(p);
@@ -84,6 +86,7 @@ export function useEditorShortcuts(p: {
                   ? removeOverlay(s.model, sel.id)
                   : removeSound(s.model, sel.id);
           if (next === s.model) return;
+          if (sel.kind === "overlay") s.onOverlayRemoved?.();
           s.apply(next);
           break;
         }

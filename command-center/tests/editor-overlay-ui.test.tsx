@@ -492,6 +492,15 @@ describe("focus", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: to.add }));
   });
 
+  it("Delete pressed on the focused frame moves focus to Add overlay, not <body>", async () => {
+    mount();
+    await addLogo();
+    expect(document.activeElement).toBe(frameBtn());
+    fireEvent.keyDown(frameBtn(), { key: "Delete" });
+    expect(document.querySelector("[data-overlay]")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: to.add }));
+  });
+
   it("the disabled Add overlay button is described by its reason", () => {
     const doc = newDocForAsset(VIDEO)!;
     doc.overlays = Array.from({ length: MAX_OVERLAYS }, (_, i) => ({
