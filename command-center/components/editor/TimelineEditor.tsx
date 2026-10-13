@@ -107,6 +107,8 @@ import {
   saveProject,
 } from "./editorApi";
 import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
+import { DraftBanner } from "./DraftBanner";
+import { useEditorDraft } from "./useEditorDraft";
 import { SoundPreview } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
@@ -178,6 +180,7 @@ export function TimelineEditor({
   soundFiles = [],
   orgId = "",
   captionModels = [],
+  userId = "",
 }: {
   projectId: string;
   title: string;
@@ -192,6 +195,8 @@ export function TimelineEditor({
   orgId?: string;
   /** The transcription models the member may be sold (empty: auto-captions are not offered). */
   captionModels?: readonly CaptionModelOption[];
+  /** The signed-in member: a local draft is kept per member (none without it). */
+  userId?: string;
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -231,6 +236,33 @@ export function TimelineEditor({
   const warnings = textWarnings(model);
   const soundWarns = soundWarnings(model);
   const speech = useMemo(() => speechSpans(model), [model]);
+
+  // ── local draft: kept on this device, offered back on the next open ────────
+  const draft = useEditorDraft({
+    userId,
+    projectId,
+    initialRev,
+    rev,
+    dirty,
+    currentJson: current,
+    title,
+    saved,
+    savedTitle,
+    resolveAsset: (id) =>
+      assets[id] ??
+      [...videos, ...soundFiles].find(
+        (a) => a.id.toLowerCase() === id.toLowerCase(),
+      ),
+    onRestore: (d, found) => {
+      setAssets((x) => ({ ...found, ...x }));
+      // What was on screen (edits made while the offer was open) stays one Undo away.
+      setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
+      setFuture([]);
+      setModel(toModel(d.doc));
+      setTitle(d.title.slice(0, 120));
+      setError(null);
+    },
+  });
 
   // ── history ────────────────────────────────────────────────────────────────
   const apply = useCallback(
@@ -582,12 +614,24 @@ export function TimelineEditor({
           >
             ← {te.back}
           </Link>
-          <span
-            className="ml-auto text-xs text-[var(--color-muted)]"
-            aria-live="polite"
-          >
-            {saving ? te.saving : dirty ? te.unsaved : te.saved}
-          </span>
+          <div className="ml-auto flex min-w-0 flex-col items-end gap-0.5 text-xs">
+            {/* Words first; the mark (filled = unsaved, hollow = saved) is a second cue, never the only one. */}
+            <span
+              className={`inline-flex items-center gap-1.5 ${dirty && !saving ? "font-medium text-[var(--color-warn)]" : "text-[var(--color-muted)]"}`}
+              aria-live="polite"
+            >
+              <span
+                aria-hidden
+                className={`inline-block size-2 shrink-0 rounded-full border border-current ${dirty && !saving ? "bg-current" : ""}`}
+              />
+              {saving ? te.saving : dirty ? te.unsaved : te.saved}
+            </span>
+            {dirty && draft.kept ? (
+              <span className="text-[11px] text-[var(--color-muted)]">
+                {draft.kept === "kept" ? te.draftKept : te.draftOff}
+              </span>
+            ) : null}
+          </div>
         </div>
         <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {te.projectTitle}
@@ -665,6 +709,12 @@ export function TimelineEditor({
           </div>
         ) : null}
       </div>
+
+      <DraftBanner
+        resume={draft.resume}
+        onRestore={draft.restore}
+        onDiscard={draft.discard}
+      />
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-3">
