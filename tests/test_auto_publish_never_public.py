@@ -20,14 +20,14 @@ Synthetic data only: no network, no Supabase, no YouTube.
 
 import ast
 import json
-import logging
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import main
 from modules.channels import (
     ChannelContext,
     ChannelRegistry,
@@ -147,56 +147,81 @@ class RunPrivacySeamTestCase(unittest.TestCase):
     with. Drive run() up to it with the registry mocked, then check the value
     it hands back and what is logged."""
 
-    class _Stop(Exception):
+    # Runs in a child interpreter on purpose: `import main` pulls in torch,
+    # cv2 and moviepy, and a test process that large makes the peak-RSS check
+    # of the media-library ffmpeg runner (it reads wait4's ru_maxrss, which a
+    # forked child inherits from its parent) refuse small clips in other test
+    # modules of the same discover run.
+    _CHILD = """
+import json, logging, os, sys, tempfile
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+row, privacy = json.loads(sys.argv[2]), sys.argv[3]
+import main
+from modules.channels import ChannelContext
+
+class Stop(Exception):
+    pass
+
+records = []
+class H(logging.Handler):
+    def emit(self, r):
+        records.append([r.levelname, r.getMessage()])
+logging.getLogger("chronos").addHandler(H())
+ctx = ChannelContext.from_dict(row)
+seen = {}
+real = main._effective_privacy
+def spy(c, p):
+    seen["same_ctx"], seen["asked"], seen["out"] = c is ctx, p, real(c, p)
+    raise Stop
+os.chdir(tempfile.mkdtemp())
+with patch.object(main, "_effective_privacy", spy), patch.object(main, "resolve_channel", return_value=ctx):
+    try:
+        main.run(privacy=privacy, channel=ctx.channel_id)
+    except Stop:
         pass
+seen["warnings"] = [m for lvl, m in records if lvl == "WARNING"]
+print("RESULT " + json.dumps(seen))
+"""
 
-    def drive(self, ctx, privacy):
-        seen = {}
-        real = main._effective_privacy
-
-        def spy(c, p):
-            seen["ctx"], seen["asked"] = c, p
-            seen["out"] = real(c, p)
-            raise self._Stop
-
-        old = os.getcwd()
-        tmp = tempfile.mkdtemp()
-        os.chdir(tmp)  # run() makes ./logs
-        self.addCleanup(lambda: (os.chdir(old), os.path.isdir(tmp + "/logs") and os.rmdir(tmp + "/logs"), os.rmdir(tmp)))
-        with patch.object(main, "_effective_privacy", spy), \
-                patch.object(main, "resolve_channel", return_value=ctx):
-            with self.assertRaises(self._Stop):
-                main.run(privacy=privacy, channel=ctx.channel_id)
-        self.assertIs(seen["ctx"], ctx)
+    def drive(self, row, privacy):
+        root = str(Path(__file__).resolve().parent.parent)
+        proc = subprocess.run(
+            [sys.executable, "-I", "-c", self._CHILD, root, json.dumps(row), privacy],
+            capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir())
+        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
+        self.assertIsNotNone(line, proc.stderr[-2000:])
+        seen = json.loads(line[len("RESULT "):])
+        self.assertTrue(seen["same_ctx"])
         self.assertEqual(seen["asked"], privacy)
+        self.last_warnings = seen["warnings"]
         return seen["out"]
 
     def test_switch_off_and_public_requested_uploads_private(self):
-        with self.assertLogs("chronos", level="WARNING") as logs:
-            self.assertEqual(self.drive(_ctx(column=False), "public"), "private")
-        self.assertEqual(len(logs.output), 1)
-        self.assertIn("not ON", logs.output[0])
-        self.assertIn("private", logs.output[0])
+        self.assertEqual(self.drive(_row(column=False), "public"), "private")
+        self.assertEqual(len(self.last_warnings), 1)
+        self.assertIn("not ON", self.last_warnings[0])
+        self.assertIn("private", self.last_warnings[0])
 
     def test_null_or_junk_switch_and_public_uploads_private(self):
         for v in (None, "true", 1):
             with self.subTest(column=v):
-                self.assertEqual(self.drive(_ctx(column=v), "public"), "private")
+                self.assertEqual(self.drive(_row(column=v), "public"), "private")
 
     def test_switch_off_and_unlisted_uploads_private(self):
-        self.assertEqual(self.drive(_ctx(column=False), "unlisted"), "private")
+        self.assertEqual(self.drive(_row(column=False), "unlisted"), "private")
 
     def test_switch_off_and_private_is_quiet(self):
-        with self.assertNoLogs("chronos", level="WARNING"):
-            self.assertEqual(self.drive(_ctx(column=False), "private"), "private")
+        self.assertEqual(self.drive(_row(column=False), "private"), "private")
+        self.assertEqual(self.last_warnings, [])
 
     def test_switch_on_and_public_is_allowed_through_to_the_gate(self):
-        with self.assertNoLogs("chronos", level="WARNING"):
-            self.assertEqual(self.drive(_ctx(column=True), "public"), "public")
+        self.assertEqual(self.drive(_row(column=True), "public"), "public")
+        self.assertEqual(self.last_warnings, [])
 
     def test_absent_column_and_public_is_unchanged(self):
-        with self.assertNoLogs("chronos", level="WARNING"):
-            self.assertEqual(self.drive(_ctx(), "public"), "public")
+        self.assertEqual(self.drive(_row(), "public"), "public")
+        self.assertEqual(self.last_warnings, [])
 
     def test_run_uses_the_clamped_value_everywhere(self):
         """In run(): `privacy` is assigned exactly once, from the seam, before
