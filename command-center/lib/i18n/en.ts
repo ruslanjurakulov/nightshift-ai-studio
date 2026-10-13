@@ -1,3 +1,4 @@
+import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { editorExportEn } from "./editor-export/en";
 
@@ -14,6 +15,7 @@ import { editorExportEn } from "./editor-export/en";
 export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
+  presets: presetsEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",
