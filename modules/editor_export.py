@@ -223,44 +223,59 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
     asset_id: Optional[str] = None
     reason: Optional[str] = None
     try:
-        try:
-            dur = float(export.get("duration_s") or 0)
-        except (TypeError, ValueError):
-            dur = 0.0
-        if dur > EXPORT_MAX_S:
-            raise ExportFailed("too_long")
-        try:
-            norm = tl.load(doc if isinstance(doc, (dict, str, bytes)) else {})
-        except tl.TimelineError:
-            raise ExportFailed("invalid_timeline") from None
-        if tl.duration_s(norm) > EXPORT_MAX_S:
-            raise ExportFailed("too_long")
-        # The library holds the export to the same decode budget as an upload
-        # when it stores it (store_generated). Check it here, before the
-        # render, not after it (BR-L-017). The timeline's frame cap keeps
-        # every export inside it (4K60 for EXPORT_MAX_S is 9e11 px); this
-        # stays as the guard should either limit move.
-        if ml.decode_work(norm["width"], norm["height"], norm["fps"], tl.duration_s(norm)) > ml.DECODE_BUDGET_PX:
-            raise ExportFailed("too_long")
-        rows = store.export_assets(eid)
-        resolver = build_resolver(rows, Path(media_root), has_audio=probe)
-        if any(resolver(aid) is None for aid in tl.asset_ids(norm)):
-            # Deleted since the export was asked for, or never this org's.
-            raise ExportFailed("asset_unavailable")
-        shutil.rmtree(work, ignore_errors=True)
-        work.mkdir(parents=True, mode=0o700)
-        out = work / "export.mp4"
+        # The heartbeat starts with the work, not after the checks: a claimed export is
+        # "rendering" from the first line, and anything slow or odd before the render
+        # (a big document, a probe) must not let the lease run out under a live worker.
         with _Heartbeat(lambda: store.export_heartbeat(eid, worker_id), heartbeat_s):
+            try:
+                dur = float(export.get("duration_s") or 0)
+            except (TypeError, ValueError):
+                dur = 0.0
+            if dur > EXPORT_MAX_S:
+                raise ExportFailed("too_long")
+            try:
+                norm = tl.load(doc if isinstance(doc, (dict, str, bytes)) else {})
+                length = tl.duration_s(norm)
+                if length > EXPORT_MAX_S:
+                    raise ExportFailed("too_long")
+                # The library holds the export to the same decode budget as an upload
+                # when it stores it (store_generated). Check it here, before the
+                # render, not after it (BR-L-017). The timeline's frame cap keeps
+                # every export inside it (4K60 for EXPORT_MAX_S is 9e11 px); this
+                # stays as the guard should either limit move.
+                if ml.decode_work(norm["width"], norm["height"], norm["fps"], length) > ml.DECODE_BUDGET_PX:
+                    raise ExportFailed("too_long")
+            except tl.TimelineError:
+                raise ExportFailed("invalid_timeline") from None
+            except ExportFailed:
+                raise
+            except Exception as e:
+                # Not a reason the validator knew (an OverflowError from arithmetic on a
+                # value in the database, a limit of the JSON parser): the export fails
+                # now, with a word, instead of staying "rendering" until the lease runs out.
+                logger.warning("editor export %s: document could not be read (%s)", eid, type(e).__name__)
+                raise ExportFailed("invalid_timeline") from None
+            rows = store.export_assets(eid)
+            resolver = build_resolver(rows, Path(media_root), has_audio=probe)
+            if any(resolver(aid) is None for aid in tl.asset_ids(norm)):
+                # Deleted since the export was asked for, or never this org's.
+                raise ExportFailed("asset_unavailable")
+            shutil.rmtree(work, ignore_errors=True)
+            work.mkdir(parents=True, mode=0o700)
+            out = work / "export.mp4"
             try:
                 timeline_render.to_render_spec(norm, resolver, str(out))
             except tl.TimelineError:
                 # A clip past the end of its file, a still on an audio track…
                 raise ExportFailed("invalid_timeline") from None
+            except Exception as e:
+                logger.warning("editor export %s: layout failed (%s)", eid, type(e).__name__)
+                raise ExportFailed("invalid_timeline") from None
             try:
                 # One segment at a time: this runs beside upload checking in the
                 # media worker's memory budget, not in the render worker's.
                 render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1,
-                       timeout_s=render_timeout_s(tl.duration_s(norm)))
+                       timeout_s=render_timeout_s(length))
             except render_backend.RenderTimeout:
                 logger.warning("editor export %s: render ran past its time limit", eid)
                 raise ExportFailed("timed_out") from None
