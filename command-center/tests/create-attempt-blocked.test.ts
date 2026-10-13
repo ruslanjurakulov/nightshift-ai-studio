@@ -29,7 +29,7 @@ describe("blocked: the start failed and the credits are still held", () => {
     const a = createAttempt(counter());
     const key = a.keyFor(sig(), scope());
     a.markBlocked(120, key);
-    expect(a.status(sig(), scope())).toEqual({ unsure: false, blocked: 120 });
+    expect(a.status(sig(), scope())).toEqual({ unsure: false, blocked: 120, full: false });
     // Another topic / option / channel / user: nothing in the way.
     expect(a.status(sig({ topic: "Another" }), scope()).blocked).toBeNull();
     expect(a.status(sig({ duration: 60 }), scope()).blocked).toBeNull();
@@ -45,7 +45,7 @@ describe("blocked: the start failed and the credits are still held", () => {
     const key = first.keyFor(sig(), scope());
     first.markBlocked(120, key);
     const after = createAttempt(counter("b"));
-    expect(after.status(sig(), scope())).toEqual({ unsure: false, blocked: 120 });
+    expect(after.status(sig(), scope())).toEqual({ unsure: false, blocked: 120, full: false });
     expect(after.keyFor(sig(), scope())).toBe(key);
   });
 
@@ -103,7 +103,7 @@ describe("blocked: the start failed and the credits are still held", () => {
     const a = createAttempt(counter());
     const key = a.keyFor(sig());
     a.markBlocked(120, key);
-    expect(a.status(sig())).toEqual({ unsure: false, blocked: 120 });
+    expect(a.status(sig())).toEqual({ unsure: false, blocked: 120, full: false });
     expect(names()).toHaveLength(0);
     expect(createAttempt(counter()).status(sig()).blocked).toBeNull();
   });

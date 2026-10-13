@@ -187,9 +187,15 @@ export function CreateStudio({
     };
   }
 
+  // This same intent waits for credits that are still held, or the scope is full of such intents (lib/create-attempt.ts).
+  const isStopped = () => {
+    const k = attempt.status(JSON.stringify(runFields()), scope);
+    return k.blocked !== null || k.full;
+  };
+
   async function create() {
     // A start that definitely failed while its credits are still held: this same intent is not sent again (lib/run-answer.ts).
-    if (!channelId || sending.current || priceHold || attempt.status(JSON.stringify(runFields()), scope).blocked !== null) return;
+    if (!channelId || sending.current || priceHold || isStopped()) return;
     sending.current = true;
     setPhase("starting");
     setCreditError(null);
@@ -263,7 +269,7 @@ export function CreateStudio({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Enter creates; Shift+Enter is a newline (a brief can be multi-line).
-    if (e.key === "Enter" && !e.shiftKey && !blocked && phase !== "starting" && heldBlock === null) {
+    if (e.key === "Enter" && !e.shiftKey && !blocked && phase !== "starting" && !stopped) {
       e.preventDefault();
       setPhase("confirm");
     }
@@ -276,13 +282,17 @@ export function CreateStudio({
   const intentRef = useRef(intentSig);
   intentRef.current = intentSig;
   // Credits still held after a start that definitely failed, for exactly this intent (null = nothing in the way).
-  const heldBlock = useMemo(
-    () => (channelId ? attempt.status(intentSig, scope).blocked : null),
+  const known = useMemo(
+    () => (channelId ? attempt.status(intentSig, scope) : { unsure: false, blocked: null, full: false }),
     // scope is derived from these; tick bumps when an answer changes what is known.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [attempt, intentSig, userId, orgId, channelId, tick],
   );
-  const heldText = heldBlock === null ? null : heldBlock > 0 ? fmt(t.create.flow.startFailedHeld, { n: formatCredits(heldBlock, locale) }) : t.create.flow.startFailedHeldShort;
+  const heldBlock = known.blocked;
+  // Too many earlier requests are still waiting for their credits: a NEW intent is refused (no key, no request).
+  const tooMany = known.full;
+  const stopped = heldBlock !== null || tooMany;
+  const heldText = tooMany ? t.create.flow.startTooMany : heldBlock === null ? null : heldBlock > 0 ? fmt(t.create.flow.startFailedHeld, { n: formatCredits(heldBlock, locale) }) : t.create.flow.startFailedHeldShort;
   const customVoiceInvalid = voice === CUSTOM_VOICE && customVoice.trim() !== "" && !isVoiceId(customVoice.trim());
 
   const selectClass = "fl-select";
@@ -589,11 +599,11 @@ export function CreateStudio({
               type="button"
               autoFocus
               // Retry (price unreadable) is a live button; only "starting" and "checking the price" are disabled.
-              aria-disabled={phase === "starting" || (priceHold && price.state === "loading") || heldBlock !== null}
+              aria-disabled={phase === "starting" || (priceHold && price.state === "loading") || stopped}
               data-price-hold={priceHold ? price.state : undefined}
               onClick={() => {
                 // Unreadable: the button is the retry. Loading: nothing to do until the figure arrives.
-                if (heldBlock !== null) return;
+                if (stopped) return;
                 if (phase === "confirm" && price.state === "failed") setPriceNonce((n) => n + 1);
                 else if (phase === "confirm") void create();
               }}
@@ -618,7 +628,7 @@ export function CreateStudio({
             <button
               key="make"
               type="button"
-              disabled={blocked || phase === "queued" || heldBlock !== null}
+              disabled={blocked || phase === "queued" || stopped}
               onClick={() => setPhase("confirm")}
               className="studio-cta fl-go"
             >

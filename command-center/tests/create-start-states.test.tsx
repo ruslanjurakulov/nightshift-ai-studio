@@ -28,6 +28,7 @@ import { dictionaries } from "@/lib/i18n";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 import { ATTEMPT_PREFIX, clearAllCreateAttempts } from "@/lib/create-attempt-store";
+import { MAX_PROTECTED_PER_SCOPE, HOLD_MAX_AGE_MS, createAttempt } from "@/lib/create-attempt";
 
 const t = dictionaries.en;
 const f = t.create.flow;
@@ -569,5 +570,107 @@ describe("Run now", () => {
       await answer(new Response(JSON.stringify({ error: "run_already_started" }), { status: 409 }));
       expect(said()).toBe("");
     });
+  });
+});
+
+describe("too many earlier requests are still waiting (fail-closed)", () => {
+  const seedKeys: string[] = [];
+  /** 32 unsure intents of this user/org/channel, as an earlier visit to the page would have left them. */
+  function seed() {
+    seedKeys.length = 0;
+    const a = createAttempt();
+    for (let i = 0; i < MAX_PROTECTED_PER_SCOPE; i++) {
+      const k = a.keyFor(JSON.stringify({ channel_id: "chan-a", topic: `seed ${i}` }), { userId: USER, orgId: "org-1", channelId: "chan-a" });
+      a.markUnsure(k);
+      seedKeys.push(k);
+    }
+  }
+  const studio = (locale: "en" | "ru" | "uz" = "en") => (
+    <I18nProvider locale={locale}>
+      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun userId={USER} orgId="org-1" />
+    </I18nProvider>
+  );
+  const topic = () => screen.getByRole("textbox", { name: f.topicTitle }) as HTMLTextAreaElement;
+  const type = (v: string) => fireEvent.change(topic(), { target: { value: v } });
+  const makeBtn = () => screen.getByRole("button", { name: t.create.create }) as HTMLButtonElement;
+  const status = () => document.querySelector(".fl-status")?.textContent ?? "";
+
+  it("a new request is refused with the message and no request; earlier ones stay replayable with their own key, also after a reload", async () => {
+    seed();
+    const view = render(studio());
+    await screen.findByText(/About 120 credits/);
+    type("a brand new video");
+    expect(makeBtn().disabled).toBe(true);
+    expect(status()).toBe(f.startTooMany);
+    fireEvent.click(makeBtn());
+    fireEvent.keyDown(topic(), { key: "Enter" });
+    await act(async () => {});
+    expect(runs()).toHaveLength(0);
+    // An earlier, still-unsure request is not refused: its own key goes out and the replay is the honest sentence.
+    type("seed 3");
+    expect(makeBtn().disabled).toBe(false);
+    expect(status()).toBe("");
+    runAnswer = () => json({ error: "run_already_started" }, 409);
+    fireEvent.click(makeBtn());
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
+    await act(async () => {});
+    expect(runs()).toHaveLength(1);
+    expect(body(0).idempotency_key).toBe(seedKeys[3]);
+    expect(status()).toBe(f.startUnsureReplay);
+    // Nothing was evicted: all 32 are still stored.
+    expect(storedNames()).toHaveLength(MAX_PROTECTED_PER_SCOPE);
+    // After a reload the same.
+    view.unmount();
+    render(studio());
+    await screen.findByText(/About 120 credits/);
+    type("a brand new video");
+    expect(makeBtn().disabled).toBe(true);
+    expect(status()).toBe(f.startTooMany);
+    type("seed 31");
+    expect(makeBtn().disabled).toBe(false);
+  });
+
+  it("the message reads in Russian and Uzbek too", async () => {
+    for (const locale of ["ru", "uz"] as const) {
+      seed();
+      const view = render(studio(locale));
+      await screen.findByRole("textbox", { name: dictionaries[locale].create.flow.topicTitle });
+      fireEvent.change(screen.getByRole("textbox", { name: dictionaries[locale].create.flow.topicTitle }), { target: { value: "new" } });
+      expect(document.querySelector(".fl-status")?.textContent).toBe(dictionaries[locale].create.flow.startTooMany);
+      expect(dictionaries[locale].create.flow.startTooMany).not.toBe(f.startTooMany);
+      view.unmount();
+      window.sessionStorage.clear();
+    }
+  });
+
+  it("when a protected request ages out (three hours) the form accepts a new one again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-13T10:00:00Z"));
+      seed();
+      vi.setSystemTime(new Date(Date.now() + HOLD_MAX_AGE_MS + 60 * 1000));
+      render(studio());
+      await screen.findByText(/About 120 credits/);
+      type("a brand new video");
+      expect(makeBtn().disabled).toBe(false);
+      expect(status()).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Run now refuses a new request the same way", async () => {
+    seed();
+    render(
+      <I18nProvider locale="en">
+        <RunNowButton channelId="chan-a" githubConfigured variant="inline" userId={USER} orgId="org-1" />
+      </I18nProvider>,
+    );
+    const btn = screen.getByRole("button", { name: t.agents.runBtn }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(document.querySelector("span[aria-live=polite]")?.textContent).toBe(f.startTooMany);
+    fireEvent.click(btn);
+    await act(async () => {});
+    expect(runs()).toHaveLength(0);
   });
 });

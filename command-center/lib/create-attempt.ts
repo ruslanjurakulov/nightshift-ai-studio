@@ -35,8 +35,8 @@
  *     storage key made of a hash of user + org + channel and the intent's hash: ONE ENTRY PER
  *     INTENT, so what is known about topic A (its key, unsure, blocked) is still there after the
  *     person sent topic B and typed A back. Entries touch only their own intent; expired ones are
- *     pruned and at most MAX_ENTRIES_PER_SCOPE (the newest) are kept per user/org/channel, so
- *     storage cannot grow. The signature (topic, options) is never stored, nor any id, title or prompt; the user
+ *     pruned and at most MAX_ENTRIES_PER_SCOPE ordinary ones (the newest) are kept per
+ *     user/org/channel (unsure and blocked ones are protected, see below), so storage cannot grow. The signature (topic, options) is never stored, nor any id, title or prompt; the user
  *     id is inside the hash, so the hash of a short topic cannot be guessed without it. Another
  *     account, another channel or any changed topic or option has a different hash and never gets
  *     the key. The entry is checked again on every read (shape, hash, age), removed when the attempt
@@ -45,12 +45,27 @@
  *
  * Two states are kept with the key because a retry of the same intent must behave differently:
  *   - unsure (`u`): an answer was lost or the server said `start_unsure`. The key is kept, and a later
- *     `run_already_started` is NOT "started": a hold exists and the run may or may not have started;
+ *     `run_already_started` is NOT "started": a hold exists and the run may or may not have started. The
+ *     key is kept as long as the hold can still exist (HOLD_MAX_AGE_MS), not the 30 minutes of an ordinary
+ *     key: a new key after 30 minutes would be a second hold while the first (maybe real) one lives on;
  *   - blocked (`b`, the credits held; 0 = amount unknown): the server said `start_failed` while the hold is
  *     still held. The reference is burnt and the hold is not released, so neither the same key (it would
  *     answer "already started") nor a new one (a second hold) may be used for the SAME intent: the form
- *     refuses it until the hold has returned (BLOCKED_MAX_AGE_MS) or an input changes. Only the number is
+ *     refuses it until the hold has returned (HOLD_MAX_AGE_MS) or an input changes. Only the number is
  *     stored, never what was typed.
+ * Both are PROTECTED entries: they are remembered for HOLD_MAX_AGE_MS and are NEVER removed earlier: not by newer
+ * intents, not by pruning, not by a cap. Only ordinary entries are capped (the newest MAX_ENTRIES_PER_SCOPE) and
+ * evicted. Protected ones are bounded differently: at MAX_PROTECTED_PER_SCOPE live ones in one user/org/channel
+ * (in storage, or in memory when there is no scope or no storage) a NEW intent is refused, fail-closed: `keyFor`
+ * throws AttemptsFullError, `status().full` is true so the form disables itself and says why, and no request is
+ * made. Existing protected intents stay replayable with their own key; the slot frees when one expires.
+ *
+ * What the three hours are. HOLD_MAX_AGE_MS is the backend's age-out of an UNSTARTED hold (expire_credit_reservations,
+ * swept by the worker about every ten minutes, or lazily at the organization's next reservation). It is not proof
+ * that no run is in progress: a run that did start can outlive it, and the client's key lifetime is a frontend-only
+ * limit. REMAINING RISKS: (1) after that time an unsure intent gets a new key even if its run is still alive; (2) the
+ * lifetime is client-side only; (3) sessionStorage is per tab, so a second tab has separate state; (4) the fail-closed
+ * limit above.
  * Both are answered about the key they were learned under: a late answer of an earlier attempt, arriving
  * after the person changed the intent, cannot mark or settle the new attempt (`key` arguments).
  *
@@ -77,11 +92,28 @@ export function newAttemptKey(): string {
 /** How long an unanswered attempt's key is kept. */
 export const MAX_AGE_MS = 30 * 60 * 1000;
 
-/** The most intents remembered per user/org/channel (the newest); older ones are dropped. */
+/** The most ORDINARY intents remembered per user/org/channel (the newest); older ones are dropped. */
 export const MAX_ENTRIES_PER_SCOPE = 8;
 
-/** How long a blocked intent stays blocked: the server returns an unstarted hold about 3 hours after it was taken. */
-export const BLOCKED_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+/**
+ * How long an unsure or blocked intent is remembered: a hold that never started is released about three hours
+ * after it was taken (migration 0020), and until then neither the same key (a false "started") nor a new one (a
+ * second hold) is right for the same intent.
+ */
+export const HOLD_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+/** The name it had when only blocked intents used it. */
+export const BLOCKED_MAX_AGE_MS = HOLD_MAX_AGE_MS;
+
+/** The most unsure or blocked (protected) intents live at once per user/org/channel. A new intent beyond it is refused (fail-closed). */
+export const MAX_PROTECTED_PER_SCOPE = 32;
+
+/** Thrown by `keyFor` for a NEW intent while MAX_PROTECTED_PER_SCOPE protected ones are live. The forms check `status().full` first. */
+export class AttemptsFullError extends Error {
+  constructor() {
+    super("too many unsure or blocked create attempts are still waiting");
+    this.name = "AttemptsFullError";
+  }
+}
 
 /** Whose attempt this is. Without a user id nothing is persisted. */
 export interface AttemptScope {
@@ -95,14 +127,16 @@ export interface AttemptScope {
 export interface CreateAttempt {
   /**
    * The key for an attempt with this signature: the current one if it is unchanged (and not stale), else
-   * the stored one of this scope if it is the same intent and still fresh, else a new one.
+   * the stored one of this scope if it is the same intent and still fresh, else a new one (AttemptsFullError if
+   * the scope is full of protected intents).
    */
   keyFor(signature: string, scope?: AttemptScope): string;
   /**
    * What is known about the intent with this signature, without making a key: whether an earlier try ended
-   * without a usable answer, and the credits still held after a start that definitely failed (null = not blocked).
+   * without a usable answer, the credits still held after a start that definitely failed (null = not blocked), and
+   * `full`: this is a NEW intent and MAX_PROTECTED_PER_SCOPE protected ones are live, so it may not be started.
    */
-  status(signature: string, scope?: AttemptScope): { unsure: boolean; blocked: number | null };
+  status(signature: string, scope?: AttemptScope): { unsure: boolean; blocked: number | null; full: boolean };
   /** The attempt ended without a usable answer: a hold may exist under its key. `key`: the attempt it was learned under. */
   markUnsure(key?: string): void;
   /** An earlier try under the current key ended without a usable answer. */
@@ -173,10 +207,48 @@ function parseStored(raw: string): Stored | null {
   return null;
 }
 
-const fresh = (e: Stored, t: number, maxAgeMs: number, blockedMaxAgeMs: number) =>
-  t - e.t <= (e.b === undefined ? maxAgeMs : blockedMaxAgeMs) && e.t - t <= SKEW_MS;
+/** Unsure or blocked: a hold may still exist, so these are kept for its life and are not pushed out by newer entries. */
+const protectedEntry = (e: Stored) => e.u || e.b !== undefined;
 
-function readStored(name: string, hash: string, t: number, maxAgeMs: number, blockedMaxAgeMs: number, prune = true): Stored | null {
+const fresh = (e: Stored, t: number, maxAgeMs: number, holdMaxAgeMs: number) =>
+  t - e.t <= (protectedEntry(e) ? holdMaxAgeMs : maxAgeMs) && e.t - t <= SKEW_MS;
+
+/**
+ * Which ORDINARY entries to drop to stay within MAX_ENTRIES_PER_SCOPE (the oldest), never `keep`. Protected entries
+ * are not touched here, and never dropped for room: they leave by age or settle only.
+ */
+function overflow<T extends { id: string; at: number; prot: boolean }>(items: T[], keep: string): T[] {
+  const group = items.filter((i) => !i.prot).sort((a, b) => b.at - a.at);
+  const drop: T[] = [];
+  let kept = 0;
+  for (const i of group) {
+    if (i.id === keep || kept < MAX_ENTRIES_PER_SCOPE) kept++;
+    else drop.push(i);
+  }
+  return drop;
+}
+
+/** The names of this scope's live protected entries in storage (for the fail-closed count). */
+function storedProtected(tag: string, t: number, maxAgeMs: number, holdMaxAgeMs: number): string[] {
+  const s = attemptStore();
+  if (!s) return [];
+  const mine = ATTEMPT_PREFIX + tag + ":";
+  const out: string[] = [];
+  try {
+    for (let i = 0; i < s.length; i++) {
+      const name = s.key(i);
+      if (!name || !name.startsWith(mine)) continue;
+      const raw = s.getItem(name);
+      const e = raw === null ? null : parseStored(raw);
+      if (e && name === `${mine}${e.h}` && fresh(e, t, maxAgeMs, holdMaxAgeMs) && protectedEntry(e)) out.push(name);
+    }
+  } catch {
+    /* an unreadable store has none we can count */
+  }
+  return out;
+}
+
+function readStored(name: string, hash: string, t: number, maxAgeMs: number, holdMaxAgeMs: number, prune = true): Stored | null {
   const s = attemptStore();
   if (!s) return null;
   let raw: string | null;
@@ -187,7 +259,7 @@ function readStored(name: string, hash: string, t: number, maxAgeMs: number, blo
   }
   if (raw === null) return null;
   const e = parseStored(raw);
-  const ok = e && e.h === hash && fresh(e, t, maxAgeMs, blockedMaxAgeMs) ? e : null;
+  const ok = e && e.h === hash && fresh(e, t, maxAgeMs, holdMaxAgeMs) ? e : null;
   // Whatever is under this intent's name and is not its live entry is of no use to anyone: drop it.
   // (A read that only asks, `prune` false, leaves it.)
   if (!ok && prune) removeStored(name);
@@ -218,9 +290,9 @@ function removeStored(name: string): void {
 
 /**
  * Keeps one scope's entries bounded: drops the ones that are expired, malformed, or from before entries were
- * one per intent (the bare scope name), then all but the newest MAX_ENTRIES_PER_SCOPE (never `keep`).
+ * one per intent (the bare scope name), then the ordinary ones over the cap (see `overflow`; never `keep`).
  */
-function pruneScope(tag: string, keep: string, t: number, maxAgeMs: number, blockedMaxAgeMs: number): void {
+function pruneScope(tag: string, keep: string, t: number, maxAgeMs: number, holdMaxAgeMs: number): void {
   const s = attemptStore();
   if (!s) return;
   const mine = ATTEMPT_PREFIX + tag;
@@ -233,7 +305,7 @@ function pruneScope(tag: string, keep: string, t: number, maxAgeMs: number, bloc
   } catch {
     return;
   }
-  const live: { name: string; at: number }[] = [];
+  const live: { id: string; at: number; prot: boolean }[] = [];
   for (const name of names) {
     let raw: string | null = null;
     try {
@@ -242,22 +314,17 @@ function pruneScope(tag: string, keep: string, t: number, maxAgeMs: number, bloc
       /* unreadable: dropped below */
     }
     const e = raw === null || name === mine ? null : parseStored(raw);
-    if (e && name === `${mine}:${e.h}` && fresh(e, t, maxAgeMs, blockedMaxAgeMs)) live.push({ name, at: e.t });
+    if (e && name === `${mine}:${e.h}` && fresh(e, t, maxAgeMs, holdMaxAgeMs)) live.push({ id: name, at: e.t, prot: protectedEntry(e) });
     else if (name !== keep) removeStored(name);
   }
-  live.sort((a, b) => b.at - a.at);
-  let kept = 0;
-  for (const l of live) {
-    if (l.name === keep || kept < MAX_ENTRIES_PER_SCOPE) kept++;
-    else removeStored(l.name);
-  }
+  for (const o of overflow(live, keep)) removeStored(o.id);
 }
 
 export function createAttempt(
   makeKey: () => string = newAttemptKey,
-  opts: { now?: () => number; maxAgeMs?: number; blockedMaxAgeMs?: number } = {},
+  opts: { now?: () => number; maxAgeMs?: number; holdMaxAgeMs?: number } = {},
 ): CreateAttempt {
-  const { now = Date.now, maxAgeMs = MAX_AGE_MS, blockedMaxAgeMs = BLOCKED_MAX_AGE_MS } = opts;
+  const { now = Date.now, maxAgeMs = MAX_AGE_MS, holdMaxAgeMs = BLOCKED_MAX_AGE_MS } = opts;
   // A form opening after a sign-out switches persistence back on (the sign-out had switched it off).
   allowAttemptStorage();
   // Every intent this form has seen, each with its own key and state (the newest few), and the one asked for last.
@@ -270,7 +337,8 @@ export function createAttempt(
     const hash = intentHash(scope, signature);
     return { name: `${ATTEMPT_PREFIX}${tag}:${hash}`, hash, tag };
   };
-  const limit = (p: Pending) => (p.blocked === null ? maxAgeMs : blockedMaxAgeMs);
+  const isProtected = (p: Pending) => p.unsure || p.blocked !== null;
+  const limit = (p: Pending) => (isProtected(p) ? holdMaxAgeMs : maxAgeMs);
   const alive = (p: Pending | undefined, t: number): p is Pending => !!p && t - p.at <= limit(p);
   const byKey = (key?: string): Pending | null => {
     if (key === undefined) return cur;
@@ -281,13 +349,18 @@ export function createAttempt(
     for (const [id, q] of pending) if (q === p) pending.delete(id);
     if (cur === p) cur = null;
   };
-  const trim = (t: number) => {
-    for (const [id, p] of pending) if (!alive(p, t)) pending.delete(id);
-    while (pending.size > MAX_ENTRIES_PER_SCOPE) {
-      const oldest = pending.keys().next().value;
-      if (oldest === undefined) break;
-      pending.delete(oldest);
-    }
+  const trim = (t: number, keep: Pending) => {
+    for (const [id, p] of pending) if (p !== keep && !alive(p, t)) pending.delete(id);
+    const items = [...pending].map(([id, p]) => ({ id, at: p.at, prot: isProtected(p) }));
+    const keepId = [...pending].find(([, p]) => p === keep)?.[0] ?? "";
+    for (const o of overflow(items, keepId)) pending.delete(o.id);
+  };
+  // Live protected intents of the same scope (storage and memory; memory-only entries have no tag).
+  const protectedCount = (store: Pending["store"], t: number) => {
+    const ids = new Set<string>();
+    for (const [id, p] of pending) if (alive(p, t) && isProtected(p) && p.store?.tag === store?.tag) ids.add(id);
+    if (store) for (const name of storedProtected(store.tag, t, maxAgeMs, holdMaxAgeMs)) ids.add(name);
+    return ids.size;
   };
   return {
     keyFor(signature, scope) {
@@ -302,16 +375,18 @@ export function createAttempt(
       pending.delete(id);
       p = undefined;
       if (store) {
-        const found = readStored(store.name, store.hash, t, maxAgeMs, blockedMaxAgeMs);
+        const found = readStored(store.name, store.hash, t, maxAgeMs, holdMaxAgeMs);
         if (found) p = { key: found.k, sig: signature, at: found.t, unsure: found.u, blocked: found.b ?? null, store };
       }
       if (!p) {
+        // Fail closed: no key, so no request, while the scope is full of intents whose holds may still be live.
+        if (protectedCount(store, t) >= MAX_PROTECTED_PER_SCOPE) throw new AttemptsFullError();
         p = { key: makeKey(), sig: signature, at: t, unsure: false, blocked: null, store };
         writeStored(p);
-        if (store) pruneScope(store.tag, store.name, t, maxAgeMs, blockedMaxAgeMs);
+        if (store) pruneScope(store.tag, store.name, t, maxAgeMs, holdMaxAgeMs);
       }
       pending.set(id, p);
-      trim(t);
+      trim(t, p);
       cur = p;
       return p.key;
     },
@@ -319,16 +394,18 @@ export function createAttempt(
       const t = now();
       const store = storeFor(signature, scope);
       const p = pending.get(idOf(signature, store));
-      if (alive(p, t)) return { unsure: p.unsure, blocked: p.blocked };
+      if (alive(p, t)) return { unsure: p.unsure, blocked: p.blocked, full: false };
       if (store) {
-        const found = readStored(store.name, store.hash, t, maxAgeMs, blockedMaxAgeMs, false);
-        if (found) return { unsure: found.u, blocked: found.b ?? null };
+        const found = readStored(store.name, store.hash, t, maxAgeMs, holdMaxAgeMs, false);
+        if (found) return { unsure: found.u, blocked: found.b ?? null, full: false };
       }
-      return { unsure: false, blocked: null };
+      return { unsure: false, blocked: null, full: protectedCount(store, t) >= MAX_PROTECTED_PER_SCOPE };
     },
     markUnsure(key) {
       const p = byKey(key);
       if (!p) return;
+      // The hold's life runs from when this became unsure, not from when the key was first made.
+      if (!p.unsure) p.at = now();
       p.unsure = true;
       writeStored(p);
     },

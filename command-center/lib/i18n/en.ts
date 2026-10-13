@@ -937,6 +937,7 @@ export const en = {
       startFailedHeld: "Did not start. {n} credits are held and return automatically in about 3 hours. You can try again then, or change the request.",
       startFailedHeldShort: "Did not start. Your credits are held and return automatically in about 3 hours. You can try again then, or change the request.",
       startFailedReleased: "Did not start, and no credits are held. You can try again.",
+      startTooMany: "Too many earlier requests are still waiting for their credits to return. Check Videos, or try again later — they return by themselves in about 3 hours.",
     },
   },
   voice: {

@@ -110,13 +110,17 @@ export function RunNowButton({
   const intentRef = useRef(intentSig);
   intentRef.current = intentSig;
   // Credits still held after a start that definitely failed, for exactly this intent (null = nothing in the way).
-  const heldBlock = useMemo(
-    () => (channelId ? attempt.status(intentSig, scope).blocked : null),
+  const known = useMemo(
+    () => (channelId ? attempt.status(intentSig, scope) : { unsure: false, blocked: null, full: false }),
     // scope is derived from these; tick bumps when an answer changes what is known.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [attempt, intentSig, userId, orgId, channelId, tick],
   );
-  const heldText = heldBlock === null ? null : heldBlock > 0 ? fmt(t.create.flow.startFailedHeld, { n: formatCredits(heldBlock, locale) }) : t.create.flow.startFailedHeldShort;
+  const heldBlock = known.blocked;
+  // Too many earlier requests are still waiting for their credits: a NEW intent is refused (no key, no request).
+  const tooMany = known.full;
+  const stopped = heldBlock !== null || tooMany;
+  const heldText = tooMany ? t.create.flow.startTooMany : heldBlock === null ? null : heldBlock > 0 ? fmt(t.create.flow.startFailedHeld, { n: formatCredits(heldBlock, locale) }) : t.create.flow.startFailedHeldShort;
 
   async function loadIdeas() {
     setIdeasPhase("loading");
@@ -134,9 +138,15 @@ export function RunNowButton({
     }
   }
 
+  // This same intent waits for credits that are still held, or the scope is full of such intents (lib/create-attempt.ts).
+  const isStopped = () => {
+    const k = attempt.status(JSON.stringify(runFields()), scope);
+    return k.blocked !== null || k.full;
+  };
+
   async function run() {
     // A start that definitely failed while its credits are still held: this same intent is not sent again (lib/run-answer.ts).
-    if (!channelId || sending.current || priceHold || attempt.status(JSON.stringify(runFields()), scope).blocked !== null) return;
+    if (!channelId || sending.current || priceHold || isStopped()) return;
     sending.current = true;
     setPhase("starting");
     setCreditError(null);
@@ -214,11 +224,11 @@ export function RunNowButton({
         <>
           <button
             type="button"
-            aria-disabled={(priceHold && price.state === "loading") || heldBlock !== null}
+            aria-disabled={(priceHold && price.state === "loading") || stopped}
             data-price-hold={priceHold ? price.state : undefined}
             onClick={() => {
               // Unreadable: the button is the retry. Loading: nothing until the figure arrives.
-              if (heldBlock !== null) return;
+              if (stopped) return;
               if (price.state === "failed") setRetryNonce((n) => n + 1);
               else void run();
             }}
@@ -238,7 +248,7 @@ export function RunNowButton({
       ) : (
         <button
           type="button"
-          disabled={blocked || phase === "starting" || heldBlock !== null}
+          disabled={blocked || phase === "starting" || stopped}
           onClick={() => {
             setPrice({ state: "loading" });
             setPhase("confirm");

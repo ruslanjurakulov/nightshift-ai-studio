@@ -36,7 +36,7 @@ describe("blocked survives sending another intent", () => {
     const keyB = a.keyFor(sig("B"), scope());
     expect(keyB).not.toBe(keyA);
     a.settle(keyB); // B started
-    expect(a.status(sig("A"), scope())).toEqual({ unsure: false, blocked: 12 });
+    expect(a.status(sig("A"), scope())).toEqual({ unsure: false, blocked: 12, full: false });
     expect(a.keyFor(sig("A"), scope())).toBe(keyA);
     expect(a.status(sig("B"), scope()).blocked).toBeNull();
   });
@@ -50,7 +50,7 @@ describe("blocked survives sending another intent", () => {
     second.markUnsure(keyB);
     second.settle(keyB);
     const third = createAttempt(counter("c"));
-    expect(third.status(sig("A"), scope())).toEqual({ unsure: false, blocked: 12 });
+    expect(third.status(sig("A"), scope())).toEqual({ unsure: false, blocked: 12, full: false });
     expect(third.keyFor(sig("A"), scope())).toBe(keyA);
   });
 
@@ -107,9 +107,9 @@ describe("each intent touches only its own entry", () => {
     expect(names()).toHaveLength(2);
     // A's entry is byte for byte what it was.
     expect(names().filter((n) => window.sessionStorage.getItem(n) === before[n])).toHaveLength(1);
-    expect(a.status(sig("A"), scope())).toEqual({ unsure: false, blocked: null });
-    expect(a.status(sig("B"), scope())).toEqual({ unsure: false, blocked: 5 });
-    expect(a.status(sig("C"), scope())).toEqual({ unsure: false, blocked: null });
+    expect(a.status(sig("A"), scope())).toEqual({ unsure: false, blocked: null, full: false });
+    expect(a.status(sig("B"), scope())).toEqual({ unsure: false, blocked: 5, full: false });
+    expect(a.status(sig("C"), scope())).toEqual({ unsure: false, blocked: null, full: false });
     expect(a.keyFor(sig("A"), scope())).toBe(keyA);
     expect(a.keyFor(sig("C"), scope())).not.toBe(keyC);
   });
@@ -222,7 +222,7 @@ describe("tampered entries", () => {
     const { key, name, good } = first();
     window.sessionStorage.setItem(name, (make as (g: Record<string, unknown>) => string)(good));
     const after = createAttempt(counter("b"));
-    expect(after.status(sig("A"), scope())).toEqual({ unsure: false, blocked: null });
+    expect(after.status(sig("A"), scope())).toEqual({ unsure: false, blocked: null, full: false });
     expect(after.keyFor(sig("A"), scope())).toBe("b1");
     expect(after.keyFor(sig("A"), scope())).not.toBe(key);
   });

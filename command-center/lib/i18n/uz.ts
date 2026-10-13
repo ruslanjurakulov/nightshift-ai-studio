@@ -927,6 +927,7 @@ export const uz: Dictionary = {
       startFailedHeld: "Boshlanmadi. Band qilingan kreditlar: {n}; ular taxminan 3 soatdan keyin avtomatik qaytadi. Oʻshanda qayta urinib koʻrishingiz yoki soʻrovni oʻzgartirishingiz mumkin.",
       startFailedHeldShort: "Boshlanmadi. Kreditlar band qilingan va taxminan 3 soatdan keyin avtomatik qaytadi. Oʻshanda qayta urinib koʻrishingiz yoki soʻrovni oʻzgartirishingiz mumkin.",
       startFailedReleased: "Boshlanmadi, kreditlar band qilinmagan. Qayta urinib koʻrishingiz mumkin.",
+      startTooMany: "Oldingi soʻrovlar juda koʻp va ularning kreditlari hali qaytmagan. «Videolar» boʻlimini tekshiring yoki keyinroq urinib koʻring: ular taxminan 3 soatdan keyin oʻzi qaytadi.",
     },
   },
   voice: {
