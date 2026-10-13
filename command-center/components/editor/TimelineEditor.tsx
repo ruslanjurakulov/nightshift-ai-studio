@@ -131,6 +131,13 @@ import {
   type ClipGrade,
 } from "@/lib/editorGrade";
 
+import { ExportStatusPanel } from "./ExportStatusPanel";
+import { useExportPoll } from "./useExportPoll";
+import { TimelineViewBar } from "./TimelineViewBar";
+import { useTimelineView } from "./useTimelineView";
+import { useEditorShortcuts } from "./useEditorShortcuts";
+import { usePlayheadScrub } from "./usePlayheadScrub";
+
 /** The first time at which clip `id` is the one the preview shows: its start,
  *  or the end of the clip before it when a cross-fade overlaps the two. */
 function firstFrameOf(model: EditorModel, id: string): number {
@@ -142,8 +149,6 @@ function firstFrameOf(model: EditorModel, id: string): number {
     starts.find((t) => clipAt(model, t)?.clip.id === id) ?? clips[i].start_s
   );
 }
-import { ExportStatusPanel } from "./ExportStatusPanel";
-import { useExportPoll } from "./useExportPoll";
 
 const HISTORY = 100;
 
@@ -429,6 +434,11 @@ export function TimelineEditor({
     setPlaying((p) => !p);
   };
 
+  // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
+  const view = useTimelineView({ total, playhead });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view });
+  const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
+
   async function refreshLinks() {
     const out = await fetchProject(projectId);
     if (out.ok) {
@@ -638,7 +648,7 @@ export function TimelineEditor({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-editor-root="">
       {/* header: name, history, save, export */}
       <div className="panel flex flex-col gap-3 p-4 sm:p-5 sm:p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -891,10 +901,7 @@ export function TimelineEditor({
               max={Math.max(total, 0.001)}
               step={1 / model.fps}
               value={Math.min(playhead, total)}
-              onChange={(e) => {
-                setPlaying(false);
-                setPlayhead(Number(e.target.value));
-              }}
+              {...scrub}
               aria-label={te.playhead}
               aria-valuetext={fmt(te.timeOf, {
                 now: formatTime(playhead),
@@ -909,7 +916,9 @@ export function TimelineEditor({
             </span>
           </div>
 
+          <TimelineViewBar view={view} />
           <TimelineStrip
+            view={view}
             clips={clips}
             texts={model.texts}
             sounds={model.sounds}
