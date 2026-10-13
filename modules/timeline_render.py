@@ -42,6 +42,12 @@ How a timeline maps onto the spec:
   Speech that is not there (a silent source) ducks nothing, and a clip no
   speech can touch gets no envelope at all, so its argv is the one it had
   before ducking existed.
+* **Overlays** — each of the document's ``overlays`` (a picture or a video over
+  the picture) becomes a ``PictureOverlay`` on the frame grid, cut at the end
+  of the picture; the backend lays them over the composited picture, under the
+  text, with ffmpeg ``overlay`` (``render_spec.picture_overlay_filters``). One
+  that starts after the picture ends, or whose opacity is 0, renders nothing
+  and is left out, so the command is the one the document without it gets.
 * **Text** — T clips in track order, then the captions on top, become text
   overlays burnt from one ASS file.
 
@@ -61,6 +67,7 @@ from modules.render_spec import (
     KIND_IMAGE,
     KIND_VIDEO,
     AudioTrack,
+    PictureOverlay,
     RenderSpec,
     Segment,
     TextOverlay,
@@ -261,6 +268,24 @@ def _text(doc: dict) -> List[TextOverlay]:
     return overlays
 
 
+def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay]:
+    fps = doc["fps"]
+    out: List[PictureOverlay] = []
+    for ov in doc.get("overlays") or []:
+        first = _frame(ov["start_s"], fps)
+        last = min(_frame(ov["end_s"], fps), total_frames)
+        if last <= first or ov["opacity"] <= 0:
+            continue   # nothing of it is shown
+        asset = assets[ov["asset_id"]]
+        out.append(PictureOverlay(
+            path=asset.path,
+            kind=KIND_VIDEO if asset.kind == tl.ASSET_VIDEO else KIND_IMAGE,
+            start_s=first / fps, end_s=last / fps,
+            x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"],
+        ))
+    return out
+
+
 def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
                    output_path: str) -> RenderSpec:
     """The RenderSpec for a timeline. Raises :class:`timeline.TimelineError`
@@ -281,6 +306,7 @@ def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
         frame_exact=True,
         audio_tracks=_sound(norm, assets),
         overlays=_text(norm),
+        picture_overlays=_pictures(norm, assets, total_frames),
     )
 
 

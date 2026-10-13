@@ -19,6 +19,7 @@ function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => 
       if (crumb.parent === "channels" && crumb.segment === "new") return t.channels.add;
       // A section the sidebar does not list names itself by its URL; anything
       // below a section (a video's id) is a detail page, and an id is not a name.
+      if (crumb.parent === null && crumb.segment === "presets") return t.presets.title;
       return crumb.parent === null ? crumb.segment.replace(/-/g, " ") : t.navigation.details;
   }
 }

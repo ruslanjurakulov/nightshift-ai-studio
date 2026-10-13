@@ -114,12 +114,14 @@ const req = (method: string, body?: unknown, headers: Record<string, string> = {
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
-const rpcCalls = (name?: string) => h.calls.filter((c) => c.kind === "rpc" && (!name || c.name === name));
+// The per-person limiter (take_web_rate) is its own rpc; "before the database" means the editor's.
+const rpcCalls = (name?: string) =>
+  h.calls.filter((c) => c.kind === "rpc" && c.name !== "take_web_rate" && (!name || c.name === name));
 
 beforeEach(() => {
   h.user = { id: "u1", email: "me@example.com" };
   h.current = { id: ORG };
-  h.rpc = {};
+  h.rpc = { take_web_rate: { data: true, error: null } };
   h.table = {};
   h.calls = [];
   h.audits = [];

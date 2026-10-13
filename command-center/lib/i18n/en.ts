@@ -1,4 +1,6 @@
+import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
+import { overlayEn } from "./overlay/en";
 import { editorExportEn } from "./editor-export/en";
 
 /**
@@ -14,6 +16,7 @@ import { editorExportEn } from "./editor-export/en";
 export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
+  presets: presetsEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",
@@ -4695,6 +4698,8 @@ export const en = {
     },
   },
   editor: {
+    /** Picture overlays: ./overlay/en.ts. */
+    overlay: overlayEn,
     title: "Editor",
     subtitle: "Trim, split, speed up or slow down your videos and put text on them.",
     notEnabled: "The editor is not enabled on this deployment yet (migration 0054 has not been applied).",

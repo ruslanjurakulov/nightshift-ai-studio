@@ -5290,6 +5290,2594 @@
     "22222222-2222-4222-8222-222222222222": "audio"
    },
    "sql": null
+  },
+  {
+   "name": "picture clip id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1\n",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "track id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1\n",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1\n",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "caption id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ],
+    "captions": {
+     "cues": [
+      {
+       "id": "k1\n",
+       "start_s": 0,
+       "end_s": 1,
+       "text": "hi"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "asset id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111\n",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text colour with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true,
+        "color": "#FFFFFF\n"
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "version true",
+   "valid": false,
+   "doc": {
+    "version": true,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "picture clip out_s of 1e308 and an end_s",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 1e+308,
+        "speed": 2,
+        "audio": true,
+        "end_s": 1
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "picture clip in_s of 1e308",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1e+308,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay picture with every field",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "x": 0.8,
+      "y": 0.2,
+      "w": 0.25,
+      "opacity": 0.6
+     }
+    ]
+   },
+   "assets": {
+    "11111111-1111-4111-8111-111111111111": "video",
+    "33333333-3333-4333-8333-333333333333": "image"
+   },
+   "sql": null
+  },
+  {
+   "name": "overlay with only the required fields",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   },
+   "assets": {
+    "11111111-1111-4111-8111-111111111111": "video",
+    "33333333-3333-4333-8333-333333333333": "image"
+   },
+   "sql": null
+  },
+  {
+   "name": "overlay at the low ends of every range",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "x": 0,
+      "y": 0,
+      "w": 0.05,
+      "opacity": 0
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay at the high ends of every range",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "x": 1,
+      "y": 1,
+      "w": 1,
+      "opacity": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlays that share time and a file",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4
+     },
+     {
+      "id": "o2",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 2,
+      "end_s": 6,
+      "x": 0.3
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty overlays list",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": []
+   }
+  },
+  {
+   "name": "overlay running past the end of the picture",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 8,
+      "end_s": 20
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay video",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   },
+   "assets": {
+    "11111111-1111-4111-8111-111111111111": "video",
+    "33333333-3333-4333-8333-333333333333": "image",
+    "44444444-4444-4444-8444-444444444444": "video"
+   },
+   "sql": null
+  },
+  {
+   "name": "sixteen overlays",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o0",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 1
+     },
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 2
+     },
+     {
+      "id": "o2",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 2,
+      "end_s": 3
+     },
+     {
+      "id": "o3",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 3,
+      "end_s": 4
+     },
+     {
+      "id": "o4",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 4,
+      "end_s": 5
+     },
+     {
+      "id": "o5",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 5,
+      "end_s": 6
+     },
+     {
+      "id": "o6",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 6,
+      "end_s": 7
+     },
+     {
+      "id": "o7",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 7,
+      "end_s": 8
+     },
+     {
+      "id": "o8",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 8,
+      "end_s": 9
+     },
+     {
+      "id": "o9",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 9,
+      "end_s": 10
+     },
+     {
+      "id": "o10",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 10,
+      "end_s": 11
+     },
+     {
+      "id": "o11",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 11,
+      "end_s": 12
+     },
+     {
+      "id": "o12",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 12,
+      "end_s": 13
+     },
+     {
+      "id": "o13",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 13,
+      "end_s": 14
+     },
+     {
+      "id": "o14",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 14,
+      "end_s": 15
+     },
+     {
+      "id": "o15",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 15,
+      "end_s": 16
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlays on a document with captions",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ],
+    "captions": {
+     "cues": [
+      {
+       "id": "q1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "Hi"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "overlays that is not a list",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": {
+     "o1": {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4
+     }
+    }
+   }
+  },
+  {
+   "name": "overlays that is null",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": null
+   }
+  },
+  {
+   "name": "seventeen overlays",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o0",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 1
+     },
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 2
+     },
+     {
+      "id": "o2",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 2,
+      "end_s": 3
+     },
+     {
+      "id": "o3",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 3,
+      "end_s": 4
+     },
+     {
+      "id": "o4",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 4,
+      "end_s": 5
+     },
+     {
+      "id": "o5",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 5,
+      "end_s": 6
+     },
+     {
+      "id": "o6",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 6,
+      "end_s": 7
+     },
+     {
+      "id": "o7",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 7,
+      "end_s": 8
+     },
+     {
+      "id": "o8",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 8,
+      "end_s": 9
+     },
+     {
+      "id": "o9",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 9,
+      "end_s": 10
+     },
+     {
+      "id": "o10",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 10,
+      "end_s": 11
+     },
+     {
+      "id": "o11",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 11,
+      "end_s": 12
+     },
+     {
+      "id": "o12",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 12,
+      "end_s": 13
+     },
+     {
+      "id": "o13",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 13,
+      "end_s": 14
+     },
+     {
+      "id": "o14",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 14,
+      "end_s": 15
+     },
+     {
+      "id": "o15",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 15,
+      "end_s": 16
+     },
+     {
+      "id": "o16",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 16,
+      "end_s": 17
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay that is not an object",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     "o1"
+    ]
+   }
+  },
+  {
+   "name": "overlay with a path field",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "path": "/etc/passwd"
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay with a rotation field",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "rotation": 15
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay without an asset",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay asset that is not a uuid",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "logo.png",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay without an end",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay ending before it starts",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 4,
+      "end_s": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay of zero length",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 2,
+      "end_s": 2
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay shorter than one frame",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 1.01
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay starting below zero",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": -1,
+      "end_s": 4
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay time as text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": "1",
+      "end_s": 4
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay x below 0",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "x": -0.01
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay x above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "x": 1.01
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay y below 0",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "y": -0.5
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay y above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "y": 2
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay width below 0.05",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "w": 0.049
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay width above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "w": 1.01
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay width zero",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "w": 0
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay opacity below 0",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "opacity": -0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay opacity above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "opacity": 1.5
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay x as text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "x": "0.5"
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay width as boolean",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "w": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay opacity null",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4,
+      "opacity": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay with a bad id",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o 1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay id used by a clip",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "c1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   }
+  },
+  {
+   "name": "two overlays with one id",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 4
+     },
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 2,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay of another organization",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   },
+   "assets": {
+    "11111111-1111-4111-8111-111111111111": "video",
+    "33333333-3333-4333-8333-333333333333": "image",
+    "44444444-4444-4444-8444-444444444444": "other_org"
+   },
+   "sql": "invalid_asset"
+  },
+  {
+   "name": "a sound as an overlay",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "22222222-2222-4222-8222-222222222222",
+      "start_s": 1,
+      "end_s": 4
+     }
+    ]
+   },
+   "assets": {
+    "11111111-1111-4111-8111-111111111111": "video",
+    "33333333-3333-4333-8333-333333333333": "image",
+    "22222222-2222-4222-8222-222222222222": "audio"
+   },
+   "sql": null
+  },
+  {
+   "name": "five video overlays",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o0",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 0,
+      "end_s": 1
+     },
+     {
+      "id": "o1",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 1,
+      "end_s": 2
+     },
+     {
+      "id": "o2",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 2,
+      "end_s": 3
+     },
+     {
+      "id": "o3",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 3,
+      "end_s": 4
+     },
+     {
+      "id": "o4",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 4,
+      "end_s": 5
+     }
+    ]
+   },
+   "assets": {
+    "11111111-1111-4111-8111-111111111111": "video",
+    "33333333-3333-4333-8333-333333333333": "image",
+    "44444444-4444-4444-8444-444444444444": "video"
+   },
+   "sql": null
+  },
+  {
+   "name": "four video overlays",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o0",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 0,
+      "end_s": 1
+     },
+     {
+      "id": "o1",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 1,
+      "end_s": 2
+     },
+     {
+      "id": "o2",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 2,
+      "end_s": 3
+     },
+     {
+      "id": "o3",
+      "asset_id": "44444444-4444-4444-8444-444444444444",
+      "start_s": 3,
+      "end_s": 4
+     }
+    ]
+   },
+   "assets": {
+    "11111111-1111-4111-8111-111111111111": "video",
+    "33333333-3333-4333-8333-333333333333": "image",
+    "44444444-4444-4444-8444-444444444444": "video"
+   },
+   "sql": null
+  },
+  {
+   "name": "overlay of half a frame at 50 fps",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 0.01
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay between two half frames at 50 fps",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0.03,
+      "end_s": 0.05
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay of two frames on half frames at 50 fps",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0.01,
+      "end_s": 0.03
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay end at 1e308",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 1e+308
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay end at the largest float",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 1.79e+308
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay start at 1e308",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1e+308,
+      "end_s": 1.79e+308
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay asset id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333\n",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
   }
  ]
 }

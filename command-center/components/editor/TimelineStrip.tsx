@@ -14,12 +14,16 @@ import {
   formatTime,
   soundLength,
   type EditorAsset,
+  type PictureOverlay,
   type SoundClip,
   type TextClip,
   type VideoClip,
 } from "@/lib/editor";
 
-export type Selection = { kind: "clip" | "text" | "sound"; id: string } | null;
+export type Selection = {
+  kind: "clip" | "text" | "sound" | "overlay";
+  id: string;
+} | null;
 
 /** Lanes so items that share time sit one above the other, not on top of each other. */
 export function textLanes(
@@ -84,6 +88,7 @@ export function TimelineStrip({
   clips,
   texts,
   sounds,
+  overlays = [],
   total,
   fps,
   playhead,
@@ -96,6 +101,8 @@ export function TimelineStrip({
 }: {
   clips: readonly VideoClip[];
   texts: readonly TextClip[];
+  /** Pictures / videos over the picture, in layer order. */
+  overlays?: readonly PictureOverlay[];
   sounds: readonly SoundClip[];
   total: number;
   fps: number;
@@ -135,6 +142,8 @@ export function TimelineStrip({
   const pct = (s: number) => `${(Math.max(0, s) / span) * 100}%`;
   const lanes = textLanes(texts);
   const laneCount = Math.max(1, ...[...lanes.values()].map((l) => l + 1));
+  const oLanes = textLanes(overlays);
+  const oLaneCount = Math.max(1, ...[...oLanes.values()].map((l) => l + 1));
   const sLanes = textLanes(sounds.map(soundSpan));
   const sLaneCount = Math.max(1, ...[...sLanes.values()].map((l) => l + 1));
   const frame = 1 / fps;
@@ -345,6 +354,50 @@ export function TimelineStrip({
             );
           })}
         </div>
+        {overlays.length ? (
+          <div
+            className="relative w-full"
+            style={{ height: `${oLaneCount * 30}px` }}
+            aria-label={te.overlay.track}
+            role="list"
+          >
+            {overlays.map((o, i) => {
+              const on = selected?.kind === "overlay" && selected.id === o.id;
+              const name = assets[o.asset_id]?.name ?? te.overlay.untitled;
+              return (
+                <div
+                  key={o.id}
+                  role="listitem"
+                  className="absolute h-7"
+                  style={{
+                    left: pct(o.start_s),
+                    width: pct(o.end_s - o.start_s),
+                    top: `${(oLanes.get(o.id) ?? 0) * 30}px`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelect({ kind: "overlay", id: o.id })}
+                    aria-pressed={on}
+                    aria-label={fmt(te.overlay.clipLabel, {
+                      n: i + 1,
+                      name,
+                      from: formatTime(o.start_s),
+                      to: formatTime(o.end_s),
+                    })}
+                    className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
+                      on
+                        ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
+                        : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         {sounds.length ? (
           <div
             className="relative w-full"

@@ -29,14 +29,19 @@ export type Kept = "kept" | "off" | null;
 
 const NONE: Resume = { kind: "none" };
 
+/** Every file the document names, as written: the clips' and the overlays'. */
 const assetIdsOf = (doc: TimelineDoc): string[] => [
-  ...new Set(
-    doc.tracks.flatMap((t) =>
+  ...new Set([
+    ...doc.tracks.flatMap((t) =>
       t.clips.flatMap((c) =>
         typeof c.asset_id === "string" ? [c.asset_id] : [],
       ),
     ),
-  ),
+    ...(doc.overlays ?? []).flatMap((o) => {
+      const id = (o as { asset_id?: unknown }).asset_id;
+      return typeof id === "string" ? [id] : [];
+    }),
+  ]),
 ];
 
 /**

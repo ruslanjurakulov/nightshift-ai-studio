@@ -209,9 +209,15 @@ export function HomeHub({
 
       {/* ── The other things Nightshift makes, one line each ───────────── */}
       <section aria-labelledby="home-quick" className="flex flex-col gap-3">
-        <h2 id="home-quick" className="fl-q">
-          {t.home.quickTitle}
-        </h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 id="home-quick" className="fl-q">
+            {t.home.quickTitle}
+          </h2>
+          {/* A quiet way into the presets gallery; it only opens forms. */}
+          <Link href={path("/presets")} className="tap-link text-sm text-[var(--color-primary)] hover:underline">
+            {t.presets.homeLink}
+          </Link>
+        </div>
         <ul className="home-quick">
           {QUICK_ACTIONS.map((a) => {
             const Icon = QUICK_ICON[a.id];
