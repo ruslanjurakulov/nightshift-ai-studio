@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Note } from "@/components/g3/Section";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { getOrgContext } from "@/lib/orgs-server";
+import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { loadSellableModels } from "@/lib/creative/registry";
 import {
@@ -59,6 +60,8 @@ export default async function EditorProjectPage({
     languages: m.spec.languages,
   }));
   const p = project.value;
+  // Keys the local draft: a draft is only ever offered to the member who wrote it.
+  const user = await getUser();
 
   return (
     <div className="rhythm">
@@ -74,6 +77,7 @@ export default async function EditorProjectPage({
         soundFiles={sounds.state === "ok" ? sounds.value : []}
         orgId={p.orgId}
         captionModels={captionModels}
+        userId={user?.id ?? ""}
       />
     </div>
   );
