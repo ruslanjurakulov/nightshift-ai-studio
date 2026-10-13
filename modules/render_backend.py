@@ -228,9 +228,14 @@ def _piece_trim(seg: Segment, fps: int) -> str:
 
 def _static_image_cmd(ffmpeg: str, path: str, dur: str, width: int, height: int,
                       fps: int, common: List[str], out_path: Path, *,
-                      length: Optional[List[str]] = None, extra_vf: str = "") -> List[str]:
+                      length: Optional[List[str]] = None, extra_vf: str = "",
+                      fill: bool = False) -> List[str]:
+    """The still held without a move. ``fill`` crops the middle to cover the
+    frame (a timeline's stills, as the Ken Burns move that this stands in for
+    does); the default letter/pillar-boxes it, as the pipeline always has."""
+    fit = _scale_crop if fill else _scale_pad
     return [ffmpeg, "-y", "-loop", "1", "-i", path, *(length or ["-t", dur]),
-            "-vf", _scale_pad(width, height, fps) + extra_vf, *common, str(out_path)]
+            "-vf", fit(width, height, fps) + extra_vf, *common, str(out_path)]
 
 
 def segment_commands(
@@ -294,7 +299,8 @@ def _segment_commands(
         vf = ken_burns_filter(style, width, height, fps,
                               float(full) if frame_exact else float(dur) * fps) + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
-                                 length=length if frame_exact else None, extra_vf=fades)
+                                 length=length if frame_exact else None, extra_vf=fades,
+                                 fill=frame_exact)
         return [[ffmpeg, "-y", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     # KIND_VIDEO. -stream_loop -1: a source shorter than its slot is looped (as
     # the MoviePy compositor does with vc.loop) instead of yielding a short
@@ -320,7 +326,8 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
             + f",settb=1/{fps},fps={fps},format=yuv420p")
     if seg.kind == KIND_IMAGE:
         if hold:
-            return ["-loop", "1", "-i", seg.path], _scale_pad(width, height, fps) + tail
+            # A timeline's still fills the frame in the move, so it does held too.
+            return ["-loop", "1", "-i", seg.path], _scale_crop(width, height, fps) + tail
         return (["-i", seg.path],
                 ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full)) + tail)
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
