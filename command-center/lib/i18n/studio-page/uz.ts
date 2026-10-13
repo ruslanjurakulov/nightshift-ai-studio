@@ -5,7 +5,7 @@ export const studioPageUz: StudioPageDictionary = {
   meta: {
     title: "Nimalar yaratish va tahrirlash mumkin · Nightshift",
     description:
-      "Video yaratilishidan oldin rejani oʻqing, oʻz videolaringizni muharrirda bepul tahrirlang, har bir yuklashni tasdiqlaguningizcha shaxsiy saqlang va har qanday sarfdan oldin narxni koʻring.",
+      "Video yaratilishidan oldin rejani oʻqing, oʻz videolaringizni tahrirlang, yuklashlarni tasdiqlaguningizcha shaxsiy saqlang va sarfdan oldin narxni koʻring.",
   },
   hero: {
     label: "Studiya",

@@ -16,6 +16,7 @@ import {
   pricingTeaser,
   runtimeSiteOrigin,
   shareMetadata,
+  siteGraphJsonLd,
   softwareApplicationJsonLd,
   visibleShowcase,
 } from "@/lib/landing";
@@ -23,6 +24,8 @@ import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
+import { faqForSale } from "@/components/landing/Faq";
+import { faqPageJsonLd } from "@/lib/studio-page";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
@@ -74,16 +77,23 @@ export default async function Home() {
     url: runtimeSiteOrigin(),
   });
 
+  // The questions the page itself shows (Faq.tsx), as the same plain text, so the structured answer cannot differ from the visible one.
+  const expiry = packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS);
+  const faqLd = faqPageJsonLd(faqForSale(t.landing.faq.items, pricing.kind === "plans", t.site.packsOnly, expiry));
+  const graphLd = siteGraphJsonLd({ name: t.brand.name, origin: runtimeSiteOrigin() });
+
   return (
     <PublicShell t={t} fresh>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
+      {graphLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(graphLd) }} />}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(faqLd) }} />
       <Landing
         t={t}
         locale={locale}
         pricing={pricing}
         anchor={anchor}
         showcase={visibleShowcase(SHOWCASE)}
-        expiry={packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS)}
+        expiry={expiry}
       />
     </PublicShell>
   );

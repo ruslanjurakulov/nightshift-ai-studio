@@ -10,7 +10,7 @@ export const studioPageEn = {
   meta: {
     title: "What you can make and edit · Nightshift",
     description:
-      "Read the plan before a video is made, cut your own videos in the editor for free, keep every upload private until you approve it, and see the price before anything is spent.",
+      "Read the plan before a video is made, cut your own videos in the editor, keep uploads private until you approve, and see the price before anything is spent.",
   },
   hero: {
     label: "Studio",

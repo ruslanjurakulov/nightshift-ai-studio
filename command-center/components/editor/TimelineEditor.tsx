@@ -517,7 +517,7 @@ export function TimelineEditor({
 
   // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
   const view = useTimelineView({ total, playhead });
-  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; } });
   const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
 
   async function refreshLinks() {
@@ -539,12 +539,20 @@ export function TimelineEditor({
   });
 
   // ── keyboard: undo / redo / save / play ───────────────────────────────────
+  const saveRef = useRef<() => Promise<void>>(undefined);
+  saveRef.current = save;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void save();
+        // A text box / number field commits on blur: blur it (and put focus back) so the typed value is in the model, then save the next render's model.
+        const f = document.activeElement;
+        if ((f instanceof HTMLInputElement || f instanceof HTMLTextAreaElement) && f.closest("[data-editor-root]")) {
+          f.blur();
+          f.focus();
+          setTimeout(() => void saveRef.current?.(), 0);
+        } else void save();
         return;
       }
       if (typing(e.target)) return;
