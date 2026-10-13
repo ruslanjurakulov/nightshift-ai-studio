@@ -4829,8 +4829,7 @@ export const uz: Dictionary = {
     crossfadeTooShort: "Bu klip yoki undan oldingisi ravon oʻtish uchun juda qisqa (ikkalasida ham {min} s kerak).",
     clipCrossfade: "oldingi klipdan {s} s ravon oʻtish",
     selectHint: "Oʻzgartirish uchun taymlayndagi klip, ovoz yoki matnni tanlang.",
-    exports: "Eksportlar",
-    noExports: "Hali eksport yoʻq.",
+    exports: "Oldingi eksportlar",
     exportStatus: {
       queued: "Render navbatida",
       rendering: "Render qilinmoqda",

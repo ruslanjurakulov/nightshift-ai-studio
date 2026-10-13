@@ -5,7 +5,6 @@
  * sentences themselves stay in `editor.exportStatus` / `editor.exportReasons`.
  */
 export const editorExportEn = {
-  region: "Export status",
   latest: "Latest export",
   queuedLine: "Your export is in line. It starts as soon as the server is free.",
   renderingLine: "The server is rendering your video. You can keep editing: this export uses the version you saved.",
@@ -24,7 +23,10 @@ export const editorExportEn = {
   retry: "Try again",
   retryNeedsSave: "Save your changes to try again.",
   retryOtherVersion: "Trying again exports the version you saved now (version {rev}).",
-  fixFirst: "Trying again would fail the same way. Change the edit, save it, then use Export video.",
+  signedOut: "You were signed out, so this export cannot be followed here. Sign in again to see how it went.",
+  notFound: "This project was not found. It may have been deleted, so its exports cannot be followed here.",
+  deletedLine: "This project was deleted, so there is nothing to retry. Open another project from the list.",
+  fixFirst: "Trying again would fail the same way. Change the edit, save it, then use “{export}”.",
 };
 
 export type ExportPanelDictionary = typeof editorExportEn;

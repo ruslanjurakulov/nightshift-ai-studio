@@ -4829,8 +4829,7 @@ export const ru: Dictionary = {
     crossfadeTooShort: "Этот или предыдущий клип слишком короткий для наплыва (нужно по {min} с у обоих).",
     clipCrossfade: "наплыв {s} с из предыдущего клипа",
     selectHint: "Выберите клип, звук или текст на таймлайне, чтобы изменить его.",
-    exports: "Экспорты",
-    noExports: "Экспортов пока нет.",
+    exports: "Прошлые экспорты",
     exportStatus: {
       queued: "Ожидает рендера",
       rendering: "Рендерится",

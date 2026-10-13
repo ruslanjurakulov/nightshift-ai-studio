@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 const router = { push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() };
 vi.mock("next/navigation", () => ({
@@ -20,6 +20,7 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { en } from "@/lib/i18n/en";
 import { fmt } from "@/lib/i18n";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
+import { useExportPoll } from "@/components/editor/useExportPoll";
 import { newDocForAsset, type EditorAsset, type EditorExport } from "@/lib/editor";
 
 const te = en.editor;
@@ -243,7 +244,7 @@ describe("export status", () => {
   it("no retry for a failure the edit itself causes: it says what to change instead", () => {
     mount([ex({ status: "failed", reason: "asset_unavailable" })]);
     expect(screen.queryByRole("button", { name: ep.retry })).toBeNull();
-    expect(screen.getByText(ep.fixFirst)).toBeTruthy();
+    expect(screen.getByText(fmt(ep.fixFirst, { export: te.export }))).toBeTruthy();
     expect(live().textContent).toContain(te.exportReasons.asset_unavailable);
   });
 
@@ -269,11 +270,137 @@ describe("export status", () => {
     expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe("/v/b");
   });
 
+  it("older exports get their own 'Earlier exports' section only when there are older ones", () => {
+    mount([ex()]);
+    expect(screen.queryByText(te.exports)).toBeNull();
+    cleanup();
+    mount([ex({ id: "e2" }), ex({ id: "e1", status: "failed", reason: "worker_lost" })]);
+    expect(screen.getByRole("heading", { name: te.exports })).toBeTruthy();
+    expect(te.exports).toBe("Earlier exports");
+  });
+
   it("the live region is polite and announces only what changed", () => {
     mount([ex({ status: "rendering" })]);
     const r = live();
     expect(r.getAttribute("aria-live")).toBe("polite");
     expect(r.getAttribute("aria-atomic")).toBe("false");
     expect(panel().querySelectorAll("[aria-live]")).toHaveLength(1);
+  });
+
+  it("signed out on the first poll: it stops at once and says to sign in, no clock, no useless Check now", async () => {
+    fetchMock.mockImplementation(((url: string, init?: RequestInit) =>
+      String(url).endsWith(PID) && (init?.method ?? "GET") === "GET" ? json({ error: "unauthorized" }, 401) : json({ error: "failed" }, 502)) as never);
+    mount([ex()]);
+    await tick(1500);
+    expect(live().textContent).not.toContain(ep.signedOut);
+    await tick(3000); // first poll at 4 s
+    expect(live().textContent).toContain(ep.signedOut);
+    expect(panel().textContent).not.toContain(ep.timeLeft);
+    expect(screen.queryByRole("button", { name: ep.checkNow })).toBeNull();
+    expect(screen.queryByText(ep.checkFailed)).toBeNull();
+    const n = gets().length;
+    await tick(120_000);
+    expect(gets().length).toBe(n); // and it does not keep asking
+  });
+
+  it("project gone on a later poll: it says so (not just 'could not check') and stops", async () => {
+    mount([ex()]);
+    state.exports = [row("rendering")];
+    await tick(4100);
+    expect(panel().getAttribute("data-export-state")).toBe("rendering");
+    fetchMock.mockImplementation(((url: string, init?: RequestInit) =>
+      String(url).endsWith(PID) && (init?.method ?? "GET") === "GET" ? json({ error: "not_found" }, 404) : json({ error: "failed" }, 502)) as never);
+    await tick(4100);
+    expect(live().textContent).toContain(ep.notFound);
+    expect(live().textContent).not.toContain(ep.signedOut);
+    expect(screen.queryByRole("button", { name: ep.checkNow })).toBeNull();
+    const n = gets().length;
+    await tick(120_000);
+    expect(gets().length).toBe(n);
+  });
+
+  it("an edit-caused failure offers the retry again once a newer version is saved, and says which version", () => {
+    mount([ex({ status: "failed", reason: "asset_unavailable", rev: 0 })]);
+    expect(screen.getByRole("button", { name: ep.retry })).toHaveProperty("disabled", false);
+    expect(screen.getByText(fmt(ep.retryOtherVersion, { rev: 1 }))).toBeTruthy();
+    expect(screen.queryByText(fmt(ep.fixFirst, { export: te.export }))).toBeNull();
+  });
+
+  it("a deleted project gets its own sentence, never the 'change the edit' one, even on another version", () => {
+    mount([ex({ status: "failed", reason: "project_deleted", rev: 0 })]);
+    expect(screen.queryByRole("button", { name: ep.retry })).toBeNull();
+    expect(screen.getByText(ep.deletedLine)).toBeTruthy();
+    expect(screen.queryByText(fmt(ep.fixFirst, { export: te.export }))).toBeNull();
+  });
+
+  it("after Try again the keyboard stays in the panel (not on <body>)", async () => {
+    routes.push((url, init) => (url.endsWith("/exports") && init?.method === "POST" ? json({ id: "e2", status: "queued" }, 201) : undefined));
+    mount([ex({ status: "failed", reason: "render_failed" })]);
+    const retry = screen.getByRole("button", { name: ep.retry });
+    retry.focus();
+    fireEvent.click(retry);
+    await tick(10);
+    expect(panel().getAttribute("data-export-state")).toBe("queued");
+    expect(document.activeElement).toBe(panel());
+    expect(panel().getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("a refused retry is shown inside the panel's one live region and the button gets the keyboard back", async () => {
+    routes.push((url, init) => (url.endsWith("/exports") && init?.method === "POST" ? json({ error: "daily_limit" }, 429) : undefined));
+    mount([ex({ status: "failed", reason: "worker_lost" })]);
+    fireEvent.click(screen.getByRole("button", { name: ep.retry }));
+    await tick(10);
+    expect(live().textContent).toContain(te.errors.daily_limit);
+    expect(panel().querySelectorAll("[aria-live]")).toHaveLength(1);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: ep.retry }));
+    expect(posts()).toHaveLength(1);
+  });
+});
+
+/** The poll hook on its own: an older answer never overwrites a newer one. */
+function Probe({ active }: { active: boolean }) {
+  const [seen, setSeen] = useState("none");
+  const p = useExportPoll({ projectId: PID, active, onSnapshot: (s) => setSeen(s.exports.map((e) => e.status).join(",")) });
+  return (
+    <div>
+      <button onClick={() => void p.checkNow()}>go</button>
+      <output role="status">{seen}</output>
+      <i>{p.checking ? "checking" : "idle"}</i>
+    </div>
+  );
+}
+const snapshot = (status: string) => new Response(JSON.stringify({ id: PID, rev: 1, doc: newDocForAsset(ASSET), exports: [row(status)], assets: {} }), { status: 200 });
+
+describe("poll answers arrive out of order", () => {
+  it("a slow Check now (asked first) does not overwrite the newer one", async () => {
+    const waiting: ((r: Response) => void)[] = [];
+    fetchMock.mockImplementation(((url: string, init?: RequestInit) => {
+      if (!(String(url).endsWith(PID) && (init?.method ?? "GET") === "GET")) return json({}, 502);
+      return waiting.length === 0 ? new Promise<Response>((res) => waiting.push(res)) : Promise.resolve(snapshot("done"));
+    }) as never);
+    render(<I18nProvider locale="en"><Probe active={false} /></I18nProvider>);
+    fireEvent.click(screen.getByText("go")); // older, slow
+    fireEvent.click(screen.getByText("go")); // newer, fast
+    await tick(10);
+    expect(screen.getByRole("status", { hidden: true }).textContent).toBe("done");
+    await act(async () => { waiting[0](snapshot("queued")); await vi.advanceTimersByTimeAsync(10); });
+    expect(screen.getByRole("status", { hidden: true }).textContent).toBe("done");
+    expect(document.querySelector("i")!.textContent).toBe("idle");
+  });
+
+  it("a slow poll answer does not overwrite a newer Check now", async () => {
+    const waiting: ((r: Response) => void)[] = [];
+    fetchMock.mockImplementation(((url: string, init?: RequestInit) => {
+      if (!(String(url).endsWith(PID) && (init?.method ?? "GET") === "GET")) return json({}, 502);
+      return waiting.length === 0 ? new Promise<Response>((res) => waiting.push(res)) : Promise.resolve(snapshot("rendering"));
+    }) as never);
+    render(<I18nProvider locale="en"><Probe active /></I18nProvider>);
+    await tick(4100); // the poll asks and waits
+    expect(waiting).toHaveLength(1);
+    fireEvent.click(screen.getByText("go")); // newer, answered at once
+    await tick(10);
+    expect(screen.getByRole("status", { hidden: true }).textContent).toBe("rendering");
+    await act(async () => { waiting[0](snapshot("queued")); await vi.advanceTimersByTimeAsync(10); });
+    expect(screen.getByRole("status", { hidden: true }).textContent).toBe("rendering");
   });
 });

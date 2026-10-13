@@ -11,6 +11,7 @@ import {
   exportSignature,
   formatClock,
   pollDelay,
+  retryPlan,
   tookSeconds,
 } from "@/lib/editorExportStatus";
 import { EXPORT_REASONS, coerceExports, type EditorExport } from "@/lib/editor";
@@ -92,6 +93,23 @@ describe("retry", () => {
   });
   it("decides every reason the database can send", () => {
     for (const r of EXPORT_REASONS) expect(typeof canRetry(r)).toBe("boolean");
+  });
+});
+
+describe("retry plan", () => {
+  it("retries a server-side failure whatever the version", () => {
+    expect(retryPlan({ reason: "render_failed", rev: 3 }, 3)).toBe("retry");
+    expect(retryPlan({ reason: null, rev: 1 }, 4)).toBe("retry");
+  });
+  it("asks for a change to the edit only while the saved version is still the failed one", () => {
+    for (const r of ["invalid_timeline", "asset_unavailable", "too_long"] as const) {
+      expect(retryPlan({ reason: r, rev: 2 }, 2)).toBe("fix");
+      expect(retryPlan({ reason: r, rev: 2 }, 3)).toBe("retry");
+    }
+  });
+  it("a deleted project has nothing to retry or fix, on any version", () => {
+    expect(retryPlan({ reason: "project_deleted", rev: 2 }, 2)).toBe("deleted");
+    expect(retryPlan({ reason: "project_deleted", rev: 2 }, 3)).toBe("deleted");
   });
 });
 

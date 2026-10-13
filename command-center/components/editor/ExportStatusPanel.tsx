@@ -6,13 +6,14 @@ import { AlertTriangle, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import type { EditorAsset, EditorExport } from "@/lib/editor";
+import type { EditorAsset, EditorError, EditorExport } from "@/lib/editor";
 import {
-  canRetry,
   elapsedSeconds,
   formatClock,
+  retryPlan,
   tookSeconds,
 } from "@/lib/editorExportStatus";
+import type { PollHalt } from "./useExportPoll";
 
 /** A second-by-second clock, only while an export runs and only after mount (the server cannot know the time). */
 function useNow(on: boolean): number | null {
@@ -50,6 +51,7 @@ export function ExportStatusPanel({
   dirty,
   busy,
   failing,
+  halt,
   checking,
   onRetry,
   onCheckNow,
@@ -65,8 +67,11 @@ export function ExportStatusPanel({
   busy: boolean;
   /** Status checks keep failing. */
   failing: boolean;
+  /** Checks have stopped for good: signed out, or the project is gone. */
+  halt: PollHalt | null;
   checking: boolean;
-  onRetry: () => void | Promise<void>;
+  /** Starts the export again; answers the refusal word, or null when it started. */
+  onRetry: () => Promise<EditorError | null> | void;
   onCheckNow: () => void | Promise<void>;
 }) {
   const { t } = useI18n();
@@ -75,6 +80,9 @@ export function ExportStatusPanel({
   const ep = te.exportPanel;
   const id = useId();
   const retrying = useRef(false);
+  const section = useRef<HTMLElement>(null);
+  const retryBtn = useRef<HTMLButtonElement>(null);
+  const [refused, setRefused] = useState<{ id: string; error: EditorError } | null>(null);
 
   const running = latest.status === "queued" || latest.status === "rendering";
   const now = useNow(running);
@@ -106,7 +114,8 @@ export function ExportStatusPanel({
           ? ep.doneLine
           : ep.failedLine;
 
-  const retryable = latest.status === "failed" && canRetry(latest.reason);
+  const plan = latest.status === "failed" ? retryPlan(latest, currentRev) : null;
+  const retryable = plan === "retry";
   const retryOff = dirty || busy;
   const retryWhy = !retryable
     ? null
@@ -120,18 +129,32 @@ export function ExportStatusPanel({
     // A second press before the first request has answered must not start a second export.
     if (retrying.current || retryOff) return;
     retrying.current = true;
+    setRefused(null);
     try {
-      await onRetry();
+      const error = (await onRetry()) ?? null;
+      if (error) {
+        setRefused({ id: latest.id, error });
+      } else {
+        // The button is about to give way to the new export: keep the keyboard here.
+        section.current?.focus();
+      }
     } finally {
       retrying.current = false;
     }
   }
+  const refusedWord = refused && refused.id === latest.id ? refused.error : null;
+  // After a refusal the button is enabled again: put the keyboard back on it.
+  useEffect(() => {
+    if (refusedWord) retryBtn.current?.focus();
+  }, [refusedWord]);
 
   return (
     <section
+      ref={section}
+      tabIndex={-1}
       aria-labelledby={`${id}-h`}
       data-export-state={latest.status}
-      className="panel flex min-w-0 flex-col gap-3 p-4 sm:p-5"
+      className="panel flex min-w-0 flex-col gap-3 p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] sm:p-5"
     >
       <h2 id={`${id}-h`} className="m-0 text-[15px] font-semibold">
         {ep.latest}
@@ -161,14 +184,23 @@ export function ExportStatusPanel({
             {te.exportReasons[latest.reason ?? "other"]}
           </p>
         ) : null}
-        {running && failing ? (
+        {running && halt ? (
+          <p className="m-0 break-words text-sm text-[var(--color-fail)]">
+            {halt === "unauthorized" ? ep.signedOut : ep.notFound}
+          </p>
+        ) : running && failing ? (
           <p className="m-0 break-words text-xs text-[var(--color-warn)]">
             {ep.checkFailed}
           </p>
         ) : null}
+        {refusedWord ? (
+          <p className="m-0 break-words text-sm text-[var(--color-fail)]">
+            {te.errors[refusedWord]}
+          </p>
+        ) : null}
       </div>
 
-      {running ? (
+      {running && halt ? null : running ? (
         <p className="m-0 break-words text-xs text-[var(--color-muted)]">
           {elapsed !== null ? (
             <>
@@ -184,7 +216,7 @@ export function ExportStatusPanel({
         </p>
       ) : null}
 
-      {running && failing ? (
+      {running && failing && !halt ? (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -235,6 +267,7 @@ export function ExportStatusPanel({
           {retryable ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
+                ref={retryBtn}
                 type="button"
                 onClick={() => void retry()}
                 disabled={retryOff}
@@ -246,7 +279,7 @@ export function ExportStatusPanel({
             </div>
           ) : (
             <p className="m-0 break-words text-xs text-[var(--color-muted)]">
-              {ep.fixFirst}
+              {plan === "deleted" ? ep.deletedLine : fmt(ep.fixFirst, { export: te.export })}
             </p>
           )}
           {retryWhy ? (

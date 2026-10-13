@@ -67,3 +67,22 @@ const NOT_RETRYABLE: readonly (ExportReason | "other")[] = [
 export function canRetry(reason: EditorExport["reason"]): boolean {
   return !NOT_RETRYABLE.includes(reason ?? "other");
 }
+
+/**
+ * What to offer under a failed export:
+ * - "retry": a second try can work (a server hiccup), or the edit has been
+ *   changed and saved since (a newer saved revision than the failed one), so the
+ *   retry exports something different;
+ * - "fix": the edit itself is the problem and nothing was changed yet;
+ * - "deleted": the project is gone; nothing to retry or fix.
+ */
+export type RetryPlan = "retry" | "fix" | "deleted";
+
+export function retryPlan(
+  x: Pick<EditorExport, "reason" | "rev">,
+  currentRev: number,
+): RetryPlan {
+  if (x.reason === "project_deleted") return "deleted";
+  if (canRetry(x.reason)) return "retry";
+  return x.rev !== currentRev ? "retry" : "fix";
+}

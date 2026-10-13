@@ -475,15 +475,15 @@ export function TimelineEditor({
     setSavedTitle(title.trim());
   }
 
-  async function startExport() {
-    if (dirty || active || starting) return;
+  async function startExport(): Promise<EditorError | null> {
+    if (dirty || active || starting) return null;
     setStarting(true);
     setError(null);
     const out = await requestExport(projectId, rev);
     setStarting(false);
     if (!out.ok) {
       setError(out.error);
-      return;
+      return out.error;
     }
     setExports((e) => [
       {
@@ -498,6 +498,7 @@ export function TimelineEditor({
       },
       ...e,
     ]);
+    return null;
   }
 
   async function onDelete() {
@@ -716,6 +717,7 @@ export function TimelineEditor({
           dirty={dirty}
           busy={starting || active}
           failing={poll.failing}
+          halt={poll.halt}
           checking={poll.checking}
           onRetry={startExport}
           onCheckNow={poll.checkNow}
@@ -1117,18 +1119,14 @@ export function TimelineEditor({
       />
 
       {/* earlier exports (the latest one is the status panel above) */}
-      <section
-        aria-labelledby={`${ids}-exports`}
-        className={`panel flex flex-col gap-2 p-5 sm:p-6 ${exports.length === 1 ? "hidden" : ""}`}
-      >
-        <h2 id={`${ids}-exports`} className="m-0 text-[15px] font-semibold">
-          {te.exports}
-        </h2>
-        {exports.length === 0 ? (
-          <p className="m-0 text-sm text-[var(--color-muted)]">
-            {te.noExports}
-          </p>
-        ) : (
+      {exports.length > 1 ? (
+        <section
+          aria-labelledby={`${ids}-exports`}
+          className="panel flex flex-col gap-2 p-5 sm:p-6"
+        >
+          <h2 id={`${ids}-exports`} className="m-0 text-[15px] font-semibold">
+            {te.exports}
+          </h2>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {exports.slice(1).map((x) => {
               const out = x.assetId ? assets[x.assetId] : undefined;
@@ -1154,7 +1152,10 @@ export function TimelineEditor({
                         <Timecode value={x.durationS} format="duration" />
                       </>
                     ) : null}
-                    {x.createdAt ? ` · ${when(x.createdAt)}` : ""}
+                    {x.createdAt ? (
+                      // The server and the browser format a UZ date differently.
+                      <span suppressHydrationWarning>{` · ${when(x.createdAt)}`}</span>
+                    ) : null}
                   </span>
                   {x.status === "failed" ? (
                     <span className="w-full text-xs text-[var(--color-fail)]">
@@ -1185,8 +1186,9 @@ export function TimelineEditor({
               );
             })}
           </ul>
-        )}
-      </section>
+
+        </section>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         {confirmDelete ? (

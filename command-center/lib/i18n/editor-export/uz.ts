@@ -2,7 +2,6 @@ import type { ExportPanelDictionary } from "./en";
 
 /** Tahrirchidagi eksport holati paneli. Manba — ./en.ts. */
 export const editorExportUz: ExportPanelDictionary = {
-  region: "Eksport holati",
   latest: "Oxirgi eksport",
   queuedLine: "Eksport navbatda. Server boʻshashi bilan boshlanadi.",
   renderingLine: "Server videongizni render qilmoqda. Tahrirlashni davom ettirishingiz mumkin: eksport siz saqlagan versiyadan foydalanadi.",
@@ -21,5 +20,8 @@ export const editorExportUz: ExportPanelDictionary = {
   retry: "Qayta urinish",
   retryNeedsSave: "Qayta urinish uchun oʻzgarishlarni saqlang.",
   retryOtherVersion: "Qayta urinish hozir saqlangan versiyani eksport qiladi ({rev}-versiya).",
-  fixFirst: "Qayta urinish xuddi shunday tugaydi. Montajni oʻzgartiring, saqlang va «Videoni eksport qilish» tugmasini bosing.",
+  signedOut: "Hisobdan chiqib ketdingiz, shuning uchun eksport jarayonini bu yerda kuzatib boʻlmaydi. Qanday tugaganini koʻrish uchun qayta kiring.",
+  notFound: "Loyiha topilmadi. U oʻchirilgan boʻlishi mumkin, shuning uchun uning eksportlarini bu yerda kuzatib boʻlmaydi.",
+  deletedLine: "Loyiha oʻchirilgan, shuning uchun qayta urinadigan narsa yoʻq. Roʻyxatdan boshqa loyihani oching.",
+  fixFirst: "Qayta urinish xuddi shunday tugaydi. Montajni oʻzgartiring, saqlang va «{export}» tugmasini bosing.",
 };
