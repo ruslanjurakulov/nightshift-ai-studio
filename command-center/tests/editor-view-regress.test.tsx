@@ -20,6 +20,10 @@ import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { useTimelineView, type TimelineView } from "@/components/editor/useTimelineView";
 import { newDocForAsset, type EditorAsset } from "@/lib/editor";
 
+/** The zoom readout lives in the timeline-view toolbar; the clip colour panel also shows "N%" readouts. */
+const zoomText = (re: RegExp) => within(screen.getByRole("group", { name: en.editor.view.toolbar })).getByText(re);
+
+
 const te = en.editor;
 const tv = te.view;
 const A = "11111111-1111-4111-8111-111111111111";
@@ -203,7 +207,7 @@ describe("the shortcuts dialog is a real modal", () => {
     expect(screen.getByRole("button", { name: te.play })).toBeTruthy();
     expect(clipButtons()).toHaveLength(1);
     expect(Number(playhead().value)).toBe(4);
-    expect(screen.getByText(/100%$/)).toBeTruthy();
+    expect(zoomText(/100%$/)).toBeTruthy();
   });
 });
 
@@ -221,7 +225,7 @@ describe("the single-key shortcuts belong to the editor", () => {
     }
     expect(clipButtons()).toHaveLength(1);
     expect(Number(playhead().value)).toBe(4);
-    expect(screen.getByText(/100%$/)).toBeTruthy();
+    expect(zoomText(/100%$/)).toBeTruthy();
     // but on <body> and inside the editor they work
     key("s");
     expect(clipButtons()).toHaveLength(2);
@@ -242,9 +246,9 @@ describe("the single-key shortcuts belong to the editor", () => {
     key("ы", { code: "KeyS" });
     expect(clipButtons()).toHaveLength(2);
     key("+");
-    expect(screen.getByText(/150%$/)).toBeTruthy();
+    expect(zoomText(/150%$/)).toBeTruthy();
     key("à", { code: "Digit0" });
-    expect(screen.getByText(/100%$/)).toBeTruthy();
+    expect(zoomText(/100%$/)).toBeTruthy();
   });
 });
 
@@ -310,7 +314,7 @@ describe("the zoom label does not flood screen readers", () => {
     vi.useFakeTimers();
     try {
       mount();
-      const label = screen.getByText(/%$/);
+      const label = zoomText(/%$/);
       expect(label.closest("[aria-live]")).toBeNull();
       const live = () => document.querySelector("div.sr-only[aria-live=polite]")!;
       expect(live().textContent).toBe("");
@@ -339,6 +343,6 @@ describe("a focused slider owns every key", () => {
       for (const k of ["Delete", "Backspace", "s", "+", "-", "0", "="]) key(k, {}, el);
     }
     expect(clipButtons()).toHaveLength(2);
-    expect(screen.getByText(/100%$/)).toBeTruthy();
+    expect(zoomText(/100%$/)).toBeTruthy();
   });
 });
