@@ -88,15 +88,31 @@ export function previewObjectFit(
   return clip ? fitOf(clip) : "contain";
 }
 
-/** The preview frame's box: the document's aspect ratio, kept inside 60% of the
- *  viewport height (as the editor always did). */
+/** The CSS variable that holds the preview's height cap. The editor sets it
+ *  per breakpoint (a class, so the box answers to the screen without a
+ *  resize listener): `PREVIEW_CAP_PHONE` below `lg`, where the preview is
+ *  pinned above the inspector, and the full `PREVIEW_CAP_DESKTOP` from `lg` on. */
+export const PREVIEW_CAP_VAR = "--ns-preview-cap";
+export const PREVIEW_CAP_DESKTOP = "60vh";
+export const PREVIEW_CAP_PHONE = "30dvh";
+
+/** The preview frame's box: the document's aspect ratio, kept inside the cap
+ *  (60% of the viewport height on a desktop, as the editor always did; 30% of
+ *  the dynamic viewport height on a phone or tablet so the picture can stay in
+ *  view while the controls below it are used).
+ *
+ *  A max-height alone would break the ratio (the box would get narrower in
+ *  height only), so the width is capped to the same height times the ratio:
+ *  the box is `min(100%, cap * ratio)` wide and `width / ratio` high, never
+ *  taller than the cap. */
 export function previewFrameStyle(
   frame: Pick<EditorModel, "width" | "height">,
 ): CSSProperties {
+  const cap = `var(${PREVIEW_CAP_VAR}, ${PREVIEW_CAP_DESKTOP})`;
   return {
     aspectRatio: `${frame.width} / ${frame.height}`,
-    maxHeight: "60vh",
-    maxWidth: `calc(60vh * ${frame.width / frame.height})`,
+    maxHeight: cap,
+    maxWidth: `calc(${cap} * ${frame.width / frame.height})`,
     containerType: "inline-size",
   };
 }

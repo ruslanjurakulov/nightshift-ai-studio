@@ -16,7 +16,7 @@ const FOCUSABLE =
 /** An icon button that is at least 44 px square on a phone or a touch screen (.ns-chip). */
 const iconBtn = "ns-chip min-w-11 justify-center px-0";
 /** At its limit a zoom button stays focusable (focus must not vanish under a keyboard user) but reads as unavailable. */
-const dim = "opacity-55";
+const dim = "opacity-75";
 
 /**
  * Zoom, fit, the snap switch and the shortcuts help, in one row above the
@@ -174,7 +174,8 @@ export function ShortcutsHelp() {
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="ns-chip justify-center"
+        // Below sm (a phone) a key list has no use and the chip only crowds the row; from sm up (an iPad with a keyboard too) it stays.
+        className="ns-chip justify-center max-sm:hidden"
       >
         <Keyboard className="size-3.5" aria-hidden />
         {tv.shortcuts}

@@ -164,7 +164,8 @@ describe("the editor", () => {
       "checked",
       true,
     );
-    expect(screen.getByText(new RegExp(te.freeNote))).toBeTruthy();
+    // The note is in the header panel (sm and up) and, for a phone, again under the preview; only one is displayed.
+    expect(screen.getAllByText(new RegExp(te.freeNote)).length).toBeGreaterThan(0);
     expect(exportBtn()).toHaveProperty("disabled", false);
   });
 

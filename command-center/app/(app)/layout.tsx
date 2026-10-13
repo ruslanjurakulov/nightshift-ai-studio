@@ -170,7 +170,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <SideNav email={email} avatarV={avatarV} plan={plan} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   {header}
-                  <main className="pad-page min-w-0 flex-1 pb-24 lg:pb-10">{children}</main>
+                  <main className="pad-page pad-page-tabbar min-w-0 flex-1">{children}</main>
                 </div>
               </div>
             )}

@@ -55,6 +55,7 @@ export function ExportStatusPanel({
   checking,
   onRetry,
   onCheckNow,
+  quietRetry = false,
 }: {
   /** The newest export of the project. */
   latest: EditorExport;
@@ -73,6 +74,9 @@ export function ExportStatusPanel({
   /** Starts the export again; answers the refusal word, or null when it started. */
   onRetry: () => Promise<EditorError | null> | void;
   onCheckNow: () => void | Promise<void>;
+  /** The draft banner is showing and its "Restore changes" is the one primary
+   *  action on the screen: "Try again" steps back to a quiet button. */
+  quietRetry?: boolean;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -272,7 +276,7 @@ export function ExportStatusPanel({
                 onClick={() => void retry()}
                 disabled={retryOff}
                 aria-describedby={retryWhy ? `${id}-why` : undefined}
-                className="btn-primary text-sm"
+                className={`${quietRetry ? "btn-quiet" : "btn-primary"} min-h-11 text-sm`}
               >
                 {busy && !dirty ? te.exporting : ep.retry}
               </button>

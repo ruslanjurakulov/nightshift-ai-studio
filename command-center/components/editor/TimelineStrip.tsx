@@ -239,8 +239,8 @@ export function TimelineStrip({
     >
       <div
         ref={strip}
-        className="relative flex flex-col gap-1.5"
-        style={{ minWidth: `max(${(view?.zoom ?? 1) * 100}%, ${clips.length * 44}px)` }}
+        className="ns-lanes-root relative flex flex-col gap-1.5"
+        style={{ minWidth: `max(${(view?.zoom ?? 1) * 100}%, ${clips.length * 122}px)` }}
       >
         {ticks && (
           // Seconds ticks under which the lanes sit: the same scale as the clips below.
@@ -357,7 +357,7 @@ export function TimelineStrip({
         {overlays.length ? (
           <div
             className="relative w-full"
-            style={{ height: `${oLaneCount * 30}px` }}
+            style={{ height: `calc(var(--ns-lane-step) * ${oLaneCount})` }}
             aria-label={te.overlay.track}
             role="list"
           >
@@ -368,11 +368,11 @@ export function TimelineStrip({
                 <div
                   key={o.id}
                   role="listitem"
-                  className="absolute h-7"
+                  className="absolute h-[var(--ns-lane-h)]"
                   style={{
                     left: pct(o.start_s),
                     width: pct(o.end_s - o.start_s),
-                    top: `${(oLanes.get(o.id) ?? 0) * 30}px`,
+                    top: `calc(var(--ns-lane-step) * ${oLanes.get(o.id) ?? 0})`,
                   }}
                 >
                   <button
@@ -401,7 +401,7 @@ export function TimelineStrip({
         {sounds.length ? (
           <div
             className="relative w-full"
-            style={{ height: `${sLaneCount * 30}px` }}
+            style={{ height: `calc(var(--ns-lane-step) * ${sLaneCount})` }}
             aria-label={te.soundsTrack}
             role="list"
           >
@@ -413,11 +413,11 @@ export function TimelineStrip({
                 <div
                   key={x.id}
                   role="listitem"
-                  className="absolute h-7"
+                  className="absolute h-[var(--ns-lane-h)]"
                   style={{
                     left: pct(x.start_s),
                     width: pct(end - x.start_s),
-                    top: `${(sLanes.get(x.id) ?? 0) * 30}px`,
+                    top: `calc(var(--ns-lane-step) * ${sLanes.get(x.id) ?? 0})`,
                   }}
                 >
                   <button
@@ -457,7 +457,7 @@ export function TimelineStrip({
         ) : null}
         <div
           className="relative w-full"
-          style={{ height: `${laneCount * 30}px` }}
+          style={{ height: `calc(var(--ns-lane-step) * ${laneCount})` }}
           aria-label={te.textTrack}
           role="list"
         >
@@ -467,11 +467,11 @@ export function TimelineStrip({
               <div
                 key={x.id}
                 role="listitem"
-                className="absolute h-7"
+                className="absolute h-[var(--ns-lane-h)]"
                 style={{
                   left: pct(x.start_s),
                   width: pct(x.end_s - x.start_s),
-                  top: `${(lanes.get(x.id) ?? 0) * 30}px`,
+                  top: `calc(var(--ns-lane-step) * ${lanes.get(x.id) ?? 0})`,
                 }}
               >
                 <button

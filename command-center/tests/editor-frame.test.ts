@@ -3,6 +3,8 @@
  * derived from the SAME two document fields the export reads
  * (lib/editorFrame.ts; the pixel side is tests/test_editor_frame_parity.py).
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   newDocForAsset,
@@ -15,6 +17,9 @@ import {
   FRAME_PRESETS,
   fitOf,
   framePresetOf,
+  PREVIEW_CAP_DESKTOP,
+  PREVIEW_CAP_PHONE,
+  PREVIEW_CAP_VAR,
   previewFrameStyle,
   previewObjectFit,
   setClipFit,
@@ -104,8 +109,49 @@ describe("preview derives from the document fields", () => {
     ]) {
       const s = previewFrameStyle({ width: w, height: h });
       expect(s.aspectRatio).toBe(`${w} / ${h}`);
-      expect(s.maxWidth).toBe(`calc(60vh * ${w / h})`);
+      // The cap defaults to the desktop 60vh when the editor sets no variable.
+      expect(s.maxHeight).toBe("var(--ns-preview-cap, 60vh)");
+      expect(s.maxWidth).toBe(`calc(var(--ns-preview-cap, 60vh) * ${w / h})`);
     }
+  });
+
+  it("the capped width keeps the ratio: width = min(100%, cap x ratio), height = width / ratio <= cap", () => {
+    // Resolve the box the way CSS does, for a viewport and an available width.
+    const box = (frame: { width: number; height: number }, capPx: number, avail: number) => {
+      const ratio = frame.width / frame.height;
+      const s = previewFrameStyle(frame);
+      // the formula in the style is `calc(<cap> * <ratio>)`
+      expect(String(s.maxWidth)).toContain(`* ${ratio}`);
+      const width = Math.min(avail, capPx * ratio);
+      return { width, height: width / ratio };
+    };
+    // 390x844 phone: 30dvh = 253.2 px, a 296-wide column
+    const cap = 0.3 * 844;
+    const wide = box({ width: 1920, height: 1080 }, cap, 366);
+    expect(wide.width).toBeCloseTo(366, 5); // the column is the limit
+    expect(wide.height).toBeCloseTo(366 / (16 / 9), 5);
+    expect(wide.height).toBeLessThanOrEqual(cap);
+    const tall = box({ width: 1080, height: 1920 }, cap, 366);
+    expect(tall.height).toBeCloseTo(cap, 5); // the cap is the limit, the ratio is kept
+    expect(tall.width / tall.height).toBeCloseTo(9 / 16, 5);
+    const square = box({ width: 1080, height: 1080 }, cap, 700); // 768: the cap alone fixes the oversize
+    expect(square.width).toBeCloseTo(cap, 5);
+    expect(square.height).toBeCloseTo(cap, 5);
+  });
+
+  it("the editor's classes set the same cap per breakpoint, and the pin sits under the measured header", () => {
+    const src = readFileSync(join(__dirname, "../components/editor/TimelineEditor.tsx"), "utf8");
+    expect(src).toContain(` [${PREVIEW_CAP_VAR}:${PREVIEW_CAP_PHONE}] `);
+    expect(src).toContain(`lg:[${PREVIEW_CAP_VAR}:${PREVIEW_CAP_DESKTOP}]`);
+    expect(src).toContain("sticky top-[var(--ns-header-h,4rem)]");
+    // the pin is released from lg, where the preview sits beside the inspector
+    expect(src).toMatch(/sticky top-\[var\(--ns-header-h,4rem\)\][^"]*lg:static/);
+  });
+
+  it("the phone cap is 30dvh and the desktop cap stays 60vh", () => {
+    expect(PREVIEW_CAP_PHONE).toBe("30dvh");
+    expect(PREVIEW_CAP_DESKTOP).toBe("60vh");
+    expect(PREVIEW_CAP_VAR).toBe("--ns-preview-cap");
   });
 
   it("object-fit follows the clip's fit: contain = bars, cover = crop", () => {
