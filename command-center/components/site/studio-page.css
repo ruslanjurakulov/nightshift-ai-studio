@@ -23,7 +23,7 @@
 .sp-jump a:hover { background: var(--ns-key); }
 
 /* A section: head, then the list beside (or under) its example. */
-.sp-head { display: grid; gap: 4px; margin-bottom: 36px; }
+.sp-head { display: grid; justify-items: start; gap: 4px; margin-bottom: 36px; }
 .sp-split { display: grid; gap: 40px; align-items: start; }
 @media (min-width: 960px) { .sp-split { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 56px; } }
 

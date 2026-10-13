@@ -33,7 +33,7 @@ export const studioPageEn = {
     title: "Read the plan before anything is made.",
     lead: "A video starts with a topic and a price you can see. On a channel that asks for it, the run stops after the script and the scene plan and waits for you.",
     items: [
-      { id: "price", title: "The price is on the button", body: "You see what a video costs before it starts, and confirm a second time. If the price changes in between, you are asked again." },
+      { id: "price", title: "The price comes first", body: "You see what a video costs before it starts, and confirm a second time. If the price changes in between, you are asked again." },
       { id: "review", title: "Review the storyboard", body: "Switch it on for a channel and its runs stop at “Storyboard ready”. Nothing is rendered, and no render is charged, until you approve." },
       { id: "edit", title: "Change the plan", body: "Edit a scene’s narration or visual description, move scenes, delete one or add one. Save, and the price updates." },
       { id: "no", title: "Saying no costs nothing", body: "Discard a storyboard and nothing is rendered or charged." },
@@ -62,7 +62,7 @@ export const studioPageEn = {
       { id: "speed", title: "Speed", body: "Play a clip at 0.5×, 0.75×, 1.25×, 1.5× or 2×." },
       { id: "crossfade", title: "Cross-fade", body: "Blend one clip into the next for 0.2 to 2 seconds. The clips overlap, so the video gets shorter by the same amount." },
       { id: "text", title: "Text on screen", body: "Add text, choose its size and whether it sits at the top, middle or bottom, and set when it shows." },
-      { id: "sound", title: "Music and sound", body: "Add music or effects from your library, set the volume and fades, and have music lowered by an exact amount while someone speaks." },
+      { id: "sound", title: "Music and sound", body: "Add music or effects from your library, set the volume and fades, and have music lowered by an exact amount under the sounds you mark as speech and clips with their own sound." },
       { id: "captions", title: "Captions", body: "Make a transcript of a recording, edit the captions, pick one of four looks, and they are burned into the picture on export. Download .srt or .vtt too. The transcript is a priced step, shown before it starts, and is offered only where transcription is set up." },
       { id: "frame", title: "Frame shape", body: "Vertical 9:16, wide 16:9 or square 1:1 for the whole video. Vertical suits Shorts, Reels and TikTok." },
       { id: "fit", title: "Fit or Fill, per clip", body: "Fit shows the whole picture and adds bars; Fill crops the centre so no bars show. You cannot move the crop yet." },
@@ -91,8 +91,8 @@ export const studioPageEn = {
     items: [
       { id: "private", title: "Uploads go to YouTube as private", body: "A finished video is sent to your channel as a private video, which only you and the people you share it with can watch, until it is made public." },
       { id: "check", title: "A publish check runs first", body: "Every video passes a publish check, and the verdict is shown on the video’s page: passed, or blocked and why." },
-      { id: "approve", title: "Going public is your button", body: "You watch the video and press Approve and publish. Auto-publish is a switch per channel, and it stays off until you turn it on." },
-      { id: "second", title: "A second person, if you want one", body: "A channel can require a second person’s sign-off before anything goes public." },
+      { id: "approve", title: "Going public is your button", body: "You watch the video and press Approve and publish, which files a request the next run carries out. Auto-publish is a switch per channel, and it stays off until you turn it on." },
+      { id: "second", title: "A second person, if you want one", body: "A channel can require a second admin’s sign-off before anything goes public." },
     ],
     figure: "Illustration of a video’s state before it goes public: uploaded as private, the publish check passed, waiting for your approval. Everything shown is an example.",
     figureTitle: "Publish desk",
@@ -101,7 +101,7 @@ export const studioPageEn = {
   price: {
     label: "Price",
     title: "The price comes first. A failure costs nothing.",
-    lead: "Nightshift runs on credits. A video, a Studio generation and a transcript each show their price on the button that starts them. Trimming, splitting and the rest of the editor use no credits.",
+    lead: "Nightshift runs on credits. A video, a Studio generation and a transcript each show their price before they start. Trimming, splitting and the rest of the editor use no credits.",
     link: "How credits are priced",
     ledgerLabel: "How a price becomes a charge",
   },
@@ -112,7 +112,7 @@ export const studioPageEn = {
       {
         id: "pay",
         q: "What do I pay?",
-        a: "Nightshift runs on credits. Every video, Studio generation and transcript shows its price in credits on its button before it starts. The credits are held when it starts and charged when it finishes, never more than the price you saw. Editing and exporting in the editor use no credits.",
+        a: "Nightshift runs on credits. Every video, Studio generation and transcript shows its price in credits before it starts. The credits are held when it starts and charged when it finishes, never more than the price you saw. Editing and exporting in the editor use no credits.",
       },
       {
         id: "fails",
@@ -122,12 +122,12 @@ export const studioPageEn = {
       {
         id: "publishes",
         q: "Do you publish for me?",
-        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on, and a channel can also require a second person to sign off.",
+        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on, and a channel can also require a second admin to sign off.",
       },
       {
         id: "languages",
         q: "Which languages does it work in?",
-        a: "The app is in Uzbek, Russian and English. Each channel is set to one of the three for its videos, and captions in the editor can be made in any of them.",
+        a: "The app is in Uzbek, Russian and English. Each channel is set to one of the three for its videos, and captions in the editor can be made in the languages the transcription model supports.",
       },
       {
         id: "channel",
@@ -152,7 +152,7 @@ export const studioPageEn = {
     ],
     links: { pay: "See pricing", fails: "Terms: credits and refunds", data: "Read the Privacy Policy" },
   },
-  caveat: "Some tools need setting up in your workspace first. For example, auto-captions are offered only where a transcription is set up and priced, and the app says so when one is not.",
+  caveat: "Some tools need setting up on this deployment first. For example, auto-captions are offered only where a transcription is set up and priced, and the app says so when one is not.",
   final: {
     title: "Start with a topic.",
     lead: "Start free. See the price before every run, and approve every video before it goes public.",

@@ -26,12 +26,12 @@ export const studioPageUz: StudioPageDictionary = {
   plan: {
     label: "Avval reja",
     title: "Hech narsa yaratilishidan oldin rejani oʻqing.",
-    lead: "Video mavzu va siz koʻrib turgan narxdan boshlanadi. Buni soʻragan kanalda ish ssenariy va sahnalar rejasidan keyin toʻxtab, sizni kutadi.",
+    lead: "Video mavzu va siz koʻrib turgan narxdan boshlanadi. Buni yoqqan kanalda ish ssenariy va sahnalar rejasidan keyin toʻxtab, sizni kutadi.",
     items: [
-      { id: "price", title: "Narx tugmada", body: "Video qancha turishini boshlanishdan oldin koʻrasiz va yana bir bor tasdiqlaysiz. Oraliqda narx oʻzgarsa, sizdan yana soʻraladi." },
+      { id: "price", title: "Narx — boshlanishidan oldin", body: "Video qancha turishini boshlanishdan oldin koʻrasiz va yana bir bor tasdiqlaysiz. Oraliqda narx oʻzgarsa, sizdan yana soʻraladi." },
       { id: "review", title: "Raskadrovkani koʻrib chiqish", body: "Uni kanal uchun yoqing — kanal ishlari «Raskadrovka tayyor» bosqichida toʻxtaydi. Siz tasdiqlamaguningizcha hech narsa renderlanmaydi va render uchun yechilmaydi." },
       { id: "edit", title: "Rejani oʻzgartirish", body: "Sahnaning diktor matnini yoki kadr tavsifini tahrirlang, sahnalarni surib qoʻying, bittasini oʻchiring yoki qoʻshing. Saqlang — narx yangilanadi." },
-      { id: "no", title: "Rad etish hech narsa turmaydi", body: "Raskadrovkani rad eting — hech narsa renderlanmaydi va yechilmaydi." },
+      { id: "no", title: "Rad etish bepul", body: "Raskadrovkani rad eting — hech narsa renderlanmaydi va yechilmaydi." },
     ],
     figure:
       "Koʻrib chiqishni kutayotgan raskadrovka tasviri: diktor matni va kadr tavsifi bilan uchta sahna hamda renderni tasdiqlaydigan va uning narxini koʻrsatadigan tugma. Koʻrsatilgan hamma narsa — namuna.",
@@ -57,8 +57,8 @@ export const studioPageUz: StudioPageDictionary = {
       { id: "speed", title: "Tezlik", body: "Klipni 0,5×, 0,75×, 1,25×, 1,5× yoki 2× tezlikda ijro eting." },
       { id: "crossfade", title: "Ravon oʻtish", body: "Bir klip keyingisiga 0,2 dan 2 soniyagacha ravon oʻtadi. Kliplar bir-birining ustiga tushadi, shuning uchun video shuncha qisqaradi." },
       { id: "text", title: "Ekrandagi matn", body: "Matn qoʻshing, oʻlchamini va joyini — tepada, oʻrtada yoki pastda — tanlang hamda qachon koʻrinishini belgilang." },
-      { id: "sound", title: "Musiqa va tovush", body: "Mediatekadan musiqa va effektlar qoʻshing, ovoz balandligi va soʻnishni belgilang; nutq chalinayotganda musiqa aniq belgilangan miqdorga pasaytiriladi." },
-      { id: "captions", title: "Subtitrlar", body: "Yozuvdan transkript yarating, subtitrlarni tahrirlang, toʻrt koʻrinishdan birini tanlang — eksportda ular tasvirga oʻrnatiladi. .srt yoki .vtt faylini ham yuklab olish mumkin. Transkript — pullik bosqich: narxi boshlanishdan oldin koʻrinadi va u faqat nutqni matnga aylantirish sozlangan joyda taklif qilinadi." },
+      { id: "sound", title: "Musiqa va tovush", body: "Mediatekadan musiqa va effektlar qoʻshing, ovoz balandligi va soʻnishni belgilang; nutq deb belgilagan tovushlaringiz va oʻz ovozi bor kliplar ostida musiqa aniq belgilangan miqdorga pasaytiriladi." },
+      { id: "captions", title: "Subtitrlar", body: "Yozuvdan matn yarating, subtitrlarni tahrirlang, toʻrt koʻrinishdan birini tanlang — eksportda ular tasvirga oʻrnatiladi. .srt yoki .vtt faylini ham yuklab olish mumkin. Matnga oʻgirish — pullik bosqich: narxi boshlanishdan oldin koʻrinadi va u faqat nutqni matnga aylantirish sozlangan joyda taklif qilinadi." },
       { id: "frame", title: "Kadr shakli", body: "Butun video uchun vertikal 9:16, keng 16:9 yoki kvadrat 1:1. Vertikal shakl Shorts, Reels va TikTok uchun mos." },
       { id: "fit", title: "Sigʻdirish yoki toʻldirish — har bir klip uchun", body: "«Sigʻdirish» tasvirni butunlay koʻrsatadi va chiziqlar qoʻshadi; «Toʻldirish» chetlarini qirqadi, chiziq qolmaydi. Qirqish joyini hozircha surib boʻlmaydi." },
       { id: "drafts", title: "Qoralamalar", body: "Saqlanmagan oʻzgarishlar shu brauzerda qoralama sifatida saqlanadi va loyihani qayta ochganingizda sizga qaytariladi. Saqlash sizning tugmangiz boʻlib qoladi." },
@@ -86,17 +86,17 @@ export const studioPageUz: StudioPageDictionary = {
     items: [
       { id: "private", title: "YouTube’ga yuklamalar shaxsiy", body: "Tayyor video kanalingizga shaxsiy video sifatida yuboriladi: ommaviy boʻlguncha uni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi." },
       { id: "check", title: "Avval nashr tekshiruvi", body: "Har bir video tekshiruvdan oʻtadi, hukm esa video sahifasida koʻrinadi: oʻtdi yoki bloklandi va nima uchun." },
-      { id: "approve", title: "Ommaviy qilish — sizning tugmangiz", body: "Siz videoni koʻrasiz va «Tasdiqlash va nashr qilish»ni bosasiz. Avto-nashr har bir kanalda alohida yoqiladi va siz yoqmaguningizcha oʻchiq turadi." },
-      { id: "second", title: "Ikkinchi shaxs — xohlasangiz", body: "Kanal biror narsa ommaviy boʻlishidan oldin ikkinchi shaxsning tasdigʻini talab qilishi mumkin." },
+      { id: "approve", title: "Ommaviy qilish — sizning tugmangiz", body: "Siz videoni koʻrasiz va «Tasdiqlash va nashr qilish»ni bosasiz — bu keyingi ishga tushirish bajaradigan soʻrov yuboradi. Avtomatik nashr har bir kanalda alohida yoqiladi va siz yoqmaguningizcha oʻchiq turadi." },
+      { id: "second", title: "Ikkinchi administrator — xohlasangiz", body: "Kanal biror narsa ommaviy boʻlishidan oldin ikkinchi administratorning tasdigʻini talab qilishi mumkin." },
     ],
     figure: "Ommaviy boʻlishdan oldingi video holati tasviri: shaxsiy holda yuklangan, nashr tekshiruvi oʻtgan, tasdigʻingizni kutmoqda. Koʻrsatilgan hamma narsa — namuna.",
-    figureTitle: "Nashr stoli",
+    figureTitle: "Nashr pulti",
     lines: ["Shaxsiy holda yuklangan", "Nashr tekshiruvi oʻtdi", "Tasdigʻingizni kutmoqda"],
   },
   price: {
     label: "Narx",
     title: "Avval narx. Xato boʻlsa, hech narsa yechilmaydi.",
-    lead: "Nightshift kreditlarda ishlaydi. Video, Studiyadagi yaratish va transkript — har biri oʻzini ishga tushiradigan tugmada narxini koʻrsatadi. Qirqish, boʻlish va muharrirning boshqa vositalari kredit sarflamaydi.",
+    lead: "Nightshift kreditlarda ishlaydi. Video, Studiyadagi yaratish va matnga oʻgirish — har biri narxini ishga tushirishdan oldin koʻrsatadi. Qirqish, boʻlish va muharrirning boshqa vositalari kredit sarflamaydi.",
     link: "Narx qanday hisoblanadi",
     ledgerLabel: "Narx qanday yechimga aylanadi",
   },
@@ -107,7 +107,7 @@ export const studioPageUz: StudioPageDictionary = {
       {
         id: "pay",
         q: "Men nima uchun toʻlayman?",
-        a: "Nightshift kreditlarda ishlaydi. Har bir video, Studiyadagi har bir yaratish va har bir transkript boshlanishdan oldin oʻz tugmasida narxini kreditlarda koʻrsatadi. Kreditlar boshlanganda ushlab turiladi va tugaganda yechiladi — siz koʻrgan narxdan koʻp emas. Muharrirda tahrirlash va eksport kredit sarflamaydi.",
+        a: "Nightshift kreditlarda ishlaydi. Har bir video, Studiyadagi har bir yaratish va har bir matnga oʻgirish boshlanishdan oldin narxini kreditlarda koʻrsatadi. Kreditlar boshlanganda ushlab turiladi va tugaganda yechiladi — siz koʻrgan narxdan koʻp emas. Muharrirda tahrirlash va eksport kredit sarflamaydi.",
       },
       {
         id: "fails",
@@ -117,12 +117,12 @@ export const studioPageUz: StudioPageDictionary = {
       {
         id: "publishes",
         q: "Mening oʻrnimga nashr qilasizmi?",
-        a: "Faqat siz yoqsangiz. Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Avto-nashr kanal uchun siz yoqmaguningizcha oʻchiq; kanal ikkinchi shaxsning tasdigʻini ham talab qilishi mumkin.",
+        a: "Faqat siz yoqsangiz. Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Avtomatik nashr kanal uchun siz yoqmaguningizcha oʻchiq; kanal ikkinchi administratorning tasdigʻini ham talab qilishi mumkin.",
       },
       {
         id: "languages",
         q: "U qaysi tillarda ishlaydi?",
-        a: "Ilova oʻzbek, rus va ingliz tillarida. Har bir kanalga videolari uchun shu uchtadan biri belgilanadi, muharrirdagi subtitrlarni esa istalgan tilda yaratish mumkin.",
+        a: "Ilova oʻzbek, rus va ingliz tillarida. Har bir kanalga videolari uchun shu uchtadan biri belgilanadi, muharrirdagi subtitrlarni esa transkripsiya modeli qoʻllab-quvvatlaydigan tillarda yaratish mumkin.",
       },
       {
         id: "channel",
@@ -147,7 +147,7 @@ export const studioPageUz: StudioPageDictionary = {
     ],
     links: { pay: "Narxlarni koʻrish", fails: "Shartlar: kreditlar va qaytarish", data: "Maxfiylik siyosatini oʻqish" },
   },
-  caveat: "Baʼzi vositalarni avval ish maydoningizda sozlash kerak. Masalan, avto-subtitrlar faqat nutqni matnga aylantirish sozlangan va narxlangan joyda taklif qilinadi; u boʻlmasa, ilova buni aytadi.",
+  caveat: "Baʼzi vositalarni avval shu oʻrnatmada sozlash kerak. Masalan, avto-subtitrlar faqat nutqni matnga aylantirish sozlangan va narxlangan joyda taklif qilinadi; u boʻlmasa, ilova buni aytadi.",
   final: {
     title: "Mavzudan boshlang.",
     lead: "Bepul boshlang. Har bir ishga tushirishdan oldin narxni koʻrasiz, har bir videoni ommaviy boʻlishidan oldin oʻzingiz tasdiqlaysiz.",
