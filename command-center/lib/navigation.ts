@@ -216,7 +216,8 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
  * on both.
  */
 const RAIL_SCREENS: Readonly<Record<"hub" | "settings", readonly string[]>> = {
-  hub: [],
+  // The Presets gallery is opened from Studio and Home; it keeps Studio lit without being a tab.
+  hub: ["/presets"],
   settings: ["/organization", "/developers"],
 };
 

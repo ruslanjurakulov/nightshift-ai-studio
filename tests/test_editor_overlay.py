@@ -395,7 +395,7 @@ def digest(doc, table=None) -> str:
 def neutral_docs():
     """Documents that exercise the older features, with NO overlays. The
     digests of their commands were captured from origin/main before overlays
-    existed (LEGACY below) — do not regenerate them from new code."""
+    existed (LEGACY below, re-captured from origin/main after #452) — do not regenerate them from new code."""
     def clip(i, asset=BASE, start=0.0, out=2.0, **kw):
         return {"id": f"c{i}", "asset_id": asset, "start_s": start, "in_s": 0, "out_s": out, **kw}
 
@@ -433,19 +433,20 @@ def neutral_docs():
 
 
 #: sha256[:16] of json(all_commands(doc)) for neutral_docs(), captured from
-#: origin/main (4c566de2) before the overlay change. Do not regenerate.
+#: origin/main (b79c0066, after #452: every capped command carries -protocol_whitelist
+#: file) WITHOUT this change. Do not regenerate from new code.
 LEGACY = {
-    "one clip": "bea51984fcfc045b",
-    "clip and still": "a52664db18647569",
-    "cover and fades": "ca7a98e3332c35ed",
-    "speed and sound": "87cfb5d64f82addf",
-    "crossfade": "d6ccd94c69f86bc3",
-    "dip to black": "06b501e3e6a7a46a",
-    "graded": "21ebce6dd3bf5006",
-    "music and ducking": "8ea61085bee12337",
-    "text and captions": "445fc6ff1e45b3fe",
-    "portrait 24 fps": "73b64058cd8be56c",
-    "square 60 fps with a gap": "b2efaee29f887aa2",
+    "one clip": "9776f998e8de68c3",
+    "clip and still": "5aa4046d3ac455ec",
+    "cover and fades": "dfa5e9356666afd1",
+    "speed and sound": "9da616afec6732b5",
+    "crossfade": "d93e8cd3f9962064",
+    "dip to black": "bd29994cfad44a32",
+    "graded": "d604c9357d28a7df",
+    "music and ducking": "524d2b1ab4038043",
+    "text and captions": "46e99487e0cf3c4a",
+    "portrait 24 fps": "f8567db7db4bd8ec",
+    "square 60 fps with a gap": "fc57d4a57d07fdfe",
 }
 
 
@@ -469,6 +470,8 @@ class NeutralTestCase(unittest.TestCase):
                     doc2 = copy.deepcopy(doc)
                     doc2["overlays"] = copy.deepcopy(overlays)
                     self.assertEqual(all_commands(doc2), base)
+                    # ... and they are main's commands, byte for byte
+                    self.assertEqual(digest(doc2), LEGACY[name])
 
     def test_overlays_change_only_the_final_pass(self):
         for name, doc in neutral_docs().items():
@@ -517,7 +520,10 @@ class CommandTestCase(unittest.TestCase):
 
     def test_decoder_caps_follow_the_kind(self):
         cmd = self.final([ov(), ov(id="o2", asset_id=VID, start_s=0, end_s=2)])
-        cap = lambda path: cmd[cmd.index(path) - 5 + cmd[cmd.index(path) - 5:cmd.index(path)].index("-max_pixels") + 1]
+        def cap(path):
+            # the value after the -max_pixels that sits before this input's -i
+            head = cmd[:cmd.index(path)]
+            return head[len(head) - 1 - head[::-1].index("-max_pixels") + 1]
         self.assertEqual(cap("/media/pic.png"), str(rs.decoder_max_pixels(rs.DECODE_MAX_PIXELS)))
         self.assertEqual(cap("/media/ov.mp4"), str(rs.decoder_max_pixels(rs.DECODE_VIDEO_MAX_PIXELS)))
 

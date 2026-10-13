@@ -184,6 +184,9 @@ TRACK_ASSET_KINDS = {KIND_V: (ASSET_VIDEO, ASSET_IMAGE), KIND_A: (ASSET_AUDIO,)}
 #: A pathological document must not become a megabyte of error text.
 _MAX_REPORTED = 20
 
+#: The patterns are the schema's (a test pins them equal), and are used with
+#: ``fullmatch``: ``$`` also matches before a trailing newline, so "c1\n" would pass
+#: ``match`` here and fail the web validator (JavaScript's ``$`` does not).
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -265,14 +268,23 @@ def _is_num(v) -> bool:
         return False
 
 
-def _shown(v) -> str:
+def _shown(v, limit: int = 60) -> str:
     """``repr`` for an error message, cut short (a 4000-digit int is not a message)."""
-    s = repr(v)
-    return s if len(s) <= 60 else s[:57] + "..."
+    try:
+        s = repr(v)
+    except ValueError:
+        # An int of more than 4300 digits has no repr (Python's int-to-str limit).
+        return "<a number too large to show>"
+    return s if len(s) <= limit else s[:limit - 3] + "..."
 
 
 def _is_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _in_range(v) -> bool:
+    """A time the document may hold (0 to MAX_DURATION_S): safe to do arithmetic on."""
+    return _is_num(v) and 0 <= v <= MAX_DURATION_S
 
 
 def _ms(v: float) -> float:
@@ -280,11 +292,11 @@ def _ms(v: float) -> float:
 
 
 def _where(track: dict, clip: Optional[dict] = None) -> str:
-    t = f"track {track.get('id')!r}" if isinstance(track, dict) else "track"
+    t = f"track {_shown(track.get('id'), 200)}" if isinstance(track, dict) else "track"
     if clip is None:
         return t
     c = clip.get("id") if isinstance(clip, dict) else None
-    return f"{t} clip {c!r}"
+    return f"{t} clip {_shown(c, 200)}"
 
 
 def _fields(obj, allowed, required, where, problems) -> bool:
@@ -324,7 +336,7 @@ def _text_style(obj, where, problems) -> None:
     if "size" in obj and not (_is_int(obj["size"]) and SIZE_MIN <= obj["size"] <= SIZE_MAX):
         problems.append(f"{where}: size must be an integer from {SIZE_MIN} to {SIZE_MAX}")
     for k in ("color", "outline_color"):
-        if k in obj and not (isinstance(obj[k], str) and _HEX_RE.match(obj[k])):
+        if k in obj and not (isinstance(obj[k], str) and _HEX_RE.fullmatch(obj[k])):
             problems.append(f"{where}: {k} must be a #RRGGBB colour")
     _num_in(obj, "outline_width", 0, OUTLINE_MAX, where, problems)
     if "bold" in obj and not isinstance(obj["bold"], bool):
@@ -340,7 +352,9 @@ def validate(doc: Any) -> List[str]:
     problems: List[str] = []
     if not _fields(doc, _DOC_KEYS, _DOC_REQUIRED, "timeline", problems):
         return problems
-    if doc.get("version") != VERSION:
+    ver = doc.get("version")
+    # `true == 1` and `1.0 == 1` in Python; the document's version is the integer 1.
+    if not _is_int(ver) or ver != VERSION:
         problems.append(f"timeline: version must be {VERSION} (got {_shown(doc.get('version'))})")
     for k in ("width", "height"):
         v = doc.get(k)
@@ -359,7 +373,7 @@ def validate(doc: Any) -> List[str]:
     ids: Dict[str, str] = {}
 
     def claim(ident, where):
-        if not (isinstance(ident, str) and _ID_RE.match(ident)):
+        if not (isinstance(ident, str) and _ID_RE.fullmatch(ident)):
             problems.append(f"{where}: id must be 1-{MAX_ID} letters, digits, '_' or '-'")
         elif ident in ids:
             problems.append(f"{where}: id {ident!r} is already used by {ids[ident]}")
@@ -429,12 +443,14 @@ def validate(doc: Any) -> List[str]:
     if problems:
         return problems
     # Semantic checks need a structurally valid document.
-    found = overlaps(doc)
+    # One past the limit is enough to say "and more": 5000 captions on one span
+    # are 12.5 million pairs, and listing them all took seconds and a gigabyte.
+    found = overlaps(doc, limit=_MAX_REPORTED + 1)
     for ov in found[:_MAX_REPORTED]:
         problems.append(f"track {ov[0]!r}: clips {ov[1]!r} and {ov[2]!r} overlap "
                         f"({ov[3]:.3f}-{ov[4]:.3f} s) — move one to another track")
     if len(found) > _MAX_REPORTED:
-        problems.append(f"... and {len(found) - _MAX_REPORTED} more overlaps")
+        problems.append("... and more overlaps")
     problems.extend(_transition_problems(doc))
     total = duration_s(doc)
     if total <= 0:
@@ -467,8 +483,8 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
         return
     claim(clip.get("id"), where)
     aid = clip.get("asset_id")
-    if not (isinstance(aid, str) and _UUID_RE.match(aid)):
-        problems.append(f"{where}: asset_id must be a uuid (got {aid!r})")
+    if not (isinstance(aid, str) and _UUID_RE.fullmatch(aid)):
+        problems.append(f"{where}: asset_id must be a uuid (got {_shown(aid, 200)})")
     for k in ("start_s", "in_s", "out_s"):
         _num_in(clip, k, 0, MAX_DURATION_S, where, problems)
     for k in ("fade_in_s", "fade_out_s"):
@@ -480,7 +496,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
     if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
         problems.append(f"{where}: audio must be true or false")
     ins, outs = clip.get("in_s"), clip.get("out_s")
-    if _is_num(ins) and _is_num(outs) and speed:
+    # Range first, derived maths after: an out_s of 1e308 is already reported above, and
+    # `round(length * fps)` of it is an OverflowError, not a problem (a crash that left an
+    # export stuck rendering).
+    if _in_range(ins) and _in_range(outs) and speed:
         # How long the clip lasts ON THE TIMELINE: the source range at its speed.
         length = _ms((_ms(outs) - _ms(ins)) / speed)
         if _ms(outs) - _ms(ins) <= 0:
@@ -553,12 +572,12 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
         where = f"overlay {ov.get('id')!r}"
         claim(ov.get("id"), where)
         aid = ov.get("asset_id")
-        if not (isinstance(aid, str) and _UUID_RE.match(aid)):
+        if not (isinstance(aid, str) and _UUID_RE.fullmatch(aid)):
             problems.append(f"{where}: asset_id must be a uuid (got {_shown(aid)})")
         for k in ("start_s", "end_s"):
             _num_in(ov, k, 0, MAX_DURATION_S, where, problems)
         s, e = ov.get("start_s"), ov.get("end_s")
-        if _is_num(s) and _is_num(e):
+        if _in_range(s) and _in_range(e):   # arithmetic only on times the document may hold
             if _ms(e) <= _ms(s):
                 problems.append(f"{where}: end_s ({_shown(e)}) must be greater than start_s ({_shown(s)})")
             elif fps and round(_ms(e) * fps) - round(_ms(s) * fps) < 1:
@@ -586,7 +605,7 @@ def _validate_captions(captions, problems, claim) -> None:
         where = f"captions cues[{i}]"
         if not _fields(cue, _CUE_KEYS, _CUE_KEYS, where, problems):
             continue
-        where = f"caption {cue.get('id')!r}"
+        where = f"caption {_shown(cue.get('id'), 200)}"
         claim(cue.get("id"), where)
         _validate_timed_text(cue, where, problems)
 
@@ -627,11 +646,12 @@ def duration_s(doc: dict) -> float:
     return max(ends) if ends else 0.0
 
 
-def overlaps(doc: dict) -> List[Tuple[str, str, str, float, float]]:
+def overlaps(doc: dict, limit: Optional[int] = None) -> List[Tuple[str, str, str, float, float]]:
     """``(track id, clip a, clip b, from_s, to_s)`` for every pair of items on
     the same track (or among the captions) that are on screen at once.
     Touching (one ends where the next starts) is not an overlap, and neither
-    is a cross-fade's own overlap with the clip before it."""
+    is a cross-fade's own overlap with the clip before it. With ``limit`` the
+    search stops at that many pairs (the first ones, in the usual order)."""
     blended = {(str(t["id"]), str(p["id"]), str(c["id"]))
                for t in doc.get("tracks") or [] if t.get("kind") == KIND_V
                for p, c, _d in crossfades(t)}
@@ -644,6 +664,8 @@ def overlaps(doc: dict) -> List[Tuple[str, str, str, float, float]]:
                 if (lane, id1, id2) in blended:
                     continue
                 found.append((lane, id1, id2, s2, min(e1, e2)))
+                if limit is not None and len(found) >= limit:
+                    return found
     return found
 
 

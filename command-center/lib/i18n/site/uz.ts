@@ -1,4 +1,5 @@
 import type { SiteDictionary } from "./en";
+import { studioPageUz } from "../studio-page/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -425,6 +426,8 @@ export const siteUz: SiteDictionary = {
     paySlug: "Toʻlovlar",
     faqSlug: "Savollar",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir videoni efirdan oldin tasdiqlaysiz.",

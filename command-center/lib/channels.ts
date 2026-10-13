@@ -62,6 +62,8 @@ export const SECTIONS = [
   "inbox",
   "studio",
   "styles",
+  // Presets & looks: the gallery of ready starting points, opened from Studio and Home.
+  "presets",
   "library",
   "editor",
   "workflows",
