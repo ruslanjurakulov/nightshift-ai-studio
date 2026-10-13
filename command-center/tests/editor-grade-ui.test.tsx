@@ -13,6 +13,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 
 const router = {
@@ -45,9 +46,9 @@ import {
   type TimelineDoc,
 } from "@/lib/editor";
 import {
-  COLOUR_FILTER_ID,
-  colourMatrixValues,
-} from "@/lib/editorColour";
+  GRADE_FILTER_ID,
+  gradeMatrixValues,
+} from "@/lib/editorGrade";
 
 const te = en.editor;
 const PID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -123,19 +124,19 @@ function mount(doc: TimelineDoc, asset: EditorAsset, locale: "en" | "ru" | "uz" 
 }
 const mountVideo = (grade?: typeof GRADE) => {
   const doc = newDocForAsset(VIDEO)!;
-  if (grade) doc.tracks[0].clips[0].color = grade;
+  if (grade) doc.tracks[0].clips[0].grade = grade;
   return mount(doc, VIDEO);
 };
 const slider = (name: string) =>
   screen.getByLabelText(new RegExp(`^${name}`), { selector: "input" }) as HTMLInputElement;
-const brightness = () => slider(te.colourBrightness);
-const contrast = () => slider(te.colourContrast);
-const saturation = () => slider(te.colourSaturation);
+const brightness = () => slider(te.gradeBrightness);
+const contrast = () => slider(te.gradeContrast);
+const saturation = () => slider(te.gradeSaturation);
 const set = (el: HTMLInputElement, v: number) =>
   fireEvent.change(el, { target: { value: String(v) } });
 const video = () => document.querySelector("video")!;
 const filterOf = () =>
-  document.getElementById(COLOUR_FILTER_ID)?.querySelector("feColorMatrix") ?? null;
+  document.getElementById(GRADE_FILTER_ID)?.querySelector("feColorMatrix") ?? null;
 const savedBody = () => {
   const put = fetchMock.mock.calls.find(
     ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
@@ -146,7 +147,7 @@ const savedBody = () => {
 describe("the Colour panel", () => {
   it("is a labelled group of three native sliders, each at no change, and a Reset that has nothing to do yet", () => {
     mountVideo();
-    expect(screen.getByRole("group", { name: te.colour })).toBeTruthy();
+    expect(screen.getByRole("group", { name: te.grade })).toBeTruthy();
     for (const [el, min, max, now] of [
       [brightness(), "-1", "1", "0"],
       [contrast(), "0", "2", "1"],
@@ -158,17 +159,14 @@ describe("the Colour panel", () => {
     }
     expect(brightness().getAttribute("aria-valuetext")).toBe("0%");
     expect(saturation().getAttribute("aria-valuetext")).toBe("100%");
-    expect(screen.getByRole("button", { name: te.colourReset })).toHaveProperty(
-      "disabled",
-      true,
-    );
-    expect(screen.getByText(te.colourHint)).toBeTruthy();
+    expect(screen.getByRole("button", { name: te.gradeReset }).getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByText(te.gradeHint)).toBeTruthy();
   });
 
   it("a project that never used it draws the picture exactly as before (no filter, no SVG)", () => {
     mountVideo();
     expect(video().style.filter).toBe("");
-    expect(document.getElementById(COLOUR_FILTER_ID)).toBeNull();
+    expect(document.getElementById(GRADE_FILTER_ID)).toBeNull();
   });
 
   it("each slider is 44px tall and keyboard operable (a real range input in the tab order)", () => {
@@ -177,7 +175,7 @@ describe("the Colour panel", () => {
       expect(el.tabIndex).toBe(0);
       expect(el.className).toContain("h-11");
     }
-    expect(screen.getByRole("button", { name: te.colourReset }).className).toContain(
+    expect(screen.getByRole("button", { name: te.gradeReset }).className).toContain(
       "min-h-11",
     );
   });
@@ -187,17 +185,14 @@ describe("the Colour panel", () => {
     set(brightness(), 0.2);
     set(contrast(), 1.3);
     set(saturation(), 0.7);
-    expect(video().style.filter).toBe(`url(#${COLOUR_FILTER_ID})`);
-    expect(filterOf()?.getAttribute("values")).toBe(colourMatrixValues(GRADE, false));
+    expect(video().style.filter).toBe(`url(#${GRADE_FILTER_ID})`);
+    expect(filterOf()?.getAttribute("values")).toBe(gradeMatrixValues(GRADE, false));
     expect(brightness().getAttribute("aria-valuetext")).toBe("+20%");
     expect(screen.getByText(te.unsaved)).toBeTruthy();
-    expect(screen.getByRole("button", { name: te.colourReset })).toHaveProperty(
-      "disabled",
-      false,
-    );
+    expect(screen.getByRole("button", { name: te.gradeReset }).getAttribute("aria-disabled")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: te.save }));
     await waitFor(() => expect(screen.getByText(te.saved)).toBeTruthy());
-    expect(savedBody().doc.tracks[0].clips[0].color).toEqual(GRADE);
+    expect(savedBody().doc.tracks[0].clips[0].grade).toEqual(GRADE);
     expect(
       fetchMock.mock.calls.filter(([u]) => String(u).includes("/exports")),
     ).toHaveLength(0);
@@ -206,7 +201,7 @@ describe("the Colour panel", () => {
   it("opens on a saved grade and draws it", () => {
     mountVideo(GRADE);
     expect(brightness().value).toBe("0.2");
-    expect(video().style.filter).toBe(`url(#${COLOUR_FILTER_ID})`);
+    expect(video().style.filter).toBe(`url(#${GRADE_FILTER_ID})`);
   });
 
   it("undo and redo walk through the grade", () => {
@@ -218,7 +213,7 @@ describe("the Colour panel", () => {
     expect(screen.getByText(te.saved)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: te.redo }));
     expect(brightness().value).toBe("0.2");
-    expect(video().style.filter).toBe(`url(#${COLOUR_FILTER_ID})`);
+    expect(video().style.filter).toBe(`url(#${GRADE_FILTER_ID})`);
   });
 
   it("one drag is one undo step, the next drag another", () => {
@@ -256,35 +251,110 @@ describe("the Colour panel", () => {
 
   it("Reset returns to a document without the field, in one undoable step", async () => {
     mountVideo(GRADE);
-    fireEvent.click(screen.getByRole("button", { name: te.colourReset }));
+    fireEvent.click(screen.getByRole("button", { name: te.gradeReset }));
     expect(video().style.filter).toBe("");
-    expect(document.getElementById(COLOUR_FILTER_ID)).toBeNull();
-    expect(screen.getByRole("button", { name: te.colourReset })).toHaveProperty(
-      "disabled",
-      true,
-    );
+    expect(document.getElementById(GRADE_FILTER_ID)).toBeNull();
+    expect(screen.getByRole("button", { name: te.gradeReset }).getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: te.save }));
     await waitFor(() => expect(screen.getByText(te.saved)).toBeTruthy());
-    expect("color" in savedBody().doc.tracks[0].clips[0]).toBe(false);
+    expect("grade" in savedBody().doc.tracks[0].clips[0]).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: te.undo }));
     expect(brightness().value).toBe("0.2");
   });
 
+  it("Reset keeps the keyboard's focus when it makes the grade neutral, and does nothing when it already is", () => {
+    mountVideo(GRADE);
+    const reset = screen.getByRole("button", { name: te.gradeReset });
+    expect(reset).toHaveProperty("disabled", false);
+    reset.focus();
+    fireEvent.click(reset);
+    expect(brightness().value).toBe("0");
+    // not `disabled`: still a focusable button, and it still holds the focus
+    expect(reset).toHaveProperty("disabled", false);
+    expect(reset.getAttribute("aria-disabled")).toBe("true");
+    expect(reset.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(reset);
+    // a neutral grade: pressing it again changes nothing (no history step)
+    fireEvent.click(reset);
+    fireEvent.click(screen.getByRole("button", { name: te.undo }));
+    expect(brightness().value).toBe("0.2"); // one undo goes straight back to the grade
+    fireEvent.click(screen.getByRole("button", { name: te.undo }));
+    expect(screen.getByRole("button", { name: te.undo })).toHaveProperty("disabled", true);
+  });
+
   it("a photo is graded too, with the weights of the still conversion", () => {
     const doc = newDocForAnyAsset(PHOTO)!;
-    doc.tracks[0].clips[0].color = GRADE;
+    doc.tracks[0].clips[0].grade = GRADE;
     mount(doc, PHOTO);
     const img = document.querySelector("img")!;
-    expect(img.style.filter).toBe(`url(#${COLOUR_FILTER_ID})`);
-    expect(filterOf()?.getAttribute("values")).toBe(colourMatrixValues(GRADE, true));
-    expect(filterOf()?.getAttribute("values")).not.toBe(colourMatrixValues(GRADE, false));
+    expect(img.style.filter).toBe(`url(#${GRADE_FILTER_ID})`);
+    expect(filterOf()?.getAttribute("values")).toBe(gradeMatrixValues(GRADE, true));
+    expect(filterOf()?.getAttribute("values")).not.toBe(gradeMatrixValues(GRADE, false));
   });
 
   it("the SVG filter is hidden from assistive technology", () => {
     mountVideo(GRADE);
-    const svg = document.getElementById(COLOUR_FILTER_ID)!.closest("svg")!;
+    const svg = document.getElementById(GRADE_FILTER_ID)!.closest("svg")!;
     expect(svg.getAttribute("aria-hidden")).toBe("true");
     expect(svg.getAttribute("focusable")).toBe("false");
+  });
+});
+
+describe("the preview shows the clip being graded", () => {
+  const twoClips = (): TimelineDoc => {
+    const d = newDocForAsset(VIDEO)!;
+    d.tracks[0].clips = [
+      { id: "c1", asset_id: A, start_s: 0, in_s: 0, out_s: 3 },
+      { id: "c2", asset_id: A, start_s: 3, in_s: 3, out_s: 6 },
+    ];
+    return d;
+  };
+  const playhead = () =>
+    screen.getByRole("slider", { name: te.playhead }) as HTMLInputElement;
+  const clipButtons = () =>
+    within(screen.getByRole("list", { name: te.clipsTrack })).getAllByRole("button");
+
+  it("moving a slider of a clip that is not under the playhead brings the playhead to it", () => {
+    mount(twoClips(), VIDEO);
+    expect(Number(playhead().value)).toBe(0);
+    fireEvent.click(clipButtons()[1]); // select clip 2; the playhead stays at 0
+    expect(Number(playhead().value)).toBe(0);
+    expect(video().style.filter).toBe("");
+    set(brightness(), 0.2);
+    expect(Number(playhead().value)).toBe(3); // clip 2 starts at 3 s
+    expect(video().style.filter).toBe(`url(#${GRADE_FILTER_ID})`);
+  });
+
+  it("leaves the playhead alone when the clip is already on screen", () => {
+    mount(twoClips(), VIDEO);
+    fireEvent.change(playhead(), { target: { value: "1.5" } });
+    set(brightness(), 0.2);
+    expect(Number(playhead().value)).toBe(1.5);
+  });
+
+  it("Reset does the same, and the playhead is not chased afterwards", () => {
+    const doc = twoClips();
+    doc.tracks[0].clips[1].grade = GRADE;
+    mount(doc, VIDEO);
+    fireEvent.click(clipButtons()[1]);
+    fireEvent.click(screen.getByRole("button", { name: te.gradeReset }));
+    expect(Number(playhead().value)).toBe(3);
+    // the user moves the playhead away: a later change shows nothing, then it follows again
+    fireEvent.change(playhead(), { target: { value: "0.5" } });
+    expect(Number(playhead().value)).toBe(0.5);
+  });
+
+  it("with a cross-fade it goes to the first frame the clip is the one shown", () => {
+    const doc = twoClips();
+    doc.tracks[0].clips[1] = {
+      id: "c2", asset_id: A, start_s: 2.5, in_s: 3, out_s: 6,
+      transition: { type: "crossfade", duration_s: 0.5 },
+    };
+    mount(doc, VIDEO);
+    fireEvent.click(clipButtons()[1]);
+    set(contrast(), 1.2);
+    // the dissolve (2.5-3 s) still shows clip 1: clip 2 is on screen from 3 s
+    expect(Number(playhead().value)).toBeCloseTo(3, 2);
   });
 });
 
@@ -297,7 +367,7 @@ describe("the local draft carries the grade", () => {
     set(saturation(), 0.7);
     act(() => void vi.advanceTimersByTime(DRAFT_DEBOUNCE_MS));
     const kept = readDraft("user-1", PID, 1);
-    expect(kept?.doc.tracks[0].clips[0].color).toEqual(GRADE);
+    expect(kept?.doc.tracks[0].clips[0].grade).toEqual(GRADE);
     expect(localStorage.getItem(draftKey("user-1", PID, 1))).not.toBeNull();
     first.unmount();
     vi.useRealTimers();
@@ -309,7 +379,7 @@ describe("the local draft carries the grade", () => {
     expect(brightness().value).toBe("0.2");
     expect(contrast().value).toBe("1.3");
     expect(saturation().value).toBe("0.7");
-    expect(video().style.filter).toBe(`url(#${COLOUR_FILTER_ID})`);
+    expect(video().style.filter).toBe(`url(#${GRADE_FILTER_ID})`);
   });
 });
 
@@ -317,18 +387,18 @@ describe("the strings", () => {
   it("exist in all three languages with their own words", () => {
     for (const d of [en, ru, uz])
       for (const k of [
-        "colour",
-        "colourBrightness",
-        "colourContrast",
-        "colourSaturation",
-        "colourReset",
-        "colourHint",
+        "grade",
+        "gradeBrightness",
+        "gradeContrast",
+        "gradeSaturation",
+        "gradeReset",
+        "gradeHint",
       ] as const)
         expect(d.editor[k].length).toBeGreaterThan(2);
-    expect(ru.editor.colour).not.toBe(en.editor.colour);
-    expect(uz.editor.colour).not.toBe(en.editor.colour);
+    expect(ru.editor.grade).not.toBe(en.editor.grade);
+    expect(uz.editor.grade).not.toBe(en.editor.grade);
     expect(
-      new Set([en, ru, uz].map((d) => d.editor.colourBrightness)).size,
+      new Set([en, ru, uz].map((d) => d.editor.gradeBrightness)).size,
     ).toBe(3);
   });
 
@@ -336,9 +406,9 @@ describe("the strings", () => {
     for (const [locale, d] of [["ru", ru], ["uz", uz]] as const) {
       const doc = newDocForAsset(VIDEO)!;
       const view = mount(doc, VIDEO, locale);
-      expect(screen.getByRole("group", { name: d.editor.colour })).toBeTruthy();
+      expect(screen.getByRole("group", { name: d.editor.grade })).toBeTruthy();
       expect(
-        screen.getByLabelText(new RegExp(`^${d.editor.colourSaturation}`), {
+        screen.getByLabelText(new RegExp(`^${d.editor.gradeSaturation}`), {
           selector: "input",
         }),
       ).toBeTruthy();

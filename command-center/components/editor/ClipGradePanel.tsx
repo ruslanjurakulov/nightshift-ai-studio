@@ -4,15 +4,15 @@ import { useId, useRef } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import type { VideoClip } from "@/lib/editor";
 import {
-  COLOUR_FILTER_ID,
-  COLOUR_KEYS,
-  COLOUR_RANGES,
-  colourMatrixValues,
-  colourOf,
-  isNeutralColour,
-  type ClipColour,
-  type ColourKey,
-} from "@/lib/editorColour";
+  GRADE_FILTER_ID,
+  GRADE_KEYS,
+  GRADE_RANGES,
+  gradeMatrixValues,
+  gradeOf,
+  isNeutralGrade,
+  type ClipGrade,
+  type GradeKey,
+} from "@/lib/editorGrade";
 
 /**
  * The selected clip's colour: brightness, contrast, saturation as three native
@@ -24,7 +24,7 @@ import {
 
 /** The number as a person reads it: brightness as a signed percentage added,
  *  contrast and saturation as a percentage of the original (100% = no change). */
-export function colourText(key: ColourKey, v: number): string {
+export function gradeText(key: GradeKey, v: number): string {
   if (key === "brightness") {
     const p = Math.round(v * 100);
     return `${p > 0 ? "+" : ""}${p}%`;
@@ -32,40 +32,40 @@ export function colourText(key: ColourKey, v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 
-export function ClipColourPanel({
-  colour,
+export function ClipGradePanel({
+  grade,
   onChange,
   onReset,
 }: {
-  colour: ClipColour;
+  grade: ClipGrade;
   /** `group` is the same for every change of one gesture. */
-  onChange: (patch: Partial<ClipColour>, group: string) => void;
+  onChange: (patch: Partial<ClipGrade>, group: string) => void;
   onReset: () => void;
 }) {
   const { t } = useI18n();
   const te = t.editor;
   const id = useId();
   const gesture = useRef(0);
-  const names: Record<ColourKey, string> = {
-    brightness: te.colourBrightness,
-    contrast: te.colourContrast,
-    saturation: te.colourSaturation,
+  const names: Record<GradeKey, string> = {
+    brightness: te.gradeBrightness,
+    contrast: te.gradeContrast,
+    saturation: te.gradeSaturation,
   };
   const next = () => {
     gesture.current += 1;
   };
-  const neutral = isNeutralColour(colour);
+  const neutral = isNeutralGrade(grade);
   return (
     <fieldset
       className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0"
       aria-describedby={`${id}-hint`}
-      data-testid="clip-colour"
+      data-testid="clip-grade"
     >
       <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">
-        {te.colour}
+        {te.grade}
       </legend>
-      {COLOUR_KEYS.map((k) => {
-        const r = COLOUR_RANGES[k];
+      {GRADE_KEYS.map((k) => {
+        const r = GRADE_RANGES[k];
         return (
           <label
             key={k}
@@ -74,7 +74,7 @@ export function ClipColourPanel({
             <span className="flex items-baseline justify-between gap-2">
               <span>{names[k]}</span>
               <span className="tabular-nums text-[var(--color-fg)]" aria-hidden>
-                {colourText(k, colour[k])}
+                {gradeText(k, grade[k])}
               </span>
             </span>
             <input
@@ -82,8 +82,8 @@ export function ClipColourPanel({
               min={r.min}
               max={r.max}
               step={r.step}
-              value={colour[k]}
-              aria-valuetext={colourText(k, colour[k])}
+              value={grade[k]}
+              aria-valuetext={gradeText(k, grade[k])}
               onPointerDown={next}
               onKeyDown={(e) => {
                 if (!e.repeat) next();
@@ -102,34 +102,38 @@ export function ClipColourPanel({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className="btn-quiet inline-flex min-h-11 items-center px-3 text-xs"
-          disabled={neutral}
-          onClick={onReset}
+          className="btn-quiet inline-flex min-h-11 items-center px-3 text-xs aria-disabled:cursor-default aria-disabled:opacity-50"
+          // aria-disabled, not disabled: pressing Reset makes the grade neutral,
+          // and a disabled button would drop the keyboard's focus with it.
+          aria-disabled={neutral || undefined}
+          onClick={() => {
+            if (!neutral) onReset();
+          }}
         >
-          {te.colourReset}
+          {te.gradeReset}
         </button>
       </div>
       <p id={`${id}-hint`} className="m-0 text-xs text-[var(--color-muted)]">
-        {te.colourHint}
+        {te.gradeHint}
       </p>
     </fieldset>
   );
 }
 
 /** The SVG filter the preview's picture points at (CSS `filter:
- *  url(#ns-clip-colour)`), drawn only while the clip on screen has a grade. A
+ *  url(#ns-clip-grade)`), drawn only while the clip on screen has a grade. A
  *  zero-size, hidden-from-everyone SVG: `display: none` would stop browsers
  *  from resolving the reference. */
-export function ColourFilterDefs({
+export function GradeFilterDefs({
   clip,
   still,
 }: {
-  clip: Pick<VideoClip, "color"> | null | undefined;
+  clip: Pick<VideoClip, "grade"> | null | undefined;
   still: boolean;
 }) {
   if (!clip) return null;
-  const c = colourOf(clip);
-  if (isNeutralColour(c)) return null;
+  const c = gradeOf(clip);
+  if (isNeutralGrade(c)) return null;
   return (
     <svg
       aria-hidden="true"
@@ -139,14 +143,14 @@ export function ColourFilterDefs({
       className="pointer-events-none absolute"
     >
       <filter
-        id={COLOUR_FILTER_ID}
+        id={GRADE_FILTER_ID}
         colorInterpolationFilters="sRGB"
         x="0"
         y="0"
         width="100%"
         height="100%"
       >
-        <feColorMatrix type="matrix" values={colourMatrixValues(c, still)} />
+        <feColorMatrix type="matrix" values={gradeMatrixValues(c, still)} />
       </filter>
     </svg>
   );

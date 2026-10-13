@@ -23,11 +23,11 @@
  */
 
 import {
-  COLOUR_KEYS,
-  COLOUR_RANGES,
-  isNeutralColour,
-  type ClipColour,
-} from "@/lib/editorColour";
+  GRADE_KEYS,
+  GRADE_RANGES,
+  isNeutralGrade,
+  type ClipGrade,
+} from "@/lib/editorGrade";
 
 // ── limits (modules/timeline.py, render_spec.py and 0054 hold the same) ─────
 
@@ -141,7 +141,7 @@ const V_CLIP_KEYS = [
   "transition",
   "speed",
   "audio",
-  "color",
+  "grade",
 ];
 const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
 const T_REQUIRED = ["id", "start_s", "end_s", "text"];
@@ -184,8 +184,8 @@ export interface VideoClip {
   speed: number;
   audio: boolean;
   fit?: "contain" | "cover";
-  /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorColour.ts. */
-  color?: ClipColour;
+  /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorGrade.ts. */
+  grade?: ClipGrade;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -597,22 +597,22 @@ function validateMediaClip(
     if ("fit" in clip && !(FITS as readonly unknown[]).includes(clip.fit))
       problems.push(`${where}: fit must be contain or cover`);
     if (
-      "color" in clip &&
+      "grade" in clip &&
       fields(
-        clip.color,
-        [...COLOUR_KEYS],
-        [...COLOUR_KEYS],
-        `${where} color`,
+        clip.grade,
+        [...GRADE_KEYS],
+        [...GRADE_KEYS],
+        `${where} grade`,
         problems,
       )
     )
-      for (const k of COLOUR_KEYS)
+      for (const k of GRADE_KEYS)
         numIn(
-          clip.color,
+          clip.grade,
           k,
-          COLOUR_RANGES[k].min,
-          COLOUR_RANGES[k].max,
-          `${where} color`,
+          GRADE_RANGES[k].min,
+          GRADE_RANGES[k].max,
+          `${where} grade`,
           problems,
         );
     if ("transition" in clip) {
@@ -1017,16 +1017,16 @@ const DEFAULT_TEXT: Omit<TextClip, "id" | "start_s" | "end_s" | "text"> = {
   bold: true,
 };
 
-/** A document's `color` as the model keeps it: the three numbers, or nothing
+/** A document's `grade` as the model keeps it: the three numbers, or nothing
  *  for none, an unusable value or "no change" (the same clip without it). */
-function colourFieldOf(v: unknown): { color: ClipColour } | object {
-  if (!isObj(v) || !COLOUR_KEYS.every((k) => isNum(v[k]))) return {};
-  const color = {
+function gradeFieldOf(v: unknown): { grade: ClipGrade } | object {
+  if (!isObj(v) || !GRADE_KEYS.every((k) => isNum(v[k]))) return {};
+  const grade = {
     brightness: v.brightness,
     contrast: v.contrast,
     saturation: v.saturation,
-  } as ClipColour;
-  return isNeutralColour(color) ? {} : { color };
+  } as ClipGrade;
+  return isNeutralGrade(grade) ? {} : { grade };
 }
 
 function transitionOf(v: unknown): { transition: Transition } | object {
@@ -1069,7 +1069,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(c.fit === "cover" || c.fit === "contain"
         ? { fit: c.fit as "cover" | "contain" }
         : {}),
-      ...colourFieldOf(c.color),
+      ...gradeFieldOf(c.grade),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
         ? { fade_in_s: c.fade_in_s }

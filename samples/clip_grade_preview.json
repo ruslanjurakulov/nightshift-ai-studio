@@ -1,5 +1,5 @@
 {
- "_comment": "The preview's feColorMatrix for a grade (command-center/lib/editorColour.ts colourMatrix), computed by the reference in tests/test_editor_colour.py. Both languages are pinned to it (command-center/tests/editor-colour.test.ts, tests/test_editor_colour.py); the Python test also measures a real ffmpeg export against it. 'still': a picture is converted with BT.601 luma weights, footage with BT.709.",
+ "_comment": "The preview's feColorMatrix for a clip's grade (command-center/lib/editorGrade.ts gradeMatrix), computed by the reference in tests/test_editor_grade.py. Both languages are pinned to it (command-center/tests/editor-grade.test.ts, tests/test_editor_grade.py); the Python test also measures a real ffmpeg export against it. 'still': a picture is converted with BT.601 luma weights, footage with BT.709.",
  "luma_601": [
   0.299,
   0.587,
@@ -14,71 +14,66 @@
  "eq_contrast_pivot": 0.5091324200913242,
  "cases": [
   {
-   "color": {
+   "still": false,
+   "matrix": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "grade": {
     "brightness": 0,
     "contrast": 1,
     "saturation": 1
-   },
+   }
+  },
+  {
    "still": false,
    "matrix": [
     1.0,
     0.0,
     0.0,
     0.0,
-    0.0,
-    0.0,
-    1.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
+    0.232877,
     0.0,
     1.0,
     0.0,
     0.0,
+    0.232877,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.232877,
     0.0,
     0.0,
     0.0,
     1.0,
     0.0
-   ]
-  },
-  {
-   "color": {
+   ],
+   "grade": {
     "brightness": 0.2,
     "contrast": 1,
     "saturation": 1
-   },
-   "still": false,
-   "matrix": [
-    1.0,
-    0.0,
-    0.0,
-    0.0,
-    0.232877,
-    0.0,
-    1.0,
-    0.0,
-    0.0,
-    0.232877,
-    0.0,
-    0.0,
-    1.0,
-    0.0,
-    0.232877,
-    0.0,
-    0.0,
-    0.0,
-    1.0,
-    0.0
-   ]
+   }
   },
   {
-   "color": {
-    "brightness": -0.5,
-    "contrast": 1,
-    "saturation": 1
-   },
    "still": true,
    "matrix": [
     1.0,
@@ -101,14 +96,14 @@
     0.0,
     1.0,
     0.0
-   ]
+   ],
+   "grade": {
+    "brightness": -0.5,
+    "contrast": 1,
+    "saturation": 1
+   }
   },
   {
-   "color": {
-    "brightness": 0,
-    "contrast": 1.5,
-    "saturation": 1
-   },
    "still": false,
    "matrix": [
     1.1063,
@@ -131,14 +126,14 @@
     0.0,
     1.0,
     0.0
-   ]
+   ],
+   "grade": {
+    "brightness": 0,
+    "contrast": 1.5,
+    "saturation": 1
+   }
   },
   {
-   "color": {
-    "brightness": 0,
-    "contrast": 0.5,
-    "saturation": 1
-   },
    "still": true,
    "matrix": [
     0.8505,
@@ -161,14 +156,14 @@
     0.0,
     1.0,
     0.0
-   ]
+   ],
+   "grade": {
+    "brightness": 0,
+    "contrast": 0.5,
+    "saturation": 1
+   }
   },
   {
-   "color": {
-    "brightness": 0,
-    "contrast": 1,
-    "saturation": 0
-   },
    "still": false,
    "matrix": [
     0.2126,
@@ -191,14 +186,14 @@
     0.0,
     1.0,
     0.0
-   ]
-  },
-  {
-   "color": {
+   ],
+   "grade": {
     "brightness": 0,
     "contrast": 1,
-    "saturation": 2
-   },
+    "saturation": 0
+   }
+  },
+  {
    "still": true,
    "matrix": [
     1.701,
@@ -221,14 +216,14 @@
     0.0,
     1.0,
     0.0
-   ]
+   ],
+   "grade": {
+    "brightness": 0,
+    "contrast": 1,
+    "saturation": 2
+   }
   },
   {
-   "color": {
-    "brightness": 0.1,
-    "contrast": 1.2,
-    "saturation": 0.8
-   },
    "still": false,
    "matrix": [
     0.88504,
@@ -251,14 +246,14 @@
     0.0,
     1.0,
     0.0
-   ]
+   ],
+   "grade": {
+    "brightness": 0.1,
+    "contrast": 1.2,
+    "saturation": 0.8
+   }
   },
   {
-   "color": {
-    "brightness": -1,
-    "contrast": 2,
-    "saturation": 3
-   },
    "still": true,
    "matrix": [
     2.701,
@@ -281,14 +276,14 @@
     0.0,
     1.0,
     0.0
-   ]
+   ],
+   "grade": {
+    "brightness": -1,
+    "contrast": 2,
+    "saturation": 3
+   }
   },
   {
-   "color": {
-    "brightness": 1,
-    "contrast": 0,
-    "saturation": 0
-   },
    "still": false,
    "matrix": [
     0.0,
@@ -311,7 +306,12 @@
     0.0,
     1.0,
     0.0
-   ]
+   ],
+   "grade": {
+    "brightness": 1,
+    "contrast": 0,
+    "saturation": 0
+   }
   }
  ]
 }

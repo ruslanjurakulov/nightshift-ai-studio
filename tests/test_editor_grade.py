@@ -1,23 +1,23 @@
 """A clip's colour grade (brightness, contrast, saturation), end to end.
 
-The document holds ``color: {brightness, contrast, saturation}`` on a V clip
-(modules/timeline.py COLOR_RANGES: -1..1, 0..2, 0..3; no field = no change).
+The document holds ``grade: {brightness, contrast, saturation}`` on a V clip
+(modules/timeline.py GRADE_RANGES: -1..1, 0..2, 0..3; no field = no change).
 The EXPORT applies the three numbers with ffmpeg ``eq`` (render_backend
-``colour_grade``); the editor PREVIEW draws them as an SVG feColorMatrix used
-as a CSS filter (command-center/lib/editorColour.ts ``colourMatrix``).
+``grade_filter``); the editor PREVIEW draws them as an SVG feColorMatrix used
+as a CSS filter (command-center/lib/editorGrade.ts ``gradeMatrix``).
 
 What is pinned here, by class:
 
 * the document: ranges, strict fields, normalisation, split, the JSON schema;
-* the argv: a clip without ``color`` (or with a neutral one) renders the SAME
+* the argv: a clip without ``grade`` (or with a neutral one) renders the SAME
   command lists as before colour existed; with one, ``eq`` is where it must be
   (before the pad so bars stay black, before the fades, on stills, on both
   sides of a cross-fade);
 * the PARITY with the preview: real ffmpeg renders flat patches, and the
   pixels of the export are compared with the preview matrix applied to the
   ungraded export's pixels. The matrix is the one in
-  samples/clip_colour_preview.json, which the TypeScript test
-  (command-center/tests/editor-colour.test.ts) pins the preview to.
+  samples/clip_grade_preview.json, which the TypeScript test
+  (command-center/tests/editor-grade.test.ts) pins the preview to.
 
 What the parity does NOT prove: that a browser draws a CSS filter with
 identical pixels (it compares the arithmetic the browser is given with
@@ -43,24 +43,24 @@ from modules import timeline as tl
 from modules import timeline_render as tr
 
 ROOT = Path(__file__).resolve().parent.parent
-COLOUR_TS = ROOT / "command-center" / "lib" / "editorColour.ts"
-FIXTURE = ROOT / "samples" / "clip_colour_preview.json"
+GRADE_TS = ROOT / "command-center" / "lib" / "editorGrade.ts"
+FIXTURE = ROOT / "samples" / "clip_grade_preview.json"
 ASSET = "11111111-1111-4111-8111-111111111111"
 ASSET2 = "22222222-2222-4222-8222-222222222222"
 GRADE = {"brightness": 0.2, "contrast": 1.3, "saturation": 0.7}
 
 # ── the reference implementation of the preview's arithmetic ────────────────
-# (editorColour.ts colourMatrix; the fixture ties the two together)
+# (editorGrade.ts gradeMatrix; the fixture ties the two together)
 LUMA_601 = (0.299, 0.587, 0.114)
 LUMA_709 = (0.2126, 0.7152, 0.0722)
 EQ_BRIGHTNESS_GAIN = 255 / 219
 EQ_CONTRAST_PIVOT = (127.5 - 16) / 219
 
 
-def preview_matrix(color, still):
+def preview_matrix(grade, still):
     """The 20 numbers of the preview's feColorMatrix for a grade."""
     w = LUMA_601 if still else LUMA_709
-    b, c, s = color["brightness"], color["contrast"], color["saturation"]
+    b, c, s = grade["brightness"], grade["contrast"], grade["saturation"]
     k = (1 - c) * EQ_CONTRAST_PIVOT + EQ_BRIGHTNESS_GAIN * b
     rows = []
     for ch in range(3):
@@ -97,81 +97,100 @@ def doc_with(extra=None, **top):
 
 
 class DocumentTestCase(unittest.TestCase):
-    def problems(self, color):
-        return tl.validate(doc_with({"color": color}))
+    def problems(self, grade):
+        return tl.validate(doc_with({"grade": grade}))
 
     def test_a_grade_inside_every_range_is_valid_including_the_ends(self):
-        for color in (GRADE,
+        for grade in (GRADE,
                       {"brightness": -1, "contrast": 0, "saturation": 0},
                       {"brightness": 1, "contrast": 2, "saturation": 3},
                       {"brightness": 0, "contrast": 1, "saturation": 1}):
-            self.assertEqual(self.problems(color), [], color)
+            self.assertEqual(self.problems(grade), [], grade)
 
-    def test_a_clip_without_color_is_valid_and_unchanged_by_normalise(self):
+    def test_a_clip_without_grade_is_valid_and_unchanged_by_normalise(self):
         doc = doc_with()
         self.assertEqual(tl.validate(doc), [])
-        self.assertNotIn("color", tl.normalise(doc)["tracks"][0]["clips"][0])
+        self.assertNotIn("grade", tl.normalise(doc)["tracks"][0]["clips"][0])
 
     def test_every_number_outside_its_range_is_refused_naming_the_field(self):
-        for key, (lo, hi) in tl.COLOR_RANGES.items():
+        for key, (lo, hi) in tl.GRADE_RANGES.items():
             for bad in (lo - 0.001, hi + 0.001, lo - 5, hi + 5):
-                color = {**tl.COLOR_NEUTRAL, key: bad}
-                problems = self.problems(color)
-                self.assertTrue(any(f"color: {key} must be a number" in p for p in problems),
+                grade = {**tl.GRADE_NEUTRAL, key: bad}
+                problems = self.problems(grade)
+                self.assertTrue(any(f"grade: {key} must be a number" in p for p in problems),
                                 (key, bad, problems))
+
+    def test_an_int_too_large_for_a_float_is_refused_not_raised(self):
+        # math.isfinite(10**400) raises OverflowError; such a document can only get
+        # in by writing the database directly, and must end as invalid, never as a crash
+        big = 10 ** 400
+        for key in tl.GRADE_RANGES:
+            for sign in (1, -1):
+                problems = self.problems({**tl.GRADE_NEUTRAL, key: sign * big})
+                self.assertTrue(any(f"grade: {key} must be a number" in p for p in problems), key)
+                self.assertTrue(all(len(p) < 300 for p in problems), "the message stays short")
+        doc = doc_with({"start_s": big})
+        self.assertTrue(any("start_s must be a number" in p for p in tl.validate(doc)))
+        with self.assertRaises(tl.TimelineError):
+            tl.load(doc)
+        with self.assertRaises(tl.TimelineError):
+            tr.to_render_spec(doc, lambda a: None, "/out/x.mp4")
+        top = doc_with(width=big, fps=big, version=big)
+        self.assertTrue(tl.validate(top))
+        self.assertFalse(rs._finite(big))
 
     def test_not_a_number_is_refused(self):
         for bad in ("0.1", True, None, [0], {"v": 1}, float("nan"), float("inf")):
-            self.assertTrue(self.problems({**tl.COLOR_NEUTRAL, "contrast": bad}), bad)
+            self.assertTrue(self.problems({**tl.GRADE_NEUTRAL, "contrast": bad}), bad)
 
     def test_the_shape_is_strict(self):
         self.assertTrue(any("saturation is missing" in p
                             for p in self.problems({"brightness": 0, "contrast": 1})))
         self.assertTrue(any("hue is not a known field" in p
-                            for p in self.problems({**tl.COLOR_NEUTRAL, "hue": 5})))
+                            for p in self.problems({**tl.GRADE_NEUTRAL, "hue": 5})))
         for bad in ([0, 1, 1], "none", 5, None):
             self.assertTrue(any("must be an object" in p for p in self.problems(bad)), bad)
 
-    def test_color_belongs_to_picture_clips_only(self):
+    def test_grade_belongs_to_picture_clips_only(self):
         doc = doc_with()
         doc["tracks"].append({"id": "a1", "kind": "A", "clips": [
             {"id": "m1", "asset_id": ASSET2, "start_s": 0, "in_s": 0, "out_s": 1,
-             "color": dict(GRADE)}]})
-        self.assertTrue(any("color is not a known field" in p for p in tl.validate(doc)))
+             "grade": dict(GRADE)}]})
+        self.assertTrue(any("grade is not a known field" in p for p in tl.validate(doc)))
 
     def test_normalise_rounds_to_milliseconds_and_drops_a_neutral_grade(self):
-        norm = tl.normalise(doc_with({"color": {"brightness": 0.123456, "contrast": 1.2,
+        norm = tl.normalise(doc_with({"grade": {"brightness": 0.123456, "contrast": 1.2,
                                                  "saturation": 0.8}}))
-        self.assertEqual(norm["tracks"][0]["clips"][0]["color"],
+        self.assertEqual(norm["tracks"][0]["clips"][0]["grade"],
                          {"brightness": 0.123, "contrast": 1.2, "saturation": 0.8})
-        neutral = tl.normalise(doc_with({"color": {"brightness": 0.0001, "contrast": 1.0004,
+        neutral = tl.normalise(doc_with({"grade": {"brightness": 0.0001, "contrast": 1.0004,
                                                     "saturation": 1}}))
-        self.assertNotIn("color", neutral["tracks"][0]["clips"][0])
+        self.assertNotIn("grade", neutral["tracks"][0]["clips"][0])
         # the same meaning, the same document
         self.assertEqual(neutral, tl.normalise(doc_with()))
 
     def test_a_split_keeps_the_grade_on_both_halves(self):
-        doc = doc_with({"color": dict(GRADE)})
+        doc = doc_with({"grade": dict(GRADE)})
         out = tl.split_clip(doc, "c1", 1.0, "c2")
-        self.assertEqual([c["color"] for c in out["tracks"][0]["clips"]], [GRADE, GRADE])
+        self.assertEqual([c["grade"] for c in out["tracks"][0]["clips"]], [GRADE, GRADE])
 
     def test_the_json_schema_names_the_same_ranges(self):
         schema = json.loads(tl.SCHEMA_PATH.read_text(encoding="utf-8"))
-        props = schema["$defs"]["color"]["properties"]
+        props = schema["$defs"]["grade"]["properties"]
         self.assertEqual({k: (p["minimum"], p["maximum"], p["default"]) for k, p in props.items()},
-                         {k: (*tl.COLOR_RANGES[k], tl.COLOR_NEUTRAL[k]) for k in tl.COLOR_RANGES})
-        self.assertIn("color", schema["$defs"]["video_clip"]["properties"])
+                         {k: (*tl.GRADE_RANGES[k], tl.GRADE_NEUTRAL[k]) for k in tl.GRADE_RANGES})
+        self.assertIn("grade", schema["$defs"]["video_clip"]["properties"])
 
     def test_document_and_render_spec_agree_on_the_ranges(self):
-        self.assertEqual(rs.COLOR_RANGES, tl.COLOR_RANGES)
-        self.assertEqual(rs.COLOR_NEUTRAL, tl.COLOR_NEUTRAL)
+        self.assertEqual(rs.GRADE_RANGES, tl.GRADE_RANGES)
+        self.assertEqual(rs.GRADE_NEUTRAL, tl.GRADE_NEUTRAL)
 
     def test_the_editor_module_has_the_same_ranges(self):
-        ts = COLOUR_TS.read_text(encoding="utf-8")
+        ts = GRADE_TS.read_text(encoding="utf-8")
         found = {m[0]: (float(m[1]), float(m[2]), float(m[3])) for m in re.findall(
             r"(\w+):\s*\{\s*min:\s*(-?[\d.]+),\s*max:\s*(-?[\d.]+),\s*neutral:\s*(-?[\d.]+)", ts)}
-        self.assertEqual(found, {k: (*tl.COLOR_RANGES[k], tl.COLOR_NEUTRAL[k])
-                                 for k in tl.COLOR_RANGES})
+        self.assertEqual(found, {k: (*tl.GRADE_RANGES[k], tl.GRADE_NEUTRAL[k])
+                                 for k in tl.GRADE_RANGES})
 
 
 # ── the argv ────────────────────────────────────────────────────────────────
@@ -209,12 +228,12 @@ def mixed(extra_a=None, extra_b=None):
 
 
 class CommandTestCase(unittest.TestCase):
-    def test_no_color_and_a_neutral_color_render_the_commands_they_always_did(self):
+    def test_no_grade_and_a_neutral_grade_render_the_commands_they_always_did(self):
         base = commands(spec_of(mixed()))
-        neutral = {"color": {"brightness": 0, "contrast": 1, "saturation": 1}}
+        neutral = {"grade": {"brightness": 0, "contrast": 1, "saturation": 1}}
         self.assertEqual(commands(spec_of(mixed(neutral, neutral))), base)
         # tiny values that round to "no change" in the document
-        near = {"color": {"brightness": 0.0004, "contrast": 1.0003, "saturation": 0.9996}}
+        near = {"grade": {"brightness": 0.0004, "contrast": 1.0003, "saturation": 0.9996}}
         self.assertEqual(commands(spec_of(mixed(near, near))), base)
         self.assertNotIn("eq=", json.dumps(base))
         # ... and the spec itself is the dict it was (it is compared and cached elsewhere)
@@ -223,19 +242,19 @@ class CommandTestCase(unittest.TestCase):
 
     def test_a_graded_clip_changes_only_its_own_commands(self):
         base = commands(spec_of(mixed()))
-        graded = commands(spec_of(mixed({"color": dict(GRADE)})))
+        graded = commands(spec_of(mixed({"grade": dict(GRADE)})))
         self.assertNotEqual(graded[0], base[0])
         self.assertEqual(graded[1:], base[1:], "the still next to it is untouched")
 
     def test_video_contain_grades_before_the_pad_so_the_bars_stay_black(self):
-        (cmd,), = commands(spec_of(mixed({"color": dict(GRADE)})))[:1]
+        (cmd,), = commands(spec_of(mixed({"grade": dict(GRADE)})))[:1]
         self.assertEqual(
             vf(cmd),
             "scale=1280:720:force_original_aspect_ratio=decrease," + EQ
             + ",pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30")
 
     def test_video_cover_grades_the_cropped_frame_and_before_the_fades(self):
-        doc = mixed({"color": dict(GRADE), "fit": "cover", "fade_out_s": 0.5})
+        doc = mixed({"grade": dict(GRADE), "fit": "cover", "fade_out_s": 0.5})
         (cmd,), = commands(spec_of(doc))[:1]
         self.assertEqual(
             vf(cmd),
@@ -243,7 +262,7 @@ class CommandTestCase(unittest.TestCase):
             + ",fade=t=out:st=1.500:d=0.500")
 
     def test_a_still_is_graded_in_the_move_and_in_the_held_fallback(self):
-        doc = mixed(extra_b={"color": dict(GRADE), "fade_in_s": 0.5})
+        doc = mixed(extra_b={"grade": dict(GRADE), "fade_in_s": 0.5})
         move, hold = commands(spec_of(doc))[1]
         self.assertIn("," + EQ + ",fade=t=in:st=0:d=0.500", vf(move))
         self.assertTrue(vf(move).rstrip().endswith("d=0.500"))
@@ -253,9 +272,9 @@ class CommandTestCase(unittest.TestCase):
             + ",fade=t=in:st=0:d=0.500")
 
     def test_both_sides_of_a_crossfade_carry_their_own_grade(self):
-        doc = mixed({"color": dict(GRADE)},
+        doc = mixed({"grade": dict(GRADE)},
                     {"start_s": 1, "transition": {"type": "crossfade", "duration_s": 1},
-                     "color": {"brightness": -0.3, "contrast": 1, "saturation": 1}})
+                     "grade": {"brightness": -0.3, "contrast": 1, "saturation": 1}})
         xseg = next(s for s in spec_of(doc).segments if s.xfade is not None)
         self.assertEqual(xseg.contrast, 1.3)
         self.assertEqual(xseg.xfade.brightness, -0.3)
@@ -271,7 +290,7 @@ class CommandTestCase(unittest.TestCase):
     def test_nothing_from_the_document_reaches_the_filter_as_text(self):
         # the numbers are validated floats formatted by the backend: a string never gets there
         for bad in ("0.1;movie=/etc/passwd", "0.1,eq", True, None):
-            doc = mixed({"color": {"brightness": bad, "contrast": 1, "saturation": 1}})
+            doc = mixed({"grade": {"brightness": bad, "contrast": 1, "saturation": 1}})
             with self.assertRaises(tl.TimelineError):
                 spec_of(doc)
 
@@ -298,13 +317,13 @@ class FixtureTestCase(unittest.TestCase):
         self.assertAlmostEqual(fx["eq_contrast_pivot"], EQ_CONTRAST_PIVOT, places=9)
         self.assertGreaterEqual(len(fx["cases"]), 8)
         for case in fx["cases"]:
-            got = preview_matrix(case["color"], case["still"])
+            got = preview_matrix(case["grade"], case["still"])
             for g, want in zip(got, case["matrix"]):
                 self.assertAlmostEqual(g, want, places=6, msg=str(case))
 
     def test_the_neutral_grade_is_the_identity(self):
         for still in (True, False):
-            m = preview_matrix(tl.COLOR_NEUTRAL, still)
+            m = preview_matrix(tl.GRADE_NEUTRAL, still)
             ident = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
             for g, want in zip(m, ident):
                 self.assertAlmostEqual(g, want, places=9)
@@ -409,10 +428,10 @@ class _Real(unittest.TestCase):
                 yield (r * GRID + c,
                        x0 + int((c + 0.5) * pic_w / GRID), y0 + int((r + 0.5) * pic_h / 2))
 
-    def clip(self, color=None, **extra):
+    def clip(self, grade=None, **extra):
         clip = {"id": "c1", "asset_id": ASSET, "start_s": 0, "in_s": 0, "out_s": 0.5, **extra}
-        if color is not None:
-            clip["color"] = color
+        if grade is not None:
+            clip["grade"] = grade
         return clip
 
     def px(self, raw, w, x, y):
@@ -455,9 +474,9 @@ class ExportMatchesPreviewTestCase(_Real):
     def test_the_grade_moves_the_pixels_the_way_the_names_say(self):
         asset = self.video("d", patch_ppm())
         w, h, base = self.export(asset, [self.clip()], "bt709")
-        _, _, bright = self.export(asset, [self.clip({**tl.COLOR_NEUTRAL, "brightness": 0.3})], "bt709")
-        _, _, mono = self.export(asset, [self.clip({**tl.COLOR_NEUTRAL, "saturation": 0})], "bt709")
-        _, _, flat = self.export(asset, [self.clip({**tl.COLOR_NEUTRAL, "contrast": 0})], "bt709")
+        _, _, bright = self.export(asset, [self.clip({**tl.GRADE_NEUTRAL, "brightness": 0.3})], "bt709")
+        _, _, mono = self.export(asset, [self.clip({**tl.GRADE_NEUTRAL, "saturation": 0})], "bt709")
+        _, _, flat = self.export(asset, [self.clip({**tl.GRADE_NEUTRAL, "contrast": 0})], "bt709")
         for i, x, y in self.probes(w, h):
             b, br, mo, fl = (self.px(r, w, x, y) for r in (base, bright, mono, flat))
             self.assertTrue(all(q > p + 40 for p, q in zip(b, br)), (b, br))
@@ -470,12 +489,12 @@ class ExportMatchesPreviewTestCase(_Real):
     def test_letterbox_bars_stay_black(self):
         # a 2:1 picture in the 9:16 frame leaves bars top and bottom
         asset = self.video("bars", patch_ppm())
-        for color in (None, {"brightness": 0.4, "contrast": 1.5, "saturation": 1}):
-            w, h, raw = self.export(asset, [self.clip(color)], "bt709", fps_preset="9:16")
+        for grade in (None, {"brightness": 0.4, "contrast": 1.5, "saturation": 1}):
+            w, h, raw = self.export(asset, [self.clip(grade)], "bt709", fps_preset="9:16")
             for y in (5, h // 10, h - 6):
-                self.assertLessEqual(max(self.px(raw, w, w // 2, y)), 20, (color, y))
+                self.assertLessEqual(max(self.px(raw, w, w // 2, y)), 20, (grade, y))
 
-    def test_a_clip_without_color_exports_the_same_pixels_as_before(self):
+    def test_a_clip_without_grade_exports_the_same_pixels_as_before(self):
         asset = self.video("same", patch_ppm())
         _, _, a = self.export(asset, [self.clip()], "bt709")
         _, _, b = self.export(asset, [self.clip({"brightness": 0, "contrast": 1, "saturation": 1})],
@@ -495,9 +514,9 @@ class ExportMatchesPreviewTestCase(_Real):
             c2 = {"id": "c2", "asset_id": ASSET2, "start_s": 0.4, "in_s": 0, "out_s": 0.6,
                   "transition": {"type": "crossfade", "duration_s": 0.2}}
             if g1:
-                c1["color"] = g1
+                c1["grade"] = g1
             if g2:
-                c2["color"] = g2
+                c2["grade"] = g2
             return [c1, c2]
 
         def centre(frame, g1, g2):

@@ -232,13 +232,13 @@
           "default": false,
           "description": "Play the video's own sound, trimmed and sped like the picture. Off by default so older documents render as before; a source with no sound is silent."
         },
-        "color": {
-          "$ref": "#/$defs/color",
+        "grade": {
+          "$ref": "#/$defs/grade",
           "description": "Per-clip colour grade (ffmpeg eq). Absent = no change, and the clip renders exactly as it did before colour existed."
         }
       }
     },
-    "color": {
+    "grade": {
       "type": "object",
       "additionalProperties": false,
       "required": [

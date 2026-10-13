@@ -4738,7 +4738,7 @@
    }
   },
   {
-   "name": "colour grade on a clip",
+   "name": "grade on a clip",
    "valid": true,
    "doc": {
     "version": 1,
@@ -4756,7 +4756,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0.15,
          "contrast": 1.2,
          "saturation": 0.8
@@ -4768,7 +4768,7 @@
    }
   },
   {
-   "name": "colour at the ends of every range",
+   "name": "grade at the ends of every range",
    "valid": true,
    "doc": {
     "version": 1,
@@ -4786,7 +4786,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": -1,
          "contrast": 2,
          "saturation": 3
@@ -4798,7 +4798,7 @@
    }
   },
   {
-   "name": "colour at the other ends of every range",
+   "name": "grade at the other ends of every range",
    "valid": true,
    "doc": {
     "version": 1,
@@ -4816,7 +4816,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 1,
          "contrast": 0,
          "saturation": 0
@@ -4828,7 +4828,7 @@
    }
   },
   {
-   "name": "neutral colour grade",
+   "name": "neutral grade",
    "valid": true,
    "doc": {
     "version": 1,
@@ -4846,7 +4846,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 1,
          "saturation": 1
@@ -4858,7 +4858,7 @@
    }
   },
   {
-   "name": "colour brightness above 1",
+   "name": "grade brightness above 1",
    "valid": false,
    "doc": {
     "version": 1,
@@ -4876,7 +4876,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 1.01,
          "contrast": 1,
          "saturation": 1
@@ -4888,7 +4888,7 @@
    }
   },
   {
-   "name": "colour brightness below -1",
+   "name": "grade brightness below -1",
    "valid": false,
    "doc": {
     "version": 1,
@@ -4906,7 +4906,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": -1.01,
          "contrast": 1,
          "saturation": 1
@@ -4918,7 +4918,7 @@
    }
   },
   {
-   "name": "colour contrast above 2",
+   "name": "grade contrast above 2",
    "valid": false,
    "doc": {
     "version": 1,
@@ -4936,7 +4936,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 2.01,
          "saturation": 1
@@ -4948,7 +4948,7 @@
    }
   },
   {
-   "name": "colour contrast below 0",
+   "name": "grade contrast below 0",
    "valid": false,
    "doc": {
     "version": 1,
@@ -4966,7 +4966,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": -0.01,
          "saturation": 1
@@ -4978,7 +4978,7 @@
    }
   },
   {
-   "name": "colour saturation above 3",
+   "name": "grade saturation above 3",
    "valid": false,
    "doc": {
     "version": 1,
@@ -4996,7 +4996,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 1,
          "saturation": 3.01
@@ -5008,7 +5008,7 @@
    }
   },
   {
-   "name": "colour saturation below 0",
+   "name": "grade saturation below 0",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5026,7 +5026,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 1,
          "saturation": -0.01
@@ -5038,7 +5038,7 @@
    }
   },
   {
-   "name": "colour value as text",
+   "name": "grade value as text",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5056,7 +5056,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": "0.1",
          "contrast": 1,
          "saturation": 1
@@ -5068,7 +5068,7 @@
    }
   },
   {
-   "name": "colour value as boolean",
+   "name": "grade value as boolean",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5086,7 +5086,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": true,
          "saturation": 1
@@ -5098,7 +5098,7 @@
    }
   },
   {
-   "name": "colour value null",
+   "name": "grade value null",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5116,7 +5116,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 1,
          "saturation": null
@@ -5128,7 +5128,7 @@
    }
   },
   {
-   "name": "colour without saturation",
+   "name": "grade without saturation",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5146,7 +5146,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 1
         }
@@ -5157,7 +5157,7 @@
    }
   },
   {
-   "name": "colour with a hue field",
+   "name": "grade with a hue field",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5175,7 +5175,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 1,
          "saturation": 1,
@@ -5188,7 +5188,7 @@
    }
   },
   {
-   "name": "colour that is not an object",
+   "name": "grade that is not an object",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5206,7 +5206,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": [
+        "grade": [
          0,
          1,
          1
@@ -5218,7 +5218,7 @@
    }
   },
   {
-   "name": "colour that is null",
+   "name": "grade that is null",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5236,7 +5236,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 4,
-        "color": null
+        "grade": null
        }
       ]
      }
@@ -5244,7 +5244,7 @@
    }
   },
   {
-   "name": "colour on a music clip",
+   "name": "grade on a music clip",
    "valid": false,
    "doc": {
     "version": 1,
@@ -5275,7 +5275,7 @@
         "start_s": 0,
         "in_s": 0,
         "out_s": 2,
-        "color": {
+        "grade": {
          "brightness": 0,
          "contrast": 1,
          "saturation": 1

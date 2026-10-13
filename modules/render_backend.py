@@ -124,7 +124,7 @@ def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
         )
 
 
-def colour_grade(seg: Segment) -> str:
+def grade_filter(seg: Segment) -> str:
     """The ffmpeg ``eq`` filter for a segment's colour grade ('' when it has
     none — then NO filter is added and the command is the one it always was).
     ``format=yuv420p`` first: eq works on the Y/U/V planes (brightness and
@@ -319,7 +319,7 @@ def _segment_commands(
         style = ken_burns_style(seed if seed is not None else seg.path)
         # Same length as the static hold: the frame count is the one the
         # old path produced, only the pixels move.
-        grade = colour_grade(seg)
+        grade = grade_filter(seg)
         vf = ken_burns_filter(style, width, height, fps,
                               float(full) if frame_exact else float(dur) * fps) + _then(grade) + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
@@ -334,7 +334,7 @@ def _segment_commands(
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
-             "-vf", speed_filter(seg.speed) + fit(width, height, fps, colour_grade(seg)) + fades,
+             "-vf", speed_filter(seg.speed) + fit(width, height, fps, grade_filter(seg)) + fades,
              *common,
              str(out_path)]]
 
@@ -349,7 +349,7 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     full = segment_frames(seg.full_s, fps)
     tail = (_fade_filters(seg, full / fps) + _piece_trim(seg, fps)
             + f",settb=1/{fps},fps={fps},format=yuv420p")
-    grade = colour_grade(seg)
+    grade = grade_filter(seg)
     if seg.kind == KIND_IMAGE:
         if hold:
             # A timeline's still fills the frame in the move, so it does held too.
