@@ -17,6 +17,9 @@ How a timeline maps onto the spec:
 * **Speed** — a V clip's ``speed`` becomes the segment's (``setpts``): its
   slot on the frame grid is already the sped-up length, and the source range
   ``in_s``..``out_s`` fills it.
+* **Colour** — a V clip's ``color`` (brightness / contrast / saturation) becomes
+  the segment's fields and the backend's ffmpeg ``eq``, on video and stills,
+  on a cross-fade's two sides alike; a clip without it adds no filter at all.
 * **Cross-fade** — two V clips that overlap by a ``crossfade`` transition
   become: the first clip's own part, ONE segment of the overlap that holds
   both pictures (``Segment.xfade``; the backend blends them with ffmpeg
@@ -82,6 +85,13 @@ def _crossfade_frames(clips: List[dict], fps: int) -> dict:
     return out
 
 
+def _grade(clip: dict) -> dict:
+    """The clip's colour as Segment fields ({} without it: the segment is then
+    exactly what it was before colour existed; normalise() has already dropped
+    a neutral grade)."""
+    return dict(clip["color"]) if "color" in clip else {}
+
+
 def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
     fps = doc["fps"]
     segments: List[Segment] = []
@@ -114,6 +124,7 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 clip_s=full / fps if full else 0.0,
                 offset_s=offset / fps,
                 seed=seed,
+                **_grade(clip),
             )
 
         for i, clip in enumerate(clips):

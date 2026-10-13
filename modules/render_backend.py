@@ -124,12 +124,34 @@ def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
         )
 
 
-def _scale_pad(width: int, height: int, fps: int) -> str:
+def colour_grade(seg: Segment) -> str:
+    """The ffmpeg ``eq`` filter for a segment's colour grade ('' when it has
+    none — then NO filter is added and the command is the one it always was).
+    ``format=yuv420p`` first: eq works on the Y/U/V planes (brightness and
+    contrast on the luma, saturation on the chroma); a still read as RGB would
+    otherwise reach it as GBR planes and be graded per channel. The three
+    numbers come from validated floats and are formatted here, never pasted
+    from a document."""
+    if not seg.graded:
+        return ""
+    return (f"format=yuv420p,eq=brightness={seg.brightness:.3f}"
+            f":contrast={seg.contrast:.3f}:saturation={seg.saturation:.3f}")
+
+
+def _then(grade: str) -> str:
+    """``,<grade>`` for appending to a chain ('' for no grade)."""
+    return "," + grade if grade else ""
+
+
+def _scale_pad(width: int, height: int, fps: int, grade: str = "") -> str:
     """A filter that fits any source into width×height without distortion
     (letter/pillar-boxed) at the target fps — the normalisation the concat
-    demuxer needs so segments share codec, size and rate."""
+    demuxer needs so segments share codec, size and rate. A colour ``grade``
+    goes BEFORE the pad, so the bars stay black (the preview's CSS filter
+    does not reach the empty part of the box either)."""
     return (
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"{grade + ',' if grade else ''}"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,fps={fps}"
     )
 
@@ -198,11 +220,12 @@ def ken_burns_filter(style: str, width: int, height: int, fps: int, frames: floa
             f"scale={w}:{h}:flags=lanczos")
 
 
-def _scale_crop(width: int, height: int, fps: int) -> str:
+def _scale_crop(width: int, height: int, fps: int, grade: str = "") -> str:
     """Fill width×height, cropping the overflow (a timeline clip's
-    ``fit: cover`` — e.g. 16:9 footage in a 9:16 frame without bars)."""
+    ``fit: cover`` — e.g. 16:9 footage in a 9:16 frame without bars). A colour
+    ``grade`` runs last, on the frames that are kept (after the fps cut)."""
     return (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},fps={fps}")
+            f"crop={width}:{height},fps={fps}" + _then(grade))
 
 
 def _fade_filters(seg: Segment, length_s: float) -> str:
@@ -229,13 +252,13 @@ def _piece_trim(seg: Segment, fps: int) -> str:
 def _static_image_cmd(ffmpeg: str, path: str, dur: str, width: int, height: int,
                       fps: int, common: List[str], out_path: Path, *,
                       length: Optional[List[str]] = None, extra_vf: str = "",
-                      fill: bool = False) -> List[str]:
+                      fill: bool = False, grade: str = "") -> List[str]:
     """The still held without a move. ``fill`` crops the middle to cover the
     frame (a timeline's stills, as the Ken Burns move that this stands in for
     does); the default letter/pillar-boxes it, as the pipeline always has."""
     fit = _scale_crop if fill else _scale_pad
     return [ffmpeg, "-y", "-loop", "1", "-i", path, *(length or ["-t", dur]),
-            "-vf", fit(width, height, fps) + extra_vf, *common, str(out_path)]
+            "-vf", fit(width, height, fps, grade) + extra_vf, *common, str(out_path)]
 
 
 def segment_commands(
@@ -296,11 +319,12 @@ def _segment_commands(
         style = ken_burns_style(seed if seed is not None else seg.path)
         # Same length as the static hold: the frame count is the one the
         # old path produced, only the pixels move.
+        grade = colour_grade(seg)
         vf = ken_burns_filter(style, width, height, fps,
-                              float(full) if frame_exact else float(dur) * fps) + fades
+                              float(full) if frame_exact else float(dur) * fps) + _then(grade) + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
                                  length=length if frame_exact else None, extra_vf=fades,
-                                 fill=frame_exact)
+                                 fill=frame_exact, grade=grade)
         return [[ffmpeg, "-y", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     # KIND_VIDEO. -stream_loop -1: a source shorter than its slot is looped (as
     # the MoviePy compositor does with vc.loop) instead of yielding a short
@@ -310,7 +334,8 @@ def _segment_commands(
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
-             "-vf", speed_filter(seg.speed) + fit(width, height, fps) + fades, *common,
+             "-vf", speed_filter(seg.speed) + fit(width, height, fps, colour_grade(seg)) + fades,
+             *common,
              str(out_path)]]
 
 
@@ -324,16 +349,18 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     full = segment_frames(seg.full_s, fps)
     tail = (_fade_filters(seg, full / fps) + _piece_trim(seg, fps)
             + f",settb=1/{fps},fps={fps},format=yuv420p")
+    grade = colour_grade(seg)
     if seg.kind == KIND_IMAGE:
         if hold:
             # A timeline's still fills the frame in the move, so it does held too.
-            return ["-loop", "1", "-i", seg.path], _scale_crop(width, height, fps) + tail
+            return ["-loop", "1", "-i", seg.path], _scale_crop(width, height, fps, grade) + tail
         return (["-i", seg.path],
-                ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full)) + tail)
+                ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
+                + _then(grade) + tail)
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            speed_filter(seg.speed) + fit(width, height, fps) + tail)
+            speed_filter(seg.speed) + fit(width, height, fps, grade) + tail)
 
 
 def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,

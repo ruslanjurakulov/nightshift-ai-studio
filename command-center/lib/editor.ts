@@ -22,6 +22,13 @@
  * no provider) and ends as a file in the library.
  */
 
+import {
+  COLOUR_KEYS,
+  COLOUR_RANGES,
+  isNeutralColour,
+  type ClipColour,
+} from "@/lib/editorColour";
+
 // ── limits (modules/timeline.py, render_spec.py and 0054 hold the same) ─────
 
 export const TIMELINE_VERSION = 1;
@@ -134,6 +141,7 @@ const V_CLIP_KEYS = [
   "transition",
   "speed",
   "audio",
+  "color",
 ];
 const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
 const T_REQUIRED = ["id", "start_s", "end_s", "text"];
@@ -176,6 +184,8 @@ export interface VideoClip {
   speed: number;
   audio: boolean;
   fit?: "contain" | "cover";
+  /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorColour.ts. */
+  color?: ClipColour;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -586,6 +596,25 @@ function validateMediaClip(
   if (kind === "V") {
     if ("fit" in clip && !(FITS as readonly unknown[]).includes(clip.fit))
       problems.push(`${where}: fit must be contain or cover`);
+    if (
+      "color" in clip &&
+      fields(
+        clip.color,
+        [...COLOUR_KEYS],
+        [...COLOUR_KEYS],
+        `${where} color`,
+        problems,
+      )
+    )
+      for (const k of COLOUR_KEYS)
+        numIn(
+          clip.color,
+          k,
+          COLOUR_RANGES[k].min,
+          COLOUR_RANGES[k].max,
+          `${where} color`,
+          problems,
+        );
     if ("transition" in clip) {
       const tr = clip.transition;
       if (
@@ -988,6 +1017,18 @@ const DEFAULT_TEXT: Omit<TextClip, "id" | "start_s" | "end_s" | "text"> = {
   bold: true,
 };
 
+/** A document's `color` as the model keeps it: the three numbers, or nothing
+ *  for none, an unusable value or "no change" (the same clip without it). */
+function colourFieldOf(v: unknown): { color: ClipColour } | object {
+  if (!isObj(v) || !COLOUR_KEYS.every((k) => isNum(v[k]))) return {};
+  const color = {
+    brightness: v.brightness,
+    contrast: v.contrast,
+    saturation: v.saturation,
+  } as ClipColour;
+  return isNeutralColour(color) ? {} : { color };
+}
+
 function transitionOf(v: unknown): { transition: Transition } | object {
   if (
     !isObj(v) ||
@@ -1028,6 +1069,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(c.fit === "cover" || c.fit === "contain"
         ? { fit: c.fit as "cover" | "contain" }
         : {}),
+      ...colourFieldOf(c.color),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
         ? { fade_in_s: c.fade_in_s }

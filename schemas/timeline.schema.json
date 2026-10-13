@@ -231,6 +231,42 @@
           "type": "boolean",
           "default": false,
           "description": "Play the video's own sound, trimmed and sped like the picture. Off by default so older documents render as before; a source with no sound is silent."
+        },
+        "color": {
+          "$ref": "#/$defs/color",
+          "description": "Per-clip colour grade (ffmpeg eq). Absent = no change, and the clip renders exactly as it did before colour existed."
+        }
+      }
+    },
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brightness",
+        "contrast",
+        "saturation"
+      ],
+      "properties": {
+        "brightness": {
+          "type": "number",
+          "minimum": -1.0,
+          "maximum": 1.0,
+          "default": 0,
+          "description": "Added to the luma (eq brightness): -1 black .. 1 white, 0 = no change."
+        },
+        "contrast": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 1,
+          "description": "Luma contrast around mid-grey (eq contrast): 0 flat grey .. 2 double, 1 = no change."
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 3.0,
+          "default": 1,
+          "description": "Chroma gain (eq saturation): 0 monochrome .. 3, 1 = no change."
         }
       }
     },

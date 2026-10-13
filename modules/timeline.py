@@ -16,7 +16,8 @@ not a project dependency — tests keep the two in sync)::
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s },
-              speed?: 0.5..2, audio?: bool }
+              speed?: 0.5..2, audio?: bool,
+              color?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
@@ -57,6 +58,14 @@ Rules this module keeps:
   The envelope comes from where those clips sit on the timeline, so the same
   document always renders the same sound. A speech track cannot itself be
   ducked, which keeps "who lowers whom" a one-way question.
+* **Colour is a per-clip grade, not a filter chain.** ``color`` holds exactly
+  three numbers that map one-to-one onto ffmpeg's ``eq`` filter (brightness
+  -1..1 added to the luma, contrast 0..2 around mid-grey, saturation 0..3 on
+  the chroma; 0 / 1 / 1 is "no change"). A clip without ``color`` — every
+  older document — renders exactly the command it always did; a neutral
+  ``color`` is dropped by ``normalise`` for the same reason. It applies to
+  the picture only (bars of a ``contain`` fit and fades to black stay black)
+  and to stills as well as video.
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
   and speed; a source with no sound track is silent, never an error.
@@ -107,6 +116,12 @@ MAX_ID = 64
 MAX_DOC_BYTES = 2_000_000
 
 FITS = ("contain", "cover")
+#: A clip's colour grade (ffmpeg ``eq`` brightness / contrast / saturation, each
+#: at its own range; render_spec.COLOR_* are the same numbers, a test pins them).
+#: Wider than that the picture is a flat colour: brightness +-1 is white / black,
+#: contrast 0 is a flat grey, saturation 0 is monochrome (3 is eq's own ceiling).
+COLOR_RANGES = {"brightness": (-1.0, 1.0), "contrast": (0.0, 2.0), "saturation": (0.0, 3.0)}
+COLOR_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
 TRANSITIONS = ("cut", "dip_to_black", "crossfade")
 #: A cross-fade's length: under 0.2 s it reads as a glitch, not a dissolve;
 #: over 2 s both clips are half-visible for longer than a viewer will wait.
@@ -154,7 +169,9 @@ _A_TRACK_KEYS = _TRACK_KEYS + ("role", "duck")
 _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
-_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio")
+_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
+                                  "color")
+_COLOR_KEYS = tuple(COLOR_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
@@ -429,6 +446,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
     if kind == KIND_V:
         if "fit" in clip and clip["fit"] not in FITS:
             problems.append(f"{where}: fit must be one of {list(FITS)}")
+        if "color" in clip and _fields(clip["color"], _COLOR_KEYS, _COLOR_KEYS,
+                                       f"{where} color", problems):
+            for k, (lo, hi) in COLOR_RANGES.items():
+                _num_in(clip["color"], k, lo, hi, f"{where} color", problems)
         if "transition" in clip:
             tr = clip["transition"]
             if _fields(tr, _TRANSITION_KEYS, _TRANSITION_KEYS, f"{where} transition", problems):
@@ -744,6 +765,10 @@ def normalise(doc: dict) -> dict:
                     c["transition"] = {"type": c["transition"]["type"],
                                        "duration_s": _ms(c["transition"]["duration_s"])}
                     c["speed"] = _ms(c["speed"])
+                    if "color" in c:
+                        c["color"] = {k: _ms(c["color"][k]) for k in COLOR_RANGES}
+                        if c["color"] == COLOR_NEUTRAL:
+                            del c["color"]   # no change: the clip is the one it was without it
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
             t["clips"].append(c)

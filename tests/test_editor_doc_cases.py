@@ -79,6 +79,33 @@ class DocCasesTestCase(unittest.TestCase):
                 problems = verdict(cases[name])
                 self.assertTrue(any(needle in p for p in problems), problems)
 
+    def test_the_colour_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "colour brightness above 1": "color: brightness must be a number >= -1 and <= 1",
+            "colour brightness below -1": "color: brightness must be a number >= -1 and <= 1",
+            "colour contrast above 2": "color: contrast must be a number >= 0 and <= 2",
+            "colour contrast below 0": "color: contrast must be a number >= 0 and <= 2",
+            "colour saturation above 3": "color: saturation must be a number >= 0 and <= 3",
+            "colour saturation below 0": "color: saturation must be a number >= 0 and <= 3",
+            "colour value as text": "color: brightness must be a number",
+            "colour value as boolean": "color: contrast must be a number",
+            "colour value null": "color: saturation must be a number",
+            "colour without saturation": "color: saturation is missing",
+            "colour with a hue field": "color: hue is not a known field",
+            "colour that is not an object": "color must be an object",
+            "colour that is null": "color must be an object",
+            "colour on a music clip": "color is not a known field",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("colour grade on a clip", "colour at the ends of every range",
+                     "colour at the other ends of every range", "neutral colour grade"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
     def test_the_ducking_cases_fail_for_the_reason_their_name_gives(self):
         cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
         needles = {
