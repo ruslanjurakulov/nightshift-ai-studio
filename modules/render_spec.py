@@ -158,6 +158,12 @@ FIT_CONTAIN = "contain"   # letter/pillar-box inside the frame (the original beh
 FIT_COVER = "cover"       # fill the frame, cropping the overflow
 FITS = (FIT_CONTAIN, FIT_COVER)
 
+#: A segment's colour grade, ffmpeg ``eq`` (brightness added to the luma, contrast
+#: around mid-grey, saturation on the chroma); the neutral triple is "no change".
+#: modules/timeline.py GRADE_RANGES are the same numbers; a test pins them.
+GRADE_RANGES = {"brightness": (-1.0, 1.0), "contrast": (0.0, 2.0), "saturation": (0.0, 3.0)}
+GRADE_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
+
 #: Text overlay anchors: which point of the text box sits at (x, y). The ASS
 #: \an numpad code for each is in ass_captions.ANCHOR_AN.
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
@@ -174,7 +180,12 @@ def _speed_ok(v) -> bool:
 
 
 def _finite(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return False
+    try:
+        return math.isfinite(v)
+    except OverflowError:   # an int too large for a float
+        return False
 
 
 def _put_if(d: dict, key: str, value, default) -> None:
@@ -215,6 +226,16 @@ class Segment:
     #: A cross-fade: this segment (the outgoing clip's last ``duration``
     #: seconds) dissolves into ``xfade`` (the incoming clip's first ones).
     xfade: Optional["Segment"] = None
+    #: The picture's colour grade (``eq``); the defaults change nothing and
+    #: add no filter, so a segment without it is the one it always was.
+    brightness: float = 0.0
+    contrast: float = 1.0
+    saturation: float = 1.0
+
+    @property
+    def graded(self) -> bool:
+        """True when the colour grade changes the picture."""
+        return (self.brightness, self.contrast, self.saturation) != (0.0, 1.0, 1.0)
 
     def to_dict(self) -> dict:
         d = {"duration": self.duration, "path": self.path, "kind": self.kind}
@@ -226,6 +247,9 @@ class Segment:
         _put_if(d, "clip_s", self.clip_s, 0.0)
         _put_if(d, "offset_s", self.offset_s, 0.0)
         _put_if(d, "seed", self.seed, "")
+        _put_if(d, "brightness", self.brightness, 0.0)
+        _put_if(d, "contrast", self.contrast, 1.0)
+        _put_if(d, "saturation", self.saturation, 1.0)
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         return d
@@ -245,6 +269,9 @@ class Segment:
             clip_s=float(d.get("clip_s") or 0.0),
             offset_s=float(d.get("offset_s") or 0.0),
             seed=str(d.get("seed") or ""),
+            brightness=float(d.get("brightness") or 0.0),
+            contrast=float(1.0 if d.get("contrast") is None else d["contrast"]),
+            saturation=float(1.0 if d.get("saturation") is None else d["saturation"]),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
         )
 
@@ -454,6 +481,10 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
         v = getattr(seg, field_name)
         if not _finite(v) or v < 0:
             problems.append(f"{name} has a negative or non-finite {field_name} {v}")
+    for field_name, (lo, hi) in GRADE_RANGES.items():
+        v = getattr(seg, field_name)
+        if not _finite(v) or not lo <= v <= hi:
+            problems.append(f"{name} {field_name} must be from {lo:g} to {hi:g} (got {v})")
     if not _speed_ok(seg.speed):
         problems.append(f"{name} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g} "
                         f"(got {seg.speed})")

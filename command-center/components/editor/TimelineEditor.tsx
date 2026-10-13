@@ -64,6 +64,7 @@ import {
   canSplit,
   clamp,
   clipAt,
+  clipEnd,
   crossfadeOf,
   exportActive,
   fitSoundToPicture,
@@ -121,8 +122,29 @@ import {
   type Fit,
 } from "@/lib/editorFrame";
 import { FitPicker, FramePicker } from "./FrameFitControls";
+import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
+import {
+  gradeOf,
+  previewGradeStyle,
+  resetClipGrade,
+  setClipGrade,
+  type ClipGrade,
+} from "@/lib/editorGrade";
+
 import { ExportStatusPanel } from "./ExportStatusPanel";
 import { useExportPoll } from "./useExportPoll";
+
+/** The first time at which clip `id` is the one the preview shows: its start,
+ *  or the end of the clip before it when a cross-fade overlaps the two. */
+function firstFrameOf(model: EditorModel, id: string): number {
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  if (i < 0) return 0;
+  const starts = [clips[i].start_s, ...(i > 0 ? [clipEnd(clips[i - 1])] : [])];
+  return (
+    starts.find((t) => clipAt(model, t)?.clip.id === id) ?? clips[i].start_s
+  );
+}
 
 const HISTORY = 100;
 
@@ -266,11 +288,16 @@ export function TimelineEditor({
   });
 
   // ── history ────────────────────────────────────────────────────────────────
+  // `group`: the changes of one gesture (a slider drag) are ONE undo step.
+  const gesture = useRef<string | null>(null);
   const apply = useCallback(
-    (next: EditorModel) => {
+    (next: EditorModel, group?: string) => {
       if (next === model) return;
-      setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
-      setFuture([]);
+      if (!group || gesture.current !== group) {
+        setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
+        setFuture([]);
+      }
+      gesture.current = group ?? null;
       setModel(next);
       setError(null);
     },
@@ -278,12 +305,14 @@ export function TimelineEditor({
   );
   const undo = useCallback(() => {
     if (!past.length) return;
+    gesture.current = null;
     setFuture([model, ...future]);
     setModel(past[past.length - 1]);
     setPast(past.slice(0, -1));
   }, [model, past, future]);
   const redo = useCallback(() => {
     if (!future.length) return;
+    gesture.current = null;
     setPast([...past, model]);
     setModel(future[0]);
     setFuture(future.slice(1));
@@ -320,6 +349,13 @@ export function TimelineEditor({
   const src = at ? (assets[at.clip.asset_id]?.viewUrl ?? null) : null;
   // A picture sent from the Library or Studio is a still: it is drawn, not played.
   const still = at ? assets[at.clip.asset_id]?.kind === "image" : false;
+  // The preview follows the playhead: a change to a clip that is not on screen
+  // would show nothing, so the playhead goes to the first frame of that clip.
+  const showClip = (id: string) => {
+    if (at?.clip.id === id) return;
+    setPlaying(false);
+    setPlayhead(firstFrameOf(model, id));
+  };
   const shownClip = useRef<string | null>(null);
   const refreshed = useRef(false);
 
@@ -737,13 +773,17 @@ export function TimelineEditor({
             className="relative mx-auto w-full overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-black"
             style={previewFrameStyle(model)}
           >
+            <GradeFilterDefs clip={at?.clip} still={still} />
             {src && still ? (
               // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
               <img
                 src={src}
                 alt=""
                 className="size-full"
-                style={{ objectFit: previewObjectFit(at?.clip, true) }}
+                style={{
+                  objectFit: previewObjectFit(at?.clip, true),
+                  ...previewGradeStyle(at?.clip),
+                }}
                 onError={() => {
                   if (!refreshed.current) {
                     refreshed.current = true;
@@ -758,7 +798,10 @@ export function TimelineEditor({
                 playsInline
                 preload="auto"
                 className="size-full"
-                style={{ objectFit: previewObjectFit(at?.clip, false) }}
+                style={{
+                  objectFit: previewObjectFit(at?.clip, false),
+                  ...previewGradeStyle(at?.clip),
+                }}
                 onLoadedMetadata={() => {
                   const v = video.current;
                   if (v && at) {
@@ -1082,6 +1125,15 @@ export function TimelineEditor({
               fit={fitOf(clip)}
               still={assets[clip.asset_id]?.kind === "image"}
               onFit={(f) => apply(setClipFit(model, clip.id, f))}
+              grade={gradeOf(clip)}
+              onGrade={(patch, group) => {
+                apply(setClipGrade(model, clip.id, patch), group);
+                showClip(clip.id);
+              }}
+              onGradeReset={() => {
+                apply(resetClipGrade(model, clip.id));
+                showClip(clip.id);
+              }}
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
               audioLocked={!clip.audio && audioFull}
               crossfade={crossfadeOf(clip)}
@@ -1285,6 +1337,9 @@ function ClipInspector({
   fit,
   still,
   onFit,
+  grade,
+  onGrade,
+  onGradeReset,
   onAudio,
   audioLocked,
   crossfade,
@@ -1314,6 +1369,9 @@ function ClipInspector({
   /** A picture always fills the frame in the export: no fit to choose. */
   still: boolean;
   onFit: (fit: Fit) => void;
+  grade: ClipGrade;
+  onGrade: (patch: Partial<ClipGrade>, group: string) => void;
+  onGradeReset: () => void;
   onAudio: (a: boolean) => void;
   audioLocked: boolean;
   /** The cross-fade into this clip in seconds (0 = a cut). */
@@ -1377,6 +1435,11 @@ function ClipInspector({
         </div>
       </fieldset>
       <FitPicker fit={fit} still={still} onChange={onFit} />
+      <ClipGradePanel
+        grade={grade}
+        onChange={onGrade}
+        onReset={onGradeReset}
+      />
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
