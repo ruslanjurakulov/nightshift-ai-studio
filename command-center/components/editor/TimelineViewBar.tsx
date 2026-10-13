@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { Keyboard, Magnet, Minus, Plus, Scan, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -29,6 +29,18 @@ export function TimelineViewBar({ view }: { view: TimelineView }) {
   const snapDesc = useId();
   const atMin = view.zoom <= ZOOM_FIT + 0.001;
   const atMax = view.zoom >= view.maxZoom - 0.001;
+  const pct = fmt(tv.zoomLevel, { pct: Math.round(view.zoom * 100) });
+  // The visible label never announces (a wheel changes it on every tick); one debounced announcement says where the zoom settled.
+  const [said, setSaid] = useState("");
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    const id = setTimeout(() => setSaid(pct), 500);
+    return () => clearTimeout(id);
+  }, [pct]);
   return (
     <div role="group" aria-label={tv.toolbar} className="flex flex-wrap items-center gap-2">
       <button
@@ -40,12 +52,10 @@ export function TimelineViewBar({ view }: { view: TimelineView }) {
       >
         <Minus className="size-3.5" aria-hidden />
       </button>
-      {/* A div, not a span: the editor's save-status line is the page's one polite span. */}
-      <div
-        aria-live="polite"
-        className="min-w-[4.5rem] text-center text-xs tabular-nums text-[var(--color-muted)]"
-      >
-        {fmt(tv.zoomLevel, { pct: Math.round(view.zoom * 100) })}
+      <span className="min-w-[4.5rem] text-center text-xs tabular-nums text-[var(--color-muted)]">{pct}</span>
+      {/* A div, not a span: the editor's save status is the page's one polite span (and tests look it up that way). */}
+      <div aria-live="polite" className="sr-only">
+        {said}
       </div>
       <button
         type="button"
@@ -127,6 +137,19 @@ export function ShortcutsHelp() {
     Ctrl: tv.keyCtrl,
   };
 
+  /** Focus must never fall to <body> inside the modal (a click on plain text): Escape and Tab live on the dialog. */
+  function keepFocus(e: MouseEvent<HTMLElement>) {
+    if ((e.target as HTMLElement).closest(FOCUSABLE)) return;
+    e.preventDefault();
+    panel.current?.focus();
+  }
+  function onBlur(e: FocusEvent<HTMLElement>) {
+    if (e.relatedTarget) return;
+    setTimeout(() => {
+      if (panel.current && !panel.current.contains(document.activeElement)) panel.current.focus();
+    }, 0);
+  }
+
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       // Spent closing the dialog, not leaving the page (SectionShell listens for Escape too).
@@ -166,7 +189,10 @@ export function ShortcutsHelp() {
                 aria-modal="true"
                 aria-labelledby={titleId}
                 aria-describedby={noteId}
-                className="sheet-enter relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[var(--shadow-elevated)]"
+                tabIndex={-1}
+                onMouseDown={keepFocus}
+                onBlur={onBlur}
+                className="sheet-enter outline-none relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[var(--shadow-elevated)]"
               >
                 <div className="flex items-start gap-3">
                   <h2 id={titleId} className="m-0 min-w-0 flex-1 text-[15px] font-semibold text-[var(--color-fg)]">
@@ -185,7 +211,14 @@ export function ShortcutsHelp() {
                 <p id={noteId} className="mt-1 text-xs leading-relaxed text-[var(--color-muted)]">
                   {tv.shortcutsNote}
                 </p>
-                <dl className="m-0 mt-3 min-h-0 flex-1 overflow-y-auto">
+                {/* The list can scroll on a short screen, so the scroll area itself takes focus (arrow keys scroll it). */}
+                <div
+                  role="region"
+                  aria-labelledby={titleId}
+                  tabIndex={0}
+                  className="mt-3 min-h-0 flex-1 overflow-y-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                >
+                <dl className="m-0">
                   {SHORTCUT_HELP.map((row) => (
                     <div
                       key={row.action}
@@ -209,6 +242,7 @@ export function ShortcutsHelp() {
                     </div>
                   ))}
                 </dl>
+                </div>
               </div>
             </div>,
             document.body,

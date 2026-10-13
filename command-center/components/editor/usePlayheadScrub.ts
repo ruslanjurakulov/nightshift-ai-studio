@@ -24,15 +24,22 @@ export function usePlayheadScrub({
   setPlaying: (on: boolean) => void;
 }) {
   const pointer = useRef<"mouse" | "touch" | null>(null);
-  const end = () => {
+  // One stable function, so the window listeners added on press are the ones removed on release.
+  const end = useRef(function endDrag() {
     pointer.current = null;
-  };
+    window.removeEventListener("pointerup", endDrag);
+    window.removeEventListener("pointercancel", endDrag);
+  }).current;
   return {
     onPointerDown: (e: PointerEvent<HTMLInputElement>) => {
       pointer.current = e.pointerType === "touch" ? "touch" : "mouse";
+      // The release can land outside the slider, or be lost; the window hears it either way.
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
     },
     onPointerUp: end,
     onPointerCancel: end,
+    onBlur: end,
     onChange: (e: ChangeEvent<HTMLInputElement>) => {
       setPlaying(false);
       const raw = Number(e.target.value);

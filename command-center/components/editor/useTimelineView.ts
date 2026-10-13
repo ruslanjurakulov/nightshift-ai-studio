@@ -46,6 +46,11 @@ export function useTimelineView({
   const anchor = useRef<number | null>(null);
   const live = useRef({ zoom, total, playhead, viewport });
   live.current = { zoom, total, playhead, viewport };
+  /** The strip's real width: its own measure (it is at least 44px a clip, so it can be wider than zoom x window), else the formula. */
+  const stripWidth = useCallback(
+    (el: HTMLElement) => el.scrollWidth || contentWidth(el.clientWidth, live.current.zoom),
+    [],
+  );
 
   useEffect(() => {
     if (!scroller) return;
@@ -62,11 +67,11 @@ export function useTimelineView({
   /** Where on screen (px from the window's left) the zoom should hold still. */
   const defaultAnchor = useCallback((): number => {
     const el = scroller;
-    const { total: tot, playhead: ph, zoom: z } = live.current;
+    const { total: tot, playhead: ph } = live.current;
     if (!el || !(tot > 0)) return 0;
-    const x = (ph / tot) * el.clientWidth * z - el.scrollLeft;
+    const x = (ph / tot) * stripWidth(el) - el.scrollLeft;
     return x >= 0 && x <= el.clientWidth ? x : el.clientWidth / 2;
-  }, [scroller]);
+  }, [scroller, stripWidth]);
 
   const setZoom = useCallback(
     (next: number, anchorX?: number) => {
@@ -74,6 +79,8 @@ export function useTimelineView({
       const c = clampZoom(next, maxZoom(tot, vp));
       if (c === z) return;
       anchor.current = anchorX ?? defaultAnchor();
+      // Several wheel events can arrive before React renders: the next one must start from this zoom, not the stale one.
+      live.current.zoom = c;
       setZoomState(c);
     },
     [defaultAnchor],
@@ -83,7 +90,7 @@ export function useTimelineView({
   useLayoutEffect(() => {
     const el = scroller;
     if (!el) return;
-    const width = contentWidth(el.clientWidth, zoom);
+    const width = stripWidth(el);
     const prev = laidOut.current;
     if (prev.zoom !== zoom && anchor.current !== null && prev.width > 0) {
       el.scrollLeft = anchoredScrollLeft({
@@ -95,7 +102,7 @@ export function useTimelineView({
     }
     anchor.current = null;
     laidOut.current = { zoom, width };
-  }, [zoom, scroller]);
+  }, [zoom, scroller, stripWidth]);
 
   // A shorter project or a narrower window can lower the ceiling.
   useEffect(() => {
@@ -117,15 +124,16 @@ export function useTimelineView({
     return () => el.removeEventListener("wheel", onWheel);
   }, [scroller, setZoom]);
 
-  // A playhead that leaves the window (playing, a step, a drag) is brought back into it.
+  // A playhead that MOVES out of the window (playing, a step, a drag) is brought back into it.
+  // Deliberately not keyed on zoom: a zoom keeps its anchor (the pointer) even when the playhead is off-screen.
   useEffect(() => {
     const el = scroller;
-    if (!el || zoom <= ZOOM_FIT || !(total > 0)) return;
-    const contentPx = contentWidth(el.clientWidth, zoom);
+    if (!el || live.current.zoom <= ZOOM_FIT || !(total > 0)) return;
+    const contentPx = stripWidth(el);
     const x = (Math.min(playhead, total) / total) * contentPx;
     const left = scrollToReveal({ scrollLeft: el.scrollLeft, viewportPx: el.clientWidth, contentPx, x });
     if (Math.abs(left - el.scrollLeft) > 0.5) el.scrollLeft = left;
-  }, [playhead, total, zoom, scroller]);
+  }, [playhead, total, scroller, stripWidth]);
 
   return {
     zoom,

@@ -24,6 +24,8 @@ export type FocusKind = "text" | "control" | "slider" | "other";
 
 export interface KeyLike {
   key: string;
+  /** The physical key (KeyS, Digit0 ...); used for S and 0 only on layouts whose `key` is not a Latin letter / digit. */
+  code?: string;
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
@@ -80,12 +82,15 @@ export function resolveShortcut(e: KeyLike, focus: FocusKind): ShortcutAction | 
     const base = key === "ArrowLeft" ? "left" : "right";
     return e.shiftKey ? (`${base}Big` as ShortcutAction) : base;
   }
-  if (e.repeat && (lower === "s" || key === "Delete" || key === "Backspace")) return null;
-  if (lower === "s") return "split";
+  // S and 0 follow the physical key on layouts where `key` is not Latin (Cyrillic: "ы", AZERTY: "à").
+  const isS = /^[a-z]$/i.test(key) ? lower === "s" : e.code === "KeyS";
+  const isZero = /^[0-9]$/.test(key) ? key === "0" : (e.code === "Digit0" || e.code === "Numpad0") && key !== "Insert";
+  if (e.repeat && (isS || key === "Delete" || key === "Backspace")) return null;
+  if (isS) return "split";
   if (key === "Delete" || key === "Backspace") return "remove";
   if (key === "+" || key === "=") return "zoomIn";
   if (key === "-" || key === "_") return "zoomOut";
-  if (key === "0") return "zoomFit";
+  if (isZero) return "zoomFit";
   return null;
 }
 

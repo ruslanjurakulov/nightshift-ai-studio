@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_PX_PER_S,
+  SNAP_MAX_S,
   SNAP_PX,
   ZOOM_CEIL,
   ZOOM_FIT,
@@ -62,6 +63,16 @@ describe("zoom", () => {
     expect(wheelZoom(2, -3, 1)).toBeGreaterThan(wheelZoom(2, -3, 0));
     expect(wheelZoom(2, NaN, 0)).toBe(2);
   });
+  it("slow wheel or pinch deltas from fit accumulate and leave fit (they never stick at 100%)", () => {
+    let z = ZOOM_FIT;
+    for (let i = 0; i < 50; i++) z = wheelZoom(z, -3, 0);
+    expect(z).toBeGreaterThan(1.5);
+    // one tiny event from fit already moves
+    expect(wheelZoom(1, -3, 0)).toBeGreaterThan(1);
+    // zooming OUT near fit still lands exactly on fit
+    expect(wheelZoom(1.01, 5, 0)).toBe(ZOOM_FIT);
+    expect(wheelZoom(1.5, 400, 0)).toBe(ZOOM_FIT);
+  });
 });
 
 describe("scroll anchoring", () => {
@@ -120,9 +131,17 @@ describe("snapping", () => {
     expect(snapThresholdS(100, true)).toBeGreaterThan(snapThresholdS(100));
     expect(snapThresholdS(0)).toBe(0);
   });
+  it("never snaps from further than SNAP_MAX_S, however few pixels a second there are", () => {
+    expect(snapThresholdS(1)).toBe(SNAP_MAX_S);
+    expect(snapThresholdS(0.1, true)).toBe(SNAP_MAX_S);
+    // a 600 s project in a 300 px slider: 0.5 px/s, the playhead is still placed freely
+    const src = { clips: [clip("c1", 0, 300), clip("c2", 300, 300)], texts: [], sounds: [] };
+    expect(snapPlayhead(302, src, 0.5, true)).toBe(302);
+    expect(snapPlayhead(300.2, src, 0.5, true)).toBe(300);
+  });
   it("a trim drag snaps the pointer's time to a target and converts back to source seconds", () => {
     // out handle of a 2x clip ending at timeline 4 (source out 8): pointer 12px right at 100 px/s is 4.12s
-    const base = { v0: 8, speed: 2, baseTime: 4, pxPerS: 100, targets: [4.1], snap: true };
+    const base = { edge: "out" as const, v0: 8, speed: 2, baseTime: 4, pxPerS: 100, targets: [4.1], snap: true };
     const near = snapTrimValue({ ...base, dx: 12 });
     expect(near.snappedTo).toBe(4.1);
     expect(near.value).toBeCloseTo(8 + 0.1 * 2, 9);
@@ -134,6 +153,19 @@ describe("snapping", () => {
     expect(off.value).toBeCloseTo(8 + 0.12 * 2, 9);
     // dragging left works the same way
     expect(snapTrimValue({ ...base, targets: [3.9], dx: -12 }).value).toBeCloseTo(8 - 0.1 * 2, 9);
+  });
+  it("the in handle snaps the clip's END (the edge that moves), not the pointer", () => {
+    // clip of source 0..6 at 2x ends at timeline 3; dragging the in handle 90px right at 100 px/s shrinks it by 0.9s,
+    // so its end moves to 2.1; a target at 2.05 is within 8px of that END and the in point follows: 0 + (3 - 2.05) * 2
+    const base = { edge: "in" as const, v0: 0, speed: 2, baseTime: 3, pxPerS: 100, snap: true };
+    const near = snapTrimValue({ ...base, dx: 90, targets: [2.05] });
+    expect(near.snappedTo).toBe(2.05);
+    expect(near.value).toBeCloseTo((3 - 2.05) * 2, 9);
+    // a target at the POINTER's time (start + dx) is not a snap for the in handle
+    expect(snapTrimValue({ ...base, dx: 90, targets: [0.9] }).snappedTo).toBeNull();
+    const free = snapTrimValue({ ...base, dx: 90, targets: [] });
+    expect(free.value).toBeCloseTo(0.9 * 2, 9);
+    expect(snapTrimValue({ ...base, dx: 90, targets: [2.05], snap: false }).value).toBeCloseTo(0.9 * 2, 9);
   });
   it("the playhead drag snaps to clip edges only when snapping is on", () => {
     const src = { clips, texts: [], sounds: [] };

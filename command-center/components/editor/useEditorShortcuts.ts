@@ -38,11 +38,14 @@ export function useEditorShortcuts(p: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
-      // Inside a dialog (the shortcuts help, a picker) the keys are the dialog's.
-      if (t instanceof Element && t.closest('[role="dialog"], [role="alertdialog"]')) return;
+      // While any modal is open (the shortcuts help, a confirm) the page behind is inert, even if focus slipped to <body>.
+      if (document.querySelector('[aria-modal="true"]')) return;
+      // Only the editor and an idle page (focus on <body>) get these keys; the app's own header, menus and links keep theirs.
+      const idle = t === document.body || t === document.documentElement;
+      if (!idle && !(t instanceof Element && t.closest("[data-editor-root]"))) return;
       const el = t instanceof HTMLElement ? t : null;
       const action = resolveShortcut(
-        e,
+        { key: e.key, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey, repeat: e.repeat, defaultPrevented: e.defaultPrevented },
         focusKind(
           el && {
             tag: el.tagName,
@@ -60,8 +63,9 @@ export function useEditorShortcuts(p: {
           s.togglePlay();
           break;
         case "split": {
+          // The clip under the playhead is what a cut means; the selection (often a stale first clip) is only the fallback.
           const picked =
-            s.selected?.kind === "clip" ? s.selected.id : (clipAt(s.model, s.playhead)?.clip.id ?? null);
+            clipAt(s.model, s.playhead)?.clip.id ?? (s.selected?.kind === "clip" ? s.selected.id : null);
           if (!picked || !canSplit(s.model, picked, s.playhead)) return;
           const out = splitClip(s.model, picked, s.playhead);
           if (out) s.apply(out.model);

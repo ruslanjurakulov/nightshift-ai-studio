@@ -188,8 +188,8 @@ export function TimelineStrip({
       v0: edge === "in" ? c.in_s : c.out_s,
       pxPerS: w / span,
       speed: c.speed,
-      // The pointer's place on the timeline starts at the edge being dragged; clips after this one ripple, so they are no target.
-      baseTime: edge === "in" ? c.start_s : clipEnd(c),
+      // The clip's end is what moves on the timeline for either handle (the in handle shrinks the clip from its end side); clips after this one ripple, so they are no target.
+      baseTime: clipEnd(c),
       targets: snapTargets({ clips, texts, sounds, playhead, skipClipsAfter: c.id }),
       touch: e.pointerType === "touch",
     };
@@ -200,6 +200,7 @@ export function TimelineStrip({
     if (!d) return;
     // Pixels are timeline seconds; a trim moves SOURCE seconds (× speed); snapping pulls it to a target.
     const { value, snappedTo } = snapTrimValue({
+      edge: d.edge,
       v0: d.v0,
       speed: d.speed,
       baseTime: d.baseTime,

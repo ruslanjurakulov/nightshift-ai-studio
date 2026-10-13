@@ -613,7 +613,7 @@ export function TimelineEditor({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-editor-root="">
       {/* header: name, history, save, export */}
       <div className="panel flex flex-col gap-3 p-4 sm:p-5 sm:p-4">
         <div className="flex flex-wrap items-center gap-2">

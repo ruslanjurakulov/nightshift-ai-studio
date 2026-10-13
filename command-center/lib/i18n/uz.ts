@@ -4763,7 +4763,7 @@ export const uz: Dictionary = {
       snapDesc: "Yoqilganda qirqish belgisi va videodagi joy klip, matn va tovush chetlariga hamda videodagi joyga yopishadi.",
       shortcuts: "Tezkor tugmalar",
       shortcutsTitle: "Tezkor tugmalar",
-      shortcutsNote: "Tugmalar kursor matn maydonida boʻlmaganda ishlaydi. Mac’da Ctrl oʻrniga Cmd ishlating.",
+      shortcutsNote: "Tugmalar kursor matn maydonida boʻlmaganda ishlaydi. Mac kompyuterida Ctrl oʻrniga Cmd ishlating.",
       close: "Yopish",
       keySpace: "Probel",
       keyDelete: "Delete",

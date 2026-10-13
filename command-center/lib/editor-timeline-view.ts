@@ -29,6 +29,8 @@ export const ZOOM_STEP = 1.5;
 export const SNAP_PX = 8;
 /** The same on a touch screen, where a finger is less exact. */
 export const SNAP_PX_TOUCH = 12;
+/** However few pixels a second there are, never snap from further than this (seconds), so a long project's pointer still places the playhead freely. */
+export const SNAP_MAX_S = 0.25;
 /** The playhead's big step (Shift + arrow), in seconds. */
 export const NUDGE_BIG_S = 1;
 
@@ -53,7 +55,11 @@ export function stepZoom(z: number, dir: 1 | -1, max: number = ZOOM_CEIL): numbe
   return c < 1.05 ? ZOOM_FIT : c;
 }
 
-/** Ctrl / Cmd + wheel: scrolling up (negative deltaY) zooms in, smoothly. */
+/**
+ * Ctrl / Cmd + wheel: scrolling up (negative deltaY) zooms in, smoothly. It
+ * only lands on "fit" when it is zooming OUT and gets close: a slow wheel or
+ * pinch from fit (tiny deltas) must still accumulate and leave it.
+ */
 export function wheelZoom(
   z: number,
   deltaY: number,
@@ -64,7 +70,7 @@ export function wheelZoom(
   const px = deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * 400 : deltaY;
   const limited = Math.max(-240, Math.min(240, finite(px, 0)));
   const c = clampZoom(z * Math.exp(-limited * 0.0045), max);
-  return c < 1.02 ? ZOOM_FIT : c;
+  return c < z && c < 1.02 ? ZOOM_FIT : c;
 }
 
 /** The strip's width for a window `viewportPx` wide at `zoom`. */
@@ -178,17 +184,21 @@ export function snapTime(
 /** The snap distance in seconds for a strip that shows `pxPerS` pixels per second. */
 export function snapThresholdS(pxPerS: number, touch = false): number {
   if (!(pxPerS > 0)) return 0;
-  return (touch ? SNAP_PX_TOUCH : SNAP_PX) / pxPerS;
+  return Math.min(SNAP_MAX_S, (touch ? SNAP_PX_TOUCH : SNAP_PX) / pxPerS);
 }
 
 /**
- * A trim drag. The pointer is at `baseTime + dx / pxPerS` on the timeline
- * (baseTime: the clip's end for the out handle, its start for the in handle);
- * with snapping on, that time snaps to a target and the source value follows:
- * `v0 + (time - baseTime) * speed`. Returns the unrounded source value and the
- * time it snapped to (for the guide line), or null.
+ * A trim drag, snapped on the edge that actually moves on the timeline.
+ * The out handle moves the clip's end: the pointer's time is
+ * `baseTime + dx / pxPerS` (baseTime = the clip's end). The in handle keeps the
+ * clip's start and moves its END the other way (the clip shrinks, what follows
+ * ripples): that end is `baseTime - dx / pxPerS` (baseTime = the clip's end
+ * before the drag). Either time snaps to a target and the source value follows:
+ * `v0 + (|time - baseTime|, signed) * speed`. Returns the unrounded source
+ * value and the time it snapped to (for the guide line), or null.
  */
 export function snapTrimValue(p: {
+  edge: "in" | "out";
   v0: number;
   speed: number;
   baseTime: number;
@@ -199,10 +209,13 @@ export function snapTrimValue(p: {
   touch?: boolean;
 }): { value: number; snappedTo: number | null } {
   const speed = p.speed > 0 ? p.speed : 1;
-  const raw = p.baseTime + p.dx / p.pxPerS;
-  if (!p.snap || !(p.pxPerS > 0)) return { value: p.v0 + (raw - p.baseTime) * speed, snappedTo: null };
+  const dir = p.edge === "in" ? -1 : 1;
+  const free = { value: p.v0 + (p.dx / p.pxPerS) * speed, snappedTo: null };
+  if (!p.snap || !(p.pxPerS > 0)) return free;
+  const raw = p.baseTime + (dir * p.dx) / p.pxPerS;
   const s = snapTime(raw, p.targets, snapThresholdS(p.pxPerS, p.touch));
-  return { value: p.v0 + (s.time - p.baseTime) * speed, snappedTo: s.snappedTo };
+  if (s.snappedTo === null) return free;
+  return { value: p.v0 + dir * (s.time - p.baseTime) * speed, snappedTo: s.snappedTo };
 }
 
 /**
