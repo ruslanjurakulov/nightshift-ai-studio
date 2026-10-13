@@ -13,7 +13,7 @@ import "@/components/site/site.css";
 import "@/components/site/site-next.css";
 
 /** Which top-level page the visitor is on, for the nav's lit item. */
-export type PublicSection = "home" | "solutions" | "pricing" | "docs" | "legal" | null;
+export type PublicSection = "home" | "studio" | "solutions" | "pricing" | "docs" | "legal" | null;
 
 /** The public pages' navigation. Hash targets are absolute ("/#how") so they
  *  work from Pricing or Privacy as well as from the homepage itself. One
@@ -24,7 +24,7 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string; se
   const n = t.site.nav;
   return [
     { href: "/#how", label: n.how, section: null },
-    { href: "/#studio", label: n.studio, section: null },
+    { href: "/studio", label: n.studio, section: "studio" },
     { href: "/solutions", label: n.solutions, section: "solutions" },
     { href: "/pricing", label: n.pricing, section: "pricing" },
     { href: "/docs/api", label: devFor(t).nav.label, section: "docs" },

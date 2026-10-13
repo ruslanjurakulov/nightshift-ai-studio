@@ -1,3 +1,5 @@
+import { studioPageEn } from "../studio-page/en";
+
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
  * out of the big dictionaries so the marketing pages can change without
@@ -435,6 +437,8 @@ export const siteEn = {
     paySlug: "Payments",
     faqSlug: "Questions",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and approve every video before it airs.",
