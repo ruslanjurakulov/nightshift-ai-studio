@@ -1,6 +1,7 @@
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
+import { overlayRu } from "./overlay/ru";
 import { editorExportRu } from "./editor-export/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
@@ -4686,6 +4687,8 @@ export const ru: Dictionary = {
     },
   },
   editor: {
+    /** Picture overlays: ./overlay/ru.ts. */
+    overlay: overlayRu,
     title: "Редактор",
     subtitle: "Обрезайте, делите, ускоряйте и замедляйте видео и добавляйте на них текст.",
     notEnabled: "Редактор ещё не включён в этом развёртывании (миграция 0054 не применена).",

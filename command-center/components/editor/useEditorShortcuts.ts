@@ -10,6 +10,7 @@ import {
   splitClip,
   type EditorModel,
 } from "@/lib/editor";
+import { removeOverlay } from "@/lib/editorOverlay";
 import { focusKind, resolveShortcut } from "@/lib/editor-shortcuts";
 import { nudgePlayhead } from "@/lib/editor-timeline-view";
 import type { Selection } from "./TimelineStrip";
@@ -79,7 +80,9 @@ export function useEditorShortcuts(p: {
               ? removeClip(s.model, sel.id)
               : sel.kind === "text"
                 ? removeText(s.model, sel.id)
-                : removeSound(s.model, sel.id);
+                : sel.kind === "overlay"
+                  ? removeOverlay(s.model, sel.id)
+                  : removeSound(s.model, sel.id);
           if (next === s.model) return;
           s.apply(next);
           break;
