@@ -18,6 +18,8 @@ export const siteUz: SiteDictionary = {
     lead: "Nightshift’ga mavzu bering. U YouTube uchun video yozadi, ovozlaydi va montaj qiladi, soʻng roziligingizni kutadi. Narxni boshlashdan oldin koʻrasiz.",
     cta: "Bepul boshlash",
     secondary: "Narxlarni koʻrish",
+    demo: "Namunani sinab koʻring",
+    demoNote: "Faqat rejani koʻrsatadi. Hech narsa yaratilmaydi.",
     note: "Roʻyxatdan oʻtishda bir marta {n} bepul kredit. Karta kerak emas.",
   },
   rundown: {
