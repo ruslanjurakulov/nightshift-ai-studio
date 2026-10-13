@@ -99,6 +99,10 @@ export const siteRu: SiteDictionary = {
     cta: "Начать бесплатно",
     more: "Все цены",
   },
+  /** The /terms search-result description. The page itself shows the document's own summary; this is only the <meta> text. */
+  legalMeta: {
+    terms: "Правила использования Nightshift: ваш канал и контент, что запрещено, предоплаченные кредиты, оплата и возвраты, наша ответственность.",
+  },
   compare: {
     slug: "Вручную или с Nightshift",
     title: "На что уходит ваше время.",

@@ -107,6 +107,10 @@ export const siteEn = {
     cta: "Start free",
     more: "See all prices",
   },
+  /** The /terms search-result description. The page itself shows the document's own summary; this is only the <meta> text. */
+  legalMeta: {
+    terms: "The rules for using Nightshift: your channel and content, what is not allowed, prepaid credits, payments and refunds, and our liability.",
+  },
   compare: {
     slug: "By hand or with Nightshift",
     title: "Where your time goes.",

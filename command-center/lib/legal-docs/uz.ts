@@ -208,7 +208,7 @@ export const uz: LegalTexts = {
   terms: {
     title: "Foydalanish shartlari",
     summary:
-      "Nightshift’dan foydalanish qoidalari: kanal va kontent uchun javobgarlik, taqiqlanganlar, oldindan toʻlangan kreditlar va qaytarishlar, javobgarlik chegarasi.",
+      "Nightshift’dan foydalanish qoidalari: kanal va kontent uchun javobgarligingiz, nimalar taqiqlangan, oldindan toʻlangan kreditlar, toʻlov va qaytarish qanday ishlashi hamda javobgarligimiz chegaralari.",
     sections: [
       {
         id: "agreement",

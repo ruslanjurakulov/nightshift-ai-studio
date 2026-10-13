@@ -13,15 +13,17 @@ export async function generateMetadata(): Promise<Metadata> {
   const { locale, t } = await getDictionary();
   const doc = getLegalTexts(locale).terms;
   const title = `${doc.title} · ${t.brand.name}`;
+  // The page shows the document's own summary; the search-result text is its own short string.
+  const description = t.site.legalMeta.terms;
   // Canonical, OpenGraph and the Twitter card through the helper every other public page uses.
   return {
     title,
-    description: doc.summary,
+    description,
     ...shareMetadata({
       origin: runtimeSiteOrigin(),
       path: "/terms",
       title,
-      description: doc.summary,
+      description,
       siteName: t.brand.name,
       imageAlt: t.landing.meta.ogAlt,
       locale,

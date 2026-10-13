@@ -215,7 +215,7 @@ export const en: LegalTexts = {
   terms: {
     title: "Terms of Service",
     summary:
-      "The rules for using Nightshift: your responsibility for your channel and content, what is not allowed, how prepaid credits and refunds work, and our limits.",
+      "The rules for using Nightshift: your responsibilities for your channel and content, what is not allowed, how prepaid credits, payments and refunds work, and the limits of our liability.",
     sections: [
       {
         id: "agreement",

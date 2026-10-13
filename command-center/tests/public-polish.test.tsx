@@ -61,7 +61,7 @@ function descriptions(locale: Locale): [string, string][] {
     ["login", t.site.auth.signInSub],
     ["signup", t.signup.sub],
     ["privacy", legal.privacy.summary],
-    ["terms", legal.terms.summary],
+    ["terms (meta)", t.site.legalMeta.terms],
     ["api", dev.api.meta.description],
     ["mcp", dev.mcp.meta.description],
     ["mcp (sign-in off)", dev.mcp.signinOff.description],
@@ -90,6 +90,18 @@ describe("search-result descriptions", () => {
 
   it("the Uzbek descriptions use the modifier-letter apostrophe, never a straight one inside a word", () => {
     for (const [page, text] of descriptions("uz")) expect(text, page).not.toMatch(/[oOgG]'/);
+  });
+
+  it("the legal documents' own text is untouched: /terms shows its full summary, only the meta text is separate", () => {
+    for (const locale of LOCALES) {
+      const t = dictionaries[locale];
+      const terms = getLegalTexts(locale).terms;
+      expect(t.site.legalMeta.terms).not.toBe(terms.summary);
+      expect(t.site.legalMeta.terms.length).toBeLessThanOrEqual(160);
+    }
+    const src = readFileSync(join(process.cwd(), "app", "terms", "page.tsx"), "utf8");
+    expect(src).toContain("t.site.legalMeta.terms");
+    expect(src).not.toMatch(/description: doc\.summary/);
   });
 
   it("/privacy and /terms carry canonical, OpenGraph and Twitter metadata like every other public page", () => {

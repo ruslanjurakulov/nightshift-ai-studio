@@ -99,6 +99,10 @@ export const siteUz: SiteDictionary = {
     cta: "Bepul boshlash",
     more: "Barcha narxlar",
   },
+  /** The /terms search-result description. The page itself shows the document's own summary; this is only the <meta> text. */
+  legalMeta: {
+    terms: "Nightshift’dan foydalanish qoidalari: kanal va kontent, taqiqlanganlar, oldindan toʻlangan kreditlar, toʻlov va qaytarish, javobgarlik chegaralari.",
+  },
   compare: {
     slug: "Qoʻlda yoki Nightshift bilan",
     title: "Vaqtingiz nimaga ketadi.",
