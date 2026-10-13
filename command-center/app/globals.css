@@ -2032,6 +2032,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-lamp-row[data-tone="ok"] .ns-lamp-label { color: var(--color-ok); }
 .ns-lamp-row[data-tone="fail"] .ns-lamp-label { color: var(--color-fail); }
 .ns-lamp-row[data-tone="warn"] .ns-lamp-label { color: var(--color-warn); }
+/* A phone: a long lamp word (the "Started ... updates by itself" line) wraps
+   inside its card instead of running off the screen. The lamp keeps its size
+   (flex-shrink: 0 above) and the text node alone shrinks. Wider screens keep
+   the one-line label. */
+@media (max-width: 639px) {
+  .ns-lamp-row { max-width: 100%; }
+  .ns-lamp-row > .ns-lamp-label { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+}
 @media (prefers-reduced-motion: no-preference) {
   .ns-lamp[data-live="true"] { animation: ns-lamp-breathe 1.6s var(--ns-ease) infinite; }
 }
