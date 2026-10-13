@@ -92,7 +92,7 @@ export const studioPageEn = {
       { id: "private", title: "Uploads go to YouTube as private", body: "A finished video is sent to your channel as a private video, which only you and the people you share it with can watch, until it is made public." },
       { id: "check", title: "A publish check runs first", body: "Every video passes a publish check, and the verdict is shown on the video’s page: passed, or blocked and why." },
       { id: "approve", title: "Going public is your button", body: "You watch the video and press Approve and publish, which files a request the next run carries out. Auto-publish is a switch per channel, and it stays off until you turn it on." },
-      { id: "second", title: "A second person, if you want one", body: "A channel can require a second admin’s sign-off before anything goes public." },
+      { id: "second", title: "A second person, if you want one", body: "A channel can require a second person’s sign-off before anything goes public." },
     ],
     figure: "Illustration of a video’s state before it goes public: uploaded as private, the publish check passed, waiting for your approval. Everything shown is an example.",
     figureTitle: "Publish desk",
@@ -122,7 +122,7 @@ export const studioPageEn = {
       {
         id: "publishes",
         q: "Do you publish for me?",
-        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on, and a channel can also require a second admin to sign off.",
+        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on, and a channel can also require a second person to sign off.",
       },
       {
         id: "languages",
