@@ -4797,7 +4797,7 @@ export const en = {
       keyCtrl: "Ctrl",
       scPlay: "Play or pause",
       scSplit: "Split the clip at the playhead",
-      scRemove: "Remove the selected clip, text or sound",
+      scRemove: "Remove the selected clip, text, sound or overlay",
       scNudge: "Move the playhead one frame back or forward",
       scNudgeBig: "Move the playhead one second back or forward",
       scZoom: "Zoom in or out",

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Check, FolderInput, Images, Search, Upload } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/context";
+import { useDay } from "@/components/usage/useDay";
 import { fmt } from "@/lib/i18n";
 import {
   UPLOAD_ACCEPT,
@@ -127,6 +128,7 @@ export function MediaLibrary({
   canEditFolders?: boolean;
 }) {
   const { t, locale } = useI18n();
+  const day = useDay();
   const tm = t.media;
   const tf = tm.folders;
   const tu = t.libraryUx;
@@ -744,7 +746,6 @@ export function MediaLibrary({
       ? fmt(tm.storageUnknown, { used: formatMediaBytes(q.usedBytes) || "0 KB" })
       : fmt(tm.storageUsed, { used: formatMediaBytes(q.usedBytes) || "0 KB", limit: formatMediaBytes(q.limitBytes) || "0 KB" });
   const usedPct = q.limitBytes ? Math.min(100, Math.round((q.usedBytes / q.limitBytes) * 100)) : null;
-  const dateFmt = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
   const folderName = (id: string | null | undefined) => (id ? (folderList.find((f) => f.id === id)?.name ?? null) : null);
   const truncatedLine =
     data.truncated && serverQuery === ""
@@ -1044,7 +1045,7 @@ export function MediaLibrary({
                     const duration = a.kind === "video" || a.kind === "audio" ? formatDuration(a.durationS) : "";
                     // In All files a tile says which folder it is in.
                     const where = folder === null ? folderName(a.folderId) : null;
-                    const date = a.createdAt ? dateFmt.format(new Date(a.createdAt)) : "";
+                    const date = a.createdAt ? day(a.createdAt) : "";
                     return (
                       <Frame
                         key={a.id}

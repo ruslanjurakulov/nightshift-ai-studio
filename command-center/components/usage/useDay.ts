@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { shortDate } from "@/components/credits/Equivalents";
+import { formatDayTime } from "@/lib/date-format";
 
 const subscribe = () => () => {};
 
@@ -18,4 +19,14 @@ export function useDay(): (iso: string | null) => string {
   const { locale } = useI18n();
   const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
   return (iso) => shortDate(iso, locale, hydrated ? undefined : "UTC");
+}
+
+/** The same idea for a day with its time: UTC while hydrating, the viewer's own zone straight after. "—" when there is none. */
+export function useDayTime(): (iso: string | null | undefined) => string {
+  const { locale } = useI18n();
+  const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
+  return (iso) => {
+    const d = iso ? new Date(iso) : null;
+    return d && Number.isFinite(d.getTime()) ? formatDayTime(d, locale, hydrated ? undefined : "UTC") : "—";
+  };
 }
