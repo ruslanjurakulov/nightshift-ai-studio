@@ -12,7 +12,8 @@ not a project dependency — tests keep the two in sync)::
 
     { version: 1, width, height, fps,
       tracks: [ { id, kind: "V"|"A"|"T", name?, clips: [...] } ],
-      captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] } }
+      captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] },
+      overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ] }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s },
@@ -22,6 +23,8 @@ not a project dependency — tests keep the two in sync)::
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
               outline_width?, bold?, x?, y?, anchor?, fade_in_s?, fade_out_s? }
+    overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
+               opacity?: 0..1 }   (a picture or video over the picture; see below)
 
 Rules this module keeps:
 
@@ -66,6 +69,23 @@ Rules this module keeps:
   ``grade`` is dropped by ``normalise`` for the same reason. It applies to
   the picture only (bars of a ``contain`` fit and fades to black stay black)
   and to stills as well as video.
+* **Overlays are a layer above the picture, not a second picture lane.**
+  ``overlays`` is a top-level list (so "one V track" stays true): each one is
+  a picture or a video (``asset_id``) shown from ``start_s`` to ``end_s`` over
+  the composited picture, its CENTRE at (``x``, ``y``) and its width ``w``,
+  all fractions of the frame (so the same document fits any resolution; the
+  height follows the file's own aspect ratio), at ``opacity``. A picture
+  keeps its own transparency; a video plays from its first frame and is
+  never heard. They may overlap in time (that is stacking; the list order is
+  the layering, later on top) and sit under the texts and captions. They do
+  NOT lengthen the timeline: what runs past the picture's end is cut, and an
+  overlay of opacity 0 renders nothing. A video overlay must be at least as
+  long as its span (nothing loops or freezes). Neutral — no ``overlays``, or an
+  empty list, which ``normalise`` drops — renders the commands it always did.
+  At most ``MAX_OVERLAYS`` overlays and ``MAX_OVERLAY_VIDEOS`` of them videos:
+  each is an input of the final pass. Its ``asset_id`` is checked like a
+  clip's, in every layer (the database's editor_doc_problem sees ``asset_id``
+  at any depth).
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
   and speed; a source with no sound track is silent, never an error.
@@ -111,6 +131,12 @@ MAX_CUES = 5000
 #: ffmpeg pass (render_spec._timeline_command), so they are counted per document.
 MAX_AUDIO_CLIPS = 64
 MAX_TOTAL_CLIPS = 5000
+#: Picture overlays (render_spec.MAX_PICTURE_* are the same numbers; a test pins
+#: them). Each is one more input and filter chain in the final pass; a video
+#: keeps a decoder open for its whole span.
+MAX_OVERLAYS = 16
+MAX_OVERLAY_VIDEOS = 4
+OVERLAY_W_MIN, OVERLAY_W_MAX = 0.05, 1.0
 MAX_TEXT = 500
 MAX_ID = 64
 MAX_DOC_BYTES = 2_000_000
@@ -150,6 +176,8 @@ OUTLINE_MAX = 20.0
 SPEED_MIN, SPEED_MAX = 0.5, 2.0
 
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
+#: Which asset kinds an overlay may use (a picture or a video, never a sound).
+OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
 #: Which asset kinds a clip on each track kind may use.
 TRACK_ASSET_KINDS = {KIND_V: (ASSET_VIDEO, ASSET_IMAGE), KIND_A: (ASSET_AUDIO,)}
 
@@ -165,7 +193,7 @@ _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 # Field lists — the schema's "required"/"properties" (tests pin them together).
 _DOC_REQUIRED = ("version", "width", "height", "fps", "tracks")
-_DOC_KEYS = _DOC_REQUIRED + ("captions",)
+_DOC_KEYS = _DOC_REQUIRED + ("captions", "overlays")
 _TRACK_REQUIRED = ("id", "kind", "clips")
 _TRACK_KEYS = _TRACK_REQUIRED + ("name",)
 _A_TRACK_KEYS = _TRACK_KEYS + ("role", "duck")
@@ -183,6 +211,8 @@ _TRANSITION_KEYS = ("type", "duration_s")
 _CAPTIONS_KEYS = ("style", "cues")
 _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y",)
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
+_OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
+_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity")
 
 #: Defaults normalise() fills in (and the schema documents).
 TEXT_DEFAULTS = {"font": "DejaVu Sans", "size": 64, "color": "#FFFFFF",
@@ -194,6 +224,8 @@ CAPTION_STYLE_DEFAULTS = {"font": "DejaVu Sans", "size": 56, "color": "#FFFFFF",
 V_DEFAULTS = {"fit": "contain", "fade_in_s": 0.0, "fade_out_s": 0.0,
               "transition": {"type": "cut", "duration_s": 0.0}, "speed": 1.0, "audio": False}
 A_DEFAULTS = {"gain_db": 0.0, "fade_in_s": 0.0, "fade_out_s": 0.0}
+#: An overlay's defaults: the middle of the frame, a third of its width, opaque.
+OVERLAY_DEFAULTS = {"x": 0.5, "y": 0.5, "w": 0.3, "opacity": 1.0}
 
 
 class TimelineError(ValueError):
@@ -405,6 +437,8 @@ def validate(doc: Any) -> List[str]:
     captions = doc.get("captions")
     if captions is not None:
         _validate_captions(captions, problems, claim)
+    if "overlays" in doc:
+        _validate_overlays(doc["overlays"], fps, problems, claim)
 
     if problems:
         return problems
@@ -520,6 +554,37 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
+
+
+def _validate_overlays(overlays, fps, problems, claim) -> None:
+    """``overlays`` (see the module docstring). Each is judged on its own: they
+    may overlap, so there is nothing to compare between them."""
+    if not isinstance(overlays, list):
+        problems.append("overlays must be a list")
+        return
+    if len(overlays) > MAX_OVERLAYS:
+        problems.append(f"overlays: at most {MAX_OVERLAYS}")
+        return
+    for i, ov in enumerate(overlays):
+        where = f"overlays[{i}]"
+        if not _fields(ov, _OVERLAY_KEYS, _OVERLAY_REQUIRED, where, problems):
+            continue
+        where = f"overlay {ov.get('id')!r}"
+        claim(ov.get("id"), where)
+        aid = ov.get("asset_id")
+        if not (isinstance(aid, str) and _UUID_RE.fullmatch(aid)):
+            problems.append(f"{where}: asset_id must be a uuid (got {_shown(aid)})")
+        for k in ("start_s", "end_s"):
+            _num_in(ov, k, 0, MAX_DURATION_S, where, problems)
+        s, e = ov.get("start_s"), ov.get("end_s")
+        if _in_range(s) and _in_range(e):   # arithmetic only on times the document may hold
+            if _ms(e) <= _ms(s):
+                problems.append(f"{where}: end_s ({_shown(e)}) must be greater than start_s ({_shown(s)})")
+            elif fps and round(_ms(e) * fps) - round(_ms(s) * fps) < 1:
+                problems.append(f"{where}: shorter than one frame at {fps} fps")
+        for k in ("x", "y", "opacity"):
+            _num_in(ov, k, 0, 1, where, problems)
+        _num_in(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems)
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -817,6 +882,16 @@ def normalise(doc: dict) -> dict:
                         "text": c["text"]} for c in doc["captions"]["cues"]),
                       key=lambda c: (c["start_s"], c["id"]))
         out["captions"] = {"style": style, "cues": cues}
+    if doc.get("overlays"):
+        # The list order is the layering: kept, not sorted. An empty list is
+        # the document without the field, so it is dropped.
+        out["overlays"] = []
+        for ov in doc["overlays"]:
+            o = {**OVERLAY_DEFAULTS, **copy.deepcopy(ov)}
+            o["asset_id"] = o["asset_id"].lower()
+            for k in ("start_s", "end_s", "x", "y", "w", "opacity"):
+                o[k] = _ms(o[k])
+            out["overlays"].append(o)
     return out
 
 
@@ -895,8 +970,10 @@ def _local_path(path) -> bool:
 
 def asset_ids(doc: dict) -> List[str]:
     """Every asset id the document uses, lower-case, sorted, once each."""
-    return sorted({str(c["asset_id"]).lower() for t in doc.get("tracks") or []
-                   for c in t.get("clips") or [] if "asset_id" in c})
+    ids = {str(c["asset_id"]).lower() for t in doc.get("tracks") or []
+           for c in t.get("clips") or [] if "asset_id" in c}
+    ids.update(str(o["asset_id"]).lower() for o in doc.get("overlays") or [] if "asset_id" in o)
+    return sorted(ids)
 
 
 def resolve_assets(doc: dict, resolver: AssetResolver) -> Dict[str, ResolvedAsset]:
@@ -940,6 +1017,27 @@ def resolve_assets(doc: dict, resolver: AssetResolver) -> Dict[str, ResolvedAsse
             if asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["out_s"]) > _ms(dur) + 0.001:
                 problems.append(f"{where}: out_s {clip['out_s']} is past the end of asset "
                                 f"{asset.asset_id} ({dur} s)")
+    videos = 0
+    for ov in doc.get("overlays") or []:
+        asset = found.get(str(ov["asset_id"]).lower())
+        if asset is None:
+            continue
+        where = f"overlay {ov['id']!r}"
+        if asset.kind not in OVERLAY_ASSET_KINDS:
+            problems.append(f"{where}: asset {asset.asset_id} is {asset.kind!r}; an overlay "
+                            f"takes {' or '.join(OVERLAY_ASSET_KINDS)}")
+            continue
+        if not _local_path(asset.path):
+            problems.append(f"{where}: asset {asset.asset_id} has no local file to render from")
+            continue
+        if asset.kind == ASSET_VIDEO:
+            videos += 1
+            dur = asset.duration_s
+            if dur is not None and _ms(ov["end_s"]) - _ms(ov["start_s"]) > _ms(dur) + 0.001:
+                problems.append(f"{where}: runs {_ms(_ms(ov['end_s']) - _ms(ov['start_s']))} s but "
+                                f"video {asset.asset_id} is only {dur} s long")
+    if videos > MAX_OVERLAY_VIDEOS:
+        problems.append(f"timeline: at most {MAX_OVERLAY_VIDEOS} video overlays (got {videos})")
     if problems:
         raise TimelineError(problems)
     return found
