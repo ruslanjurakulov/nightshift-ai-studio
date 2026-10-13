@@ -1,4 +1,5 @@
 import type { SiteDictionary } from "./en";
+import { studioPageRu } from "../studio-page/ru";
 
 /** Публичный сайт: главная, «Решения», вход, 404. Источник — ./en.ts. */
 export const siteRu: SiteDictionary = {
@@ -425,6 +426,8 @@ export const siteRu: SiteDictionary = {
     paySlug: "Оплата",
     faqSlug: "Вопросы",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageRu,
   final: {
     title: "Поставьте следующее видео в ночную смену.",
     lead: "Начните бесплатно. Цена — до каждого запуска, одобрение — до каждого эфира.",
