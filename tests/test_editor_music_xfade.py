@@ -83,8 +83,8 @@ ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
 #: threads (BR-L-007): a clip at the video cap (8192x4352, BR-L-010), any other
 #: input at the still cap (100 MP), each plus the decoder's row padding of
 #: 63 x 16384 px (BR-L-009). Filter graphs get two threads; no -xerror (BR-L-008).
-CLIP = ["-max_pixels", "36683776", "-threads", "2"]
-STILL = ["-max_pixels", "101032192", "-threads", "2"]
+CLIP = ["-max_pixels", "36683776", "-threads", "2", "-protocol_whitelist", "file"]
+STILL = ["-max_pixels", "101032192", "-threads", "2", "-protocol_whitelist", "file"]
 TH = ["-filter_threads", "2", "-filter_complex_threads", "2"]
 #: The encoder's threads, before the output (BR-L-007).
 OUT = ["-threads", "4"]

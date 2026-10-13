@@ -5290,6 +5290,648 @@
     "22222222-2222-4222-8222-222222222222": "audio"
    },
    "sql": null
+  },
+  {
+   "name": "picture clip id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1\n",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "track id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1\n",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1\n",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "caption id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ],
+    "captions": {
+     "cues": [
+      {
+       "id": "k1\n",
+       "start_s": 0,
+       "end_s": 1,
+       "text": "hi"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "asset id with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111\n",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text colour with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true,
+        "color": "#FFFFFF\n"
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "version true",
+   "valid": false,
+   "doc": {
+    "version": true,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "picture clip out_s of 1e308 and an end_s",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 1e+308,
+        "speed": 2,
+        "audio": true,
+        "end_s": 1
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "picture clip in_s of 1e308",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1e+308,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
   }
  ]
 }

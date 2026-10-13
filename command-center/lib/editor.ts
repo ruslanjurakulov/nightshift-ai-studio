@@ -506,11 +506,11 @@ export function validateTimeline(doc: unknown): string[] {
 
   if (problems.length) return problems;
   const d = doc as unknown as TimelineDoc;
-  const found = overlaps(d);
-  for (const ov of found.slice(0, 20))
+  const found = overlaps(d, MAX_REPORTED_OVERLAPS + 1);
+  for (const ov of found.slice(0, MAX_REPORTED_OVERLAPS))
     problems.push(`track ${ov[0]}: clips ${ov[1]} and ${ov[2]} overlap`);
-  if (found.length > 20)
-    problems.push(`... and ${found.length - 20} more overlaps`);
+  if (found.length > MAX_REPORTED_OVERLAPS)
+    problems.push("... and more overlaps");
   problems.push(...transitionProblems(d));
   const total = docDuration(d);
   if (total <= 0) problems.push("timeline: nothing to render");
@@ -799,23 +799,39 @@ function crossfades(
   return out;
 }
 
-function overlaps(doc: TimelineDoc): [string, string, string][] {
+/**
+ * Validation reports the first MAX_REPORTED_OVERLAPS pairs and then only that
+ * there are more, so the search stops one past that: a document of 5000
+ * captions on one span has 12.5 million pairs, and collecting them all froze
+ * the process (modules/timeline.py `overlaps` keeps the same limit).
+ */
+const MAX_REPORTED_OVERLAPS = 20;
+
+function overlaps(
+  doc: TimelineDoc,
+  limit = Infinity,
+): [string, string, string][] {
   const blended = new Set<string>();
+  // Ids are checked ([A-Za-z0-9_-]) before this runs, so NUL cannot occur in one.
+  const key = (lane: string, a: string, b: string) => `${lane}\0${a}\0${b}`;
   for (const t of doc.tracks)
     if (t.kind === "V")
       for (const [p, c] of crossfades(t)) {
-        blended.add(JSON.stringify([t.id, String(p.id), String(c.id)]));
-        blended.add(JSON.stringify([t.id, String(c.id), String(p.id)]));
+        blended.add(key(t.id, String(p.id), String(c.id)));
+        blended.add(key(t.id, String(c.id), String(p.id)));
       }
   const found: [string, string, string][] = [];
   for (const [lane, items] of spans(doc)) {
-    items.forEach(([, e1, id1], i) => {
-      for (const [s2, , id2] of items.slice(i + 1)) {
+    for (let i = 0; i < items.length; i += 1) {
+      const [, e1, id1] = items[i];
+      for (let j = i + 1; j < items.length; j += 1) {
+        const [s2, , id2] = items[j];
         if (s2 >= e1) break;
-        if (blended.has(JSON.stringify([lane, id1, id2]))) continue;
+        if (blended.size && blended.has(key(lane, id1, id2))) continue;
         found.push([lane, id1, id2]);
+        if (found.length >= limit) return found;
       }
-    });
+    }
   }
   return found;
 }
