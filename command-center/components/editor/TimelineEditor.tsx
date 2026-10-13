@@ -138,6 +138,8 @@ import { TimelineViewBar } from "./TimelineViewBar";
 import { useTimelineView } from "./useTimelineView";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { usePlayheadScrub } from "./usePlayheadScrub";
+import { useStickyOffsets } from "./useStickyOffsets";
+import { formatDayTime } from "@/lib/date-format";
 
 /** The first time at which clip `id` is the one the preview shows: its start,
  *  or the end of the clip before it when a cross-fade overlaps the two. */
@@ -350,6 +352,8 @@ export function TimelineEditor({
 
   // ── preview ────────────────────────────────────────────────────────────────
   const video = useRef<HTMLVideoElement>(null);
+  const pinned = useRef<HTMLDivElement>(null);
+  useStickyOffsets(pinned);
   const at = clipAt(model, Math.min(playhead, Math.max(0, picture - 0.001)));
   const src = at ? (assets[at.clip.asset_id]?.viewUrl ?? null) : null;
   // A picture sent from the Library or Studio is a still: it is drawn, not played.
@@ -645,85 +649,106 @@ export function TimelineEditor({
     const d = new Date(iso);
     return Number.isNaN(d.getTime())
       ? ""
-      : d.toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
+      : formatDayTime(d, locale);
   };
+
+  // Words first; the mark (filled = unsaved, hollow = saved) is a second cue, never the only one.
+  const saveState = (
+    <div className="flex min-w-0 flex-col items-end gap-0.5 text-xs">
+      <span
+        className={`inline-flex items-center gap-1.5 ${dirty && !saving ? "font-medium text-[var(--color-warn)]" : "text-[var(--color-muted)]"}`}
+        aria-live="polite"
+      >
+        <span
+          aria-hidden
+          className={`inline-block size-2 shrink-0 rounded-full border border-current ${dirty && !saving ? "bg-current" : ""}`}
+        />
+        {saving ? te.saving : dirty ? te.unsaved : te.saved}
+      </span>
+      {dirty && draft.kept ? (
+        <span
+          className={`text-xs ${draft.kept === "kept" ? "text-[var(--color-muted)]" : "font-medium text-[var(--color-warn)]"}`}
+        >
+          {draft.kept === "kept" ? te.draftKept : te.draftOff}
+        </span>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-4" data-editor-root="">
       {/* header: name, history, save, export */}
       <div className="panel flex flex-col gap-3 p-4 sm:p-5 sm:p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        {/* One grid, placed per breakpoint. From sm up the back link and the saved
+            state share the top row, then the name's label and field. On a phone the
+            back link is dropped (the breadcrumb's arrow and the Editor tab already
+            lead back) and the saved state sits at the end of the name's label. The
+            saved state is ONE element (one polite live region), only moved. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 gap-y-1 [grid-template-areas:'label_status''input_input'] sm:items-center sm:[grid-template-areas:'back_status''label_label''input_input']">
           <Link
             href={path("/editor")}
-            className="text-sm text-[var(--color-primary)] underline-offset-4 hover:underline"
+            className="hidden text-sm text-[var(--color-primary)] underline-offset-4 [grid-area:back] hover:underline sm:inline"
           >
             ← {te.back}
           </Link>
-          <div className="ml-auto flex min-w-0 flex-col items-end gap-0.5 text-xs">
-            {/* Words first; the mark (filled = unsaved, hollow = saved) is a second cue, never the only one. */}
-            <span
-              className={`inline-flex items-center gap-1.5 ${dirty && !saving ? "font-medium text-[var(--color-warn)]" : "text-[var(--color-muted)]"}`}
-              aria-live="polite"
-            >
-              <span
-                aria-hidden
-                className={`inline-block size-2 shrink-0 rounded-full border border-current ${dirty && !saving ? "bg-current" : ""}`}
-              />
-              {saving ? te.saving : dirty ? te.unsaved : te.saved}
-            </span>
-            {dirty && draft.kept ? (
-              <span className="text-[11px] text-[var(--color-muted)]">
-                {draft.kept === "kept" ? te.draftKept : te.draftOff}
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
-          {te.projectTitle}
+          <div className="[grid-area:status]">{saveState}</div>
+          <label
+            htmlFor={`${ids}-title`}
+            className="text-xs text-[var(--color-muted)] [grid-area:label] sm:mt-2 sm:self-end"
+          >
+            {te.projectTitle}
+          </label>
           <input
+            id={`${ids}-title`}
             value={title}
             maxLength={120}
             onChange={(e) => setTitle(e.target.value)}
-            className={fieldClass}
+            className={`${fieldClass} [grid-area:input]`}
           />
-        </label>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={undo}
-            disabled={!past.length}
-            className={quietBtn}
-          >
-            <Undo2 className="size-3.5" aria-hidden />
-            {te.undo}
-          </button>
-          <button
-            type="button"
-            onClick={redo}
-            disabled={!future.length}
-            className={quietBtn}
-          >
-            <Redo2 className="size-3.5" aria-hidden />
-            {te.redo}
-          </button>
-          <span className="flex-1" />
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={!dirty || saving}
-            className="btn-quiet text-sm"
-          >
-            {saving ? te.saving : te.save}
-          </button>
-          <button
-            type="button"
-            onClick={() => void startExport()}
-            disabled={Boolean(exportBlocked) || starting}
-            aria-describedby={exportBlocked ? `${ids}-export-why` : undefined}
-            className="btn-primary text-sm"
-          >
-            {starting ? te.exporting : te.export}
-          </button>
+          {/* Undo and Redo: a 50/50 pair on a phone (their labels are long in Russian and Uzbek), as Save and Export are below. */}
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!past.length}
+              className={quietBtn}
+            >
+              <Undo2 className="size-3.5" aria-hidden />
+              {te.undo}
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!future.length}
+              className={quietBtn}
+            >
+              <Redo2 className="size-3.5" aria-hidden />
+              {te.redo}
+            </button>
+          </div>
+          <span className="hidden flex-1 sm:block" />
+          {/* Save and Export: one 50/50 row on a phone, so both are on the first screen. */}
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={!dirty || saving}
+              className="btn-quiet text-sm"
+            >
+              {saving ? te.saving : te.save}
+            </button>
+            <button
+              type="button"
+              onClick={() => void startExport()}
+              disabled={Boolean(exportBlocked) || starting}
+              aria-describedby={exportBlocked ? `${ids}-export-why` : undefined}
+              className="btn-primary text-sm"
+            >
+              {starting ? te.exporting : te.export}
+            </button>
+          </div>
         </div>
         {exportBlocked ? (
           <p
@@ -733,7 +758,7 @@ export function TimelineEditor({
             {exportBlocked}
           </p>
         ) : null}
-        <p className="m-0 text-xs text-[var(--color-muted)]">
+        <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">
           {te.freeNote} {te.publishNote}
         </p>
         {errorText ? (
@@ -767,6 +792,7 @@ export function TimelineEditor({
           checking={poll.checking}
           onRetry={startExport}
           onCheckNow={poll.checkNow}
+          quietRetry={draft.resume.kind === "restore"}
         />
       ) : null}
 
@@ -776,9 +802,18 @@ export function TimelineEditor({
         onDiscard={draft.discard}
       />
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="flex min-w-0 flex-col gap-3">
-          {/* preview */}
+      {/* Below lg this is one column, so the left column dissolves (`contents`)
+          and the preview becomes a child of the flex column that also holds the
+          inspector: a pinned child stays pinned all the way down the inspector,
+          where the colour sliders are. From lg the two columns sit side by side. */}
+      <div className="flex min-w-0 flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-4">
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-3">
+          {/* preview: pinned under the top bar below lg, capped to 30dvh (the box keeps its ratio, see previewFrameStyle) */}
+          <div
+            ref={pinned}
+            className="sticky top-[var(--ns-header-h,4rem)] z-10 bg-[var(--color-bg)] pb-2 pt-1 [--ns-preview-cap:30dvh] lg:static lg:bg-transparent lg:p-0 lg:[--ns-preview-cap:60vh]"
+            data-editor-preview-pin=""
+          >
           <div
             className="relative mx-auto w-full overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-black"
             style={previewFrameStyle(model)}
@@ -830,7 +865,7 @@ export function TimelineEditor({
                 }}
               />
             ) : (
-              <p className="absolute inset-0 m-0 flex items-center justify-center p-4 text-center text-xs text-[var(--color-muted)]">
+              <p className="absolute inset-0 m-0 flex items-center justify-center p-4 text-center text-xs text-[var(--ns-on-film)]">
                 {te.noPreview}
               </p>
             )}
@@ -865,9 +900,14 @@ export function TimelineEditor({
               </span>
             ))}
           </div>
+          </div>
           <p className="m-0 text-center text-xs text-[var(--color-muted)]">
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
+          </p>
+          {/* The header panel's note about free export and nothing being published, here below the picture on a phone so the controls above start higher. */}
+          <p className="m-0 text-center text-xs text-[var(--color-muted)] sm:hidden">
+            {te.freeNote} {te.publishNote}
           </p>
           <FramePicker
             width={model.width}
@@ -883,7 +923,7 @@ export function TimelineEditor({
           />
 
           {/* transport */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <button
               type="button"
               onClick={togglePlay}
@@ -908,10 +948,10 @@ export function TimelineEditor({
                 now: formatTime(playhead),
                 total: formatTime(total),
               })}
-              className="min-w-0 flex-1 accent-[var(--color-primary)]"
+              className="h-11 min-w-[9rem] flex-1 accent-[var(--color-primary)]"
             />
             {/* The master-control readout: frame-accurate timecode at the project's rate; the spoken form keeps tenths. */}
-            <span className="shrink-0 text-xs text-[var(--color-muted)]">
+            <span className="shrink-0 basis-full text-right text-xs text-[var(--color-muted)] sm:basis-auto">
               <Timecode value={playhead} format="frames" fps={model.fps} label={formatTime(playhead)} /> /{" "}
               <Timecode value={total} format="frames" fps={model.fps} label={formatTime(total)} />
             </span>
@@ -1230,14 +1270,14 @@ export function TimelineEditor({
                           href={out.viewUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-[var(--color-primary)] underline-offset-4 hover:underline"
+                          className="inline-flex min-h-11 items-center text-[var(--color-primary)] underline-offset-4 hover:underline"
                         >
                           {te.watch}
                         </a>
                       ) : null}
                       <Link
                         href={path("/library")}
-                        className="text-[var(--color-primary)] underline-offset-4 hover:underline"
+                        className="inline-flex min-h-11 items-center text-[var(--color-primary)] underline-offset-4 hover:underline"
                       >
                         {te.viewInLibrary}
                       </Link>
@@ -1449,7 +1489,7 @@ function ClipInspector({
         onChange={onGrade}
         onReset={onGradeReset}
       />
-      <label className="flex items-center gap-2 text-sm">
+      <label className="tap-row flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={clip.audio}
@@ -1828,7 +1868,7 @@ function SoundInspector({
       </fieldset>
       {sound.role !== "speech" ? (
         <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-xs">
+          <label className="tap-row flex items-center gap-2 text-xs">
             <input
               type="checkbox"
               checked={Boolean(sound.duck)}

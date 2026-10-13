@@ -65,7 +65,7 @@ export default async function EditorProjectPage({
 
   return (
     <div className="rhythm">
-      <PageHeader icon="editor" title={p.title} subtitle={t.editor.subtitle} />
+      <PageHeader icon="editor" title={p.title} subtitle={t.editor.subtitle} compactPhone />
       <TimelineEditor
         projectId={p.id}
         title={p.title}
