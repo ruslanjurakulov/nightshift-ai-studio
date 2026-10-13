@@ -26,7 +26,9 @@ How a timeline maps onto the spec:
   ``xfade``), then the second clip's own part. Each piece is rendered over
   its whole clip and cut (``clip_s`` / ``offset_s``), so fades and a still's
   slow zoom carry on across the cut. The concatenation is still exactly the
-  timeline's frames. When both clips play their own sound, the two sounds
+  timeline's frames. The blend is the incoming clip's ``transition.style``
+  (``Segment.xfade_style``, an ffmpeg ``xfade`` transition from a closed list;
+  absent = the plain ``fade``, the segment every older document gets). When both clips play their own sound, the two sounds
   are joined with ``acrossfade`` (``AudioTrack.crossfade_s``); when only one
   does, it fades in or out across the overlap.
 * **Sound** — a V clip with ``audio: true`` whose source has a sound track
@@ -48,6 +50,9 @@ How a timeline maps onto the spec:
   text, with ffmpeg ``overlay`` (``render_spec.picture_overlay_filters``). One
   that starts after the picture ends, or whose opacity is 0, renders nothing
   and is left out, so the command is the one the document without it gets.
+* **Text looks** — a T clip's ``shadow``, ``box_color`` and ``box_opacity`` become
+  the overlay's ASS style (a drop shadow; an opaque or translucent box instead of
+  the outline); a text without them is written as it always was.
 * **Text** — T clips in track order, then the captions on top, become text
   overlays burnt from one ASS file.
 
@@ -167,8 +172,12 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 nxt = clips[i + 1]
                 n_full = _frame(tl.clip_end_s(nxt), fps) - _frame(nxt["start_s"], fps)
                 incoming = piece(nxt, tail, full=n_full, seed=f"clip:{nxt['id']}")
-                segments.append(replace(piece(clip, tail, full=full, offset=full - tail, seed=seed),
-                                        xfade=incoming))
+                outgoing = piece(clip, tail, full=full, offset=full - tail, seed=seed)
+                style = tl.crossfade_style(nxt)    # the incoming clip's transition
+                if style == tl.XFADE_DEFAULT_STYLE:
+                    segments.append(replace(outgoing, xfade=incoming))   # the segment it always was
+                else:
+                    segments.append(replace(outgoing, xfade=incoming, xfade_style=style))
             cursor = end
     if cursor < total_frames:
         black(total_frames - cursor)
@@ -241,6 +250,18 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
     return tracks
 
 
+def _text_looks(c: dict) -> dict:
+    """A text's looks as TextOverlay fields ({} without any: the overlay is then
+    exactly what it was before they existed; normalise() has dropped a zero shadow)."""
+    out = {}
+    if "shadow" in c:
+        out["shadow"] = c["shadow"]
+    if "box_color" in c:
+        out["box_color"] = c["box_color"]
+        out["box_opacity"] = c["box_opacity"]
+    return out
+
+
 def _text(doc: dict) -> List[TextOverlay]:
     overlays: List[TextOverlay] = []
     for track in doc["tracks"]:
@@ -252,6 +273,7 @@ def _text(doc: dict) -> List[TextOverlay]:
                 size=c["size"], color=c["color"], outline_color=c["outline_color"],
                 outline_width=c["outline_width"], bold=c["bold"], x=c["x"], y=c["y"],
                 anchor=c["anchor"], fade_in_s=c["fade_in_s"], fade_out_s=c["fade_out_s"],
+                **_text_looks(c),
             ))
     captions = doc.get("captions")
     if captions:

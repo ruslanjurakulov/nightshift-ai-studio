@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/x/library",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 import { I18nProvider } from "@/lib/i18n/context";

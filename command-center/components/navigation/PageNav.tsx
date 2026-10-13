@@ -71,7 +71,7 @@ export function PageNav() {
                 ) : (
                   <Link
                     href={crumb.href}
-                    className="max-w-[12rem] truncate rounded py-3 transition-colors max-sm:min-w-10 sm:py-0 pointer-coarse:min-w-10 pointer-coarse:py-3 hover:text-[var(--color-fg)]"
+                    className="max-w-[12rem] truncate rounded py-[0.8125rem] transition-colors max-sm:min-w-10 sm:py-0 pointer-coarse:min-w-10 pointer-coarse:py-[0.8125rem] hover:text-[var(--color-fg)]"
                   >
                     {label}
                   </Link>

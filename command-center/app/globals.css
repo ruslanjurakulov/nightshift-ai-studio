@@ -664,6 +664,14 @@ h1 { letter-spacing: -0.02em; }
   margin-inline: auto;
   width: 100%;
 }
+/* The signed-in customer page keeps its end above the bottom tab bar. This is
+   here, not a pb-24 utility on <main>: this rule is unlayered, so it beats
+   Tailwind's layered utilities and a pb-* on the same element never applied
+   (the last ~65px of every phone page sat under the bar). The bar is shown
+   below lg only. */
+@media (max-width: 1023.98px) {
+  .pad-page-tabbar { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+}
 /* The bar's own contents follow the same measure, so the wordmark and the
    controls stay in line with the page under them instead of hugging the edges. */
 .bar-measure {
@@ -2451,13 +2459,46 @@ html:has(.lp-root) { scroll-behavior: smooth; }
    grab area reaches 16px past each side. On a phone or a touch screen it is a
    44px-wide box inside the clip's edge (half the clip at most, so a short clip
    keeps both handles; zoom in to widen it) with the 12px bar drawn at the edge. */
-.ns-trim-handle { width: 12px; }
-.ns-trim-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: -16px; right: -16px; }
+/* The text and sound lanes of the timeline strip: 28px chips on a 30px step with
+   a mouse, 44px chips on a 46px step under a finger (same condition as the trim
+   handles below). */
+/* The editor pins its preview under the top bar below lg (useStickyOffsets
+   publishes both heights): a control scrolled to or focused by keyboard is
+   brought into view BELOW the pinned picture, not under it. */
+@media (max-width: 1023.98px) and (min-height: 32.01rem) {
+  html:has([data-editor-preview-pin]) {
+    scroll-padding-top: calc(var(--ns-header-h, 4rem) + var(--ns-sticky-h, 0px) + 0.5rem);
+  }
+}
+/* Below lg the fixed bottom tab bar covers the end of the viewport: a control reached by Tab is scrolled to above it. */
+@media (max-width: 1023.98px) {
+  html { scroll-padding-bottom: 5rem; }
+}
+.ns-lanes-root { --ns-lane-h: 28px; --ns-lane-step: 30px; }
 @media (pointer: coarse), (max-width: 40rem) {
-  .ns-trim-handle { width: 44px; max-width: 50%; background-color: transparent; }
+  .ns-lanes-root { --ns-lane-h: 44px; --ns-lane-step: 46px; }
+}
+/* With a mouse the handle is a 12px bar. Its box is 24px (WCAG 2.2 target size; the
+   bar is drawn by ::before, flush with the clip's edge, and the grip is centred in it),
+   and ::after reaches 16px further out on each side as the pointer's hit area. */
+.ns-trim-handle { width: 24px; background-color: transparent; }
+.ns-trim-handle::before { content: ""; position: absolute; top: 0; bottom: 0; z-index: -1; width: 12px; background: var(--color-primary); border-radius: inherit; }
+.ns-trim-handle[data-edge="in"] { padding-right: 12px; }
+.ns-trim-handle[data-edge="in"]::before { left: 0; }
+.ns-trim-handle[data-edge="out"] { padding-left: 12px; }
+.ns-trim-handle[data-edge="out"]::before { right: 0; }
+.ns-trim-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: -16px; right: -16px; }
+/* Keyboard focus hugs the 12px bar, as it did when the box itself was 12px. */
+@media (pointer: fine) and (min-width: 40.01rem) {
+  .ns-trim-handle:focus-visible { outline: none; box-shadow: none; }
+  .ns-trim-handle:focus-visible::before { outline: 3px solid var(--ns-focus); outline-offset: 2px; box-shadow: 0 0 0 2px var(--color-fg); }
+}
+@media (pointer: coarse), (max-width: 40rem) {
+  .ns-trim-handle { width: 44px; max-width: 36%; }
+  .ns-trim-handle::before { content: none; }
   .ns-trim-handle::after { content: none; }
-  .ns-trim-handle[data-edge="in"] { justify-content: flex-start; padding-left: 5px; background-image: linear-gradient(to right, var(--color-primary) 12px, transparent 12px); }
-  .ns-trim-handle[data-edge="out"] { justify-content: flex-end; padding-right: 5px; background-image: linear-gradient(to left, var(--color-primary) 12px, transparent 12px); }
+  .ns-trim-handle[data-edge="in"] { justify-content: flex-start; padding-left: 5px; padding-right: 0; background-image: linear-gradient(to right, var(--color-primary) 12px, transparent 12px); }
+  .ns-trim-handle[data-edge="out"] { justify-content: flex-end; padding-right: 5px; padding-left: 0; background-image: linear-gradient(to left, var(--color-primary) 12px, transparent 12px); }
 }
 
 /* The record dot on the Generate key: making something is a REC press, not a

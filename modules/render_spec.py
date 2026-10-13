@@ -59,6 +59,9 @@ against the argv captured from the code before this extension):
     ``xfade`` is the incoming clip's head — the backend blends the two with
     ffmpeg ``xfade``. The picture stays a concatenation of exactly the
     timeline's frames, so nothing else in the render changes.
+    ``Segment.xfade_style`` is which ``xfade`` transition does the blend (one of
+    ``XFADE_STYLES``; the default ``fade`` is the plain dissolve, and a segment
+    without a style serialises and renders exactly as before).
   * ``AudioTrack.crossfade_s`` — this track is joined to the one before it
     with ``acrossfade`` over that many seconds (a cross-fade between two
     clips that both play their own sound).
@@ -83,6 +86,7 @@ against the argv captured from the code before this extension):
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
@@ -181,6 +185,14 @@ FITS = (FIT_CONTAIN, FIT_COVER)
 GRADE_RANGES = {"brightness": (-1.0, 1.0), "contrast": (0.0, 2.0), "saturation": (0.0, 3.0)}
 GRADE_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
 
+#: ffmpeg ``xfade`` transitions a cross-fade may use. modules/timeline.py holds the
+#: same list (a test pins them). The name is the only thing of it that reaches a
+#: filter graph, and only if it is in this tuple (render_backend checks again).
+XFADE_STYLES = ("fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight",
+                "slideleft", "slideright", "slideup", "slidedown", "circleopen",
+                "circleclose", "radial", "zoomin")
+XFADE_DEFAULT_STYLE = "fade"
+
 #: Picture overlays (a picture or video laid over the picture; modules/timeline.py
 #: holds the same numbers, a test pins them). Each is an extra input and a
 #: filter chain in the final pass, so they are counted; a video overlay also
@@ -189,6 +201,11 @@ MAX_PICTURE_OVERLAYS = 16
 MAX_PICTURE_VIDEOS = 4
 PICTURE_W_MIN, PICTURE_W_MAX = 0.05, 1.0
 PICTURE_KINDS = ("video", "image")
+
+#: Text looks (modules/timeline.py holds the same numbers, a test pins them).
+SHADOW_MAX = 20.0
+BOX_OPACITY_DEFAULT = 0.7
+_HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 #: Text overlay anchors: which point of the text box sits at (x, y). The ASS
 #: \an numpad code for each is in ass_captions.ANCHOR_AN.
@@ -252,6 +269,8 @@ class Segment:
     #: A cross-fade: this segment (the outgoing clip's last ``duration``
     #: seconds) dissolves into ``xfade`` (the incoming clip's first ones).
     xfade: Optional["Segment"] = None
+    #: Which ``xfade`` transition blends this segment into ``xfade``.
+    xfade_style: str = XFADE_DEFAULT_STYLE
     #: The picture's colour grade (``eq``); the defaults change nothing and
     #: add no filter, so a segment without it is the one it always was.
     brightness: float = 0.0
@@ -278,6 +297,7 @@ class Segment:
         _put_if(d, "saturation", self.saturation, 1.0)
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
+        _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
         return d
 
     @staticmethod
@@ -299,6 +319,7 @@ class Segment:
             contrast=float(1.0 if d.get("contrast") is None else d["contrast"]),
             saturation=float(1.0 if d.get("saturation") is None else d["saturation"]),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
+            xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
 
     @property
@@ -389,13 +410,25 @@ class TextOverlay:
     anchor: str = "center"
     fade_in_s: float = 0.0
     fade_out_s: float = 0.0
+    #: Looks (off by default; a text without them is written to the ASS file as
+    #: it always was): a soft black drop shadow ``shadow`` pixels down and to the
+    #: right, and a box of ``box_color`` at ``box_opacity`` behind the text
+    #: INSTEAD of its outline (libass draws one or the other).
+    shadow: float = 0.0
+    box_color: Optional[str] = None
+    box_opacity: float = BOX_OPACITY_DEFAULT
 
     def to_dict(self) -> dict:
-        return {"start_s": self.start_s, "end_s": self.end_s, "text": self.text,
-                "font": self.font, "size": self.size, "color": self.color,
-                "outline_color": self.outline_color, "outline_width": self.outline_width,
-                "bold": self.bold, "x": self.x, "y": self.y, "anchor": self.anchor,
-                "fade_in_s": self.fade_in_s, "fade_out_s": self.fade_out_s}
+        d = {"start_s": self.start_s, "end_s": self.end_s, "text": self.text,
+             "font": self.font, "size": self.size, "color": self.color,
+             "outline_color": self.outline_color, "outline_width": self.outline_width,
+             "bold": self.bold, "x": self.x, "y": self.y, "anchor": self.anchor,
+             "fade_in_s": self.fade_in_s, "fade_out_s": self.fade_out_s}
+        _put_if(d, "shadow", self.shadow, 0.0)
+        if self.box_color is not None:
+            d["box_color"] = self.box_color
+            d["box_opacity"] = self.box_opacity
+        return d
 
     @staticmethod
     def from_dict(d: dict) -> "TextOverlay":
@@ -416,6 +449,10 @@ class TextOverlay:
             anchor=str(d.get("anchor") or base.anchor),
             fade_in_s=float(d.get("fade_in_s") or 0.0),
             fade_out_s=float(d.get("fade_out_s") or 0.0),
+            shadow=float(d.get("shadow") or 0.0),
+            box_color=(str(d["box_color"]) if d.get("box_color") is not None else None),
+            box_opacity=float(d["box_opacity"] if d.get("box_opacity") is not None
+                              else BOX_OPACITY_DEFAULT),
         )
 
 
@@ -555,6 +592,10 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
     if not _speed_ok(seg.speed):
         problems.append(f"{name} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g} "
                         f"(got {seg.speed})")
+    if seg.xfade_style not in XFADE_STYLES:
+        problems.append(f"{name} has unknown cross-fade style {seg.xfade_style!r}")
+    elif seg.xfade_style != XFADE_DEFAULT_STYLE and seg.xfade is None:
+        problems.append(f"{name} has a cross-fade style but no cross-fade")
     if (seg.clip_s or seg.offset_s or seg.xfade is not None) and not frame_exact:
         # Pieces are cut by frame number; without the frame grid a cut would drift.
         problems.append(f"{name} is a piece of a clip or a cross-fade, which needs frame_exact")
@@ -691,6 +732,13 @@ def validate(spec: RenderSpec) -> List[str]:
             problems.append(f"overlay {i} position must be fractions of the frame (0..1)")
         if not isinstance(o.size, int) or isinstance(o.size, bool) or o.size <= 0:
             problems.append(f"overlay {i} size must be a positive integer")
+        if not (_finite(o.shadow) and 0 <= o.shadow <= SHADOW_MAX):
+            problems.append(f"overlay {i} shadow must be from 0 to {SHADOW_MAX:g}")
+        if o.box_color is not None and not (isinstance(o.box_color, str)
+                                            and _HEX.fullmatch(o.box_color)):
+            problems.append(f"overlay {i} box_color must be a #RRGGBB colour")
+        if not (_finite(o.box_opacity) and 0 <= o.box_opacity <= 1):
+            problems.append(f"overlay {i} box_opacity must be from 0 to 1")
     problems.extend(_picture_overlay_problems(spec))
     return problems
 

@@ -309,7 +309,7 @@ class SchemaTwinTestCase(unittest.TestCase):
         self.assertEqual(s["properties"]["fps"]["enum"], list(tl.FPS_VALUES))
         for name, keys in (("video_clip", tl._V_CLIP_KEYS), ("audio_clip", tl._A_CLIP_KEYS),
                            ("text_clip", tl._T_CLIP_KEYS), ("cue", tl._CUE_KEYS),
-                           ("transition", tl._TRANSITION_KEYS)):
+                           ("transition", tl._TRANSITION_ALLOWED)):
             self.assertEqual(set(defs[name]["properties"]), set(keys), name)
         for name, keys in (("video_track", tl._TRACK_KEYS), ("audio_track", tl._A_TRACK_KEYS),
                            ("text_track", tl._TRACK_KEYS)):

@@ -2,6 +2,7 @@
 
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { formatDayTime } from "@/lib/date-format";
 import type { Resume } from "./useEditorDraft";
 
 const btn = "btn-quiet inline-flex min-h-11 items-center justify-center px-4 text-sm";
@@ -25,10 +26,7 @@ export function DraftBanner({
   if (resume.kind === "none") return null;
   const when =
     resume.kind === "restore"
-      ? new Date(resume.draft.savedAt).toLocaleString(locale, {
-          dateStyle: "short",
-          timeStyle: "short",
-        })
+      ? formatDayTime(new Date(resume.draft.savedAt), locale)
       : "";
   const text =
     resume.kind === "restore"
@@ -39,7 +37,9 @@ export function DraftBanner({
   return (
     <section
       aria-label={te.draftRegion}
-      className="panel flex min-w-0 flex-col gap-3 border-l-4 border-l-[var(--color-warn)] p-4 sm:flex-row sm:items-center"
+      // The accent is inline: `.panel` sets its border unlayered, which beats a border-l-4 utility (the stripe never drew).
+      style={{ borderLeftWidth: 4, borderLeftColor: "var(--color-warn)" }}
+      className="panel flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center"
     >
       <p
         role="status"
@@ -47,7 +47,7 @@ export function DraftBanner({
       >
         {text}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className={`grid gap-2 sm:flex sm:flex-wrap ${resume.kind === "restore" ? "grid-cols-2" : "grid-cols-1"}`}>
         {resume.kind === "restore" ? (
           <button type="button" onClick={onRestore} className="btn-primary min-h-11 px-4 text-sm">
             {te.draftRestore}

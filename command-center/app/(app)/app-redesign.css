@@ -41,6 +41,12 @@ body .app-shell.atmos {
 .ns-slug svg { color: var(--ns-act-ink); flex: none; }
 .ns-slug-rule { flex: 1; height: 1px; background: var(--ns-rule); }
 .ns-pagehead { display: flex; flex-direction: column; gap: 20px; }
+/* compactPhone (PageHeader): on a phone the slug line and the lead line give way, so a tool's controls start on the first screen. */
+@media (max-width: 639.98px) {
+  .ns-pagehead[data-compact-phone] { gap: 8px; }
+  .ns-pagehead[data-compact-phone] .ns-slug,
+  .ns-pagehead[data-compact-phone] .t-lead { display: none; }
+}
 .ns-pagehead-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; }
 .app-shell .ns-pagehead .t-hero,
 .app-shell .ns-title {
