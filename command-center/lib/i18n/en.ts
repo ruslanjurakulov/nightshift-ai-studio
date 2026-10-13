@@ -1,5 +1,7 @@
+import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
+import { editorExportEn } from "./editor-export/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -14,6 +16,7 @@ import { overlayEn } from "./overlay/en";
 export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
+  presets: presetsEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",
@@ -4750,6 +4753,12 @@ export const en = {
     fitCover: "Fill (crop)",
     fitHint: "Fit shows the whole picture and adds bars where the shapes differ. Fill crops the centre so no bars show. Only the centre is cropped; you cannot move the crop yet.",
     fitStill: "A photo always fills the frame, with a slow zoom, so it has no fit setting.",
+    grade: "Colour",
+    gradeBrightness: "Brightness",
+    gradeContrast: "Contrast",
+    gradeSaturation: "Saturation",
+    gradeReset: "Reset colour",
+    gradeHint: "Applies to this clip only, photos too. The preview is close to the export; the exported video is exact.",
     clipHeading: "Clip {n}",
     reload: "Reload",
     draftFound: "Unsaved changes from {when} were found on this device. Restore them or discard them.",
@@ -4766,6 +4775,35 @@ export const en = {
     trimStart: "Start of clip {n}",
     trimEnd: "End of clip {n}",
     trimKeys: "Arrow keys move a handle by one frame, Shift + arrow by one second.",
+    view: {
+      toolbar: "Timeline view",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      fit: "Fit",
+      fitLabel: "Fit the timeline to the window",
+      zoomLevel: "Zoom {pct}%",
+      snap: "Snap",
+      snapDesc: "When on, a trim handle or the position in the video snaps to the edges of clips, texts and sounds, and to the current position.",
+      shortcuts: "Shortcuts",
+      shortcutsTitle: "Keyboard shortcuts",
+      shortcutsNote: "These keys work when the cursor is not in a text field. On a Mac, use Cmd instead of Ctrl.",
+      close: "Close",
+      keySpace: "Space",
+      keyDelete: "Delete",
+      keyBackspace: "Backspace",
+      keyShift: "Shift",
+      keyCtrl: "Ctrl",
+      scPlay: "Play or pause",
+      scSplit: "Split the clip at the playhead",
+      scRemove: "Remove the selected clip, text or sound",
+      scNudge: "Move the position in the video one frame back or forward",
+      scNudgeBig: "Move the position in the video one second back or forward",
+      scZoom: "Zoom in or out",
+      scFit: "Fit the timeline to the window",
+      scUndo: "Undo",
+      scRedo: "Redo",
+      scSave: "Save",
+    },
     speed: "Speed",
     speedValue: "{x}×",
     sound: "Keep the clip's sound",
@@ -4842,8 +4880,7 @@ export const en = {
     crossfadeTooShort: "This clip or the one before it is too short for a cross-fade (it needs {min} s on both).",
     clipCrossfade: "cross-fade of {s} s from the previous clip",
     selectHint: "Select a clip, a sound or a text on the timeline to change it.",
-    exports: "Exports",
-    noExports: "No exports yet.",
+    exports: "Earlier exports",
     exportStatus: {
       queued: "Waiting to render",
       rendering: "Rendering",
@@ -4862,6 +4899,7 @@ export const en = {
       other: "The export failed.",
     },
     exportRev: "Version {rev}",
+    exportPanel: editorExportEn,
     viewInLibrary: "Open in Library",
     watch: "Watch",
     deleteProject: "Delete project",

@@ -132,11 +132,20 @@ def decoder_max_pixels(pixels: int, max_side: int = DECODE_MAX_SIDE) -> int:
     return int(pixels) + (DECODE_ROW_ALIGN - 1) * int(max_side)
 
 
+#: Before every input of a timeline command: ffmpeg may open the ``file`` protocol and
+#: nothing else. A library file is a stranger's bytes; a container that names another
+#: input (an HLS playlist, a concat script, an ``http:`` or ``tcp:`` url) must not make
+#: the render open it. The upload probe and thumbnail commands pin the same
+#: whitelist (media_library); the concat list of the final pass is a ``file`` too.
+INPUT_PROTOCOLS = ("-protocol_whitelist", "file")
+
+
 def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = (),
                out_pixels: Optional[int] = None) -> List[str]:
     """``cmd`` as an editor export runs it: before every ``-i``, the
-    decoder's frame cap (``-max_pixels``: the video cap for an input in
-    ``video_inputs``, the still cap for any other) and its thread count; the
+    protocol whitelist (``INPUT_PROTOCOLS``), the decoder's frame cap
+    (``-max_pixels``: the video cap for an input in ``video_inputs``, the
+    still cap for any other) and its thread count; the
     filter graphs' thread counts after the program name, and the encoder's
     before the output (ffmpeg_limits: the footprint must not grow with the
     host's cores under the child's memory limit). A frame the cap
@@ -151,7 +160,8 @@ def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = (),
         if tok == "-i":
             src = cmd[i + 1]
             cap = DECODE_VIDEO_MAX_PIXELS if src in videos else DECODE_MAX_PIXELS
-            out += ["-max_pixels", str(decoder_max_pixels(cap)), *ffmpeg_limits.decode_thread_options()]
+            out += ["-max_pixels", str(decoder_max_pixels(cap)), *ffmpeg_limits.decode_thread_options(),
+                    *INPUT_PROTOCOLS]
         out.append(tok)
     # The encoder's threads, right before the output (the last argument).
     return out + [*ffmpeg_limits.encode_thread_options(out_pixels=out_pixels), cmd[-1]]

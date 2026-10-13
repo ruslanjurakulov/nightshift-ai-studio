@@ -389,6 +389,29 @@ describe("the frame in the preview", () => {
   });
 });
 
+describe("the editor's own shortcuts", () => {
+  it("Delete removes the selected overlay when focus is on the page, not inside a control", async () => {
+    mount();
+    await addLogo();
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: "Delete" });
+    expect(document.querySelector("[data-overlay]")).toBeNull();
+    expect(screen.getByText(te.saved)).toBeTruthy();
+  });
+
+  it("an arrow on the focused frame moves the overlay and NOT the playhead", async () => {
+    mount();
+    await addLogo();
+    const head = screen.getByRole("slider", { name: te.playhead }) as HTMLInputElement;
+    const before = head.value;
+    const frame = frameBtn();
+    frame.focus();
+    fireEvent.keyDown(frame, { key: "ArrowRight" });
+    expect(overlayEl().style.left).toBe("51%");
+    expect(head.value).toBe(before);
+  });
+});
+
 describe("limits", () => {
   it("the Add button is disabled at the cap, with the reason", () => {
     const doc = newDocForAsset(VIDEO)!;

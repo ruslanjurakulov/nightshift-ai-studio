@@ -29,7 +29,7 @@ const ORG = "0a000000-0000-4000-8000-00000000000a";
 const KIT = "0b000000-0000-4000-8000-00000000000b";
 const ts = en.styleLibrary;
 
-function ui(props: Partial<{ orgId: string | null; addState: AddState; initialAdded: Record<string, string> }> = {}, locale: "en" | "ru" | "uz" = "en"): ReactNode {
+function ui(props: Partial<{ orgId: string | null; addState: AddState; initialAdded: Record<string, string>; initialOpenId: string | null }> = {}, locale: "en" | "ru" | "uz" = "en"): ReactNode {
   return (
     <I18nProvider locale={locale}>
       <StyleLibrary orgId={ORG} addState="ready" initialAdded={{}} {...props} />
@@ -257,5 +257,15 @@ describe("languages", () => {
     expect(screen.getByRole("button", { name: fmt(d.styleLibrary.open, { name: s.name[locale] }) })).toBeTruthy();
     expect(within(screen.getByRole("group", { name: d.styleLibrary.filterLabel })).getByRole("button", { name: d.styleLibrary.tags.history })).toBeTruthy();
     expect(screen.getByRole("searchbox", { name: d.styleLibrary.searchLabel })).toBeTruthy();
+  });
+});
+
+describe("opened from the Presets gallery", () => {
+  it("starts with the named look's detail open and sends nothing", () => {
+    const style = STYLE_LIBRARY[1];
+    render(ui({ initialOpenId: style.id }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).getByText(style.name.en)).toBeTruthy();
+    expect(calls).toEqual([]);
   });
 });

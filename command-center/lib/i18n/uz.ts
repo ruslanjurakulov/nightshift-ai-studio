@@ -1,11 +1,14 @@
+import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
+import { editorExportUz } from "./editor-export/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
 export const uz: Dictionary = {
   site: siteUz,
+  presets: presetsUz,
   brand: {
     name: "Nightshift",
     tagline: "Boshqaruv markazi",
@@ -4739,6 +4742,12 @@ export const uz: Dictionary = {
     fitCover: "Toʻldirish (qirqish)",
     fitHint: "«Sigʻdirish» tasvirni butunlay koʻrsatadi, shakllar mos kelmasa chiziqlar qoʻshadi. «Toʻldirish» chetlarini qirqadi, chiziq qolmaydi. Faqat markaz qirqiladi; qirqish joyini hozircha surib boʻlmaydi.",
     fitStill: "Rasm kadrni har doim toʻldiradi va sekin yaqinlashadi, shuning uchun sozlama yoʻq.",
+    grade: "Rang",
+    gradeBrightness: "Yorqinlik",
+    gradeContrast: "Kontrast",
+    gradeSaturation: "Toʻyinganlik",
+    gradeReset: "Rangni tiklash",
+    gradeHint: "Faqat shu klipga taʼsir qiladi, rasmga ham. Koʻrinish eksportga yaqin; tayyor videoda rang aniq.",
     clipHeading: "{n}-klip",
     reload: "Yangilash",
     draftFound: "Bu qurilmada {when} dagi saqlanmagan oʻzgarishlar topildi. Ularni tiklang yoki bekor qiling.",
@@ -4755,6 +4764,35 @@ export const uz: Dictionary = {
     trimStart: "{n}-klip boshi",
     trimEnd: "{n}-klip oxiri",
     trimKeys: "Strelka tugmalari belgini bir kadrga, Shift + strelka bir soniyaga suradi.",
+    view: {
+      toolbar: "Taymlayn koʻrinishi",
+      zoomIn: "Yaqinlashtirish",
+      zoomOut: "Uzoqlashtirish",
+      fit: "Sigʻdirish",
+      fitLabel: "Taymlaynni oynaga sigʻdirish",
+      zoomLevel: "Masshtab {pct}%",
+      snap: "Yopishish",
+      snapDesc: "Yoqilganda qirqish belgisi va videodagi joy klip, matn va tovush chetlariga hamda videodagi joyga yopishadi.",
+      shortcuts: "Tezkor tugmalar",
+      shortcutsTitle: "Tezkor tugmalar",
+      shortcutsNote: "Tugmalar kursor matn maydonida boʻlmaganda ishlaydi. Mac kompyuterida Ctrl oʻrniga Cmd ishlating.",
+      close: "Yopish",
+      keySpace: "Probel",
+      keyDelete: "Delete",
+      keyBackspace: "Backspace",
+      keyShift: "Shift",
+      keyCtrl: "Ctrl",
+      scPlay: "Ijro etish yoki toʻxtatish",
+      scSplit: "Klipni kursor joyida boʻlish",
+      scRemove: "Tanlangan klip, matn yoki tovushni oʻchirish",
+      scNudge: "Joy bir kadr orqaga yoki oldinga",
+      scNudgeBig: "Joy bir soniya orqaga yoki oldinga",
+      scZoom: "Yaqinlashtirish yoki uzoqlashtirish",
+      scFit: "Taymlaynni oynaga sigʻdirish",
+      scUndo: "Bekor qilish",
+      scRedo: "Qaytarish",
+      scSave: "Saqlash",
+    },
     speed: "Tezlik",
     speedValue: "{x}×",
     sound: "Klip ovozini qoldirish",
@@ -4831,8 +4869,7 @@ export const uz: Dictionary = {
     crossfadeTooShort: "Bu klip yoki undan oldingisi ravon oʻtish uchun juda qisqa (ikkalasida ham {min} s kerak).",
     clipCrossfade: "oldingi klipdan {s} s ravon oʻtish",
     selectHint: "Oʻzgartirish uchun taymlayndagi klip, ovoz yoki matnni tanlang.",
-    exports: "Eksportlar",
-    noExports: "Hali eksport yoʻq.",
+    exports: "Oldingi eksportlar",
     exportStatus: {
       queued: "Render navbatida",
       rendering: "Render qilinmoqda",
@@ -4851,6 +4888,7 @@ export const uz: Dictionary = {
       other: "Eksport amalga oshmadi.",
     },
     exportRev: "{rev}-versiya",
+    exportPanel: editorExportUz,
     viewInLibrary: "Mediatekada ochish",
     watch: "Koʻrish",
     deleteProject: "Loyihani oʻchirish",

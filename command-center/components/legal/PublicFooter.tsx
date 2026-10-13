@@ -34,7 +34,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
       title: f.product,
       links: [
         { href: "/#how", label: f.how },
-        { href: "/#studio", label: f.studio },
+        { href: "/studio", label: f.studio },
         { href: "/pricing", label: f.pricing },
         { href: "/#faq", label: f.faq },
       ],
