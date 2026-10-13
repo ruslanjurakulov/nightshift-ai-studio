@@ -146,6 +146,7 @@ export function OverlayLayer({
     h: number;
   } | null>(null);
   const selected = overlays.find((o) => o.id === selectedId) ?? null;
+  const root = useRef<HTMLDivElement>(null);
 
   function onKey(e: KeyboardEvent<HTMLElement>, o: PictureOverlay) {
     const dir = ARROWS[e.key];
@@ -156,7 +157,9 @@ export function OverlayLayer({
   }
 
   function onDown(e: PointerEvent<HTMLElement>, o: PictureOverlay) {
-    const box = e.currentTarget.offsetParent?.getBoundingClientRect();
+    // The PREVIEW's size, not the frame button's offsetParent (that is the small,
+    // transformed overlay box): the drag is measured in fractions of the video.
+    const box = root.current?.getBoundingClientRect();
     if (!box || !box.width || !box.height) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -187,7 +190,7 @@ export function OverlayLayer({
   }
 
   return (
-    <>
+    <div ref={root} className="pointer-events-none absolute inset-0 z-0">
       {overlays.map((o) => {
         const a = assets[o.asset_id];
         const src = a?.viewUrl ?? a?.thumbUrl ?? null;
@@ -248,6 +251,7 @@ export function OverlayLayer({
         >
           <button
             type="button"
+            data-overlay-frame={selected.id}
             aria-label={fmt(to.handle, { n: numberOf(selected.id) })}
             onKeyDown={(e) => onKey(e, selected)}
             onPointerDown={(e) => onDown(e, selected)}
@@ -258,7 +262,7 @@ export function OverlayLayer({
           />
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -487,7 +491,13 @@ export function OverlayInspector({
   );
   return (
     <>
-      <h2 className="m-0 text-sm font-semibold">{fmt(to.heading, { n })}</h2>
+      <h2
+        tabIndex={-1}
+        data-overlay-heading=""
+        className="m-0 text-sm font-semibold outline-none"
+      >
+        {fmt(to.heading, { n })}
+      </h2>
       <p className="m-0 truncate text-xs text-[var(--color-muted)]">
         {fmt(to.file, {
           name,

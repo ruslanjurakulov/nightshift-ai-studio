@@ -272,6 +272,10 @@ export function TimelineEditor({
   const [adding, setAdding] = useState(false);
   const [addingSound, setAddingSound] = useState(false);
   const [addingOverlay, setAddingOverlay] = useState(false);
+  // Where focus goes once the render that follows an overlay add / delete is there
+  // (the picker unmounts, the inspector goes): never back to <body>.
+  const overlayFocus = useRef<"frame" | "add" | null>(null);
+  const addOverlayButton = useRef<HTMLButtonElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dragBase = useRef<EditorModel | null>(null);
 
@@ -345,6 +349,18 @@ export function TimelineEditor({
     setModel(future[0]);
     setFuture(future.slice(1));
   }, [model, past, future]);
+
+  useEffect(() => {
+    const where = overlayFocus.current;
+    if (!where) return;
+    overlayFocus.current = null;
+    const target =
+      where === "add"
+        ? addOverlayButton.current
+        : (document.querySelector<HTMLElement>("[data-overlay-frame]") ??
+          document.querySelector<HTMLElement>("[data-overlay-heading]"));
+    target?.focus();
+  }, [model, selected]);
 
   // A run of small changes to one control (a slider, the arrow keys) is ONE undo step.
   const burst = useRef<{ key: string; at: number; out: EditorModel } | null>(
@@ -700,6 +716,7 @@ export function TimelineEditor({
     apply(out.model);
     setSelected({ kind: "overlay", id: out.id });
     setAddingOverlay(false);
+    overlayFocus.current = "frame";
   }
 
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
@@ -906,8 +923,7 @@ export function TimelineEditor({
               </p>
             )}
             {overlays.length ? (
-              <div className="pointer-events-none absolute inset-0 z-0">
-                <OverlayLayer
+              <OverlayLayer
                   overlays={overlaysAt(model, playhead)}
                   assets={assets}
                   selectedId={overlay?.id ?? null}
@@ -931,8 +947,7 @@ export function TimelineEditor({
                       void refreshLinks();
                     }
                   }}
-                />
-              </div>
+              />
             ) : null}
             {cuesAt(model, playhead).map((c) => {
               const st = captionsOf(model)?.style;
@@ -1058,9 +1073,13 @@ export function TimelineEditor({
             </button>
             <button
               type="button"
+              ref={addOverlayButton}
               onClick={() => setAddingOverlay((a) => !a)}
               aria-expanded={addingOverlay}
               disabled={!canAddOverlay(model)}
+              aria-describedby={
+                canAddOverlay(model) ? undefined : `${ids}-overlay-full`
+              }
               className={quietBtn}
             >
               <Layers className="size-3.5" aria-hidden />
@@ -1077,7 +1096,10 @@ export function TimelineEditor({
             </button>
           </div>
           {!canAddOverlay(model) ? (
-            <p className="m-0 text-xs text-[var(--color-muted)]">
+            <p
+              id={`${ids}-overlay-full`}
+              className="m-0 text-xs text-[var(--color-muted)]"
+            >
               {fmt(te.overlay.full, { max: MAX_OVERLAYS })}
             </p>
           ) : !canAddOverlay(model, "video", isVideoAsset) ? (
@@ -1256,7 +1278,10 @@ export function TimelineEditor({
                 )
               }
               onLayer={(by) => apply(moveOverlay(model, overlay.id, by))}
-              onDelete={() => apply(removeOverlay(model, overlay.id))}
+              onDelete={() => {
+                overlayFocus.current = "add";
+                apply(removeOverlay(model, overlay.id));
+              }}
             />
           ) : sound ? (
             <SoundInspector

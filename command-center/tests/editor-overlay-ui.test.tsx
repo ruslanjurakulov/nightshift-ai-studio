@@ -368,13 +368,17 @@ describe("the frame in the preview", () => {
   it("can be dragged: one history step for the whole drag", async () => {
     mount();
     await addLogo();
-    const box = document.querySelector("video")!.parentElement!;
-    vi.spyOn(box, "getBoundingClientRect").mockReturnValue({
-      x: 0, y: 0, left: 0, top: 0, right: 400, bottom: 200, width: 400, height: 200,
-      toJSON: () => ({}),
+    const rect = (w: number, h: number) => ({
+      x: 0, y: 0, left: 0, top: 0, right: w, bottom: h, width: w, height: h, toJSON: () => ({}),
     });
+    // the preview layer is 400 x 200; the frame button's offsetParent (the small,
+    // transformed overlay box) is 120 x 60: a drag is measured against the PREVIEW
+    const preview = overlayEl().parentElement!;
+    vi.spyOn(preview, "getBoundingClientRect").mockReturnValue(rect(400, 200));
     const frame = frameBtn();
-    Object.defineProperty(frame, "offsetParent", { value: box });
+    const small = frame.parentElement!;
+    vi.spyOn(small, "getBoundingClientRect").mockReturnValue(rect(120, 60));
+    Object.defineProperty(frame, "offsetParent", { value: small });
     // jsdom's PointerEvent drops clientX: a MouseEvent of the same type carries it
     const at = (type: string, clientX: number, clientY: number) =>
       fireEvent(frame, new MouseEvent(type, { bubbles: true, clientX, clientY }));
@@ -476,5 +480,26 @@ describe("words", () => {
       expect(screen.getByRole("heading", { name: fmt(d.editor.overlay.heading, { n: 1 }) })).toBeTruthy();
       unmount();
     }
+  });
+});
+
+describe("focus", () => {
+  it("after picking a file focus lands on the new overlay's frame, after Delete on Add overlay", async () => {
+    mount();
+    await addLogo();
+    expect(document.activeElement).toBe(frameBtn());
+    fireEvent.click(screen.getByRole("button", { name: to.delete }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: to.add }));
+  });
+
+  it("the disabled Add overlay button is described by its reason", () => {
+    const doc = newDocForAsset(VIDEO)!;
+    doc.overlays = Array.from({ length: MAX_OVERLAYS }, (_, i) => ({
+      id: `o${i + 1}`, asset_id: P, start_s: 0, end_s: 2, x: 0.5, y: 0.5, w: 0.3, opacity: 1,
+    }));
+    mount(doc);
+    const btn = screen.getByRole("button", { name: to.add });
+    const why = btn.getAttribute("aria-describedby")!;
+    expect(document.getElementById(why)!.textContent).toBe(fmt(to.full, { max: MAX_OVERLAYS }));
   });
 });
