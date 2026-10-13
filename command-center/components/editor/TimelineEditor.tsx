@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Pause,
   Play,
+  Layers,
   Plus,
   Redo2,
   Scissors,
@@ -38,6 +39,8 @@ import {
   MAX_EDITOR_CLIPS,
   MAX_EDITOR_SOUNDS,
   MAX_EDITOR_TEXTS,
+  MAX_OVERLAYS,
+  MAX_OVERLAY_VIDEOS,
   MAX_TEXT,
   SOUND_FADE_MAX_S,
   DUCK_ATTACK_MAX_S,
@@ -121,6 +124,19 @@ import {
   type Fit,
 } from "@/lib/editorFrame";
 import { FitPicker, FramePicker } from "./FrameFitControls";
+import {
+  addOverlay,
+  canAddOverlay,
+  moveOverlay,
+  nudgeOverlay,
+  overlayWarnings,
+  overlaysAt,
+  overlaysOf,
+  removeOverlay,
+  resetOverlay,
+  updateOverlay,
+} from "@/lib/editorOverlay";
+import { OverlayInspector, OverlayLayer, OverlayPicker } from "./OverlayPanel";
 
 const HISTORY = 100;
 const POLL_MS = 4000;
@@ -178,6 +194,7 @@ export function TimelineEditor({
   assets: initialAssets,
   videos,
   soundFiles = [],
+  imageFiles = [],
   orgId = "",
   captionModels = [],
   userId = "",
@@ -191,6 +208,8 @@ export function TimelineEditor({
   videos: readonly EditorAsset[];
   /** The library's audio files, for music and sound effects. */
   soundFiles?: readonly EditorAsset[];
+  /** The library's pictures, for overlays (the videos above serve for those). */
+  imageFiles?: readonly EditorAsset[];
   /** The project's organization: auto-captions are priced and run in it (0072). */
   orgId?: string;
   /** The transcription models the member may be sold (empty: auto-captions are not offered). */
@@ -224,6 +243,7 @@ export function TimelineEditor({
   const [assets, setAssets] = useState(initialAssets);
   const [adding, setAdding] = useState(false);
   const [addingSound, setAddingSound] = useState(false);
+  const [addingOverlay, setAddingOverlay] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dragBase = useRef<EditorModel | null>(null);
 
@@ -236,6 +256,9 @@ export function TimelineEditor({
   const warnings = textWarnings(model);
   const soundWarns = soundWarnings(model);
   const speech = useMemo(() => speechSpans(model), [model]);
+  const overlays = overlaysOf(model);
+  const overlayWarns = overlayWarnings(model);
+  const isVideoAsset = (id: string) => assets[id]?.kind === "video";
 
   // ── local draft: kept on this device, offered back on the next open ────────
   const draft = useEditorDraft({
@@ -250,7 +273,7 @@ export function TimelineEditor({
     savedTitle,
     resolveAsset: (id) =>
       assets[id] ??
-      [...videos, ...soundFiles].find(
+      [...videos, ...soundFiles, ...imageFiles].find(
         (a) => a.id.toLowerCase() === id.toLowerCase(),
       ),
     onRestore: (d, found) => {
@@ -288,6 +311,26 @@ export function TimelineEditor({
     setFuture(future.slice(1));
   }, [model, past, future]);
 
+  // A run of small changes to one control (a slider, the arrow keys) is ONE undo step.
+  const burst = useRef<{ key: string; at: number; out: EditorModel } | null>(
+    null,
+  );
+  const applyBurst = useCallback(
+    (next: EditorModel, key: string) => {
+      if (next === model) return;
+      const now = Date.now();
+      const b = burst.current;
+      burst.current = { key, at: now, out: next };
+      if (b && b.key === key && b.out === model && now - b.at < 1000) {
+        setModel(next);
+        setError(null);
+        return;
+      }
+      apply(next);
+    },
+    [model, apply],
+  );
+
   // A selection whose clip or text is gone (undo, delete) is no selection.
   useEffect(() => {
     if (
@@ -305,6 +348,11 @@ export function TimelineEditor({
     if (
       selected?.kind === "sound" &&
       !model.sounds.some((x) => x.id === selected.id)
+    )
+      setSelected(null);
+    if (
+      selected?.kind === "overlay" &&
+      !overlaysOf(model).some((x) => x.id === selected.id)
     )
       setSelected(null);
   }, [model, selected]);
@@ -526,8 +574,17 @@ export function TimelineEditor({
     selected?.kind === "sound"
       ? (model.sounds.find((x) => x.id === selected.id) ?? null)
       : null;
+  const overlay =
+    selected?.kind === "overlay"
+      ? (overlays.find((x) => x.id === selected.id) ?? null)
+      : null;
   const srcLen = (c: { asset_id: string }) =>
     assets[c.asset_id]?.durationS ?? null;
+  /** Only a video has a length an overlay must fit in. */
+  const overlaySrc = (c: { asset_id: string }) =>
+    isVideoAsset(c.asset_id) ? srcLen(c) : null;
+  const overlayNumber = (id: string) =>
+    Math.max(0, overlays.findIndex((x) => x.id === id)) + 1;
 
   function onTrim(
     id: string,
@@ -584,6 +641,20 @@ export function TimelineEditor({
     apply(out.model);
     setSelected({ kind: "sound", id: out.id });
     setAddingSound(false);
+  }
+
+  function onAddOverlay(a: EditorAsset) {
+    const out = addOverlay(
+      model,
+      a,
+      playhead < picture ? playhead : 0,
+      isVideoAsset,
+    );
+    if (!out) return;
+    setAssets((x) => ({ ...x, [a.id]: a }));
+    apply(out.model);
+    setSelected({ kind: "overlay", id: out.id });
+    setAddingOverlay(false);
   }
 
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
@@ -767,6 +838,35 @@ export function TimelineEditor({
                 {te.noPreview}
               </p>
             )}
+            {overlays.length ? (
+              <div className="pointer-events-none absolute inset-0 z-0">
+                <OverlayLayer
+                  overlays={overlaysAt(model, playhead)}
+                  assets={assets}
+                  selectedId={overlay?.id ?? null}
+                  numberOf={overlayNumber}
+                  playhead={playhead}
+                  playing={playing}
+                  onNudge={(id, dx, dy, big) =>
+                    applyBurst(
+                      nudgeOverlay(model, id, dx, dy, big ? 0.05 : 0.01),
+                      `${id}:nudge`,
+                    )
+                  }
+                  onDrag={(id, x, y) => {
+                    if (!dragBase.current) dragBase.current = model;
+                    setModel(updateOverlay(model, id, { x, y }));
+                  }}
+                  onDragEnd={onTrimEnd}
+                  onLinkError={() => {
+                    if (!refreshed.current) {
+                      refreshed.current = true;
+                      void refreshLinks();
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
             {cuesAt(model, playhead).map((c) => {
               const st = captionsOf(model)?.style;
               return st ? (
@@ -801,6 +901,7 @@ export function TimelineEditor({
           <p className="m-0 text-center text-xs text-[var(--color-muted)]">
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
+            {overlays.length ? ` ${te.overlay.previewNote}` : ""}
           </p>
           <FramePicker
             width={model.width}
@@ -857,6 +958,7 @@ export function TimelineEditor({
             clips={clips}
             texts={model.texts}
             sounds={model.sounds}
+            overlays={overlays}
             total={total}
             fps={model.fps}
             playhead={playhead}
@@ -890,6 +992,16 @@ export function TimelineEditor({
             </button>
             <button
               type="button"
+              onClick={() => setAddingOverlay((a) => !a)}
+              aria-expanded={addingOverlay}
+              disabled={!canAddOverlay(model)}
+              className={quietBtn}
+            >
+              <Layers className="size-3.5" aria-hidden />
+              {te.overlay.add}
+            </button>
+            <button
+              type="button"
               onClick={onAddText}
               disabled={model.texts.length >= MAX_EDITOR_TEXTS}
               className={quietBtn}
@@ -898,6 +1010,25 @@ export function TimelineEditor({
               {te.addText}
             </button>
           </div>
+          {!canAddOverlay(model) ? (
+            <p className="m-0 text-xs text-[var(--color-muted)]">
+              {fmt(te.overlay.full, { max: MAX_OVERLAYS })}
+            </p>
+          ) : !canAddOverlay(model, "video", isVideoAsset) ? (
+            <p className="m-0 text-xs text-[var(--color-muted)]">
+              {fmt(te.overlay.videosFull, { max: MAX_OVERLAY_VIDEOS })}
+            </p>
+          ) : null}
+          {addingOverlay ? (
+            <OverlayPicker
+              images={imageFiles}
+              videos={
+                canAddOverlay(model, "video", isVideoAsset) ? videos : []
+              }
+              onPick={onAddOverlay}
+              onClose={() => setAddingOverlay(false)}
+            />
+          ) : null}
           {model.sounds.length >= MAX_EDITOR_SOUNDS ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.maxSounds, { max: MAX_EDITOR_SOUNDS })}
@@ -1021,10 +1152,47 @@ export function TimelineEditor({
                 ? te.textLabel
                 : sound
                   ? te.soundHeading
-                  : te.timeline
+                  : overlay
+                    ? fmt(te.overlay.heading, {
+                        n: overlayNumber(overlay.id),
+                      })
+                    : te.timeline
           }
         >
-          {sound ? (
+          {overlay ? (
+            <OverlayInspector
+              key={overlay.id}
+              n={overlayNumber(overlay.id)}
+              total={overlays.length}
+              overlay={overlay}
+              name={assets[overlay.asset_id]?.name ?? te.overlay.untitled}
+              kind={assets[overlay.asset_id]?.kind ?? "image"}
+              warning={overlayWarns[overlay.id] ?? null}
+              onChange={(patch, key) => {
+                const next = updateOverlay(
+                  model,
+                  overlay.id,
+                  patch,
+                  overlaySrc(overlay),
+                );
+                if (key) applyBurst(next, key);
+                else apply(next);
+              }}
+              onReset={() => apply(resetOverlay(model, overlay.id))}
+              onToPlayhead={() =>
+                apply(
+                  updateOverlay(
+                    model,
+                    overlay.id,
+                    { start_s: playhead },
+                    overlaySrc(overlay),
+                  ),
+                )
+              }
+              onLayer={(by) => apply(moveOverlay(model, overlay.id, by))}
+              onDelete={() => apply(removeOverlay(model, overlay.id))}
+            />
+          ) : sound ? (
             <SoundInspector
               key={sound.id}
               sound={sound}

@@ -1,5 +1,6 @@
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
+import { overlayUz } from "./overlay/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
@@ -4683,6 +4684,8 @@ export const uz: Dictionary = {
     },
   },
   editor: {
+    /** Picture overlays: ./overlay/uz.ts. */
+    overlay: overlayUz,
     title: "Muharrir",
     subtitle: "Videolaringizni qirqing, boʻling, tezlashtiring yoki sekinlashtiring va ustiga matn qoʻying.",
     notEnabled: "Bu joylashuvda muharrir hali yoqilmagan (0054 migratsiyasi qoʻllanmagan).",

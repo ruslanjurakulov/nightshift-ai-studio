@@ -1,5 +1,6 @@
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
+import { overlayRu } from "./overlay/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) намеренно не переводятся. */
@@ -4683,6 +4684,8 @@ export const ru: Dictionary = {
     },
   },
   editor: {
+    /** Picture overlays: ./overlay/ru.ts. */
+    overlay: overlayRu,
     title: "Редактор",
     subtitle: "Обрезайте, делите, ускоряйте и замедляйте видео и добавляйте на них текст.",
     notEnabled: "Редактор ещё не включён в этом развёртывании (миграция 0054 не применена).",

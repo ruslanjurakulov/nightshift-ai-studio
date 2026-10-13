@@ -263,13 +263,13 @@ export function overlayRect(
   };
 }
 
-/** The style of the preview's element for an overlay: absolutely positioned in
- *  the preview box, in percent of it (so it is resolution independent and the
+/** The box of an overlay in the preview: absolutely positioned in the
+ *  preview box, in percent of it (so it is resolution independent and the
  *  same fractions the document holds), centred on (x, y), `w` of the box's
- *  width, height from the element's own aspect. The parent clips what leaves
- *  the frame (the export does). */
-export function overlayPreviewStyle(
-  o: Pick<PictureOverlay, "x" | "y" | "w" | "opacity">,
+ *  width, height from the content's own aspect. The parent clips what leaves
+ *  the frame, as the export does. */
+export function overlayBoxStyle(
+  o: Pick<PictureOverlay, "x" | "y" | "w">,
 ): CSSProperties {
   return {
     position: "absolute",
@@ -278,7 +278,13 @@ export function overlayPreviewStyle(
     width: `${round3(o.w * 100)}%`,
     height: "auto",
     transform: "translate(-50%, -50%)",
-    opacity: o.opacity,
-    pointerEvents: "none",
   };
+}
+
+/** The same box with the overlay's opacity, for an element that carries both
+ *  (it ignores the pointer: the selection frame is what takes input). */
+export function overlayPreviewStyle(
+  o: Pick<PictureOverlay, "x" | "y" | "w" | "opacity">,
+): CSSProperties {
+  return { ...overlayBoxStyle(o), opacity: o.opacity, pointerEvents: "none" };
 }
