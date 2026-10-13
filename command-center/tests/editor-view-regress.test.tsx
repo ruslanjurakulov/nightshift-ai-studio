@@ -326,3 +326,19 @@ describe("the zoom label does not flood screen readers", () => {
     }
   });
 });
+
+describe("a focused slider owns every key", () => {
+  it("Delete, Backspace, S, + - 0 with focus on the playhead slider or a trim handle change nothing", () => {
+    mount();
+    setPlayhead("4");
+    key("s"); // two clips; clip 1 is selected, so it shows trim handles
+    expect(clipButtons()).toHaveLength(2);
+    const handle = screen.getAllByRole("slider").find((el) => /clip 1/i.test(el.getAttribute("aria-label") ?? ""))!;
+    for (const el of [playhead(), handle]) {
+      el.focus();
+      for (const k of ["Delete", "Backspace", "s", "+", "-", "0", "="]) key(k, {}, el);
+    }
+    expect(clipButtons()).toHaveLength(2);
+    expect(screen.getByText(/100%$/)).toBeTruthy();
+  });
+});

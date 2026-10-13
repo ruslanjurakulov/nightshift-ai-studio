@@ -20,7 +20,15 @@ export type ShortcutAction =
   | "zoomFit";
 
 /** What has focus: a text field keeps every key; a "control" keeps the keys it uses itself. */
-export type FocusKind = "text" | "control" | "slider" | "other";
+export type FocusKind =
+  | "text"
+  /** A button, link or checkbox: Space and Enter are its own. */
+  | "control"
+  /** A radio, tab or menu item: Space and the arrows are its own. */
+  | "choice"
+  /** A range input or role=slider (the playhead, a trim handle, a colour slider): it owns EVERY key here, so none fires. */
+  | "slider"
+  | "other";
 
 export interface KeyLike {
   key: string;
@@ -38,7 +46,7 @@ const TEXT_INPUT_TYPES = new Set([
   "text", "search", "email", "url", "tel", "password", "number", "date", "datetime-local",
   "month", "time", "week", "color", "file",
 ]);
-const SLIDER_INPUT_TYPES = new Set(["range", "radio"]);
+const SLIDER_INPUT_TYPES = new Set(["range"]);
 
 /** Classify the focused element from its tag, input type, role and editability. */
 export function focusKind(el: {
@@ -53,11 +61,13 @@ export function focusKind(el: {
   if (tag === "INPUT") {
     const type = (el.inputType ?? "text").toLowerCase();
     if (SLIDER_INPUT_TYPES.has(type)) return "slider";
+    if (type === "radio") return "choice";
     if (TEXT_INPUT_TYPES.has(type) || !type) return "text";
     return "control"; // checkbox, button, submit ...
   }
   const role = (el.role ?? "").toLowerCase();
-  if (role === "slider" || role === "radio" || role === "tab" || role === "menuitem") return "slider";
+  if (role === "slider") return "slider";
+  if (role === "radio" || role === "tab" || role === "menuitem") return "choice";
   if (tag === "BUTTON" || tag === "A" || tag === "SUMMARY" || role === "button" || role === "checkbox" || role === "switch")
     return "control";
   return "other";
@@ -72,13 +82,13 @@ export function focusKind(el: {
 export function resolveShortcut(e: KeyLike, focus: FocusKind): ShortcutAction | null {
   if (e.defaultPrevented) return null;
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
-  if (focus === "text") return null;
+  if (focus === "text" || focus === "slider") return null;
   const key = e.key;
   const lower = key.length === 1 ? key.toLowerCase() : key;
-  const owned = focus === "control" || focus === "slider";
+  const owned = focus === "control" || focus === "choice";
   if (key === " " || key === "Spacebar") return owned || e.repeat ? null : "play";
   if (key === "ArrowLeft" || key === "ArrowRight") {
-    if (focus === "slider") return null;
+    if (focus === "choice") return null;
     const base = key === "ArrowLeft" ? "left" : "right";
     return e.shiftKey ? (`${base}Big` as ShortcutAction) : base;
   }

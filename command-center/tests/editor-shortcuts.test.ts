@@ -11,8 +11,9 @@ describe("what has focus", () => {
   });
   it("sliders, radios, buttons and links are controls with their own keys", () => {
     expect(focusKind({ tag: "INPUT", inputType: "range" })).toBe("slider");
-    expect(focusKind({ tag: "INPUT", inputType: "radio" })).toBe("slider");
+    expect(focusKind({ tag: "INPUT", inputType: "radio" })).toBe("choice");
     expect(focusKind({ tag: "SPAN", role: "slider" })).toBe("slider");
+    expect(focusKind({ tag: "DIV", role: "radio" })).toBe("choice");
     expect(focusKind({ tag: "INPUT", inputType: "checkbox" })).toBe("control");
     expect(focusKind({ tag: "BUTTON" })).toBe("control");
     expect(focusKind({ tag: "A" })).toBe("control");
@@ -63,14 +64,26 @@ describe("a key press", () => {
     expect(k("-", { ctrlKey: true })).toBeNull();
     expect(k("ArrowLeft", { altKey: true })).toBeNull();
   });
-  it("leaves Space to a focused button and the arrows to a focused slider or radio", () => {
+  it("leaves Space to a focused button and the arrows to a focused radio", () => {
     expect(resolveShortcut({ key: " " }, "control")).toBeNull();
-    expect(resolveShortcut({ key: " " }, "slider")).toBeNull();
-    expect(resolveShortcut({ key: "ArrowLeft" }, "slider")).toBeNull();
-    // but a focused button still lets S, Delete and zoom through, and the arrows move the playhead
+    expect(resolveShortcut({ key: " " }, "choice")).toBeNull();
+    expect(resolveShortcut({ key: "ArrowLeft" }, "choice")).toBeNull();
+    // but a focused button or radio still lets S, Delete and zoom through, and a button the arrows
     expect(resolveShortcut({ key: "s" }, "control")).toBe("split");
     expect(resolveShortcut({ key: "ArrowRight" }, "control")).toBe("right");
-    expect(resolveShortcut({ key: "+" }, "slider")).toBe("zoomIn");
+    expect(resolveShortcut({ key: "+" }, "choice")).toBe("zoomIn");
+    expect(resolveShortcut({ key: "Delete" }, "choice")).toBe("remove");
+  });
+  it.each([" ", "ArrowLeft", "ArrowRight", "Delete", "Backspace", "s", "S", "+", "=", "-", "_", "0"])(
+    "a focused slider owns %j: no shortcut fires",
+    (k) => {
+      expect(resolveShortcut({ key: k }, "slider")).toBeNull();
+      expect(resolveShortcut({ key: k, shiftKey: true }, "slider")).toBeNull();
+    },
+  );
+  it("a slider owns the physical-key forms too", () => {
+    expect(resolveShortcut({ key: "ы", code: "KeyS" }, "slider")).toBeNull();
+    expect(resolveShortcut({ key: "à", code: "Digit0" }, "slider")).toBeNull();
   });
   it("ignores a key another handler already used, and a held Space, S or Delete", () => {
     expect(k("ArrowLeft", { defaultPrevented: true })).toBeNull();
