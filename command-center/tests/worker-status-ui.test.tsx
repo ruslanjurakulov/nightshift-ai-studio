@@ -39,7 +39,7 @@ vi.mock("@/lib/i18n/public-context", async () => {
     usePublicI18n: () => ({ t: dictionaries[state.locale], locale: state.locale, fmt, setLocale: () => {} }),
   };
 });
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }), usePathname: () => "/x/integrations" }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }), usePathname: () => "/x/integrations", useSearchParams: () => new URLSearchParams() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined, getAll: () => [] }), headers: async () => new Headers() }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => state.client,

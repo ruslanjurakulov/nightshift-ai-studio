@@ -1,3 +1,4 @@
+import { libraryUxEn } from "./library-ux/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
@@ -17,6 +18,7 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
+  libraryUx: libraryUxEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",
