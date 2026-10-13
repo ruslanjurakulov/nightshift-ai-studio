@@ -99,6 +99,13 @@ export const MAX_EDITOR_TEXTS = 24;
  *  can play at once), and 1 + 24 + 6 tracks stays under the 32 allowed. */
 export const MAX_EDITOR_SOUNDS = 6;
 export const MAX_DOC_BYTES = 262_144;
+/** Picture overlays (modules/timeline.py MAX_OVERLAYS / MAX_OVERLAY_VIDEOS /
+ *  OVERLAY_W_MIN / OVERLAY_W_MAX): each is one more input of the final pass,
+ *  and a video keeps a decoder open for its whole span. */
+export const MAX_OVERLAYS = 16;
+export const MAX_OVERLAY_VIDEOS = 4;
+export const OVERLAY_W_MIN = 0.05;
+export const OVERLAY_W_MAX = 1;
 
 const FITS = ["contain", "cover"] as const;
 const TRANSITIONS = ["cut", "dip_to_black", "crossfade"] as const;
@@ -126,7 +133,7 @@ const UUID_RE =
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const DOC_REQUIRED = ["version", "width", "height", "fps", "tracks"];
-const DOC_KEYS = [...DOC_REQUIRED, "captions"];
+const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays"];
 const TRACK_REQUIRED = ["id", "kind", "clips"];
 const TRACK_KEYS = [...TRACK_REQUIRED, "name"];
 const A_TRACK_KEYS = [...TRACK_KEYS, "role", "duck"];
@@ -165,6 +172,8 @@ const T_CLIP_KEYS = [
 const TRANSITION_KEYS = ["type", "duration_s"];
 const CAPTION_STYLE_KEYS = [...TEXT_STYLE_KEYS, "y"];
 const CUE_KEYS = ["id", "start_s", "end_s", "text"];
+const OVERLAY_REQUIRED = ["id", "asset_id", "start_s", "end_s"];
+const OVERLAY_KEYS = [...OVERLAY_REQUIRED, "x", "y", "w", "opacity"];
 
 // ── document types ──────────────────────────────────────────────────────────
 
@@ -243,6 +252,24 @@ export interface TimelineTrack {
   clips: Record<string, unknown>[];
 }
 
+/** A picture or video laid over the picture (modules/timeline.py `overlays`):
+ *  (x, y) is its CENTRE and w its width, as fractions of the frame; its height
+ *  follows the file's own aspect ratio. Drawn in list order, later on top. */
+export interface PictureOverlay {
+  id: string;
+  asset_id: string;
+  start_s: number;
+  end_s: number;
+  x: number;
+  y: number;
+  w: number;
+  opacity: number;
+}
+
+/** What an overlay's optional fields mean when absent (modules/timeline.py
+ *  OVERLAY_DEFAULTS). */
+export const OVERLAY_DEFAULTS = { x: 0.5, y: 0.5, w: 0.3, opacity: 1 } as const;
+
 export interface TimelineDoc {
   version: 1;
   width: number;
@@ -250,6 +277,7 @@ export interface TimelineDoc {
   fps: number;
   tracks: TimelineTrack[];
   captions?: unknown;
+  overlays?: unknown[];
 }
 
 /** What the editor works on: the picture laid end to end, text on top, and
@@ -261,6 +289,8 @@ export interface EditorModel {
   clips: VideoClip[];
   texts: TextClip[];
   sounds: SoundClip[];
+  /** Pictures / videos over the picture; none = the field is absent. */
+  overlays?: PictureOverlay[];
   /** Tracks this editor does not edit, kept verbatim. */
   keep: TimelineTrack[];
   captions?: unknown;
@@ -503,6 +533,7 @@ export function validateTimeline(doc: unknown): string[] {
   if (doc.captions !== undefined && doc.captions !== null)
     validateCaptions(doc.captions, problems, claim);
   else if (doc.captions === null) problems.push("captions must be an object");
+  if ("overlays" in doc) validateOverlays(doc.overlays, fps, problems, claim);
 
   if (problems.length) return problems;
   const d = doc as unknown as TimelineDoc;
@@ -694,6 +725,51 @@ function validateTextClip(
     fi + fo > e - s + 1e-9
   )
     problems.push(`${where}: fades are longer than the text is shown`);
+}
+
+/** Python's `round` (half to even) for the frame check below: the worker rounds
+ *  with it, so a time exactly between two frames must land the same way. */
+function pyRound(x: number): number {
+  const f = Math.floor(x);
+  const d = x - f;
+  if (d < 0.5) return f;
+  if (d > 0.5) return f + 1;
+  return f % 2 === 0 ? f : f + 1;
+}
+
+/** The twin of modules/timeline.py `_validate_overlays`. */
+function validateOverlays(
+  overlays: unknown,
+  fps: number | null,
+  problems: string[],
+  claim: (i: unknown, w: string) => void,
+) {
+  if (!Array.isArray(overlays)) {
+    problems.push("overlays must be a list");
+    return;
+  }
+  if (overlays.length > MAX_OVERLAYS) {
+    problems.push(`overlays: at most ${MAX_OVERLAYS}`);
+    return;
+  }
+  overlays.forEach((ov, i) => {
+    if (!fields(ov, OVERLAY_KEYS, OVERLAY_REQUIRED, `overlays[${i}]`, problems))
+      return;
+    const where = `overlay ${String(ov.id)}`;
+    claim(ov.id, where);
+    if (!(typeof ov.asset_id === "string" && UUID_RE.test(ov.asset_id)))
+      problems.push(`${where}: asset_id must be a uuid`);
+    numIn(ov, "start_s", 0, MAX_DURATION_S, where, problems);
+    numIn(ov, "end_s", 0, MAX_DURATION_S, where, problems);
+    if (isNum(ov.start_s) && isNum(ov.end_s)) {
+      if (ms(ov.end_s) <= ms(ov.start_s))
+        problems.push(`${where}: end_s must be greater than start_s`);
+      else if (fps && pyRound(ms(ov.end_s) * fps) - pyRound(ms(ov.start_s) * fps) < 1)
+        problems.push(`${where}: shorter than one frame`);
+    }
+    for (const k of ["x", "y", "opacity"]) numIn(ov, k, 0, 1, where, problems);
+    numIn(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems);
+  });
 }
 
 function validateCaptions(
@@ -1071,6 +1147,35 @@ function duckOf(v: unknown): Duck | null {
   };
 }
 
+/** A document's overlays as the model holds them (defaults filled in); an
+ *  entry that is not an object with a usable id, asset and span is left out. */
+function overlaysOf(v: unknown): PictureOverlay[] {
+  if (!Array.isArray(v)) return [];
+  const out: PictureOverlay[] = [];
+  for (const o of v) {
+    if (
+      !isObj(o) ||
+      typeof o.id !== "string" ||
+      typeof o.asset_id !== "string" ||
+      !isNum(o.start_s) ||
+      !isNum(o.end_s)
+    )
+      continue;
+    const num = (x: unknown, d: number) => (isNum(x) ? x : d);
+    out.push({
+      id: o.id,
+      asset_id: o.asset_id,
+      start_s: o.start_s,
+      end_s: o.end_s,
+      x: num(o.x, OVERLAY_DEFAULTS.x),
+      y: num(o.y, OVERLAY_DEFAULTS.y),
+      w: num(o.w, OVERLAY_DEFAULTS.w),
+      opacity: num(o.opacity, OVERLAY_DEFAULTS.opacity),
+    });
+  }
+  return out;
+}
+
 export function toModel(doc: TimelineDoc): EditorModel {
   const v = doc.tracks.find((t) => t.kind === "V");
   const clips: VideoClip[] = (v?.clips ?? [])
@@ -1130,6 +1235,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
         text: String(c.text ?? ""),
       })),
     );
+  const overlays = overlaysOf(doc.overlays);
   return {
     width: doc.width,
     height: doc.height,
@@ -1137,6 +1243,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
     clips,
     texts,
     sounds,
+    ...(overlays.length ? { overlays } : {}),
     keep: doc.tracks.filter((t) => t !== v && t.kind !== "T" && t.kind !== "A"),
     ...(doc.captions !== undefined ? { captions: doc.captions } : {}),
   };
@@ -1166,6 +1273,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
     ...tracks.flatMap((t) => [t.id, ...t.clips.map((c) => String(c.id))]),
     ...model.sounds.map((x) => x.id),
     ...model.texts.map((t) => t.id),
+    ...(model.overlays ?? []).map((o) => o.id),
   ]);
   let a = 1;
   const soundTracks: TimelineTrack[] = [];
@@ -1226,26 +1334,49 @@ export function toDoc(model: EditorModel): TimelineDoc {
     fps: model.fps,
     tracks,
     ...(model.captions !== undefined ? { captions: model.captions } : {}),
+    ...(model.overlays?.length
+      ? {
+          overlays: model.overlays.map((o) => ({
+            id: o.id,
+            asset_id: o.asset_id,
+            start_s: ms(o.start_s),
+            end_s: ms(o.end_s),
+            x: ms(o.x),
+            y: ms(o.y),
+            w: ms(o.w),
+            opacity: ms(o.opacity),
+          })),
+        }
+      : {}),
   };
 }
 
-/** The model's length in seconds (picture and text). */
+/** The model's length in seconds (picture and text; overlays never lengthen it). */
 export function modelDuration(model: EditorModel): number {
   return docDuration(toDoc(model));
 }
 
 /** A new id for a clip or a text: letters and digits, never one the model uses. */
-export function freshId(model: EditorModel, prefix: "c" | "x" | "m"): string {
+export function freshId(
+  model: EditorModel,
+  prefix: "c" | "x" | "m" | "o",
+): string {
   // Track ids share the namespace too (v1, a1, t1, t2… are tracks).
   const used = new Set([
     "v1",
     ...model.clips.map((c) => c.id),
     ...model.texts.map((t) => t.id),
     ...model.sounds.map((x) => x.id),
+    ...(model.overlays ?? []).map((o) => o.id),
     ...model.keep.flatMap((t) => [t.id, ...t.clips.map((c) => String(c.id))]),
   ]);
   for (
-    let n = model.clips.length + model.texts.length + model.sounds.length + 1;
+    let n =
+      model.clips.length +
+      model.texts.length +
+      model.sounds.length +
+      (model.overlays?.length ?? 0) +
+      1;
     ;
     n += 1
   ) {
@@ -2011,6 +2142,9 @@ export function docAssetIds(doc: TimelineDoc): string[] {
   for (const t of doc.tracks)
     for (const c of t.clips)
       if (typeof c.asset_id === "string") ids.add(c.asset_id.toLowerCase());
+  for (const o of doc.overlays ?? [])
+    if (isObj(o) && typeof o.asset_id === "string")
+      ids.add(o.asset_id.toLowerCase());
   return [...ids].sort();
 }
 
@@ -2049,6 +2183,20 @@ export function docAssetProblems(
         );
     }
   }
+  // Overlays: a picture or a video (modules/timeline.py OVERLAY_ASSET_KINDS),
+  // at most MAX_OVERLAY_VIDEOS of them videos.
+  let videos = 0;
+  for (const o of doc.overlays ?? []) {
+    if (!isObj(o)) continue;
+    const kind = known.get(String(o.asset_id).toLowerCase());
+    if (kind === "video") videos += 1;
+    if (kind !== undefined && kind !== "video" && kind !== "image")
+      problems.push(
+        `overlay ${String(o.id)}: an overlay takes video or image, not ${kind}`,
+      );
+  }
+  if (videos > MAX_OVERLAY_VIDEOS)
+    problems.push(`timeline: at most ${MAX_OVERLAY_VIDEOS} video overlays`);
   return problems;
 }
 
