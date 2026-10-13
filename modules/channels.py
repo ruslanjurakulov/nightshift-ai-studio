@@ -495,6 +495,29 @@ class ChannelDNA:
         )
 
 
+def ui_auto_publish_from_row(d: dict | None) -> Optional[bool]:
+    """The Command Center's auto-publish switch (``channels.auto_publish``
+    column) as read from a stored row.
+
+    * key absent -> None: the source has no such switch (channels.json, a
+      database from before migration 0004). Not "off": a channel that was never
+      given the switch keeps behaving as before.
+    * key present and exactly True -> True.
+    * key present and anything else (False, or a NULL the NOT NULL column can
+      never hold) -> False. Fail closed: a switch that is there but not plainly
+      on is off.
+    """
+    if not isinstance(d, dict) or "auto_publish" not in d:
+        return None
+    return d["auto_publish"] is True
+
+
+def resolve_auto_publish(agent_value: bool, ui_value: Optional[bool]) -> bool:
+    """Effective auto publish: the agent_config key AND the UI switch.
+    ``ui_value`` None (no switch carried) leaves the agent_config key alone."""
+    return bool(agent_value) and ui_value is not False
+
+
 @dataclass(frozen=True)
 class ChannelContext:
     """One channel, fully resolved. Flows through the pipeline as an argument.
@@ -521,6 +544,14 @@ class ChannelContext:
     # Channel DNA (migration 0056): tone, format, aspect, default style kit.
     # Not in to_dict(), for the same reason as org_id.
     dna: ChannelDNA = field(default_factory=ChannelDNA)
+    # The Command Center's "auto publish" switch: the ``channels.auto_publish``
+    # COLUMN (migration 0004, default false), distinct from the
+    # ``agent_config.auto_publish`` key. None = the source carried no such
+    # switch (channels.json, the legacy default channel, a database from before
+    # 0004, a context built in code) and nothing is restricted; True/False = the
+    # switch as the person left it. See ``auto_publish`` below. Not in
+    # to_dict(): the mirror must never write the column's value into agent_config.
+    ui_auto_publish: Optional[bool] = None
 
     @property
     def is_operators(self) -> bool:
@@ -536,9 +567,13 @@ class ChannelContext:
     @property
     def auto_publish(self) -> bool:
         """Does an allowed video upload automatically, or wait for a human?
-        A convenience read-through to the agent config; the publish gate is
-        consulted regardless of this — it only governs an ALLOWED video."""
-        return self.agent.auto_publish
+
+        OFF WINS: both the agent-config key AND the Command Center switch (the
+        ``channels.auto_publish`` column) must allow it, so either one off holds
+        the video. A switch the source did not carry (``ui_auto_publish`` is
+        None) restricts nothing. The publish gate is consulted regardless of
+        this — it only governs an ALLOWED video."""
+        return resolve_auto_publish(self.agent.auto_publish, self.ui_auto_publish)
 
     @property
     def is_default(self) -> bool:
@@ -599,6 +634,7 @@ class ChannelContext:
             updated_at=d.get("updated_at") or "",
             org_id=str(d.get("org_id") or DEFAULT_ORG_ID),
             dna=ChannelDNA.from_row(d),
+            ui_auto_publish=ui_auto_publish_from_row(d),
         )
 
 

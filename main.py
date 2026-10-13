@@ -1126,6 +1126,8 @@ def run(
     # of it: the gate has already decided (above), and this only governs whether
     # an ALLOWED video uploads now or waits on disk for a human. Defaults on, so
     # existing channels are unaffected.
+    # ctx.auto_publish is agent_config.auto_publish AND the Command Center
+    # switch (channels.auto_publish column): either one off holds the video.
     auto_publish = ctx.auto_publish
     # Two-person publish approval (migration 0009). When the channel requires it,
     # the pipeline must not put a video PUBLIC on its own — a SECOND admin has to
