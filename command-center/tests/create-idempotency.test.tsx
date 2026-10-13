@@ -381,8 +381,10 @@ describe("what the server answered, in words", () => {
     expect(runs()).toHaveLength(3);
     expect(body(2).max_credits).toBe(150);
     expect(new Set([0, 1, 2].map((i) => body(i).idempotency_key)).size).toBe(1);
-    expect(status()).toContain(f.alreadySent);
-    expect(status()).not.toContain(t.agents.runFailed);
+    // After a lost answer a replay is not "started": a hold exists, and it may or may not have begun.
+    expect(status()).toContain(f.startUnsureReplay);
+    expect(status()).not.toContain(f.alreadySent);
+    expect(screen.queryByText(f.watchTitle)).toBeNull();
   });
 
   it("409 price_changed whose body proves a hold (credits_held) gets the held sentence, not 'nothing was taken'", async () => {

@@ -58,8 +58,14 @@ describe("readRunAnswer", () => {
     expect(failed(409, { error: "price_changed", credits: 150, credits_held: 120 }, "en", true).message).toBe(held.message);
   });
 
-  it("a replay is a replay even after an unsure try", () => {
-    expect(read(409, { error: "run_already_started" }, "en", true).outcome).toBe("replay");
+  it("a replay after an unsure try is NOT a start: the honest 'a hold exists, it may or may not have started'", () => {
+    const a = failed(409, { error: "run_already_started" }, "en", true);
+    expect(a.message).toBe(dictionaries.en.create.flow.startUnsureReplay);
+    expect(a.unsure).toBe(true);
+    expect(a.settled).toBe(false);
+    expect(a.blockedCredits).toBeNull();
+    // Without an earlier unsure try it is the start it always was.
+    expect(read(409, { error: "run_already_started" }).outcome).toBe("replay");
   });
 
   it("402 insufficient credits keeps the figures and says no credits were taken or held", () => {
@@ -117,6 +123,84 @@ describe("readRunAnswer", () => {
   it("the extra-credits-off refusal still carries its flag so the link is shown", () => {
     expect(failed(402, { error: "insufficient_credits", needed: 120, available: 10, extra_off: true, extra: 500 }).extraOff).toBe(true);
     expect(failed(402, { error: "insufficient_credits", needed: 120, available: 10 }).extraOff).toBe(false);
+  });
+});
+
+describe("a start that failed after the hold (lib/server/run-start.ts)", () => {
+  const f = dictionaries.en.create.flow;
+
+  it("start_unsure: the key is kept (not settled), the attempt is unsure, nothing is blocked, and it says it may have started with the amount held", () => {
+    const a = failed(502, { error: "start_unsure", reason: "github_dispatch_failed", credits_held: 120 });
+    expect(a.unsure).toBe(true);
+    expect(a.settled).toBe(false);
+    expect(a.blockedCredits).toBeNull();
+    expect(a.message).toBe(f.startUnsureHeld.replace("{n}", "120"));
+    expect(a.message).toContain("may have started");
+    expect(a.message).toContain("about 3 hours");
+    // Without an amount it is the plain cannot-tell sentence; it never says 'nothing was taken'.
+    expect(failed(502, { error: "start_unsure", reason: "x" }).message).toBe(f.startUnsure);
+    expect(a.message).not.toContain(f.notTaken);
+  });
+
+  it("start_failed with credits still held: not settled (no new key), blocked with the amount, and it says they return in about 3 hours", () => {
+    const a = failed(502, { error: "start_failed", reason: "github_unauthorized", credits_held: 120, retry_with_new_key: true });
+    expect(a.settled).toBe(false);
+    expect(a.blockedCredits).toBe(120);
+    expect(a.unsure).toBe(false);
+    expect(a.message).toBe(f.startFailedHeld.replace("{n}", "120"));
+    expect(a.message).toContain("about 3 hours");
+  });
+
+  it("start_failed with a hold of unknown size (true, or 0) is blocked too, with the short sentence", () => {
+    for (const held of [true, 0]) {
+      const a = failed(502, { error: "start_failed", reason: "x", credits_held: held, retry_with_new_key: true });
+      expect(a.blockedCredits, String(held)).toBe(0);
+      expect(a.settled).toBe(false);
+      expect(a.message).toBe(f.startFailedHeldShort);
+    }
+  });
+
+  it("only retry_with_new_key together with credits_held:false (released) rotates to a new key", () => {
+    const released = failed(502, { error: "start_failed", reason: "x", credits_held: false, retry_with_new_key: true });
+    expect(released.settled).toBe(true);
+    expect(released.blockedCredits).toBeNull();
+    expect(released.message).toBe(f.startFailedReleased);
+    // Released but not told to rotate: no new key, and a replay must read as unsure rather than started.
+    const noFlag = failed(502, { error: "start_failed", reason: "x", credits_held: false });
+    expect(noFlag.settled).toBe(false);
+    expect(noFlag.unsure).toBe(true);
+    // The flag alone, with the hold still held, never rotates.
+    expect(failed(502, { error: "start_failed", credits_held: 120, retry_with_new_key: true }).settled).toBe(false);
+  });
+
+  it("is read before the older numeric credits_held, which still rotates the key as it did", () => {
+    const old = failed(502, { error: "github_dispatch_failed", credits_held: 120 });
+    expect(old.settled).toBe(true);
+    expect(old.message).toBe(f.startHeld.replace("{n}", "120"));
+    expect(failed(502, { error: "start_failed", credits_held: 120 }).settled).toBe(false);
+    expect(failed(502, { error: "start_unsure", credits_held: 120 }).settled).toBe(false);
+  });
+
+  it("the honest sentences exist in en, ru and uz with the amount filled in (colon form in Russian)", () => {
+    for (const locale of LOCALES) {
+      for (const data of [
+        { error: "start_unsure", credits_held: 120 },
+        { error: "start_failed", credits_held: 120, retry_with_new_key: true },
+        { error: "start_failed", credits_held: true, retry_with_new_key: true },
+        { error: "start_failed", credits_held: false, retry_with_new_key: true },
+      ]) {
+        const m = failed(502, data, locale).message;
+        expect(m, `${locale} ${JSON.stringify(data)}`).not.toMatch(/[{}]/);
+        if (!("credits_held" in data && data.credits_held === false)) expect(m).toContain("3");
+        if (locale !== "en") expect(m).not.toBe(failed(502, data, "en").message);
+      }
+      expect(failed(409, { error: "run_already_started" }, locale, true).message).toBe(dictionaries[locale].create.flow.startUnsureReplay);
+    }
+    const ru = dictionaries.ru.create.flow;
+    for (const k of ["startUnsureHeld", "startFailedHeld"] as const) {
+      expect(ru[k]).toMatch(/[Кк]редитов[^.]*: \{n\}/);
+      expect(ru[k]).not.toMatch(/\{n\}\s+кредит/);
+    }
   });
 });
 

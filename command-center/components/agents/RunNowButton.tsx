@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { createAttempt } from "@/lib/create-attempt";
+import { formatCredits } from "@/lib/credits";
+import { fmt } from "@/lib/i18n";
 import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
@@ -70,6 +72,10 @@ export function RunNowButton({
   const [attempt] = useState(() => createAttempt());
   const sending = useRef(false);
   const [replayed, setReplayed] = useState(false);
+  // Bumped when an answer changes what the attempt knows (settled, unsure, blocked), so the button re-reads it.
+  const [tick, setTick] = useState(0);
+  // The error on screen is the "credits are held" one: it goes away when the input changes (a new intent).
+  const [errorBlocked, setErrorBlocked] = useState(false);
 
   // Optional per-run topic + data-backed suggestions (panel variant only).
   type Idea = { label: string; source: "demand" | "proven" };
@@ -85,6 +91,32 @@ export function RunNowButton({
   const [styleOverride, setStyleOverride] = useState("");
 
   const blocked = !channelId || !githubConfigured || !canRun;
+
+  // What the person decided, as the run's body (without the key and the price). Its JSON is the intent's signature.
+  function runFields() {
+    const trimmed = topic.trim();
+    const dur = Number(duration);
+    const style = styleOverride.trim();
+    return {
+      channel_id: channelId,
+      ...(trimmed ? { topic: trimmed } : {}),
+      ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
+      ...(language ? { language } : {}),
+      ...(style ? { visual_style: style } : {}),
+    };
+  }
+  const scope = userId && channelId ? { userId, orgId, channelId } : undefined;
+  const intentSig = JSON.stringify(runFields());
+  const intentRef = useRef(intentSig);
+  intentRef.current = intentSig;
+  // Credits still held after a start that definitely failed, for exactly this intent (null = nothing in the way).
+  const heldBlock = useMemo(
+    () => (channelId ? attempt.status(intentSig, scope).blocked : null),
+    // scope is derived from these; tick bumps when an answer changes what is known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [attempt, intentSig, userId, orgId, channelId, tick],
+  );
+  const heldText = heldBlock === null ? null : heldBlock > 0 ? fmt(t.create.flow.startFailedHeld, { n: formatCredits(heldBlock, locale) }) : t.create.flow.startFailedHeldShort;
 
   async function loadIdeas() {
     setIdeasPhase("loading");
@@ -103,26 +135,19 @@ export function RunNowButton({
   }
 
   async function run() {
-    if (!channelId || sending.current || priceHold) return;
+    // A start that definitely failed while its credits are still held: this same intent is not sent again (lib/run-answer.ts).
+    if (!channelId || sending.current || priceHold || attempt.status(JSON.stringify(runFields()), scope).blocked !== null) return;
     sending.current = true;
     setPhase("starting");
     setCreditError(null);
     setExtraOff(false);
     setReplayed(false);
-    const trimmed = topic.trim();
-    const dur = Number(duration);
-    const style = styleOverride.trim();
-    const fields = {
-      channel_id: channelId,
-      ...(trimmed ? { topic: trimmed } : {}),
-      ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
-      ...(language ? { language } : {}),
-      ...(style ? { visual_style: style } : {}),
-    };
+    const fields = runFields();
+    const sig = JSON.stringify(fields);
     // One intent = one key: channel + topic + options, NOT the price (max_credits carries that), 30-minute expiry.
     // With a user id it is also kept in this tab's sessionStorage as a hash (never the topic), so a reload after a
     // lost answer reuses it; without one it is in memory only (lib/create-attempt.ts).
-    const idempotency_key = attempt.keyFor(JSON.stringify(fields), userId ? { userId, orgId, channelId } : undefined);
+    const idempotency_key = attempt.keyFor(sig, scope);
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
@@ -135,24 +160,41 @@ export function RunNowButton({
       });
       const data = await res.json().catch(() => ({}));
       const answer = readRunAnswer(res, data, t, locale, attempt.isUnsure());
+      // The answer is about THIS key. If the person changed the intent while it was on its way, what it taught
+      // (settled, unsure, blocked) is recorded against that key only, and nothing is said about the new intent.
+      const stale = intentRef.current !== sig;
       if (answer.outcome !== "failed") {
-        attempt.settle();
+        attempt.settle(idempotency_key);
+        setTick((n) => n + 1);
         setReplayed(answer.outcome === "replay");
         setPhase("queued");
         if (answer.outcome === "started") toast.success(t.agents.runQueued);
         return;
       }
-      if (answer.settled) attempt.settle();
-      if (answer.unsure) attempt.markUnsure();
+      if (answer.settled) attempt.settle(idempotency_key);
+      if (answer.unsure) attempt.markUnsure(idempotency_key);
+      if (answer.blockedCredits !== null) attempt.markBlocked(answer.blockedCredits, idempotency_key);
+      setTick((n) => n + 1);
+      if (stale) {
+        setPhase("idle");
+        return;
+      }
       setCreditError(answer.message);
       setExtraOff(answer.extraOff);
+      setErrorBlocked(answer.blockedCredits !== null);
       setPhase("error");
       toast.error(answer.message);
     } catch {
       // Unknown whether it arrived: the key is kept (and remembered as unsure), so trying again is safe.
-      attempt.markUnsure();
+      attempt.markUnsure(idempotency_key);
+      setTick((n) => n + 1);
+      if (intentRef.current !== sig) {
+        setPhase("idle");
+        return;
+      }
       const unsure = unsureRunAnswer(t).message;
       setCreditError(unsure);
+      setErrorBlocked(false);
       setPhase("error");
       toast.error(unsure);
     } finally {
@@ -166,10 +208,11 @@ export function RunNowButton({
         <>
           <button
             type="button"
-            aria-disabled={priceHold && price.state === "loading"}
+            aria-disabled={(priceHold && price.state === "loading") || heldBlock !== null}
             data-price-hold={priceHold ? price.state : undefined}
             onClick={() => {
               // Unreadable: the button is the retry. Loading: nothing until the figure arrives.
+              if (heldBlock !== null) return;
               if (price.state === "failed") setRetryNonce((n) => n + 1);
               else void run();
             }}
@@ -189,7 +232,7 @@ export function RunNowButton({
       ) : (
         <button
           type="button"
-          disabled={blocked || phase === "starting"}
+          disabled={blocked || phase === "starting" || heldBlock !== null}
           onClick={() => {
             setPrice({ state: "loading" });
             setPhase("confirm");
@@ -203,7 +246,11 @@ export function RunNowButton({
       <span className="tnum text-sm" aria-live="polite">
         {phase === "queued" ? (
           <span className="text-[var(--color-ok)]">{replayed ? t.create.flow.alreadySent : t.agents.runQueued}</span>
-        ) : phase === "error" ? (
+        ) : heldText !== null ? (
+          // A start that definitely failed with its credits still held: said again after a reload, and for as long as
+          // this same intent is the one on screen.
+          <span className="text-[var(--color-fail)]">{heldText}</span>
+        ) : phase === "error" && !errorBlocked ? (
           <span className="text-[var(--color-fail)]">
             {creditError ?? t.agents.runFailed}
             {extraOff && (

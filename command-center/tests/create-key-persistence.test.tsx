@@ -123,12 +123,22 @@ describe("Create: a reload after a lost answer", () => {
     expect(body(2).idempotency_key).not.toBe(body(0).idempotency_key);
   });
 
-  it("a definite failure that kept a hold (credits_held) and a replay (409) also remove the entry", async () => {
+  it("a failure that kept a hold (credits_held) removes the entry; a replay (409) after a lost answer keeps it, and is not shown as started", async () => {
     await loseAnswer();
     render(studio());
     await priceShown();
     type(TOPIC);
     runAnswer = () => json({ error: "run_already_started" }, 409);
+    await press();
+    // A hold exists, nothing says the run began: the honest sentence, and the key stays with its unsure state.
+    expect(status()).toContain(f.startUnsureReplay);
+    expect(status()).not.toContain(f.alreadySent);
+    expect(storedNames()).toHaveLength(1);
+    cleanup();
+    render(studio());
+    await priceShown();
+    type(TOPIC);
+    runAnswer = () => json({ error: "github_dispatch_failed", credits_held: 120 }, 502);
     await press();
     expect(storedNames()).toHaveLength(0);
   });

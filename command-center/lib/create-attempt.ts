@@ -39,6 +39,17 @@
  *     settles, and cleared on sign-out (lib/create-attempt-store.ts). With no scope, or storage that
  *     throws, nothing is stored and it is memory only.
  *
+ * Two states are kept with the key because a retry of the same intent must behave differently:
+ *   - unsure (`u`): an answer was lost or the server said `start_unsure`. The key is kept, and a later
+ *     `run_already_started` is NOT "started": a hold exists and the run may or may not have started;
+ *   - blocked (`b`, the credits held; 0 = amount unknown): the server said `start_failed` while the hold is
+ *     still held. The reference is burnt and the hold is not released, so neither the same key (it would
+ *     answer "already started") nor a new one (a second hold) may be used for the SAME intent: the form
+ *     refuses it until the hold has returned (BLOCKED_MAX_AGE_MS) or an input changes. Only the number is
+ *     stored, never what was typed.
+ * Both are answered about the key they were learned under: a late answer of an earlier attempt, arriving
+ * after the person changed the intent, cannot mark or settle the new attempt (`key` arguments).
+ *
  * The server checks the price BEFORE it looks for an existing hold with the
  * key (reserveRunCredits, then reserve_credits' 23505). So a retry of an
  * unanswered attempt whose price has since gone UP is answered `price_changed`
@@ -62,6 +73,9 @@ export function newAttemptKey(): string {
 /** How long an unanswered attempt's key is kept. */
 export const MAX_AGE_MS = 30 * 60 * 1000;
 
+/** How long a blocked intent stays blocked: the server returns an unstarted hold about 3 hours after it was taken. */
+export const BLOCKED_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+
 /** Whose attempt this is. Without a user id nothing is persisted. */
 export interface AttemptScope {
   /** The signed-in user's id, from the server (getUser()). Empty/missing = do not persist. */
@@ -77,12 +91,19 @@ export interface CreateAttempt {
    * the stored one of this scope if it is the same intent and still fresh, else a new one.
    */
   keyFor(signature: string, scope?: AttemptScope): string;
-  /** The current attempt ended without a usable answer: a hold may exist under its key. */
-  markUnsure(): void;
+  /**
+   * What is known about the intent with this signature, without making a key: whether an earlier try ended
+   * without a usable answer, and the credits still held after a start that definitely failed (null = not blocked).
+   */
+  status(signature: string, scope?: AttemptScope): { unsure: boolean; blocked: number | null };
+  /** The attempt ended without a usable answer: a hold may exist under its key. `key`: the attempt it was learned under. */
+  markUnsure(key?: string): void;
   /** An earlier try under the current key ended without a usable answer. */
   isUnsure(): boolean;
-  /** The attempt is over for good (started, replayed, or failed after a hold): the next one starts fresh. */
-  settle(): void;
+  /** The start definitely failed but `credits` (0 = unknown) are still held: this intent may not be sent again. */
+  markBlocked(credits: number, key?: string): void;
+  /** The attempt is over for good (started, replayed, or failed with the hold released): the next one starts fresh. */
+  settle(key?: string): void;
 }
 
 /** What is written to sessionStorage: nothing a person typed, only a one-way hash of it. */
@@ -92,6 +113,8 @@ interface Stored {
   h: string;
   t: number;
   u: boolean;
+  /** Credits still held after a definite start failure (0 = amount unknown). Absent = not blocked. */
+  b?: number;
 }
 
 interface Pending {
@@ -99,6 +122,7 @@ interface Pending {
   sig: string;
   at: number;
   unsure: boolean;
+  blocked: number | null;
   /** Where this attempt is mirrored, and the hash that proves what it is for; null = memory only. */
   store: { name: string; hash: string } | null;
 }
@@ -116,7 +140,7 @@ function intentHash(scope: AttemptScope, signature: string): string {
   return sha256Hex(`${scope.userId}\0${scope.orgId ?? ""}\0${scope.channelId}\0${signature}`);
 }
 
-function readStored(name: string, hash: string, t: number, maxAgeMs: number): Stored | null {
+function readStored(name: string, hash: string, t: number, maxAgeMs: number, blockedMaxAgeMs: number, prune = true): Stored | null {
   const s = attemptStore();
   if (!s) return null;
   let raw: string | null;
@@ -140,17 +164,19 @@ function readStored(name: string, hash: string, t: number, maxAgeMs: number): St
       typeof e.t === "number" &&
       Number.isFinite(e.t) &&
       typeof e.u === "boolean" &&
+      (e.b === undefined || (typeof e.b === "number" && Number.isFinite(e.b) && e.b >= 0 && e.b <= 1e9)) &&
       e.h === hash &&
-      t - e.t <= maxAgeMs &&
+      t - e.t <= (e.b === undefined ? maxAgeMs : blockedMaxAgeMs) &&
       e.t - t <= SKEW_MS
     ) {
-      ok = { v: 1, k: e.k, h: e.h, t: e.t, u: e.u };
+      ok = { v: 1, k: e.k, h: e.h, t: e.t, u: e.u, ...(e.b === undefined ? {} : { b: e.b }) };
     }
   } catch {
     /* tampered or truncated: ignored below */
   }
   // Whatever is under this name and is not this intent's live entry is of no use to anyone: drop it.
-  if (!ok) removeStored(name);
+  // (A read that only asks, `prune` false, leaves it: the person may still type their way back to that intent.)
+  if (!ok && prune) removeStored(name);
   return ok;
 }
 
@@ -158,7 +184,7 @@ function writeStored(p: Pending): void {
   if (!p.store || attemptStorageBlocked()) return;
   const s = attemptStore();
   if (!s) return;
-  const e: Stored = { v: 1, k: p.key, h: p.store.hash, t: p.at, u: p.unsure };
+  const e: Stored = { v: 1, k: p.key, h: p.store.hash, t: p.at, u: p.unsure, ...(p.blocked === null ? {} : { b: p.blocked }) };
   try {
     s.setItem(p.store.name, JSON.stringify(e));
   } catch {
@@ -178,38 +204,61 @@ function removeStored(name: string): void {
 
 export function createAttempt(
   makeKey: () => string = newAttemptKey,
-  opts: { now?: () => number; maxAgeMs?: number } = {},
+  opts: { now?: () => number; maxAgeMs?: number; blockedMaxAgeMs?: number } = {},
 ): CreateAttempt {
-  const { now = Date.now, maxAgeMs = MAX_AGE_MS } = opts;
+  const { now = Date.now, maxAgeMs = MAX_AGE_MS, blockedMaxAgeMs = BLOCKED_MAX_AGE_MS } = opts;
   // A form opening after a sign-out switches persistence back on (the sign-out had switched it off).
   allowAttemptStorage();
   let cur: Pending | null = null;
+  const storeFor = (signature: string, scope?: AttemptScope) =>
+    scope && scope.userId && scope.channelId && !attemptStorageBlocked() ? { name: storeNameFor(scope), hash: intentHash(scope, signature) } : null;
+  const limit = (p: Pending) => (p.blocked === null ? maxAgeMs : blockedMaxAgeMs);
+  const same = (p: Pending | null, signature: string, store: Pending["store"], t: number) =>
+    !!p && p.sig === signature && p.store?.name === store?.name && p.store?.hash === store?.hash && t - p.at <= limit(p);
   return {
     keyFor(signature, scope) {
       const t = now();
-      const store = scope && scope.userId && scope.channelId && !attemptStorageBlocked() ? { name: storeNameFor(scope), hash: intentHash(scope, signature) } : null;
-      if (cur && cur.sig === signature && cur.store?.name === store?.name && cur.store?.hash === store?.hash && t - cur.at <= maxAgeMs) return cur.key;
+      const store = storeFor(signature, scope);
+      if (cur && same(cur, signature, store, t)) return cur.key;
       cur = null;
       if (store) {
-        const found = readStored(store.name, store.hash, t, maxAgeMs);
-        if (found) cur = { key: found.k, sig: signature, at: found.t, unsure: found.u, store };
+        const found = readStored(store.name, store.hash, t, maxAgeMs, blockedMaxAgeMs);
+        if (found) cur = { key: found.k, sig: signature, at: found.t, unsure: found.u, blocked: found.b ?? null, store };
       }
       if (!cur) {
-        cur = { key: makeKey(), sig: signature, at: t, unsure: false, store };
+        cur = { key: makeKey(), sig: signature, at: t, unsure: false, blocked: null, store };
         writeStored(cur);
       }
       return cur.key;
     },
-    markUnsure() {
-      if (!cur) return;
+    status(signature, scope) {
+      const t = now();
+      const store = storeFor(signature, scope);
+      if (cur && same(cur, signature, store, t)) return { unsure: cur.unsure, blocked: cur.blocked };
+      if (store) {
+        const found = readStored(store.name, store.hash, t, maxAgeMs, blockedMaxAgeMs, false);
+        if (found) return { unsure: found.u, blocked: found.b ?? null };
+      }
+      return { unsure: false, blocked: null };
+    },
+    markUnsure(key) {
+      if (!cur || (key !== undefined && key !== cur.key)) return;
       cur.unsure = true;
       writeStored(cur);
     },
     isUnsure() {
       return cur?.unsure ?? false;
     },
-    settle() {
-      if (cur?.store) removeStored(cur.store.name);
+    markBlocked(credits, key) {
+      if (!cur || (key !== undefined && key !== cur.key)) return;
+      cur.blocked = Number.isFinite(credits) && credits > 0 ? credits : 0;
+      // The hold's three hours run from now, not from when this key was first made.
+      cur.at = now();
+      writeStored(cur);
+    },
+    settle(key) {
+      if (!cur || (key !== undefined && key !== cur.key)) return;
+      if (cur.store) removeStored(cur.store.name);
       cur = null;
     },
   };
