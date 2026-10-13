@@ -1,3 +1,4 @@
+import { libraryUxRu } from "./library-ux/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
@@ -8,6 +9,7 @@ import { editorExportRu } from "./editor-export/ru";
 export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
+  libraryUx: libraryUxRu,
   brand: {
     name: "Nightshift",
     tagline: "Центр управления",

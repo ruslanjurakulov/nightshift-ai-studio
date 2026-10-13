@@ -10,7 +10,8 @@ import type { LibraryAsset, MediaKind, MediaUpload } from "@/lib/media";
 export type LibraryFilter = "all" | "image" | "video" | "audio";
 export const LIBRARY_FILTERS: readonly LibraryFilter[] = ["all", "image", "video", "audio"];
 
-export type LibrarySort = "newest" | "oldest";
+export type LibrarySort = "newest" | "oldest" | "name";
+export const LIBRARY_SORTS: readonly LibrarySort[] = ["newest", "oldest", "name"];
 
 export interface LibraryView {
   filter: LibraryFilter;
@@ -72,7 +73,62 @@ export function visibleAssets(
   return assets
     .filter((a) => view.filter === "all" || a.kind === view.filter)
     .filter((a) => matchesQuery(a.name, label(a.kind), q))
-    .sort(compareByDate(view.sort));
+    .sort(view.sort === "name" ? compareByName(label) : compareByDate(view.sort));
+}
+
+/** A to Z by the name the tile shows (digits in natural order, accents folded); ties newest first, then by id. */
+export function compareByName(label: (kind: MediaKind) => string = (k) => k) {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  return (a: LibraryAsset, b: LibraryAsset): number => {
+    const c = collator.compare(a.name ?? label(a.kind), b.name ?? label(b.kind));
+    return c !== 0 ? c : compareByDate<LibraryAsset>("newest")(a, b);
+  };
+}
+
+// ── the view in the address bar ─────────────────────────────────────────────
+
+/** The query keys the library owns; every other key in the address is left alone. */
+export const VIEW_KEYS = ["kind", "q", "sort"] as const;
+const QUERY_MAX = 80;
+
+/**
+ * The view named by an address's query (`?kind=video&q=intro&sort=name`).
+ * Anything unknown or malformed falls back to the default for that part, so a
+ * hand-edited link never breaks the page.
+ */
+export function parseView(params: { get(name: string): string | null } | Record<string, string | string[] | undefined>): LibraryView {
+  const get = (name: string): string | null => {
+    if (typeof (params as { get?: unknown }).get === "function") return (params as { get(n: string): string | null }).get(name);
+    const v = (params as Record<string, string | string[] | undefined>)[name];
+    return (Array.isArray(v) ? v[0] : v) ?? null;
+  };
+  const kind = get("kind");
+  const sort = get("sort");
+  return {
+    filter: LIBRARY_FILTERS.includes(kind as LibraryFilter) ? (kind as LibraryFilter) : DEFAULT_VIEW.filter,
+    query: (get("q") ?? "").replace(/[\u0000-\u001f\u007f]/g, "").slice(0, QUERY_MAX),
+    sort: LIBRARY_SORTS.includes(sort as LibrarySort) ? (sort as LibrarySort) : DEFAULT_VIEW.sort,
+  };
+}
+
+/** Write a view into an existing query string: only non-default parts are kept, other keys untouched. */
+export function applyViewToSearch(search: string, view: LibraryView): string {
+  const p = new URLSearchParams(search);
+  for (const k of VIEW_KEYS) p.delete(k);
+  if (view.filter !== DEFAULT_VIEW.filter) p.set("kind", view.filter);
+  if (view.query.trim() !== "") p.set("q", view.query.slice(0, QUERY_MAX));
+  if (view.sort !== DEFAULT_VIEW.sort) p.set("sort", view.sort);
+  const out = p.toString();
+  return out ? `?${out}` : "";
+}
+
+/** Everything between two ids (inclusive) in the order shown; the anchor missing -> just the clicked one. */
+export function selectRange(order: readonly string[], anchor: string | null, to: string): string[] {
+  const a = anchor === null ? -1 : order.indexOf(anchor);
+  const b = order.indexOf(to);
+  if (b < 0) return [];
+  if (a < 0) return [to];
+  return order.slice(Math.min(a, b), Math.max(a, b) + 1);
 }
 
 const EXT_KIND: Readonly<Record<string, MediaKind>> = {

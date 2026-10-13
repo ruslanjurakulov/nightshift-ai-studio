@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent } from "react";
 import { Check, FolderInput, Images, Search, Upload } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/context";
@@ -32,12 +32,15 @@ import { createFolder, deleteFolder, moveAssets, renameFolder } from "./folderAp
 import {
   DEFAULT_VIEW,
   LIBRARY_FILTERS,
+  applyViewToSearch,
   commonFolder,
   countByFilter,
   fileCount,
   guessUploadKind,
   inFolder,
   isNarrowed,
+  parseView,
+  selectRange,
   visibleAssets,
   visibleUploads,
   type LibrarySort,
@@ -57,6 +60,8 @@ const STATUS_TONE: Record<UploadStatus, "ok" | "run" | "fail" | "warn" | "idle">
 /** A signed link lives 10 minutes; fetch fresh ones well before that. */
 const RESIGN_MS = 5 * 60_000;
 const POLL_MS = 3000;
+/** Files taken from one drop or one pick; the rest are said to be left out. */
+const MAX_FILES = 20;
 /** How long the search box waits for typing to stop before asking the server. */
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -99,22 +104,32 @@ export function MediaLibrary({
   orgId,
   initial,
   canEditFolders = true,
+  initialView,
 }: {
   orgId: string;
   initial?: MediaLibraryData | null;
+  /** The view named by the address (?kind=&q=&sort=), read on the server so the first paint already has it. */
+  initialView?: LibraryView;
   /** Editor or more in this organization: may create, rename, delete, move and upload into folders. */
   canEditFolders?: boolean;
 }) {
   const { t, locale } = useI18n();
   const tm = t.media;
   const tf = tm.folders;
+  const tu = t.libraryUx;
   const [data, setData] = useState<MediaLibraryData | null>(initial ?? null);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [readFailed, setReadFailed] = useState(Boolean(initial?.error));
-  const [view, setView] = useState<LibraryView>(DEFAULT_VIEW);
+  const [view, setView] = useState<LibraryView>(initialView ?? DEFAULT_VIEW);
+  const [fileErrors, setFileErrors] = useState<{ n: number; list: string[] } | null>(null);
+  const [queue, setQueue] = useState<{ i: number; n: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const anchor = useRef<string | null>(null);
+  const lastView = useRef(view);
   const [folder, setFolder] = useState<string | null>(initial?.folder ?? null);
   const [serverQuery, setServerQuery] = useState(initial?.query ?? "");
   const [viewerId, setViewerId] = useState<string | null>(null);
@@ -136,6 +151,34 @@ export function MediaLibrary({
   /** Only the latest read may land: a slow answer for the last folder must not replace this one's. */
   const readSeq = useRef(0);
   const inputId = useId();
+
+  // The view lives in the address (?kind=&q=&sort=): a filter or sort change is
+  // a history step (Back undoes it), typing in the search box only rewrites
+  // the current one. Other keys of the address are left alone.
+  useEffect(() => {
+    const prev = lastView.current;
+    lastView.current = view;
+    try {
+      const next = applyViewToSearch(window.location.search, view);
+      if (next === (window.location.search === "?" ? "" : window.location.search)) return;
+      const url = `${window.location.pathname}${next}${window.location.hash}`;
+      const typingOnly = prev.filter === view.filter && prev.sort === view.sort;
+      if (typingOnly) window.history.replaceState(window.history.state, "", url);
+      else window.history.pushState(window.history.state, "", url);
+    } catch {
+      /* an address that cannot be written (sandboxed frame): the view still works on the page */
+    }
+  }, [view]);
+  // Back / Forward: read the view from the address again.
+  useEffect(() => {
+    const onPop = () => {
+      const v = parseView(new URLSearchParams(window.location.search));
+      lastView.current = v;
+      setView((cur) => (cur.filter === v.filter && cur.query === v.query && cur.sort === v.sort ? cur : v));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const refresh = useCallback(async () => {
     const seq = ++readSeq.current;
@@ -243,6 +286,26 @@ export function MediaLibrary({
     });
   }, [assets]);
 
+  // Escape in select mode: first the delete question, then the selection, then select mode itself.
+  const dialogOpen = dialog !== null;
+  useEffect(() => {
+    if (!selecting || viewerId || dialogOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      if (el && ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)) return;
+      if (bulkBusy) return;
+      if (bulkConfirm) setBulkConfirm(false);
+      else if (selected.size > 0) setSelected(new Set());
+      else {
+        setSelecting(false);
+        focusNext.current = () => selectButton.current;
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selecting, viewerId, dialogOpen, bulkConfirm, bulkBusy, selected.size]);
+
   // A folder that is gone (deleted in another tab): back to All files.
   useEffect(() => {
     if (foldersOn && folder && !foldersState?.error && !folderList.some((f) => f.id === folder)) setFolder(null);
@@ -304,13 +367,10 @@ export function MediaLibrary({
     });
   }
 
-  async function upload(file: File) {
-    setError(null);
-    setNotice(null);
+  /** One file: ticket, then the streamed PUT. Returns the words for what went wrong, or null. Never throws. */
+  async function uploadOne(file: File, target: typeof uploadFolder): Promise<string | null> {
     setProgress({ name: file.name, pct: 0 });
-    // The folder open when the file was chosen, fixed now: switching folders
-    // during the upload does not move where it goes.
-    const target = uploadFolder;
+    let problem: string | null = null;
     try {
       const res = await fetch("/api/media/uploads", {
         method: "POST",
@@ -329,24 +389,43 @@ export function MediaLibrary({
         max_bytes?: number;
         folder_applied?: boolean | null;
       };
-      if (!res.ok || !ticket.upload_url) {
-        setError(errorText(ticket.error, ticket.max_bytes));
-        return;
-      }
+      if (!res.ok || !ticket.upload_url) return errorText(ticket.error, ticket.max_bytes);
       // The deployment cannot file uploads yet (0051 missing): it goes to All files, said plainly.
       if (target && ticket.folder_applied === false) setNotice(tf.uploadedToAll);
       await refresh();
       const put = await send(ticket.upload_url, file);
       if (put.status < 200 || put.status >= 300) {
-        setError(put.status === 408 ? tm.errors.network : errorText(put.body.error, put.body.max_bytes));
+        problem = put.status === 408 ? tm.errors.network : errorText(put.body.error, put.body.max_bytes);
       }
     } catch {
-      setError(tm.errors.network);
+      problem = tm.errors.network;
     } finally {
       setProgress(null);
-      if (input.current) input.current.value = "";
       await refresh();
     }
+    return problem;
+  }
+
+  /** One or several files, one after the other (each is the same checked upload a single file makes). */
+  async function uploadFiles(picked: readonly File[]) {
+    const files = picked.slice(0, MAX_FILES);
+    if (files.length === 0) return;
+    setError(null);
+    setNotice(picked.length > files.length ? fmt(tu.dropTooMany, { max: MAX_FILES }) : null);
+    setFileErrors(null);
+    // The folder open when the files were chosen, fixed now: switching folders
+    // during the upload does not move where they go.
+    const target = uploadFolder;
+    const failures: string[] = [];
+    for (let i = 0; i < files.length; i += 1) {
+      setQueue(files.length > 1 ? { i: i + 1, n: files.length } : null);
+      const problem = await uploadOne(files[i], target);
+      if (problem) failures.push(files.length === 1 ? problem : fmt(tu.fileFailed, { name: files[i].name, reason: problem }));
+    }
+    setQueue(null);
+    if (input.current) input.current.value = "";
+    if (files.length === 1) setError(failures[0] ?? null);
+    else if (failures.length > 0) setFileErrors({ n: files.length, list: failures });
   }
 
   /** One DELETE; true when the server took it. Never throws. */
@@ -495,6 +574,20 @@ export function MediaLibrary({
     setBulkConfirm(false);
   }
 
+  /** A click in select mode: toggles one file, or with Shift takes everything from the last one clicked. */
+  function clickSelect(id: string, shift: boolean) {
+    if (shift && anchor.current && anchor.current !== id) {
+      const range = selectRange(
+        shown.map((a) => a.id),
+        anchor.current,
+        id,
+      );
+      setSelected((prev) => new Set([...prev, ...range]));
+      setBulkConfirm(false);
+    } else toggleSelected(id);
+    anchor.current = id;
+  }
+
   function stopSelecting() {
     setSelecting(false);
     setSelected(new Set());
@@ -534,8 +627,50 @@ export function MediaLibrary({
 
   const headingId = `${inputId}-assets`;
 
+  // Dropping files anywhere on the page: the same upload the button makes.
+  const hasFiles = (e: DragEvent<HTMLElement>) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  function onDragEnter(e: DragEvent<HTMLElement>) {
+    if (busy || !hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  }
+  function onDragOver(e: DragEvent<HTMLElement>) {
+    if (busy || !hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function onDragLeave(e: DragEvent<HTMLElement>) {
+    if (!hasFiles(e)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  }
+  function onDrop(e: DragEvent<HTMLElement>) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    if (busy) return;
+    void uploadFiles(Array.from(e.dataTransfer.files));
+  }
+
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div
+      className="flex min-w-0 flex-col gap-4"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div
+          aria-hidden
+          data-library-drop
+          className="pointer-events-none fixed inset-3 z-50 grid place-items-center rounded-[var(--ns-r-frame)] border-2 border-dashed border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-bg)_88%,transparent)] p-6 text-center text-base font-semibold text-[var(--color-fg)]"
+        >
+          {uploadFolder ? fmt(tu.dropHereFolder, { folder: uploadFolder.name }) : tu.dropHere}
+        </div>
+      )}
       {!canUpload && <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{tm.noHost}</div>}
       {canUpload && !data.host.signing && (
         <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{tm.noSigning}</div>
@@ -553,9 +688,10 @@ export function MediaLibrary({
         className="sr-only"
         id={inputId}
         disabled={busy}
+        multiple
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void upload(f);
+          const picked = Array.from(e.target.files ?? []);
+          if (picked.length > 0) void uploadFiles(picked);
         }}
       />
 
@@ -584,10 +720,21 @@ export function MediaLibrary({
           {maxLabel ? ` · ${fmt(tm.maxSize, { max: maxLabel })}` : ""}
         </p>
         <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{tm.checkNote}</p>
+        {canUpload && <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)] pointer-coarse:hidden max-sm:hidden">{tu.dropHint}</p>}
         {error && (
           <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
             {error}
           </p>
+        )}
+        {fileErrors && (
+          <div role="alert" className="flex flex-col gap-1 text-sm text-[var(--color-fail)]">
+            <p className="m-0">{fmt(tu.someFailed, { failed: fileErrors.list.length, n: fileErrors.n })}</p>
+            <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-xs">
+              {fileErrors.list.map((f, i) => (
+                <li key={i} className="break-words">{f}</li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
 
@@ -653,76 +800,6 @@ export function MediaLibrary({
               {notice ?? ""}
             </p>
 
-            {selecting ? (
-              <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-library-selection>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold" aria-live="polite">
-                    {fmt(tm.selectedCount, { n: selected.size })}
-                  </span>
-                  {!bulkConfirm && shown.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSelected(allShownSelected ? new Set() : new Set(shown.map((a) => a.id)))}
-                      className="text-sm text-[var(--color-primary)] underline-offset-4 hover:underline"
-                    >
-                      {allShownSelected ? tf.clearSelection : tf.selectAll}
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {bulkConfirm ? (
-                    <>
-                      <span className="w-full text-xs text-[var(--color-muted)] sm:w-auto sm:max-w-[42ch]">
-                        {fmt(tm.deleteSelectedConfirm, { n: selected.size })}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={bulkBusy}
-                        onClick={() => void removeSelected()}
-                        className="btn-primary disabled:opacity-40"
-                      >
-                        {bulkBusy ? tm.deleting : fmt(tm.deleteSelected, { n: selected.size })}
-                      </button>
-                      <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(false)} className="btn-quiet">
-                        {tm.cancel}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {foldersOn && canEditFolders && (
-                        <button
-                          ref={moveButton}
-                          type="button"
-                          disabled={selected.size === 0}
-                          onClick={() => {
-                            setNotice(null);
-                            setDialog({ kind: "move" });
-                          }}
-                          className="btn-primary disabled:opacity-40"
-                        >
-                          <FolderInput className="size-4" aria-hidden />
-                          {tf.moveTo}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        disabled={selected.size === 0}
-                        onClick={() => setBulkConfirm(true)}
-                        className="btn-quiet hover:text-[var(--color-fail)]! disabled:opacity-40"
-                      >
-                        {fmt(tm.deleteSelected, { n: selected.size })}
-                      </button>
-                    </>
-                  )}
-                  {!bulkConfirm && (
-                    <button type="button" onClick={stopSelecting} className="btn-quiet">
-                      {tm.selectDone}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : null}
-
             <ChipRow label={tm.filterLabel}>
               {LIBRARY_FILTERS.map((f) => (
                 <Chip key={f} pressed={view.filter === f} count={counts[f]} onClick={() => setFilter(f)}>
@@ -757,6 +834,7 @@ export function MediaLibrary({
                 >
                   <option value="newest">{tm.sortNewest}</option>
                   <option value="oldest">{tm.sortOldest}</option>
+                  <option value="name">{tu.sortName}</option>
                 </select>
               </label>
               {!selecting && assets.length > 0 && (
@@ -815,6 +893,7 @@ export function MediaLibrary({
                       <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-dashed border-[var(--ns-amber)] p-4 text-center text-[var(--ns-on-film)]">
                         <Upload className="size-6 text-[var(--ns-amber)]" strokeWidth={1.5} aria-hidden />
                         <span className="text-xs">{fmt(tm.uploadingCard, { pct: progress.pct })}</span>
+                        {queue && <span className="text-xs opacity-80">{fmt(tu.queue, queue)}</span>}
                         <div
                           className="h-1 w-full max-w-[8rem] overflow-hidden rounded-[1px] bg-[color-mix(in_srgb,var(--ns-on-film)_25%,transparent)]"
                           role="progressbar"
@@ -863,7 +942,7 @@ export function MediaLibrary({
                             if (el) tiles.current.set(a.id, el);
                             else tiles.current.delete(a.id);
                           }}
-                          onClick={(e) => (selecting ? toggleSelected(a.id) : openViewer(a, e.currentTarget))}
+                          onClick={(e) => (selecting ? clickSelect(a.id, e.shiftKey) : openViewer(a, e.currentTarget))}
                           aria-pressed={selecting ? isSelected : undefined}
                           aria-label={fmt(selecting ? tm.selectItem : tm.openItem, { name })}
                           className="press absolute inset-0 block h-full w-full text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--ns-cue)]"
@@ -896,6 +975,85 @@ export function MediaLibrary({
                 </ContactSheet>
               </div>
             )}
+
+            {selecting ? (
+              <div
+                className="panel fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:sticky lg:inset-x-auto lg:bottom-3"
+                // Inline: .panel's own (unlayered) rules would beat a utility, and a bar that floats over tiles must be solid.
+                // Fixed on phones (a sticky bottom bar rides under the tab bar near the top of the page there), sticky from lg up.
+                style={{ background: "var(--color-panel)", borderColor: "var(--ns-rule-strong)", boxShadow: "0 -8px 20px color-mix(in srgb, var(--color-fg) 14%, transparent)" }}
+                data-library-selection
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold" role="status" aria-live="polite" aria-atomic="true">
+                    {fmt(tm.selectedCount, { n: selected.size })}
+                  </span>
+                  {!bulkConfirm && shown.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelected(allShownSelected ? new Set() : new Set(shown.map((a) => a.id)))}
+                      className="inline-flex min-h-11 items-center px-1 text-sm text-[var(--color-primary)] underline-offset-4 hover:underline lg:min-h-9"
+                    >
+                      {allShownSelected ? tf.clearSelection : tf.selectAll}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {bulkConfirm ? (
+                    <>
+                      <span className="w-full text-xs text-[var(--color-muted)] sm:w-auto sm:max-w-[42ch]">
+                        {fmt(tm.deleteSelectedConfirm, { n: selected.size })}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={bulkBusy}
+                        onClick={() => void removeSelected()}
+                        className="btn-primary disabled:opacity-40"
+                      >
+                        {bulkBusy ? tm.deleting : fmt(tm.deleteSelected, { n: selected.size })}
+                      </button>
+                      <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(false)} className="btn-quiet">
+                        {tm.cancel}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {foldersOn && canEditFolders && (
+                        <button
+                          ref={moveButton}
+                          type="button"
+                          disabled={selected.size === 0}
+                          onClick={() => {
+                            setNotice(null);
+                            setDialog({ kind: "move" });
+                          }}
+                          className="btn-primary disabled:opacity-40"
+                        >
+                          <FolderInput className="size-4" aria-hidden />
+                          {tf.moveTo}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={selected.size === 0}
+                        onClick={() => setBulkConfirm(true)}
+                        className="btn-quiet hover:text-[var(--color-fail)]! disabled:opacity-40"
+                      >
+                        {fmt(tm.deleteSelected, { n: selected.size })}
+                      </button>
+                    </>
+                  )}
+                  {!bulkConfirm && (
+                    <button type="button" onClick={stopSelecting} className="btn-quiet">
+                      {tm.selectDone}
+                    </button>
+                  )}
+                </div>
+                <p className="m-0 w-full text-xs text-[var(--color-muted)] max-sm:hidden pointer-coarse:hidden">{tu.selectionHint}</p>
+              </div>
+            ) : null}
+            {/* A phone's bar is fixed above the tab bar: keep the last row of tiles clear of it. */}
+            {selecting && <div aria-hidden className="h-36 lg:hidden" />}
           </section>
         </div>
       )}
