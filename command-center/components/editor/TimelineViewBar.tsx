@@ -174,8 +174,8 @@ export function ShortcutsHelp() {
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        // A screen with no hover and a coarse pointer (a phone, a tablet without a keyboard) has no use for a key list: the chip would only crowd the row.
-        className="ns-chip justify-center [@media(hover:none)_and_(pointer:coarse)]:hidden"
+        // Below sm (a phone) a key list has no use and the chip only crowds the row; from sm up (an iPad with a keyboard too) it stays.
+        className="ns-chip justify-center max-sm:hidden"
       >
         <Keyboard className="size-3.5" aria-hidden />
         {tv.shortcuts}

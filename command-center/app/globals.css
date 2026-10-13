@@ -2465,10 +2465,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 /* The editor pins its preview under the top bar below lg (useStickyOffsets
    publishes both heights): a control scrolled to or focused by keyboard is
    brought into view BELOW the pinned picture, not under it. */
-@media (max-width: 1023.98px) {
+@media (max-width: 1023.98px) and (min-height: 32.01rem) {
   html:has([data-editor-preview-pin]) {
     scroll-padding-top: calc(var(--ns-header-h, 4rem) + var(--ns-sticky-h, 0px) + 0.5rem);
   }
+}
+/* Below lg the fixed bottom tab bar covers the end of the viewport: a control reached by Tab is scrolled to above it. */
+@media (max-width: 1023.98px) {
+  html { scroll-padding-bottom: 5rem; }
 }
 .ns-lanes-root { --ns-lane-h: 28px; --ns-lane-step: 30px; }
 @media (pointer: coarse), (max-width: 40rem) {

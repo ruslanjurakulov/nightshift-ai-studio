@@ -4768,7 +4768,7 @@ export const uz: Dictionary = {
       toolbar: "Taymlayn koʻrinishi",
       zoomIn: "Yaqinlashtirish",
       zoomOut: "Uzoqlashtirish",
-      fit: "Hammasi",
+      fit: "Butun vaqt chizigʻi",
       fitLabel: "Taymlaynni oynaga sigʻdirish",
       zoomLevel: "Masshtab {pct}%",
       snap: "Yopishish",

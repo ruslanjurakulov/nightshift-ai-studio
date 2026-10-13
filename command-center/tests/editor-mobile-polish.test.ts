@@ -60,3 +60,33 @@ describe("editor wording (F6): one term per language for the playhead", () => {
     expect(uz.editor.draftFound).not.toMatch(/bekor qiling/);
   });
 });
+
+describe("short screens, tab bar, lanes and handles (review round 2)", () => {
+  it("the pinned preview lets go on a short screen (landscape phone) and the scroll padding follows", () => {
+    const ed = read("components/editor/TimelineEditor.tsx");
+    expect(ed).toContain("[@media(max-height:32rem)]:static");
+    expect(ed).toContain("[@media(max-height:32rem)]:[--ns-preview-cap:60vh]");
+    const css = read("app/globals.css");
+    expect(css).toMatch(/@media \(max-width: 1023\.98px\) and \(min-height: 32\.01rem\) \{\s*html:has\(\[data-editor-preview-pin\]\)/);
+    expect(css).toMatch(/@media \(max-width: 1023\.98px\) \{\s*html \{ scroll-padding-bottom: 5rem; \}/);
+  });
+  it("every timeline lane (text, sound, overlay) uses the 44px-on-touch lane variables", () => {
+    const strip = read("components/editor/TimelineStrip.tsx");
+    expect(strip).not.toContain("h-7");
+    expect(strip).not.toMatch(/\* 30\}px/);
+    expect((strip.match(/h-\[var\(--ns-lane-h\)\]/g) ?? []).length).toBe(3);
+  });
+  it("a clip is at least 122px wide, so a phone's 36%-capped trim handle reaches 44px", () => {
+    expect(read("components/editor/TimelineStrip.tsx")).toContain("clips.length * 122}px");
+    expect(read("app/globals.css")).toContain("max-width: 36%");
+    expect(122 * 0.36).toBeGreaterThanOrEqual(43.9);
+  });
+  it("the Shortcuts chip is hidden below sm only, not on every coarse pointer", () => {
+    const bar = read("components/editor/TimelineViewBar.tsx");
+    expect(bar).toContain("max-sm:hidden");
+    expect(bar).not.toContain("pointer:coarse");
+  });
+  it("Uzbek names the view bar's fit as the whole timeline", () => {
+    expect(uz.editor.view.fit).toBe("Butun vaqt chizigʻi");
+  });
+});

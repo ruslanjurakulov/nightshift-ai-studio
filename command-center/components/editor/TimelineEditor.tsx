@@ -775,7 +775,7 @@ export function TimelineEditor({
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 gap-y-1 [grid-template-areas:'label_status''input_input'] sm:items-center sm:[grid-template-areas:'back_status''label_label''input_input']">
           <Link
             href={path("/editor")}
-            className="hidden text-sm text-[var(--color-primary)] underline-offset-4 [grid-area:back] hover:underline sm:inline"
+            className="hidden text-sm text-[var(--color-primary)] underline-offset-4 [grid-area:back] hover:underline sm:inline sm:[@media(pointer:coarse)]:flex sm:[@media(pointer:coarse)]:min-h-11 sm:[@media(pointer:coarse)]:items-center"
           >
             ← {te.back}
           </Link>
@@ -817,8 +817,8 @@ export function TimelineEditor({
             </button>
           </div>
           <span className="hidden flex-1 sm:block" />
-          {/* Save and Export: one 50/50 row on a phone, so both are on the first screen. */}
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+          {/* Save and Export: one row on a phone (Save as wide as its word, Export takes the rest), so both are on the first screen. */}
+          <div className="grid w-full grid-cols-[auto_minmax(0,1fr)] gap-2 sm:flex sm:w-auto">
             <button
               type="button"
               onClick={() => void save()}
@@ -899,7 +899,7 @@ export function TimelineEditor({
           {/* preview: pinned under the top bar below lg, capped to 30dvh (the box keeps its ratio, see previewFrameStyle) */}
           <div
             ref={pinned}
-            className="sticky top-[var(--ns-header-h,4rem)] z-10 bg-[var(--color-bg)] pb-2 pt-1 [--ns-preview-cap:30dvh] lg:static lg:bg-transparent lg:p-0 lg:[--ns-preview-cap:60vh]"
+            className="sticky top-[var(--ns-header-h,4rem)] z-10 bg-[var(--color-bg)] pb-2 pt-1 [--ns-preview-cap:30dvh] lg:static lg:bg-transparent lg:p-0 lg:[--ns-preview-cap:60vh] [@media(max-height:32rem)]:static [@media(max-height:32rem)]:bg-transparent [@media(max-height:32rem)]:p-0 [@media(max-height:32rem)]:[--ns-preview-cap:60vh]"
             data-editor-preview-pin=""
           >
           <div
