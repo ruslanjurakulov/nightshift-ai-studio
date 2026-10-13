@@ -1,5 +1,6 @@
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
+import { editorExportRu } from "./editor-export/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) намеренно не переводятся. */
@@ -4834,8 +4835,7 @@ export const ru: Dictionary = {
     crossfadeTooShort: "Этот или предыдущий клип слишком короткий для наплыва (нужно по {min} с у обоих).",
     clipCrossfade: "наплыв {s} с из предыдущего клипа",
     selectHint: "Выберите клип, звук или текст на таймлайне, чтобы изменить его.",
-    exports: "Экспорты",
-    noExports: "Экспортов пока нет.",
+    exports: "Прошлые экспорты",
     exportStatus: {
       queued: "Ожидает рендера",
       rendering: "Рендерится",
@@ -4854,6 +4854,7 @@ export const ru: Dictionary = {
       other: "Экспорт не удался.",
     },
     exportRev: "Версия {rev}",
+    exportPanel: editorExportRu,
     viewInLibrary: "Открыть в медиатеке",
     watch: "Смотреть",
     deleteProject: "Удалить проект",

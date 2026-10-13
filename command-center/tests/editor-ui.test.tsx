@@ -400,7 +400,9 @@ describe("the editor", () => {
       expect(screen.getByText(te.exportStatus.done)).toBeTruthy(),
     );
     expect(
-      screen.getByRole("link", { name: te.watch }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: new RegExp(te.exportPanel.openVideo) })
+        .getAttribute("href"),
     ).toBe(OTHER.viewUrl);
     expect(
       screen.getByRole("link", { name: te.viewInLibrary }).getAttribute("href"),
