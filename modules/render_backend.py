@@ -45,6 +45,7 @@ from modules.render_spec import (
     KIND_IMAGE,
     KIND_VIDEO,
     RenderSpec,
+    XFADE_STYLES,
     Segment,
     build_ffmpeg_command,
     cap_inputs,
@@ -375,6 +376,11 @@ def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, heigh
     With a still on either side there is a second command, both stills held
     without the Ken Burns move, run only if the first fails."""
     x = seg.xfade
+    style = seg.xfade_style
+    if style not in XFADE_STYLES:
+        # Defence in depth (render_spec.validate refuses it first): only a name
+        # from the closed list ever reaches the filter graph.
+        raise ValueError(f"unknown cross-fade style {style!r}")
     frames = segment_frames(seg.duration, fps)
     seed_a = seg.seed or (seed if seed is not None else str(seg.path))
     seed_b = x.seed or f"{seed_a}:xfade"
@@ -384,7 +390,7 @@ def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, heigh
         ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold)
         ib, cb = _xfade_side(x, width, height, fps, seed_b, hold)
         graph = (f"[0:v]{ca}[xa];[1:v]{cb}[xb];"
-                 f"[xa][xb]xfade=transition=fade:duration={frames / fps:.6f}:offset=0[xv]")
+                 f"[xa][xb]xfade=transition={style}:duration={frames / fps:.6f}:offset=0[xv]")
         return [ffmpeg, "-y", *ia, *ib, "-filter_complex", graph, "-map", "[xv]",
                 "-frames:v", str(frames), "-an", *common, str(out_path)]
 

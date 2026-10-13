@@ -415,6 +415,25 @@
         "fade_out_s": {
           "$ref": "#/$defs/seconds",
           "default": 0
+        },
+        "shadow": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 20.0,
+          "default": 0,
+          "description": "A soft black drop shadow, in output pixels (down and to the right). 0 = none."
+        },
+        "box_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "A box of this colour behind the text, instead of its outline."
+        },
+        "box_opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.7,
+          "description": "Opacity of the box; needs box_color."
         }
       }
     },
@@ -438,6 +457,26 @@
           "type": "number",
           "minimum": 0,
           "maximum": 10
+        },
+        "style": {
+          "enum": [
+            "fade",
+            "dissolve",
+            "fadeblack",
+            "fadewhite",
+            "wipeleft",
+            "wiperight",
+            "slideleft",
+            "slideright",
+            "slideup",
+            "slidedown",
+            "circleopen",
+            "circleclose",
+            "radial",
+            "zoomin"
+          ],
+          "default": "fade",
+          "description": "How a crossfade blends the two pictures: an ffmpeg xfade transition from this closed list. Only valid with type crossfade; fade (the default) is the plain dissolve and is dropped by normalise."
         }
       }
     },

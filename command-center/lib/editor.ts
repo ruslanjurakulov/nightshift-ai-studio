@@ -109,6 +109,33 @@ export const OVERLAY_W_MAX = 1;
 
 const FITS = ["contain", "cover"] as const;
 const TRANSITIONS = ["cut", "dip_to_black", "crossfade"] as const;
+/** The ffmpeg `xfade` transitions a cross-fade may use, in the order the
+ *  picker lists them (modules/timeline.py XFADE_STYLES; a test pins them). The
+ *  name goes into a filter graph, so the list is closed. `fade` is the plain
+ *  blend every older document has; it is never stored (the document without a
+ *  style is the same cross-fade). */
+export const XFADE_STYLES = [
+  "fade",
+  "dissolve",
+  "fadeblack",
+  "fadewhite",
+  "wipeleft",
+  "wiperight",
+  "slideleft",
+  "slideright",
+  "slideup",
+  "slidedown",
+  "circleopen",
+  "circleclose",
+  "radial",
+  "zoomin",
+] as const;
+export type XfadeStyle = (typeof XFADE_STYLES)[number];
+export const XFADE_DEFAULT_STYLE: XfadeStyle = "fade";
+/** A text's drop shadow, in output pixels (modules/timeline.py SHADOW_MAX). */
+export const SHADOW_MAX = 20;
+/** A text box's opacity when its colour is set without one. */
+export const BOX_OPACITY_DEFAULT = 0.7;
 export const ANCHORS = [
   "top-left",
   "top",
@@ -160,9 +187,12 @@ const TEXT_STYLE_KEYS = [
   "outline_width",
   "bold",
 ];
+/** Looks only a text clip has; the captions' style stays as it is. */
+const TEXT_LOOK_KEYS = ["shadow", "box_color", "box_opacity"];
 const T_CLIP_KEYS = [
   ...T_REQUIRED,
   ...TEXT_STYLE_KEYS,
+  ...TEXT_LOOK_KEYS,
   "x",
   "y",
   "anchor",
@@ -170,6 +200,7 @@ const T_CLIP_KEYS = [
   "fade_out_s",
 ];
 const TRANSITION_KEYS = ["type", "duration_s"];
+const TRANSITION_ALLOWED = [...TRANSITION_KEYS, "style"];
 const CAPTION_STYLE_KEYS = [...TEXT_STYLE_KEYS, "y"];
 const CUE_KEYS = ["id", "start_s", "end_s", "text"];
 const OVERLAY_REQUIRED = ["id", "asset_id", "start_s", "end_s"];
@@ -182,6 +213,8 @@ export type Anchor = (typeof ANCHORS)[number];
 export interface Transition {
   type: (typeof TRANSITIONS)[number];
   duration_s: number;
+  /** How a cross-fade blends the two pictures; none = the plain `fade`. */
+  style?: XfadeStyle;
 }
 
 export interface VideoClip {
@@ -241,6 +274,14 @@ export interface TextClip {
   anchor: Anchor;
   bold?: boolean;
   color?: string;
+  font?: (typeof FONTS)[number];
+  outline_color?: string;
+  outline_width?: number;
+  /** A soft black drop shadow, in output pixels (0 / none = no shadow). */
+  shadow?: number;
+  /** A box behind the text (instead of its outline); `box_opacity` needs it. */
+  box_color?: string;
+  box_opacity?: number;
 }
 
 export interface TimelineTrack {
@@ -651,7 +692,7 @@ function validateMediaClip(
       if (
         fields(
           tr,
-          TRANSITION_KEYS,
+          TRANSITION_ALLOWED,
           TRANSITION_KEYS,
           `${where} transition`,
           problems,
@@ -661,6 +702,14 @@ function validateMediaClip(
           problems.push(
             `${where}: transition type must be cut, dip_to_black or crossfade`,
           );
+        if ("style" in tr) {
+          if (!(XFADE_STYLES as readonly unknown[]).includes(tr.style))
+            problems.push(`${where} transition: style is not known`);
+          else if (tr.type !== "crossfade")
+            problems.push(
+              `${where} transition: a style is only for a crossfade`,
+            );
+        }
         if (tr.type === "crossfade")
           numIn(
             tr,
@@ -706,6 +755,15 @@ function validateTextClip(
   textStyle(clip, where, problems);
   numIn(clip, "x", 0, 1, where, problems);
   numIn(clip, "y", 0, 1, where, problems);
+  numIn(clip, "shadow", 0, SHADOW_MAX, where, problems);
+  if (
+    "box_color" in clip &&
+    !(typeof clip.box_color === "string" && HEX_RE.test(clip.box_color))
+  )
+    problems.push(`${where}: box_color must be a #RRGGBB colour`);
+  numIn(clip, "box_opacity", 0, 1, where, problems);
+  if ("box_opacity" in clip && !("box_color" in clip))
+    problems.push(`${where}: box_opacity needs a box_color`);
   if (
     "anchor" in clip &&
     !(ANCHORS as readonly unknown[]).includes(clip.anchor)
@@ -1003,6 +1061,19 @@ function nextStart(prevEnd: number): number {
   return Math.ceil(prevEnd * 1000 - 1e-6) / 1000;
 }
 
+/** The style of a clip's cross-fade as a spread (nothing for the plain one). */
+function styleOf(c: Record<string, unknown> | VideoClip): { style?: XfadeStyle } {
+  const tr = (c as Record<string, unknown>).transition;
+  if (
+    !isObj(tr) ||
+    tr.type !== "crossfade" ||
+    !(XFADE_STYLES as readonly unknown[]).includes(tr.style) ||
+    tr.style === XFADE_DEFAULT_STYLE
+  )
+    return {};
+  return { style: tr.style as XfadeStyle };
+}
+
 /** A clip without its transition (a key set to undefined would still be a
  *  field the validator sees). */
 function withoutTransition(c: VideoClip): VideoClip {
@@ -1035,7 +1106,10 @@ export function layout(clips: VideoClip[]): VideoClip[] {
     }
     let base: VideoClip = c;
     if (x > 0)
-      base = { ...c, transition: { type: "crossfade", duration_s: x } };
+      base = {
+        ...c,
+        transition: { type: "crossfade", duration_s: x, ...styleOf(c) },
+      };
     else if (c.transition?.type === "crossfade") base = withoutTransition(c);
     const start = i === 0 ? 0 : x > 0 ? ms(prevEnd - x) : nextStart(prevEnd);
     const placed = { ...base, start_s: start };
@@ -1089,10 +1163,38 @@ export function setCrossfade(
     clips: layout(
       model.clips.map((c) =>
         c.id === id
-          ? { ...c, transition: { type: "crossfade", duration_s: d } }
+          ? {
+              ...c,
+              transition: { type: "crossfade", duration_s: d, ...styleOf(c) },
+            }
           : c,
       ),
     ),
+  };
+}
+
+/** Change the style of the cross-fade into clip `id` (the plain `fade` removes
+ *  the field: the document is then the one it was before styles existed).
+ *  Unchanged when the clip has no cross-fade, or already has that style. */
+export function setCrossfadeStyle(
+  model: EditorModel,
+  id: string,
+  style: XfadeStyle,
+): EditorModel {
+  const i = model.clips.findIndex((c) => c.id === id);
+  if (i < 0 || !(XFADE_STYLES as readonly string[]).includes(style)) return model;
+  const tr = model.clips[i].transition;
+  if (tr?.type !== "crossfade") return model;
+  const current = styleOf(model.clips[i]).style ?? XFADE_DEFAULT_STYLE;
+  if (current === style) return model;
+  const next: Transition = {
+    type: "crossfade",
+    duration_s: tr.duration_s,
+    ...(style === XFADE_DEFAULT_STYLE ? {} : { style }),
+  };
+  return {
+    ...model,
+    clips: model.clips.map((c) => (c.id === id ? { ...c, transition: next } : c)),
   };
 }
 
@@ -1132,6 +1234,7 @@ function transitionOf(v: unknown): { transition: Transition } | object {
     transition: {
       type: v.type as Transition["type"],
       duration_s: v.duration_s,
+      ...(v.type === "crossfade" ? styleOf({ transition: v }) : {}),
     },
   };
 }

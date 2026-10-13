@@ -16,13 +16,15 @@ not a project dependency — tests keep the two in sync)::
       overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ] }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
-              transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s },
+              transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
+                             style?: <one of XFADE_STYLES, crossfade only> },
               speed?: 0.5..2, audio?: bool,
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
-              outline_width?, bold?, x?, y?, anchor?, fade_in_s?, fade_out_s? }
+              outline_width?, bold?, shadow?, box_color?, box_opacity?, x?, y?,
+              anchor?, fade_in_s?, fade_out_s? }
     overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
                opacity?: 0..1 }   (a picture or video over the picture; see below)
 
@@ -43,6 +45,19 @@ Rules this module keeps:
   the dissolve. No material outside either clip's ``in_s``..``out_s`` is
   used (there are no hidden handles), so a cross-fade is never longer than
   either clip, and a clip's incoming and outgoing cross-fades never meet.
+* **A cross-fade has a style from a closed list.** ``transition.style`` (only on
+  a ``crossfade``) names one of ``XFADE_STYLES``: ffmpeg ``xfade`` transitions
+  that cost the same as the plain blend (``fade``, the default, is the
+  dissolve every older document renders; a ``fade`` written out is dropped by
+  ``normalise`` so it is the same document). The style changes how the two
+  pictures are mixed over the cross-fade's span and nothing else: the layout,
+  the length and the sound (always an equal-gain blend) are the same for every
+  style. Only the name is stored; ffmpeg's ``custom`` transition (an
+  expression) is not on the list.
+* **Text looks are fields, not effects.** A text clip may carry ``shadow``
+  (0-20 px, a soft black drop shadow), ``box_color`` (a ``#RRGGBB`` box drawn
+  behind the text instead of its outline) and ``box_opacity`` (0-1, only with
+  a ``box_color``). A text without them renders the ASS file it always did.
 * **Times are seconds, normalised to milliseconds**, and the render cuts on
   the frame grid (``round(t * fps)``), so the same document always renders
   the same frames.
@@ -149,6 +164,15 @@ FITS = ("contain", "cover")
 GRADE_RANGES = {"brightness": (-1.0, 1.0), "contrast": (0.0, 2.0), "saturation": (0.0, 3.0)}
 GRADE_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
 TRANSITIONS = ("cut", "dip_to_black", "crossfade")
+#: ffmpeg ``xfade`` transitions a cross-fade may use (render_spec.XFADE_STYLES is
+#: the same list, a test pins them). A closed whitelist: the name goes into a
+#: filter graph, so it is never free text, and ``custom`` (an expression) is
+#: not on it. Every one of these is a per-pixel mix of two frames that costs
+#: about what the plain ``fade`` does (measured, tests/test_editor_transitions.py).
+XFADE_STYLES = ("fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight",
+                "slideleft", "slideright", "slideup", "slidedown", "circleopen",
+                "circleclose", "radial", "zoomin")
+XFADE_DEFAULT_STYLE = "fade"
 #: A cross-fade's length: under 0.2 s it reads as a glitch, not a dissolve;
 #: over 2 s both clips are half-visible for longer than a viewer will wait.
 XFADE_MIN_S, XFADE_MAX_S = 0.2, 2.0
@@ -171,6 +195,11 @@ DUCK_RELEASE_MIN_S, DUCK_RELEASE_MAX_S = 0.1, 5.0
 DUCK_DEFAULTS = {"attack_s": 0.3, "release_s": 0.8}
 SIZE_MIN, SIZE_MAX = 8, 512
 OUTLINE_MAX = 20.0
+#: A text's drop shadow offset, in output pixels (render_spec.SHADOW_MAX is the
+#: same number); over 20 px the shadow is a second, detached text.
+SHADOW_MAX = 20.0
+#: A text's box opacity when ``box_color`` is set without one.
+BOX_OPACITY_DEFAULT = 0.7
 #: Per-clip playback speed. One atempo stage covers exactly this range
 #: (render_spec.SPEED_MIN/MAX are the same numbers; a test pins them).
 SPEED_MIN, SPEED_MAX = 0.5, 2.0
@@ -206,8 +235,12 @@ _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
-_T_CLIP_KEYS = _T_REQUIRED + _TEXT_STYLE_KEYS + ("x", "y", "anchor", "fade_in_s", "fade_out_s")
+#: Looks only a text clip has (the captions' style has none: it stays as it is).
+_TEXT_LOOK_KEYS = ("shadow", "box_color", "box_opacity")
+_T_CLIP_KEYS = (_T_REQUIRED + _TEXT_STYLE_KEYS + _TEXT_LOOK_KEYS
+                + ("x", "y", "anchor", "fade_in_s", "fade_out_s"))
 _TRANSITION_KEYS = ("type", "duration_s")
+_TRANSITION_ALLOWED = _TRANSITION_KEYS + ("style",)
 _CAPTIONS_KEYS = ("style", "cues")
 _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y",)
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
@@ -518,9 +551,14 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
                 _num_in(clip["grade"], k, lo, hi, f"{where} grade", problems)
         if "transition" in clip:
             tr = clip["transition"]
-            if _fields(tr, _TRANSITION_KEYS, _TRANSITION_KEYS, f"{where} transition", problems):
+            if _fields(tr, _TRANSITION_ALLOWED, _TRANSITION_KEYS, f"{where} transition", problems):
                 if tr.get("type") not in TRANSITIONS:
                     problems.append(f"{where}: transition type must be one of {list(TRANSITIONS)}")
+                if "style" in tr:
+                    if not (isinstance(tr["style"], str) and tr["style"] in XFADE_STYLES):
+                        problems.append(f"{where} transition: style must be one of {list(XFADE_STYLES)}")
+                    elif tr.get("type") != "crossfade":
+                        problems.append(f"{where} transition: a style is only for a crossfade")
                 if tr.get("type") == "crossfade":
                     _num_in(tr, "duration_s", XFADE_MIN_S, XFADE_MAX_S, f"{where} transition", problems)
                 else:
@@ -546,6 +584,13 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     _text_style(clip, where, problems)
     for k in ("x", "y"):
         _num_in(clip, k, 0, 1, where, problems)
+    _num_in(clip, "shadow", 0, SHADOW_MAX, where, problems)
+    if "box_color" in clip and not (isinstance(clip["box_color"], str)
+                                    and _HEX_RE.fullmatch(clip["box_color"])):
+        problems.append(f"{where}: box_color must be a #RRGGBB colour")
+    _num_in(clip, "box_opacity", 0, 1, where, problems)
+    if "box_opacity" in clip and "box_color" not in clip:
+        problems.append(f"{where}: box_opacity needs a box_color")
     if "anchor" in clip and clip["anchor"] not in ANCHORS:
         problems.append(f"{where}: anchor must be one of {list(ANCHORS)}")
     for k in ("fade_in_s", "fade_out_s"):
@@ -679,6 +724,16 @@ def crossfade_s(clip: dict) -> float:
     if tr.get("type") != "crossfade" or not _is_num(tr.get("duration_s")):
         return 0.0
     return _ms(tr["duration_s"])
+
+
+def crossfade_style(clip: dict) -> str:
+    """A V clip's cross-fade style (``fade`` when it has none, or it is not a
+    cross-fade: a style on a cut is a problem :func:`validate` reports)."""
+    tr = clip.get("transition") or {}
+    st = tr.get("style")
+    if tr.get("type") == "crossfade" and isinstance(st, str) and st in XFADE_STYLES:
+        return st
+    return XFADE_DEFAULT_STYLE
 
 
 def crossfades(track: dict) -> List[Tuple[dict, dict, float]]:
@@ -855,6 +910,14 @@ def normalise(doc: dict) -> dict:
                 for k in ("start_s", "end_s", "fade_in_s", "fade_out_s", "x", "y"):
                     c[k] = _ms(c[k])
                 c["outline_width"] = float(c["outline_width"])
+                # The looks are "off" by default: a text without them (or with
+                # a zero shadow) is the text it was before they existed.
+                if "shadow" in c:
+                    c["shadow"] = _ms(c["shadow"])
+                    if c["shadow"] == 0:
+                        del c["shadow"]
+                if "box_color" in c:
+                    c["box_opacity"] = _ms(c.get("box_opacity", BOX_OPACITY_DEFAULT))
             else:
                 defaults = V_DEFAULTS if kind == KIND_V else A_DEFAULTS
                 c = {**copy.deepcopy(defaults), **copy.deepcopy(clip)}
@@ -862,8 +925,10 @@ def normalise(doc: dict) -> dict:
                 for k in ("start_s", "in_s", "out_s", "fade_in_s", "fade_out_s"):
                     c[k] = _ms(c[k])
                 if kind == KIND_V:
-                    c["transition"] = {"type": c["transition"]["type"],
-                                       "duration_s": _ms(c["transition"]["duration_s"])}
+                    tr_in = c["transition"]
+                    c["transition"] = {"type": tr_in["type"], "duration_s": _ms(tr_in["duration_s"])}
+                    if tr_in.get("style", XFADE_DEFAULT_STYLE) != XFADE_DEFAULT_STYLE:
+                        c["transition"]["style"] = tr_in["style"]   # "fade" is no style: the cross-fade it was
                     c["speed"] = _ms(c["speed"])
                     if "grade" in c:
                         c["grade"] = {k: _ms(c["grade"][k]) for k in GRADE_RANGES}

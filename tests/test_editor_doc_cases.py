@@ -154,6 +154,64 @@ class DocCasesTestCase(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(verdict(cases[name]), [])
 
+    def test_the_transition_style_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "cross-fade with an unknown style": "style must be one of",
+            "cross-fade with xfade's custom style": "style must be one of",
+            "cross-fade style in capitals": "style must be one of",
+            "cross-fade style with a trailing newline": "style must be one of",
+            "cross-fade style with an expression": "style must be one of",
+            "cross-fade style as a number": "style must be one of",
+            "cross-fade style null": "style must be one of",
+            "cross-fade style as a list": "style must be one of",
+            "cross-fade style empty": "style must be one of",
+            "style on a dip to black": "a style is only for a crossfade",
+            "style on a cut": "a style is only for a crossfade",
+            "transition with a direction field": "direction is not a known field",
+            "styled cross-fade on the first clip": "a cross-fade needs a clip before it",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("cross-fade with every style", "cross-fade with the plain fade style written out",
+                     "cross-fade with a dissolve style", "cross-fade with a circle style at the shortest length",
+                     "cross-fade with a slide style at the longest length"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
+    def test_the_text_look_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "shadow below 0": "shadow must be a number >= 0 and <= 20",
+            "shadow above 20": "shadow must be a number >= 0 and <= 20",
+            "shadow as text": "shadow must be a number",
+            "shadow as boolean": "shadow must be a number",
+            "shadow null": "shadow must be a number",
+            "box colour that is not a colour": "box_color must be a #RRGGBB colour",
+            "box colour with three digits": "box_color must be a #RRGGBB colour",
+            "box colour with a trailing newline": "box_color must be a #RRGGBB colour",
+            "box colour as a number": "box_color must be a #RRGGBB colour",
+            "box opacity above 1": "box_opacity must be a number >= 0 and <= 1",
+            "box opacity below 0": "box_opacity must be a number >= 0 and <= 1",
+            "box opacity as text": "box_opacity must be a number",
+            "box opacity without a box colour": "box_opacity needs a box_color",
+            "text with a rotation field": "rotation is not a known field",
+            "shadow on the captions style": "shadow is not a known field",
+            "box on the captions style": "box_color is not a known field",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("text with a shadow", "text with the largest shadow", "text with a zero shadow",
+                     "text with a box", "text with a box at an opacity", "text with a clear box",
+                     "text with a solid box", "text with a box and a shadow and an outline",
+                     "text with every look at the other ends"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
     def test_the_ducking_cases_fail_for_the_reason_their_name_gives(self):
         cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
         needles = {
