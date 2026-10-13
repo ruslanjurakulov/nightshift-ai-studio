@@ -5,6 +5,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { SoundWave } from "./SoundWave";
 import { Timecode } from "@/components/ui/Timecode";
+import { snapTargets, snapTrimValue } from "@/lib/editor-timeline-view";
+import type { TimelineView } from "./useTimelineView";
 import {
   clipEnd,
   clipLength,
@@ -90,6 +92,7 @@ export function TimelineStrip({
   onSelect,
   onTrim,
   onTrimEnd,
+  view,
 }: {
   clips: readonly VideoClip[];
   texts: readonly TextClip[];
@@ -109,6 +112,8 @@ export function TimelineStrip({
   ) => void;
   /** A drag ended: the last value is the one to keep in the history. */
   onTrimEnd: () => void;
+  /** Zoom and snap (useTimelineView). Without it the strip fits the window and does not snap. */
+  view?: TimelineView;
 }) {
   const { t } = useI18n();
   const te = t.editor;
@@ -120,7 +125,12 @@ export function TimelineStrip({
     v0: number;
     pxPerS: number;
     speed: number;
+    baseTime: number;
+    targets: number[];
+    touch: boolean;
   } | null>(null);
+  // Where a trim drag has snapped to (a guide line while it holds), or nothing.
+  const [guide, setGuide] = useState<number | null>(null);
   const span = Math.max(total, 0.001);
   const pct = (s: number) => `${(Math.max(0, s) / span) * 100}%`;
   const lanes = textLanes(texts);
@@ -178,29 +188,49 @@ export function TimelineStrip({
       v0: edge === "in" ? c.in_s : c.out_s,
       pxPerS: w / span,
       speed: c.speed,
+      // The pointer's place on the timeline starts at the edge being dragged; clips after this one ripple, so they are no target.
+      baseTime: edge === "in" ? c.start_s : clipEnd(c),
+      targets: snapTargets({ clips, texts, sounds, playhead, skipClipsAfter: c.id }),
+      touch: e.pointerType === "touch",
     };
   }
 
   function onHandleMove(e: PointerEvent<HTMLElement>) {
     const d = drag.current;
     if (!d) return;
-    // Pixels are timeline seconds; a trim moves SOURCE seconds (× speed).
-    const value = d.v0 + ((e.clientX - d.x0) / d.pxPerS) * d.speed;
+    // Pixels are timeline seconds; a trim moves SOURCE seconds (× speed); snapping pulls it to a target.
+    const { value, snappedTo } = snapTrimValue({
+      v0: d.v0,
+      speed: d.speed,
+      baseTime: d.baseTime,
+      dx: e.clientX - d.x0,
+      pxPerS: d.pxPerS,
+      targets: d.targets,
+      snap: view?.snap ?? false,
+      touch: d.touch,
+    });
+    setGuide(snappedTo);
     onTrim(d.id, d.edge, Math.round(value * fps) / fps, false);
   }
 
   function onHandleUp() {
     if (!drag.current) return;
     drag.current = null;
+    setGuide(null);
     onTrimEnd();
   }
 
   return (
-    <div className="overflow-x-auto pb-1" role="group" aria-label={te.timeline}>
+    <div
+      ref={view?.setScroller}
+      className="overflow-x-auto pb-1"
+      role="group"
+      aria-label={te.timeline}
+    >
       <div
         ref={strip}
         className="relative flex flex-col gap-1.5"
-        style={{ minWidth: `max(100%, ${clips.length * 44}px)` }}
+        style={{ minWidth: `max(${(view?.zoom ?? 1) * 100}%, ${clips.length * 44}px)` }}
       >
         {ticks && (
           // Seconds ticks under which the lanes sit: the same scale as the clips below.
@@ -297,7 +327,8 @@ export function TimelineStrip({
                         onPointerMove={onHandleMove}
                         onPointerUp={onHandleUp}
                         onPointerCancel={onHandleUp}
-                        className={`absolute top-0 z-10 flex h-full w-3 cursor-ew-resize touch-none items-center justify-center rounded-[var(--ns-r-chip)] bg-[var(--color-primary)] outline-none after:absolute after:inset-y-0 after:-inset-x-4 after:content-[''] focus-visible:ring-2 focus-visible:ring-[var(--color-fg)] ${
+                        data-edge={edge}
+                        className={`ns-trim-handle absolute top-0 z-10 flex h-full cursor-ew-resize touch-none items-center justify-center rounded-[var(--ns-r-chip)] bg-[var(--color-primary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-fg)] ${
                           edge === "in" ? "left-0" : "right-0"
                         }`}
                       >
@@ -415,6 +446,15 @@ export function TimelineStrip({
           className="pointer-events-none absolute top-0 z-20 h-full w-0.5 -translate-x-1/2 bg-[var(--color-fg)]"
           style={{ left: pct(Math.min(playhead, span)) }}
         />
+        {guide !== null ? (
+          // Where the trim has snapped to: held while the drag stays on the target.
+          <span
+            aria-hidden
+            data-snap-guide=""
+            className="pointer-events-none absolute top-0 z-30 h-full w-px -translate-x-1/2 bg-[var(--color-primary)] shadow-[0_0_0_1px_var(--color-primary)]"
+            style={{ left: pct(Math.min(guide, span)) }}
+          />
+        ) : null}
       </div>
       <p id="editor-trim-keys" className="sr-only">
         {te.trimKeys}

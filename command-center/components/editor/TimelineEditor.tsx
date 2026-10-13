@@ -121,6 +121,10 @@ import {
   type Fit,
 } from "@/lib/editorFrame";
 import { FitPicker, FramePicker } from "./FrameFitControls";
+import { TimelineViewBar } from "./TimelineViewBar";
+import { useTimelineView } from "./useTimelineView";
+import { useEditorShortcuts } from "./useEditorShortcuts";
+import { usePlayheadScrub } from "./usePlayheadScrub";
 
 const HISTORY = 100;
 const POLL_MS = 4000;
@@ -392,6 +396,11 @@ export function TimelineEditor({
     if (!playing && playhead >= total - 0.001) setPlayhead(0);
     setPlaying((p) => !p);
   };
+
+  // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
+  const view = useTimelineView({ total, playhead });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view });
+  const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
 
   async function refreshLinks() {
     const out = await fetchProject(projectId);
@@ -835,10 +844,7 @@ export function TimelineEditor({
               max={Math.max(total, 0.001)}
               step={1 / model.fps}
               value={Math.min(playhead, total)}
-              onChange={(e) => {
-                setPlaying(false);
-                setPlayhead(Number(e.target.value));
-              }}
+              {...scrub}
               aria-label={te.playhead}
               aria-valuetext={fmt(te.timeOf, {
                 now: formatTime(playhead),
@@ -853,7 +859,9 @@ export function TimelineEditor({
             </span>
           </div>
 
+          <TimelineViewBar view={view} />
           <TimelineStrip
+            view={view}
             clips={clips}
             texts={model.texts}
             sounds={model.sounds}
