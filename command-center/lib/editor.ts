@@ -1811,8 +1811,15 @@ export const EDITOR_PROJECT_COLUMNS =
   "id, org_id, title, rev, doc, created_at, updated_at";
 export const EDITOR_PROJECT_LIST_COLUMNS = "id, title, rev, updated_at";
 
+/**
+ * Rows as the database sends them (snake_case, the server's read) AND as the
+ * project route sends them on (already camelCase, what the page's poll reads):
+ * the page used to read only the first shape, so a polled export lost its file,
+ * its length and its times.
+ */
 export function coerceExports(rows: unknown): EditorExport[] {
   if (!Array.isArray(rows)) return [];
+  const str = (a: unknown, b: unknown) => (typeof a === "string" ? a : typeof b === "string" ? b : null);
   const out: EditorExport[] = [];
   for (const r of rows) {
     if (!isObj(r) || typeof r.id !== "string") continue;
@@ -1826,16 +1833,16 @@ export function coerceExports(rows: unknown): EditorExport[] {
         : (EXPORT_REASONS as readonly unknown[]).includes(r.reason)
           ? (r.reason as ExportReason)
           : "other";
-    const dur = Number(r.duration_s);
+    const dur = Number(r.duration_s ?? r.durationS);
     out.push({
       id: r.id,
       rev: Number(r.rev) || 0,
       status,
       reason,
       durationS: Number.isFinite(dur) && dur > 0 ? dur : null,
-      assetId: typeof r.asset_id === "string" ? r.asset_id : null,
-      createdAt: typeof r.created_at === "string" ? r.created_at : null,
-      finishedAt: typeof r.finished_at === "string" ? r.finished_at : null,
+      assetId: str(r.asset_id, r.assetId),
+      createdAt: str(r.created_at, r.createdAt),
+      finishedAt: str(r.finished_at, r.finishedAt),
     });
   }
   return out;
