@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { createAttempt } from "@/lib/create-attempt";
+import { AttemptsFullError, createAttempt } from "@/lib/create-attempt";
 import { formatCredits } from "@/lib/credits";
 import { fmt } from "@/lib/i18n";
 import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
@@ -109,17 +109,24 @@ export function RunNowButton({
   const intentSig = JSON.stringify(runFields());
   const intentRef = useRef(intentSig);
   intentRef.current = intentSig;
-  // Credits still held after a start that definitely failed, for exactly this intent (null = nothing in the way).
-  const known = useMemo(
-    () => (channelId ? attempt.status(intentSig, scope) : { unsure: false, blocked: null, full: false }),
-    // scope is derived from these; tick bumps when an answer changes what is known.
+  // What this attempt knows about this intent (credits still held after a start that definitely failed, unsure, or
+  // the scope full of such intents). It lives in sessionStorage, which the server render cannot see, so it is read
+  // AFTER mount, never during render: the server and the first client render both show "not read yet", and the
+  // hydration matches. Until it has been read for THIS intent, nothing can be sent: Make is disabled (a brief,
+  // honest wait), and the notice appears one tick after mount.
+  const statusStamp = `${userId}\0${orgId ?? ""}\0${channelId ?? ""}\0${intentSig}`;
+  const [read, setRead] = useState<{ stamp: string; status: ReturnType<typeof attempt.status> } | null>(null);
+  useEffect(() => {
+    setRead({ stamp: statusStamp, status: channelId ? attempt.status(intentSig, scope) : { unsure: false, blocked: null, full: false } });
+    // scope is derived from the stamp's parts; tick bumps when an answer changes what is known.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [attempt, intentSig, userId, orgId, channelId, tick],
-  );
+  }, [attempt, statusStamp, tick]);
+  const statusRead = !channelId || read?.stamp === statusStamp;
+  const known = read?.stamp === statusStamp ? read.status : { unsure: false, blocked: null, full: false };
   const heldBlock = known.blocked;
   // Too many earlier requests are still waiting for their credits: a NEW intent is refused (no key, no request).
   const tooMany = known.full;
-  const stopped = heldBlock !== null || tooMany;
+  const stopped = !statusRead || heldBlock !== null || tooMany;
   const heldText = tooMany ? t.create.flow.startTooMany : heldBlock === null ? null : heldBlock > 0 ? fmt(t.create.flow.startFailedHeld, { n: formatCredits(heldBlock, locale) }) : t.create.flow.startFailedHeldShort;
 
   async function loadIdeas() {
@@ -157,7 +164,22 @@ export function RunNowButton({
     // One intent = one key: channel + topic + options, NOT the price (max_credits carries that), 30-minute expiry.
     // With a user id it is also kept in this tab's sessionStorage as a hash (never the topic), so a reload after a
     // lost answer reuses it; without one it is in memory only (lib/create-attempt.ts).
-    const idempotency_key = attempt.keyFor(sig, scope);
+    let idempotency_key: string;
+    try {
+      idempotency_key = attempt.keyFor(sig, scope);
+    } catch (e) {
+      // keyFor and status() read the same state, so this should not happen; if they ever disagree the form must not hang
+      // in "starting". Nothing was sent, so no credits were taken or held.
+      sending.current = false;
+      setTick((n) => n + 1);
+      const message = e instanceof AttemptsFullError ? t.create.flow.startTooMany : `${t.agents.runFailed} ${t.create.flow.notTaken}`;
+      setCreditError(message);
+      setExtraOff(false);
+      setErrorBlocked(false);
+      setPhase("error");
+      toast.error(message);
+      return;
+    }
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
