@@ -16,7 +16,8 @@ not a project dependency — tests keep the two in sync)::
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s },
-              speed?: 0.5..2, audio?: bool }
+              speed?: 0.5..2, audio?: bool,
+              grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
@@ -57,6 +58,14 @@ Rules this module keeps:
   The envelope comes from where those clips sit on the timeline, so the same
   document always renders the same sound. A speech track cannot itself be
   ducked, which keeps "who lowers whom" a one-way question.
+* **Colour is a per-clip grade, not a filter chain.** ``grade`` holds exactly
+  three numbers that map one-to-one onto ffmpeg's ``eq`` filter (brightness
+  -1..1 added to the luma, contrast 0..2 around mid-grey, saturation 0..3 on
+  the chroma; 0 / 1 / 1 is "no change"). A clip without ``grade`` — every
+  older document — renders exactly the command it always did; a neutral
+  ``grade`` is dropped by ``normalise`` for the same reason. It applies to
+  the picture only (bars of a ``contain`` fit and fades to black stay black)
+  and to stills as well as video.
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
   and speed; a source with no sound track is silent, never an error.
@@ -107,6 +116,12 @@ MAX_ID = 64
 MAX_DOC_BYTES = 2_000_000
 
 FITS = ("contain", "cover")
+#: A clip's colour grade (ffmpeg ``eq`` brightness / contrast / saturation, each
+#: at its own range; render_spec.GRADE_* are the same numbers, a test pins them).
+#: Wider than that the picture is a flat colour: brightness +-1 is white / black,
+#: contrast 0 is a flat grey, saturation 0 is monochrome (3 is eq's own ceiling).
+GRADE_RANGES = {"brightness": (-1.0, 1.0), "contrast": (0.0, 2.0), "saturation": (0.0, 3.0)}
+GRADE_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
 TRANSITIONS = ("cut", "dip_to_black", "crossfade")
 #: A cross-fade's length: under 0.2 s it reads as a glitch, not a dissolve;
 #: over 2 s both clips are half-visible for longer than a viewer will wait.
@@ -154,7 +169,9 @@ _A_TRACK_KEYS = _TRACK_KEYS + ("role", "duck")
 _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
-_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio")
+_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
+                                  "grade")
+_GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
@@ -206,7 +223,20 @@ AssetResolver = Callable[[str], Optional[ResolvedAsset]]
 # ── small predicates ────────────────────────────────────────────────────────
 
 def _is_num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return False
+    try:
+        return math.isfinite(v)
+    except OverflowError:
+        # An int too large for a float (reachable only by writing the database
+        # directly): not a number a timeline can use, never an exception.
+        return False
+
+
+def _shown(v) -> str:
+    """``repr`` for an error message, cut short (a 4000-digit int is not a message)."""
+    s = repr(v)
+    return s if len(s) <= 60 else s[:57] + "..."
 
 
 def _is_int(v) -> bool:
@@ -245,7 +275,7 @@ def _num_in(obj, key, lo, hi, where, problems, *, exclusive_lo=False) -> None:
     ok = _is_num(v) and (v > lo if exclusive_lo else v >= lo) and v <= hi
     if not ok:
         rng = f"{'>' if exclusive_lo else '>='} {lo:g} and <= {hi:g}"
-        problems.append(f"{where}: {key} must be a number {rng} (got {v!r})")
+        problems.append(f"{where}: {key} must be a number {rng} (got {_shown(v)})")
 
 
 def _text(obj, key, where, problems) -> None:
@@ -279,19 +309,19 @@ def validate(doc: Any) -> List[str]:
     if not _fields(doc, _DOC_KEYS, _DOC_REQUIRED, "timeline", problems):
         return problems
     if doc.get("version") != VERSION:
-        problems.append(f"timeline: version must be {VERSION} (got {doc.get('version')!r})")
+        problems.append(f"timeline: version must be {VERSION} (got {_shown(doc.get('version'))})")
     for k in ("width", "height"):
         v = doc.get(k)
         if not (_is_int(v) and MIN_SIDE <= v <= MAX_SIDE and v % 2 == 0):
             problems.append(f"timeline: {k} must be an even integer from {MIN_SIDE} to "
-                            f"{MAX_SIDE} (H.264 4:2:0 needs even sides; got {v!r})")
+                            f"{MAX_SIDE} (H.264 4:2:0 needs even sides; got {_shown(v)})")
     w, h = doc.get("width"), doc.get("height")
     if _is_int(w) and _is_int(h) and w * h > MAX_FRAME_PIXELS:
         problems.append(f"timeline: the frame is at most {MAX_FRAME_PIXELS} pixels (3840x2160 or "
-                        f"2160x3840; got {w}x{h})")
+                        f"2160x3840; got {_shown(w)}x{_shown(h)})")
     fps = doc.get("fps")
     if fps not in FPS_VALUES or not _is_int(fps):
-        problems.append(f"timeline: fps must be one of {list(FPS_VALUES)} (got {fps!r})")
+        problems.append(f"timeline: fps must be one of {list(FPS_VALUES)} (got {_shown(fps)})")
         fps = None
 
     ids: Dict[str, str] = {}
@@ -429,6 +459,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
     if kind == KIND_V:
         if "fit" in clip and clip["fit"] not in FITS:
             problems.append(f"{where}: fit must be one of {list(FITS)}")
+        if "grade" in clip and _fields(clip["grade"], _GRADE_KEYS, _GRADE_KEYS,
+                                       f"{where} grade", problems):
+            for k, (lo, hi) in GRADE_RANGES.items():
+                _num_in(clip["grade"], k, lo, hi, f"{where} grade", problems)
         if "transition" in clip:
             tr = clip["transition"]
             if _fields(tr, _TRANSITION_KEYS, _TRANSITION_KEYS, f"{where} transition", problems):
@@ -744,6 +778,10 @@ def normalise(doc: dict) -> dict:
                     c["transition"] = {"type": c["transition"]["type"],
                                        "duration_s": _ms(c["transition"]["duration_s"])}
                     c["speed"] = _ms(c["speed"])
+                    if "grade" in c:
+                        c["grade"] = {k: _ms(c["grade"][k]) for k in GRADE_RANGES}
+                        if c["grade"] == GRADE_NEUTRAL:
+                            del c["grade"]   # no change: the clip is the one it was without it
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
             t["clips"].append(c)
