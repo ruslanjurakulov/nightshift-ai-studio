@@ -1,3 +1,4 @@
+import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 
@@ -5,6 +6,7 @@ import { siteUz } from "./site/uz";
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
 export const uz: Dictionary = {
   site: siteUz,
+  presets: presetsUz,
   brand: {
     name: "Nightshift",
     tagline: "Boshqaruv markazi",

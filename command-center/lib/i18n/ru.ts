@@ -1,3 +1,4 @@
+import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
 
@@ -5,6 +6,7 @@ import { siteRu } from "./site/ru";
  *  Supabase, Gemini, YouTube, CTR) намеренно не переводятся. */
 export const ru: Dictionary = {
   site: siteRu,
+  presets: presetsRu,
   brand: {
     name: "Nightshift",
     tagline: "Центр управления",
