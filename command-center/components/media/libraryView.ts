@@ -68,17 +68,19 @@ export function visibleAssets(
   assets: readonly LibraryAsset[],
   view: LibraryView,
   label: (kind: MediaKind) => string = (k) => k,
+  locale?: string,
 ): LibraryAsset[] {
   const q = normalizeQuery(view.query);
   return assets
     .filter((a) => view.filter === "all" || a.kind === view.filter)
     .filter((a) => matchesQuery(a.name, label(a.kind), q))
-    .sort(view.sort === "name" ? compareByName(label) : compareByDate(view.sort));
+    .sort(view.sort === "name" ? compareByName(label, locale) : compareByDate(view.sort));
 }
 
 /** A to Z by the name the tile shows (digits in natural order, accents folded); ties newest first, then by id. */
-export function compareByName(label: (kind: MediaKind) => string = (k) => k) {
-  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+export function compareByName(label: (kind: MediaKind) => string = (k) => k, locale?: string) {
+  // The app's language, not the machine's: the server and the browser must order alike.
+  const collator = new Intl.Collator(locale, { numeric: true, sensitivity: "base" });
   return (a: LibraryAsset, b: LibraryAsset): number => {
     const c = collator.compare(a.name ?? label(a.kind), b.name ?? label(b.kind));
     return c !== 0 ? c : compareByDate<LibraryAsset>("newest")(a, b);

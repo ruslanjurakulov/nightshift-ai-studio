@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Check, FolderInput, Images, Search, Upload } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/context";
@@ -62,6 +63,18 @@ const RESIGN_MS = 5 * 60_000;
 const POLL_MS = 3000;
 /** Files taken from one drop or one pick; the rest are said to be left out. */
 const MAX_FILES = 20;
+/** Answers that will be the same for every further file: the queue stops instead of repeating them. */
+const STOP_QUEUE_ON = new Set([
+  "too_many_uploads",
+  "quota_exceeded",
+  "server_full",
+  "unauthorized",
+  "forbidden",
+  "not_available",
+  "media_unavailable",
+]);
+/** Room for a tile's caption (name and date) under its picture, kept clear of the floating bar when a tile is focused. */
+const CAPTION_PX = 72;
 /** How long the search box waits for typing to stop before asking the server. */
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -124,10 +137,18 @@ export function MediaLibrary({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [readFailed, setReadFailed] = useState(Boolean(initial?.error));
   const [view, setView] = useState<LibraryView>(initialView ?? DEFAULT_VIEW);
-  const [fileErrors, setFileErrors] = useState<{ n: number; list: string[] } | null>(null);
+  const [fileErrors, setFileErrors] = useState<{ failed: number; n: number; list: string[] } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const uploadingRef = useRef(false);
+  const cancelQueue = useRef(false);
+  const [barH, setBarH] = useState(208);
+  const barRef = useRef<HTMLDivElement>(null);
+  const dropGate = useRef<{ allowed: boolean; start: (files: File[]) => void }>({ allowed: false, start: () => {} });
+  const searchParams = useSearchParams();
+  const urlKey = searchParams?.toString() ?? "";
   const [queue, setQueue] = useState<{ i: number; n: number } | null>(null);
   const [dragging, setDragging] = useState(false);
-  const dragDepth = useRef(0);
   const anchor = useRef<string | null>(null);
   const lastView = useRef(view);
   const [folder, setFolder] = useState<string | null>(initial?.folder ?? null);
@@ -179,6 +200,90 @@ export function MediaLibrary({
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  // Files dragged over the page. A file drag is always cancelled here (left
+  // alone, the browser would open the file in this tab and the page would be
+  // lost); it starts an upload only when nothing else wants the drop: not in
+  // the viewer or a dialog, not on a text field, not while an upload runs.
+  useEffect(() => {
+    const files = (e: globalThis.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const wanted = (e: globalThis.DragEvent) => {
+      const el = e.target instanceof Element ? e.target : null;
+      if (el?.closest('[role="dialog"], input, textarea, select, [contenteditable="true"]')) return false;
+      return dropGate.current.allowed;
+    };
+    const over = (e: globalThis.DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      const ok = wanted(e);
+      if (e.dataTransfer) e.dataTransfer.dropEffect = ok ? "copy" : "none";
+      setDragging(ok);
+    };
+    const leave = (e: globalThis.DragEvent) => {
+      if (files(e) && !e.relatedTarget) setDragging(false);
+    };
+    const drop = (e: globalThis.DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      setDragging(false);
+      if (wanted(e)) dropGate.current.start(Array.from(e.dataTransfer?.files ?? []));
+    };
+    window.addEventListener("dragenter", over);
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", over);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
+
+  // The floating bar covers the bottom of the page: measure it, keep a spacer
+  // that tall under the grid, and tell the browser (scroll-padding) so a tile
+  // that gets keyboard focus is scrolled clear of the bar and the phone's tab
+  // bar instead of ending up behind them.
+  useEffect(() => {
+    const el = barRef.current;
+    const root = document.documentElement;
+    if (!selecting || !el) return;
+    const before = root.style.scrollPaddingBottom;
+    const measure = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      const wide = typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches;
+      setBarH(h);
+      // lg: sticky 12px above the bottom; below: fixed above the 76px tab bar.
+      root.style.scrollPaddingBottom = wide ? `${h + 12 + 16 + CAPTION_PX}px` : `calc(${h + 76 + 16 + CAPTION_PX}px + env(safe-area-inset-bottom))`;
+    };
+    measure();
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+      root.style.scrollPaddingBottom = before;
+    };
+  }, [selecting]);
+
+  // A soft navigation to another address of this page (the sidebar's Library
+  // link while ?kind=video is open): the address wins, unless it is only the
+  // echo of a view this page wrote itself.
+  useEffect(() => {
+    try {
+      const search = window.location.search;
+      const now = search === "?" ? "" : search;
+      setView((cur) => {
+        if (applyViewToSearch(search, cur) === now) return cur;
+        const v = parseView(new URLSearchParams(search));
+        lastView.current = v;
+        return v;
+      });
+    } catch {
+      /* no address to read */
+    }
+  }, [urlKey]);
 
   const refresh = useCallback(async () => {
     const seq = ++readSeq.current;
@@ -263,7 +368,7 @@ export function MediaLibrary({
   const assets = useMemo(() => inFolder(data?.assets ?? [], foldersOn ? folder : null), [data, foldersOn, folder]);
   const switching = Boolean(data) && foldersOn && ((data?.folder ?? null) !== folder || (data?.query ?? "") !== serverQuery);
   const counts = useMemo(() => countByFilter(assets), [assets]);
-  const shown = useMemo(() => visibleAssets(assets, view, (k) => tm.kinds[k]), [assets, view, tm]);
+  const shown = useMemo(() => visibleAssets(assets, view, (k) => tm.kinds[k], locale), [assets, view, tm, locale]);
   // An upload waits where it will land: in All files every one, in a folder
   // the ones asked into it (0051; before it, none name a folder).
   const pending = useMemo(
@@ -277,14 +382,19 @@ export function MediaLibrary({
     if (viewerId && viewerIndex < 0) setViewerId(null);
   }, [viewerId, viewerIndex]);
 
-  // Selection only ever holds files that are still there.
+  // Selection only ever holds files that are on screen: a filter, search or
+  // sort that hides a file also drops it from the selection, so a bulk move or
+  // delete never acts on something the member cannot see.
   useEffect(() => {
     setSelected((prev) => {
-      const ids = new Set(assets.map((a) => a.id));
+      const ids = new Set(shown.map((a) => a.id));
       const next = new Set([...prev].filter((id) => ids.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [assets]);
+  }, [shown]);
+  useEffect(() => {
+    if (!selecting) anchor.current = null;
+  }, [selecting]);
 
   // Escape in select mode: first the delete question, then the selection, then select mode itself.
   const dialogOpen = dialog !== null;
@@ -322,7 +432,7 @@ export function MediaLibrary({
   }
 
   const canUpload = data.host.media && data.host.staging;
-  const busy = !canUpload || progress !== null;
+  const busy = !canUpload || progress !== null || uploading;
   const maxLabel = formatMediaBytes(data.quota.maxUploadBytes);
   // File checking is down (not reporting, or failed) AND something is waiting
   // on it: say so instead of "waiting for the server" for good. "unknown"
@@ -367,10 +477,10 @@ export function MediaLibrary({
     });
   }
 
-  /** One file: ticket, then the streamed PUT. Returns the words for what went wrong, or null. Never throws. */
-  async function uploadOne(file: File, target: typeof uploadFolder): Promise<string | null> {
+  /** One file: ticket, then the streamed PUT. Returns the words for what went wrong (and whether every further file would hit the same wall), or null. Never throws. */
+  async function uploadOne(file: File, target: typeof uploadFolder): Promise<{ problem: string; stop: boolean } | null> {
     setProgress({ name: file.name, pct: 0 });
-    let problem: string | null = null;
+    let out: { problem: string; stop: boolean } | null = null;
     try {
       const res = await fetch("/api/media/uploads", {
         method: "POST",
@@ -389,27 +499,42 @@ export function MediaLibrary({
         max_bytes?: number;
         folder_applied?: boolean | null;
       };
-      if (!res.ok || !ticket.upload_url) return errorText(ticket.error, ticket.max_bytes);
+      if (!res.ok || !ticket.upload_url) {
+        return { problem: errorText(ticket.error, ticket.max_bytes), stop: STOP_QUEUE_ON.has(String(ticket.error)) };
+      }
       // The deployment cannot file uploads yet (0051 missing): it goes to All files, said plainly.
       if (target && ticket.folder_applied === false) setNotice(tf.uploadedToAll);
       await refresh();
       const put = await send(ticket.upload_url, file);
       if (put.status < 200 || put.status >= 300) {
-        problem = put.status === 408 ? tm.errors.network : errorText(put.body.error, put.body.max_bytes);
+        out = {
+          problem: put.status === 408 ? tm.errors.network : errorText(put.body.error, put.body.max_bytes),
+          stop: STOP_QUEUE_ON.has(String(put.body.error)),
+        };
       }
     } catch {
-      problem = tm.errors.network;
+      out = { problem: tm.errors.network, stop: false };
     } finally {
       setProgress(null);
       await refresh();
     }
-    return problem;
+    return out;
   }
 
-  /** One or several files, one after the other (each is the same checked upload a single file makes). */
+  /**
+   * One or several files, one after the other (each is the same checked upload
+   * a single file makes). Only one run at a time. A refusal that every further
+   * file would get too (storage full, session ended…) stops the run; "stop"
+   * ends it after the file in flight.
+   */
   async function uploadFiles(picked: readonly File[]) {
+    if (uploadingRef.current) return;
     const files = picked.slice(0, MAX_FILES);
     if (files.length === 0) return;
+    uploadingRef.current = true;
+    cancelQueue.current = false;
+    setStopping(false);
+    setUploading(true);
     setError(null);
     setNotice(picked.length > files.length ? fmt(tu.dropTooMany, { max: MAX_FILES }) : null);
     setFileErrors(null);
@@ -417,15 +542,31 @@ export function MediaLibrary({
     // during the upload does not move where they go.
     const target = uploadFolder;
     const failures: string[] = [];
-    for (let i = 0; i < files.length; i += 1) {
-      setQueue(files.length > 1 ? { i: i + 1, n: files.length } : null);
-      const problem = await uploadOne(files[i], target);
-      if (problem) failures.push(files.length === 1 ? problem : fmt(tu.fileFailed, { name: files[i].name, reason: problem }));
+    let notSent = 0;
+    try {
+      for (let i = 0; i < files.length; i += 1) {
+        setQueue(files.length > 1 ? { i: i + 1, n: files.length } : null);
+        const r = await uploadOne(files[i], target);
+        if (r) failures.push(files.length === 1 ? r.problem : fmt(tu.fileFailed, { name: files[i].name, reason: r.problem }));
+        if ((r?.stop || cancelQueue.current) && i < files.length - 1) {
+          notSent = files.length - 1 - i;
+          break;
+        }
+      }
+    } finally {
+      setQueue(null);
+      if (input.current) input.current.value = "";
+      uploadingRef.current = false;
+      setUploading(false);
     }
-    setQueue(null);
-    if (input.current) input.current.value = "";
     if (files.length === 1) setError(failures[0] ?? null);
-    else if (failures.length > 0) setFileErrors({ n: files.length, list: failures });
+    else if (failures.length > 0 || notSent > 0) {
+      setFileErrors({
+        failed: failures.length + notSent,
+        n: files.length,
+        list: notSent > 0 ? [...failures, fmt(tu.notSent, { n: notSent })] : failures,
+      });
+    }
   }
 
   /** One DELETE; true when the server took it. Never throws. */
@@ -627,41 +768,12 @@ export function MediaLibrary({
 
   const headingId = `${inputId}-assets`;
 
-  // Dropping files anywhere on the page: the same upload the button makes.
-  const hasFiles = (e: DragEvent<HTMLElement>) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
-  function onDragEnter(e: DragEvent<HTMLElement>) {
-    if (busy || !hasFiles(e)) return;
-    e.preventDefault();
-    dragDepth.current += 1;
-    setDragging(true);
-  }
-  function onDragOver(e: DragEvent<HTMLElement>) {
-    if (busy || !hasFiles(e)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-  }
-  function onDragLeave(e: DragEvent<HTMLElement>) {
-    if (!hasFiles(e)) return;
-    dragDepth.current = Math.max(0, dragDepth.current - 1);
-    if (dragDepth.current === 0) setDragging(false);
-  }
-  function onDrop(e: DragEvent<HTMLElement>) {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    dragDepth.current = 0;
-    setDragging(false);
-    if (busy) return;
-    void uploadFiles(Array.from(e.dataTransfer.files));
-  }
+  // Dropping files on the page: the same upload the button makes (handlers are
+  // on the window, see the effect above the early return).
+  dropGate.current = { allowed: canUpload && !busy && !viewerId && dialog === null, start: (files) => void uploadFiles(files) };
 
   return (
-    <div
-      className="flex min-w-0 flex-col gap-4"
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
+    <div className="flex min-w-0 flex-col gap-4">
       {dragging && (
         <div
           aria-hidden
@@ -713,7 +825,22 @@ export function MediaLibrary({
               </div>
             )}
           </div>
-          {uploadButton(false, nothingAtAll)}
+          <div className="flex flex-wrap items-center gap-2">
+            {queue && (
+              <button
+                type="button"
+                disabled={stopping}
+                onClick={() => {
+                  cancelQueue.current = true;
+                  setStopping(true);
+                }}
+                className="btn-quiet disabled:opacity-40"
+              >
+                {tu.cancelQueue}
+              </button>
+            )}
+            {uploadButton(false, nothingAtAll)}
+          </div>
         </div>
         <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">
           {tm.accepted}
@@ -728,7 +855,7 @@ export function MediaLibrary({
         )}
         {fileErrors && (
           <div role="alert" className="flex flex-col gap-1 text-sm text-[var(--color-fail)]">
-            <p className="m-0">{fmt(tu.someFailed, { failed: fileErrors.list.length, n: fileErrors.n })}</p>
+            <p className="m-0">{fmt(tu.someFailed, { failed: fileErrors.failed, n: fileErrors.n })}</p>
             <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-xs">
               {fileErrors.list.map((f, i) => (
                 <li key={i} className="break-words">{f}</li>
@@ -978,6 +1105,7 @@ export function MediaLibrary({
 
             {selecting ? (
               <div
+                ref={barRef}
                 className="panel fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:sticky lg:inset-x-auto lg:bottom-3"
                 // Inline: .panel's own (unlayered) rules would beat a utility, and a bar that floats over tiles must be solid.
                 // Fixed on phones (a sticky bottom bar rides under the tab bar near the top of the page there), sticky from lg up.
@@ -1053,7 +1181,7 @@ export function MediaLibrary({
               </div>
             ) : null}
             {/* A phone's bar is fixed above the tab bar: keep the last row of tiles clear of it. */}
-            {selecting && <div aria-hidden className="h-36 lg:hidden" />}
+            {selecting && <div aria-hidden className="lg:hidden" style={{ height: `calc(${barH + 92}px + env(safe-area-inset-bottom))` }} />}
           </section>
         </div>
       )}

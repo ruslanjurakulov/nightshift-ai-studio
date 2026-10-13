@@ -4,8 +4,10 @@ import type { LibraryUxDictionary } from "./en";
 export const libraryUxUz: LibraryUxDictionary = {
   sortName: "Nomi boʻyicha, A–Z",
   dropHere: "Yuklash uchun fayllarni tashlang",
-  dropHereFolder: "«{folder}» jildiga yuklash uchun fayllarni tashlang",
-  dropHint: "Fayllarni shu sahifaning istalgan joyiga tashlashingiz ham mumkin.",
+  dropHereFolder: "“{folder}” jildiga yuklash uchun fayllarni tashlang",
+  dropHint: "Fayllarni shu sahifaga tashlashingiz ham mumkin.",
+  cancelQueue: "Shu fayldan keyin toʻxtatish",
+  notSent: "Yana {n} ta fayl yuborilmadi.",
   dropTooMany: "Faqat dastlabki {max} ta fayl qabul qilindi.",
   queue: "{n} tadan {i}-fayl",
   someFailed: "{n} ta fayldan {failed} tasini yuborib boʻlmadi:",

@@ -9,9 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 
+let mockSearch = "";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/x/library",
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 
 import { I18nProvider } from "@/lib/i18n/context";
@@ -19,7 +21,7 @@ import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
 import { MediaLibrary } from "@/components/media/MediaLibrary";
-import { parseView } from "@/components/media/libraryView";
+import { parseView, visibleAssets } from "@/components/media/libraryView";
 import type { LibraryAsset, MediaKind, MediaLibraryData } from "@/lib/media";
 
 const ORG = "00000000-0000-4000-8000-000000000001";
@@ -82,6 +84,7 @@ class FakeXHR {
 const photos = [asset("image", "beach.png", 1), asset("video", "intro.mp4", 3), asset("audio", "voice.mp3", 2), asset("image", "Alpha.png", 4)];
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  mockSearch = "";
   FakeXHR.sent = [];
   window.history.replaceState(null, "", "/x/library");
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -248,5 +251,205 @@ describe("copy parity", () => {
         expect(ph(d.libraryUx[k]), k).toBe(ph(en.libraryUx[k]));
       }
     }
+  });
+});
+
+// ── review fixes ────────────────────────────────────────────────────────────
+
+/** Holds every upload ticket until released, so a queue can be inspected mid-run. */
+function holdTickets() {
+  const waiting: (() => void)[] = [];
+  const posts: string[] = [];
+  const answer: Record<string, Response | undefined> = {};
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    if (url === "/api/media/uploads" && init?.method === "POST") {
+      const { filename } = JSON.parse(String(init.body)) as { filename: string };
+      posts.push(filename);
+      return new Promise<Response>((resolve) => {
+        waiting.push(() => {
+          const custom = answer[filename];
+          resolve(custom ?? new Response(JSON.stringify({ ok: true, upload_url: `/api/media/uploads/t-${filename}` }), { status: 200 }));
+        });
+      });
+    }
+    return json(lib(photos));
+  });
+  return { posts, release: () => waiting.shift()?.(), answer };
+}
+const pngFile = (name: string) => new File([new Uint8Array([1, 2])], name, { type: "image/png" });
+const dropFiles = (el: Element, files: File[]) => fireEvent.drop(el, { dataTransfer: { types: ["Files"], files, dropEffect: "none" } });
+
+describe("one upload run at a time", () => {
+  it("a second drop (and the file input) is refused for the whole queue, also between two files", async () => {
+    const h = holdTickets();
+    const { container } = render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    dropFiles(document.body, [pngFile("a.png"), pngFile("b.png")]);
+    await waitFor(() => expect(h.posts).toEqual(["a.png"]));
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+    dropFiles(document.body, [pngFile("c.png")]);
+    h.release();
+    // between the first file's end and the second's ticket: still busy
+    await waitFor(() => expect(h.posts).toEqual(["a.png", "b.png"]));
+    dropFiles(document.body, [pngFile("d.png")]);
+    h.release();
+    await waitFor(() => expect(FakeXHR.sent).toHaveLength(2));
+    expect(h.posts).toEqual(["a.png", "b.png"]);
+    await waitFor(() => expect(input.disabled).toBe(false));
+  });
+});
+
+describe("drops meant for something else", () => {
+  it("are ignored on the search box, in a dialog and in the viewer, yet still cancelled so the tab is not lost", () => {
+    const h = holdTickets();
+    render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    const box = screen.getByRole("searchbox", { name: tm.search });
+    const ev = new Event("drop", { bubbles: true, cancelable: true }) as Event & { dataTransfer?: unknown };
+    ev.dataTransfer = { types: ["Files"], files: [pngFile("x.png")] };
+    box.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(h.posts).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Alpha.png" }));
+    const dialog = screen.getByRole("dialog");
+    dropFiles(dialog, [pngFile("y.png")]);
+    expect(h.posts).toEqual([]);
+    fireEvent.dragOver(dialog, { dataTransfer: { types: ["Files"], dropEffect: "copy" } });
+    expect(document.querySelector("[data-library-drop]")).toBeNull();
+  });
+
+  it("a file drag over the page is cancelled even while an upload runs (no navigating away)", async () => {
+    const h = holdTickets();
+    render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    dropFiles(document.body, [pngFile("a.png")]);
+    await waitFor(() => expect(h.posts).toHaveLength(1));
+    const ev = new Event("dragover", { bubbles: true, cancelable: true }) as Event & { dataTransfer?: unknown };
+    ev.dataTransfer = { types: ["Files"], dropEffect: "none" };
+    document.body.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(document.querySelector("[data-library-drop]")).toBeNull();
+    h.release();
+    await waitFor(() => expect(FakeXHR.sent).toHaveLength(1));
+  });
+});
+
+describe("a refusal that every file would get stops the queue", () => {
+  it("stops on too_many_uploads and says how many were not sent", async () => {
+    const h = holdTickets();
+    h.answer["b.png"] = new Response(JSON.stringify({ error: "too_many_uploads" }), { status: 429 });
+    const { container } = render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    dropFiles(document.body, [pngFile("a.png"), pngFile("b.png"), pngFile("c.png"), pngFile("d.png")]);
+    await waitFor(() => expect(h.posts).toEqual(["a.png"]));
+    h.release();
+    await waitFor(() => expect(h.posts).toEqual(["a.png", "b.png"]));
+    h.release();
+    const alert = await screen.findByText(/2 of 4 files could not be sent|3 of 4 files could not be sent/);
+    expect(h.posts).toEqual(["a.png", "b.png"]);
+    const box = alert.closest("[role=alert]") as HTMLElement;
+    expect(box.textContent).toContain(en.media.errors.too_many_uploads);
+    expect(box.textContent).toContain(tu.notSent.replace("{n}", "2"));
+    expect(box.textContent).toContain("3 of 4 files could not be sent");
+    expect(container.querySelector('input[type="file"]')).toHaveProperty("disabled", false);
+  });
+
+  it("a plain per-file error (too large) keeps going", async () => {
+    const h = holdTickets();
+    h.answer["a.png"] = new Response(JSON.stringify({ error: "too_large", max_bytes: 10 }), { status: 413 });
+    render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    dropFiles(document.body, [pngFile("a.png"), pngFile("b.png")]);
+    await waitFor(() => expect(h.posts).toEqual(["a.png"]));
+    h.release();
+    await waitFor(() => expect(h.posts).toEqual(["a.png", "b.png"]));
+    h.release();
+    await waitFor(() => expect(FakeXHR.sent).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  });
+
+  it("'Stop after this file' ends a multi-file queue and reports the rest as not sent", async () => {
+    const h = holdTickets();
+    render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    expect(screen.queryByRole("button", { name: tu.cancelQueue })).toBeNull();
+    dropFiles(document.body, [pngFile("a.png"), pngFile("b.png"), pngFile("c.png")]);
+    await waitFor(() => expect(h.posts).toEqual(["a.png"]));
+    fireEvent.click(screen.getByRole("button", { name: tu.cancelQueue }));
+    h.release();
+    const msg = await screen.findByText(tu.notSent.replace("{n}", "2"));
+    expect(msg).toBeTruthy();
+    expect(h.posts).toEqual(["a.png"]);
+    expect(screen.queryByRole("button", { name: tu.cancelQueue })).toBeNull();
+  });
+});
+
+describe("name sort uses the app's language", () => {
+  it("the same names order differently for sv than for en", () => {
+    const a = asset("image", "ä.png", 1);
+    const b = asset("image", "z.png", 2);
+    const view = { filter: "all" as const, query: "", sort: "name" as const };
+    expect(visibleAssets([b, a], view, undefined, "en").map((x) => x.name)).toEqual(["ä.png", "z.png"]);
+    expect(visibleAssets([a, b], view, undefined, "sv").map((x) => x.name)).toEqual(["z.png", "ä.png"]);
+  });
+});
+
+describe("the address wins after a soft navigation", () => {
+  it("?kind=video then a link to the bare page shows All again", () => {
+    window.history.replaceState(null, "", "/x/library?kind=video");
+    mockSearch = "kind=video";
+    const view = () => <MediaLibrary orgId={ORG} initial={lib(photos)} initialView={parseView(new URLSearchParams("kind=video"))} />;
+    const { rerender, container } = render(wrap(view()));
+    expect(order(container)).toEqual(["Open intro.mp4"]);
+
+    window.history.pushState(null, "", "/x/library");
+    mockSearch = "";
+    rerender(wrap(view()));
+    expect(order(container)).toHaveLength(4);
+    expect(screen.getByRole("button", { name: /^All/ }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("the echo of the page's own address change does not undo typing", () => {
+    const { container } = render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    const box = screen.getByRole("searchbox", { name: tm.search });
+    fireEvent.change(box, { target: { value: "in" } });
+    fireEvent.change(box, { target: { value: "int" } });
+    mockSearch = "q=in"; // Next reports the older address late
+    window.dispatchEvent(new Event("resize"));
+    expect((box as HTMLInputElement).value).toBe("int");
+    expect(order(container)).toEqual(["Open intro.mp4"]);
+  });
+});
+
+describe("selection stays on what is shown", () => {
+  const start = () => {
+    const r = render(wrap(<MediaLibrary orgId={ORG} initial={lib(photos)} />));
+    fireEvent.click(screen.getByRole("button", { name: tm.select }));
+    return r;
+  };
+  it("a filter, a search and Back drop hidden files from the selection (bulk actions never reach them)", () => {
+    const { container } = start();
+    fireEvent.click(screen.getByRole("button", { name: "Select Alpha.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select intro.mp4" }));
+    const count = () => container.querySelector("[data-library-selection] [role=status]")?.textContent;
+    expect(count()).toBe("2 selected");
+    fireEvent.click(screen.getByRole("button", { name: /^Videos/ }));
+    expect(count()).toBe("1 selected");
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
+    expect(count()).toBe("1 selected");
+    fireEvent.change(screen.getByRole("searchbox", { name: tm.search }), { target: { value: "alpha" } });
+    expect(count()).toBe("0 selected");
+  });
+
+  it("the Shift-click anchor does not survive leaving select mode", () => {
+    const { container } = start();
+    fireEvent.click(screen.getByRole("button", { name: "Select Alpha.png" }));
+    fireEvent.click(screen.getByRole("button", { name: tm.selectDone }));
+    fireEvent.click(screen.getByRole("button", { name: tm.select }));
+    fireEvent.click(screen.getByRole("button", { name: "Select beach.png" }), { shiftKey: true });
+    expect(container.querySelector("[data-library-selection] [role=status]")?.textContent).toBe("1 selected");
+  });
+
+  it("scroll-padding keeps focused tiles clear of the bar while select mode is on, and is undone after", () => {
+    start();
+    expect(document.documentElement.style.scrollPaddingBottom).not.toBe("");
+    fireEvent.click(screen.getByRole("button", { name: tm.selectDone }));
+    expect(document.documentElement.style.scrollPaddingBottom).toBe("");
   });
 });
