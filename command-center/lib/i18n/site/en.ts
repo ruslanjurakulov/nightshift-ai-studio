@@ -25,6 +25,8 @@ export const siteEn = {
     lead: "Give Nightshift a topic. It writes, voices and edits a YouTube video, then waits for your OK. You see the price before anything starts.",
     cta: "Start free",
     secondary: "See pricing",
+    demo: "Try an example",
+    demoNote: "Shows a plan only. Nothing is created.",
     note: "{n} free credits, once, when you sign up. No card.",
   },
   rundown: {
