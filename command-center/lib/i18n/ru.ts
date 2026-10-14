@@ -1,9 +1,11 @@
+import { improveRu } from "./improve/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
 import { overlayRu } from "./overlay/ru";
 import { looksRu } from "./editor-looks/ru";
+import { captionStylesRu } from "./caption-styles/ru";
 import { editorExportRu } from "./editor-export/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
@@ -12,6 +14,7 @@ export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
   libraryUx: libraryUxRu,
+  improveAi: improveRu,
   brand: {
     name: "Nightshift",
     tagline: "Центр управления",
@@ -4560,7 +4563,42 @@ export const ru: Dictionary = {
     downloadNote: "Для других плееров и сайтов. Делаются из субтитров выше, бесплатно.",
     downloadSrt: "Скачать .srt",
     downloadVtt: "Скачать .vtt",
+    modelsError: "Сейчас не удалось проверить, доступны ли авто-субтитры. Обновите страницу и попробуйте снова.",
+    splitCue: "Разделить",
+    mergeCue: "Объединить со следующим",
+    addCueAfter: "Добавить после",
+    noRoomForCue: "Для нового субтитра здесь нет места: следующий начинается слишком рано или видео заканчивается.",
+    cannotSplit: "Этот субтитр нельзя разделить: нужны минимум два слова и достаточно времени для обеих частей.",
+    replaceHeading: "Исправить слово везде",
+    replaceNote: "Заменяет слово или фразу во всех субтитрах сразу, например имя, которое расшифровка поняла неверно. Заглавные и строчные буквы не различаются.",
+    findLabel: "Что найти",
+    replaceLabel: "Чем заменить",
+    replaceAll: "Заменить во всех субтитрах",
+    replaced: "Изменено субтитров: {n}. Сохраните проект, чтобы они остались.",
+    nothingToReplace: "Этот текст не найден ни в одном субтитре.",
+    deleteCueN: "Удалить субтитр {n} (на {time})",
+    splitCueN: "Разделить субтитр {n} (на {time})",
+    mergeCueN: "Объединить субтитр {n} со следующим (на {time})",
+    addCueAfterN: "Добавить субтитр после субтитра {n} (на {time})",
+    cueLimit: "В проекте уже максимальное число субтитров. Сначала объедините или удалите часть.",
+    cannotJoin: "Эти два субтитра вместе слишком длинные для одного субтитра.",
+    replaceSkipped: "Субтитров, оставленных без изменений из-за слишком длинного результата: {n}.",
     defaultFile: "subtitry",
+    /** Анимированные стили: ./caption-styles/ru.ts. */
+    animated: captionStylesRu,
+    addCue: "Добавить субтитр",
+    importFile: "Загрузить .srt или .vtt",
+    importNote: "Напишите субтитры сами или загрузите файл с ними. Оба способа бесплатны, расшифровка речи не нужна.",
+    newCueText: "Новый субтитр",
+    addNoRoom: "Для ещё одного субтитра нет места: картинка слишком скоро заканчивается.",
+    importTooBig: "Файл слишком большой (больше 1 МБ).",
+    importFailed: "Не удалось прочитать файл.",
+    importOutside: "Все субтитры в этом файле идут после конца картинки, поэтому ни один не добавлен.",
+    importNone: "В этом файле субтитры не найдены. Нужен файл .srt или .vtt.",
+    importReplace: "Это заменит субтитры, которые вы видите, вместе с вашими правками. Продолжить?",
+    imported: "Загружено субтитров: {n}. Сохраните проект, чтобы они остались.",
+    importedSome: "Загружено субтитров: {n}; не удалось использовать: {skipped}. Сохраните проект, чтобы они остались.",
+    noCuesManual: "Субтитров пока нет. Добавьте один или загрузите файл .srt или .vtt.",
   },
   workflows: {
     title: "Сценарии",

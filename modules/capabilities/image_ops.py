@@ -94,7 +94,7 @@ def _ratio(aspect: str) -> float:
 def clean_words(text: str, limit: int) -> str:
     """The customer's few words as quoted data: one line, no quotes or angle
     brackets that could close the <ask> tag, at most ``limit`` characters."""
-    s = re.sub(r"[\x00-\x1f\x7f<>\"`]+", " ", str(text or ""))
+    s = re.sub(r"[\x00-\x1f\x7f-\x9f\u2028\u2029<>\"`]+", " ", str(text or ""))
     return re.sub(r"\s+", " ", s).strip()[:limit]
 
 

@@ -252,7 +252,10 @@ export async function readSellableModels(
       p_surface: surface,
     });
     if (error) {
-      if (isMissingFunction(error)) return { status: "not_enabled", models: [] };
+      // 22023: "unknown capability" — a database that has not applied the
+      // migration that adds this capability (captions, 0072) is "not enabled
+      // here", not "could not be read".
+      if (isMissingFunction(error) || (capability && error.code === "22023")) return { status: "not_enabled", models: [] };
       // 42501: the role may not execute it — only anon lacks the grant.
       if (error.code === "42501") return { status: "signed_out", models: [] };
       return { status: "error", models: [] };

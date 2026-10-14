@@ -102,6 +102,13 @@ describe("readSellableModels", () => {
     expect(out).toEqual({ status: "not_enabled", models: [] });
   });
 
+  it("says 'not enabled' for a capability the database does not know yet (captions before 0072), not 'could not be read'", async () => {
+    const unknown = { error: { code: "22023", message: "unknown capability captions" } };
+    expect(await readSellableModels(client(unknown), "captions")).toEqual({ status: "not_enabled", models: [] });
+    // Without a capability that code is not about a missing migration.
+    expect((await readSellableModels(client(unknown))).status).toBe("error");
+  });
+
   it("reports a refused grant as signed out and anything else as an error", async () => {
     expect((await readSellableModels(client({ error: { code: "42501" } }))).status).toBe("signed_out");
     expect((await readSellableModels(client({ error: { code: "XX000", message: "boom" } }))).status).toBe("error");

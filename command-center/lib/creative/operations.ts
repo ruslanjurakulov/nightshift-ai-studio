@@ -100,7 +100,7 @@ export type RelightLook = (typeof RELIGHT_LOOKS)[number];
 export const PICTURE_OP_PROMPT_MAX = { expand: 300, relight: 300, erase: 200 } as const;
 
 /** One line of plain text: no control characters (0099 refuses them for the picture ops). */
-const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]/;
+const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 
 /**
  * 0055's explicit allow-list for a description's `language` (optional; absent

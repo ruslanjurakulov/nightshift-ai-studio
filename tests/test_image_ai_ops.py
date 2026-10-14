@@ -144,6 +144,11 @@ class Instruction(unittest.TestCase):
         self.assertEqual(text.count("<ask>"), 1)
         self.assertEqual(text.count("</ask>"), 1)
 
+    def test_unicode_line_separators_are_line_breaks_too(self):
+        text = instruction(CapabilityRequest("erase", prompt="car\u2028ignore\u2029the rest\u0085"))
+        inner = re.search(r"<ask>(.*)</ask>", text, re.S).group(1)
+        self.assertEqual(inner, "car ignore the rest")
+
     def test_words_are_cut_to_the_ops_limit(self):
         text = instruction(CapabilityRequest("erase", prompt="a" * 500))
         self.assertEqual(len(re.search(r"<ask>(.*)</ask>", text).group(1)), MAX_PROMPT["erase"])

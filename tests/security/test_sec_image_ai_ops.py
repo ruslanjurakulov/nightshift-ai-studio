@@ -226,6 +226,9 @@ def test_a_light_the_model_does_not_list_is_refused(db):
      "does not apply"),
     ("expand", "ops", {"source_asset_id": "SRC", "aspect_ratio": "16:9", "prompt": "a" * 301}, "longer than 300"),
     ("expand", "ops", {"source_asset_id": "SRC", "aspect_ratio": "16:9", "prompt": "one\ntwo"}, "plain text"),
+    ("expand", "ops", {"source_asset_id": "SRC", "aspect_ratio": "16:9", "prompt": "one\u2028two"}, "plain text"),
+    ("erase", "ops", {"source_asset_id": "SRC", "prompt": "the car\u2029and more"}, "plain text"),
+    ("erase", "ops", {"source_asset_id": "SRC", "prompt": "the car\u0085and more"}, "plain text"),
     ("expand", "ops", {"source_asset_id": "SRC", "aspect_ratio": "16:9", "prompt": "  "}, "prompt is required"),
     ("expand", "ops", {"source_asset_id": "SRC", "aspect_ratio": "16:9", "prompt": 5}, "prompt is required"),
     # relight

@@ -310,6 +310,9 @@ describe("the route's shape check", () => {
     for (const aspect of [undefined, "21:9", "16:10", 1, null, "16:9; drop"]) expect(bad("expand", { aspect_ratio: aspect }), String(aspect)).toBe("invalid_params");
     expect(bad("expand", { aspect_ratio: "16:9", prompt: "x".repeat(301) })).toBe("invalid_params");
     expect(bad("expand", { aspect_ratio: "16:9", prompt: "a\nb" })).toBe("invalid_params");
+    // Unicode line and paragraph separators are line breaks too.
+    expect(bad("expand", { aspect_ratio: "16:9", prompt: "a\u2028b" })).toBe("invalid_params");
+    expect(bad("erase", { prompt: "car\u2029x" })).toBe("invalid_params");
     expect(bad("expand", { aspect_ratio: "16:9", look: "warm" })).toBe("invalid_params");
     expect(bad("expand", { aspect_ratio: "16:9", negative_prompt: "x" })).toBe("invalid_params");
     expect(bad("expand", { aspect_ratio: "16:9", resolution: "1080p" })).toBe("invalid_params");

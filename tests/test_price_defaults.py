@@ -70,6 +70,7 @@ UNPRICED_ON_PURPOSE = {
     "model_gemini_2_5_flash_image_expand_image": "registry: picture op (0099), unverified and gated; the owner sets a price when a probe has proven it",
     "model_gemini_2_5_flash_image_relight_image": "registry: picture op (0099), unverified and gated; the owner sets a price when a probe has proven it",
     "model_gemini_2_5_flash_image_erase_image": "registry: picture op (0099), unverified and gated; the owner sets a price when a probe has proven it",
+    "model_assemblyai_universal_2_second": "registry: no price read, not sold (terms not reviewed)",
     "usd": "pricing a ledger unit changes run settlement (metered vs hold): owner policy",
     "gemini_input_tokens": "ledger unit: owner policy",
     "gemini_output_tokens": "ledger unit: owner policy",
