@@ -111,11 +111,13 @@ describe("nothing a person typed is stored", () => {
     expect(names()).toHaveLength(1);
     const [name] = names();
     expect(name.startsWith(ATTEMPT_PREFIX)).toBe(true);
-    expect(name.slice(ATTEMPT_PREFIX.length)).toMatch(/^[0-9a-f]{64}$/);
+    // One entry per intent: a hash of whose it is, then the intent's own hash.
+    expect(name.slice(ATTEMPT_PREFIX.length)).toMatch(/^[0-9a-f]{64}:[0-9a-f]{64}$/);
     const entry = JSON.parse(window.sessionStorage.getItem(name) as string);
     expect(Object.keys(entry).sort()).toEqual(["h", "k", "t", "u", "v"]);
     expect(entry).toMatchObject({ v: 1, k: "k1", t: 1_700_000_000_000, u: true });
     expect(entry.h).toMatch(/^[0-9a-f]{64}$/);
+    expect(name.endsWith(`:${entry.h}`)).toBe(true);
     const all = dump();
     for (const secret of [TOPIC, "Khiva", "Secret", "noir", "voice-xyz", USER, ORG, CHAN, "channel_id", "topic", "duration"]) {
       expect(all).not.toContain(secret);
@@ -244,7 +246,10 @@ describe("storage that fails", () => {
     expect(a.keyFor(sig({ topic: "x" }), scope())).toBe("k2");
     expect(a.isUnsure()).toBe(false);
     a.settle();
-    expect(a.keyFor(sig(), scope())).toBe("k3");
+    // Each intent has its own memory: settling the second one leaves the first one's key (and unsure flag) alone.
+    expect(a.keyFor(sig(), scope())).toBe("k1");
+    expect(a.isUnsure()).toBe(true);
+    expect(a.keyFor(sig({ topic: "x" }), scope())).toBe("k3");
     expect(() => clearAllCreateAttempts()).not.toThrow();
   });
 

@@ -183,7 +183,8 @@ describe("Run now", () => {
     await screen.findByText(/150 credits/);
     await confirm();
     await act(async () => {});
-    expect(said()).toContain(f.alreadySent);
+    expect(said()).toContain(f.startUnsureReplay);
+    expect(said()).not.toContain(f.alreadySent);
     expect(new Set([0, 1, 2].map((i) => body(i).idempotency_key)).size).toBe(1);
   });
 

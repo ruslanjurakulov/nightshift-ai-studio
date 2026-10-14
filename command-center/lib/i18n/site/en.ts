@@ -597,6 +597,18 @@ export const siteEn = {
     welcomeNote: "{n} free credits once, when you create an account.",
     unavailable: "Sign-in is switched off on this server for now, so nothing you type here is sent anywhere. Please come back a little later.",
     unavailableSignup: "Sign-up is switched off on this server for now, so nothing you type here is sent anywhere. Please come back a little later.",
+    google: {
+      button: "Continue with Google",
+      or: "or",
+      consentPre: "By continuing you agree to the",
+      terms: "Terms of Service",
+      consentAnd: "and",
+      privacy: "Privacy Policy",
+      consentPost: ".",
+      errDenied: "Google sign-in was cancelled. Nothing was changed. You can try again, or use your email below.",
+      errUnverified: "Google has not confirmed that email address, so we did not sign you in. Confirm it with Google, or use your email and a password.",
+      errFailed: "Couldn't sign you in with Google. Please try again, or use your email below.",
+    },
   },
   notFound: {
     meta: "Off air",

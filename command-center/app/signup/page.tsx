@@ -9,6 +9,7 @@ import { usePublicI18n } from "@/lib/i18n/public-context";
 import { fmt } from "@/lib/i18n/core";
 import { AuthAlert, AuthField, AuthNotice, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { useInvited } from "@/components/auth/InvitedContext";
+import { GoogleButton } from "@/components/auth/GoogleButton";
 import { AUTH_CALLBACK_PATH, HANDLE_CHECK_PATH, WELCOME_PATH } from "@/lib/public-paths";
 import { HandleInput } from "@/components/account/HandleInput";
 import { useHandleCheck } from "@/components/account/useHandleCheck";
@@ -165,6 +166,8 @@ export default function SignupPage() {
           <AuthNotice>{t.signup.invitedBanner}</AuthNotice>
         </div>
       )}
+
+      <GoogleButton mode="signup" />
 
       <form onSubmit={onSubmit} noValidate className="mt-8">
         <fieldset disabled={!isSupabaseConfigured} className="st-fieldset">

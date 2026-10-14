@@ -6,8 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { joinFromCookie } from "@/lib/server/friend-invites";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
-import { safeNextPath } from "@/lib/safe-redirect";
+import { DEFAULT_AFTER_AUTH, safeLoginReturn } from "@/lib/safe-redirect";
 import { callbackErrorFor, type CallbackError } from "@/lib/signup";
+import { GOOGLE_PROVIDER, googleCallbackError, googleGate, type GoogleError } from "@/lib/google-signin";
 import {
   FORGOT_PASSWORD_PATH,
   RECOVERY_COOKIE,
@@ -88,10 +89,30 @@ function redirect(url: URL, status = 307) {
   return res;
 }
 
-function toLogin(origin: string, error: CallbackError, status = 307) {
+function toLogin(origin: string, error: CallbackError | GoogleError, status = 307) {
   const url = new URL("/login", origin);
   url.searchParams.set("error", error);
   return redirect(url, status);
+}
+
+/**
+ * End a session this callback has just made and must not keep (the Google
+ * gate said no). Logout is asked for first, but whatever it answers (an error,
+ * a 5xx, a thrown network failure) the browser's sb-* auth cookies are expired
+ * here too: the person is never left holding a session we refused.
+ */
+async function dropSession(supabase: { auth: { signOut: (o: { scope: "local" }) => PromiseLike<unknown> } }) {
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    /* the cookies below are the part that must not fail */
+  }
+  try {
+    const jar = await cookies();
+    for (const c of jar.getAll()) if (c.name.startsWith("sb-")) jar.set(c.name, "", { path: "/", maxAge: 0 });
+  } catch {
+    /* a read-only cookie store: nothing more can be done from here */
+  }
 }
 
 /** A failed reset link goes to the page that can ask for another, with a fixed notice. */
@@ -116,15 +137,18 @@ function stateless() {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const origin = publicOrigin(request);
-  const next = safeNextPath(url.searchParams.get("next"));
+  // safeLoginReturn: the same rule as before, plus the one longer path an AI app's connection request needs.
+  const next = safeLoginReturn(url.searchParams.get("next"), DEFAULT_AFTER_AUTH);
+  const google = url.searchParams.get("provider") === GOOGLE_PROVIDER;
 
-  // A reset link that failed is sent where a new one can be asked for.
-  const recovering = next === RESET_PASSWORD_PATH;
+  // A reset link that failed is sent where a new one can be asked for. A Google
+  // attempt is never a reset link: its failures always go to /login.
+  const recovering = !google && next === RESET_PASSWORD_PATH;
 
   // Supabase itself reports a spent or expired link on the redirect.
   if (url.searchParams.get("error") || url.searchParams.get("error_code")) {
     if (recovering) return toForgot(origin, "expired");
-    return toLogin(origin, callbackErrorFor(url.searchParams.get("error_code")));
+    return toLogin(origin, googleCallbackError(url.searchParams) ?? callbackErrorFor(url.searchParams.get("error_code")));
   }
 
   const supabase = await createClient();
@@ -137,7 +161,17 @@ export async function GET(request: Request) {
   try {
     if (code) {
       const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) return recovering ? toForgot(origin, "expired") : toLogin(origin, callbackErrorFor(error.code));
+      if (error) return recovering ? toForgot(origin, "expired") : toLogin(origin, google ? "google_failed" : callbackErrorFor(error.code));
+      // "Continue with Google" (lib/google-signin.ts): keep the session only if Google vouches for the address.
+      // This gate runs BEFORE the recovery marker below and before anything
+      // that treats the session as a signed-in account (invite, handle): a
+      // session we refuse never reaches them, and a Google session can never be
+      // turned into a recovery session.
+      const denied = googleGate(data?.user, google);
+      if (denied) {
+        await dropSession(supabase);
+        return toLogin(origin, denied);
+      }
       // A password-recovery code (the browser that asked for it is this one:
       // the PKCE verifier proved it). The session is a recovery session: mark
       // it and go straight to the reset page, whatever `next` said.
@@ -199,7 +233,7 @@ export async function POST(request: Request) {
   }
   const csrf = String(form.get("csrf") ?? "");
   const action = String(form.get("action") ?? "");
-  const next = safeNextPath(String(form.get("next") ?? ""));
+  const next = safeLoginReturn(String(form.get("next") ?? ""), DEFAULT_AFTER_AUTH);
 
   // A cross-site POST changes nothing — not even the pending sign-in, which a
   // forged request must not be able to discard either.
