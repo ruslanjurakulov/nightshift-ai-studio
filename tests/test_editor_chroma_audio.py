@@ -170,9 +170,18 @@ def graph_of(**kw):
 
 class CommandTestCase(unittest.TestCase):
     def test_the_key_is_applied_to_the_source_before_it_is_scaled(self):
-        g = graph_of(chroma_color="#00FF00", chroma_similarity=0.25, chroma_blend=0.05)[0]
-        self.assertIn("setpts=PTS-STARTPTS,chromakey=color=0x00FF00:similarity=0.250:blend=0.050,scale=", g)
-        self.assertIn(",format=rgba,scale=out_color_matrix=bt709", g, "the alpha survives to the blend")
+        # a picture: the key's alpha is multiplied by the picture's own (chromakey would overwrite
+        # it), and merged back onto the colours before the picture is scaled
+        g = graph_of(chroma_color="#00FF00", chroma_similarity=0.25, chroma_blend=0.05)
+        self.assertEqual(g[0], "[1:v]trim=end_frame=1,setpts=PTS-STARTPTS,fps=30,format=rgba,split=3[ca0][cb0][cc0]")
+        self.assertEqual(g[1], "[ca0]chromakey=color=0x00FF00:similarity=0.250:blend=0.050,format=yuva420p,"
+                               "alphaextract[ka0]")
+        self.assertEqual(g[2], "[cb0]alphaextract[oa0]")
+        self.assertEqual(g[3], "[ka0][oa0]blend=all_mode=multiply,format=gray[ma0]")
+        self.assertTrue(g[4].startswith("[cc0][ma0]alphamerge,scale="), g[4])
+        self.assertIn(",format=rgba,scale=out_color_matrix=bt709", g[4], "the alpha survives to the blend")
+        self.assertIn("tpad=stop=", g[4])
+        self.assertEqual(" ".join(g).count("chromakey"), 1)
 
     def test_a_video_overlay_and_an_opacity_keep_the_key_first(self):
         o = rs.PictureOverlay("/m/v.mp4", "video", 1.0, 3.0, 0.5, 0.5, 0.4, 0.6, chroma_color="#112233",
@@ -300,6 +309,24 @@ class ChromaRenderTestCase(_Real):
                     self.assertLess(max(abs(c - 128) for c in p[k]), 24, (k, p))   # the grey base shows
                 self.assertGreater(p["square"][0], 190, p)
                 self.assertLess(p["square"][1], 90, p)
+
+    def test_a_pictures_own_transparency_survives_the_key(self):
+        # left half fully transparent red, right half opaque red; green key matches nothing in it.
+        # chromakey alone made the left half opaque (it writes the alpha): the base must show there.
+        path = self.dir / "half.png"
+        self.run_ffmpeg("-f", "lavfi", "-i", "color=c=0xE02020:s=160x90,format=rgba", "-vf",
+                        "geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,80),0,255)'", "-frames:v", "1", str(path))
+        self.tables[PIC] = tl.ResolvedAsset(PIC, "image", str(path))
+        for chroma in (None, {"color": "#00C800", "similarity": 0.2, "blend": 0.05}):
+            with self.subTest(chroma=chroma):
+                kw = {"asset_id": PIC, "w": 0.5}
+                if chroma:
+                    kw["chroma"] = chroma
+                raw = self.frames(self.export(odoc((self.W, self.H), **kw), self.tables),
+                                  (self.W, self.H), [10], "bt601")[10]
+                left, right = self.px(raw, self.W, 100, 90), self.px(raw, self.W, 220, 90)
+                self.assertLess(max(abs(c - 128) for c in left), 24, left)    # transparent: the grey base
+                self.assertGreater(right[0], 190, right)                         # opaque: the red stays
 
     def test_a_key_of_another_colour_takes_nothing_and_a_wide_one_takes_more(self):
         p = self.probe(self.render(chroma={"color": "#0000FF", "similarity": 0.1, "blend": 0}))

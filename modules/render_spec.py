@@ -312,8 +312,15 @@ def _anim_problems(name: str, o, allowed_in: Sequence[str], span: Tuple[float, f
             problems.append(f"{name} {key}_s must be from {ANIM_MIN_S:g} to {ANIM_MAX_S:g}")
         else:
             total += dur
+    if total:
+        # The OTHER side's plain fade is an animation too (a fade-out becomes an exit at e - fade_out_s,
+        # cutting a long entrance short): it counts against the time the item is shown.
+        for key, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
+            f = getattr(o, fade, 0.0)
+            if getattr(o, key) is None and _finite(f) and f > 0:
+                total += f
     if total and all(_finite(v) for v in span) and total > span[1] - span[0] + 1e-9:
-        problems.append(f"{name} animations are longer than it is shown")
+        problems.append(f"{name} animations and fades are longer than it is shown")
     return problems
 
 
@@ -1506,24 +1513,42 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
         fit = (f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease"
                ":force_divisible_by=2:flags=bicubic")
         yuva = f"scale={matrix}flags=bicubic,format=yuva420p"
-        # An opaque video stays in its own YUV: no round trip through RGB.
+        key = ""
+        keyed_still = False
         if o.chroma_color is not None:
             # Keyed on the source (before it is scaled): YUVA out, which the scaler and the
             # opacity / alpha steps below keep. The colour is a validated #RRGGBB, written as 0xRRGGBB.
             if not _HEX.fullmatch(o.chroma_color):
                 raise ValueError(f"unknown chroma colour {o.chroma_color!r}")
-            key = (f"chromakey=color=0x{o.chroma_color[1:].upper()}:similarity={o.chroma_similarity:.3f}"
-                   f":blend={o.chroma_blend:.3f},")
-        else:
-            key = ""
+            keyer = (f"chromakey=color=0x{o.chroma_color[1:].upper()}:similarity={o.chroma_similarity:.3f}"
+                     f":blend={o.chroma_blend:.3f}")
+            if o.kind == KIND_VIDEO:
+                key = keyer + ","
+            else:
+                keyed_still = True
+        # An opaque video stays in its own YUV: no round trip through RGB.
         if o.kind == KIND_VIDEO and op_static >= 1.0:
             colour = f"{key}{fit},format=yuva420p"
         elif op_static >= 1.0:
             colour = f"{key}{fit},format=rgba,{yuva}"
         else:
             colour = f"{key}{fit},format=rgba,colorchannelmixer=aa={op_static:.3f},{yuva}"
+        src = f"[{first_input + k}:v]"
         if o.kind == KIND_VIDEO:
             chain = f"setpts=PTS-STARTPTS,fps={fps},{colour}"
+        elif keyed_still:
+            # chromakey WRITES the alpha (opaque everywhere but the keyed colour), so a picture
+            # with transparency of its own would lose it. The key's alpha is multiplied by the
+            # picture's own, on its one frame, and merged back onto the colours.
+            parts.append(f"{src}trim=end_frame=1,setpts=PTS-STARTPTS,fps={fps},format=rgba,"
+                         f"split=3[ca{k}][cb{k}][cc{k}]")
+            parts.append(f"[ca{k}]{keyer},format=yuva420p,alphaextract[ka{k}]")
+            parts.append(f"[cb{k}]alphaextract[oa{k}]")
+            parts.append(f"[ka{k}][oa{k}]blend=all_mode=multiply,format=gray[ma{k}]")
+            src = f"[cc{k}][ma{k}]"
+            # (the frame rate is set before the split: fps after alphamerge emits nothing for
+            # one frame, measured)
+            chain = f"alphamerge,{colour},tpad=stop={last - first - 1}:stop_mode=clone"
         else:
             chain = (f"trim=end_frame=1,setpts=PTS-STARTPTS,{colour},fps={fps},"
                      f"tpad=stop={last - first - 1}:stop_mode=clone")
@@ -1532,7 +1557,7 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
         if o.anim_in is not None or o.anim_out is not None or o.moves:
             extra, move_x, move_y = _overlay_anim_filters(o, first / fps, last / fps, spec)
             chain += extra
-        parts.append(f"[{first_input + k}:v]{chain}[p{k}]")
+        parts.append(f"{src}{chain}[p{k}]")
         lo, hi = (first - 0.5) / fps, (last - 0.5) / fps
         out = f"[pv{k}]"
         parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}{move_x}-w/2)'"

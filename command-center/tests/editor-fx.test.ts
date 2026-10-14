@@ -15,8 +15,11 @@ import {
   BLUR_MAX,
   CROP_MIN,
   MAX_TYPEWRITER_TEXTS,
+  XFADE_LARGE_BLUR_MAX,
+  addClip,
   addText,
   newDocForAsset,
+  setCrossfade,
   toDoc,
   toModel,
   updateText,
@@ -34,7 +37,10 @@ import {
   canTypewriter,
   cropForAspect,
   cropOf,
+  blurLimit,
   hasEffects,
+  isCrossfaded,
+  isLargeFrame,
   resetClipCrop,
   resetClipEffects,
   setClipAngle,
@@ -369,5 +375,72 @@ describe("entrance and exit animations", () => {
     valid(m);
     // another entrance is still fine for the 21st
     expect(setTextAnim(m, ids[MAX_TYPEWRITER_TEXTS], "in", "fade")).not.toBe(m);
+  });
+});
+
+describe("an animation on one side and a plain fade on the other (the document counts the fade)", () => {
+  it("the room for an animation is what the other side's fade leaves", () => {
+    const { model, id } = withText();
+    const faded: EditorModel = { ...model, texts: model.texts.map((t) => ({ ...t, start_s: 0, end_s: 1, fade_out_s: 0.95 }) as typeof t) };
+    const t = faded.texts[0];
+    expect(animRoom(t, "in")).toBeCloseTo(0.05);
+    expect(animBlocked(t, "in")).toBe(true);
+    expect(setTextAnim(faded, id, "in", "fade")).toBe(faded);
+    const roomy: EditorModel = { ...faded, texts: faded.texts.map((x) => ({ ...x, fade_out_s: 0.5 }) as typeof x) };
+    const m = setTextAnim(roomy, id, "in", "slide-up");
+    expect(animOf(m.texts[0], "in").seconds).toBe(0.4);
+    valid(m);
+    // the entrance is shortened to what the fade leaves
+    const tight: EditorModel = { ...faded, texts: faded.texts.map((x) => ({ ...x, fade_out_s: 0.7 }) as typeof x) };
+    const t2 = setTextAnim(tight, id, "in", "pop");
+    expect(animOf(t2.texts[0], "in").seconds).toBe(0.3);
+    valid(t2);
+  });
+
+  it("shortening a text with an entrance and a plain fade keeps both inside the time shown", () => {
+    const { model, id } = withText();
+    let m: EditorModel = { ...model, texts: model.texts.map((t) => ({ ...t, start_s: 0, end_s: 3, fade_out_s: 0.5 }) as typeof t) };
+    m = setTextAnim(m, id, "in", "slide-left");
+    m = setTextAnimSeconds(m, id, "in", 2);
+    valid(m);
+    m = updateText(m, id, { end_s: 1.2 });
+    valid(m);
+    expect(animOf(m.texts[0], "in").seconds).toBeLessThanOrEqual(0.7);
+    // too short for any animation next to the fade: the animation goes, the fade stays
+    m = updateText(m, id, { end_s: 0.55 });
+    valid(m);
+    expect(m.texts[0].anim_in).toBeUndefined();
+    expect((m.texts[0] as { fade_out_s?: number }).fade_out_s).toBe(0.5);
+  });
+});
+
+describe("blur on a cross-faded clip in a frame above 1440p", () => {
+  const twoClips = (width: number, height: number, fade = true): EditorModel => {
+    let m = addClip(base(), VIDEO);
+    m = { ...m, width, height };
+    return fade ? setCrossfade(m, m.clips[1].id, 1) : m;
+  };
+  it("the document's own limits decide it", () => {
+    expect(XFADE_LARGE_BLUR_MAX).toBe(0);
+    expect(isLargeFrame({ width: 3840, height: 2160 })).toBe(true);
+    expect(isLargeFrame({ width: 1920, height: 1080 })).toBe(false);
+    expect(isLargeFrame({ width: 2160, height: 3840 })).toBe(true);
+  });
+  it("either side of the blend takes no blur; a cut, another clip or a smaller frame does", () => {
+    const m = twoClips(3840, 2160);
+    const [a, b] = m.clips;
+    expect(isCrossfaded(m, a.id)).toBe(true);
+    expect(isCrossfaded(m, b.id)).toBe(true);
+    expect(blurLimit(m, a.id)).toBe(0);
+    expect(setClipEffect(m, a.id, "blur", 12)).toBe(m);
+    expect(setClipEffect(m, b.id, "blur", 12)).toBe(m);
+    const cut = twoClips(3840, 2160, false);
+    expect(blurLimit(cut, cut.clips[0].id)).toBe(EFFECT_RANGES.blur.max);
+    expect(clip(setClipEffect(cut, cut.clips[0].id, "blur", 12)).blur).toBe(12);
+    const small = twoClips(1920, 1080);
+    expect(blurLimit(small, small.clips[0].id)).toBe(EFFECT_RANGES.blur.max);
+    const three = addClip(m, VIDEO);
+    expect(isCrossfaded(three, three.clips[2].id)).toBe(false);
+    expect(blurLimit(three, three.clips[2].id)).toBe(EFFECT_RANGES.blur.max);
   });
 });

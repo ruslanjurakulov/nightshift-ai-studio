@@ -85,9 +85,11 @@ AUDIO_PROBE_TIMEOUT_S = 60
 #: (EXPORT_MAX_S) gets instead of the formula's 5520 s. Not measured on the
 #: production worker yet: if a long, legitimate export is cut off, the
 #: factor is the number to raise.
-RENDER_TIMEOUT_PER_S = 3.0
-RENDER_TIMEOUT_BASE_S = 120.0
-RENDER_TIMEOUT_MAX_S = 5400.0
+#: (The timeline validator checks a document's estimated render time against this same
+#: budget, so the numbers live in modules/timeline.py.)
+RENDER_TIMEOUT_PER_S = tl.RENDER_TIMEOUT_PER_S
+RENDER_TIMEOUT_BASE_S = tl.RENDER_TIMEOUT_BASE_S
+RENDER_TIMEOUT_MAX_S = tl.RENDER_TIMEOUT_MAX_S
 
 #: Reason words a failed export can carry (the Command Center has a sentence
 #: for each; lib/editor.ts EXPORT_REASONS).

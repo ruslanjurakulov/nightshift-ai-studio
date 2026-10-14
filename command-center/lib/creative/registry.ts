@@ -41,6 +41,9 @@ export const CAPABILITIES = [
   "expand",
   "relight",
   "erase",
+  "video_edit",
+  "video_reframe",
+  "video_remove_bg",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export type Surface = "web" | "api" | "mcp";
@@ -79,6 +82,8 @@ export interface PublicSpec {
   expandAspects: ExpandAspect[];
   /** Lights the model relights with by name (0099); empty unless it can relight. */
   relightLooks: RelightLook[];
+  /** Shapes the model reframes a video to (0100); empty unless it can. */
+  reframeAspects: ExpandAspect[];
   /** Languages the model dubs into (0050); empty unless it can dub. */
   languages: string[];
   /** Sizes the model upscales a video to (0052); empty unless it can. */
@@ -170,6 +175,7 @@ function coerceSpec(v: unknown): PublicSpec | null {
       ? v.upscale_factors.filter((f): f is number => f === 2 || f === 4)
       : [],
     expandAspects: EXPAND_ASPECTS.filter((a) => byCap.expand?.includes(a)),
+    reframeAspects: EXPAND_ASPECTS.filter((a) => byCap.video_reframe?.includes(a)),
     relightLooks: RELIGHT_LOOKS.filter((l) => strings(v.relight_looks).includes(l)),
     languages: strings(v.languages).filter((l) => /^[a-z]{2,3}$/.test(l)),
     upscaleTargets: strings(v.upscale_targets).filter((x): x is UpscaleTarget => (UPSCALE_TARGETS as readonly string[]).includes(x)),

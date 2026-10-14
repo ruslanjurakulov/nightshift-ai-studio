@@ -69,19 +69,25 @@ class CommandTestCase(unittest.TestCase):
             fxt.vf_of(seg),
             "split=2[bg][fg];[bg]scale=160:90:force_original_aspect_ratio=increase,crop=160:90,gblur=sigma=3,"
             "scale=1280:720:flags=bicubic[bb];[fg]scale=1280:720:force_original_aspect_ratio=decrease[fs];"
-            "[bb][fs]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,format=yuv420p,fps=30")
+            "[bb][fs]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,format=yuv420p,fps=30,setsar=1")
 
     def test_odd_frames_make_even_background_sizes(self):
         vf = render_backend._scale_blur(1080, 1920, 30)
         self.assertIn("scale=134:240:", vf)     # 1080/8 = 135 -> 134, 1920/8 = 240
         self.assertIn("scale=1080:1920:flags=bicubic", vf)
 
+    def test_the_blur_chain_squares_its_pixels_once(self):
+        # the quarter-turn setsar of the effects branch is not added a second time
+        vf = fxt.vf_of(rs.Segment(2.0, "/m/a.mp4", fit=rs.FIT_BLUR, effects=rs.ClipEffects(rotate=90)))
+        self.assertEqual(vf.count("setsar=1"), 1, vf)
+        self.assertTrue(vf.endswith("fps=30,setsar=1"), vf)
+
     def test_grade_and_effects_run_on_the_composed_frame_and_a_turn_before_it(self):
         seg = rs.Segment(2.0, "/m/a.mp4", fit=rs.FIT_BLUR, speed=2.0, brightness=0.1, contrast=1.2,
                          saturation=0.8, effects=rs.ClipEffects(filter="mono", rotate=90))
         vf = fxt.vf_of(seg)
         self.assertTrue(vf.startswith("setpts=(PTS-STARTPTS)/2.000,transpose=1,split=2[bg][fg];"), vf)
-        self.assertTrue(vf.endswith("fps=30,format=yuv420p,eq=brightness=0.100:contrast=1.200:saturation=0.800,"
+        self.assertTrue(vf.endswith("fps=30,setsar=1,format=yuv420p,eq=brightness=0.100:contrast=1.200:saturation=0.800,"
                                     "hue=s=0.000"), vf)
 
     def test_contain_and_cover_are_the_chains_they_were(self):
@@ -164,6 +170,17 @@ class BlurRenderTestCase(fxt._Real):
                               "-vsync", "0", "-f", "rawvideo", "-")
         top = self.px(raw, 180, 40, 10)
         self.assertGreater(top[0], 100, top)       # the red half's blur, not black
+
+    def test_a_blur_clip_comes_out_with_square_pixels(self):
+        # before setsar=1 the picture came out 23:22 (measured), and a player stretched it
+        import subprocess
+        for src in (self.portrait_source(), self.split_source()):
+            for size in ((self.W, self.H), (180, 320), (270, 480)):      # landscape, portrait, a taller portrait
+                for fx in ({}, {"rotate": 90}):
+                    out = self.export(fxt.vdoc(width=size[0], height=size[1], fit="blur", **fx), {BASE: src})
+                    err = subprocess.run([self.ffmpeg, "-hide_banner", "-i", str(out)], capture_output=True,
+                                         text=True).stderr
+                    self.assertEqual(re.search(r"SAR (\d+:\d+)", err).group(1), "1:1", (size, fx, err))
 
     def test_a_crossfade_between_two_blur_clips_renders_every_frame(self):
         src = self.portrait_source()

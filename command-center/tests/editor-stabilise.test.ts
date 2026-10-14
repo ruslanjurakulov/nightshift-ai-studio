@@ -6,7 +6,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   STABILIZE_MAX_DOC_S,
+  STABILIZE_FPS_1080P,
   STABILIZE_MAX_S,
+  stabilizeSeconds,
   splitClip,
   toDoc,
   toModel,
@@ -38,6 +40,26 @@ describe("stabilize", () => {
     expect(v({ stabilize: true, out_s: 120 })).toBe("");
     expect(v({ stabilize: true, out_s: 121 })).toContain("more than 120 s");
     expect(v({ out_s: 500 })).toBe("");
+  });
+  it("is charged in estimated seconds that must fit the worker's timeout", () => {
+    expect(STABILIZE_FPS_1080P).toBe(7);
+    expect(stabilizeSeconds({ in_s: 0, out_s: 10 }, 30, 1920, 1080)).toBeCloseTo(300 / 7, 6);
+    expect(stabilizeSeconds({ in_s: 0, out_s: 60 }, 30, 3840, 2160)).toBeCloseTo(1028.57, 1);
+    const hd = { width: 1920, height: 1080 };
+    const w = (clip: Record<string, unknown>, frame: { width: number; height: number }) =>
+      validateTimeline({ ...doc(clip), ...frame }).join(";");
+    expect(w({ stabilize: true, out_s: 20 }, hd)).toBe("");
+    expect(w({ stabilize: true, out_s: 60 }, hd)).toMatch(
+      /stabilising would take about 317 s to render, but a 60 s timeline is allowed 300 s — stabilise less of it/,
+    );
+    expect(w({ stabilize: true, out_s: 60 }, { width: 1280, height: 720 })).toBe("");
+    expect(w({ stabilize: true, out_s: 60 }, { width: 3840, height: 2160 })).toContain("about 1089 s");
+    const both = doc({ speed: 0.5, interpolate: true, out_s: 4.9 });
+    Object.assign(both, hd);
+    both.tracks[0].clips.push({ id: "d1", asset_id: A, start_s: 9.8, in_s: 0, out_s: 20, stabilize: true });
+    expect(validateTimeline(both).join(";")).toMatch(
+      /interpolated slow motion and stabilising would take.*slow less of it and stabilise less of it/,
+    );
   });
   it("has a budget for the whole document", () => {
     const d = doc({ stabilize: true, out_s: 100 });

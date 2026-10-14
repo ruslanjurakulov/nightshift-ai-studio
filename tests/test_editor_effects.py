@@ -99,7 +99,7 @@ class DocumentTestCase(unittest.TestCase):
                 self.assertTrue(any(f"{k} must be true or false" in p for p in problems_of(**{k: bad})), bad)
         for ok in (0, 90, 180, 270):
             self.assertEqual(problems_of(rotate=ok), [])
-        for bad in (45, 91, -90, 360, 90.5, 90.0, True, "90", None, [90]):
+        for bad in (45, 91, -90, 360, 90.5, True, "90", None, [90]):
             with self.subTest(repr(bad)):
                 self.assertTrue(any("rotate must be one of" in p for p in problems_of(rotate=bad)), bad)
 
@@ -110,6 +110,40 @@ class DocumentTestCase(unittest.TestCase):
              "out_s": 1, "blur": 3}]})
         self.assertTrue(any("blur is not a known field" in p for p in tl.validate(doc)))
         self.assertTrue(any("not a known field" in p for p in problems_of(sepia=1)))
+
+    def test_a_heavy_blur_is_not_offered_on_a_crossfade_in_a_frame_above_1440p(self):
+        # a cross-fade on 4K60 already needs ~1.75 of the worker's 2 GiB (measured); sigma 30 failed it
+        def xfade(width, height, **fx):
+            doc = vdoc(width=width, height=height, fps=60)
+            doc["tracks"][0]["clips"].append({"id": "c2", "asset_id": BASE, "start_s": 1.5, "in_s": 0, "out_s": 2,
+                                              "transition": {"type": "crossfade", "duration_s": 0.5}, **fx})
+            return doc
+        self.assertEqual(tl.XFADE_LARGE_BLUR_MAX, 0.0)
+        self.assertEqual(tl.LARGE_FRAME_PX, 2560 * 1440)
+        got = tl.validate(xfade(3840, 2160, blur=0.5))
+        self.assertTrue(any("blur is not offered" in p and "cross-faded" in p for p in got), got)
+        # the other effects passed the same render, with both ffmpeg builds
+        self.assertEqual(tl.validate(xfade(3840, 2160, grain=0.5, sharpen=1, vignette=1, filter="cinematic")), [])
+        # either side of the blend, and portrait 4K too
+        doc = xfade(2160, 3840)
+        doc["tracks"][0]["clips"][0]["blur"] = 30
+        self.assertTrue(any("blur is not offered" in p for p in tl.validate(doc)))
+        # 1440p itself, any blur without a cross-fade, and a hard cut are fine
+        self.assertEqual(tl.validate(xfade(2560, 1440, blur=30)), [])
+        self.assertEqual(tl.validate(vdoc(width=3840, height=2160, blur=30)), [])
+        cut = xfade(3840, 2160, blur=30)
+        del cut["tracks"][0]["clips"][1]["transition"]
+        cut["tracks"][0]["clips"][1]["start_s"] = 2
+        self.assertEqual(tl.validate(cut), [])
+
+    def test_a_whole_float_is_the_integer_in_both_validators(self):
+        # JSON.parse gives the TypeScript validator 90 for both 90 and 90.0, so Python takes 90.0 as 90 too
+        for ok in (90.0, 180.0, 270.0, 0.0):
+            self.assertEqual(problems_of(rotate=ok), [], ok)
+        n = tl.normalise(vdoc(rotate=90.0))["tracks"][0]["clips"][0]
+        self.assertEqual(n["rotate"], 90)
+        self.assertIsInstance(n["rotate"], int)
+        self.assertNotIn("rotate", tl.normalise(vdoc(rotate=0.0))["tracks"][0]["clips"][0])
 
     def test_normalise_drops_every_off_value_and_keeps_the_rest(self):
         off = tl.normalise(vdoc(filter="mono", filter_strength=0, vignette=0, blur=0, sharpen=0, grain=0,
@@ -146,6 +180,9 @@ class DocumentTestCase(unittest.TestCase):
         names = re.search(r"export const FILTERS = \[([^\]]*)\] as const", ts).group(1)
         self.assertEqual(tuple(re.findall(r'"([\w-]+)"', names)), tl.FILTERS)
         self.assertEqual(float(re.search(r"export const BLUR_MAX = ([\d.]+);", ts).group(1)), tl.BLUR_MAX)
+        self.assertEqual(float(re.search(r"export const XFADE_LARGE_BLUR_MAX = ([\d.]+);", ts).group(1)),
+                         tl.XFADE_LARGE_BLUR_MAX)
+        self.assertIn("export const LARGE_FRAME_PX = 2560 * 1440;", ts)
         rot = re.search(r"export const ROTATIONS = \[([^\]]*)\] as const", ts).group(1)
         self.assertEqual(tuple(int(x) for x in re.findall(r"\d+", rot)), tl.ROTATIONS)
         unit = re.search(r"export const UNIT_EFFECTS = \[([^\]]*)\] as const", ts).group(1)
@@ -296,6 +333,41 @@ class CommandTestCase(unittest.TestCase):
         self.assertTrue(rs.validate(rs.RenderSpec("/o.mp4", 1280, 720, 30, segments=[bad], frame_exact=True)))
         with self.assertRaises(ValueError):
             vf_of(bad)
+
+
+class DiskGuardTestCase(unittest.TestCase):
+    """Grain makes a segment ~13x bigger than the guard's 8 MB/s assumes (measured: 42.7 MB/s at 1080p30,
+    73 MB/s at 1080p60 with noise alls=15), so the guard has to charge for it."""
+
+    def spec(self, grain=0.0, seconds=60, w=1920, h=1080):
+        fx = rs.ClipEffects(grain=grain) if grain else None
+        seg = rs.Segment(float(seconds), "/m/a.mp4", effects=fx)
+        return rs.RenderSpec("/o.mp4", w, h, 30, segments=[seg], frame_exact=True)
+
+    def test_a_grainy_minute_needs_twelve_times_the_room(self):
+        free = lambda p: 2000.0      # a plain minute needs 480 MB; a grainy one 5760 MB
+        self.assertEqual(render_backend.intermediate_x264(self.spec(), Path("/tmp"), free_mb=free),
+                         render_backend.INTERMEDIATE_X264)
+        with self.assertLogs("modules.render_backend", "WARNING") as logs:
+            got = render_backend.intermediate_x264(self.spec(grain=0.5), Path("/tmp"), free_mb=free)
+        self.assertEqual(got, render_backend.LEGACY_X264)
+        self.assertIn("5760 MB", logs.output[0])
+
+    def test_only_the_grainy_seconds_are_charged(self):
+        spec = self.spec(grain=0.5, seconds=10)
+        spec.segments.append(rs.Segment(50.0, "/m/b.mp4"))
+        # 10 s x 12 + 50 s = 170 s x 8 MB = 1360 MB
+        self.assertEqual(render_backend.intermediate_x264(spec, Path("/tmp"), free_mb=lambda p: 1400.0),
+                         render_backend.INTERMEDIATE_X264)
+        with self.assertLogs("modules.render_backend", "WARNING"):
+            self.assertEqual(render_backend.intermediate_x264(spec, Path("/tmp"), free_mb=lambda p: 1300.0),
+                             render_backend.LEGACY_X264)
+
+    def test_a_render_without_grain_is_charged_as_before(self):
+        self.assertEqual(render_backend.GRAIN_DISK_FACTOR, 12.0)
+        self.assertEqual(render_backend.intermediate_x264(self.spec(seconds=195), Path("/tmp"),
+                                                          free_mb=lambda p: 1600.0),
+                         render_backend.INTERMEDIATE_X264)         # 195 s x 8 MB = 1560 MB
 
 
 class NeutralTestCase(unittest.TestCase):
@@ -503,6 +575,27 @@ class GeometryRenderTestCase(_Real):
         # the turned picture is 180 wide x 320 tall -> shrunk to 101 x 180, centred: bars at the sides
         self.assertLess(max(self.px(raw, self.W, 10, 90)), 40, "black bar at the left")
         self.assertGreater(self.px(raw, self.W, 160, 30)[0], 150)
+
+    def sar_of(self, path):
+        import subprocess
+        err = subprocess.run([self.ffmpeg, "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+        return re.search(r"SAR (\d+:\d+)", err).group(1)
+
+    def test_a_turned_clip_comes_out_with_square_pixels(self):
+        # the scaler's rounding left 405:406 (a player would stretch the picture) before setsar=1
+        src = self.split_source()
+        for fx in ({"rotate": 90}, {"rotate": 270}, {"rotate": 90, "fit": "cover"}, {"rotate": 180}, {}):
+            out = self.export(vdoc(width=self.W, height=self.H, **fx), {BASE: src})
+            self.assertEqual(self.sar_of(out), "1:1", fx)
+
+    def test_the_sar_filter_is_only_for_a_quarter_turn(self):
+        quarter = rs.Segment(2.0, "/m/a.mp4", effects=rs.ClipEffects(rotate=90))
+        self.assertTrue(vf_of(quarter).endswith("pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1"))
+        for fx in (rs.ClipEffects(), rs.ClipEffects(rotate=180), rs.ClipEffects(flip_h=True)):
+            self.assertNotIn("setsar", vf_of(rs.Segment(2.0, "/m/a.mp4", effects=fx)))
+        still = rs.Segment(2.0, "/m/p.png", kind=rs.KIND_IMAGE, effects=rs.ClipEffects(rotate=270))
+        for i in (0, 1):
+            self.assertIn("setsar=1", vf_of(still, i))
 
     def test_a_still_is_turned_too(self):
         # an image half red, half blue (left/right)

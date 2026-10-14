@@ -276,6 +276,10 @@ MAX_TOTAL_CLIPS = 5000
 #: them). Each is one more input and filter chain in the final pass; a video
 #: keeps a decoder open for its whole span.
 MAX_OVERLAYS = 16
+#: An overlay whose opacity goes from one visible value to another during a move rewrites its alpha
+#: plane per pixel and frame (``geq``): measured 3.6x slower for one video overlay, 13x for four, and
+#: out of memory at 4K60. A move to or from nothing is a cheap fade and is not counted.
+MAX_PARTIAL_OPACITY_MOVES = 2
 MAX_OVERLAY_VIDEOS = 4
 OVERLAY_W_MIN, OVERLAY_W_MAX = 0.05, 1.0
 MAX_TEXT = 500
@@ -356,6 +360,18 @@ MAX_TYPEWRITER_TEXTS = 20
 FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
 UNIT_EFFECTS = ("vignette", "sharpen", "grain")      # 0..1, 0 = off
 BLUR_MAX = 30.0                                       # Gaussian sigma, output pixels
+#: A cross-fade renders its two clips in one ffmpeg run, and above 1440p that run already needs ~1.75 of
+#: the worker's 2 GiB address space (4K60, measured with ffmpeg 5.1.1 and 7.0.2). A Gaussian blur on top
+#: failed it ("Cannot allocate memory", exit 187): with 7.0.2 at every sigma tried (5, 10, 15, 20, 30), with
+#: 5.1.1 from sigma 30 (up to 20 passed) and, with 5.1.1, a blur of 5 or more together with a zoom to 2
+#: or more. So a cross-faded clip in such a frame takes no blur at all. The other effects (look, sharpen,
+#: grain, vignette, turns) passed with both builds. render_backend.LARGE_OUTPUT_PX is the same 2560x1440.
+LARGE_FRAME_PX = 2560 * 1440
+XFADE_LARGE_BLUR_MAX = 0.0
+#: The same for a move that zooms: the fitted picture is scaled up to ``zoom`` x the frame every frame, and
+#: on a cross-faded 4K60 clip a zoom of 3 failed it with ffmpeg 7.0.2 (up to 2 passed with both builds; 4
+#: passed with 5.1.1 alone, and any zoom passes on a single clip).
+XFADE_LARGE_ZOOM_MAX = 2.0
 ROTATIONS = (0, 90, 180, 270)
 _EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
                 "flip_h", "flip_v", "rotate")
@@ -394,10 +410,60 @@ INTERP_MAX_FPS = 120
 INTERP_MAX_FRAMES = 300
 INTERP_MAX_FRAMES_DOC = 600
 _INTERP_REF_PIXELS = 1920 * 1080
+#: ``interpolate`` is not offered for a frame bigger than 1440p (2560x1440, either way up): the
+#: motion search holds several frames at once and a 4K clip died with "Cannot allocate memory"
+#: under the worker's 2 GiB limit (measured). The count is pixels, so 1440x2560 passes too.
+INTERP_MAX_PIXELS = 2560 * 1440
+#: What a render is allowed to take, as seconds of estimated work, and the worker's wall-clock
+#: budget for it (modules/editor_export.py has the SAME numbers: ``render_timeout_s``). The cost
+#: of ``interpolate`` is an estimate in seconds, not just a frame count: a 1080p-equivalent frame
+#: took 0.39 s (117 s for the 300 a clip may make) on the loaded, shared box; 0.4 is what is
+#: charged. The ordinary render of the timeline is charged ``RENDER_PLAIN_FACTOR`` s per second
+#: of it. The estimate has to fit the timeout, or the render would be killed after the user waited.
+RENDER_TIMEOUT_PER_S = 3.0
+RENDER_TIMEOUT_BASE_S = 120.0
+RENDER_TIMEOUT_MAX_S = 5400.0
+RENDER_PLAIN_FACTOR = 1.0
+INTERP_SECONDS_PER_FRAME = 0.4
+
+
+def render_timeout_s(length_s: float) -> float:
+    """The worker's wall-clock budget for a timeline of ``length_s`` seconds
+    (``editor_export.render_timeout_s`` is this function's twin for any input)."""
+    return min(RENDER_TIMEOUT_MAX_S, RENDER_TIMEOUT_PER_S * max(0.0, length_s) + RENDER_TIMEOUT_BASE_S)
+
+
+def reverse_max_frames(width: int, height: int) -> int:
+    """The most frames a reversed range may hold in memory at this frame size."""
+    return int(REVERSE_MAX_BYTES // (width * height * REVERSE_BYTES_PER_PIXEL))
+
+
+def _range_frames(range_s: float, fps: int) -> int:
+    """Frames a source range of ``range_s`` seconds decodes (``ceil``, with the float
+    noise of ``0.1 * 30`` removed so a range that is a whole number of frames is not one more)."""
+    return math.ceil(round(range_s * fps, 6))
+
+
+def reverse_max_seconds(width: int, height: int, fps: int) -> float:
+    """The longest source range a clip may play reversed at this frame size and rate,
+    in seconds: a WHOLE number of frames (what ``validate`` allows exactly, so a range
+    of this length passes and one more millisecond past its last frame does not),
+    rounded down to a millisecond. The Command Center's ``reverseMaxSeconds`` is its twin."""
+    cap = reverse_max_frames(width, height)
+    limit = math.floor(cap / fps * 1000 + 1e-9) / 1000
+    while limit > 0 and _range_frames(limit, fps) > cap:
+        limit = round(limit - 0.001, 3)
+    return limit
 
 #: Stabilisation costs a second decode of the clip (render_spec.STABILIZE_* are the same).
 STABILIZE_MAX_S = 120.0
 STABILIZE_MAX_DOC_S = 300.0
+#: What stabilising is charged in the render's estimate (see ``RENDER_TIMEOUT_*``): the two vidstab passes
+#: plus the transform ran at 9.6 frames per second at 1080p30 and 1.75 at 4K30 (measured, shared 4-core
+#: box), so 7 frames per second of 1080p-equivalent frame (frame area / 1920x1080) is charged: a
+#: minute of 1080p30 is ~257 s, a minute of 4K30 ~1030 s. A clip that cannot finish inside the worker's
+#: timeout is refused up front (the deshake fallback is for a missing vidstab, not for a slow one).
+STABILIZE_FPS_1080P = 7.0
 
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
@@ -678,6 +744,20 @@ def validate(doc: Any) -> List[str]:
         if total_interp > INTERP_MAX_FRAMES_DOC:
             problems.append(f"timeline: interpolated slow motion would make about {total_interp:.0f} frames "
                             f"(1080p equivalent) in all; at most {INTERP_MAX_FRAMES_DOC} per timeline")
+        stab_est = sum(stabilize_seconds(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
+                       for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
+        interp_est = INTERP_SECONDS_PER_FRAME * total_interp if total_interp <= INTERP_MAX_FRAMES_DOC else 0.0
+        if interp_est + stab_est > 0:
+            length = duration_s(doc)
+            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est
+            allowed = render_timeout_s(length)
+            if work > allowed + 1e-9:
+                what = " and ".join(n for n, v in (("interpolated slow motion", interp_est),
+                                                   ("stabilising", stab_est)) if v > 0)
+                fix = " and ".join(n for n, v in (("slow less of it", interp_est),
+                                                  ("stabilise less of it", stab_est)) if v > 0)
+                problems.append(f"timeline: {what} would take about {work:.0f} s to render, but a {length:.0f} s "
+                                f"timeline is allowed {allowed:.0f} s — {fix} or make the timeline longer")
 
     stab_s = sum(_ms(c["out_s"]) - _ms(c["in_s"]) for t in counted if t.get("kind") == KIND_V
                  for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True
@@ -790,11 +870,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
         elif (clip.get("reverse") is True and fps and _is_int(frame[0]) and _is_int(frame[1])
-              and math.ceil((_ms(outs) - _ms(ins)) * fps) * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL
-              > REVERSE_MAX_BYTES):
+              and _range_frames(_ms(outs) - _ms(ins), fps) > reverse_max_frames(frame[0], frame[1])):
             problems.append(f"{where}: reverse holds every frame of the range in memory — at "
                             f"{frame[0]}x{frame[1]} and {fps} fps at most "
-                            f"{_ms(REVERSE_MAX_BYTES / (fps * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL))} s")
+                            f"{reverse_max_seconds(frame[0], frame[1], fps)} s")
         elif (_is_num(clip.get("fade_in_s", 0)) and _is_num(clip.get("fade_out_s", 0))
               and clip.get("fade_in_s", 0) + clip.get("fade_out_s", 0) > length + 1e-9):
             problems.append(f"{where}: fade_in_s + fade_out_s is longer than the clip ({length:.3f} s)")
@@ -881,6 +960,10 @@ def _validate_interpolate(clip, where, frame, fps, ramp, problems) -> None:
     if not (_is_int(frame[0]) and _is_int(frame[1]) and fps and _in_range(clip.get("in_s"))
             and _in_range(clip.get("out_s"))):
         return
+    if frame[0] * frame[1] > INTERP_MAX_PIXELS:
+        problems.append(f"{where}: interpolate is not offered above 1440p ({frame[0]}x{frame[1]} is too big: "
+                        f"the render would run out of memory) — lower the timeline's size or leave it out")
+        return
     probe = {"in_s": clip["in_s"], "out_s": clip["out_s"], "speed": min(speeds)}
     cost = interpolated_frames(probe, fps, frame[0], frame[1])
     if cost > INTERP_MAX_FRAMES:
@@ -945,7 +1028,10 @@ def _validate_effects(clip, where, problems) -> None:
     for k in ("flip_h", "flip_v"):
         if k in clip and not isinstance(clip[k], bool):
             problems.append(f"{where}: {k} must be true or false")
-    if "rotate" in clip and not (_is_int(clip["rotate"]) and clip["rotate"] in ROTATIONS):
+    # 90.0 is accepted as 90: the TypeScript twin cannot tell them apart after JSON.parse, so the two
+    # validators agree by both taking the whole number (normalise writes it as an int).
+    if "rotate" in clip and not (_is_num(clip["rotate"]) and clip["rotate"] == int(clip["rotate"])
+                                 and int(clip["rotate"]) in ROTATIONS):
         problems.append(f"{where}: rotate must be one of {list(ROTATIONS)}")
 
 
@@ -1003,6 +1089,17 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
+    # An animation on one side and a plain fade on the other: the fade becomes an animation too, so a
+    # long entrance would be cut short by the exit that starts at end_s - fade_out_s.
+    if ("anim_in" in clip) != ("anim_out" in clip):
+        mixed = [clip.get("anim_in_s", ANIM_DEFAULT_S) if k == "anim_in" else clip.get(k + "_s", 0)
+                 for k in ("anim_in", "anim_out") if k in clip]
+        side = "fade_out_s" if "anim_in" in clip else "fade_in_s"
+        other = clip.get(side, 0)
+        if (all(_is_num(v) for v in (s, e, other, *mixed)) and e > s and other > 0
+                and sum(mixed) + other > _ms(e) - _ms(s) + 1e-9):
+            problems.append(f"{where}: the animation ({sum(mixed):g} s) and {side} ({other:g} s) "
+                            f"are longer than the text is shown")
 
 
 def _validate_chroma(chroma, where, problems) -> None:
@@ -1049,6 +1146,20 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
             _validate_overlay_move(ov["move"], where, problems)
         if "chroma" in ov:
             _validate_chroma(ov["chroma"], where, problems)
+    slow = sum(1 for ov in overlays if _partial_opacity_move(ov))
+    if slow > MAX_PARTIAL_OPACITY_MOVES:
+        problems.append(f"overlays: at most {MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible "
+                        f"values during a move (got {slow}) — fade to or from 0, or keep the opacity")
+
+
+def _partial_opacity_move(ov) -> bool:
+    """True for an overlay whose ``move.to.opacity`` is a different visible value from its ``opacity``."""
+    if not isinstance(ov, dict) or not isinstance(ov.get("move"), dict):
+        return False
+    to = ov["move"].get("to")
+    start = ov.get("opacity", 1.0)
+    end = to.get("opacity") if isinstance(to, dict) else None
+    return _is_num(start) and _is_num(end) and start > 0 and end > 0 and start != end
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -1111,6 +1222,15 @@ def clip_min_speed(clip: dict) -> float:
     if curve:
         return min(p["speed"] for p in curve)
     return clip_speed(clip)
+
+
+def stabilize_seconds(clip: dict, fps: int, width: int, height: int) -> float:
+    """The estimated seconds of render work stabilising this clip's range costs (0 when the range
+    is not a usable number): frames x frame area / 1080p, at ``STABILIZE_FPS_1080P``."""
+    if not (_in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))):
+        return 0.0
+    frames = max(0.0, _ms(clip["out_s"]) - _ms(clip["in_s"])) * fps
+    return frames * width * height / _INTERP_REF_PIXELS / STABILIZE_FPS_1080P
 
 
 def interpolated_frames(clip: dict, fps: int, width: int, height: int) -> float:
@@ -1324,12 +1444,39 @@ def _crossfade_problems(track: dict) -> List[str]:
     return problems
 
 
+def _large_frame_crossfade_problems(doc: dict, track: dict) -> List[str]:
+    """Effects a cross-fade on a frame above 1440p cannot afford (see ``LARGE_FRAME_PX``)."""
+    w, h = doc.get("width"), doc.get("height")
+    if not (_is_int(w) and _is_int(h) and w * h > LARGE_FRAME_PX):
+        return []
+    problems, seen = [], set()
+    for prev, clip, _d in crossfades(track):
+        for c in (prev, clip):
+            cid = str(c["id"])
+            blur = c.get("blur")
+            if cid not in seen and _is_num(blur) and blur > XFADE_LARGE_BLUR_MAX:
+                seen.add(cid)
+                problems.append(f"{_where(track, c)}: blur is not offered on a cross-faded clip in a frame above "
+                                f"1440p ({w}x{h}) — the render would run out of memory; remove the blur, the "
+                                f"cross-fade or lower the frame size")
+            move = c.get("move")
+            zooms = [p.get("zoom", 1.0) for p in (move.get("from"), move.get("to")) if isinstance(p, dict)] \
+                if isinstance(move, dict) else []
+            if cid + ":zoom" not in seen and any(_is_num(z) and z > XFADE_LARGE_ZOOM_MAX for z in zooms):
+                seen.add(cid + ":zoom")
+                problems.append(f"{_where(track, c)}: a zoom above {XFADE_LARGE_ZOOM_MAX:g} is not offered on a "
+                                f"cross-faded clip in a frame above 1440p ({w}x{h}) — the render would run out "
+                                f"of memory; lower the zoom, remove the cross-fade or lower the frame size")
+    return problems
+
+
 def _transition_problems(doc: dict) -> List[str]:
     problems = []
     for track in doc.get("tracks") or []:
         if track.get("kind") != KIND_V:
             continue
         problems.extend(_crossfade_problems(track))
+        problems.extend(_large_frame_crossfade_problems(doc, track))
         fades = effective_fades(track)
         for clip in track.get("clips") or []:
             fi, fo = fades[str(clip["id"])]
@@ -1474,6 +1621,8 @@ def _normalise_effects(c: dict) -> None:
     for k in ("flip_h", "flip_v"):
         if c.get(k) is False:
             del c[k]
+    if "rotate" in c:
+        c["rotate"] = int(c["rotate"])
     if c.get("rotate") == 0:
         del c["rotate"]
 
@@ -1527,7 +1676,8 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
     The timeline's length and every other clip are unchanged; for a video,
     a split on the frame grid plays the same source frames as before. Both
     halves keep the clip's speed and sound: ``at_s`` is timeline time, so the
-    source cut is ``in_s + (at_s - start_s) * speed``."""
+    source cut is ``in_s + (at_s - start_s) * speed`` — and ``out_s - (at_s -
+    start_s) * speed`` for a reversed clip, which plays its range from the end."""
     out = copy.deepcopy(doc)
     for track in out.get("tracks") or []:
         for i, clip in enumerate(track.get("clips") or []):
@@ -1542,7 +1692,10 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
             if not start < at < end:
                 raise TimelineError([f"split point {at} s is not inside clip {clip_id!r} "
                                      f"({start}-{end} s)"])
-            cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
+            if clip.get("reverse"):
+                cut = _ms(_ms(clip["out_s"]) - (at - start) * clip_speed(clip))
+            else:
+                cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
             if not _ms(clip["in_s"]) < cut < _ms(clip["out_s"]):
                 raise TimelineError([f"split point {at} s is too close to an end of clip {clip_id!r}"])
             second = copy.deepcopy(clip)
