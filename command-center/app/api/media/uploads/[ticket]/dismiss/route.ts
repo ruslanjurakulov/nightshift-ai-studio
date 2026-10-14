@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isSameOriginPost } from "@/lib/auth-confirm";
 import { publicOrigin } from "@/lib/server/public-origin";
-import { logAudit } from "@/lib/server/audit";
 import { DISMISS_META_KEY, isDismissableStatus, parseDismissed, withDismissed } from "@/lib/media-dismiss";
 import { mapMediaError, parseMediaId } from "@/lib/media";
 
@@ -63,6 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tic
   } catch {
     return fail("failed", 502);
   }
-  await logAudit({ action: "media.upload_dismiss", target: id, detail: { status: row.status } });
+  // No audit row, on purpose: this hides an already-refused card for one person and changes nothing shared. An audit
+  // action must be in the database's audit_action_allowed list (tests/test_audit_actions.py), and adding one needs a migration.
   return NextResponse.json({ ok: true }, { headers: NO_STORE });
 }
