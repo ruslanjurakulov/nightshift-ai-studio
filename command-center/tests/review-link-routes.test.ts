@@ -269,6 +269,27 @@ describe("making, listing and turning off (the signed-in person)", () => {
   });
 });
 
+describe("the page's headers", () => {
+  it("is never cached, leaves no Referer and is not indexed, set by the config for the page and only the page", async () => {
+    const nextConfig = (await import("../next.config")).default;
+    const rules = (await nextConfig.headers?.()) ?? [];
+    const rule = rules.find((r) => r.source === "/r/:token");
+    expect(rule?.headers).toEqual(
+      expect.arrayContaining([
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "Cache-Control", value: "no-store" },
+        { key: "X-Robots-Tag", value: "noindex, nofollow" },
+      ]),
+    );
+  });
+
+  it("robots.txt keeps crawlers off /r/", async () => {
+    const robots = (await import("../app/robots")).default();
+    const rules = Array.isArray(robots.rules) ? robots.rules : [robots.rules];
+    expect(rules.some((r) => [r.disallow].flat().includes("/r/"))).toBe(true);
+  });
+});
+
 describe("no service key anywhere near a review link", () => {
   const root = join(__dirname, "..");
   for (const f of [

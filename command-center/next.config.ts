@@ -110,10 +110,8 @@ const nextConfig: NextConfig = {
       // Content-Security-Policy (`default-src 'none'; sandbox`) and
       // Referrer-Policy, and a config header must never be able to replace
       // them. It gets the non-overlapping headers from the next rule.
-      { source: "/((?!api/media/file/|r/[^/]+/video$).*)", headers: SECURITY_HEADERS },
+      { source: "/((?!api/media/file/).*)", headers: SECURITY_HEADERS },
       { source: "/api/media/file/:path*", headers: MEDIA_FILE_HEADERS },
-      // A review link's stream (migration 0101) sets its own stricter policy, like the media file route.
-      { source: "/r/:token/video", headers: MEDIA_FILE_HEADERS },
       // The self-hosted font files carry their version in their name, so
       // they — and only they, by exact name — are cached as immutable. Any
       // other /fonts/... path (a redirect to /login, a 404, an app screen)
