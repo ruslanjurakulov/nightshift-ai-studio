@@ -148,6 +148,13 @@ class DocumentTestCase(unittest.TestCase):
             got = problems_of(width=w, height=h, fps=fps, out_s=over, reverse=True)
             self.assertTrue(any("reverse holds every frame" in p and f"{limit} s" in p for p in got), (w, h, fps, got))
 
+    def test_a_zero_sized_frame_with_a_reversed_clip_is_a_problem_not_a_division(self):
+        for w, h in ((0, 360), (640, 0), (0, 0)):
+            got = tl.validate(vdoc(width=w, height=h, reverse=True))
+            self.assertIsInstance(got, list)
+            self.assertTrue(any("width" in p or "height" in p for p in got), (w, h, got))
+            self.assertFalse(any("reverse holds" in p for p in got), got)
+
     def test_a_split_keeps_the_picture_continuous(self):
         # reversed: 4 s of source at 2x lasts 2 s; cut after 1 s of the timeline = 2 s of source
         out = tl.split_clip(vdoc(in_s=1, out_s=5, reverse=True, speed=2), "c1", 1.0, "c2")
