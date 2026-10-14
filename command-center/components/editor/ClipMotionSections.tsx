@@ -6,6 +6,7 @@ import { fmt } from "@/lib/i18n";
 import {
   INTERP_MAX_FRAMES,
   INTERP_MAX_FRAMES_DOC,
+  MAX_PARTIAL_OPACITY_MOVES,
   MOVE_ZOOM_MAX,
   MOVE_ZOOM_MIN,
   OVERLAY_W_MAX,
@@ -13,6 +14,9 @@ import {
   RAMP_MAX_POINTS,
   RAMP_MIN_GAP,
   RAMP_MIN_POINTS,
+  RENDER_TIMEOUT_BASE_S,
+  RENDER_TIMEOUT_MAX_S,
+  RENDER_TIMEOUT_PER_S,
   SPEEDS,
   SPEED_MAX,
   SPEED_MIN,
@@ -30,6 +34,7 @@ import {
   OVERLAY_END_KEYS,
   addCurvePoint,
   canAddCurvePoint,
+  canPartialOpacity,
   centreHeld,
   centreRange,
   clearOverlayMove,
@@ -43,6 +48,7 @@ import {
   moveOf,
   overlayEndOf,
   removeCurvePoint,
+  renderWork,
   reverseCheck,
   reverseLimit,
   setClipCurve,
@@ -61,6 +67,7 @@ import {
   type MovePresetId,
   type MoveWindow,
   type OverlayKeyframeKey,
+  zoomLimit,
 } from "@/lib/editorMotion";
 import { Disclosure, RadioChips, SliderRow, ToggleRow } from "./FxControls";
 
@@ -159,6 +166,7 @@ export function ClipMoveSection({
   };
   const mv = moveOf(clip);
   const preset = movePresetOf(clip);
+  const zoomMax = zoomLimit(model, id);
   const presets = (Object.keys(MOVE_PRESETS) as MovePresetId[]).filter(
     (k) => k !== "hold" || still,
   );
@@ -179,7 +187,7 @@ export function ClipMoveSection({
           label={m.zoom}
           value={w.zoom}
           min={MOVE_ZOOM_MIN}
-          max={MOVE_ZOOM_MAX}
+          max={Math.max(zoomMax, w.zoom)}
           step={0.05}
           text={fmt(m.zoomValue, { v: w.zoom })}
           onChange={(v, g) => edit(setMovePoint(model, id, which, { zoom: v }), g)}
@@ -237,6 +245,11 @@ export function ClipMoveSection({
           {end("to", m.endLegend)}
         </>
       ) : null}
+      {zoomMax < MOVE_ZOOM_MAX ? (
+        <p className="m-0 text-xs text-[var(--color-warn)]" data-testid="zoom-large">
+          {fmt(m.largeZoom, { max: zoomMax, w: model.width, h: model.height })}
+        </p>
+      ) : null}
       {still ? <p className={note}>{m.stillAuto}</p> : null}
       <p className={note}>{m.hint}</p>
     </Disclosure>
@@ -278,6 +291,25 @@ export function OverlayMoveSection({
         <>
           {OVERLAY_END_KEYS.map((k) => {
             const same = overlay.move?.to[k] === undefined;
+            // Only so many overlays may move between two visible opacities: past that,
+            // this one can keep its opacity or fade to clear (or, from clear, fade in).
+            if (k === "opacity" && !slowOpacityMove(overlay) && overlay.opacity > 0 && !canPartialOpacity(model, id))
+              return (
+                <div key={k} className="flex flex-col gap-1.5" data-testid="opacity-capped">
+                  <RadioChips
+                    legend={labels.opacity}
+                    options={[
+                      { value: "keep", label: m.keepOpacity },
+                      { value: "clear", label: m.fadeClear },
+                    ]}
+                    value={end.opacity === 0 ? "clear" : "keep"}
+                    onChange={(v) =>
+                      apply(setOverlayEnd(model, id, "opacity", v === "clear" ? 0 : overlay.opacity))
+                    }
+                  />
+                  <p className={note}>{fmt(m.cap, { max: MAX_PARTIAL_OPACITY_MOVES })}</p>
+                </div>
+              );
             return (
               <SliderRow
                 key={k}
@@ -659,6 +691,9 @@ export function ClipSpeedSection({
             {fmt(s.interpolate.hint, {
               clipMax: INTERP_MAX_FRAMES,
               docMax: INTERP_MAX_FRAMES_DOC,
+              per: RENDER_TIMEOUT_PER_S,
+              base: RENDER_TIMEOUT_BASE_S,
+              max: RENDER_TIMEOUT_MAX_S,
             })}{" "}
             {clip.interpolate
               ? fmt(s.interpolate.used, {
@@ -674,13 +709,21 @@ export function ClipSpeedSection({
                   ? s.interpolate.notSlow
                   : interp.reason === "direction"
                     ? s.interpolate.direction
-                    : interp.reason === "clip_budget"
-                      ? fmt(s.interpolate.clipBudget, {
-                          frames: Math.round(interp.frames),
-                          max: INTERP_MAX_FRAMES,
-                          sec: interp.maxS,
-                        })
-                      : fmt(s.interpolate.docBudget, { docMax: INTERP_MAX_FRAMES_DOC })}
+                    : interp.reason === "frame_size"
+                      ? fmt(s.interpolate.frameSize, { w: model.width, h: model.height })
+                      : interp.reason === "clip_budget"
+                        ? fmt(s.interpolate.clipBudget, {
+                            frames: Math.round(interp.frames),
+                            max: INTERP_MAX_FRAMES,
+                            sec: interp.maxS,
+                          })
+                        : interp.reason === "render_time" && interp.render
+                          ? fmt(s.interpolate.renderTime, {
+                              work: Math.round(interp.render.work),
+                              length: Math.round(interp.render.length),
+                              allowed: Math.round(interp.render.allowed),
+                            })
+                          : fmt(s.interpolate.docBudget, { docMax: INTERP_MAX_FRAMES_DOC })}
               </span>
             ) : null}
           </>
@@ -688,5 +731,24 @@ export function ClipSpeedSection({
       />
       </Disclosure>
     </>
+  );
+}
+
+/** One line under the toolbar when smoother slow motion and steadying together
+ *  would not fit the export's time allowance (a shorter timeline, a longer clip
+ *  or a slower speed can cause it): it says the numbers and what to do, instead
+ *  of Save failing without a reason. Nothing when all is well. */
+export function RenderBudgetNotice({ model }: { model: EditorModel }) {
+  const { t } = useI18n();
+  const r = renderWork(model);
+  if (r.ok) return null;
+  return (
+    <p className="m-0 text-xs text-[var(--color-warn)]" data-testid="render-budget">
+      {fmt(t.editor.fx.renderBudget, {
+        work: Math.round(r.work),
+        length: Math.round(r.length),
+        allowed: Math.round(r.allowed),
+      })}
+    </p>
   );
 }

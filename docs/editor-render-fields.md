@@ -500,3 +500,19 @@ animation plus the other side's fade longer than the time shown; shortening a te
 shortens the animation, and drops it when nothing is left); blur is off, with the
 frame size said, on a cross-faded clip in a frame above 1440p (`LARGE_FRAME_PX`,
 `XFADE_LARGE_BLUR_MAX`).
+
+C2 limits mirrored in the UI after the engine's last changes (all from the shared
+constants, none copied): the reverse limit is the validator's own whole-frame
+number (`reverseMaxSeconds`); smoother slow motion is judged by its per-clip and
+per-project frame budgets, by "not above 1440p" (`INTERP_MAX_PIXELS`) and by the
+export's time allowance (`renderWork()`: the timeline's length + 0.4 s per
+interpolated 1080p frame + the steadying estimate, against `renderTimeoutS(length)`),
+and the panel shows the estimate and the allowance; after any edit that changes a
+clip's speed or length its smoothing / steadying is switched off if it no longer
+fits, a notice under the toolbar names the numbers when a document does not fit
+(a shorter timeline, for example), and trimming such a clip stops where it last
+fitted; a zoom above `XFADE_LARGE_ZOOM_MAX` is off on a cross-faded clip in a frame
+above 1440p; an overlay can change opacity between two visible values only while
+fewer than `MAX_PARTIAL_OPACITY_MOVES` others do (past that the control offers
+"keep" and "fade to clear"); the speed curve says that sound is in step with the
+picture only at a few points along a long clip.

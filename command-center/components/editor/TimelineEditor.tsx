@@ -148,7 +148,7 @@ import { OverlayInspector, OverlayLayer, OverlayPicker } from "./OverlayPanel";
 import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
 import { ClipPicture, LookFilterDefs } from "./ClipPicture";
 import { ClipFxSections } from "./ClipFxSections";
-import { ClipSpeedSection, OverlayMoveSection } from "./ClipMotionSections";
+import { ClipSpeedSection, OverlayMoveSection, RenderBudgetNotice } from "./ClipMotionSections";
 import { OverlayAnimSection, TextAnimSection } from "./AnimPicker";
 import { ANIM_REST, animFrame, playsNatively, writtenText, type AnimFrame } from "@/lib/editorFxPreview";
 import { trimLimited } from "@/lib/editorMotion";
@@ -1035,6 +1035,7 @@ export function TimelineEditor({
             {exportBlocked}
           </p>
         ) : null}
+        <RenderBudgetNotice model={model} />
         <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">
           {te.freeNote} {te.publishNote}
         </p>
