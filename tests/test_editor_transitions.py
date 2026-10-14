@@ -62,7 +62,10 @@ PIC2 = "55555555-5555-4555-8555-555555555555"
 TALK = "66666666-6666-4666-8666-666666666666"    # a video with sound
 
 STYLES = ("fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight", "slideleft",
-          "slideright", "slideup", "slidedown", "circleopen", "circleclose", "radial", "zoomin")
+          "slideright", "slideup", "slidedown", "circleopen", "circleclose", "radial", "zoomin",
+          "wipeup", "wipedown", "smoothleft", "smoothright", "smoothup", "smoothdown", "vertopen",
+          "vertclose", "horzopen", "horzclose", "diagtl", "diagtr", "diagbl", "diagbr", "wipetl",
+          "wipetr", "wipebl", "wipebr", "squeezeh", "squeezev", "pixelize", "hblur", "distance")
 
 
 def xf(d=0.5, style=None):
@@ -926,10 +929,49 @@ class StyleRenderTestCase(_Real):
         b = self.frames(self.render("fade"), (self.W, self.H), [0, 35, 45, 55, 89])
         self.assertEqual(a, b)
 
+    def test_the_new_styles_draw_the_side_their_name_says(self):
+        """Measured on ffmpeg 7.0.2 at the middle of a 1 s blend (A = outgoing, B = incoming).
+        Where the incoming picture starts is ffmpeg's own convention (a diagonal named ``tl``
+        arrives from the bottom right), so this pins what the export does, not what a name
+        suggests: the editor's glyphs are drawn from these rows."""
+        want = {
+            "wipeup": {"T": "A", "B": "B"}, "wipedown": {"T": "B", "B": "A"},
+            "smoothleft": {"L": "A", "R": "B"}, "smoothright": {"L": "B", "R": "A"},
+            "smoothup": {"T": "A", "B": "B"}, "smoothdown": {"T": "B", "B": "A"},
+            "vertopen": {"L": "A", "R": "A", "C": "B"}, "vertclose": {"L": "B", "R": "B", "C": "A"},
+            "horzopen": {"T": "A", "B": "A", "C": "B"}, "horzclose": {"T": "B", "B": "B", "C": "A"},
+            "squeezeh": {"T": "B", "B": "B", "C": "A"}, "squeezev": {"L": "B", "R": "B", "C": "A"},
+        }
+        for st, sides in want.items():
+            with self.subTest(st):
+                got = self.probe(self.render(st), 45)[0]
+                for k, v in sides.items():
+                    self.assertEqual(got[k], v, (st, k, got))
+        # the corner styles: the incoming picture owns one corner before the half-way point
+        corner = {"diagtl": "br", "diagtr": "bl", "diagbl": "tr", "diagbr": "tl",
+                  "wipetl": "br", "wipetr": "bl", "wipebl": "tr", "wipebr": "tl"}
+        spots = {"tl": (10, 10), "tr": (310, 10), "bl": (10, 170), "br": (310, 170)}
+        for st, new_corner in corner.items():
+            with self.subTest(st):
+                raw = self.frames(self.render(st), (self.W, self.H), [52])[52]
+                seen = {k: kind(self.px(raw, self.W, *xy)) for k, xy in spots.items()}
+                self.assertEqual(seen[new_corner], "B", (st, seen))
+                # and the opposite corner has not changed over yet
+                self.assertNotEqual(seen[{"tl": "br", "br": "tl", "tr": "bl", "bl": "tr"}[new_corner]],
+                                    "B", (st, seen))
+        # distance snaps to the incoming picture before the end; the other three
+        # (pixelize, hblur, a plain mix on flat colours) are checked on textures below
+        self.assertEqual(self.probe(self.render("distance"), 52)[0]["C"], "B")
+
     def test_the_styles_differ_from_each_other_in_the_middle(self):
+        # flat colours cannot tell pixelize / hblur from a plain mix, so the clips are textures
+        tex_a = self.video("ta", "testsrc2", 4, f"{self.W}x{self.H}")
+        tex_b = self.video("tb", "rgbtestsrc", 4, f"{self.W}x{self.H}")
+        table = {BASE: tl.ResolvedAsset(BASE, "video", str(tex_a), 4.0, False),
+                 PIC: tl.ResolvedAsset(PIC, "video", str(tex_b), 4.0, False)}
         seen = {}
         for st in STYLES:
-            raw = self.frames(self.render(st), (self.W, self.H), [45])[45]
+            raw = self.frames(self.export(self.doc(st), table), (self.W, self.H), [45])[45]
             seen[st] = hashlib.sha256(raw).hexdigest()
         self.assertEqual(len(set(seen.values())), len(STYLES), "every style is its own picture")
 

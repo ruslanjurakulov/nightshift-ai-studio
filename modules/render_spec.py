@@ -190,7 +190,12 @@ GRADE_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
 #: filter graph, and only if it is in this tuple (render_backend checks again).
 XFADE_STYLES = ("fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight",
                 "slideleft", "slideright", "slideup", "slidedown", "circleopen",
-                "circleclose", "radial", "zoomin")
+                "circleclose", "radial", "zoomin",
+                "wipeup", "wipedown", "smoothleft", "smoothright", "smoothup",
+                "smoothdown", "vertopen", "vertclose", "horzopen", "horzclose",
+                "diagtl", "diagtr", "diagbl", "diagbr", "wipetl",
+                "wipetr", "wipebl", "wipebr", "squeezeh", "squeezev",
+                "pixelize", "hblur", "distance")
 XFADE_DEFAULT_STYLE = "fade"
 
 #: Picture overlays (a picture or video laid over the picture; modules/timeline.py
