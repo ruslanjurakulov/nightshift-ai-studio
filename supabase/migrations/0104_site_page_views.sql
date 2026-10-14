@@ -1,4 +1,4 @@
--- 0103_site_page_views.sql — first-party, cookieless page-view counts for the PUBLIC site.
+-- 0104_site_page_views.sql — first-party, cookieless page-view counts for the PUBLIC site.
 --
 -- The owner wants to know which public pages are read, without a third-party
 -- tracker, a cookie, or anything that could single a visitor out. This file
@@ -69,7 +69,7 @@
 do $$
 begin
   if to_regclass('public.web_rate_counters') is null then
-    raise exception '0103 needs 0042/0087 (web_rate_counters): apply 0042_web_api_hardening.sql and 0087_audit_and_rate_hardening.sql first';
+    raise exception '0104 needs 0042/0087 (web_rate_counters): apply 0042_web_api_hardening.sql and 0087_audit_and_rate_hardening.sql first';
   end if;
   -- The ceiling counts under 'pageview.anon@60'; the '@' form needs 0087's wider bucket check.
   if not exists (
@@ -78,7 +78,7 @@ begin
        and conname = 'web_rate_counters_bucket_check'
        and pg_get_constraintdef(oid) like '%@%'
   ) then
-    raise exception '0103 needs 0087 (web_rate_counters bucket check allows @): apply 0087_audit_and_rate_hardening.sql first';
+    raise exception '0104 needs 0087 (web_rate_counters bucket check allows @): apply 0087_audit_and_rate_hardening.sql first';
   end if;
 end $$;
 
@@ -116,7 +116,7 @@ create table if not exists public.site_page_views (
   constraint site_page_views_views_positive check (views >= 0)
 );
 comment on table public.site_page_views is
-  'Daily page-view totals for the public site (0103): per day, public path, referring HOST, device class and language. No visitor, session, IP, user agent or time of day is stored. No API role reads or writes it; record_page_view() adds one.';
+  'Daily page-view totals for the public site (0104): per day, public path, referring HOST, device class and language. No visitor, session, IP, user agent or time of day is stored. No API role reads or writes it; record_page_view() adds one.';
 alter table public.site_page_views enable row level security;
 revoke all on public.site_page_views from public, anon, authenticated;
 

@@ -1,11 +1,11 @@
-"""Security-lab contract for migration 0103 (first-party page counts).
+"""Security-lab contract for migration 0104 (first-party page counts).
 
 Hooked in like sec_user_handles_0096:
 
   * sec_expectations.py, at the bottom:
-        import sec_page_views_0103; sec_page_views_0103.extend(TABLES, FUNCTIONS)
+        import sec_page_views_0104; sec_page_views_0104.extend(TABLES, FUNCTIONS)
   * sec_scenario.build_scenario():
-        sec_page_views_0103.seed(conn, sc)
+        sec_page_views_0104.seed(conn, sc)
 
 site_page_views is declared Service(): the isolation tests then prove that a
 customer, a stranger and the anon key read nothing from it and cannot insert,

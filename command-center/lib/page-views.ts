@@ -1,5 +1,5 @@
 /**
- * First-party, cookieless page counts for the PUBLIC site (migration 0103).
+ * First-party, cookieless page counts for the PUBLIC site (migration 0104).
  *
  * What a count is: one added to a daily total for (path, referring HOST, device
  * class, language). What it can never be: a visitor. There is no cookie, no
@@ -32,7 +32,7 @@ export interface PageViewBeacon {
   lang: PageViewLang;
 }
 
-/** A DNS host name as migration 0103 stores it: lowercase, 2 to 100 characters, no port, no path. */
+/** A DNS host name as migration 0104 stores it: lowercase, 2 to 100 characters, no port, no path. */
 const HOST = /^[a-z0-9](?:[a-z0-9.-]{0,98}[a-z0-9])?$/;
 
 /**

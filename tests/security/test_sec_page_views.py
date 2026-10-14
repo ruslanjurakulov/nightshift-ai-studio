@@ -1,4 +1,4 @@
-"""Migration 0103: first-party, cookieless page counts for the public site.
+"""Migration 0104: first-party, cookieless page counts for the public site.
 
 The table holds daily totals and no row describes a person, so the attacks are
 on what an anonymous caller can DO with the one function it may call, and on

@@ -510,7 +510,7 @@ import sec_user_handles_0096  # noqa: E402
 
 sec_user_handles_0096.extend(TABLES, FUNCTIONS)
 
-# Migration 0103 (first-party page counts): tests/security/sec_page_views_0103.py
-import sec_page_views_0103  # noqa: E402
+# Migration 0104 (first-party page counts): tests/security/sec_page_views_0104.py
+import sec_page_views_0104  # noqa: E402
 
-sec_page_views_0103.extend(TABLES, FUNCTIONS)
+sec_page_views_0104.extend(TABLES, FUNCTIONS)

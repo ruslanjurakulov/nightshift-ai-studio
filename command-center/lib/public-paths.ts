@@ -76,7 +76,7 @@ export const SOLUTION_PATHS = [SOLUTIONS_PATH, ...SOLUTION_IDS.map(solutionHref)
 export const PUBLIC_API_PREFIX = "/api/v1";
 
 /**
- * The public site's page count (app/api/pv, lib/page-views.ts, migration 0103): the page posts four short strings,
+ * The public site's page count (app/api/pv, lib/page-views.ts, migration 0104): the page posts four short strings,
  * the route answers 204 whatever happened. It reads no cookie and no session, so the cookie gate must neither
  * redirect it nor spend a Supabase round trip on a session the visitor does not have. Exactly this path.
  */

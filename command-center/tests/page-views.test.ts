@@ -195,7 +195,7 @@ describe("the page side sets nothing and stores nothing", () => {
 });
 
 describe("the database side agrees with the app", () => {
-  const sql = readFileSync(join(ROOT, "..", "supabase", "migrations", "0103_site_page_views.sql"), "utf8");
+  const sql = readFileSync(join(ROOT, "..", "supabase", "migrations", "0104_site_page_views.sql"), "utf8");
   it("counts exactly the sitemap's pages (SQL closed list == SITEMAP_PATHS)", () => {
     const list = sql.match(/site_page_path_ok\(p text\)[\s\S]*?array\[([\s\S]*?)\]\)/)![1];
     const sqlPaths = [...list.matchAll(/'(\/[a-z/-]*)'/g)].map((m) => m[1]);

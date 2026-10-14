@@ -41,7 +41,7 @@ const PUBLIC_BY_DESIGN: Record<string, string> = {
   "handle-available/route.ts":
     "the sign-up form's username check, asked before an account exists: same-origin POST only, one yes/no/unknown, limited per address and platform-wide in the database (0096)",
   "pv/route.ts":
-    "the public site's page count, posted by a visitor with no account: same-origin POST only, always 204, reads no cookie and no address, counts only the public marketing pages under a platform-wide ceiling in the database (0103)",
+    "the public site's page count, posted by a visitor with no account: same-origin POST only, always 204, reads no cookie and no address, counts only the public marketing pages under a platform-wide ceiling in the database (0104)",
 };
 
 function routeFiles(dir: string): string[] {

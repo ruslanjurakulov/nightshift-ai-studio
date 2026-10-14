@@ -16,7 +16,7 @@ let lastPath: string | null = null;
  * cookie and no storage, sends nothing that identifies the visitor, and sends
  * nothing at all when the browser signals Do-Not-Track or Global Privacy Control.
  * The route and the database refuse any path that is not a public marketing page
- * (app/api/pv, migration 0103), so this does not need to know which those are.
+ * (app/api/pv, migration 0104), so this does not need to know which those are.
  */
 export function PageViewBeacon() {
   const pathname = usePathname();

@@ -1,4 +1,4 @@
-"""supabase/migrations/0103_site_page_views.sql — first-party, cookieless page counts.
+"""supabase/migrations/0104_site_page_views.sql — first-party, cookieless page counts.
 
 The behaviour runs in tests/security/test_sec_page_views.py (a real Postgres).
 This pins, without a database, what must not change by accident: one table of
@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SQL = (ROOT / "supabase" / "migrations" / "0103_site_page_views.sql").read_text()
+SQL = (ROOT / "supabase" / "migrations" / "0104_site_page_views.sql").read_text()
 CODE = re.sub(r"--[^\n]*", "", SQL)
 PUBLIC_PATHS_TS = (ROOT / "command-center" / "lib" / "public-paths.ts").read_text()
 
@@ -67,7 +67,7 @@ class SitePageViewsMigration(unittest.TestCase):
         self.assertEqual(sorted(sql_paths), sorted(ts_literals + ["/studio"] + solutions))
 
     def test_it_needs_0087_and_drops_nothing(self):
-        self.assertIn("0103 needs 0042/0087", CODE)
+        self.assertIn("0104 needs 0042/0087", CODE)
         self.assertNotRegex(CODE, r"\bdrop (table|function|policy|constraint)\b")
         self.assertNotRegex(CODE, r"\balter table public\.(?!site_page_views)")
 

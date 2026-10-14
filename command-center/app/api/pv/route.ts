@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/pv  { path, ref, device, lang }  →  204, always.
  *
- * The public site's page count (lib/page-views.ts, migration 0103). The answer
+ * The public site's page count (lib/page-views.ts, migration 0104). The answer
  * never varies, so it says nothing about whether anything was counted. Counted
  * only when ALL hold: our own page asked (same origin); the browser did not send
  * Do-Not-Track or Global Privacy Control; the user agent is not on the closed

@@ -9,18 +9,18 @@ machine cannot judge is listed under "owner items" and is the owner's to sign of
   `tests/page-views.test.ts` (10), `tests/public-forms-errors.test.tsx` (6),
   `tests/crawler.test.ts`, `tests/public-404.test.ts`, `tests/app-icons.test.ts`,
   `tests/middleware-matcher.test.ts` (the gate and the files), `tests/legal*.test.*`.
-- Database side of item 10: `supabase/migrations/0103_site_page_views.sql`, pinned
+- Database side of item 10: `supabase/migrations/0104_site_page_views.sql`, pinned
   by `tests/test_site_page_views_migration.py` and the security lab
   (`tests/security/test_sec_page_views.py`).
 - Run it all: `cd command-center && npx vitest run`.
 
 **When you add a public page**, add it to `SITEMAP_PATHS` (`lib/public-paths.ts`),
-to `PUBLIC_PAGE_PATHS` (`next.config.ts`), to the closed list in migration `0103`'s
+to `PUBLIC_PAGE_PATHS` (`next.config.ts`), to the closed list in migration `0104`'s
 `site_page_path_ok` (a *new* migration, never an edit), to `PAGES` in the launch
 test, and give it a `describe()` entry in `lib/llms.ts`. The tests name whichever
 step is missing. **When you add a language**, add it to `LOCALES`
 (`lib/i18n/core.ts`) and nothing else here changes: the metadata, llms.txt and
-page-count code all read that one list (migration `0103` accepts any two- or
+page-count code all read that one list (migration `0104` accepts any two- or
 three-letter lowercase code on purpose).
 
 ## The twenty points
@@ -39,7 +39,7 @@ Status: **ok** = already true, now pinned; **done** = built in this change;
 | 7 | Broken links | No internal link or fragment on a public page leads nowhere; external links answer | launch test crawls every public page's rendered HTML in every language (no network); live crawl (below) | ok |
 | 8 | Site speed | Measured per public page: TTFB, JS weight, LCP, CLS, image dimensions | measured (below); not a pass/fail test (real-hardware numbers do not belong in CI) | measured. **Owner:** decide whether the figures are good enough |
 | 9 | Accessibility | axe finds no serious or critical issue on any public page at 320 and 1280 px in every language | measured (below), 0 violations of any impact | ok |
-| 10 | Analytics | First-party, cookieless, privacy-preserving page counts; no third party | `page-views.test.ts`, migration 0103 tests, security lab | **done** (see "Analytics"). **Owner:** read-out is a SQL query |
+| 10 | Analytics | First-party, cookieless, privacy-preserving page counts; no third party | `page-views.test.ts`, migration 0104 tests, security lab | **done** (see "Analytics"). **Owner:** read-out is a SQL query |
 | 11 | Meta title and description | Per page, per language: unique title (70 characters or fewer), description of 40 to 160 characters | launch test, every public page x every language | ok |
 | 12 | sitemap.xml | Lists every public indexable page exactly once, on the site's own origin; nothing private | launch test (also reads the `app/` tree: a new public page that is not listed fails) | ok. `lastmod` is omitted (no build date reaches the server; we do not invent one) |
 | 13 | robots.txt | Allow `/`, disallow `/api/`, name the sitemap | launch test (exact), `crawler.test.ts` | ok |
@@ -113,12 +113,12 @@ combination past the cap is folded into referrer `other`, language `xx`); the
 table's CHECKs refuse any path outside the closed list, any malformed host, any
 bad device or language shape.
 
-**Database surface (migration 0103, additive, RLS on, no policy):** one table
+**Database surface (migration 0104, additive, RLS on, no policy):** one table
 `site_page_views`, one `SECURITY DEFINER` function `record_page_view` (the only
 thing `anon` may call), one pure helper `site_page_path_ok`. No read function.
 
 > **Merging the migration applies it.** A migration file merged to `main` is
-> applied to the live database automatically. 0103 needs 0042/0087
+> applied to the live database automatically. 0104 needs 0042/0087
 > (`web_rate_counters`); it fails loudly, without changing anything, if they are
 > missing. Have it reviewed before merging.
 
@@ -206,7 +206,7 @@ them as indicative, not as lab Lighthouse numbers.
 
 1. **Legal review** of the privacy policy's cookie, storage and page-statistics
    wording, and the Terms, in en/ru/uz.
-2. **Merging migration 0103** (applies it to the live database): review first.
+2. **Merging migration 0104** (applies it to the live database): review first.
 3. **Paddle:** the live site's pricing page uses Paddle's *sandbox*; before going
    to production, check Retain (see Cookies) and revisit item 3 if it loads.
 4. **Speed:** decide whether LCP of about 3 s on the home page and `/mcp`, and

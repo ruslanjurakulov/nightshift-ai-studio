@@ -4,7 +4,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/con
 import type { PageViewBeacon } from "@/lib/page-views";
 
 /**
- * Add one to a day's total (record_page_view, migration 0103). The anon key
+ * Add one to a day's total (record_page_view, migration 0104). The anon key
  * only: the function is the one thing that role may call, it validates every
  * argument against a closed list and applies a platform-wide ceiling. Nothing
  * is returned and nothing is thrown: a count that did not happen is simply a
