@@ -233,6 +233,9 @@ ROTATIONS = (0, 90, 180, 270)
 RAMP_MIN_POINTS, RAMP_MAX_POINTS = 2, 6
 INTERP_MAX_FPS = 120
 
+#: Stabilisation budget (modules/timeline.py holds the same numbers).
+STABILIZE_MAX_S = 120.0
+
 #: A clip's crop rectangle / free angle (modules/timeline.py holds the same numbers).
 CROP_MIN = 0.05
 ANGLE_MAX = 180.0
@@ -546,6 +549,8 @@ class Segment:
     #: slow motion by motion-compensated interpolation (only below speed 1).
     curve: Optional[SpeedCurve] = None
     interpolate: bool = False
+    #: Smooth camera shake (vidstab, two passes, else deshake). Video only.
+    stabilize: bool = False
 
     @property
     def graded(self) -> bool:
@@ -577,6 +582,7 @@ class Segment:
         if self.curve is not None:
             d["curve"] = self.curve.to_dict()
         _put_if(d, "interpolate", self.interpolate, False)
+        _put_if(d, "stabilize", self.stabilize, False)
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -606,7 +612,7 @@ class Segment:
             crop=(ClipCrop.from_dict(d["crop"]) if isinstance(d.get("crop"), dict) else None),
             angle=float(d.get("angle") or 0.0),
             curve=(SpeedCurve.from_dict(d["curve"]) if isinstance(d.get("curve"), dict) else None),
-            interpolate=bool(d.get("interpolate", False)),
+            interpolate=bool(d.get("interpolate", False)), stabilize=bool(d.get("stabilize", False)),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -956,6 +962,8 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
         slowest = seg.speed if seg.curve is None else min((s for _a, s in seg.curve.points), default=1.0)
         if seg.kind != KIND_VIDEO or seg.reverse or seg.freeze or not slowest < 1.0:
             problems.append(f"{name} interpolate is for forward slow motion of a video")
+    if seg.stabilize and (seg.kind != KIND_VIDEO or seg.freeze):
+        problems.append(f"{name} stabilize is for moving video (not a picture or a frozen frame)")
     if seg.crop is not None:
         problems.extend(_crop_problems(name, seg.crop))
     if not (_finite(seg.angle) and -ANGLE_MAX <= seg.angle <= ANGLE_MAX):

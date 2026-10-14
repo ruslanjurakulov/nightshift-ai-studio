@@ -24,6 +24,8 @@ How a timeline maps onto the spec:
   ``flip_*`` and ``rotate`` become the segment's ``ClipEffects``; the backend
   turns the geometric ones into a prefix of the clip's chain and the rest into
   filters after the colour grade. A clip without them has ``effects=None``.
+* **Stabilise** — a V clip's ``stabilize`` becomes the segment's flag; the backend
+  adds the detect pass (vidstab) or the single-pass filter (deshake).
 * **Speed ramp** — a V clip's ``speed_curve`` becomes ``Segment.curve`` (its points
   and the source range), ``interpolate`` the segment's flag; the clip's sound is
   the track's ``tempos``, one per equal slice of the range
@@ -154,6 +156,8 @@ def _ramp(clip: dict, asset_kind: str) -> dict:
                                   round(clip["out_s"] - clip["in_s"], 3))
     if clip.get("interpolate") and asset_kind == tl.ASSET_VIDEO:
         out["interpolate"] = True
+    if clip.get("stabilize") and asset_kind == tl.ASSET_VIDEO:
+        out["stabilize"] = True
     return out
 
 

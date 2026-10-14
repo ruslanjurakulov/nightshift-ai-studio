@@ -28,12 +28,14 @@ subtitle file may be the word-highlighted `.ass` from `modules/ass_captions.py`
 from __future__ import annotations
 
 import concurrent.futures
+import functools
 import hashlib
 import logging
 import math
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -52,6 +54,7 @@ from modules.render_spec import (
     build_ffmpeg_command,
     cap_inputs,
     concat_list_lines,
+    _quote_filter_path,
     interp_fps,
     segment_frames,
     validate,
@@ -513,7 +516,7 @@ def _segment_commands(
     # clip that would drift every later cut off the audio timeline. -ss before
     # -i is an input seek, frame-accurate when transcoding, and the output's
     # timestamps start at 0 — so the fades above are relative to the cut.
-    inputs, chain = _video_source(seg, width, height, fps, full)
+    inputs, chain = _video_source(seg, width, height, fps, full, stab=stab_filter(ffmpeg, seg, out_path.parent))
     return [[ffmpeg, "-y", *inputs, *length, "-an",
              "-vf", (chain
                      + (move_filter(seg.move, width, height, full) if seg.move is not None else "")
@@ -522,8 +525,79 @@ def _segment_commands(
              str(out_path)]]
 
 
+# ── stabilisation ───────────────────────────────────────────────────────────
+#
+# vidstab is two passes over the clip: detect the motion of every source frame
+# into a ``.trf`` file, then apply a smoothed path. The detect pass is its own
+# command (segment_prepasses), run before the segment's; the transform sits in
+# the segment's chain right after the turn / crop, on the SOURCE frames. Without
+# the vidstab filters the single-pass, built-in ``deshake`` is used (weaker).
+
+STAB_SHAKINESS = 5
+STAB_ACCURACY = 15
+STAB_SMOOTHING = 15
+
+
+@functools.lru_cache(maxsize=8)
+def stabilizer(ffmpeg: str) -> str:
+    """``"vidstab"`` when this ffmpeg has both vidstab filters, else ``"deshake"``."""
+    try:
+        out = subprocess.run([ffmpeg, "-hide_banner", "-filters"], capture_output=True, text=True,
+                             timeout=30).stdout or ""
+    except Exception:
+        return "deshake"
+    return "vidstab" if ("vidstabdetect" in out and "vidstabtransform" in out) else "deshake"
+
+
+def _source_range_s(seg: Segment) -> float:
+    """Seconds of the SOURCE a segment's clip plays (its range)."""
+    if seg.curve is not None:
+        return seg.curve.range_s
+    return seg.full_s * seg.speed
+
+
+def stab_trf_path(seg: Segment, workdir: Path) -> Path:
+    """Where the detect pass for this clip's source range is kept: named by what
+    it analysed, so every piece of a cross-faded clip shares one."""
+    key = hashlib.sha1(
+        f"{seg.path}|{seg.in_s:.3f}|{_source_range_s(seg):.3f}|{geometry_filter(seg)}".encode()).hexdigest()[:16]
+    return Path(workdir) / f"stab-{key}.trf"
+
+
+def stab_filter(ffmpeg: str, seg: Segment, workdir: Path) -> str:
+    """``<transform>,`` for a stabilised video segment ('' otherwise: the chain is
+    the one it was)."""
+    if not seg.stabilize or seg.kind != KIND_VIDEO or not seg.path:
+        return ""
+    if stabilizer(ffmpeg) == "vidstab":
+        return (f"vidstabtransform=input={_quote_filter_path(str(stab_trf_path(seg, workdir)))}"
+                f":smoothing={STAB_SMOOTHING}:optzoom=1:interpol=bicubic,")
+    return "deshake=rx=32:ry=32:edge=3,"
+
+
+def segment_prepasses(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,
+                      ) -> List[tuple]:
+    """``(trf path, part path, command)`` for each vidstab detect pass this
+    segment needs (its own clip and, for a cross-fade, the incoming one), pure.
+    The command writes ``part`` (the caller renames it to ``trf``)."""
+    out = []
+    for s in (seg, seg.xfade):
+        if s is None or not s.stabilize or s.kind != KIND_VIDEO or not s.path:
+            continue
+        if stabilizer(ffmpeg) != "vidstab":
+            continue
+        trf = stab_trf_path(s, out_path.parent)
+        part = trf.with_name(f"{trf.name}.{os.getpid()}-{threading.get_ident()}.part")
+        seek = ["-ss", f"{s.in_s:.3f}"] if s.in_s > 0 else []
+        cmd = [ffmpeg, "-y", *seek, "-t", f"{_source_range_s(s):.3f}", "-i", s.path, "-an", "-vf",
+               geometry_filter(s) + f"vidstabdetect=shakiness={STAB_SHAKINESS}:accuracy={STAB_ACCURACY}"
+               f":result={_quote_filter_path(str(part))}", "-f", "null", "-"]
+        out.append((trf, part, cap_inputs(cmd, video_inputs=[s.path], out_pixels=width * height)))
+    return out
+
+
 def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
-                  tag: str = "") -> tuple:
+                  tag: str = "", stab: str = "") -> tuple:
     """``(input args, filter chain)`` that read a video clip and bring it to the
     output frame: forward (retimed first, then fitted — the chain this backend
     always had), reversed, or one held frame.
@@ -543,6 +617,7 @@ def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
         return ([*seek, "-i", seg.path],
                 f"{geo}trim=end_frame=1,setpts=PTS-STARTPTS,{framed},"
                 f"tpad=stop={max(full - 1, 0)}:stop_mode=clone")
+    geo += stab                                # the transform runs on the source frames, after the turn / crop
     if seg.reverse:
         span = full / fps * seg.speed          # seconds of SOURCE the clip plays
         return ([*seek, "-t", f"{span:.3f}", "-i", seg.path],
@@ -560,7 +635,7 @@ def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
 
 
 def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
-                hold: bool, tag: str = "") -> tuple:
+                hold: bool, tag: str = "", stab: str = "") -> tuple:
     """(input args, filter chain) for one side of a cross-fade: the clip's
     usual normalisation over the whole clip, cut to this piece, and pinned
     to one frame rate, time base and pixel format — xfade refuses two inputs
@@ -583,7 +658,7 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
         return (["-i", seg.path],
                 geometry_filter(seg) + ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
                 + _then(grade) + ang + tail)
-    inputs, chain = _video_source(seg, width, height, fps, full, tag)
+    inputs, chain = _video_source(seg, width, height, fps, full, tag, stab)
     return inputs, chain + mv + tail
 
 
@@ -610,8 +685,8 @@ def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, heigh
     common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
 
     def cmd(hold: bool) -> List[str]:
-        ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold, "a")
-        ib, cb = _xfade_side(x, width, height, fps, seed_b, hold, "b")
+        ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold, "a", stab_filter(ffmpeg, seg, out_path.parent))
+        ib, cb = _xfade_side(x, width, height, fps, seed_b, hold, "b", stab_filter(ffmpeg, x, out_path.parent))
         graph = (f"[0:v]{ca}[xa];[1:v]{cb}[xb];"
                  f"[xa][xb]xfade=transition={style}:duration={frames / fps:.6f}:offset=0[xv]")
         return [ffmpeg, "-y", *ia, *ib, "-filter_complex", graph, "-map", "[xv]",
@@ -661,6 +736,12 @@ def _normalize_segment(
     # Only a timeline export passes a deadline; every other caller (and the
     # tests that stand in for _run) makes exactly the call it always made.
     run = _run if deadline is None else (lambda c: _run(c, deadline=deadline))
+    for trf, part, detect in segment_prepasses(ffmpeg, seg, out_path, width, height):
+        # vidstab's first pass. No quiet fallback if it fails: the clip was asked to be steadied.
+        if trf.exists() and trf.stat().st_size > 0:
+            continue
+        run(detect)
+        os.replace(part, trf)
     if len(cmds) == 2 and seg.path:
         # A still (or a cross-fade with one): the Ken Burns move, else held.
         move, hold = cmds

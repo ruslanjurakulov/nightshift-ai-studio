@@ -28,6 +28,7 @@ note for text looks).
 | 7 | `claude/render-chroma-audio` | overlay `chroma`; `denoise`, `loudnorm` on A clips and V clips | PR open (stacked on 6) |
 | 8 | `claude/render-crop` | V clip `crop` rectangle, free `angle` | PR open (stacked on 7) |
 | 9 | `claude/render-speed-ramp` | V clip `speed_curve` (2-6 points), `interpolate` | PR open (stacked on 8) |
+| 10 | `claude/render-stabilise` | V clip `stabilize` | PR open (stacked on 9) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -356,3 +357,25 @@ like `contain` (the picture alone).
   interpolated: a 24 fps source in a 30 fps project is interpolated from the
   30 fps (duplicated-frame) version, which is smoother than nothing but not
   ideal; a source at the project's rate is best.
+
+## 10. Stabilise (`stabilize`, boolean, V clips)
+
+* smooths camera shake. A toggle, no strength: the UI offers an on/off switch
+  and says it takes longer to export.
+* which method runs is decided by the worker's ffmpeg build, not by the
+  document: with libvidstab (the bundled static ffmpeg 7.0.2 has it; the Debian
+  `ffmpeg` package the worker image installs is built with it too) it is two
+  passes: a detect pass over the clip's source frames, then a smoothed path with
+  an automatic zoom (`optzoom=1`) so no moving border shows. A build without
+  vidstab gets ffmpeg's single-pass built-in `deshake`, which is much weaker
+  (measured on a synthetic shaky clip: vidstab removes about 70 % of the frame to
+  frame motion, deshake about 35 %). The method is not reported to the user;
+  if you need to, ask the worker (`render_backend.stabilizer(ffmpeg)`).
+* the first pass is a real extra decode of the clip, so the budget: a stabilised
+  clip's source range is at most 120 s and a document's stabilised ranges at most
+  300 s in all (validators, same numbers: `STABILIZE_MAX_S`, `STABILIZE_MAX_DOC_S`).
+* video only; not with `freeze`. It runs on the source frames, right after
+  `rotate`/`flip`/`crop` and before speed, fit, effects and `angle`.
+* if the detect pass cannot run, the export FAILS (it is never quietly exported
+  unsteadied).
+* an automatic zoom crops a little of the edges: say so in the product.

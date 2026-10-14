@@ -209,6 +209,10 @@ export const INTERP_MAX_FPS = 120;
 export const INTERP_MAX_FRAMES = 300;
 export const INTERP_MAX_FRAMES_DOC = 600;
 const INTERP_REF_PIXELS = 1920 * 1080;
+/** Stabilising decodes a clip twice: the longest range of one clip and the
+ *  total per document, in seconds (modules/timeline.py STABILIZE_*). */
+export const STABILIZE_MAX_S = 120;
+export const STABILIZE_MAX_DOC_S = 300;
 /** A clip's crop rectangle (smallest side) and free angle (modules/timeline.py
  *  CROP_MIN / ANGLE_MAX). */
 export const CROP_MIN = 0.05;
@@ -294,6 +298,7 @@ const V_CLIP_KEYS = [
   "angle",
   "speed_curve",
   "interpolate",
+  "stabilize",
   ...EFFECT_KEYS,
 ];
 const A_CLIP_KEYS = [
@@ -439,6 +444,8 @@ export interface VideoClip {
   speed_curve?: SpeedPoint[];
   /** Smoother slow motion by interpolation (slow to render; budgeted). */
   interpolate?: boolean;
+  /** Smooth camera shake (decodes the clip twice; video only, not with freeze). */
+  stabilize?: boolean;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -841,6 +848,16 @@ export function validateTimeline(doc: unknown): string[] {
     problems.push(
       `timeline: at most ${MAX_TYPEWRITER_TEXTS} typewriter texts (got ${nType})`,
     );
+  let stabS = 0;
+  for (const t of counted)
+    if (t.kind === "V")
+      for (const c of t.clips)
+        if (isObj(c) && c.stabilize === true && isNum(c.in_s) && isNum(c.out_s))
+          stabS += ms(c.out_s) - ms(c.in_s);
+  if (stabS > STABILIZE_MAX_DOC_S + 1e-9)
+    problems.push(
+      `timeline: at most ${STABILIZE_MAX_DOC_S} s of video can be stabilised in all (got ${Math.round(stabS)} s)`,
+    );
   if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
     let interp = 0;
     for (const t of counted)
@@ -948,6 +965,21 @@ function validateMediaClip(
     curve = validateSpeedCurve(clip, where, problems);
   if (kind === "V" && "interpolate" in clip && typeof clip.interpolate !== "boolean")
     problems.push(`${where}: interpolate must be true or false`);
+  if (kind === "V" && "stabilize" in clip) {
+    if (typeof clip.stabilize !== "boolean")
+      problems.push(`${where}: stabilize must be true or false`);
+    else if (clip.stabilize && clip.freeze === true)
+      problems.push(`${where}: a frozen clip is one still frame — nothing to stabilise`);
+    else if (
+      clip.stabilize &&
+      isNum(clip.in_s) &&
+      isNum(clip.out_s) &&
+      ms(clip.out_s) - ms(clip.in_s) > STABILIZE_MAX_S + 1e-9
+    )
+      problems.push(
+        `${where}: stabilising a range of more than ${STABILIZE_MAX_S} s is not offered (it decodes the clip twice) — split it`,
+      );
+  }
   for (const k of ["denoise", "loudnorm"])
     if (k in clip && typeof clip[k] !== "boolean")
       problems.push(`${where}: ${k} must be true or false`);
@@ -1913,6 +1945,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(isNum(c.angle) && c.angle !== 0 ? { angle: c.angle } : {}),
       ...(usableCurve(c.speed_curve) ? { speed_curve: c.speed_curve as SpeedPoint[] } : {}),
       ...(c.interpolate === true ? { interpolate: true } : {}),
+      ...(c.stabilize === true ? { stabilize: true } : {}),
       ...(isObj(c.move) ? { move: c.move as unknown as ClipMove } : {}),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0

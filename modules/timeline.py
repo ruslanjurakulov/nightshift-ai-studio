@@ -22,6 +22,7 @@ not a project dependency — tests keep the two in sync)::
               denoise?: bool, loudnorm?: bool,
               crop?: {x?, y?, w?, h?}, angle?: -180..180,
               speed_curve?: [ {at: 0..1, speed: 0.25..4}, ... 2-6 points ], interpolate?: bool,
+              stabilize?: bool,
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
               filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
               flip_h?, flip_v?, rotate?,
@@ -169,6 +170,15 @@ Rules this module keeps:
   ``INTERP_MAX_FRAMES`` per clip and ``INTERP_MAX_FRAMES_DOC`` per document
   (1080p-equivalent frames; it is slow, about 3 frames a second at 1080p on a busy
   machine). The source frames are first taken at the project's frame rate.
+* **Stabilise is a toggle on a video clip.** ``stabilize: true`` smooths camera
+  shake. With the ffmpeg build's ``vidstab`` filters it is two passes over the
+  source frames of the clip (detect the motion, then apply a smoothed path, with
+  an automatic zoom to hide the moving borders); without them it falls back to
+  ffmpeg's built-in single-pass ``deshake`` (weaker). It runs on the source before
+  the fit, retime and effects. Video only, not with ``freeze``. The detect pass
+  doubles the decoding of that clip, so a clip's source range is at most
+  ``STABILIZE_MAX_S`` and a document's stabilised ranges at most
+  ``STABILIZE_MAX_DOC_S`` seconds in all.
 * **Crop and a free angle.** A V clip's ``crop: {x, y, w, h}`` keeps a rectangle of
   the SOURCE picture, as fractions of it (``x``/``y`` the top-left corner 0-1,
   ``w``/``h`` its size ``CROP_MIN``-1; defaults 0, 0, 1, 1; the rectangle must
@@ -383,6 +393,10 @@ INTERP_MAX_FRAMES = 300
 INTERP_MAX_FRAMES_DOC = 600
 _INTERP_REF_PIXELS = 1920 * 1080
 
+#: Stabilisation costs a second decode of the clip (render_spec.STABILIZE_* are the same).
+STABILIZE_MAX_S = 120.0
+STABILIZE_MAX_DOC_S = 300.0
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -410,7 +424,7 @@ _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
                                   "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle", "speed_curve",
-                                  "interpolate") + _EFFECT_KEYS
+                                  "interpolate", "stabilize") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -660,6 +674,13 @@ def validate(doc: Any) -> List[str]:
             problems.append(f"timeline: interpolated slow motion would make about {total_interp:.0f} frames "
                             f"(1080p equivalent) in all; at most {INTERP_MAX_FRAMES_DOC} per timeline")
 
+    stab_s = sum(_ms(c["out_s"]) - _ms(c["in_s"]) for t in counted if t.get("kind") == KIND_V
+                 for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True
+                 and _in_range(c.get("in_s")) and _in_range(c.get("out_s")))
+    if stab_s > STABILIZE_MAX_DOC_S + 1e-9:
+        problems.append(f"timeline: at most {STABILIZE_MAX_DOC_S:g} s of video can be stabilised in all "
+                        f"(got {stab_s:.0f} s)")
+
     captions = doc.get("captions")
     if captions is not None:
         _validate_captions(captions, problems, claim)
@@ -726,6 +747,15 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         ramp = _validate_speed_curve(clip, where, problems)
     if kind == KIND_V and "interpolate" in clip and not isinstance(clip["interpolate"], bool):
         problems.append(f"{where}: interpolate must be true or false")
+    if kind == KIND_V and "stabilize" in clip:
+        if not isinstance(clip["stabilize"], bool):
+            problems.append(f"{where}: stabilize must be true or false")
+        elif clip["stabilize"] and clip.get("freeze") is True:
+            problems.append(f"{where}: a frozen clip is one still frame — nothing to stabilise")
+        elif (clip["stabilize"] and _in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))
+              and _ms(clip["out_s"]) - _ms(clip["in_s"]) > STABILIZE_MAX_S + 1e-9):
+            problems.append(f"{where}: stabilising a range of more than {STABILIZE_MAX_S:g} s is not offered "
+                            "(it decodes the clip twice) — split it")
     for k in ("denoise", "loudnorm"):
         if k in clip and not isinstance(clip[k], bool):
             problems.append(f"{where}: {k} must be true or false")
@@ -1358,8 +1388,9 @@ def normalise(doc: dict) -> dict:
                             del c[k]
                     if "speed_curve" in c:
                         c["speed_curve"] = [{"at": _ms(p["at"]), "speed": _ms(p["speed"])} for p in c["speed_curve"]]
-                    if c.get("interpolate") is False:
-                        del c["interpolate"]
+                    for k in ("interpolate", "stabilize"):
+                        if c.get(k) is False:
+                            del c[k]
                     if "crop" in c:
                         c["crop"] = {k: _ms({**CROP_DEFAULTS, **c["crop"]}[k]) for k in CROP_DEFAULTS}
                         if c["crop"] == CROP_DEFAULTS:
@@ -1581,6 +1612,8 @@ def resolve_assets(doc: dict, resolver: AssetResolver) -> Dict[str, ResolvedAsse
             dur = asset.duration_s
             if asset.kind == ASSET_IMAGE and (clip.get("reverse") or clip.get("freeze")):
                 problems.append(f"{where}: reverse and freeze are for video, not a picture")
+            if asset.kind == ASSET_IMAGE and clip.get("stabilize"):
+                problems.append(f"{where}: stabilize is for video, not a picture")
             if clip.get("freeze"):
                 # A frozen clip only needs its frame to exist; its length is out_s - in_s.
                 if asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["in_s"]) >= _ms(dur):

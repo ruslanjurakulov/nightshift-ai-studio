@@ -417,6 +417,11 @@
           "type": "boolean",
           "default": false,
           "description": "Smoother slow motion by motion-compensated interpolation (slow to render, bounded: INTERP_MAX_FRAMES per clip, INTERP_MAX_FRAMES_DOC per document). Only for a clip that plays below speed 1 somewhere; not with reverse or freeze."
+        },
+        "stabilize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Smooth camera shake (ffmpeg vidstab, two passes, with an automatic zoom to hide the borders; the built-in deshake if the build has no vidstab). Video only; not with freeze. The source range is at most STABILIZE_MAX_S (120 s) and a document's stabilised ranges 300 s in all."
         }
       }
     },
