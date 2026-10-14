@@ -47,6 +47,20 @@ PATTERN_INTERRUPT_INTERVAL = 35  # seconds
 ELEVENLABS_API = "https://api.elevenlabs.io/v1"
 
 
+#: A sound or music cue is a bare name from the script the model wrote. It is looked up as a file
+#: under one folder and nowhere else: a name with a slash or dots ("../../output/<run>/audio/x")
+#: would otherwise open another run's audio and mix it into this one's video.
+_CUE_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def _cue_file(root: Path, name: str, ext: str) -> Path | None:
+    """``root/name.ext``, or None when ``name`` is not a plain cue name."""
+    if not _CUE_NAME.fullmatch(name or ""):
+        logger.warning("Cue name refused (not a plain name): %r", (name or "")[:80])
+        return None
+    return root / f"{name}.{ext}"
+
+
 class VoiceUnavailable(RuntimeError):
     """This channel's narrator cannot speak, and no substitute will be used."""
 
@@ -374,8 +388,8 @@ class AudioMixer:
 
     def _load_sfx(self, name: str) -> AudioSegment | None:
         for ext in ("mp3", "wav", "ogg"):
-            path = SFX_DIR / f"{name}.{ext}"
-            if path.exists():
+            path = _cue_file(SFX_DIR, name, ext)
+            if path is not None and path.exists():
                 return AudioSegment.from_file(path)
         logger.warning("SFX not found: %s", name)
         return None
@@ -415,8 +429,8 @@ class AudioMixer:
 
     def _load_music(self, cue: str) -> AudioSegment | None:
         for ext in ("mp3", "wav"):
-            path = MUSIC_DIR / f"{cue}.{ext}"
-            if path.exists():
+            path = _cue_file(MUSIC_DIR, cue, ext)
+            if path is not None and path.exists():
                 return AudioSegment.from_file(path)
         # fallback: any music file
         files = list(MUSIC_DIR.glob("*.mp3")) + list(MUSIC_DIR.glob("*.wav"))
