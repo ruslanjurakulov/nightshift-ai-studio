@@ -29,6 +29,7 @@ note for text looks).
 | 8 | `claude/render-crop` | V clip `crop` rectangle, free `angle` | PR open (stacked on 7) |
 | 9 | `claude/render-speed-ramp` | V clip `speed_curve` (2-6 points), `interpolate` | PR open (stacked on 8) |
 | 10 | `claude/render-stabilise` | V clip `stabilize` | PR open (stacked on 9) |
+| 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | PR open (on main) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -462,6 +463,92 @@ like `contain` (the picture alone).
   unsteadied).
 * an automatic zoom crops a little of the edges: say so in the product.
 
+## 11. Shapes, stickers and a progress bar (`shapes`)
+
+A drawn sticker is a document entry, not a library file: a top-level `shapes` list beside `overlays`.
+Free (ffmpeg and Pillow only; no provider, no art from anywhere, no migration: a shape has no
+`asset_id`, so `editor_doc_problem` passes it, and no field of a shape may ever be named
+`asset_id`). Absent or empty = today's document and the same commands.
+
+```json
+"shapes": [
+  { "id": "h1", "kind": "arrow", "start_s": 1, "end_s": 4, "x": 0.2, "y": 0.3, "w": 0.2,
+    "dir": "up", "color": "#FF3B30", "opacity": 0.9, "anim_in": "slide-left", "anim_in_s": 0.4 },
+  { "id": "h2", "kind": "pill", "start_s": 0, "end_s": 5, "y": 0.82, "w": 0.32, "text": "Subscribe" },
+  { "id": "h3", "kind": "progress", "start_s": 0, "end_s": 12, "edge": "bottom", "thick": 0.012 }
+]
+```
+
+`kind` is one of `arrow`, `circle`, `rect`, `star`, `pill`, `line`, `progress` (closed list,
+`SHAPE_KINDS` in `lib/editorShapes.ts` / `modules/shape_art.py`; a test pins them). Every shape has
+`id`, `kind`, `start_s`, `end_s` (required) and `color` (`#RRGGBB`, the shared hex pattern; default
+`#FFD60A`), `opacity` (0-1, default 1), `anim_in` / `anim_out` / `anim_in_s` / `anim_out_s` (the
+overlay's lists and rules: no typewriter, in + out inside the time shown). The rest depends on the
+kind, and the validators refuse a field the kind does not take ("`outline` does not apply to a arrow"):
+
+| kind | fields | what it draws |
+|------|--------|---------------|
+| `arrow` | `x` `y` `w` `dir` (`right`/`left`/`up`/`down`, default right) `move` | a block arrow, 2:1 (1:2 up or down) |
+| `circle` | `x` `y` `w` `outline` `move` | a disc, or a ring with `outline` |
+| `rect` | `x` `y` `w` `outline` `aspect` (width / height 0.2-5, default 1.6) `move` | a rectangle, solid or a frame |
+| `star` | `x` `y` `w` `outline` `move` | a five-point star, solid or outlined |
+| `pill` | `x` `y` `w` `outline` `text` (required) `move` | a rounded label with words |
+| `line` | `x` `y` `w` `thick` `move` | an underline with round ends |
+| `progress` | `edge` (`bottom`/`top`, default bottom) `thick` | a bar as wide as the frame |
+
+* **Position and size are the picture overlay's model**: (`x`, `y`) is the CENTRE and `w` (0.05-1) the
+  width, as fractions of the frame; the height follows the kind. The export draws the shape at that
+  size into a PNG (so it is sharp) and lays it with the overlay path: opacity is the same cheap
+  channel multiply, `anim_*` are the same filters, `move` is the same linear move. A shape's
+  height is cut to the overlay filter's box (twice the frame's height): a full-width UP arrow in a
+  16:9 frame is therefore smaller than `w` asks.
+* `outline` (0-0.5 of the shape's shorter side; 0 or absent = solid). On a `pill`, an outline draws
+  the box as a border and the text takes `color`; a solid pill takes a contrasting text colour
+  (black or white by luminance, fixed threshold).
+* `thick` (0.002-0.05) is a fraction of the frame HEIGHT: a line's thickness, the bar's height
+  (made even, at least 2 px; 0.012 of 720 is 8 px). Defaults: line 0.008, bar 0.012.
+* **`pill` text** is at most 24 characters (code points; `SHAPE_TEXT_MAX`), not blank, with no
+  control, format, line-separator or surrogate characters (Unicode categories Cc, Cf, Zl, Zp, Cs: stable across
+  Unicode versions, so both validators agree). It is typed or one of the editor's ready labels
+  ("Subscribe", "New", "Link below", "Part 2", in the person's language). It reaches the export as
+  PIXELS: the worker cleans it with the same `ass_captions.escape_text` the text overlays' words get
+  (braces to parentheses, backslash to slash, white space collapsed), draws it with the bold
+  DejaVu/Liberation font and never writes it into a filter graph or a file name. A missing font is
+  an export error that names the fix (`fonts-dejavu`), never a bitmap fallback. Characters the font
+  does not have (other scripts than Latin and Cyrillic) are drawn as the font's empty box.
+* **The progress bar** takes only `edge` and `thick` (no `x`, `y`, `w`, no move) and a fade as
+  `anim_in` / `anim_out`. It is as wide as the frame and fills from the left across
+  `start_s`..`end_s` by the clock: EMPTY on its first frame, FULL on its last. How: a bar-shaped PNG
+  the width of the frame is laid with `overlay=x='round(W*(clip((t-t0)/d,0,1)-1))'`, so the part
+  inside the frame is `t / length` of its width. (`drawbox` cannot animate its width on the ffmpeg
+  builds the worker may have; `x` of `overlay` is evaluated per frame on all of them.) Measured at
+  30, 24 and 60 fps. If the picture ends before `end_s`, the bar is cut where the picture ends and
+  never gets full: the editor warns ("runs past the end") and offers "Fill the whole video" and "Fill the
+  clip at the playhead".
+* **`move.to`** takes `x`, `y`, `w` only. There is no opacity move on a shape (fade it with
+  `anim_in` / `anim_out`), so shapes never use the per-pixel `geq` opacity path and the
+  `MAX_PARTIAL_OPACITY_MOVES` (2) budget of section 4 is untouched: it counts overlays only.
+* **Limits**: at most 12 shapes (`MAX_SHAPES`), and `overlays` + `shapes` together at most 16
+  (`MAX_OVERLAYS`): each is one more input of the final pass ("overlays and shapes together: at most
+  16"). The editor counts both (`layerCount`, `canAddShape`, and `canAddOverlay` now counts shapes
+  too). A shape never lengthens the timeline (what runs past the picture is cut).
+* **Layering**: shapes are drawn after the pictures (so over them), under the texts and captions;
+  list order is the layering among shapes.
+* **Worker**: `modules/timeline_render._shapes` turns each shape into a `PictureOverlay` carrying a
+  `ShapeArt` (path empty); `render_backend.draw_shapes` writes the PNGs into the render's temp
+  directory and fills the paths in; the rest is `picture_overlay_filters`. The command of a
+  document without shapes is unchanged (the existing digest tests, plus a new one with an empty list,
+  an invisible shape and one after the end).
+* **ffmpeg versions**: every pixel test passes with the bundled static 7.0.2 and with 5.1.1. The
+  only filters used are the overlay path's own (`scale`, `format`, `colorchannelmixer`, `fade`,
+  `tpad`, `overlay`) plus the `x` expression above; nothing in it is version-sensitive that was
+  seen. Pillow is a worker dependency (requirements.txt, `Pillow>=12.3.0`).
+* **Known approximations** (not bugs): the pill's text is anti-aliased and a pill's width comes from
+  the font's real metrics, which the browser cannot know (the preview estimates it from the character
+  count, within about 15% for ordinary words); a star's outline is drawn inset by a fixed factor;
+  at frame sizes where a canvas would pass 24 million pixels while drawing, anti-aliasing is
+  reduced (a full-width circle in a 4K frame has plain edges).
+
 ## Editor controls (track C)
 
 Where a person finds each field in the editor. The controls read their limits
@@ -483,6 +570,7 @@ project keeps exactly its document.
 | `denoise`, `loudnorm` | "Steady picture and clean sound" on a clip (`ClipCleanSection`), "Clean up sound" on a music / sound clip | C3 |
 | clip `stabilize` | toggle in "Steady picture and clean sound", with the cost, the limits and the project's use | C3 |
 | clip `speed_curve`, `interpolate` | "Speed curve" (point rows and a plot), "Smoother slow motion" with its budget | C2 |
+| `shapes` | "Add shape" beside Add overlay and Add text: a picker of seven tiles (radio group, 44 px) and an inspector per kind (`ShapePanel.tsx`) | E |
 
 Preview: look (curve tables as an SVG filter, pinned to
 `samples/clip_look_curves.json`), blur, vignette, turn, mirror, crop, free angle
@@ -555,3 +643,19 @@ lowered to the cap. The editor says exactly what it changed in a polite live reg
 and one Undo returns it; a document that is fine is left alone. Trimming an edge
 re-asks the validator itself (frame counts are taken on the stored float
 difference) and steps in by a millisecond until it is satisfied.
+
+Shapes (track E): the entry is "Add shape"; the picker is a radio group of visual tiles (arrow, circle,
+rectangle, star, label, line, progress bar) with an "Add to video" button, and the inspector's "Shape"
+group changes the kind in place (span, colour and opacity are kept; the new kind's own look starts
+fresh). Per kind: ready colours and a colour box and a typed code (a bad code is said, in a polite
+status, and not taken), start / end and "Start at the playhead", position / size / opacity sliders and
+the arrow keys on the selected frame in the preview (drag too), outline, width-to-height, direction,
+thickness, edge, the label's text with four ready labels (an empty box keeps the last words and
+says so), a move to an end position and entrance / exit (a bar: a fade only). Limits are said where
+they apply (role="status"): the shapes limit, the shared layers with the pictures, and a shape that
+would not show. Every edit is one undo step (a slider drag or a run of arrow presses is one) and
+goes through the same `settleAll`; shapes add no limit that depends on another item (so settle
+has nothing to do for them), and a 400-step fuzz test checks that no edit leaves a document the validators refuse.
+Preview: the same polygons as SVG (close to exact), the progress bar's fill at the playhead, the
+entrance / exit roughly; the note under the preview says the exported file is the reference, and the
+label's width is an estimate.

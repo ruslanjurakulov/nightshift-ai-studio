@@ -31,7 +31,6 @@ import {
   ASPECT_MAX,
   ASPECT_MIN,
   PILL_LABELS,
-  SHAPE_COLOR_DEFAULT,
   SHAPE_KINDS,
   SHAPE_MOVE_KEYS,
   SHAPE_OUTLINE_MAX,
@@ -584,13 +583,38 @@ function ColorField({
   const named = SHAPE_SWATCHES.find((s) => s.hex === value)?.id ?? null;
   return (
     <div className="flex min-w-0 flex-col gap-2" data-testid="shape-color">
-      <RadioChips
-        legend={ts.colorLegend}
-        options={SHAPE_SWATCHES.map((s) => ({ value: s.id, label: ts.swatches[s.id] }))}
-        value={named}
-        onChange={(v) => onChange(SHAPE_SWATCHES.find((s) => s.id === v)?.hex ?? SHAPE_COLOR_DEFAULT)}
-        columns="6rem"
-      />
+      <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0" data-testid="shape-swatches">
+        <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">{ts.colorLegend}</legend>
+        <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(6rem, 1fr))" }}>
+          {SHAPE_SWATCHES.map((sw) => {
+            const on = named === sw.id;
+            return (
+              <label
+                key={sw.id}
+                className="ns-chip min-w-0"
+                style={{ minHeight: "2.75rem" }}
+                data-radio=""
+                data-on={on ? "true" : undefined}
+              >
+                <input
+                  type="radio"
+                  name={`${id}-swatch`}
+                  value={sw.id}
+                  checked={on}
+                  onChange={() => onChange(sw.hex)}
+                  className="sr-only"
+                />
+                <span
+                  aria-hidden
+                  className="size-3.5 shrink-0 rounded-full border border-[var(--color-border)]"
+                  style={{ background: sw.hex }}
+                />
+                <span className="min-w-0 break-words leading-tight">{ts.swatches[sw.id]}</span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
       <div className="flex items-end gap-2">
         <label className="flex min-w-0 flex-col gap-1 text-xs text-[var(--color-muted)]">
           <span className="sr-only">{ts.colorPicker}</span>
@@ -602,7 +626,7 @@ function ColorField({
             className="block h-11 w-14 cursor-pointer rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent p-1"
           />
         </label>
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-[var(--color-muted)]">
+        <label className="flex min-w-0 flex-1 flex-col gap-1 text-left text-xs text-[var(--color-muted)]">
           {ts.colorCode}
           <input
             type="text"
