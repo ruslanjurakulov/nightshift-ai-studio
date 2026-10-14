@@ -80,6 +80,7 @@ jobs:
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
           WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
           # The voice for the speech probes; without it they are skipped.
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
         run: |

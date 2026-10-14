@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Captions as CaptionsIcon, Download, FileUp, Plus, Trash2 } from "lucide-react";
+import { Captions as CaptionsIcon, Download, FileUp, Merge, Plus, Scissors, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { formatTime, type EditorAsset, type EditorModel } from "@/lib/editor";
+import { MAX_CUES, formatTime, type EditorAsset, type EditorModel } from "@/lib/editor";
 import {
+  addCueAfter,
   CAPTION_LANGUAGES,
   CAPTION_PRESETS,
   DEFAULT_PRESET,
@@ -21,12 +22,15 @@ import {
   coerceTrackSummary,
   cueWarnings,
   defaultCaptionLanguage,
+  mergeWithNext,
   playedClips,
   presetMatching,
   recordingProblem,
   removeCue,
+  replaceInCues,
   setCaptionStyle,
   setCaptions,
+  splitCue,
   styleFor,
   updateCue,
   type CaptionJob,
@@ -42,6 +46,7 @@ import {
   apiErrorMessage,
   asCreativeError,
   errorAction,
+  failureReason,
   newIdempotencyKey,
   isActiveStatus,
   type QuoteState,
@@ -103,6 +108,9 @@ function CueRow({
   onText,
   onTimes,
   onDelete,
+  onMerge,
+  onSplit,
+  onAddAfter,
 }: {
   n: number;
   text: string;
@@ -112,8 +120,12 @@ function CueRow({
   onText: (v: string) => void;
   onTimes: (s: number, e: number) => void;
   onDelete: () => void;
+  /** null = this is the last caption, there is nothing to join it with. */
+  onMerge: (() => void) | null;
+  onSplit: () => void;
+  onAddAfter: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
   const tc = t.captions;
   // Typed numbers are committed on blur or Enter: a half-typed "1." must not
   // be clamped into the neighbouring cue while the person is still typing.
@@ -133,6 +145,8 @@ function CueRow({
       setE(String(end));
     }
   };
+  // A row's buttons say which caption they act on (a list of identical "Split" buttons is unusable by ear).
+  const where = (template: string) => fmt(template, { n: String(n), time: formatTime(start) });
   const key = (ev: React.KeyboardEvent) => {
     if (ev.key === "Enter") commit();
   };
@@ -159,7 +173,7 @@ function CueRow({
           }}
           className={`${fieldClass} min-w-0 flex-1 resize-y`}
         />
-        <button type="button" onClick={onDelete} aria-label={tc.deleteCue} className={quietBtn}>
+        <button type="button" onClick={onDelete} aria-label={where(tc.deleteCueN)} className={quietBtn}>
           <Trash2 className="size-3.5" aria-hidden />
         </button>
       </div>
@@ -186,6 +200,22 @@ function CueRow({
             className={fieldClass}
           />
         </label>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={onSplit} aria-label={where(tc.splitCueN)} className={quietBtn}>
+          <Scissors className="size-3.5" aria-hidden />
+          {tc.splitCue}
+        </button>
+        {onMerge ? (
+          <button type="button" onClick={onMerge} aria-label={where(tc.mergeCueN)} className={quietBtn}>
+            <Merge className="size-3.5" aria-hidden />
+            {tc.mergeCue}
+          </button>
+        ) : null}
+        <button type="button" onClick={onAddAfter} aria-label={where(tc.addCueAfterN)} className={quietBtn}>
+          <Plus className="size-3.5" aria-hidden />
+          {tc.addCueAfter}
+        </button>
       </div>
       {warning === "empty" ? (
         <p role="alert" className="m-0 text-xs text-[var(--color-fail)]">
@@ -241,6 +271,7 @@ export function CaptionsPanel({
   model,
   assets,
   models,
+  modelsStatus = "ok",
   pictureEnd,
   onChange,
   preselect = null,
@@ -250,6 +281,12 @@ export function CaptionsPanel({
   model: EditorModel;
   assets: Record<string, EditorAsset>;
   models: readonly CaptionModelOption[];
+  /**
+   * Why `models` may be empty: "ok" = the list was read (empty = no transcription
+   * is set up and priced here), "not_enabled" = the database has no captions yet,
+   * "error" = the list could not be read just now (not the same as "not set up").
+   */
+  modelsStatus?: "ok" | "not_enabled" | "error";
   pictureEnd: number;
   /** `group`: the changes of one gesture (a slider drag) are one undo step. */
   onChange: (next: EditorModel, group?: string) => void;
@@ -293,6 +330,8 @@ export function CaptionsPanel({
   const [cueNotice, setCueNotice] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [shown, setShown] = useState(CUES_SHOWN);
+  const [find, setFind] = useState("");
+  const [replacement, setReplacement] = useState("");
 
   const chosen = models.find((m) => m.id === modelId) ?? models[0] ?? null;
   // A language the picked model was not proven for is not offered: back to "detect it".
@@ -536,6 +575,27 @@ export function CaptionsPanel({
     if (current) onChange(setCaptionStyle(model, styleFor(id, model.width, model.height)));
   }
 
+  function addAfter(afterId: string | null) {
+    // Unchanged for two reasons: the project holds as many captions as it may, or there is no time.
+    if (cues.length >= MAX_CUES) {
+      setCueNotice(tc.cueLimit);
+      return;
+    }
+    const next = addCueAfter(model, afterId, pictureEnd);
+    if (next === model) setCueNotice(tc.noRoomForCue);
+    else {
+      setCueNotice(null);
+      onChange(next);
+    }
+  }
+
+  function replaceAll() {
+    const out = replaceInCues(model, find, replacement);
+    const left = out.skipped ? ` ${fmt(tc.replaceSkipped, { n: out.skipped })}` : "";
+    setCueNotice(out.changed ? `${fmt(tc.replaced, { n: out.changed })}${left}` : out.skipped ? fmt(tc.replaceSkipped, { n: out.skipped }) : tc.nothingToReplace);
+    if (out.changed) onChange(out.model);
+  }
+
   // ── typed and imported captions (free, local) ───────────────────────────────
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -590,7 +650,8 @@ export function CaptionsPanel({
         ? "ready"
         : "failed"
     : null;
-  const failReason = job && status === "failed" ? t.gen.reasons[(job.errorCode === "no_speech" ? "no_speech" : "generic")] : null;
+  // The same plain sentences the Studio uses: a refused recording, a busy service and "no speech" read differently.
+  const failReason = job && status === "failed" ? failureReason(t, { status: job.status, error_code: job.errorCode }) : null;
   const priceLabel =
     quote.status === "quoting"
       ? tc.quoting
@@ -627,7 +688,9 @@ export function CaptionsPanel({
       ) : null}
 
       {models.length === 0 ? (
-        <p className="m-0 text-sm text-[var(--color-muted)]">{tc.noModels}</p>
+        <p role={modelsStatus === "error" ? "alert" : undefined} className="m-0 text-sm text-[var(--color-muted)]">
+          {modelsStatus === "not_enabled" ? tc.notEnabled : modelsStatus === "error" ? tc.modelsError : tc.noModels}
+        </p>
       ) : recordings.length === 0 ? (
         <p className="m-0 text-sm text-[var(--color-muted)]">{tc.noRecordings}</p>
       ) : (
@@ -873,9 +936,54 @@ export function CaptionsPanel({
                   onText={(v) => onChange(updateCue(model, c.id, { text: v }))}
                   onTimes={(s, e) => onChange(updateCue(model, c.id, { start_s: s, end_s: e }))}
                   onDelete={() => onChange(removeCue(model, c.id))}
+                  onMerge={
+                    i + 1 < cues.length
+                      ? () => {
+                          const next = mergeWithNext(model, c.id);
+                          // The only refusal here is length: the two together would not fit one caption.
+                          if (next === model) setCueNotice(tc.cannotJoin);
+                          else onChange(next);
+                        }
+                      : null
+                  }
+                  onSplit={() => {
+                    if (cues.length >= MAX_CUES) {
+                      setCueNotice(tc.cueLimit);
+                      return;
+                    }
+                    const next = splitCue(model, c.id);
+                    if (next === model) setCueNotice(tc.cannotSplit);
+                    else onChange(next);
+                  }}
+                  onAddAfter={() => addAfter(c.id)}
                 />
               ))}
             </ul>
+            <div className="flex flex-col gap-1.5">
+              <h3 className="m-0 text-sm font-semibold">{tc.replaceHeading}</h3>
+              <p className="m-0 text-xs text-[var(--color-muted)]">{tc.replaceNote}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  value={find}
+                  onChange={(ev) => setFind(ev.target.value)}
+                  maxLength={100}
+                  aria-label={tc.findLabel}
+                  placeholder={tc.findLabel}
+                  className={fieldClass}
+                />
+                <input
+                  value={replacement}
+                  onChange={(ev) => setReplacement(ev.target.value)}
+                  maxLength={100}
+                  aria-label={tc.replaceLabel}
+                  placeholder={tc.replaceLabel}
+                  className={fieldClass}
+                />
+              </div>
+              <button type="button" onClick={replaceAll} disabled={!find.trim()} className={`${quietBtn} self-start`}>
+                {tc.replaceAll}
+              </button>
+            </div>
             {cues.length > shown ? (
               <button type="button" onClick={() => setShown((n) => n + CUES_SHOWN)} className={`${quietBtn} self-start`}>
                 +{Math.min(CUES_SHOWN, cues.length - shown)}

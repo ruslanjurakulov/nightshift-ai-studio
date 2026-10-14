@@ -21,6 +21,7 @@ import {
   MAX_CUE_S,
   MIN_CUE_S,
   PAUSE_S,
+  addCueAfter,
   buildSrt,
   buildVtt,
   captionFileName,
@@ -36,13 +37,16 @@ import {
   cuesAt,
   defaultCaptionLanguage,
   lineLimit,
+  mergeWithNext,
   playedClips,
   presetMatching,
   recordingProblem,
   removeCue,
+  replaceInCues,
   segmentWords,
   setCaptionStyle,
   setCaptions,
+  splitCue,
   srtTime,
   styleFor,
   updateCue,
@@ -649,5 +653,101 @@ describe("the copy", () => {
       expect(failureReason(d, { status: "failed", error_code: "no_speech" })).toBe(d.gen.reasons.no_speech);
       expect(failureReason(d, { status: "failed", error_code: "too_many_words" })).toBe(d.gen.reasons.bad_request);
     }
+  });
+});
+
+describe("fixing mistakes in the captions (free, local)", () => {
+  const cues: Cue[] = [
+    { id: "cap1", start_s: 1, end_s: 3, text: "Hello Jon and welcome" },
+    { id: "cap2", start_s: 3.5, end_s: 5, text: "jon is here today" },
+  ];
+  const withCues = () => setCaptions(model(), { style: styleFor("classic", 1080, 1920), cues });
+  const idsOf = (m: EditorModel) => captionsOf(m)!.cues.map((c) => c.id);
+
+  it("adds an empty caption after a cue, inside the gap, and flags it until it has words", () => {
+    const m = addCueAfter(withCues(), "cap1", 60);
+    const out = captionsOf(m)!.cues;
+    expect(out).toHaveLength(3);
+    expect(out[1]).toMatchObject({ start_s: 3, end_s: 3.5, text: "" });
+    expect(cueWarnings(out)[out[1].id]).toBe("empty");
+    expect(new Set(out.map((c) => c.id)).size).toBe(3);
+  });
+
+  it("adds after the last cue up to two seconds, never past the picture, and into an empty list too", () => {
+    expect(captionsOf(addCueAfter(withCues(), null, 60))!.cues[2]).toMatchObject({ start_s: 5, end_s: 7 });
+    expect(captionsOf(addCueAfter(withCues(), null, 5.5))!.cues[2]).toMatchObject({ start_s: 5, end_s: 5.5 });
+    expect(captionsOf(addCueAfter(model(), null, 60))!.cues).toEqual([expect.objectContaining({ start_s: 0, end_s: 2, text: "" })]);
+  });
+
+  it("makes no cue where there is no room, or for an unknown cue", () => {
+    const m = withCues();
+    expect(addCueAfter(m, "cap1", 3.1)).toBe(m);
+    expect(addCueAfter(m, "nope", 60)).toBe(m);
+  });
+
+  it("editing the words keeps the animated style the person chose", () => {
+    const style = { ...styleFor("classic", 1080, 1920), preset: "karaoke", highlight_color: "#FFE600" } as never;
+    const m = setCaptions(model(), { style, cues });
+    for (const next of [splitCue(m, "cap1"), mergeWithNext(m, "cap1"), addCueAfter(m, "cap1", 60), replaceInCues(m, "jon", "John").model]) {
+      expect(captionsOf(next)!.style).toMatchObject({ preset: "karaoke", highlight_color: "#FFE600" });
+    }
+  });
+
+  it("every edit leaves a document the renderer accepts", () => {
+    let m = addCueAfter(withCues(), "cap2", 60);
+    m = splitCue(m, "cap1");
+    m = mergeWithNext(m, "cap2");
+    expect(validateTimeline(toDoc(updateCue(m, idsOf(m)[idsOf(m).length - 1], { text: "end" })))).toEqual([]);
+  });
+
+  it("joins a cue with the next: both texts, first start to second end", () => {
+    const out = captionsOf(mergeWithNext(withCues(), "cap1"))!.cues;
+    expect(out).toEqual([{ id: "cap1", start_s: 1, end_s: 5, text: "Hello Jon and welcome jon is here today" }]);
+  });
+
+  it("does not join the last cue, an unknown one, or a pair whose text would be too long", () => {
+    const m = withCues();
+    expect(mergeWithNext(m, "cap2")).toBe(m);
+    expect(mergeWithNext(m, "nope")).toBe(m);
+    const long = setCaptions(model(), {
+      style: styleFor("classic", 1080, 1920),
+      cues: [{ id: "a", start_s: 0, end_s: 1, text: "x".repeat(300) }, { id: "b", start_s: 1, end_s: 2, text: "y".repeat(300) }],
+    });
+    expect(mergeWithNext(long, "a")).toBe(long);
+  });
+
+  it("splits a cue at the word nearest its middle, the time in the same proportion, with a fresh id", () => {
+    const out = captionsOf(splitCue(withCues(), "cap1"))!.cues;
+    expect(out).toHaveLength(3);
+    expect(out[0].text + " " + out[1].text).toBe("Hello Jon and welcome");
+    expect(out[0].end_s).toBe(out[1].start_s);
+    expect([out[0].start_s, out[1].end_s]).toEqual([1, 3]);
+    expect(new Set(out.map((c) => c.id)).size).toBe(3);
+    // Never backwards, never overlapping.
+    expect(out.every((c, i) => c.end_s > c.start_s && (i === 0 || c.start_s >= out[i - 1].end_s))).toBe(true);
+  });
+
+  it("does not split a one-word cue or a cue too short to give both halves a visible time", () => {
+    const one = setCaptions(model(), { style: styleFor("classic", 1080, 1920), cues: [{ id: "a", start_s: 0, end_s: 3, text: "Hello" }] });
+    expect(splitCue(one, "a")).toBe(one);
+    const brief = setCaptions(model(), { style: styleFor("classic", 1080, 1920), cues: [{ id: "a", start_s: 0, end_s: 0.3, text: "two words" }] });
+    expect(splitCue(brief, "a")).toBe(brief);
+  });
+
+  it("replaces a word everywhere as plain text, ignoring letter case, and counts the cues changed", () => {
+    const { model: m, changed } = replaceInCues(withCues(), "jon", "John $& (x)");
+    expect(changed).toBe(2);
+    expect(captionsOf(m)!.cues.map((c) => c.text)).toEqual(["Hello John $& (x) and welcome", "John $& (x) is here today"]);
+    // A pattern character is text, not a pattern.
+    expect(replaceInCues(withCues(), ".*", "x").changed).toBe(0);
+    expect(replaceInCues(withCues(), "  ", "x").changed).toBe(0);
+    const none = withCues();
+    expect(replaceInCues(none, "zzz", "x").model).toBe(none);
+  });
+
+  it("does not replace into a cue that would then be longer than a caption may be", () => {
+    const m = setCaptions(model(), { style: styleFor("classic", 1080, 1920), cues: [{ id: "a", start_s: 0, end_s: 1, text: "ab ".repeat(100) }] });
+    const out = replaceInCues(m, "ab", "x".repeat(40));
+    expect([out.changed, out.skipped]).toEqual([0, 1]);
   });
 });

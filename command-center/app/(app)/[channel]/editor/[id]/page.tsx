@@ -70,6 +70,10 @@ export default async function EditorProjectPage({
     displayName: m.displayName,
     languages: m.spec.languages,
   }));
+  // "not set up" (no priced, proven model) is a different message from "the
+  // database has no captions yet" and from "could not be read just now".
+  const captionModelsStatus =
+    sellable.status === "ok" ? "ok" : sellable.status === "not_enabled" ? "not_enabled" : "error";
   const p = project.value;
   // Keys the local draft: a draft is only ever offered to the member who wrote it.
   const user = await getUser();
@@ -89,6 +93,7 @@ export default async function EditorProjectPage({
         imageFiles={images.state === "ok" ? images.value : []}
         orgId={p.orgId}
         captionModels={captionModels}
+        captionModelsStatus={captionModelsStatus}
         userId={user?.id ?? ""}
         aiTools={aiTools}
         offerAssetId={parseIdParam(q.add)}
