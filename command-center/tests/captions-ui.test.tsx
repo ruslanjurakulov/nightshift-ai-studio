@@ -82,11 +82,13 @@ let seen: EditorModel | null;
 function Host({
   model: initial = baseModel(),
   models = [SCRIBE],
+  modelsStatus = "ok",
   assets = { [A]: asset(A) },
   locale = "en",
 }: {
   model?: EditorModel;
   models?: CaptionModelOption[];
+  modelsStatus?: "ok" | "not_enabled" | "error";
   assets?: Record<string, EditorAsset>;
   locale?: "en" | "ru" | "uz";
 }) {
@@ -94,7 +96,7 @@ function Host({
   seen = model;
   return (
     <I18nProvider locale={locale}>
-      <CaptionsPanel orgId={ORG} projectTitle="My talk" model={model} assets={assets} models={models} pictureEnd={95} onChange={setModel} />
+      <CaptionsPanel orgId={ORG} projectTitle="My talk" model={model} assets={assets} models={models} modelsStatus={modelsStatus} pictureEnd={95} onChange={setModel} />
     </I18nProvider>
   );
 }
@@ -120,6 +122,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+/** A per-caption button's name has the caption's number and time in it: match the template with both left open. */
+const labelRe = (template: string) =>
+  new RegExp("^" + template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\\{n\\}", "\\d+").replace("\\{time\\}", ".+") + "$");
 
 const makeBtn = (n: number | null) =>
   screen.getByRole("button", { name: n === null ? tc.make : fmt(tc.makePriced, { n: String(n) }) });
@@ -230,6 +236,19 @@ describe("what blocks it", () => {
     expect(calls("POST", "/api/creative/quote")).toHaveLength(0);
   });
 
+  it("tells 'not set up and priced' from 'not enabled in the database' from 'could not be read just now'", () => {
+    routes.push(noTracks, noJobs);
+    const { rerender } = render(<Host models={[]} modelsStatus="not_enabled" />);
+    expect(screen.getByText(tc.notEnabled)).toBeTruthy();
+    expect(screen.queryByText(tc.noModels)).toBeNull();
+    cleanup();
+    render(<Host models={[]} modelsStatus="error" />);
+    expect(screen.getByRole("alert").textContent).toBe(tc.modelsError);
+    expect(screen.queryByText(tc.noModels)).toBeNull();
+    expect(calls("POST", "/api/creative/quote")).toHaveLength(0);
+    void rerender;
+  });
+
   it("without a recording on the timeline it says what to add, and asks nothing", () => {
     routes.push(noTracks, noJobs);
     render(<Host model={baseModel({ clips: [] })} />);
@@ -301,6 +320,25 @@ describe("a job on its way", () => {
     // And it can be tried again.
     await waitFor(() => expect(makeBtn(6.2)).toHaveProperty("disabled", false));
   }, 12000);
+
+  it("a refused recording or a busy service reads differently from 'no speech', not one vague sentence", async () => {
+    for (const [code, reason] of [["bad_request", t.gen.reasons.bad_request], ["unavailable", t.gen.reasons.busy], ["auth", t.gen.reasons.service]] as const) {
+      routes.length = 0;
+      fetchMock.mockClear();
+      routes.push(
+        quoteOk(6.2),
+        noTracks,
+        (url) => (url.startsWith("/api/creative/jobs?") ? json({ jobs: [{ id: JOB, capability: "captions", status: "queued", params: { source_asset_id: A }, quoted_credits: 6.2 }] }) : undefined),
+        (url) =>
+          url.endsWith(`/api/creative/jobs/${JOB}`)
+            ? json({ job: { id: JOB, capability: "captions", status: "failed", params: { source_asset_id: A }, error_code: code, quoted_credits: 6.2 } })
+            : undefined,
+      );
+      render(<Host />);
+      await waitFor(() => expect(screen.getByText(new RegExp(reason))).toBeTruthy(), { timeout: 8000 });
+      cleanup();
+    }
+  }, 30000);
 
   it("a job of another recording is not picked up", async () => {
     routes.push(
@@ -445,11 +483,80 @@ describe("a transcript, then captions on the video (free)", () => {
     fireEvent.change(box, { target: { value: "  " } });
     fireEvent.blur(box);
     expect(screen.getByText(tc.cueEmpty)).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("button", { name: tc.deleteCue })[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.deleteCueN) })[1]);
     expect(captionsOf(seen!)!.cues).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: tc.clear }));
     expect(seen!.captions).toBeUndefined();
     expect(screen.getByText(tc.noCues)).toBeTruthy();
+  });
+
+  it("fixes mistakes: add, split, join and replace a word everywhere, all free and local", async () => {
+    withTrack();
+    render(<Host />);
+    fireEvent.click(await screen.findByRole("button", { name: tc.useTranscript }));
+    await waitFor(() => expect(screen.getByRole("button", { name: tc.put })).toHaveProperty("disabled", false));
+    fireEvent.click(screen.getByRole("button", { name: tc.put }));
+    const before = captionsOf(seen!)!.cues;
+    expect(before.length).toBeGreaterThanOrEqual(2);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.mergeCueN) })[0]);
+    expect(captionsOf(seen!)!.cues).toHaveLength(before.length - 1);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.splitCueN) })[0]);
+    expect(captionsOf(seen!)!.cues).toHaveLength(before.length);
+    // Right after a split there is no gap to add into: said, not silently ignored.
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.addCueAfterN) })[0]);
+    expect(captionsOf(seen!)!.cues).toHaveLength(before.length);
+    expect(screen.getByText(tc.noRoomForCue)).toBeTruthy();
+    const adds = screen.getAllByRole("button", { name: labelRe(tc.addCueAfterN) });
+    fireEvent.click(adds[adds.length - 1]);
+    expect(captionsOf(seen!)!.cues).toHaveLength(before.length + 1);
+    fireEvent.change(screen.getByLabelText(tc.findLabel), { target: { value: "SALOM" } });
+    fireEvent.change(screen.getByLabelText(tc.replaceLabel), { target: { value: "Assalom" } });
+    fireEvent.click(screen.getByRole("button", { name: tc.replaceAll }));
+    expect(captionsOf(seen!)!.cues.some((c) => c.text.includes("Assalom"))).toBe(true);
+    expect(screen.getByText(fmt(tc.replaced, { n: 1 }))).toBeTruthy();
+    // The empty caption just added is flagged until it has words; with them the document is valid.
+    expect(validateTimeline(toDoc(seen!))).not.toEqual([]);
+    const emptyAt = captionsOf(seen!)!.cues.findIndex((c) => !c.text.trim());
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.deleteCueN) })[emptyAt]);
+    expect(validateTimeline(toDoc(seen!))).toEqual([]);
+    expect(calls("POST", "/api/creative/jobs")).toHaveLength(0);
+  });
+
+  it("each caption's buttons say which caption they act on, by number and time", async () => {
+    withTrack();
+    render(<Host />);
+    fireEvent.click(await screen.findByRole("button", { name: tc.useTranscript }));
+    await waitFor(() => expect(screen.getByRole("button", { name: tc.put })).toHaveProperty("disabled", false));
+    fireEvent.click(screen.getByRole("button", { name: tc.put }));
+    expect(screen.getByRole("button", { name: fmt(tc.splitCueN, { n: "1", time: "0:00.5" }) })).toBeTruthy();
+    expect(screen.getByRole("button", { name: fmt(tc.deleteCueN, { n: "2", time: "0:03.0" }) })).toBeTruthy();
+  });
+
+  it("says why a join is refused (too long together) and how many replacements were skipped for length", async () => {
+    const long = { id: "a", start_s: 0, end_s: 1, text: "x ".repeat(130).trim() };
+    const model = baseModel({
+      captions: { style: { font: "DejaVu Sans", size: 56, color: "#FFFFFF", outline_color: "#000000", outline_width: 3, bold: true, y: 0.9 }, cues: [long, { ...long, id: "b", start_s: 1, end_s: 2 }] },
+    });
+    routes.push(noTracks, noJobs, quoteOk(1));
+    render(<Host model={model} />);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.mergeCueN) })[0]);
+    expect(screen.getByText(tc.cannotJoin)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(tc.findLabel), { target: { value: "x" } });
+    fireEvent.change(screen.getByLabelText(tc.replaceLabel), { target: { value: "y".repeat(50) } });
+    fireEvent.click(screen.getByRole("button", { name: tc.replaceAll }));
+    expect(screen.getByText(fmt(tc.replaceSkipped, { n: 2 }))).toBeTruthy();
+  });
+
+  it("with no captions yet, ONE 'Add a caption' button adds a typed caption, beside the per-caption controls", async () => {
+    routes.push(noTracks, noJobs, quoteOk(1));
+    render(<Host />);
+    expect(screen.getAllByRole("button", { name: tc.addCue })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: tc.addCue }));
+    expect(captionsOf(seen!)!.cues).toEqual([expect.objectContaining({ start_s: 0, end_s: 2, text: tc.newCueText })]);
+    // Then a row has the editing controls, and its own "add after" is a different, named button.
+    expect(screen.getAllByRole("button", { name: tc.addCue })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: labelRe(tc.addCueAfterN) })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: labelRe(tc.splitCueN) })).toBeTruthy();
   });
 
   it("a recording none of whose sound is heard has nothing to caption, and says so", async () => {

@@ -25,8 +25,9 @@ export const DESK_TOOLS: Record<MediaDesk, readonly StudioCapability[]> = {
   video: ["t2v", "i2v"],
   // Make a picture, change one, or read one back as words.
   image: ["t2i", "edit", "describe"],
-  // Make what exists bigger or cleaner: picture upscale, cut-out, video upscale.
-  enhance: ["upscale", "remove_bg", "video_upscale"],
+  // Make what exists bigger or cleaner: picture upscale, cut-out, video upscale; and
+  // change a picture with AI (0099): extend it to another shape, change its light, erase one object.
+  enhance: ["upscale", "remove_bg", "video_upscale", "expand", "relight", "erase"],
   // Speech from words, a new voice on a recording, a dub.
   voice: ["tts", "voice_change", "dub"],
 };

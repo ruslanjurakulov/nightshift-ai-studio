@@ -895,6 +895,9 @@ option {
   --tool-dub: var(--ns-key);
   --tool-describe: var(--ns-key);
   --tool-video_upscale: var(--ns-key);
+  --tool-expand: var(--ns-key);
+  --tool-relight: var(--ns-key);
+  --tool-erase: var(--ns-key);
 }
 
 .shell-sidebar {

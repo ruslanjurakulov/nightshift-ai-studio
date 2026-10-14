@@ -13,6 +13,8 @@ import { formatDuration, formatMediaBytes, type LibraryAsset } from "@/lib/media
 import { stepIndex } from "./libraryView";
 import { KIND_ICON } from "./kindIcon";
 import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
+import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
+import { isImproveKind } from "@/lib/creative/improve";
 
 /** Keys inside these keep their own meaning (a video's arrows seek, a field's arrows move the caret). */
 function ownsArrows(target: EventTarget | null): boolean {
@@ -48,6 +50,7 @@ export function MediaViewer({
   opener,
   folderName,
   orgId,
+  aiTools = null,
 }: {
   items: readonly LibraryAsset[];
   index: number;
@@ -60,6 +63,8 @@ export function MediaViewer({
   folderName?: (id: string | null | undefined) => string | null;
   /** The organization the files belong to: when given, a video, picture or sound can be sent to the editor. */
   orgId?: string;
+  /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives "Improve with AI". */
+  aiTools?: readonly string[] | null;
 }) {
   const { t } = useI18n();
   const dayTime = useDayTime();
@@ -71,10 +76,12 @@ export function MediaViewer({
   const [confirm, setConfirm] = useState(false);
   // While the "open in editor" dialog is up it owns Escape and Tab.
   const [sending, setSending] = useState(false);
+  // Same for the "Improve with AI" dialog.
+  const [improving, setImproving] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
   const asset = items[index];
 
-  useOverlay(!sending, { onClose, container: box, opener });
+  useOverlay(!sending && !improving, { onClose, container: box, opener });
 
   // A new file never inherits the last one's "delete?" question. And if the
   // arrow button that brought us here just disabled itself (first or last
@@ -269,6 +276,17 @@ export function MediaViewer({
             )}
 
             <div className="flex flex-col gap-2">
+              {isImproveKind(asset.kind) && (
+                <ImproveWithAi
+                  key={asset.id}
+                  assetId={asset.id}
+                  kind={asset.kind}
+                  name={asset.name}
+                  available={aiTools}
+                  orgId={orgId}
+                  onOpenChange={setImproving}
+                />
+              )}
               {orgId && isSendKind(asset.kind) && (
                 <SendToEditor key={asset.id} orgId={orgId} assetId={asset.id} kind={asset.kind} name={asset.name} onOpenChange={setSending} />
               )}
