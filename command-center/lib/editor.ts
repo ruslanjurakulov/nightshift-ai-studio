@@ -908,6 +908,8 @@ function validateMediaClip(
       fps &&
       isInt(frame[0]) &&
       isInt(frame[1]) &&
+      frame[0] > 0 &&
+      frame[1] > 0 &&
       rangeFrames(ms(outs) - ms(ins), fps) > reverseMaxFrames(frame[0], frame[1])
     )
       problems.push(

@@ -730,6 +730,7 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
         elif (clip.get("reverse") is True and fps and _is_int(frame[0]) and _is_int(frame[1])
+              and frame[0] > 0 and frame[1] > 0      # a zero size is the frame's own problem, not a division
               and _range_frames(_ms(outs) - _ms(ins), fps) > reverse_max_frames(frame[0], frame[1])):
             problems.append(f"{where}: reverse holds every frame of the range in memory — at "
                             f"{frame[0]}x{frame[1]} and {fps} fps at most "
@@ -873,8 +874,7 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     # An animation on one side and a plain fade on the other: the fade becomes an animation too, so a
     # long entrance would be cut short by the exit that starts at end_s - fade_out_s.
     if ("anim_in" in clip) != ("anim_out" in clip):
-        mixed = [clip.get("anim_in_s", ANIM_DEFAULT_S) if k == "anim_in" else clip.get(k + "_s", 0)
-                 for k in ("anim_in", "anim_out") if k in clip]
+        mixed = [clip.get(k + "_s", ANIM_DEFAULT_S) for k in ("anim_in", "anim_out") if k in clip]
         side = "fade_out_s" if "anim_in" in clip else "fade_in_s"
         other = clip.get(side, 0)
         if (all(_is_num(v) for v in (s, e, other, *mixed)) and e > s and other > 0
