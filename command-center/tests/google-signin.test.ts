@@ -138,3 +138,12 @@ describe("Google sign-in copy", () => {
     expect(siteEn.auth.google.button).toBe("Continue with Google");
   });
 });
+
+describe("googleEnabledFromSettings", () => {
+  it("is true only for external.google === true", async () => {
+    const { googleEnabledFromSettings: f } = await import("@/lib/google-signin");
+    expect(f({ external: { google: true } })).toBe(true);
+    for (const v of [null, undefined, {}, { external: {} }, { external: { google: false } }, { external: { google: "true" } }, { external: { google: 1 } }, "x"])
+      expect(f(v)).toBe(false);
+  });
+});

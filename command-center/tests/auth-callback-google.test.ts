@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   join: vi.fn(async () => undefined),
   jar: new Map<string, string>(),
   expired: [] as string[],
+  written: [] as string[],
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -19,6 +20,7 @@ vi.mock("next/headers", () => ({
     get: (name: string) => (h.jar.has(name) ? { name, value: h.jar.get(name)! } : undefined),
     getAll: () => [...h.jar].map(([name, value]) => ({ name, value })),
     set: (name: string, _value: string, opts?: { maxAge?: number }) => {
+      if (opts?.maxAge !== 0) h.written.push(name);
       if (opts?.maxAge === 0) {
         h.jar.delete(name);
         h.expired.push(name);
@@ -49,6 +51,7 @@ beforeEach(() => {
   h.join.mockClear();
   h.jar.clear();
   h.expired.length = 0;
+  h.written.length = 0;
   // What the code exchange just wrote (chunked, as @supabase/ssr does), a PKCE leftover and an unrelated cookie.
   h.jar.set("sb-proj-auth-token.0", "a");
   h.jar.set("sb-proj-auth-token.1", "b");
@@ -100,6 +103,38 @@ describe("/auth/callback after Continue with Google", () => {
   it("an off-site next falls back to /welcome after Google", async () => {
     h.exchange.mockResolvedValue(session(true));
     expect(await land("?code=c1&provider=google&next=https%3A%2F%2Fevil.example")).toBe("/welcome");
+  });
+
+  describe("with password recovery (#418): the gate comes first", () => {
+    it("a refused Google session is never turned into a recovery session, whatever the exchange says", async () => {
+      const bad = session(false);
+      (bad.data as Record<string, unknown>).redirectType = "PASSWORD_RECOVERY";
+      h.exchange.mockResolvedValue(bad);
+      expect(await land("?code=c1&provider=google&next=%2Freset-password")).toBe("/login?error=google_unverified");
+      expect(h.written).toEqual([]);
+      expect(h.signOut).toHaveBeenCalled();
+    });
+
+    it("a Google attempt that fails with next=/reset-password goes to /login, not to the reset-link page", async () => {
+      expect(await land("?provider=google&error=access_denied&next=%2Freset-password")).toBe("/login?error=google_denied");
+      h.exchange.mockResolvedValue({ data: { user: null }, error: { code: "x" } });
+      expect(await land("?code=c1&provider=google&next=%2Freset-password")).toBe("/login?error=google_failed");
+    });
+
+    it("an ordinary recovery link is untouched: marker cookie set, sent to /reset-password", async () => {
+      h.exchange.mockResolvedValue({
+        data: { redirectType: "PASSWORD_RECOVERY", user: { id: "u1", email_confirmed_at: "2026-10-11T10:00:00Z", identities: [{ provider: "email" }] } },
+        error: null,
+      });
+      expect(await land("?code=c1&next=%2Freset-password")).toBe("/reset-password");
+      expect(h.written).toHaveLength(1);
+      expect(h.join).not.toHaveBeenCalled();
+    });
+
+    it("a failed ordinary reset link still goes to /forgot-password", async () => {
+      h.exchange.mockResolvedValue({ data: { user: null }, error: { code: "flow_state_not_found" } });
+      expect(await land("?code=c1&next=%2Freset-password")).toMatch(/^\/forgot-password\?s=/);
+    });
   });
 
   describe("a denied session is always dropped from this browser", () => {

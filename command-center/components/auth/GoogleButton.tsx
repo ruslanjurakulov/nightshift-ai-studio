@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/config";
+import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert } from "@/components/auth/AuthShell";
-import { GOOGLE_PROVIDER, googleRedirectTo, isGoogleError, type GoogleError } from "@/lib/google-signin";
+import { GOOGLE_PROVIDER, googleRedirectTo, isGoogleEnabled, isGoogleError, type GoogleError } from "@/lib/google-signin";
 import { DEFAULT_AFTER_AUTH } from "@/lib/safe-redirect";
 import "@/components/auth/google-button.css";
 
@@ -45,6 +45,10 @@ function GoogleG() {
  * failed attempt comes back as /login?error=<fixed code> and is shown here
  * from the closed set in lib/google-signin.ts, never from the URL's text.
  *
+ * The button is rendered only when Supabase reports the Google provider as
+ * enabled (isGoogleEnabled); until the owner switches it on, the page is the
+ * plain email form. A failure that comes back in the URL is still explained.
+ *
  * On /signup the line under the button carries the same consent the form's
  * checkbox does, because this button creates an account without that form.
  */
@@ -53,6 +57,18 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
   const g = t.site.auth.google;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<GoogleError | null>(null);
+  // Shown only once Supabase says the Google provider is on (lib/google-signin.ts).
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void isGoogleEnabled(SUPABASE_URL, SUPABASE_ANON_KEY).then((on) => {
+      if (live) setEnabled(on);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("error");
@@ -103,36 +119,43 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
   const link =
     "-my-[14px] inline-block min-w-11 py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--st-act-ink)]";
 
+  // Provider not (yet) enabled and nothing to report: the page is the plain email form.
+  if (!enabled && !failed) return null;
+
   return (
     <div className="ns-google mt-8">
       {failed && <AuthAlert tone="fail">{messages[failed]}</AuthAlert>}
-      <button
-        type="button"
-        className="ns-google-btn"
-        onClick={onClick}
-        disabled={!isSupabaseConfigured}
-        aria-busy={busy || undefined}
-      >
-        {/* The mark and the spinner share one 18px box, so pressing the button moves nothing. */}
-        {busy ? <span className="ns-google-spin" aria-hidden="true" /> : <GoogleG />}
-        <span>{g.button}</span>
-      </button>
-      {mode === "signup" && (
-        <p className="ns-google-consent">
-          {g.consentPre}{" "}
-          <Link href="/terms" target="_blank" className={link}>
-            {g.terms}
-          </Link>{" "}
-          {g.consentAnd}{" "}
-          <Link href="/privacy" target="_blank" className={link}>
-            {g.privacy}
-          </Link>
-          {g.consentPost}
-        </p>
+      {enabled && (
+        <>
+          <button
+            type="button"
+            className="ns-google-btn"
+            onClick={onClick}
+            disabled={!isSupabaseConfigured}
+            aria-busy={busy || undefined}
+          >
+            {/* The mark and the spinner share one 18px box, so pressing the button moves nothing. */}
+            {busy ? <span className="ns-google-spin" aria-hidden="true" /> : <GoogleG />}
+            <span>{g.button}</span>
+          </button>
+          {mode === "signup" && (
+            <p className="ns-google-consent">
+              {g.consentPre}{" "}
+              <Link href="/terms" target="_blank" className={link}>
+                {g.terms}
+              </Link>{" "}
+              {g.consentAnd}{" "}
+              <Link href="/privacy" target="_blank" className={link}>
+                {g.privacy}
+              </Link>
+              {g.consentPost}
+            </p>
+          )}
+          <div className="ns-google-or" aria-hidden="true">
+            <span>{g.or}</span>
+          </div>
+        </>
       )}
-      <div className="ns-google-or" aria-hidden="true">
-        <span>{g.or}</span>
-      </div>
     </div>
   );
 }

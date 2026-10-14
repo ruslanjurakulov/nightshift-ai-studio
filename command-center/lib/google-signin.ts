@@ -104,3 +104,35 @@ export function googleGate(user: GoogleUserLike | null | undefined, fromGoogle: 
   if (!user.email_confirmed_at) return "google_unverified";
   return null;
 }
+
+/**
+ * Is the Google provider switched on in this Supabase project?
+ *
+ * Supabase publishes which sign-in providers are enabled at
+ * GET <project>/auth/v1/settings (public; it needs only the anon key the app
+ * already ships). The button asks once and is shown only when the answer is a
+ * clear `external.google === true`: an unconfigured project, a network error or
+ * an odd answer all mean "no", so the page never offers a sign-in that cannot
+ * work. Nothing about the answer is shown; the owner enables the provider in the
+ * Supabase Dashboard and the button appears without a deploy.
+ */
+export function googleEnabledFromSettings(body: unknown): boolean {
+  const external = (body as { external?: { google?: unknown } } | null)?.external;
+  return external?.google === true;
+}
+
+let enabledCache: Promise<boolean> | null = null;
+
+export function isGoogleEnabled(supabaseUrl: string, anonKey: string): Promise<boolean> {
+  if (!supabaseUrl || !anonKey) return Promise.resolve(false);
+  enabledCache ??= fetch(`${supabaseUrl.replace(/\/+$/, "")}/auth/v1/settings`, { headers: { apikey: anonKey } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then(googleEnabledFromSettings)
+    .catch(() => false);
+  return enabledCache;
+}
+
+/** For tests: forget the remembered answer. */
+export function resetGoogleEnabledCache() {
+  enabledCache = null;
+}
