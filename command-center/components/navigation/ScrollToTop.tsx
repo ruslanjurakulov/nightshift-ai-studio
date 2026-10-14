@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 
-/** Past about a screen and a half, the header is far enough away to want a shortcut back. */
-const SHOW_AFTER = 1.5;
+/** Past two screens, the header is far enough away to want a shortcut back. */
+const SHOW_AFTER = 2;
+/** ...and only once the person has scrolled back UP this far (px): going down, the button would sit on the end of the content. */
+const UP_BY = 24;
 
 /**
  * Back to the top of a long page (logs, the audit trail, a video's detail).
+ *
+ * It shows itself when you scroll back up on a long page and steps away while
+ * you read downwards, so it is never parked over the colour hint, a "Cancel" at
+ * the right edge or the last line of a page you are still reading.
  *
  * Kept in the DOM while hidden, but out of the tab order and the accessibility
  * tree, so a keyboard user never lands on an invisible button.
@@ -22,9 +28,15 @@ export function ScrollToTop({ dock = false }: { dock?: boolean }) {
 
   useEffect(() => {
     let frame = 0;
+    let last = window.scrollY;
+    let up = 0;
     function update() {
       frame = 0;
-      setVisible(window.scrollY > window.innerHeight * SHOW_AFTER);
+      const y = window.scrollY;
+      if (y < last) up += last - y;
+      else if (y > last) up = 0;
+      last = y;
+      setVisible(y > window.innerHeight * SHOW_AFTER && up >= UP_BY);
     }
     function onScroll() {
       if (!frame) frame = window.requestAnimationFrame(update);

@@ -1107,6 +1107,7 @@ export function MediaLibrary({
             {selecting ? (
               <div
                 ref={barRef}
+                data-bottom-bar
                 className="panel fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:sticky lg:inset-x-auto lg:bottom-3"
                 // Inline: .panel's own (unlayered) rules would beat a utility, and a bar that floats over tiles must be solid.
                 // Fixed on phones (a sticky bottom bar rides under the tab bar near the top of the page there), sticky from lg up.

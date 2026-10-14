@@ -217,7 +217,7 @@ export function ShortcutsHelp() {
                   role="region"
                   aria-labelledby={titleId}
                   tabIndex={0}
-                  className="mt-3 min-h-0 flex-1 overflow-y-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                  className="scroll-cue mt-3 min-h-0 flex-1 overflow-y-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
                 >
                 <dl className="m-0">
                   {SHORTCUT_HELP.map((row) => (
