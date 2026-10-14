@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isSameOriginPost } from "@/lib/auth-confirm";
 import { publicOrigin } from "@/lib/server/public-origin";
-import { rateRefusal, takeWebRate, type RateRule } from "@/lib/server/web-rate";
+import { REVIEW_LINK_CREATE_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
 import {
   REVIEW_LINK_DEFAULT_DAYS,
   coerceReviewLinks,
@@ -16,9 +16,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** New links per person: a handful of real shares an hour, not a loop. */
-export const REVIEW_LINK_CREATE_RATE: RateRule = { bucket: "review_link.create", max: 30, windowSeconds: 3600 };
 
 const NO_STORE = { "cache-control": "no-store" };
 
