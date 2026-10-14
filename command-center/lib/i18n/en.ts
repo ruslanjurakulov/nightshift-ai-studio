@@ -3941,6 +3941,7 @@ export const en = {
       network: "The connection failed or was too slow. Uploads must finish within 5 minutes.",
       folder_not_found: "That folder no longer exists. Open All files to upload there, or choose another folder.",
       folder_forbidden: "You don't have access to upload into a folder. Open All files to upload there.",
+      not_dismissable: "This upload is still in progress, so it can't be dismissed.",
       failed: "Something went wrong. Try again.",
     },
     kinds: { image: "Image", video: "Video", audio: "Audio", caption: "Captions" },
@@ -3969,6 +3970,10 @@ export const en = {
     deleteSelected: "Delete ({n})",
     deleteSelectedConfirm: "Delete {n} files? They leave the library now; their space is freed once the server removes the files.",
     bulkPartial: "{failed} of {n} files could not be deleted.",
+    dismiss: "Dismiss",
+    dismissItem: "Dismiss {name}",
+    dismissing: "Dismissing…",
+    dismissed: "“{name}” removed from your list.",
     viewer: {
       close: "Close",
       prev: "Previous",

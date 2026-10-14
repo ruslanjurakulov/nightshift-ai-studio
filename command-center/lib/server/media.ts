@@ -22,6 +22,7 @@ import {
   type MediaLibraryData,
   type MediaVariant,
 } from "@/lib/media";
+import { parseDismissed, withoutDismissed } from "@/lib/media-dismiss";
 import { FOLDERS_UNAVAILABLE, cleanSearch, ilikeContains } from "@/lib/media-folders";
 import { loadMediaFolders } from "@/lib/server/media-folders";
 
@@ -297,7 +298,7 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
       .order("created_at", { ascending: false })
       .limit(20);
   try {
-    const [first, firstUploads, quota, settings, pipeline, folders] = await Promise.all([
+    const [first, firstUploads, quota, settings, pipeline, folders, dismissed] = await Promise.all([
       readAssets(true),
       readUploads(true),
       supabase.from("org_storage_quota").select("limit_bytes, used_bytes").eq("org_id", orgId).maybeSingle(),
@@ -305,6 +306,11 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
       // Is file checking running (0045)? Missing function or a failed read is "unknown", never "ok".
       Promise.resolve(supabase.rpc("media_pipeline_state")).catch(() => ({ data: null, error: true })),
       loadMediaFolders(orgId),
+      // The cards this person dismissed (lib/media-dismiss.ts). Unreadable is "none dismissed": a card too many, never a lost one.
+      Promise.resolve()
+        .then(() => supabase.auth.getUser())
+        .then((r) => new Set(parseDismissed(r?.data?.user?.user_metadata)))
+        .catch(() => new Set<string>()),
     ]);
     // Before 0049 there is no folder_id: the library reads exactly as it did,
     // unnarrowed by folder, and shows no folders.
@@ -326,7 +332,7 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
       available: true,
       host,
       assets: rows.map((a) => withUrls(a, secret, served)),
-      uploads: coerceUploads(uploads.data),
+      uploads: withoutDismissed(coerceUploads(uploads.data), dismissed),
       quota: {
         usedBytes: n(q?.used_bytes) ?? 0,
         // An unreadable limit stays unknown, never a number.
