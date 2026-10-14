@@ -129,6 +129,11 @@ Limits that come from memory and disk (measured, the validators refuse them):
   73 MB/s at 1080p60). The disk guard charges grainy seconds 12x and falls back
   to compact intermediates (slower) when the temp disk is short; nothing for the
   UI to do, but a long grainy export is slower on a nearly full disk.
+* KNOWN ISSUE (harmless): where a millisecond rounding lands exactly on a half
+  millisecond, Python `round(x, 3)` (half to even) and JavaScript
+  `Math.round(x * 1000) / 1000` (half up) can differ by 0.001 s. The editor side is
+  the stricter one for the checks that use it (reverse limit, budgets), so a
+  document it accepts the backend accepts.
 * `rotate` is an integer; `90.0` is accepted as `90` (the editor cannot tell them
   apart after JSON.parse).
 

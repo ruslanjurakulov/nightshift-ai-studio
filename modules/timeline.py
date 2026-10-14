@@ -705,6 +705,7 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
         elif (clip.get("reverse") is True and fps and _is_int(frame[0]) and _is_int(frame[1])
+              and frame[0] > 0 and frame[1] > 0      # a zero size is the frame's own problem, not a division
               and _range_frames(_ms(outs) - _ms(ins), fps) > reverse_max_frames(frame[0], frame[1])):
             problems.append(f"{where}: reverse holds every frame of the range in memory — at "
                             f"{frame[0]}x{frame[1]} and {fps} fps at most "
