@@ -81,13 +81,15 @@ export function SendToEditor({
   );
 }
 
-function SendDialog({
+/** `focus="captions"`: the editor opens scrolled to its Captions panel ("Improve with AI" → Captions). */
+export function SendDialog({
   orgId,
   assetId,
   kind,
   name,
   onClose,
   opener,
+  focus,
 }: {
   orgId: string;
   assetId: string;
@@ -95,6 +97,7 @@ function SendDialog({
   name: string | null;
   onClose: () => void;
   opener: React.RefObject<HTMLElement | null>;
+  focus?: "captions";
 }) {
   const { t } = useI18n();
   const te = t.editor;
@@ -154,7 +157,7 @@ function SendDialog({
       return;
     }
     // Stay "busy" while the editor opens: a second press would add the file twice.
-    router.push(path(`/editor/${out.value.id}`));
+    router.push(path(`/editor/${out.value.id}${focus ? `?focus=${focus}` : ""}`));
   }
 
   const note = kind === "image" ? fmt(ts.stillNote, { s: STILL_DEFAULT_S }) : kind === "audio" ? ts.soundNote : ts.videoNote;

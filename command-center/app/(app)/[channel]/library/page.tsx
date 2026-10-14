@@ -8,6 +8,7 @@ import { fmt } from "@/lib/i18n";
 import { loadMediaLibrary } from "@/lib/server/media";
 import { atLeast } from "@/lib/auth/roles-shared";
 import { parseView } from "@/components/media/libraryView";
+import { loadAiToolAvailability } from "@/lib/server/ai-tools";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -49,7 +50,7 @@ export default async function LibraryPage({
   if (!org.supported) return note(t.org.notMigrated);
   if (!org.current) return note(t.media.noOrg);
 
-  const lib = await loadMediaLibrary(org.current.id);
+  const [lib, aiTools] = await Promise.all([loadMediaLibrary(org.current.id), loadAiToolAvailability()]);
   if (!lib.available) return note(t.media.notEnabled);
 
   return (
@@ -60,6 +61,7 @@ export default async function LibraryPage({
         initial={lib}
         canEditFolders={atLeast(org.current.role, "editor")}
         initialView={parseView((await searchParams) ?? {})}
+        aiTools={aiTools}
       />
     </div>
   );

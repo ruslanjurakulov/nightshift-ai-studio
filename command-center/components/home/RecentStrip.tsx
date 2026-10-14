@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Clapperboard, ImagePlus, Mic, ScanText, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
+import { Clapperboard, Eraser, Expand, ImagePlus, Mic, ScanText, Scissors, SunMedium, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { useI18n } from "@/lib/i18n/context";
@@ -22,6 +22,9 @@ export const KIND_ICON: Record<string, LucideIcon> = {
   upscale: ZoomIn,
   remove_bg: Scissors,
   describe: ScanText,
+  expand: Expand,
+  relight: SunMedium,
+  erase: Eraser,
 };
 
 /**

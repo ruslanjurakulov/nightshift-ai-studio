@@ -13,7 +13,8 @@
     "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
-    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions"]},
+    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase"]},
+    "relight_look": {"enum": ["soft", "warm", "cool", "golden_hour", "dramatic", "studio"]},
     "upscale_target": {"enum": ["720p", "1k", "2k", "4k"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},
     "aspect": {"type": "string", "pattern": "^[0-9]{1,2}:[0-9]{1,2}$"},
@@ -63,6 +64,7 @@
         "languages": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/language"}},
         "upscale_targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/upscale_target"}},
         "end_frame": {"type": "boolean"},
+        "relight_looks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relight_look"}},
         "audio_out": {"type": "boolean"},
         "async": {"type": "boolean"},
         "api_documented": {
@@ -148,7 +150,8 @@
             "factor": {"enum": [2, 4]},
             "input_video": {"enum": ["generated"]},
             "end_frame": {"enum": ["generated"]},
-            "upscale_target": {"$ref": "#/$defs/upscale_target"}
+            "upscale_target": {"$ref": "#/$defs/upscale_target"},
+            "look": {"$ref": "#/$defs/relight_look"}
           }
         }
       }
