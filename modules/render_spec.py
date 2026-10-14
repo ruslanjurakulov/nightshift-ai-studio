@@ -304,8 +304,15 @@ def _anim_problems(name: str, o, allowed_in: Sequence[str], span: Tuple[float, f
             problems.append(f"{name} {key}_s must be from {ANIM_MIN_S:g} to {ANIM_MAX_S:g}")
         else:
             total += dur
+    if total:
+        # The OTHER side's plain fade is an animation too (a fade-out becomes an exit at e - fade_out_s,
+        # cutting a long entrance short): it counts against the time the item is shown.
+        for key, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
+            f = getattr(o, fade, 0.0)
+            if getattr(o, key) is None and _finite(f) and f > 0:
+                total += f
     if total and all(_finite(v) for v in span) and total > span[1] - span[0] + 1e-9:
-        problems.append(f"{name} animations are longer than it is shown")
+        problems.append(f"{name} animations and fades are longer than it is shown")
     return problems
 
 
