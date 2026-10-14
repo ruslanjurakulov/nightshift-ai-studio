@@ -1,9 +1,11 @@
+import { improveRu } from "./improve/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
 import { overlayRu } from "./overlay/ru";
 import { looksRu } from "./editor-looks/ru";
+import { captionStylesRu } from "./caption-styles/ru";
 import { editorExportRu } from "./editor-export/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
@@ -12,6 +14,7 @@ export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
   libraryUx: libraryUxRu,
+  improveAi: improveRu,
   brand: {
     name: "Nightshift",
     tagline: "Центр управления",
@@ -3245,7 +3248,7 @@ export const ru: Dictionary = {
     subtitle: "Опишите, посмотрите цену, создайте. Кредиты резервируются на время работы и списываются, только если всё получилось.",
     kindLabel: "Что создать",
     toolRowLabel: "Инструменты",
-    kinds: { t2i: "Изображение", t2v: "Видео", tts: "Голос", sfx: "Звук", music: "Музыка", edit: "Изменить", i2v: "Оживить", upscale: "Увеличить", remove_bg: "Убрать фон", voice_change: "Сменить голос", dub: "Дубляж / перевод", video_upscale: "Улучшить видео", describe: "Описать", captions: "Субтитры" },
+    kinds: { t2i: "Изображение", t2v: "Видео", tts: "Голос", sfx: "Звук", music: "Музыка", edit: "Изменить", i2v: "Оживить", upscale: "Увеличить", remove_bg: "Убрать фон", voice_change: "Сменить голос", dub: "Дубляж / перевод", video_upscale: "Улучшить видео", describe: "Описать", captions: "Субтитры", expand: "Расширить картинку", relight: "Изменить свет", erase: "Стереть объект" },
     promptLabel: "Опишите",
     voiceTextLabel: "Текст для озвучки",
     promptPh: {
@@ -3260,6 +3263,9 @@ export const ru: Dictionary = {
       dub: "",
       video_upscale: "",
       describe: "",
+      expand: "По желанию: что в новых краях — больше неба, луг",
+      relight: "Или опишите свет — низкое солнце слева, свеча",
+      erase: "Что убрать — красная машина слева",
     },
     toolsLabel: "Начать с картинки",
     optional: "необязательно",
@@ -3275,6 +3281,16 @@ export const ru: Dictionary = {
     sourceRetry: "Повторить",
     noPreview: "нет превью",
     keepsShape: "Результат сохраняет форму картинки.",
+    shapeLabel: "Расширить до",
+    lookLabel: "Свет",
+    looks: { soft: "Мягкий", warm: "Тёплый", cool: "Холодный", golden_hour: "Золотой час", dramatic: "Драматичный", studio: "Студийный" },
+    lookOrWords: "Или опишите свет ниже. Ваши слова заменят выбранный свет.",
+    opWords: { expand: "Что в новых краях", relight: "Опишите свет", erase: "Что стереть" },
+    expandNote: "Картинка расширяется до выбранного формата, новые края дорисовываются. Результат сохранится в библиотеке как новая версия. Цена одинакова для любого формата.",
+    relightNote: "Меняются только свет и тени. Выберите свет или опишите его. Результат сохранится в библиотеке как новая версия.",
+    eraseNote: "Назовите один объект: он убирается, а место дорисовывается; рисовать ничего не нужно. Результат сохранится в библиотеке как новая версия.",
+    aiEditNote: "Картинка перерисовывается целиком, поэтому мелкие детали вне изменения могут слегка отличаться.",
+    notAvailableYet: "Этот инструмент пока недоступен в этой установке.",
     recordingLabel: "Аудио или видео",
     recordingPick: "Выберите аудио- или видеофайл из библиотеки",
     recordingChange: "Сменить файл",
@@ -3366,7 +3382,7 @@ export const ru: Dictionary = {
     dismiss: "Скрыть",
     cancel: "Отменить",
     cancelling: "Отменяем…",
-    tabs: { t2i: "Изображение", t2v: "Видео", tts: "Голос", edit: "Изменить", i2v: "Оживить", upscale: "Увеличить", remove_bg: "Вырезать", voice_change: "Сменить голос", dub: "Дубляж / перевод", video_upscale: "Улучшить видео", describe: "Описать" },
+    tabs: { t2i: "Изображение", t2v: "Видео", tts: "Голос", edit: "Изменить", i2v: "Оживить", upscale: "Увеличить", remove_bg: "Вырезать", voice_change: "Сменить голос", dub: "Дубляж / перевод", video_upscale: "Улучшить видео", describe: "Описать", expand: "Расширить", relight: "Свет", erase: "Стереть" },
     modelChange: "Сменить",
     modelChangeLabel: "Сменить модель",
     blocked: {
@@ -3378,6 +3394,9 @@ export const ru: Dictionary = {
       need_language: "Выберите язык, чтобы увидеть цену.",
       need_video: "Выберите видео, чтобы увидеть цену.",
       need_target: "Для этого видео сейчас нельзя предложить размер.",
+      need_shape: "Выберите формат, чтобы увидеть цену.",
+      need_look: "Выберите свет или опишите его, чтобы увидеть цену.",
+      need_object: "Назовите, что убрать, чтобы увидеть цену.",
     },
     holdNote: "Кредиты резервируются на время работы и списываются, только если всё получилось.",
     sheetTitle: "Выбор модели",
@@ -4261,6 +4280,9 @@ export const ru: Dictionary = {
       dub: "Дубляж",
       describe: "Описать",
       video_upscale: "Увеличить видео",
+      expand: "Расширить картинку",
+      relight: "Изменить свет",
+      erase: "Стереть объект",
     },
     toolFrom: {
       t2i: "по описанию",
@@ -4274,6 +4296,9 @@ export const ru: Dictionary = {
       dub: "на другой язык",
       describe: "картинка в промпт",
       video_upscale: "чётче и больше",
+      expand: "до другого формата",
+      relight: "другой свет",
+      erase: "убрать одну вещь",
     },
     voiceStyles: {
       "pNInz6obpgDQGcFmaJgB": "низкий, для озвучки",
@@ -4538,7 +4563,42 @@ export const ru: Dictionary = {
     downloadNote: "Для других плееров и сайтов. Делаются из субтитров выше, бесплатно.",
     downloadSrt: "Скачать .srt",
     downloadVtt: "Скачать .vtt",
+    modelsError: "Сейчас не удалось проверить, доступны ли авто-субтитры. Обновите страницу и попробуйте снова.",
+    splitCue: "Разделить",
+    mergeCue: "Объединить со следующим",
+    addCueAfter: "Добавить после",
+    noRoomForCue: "Для нового субтитра здесь нет места: следующий начинается слишком рано или видео заканчивается.",
+    cannotSplit: "Этот субтитр нельзя разделить: нужны минимум два слова и достаточно времени для обеих частей.",
+    replaceHeading: "Исправить слово везде",
+    replaceNote: "Заменяет слово или фразу во всех субтитрах сразу, например имя, которое расшифровка поняла неверно. Заглавные и строчные буквы не различаются.",
+    findLabel: "Что найти",
+    replaceLabel: "Чем заменить",
+    replaceAll: "Заменить во всех субтитрах",
+    replaced: "Изменено субтитров: {n}. Сохраните проект, чтобы они остались.",
+    nothingToReplace: "Этот текст не найден ни в одном субтитре.",
+    deleteCueN: "Удалить субтитр {n} (на {time})",
+    splitCueN: "Разделить субтитр {n} (на {time})",
+    mergeCueN: "Объединить субтитр {n} со следующим (на {time})",
+    addCueAfterN: "Добавить субтитр после субтитра {n} (на {time})",
+    cueLimit: "В проекте уже максимальное число субтитров. Сначала объедините или удалите часть.",
+    cannotJoin: "Эти два субтитра вместе слишком длинные для одного субтитра.",
+    replaceSkipped: "Субтитров, оставленных без изменений из-за слишком длинного результата: {n}.",
     defaultFile: "subtitry",
+    /** Анимированные стили: ./caption-styles/ru.ts. */
+    animated: captionStylesRu,
+    addCue: "Добавить субтитр",
+    importFile: "Загрузить .srt или .vtt",
+    importNote: "Напишите субтитры сами или загрузите файл с ними. Оба способа бесплатны, расшифровка речи не нужна.",
+    newCueText: "Новый субтитр",
+    addNoRoom: "Для ещё одного субтитра нет места: картинка слишком скоро заканчивается.",
+    importTooBig: "Файл слишком большой (больше 1 МБ).",
+    importFailed: "Не удалось прочитать файл.",
+    importOutside: "Все субтитры в этом файле идут после конца картинки, поэтому ни один не добавлен.",
+    importNone: "В этом файле субтитры не найдены. Нужен файл .srt или .vtt.",
+    importReplace: "Это заменит субтитры, которые вы видите, вместе с вашими правками. Продолжить?",
+    imported: "Загружено субтитров: {n}. Сохраните проект, чтобы они остались.",
+    importedSome: "Загружено субтитров: {n}; не удалось использовать: {skipped}. Сохраните проект, чтобы они остались.",
+    noCuesManual: "Субтитров пока нет. Добавьте один или загрузите файл .srt или .vtt.",
   },
   workflows: {
     title: "Сценарии",
