@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from modules.script_engine import Script, ScriptSection
+from modules import youtube_uploader
 from modules.youtube_uploader import (
     CAPTION_SCOPE,
     MAX_DESCRIPTION,
@@ -25,6 +26,7 @@ from modules.youtube_uploader import (
     build_chapters,
     caption_language,
     compose_description,
+    content_language,
     strip_timestamp_lines,
 )
 
@@ -362,6 +364,91 @@ class UploadWiringTestCase(unittest.TestCase):
         with patch.object(YouTubeUploader, "upload_captions", return_value=True) as captions:
             up.upload(self.video, script("A ship."), captions_path=Path("subs.srt"))
         captions.assert_called_once_with("vid1", Path("subs.srt"))
+
+
+class MetadataLanguageTestCase(unittest.TestCase):
+    """snippet.defaultLanguage follows the channel; it was hard-coded to "en"."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.video = Path(self._tmp.name) / "video.mp4"
+        self.video.write_bytes(b"not really an mp4")
+        self.sent = []
+
+    def _upload(self, channel):
+        helper = UploadWiringTestCase()
+        up = uploader(channel=channel, service=helper._service(self.sent))
+        up.upload(self.video, script("A ship."))
+        return self.sent[-1]["body"]
+
+    @staticmethod
+    def _channel(language):
+        return SimpleNamespace(channel_id="x", agent=SimpleNamespace(language=language))
+
+    def test_english_russian_and_uzbek_channels_are_labelled_as_such(self):
+        for language, code in (("English", "en"), ("Russian", "ru"), ("Uzbek", "uz"),
+                               ("ru", "ru"), ("uz", "uz")):
+            body = self._upload(self._channel(language))
+            self.assertEqual(body["snippet"]["defaultLanguage"], code, language)
+
+    def test_an_unknown_language_sends_no_label_at_all(self):
+        # Neither a guess ("en") nor a typo'd code may reach videos.insert.
+        for language in ("Klingon", "zz", "zz-Latn"):
+            snippet = self._upload(self._channel(language))["snippet"]
+            self.assertNotIn("defaultLanguage", snippet, language)
+
+    def test_caption_track_and_metadata_cannot_disagree(self):
+        for language in ("English", "Russian", "Uzbek", "Spanish", "pt-BR", "Klingon", "zz"):
+            channel = self._channel(language)
+            sent_language = self._upload(channel)["snippet"].get("defaultLanguage")
+            self.assertEqual(sent_language, caption_language(channel), language)
+            self.assertEqual(sent_language, content_language(channel), language)
+
+    def test_the_caption_track_for_a_russian_video_says_russian(self):
+        captions = FakeCaptions()
+        srt = Path(self._tmp.name) / "subtitles.srt"
+        srt.write_text("1\n00:00:00,000 --> 00:00:02,000\nПривет\n", encoding="utf-8")
+        up = uploader(channel=self._channel("Russian"), service=FakeService(captions))
+        with patch.object(YouTubeUploader, "_granted_scopes", return_value=set()):
+            self.assertTrue(up.upload_captions("vid1", srt))
+        self.assertEqual(captions.calls[0]["body"]["snippet"]["language"], "ru")
+
+    def test_an_english_channel_request_is_identical_to_before_the_fix(self):
+        # The whole body, not one key: nothing but the language label may move.
+        expected = {
+            "snippet": {
+                "title": "T",
+                "description": "A ship.",
+                "tags": ["a"],
+                "categoryId": youtube_uploader.YOUTUBE_CATEGORY_ID,
+                "defaultLanguage": "en",
+            },
+            "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
+        }
+        for channel in (None, self._channel("English")):
+            self.sent.clear()
+            with patch.object(youtube_uploader, "YOUTUBE_PRIVACY", "private"):
+                self.assertEqual(self._upload(channel), expected)
+
+    def test_other_languages_change_only_the_label(self):
+        english = self._upload(self._channel("English"))
+        english_without = {**english, "snippet": {k: v for k, v in english["snippet"].items()
+                                                  if k != "defaultLanguage"}}
+        for language, code in (("Russian", "ru"), ("Uzbek", "uz")):
+            body = self._upload(self._channel(language))
+            self.assertEqual(body["snippet"].pop("defaultLanguage"), code)
+            self.assertEqual(body, english_without)
+
+
+class ClosedLanguageTableTestCase(unittest.TestCase):
+    def test_a_code_is_taken_only_if_its_language_is_in_the_table(self):
+        for code in ("en", "ru", "uz", "pt-BR", "en-US"):
+            channel = SimpleNamespace(agent=SimpleNamespace(language=code))
+            self.assertEqual(content_language(channel), code)
+        for code in ("zz", "xx-YY", "ja"):
+            channel = SimpleNamespace(agent=SimpleNamespace(language=code))
+            self.assertIsNone(content_language(channel), code)
 
 
 if __name__ == "__main__":
