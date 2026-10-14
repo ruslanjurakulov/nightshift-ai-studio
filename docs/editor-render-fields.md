@@ -113,4 +113,20 @@ vignette with CSS filters/transforms; vintage/cinematic/cool/warm/high-contrast
 are curve looks the preview can only approximate, and grain/sharpen have no
 faithful CSS equivalent. Say so in the product.
 
+Limits that come from memory and disk (measured, the validators refuse them):
+
+* a clip that is CROSS-FADED (either side of a blend) in a frame above 1440p
+  (2560x1440, either way up) takes NO `blur`: a cross-fade on 4K60 already needs
+  about 1.75 of the worker's 2 GiB, and a blur failed it ("Cannot allocate
+  memory") with ffmpeg 7.0.2 at every sigma tried and with 5.1.1 from sigma 30.
+  The other effects (look, sharpen, grain, vignette, turns) passed with both.
+  `LARGE_FRAME_PX` / `XFADE_LARGE_BLUR_MAX` (0) in `lib/editor.ts`; a UI should
+  disable the blur control on such a clip. Single clips and hard cuts are fine.
+* `grain` makes the intermediate video about 13x bigger (42.7 MB/s at 1080p30,
+  73 MB/s at 1080p60). The disk guard charges grainy seconds 12x and falls back
+  to compact intermediates (slower) when the temp disk is short; nothing for the
+  UI to do, but a long grainy export is slower on a nearly full disk.
+* `rotate` is an integer; `90.0` is accepted as `90` (the editor cannot tell them
+  apart after JSON.parse).
+
 Not done here (later items): free-angle rotation and crop (item 8).

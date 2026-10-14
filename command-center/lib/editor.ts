@@ -191,6 +191,10 @@ export type ClipFilter = (typeof FILTERS)[number];
 export const UNIT_EFFECTS = ["vignette", "sharpen", "grain"] as const;
 /** A Gaussian blur's sigma in output pixels. */
 export const BLUR_MAX = 30;
+/** A cross-faded clip in a frame above 1440p takes no blur (the render would run out of
+ *  memory; modules/timeline.py LARGE_FRAME_PX / XFADE_LARGE_BLUR_MAX). */
+export const LARGE_FRAME_PX = 2560 * 1440;
+export const XFADE_LARGE_BLUR_MAX = 0;
 export const ROTATIONS = [0, 90, 180, 270] as const;
 export type Rotation = (typeof ROTATIONS)[number];
 const EFFECT_KEYS = [
@@ -1233,11 +1237,33 @@ function crossfadeProblems(track: TimelineTrack): string[] {
   return problems;
 }
 
+/** Effects a cross-fade on a frame above 1440p cannot afford
+ *  (modules/timeline.py `_large_frame_crossfade_problems`). */
+function largeFrameCrossfadeProblems(doc: TimelineDoc, track: TimelineTrack): string[] {
+  const w = doc.width;
+  const h = doc.height;
+  if (!(isInt(w) && isInt(h) && w * h > LARGE_FRAME_PX)) return [];
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const [prev, clip] of crossfades(track))
+    for (const c of [prev, clip]) {
+      const id = String(c.id);
+      if (!seen.has(id) && isNum(c.blur) && c.blur > XFADE_LARGE_BLUR_MAX) {
+        seen.add(id);
+        problems.push(
+          `track ${track.id} clip ${id}: blur is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory; remove the blur, the cross-fade or lower the frame size`,
+        );
+      }
+    }
+  return problems;
+}
+
 function transitionProblems(doc: TimelineDoc): string[] {
   const problems: string[] = [];
   for (const track of doc.tracks) {
     if (track.kind !== "V") continue;
     problems.push(...crossfadeProblems(track));
+    problems.push(...largeFrameCrossfadeProblems(doc, track));
     const clips = [...track.clips].sort(
       (a, b) =>
         ms(Number(a.start_s)) - ms(Number(b.start_s)) ||

@@ -260,6 +260,14 @@ MAX_TYPEWRITER_TEXTS = 20
 FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
 UNIT_EFFECTS = ("vignette", "sharpen", "grain")      # 0..1, 0 = off
 BLUR_MAX = 30.0                                       # Gaussian sigma, output pixels
+#: A cross-fade renders its two clips in one ffmpeg run, and above 1440p that run already needs ~1.75 of
+#: the worker's 2 GiB address space (4K60, measured with ffmpeg 5.1.1 and 7.0.2). A Gaussian blur on top
+#: failed it ("Cannot allocate memory", exit 187): with 7.0.2 at every sigma tried (5, 10, 15, 20, 30), with
+#: 5.1.1 from sigma 30 (up to 20 passed) and, with 5.1.1, a blur of 5 or more together with a zoom to 2
+#: or more. So a cross-faded clip in such a frame takes no blur at all. The other effects (look, sharpen,
+#: grain, vignette, turns) passed with both builds. render_backend.LARGE_OUTPUT_PX is the same 2560x1440.
+LARGE_FRAME_PX = 2560 * 1440
+XFADE_LARGE_BLUR_MAX = 0.0
 ROTATIONS = (0, 90, 180, 270)
 _EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
                 "flip_h", "flip_v", "rotate")
@@ -997,12 +1005,31 @@ def _crossfade_problems(track: dict) -> List[str]:
     return problems
 
 
+def _large_frame_crossfade_problems(doc: dict, track: dict) -> List[str]:
+    """Effects a cross-fade on a frame above 1440p cannot afford (see ``LARGE_FRAME_PX``)."""
+    w, h = doc.get("width"), doc.get("height")
+    if not (_is_int(w) and _is_int(h) and w * h > LARGE_FRAME_PX):
+        return []
+    problems, seen = [], set()
+    for prev, clip, _d in crossfades(track):
+        for c in (prev, clip):
+            cid = str(c["id"])
+            blur = c.get("blur")
+            if cid not in seen and _is_num(blur) and blur > XFADE_LARGE_BLUR_MAX:
+                seen.add(cid)
+                problems.append(f"{_where(track, c)}: blur is not offered on a cross-faded clip in a frame above "
+                                f"1440p ({w}x{h}) — the render would run out of memory; remove the blur, the "
+                                f"cross-fade or lower the frame size")
+    return problems
+
+
 def _transition_problems(doc: dict) -> List[str]:
     problems = []
     for track in doc.get("tracks") or []:
         if track.get("kind") != KIND_V:
             continue
         problems.extend(_crossfade_problems(track))
+        problems.extend(_large_frame_crossfade_problems(doc, track))
         fades = effective_fades(track)
         for clip in track.get("clips") or []:
             fi, fo = fades[str(clip["id"])]

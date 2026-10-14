@@ -111,6 +111,31 @@ class DocumentTestCase(unittest.TestCase):
         self.assertTrue(any("blur is not a known field" in p for p in tl.validate(doc)))
         self.assertTrue(any("not a known field" in p for p in problems_of(sepia=1)))
 
+    def test_a_heavy_blur_is_not_offered_on_a_crossfade_in_a_frame_above_1440p(self):
+        # a cross-fade on 4K60 already needs ~1.75 of the worker's 2 GiB (measured); sigma 30 failed it
+        def xfade(width, height, **fx):
+            doc = vdoc(width=width, height=height, fps=60)
+            doc["tracks"][0]["clips"].append({"id": "c2", "asset_id": BASE, "start_s": 1.5, "in_s": 0, "out_s": 2,
+                                              "transition": {"type": "crossfade", "duration_s": 0.5}, **fx})
+            return doc
+        self.assertEqual(tl.XFADE_LARGE_BLUR_MAX, 0.0)
+        self.assertEqual(tl.LARGE_FRAME_PX, 2560 * 1440)
+        got = tl.validate(xfade(3840, 2160, blur=0.5))
+        self.assertTrue(any("blur is not offered" in p and "cross-faded" in p for p in got), got)
+        # the other effects passed the same render, with both ffmpeg builds
+        self.assertEqual(tl.validate(xfade(3840, 2160, grain=0.5, sharpen=1, vignette=1, filter="cinematic")), [])
+        # either side of the blend, and portrait 4K too
+        doc = xfade(2160, 3840)
+        doc["tracks"][0]["clips"][0]["blur"] = 30
+        self.assertTrue(any("blur is not offered" in p for p in tl.validate(doc)))
+        # 1440p itself, any blur without a cross-fade, and a hard cut are fine
+        self.assertEqual(tl.validate(xfade(2560, 1440, blur=30)), [])
+        self.assertEqual(tl.validate(vdoc(width=3840, height=2160, blur=30)), [])
+        cut = xfade(3840, 2160, blur=30)
+        del cut["tracks"][0]["clips"][1]["transition"]
+        cut["tracks"][0]["clips"][1]["start_s"] = 2
+        self.assertEqual(tl.validate(cut), [])
+
     def test_a_whole_float_is_the_integer_in_both_validators(self):
         # JSON.parse gives the TypeScript validator 90 for both 90 and 90.0, so Python takes 90.0 as 90 too
         for ok in (90.0, 180.0, 270.0, 0.0):
@@ -155,6 +180,9 @@ class DocumentTestCase(unittest.TestCase):
         names = re.search(r"export const FILTERS = \[([^\]]*)\] as const", ts).group(1)
         self.assertEqual(tuple(re.findall(r'"([\w-]+)"', names)), tl.FILTERS)
         self.assertEqual(float(re.search(r"export const BLUR_MAX = ([\d.]+);", ts).group(1)), tl.BLUR_MAX)
+        self.assertEqual(float(re.search(r"export const XFADE_LARGE_BLUR_MAX = ([\d.]+);", ts).group(1)),
+                         tl.XFADE_LARGE_BLUR_MAX)
+        self.assertIn("export const LARGE_FRAME_PX = 2560 * 1440;", ts)
         rot = re.search(r"export const ROTATIONS = \[([^\]]*)\] as const", ts).group(1)
         self.assertEqual(tuple(int(x) for x in re.findall(r"\d+", rot)), tl.ROTATIONS)
         unit = re.search(r"export const UNIT_EFFECTS = \[([^\]]*)\] as const", ts).group(1)
