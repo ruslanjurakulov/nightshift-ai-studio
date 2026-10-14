@@ -1,3 +1,4 @@
+import { improveEn } from "./improve/en";
 import { libraryUxEn } from "./library-ux/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
@@ -20,6 +21,7 @@ export const en = {
   site: siteEn,
   presets: presetsEn,
   libraryUx: libraryUxEn,
+  improveAi: improveEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",

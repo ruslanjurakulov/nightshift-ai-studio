@@ -229,6 +229,7 @@ export function CaptionsPanel({
   models,
   pictureEnd,
   onChange,
+  preselect = null,
 }: {
   orgId: string;
   projectTitle: string;
@@ -237,6 +238,8 @@ export function CaptionsPanel({
   models: readonly CaptionModelOption[];
   pictureEnd: number;
   onChange: (next: EditorModel) => void;
+  /** "Improve with AI" → Captions on a clip: that clip's recording is the one picked (a new nonce re-picks). */
+  preselect?: { id: string; nonce: number } | null;
 }) {
   const { t, fmt, locale } = useI18n();
   const tc = t.captions;
@@ -244,6 +247,13 @@ export function CaptionsPanel({
 
   const recordings = useMemo(() => recordingsOf(model, assets), [model, assets]);
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const preselectNonce = preselect?.nonce;
+  const preselectId = preselect?.id;
+  useEffect(() => {
+    if (preselectId && recordings.some((r) => r.id === preselectId)) setSourceId(preselectId);
+    // only when the request changes, not whenever the timeline does
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectNonce, preselectId]);
   const picked = recordings.find((r) => r.id === sourceId) ?? recordings.find((r) => recordingProblem(r) === null) ?? recordings[0] ?? null;
   const [language, setLanguage] = useState<CaptionLanguage | "detect">(() => defaultCaptionLanguage(locale));
   const [modelId, setModelId] = useState<string>(models[0]?.id ?? "");
@@ -529,7 +539,7 @@ export function CaptionsPanel({
   const action = quoteErrorCode ? errorAction(quoteErrorCode) : null;
 
   return (
-    <section aria-labelledby="captions-heading" className="panel flex flex-col gap-3 p-5 sm:p-6">
+    <section aria-labelledby="captions-heading" tabIndex={-1} data-captions-panel="" className="panel flex flex-col gap-3 p-5 sm:p-6 outline-none">
       <div className="flex items-center gap-2">
         <CaptionsIcon className="size-4 text-[var(--color-primary)]" aria-hidden />
         <h2 id="captions-heading" className="m-0 text-[15px] font-semibold">

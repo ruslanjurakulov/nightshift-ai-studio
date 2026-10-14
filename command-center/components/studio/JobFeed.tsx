@@ -12,6 +12,7 @@ import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
+import { editorAddHref } from "@/lib/creative/improve";
 import type { CreativeError } from "@/lib/creative/operations";
 import { deskFor, deskHref } from "@/lib/creative/desks";
 import {
@@ -98,6 +99,7 @@ export function JobFeed({
   emptyBody,
   limit = FEED_SHOWN,
   onLoaded,
+  project = null,
 }: {
   /** Every read that succeeds hands its jobs up (the overview lights the desks that are working). */
   onLoaded?: (jobs: StudioJob[]) => void;
@@ -122,6 +124,8 @@ export function JobFeed({
   emptyBody?: string;
   /** How many to show (default 20). */
   limit?: number;
+  /** An editor project the person came from ("Improve with AI"): a finished result links back with it offered as "Add to project". */
+  project?: string | null;
 }) {
   const { t, locale, fmt } = useI18n();
   const path = useChannelPath();
@@ -377,6 +381,18 @@ export function JobFeed({
           >
             <ImagePlus aria-hidden className="size-4" />
           </button>
+        )}
+        {project && isSendKind(kind) && job.result_asset_ids[0] && editorAddHref(project, job.result_asset_ids[0]) && (
+          <Link
+            href={path(editorAddHref(project, job.result_asset_ids[0]) as string)}
+            className={`${onMedia} !w-auto gap-1.5 px-2.5 text-xs font-semibold`}
+            aria-label={t.improveAi.addToProject}
+            title={t.improveAi.addToProject}
+            data-testid="add-to-project"
+          >
+            <Clapperboard aria-hidden className="size-4" />
+            <span className="max-sm:sr-only">{t.improveAi.addToProject}</span>
+          </Link>
         )}
         {isSendKind(kind) && job.result_asset_ids[0] && (
           <SendToEditor orgId={orgId} assetId={job.result_asset_ids[0]} kind={kind} variant="icon" className={onMedia} />
