@@ -5,6 +5,14 @@ tugmasi turadi. Kod tayyor va Supabase Auth'ning Google provayderidan
 foydalanadi (`signInWithOAuth`, PKCE). Ishlashi uchun **siz** ikki joyda sozlama
 qilasiz: Google Cloud Console va Supabase Dashboard. Hammasi bir marta qilinadi.
 
+> **Tugma o'zi yashirin turadi.** Sahifa Supabase'dan
+> `GET <loyiha>/auth/v1/settings` orqali Google provayderi yoqilganini so'raydi
+> (`external.google === true`). Siz Supabase'da Google'ni yoqmaguncha `/login` va
+> `/signup` oddiy email formasi bo'lib qoladi (tugma ham, "or" chizig'i ham
+> ko'rinmaydi). Yoqgach tugma **deploy qilmasdan** paydo bo'ladi. Javob
+> aniqlanmasa (tarmoq xatosi) ham tugma ko'rsatilmaydi. Qo'shimcha env o'zgaruvchi
+> kerak emas.
+
 > **Eng muhim qoida.** Google'dan olinadigan **Client Secret** faqat Supabase
 > Dashboard'dagi maydonga yoziladi. Uni chatga, git'ga, GitHub'ga (issue, PR,
 > fayl), skrinshotga yoki `.env` fayllarga **hech qachon** qo'ymang. Command
@@ -26,6 +34,9 @@ https://kgqzdjttlnhrxrlqxqge.supabase.co/auth/v1/callback   (Supabase)
 /auth/callback?code=…      exchangeCodeForSession  →  sessiya cookie'lari
      • Google manzilni TASDIQLAGAN bo'lishi shart (email_verified === true),
        aks holda sessiya darhol yopiladi va /login?error=google_unverified
+     • bu tekshiruv tiklash (recovery) belgisidan, taklif va @username
+       qadamlaridan OLDIN ishlaydi: rad etilgan sessiya hech qachon tiklash
+       sessiyasiga aylanmaydi; Google urinishining xatosi doim /login ga boradi
      • do'st taklifi cookie'si (joinFromCookie) email bilan ro'yxatdan
        o'tishdagi kabi shu yerda hisoblanadi
               ▼
@@ -105,10 +116,13 @@ alohida hech narsa yaratilmaydi va qo'shimcha migratsiya kerak emas:
      faqat qo'lda qo'shilgan test foydalanuvchilar kira oladi.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
    - **Application type: Web application**, nomi `Nightshift web`.
-   - **Authorized JavaScript origins**: bo'sh qoldirish mumkin (oqim serverda,
-     Supabase orqali o'tadi).
+   - **Authorized JavaScript origins**: `https://nightshift-ai.studio`
+     (oqim serverda, Supabase orqali o'tadi, shuning uchun majburiy emas; qo'yish zarar qilmaydi).
    - **Authorized redirect URIs** — aynan shu bitta:
      `https://kgqzdjttlnhrxrlqxqge.supabase.co/auth/v1/callback`
+     (loyiha ref'i bu hujjatning avvalgi tahriridan; repoda uni tasdiqlovchi ochiq
+     konfiguratsiya yo'q. Ishonch uchun Supabase → Authentication → Sign In /
+     Providers → Google ichidagi **Callback URL (for OAuth)** maydonidan nusxalang)
    - **Create**. Chiqqan **Client ID** va **Client secret** ni nusxalang
      (secret'ni faqat keyingi qadamda Supabase'ga qo'yasiz).
 
@@ -146,6 +160,9 @@ ro'yxatiga o'sha domen ham qo'shilsin.
 
 ## 3. Sinash
 
+0. Provayderni yoqqach `/login` ni qayta oching: **Continue with Google** paydo
+   bo'lishi kerak (yo'q bo'lsa: Supabase'da Google ON va Save qilinganini tekshiring).
+
 Kodni sinash uchun Google'ga to'liq aylanish kerak emas — `npm test` (tarmoqsiz)
 tugma, xato kodlari va `email_verified` tekshiruvini qamrab oladi. Haqiqiy
 aylanishni sozlamadan keyin qo'lda sinang:
@@ -180,4 +197,12 @@ aylanishni sozlamadan keyin qo'lda sinang:
 | Google'da "Access blocked: app not verified / Testing" | Consent screen hali "In production" emas |
 | Supabase: `Unsupported provider: provider is not enabled` | 2-qadamdagi Google provayder yoqilmagan |
 | Kirgach landing sahifasiga qaytadi | `https://nightshift-ai.studio/auth/callback` Redirect URLs ro'yxatida yo'q |
+| Tugma umuman ko'rinmaydi | Supabase'da Google provayderi yoqilmagan (yoki `auth/v1/settings` ga yetib bo'lmadi) |
 | `/login?error=google_failed` | Boshqa brauzerda/oynada tugatilgan oqim (PKCE cookie yo'q), yoki Supabase'da sign-up o'chiq — qayta urinib ko'ring |
+
+## Ma'lum cheklov
+
+Faqat Google bilan ochilgan hisobning parol(i) yo'q. Sozlamalar → Hisob va
+xavfsizlik'dagi "parolni o'zgartirish" joriy parolni so'raydi, shuning uchun
+bunday foydalanuvchi parol qo'yishni xohlasa `/forgot-password` orqali (xatdagi
+havola bilan) qo'yadi. Alohida "parol qo'yish" ekrani yo'q.
