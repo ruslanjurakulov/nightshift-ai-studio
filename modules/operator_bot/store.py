@@ -1,0 +1,228 @@
+"""Alert memory: what was already sent, what is muted, when the digest last ran.
+
+No new table. The platform already has a durable operator alert feed,
+``alert_events`` (migration 0010; platform owner/admin read it on the Alerts
+page, the service key writes it, ``provider_balance`` already does). The bot
+keeps its state there as rows with ``kind`` starting ``operator.``:
+
+  operator.alert    one per alert considered. title = the dedupe key,
+                    body = the alert kind, delivered = true when it reached
+                    Telegram (false when it was only marked as seen: the first
+                    run's baseline, or an alert that arrived while muted).
+  operator.mute     title = alert kind or ``all``, body = the ISO time it lasts until
+  operator.unmute   title = alert kind or ``all``
+  operator.digest   title = the local date the daily digest went out
+
+Why this and not a migration: merging a migration to main applies it to the live
+database automatically. Reusing the feed means this feature adds no SQL at all.
+The cost is that these rows also show on the Alerts page; they carry only ids
+and kind names.
+
+Who may write this table matters, because the bot trusts what it reads back.
+alert_events_insert (0033) lets anyone who can view a channel insert rows with
+that channel_id and ANY kind, title and body. So the bot's own rows are all
+written with channel_id NULL (RLS lets only a platform admin or the service key
+write those), it reads ONLY channel_id IS NULL rows, replay ignores any row that
+still carries a channel, and a mute is capped at 24 hours from the moment it was
+written no matter what its body says. A tenant who forges an `operator.mute`
+or an `operator.alert` row therefore changes nothing the bot believes.
+
+A store that cannot be read answers None, and the engine then sends NOTHING:
+without memory it could not tell a new alert from one it already sent, and
+a monitor that repeats itself is worse than one that waits.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Protocol
+
+from modules.operator_bot.sources import iso, parse_ts
+
+logger = logging.getLogger(__name__)
+
+LOOKBACK = timedelta(hours=48)
+MUTE_FOR = timedelta(hours=24)
+KIND_PREFIX = "operator."
+PAGE = 1000
+MAX_PAGES = 5
+
+
+@dataclass
+class AlertState:
+    #: (at, key, alert kind, delivered, severity) for each operator.alert row
+    alerts: list = field(default_factory=list)
+    #: alert kind (or "all") -> mute end, only those still in the future
+    mutes: dict = field(default_factory=dict)
+    digest_dates: set = field(default_factory=set)
+    #: True when the baseline marker exists at ANY age: the 48-hour window above
+    #: would otherwise forget it, and a quiet system would "start for the first
+    #: time" again every two days.
+    baseline_seen: bool = False
+
+    def last_seen(self, key: str) -> Optional[datetime]:
+        times = [a[0] for a in self.alerts if a[1] == key]
+        return max(times) if times else None
+
+    def delivered_since(self, since: datetime, critical: bool) -> int:
+        """Alerts delivered since ``since``, counting only critical ones when
+        ``critical`` is true and only the others when it is false: the two have
+        separate budgets, so a flood of one cannot starve the other."""
+        return sum(1 for at, _k, _kind, delivered, sev in self.alerts
+                   if delivered and at >= since and (sev == "critical") == critical)
+
+    def is_muted(self, kind: str, severity: str = "warn") -> bool:
+        """A mute of this kind silences it at any severity. ``all`` silences
+        everything EXCEPT critical alerts: a blanket mute must not hide a dead
+        worker or a security event."""
+        return kind in self.mutes or ("all" in self.mutes and severity != "critical")
+
+    @property
+    def armed(self) -> bool:
+        """True once the first run has left its baseline marker."""
+        return self.baseline_seen or any(a[1] == "baseline" for a in self.alerts)
+
+
+class AlertStore(Protocol):
+    def load(self, now: datetime) -> Optional[AlertState]: ...
+    def record_alert(self, key: str, kind: str, delivered: bool, severity: str = "info",
+                     channel_id: Optional[str] = None) -> bool: ...
+    def record_mute(self, kind: str, until: datetime) -> bool: ...
+    def record_unmute(self, kind: str) -> bool: ...
+    def record_digest(self, date: str) -> bool: ...
+
+
+def replay(rows: list, now: datetime, baseline_seen: bool = False) -> AlertState:
+    """Build the state from alert_events rows (any order).
+
+    Defensive about what the table may hold: a row that carries a channel is not
+    the bot's and is skipped; a timestamp in the future counts as now; a mute
+    lasts at most 24 hours from when it was written, whatever its body says."""
+    state = AlertState(baseline_seen=baseline_seen)
+    mutes: dict = {}
+    for row in sorted(rows, key=lambda r: str(r.get("at") or "")):
+        if row.get("channel_id") not in (None, ""):
+            continue
+        kind = str(row.get("kind") or "")
+        at = parse_ts(row.get("at"))
+        if at is not None and at > now:
+            at = now
+        title = str(row.get("title") or "")
+        if kind == "operator.alert" and at:
+            state.alerts.append((at, title, str(row.get("body") or ""), bool(row.get("delivered")),
+                                 str(row.get("severity") or "")))
+        elif kind == "operator.mute" and at:
+            until = parse_ts(row.get("body"))
+            if until:
+                mutes[title] = min(until, at + MUTE_FOR)
+        elif kind == "operator.unmute":
+            mutes.pop(title, None)
+        elif kind == "operator.digest":
+            state.digest_dates.add(title)
+    state.mutes = {k: v for k, v in mutes.items() if v > now}
+    return state
+
+
+class SupabaseAlertStore:
+    """The durable store, on the service-key client the pipeline already uses."""
+
+    def __init__(self, sync):
+        self.sync = sync
+
+    @property
+    def durable(self) -> bool:
+        return bool(self.sync is not None and getattr(self.sync, "enabled", False))
+
+    def load(self, now: datetime) -> Optional[AlertState]:
+        if not self.durable:
+            return None
+        from modules.supabase_sync import SupabaseReadError
+
+        try:
+            rows = []
+            for page in range(MAX_PAGES):
+                chunk = self.sync.select_strict("alert_events", {
+                    "select": "at,kind,title,body,delivered,severity,channel_id",
+                    "kind": f"like.{KIND_PREFIX}*", "channel_id": "is.null",
+                    "at": f"gte.{iso(now - LOOKBACK)}",
+                    "order": "at.desc", "limit": str(PAGE), "offset": str(page * PAGE),
+                })
+                rows.extend(chunk)
+                if len(chunk) < PAGE:
+                    break
+            else:
+                # More rows than the pages cover: the oldest dedupe keys would be
+                # forgotten and alerts repeated. Better to say nothing.
+                logger.warning("operator alert state exceeds %d rows — nothing is sent", MAX_PAGES * PAGE)
+                return None
+            marker = self.sync.select_strict("alert_events", {
+                "select": "at", "kind": "eq.operator.alert", "title": "eq.baseline",
+                "channel_id": "is.null", "limit": "1",
+            })
+        except SupabaseReadError as e:
+            logger.warning("operator alert state unreadable (%s)", e.detail)
+            return None
+        except Exception as e:
+            logger.warning("operator alert state unreadable (%s)", type(e).__name__)
+            return None
+        return replay(rows, now, baseline_seen=bool(marker))
+
+    def _write(self, kind: str, title: str, body: str = "", severity: str = "info",
+               delivered: bool = False) -> bool:
+        if not self.durable:
+            return False
+        # channel_id is deliberately absent (NULL): see the module docstring. An
+        # alert about a customer's channel must not become readable on, or
+        # writable from, that customer's Alerts page.
+        row = {"kind": kind, "severity": severity, "title": title[:200], "body": body[:300],
+               "delivered": delivered}
+        return self.sync.upsert("alert_events", [row]) > 0
+
+    def record_alert(self, key, kind, delivered, severity="info", channel_id=None) -> bool:
+        # `channel_id` is accepted for the interface and never stored.
+        return self._write("operator.alert", key, kind, severity, delivered)
+
+    def record_mute(self, kind, until) -> bool:
+        return self._write("operator.mute", kind, iso(until))
+
+    def record_unmute(self, kind) -> bool:
+        return self._write("operator.unmute", kind)
+
+    def record_digest(self, date) -> bool:
+        return self._write("operator.digest", date)
+
+
+class MemoryAlertStore:
+    """In-memory store for tests and for a dry run with no database."""
+
+    durable = True
+
+    def __init__(self, now_fn=None):
+        self.rows: list = []
+        self.fail_load = False
+        self.fail_write = False
+        self._now = now_fn or (lambda: datetime.now(timezone.utc))
+
+    def load(self, now):
+        return None if self.fail_load else replay(self.rows, now)
+
+    def _add(self, kind, title, body="", delivered=False, severity="info") -> bool:
+        if self.fail_write:
+            return False
+        self.rows.append({"at": iso(self._now()), "kind": kind, "title": title, "body": body,
+                          "delivered": delivered, "severity": severity})
+        return True
+
+    def record_alert(self, key, kind, delivered, severity="info", channel_id=None) -> bool:
+        return self._add("operator.alert", key, kind, delivered, severity)
+
+    def record_mute(self, kind, until) -> bool:
+        return self._add("operator.mute", kind, iso(until))
+
+    def record_unmute(self, kind) -> bool:
+        return self._add("operator.unmute", kind)
+
+    def record_digest(self, date) -> bool:
+        return self._add("operator.digest", date)
