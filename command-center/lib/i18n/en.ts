@@ -85,6 +85,15 @@ export const en = {
     audit: "Audit Trail",
     developers: "Developers",
   },
+  // The "Add to Home Screen" tip for a signed-in phone (components/shell/InstallHint.tsx).
+  installHint: {
+    title: "Add Nightshift to your home screen",
+    android: "Open your channels in one tap, like an app.",
+    ios: "Tap the Share button, then choose Add to Home Screen.",
+    add: "Add",
+    notNow: "Not now",
+    gotIt: "Got it",
+  },
   navigation: {
     back: "Go back",
     breadcrumb: "Breadcrumb",

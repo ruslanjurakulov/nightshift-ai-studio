@@ -804,6 +804,46 @@ option {
 /* A fixed bottom action bar (the library's selection bar) owns that strip: the button steps away rather than sit on its actions. */
 .app-shell:has([data-bottom-bar]) .scroll-top { visibility: hidden; }
 
+/* The "Add to Home Screen" tip (components/shell/InstallHint.tsx): a card, not a dialog. Fixed to the bottom, clear of the
+   phone's tab bar when there is one, never wider than a phone's card, and out of the way of anything that owns that
+   strip: the selection bar, the composer's Generate dock, the back-to-top button (which steps aside while it is up). */
+.install-hint {
+  position: fixed;
+  inset-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 28rem;
+  margin-inline: auto;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: var(--color-panel);
+  color: var(--color-fg);
+  box-shadow: var(--shadow-elevated);
+}
+.app-shell:has(.ns-tabbar) .install-hint { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
+.app-shell:has(.studio-dock:not([data-at-top="true"])) .install-hint,
+.app-shell:has([data-bottom-bar]) .install-hint { display: none; }
+.app-shell:has(.install-hint) .scroll-top { visibility: hidden; }
+.install-hint-body { display: flex; align-items: flex-start; gap: 0.75rem; }
+.install-hint-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.625rem;
+  background: var(--color-hover);
+  color: var(--color-primary);
+}
+.install-hint-title { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.install-hint-text { margin: 0.125rem 0 0; font-size: 0.875rem; line-height: 1.4; color: var(--color-muted); overflow-wrap: anywhere; }
+.install-hint-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; /* the end edge: mirrors under dir=rtl */ gap: 0.5rem; }
+.install-hint-actions > button { min-height: 2.75rem; min-width: 2.75rem; }
+
 /* A bar nav link carries the same sweep as every other control: the fill rises
    from the bottom edge on hover and the press scales in. The page you are on
    keeps that fill parked, so the current section reads without a second device. */
