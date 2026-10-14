@@ -79,6 +79,139 @@ class DocCasesTestCase(unittest.TestCase):
                 problems = verdict(cases[name])
                 self.assertTrue(any(needle in p for p in problems), problems)
 
+    def test_the_grade_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "grade brightness above 1": "grade: brightness must be a number >= -1 and <= 1",
+            "grade brightness below -1": "grade: brightness must be a number >= -1 and <= 1",
+            "grade contrast above 2": "grade: contrast must be a number >= 0 and <= 2",
+            "grade contrast below 0": "grade: contrast must be a number >= 0 and <= 2",
+            "grade saturation above 3": "grade: saturation must be a number >= 0 and <= 3",
+            "grade saturation below 0": "grade: saturation must be a number >= 0 and <= 3",
+            "grade value as text": "grade: brightness must be a number",
+            "grade value as boolean": "grade: contrast must be a number",
+            "grade value null": "grade: saturation must be a number",
+            "grade without saturation": "grade: saturation is missing",
+            "grade with a hue field": "grade: hue is not a known field",
+            "grade that is not an object": "grade must be an object",
+            "grade that is null": "grade must be an object",
+            "grade on a music clip": "grade is not a known field",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("grade on a clip", "grade at the ends of every range",
+                     "grade at the other ends of every range", "neutral grade"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
+    def test_the_overlay_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "overlays that is not a list": "overlays must be a list",
+            "overlays that is null": "overlays must be a list",
+            "seventeen overlays": "overlays: at most 16",
+            "overlay that is not an object": "must be an object",
+            "overlay with a path field": "path is not a known field",
+            "overlay with a rotation field": "rotation is not a known field",
+            "overlay without an asset": "asset_id is missing",
+            "overlay asset that is not a uuid": "asset_id must be a uuid",
+            "overlay without an end": "end_s is missing",
+            "overlay ending before it starts": "end_s (1) must be greater than start_s (4)",
+            "overlay of zero length": "must be greater than start_s",
+            "overlay shorter than one frame": "shorter than one frame",
+            "overlay starting below zero": "start_s must be a number",
+            "overlay time as text": "start_s must be a number",
+            "overlay x below 0": "x must be a number >= 0 and <= 1",
+            "overlay x above 1": "x must be a number >= 0 and <= 1",
+            "overlay y below 0": "y must be a number >= 0 and <= 1",
+            "overlay y above 1": "y must be a number >= 0 and <= 1",
+            "overlay width below 0.05": "w must be a number >= 0.05 and <= 1",
+            "overlay width above 1": "w must be a number >= 0.05 and <= 1",
+            "overlay width zero": "w must be a number >= 0.05 and <= 1",
+            "overlay opacity below 0": "opacity must be a number >= 0 and <= 1",
+            "overlay opacity above 1": "opacity must be a number >= 0 and <= 1",
+            "overlay x as text": "x must be a number",
+            "overlay width as boolean": "w must be a number",
+            "overlay opacity null": "opacity must be a number",
+            "overlay with a bad id": "id must be 1-64 letters",
+            "overlay id used by a clip": "id 'c1' is already used",
+            "two overlays with one id": "id 'o1' is already used",
+            "overlay of another organization": "is not available",
+            "a sound as an overlay": "an overlay takes video or image",
+            "five video overlays": "at most 4 video overlays",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("overlay picture with every field", "overlay with only the required fields",
+                     "overlay at the low ends of every range", "overlay at the high ends of every range",
+                     "overlays that share time and a file", "an empty overlays list",
+                     "overlay running past the end of the picture", "overlay video",
+                     "sixteen overlays", "overlays on a document with captions", "four video overlays"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
+    def test_the_transition_style_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "cross-fade with an unknown style": "style must be one of",
+            "cross-fade with xfade's custom style": "style must be one of",
+            "cross-fade style in capitals": "style must be one of",
+            "cross-fade style with a trailing newline": "style must be one of",
+            "cross-fade style with an expression": "style must be one of",
+            "cross-fade style as a number": "style must be one of",
+            "cross-fade style null": "style must be one of",
+            "cross-fade style as a list": "style must be one of",
+            "cross-fade style empty": "style must be one of",
+            "style on a dip to black": "a style is only for a crossfade",
+            "style on a cut": "a style is only for a crossfade",
+            "transition with a direction field": "direction is not a known field",
+            "styled cross-fade on the first clip": "a cross-fade needs a clip before it",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("cross-fade with every style", "cross-fade with the plain fade style written out",
+                     "cross-fade with a dissolve style", "cross-fade with a circle style at the shortest length",
+                     "cross-fade with a slide style at the longest length"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
+    def test_the_text_look_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "shadow below 0": "shadow must be a number >= 0 and <= 20",
+            "shadow above 20": "shadow must be a number >= 0 and <= 20",
+            "shadow as text": "shadow must be a number",
+            "shadow as boolean": "shadow must be a number",
+            "shadow null": "shadow must be a number",
+            "box colour that is not a colour": "box_color must be a #RRGGBB colour",
+            "box colour with three digits": "box_color must be a #RRGGBB colour",
+            "box colour with a trailing newline": "box_color must be a #RRGGBB colour",
+            "box colour as a number": "box_color must be a #RRGGBB colour",
+            "box opacity above 1": "box_opacity must be a number >= 0 and <= 1",
+            "box opacity below 0": "box_opacity must be a number >= 0 and <= 1",
+            "box opacity as text": "box_opacity must be a number",
+            "box opacity without a box colour": "box_opacity needs a box_color",
+            "text with a rotation field": "rotation is not a known field",
+            "shadow on the captions style": "shadow is not a known field",
+            "box on the captions style": "box_color is not a known field",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("text with a shadow", "text with the largest shadow", "text with a zero shadow",
+                     "text with a box", "text with a box at an opacity", "text with a clear box",
+                     "text with a solid box", "text with a box and a shadow and an outline",
+                     "text with every look at the other ends"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
+
     def test_the_ducking_cases_fail_for_the_reason_their_name_gives(self):
         cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
         needles = {

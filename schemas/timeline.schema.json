@@ -50,6 +50,14 @@
     },
     "captions": {
       "$ref": "#/$defs/captions"
+    },
+    "overlays": {
+      "type": "array",
+      "maxItems": 16,
+      "description": "Pictures or videos laid over the composited picture (picture-in-picture, stickers, logos), drawn in list order (later on top), under the texts. They may overlap in time and do not lengthen the timeline. At most 16, at most 4 of them videos (checked against the files in modules/timeline.py resolve_assets). Absent or empty = none, and the render is the one a document without the field gets.",
+      "items": {
+        "$ref": "#/$defs/overlay"
+      }
     }
   },
   "$defs": {
@@ -231,6 +239,42 @@
           "type": "boolean",
           "default": false,
           "description": "Play the video's own sound, trimmed and sped like the picture. Off by default so older documents render as before; a source with no sound is silent."
+        },
+        "grade": {
+          "$ref": "#/$defs/grade",
+          "description": "Per-clip colour grade (ffmpeg eq). Absent = no change, and the clip renders exactly as it did before colour existed."
+        }
+      }
+    },
+    "grade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brightness",
+        "contrast",
+        "saturation"
+      ],
+      "properties": {
+        "brightness": {
+          "type": "number",
+          "minimum": -1.0,
+          "maximum": 1.0,
+          "default": 0,
+          "description": "Added to the luma (eq brightness): -1 black .. 1 white, 0 = no change."
+        },
+        "contrast": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 1,
+          "description": "Luma contrast around mid-grey (eq contrast): 0 flat grey .. 2 double, 1 = no change."
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 3.0,
+          "default": 1,
+          "description": "Chroma gain (eq saturation): 0 monochrome .. 3, 1 = no change."
         }
       }
     },
@@ -371,6 +415,25 @@
         "fade_out_s": {
           "$ref": "#/$defs/seconds",
           "default": 0
+        },
+        "shadow": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 20.0,
+          "default": 0,
+          "description": "A soft black drop shadow, in output pixels (down and to the right). 0 = none."
+        },
+        "box_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "A box of this colour behind the text, instead of its outline."
+        },
+        "box_opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.7,
+          "description": "Opacity of the box; needs box_color."
         }
       }
     },
@@ -394,6 +457,26 @@
           "type": "number",
           "minimum": 0,
           "maximum": 10
+        },
+        "style": {
+          "enum": [
+            "fade",
+            "dissolve",
+            "fadeblack",
+            "fadewhite",
+            "wipeleft",
+            "wiperight",
+            "slideleft",
+            "slideright",
+            "slideup",
+            "slidedown",
+            "circleopen",
+            "circleclose",
+            "radial",
+            "zoomin"
+          ],
+          "default": "fade",
+          "description": "How a crossfade blends the two pictures: an ffmpeg xfade transition from this closed list. Only valid with type crossfade; fade (the default) is the plain dissolve and is dropped by normalise."
         }
       }
     },
@@ -509,6 +592,59 @@
           "minimum": 0.1,
           "maximum": 5.0,
           "default": 0.8
+        }
+      }
+    },
+    "overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "asset_id",
+        "start_s",
+        "end_s"
+      ],
+      "description": "A picture or video over the picture from start_s to end_s. (x, y) is where its CENTRE sits and w its width, as fractions of the frame; its height follows the file's own aspect ratio. A picture keeps its own transparency; a video plays from its first frame, silent, and must be at least as long as the span. end_s > start_s and at least one frame are checked in modules/timeline.py.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/asset_id"
+        },
+        "start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.5,
+          "description": "Centre, as a fraction of the frame width."
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.5,
+          "description": "Centre, as a fraction of the frame height."
+        },
+        "w": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 1.0,
+          "default": 0.3,
+          "description": "Width, as a fraction of the frame width."
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "0 = invisible (renders nothing), 1 = opaque."
         }
       }
     }

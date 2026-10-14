@@ -164,7 +164,8 @@ describe("the editor", () => {
       "checked",
       true,
     );
-    expect(screen.getByText(new RegExp(te.freeNote))).toBeTruthy();
+    // The note is in the header panel (sm and up) and, for a phone, again under the preview; only one is displayed.
+    expect(screen.getAllByText(new RegExp(te.freeNote)).length).toBeGreaterThan(0);
     expect(exportBtn()).toHaveProperty("disabled", false);
   });
 
@@ -322,6 +323,46 @@ describe("the editor", () => {
     });
   });
 
+  it("Ctrl+S while the cursor is still in the text box saves what was typed, not the old text", async () => {
+    routes.push((url, init) =>
+      url.endsWith(`/api/editor/projects/${PID}`) && init?.method === "PUT"
+        ? json({ id: PID, rev: 2 })
+        : undefined,
+    );
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: te.addText }));
+    const box = screen.getByRole("textbox", { name: te.textLabel }) as HTMLTextAreaElement;
+    box.focus();
+    fireEvent.change(box, { target: { value: "Typed just now" } });
+    // No blur: the person goes straight to the keyboard shortcut.
+    expect(document.activeElement).toBe(box);
+    fireEvent.keyDown(box, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(calls("PUT", PID)).toHaveLength(1));
+    const t = bodyOf(calls("PUT", PID)[0]).doc.tracks.find((x: { kind: string }) => x.kind === "T");
+    expect(t.clips[0].text).toBe("Typed just now");
+    // The cursor stays where it was.
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("Ctrl+S in a number field saves the typed number", async () => {
+    routes.push((url, init) =>
+      url.endsWith(`/api/editor/projects/${PID}`) && init?.method === "PUT"
+        ? json({ id: PID, rev: 2 })
+        : undefined,
+    );
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: te.addText }));
+    const fields = Array.from(document.querySelectorAll<HTMLInputElement>('[data-editor-root] input[type="number"]'));
+    expect(fields.length).toBeGreaterThan(0);
+    const f = fields[0];
+    const typed = String(Number(f.value) + 0.7);
+    f.focus();
+    fireEvent.change(f, { target: { value: typed } });
+    fireEvent.keyDown(f, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(calls("PUT", PID)).toHaveLength(1));
+    expect(JSON.stringify(bodyOf(calls("PUT", PID)[0]).doc)).toContain(typed);
+  });
+
   it("an empty text is caught before saving", () => {
     mount();
     fireEvent.click(screen.getByRole("button", { name: te.addText }));
@@ -400,7 +441,9 @@ describe("the editor", () => {
       expect(screen.getByText(te.exportStatus.done)).toBeTruthy(),
     );
     expect(
-      screen.getByRole("link", { name: te.watch }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: new RegExp(te.exportPanel.openVideo) })
+        .getAttribute("href"),
     ).toBe(OTHER.viewUrl);
     expect(
       screen.getByRole("link", { name: te.viewInLibrary }).getAttribute("href"),

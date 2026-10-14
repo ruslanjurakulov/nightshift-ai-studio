@@ -118,7 +118,7 @@ function PlanCredits({ summary, allowance, nowMs }: { summary: UsageSummary; all
   const status = summary.subscription ? t.plans.status[summary.subscription.status] : null;
 
   return (
-    <section id="plan" className="panel ns-desk flex scroll-mt-24 flex-col gap-5" aria-labelledby={titleId}>
+    <section id="plan" className="panel ns-desk flex scroll-mt-7 flex-col gap-5" aria-labelledby={titleId}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 id={titleId} className="t-section">
@@ -265,7 +265,7 @@ function PlanLimits({ summary }: { summary: UsageSummary }) {
   const limits = usageLimits(summary);
   const titleId = useId();
   return (
-    <section id="limits" className="panel flex scroll-mt-24 flex-col gap-4" aria-labelledby={titleId}>
+    <section id="limits" className="panel flex scroll-mt-7 flex-col gap-4" aria-labelledby={titleId}>
       <h2 id={titleId} className="t-section">
         {u.limits.title}
       </h2>
@@ -324,7 +324,7 @@ function FreePlan({ summary, gaps, canUpgrade }: { summary: UsageSummary; gaps: 
     return g.key === "concurrency" ? fmt(label, { free: g.free ?? "", best: g.best ?? "" }) : label;
   };
   return (
-    <section id="plan" className="panel ns-desk flex scroll-mt-24 flex-col gap-5" aria-labelledby={titleId}>
+    <section id="plan" className="panel ns-desk flex scroll-mt-7 flex-col gap-5" aria-labelledby={titleId}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 id={titleId} className="t-section">
@@ -425,7 +425,7 @@ function ExtraCredits({
   const spendable = summary.spendableNow;
   const expiry = summary.extra.soonestExpiry ? fmt(u.extra.expires, { date: day(summary.extra.soonestExpiry) }) : null;
   return (
-    <section id="extra" className="panel flex scroll-mt-24 flex-col gap-5" aria-labelledby={titleId}>
+    <section id="extra" className="panel flex scroll-mt-7 flex-col gap-5" aria-labelledby={titleId}>
       <div className="flex flex-col gap-1.5">
         <h2 id={titleId} className="t-section">
           {u.extra.title}

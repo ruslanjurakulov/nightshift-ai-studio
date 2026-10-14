@@ -29,11 +29,14 @@ export function StyleLibrary({
   orgId,
   addState,
   initialAdded,
+  initialOpenId = null,
 }: {
   orgId: string | null;
   addState: AddState;
   /** library id -> the organization's kit id, for the styles already added. */
   initialAdded: Record<string, string>;
+  /** A look the page was opened on (the Presets gallery's link): its detail starts open. */
+  initialOpenId?: string | null;
 }) {
   const { t, locale } = useI18n();
   const ts = t.styleLibrary;
@@ -42,7 +45,7 @@ export function StyleLibrary({
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [tags, setTags] = useState<StyleTag[]>([]);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialOpenId);
   const [added, setAdded] = useState<Record<string, string>>(initialAdded);
   const [busy, setBusy] = useState<SheetBusy>(null);
   const [notice, setNotice] = useState<string | null>(null);

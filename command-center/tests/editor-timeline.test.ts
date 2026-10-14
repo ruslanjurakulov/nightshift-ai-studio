@@ -357,3 +357,92 @@ describe("words", () => {
     expect(docAssetIds(toDoc(m))).toEqual([A, B]);
   });
 });
+
+/** Same documents as tests/test_editor_hardening.py (the Python twin). */
+describe("the overlap search stops (denial of service)", () => {
+  const cueDoc = (n: number) => ({
+    version: 1,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    tracks: [{ id: "v1", kind: "V", clips: [] }],
+    captions: {
+      cues: Array.from({ length: n }, (_, i) => ({
+        id: `c${i}`,
+        start_s: 0,
+        end_s: 5,
+        text: "x",
+      })),
+    },
+  });
+
+  it("5000 captions on one span: 12.5 million pairs are not collected", () => {
+    const doc = cueDoc(5000);
+    expect(JSON.stringify(doc).length).toBeGreaterThan(200_000);
+    const t0 = performance.now();
+    const problems = validateTimeline(doc);
+    const took = performance.now() - t0;
+    expect(took).toBeLessThan(2000); // was ~10 s and 1.2 GB
+    // (This validator keeps cues of one start in document order.)
+    expect(problems.slice(0, 20)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, i) => `track captions: clips c0 and c${i + 1} overlap`,
+      ),
+    );
+    expect(problems.slice(20)).toEqual(["... and more overlaps"]);
+  });
+
+  it("2000 clips on the picture track", () => {
+    const doc = {
+      version: 1,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      tracks: [
+        {
+          id: "v1",
+          kind: "V",
+          clips: Array.from({ length: 2000 }, (_, i) => ({
+            id: `c${i}`,
+            asset_id: A,
+            start_s: 0,
+            in_s: 0,
+            out_s: 4,
+          })),
+        },
+      ],
+    };
+    const t0 = performance.now();
+    const problems = validateTimeline(doc);
+    expect(performance.now() - t0).toBeLessThan(2000);
+    expect(problems).toHaveLength(21);
+    expect(problems[0]).toBe("track v1: clips c0 and c1 overlap");
+  });
+
+  it("up to twenty overlaps are all listed, twenty-one say there are more", () => {
+    expect(validateTimeline(cueDoc(6))).toHaveLength(15);
+    expect(
+      validateTimeline(cueDoc(6)).some((p) => p.includes("more")),
+    ).toBe(false);
+    const seven = validateTimeline(cueDoc(7)); // 21 pairs
+    expect(seven).toHaveLength(21);
+    expect(seven[20]).toBe("... and more overlaps");
+  });
+
+  it("a cross-faded neighbour is still not an overlap", () => {
+    const doc = start();
+    const c = doc.tracks[0].clips[0] as Record<string, unknown>;
+    const second = {
+      ...c,
+      id: "c9",
+      start_s: Number(c.start_s) + 9.5,
+      in_s: 0,
+      out_s: 2,
+      transition: { type: "crossfade", duration_s: 0.5 },
+    };
+    // c1 is 0..10 s; c9 starts 0.5 s before it ends.
+    doc.tracks[0].clips.push(second as never);
+    expect(validateTimeline(doc)).toEqual([]);
+  });
+});

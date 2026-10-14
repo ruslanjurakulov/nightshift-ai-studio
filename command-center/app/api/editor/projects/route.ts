@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
-import { readJsonBody, resolveMediaOrg } from "@/lib/server/media-folders";
+import { resolveMediaOrg } from "@/lib/server/media-folders";
+import { editorRateLimited, readSmallBody } from "@/lib/server/editor-guard";
+import { EDITOR_CREATE_RATE } from "@/lib/server/web-rate";
 import { loadEditorProjects, readEditorVideo } from "@/lib/server/editor";
 import { parseMediaId } from "@/lib/media";
 import {
@@ -27,7 +29,11 @@ export async function POST(request: Request) {
   const user = await getUser();
   if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = await readJsonBody(request);
+  const limited = await editorRateLimited(user.id, EDITOR_CREATE_RATE);
+  if (limited) return limited;
+  const read = await readSmallBody(request);
+  if ("refusal" in read) return read.refusal;
+  const body = read.body;
   if (!body || typeof body !== "object" || Array.isArray(body))
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const b = body as { org_id?: unknown; title?: unknown; asset_id?: unknown };
