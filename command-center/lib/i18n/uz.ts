@@ -4552,6 +4552,13 @@ export const uz: Dictionary = {
     replaceAll: "Hamma subtitrlarda almashtirish",
     replaced: "{n} ta subtitr oʻzgardi. Saqlash uchun loyihani saqlang.",
     nothingToReplace: "Bu matn hech bir subtitrda topilmadi.",
+    deleteCueN: "{n}-subtitrni oʻchirish ({time} da)",
+    splitCueN: "{n}-subtitrni ajratish ({time} da)",
+    mergeCueN: "{n}-subtitrni keyingisi bilan birlashtirish ({time} da)",
+    addCueAfterN: "{n}-subtitrdan keyin subtitr qoʻshish ({time} da)",
+    cueLimit: "Loyihada subtitrlar soni allaqachon eng koʻp. Avval baʼzilarini birlashtiring yoki oʻchiring.",
+    cannotJoin: "Bu ikki subtitr birga bitta subtitr uchun juda uzun boʻladi.",
+    replaceSkipped: "Natija juda uzun boʻlgani uchun {n} ta subtitr oʻzgartirilmadi.",
     defaultFile: "subtitrlar",
   },
   workflows: {

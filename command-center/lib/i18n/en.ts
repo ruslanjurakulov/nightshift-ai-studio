@@ -4563,6 +4563,13 @@ export const en = {
     replaceAll: "Replace in all captions",
     replaced: "Changed {n} captions. Save the project to keep them.",
     nothingToReplace: "That text was not found in any caption.",
+    deleteCueN: "Delete caption {n} (at {time})",
+    splitCueN: "Split caption {n} (at {time})",
+    mergeCueN: "Join caption {n} with the next one (at {time})",
+    addCueAfterN: "Add a caption after caption {n} (at {time})",
+    cueLimit: "This project already has the most captions it can hold. Join or delete some first.",
+    cannotJoin: "These two captions together would be too long for one caption.",
+    replaceSkipped: "{n} captions were left as they were because the result would be too long.",
     defaultFile: "captions",
   },
   workflows: {

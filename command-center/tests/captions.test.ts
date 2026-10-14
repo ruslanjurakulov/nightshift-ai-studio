@@ -739,6 +739,7 @@ describe("fixing mistakes in the captions (free, local)", () => {
 
   it("does not replace into a cue that would then be longer than a caption may be", () => {
     const m = setCaptions(model(), { style: styleFor("classic", 1080, 1920), cues: [{ id: "a", start_s: 0, end_s: 1, text: "ab ".repeat(100) }] });
-    expect(replaceInCues(m, "ab", "x".repeat(40)).changed).toBe(0);
+    const out = replaceInCues(m, "ab", "x".repeat(40));
+    expect([out.changed, out.skipped]).toEqual([0, 1]);
   });
 });

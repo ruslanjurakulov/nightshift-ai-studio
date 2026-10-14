@@ -563,21 +563,30 @@ export function splitCue(model: EditorModel, id: string): EditorModel {
  * Replaces every occurrence of a word or phrase in the cues' text (plain text,
  * not a pattern; letter case ignored) — the fix for a name the transcript
  * heard wrongly many times. A cue whose result would be longer than a caption
- * may be is left as it was. `changed` counts the cues that changed.
+ * may be is left as it was and counted in `skipped`. `changed` counts the cues that changed.
  */
-export function replaceInCues(model: EditorModel, find: string, replacement: string): { model: EditorModel; changed: number } {
+export function replaceInCues(
+  model: EditorModel,
+  find: string,
+  replacement: string,
+): { model: EditorModel; changed: number; skipped: number } {
   const cur = captionsOf(model);
   const needle = find.trim();
-  if (!cur || !needle) return { model, changed: 0 };
+  if (!cur || !needle) return { model, changed: 0, skipped: 0 };
   const re = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
   let changed = 0;
+  let skipped = 0;
   const cues = cur.cues.map((c) => {
     const text = c.text.replace(re, () => replacement);
-    if (text === c.text || text.length > MAX_TEXT) return c;
+    if (text === c.text) return c;
+    if (text.length > MAX_TEXT) {
+      skipped += 1;
+      return c;
+    }
     changed += 1;
     return { ...c, text };
   });
-  return changed ? { model: setCaptions(model, { style: cur.style, cues }), changed } : { model, changed: 0 };
+  return changed ? { model: setCaptions(model, { style: cur.style, cues }), changed, skipped } : { model, changed: 0, skipped };
 }
 
 /** The cues on screen at `t`. */

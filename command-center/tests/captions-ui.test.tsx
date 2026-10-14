@@ -123,6 +123,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** A per-caption button's name has the caption's number and time in it: match the template with both left open. */
+const labelRe = (template: string) =>
+  new RegExp("^" + template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\\{n\\}", "\\d+").replace("\\{time\\}", ".+") + "$");
+
 const makeBtn = (n: number | null) =>
   screen.getByRole("button", { name: n === null ? tc.make : fmt(tc.makePriced, { n: String(n) }) });
 
@@ -479,7 +483,7 @@ describe("a transcript, then captions on the video (free)", () => {
     fireEvent.change(box, { target: { value: "  " } });
     fireEvent.blur(box);
     expect(screen.getByText(tc.cueEmpty)).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("button", { name: tc.deleteCue })[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.deleteCueN) })[1]);
     expect(captionsOf(seen!)!.cues).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: tc.clear }));
     expect(seen!.captions).toBeUndefined();
@@ -494,15 +498,15 @@ describe("a transcript, then captions on the video (free)", () => {
     fireEvent.click(screen.getByRole("button", { name: tc.put }));
     const before = captionsOf(seen!)!.cues;
     expect(before.length).toBeGreaterThanOrEqual(2);
-    fireEvent.click(screen.getAllByRole("button", { name: tc.mergeCue })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.mergeCueN) })[0]);
     expect(captionsOf(seen!)!.cues).toHaveLength(before.length - 1);
-    fireEvent.click(screen.getAllByRole("button", { name: tc.splitCue })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.splitCueN) })[0]);
     expect(captionsOf(seen!)!.cues).toHaveLength(before.length);
     // Right after a split there is no gap to add into: said, not silently ignored.
-    fireEvent.click(screen.getAllByRole("button", { name: tc.addCueAfter })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.addCueAfterN) })[0]);
     expect(captionsOf(seen!)!.cues).toHaveLength(before.length);
     expect(screen.getByText(tc.noRoomForCue)).toBeTruthy();
-    const adds = screen.getAllByRole("button", { name: tc.addCueAfter });
+    const adds = screen.getAllByRole("button", { name: labelRe(tc.addCueAfterN) });
     fireEvent.click(adds[adds.length - 1]);
     expect(captionsOf(seen!)!.cues).toHaveLength(before.length + 1);
     fireEvent.change(screen.getByLabelText(tc.findLabel), { target: { value: "SALOM" } });
@@ -513,9 +517,34 @@ describe("a transcript, then captions on the video (free)", () => {
     // The empty caption just added is flagged until it has words; with them the document is valid.
     expect(validateTimeline(toDoc(seen!))).not.toEqual([]);
     const emptyAt = captionsOf(seen!)!.cues.findIndex((c) => !c.text.trim());
-    fireEvent.click(screen.getAllByRole("button", { name: tc.deleteCue })[emptyAt]);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.deleteCueN) })[emptyAt]);
     expect(validateTimeline(toDoc(seen!))).toEqual([]);
     expect(calls("POST", "/api/creative/jobs")).toHaveLength(0);
+  });
+
+  it("each caption's buttons say which caption they act on, by number and time", async () => {
+    withTrack();
+    render(<Host />);
+    fireEvent.click(await screen.findByRole("button", { name: tc.useTranscript }));
+    await waitFor(() => expect(screen.getByRole("button", { name: tc.put })).toHaveProperty("disabled", false));
+    fireEvent.click(screen.getByRole("button", { name: tc.put }));
+    expect(screen.getByRole("button", { name: fmt(tc.splitCueN, { n: "1", time: "0:00.5" }) })).toBeTruthy();
+    expect(screen.getByRole("button", { name: fmt(tc.deleteCueN, { n: "2", time: "0:03.0" }) })).toBeTruthy();
+  });
+
+  it("says why a join is refused (too long together) and how many replacements were skipped for length", async () => {
+    const long = { id: "a", start_s: 0, end_s: 1, text: "x ".repeat(130).trim() };
+    const model = baseModel({
+      captions: { style: { font: "DejaVu Sans", size: 56, color: "#FFFFFF", outline_color: "#000000", outline_width: 3, bold: true, y: 0.9 }, cues: [long, { ...long, id: "b", start_s: 1, end_s: 2 }] },
+    });
+    routes.push(noTracks, noJobs, quoteOk(1));
+    render(<Host model={model} />);
+    fireEvent.click(screen.getAllByRole("button", { name: labelRe(tc.mergeCueN) })[0]);
+    expect(screen.getByText(tc.cannotJoin)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(tc.findLabel), { target: { value: "x" } });
+    fireEvent.change(screen.getByLabelText(tc.replaceLabel), { target: { value: "y".repeat(50) } });
+    fireEvent.click(screen.getByRole("button", { name: tc.replaceAll }));
+    expect(screen.getByText(fmt(tc.replaceSkipped, { n: 2 }))).toBeTruthy();
   });
 
   it("with no captions yet a caption can be added by hand", async () => {

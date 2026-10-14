@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Captions as CaptionsIcon, Download, Merge, Plus, Scissors, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { formatTime, type EditorAsset, type EditorModel } from "@/lib/editor";
+import { MAX_CUES, formatTime, type EditorAsset, type EditorModel } from "@/lib/editor";
 import {
   addCue,
   CAPTION_LANGUAGES,
@@ -122,7 +122,7 @@ function CueRow({
   onSplit: () => void;
   onAddAfter: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
   const tc = t.captions;
   // Typed numbers are committed on blur or Enter: a half-typed "1." must not
   // be clamped into the neighbouring cue while the person is still typing.
@@ -142,6 +142,8 @@ function CueRow({
       setE(String(end));
     }
   };
+  // A row's buttons say which caption they act on (a list of identical "Split" buttons is unusable by ear).
+  const where = (template: string) => fmt(template, { n: String(n), time: formatTime(start) });
   const key = (ev: React.KeyboardEvent) => {
     if (ev.key === "Enter") commit();
   };
@@ -168,7 +170,7 @@ function CueRow({
           }}
           className={`${fieldClass} min-w-0 flex-1 resize-y`}
         />
-        <button type="button" onClick={onDelete} aria-label={tc.deleteCue} className={quietBtn}>
+        <button type="button" onClick={onDelete} aria-label={where(tc.deleteCueN)} className={quietBtn}>
           <Trash2 className="size-3.5" aria-hidden />
         </button>
       </div>
@@ -197,17 +199,17 @@ function CueRow({
         </label>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={onSplit} className={quietBtn}>
+        <button type="button" onClick={onSplit} aria-label={where(tc.splitCueN)} className={quietBtn}>
           <Scissors className="size-3.5" aria-hidden />
           {tc.splitCue}
         </button>
         {onMerge ? (
-          <button type="button" onClick={onMerge} className={quietBtn}>
+          <button type="button" onClick={onMerge} aria-label={where(tc.mergeCueN)} className={quietBtn}>
             <Merge className="size-3.5" aria-hidden />
             {tc.mergeCue}
           </button>
         ) : null}
-        <button type="button" onClick={onAddAfter} className={quietBtn}>
+        <button type="button" onClick={onAddAfter} aria-label={where(tc.addCueAfterN)} className={quietBtn}>
           <Plus className="size-3.5" aria-hidden />
           {tc.addCueAfter}
         </button>
@@ -545,6 +547,11 @@ export function CaptionsPanel({
   }
 
   function addAfter(afterId: string | null) {
+    // Unchanged for two reasons: the project holds as many captions as it may, or there is no time.
+    if (cues.length >= MAX_CUES) {
+      setNotice(tc.cueLimit);
+      return;
+    }
     const next = addCue(model, afterId, pictureEnd);
     if (next === model) setNotice(tc.noRoomForCue);
     else {
@@ -555,7 +562,8 @@ export function CaptionsPanel({
 
   function replaceAll() {
     const out = replaceInCues(model, find, replacement);
-    setNotice(out.changed ? fmt(tc.replaced, { n: out.changed }) : tc.nothingToReplace);
+    const left = out.skipped ? ` ${fmt(tc.replaceSkipped, { n: out.skipped })}` : "";
+    setNotice(out.changed ? `${fmt(tc.replaced, { n: out.changed })}${left}` : out.skipped ? fmt(tc.replaceSkipped, { n: out.skipped }) : tc.nothingToReplace);
     if (out.changed) onChange(out.model);
   }
 
@@ -836,8 +844,21 @@ export function CaptionsPanel({
                   onText={(v) => onChange(updateCue(model, c.id, { text: v }))}
                   onTimes={(s, e) => onChange(updateCue(model, c.id, { start_s: s, end_s: e }))}
                   onDelete={() => onChange(removeCue(model, c.id))}
-                  onMerge={i + 1 < cues.length ? () => onChange(mergeWithNext(model, c.id)) : null}
+                  onMerge={
+                    i + 1 < cues.length
+                      ? () => {
+                          const next = mergeWithNext(model, c.id);
+                          // The only refusal here is length: the two together would not fit one caption.
+                          if (next === model) setNotice(tc.cannotJoin);
+                          else onChange(next);
+                        }
+                      : null
+                  }
                   onSplit={() => {
+                    if (cues.length >= MAX_CUES) {
+                      setNotice(tc.cueLimit);
+                      return;
+                    }
                     const next = splitCue(model, c.id);
                     if (next === model) setNotice(tc.cannotSplit);
                     else onChange(next);

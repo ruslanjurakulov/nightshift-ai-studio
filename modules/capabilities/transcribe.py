@@ -74,6 +74,8 @@ class AsyncTranscriptionAdapter(HttpAdapter):
     default_base_url = "https://api.assemblyai.com"
     #: One upload of a recording (up to the worker's 512 MB bound) is a long request.
     timeout = 600
+    #: A status read is a small GET: it must not hold the worker for the upload's time.
+    poll_timeout = 30
 
     def auth_headers(self) -> Dict[str, str]:
         return {"authorization": self.api_key()}
@@ -117,7 +119,7 @@ class AsyncTranscriptionAdapter(HttpAdapter):
         tid = str(task.task_id or "")
         if not VENDOR_ID.fullmatch(tid):
             raise AdapterError(E_BAD_REQUEST, "not a transcript task id")
-        body = self.get(f"{self.base_url}/v2/transcript/{tid}")
+        body = self.get(f"{self.base_url}/v2/transcript/{tid}", timeout=self.poll_timeout)
         if not isinstance(body, dict):
             raise AdapterError(E_BAD_RESPONSE, "poll: not an object")
         status = body.get("status")

@@ -169,6 +169,21 @@ class Poll(unittest.TestCase):
     def task(self, tid=TID):
         return ProviderTask("audio.async_transcribe", "universal-2", tid)
 
+    def test_a_status_read_has_a_short_timeout_and_the_upload_a_long_one(self):
+        a = adapter([("GET", f"/v2/transcript/{TID}", FakeResp(200, {"id": TID, "status": "queued"}))])
+        a.poll(self.task())
+        self.assertEqual(a.session.calls[0][2]["timeout"], 30)
+        b = adapter([UP_OK, CREATE_OK])
+        b.submit(CapabilityRequest("captions", input_media=(self._rec(),)), "universal-2")
+        self.assertEqual([c[2]["timeout"] for c in b.session.calls], [600, 600])
+
+    def _rec(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        p = Path(d) / "source.mp3"
+        p.write_bytes(MP3)
+        return str(p)
+
     def test_queued_and_processing_are_pending(self):
         for st in ("queued", "processing"):
             a = adapter([("GET", f"/v2/transcript/{TID}", FakeResp(200, {"id": TID, "status": st}))])
