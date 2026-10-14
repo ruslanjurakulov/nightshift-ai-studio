@@ -5,6 +5,7 @@ import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
 import { looksUz } from "./editor-looks/uz";
+import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
 
@@ -4794,6 +4795,7 @@ export const uz: Dictionary = {
     overlay: overlayUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
     looks: looksUz,
+    fx: fxUz,
     title: "Muharrir",
     subtitle: "Videolaringizni qirqing, boʻling, tezlashtiring yoki sekinlashtiring va ustiga matn qoʻying.",
     notEnabled: "Bu joylashuvda muharrir hali yoqilmagan (0054 migratsiyasi qoʻllanmagan).",
@@ -4845,7 +4847,8 @@ export const uz: Dictionary = {
     fit: "Kadrdagi tasvir",
     fitContain: "Sigʻdirish (chiziqlar)",
     fitCover: "Toʻldirish (qirqish)",
-    fitHint: "«Sigʻdirish» tasvirni butunlay koʻrsatadi, shakllar mos kelmasa chiziqlar qoʻshadi. «Toʻldirish» chetlarini qirqadi, chiziq qolmaydi. Faqat markaz qirqiladi; qirqish joyini surib boʻlmaydi.",
+    fitBlur: "Xira fonda sigʻdirish",
+    fitHint: "«Sigʻdirish» tasvirni butunlay koʻrsatadi, shakllar mos kelmasa chiziqlar qoʻshadi. «Toʻldirish» chetlarini qirqadi, chiziq qolmaydi; qaysi qismi qolishini pastdagi «Qirqish va qiyalik» da tanlang. «Xira fonda sigʻdirish» tasvirni butunlay, uning xiralashtirilgan kattalashtirilgan nusxasi ustida koʻrsatadi, shuning uchun chiziqlar yoʻq. Oldindan koʻrish xiralikni taxminan koʻrsatadi; etalon — eksport qilingan fayl.",
     fitStill: "Rasm kadrni har doim toʻldiradi va sekin yaqinlashadi, shuning uchun sozlama yoʻq.",
     grade: "Rang",
     gradeBrightness: "Yorqinlik",

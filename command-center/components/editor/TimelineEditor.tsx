@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,6 +39,7 @@ import {
   GAIN_UI_MAX,
   GAIN_UI_MIN,
   MAX_AUDIO_CLIPS,
+  MAX_DURATION_S,
   MAX_EDITOR_CLIPS,
   MAX_EDITOR_SOUNDS,
   MAX_EDITOR_TEXTS,
@@ -55,7 +57,6 @@ import {
   DUCK_UI_MIN_DB,
   XFADE_DEFAULT_S,
   XFADE_MIN_S,
-  SPEEDS,
   TEXT_COLOR,
   TEXT_OUTLINE_COLOR,
   TEXT_POSITIONS,
@@ -71,6 +72,7 @@ import {
   clamp,
   clipAt,
   clipEnd,
+  clipLength,
   crossfadeOf,
   crossfadeStyleOf,
   exportActive,
@@ -87,7 +89,6 @@ import {
   setClipAudio,
   setCrossfade,
   setCrossfadeStyle,
-  setSpeed,
   soundLength,
   soundWarnings,
   speechSpans,
@@ -96,7 +97,6 @@ import {
   textsAt,
   toDoc,
   toModel,
-  trimClip,
   updateSound,
   updateText,
   validateTimeline,
@@ -108,6 +108,7 @@ import {
   type TextClip,
   type TextPosition,
   type TimelineDoc,
+  type VideoClip,
   type XfadeStyle,
 } from "@/lib/editor";
 import {
@@ -127,7 +128,6 @@ import { isCaptionStyleId, perWordCueIds } from "@/lib/captionStyleTable";
 import {
   fitOf,
   previewFrameStyle,
-  previewObjectFit,
   setClipFit,
   setFrame,
   type Fit,
@@ -147,13 +147,21 @@ import {
 } from "@/lib/editorOverlay";
 import { OverlayInspector, OverlayLayer, OverlayPicker } from "./OverlayPanel";
 import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
+import { ClipPicture, LookFilterDefs } from "./ClipPicture";
+import { ClipFxSections } from "./ClipFxSections";
+import { ClipSpeedSection, OverlayMoveSection, RenderBudgetNotice } from "./ClipMotionSections";
+import { OverlayChromaSection, SoundCleanSection } from "./CleanSections";
+import { OverlayAnimSection, TextAnimSection } from "./AnimPicker";
+import { ANIM_REST, animFrame, playsNatively, writtenText, type AnimFrame } from "@/lib/editorFxPreview";
+import { trimLimited } from "@/lib/editorMotion";
+import { settleAll, type SettleChange } from "@/lib/editorSettle";
+import { SettleNotice } from "./SettleNotice";
 import { TransitionStylePicker } from "./TransitionStylePicker";
 import { TextLookPicker } from "./TextLookPicker";
 import { applyTextLook } from "@/lib/editorTextLook";
 import { previewBoxStyle, previewTextStyle } from "@/lib/editorTextLookPreview";
 import {
   gradeOf,
-  previewGradeStyle,
   resetClipGrade,
   setClipGrade,
   type ClipGrade,
@@ -197,17 +205,28 @@ function typing(target: EventTarget | null): boolean {
   );
 }
 
-function textBoxStyle(x: TextClip, width: number): CSSProperties {
+function textBoxStyle(
+  x: TextClip,
+  frame: { width: number; height: number },
+  anim: AnimFrame = ANIM_REST,
+): CSSProperties {
+  const width = frame.width;
   const ty =
     x.anchor === "top" || x.anchor === "top-left" || x.anchor === "top-right"
       ? "0"
       : x.anchor.startsWith("bottom")
         ? "-100%"
         : "-50%";
+  const moving = anim.dx !== 0 || anim.dy !== 0 || anim.scale !== 1;
   return {
     left: `${x.x * 100}%`,
     top: `${x.y * 100}%`,
-    transform: `translate(-50%, ${ty})`,
+    // An entrance / exit moves the text from its anchor (cqw: a share of the frame's width).
+    transform: moving
+      ? `translate(${anim.dx * 100}cqw, ${(anim.dy * 100 * frame.height) / frame.width}cqw) scale(${anim.scale}) translate(-50%, ${ty})`
+      : `translate(-50%, ${ty})`,
+    transformOrigin: moving ? "0 0" : undefined,
+    opacity: anim.opacity === 1 ? undefined : anim.opacity,
     // Output pixels → a share of the frame's width, so the preview scales like the export.
     fontSize: `${(x.size / width) * 100}cqw`,
     fontWeight: x.bold === false ? 400 : 700,
@@ -353,9 +372,17 @@ export function TimelineEditor({
   // ── history ────────────────────────────────────────────────────────────────
   // `group`: the changes of one gesture (a slider drag) are ONE undo step.
   const gesture = useRef<string | null>(null);
+  // What the last edit had to settle elsewhere (a backwards part shortened, smoothing
+  // switched off ...), said to the person; cleared by the next edit that settles nothing.
+  const [settled, setSettled] = useState<SettleChange[]>([]);
   const apply = useCallback(
-    (next: EditorModel, group?: string) => {
-      if (next === model) return;
+    (raw: EditorModel, group?: string) => {
+      if (raw === model) return;
+      // Any edit can push a clip over a limit that depends on something else (the
+      // frame shape, the timeline's length, a neighbour's cross-fade): settle it.
+      const fixed = settleAll(raw);
+      const next = fixed.model;
+      setSettled(fixed.changes);
       if (!group || gesture.current !== group) {
         setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
         setFuture([]);
@@ -369,6 +396,7 @@ export function TimelineEditor({
   const undo = useCallback(() => {
     if (!past.length) return;
     gesture.current = null;
+    setSettled([]);
     setFuture([model, ...future]);
     setModel(past[past.length - 1]);
     setPast(past.slice(0, -1));
@@ -376,6 +404,7 @@ export function TimelineEditor({
   const redo = useCallback(() => {
     if (!future.length) return;
     gesture.current = null;
+    setSettled([]);
     setPast([...past, model]);
     setModel(future[0]);
     setFuture(future.slice(1));
@@ -468,6 +497,19 @@ export function TimelineEditor({
     v.muted = !at.clip.audio;
     const switched = shownClip.current !== at.clip.id;
     shownClip.current = at.clip.id;
+    if (!playsNatively(at.clip)) {
+      // Backwards, frozen or ramped: the element cannot play it, so it is stepped to the frame the playhead is at.
+      v.muted = true;
+      v.pause?.();
+      if (Math.abs((v.currentTime || 0) - at.sourceS) > 0.03) {
+        try {
+          v.currentTime = at.sourceS;
+        } catch {
+          /* not loaded yet: loadedmetadata seeks */
+        }
+      }
+      return;
+    }
     if (!playing || switched) {
       if (Math.abs((v.currentTime || 0) - at.sourceS) > 0.05) {
         try {
@@ -503,8 +545,10 @@ export function TimelineEditor({
         next = ph + dt;
       } else {
         const c = here.clip;
-        const end = c.start_s + (c.out_s - c.in_s) / c.speed;
-        const viaVideo = Boolean(v && src && !v.paused && v.readyState >= 2);
+        const end = clipEnd(c);
+        const viaVideo = Boolean(
+          v && src && playsNatively(c) && !v.paused && v.readyState >= 2,
+        );
         const t =
           viaVideo && v
             ? c.start_s + (v.currentTime - c.in_s) / c.speed
@@ -522,7 +566,8 @@ export function TimelineEditor({
       setPlayhead(next);
       raf = requestAnimationFrame(tick);
     };
-    void video.current?.play?.()?.catch?.(() => {});
+    const first = clipAt(model, Math.min(playheadRef.current, Math.max(0, picture - 0.001)));
+    if (!first || playsNatively(first.clip)) void video.current?.play?.()?.catch?.(() => {});
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, model, picture, total, src]);
@@ -622,6 +667,7 @@ export function TimelineEditor({
       return;
     }
     setRev(out.value.rev);
+    draft.afterSave(out.value.rev);
     setSaved(JSON.stringify(docNow));
     setSavedTitle(title.trim());
   }
@@ -699,10 +745,10 @@ export function TimelineEditor({
     if (!commit) {
       // While dragging: change what is shown, keep one history step for the whole drag.
       if (!dragBase.current) dragBase.current = model;
-      setModel(trimClip(model, id, edge, value, srcLen(c)));
+      setModel(trimLimited(model, id, edge, value, srcLen(c)));
       return;
     }
-    apply(trimClip(model, id, edge, value, srcLen(c)));
+    apply(trimLimited(model, id, edge, value, srcLen(c)));
   }
 
   function onTrimEnd() {
@@ -1004,6 +1050,8 @@ export function TimelineEditor({
             {exportBlocked}
           </p>
         ) : null}
+        <RenderBudgetNotice model={model} />
+        <SettleNotice changes={settled} />
         <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">
           {te.freeNote} {te.publishNote}
         </p>
@@ -1065,34 +1113,16 @@ export function TimelineEditor({
             style={previewFrameStyle(model)}
           >
             <GradeFilterDefs clip={at?.clip} still={still} />
-            {src && still ? (
-              // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
-              <img
+            <LookFilterDefs clip={at?.clip} />
+            {src ? (
+              <ClipPicture
+                clip={at?.clip}
+                still={still}
                 src={src}
-                alt=""
-                className="size-full"
-                style={{
-                  objectFit: previewObjectFit(at?.clip, true),
-                  ...previewGradeStyle(at?.clip),
-                }}
-                onError={() => {
-                  if (!refreshed.current) {
-                    refreshed.current = true;
-                    void refreshLinks();
-                  }
-                }}
-              />
-            ) : src ? (
-              <video
-                ref={video}
-                src={src}
-                playsInline
-                preload="auto"
-                className="size-full"
-                style={{
-                  objectFit: previewObjectFit(at?.clip, false),
-                  ...previewGradeStyle(at?.clip),
-                }}
+                frame={model}
+                source={at ? (assets[at.clip.asset_id] ?? null) : null}
+                progress={at ? (playhead - at.clip.start_s) / Math.max(0.001, clipLength(at.clip)) : 0}
+                videoRef={video}
                 onLoadedMetadata={() => {
                   const v = video.current;
                   if (v && at) {
@@ -1123,6 +1153,7 @@ export function TimelineEditor({
                   numberOf={overlayNumber}
                   playhead={playhead}
                   playing={playing}
+                  frame={model}
                   onNudge={(id, dx, dy, big) =>
                     applyBurst(
                       nudgeOverlay(model, id, dx, dy, big ? 0.05 : 0.01),
@@ -1176,25 +1207,41 @@ export function TimelineEditor({
                 </span>
               ) : null;
             })}
-            {shownTexts.map((x) => (
-              <span
-                key={x.id}
-                className="pointer-events-none absolute whitespace-pre-wrap text-center leading-tight"
-                style={textBoxStyle(x, model.width)}
-              >
-                {x.box_color ? (
-                  <span style={previewBoxStyle(x, model.width)}>{x.text}</span>
-                ) : (
+            {shownTexts.map((x) => {
+              const f = animFrame(x, playhead);
+              // A typewriter keeps the final position: the unwritten rest is there, unseen.
+              const body =
+                f.written === null ? (
                   x.text
-                )}
-              </span>
-            ))}
+                ) : (
+                  <>
+                    {writtenText(x.text, f.written)}
+                    <span style={{ visibility: "hidden" }}>
+                      {x.text.slice(writtenText(x.text, f.written).length)}
+                    </span>
+                  </>
+                );
+              return (
+                <span
+                  key={x.id}
+                  className="pointer-events-none absolute whitespace-pre-wrap text-center leading-tight"
+                  style={textBoxStyle(x, model, f)}
+                >
+                  {x.box_color ? (
+                    <span style={previewBoxStyle(x, model.width)}>{body}</span>
+                  ) : (
+                    body
+                  )}
+                </span>
+              );
+            })}
           </div>
           </div>
           <p className="m-0 text-center text-xs text-[var(--color-muted)]">
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
             {overlays.length ? ` ${te.overlay.previewNote}` : ""}
+            {at && !playsNatively(at.clip) ? ` ${te.fx.speed.previewNote}` : ""}
             {isCaptionStyleId(captionsOf(model)?.style.preset)
               ? ` ${t.captions.animated.previewNote}`
               : ""}
@@ -1497,6 +1544,13 @@ export function TimelineEditor({
                 )
               }
               onLayer={(by) => apply(moveOverlay(model, overlay.id, by))}
+              extra={
+                <>
+                  <OverlayMoveSection model={model} overlay={overlay} apply={apply} />
+                  <OverlayAnimSection model={model} overlay={overlay} apply={apply} />
+                  <OverlayChromaSection model={model} overlay={overlay} apply={apply} />
+                </>
+              }
               onDelete={() => {
                 overlayFocus.current = "add";
                 apply(removeOverlay(model, overlay.id));
@@ -1526,6 +1580,7 @@ export function TimelineEditor({
                 )
               }
               onFit={() => apply(fitSoundToPicture(model, sound.id))}
+              clean={<SoundCleanSection model={model} sound={sound} apply={apply} />}
               onDelete={() => apply(removeSound(model, sound.id))}
             />
           ) : clip ? (
@@ -1540,12 +1595,22 @@ export function TimelineEditor({
               first={clipIndex === 0}
               last={clipIndex === clips.length - 1}
               onIn={(v) =>
-                apply(trimClip(model, clip.id, "in", v, srcLen(clip)))
+                apply(trimLimited(model, clip.id, "in", v, srcLen(clip)))
               }
               onOut={(v) =>
-                apply(trimClip(model, clip.id, "out", v, srcLen(clip)))
+                apply(trimLimited(model, clip.id, "out", v, srcLen(clip)))
               }
-              onSpeed={(s) => apply(setSpeed(model, clip.id, s))}
+              speed={
+                <ClipSpeedSection
+                  model={model}
+                  clip={clip}
+                  still={assets[clip.asset_id]?.kind === "image"}
+                  playhead={playhead}
+                  apply={apply}
+                  showClip={showClip}
+                  onFrozen={(newId) => setSelected({ kind: "clip", id: newId })}
+                />
+              }
               fit={fitOf(clip)}
               still={assets[clip.asset_id]?.kind === "image"}
               onFit={(f) => apply(setClipFit(model, clip.id, f))}
@@ -1558,8 +1623,18 @@ export function TimelineEditor({
                 apply(resetClipGrade(model, clip.id));
                 showClip(clip.id);
               }}
+              fx={
+                <ClipFxSections
+                  model={model}
+                  clip={clip}
+                  source={assets[clip.asset_id] ?? null}
+                  still={assets[clip.asset_id]?.kind === "image"}
+                  apply={apply}
+                  showClip={showClip}
+                />
+              }
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
-              audioLocked={!clip.audio && audioFull}
+              audioLocked={(!clip.audio && audioFull) || Boolean(clip.freeze)}
               crossfade={crossfadeOf(clip)}
               maxCrossfade={maxCrossfade(model, clip.id)}
               onCrossfade={(d) => apply(setCrossfade(model, clip.id, d))}
@@ -1580,6 +1655,7 @@ export function TimelineEditor({
               warning={warnings[text.id] ?? null}
               onChange={(patch) => apply(updateText(model, text.id, patch))}
               onLook={(look) => apply(applyTextLook(model, text.id, look))}
+              anim={<TextAnimSection model={model} text={text} apply={apply} />}
               onDelete={() => apply(removeText(model, text.id))}
             />
           ) : (
@@ -1766,13 +1842,14 @@ function ClipInspector({
   last,
   onIn,
   onOut,
-  onSpeed,
+  speed,
   fit,
   still,
   onFit,
   grade,
   onGrade,
   onGradeReset,
+  fx,
   onAudio,
   audioLocked,
   crossfade,
@@ -1785,13 +1862,7 @@ function ClipInspector({
   onDelete,
 }: {
   n: number;
-  clip: {
-    id: string;
-    in_s: number;
-    out_s: number;
-    speed: number;
-    audio: boolean;
-  };
+  clip: VideoClip;
   sourceS: number | null;
   canSplitHere: boolean;
   onlyClip: boolean;
@@ -1799,7 +1870,8 @@ function ClipInspector({
   last: boolean;
   onIn: (v: number) => void;
   onOut: (v: number) => void;
-  onSpeed: (s: number) => void;
+  /** The speed, direction, freeze, curve and slow-motion controls (ClipSpeedSection). */
+  speed?: ReactNode;
   fit: Fit;
   /** A picture always fills the frame in the export: no fit to choose. */
   still: boolean;
@@ -1807,6 +1879,8 @@ function ClipInspector({
   grade: ClipGrade;
   onGrade: (patch: Partial<ClipGrade>, group: string) => void;
   onGradeReset: () => void;
+  /** The look, effects, crop and tilt sections (ClipFxSections). */
+  fx?: ReactNode;
   onAudio: (a: boolean) => void;
   audioLocked: boolean;
   /** The cross-fade into this clip in seconds (0 = a cut). */
@@ -1842,42 +1916,20 @@ function ClipInspector({
           label={te.trimOut}
           value={clip.out_s}
           min={clip.in_s}
-          max={sourceS ?? undefined}
+          // a frozen clip's end is its hold length, not a place in the file
+          max={clip.freeze ? MAX_DURATION_S : (sourceS ?? undefined)}
           step={0.1}
           onCommit={onOut}
         />
       </div>
-      <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-        <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">
-          {te.speed}
-        </legend>
-        <div className="flex flex-wrap gap-1.5">
-          {SPEEDS.map((s) => (
-            <label
-              key={s}
-              className="ns-chip"
-              data-radio=""
-              data-on={clip.speed === s ? "true" : undefined}
-            >
-              <input
-                type="radio"
-                name={`${id}-speed`}
-                value={s}
-                checked={clip.speed === s}
-                onChange={() => onSpeed(s)}
-                className="sr-only"
-              />
-              {fmt(te.speedValue, { x: s })}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {speed}
       <FitPicker fit={fit} still={still} onChange={onFit} />
       <ClipGradePanel
         grade={grade}
         onChange={onGrade}
         onReset={onGradeReset}
       />
+      {fx}
       <label className="tap-row flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -1965,7 +2017,11 @@ function ClipInspector({
             id={`${id}-split`}
             className="m-0 text-xs text-[var(--color-muted)]"
           >
-            {te.splitHint}
+            {clip.speed_curve ? te.fx.speed.splitCurve : te.splitHint}
+          </p>
+        ) : clip.reverse || clip.freeze ? (
+          <p className="m-0 text-xs text-[var(--color-muted)]">
+            {clip.reverse ? te.fx.speed.splitReversed : te.fx.speed.splitFrozen}
           </p>
         ) : null}
       </div>
@@ -2012,12 +2068,15 @@ function TextInspector({
   warning,
   onChange,
   onLook,
+  anim,
   onDelete,
 }: {
   text: TextClip;
   warning: "empty" | "past_end" | null;
   onChange: (patch: Partial<Omit<TextClip, "id">>) => void;
   onLook: (lookId: string) => void;
+  /** The entrance / exit section (TextAnimSection). */
+  anim?: ReactNode;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -2107,6 +2166,7 @@ function TextInspector({
           ))}
         </div>
       </fieldset>
+      {anim}
       <button
         type="button"
         onClick={onDelete}
@@ -2128,6 +2188,7 @@ function SoundInspector({
   onChange,
   onToPlayhead,
   onFit,
+  clean,
   onDelete,
 }: {
   sound: SoundClip;
@@ -2139,6 +2200,8 @@ function SoundInspector({
   onChange: (patch: Partial<Omit<SoundClip, "id" | "asset_id">>) => void;
   onToPlayhead: () => void;
   onFit: () => void;
+  /** The clean-up section (SoundCleanSection). */
+  clean?: ReactNode;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -2349,6 +2412,7 @@ function SoundInspector({
           ) : null}
         </div>
       ) : null}
+      {clean}
       <button
         type="button"
         onClick={onDelete}

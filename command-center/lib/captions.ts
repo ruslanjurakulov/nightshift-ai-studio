@@ -624,6 +624,9 @@ export function captionsFromTrack(
 ): Captions | null {
   const clips = playedClips(model, assetId);
   if (clips.length === 0) return null;
+  // Word times use a clip's constant forward speed: not laid on a speed curve or backwards play.
+  const id = assetId.toLowerCase();
+  if (model.clips.some((c) => c.asset_id.toLowerCase() === id && (c.speed_curve || c.reverse))) return null;
   const words = wordsOnTimeline(track.words, clips);
   const cues = withinPicture(
     segmentWords(words, {

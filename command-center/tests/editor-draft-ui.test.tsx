@@ -249,6 +249,20 @@ describe("autosave to this device", () => {
     expect(localStorage.length).toBe(0);
   });
 
+  it("a successful Save leaves no draft at the moment it succeeds, and a tab hidden right after cannot bring one back", async () => {
+    mount();
+    fireEvent.click(speed("2×"));
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    expect(store()).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: te.save }));
+    await waitFor(() => expect(live().textContent).toBe(te.saved));
+    // no waiting for an effect: the draft was cleared where the save succeeded
+    expect(localStorage.length).toBe(0);
+    // the tab goes away straight after: the saved document is clean, nothing is written
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    expect(localStorage.length).toBe(0);
+  });
+
   it("does nothing without a signed-in member", () => {
     mount({ userId: undefined });
     fireEvent.click(speed("2×"));

@@ -4,6 +4,7 @@ import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
 import { looksEn } from "./editor-looks/en";
+import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
 
@@ -4805,6 +4806,7 @@ export const en = {
     overlay: overlayEn,
     /** Cross-fade styles and text looks: ./editor-looks/en.ts. */
     looks: looksEn,
+    fx: fxEn,
     title: "Editor",
     subtitle: "Trim, split, speed up or slow down your videos and put text on them.",
     notEnabled: "The editor is not enabled on this deployment yet (migration 0054 has not been applied).",
@@ -4856,7 +4858,8 @@ export const en = {
     fit: "Picture in the frame",
     fitContain: "Fit (bars)",
     fitCover: "Fill (crop)",
-    fitHint: "Fit shows the whole picture and adds bars where the shapes differ. Fill crops the centre so no bars show. Only the centre is cropped; the crop cannot be moved.",
+    fitBlur: "Fit over blur",
+    fitHint: "Fit shows the whole picture and adds bars where the shapes differ. Fill crops the edges so no bars show; to choose which part is kept, use Crop and tilt below. Fit over blur shows the whole picture over a blurred, enlarged copy of itself, so there are no bars either. The preview shows the blur roughly; the exported file is the reference.",
     fitStill: "A photo always fills the frame, with a slow zoom, so it has no fit setting.",
     grade: "Colour",
     gradeBrightness: "Brightness",

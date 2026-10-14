@@ -54,8 +54,8 @@ export const MAX_CUES = 5000;
 export const MAX_TEXT = 500;
 export const SPEED_MIN = 0.25;
 export const SPEED_MAX = 4;
-/** The speeds the editor offers (any value in 0.25–4 is valid in a document). */
-export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+/** The speeds the editor's keys offer, from the document's slowest to its fastest (any value between is valid; the number box takes it). */
+export const SPEEDS = [SPEED_MIN, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, SPEED_MAX] as const;
 export const SIZE_MIN = 8;
 export const SIZE_MAX = 512;
 /** The text sizes the editor's slider offers, in output pixels. */
@@ -323,7 +323,8 @@ export const FONTS = [
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const UUID_RE =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+/** A #RRGGBB colour (the document's, one definition for the validators and the editor's colour controls). */
+export const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const DOC_REQUIRED = ["version", "width", "height", "fps", "tracks"];
 const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays"];
@@ -693,8 +694,14 @@ export function clipLength(c: VideoClip): number {
 /** The source time shown at timeline time `t` in clip `c` (a speed curve is
  *  inverted numerically). */
 export function sourceTimeAt(c: VideoClip, t: number): number {
+  // A frozen clip shows the frame at in_s throughout; a reversed one walks the
+  // range from its end back to its start.
+  if (c.freeze) return ms(c.in_s);
   const curve = usableCurve(c.speed_curve);
-  if (!curve) return ms(c.in_s + (t - c.start_s) * c.speed);
+  if (!curve) {
+    const run = clamp((t - c.start_s) * c.speed, 0, c.out_s - c.in_s);
+    return ms(c.reverse ? c.out_s - run : c.in_s + run);
+  }
   const range = ms(c.out_s) - ms(c.in_s);
   return ms(c.in_s + rampSourceAt(rampAbsolute(curve, range), t - c.start_s));
 }
@@ -2287,6 +2294,71 @@ export function modelDuration(model: EditorModel): number {
   return docDuration(toDoc(model));
 }
 
+/**
+ * Keep an item's entrance and exit inside the time it is shown (the validator
+ * refuses otherwise): when a text or an overlay is shortened, the two lengths
+ * shrink in proportion (never under ANIM_MIN_S); when both cannot fit, the exit
+ * goes and the entrance is kept. The same item back when it already fits.
+ */
+export function fitAnims<
+  T extends {
+    start_s: number;
+    end_s: number;
+    anim_in?: string;
+    anim_out?: string;
+    anim_in_s?: number;
+    anim_out_s?: number;
+    fade_in_s?: number;
+    fade_out_s?: number;
+  },
+>(item: T): T {
+  const shown = ms(item.end_s - item.start_s);
+  const floor3 = (v: number) => Math.floor(v * 1000 + 1e-6) / 1000;
+  const a = item.anim_in ? (item.anim_in_s ?? ANIM_DEFAULT_S) : 0;
+  const b = item.anim_out ? (item.anim_out_s ?? ANIM_DEFAULT_S) : 0;
+  // A plain fade on the side with no animation is an animation too (the
+  // document counts it): it takes its time out of what the animations may use.
+  const fade =
+    (item.anim_in ? 0 : (item.fade_in_s ?? 0)) + (item.anim_out ? 0 : (item.fade_out_s ?? 0));
+  const room = shown - fade;
+  if (a + b <= room + 1e-9) return item;
+  const next: T = { ...item };
+  const dropIn = () => {
+    delete next.anim_in;
+    delete next.anim_in_s;
+  };
+  const dropOut = () => {
+    delete next.anim_out;
+    delete next.anim_out_s;
+  };
+  if (a > 0 && b > 0) {
+    const k = room / (a + b);
+    const na = Math.max(ANIM_MIN_S, floor3(a * k));
+    const nb = Math.max(ANIM_MIN_S, floor3(b * k));
+    if (na + nb <= room + 1e-9) {
+      next.anim_in_s = na;
+      next.anim_out_s = nb;
+      return next;
+    }
+    dropOut();
+    if (a > room) {
+      if (room < ANIM_MIN_S) dropIn();
+      else next.anim_in_s = Math.max(ANIM_MIN_S, Math.min(a, floor3(room)));
+    }
+    return next;
+  }
+  const own = a > 0 ? a : b;
+  if (room < ANIM_MIN_S - 1e-9) {
+    if (a > 0) dropIn();
+    else dropOut();
+    return next;
+  }
+  const cut = Math.max(ANIM_MIN_S, Math.min(own, floor3(room)));
+  if (a > 0) next.anim_in_s = cut;
+  else next.anim_out_s = cut;
+  return next;
+}
+
 /** A new id for a clip or a text: letters and digits, never one the model uses. */
 export function freshId(
   model: EditorModel,
@@ -2621,6 +2693,8 @@ export function setClipAudio(
   audio: boolean,
 ): EditorModel {
   if (audio && audioInputs(model) >= MAX_AUDIO_CLIPS) return model;
+  // A frozen frame has no sound (the document refuses both).
+  if (audio && model.clips.find((c) => c.id === id)?.freeze) return model;
   return {
     ...model,
     clips: model.clips.map((c) => (c.id === id ? { ...c, audio } : c)),
@@ -2697,7 +2771,7 @@ export function updateText(
         next.size = Math.round(clamp(patch.size, TEXT_SIZE_MIN, TEXT_SIZE_MAX));
       next.start_s = ms(Math.max(0, next.start_s));
       next.end_s = ms(Math.max(next.end_s, next.start_s + MIN_CLIP_S));
-      return next;
+      return fitAnims(next);
     }),
   };
 }

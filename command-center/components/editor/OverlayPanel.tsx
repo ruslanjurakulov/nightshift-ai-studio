@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import { ArrowDown, ArrowUp, RotateCcw, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -19,6 +20,9 @@ import {
   overlayLength,
   type OverlayKey,
 } from "@/lib/editorOverlay";
+import { animFrame } from "@/lib/editorFxPreview";
+import { overlayAt } from "@/lib/editorMotion";
+import { chromaFilterId, chromaSpec, type ChromaSpec } from "@/lib/editorChromaPreview";
 
 /**
  * Picture overlays in the editor: the layer drawn in the preview, the picker
@@ -47,12 +51,41 @@ function aspectOf(a: EditorAsset | undefined): string {
   return a?.width && a?.height ? `${a.width} / ${a.height}` : "1 / 1";
 }
 
+/** An overlay's chroma key as an SVG filter (a rough picture of the export's
+ *  `chromakey`, lib/editorChromaPreview.ts). Zero size, hidden from everyone. */
+function ChromaDefs({ id, spec }: { id: string; spec: ChromaSpec }) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="0"
+      height="0"
+      className="pointer-events-none absolute"
+      data-testid="chroma-filter"
+    >
+      <filter id={chromaFilterId(id)} colorInterpolationFilters="sRGB" x="0" y="0" width="100%" height="100%">
+        <feColorMatrix in="SourceGraphic" type="matrix" values={spec.toDistance} result="uv" />
+        <feComponentTransfer in="uv" result="sq">
+          <feFuncR type="table" tableValues={spec.square} />
+          <feFuncG type="table" tableValues={spec.square} />
+        </feComponentTransfer>
+        <feColorMatrix in="sq" type="matrix" values={spec.sum} result="d2" />
+        <feComponentTransfer in="d2" result="mask">
+          <feFuncA type="table" tableValues={spec.alpha} />
+        </feComponentTransfer>
+        <feComposite in="SourceGraphic" in2="mask" operator="in" />
+      </filter>
+    </svg>
+  );
+}
+
 function OverlayVideo({
   src,
   start,
   playhead,
   playing,
   opacity,
+  filter,
   onError,
 }: {
   src: string;
@@ -60,6 +93,8 @@ function OverlayVideo({
   playhead: number;
   playing: boolean;
   opacity: number;
+  /** A CSS filter for the picture (the chroma key). */
+  filter?: string;
   onError: () => void;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -96,7 +131,7 @@ function OverlayVideo({
       }}
       onError={onError}
       className="block h-auto w-full"
-      style={{ opacity }}
+      style={{ opacity, ...(filter ? { filter } : {}) }}
     />
   );
 }
@@ -119,7 +154,10 @@ export function OverlayLayer({
   onDrag,
   onDragEnd,
   onLinkError,
+  frame,
 }: {
+  /** The frame's size, for the entrance / exit offsets (a share of its height). */
+  frame?: { width: number; height: number };
   /** Those on screen at the playhead, bottom layer first. */
   overlays: readonly PictureOverlay[];
   assets: Record<string, EditorAsset>;
@@ -191,11 +229,24 @@ export function OverlayLayer({
 
   return (
     <div ref={root} className="pointer-events-none absolute inset-0 z-0">
-      {overlays.map((o) => {
+      {overlays.map((start) => {
+        // With an end keyframe the picture is where the straight line between the two has it now.
+        const o = { ...start, ...overlayAt(start, playhead) };
+        const key = start.chroma ? chromaSpec(start.chroma) : null;
+        const keyed = key ? `url(#${chromaFilterId(start.id)})` : undefined;
         const a = assets[o.asset_id];
         const src = a?.viewUrl ?? a?.thumbUrl ?? null;
+        // The entrance / exit at the playhead (a rough picture; the export is the reference).
+        const f = animFrame(o, playhead);
+        const moving = f.dx !== 0 || f.dy !== 0 || f.scale !== 1;
         const style = {
           ...overlayBoxStyle(o),
+          ...(moving
+            ? {
+                transform: `translate(${f.dx * 100}cqw, ${(f.dy * 100 * (frame ? frame.height / frame.width : 1))}cqw) translate(-50%, -50%) scale(${f.scale})`,
+              }
+            : {}),
+          ...(f.opacity !== 1 ? { opacity: f.opacity } : {}),
           pointerEvents: "none" as const,
           ...(a?.width && a?.height
             ? { aspectRatio: `${a.width} / ${a.height}` }
@@ -209,6 +260,7 @@ export function OverlayLayer({
             className="overflow-hidden"
             style={{ ...style, zIndex: numberOf(o.id) }}
           >
+            {key ? <ChromaDefs id={start.id} spec={key} /> : null}
             {src && a?.kind === "video" ? (
               <OverlayVideo
                 src={src}
@@ -216,6 +268,7 @@ export function OverlayLayer({
                 playhead={playhead}
                 playing={playing}
                 opacity={o.opacity}
+                filter={keyed}
                 onError={onLinkError}
               />
             ) : src ? (
@@ -224,7 +277,7 @@ export function OverlayLayer({
                 src={src}
                 alt=""
                 className="block h-auto w-full"
-                style={{ opacity: o.opacity }}
+                style={{ opacity: o.opacity, ...(keyed ? { filter: keyed } : {}) }}
                 onError={onLinkError}
               />
             ) : (
@@ -459,6 +512,7 @@ export function OverlayInspector({
   onReset,
   onToPlayhead,
   onLayer,
+  extra,
   onDelete,
 }: {
   n: number;
@@ -475,6 +529,8 @@ export function OverlayInspector({
   onReset: () => void;
   onToPlayhead: () => void;
   onLayer: (by: -1 | 1) => void;
+  /** More sections of this overlay (entrance / exit, move, chroma key), under the basics. */
+  extra?: ReactNode;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -543,6 +599,7 @@ export function OverlayInspector({
       {kind === "video" ? (
         <p className="m-0 text-xs text-[var(--color-muted)]">{to.videoNote}</p>
       ) : null}
+      {extra}
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap gap-2">
           <button

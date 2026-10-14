@@ -461,3 +461,97 @@ like `contain` (the picture alone).
 * if the detect pass cannot run, the export FAILS (it is never quietly exported
   unsteadied).
 * an automatic zoom crops a little of the edges: say so in the product.
+
+## Editor controls (track C)
+
+Where a person finds each field in the editor. The controls read their limits
+from `lib/editor.ts`, clamp in the browser and leave the final word to the
+validators; every change is one undo step (a slider drag too), is carried by the
+local draft and by Save, and an "off" value removes the field so an untouched
+project keeps exactly its document.
+
+| Field(s) | Control | PR |
+|----------|---------|----|
+| text and overlay `anim_in/out(_s)` | "Entrance and exit" (`AnimPicker`), in the text and overlay inspectors | C1 |
+| `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h/v`, `rotate` | "Look and effects" (`ClipEffectsSection`) | C1 |
+| `crop`, `angle` | "Crop and tilt" (`ClipCropSection`) | C1 |
+| clip `move` | "Zoom and pan" (`ClipMoveSection`): presets, start and end windows, a map | C2 |
+| overlay `move.to` | "Move to an end position" (`OverlayMoveSection`) | C2 |
+| clip `fit: "blur"` | third key of "Picture in the frame" (`FitPicker`); `fitOf()` reports it | C2 |
+| clip `speed` 0.25-4, `reverse`, `freeze` | "Speed" keys + number box, "Direction, freeze and slow motion" (`ClipSpeedSection`), "Freeze the frame at the playhead" | C2 |
+| overlay `chroma` | "Remove a background colour" (`OverlayChromaSection`): ready screens, colour box, code, screen picker where the browser has one, how much, softness | C3 |
+| `denoise`, `loudnorm` | "Steady picture and clean sound" on a clip (`ClipCleanSection`), "Clean up sound" on a music / sound clip | C3 |
+| clip `stabilize` | toggle in "Steady picture and clean sound", with the cost, the limits and the project's use | C3 |
+| clip `speed_curve`, `interpolate` | "Speed curve" (point rows and a plot), "Smoother slow motion" with its budget | C2 |
+
+Preview: look (curve tables as an SVG filter, pinned to
+`samples/clip_look_curves.json`), blur, vignette, turn, mirror, crop, free angle
+and the entrance / exit at the playhead are drawn approximately; sharpen and film
+grain are not drawn. The note under the preview says the exported file is the
+reference.
+
+C2 guard rails, as the UI enforces them (each says why on the screen): backwards
+play is off for a part longer than the memory cap (`reverseLimit`, whole frames,
+so a range it allows always validates; trimming a backwards clip stops there); a
+frozen clip has speed 1, no sound and none of backwards, curve, interpolation or
+stabilise; a speed curve replaces speed, backwards and freeze, and such a clip
+cannot be split (the reason is shown) and gets no auto-captions (nor does a
+backwards one); smoother slow motion is off with the numbers when the part is not
+slow, is backwards or frozen, or would pass the per-clip / per-project frame
+budget (`interpolateCheck`, the longest part that fits is shown), and trimming a
+clip that uses it stops at the budget. A reversed, frozen or ramped clip is
+stepped through frame by frame in the preview (no sound).
+
+C3 notes: the chroma preview (`lib/editorChromaPreview.ts`) is the export's
+`chromakey` rule as an SVG filter (distance in the two chroma planes only,
+`diff = sqrt((du^2 + dv^2) / 2)`, alpha ramp `(diff - similarity) / blend`), pinned
+by a test that runs the filter's own arithmetic against the definition; it is
+rough, and the panel says the exported file is the reference. Clean-up and
+stabilise are not shown in the preview (the note says so). Stabilise is off, with
+the numbers, for a photo, a frozen frame, a part over `STABILIZE_MAX_S` or a
+project total over `STABILIZE_MAX_DOC_S`; trimming a steadied clip stops at what
+is left; freezing a clip turns steadiness off.
+
+C1 limits mirrored in the UI after the engine's last changes: the room for an
+animation counts a text's plain fade on the other side (the validator refuses an
+animation plus the other side's fade longer than the time shown; shortening a text
+shortens the animation, and drops it when nothing is left); blur is off, with the
+frame size said, on a cross-faded clip in a frame above 1440p (`LARGE_FRAME_PX`,
+`XFADE_LARGE_BLUR_MAX`).
+
+C2 limits mirrored in the UI after the engine's last changes (all from the shared
+constants, none copied): the reverse limit is the validator's own whole-frame
+number (`reverseMaxSeconds`); smoother slow motion is judged by its per-clip and
+per-project frame budgets, by "not above 1440p" (`INTERP_MAX_PIXELS`) and by the
+export's time allowance (`renderWork()`: the timeline's length + 0.4 s per
+interpolated 1080p frame + the steadying estimate, against `renderTimeoutS(length)`),
+and the panel shows the estimate and the allowance; after any edit that changes a
+clip's speed or length its smoothing / steadying is switched off if it no longer
+fits, a notice under the toolbar names the numbers when a document does not fit
+(a shorter timeline, for example), and trimming such a clip stops where it last
+fitted; a zoom above `XFADE_LARGE_ZOOM_MAX` is off on a cross-faded clip in a frame
+above 1440p; an overlay can change opacity between two visible values only while
+fewer than `MAX_PARTIAL_OPACITY_MOVES` others do (past that the control offers
+"keep" and "fade to clear"); the speed curve says that sound is in step with the
+picture only at a few points along a long clip.
+
+C3 limits mirrored in the UI after the engine's last changes: stabilise is judged by
+the per-clip and per-project seconds AND by the export's time allowance
+(`stabilizeCheck()` -> `renderWork()`: the timeline's length, interpolated frames and
+`stabilizeSeconds()` against `renderTimeoutS(length)`), so a minute of 1080p30 on a
+minute-long timeline is off, with "about 317 s to render, but 300 s allowed" on the
+screen, and the hint states what a minute costs at the project's frame size; the
+chroma hint says a picture's own transparency is kept and that a video that is
+already transparent should not be keyed.
+
+Settling after any edit (`lib/editorSettle.ts`, applied by the editor to every edit):
+some limits depend on something other than the clip a control belongs to, so a
+frame shape, a deleted or shortened clip, a new cross-fade or a speed change can push
+a clip that was fine over one. The policy, the same everywhere: a backwards part is
+shortened to the new whole-frame limit; smoothing and steadying that no longer fit
+(per-clip, per-project or the export's time allowance, dearest first) are switched
+off; a blur on a cross-faded clip in a frame above 1440p is removed and a zoom
+lowered to the cap. The editor says exactly what it changed in a polite live region
+and one Undo returns it; a document that is fine is left alone. Trimming an edge
+re-asks the validator itself (frame counts are taken on the stored float
+difference) and steps in by a millisecond until it is satisfied.
