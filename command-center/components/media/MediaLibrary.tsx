@@ -620,6 +620,8 @@ export function MediaLibrary({
     if (gone) {
       focusNext.current = () =>
         (nextId ? document.querySelector<HTMLElement>(`[data-dismiss-id="${nextId}"]`) : null) ?? searchInput.current ?? input.current;
+      // A read started before this dismissal may still be in flight with the card in it: make it stale so it cannot bring the card back.
+      readSeq.current += 1;
       setData((prev) => (prev ? { ...prev, uploads: prev.uploads.filter((x) => x.id !== u.id) } : prev));
       if (!failure) setNotice(fmt(tm.dismissed, { name: u.name }));
     }
@@ -1331,7 +1333,7 @@ function UploadCard({
             {u.name}
           </span>
           {isDismissable(u) && (
-            // btn-quiet is 44px high on every screen; the visible word is the start of the accessible name.
+            // btn-quiet is 44px high on every screen; the accessible name contains the visible word (label in name).
             <button
               type="button"
               data-dismiss-id={u.id}

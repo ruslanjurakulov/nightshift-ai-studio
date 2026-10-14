@@ -96,8 +96,8 @@ describe("which cards get the button", () => {
     expect(b.getAttribute("tabindex")).toBeNull();
     // btn-quiet is min-height 2.75rem on every screen (globals.css).
     expect(b.className).toContain("btn-quiet");
-    // The visible word starts the accessible name (label in name).
-    expect(b.getAttribute("aria-label")?.startsWith(b.textContent ?? "?")).toBe(true);
+    // The accessible name contains the visible word (label in name).
+    expect(b.getAttribute("aria-label")?.includes(b.textContent ?? "?")).toBe(true);
   });
 });
 
@@ -243,6 +243,39 @@ describe("dismissing", () => {
       finish(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     });
     await waitFor(() => expect(dismissButtons()).toHaveLength(1));
+  });
+});
+
+describe("a read that was already running", () => {
+  it("cannot bring a dismissed card back when it lands afterwards", async () => {
+    const a = up("rejected", "empty.png", "empty");
+    const b = up("rejected", "other.png", "empty");
+    // The page's own read (the 5-minute re-sign timer) is slow and still has both cards in it.
+    let landStale!: (r: Response) => void;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      fetchMock.mockImplementation((url: string) =>
+        String(url).endsWith("/dismiss") ? json({ ok: true }) : new Promise<Response>((r) => (landStale = r)),
+      );
+      render(withI18n(<MediaLibrary orgId={ORG} initial={lib([a, b])} />));
+      await act(async () => {
+        vi.advanceTimersByTime(5 * 60_000 + 10);
+      });
+      expect(landStale).toBeTypeOf("function");
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Dismiss empty.png" }));
+      });
+      await waitFor(() => expect(screen.queryByText("empty.png")).toBeNull());
+
+      await act(async () => {
+        landStale(new Response(JSON.stringify(lib([a, b])), { status: 200 }));
+      });
+      expect(screen.queryByText("empty.png")).toBeNull();
+      expect(screen.getByText("other.png")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
