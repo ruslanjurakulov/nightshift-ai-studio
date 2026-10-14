@@ -137,6 +137,17 @@ class DocumentTestCase(unittest.TestCase):
         self.assertIn("export const REVERSE_BYTES_PER_PIXEL = 1.5;", ts)
         self.assertEqual(tl.REVERSE_BYTES_PER_PIXEL, 1.5)
 
+    def test_the_reverse_limit_is_a_whole_number_of_frames_and_the_validator_agrees(self):
+        self.assertEqual(tl.reverse_max_frames(1920, 1080), 172)
+        self.assertEqual(tl.reverse_max_seconds(1920, 1080, 30), 5.733)     # not 5.753 (173 frames)
+        for w, h, fps in ((1920, 1080, 30), (1280, 720, 30), (1920, 1080, 25), (1080, 1920, 60), (640, 360, 24),
+                          (3840, 2160, 30), (320, 180, 30)):
+            limit = tl.reverse_max_seconds(w, h, fps)
+            self.assertEqual(problems_of(width=w, height=h, fps=fps, out_s=limit, reverse=True), [], (w, h, fps, limit))
+            over = round(limit + 1 / fps, 3)
+            got = problems_of(width=w, height=h, fps=fps, out_s=over, reverse=True)
+            self.assertTrue(any("reverse holds every frame" in p and f"{limit} s" in p for p in got), (w, h, fps, got))
+
     def test_a_split_keeps_the_picture_continuous(self):
         # reversed: 4 s of source at 2x lasts 2 s; cut after 1 s of the timeline = 2 s of source
         out = tl.split_clip(vdoc(in_s=1, out_s=5, reverse=True, speed=2), "c1", 1.0, "c2")

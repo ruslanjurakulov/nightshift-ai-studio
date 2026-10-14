@@ -332,6 +332,29 @@ CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, CHROMA_SIMILARITY_DEFAULT = 0.01, 
 CHROMA_BLEND_MAX, CHROMA_BLEND_DEFAULT = 0.5, 0.1
 _CHROMA_KEYS = ("color", "similarity", "blend")
 
+
+def reverse_max_frames(width: int, height: int) -> int:
+    """The most frames a reversed range may hold in memory at this frame size."""
+    return int(REVERSE_MAX_BYTES // (width * height * REVERSE_BYTES_PER_PIXEL))
+
+
+def _range_frames(range_s: float, fps: int) -> int:
+    """Frames a source range of ``range_s`` seconds decodes (``ceil``, with the float
+    noise of ``0.1 * 30`` removed so a range that is a whole number of frames is not one more)."""
+    return math.ceil(round(range_s * fps, 6))
+
+
+def reverse_max_seconds(width: int, height: int, fps: int) -> float:
+    """The longest source range a clip may play reversed at this frame size and rate,
+    in seconds: a WHOLE number of frames (what ``validate`` allows exactly, so a range
+    of this length passes and one more millisecond past its last frame does not),
+    rounded down to a millisecond. The Command Center's ``reverseMaxSeconds`` is its twin."""
+    cap = reverse_max_frames(width, height)
+    limit = math.floor(cap / fps * 1000 + 1e-9) / 1000
+    while limit > 0 and _range_frames(limit, fps) > cap:
+        limit = round(limit - 0.001, 3)
+    return limit
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -691,11 +714,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
         elif (clip.get("reverse") is True and fps and _is_int(frame[0]) and _is_int(frame[1])
-              and math.ceil((_ms(outs) - _ms(ins)) * fps) * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL
-              > REVERSE_MAX_BYTES):
+              and _range_frames(_ms(outs) - _ms(ins), fps) > reverse_max_frames(frame[0], frame[1])):
             problems.append(f"{where}: reverse holds every frame of the range in memory — at "
                             f"{frame[0]}x{frame[1]} and {fps} fps at most "
-                            f"{_ms(REVERSE_MAX_BYTES / (fps * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL))} s")
+                            f"{reverse_max_seconds(frame[0], frame[1], fps)} s")
         elif (_is_num(clip.get("fade_in_s", 0)) and _is_num(clip.get("fade_out_s", 0))
               and clip.get("fade_in_s", 0) + clip.get("fade_out_s", 0) > length + 1e-9):
             problems.append(f"{where}: fade_in_s + fade_out_s is longer than the clip ({length:.3f} s)")

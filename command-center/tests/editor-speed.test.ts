@@ -14,6 +14,7 @@ import {
   SPEED_MAX,
   SPEED_MIN,
   canSplit,
+  reverseMaxFrames,
   reverseMaxSeconds,
   setSpeed,
   splitClip,
@@ -76,7 +77,17 @@ describe("reverse and freeze", () => {
   });
   it("a reversed range fits the memory it holds, by the backend's arithmetic", () => {
     const big = { width: 1920, height: 1080, fps: 30 };
-    expect(reverseMaxSeconds(1920, 1080, 30)).toBe(5.753);
+    // a whole number of frames: 172 of them at 1080p (the old floor to the millisecond, 5.753 s, was 173)
+    expect(reverseMaxSeconds(1920, 1080, 30)).toBe(5.733);
+    expect(reverseMaxFrames(1920, 1080)).toBe(172);
+    // the boundary, for several frame sizes and rates: the limit passes, one frame more does not
+    for (const [width, height, fps] of [[1920, 1080, 30], [1280, 720, 30], [1920, 1080, 25], [1080, 1920, 60], [640, 360, 24], [3840, 2160, 30]]) {
+      const limit = reverseMaxSeconds(width, height, fps);
+      const frame = { width, height, fps };
+      expect(validateTimeline(doc({ reverse: true, out_s: limit }, frame)), `${width}x${height}@${fps} at ${limit}`).toEqual([]);
+      const over = Math.round((limit + 1 / fps) * 1000) / 1000;
+      expect(validateTimeline(doc({ reverse: true, out_s: over }, frame)).join(";"), `${over}`).toContain("reverse holds every frame");
+    }
     expect(validateTimeline(doc({ reverse: true, out_s: 5.7 }, big))).toEqual([]);
     expect(validateTimeline(doc({ reverse: true, out_s: 5.8 }, big)).join(";")).toContain("reverse holds every frame");
     expect(validateTimeline(doc({ out_s: 600 }, big))).toEqual([]);
