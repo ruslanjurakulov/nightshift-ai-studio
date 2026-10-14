@@ -7,6 +7,7 @@ import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secr
 import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
 import { creditsEnforced, reserveRunCredits, runCreditRefFor } from "@/lib/server/credits";
+import { dispatchOutcome, insertOutcome, startFailureBody } from "@/lib/server/run-start";
 import { IDEMPOTENCY_KEY_RE } from "@/lib/creative/operations";
 import { isCreditExempt } from "@/lib/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
@@ -47,6 +48,22 @@ export const dynamic = "force-dynamic";
  * tools/credits_settle.py). If the dispatch or insert fails after the hold was
  * taken, the browser cannot release it (release is service-only); it expires
  * back to the balance within three hours, and the response says so.
+ *
+ * A KEYED request (`idempotency_key`) that fails to start is answered with one
+ * of two bodies (lib/server/run-start.ts), and is never dispatched again:
+ *  - `start_failed` (+ `retry_with_new_key: true`): the insert or GitHub
+ *    refused (a received 4xx), so nothing started. The hold's reference is
+ *    burnt — reserve_credits() refuses every existing job_id, released ones
+ *    too — so the same key answers `run_already_started` from now on; the
+ *    caller must rotate its key to try again.
+ *  - `start_unsure`: a timeout, a dropped connection or a 5xx, so the job or
+ *    dispatch MAY have happened. Nothing is released; the caller keeps its key
+ *    and says it cannot tell (the same key then answers `run_already_started`,
+ *    which is true: a hold exists).
+ * `credits_held` stays the amount still held. The definite case would release
+ * the hold at once if this app had a way to: release_credits() is service-only
+ * and no user-callable release exists for an unstarted Run now hold, so today
+ * the hold stays until it expires. Unkeyed requests answer exactly as before.
  *
  * Who may run (lib/auth/org-roles.ts): an owner/admin of the ORGANIZATION that
  * owns the channel — the same rule reserve_credits() applies — so a customer
@@ -209,19 +226,34 @@ export async function POST(request: Request) {
     frozenDurationS = creditRef ? credit.durationS : null;
   }
   const heldNote = creditRef ? { credits_held: creditsHeld } : {};
+  // Keyed + held: the reference is burnt if the start fails (run-start.ts says what the caller is told).
+  const keyedHold = Boolean(idemKey && creditRef);
+  const heldAmount = creditsHeld ?? true;
 
   if (backend === "queue") {
     const supabase = await createClient();
-    if (!supabase) return NextResponse.json({ error: "queue_unavailable", ...heldNote }, { status: 503 });
+    if (!supabase)
+      return NextResponse.json(
+        keyedHold ? startFailureBody("failed", "queue_unavailable", heldAmount) : { error: "queue_unavailable", ...heldNote },
+        { status: 503 },
+      );
     // The job runs the length its hold was priced for, and nothing else.
     const runOpts = frozenDurationS !== null ? { ...opts, duration: frozenDurationS } : opts;
     const row = buildRenderJobInsert(channelId, runOpts, user.id, creditRef);
-    const { data, error } = await supabase.from("render_jobs").insert(row).select("id").single();
+    // supabase-js reports a failed fetch as { error, status: 0 }; a throw is the same "no answer".
+    let ins: { data: { id: unknown } | null; error: { code?: string; message?: string } | null; status?: number };
+    try {
+      ins = await supabase.from("render_jobs").insert(row).select("id").single();
+    } catch (e) {
+      ins = { data: null, error: { message: e instanceof Error ? e.message : "insert_failed" }, status: 0 };
+    }
+    const { data, error } = ins;
     if (error || !data) {
       // A missing table is "0017 not applied yet" — say so, never claim it queued.
       const missing = error?.code === "42P01" || /PGRST205|does not exist/i.test(error?.message ?? "");
+      const reason = missing ? "queue_unavailable" : "queue_insert_failed";
       return NextResponse.json(
-        { error: missing ? "queue_unavailable" : "queue_insert_failed", ...heldNote },
+        keyedHold ? startFailureBody(insertOutcome(ins), reason, heldAmount) : { error: reason, ...heldNote },
         { status: missing ? 503 : 502 },
       );
     }
@@ -272,6 +304,10 @@ export async function POST(request: Request) {
           : reason === "github_not_configured"
             ? 503
             : 502;
+    if (keyedHold) {
+      const { outcome, reason: why } = dispatchOutcome(e);
+      return NextResponse.json(startFailureBody(outcome, why, heldAmount), { status });
+    }
     return NextResponse.json({ error: reason, ...heldNote }, { status });
   }
 }
