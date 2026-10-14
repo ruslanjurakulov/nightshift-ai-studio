@@ -260,7 +260,8 @@ export async function confirmSocialPick(opts: {
   const handle = opts.handle as string;
   const grant = claim.grant;
   if (grant.platform === "youtube" || grant.platform !== opts.platform) {
-    releasePending(handle);
+    // Not what the pressed screen was showing: spent, never reused for another account.
+    finishPending(handle);
     return { result: "expired", platform: null };
   }
   try {
