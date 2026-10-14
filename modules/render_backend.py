@@ -41,7 +41,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
-from modules import ass_captions, ffmpeg_limits, speed_ramp
+from modules import ass_captions, ffmpeg_limits, shape_art, speed_ramp
 from modules.render_spec import (
     FIT_BLUR,
     FIT_COVER,
@@ -1033,6 +1033,26 @@ def _run_sequential(tasks: Sequence[Callable[[], None]]) -> List[float]:
     return times
 
 
+def draw_shapes(spec: RenderSpec, workdir: Path) -> list:
+    """The spec's picture overlays with every drawn shape written to a PNG in ``workdir`` and its
+    ``path`` set to that file (the filter graph only ever sees a path this function made; the
+    shape's own values, text included, are rasterised here). Drawn at the widest the shape ever is
+    (a move to a bigger ``w`` scales DOWN from it), for the spec's frame."""
+    out = []
+    for k, o in enumerate(spec.picture_overlays):
+        if o.shape is None:
+            out.append(o)
+            continue
+        wide = max(o.w, o.to_w) if o.to_w is not None else o.w
+        path = Path(workdir) / f"shape-{k}.png"
+        try:
+            shape_art.write_png(o.shape, wide, spec.width, spec.height, path)
+        except shape_art.ShapeArtError as e:
+            raise RenderBackendError(str(e)) from None
+        out.append(replace(o, path=str(path)))
+    return out
+
+
 def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
            jobs: Optional[int] = None, timings: Optional[RenderTimings] = None,
            timeout_s: Optional[float] = None) -> str:
@@ -1075,6 +1095,8 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
                       else _normalize_all(ffmpeg, spec, tmpdir, jobs, timings, deadline))
 
         norm_spec = replace(spec, segments=normalized)
+        if any(o.shape is not None for o in spec.picture_overlays):
+            norm_spec = replace(norm_spec, picture_overlays=draw_shapes(spec, tmpdir))
         concat_path = tmpdir / "concat.txt"
         concat_path.write_text("\n".join(concat_list_lines(norm_spec)) + "\n", encoding="utf-8")
 

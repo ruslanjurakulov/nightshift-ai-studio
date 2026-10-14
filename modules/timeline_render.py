@@ -67,6 +67,11 @@ How a timeline maps onto the spec:
   text, with ffmpeg ``overlay`` (``render_spec.picture_overlay_filters``). One
   that starts after the picture ends, or whose opacity is 0, renders nothing
   and is left out, so the command is the one the document without it gets.
+* **Shapes** — each of the document's ``shapes`` (a drawn sticker: arrow, ring, star, label, line,
+  progress bar) becomes a ``PictureOverlay`` carrying a ``ShapeArt`` instead of a file, after the
+  pictures (so on top of them). The backend draws it into a PNG in its work directory and the rest
+  is the picture-overlay path; a progress bar is a frame-wide bar the filter slides in across its
+  span. A document without ``shapes`` gives exactly the spec it always did.
 * **Animations** — a text's or overlay's ``anim_in`` / ``anim_out`` (and their
   durations) are copied onto the ``TextOverlay`` / ``PictureOverlay``; the ASS
   writer (text) and the overlay filter graph (pictures) turn them into the
@@ -87,7 +92,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import List, Optional, Union
 
-from modules import speed_ramp
+from modules import shape_art, speed_ramp
 from modules import timeline as tl
 from modules.render_spec import (
     KIND_COLOR,
@@ -419,6 +424,33 @@ def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay
     return out
 
 
+def _shapes(doc: dict, total_frames: int) -> List[PictureOverlay]:
+    """The document's shapes as picture overlays with a drawn shape in place of a file (see
+    ``modules/shape_art.py``). Cut at the end of the picture, left out when nothing of one shows."""
+    fps = doc["fps"]
+    out: List[PictureOverlay] = []
+    for sh in doc.get("shapes") or []:
+        first = _frame(sh["start_s"], fps)
+        last = min(_frame(sh["end_s"], fps), total_frames)
+        if last <= first or sh["opacity"] <= 0:
+            continue
+        art = shape_art.ShapeArt(
+            kind=sh["kind"], color=sh["color"], outline=sh.get("outline", 0.0),
+            aspect=sh.get("aspect", shape_art.ASPECT_DEFAULT), dir=sh.get("dir", shape_art.DIR_DEFAULT),
+            thick=sh.get("thick", 0.0), text=sh.get("text", ""), edge=sh.get("edge", shape_art.EDGE_DEFAULT))
+        if art.is_progress:
+            # Frame-wide, against an edge: only the edge and the thickness are the person's.
+            place = {"x": 0.5, "y": shape_art.progress_center_y(art, doc["height"]), "w": 1.0}
+        else:
+            place = {"x": sh["x"], "y": sh["y"], "w": sh["w"]}
+        out.append(PictureOverlay(
+            path="", kind=KIND_IMAGE, start_s=first / fps, end_s=last / fps,
+            opacity=sh["opacity"], shape=art, **place, **_anims(sh),
+            **{f"to_{k}": v for k, v in (sh.get("move") or {}).get("to", {}).items()},
+        ))
+    return out
+
+
 def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
                    output_path: str) -> RenderSpec:
     """The RenderSpec for a timeline. Raises :class:`timeline.TimelineError`
@@ -439,7 +471,7 @@ def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
         frame_exact=True,
         audio_tracks=_sound(norm, assets),
         overlays=_text(norm),
-        picture_overlays=_pictures(norm, assets, total_frames),
+        picture_overlays=_pictures(norm, assets, total_frames) + _shapes(norm, total_frames),
     )
 
 

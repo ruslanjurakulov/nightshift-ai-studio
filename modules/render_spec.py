@@ -94,7 +94,8 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
-from modules import caption_styles, ffmpeg_limits, speed_ramp
+from modules import caption_styles, ffmpeg_limits, shape_art, speed_ramp
+from modules.shape_art import ShapeArt
 
 #: The ONE quality encode of a render (the final pass). These are libx264's own
 #: defaults — what this backend always encoded with implicitly — spelled out so
@@ -831,6 +832,14 @@ class PictureOverlay:
     chroma_color: Optional[str] = None
     chroma_similarity: float = CHROMA_SIMILARITY_DEFAULT
     chroma_blend: float = CHROMA_BLEND_DEFAULT
+    #: A drawn sticker (modules/shape_art.py) instead of a library file: ``path`` is empty until the
+    #: backend draws it into a PNG in its work directory (``render_backend.render``), then it is a
+    #: plain picture overlay. A progress bar also fills from the left across its span.
+    shape: Optional[ShapeArt] = None
+
+    @property
+    def progress(self) -> bool:
+        return self.shape is not None and self.shape.is_progress
 
     @property
     def moves(self) -> bool:
@@ -848,6 +857,8 @@ class PictureOverlay:
             d["chroma_color"] = self.chroma_color
             d["chroma_similarity"] = self.chroma_similarity
             d["chroma_blend"] = self.chroma_blend
+        if self.shape is not None:
+            d["shape"] = self.shape.to_dict()
         return d
 
     @staticmethod
@@ -865,6 +876,7 @@ class PictureOverlay:
                 "chroma_similarity": float(d.get("chroma_similarity", CHROMA_SIMILARITY_DEFAULT)),
                 "chroma_blend": float(d.get("chroma_blend", CHROMA_BLEND_DEFAULT))}
                if d.get("chroma_color") is not None else {}),
+            **({"shape": ShapeArt.from_dict(d["shape"])} if isinstance(d.get("shape"), dict) else {}),
         )
 
 
@@ -1058,7 +1070,11 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
         name = f"picture overlay {i}"
         if o.kind not in PICTURE_KINDS:
             problems.append(f"{name} must be an image or a video (got {o.kind!r})")
-        if not isinstance(o.path, str) or not o.path:
+        if o.shape is not None:
+            problems.extend(f"{name}: {p}" for p in shape_art.problems(o.shape))
+            if o.kind != KIND_IMAGE:
+                problems.append(f"{name}: a shape is drawn as an image")
+        elif not isinstance(o.path, str) or not o.path:
             problems.append(f"{name} has no path")
         nums = (o.start_s, o.end_s, o.x, o.y, o.w, o.opacity)
         if not all(_finite(v) for v in nums):
@@ -1076,6 +1092,12 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
         if not 0 <= o.opacity <= 1:
             problems.append(f"{name} opacity must be from 0 to 1")
         problems.extend(_anim_problems(name, o, ANIM_OUT, (o.start_s, o.end_s)))
+        if o.progress:
+            if o.moves or o.chroma_color is not None:
+                problems.append(f"{name}: a progress bar does not move or take a chroma key")
+            for key in ("anim_in", "anim_out"):
+                if getattr(o, key) is not None and getattr(o, key) not in shape_art.PROGRESS_ANIMS:
+                    problems.append(f"{name}: a progress bar takes only {list(shape_art.PROGRESS_ANIMS)} as {key}")
         if o.chroma_color is not None:
             if not (isinstance(o.chroma_color, str) and _HEX.fullmatch(o.chroma_color)):
                 problems.append(f"{name} chroma colour must be a #RRGGBB colour")
@@ -1560,7 +1582,15 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
         parts.append(f"{src}{chain}[p{k}]")
         lo, hi = (first - 0.5) / fps, (last - 0.5) / fps
         out = f"[pv{k}]"
-        parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}{move_x}-w/2)'"
+        x_expr = f"round({o.x * spec.width:.3f}{move_x}-w/2)"
+        if o.progress:
+            # The bar is as wide as the frame and slides in from the left: at p of its span the
+            # visible part is p of the width (overlay x = W * (p - 1)). drawbox cannot animate its
+            # width on older ffmpeg builds; x of overlay is evaluated for every frame on all of them.
+            # Empty on the first frame, full on the last (the span's last frame is last - 1).
+            length_s = max(last - first - 1, 1) / fps
+            x_expr = f"round(W*(clip((t-{first / fps:.6f})/{length_s:.6f},0,1)-1))"
+        parts.append(f"{source}[p{k}]overlay=x='{x_expr}'"
                      f":y='round({o.y * spec.height:.3f}{move_y}-h/2)'"
                      f":enable='between(t,{lo:.6f},{hi:.6f})':eof_action=pass{out}")
         source = out

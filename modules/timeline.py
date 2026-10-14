@@ -15,7 +15,8 @@ not a project dependency — tests keep the two in sync)::
       captions?: { style?: {...,  preset?: <one of caption_styles.STYLE_IDS>,
                               highlight_color?: "#RRGGBB"},
                    cues: [ { id, start_s, end_s, text } ] },
-      overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ] }
+      overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ],
+      shapes?: [ { id, kind, start_s, end_s, color?, opacity?, ... } ] }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
@@ -41,6 +42,11 @@ not a project dependency — tests keep the two in sync)::
                move?: { to: {x?, y?, w?, opacity?} },
                chroma?: { color: "#RRGGBB", similarity?: 0.01..0.6, blend?: 0..0.5 } }
                (a picture or video over the picture; see below)
+    shape: { id, kind: "arrow"|"circle"|"rect"|"star"|"pill"|"line"|"progress", start_s, end_s,
+             color?: "#RRGGBB", opacity?: 0..1, x?, y?, w?, outline?: 0..0.5, aspect?, dir?,
+             thick?, text?, edge?, anim_in?, anim_out?, anim_in_s?, anim_out_s?,
+             move?: { to: {x?, y?, w?} } }
+             (a drawn sticker over the picture; which fields a kind takes: shape_art.KIND_FIELDS)
 
 Rules this module keeps:
 
@@ -225,6 +231,24 @@ Rules this module keeps:
   each is an input of the final pass. Its ``asset_id`` is checked like a
   clip's, in every layer (the database's editor_doc_problem sees ``asset_id``
   at any depth).
+* **Shapes are drawn stickers, a second kind of overlay.** ``shapes`` is a top-level list like
+  ``overlays`` (drawn after them, so on top of the pictures, under the texts and captions): a
+  ``kind`` from the closed set ``shape_art.SHAPE_KINDS`` (arrow, circle or ring, rectangle, star, a
+  pill label, a line, a progress bar), shown from ``start_s`` to ``end_s``, in a ``color``
+  (``#RRGGBB``), at ``opacity``. Position and size use the picture overlay's model: (``x``, ``y``) is
+  the centre and ``w`` the width, as fractions of the frame; the height follows the kind (a circle and
+  a star are square, an arrow 2:1 or 1:2, a rectangle takes ``aspect``, a line ``thick``ness, a pill
+  its text). ``outline`` (0-0.5 of the shorter side; 0 or absent = solid) draws a ring, a frame, an
+  outlined star or pill. A pill's ``text`` is at most ``shape_art.TEXT_MAX`` characters, typed or
+  one of the editor's ready labels; it is cleaned like a text overlay's words and rasterised, never
+  written into a filter graph. The progress bar takes only ``edge`` (top or bottom) and ``thick``:
+  it is as wide as the frame and fills from the left across ``start_s``..``end_s`` (empty on the
+  first frame, full on the last). ``anim_in`` / ``anim_out`` and ``move.to`` (x, y, w only: no
+  opacity move, so the per-pixel opacity budget is untouched) work as on a picture overlay; the
+  progress bar takes a fade only and no move. Each shape is one more input of the final pass, so
+  ``overlays`` and ``shapes`` together are at most ``MAX_OVERLAYS``, and shapes at most
+  ``shape_art.MAX_SHAPES``. The export draws each into a PNG (Pillow) and lays it with the
+  picture-overlay path; a document without ``shapes`` renders the commands it always did.
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
   and speed; a source with no sound track is silent, never an error.
@@ -240,7 +264,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from modules import caption_styles, speed_ramp
+from modules import caption_styles, shape_art, speed_ramp
 
 VERSION = 1
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "timeline.schema.json"
@@ -483,7 +507,7 @@ _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 # Field lists — the schema's "required"/"properties" (tests pin them together).
 _DOC_REQUIRED = ("version", "width", "height", "fps", "tracks")
-_DOC_KEYS = _DOC_REQUIRED + ("captions", "overlays")
+_DOC_KEYS = _DOC_REQUIRED + ("captions", "overlays", "shapes")
 _TRACK_REQUIRED = ("id", "kind", "clips")
 _TRACK_KEYS = _TRACK_REQUIRED + ("name",)
 _A_TRACK_KEYS = _TRACK_KEYS + ("role", "duck")
@@ -512,6 +536,13 @@ _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y", "preset", "highlight_color")
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
 _OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
 _OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity") + _ANIM_KEYS + ("move", "chroma")
+
+_SHAPE_REQUIRED = ("id", "kind", "start_s", "end_s")
+#: Fields every shape kind has; the rest depend on the kind (shape_art.KIND_FIELDS).
+_SHAPE_COMMON = _SHAPE_REQUIRED + ("color", "opacity") + _ANIM_KEYS
+_SHAPE_KEYS = _SHAPE_COMMON + tuple(sorted({k for ks in shape_art.KIND_FIELDS.values() for k in ks}))
+#: What a shape's ``move.to`` may change (no opacity: that is the per-pixel ``geq`` budget).
+_SHAPE_MOVE_KEYS = ("x", "y", "w")
 
 #: Defaults normalise() fills in (and the schema documents).
 TEXT_DEFAULTS = {"font": "DejaVu Sans", "size": 64, "color": "#FFFFFF",
@@ -771,6 +802,12 @@ def validate(doc: Any) -> List[str]:
         _validate_captions(captions, problems, claim)
     if "overlays" in doc:
         _validate_overlays(doc["overlays"], fps, problems, claim)
+    if "shapes" in doc:
+        _validate_shapes(doc["shapes"], fps, problems, claim)
+        layers = (len(doc["overlays"]) if isinstance(doc.get("overlays"), list) else 0) \
+            + (len(doc["shapes"]) if isinstance(doc["shapes"], list) else 0)
+        if layers > MAX_OVERLAYS:
+            problems.append(f"overlays and shapes together: at most {MAX_OVERLAYS} (got {layers})")
 
     if problems:
         return problems
@@ -1150,6 +1187,78 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
     if slow > MAX_PARTIAL_OPACITY_MOVES:
         problems.append(f"overlays: at most {MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible "
                         f"values during a move (got {slow}) — fade to or from 0, or keep the opacity")
+
+
+def _validate_shapes(shapes, fps, problems, claim) -> None:
+    """``shapes`` (see the module docstring): each is judged on its own, by the fields its kind takes."""
+    if not isinstance(shapes, list):
+        problems.append("shapes must be a list")
+        return
+    if len(shapes) > shape_art.MAX_SHAPES:
+        problems.append(f"shapes: at most {shape_art.MAX_SHAPES}")
+        return
+    for i, sh in enumerate(shapes):
+        where = f"shapes[{i}]"
+        if not _fields(sh, _SHAPE_KEYS, _SHAPE_REQUIRED, where, problems):
+            continue
+        where = f"shape {sh.get('id')!r}"
+        claim(sh.get("id"), where)
+        kind = sh.get("kind")
+        if not (isinstance(kind, str) and kind in shape_art.SHAPE_KINDS):
+            problems.append(f"{where}: kind must be one of {list(shape_art.SHAPE_KINDS)}")
+            continue
+        for k in sh:
+            if k not in _SHAPE_COMMON and k not in shape_art.KIND_FIELDS[kind]:
+                problems.append(f"{where}: {k} does not apply to a {kind}")
+        for k in ("start_s", "end_s"):
+            _num_in(sh, k, 0, MAX_DURATION_S, where, problems)
+        s, e = sh.get("start_s"), sh.get("end_s")
+        if _in_range(s) and _in_range(e):
+            if _ms(e) <= _ms(s):
+                problems.append(f"{where}: end_s ({_shown(e)}) must be greater than start_s ({_shown(s)})")
+            elif fps and round(_ms(e) * fps) - round(_ms(s) * fps) < 1:
+                problems.append(f"{where}: shorter than one frame at {fps} fps")
+        if "color" in sh and not (isinstance(sh["color"], str) and _HEX_RE.fullmatch(sh["color"])):
+            problems.append(f"{where}: color must be a #RRGGBB colour")
+        _num_in(sh, "opacity", 0, 1, where, problems)
+        for k in ("x", "y"):
+            _num_in(sh, k, 0, 1, where, problems)
+        _num_in(sh, "w", shape_art.W_MIN, shape_art.W_MAX, where, problems)
+        _num_in(sh, "outline", 0, shape_art.OUTLINE_MAX, where, problems)
+        _num_in(sh, "aspect", shape_art.ASPECT_MIN, shape_art.ASPECT_MAX, where, problems)
+        _num_in(sh, "thick", shape_art.THICK_MIN, shape_art.THICK_MAX, where, problems)
+        if "dir" in sh and sh["dir"] not in shape_art.ARROW_DIRS:
+            problems.append(f"{where}: dir must be one of {list(shape_art.ARROW_DIRS)}")
+        if "edge" in sh and sh["edge"] not in shape_art.PROGRESS_EDGES:
+            problems.append(f"{where}: edge must be one of {list(shape_art.PROGRESS_EDGES)}")
+        if kind == "pill":
+            if "text" not in sh:
+                problems.append(f"{where}: text is missing")
+            else:
+                p = shape_art.text_problem(sh["text"])
+                if p:
+                    problems.append(f"{where}: {p}")
+        _validate_anims(sh, where, problems, text=False)
+        if kind == "progress":
+            for key in ("anim_in", "anim_out"):
+                if key in sh and sh[key] not in shape_art.PROGRESS_ANIMS:
+                    problems.append(f"{where}: a progress bar takes only {list(shape_art.PROGRESS_ANIMS)} as {key}")
+        if "move" in sh:
+            _validate_shape_move(sh["move"], where, problems)
+
+
+def _validate_shape_move(move, where, problems) -> None:
+    if not _fields(move, ("to",), ("to",), f"{where} move", problems) or "to" not in move:
+        return
+    to = move["to"]
+    twhere = f"{where} move to"
+    if not _fields(to, _SHAPE_MOVE_KEYS, (), twhere, problems):
+        return
+    if not to:
+        problems.append(f"{twhere}: give at least one of {list(_SHAPE_MOVE_KEYS)}")
+    for k in ("x", "y"):
+        _num_in(to, k, 0, 1, twhere, problems)
+    _num_in(to, "w", shape_art.W_MIN, shape_art.W_MAX, twhere, problems)
 
 
 def _partial_opacity_move(ov) -> bool:
@@ -1600,7 +1709,39 @@ def normalise(doc: dict) -> dict:
                                "similarity": _ms(ch.get("similarity", CHROMA_SIMILARITY_DEFAULT)),
                                "blend": _ms(ch.get("blend", CHROMA_BLEND_DEFAULT))}
             out["overlays"].append(o)
+    if doc.get("shapes"):
+        # List order is the layering, as for overlays; an empty list is the document without the field.
+        out["shapes"] = [_normalise_shape(sh) for sh in doc["shapes"]]
     return out
+
+
+#: A shape's defaults, filled in by normalise() so two spellings of one shape are one document.
+SHAPE_DEFAULTS = {"color": shape_art.COLOR_DEFAULT, "opacity": 1.0, "x": 0.5, "y": 0.5, "w": shape_art.W_DEFAULT}
+
+
+def _normalise_shape(sh: dict) -> dict:
+    kind = sh["kind"]
+    allowed = shape_art.KIND_FIELDS[kind]
+    o = {**{k: v for k, v in SHAPE_DEFAULTS.items() if k in ("color", "opacity") or k in allowed},
+         **copy.deepcopy(sh)}
+    o["color"] = o["color"].upper()
+    for k in ("start_s", "end_s", "x", "y", "w", "opacity", "outline", "aspect", "thick"):
+        if k in o:
+            o[k] = _ms(o[k]) if k not in ("thick",) else round(float(o[k]), 4)
+    if kind == "arrow":
+        o.setdefault("dir", shape_art.DIR_DEFAULT)
+    if kind == "rect":
+        o.setdefault("aspect", shape_art.ASPECT_DEFAULT)
+    if kind in shape_art.THICK_DEFAULTS:
+        o.setdefault("thick", shape_art.THICK_DEFAULTS[kind])
+    if kind == "progress":
+        o.setdefault("edge", shape_art.EDGE_DEFAULT)
+    if o.get("outline") == 0:
+        del o["outline"]   # solid is the absence of a stroke
+    _normalise_anims(o)
+    if "move" in o:
+        o["move"] = {"to": {k: _ms(v) for k, v in o["move"]["to"].items()}}
+    return o
 
 
 def _normalise_effects(c: dict) -> None:
