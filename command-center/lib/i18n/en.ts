@@ -933,6 +933,8 @@ export const en = {
       unavailable: "Making videos is not available right now.",
       confirmAnnounce: "Check the price above, then press Yes, make it to start.",
       alreadySent: "This was already sent. If nothing shows up below in a few minutes, check Credits: a hold that did not start a video returns to your balance automatically in about 3 hours.",
+      draftRestored: "Your unfinished draft is back.",
+      draftDiscard: "Discard it",
       priceChanged: "The price is now about {n} credits. No credits were taken or held. Check the new price, then confirm again.",
       priceChangedShort: "The price changed. No credits were taken or held. Check the new price, then confirm again.",
       priceChangedUnsure: "The price is now about {n} credits. An earlier try may already have started, so look under Videos before you confirm again. If credits were held, confirming again will not hold them twice.",

@@ -923,6 +923,8 @@ export const uz: Dictionary = {
       unavailable: "Videolar yaratish hozir mavjud emas.",
       confirmAnnounce: "Yuqoridagi narxni tekshiring, boshlash uchun «Ha, yaratilsin»ni bosing.",
       alreadySent: "Bu allaqachon yuborilgan. Quyida bir necha daqiqa ichida hech narsa koʻrinmasa, «Kreditlar» boʻlimini tekshiring: video boshlamagan band qilingan kreditlar taxminan 3 soatdan keyin balansga avtomatik qaytadi.",
+      draftRestored: "Tugallanmagan qoralamangiz qaytdi.",
+      draftDiscard: "Qoralamani oʻchirish",
       priceChanged: "Narx endi taxminan {n} kredit. Kreditlar yechilmadi va band qilinmadi. Yangi narxni tekshirib, yana tasdiqlang.",
       priceChangedShort: "Narx oʻzgardi. Kreditlar yechilmadi va band qilinmadi. Yangi narxni tekshirib, yana tasdiqlang.",
       priceChangedUnsure: "Narx endi taxminan {n} kredit. Oldingi urinish boshlangan boʻlishi mumkin, shuning uchun qayta tasdiqlashdan oldin «Videolar» boʻlimini tekshiring. Kreditlar band qilingan boʻlsa, qayta tasdiqlash ularni ikkinchi marta band qilmaydi.",

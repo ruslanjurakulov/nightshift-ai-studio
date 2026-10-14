@@ -18,6 +18,7 @@ import {
   type ConnectedAccount,
   type Platform,
 } from "@/lib/account";
+import { clearAllDrafts } from "@/lib/create-draft";
 
 /**
  * The pieces of the account panel that more than one place draws: the read of
@@ -70,6 +71,8 @@ export function useAccountSummary(active: boolean): { data: AccountSummary | nul
 export function useSignOut(): () => Promise<void> {
   const router = useRouter();
   return async function signOut() {
+    // The create form's unfinished draft is this person's; it goes with the session, before anything can fail.
+    clearAllDrafts();
     const supabase = createClient();
     try {
       if (supabase) await supabase.auth.signOut();
