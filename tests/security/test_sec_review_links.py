@@ -109,6 +109,18 @@ def test_only_a_hash_is_stored_and_the_hash_is_not_a_key(conn, sc):
         assert [r[0] for r in s.rows("select name from storage.objects where bucket_id = 'previews'")] == [f"{sc.alice.channel}/slug-a.mp4"]
 
 
+def test_the_makers_language_is_kept_by_shape_only_so_a_new_language_needs_no_migration(conn, sc):
+    with acting(conn, sc.alice.actor) as s:
+        got = {}
+        for given in ("ru", " UZ ", "pt-br", "ar", "zz", "not a locale", "", "x" * 40, None):
+            made = s.value("select public.create_review_link(%s, 1, %s)", [sc.alice.video, given])
+            s.conn.execute("set local role anon")
+            got[given] = s.value("select public.review_link_view(%s)", [made["token"]])["locale"]
+            s.conn.execute("reset role")
+            s.conn.execute("set local role authenticated")
+    assert got == {"ru": "ru", " UZ ": "uz", "pt-br": "pt-br", "ar": "ar", "zz": "zz", "not a locale": None, "": None, "x" * 40: None, None: None}
+
+
 def test_tokens_are_long_random_and_distinct(conn, sc):
     with acting(conn, sc.alice.actor) as s:
         toks = {s.value("select public.create_review_link(%s, 1)", [sc.alice.video])["token"] for _ in range(8)}
@@ -239,7 +251,7 @@ def test_revoke_works_at_once_for_every_reader_of_the_token(conn, sc):
 def test_a_live_token_gets_its_title_and_expiry_and_nothing_else(conn, sc):
     with acting(conn, ANON) as s:
         out = s.value("select public.review_link_view(%s)", [TOKEN_A])
-    assert set(out) == {"status", "title", "expires_at"}
+    assert set(out) == {"status", "title", "expires_at", "locale"}
     assert out["status"] == "ok" and out["title"] == "Video a"
 
 

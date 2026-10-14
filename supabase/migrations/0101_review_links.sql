@@ -104,6 +104,9 @@ create table if not exists public.review_links (
   channel_id     text not null,
   video_id       text not null references public.videos (video_id) on delete cascade,
   token_hash     text not null unique check (token_hash ~ '^[0-9a-f]{64}$'),
+  -- The language the link's maker was using: the page opens in it (null = the visitor's own).
+  -- Only the SHAPE is checked, so a new language needs no migration.
+  locale         text check (locale is null or locale ~ '^[a-z]{2,3}(-[a-z0-9]{2,8})?$'),
   created_by     uuid not null,
   created_at     timestamptz not null default now(),
   expires_at     timestamptz not null,
@@ -171,9 +174,9 @@ $$;
 -- that lives in its own channel's folder, and the channel still belongs to the
 -- organization the link was made in.
 create or replace function public.review_link_live(p_token text)
-  returns table (link_id uuid, title text, preview_path text, expires_at timestamptz)
+  returns table (link_id uuid, title text, preview_path text, expires_at timestamptz, locale text)
   language sql stable security definer set search_path = public, pg_temp as $$
-  select l.id, v.title, v.preview_path, l.expires_at
+  select l.id, v.title, v.preview_path, l.expires_at, l.locale
     from public.review_links l
     join public.videos v on v.video_id = l.video_id
     join public.channels c on c.channel_id = v.channel_id
@@ -192,7 +195,7 @@ $$;
 
 -- Make a link. Returns {id, token, expires_at}; the token is not recoverable.
 -- A video the caller cannot administer reads exactly like one that does not exist.
-create or replace function public.create_review_link(p_video_id text, p_days integer default 7) returns jsonb
+create or replace function public.create_review_link(p_video_id text, p_days integer default 7, p_locale text default null) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   uid  uuid := auth.uid();
@@ -232,8 +235,10 @@ begin
   loop
     tok := public.review_link_token();
     begin
-      insert into public.review_links (org_id, channel_id, video_id, token_hash, created_by, expires_at)
-      values (v.org_id, v.channel_id, v.video_id, public.review_link_hash(tok), uid, exp)
+      insert into public.review_links (org_id, channel_id, video_id, token_hash, locale, created_by, expires_at)
+      values (v.org_id, v.channel_id, v.video_id, public.review_link_hash(tok),
+              case when lower(btrim(coalesce(p_locale, ''))) ~ '^[a-z]{2,3}(-[a-z0-9]{2,8})?$' then lower(btrim(p_locale)) end,
+              uid, exp)
       returning id into lid;
       exit;
     exception when unique_violation then
@@ -284,7 +289,7 @@ $$;
 
 -- The review page's one question. {"status":"gone"} for every kind of "no"
 -- (unknown, wrong shape, expired, revoked, no kept copy); {"status":"limited"}
--- past 30 views a minute; else {"status":"ok","title","expires_at"} and the
+-- past 30 views a minute; else {"status":"ok","title","expires_at","locale"} and the
 -- view is counted.
 create or replace function public.review_link_view(p_token text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -308,7 +313,7 @@ begin
     return jsonb_build_object('status', 'limited');
   end if;
   update public.review_links set views = views + 1, last_viewed_at = now() where id = r.link_id;
-  return jsonb_build_object('status', 'ok', 'title', r.title, 'expires_at', r.expires_at);
+  return jsonb_build_object('status', 'ok', 'title', r.title, 'expires_at', r.expires_at, 'locale', r.locale);
 end
 $$;
 
@@ -354,10 +359,10 @@ revoke all on function public.review_link_token() from public, anon, authenticat
 revoke all on function public.review_link_hash(text) from public, anon, authenticated, service_role;
 revoke all on function public.review_link_live(text) from public, anon, authenticated, service_role;
 
-revoke all on function public.create_review_link(text, integer) from public, anon, service_role;
+revoke all on function public.create_review_link(text, integer, text) from public, anon, service_role;
 revoke all on function public.list_review_links(text) from public, anon, service_role;
 revoke all on function public.revoke_review_link(uuid) from public, anon, service_role;
-grant execute on function public.create_review_link(text, integer) to authenticated;
+grant execute on function public.create_review_link(text, integer, text) to authenticated;
 grant execute on function public.list_review_links(text) to authenticated;
 grant execute on function public.revoke_review_link(uuid) to authenticated;
 
