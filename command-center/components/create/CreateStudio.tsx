@@ -64,6 +64,8 @@ export function CreateStudio({
   targets = [],
   initial = null,
   dna = null,
+  userId = "",
+  orgId = null,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -84,6 +86,11 @@ export function CreateStudio({
   initial?: RunPrefill | null;
   /** The channel's DNA (0056): where an empty field starts. Home's choices win; Create still asks. */
   dna?: (RunDna & { href: string }) | null;
+  /** The signed-in user's id from the server page (getUser()). It makes the idempotency key survive a reload of
+   *  this tab; empty (not known) = the key stays in memory only. Never shown, and never stored in the clear. */
+  userId?: string;
+  /** The open organization when the page knows it: part of what the stored key is for. */
+  orgId?: string | null;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -179,9 +186,10 @@ export function CreateStudio({
     };
     // One intent = one key: channel + topic + options. The price is NOT part of it (max_credits carries it), so a
     // double press or a retry keeps the key even when the price moved; a changed topic or option is a new video
-    // and gets a new key. The key is in memory only and expires after 30 minutes, so a reload loses it: a reload
-    // after a lost answer CAN hold twice (the unstarted first hold then expires on its own, about 3 hours).
-    const idempotency_key = attempt.keyFor(JSON.stringify(fields));
+    // and gets a new key. The key expires after 30 minutes. With a user id it is also kept in this tab's
+    // sessionStorage (a hash of the intent, never the topic), so a reload after a lost answer reuses it and cannot
+    // hold twice; without one it is in memory only (lib/create-attempt.ts).
+    const idempotency_key = attempt.keyFor(JSON.stringify(fields), userId ? { userId, orgId, channelId } : undefined);
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",

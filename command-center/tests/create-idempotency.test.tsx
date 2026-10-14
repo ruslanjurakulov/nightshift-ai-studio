@@ -226,7 +226,7 @@ describe("one intent is one key", () => {
     expect(body(1)).toEqual(body(0));
   });
 
-  it("the key lives in memory only: a reload starts a new attempt, and nothing is written to web storage", async () => {
+  it("with no user id the key lives in memory only: a reload starts a new attempt, and nothing is written to web storage (tests/create-key-persistence.test.tsx covers the signed-in reload)", async () => {
     const first = show();
     await priceShown(120);
     type("Ancient Khiva");

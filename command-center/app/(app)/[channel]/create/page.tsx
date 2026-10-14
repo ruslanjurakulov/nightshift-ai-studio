@@ -23,7 +23,7 @@ import { parseStyleId } from "@/lib/style-kits";
 import { prefillModel } from "@/lib/models-discovery";
 import { deskFromQuery, isMediaDesk } from "@/lib/creative/desks";
 import { DeskBar, StudioOverview, YouTubeDesk, type CreditsReading, type ProjectsReading } from "@/components/studio/Desks";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
 
@@ -72,6 +72,8 @@ export default async function CreatePage({
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
   const operator = await isOperator();
+  // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
+  const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
   // kit as the starting style — fills the chip, nothing more. The panel keeps it only
   // if it is one of the organization's kits as loaded, so a stale or foreign id reads
@@ -90,6 +92,8 @@ export default async function CreatePage({
       targets={targets}
       initial={runInitial}
       dna={dna.run}
+      userId={user?.id ?? ""}
+      orgId={genOrgId}
     />
   );
 

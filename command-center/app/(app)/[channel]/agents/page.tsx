@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState, StatCard } from "@/components/ui";
@@ -98,6 +98,8 @@ export default async function AgentsPage() {
 
   // Run now is an owner/admin action in the channel's organization.
   const canRun = atLeast(await resolveCurrentOrgRole(), "admin");
+  // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
+  const user = await getUser();
   const agents = deriveAgents(events);
   const running = agents.filter((a) => a.status === "RUNNING").length;
   const failed = agents.filter((a) => a.status === "FAILED").length;
@@ -117,6 +119,7 @@ export default async function AgentsPage() {
         channelId={scopedChannel?.channel_id ?? null}
         githubConfigured={isRunNowConfigured}
         canRun={canRun}
+        userId={user?.id ?? ""}
       />
 
       <Panel title={t.agents.roster}>

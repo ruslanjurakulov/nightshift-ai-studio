@@ -7,6 +7,7 @@ import { CircleCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
 import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
 import { useChannelPath } from "@/lib/channels-client";
 import { AccountTile, PlatformTile } from "@/components/account/PlatformLogo";
@@ -73,6 +74,7 @@ export function useSignOut(): () => Promise<void> {
     try {
       if (supabase) await supabase.auth.signOut();
     } finally {
+      clearAllCreateAttempts();
       clearAllEditorDrafts();
     }
     router.push("/login");
