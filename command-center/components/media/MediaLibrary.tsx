@@ -589,7 +589,8 @@ export function MediaLibrary({
   /**
    * Dismiss a refused or expired card: one POST, then the card leaves the list
    * and focus moves to the next card that can also be dismissed (else the one
-   * before it, else the search box), so the keyboard never falls back to the
+   * before it, else the search box, else the file picker when the page has
+   * nothing left but its empty state), so the keyboard never falls back to the
    * top of the page. The line in the live region says what happened. Never throws.
    */
   async function dismissUpload(u: MediaUpload) {
@@ -618,7 +619,7 @@ export function MediaLibrary({
     }
     if (gone) {
       focusNext.current = () =>
-        (nextId ? document.querySelector<HTMLElement>(`[data-dismiss-id="${nextId}"]`) : null) ?? searchInput.current;
+        (nextId ? document.querySelector<HTMLElement>(`[data-dismiss-id="${nextId}"]`) : null) ?? searchInput.current ?? input.current;
       setData((prev) => (prev ? { ...prev, uploads: prev.uploads.filter((x) => x.id !== u.id) } : prev));
       if (!failure) setNotice(fmt(tm.dismissed, { name: u.name }));
     }
