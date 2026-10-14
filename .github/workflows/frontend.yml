@@ -79,18 +79,13 @@ jobs:
         run: npx vitest run
 
       # BR-S-004/005: the tree had a critical dev advisory and two runtime ones
-      # that nobody saw because nothing looked. The gate is scripts/audit-gate.mjs:
-      # anything moderate or worse in what ships to production fails the job, and
-      # so does any high or critical advisory in the dev tree unless it is named
-      # in scripts/audit-allowlist.mjs with a reason and an expiry date (the
-      # allowed ones are still printed). braces <= 3.0.3 (GHSA-vfj7-8cjw-p6xm)
-      # has no patched release and sits behind eslint-config-next, so a bare
-      # `npm audit --audit-level=high` stayed red on every PR for a lint-time
-      # dependency. A new advisory can still turn this red on an unrelated PR;
-      # that is the point, and the fix is its own small dependency PR.
+      # that nobody saw because nothing looked. High and critical now fail the
+      # job (runtime and dev alike: a dev server is a target too). A new
+      # advisory can turn this red on an unrelated PR; that is the point, and
+      # the fix is its own small dependency PR.
       - name: Dependency advisories
         if: ${{ !cancelled() }}
-        run: node scripts/audit-gate.mjs
+        run: npm audit --audit-level=high
 
       # Not redundant with the typecheck. A server/client boundary violation, a
       # bad route export, or a `"use client"` module importing something

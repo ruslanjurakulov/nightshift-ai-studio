@@ -1,4 +1,5 @@
 import { improveRu } from "./improve/ru";
+import { notifyChannelsRu } from "./notify-channels/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
@@ -2815,6 +2816,7 @@ export const ru: Dictionary = {
       remove_failed: "Не удалось удалить фото. Попробуйте ещё раз.",
     },
   },
+  notifyChannels: notifyChannelsRu,
   accountSecurity: {
     cancel: "Отмена",
     title: "Аккаунт и безопасность",

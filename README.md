@@ -116,10 +116,9 @@ cd command-center && npx tsc --noEmit && npx next lint && npx vitest run && npx 
 installed. Every user-visible string lives in all three of
 `command-center/lib/i18n/{en,ru,uz}.ts`.
 
-CI's "Dependency advisories" step is `command-center/scripts/audit-gate.mjs`: production
-dependencies fail it at moderate, dev ones at high, except advisories dated in
-`command-center/scripts/audit-allowlist.mjs` (today: braces, which has no patched release
-and is only reached by the linter). Read which step fails before treating a red job as real.
+CI's `Frontend / checks` job currently shows a red "Dependency advisories" step:
+a dev-only `npm audit` finding with no non-breaking fix. Read which step fails
+before treating a red job as a real failure.
 
 ## Docs
 

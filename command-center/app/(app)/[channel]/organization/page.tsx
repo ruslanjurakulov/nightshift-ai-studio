@@ -11,6 +11,8 @@ import { AccountSecurity } from "@/components/account/AccountSecurity";
 import { readOwnHandle } from "@/lib/server/handles";
 import { pendingHandleFrom } from "@/lib/handles";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
+import { NotificationChannels } from "@/components/notifications/NotificationChannels";
+import { customerBotUsername, readChannels } from "@/lib/server/notify-channels";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -38,6 +40,9 @@ export default async function SettingsPage() {
   const supabase = user && org.supported && org.current ? await createClient() : null;
   const showInvite = supabase && org.current ? inviteCardShown(org.current, (await readMyInvite(supabase)).state) : false;
   const avatarV = avatarVersionFromMetadata(user?.user_metadata);
+  // Telegram notifications stay hidden until the customer bot is configured (its public username is set)
+  // and migration 0102 is applied.
+  const notify = user && org.supported && org.current && customerBotUsername() ? await readChannels() : null;
 
   return (
     <div className="rhythm ns-open">
@@ -60,6 +65,9 @@ export default async function SettingsPage() {
               signupHandle={pendingHandleFrom(user.user_metadata)}
               handlesSupported={handles.supported}
             />
+          )}
+          {notify?.supported && (
+            <NotificationChannels initialChannels={notify.channels} initialPreferences={notify.preferences} />
           )}
           <div className="panel flex flex-col gap-3 p-5 sm:p-6">
             <h2 className="t-section">{t.org.developersTitle}</h2>

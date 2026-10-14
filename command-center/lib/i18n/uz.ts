@@ -1,4 +1,5 @@
 import { improveUz } from "./improve/uz";
+import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
@@ -2815,6 +2816,7 @@ export const uz: Dictionary = {
       remove_failed: "Rasm oʻchirilmadi. Qayta urinib koʻring.",
     },
   },
+  notifyChannels: notifyChannelsUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",

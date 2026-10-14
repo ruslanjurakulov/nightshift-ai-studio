@@ -1,4 +1,5 @@
 import { improveEn } from "./improve/en";
+import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
@@ -2826,6 +2827,7 @@ export const en = {
       remove_failed: "The photo could not be removed. Try again.",
     },
   },
+  notifyChannels: notifyChannelsEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",
