@@ -13,7 +13,7 @@
     "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
-    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase"]},
+    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"]},
     "relight_look": {"enum": ["soft", "warm", "cool", "golden_hour", "dramatic", "studio"]},
     "upscale_target": {"enum": ["720p", "1k", "2k", "4k"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},

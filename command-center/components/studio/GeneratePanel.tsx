@@ -43,6 +43,7 @@ import {
   errorAction,
   expandShapesFor,
   generateLabel,
+  isAiEdit,
   isPictureOp,
   modelsFor,
   needsRecording,
@@ -50,10 +51,12 @@ import {
   needsVideo,
   newIdempotencyKey,
   promptRule,
+  reframeShapesFor,
   relightLooksFor,
   sheetQuoteParams,
   soundQuoteParams,
   takesQuality,
+  takesShape,
   takesSound,
   takesStyle,
   tierQuoteParams,
@@ -221,8 +224,8 @@ export function GeneratePanel({
   const effectiveTarget = capability !== "video_upscale" ? null : target && targets.includes(target) ? target : (targets[0] ?? null);
   // The shape: the one picked if this model makes it, else the model's first. A light is never defaulted:
   // the person picks one (or describes it), because the press pays for exactly that.
-  const shapes = expandShapesFor(available, current, routed);
-  const effectiveShape = capability !== "expand" ? null : shape && shapes.includes(shape) ? shape : (shapes[0] ?? null);
+  const shapes = capability === "video_reframe" ? reframeShapesFor(available, current, routed) : expandShapesFor(available, current, routed);
+  const effectiveShape = !takesShape(capability) ? null : shape && shapes.includes(shape) ? shape : (shapes[0] ?? null);
   const looks = relightLooksFor(available, current, routed);
   const effectiveLook = capability !== "relight" ? null : look && looks.includes(look) ? look : null;
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
@@ -434,8 +437,8 @@ export function GeneratePanel({
   const filmed = needsVideo(capability);
   const words = promptRule(capability);
   const blocked = blockedReason(form, !!effectiveModel);
-  // A picture op nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
-  const blockedText = blocked === "no_model" && isPictureOp(capability) ? t.gen.notAvailableYet : blocked ? t.gen.blocked[blocked] : null;
+  // An AI edit tool nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
+  const blockedText = blocked === "no_model" && isAiEdit(capability) ? t.gen.notAvailableYet : blocked ? t.gen.blocked[blocked] : null;
 
   const pick = (c: StudioCapability) => {
     // A picture, a recording and a video are never the same pick: switching
@@ -533,7 +536,7 @@ export function GeneratePanel({
     capability === "i2v" ||
     capability === "upscale" ||
     (filmed && targets.length > 0) ||
-    (capability === "expand" && shapes.length > 0);
+    (takesShape(capability) && shapes.length > 0);
   // On a desk the keys say more than the bare value: the shape drawn, the
   // length as a counter. Same values, same buttons, same group names.
   const aspectText = (a: AspectRatio | ExpandAspect): ReactNode =>
@@ -558,7 +561,17 @@ export function GeneratePanel({
       {filmed &&
         effectiveTarget &&
         seg(t.gen.targetLabel, Maximize2, targets, effectiveTarget, setTarget, (v) => v.replace(/k$/, "K"), true)}
-      {capability === "expand" && effectiveShape && seg(t.gen.shapeLabel, desk ? null : RectangleHorizontal, shapes, effectiveShape, setShape, aspectText, true)}
+      {takesShape(capability) &&
+        effectiveShape &&
+        seg(
+          capability === "video_reframe" ? t.gen.reframeLabel : t.gen.shapeLabel,
+          desk ? null : RectangleHorizontal,
+          shapes,
+          effectiveShape,
+          setShape,
+          aspectText,
+          true,
+        )}
     </div>
   ) : null;
   const ToolIcon = TOOL_ICONS[capability];
@@ -659,7 +672,7 @@ export function GeneratePanel({
     </div>
   ) : (
     <p className="studio-field p-3 text-sm text-[var(--color-muted)]" data-testid="gen-no-model">
-      {isPictureOp(capability) ? t.gen.notAvailableYet : t.gen.noModels}
+      {isAiEdit(capability) ? t.gen.notAvailableYet : t.gen.noModels}
     </p>
   );
 
@@ -804,7 +817,9 @@ export function GeneratePanel({
         }}
         libraryHref={path("/library")}
       />
-      <span className="text-xs text-[var(--color-muted)]">{t.gen.videoUpscaleNote}</span>
+      <span className="text-xs text-[var(--color-muted)]">
+        {capability === "video_upscale" ? t.gen.videoUpscaleNote : t.gen.videoOpNotes[capability as "video_edit" | "video_reframe" | "video_remove_bg"]}
+      </span>
     </div>
   ) : null;
 
@@ -944,8 +959,8 @@ export function GeneratePanel({
             ? desk === "voice"
               ? t.desk.script
               : t.gen.voiceTextLabel
-            : isPictureOp(capability)
-              ? t.gen.opWords[capability]
+            : isAiEdit(capability)
+              ? (t.gen.opWords as Record<string, string>)[capability]
               : desk === "video"
                 ? t.desk.shot
                 : t.gen.promptLabel}
@@ -959,7 +974,7 @@ export function GeneratePanel({
               setPrompt(e.target.value);
               edited();
             }}
-            rows={isVoice ? (desk === "voice" ? 10 : 6) : isPictureOp(capability) ? 2 : 4}
+            rows={isVoice ? (desk === "voice" ? 10 : 6) : isAiEdit(capability) ? 2 : 4}
             maxLength={wordsMax(capability)}
             autoFocus={initial !== null}
             placeholder={t.gen.promptPh[capability]}
@@ -996,7 +1011,13 @@ export function GeneratePanel({
     !settingsInField && settings ? (
       <div className="flex flex-col gap-2">
         <span className="studio-label">
-          {capability === "upscale" ? t.gen.factorLabel : capability === "expand" ? t.gen.shapeLabel : t.gen.targetLabel}
+          {capability === "upscale"
+            ? t.gen.factorLabel
+            : capability === "expand"
+              ? t.gen.shapeLabel
+              : capability === "video_reframe"
+                ? t.gen.reframeLabel
+                : t.gen.targetLabel}
         </span>
         <div className="desk-size">{settings}</div>
       </div>

@@ -1,4 +1,4 @@
-import { AudioLines, Eraser, Expand, Film, Image as ImageIcon, Languages, Mic, MonitorUp, Play, ScanText, Scissors, SunMedium, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
+import { AudioLines, Clapperboard, Eraser, Expand, Film, Image as ImageIcon, Languages, Mic, MonitorUp, Play, ScanText, Scissors, SquareDashedMousePointer, SunMedium, Video, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
 import type { StudioCapability } from "@/lib/creative/studio";
 
 /** One mark per Studio tool, shared by the tabs, the templates and the result cards. */
@@ -17,4 +17,7 @@ export const TOOL_ICONS: Record<StudioCapability, LucideIcon> = {
   expand: Expand,
   relight: SunMedium,
   erase: Eraser,
+  video_edit: Clapperboard,
+  video_reframe: Video,
+  video_remove_bg: SquareDashedMousePointer,
 };

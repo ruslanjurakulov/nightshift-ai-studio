@@ -123,7 +123,7 @@ class CommandTestCase(unittest.TestCase):
             vf,
             "transpose=1,hflip,crop=w='max(2,trunc(iw*0.5000/2)*2)':h='max(2,trunc(ih*0.8000/2)*2)':"
             "x='trunc(iw*0.2500/2)*2':y='trunc(ih*0.1000/2)*2',"
-            "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30")
+            "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1")
 
     def test_the_whole_picture_is_no_crop(self):
         self.assertEqual(fxt.vf_of(self.seg(crop=rs.ClipCrop())), fxt.vf_of(self.seg()))
@@ -235,6 +235,20 @@ class CropRenderTestCase(_Real):
         left, right = self.px(raw, self.W, 20, 90), self.px(raw, self.W, 300, 90)
         self.assertTrue(self.near(left, BLUE), left)
         self.assertTrue(self.near(right, RED), right)
+
+    def sar_of(self, path):
+        import subprocess
+        err = subprocess.run([self.ffmpeg, "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+        return re.search(r"SAR (\d+:\d+)", err).group(1)
+
+    def test_a_cropped_clip_comes_out_with_square_pixels(self):
+        # an odd window fitted by contain left a pixel shape such as 393:392 (the scaler's rounding)
+        src = self.quad()
+        for clip in ({"crop": {"x": 0.1, "w": 0.37, "h": 0.61}}, {"crop": {"x": 0.1, "w": 0.37, "h": 0.61}, "fit": "cover"},
+                     {"crop": {"w": 0.43, "h": 0.77}, "rotate": 90}, {"crop": {"w": 0.43, "h": 0.77}, "angle": 20},
+                     {"crop": {"w": 0.43, "h": 0.77}, "fit": "blur"}, {}):
+            out = self.export(fxt.vdoc(width=self.W, height=self.H, **clip), {BASE: src})
+            self.assertEqual(self.sar_of(out), "1:1", clip)
 
     def test_a_still_is_cropped_too(self):
         row = bytes((*RED, 255)) * 32 + bytes((*GREEN, 255)) * 32
