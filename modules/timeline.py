@@ -723,8 +723,7 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     # An animation on one side and a plain fade on the other: the fade becomes an animation too, so a
     # long entrance would be cut short by the exit that starts at end_s - fade_out_s.
     if ("anim_in" in clip) != ("anim_out" in clip):
-        mixed = [clip.get("anim_in_s", ANIM_DEFAULT_S) if k == "anim_in" else clip.get(k + "_s", 0)
-                 for k in ("anim_in", "anim_out") if k in clip]
+        mixed = [clip.get(k + "_s", ANIM_DEFAULT_S) for k in ("anim_in", "anim_out") if k in clip]
         side = "fade_out_s" if "anim_in" in clip else "fade_in_s"
         other = clip.get(side, 0)
         if (all(_is_num(v) for v in (s, e, other, *mixed)) and e > s and other > 0
