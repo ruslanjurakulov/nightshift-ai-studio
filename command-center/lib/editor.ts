@@ -104,6 +104,9 @@ export const MAX_DOC_BYTES = 262_144;
  *  OVERLAY_W_MIN / OVERLAY_W_MAX): each is one more input of the final pass,
  *  and a video keeps a decoder open for its whole span. */
 export const MAX_OVERLAYS = 16;
+/** Overlays that change opacity between two visible values in a move cost a per-pixel
+ *  filter (modules/timeline.py MAX_PARTIAL_OPACITY_MOVES). */
+export const MAX_PARTIAL_OPACITY_MOVES = 2;
 export const MAX_OVERLAY_VIDEOS = 4;
 export const OVERLAY_W_MIN = 0.05;
 export const OVERLAY_W_MAX = 1;
@@ -1099,6 +1102,21 @@ function validateOverlays(
     validateAnims(ov, where, problems, false);
     if ("move" in ov) validateOverlayMove(ov.move, where, problems);
   });
+  const slow = overlays.filter(partialOpacityMove).length;
+  if (slow > MAX_PARTIAL_OPACITY_MOVES)
+    problems.push(
+      `overlays: at most ${MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible values during a move (got ${slow}) — fade to or from 0, or keep the opacity`,
+    );
+}
+
+/** An overlay whose `move.to.opacity` is another visible value than its `opacity`
+ *  (modules/timeline.py `_partial_opacity_move`). */
+export function partialOpacityMove(ov: unknown): boolean {
+  if (!isObj(ov) || !isObj(ov.move)) return false;
+  const to = ov.move.to;
+  const start = ov.opacity ?? 1;
+  const end = isObj(to) ? to.opacity : undefined;
+  return isNum(start) && isNum(end) && start > 0 && end > 0 && start !== end;
 }
 
 function validateCaptions(

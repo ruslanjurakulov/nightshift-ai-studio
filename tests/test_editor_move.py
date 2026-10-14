@@ -100,6 +100,23 @@ class DocumentTestCase(unittest.TestCase):
         n = tl.normalise(odoc(move={"to": {"x": 0.80001, "opacity": 0}}))["overlays"][0]
         self.assertEqual(n["move"], {"to": {"x": 0.8, "opacity": 0.0}})
 
+    def test_only_a_few_overlays_may_ramp_between_two_visible_opacities(self):
+        # geq rewrites the alpha plane per pixel (3.6x slower for one video overlay, 13x for four)
+        def doc_with(n, opacity=1.0, to=0.5):
+            doc = odoc()
+            doc["overlays"] = [dict(doc["overlays"][0], id=f"o{i}", opacity=opacity, move={"to": {"opacity": to}})
+                               for i in range(n)]
+            return doc
+        self.assertEqual(tl.MAX_PARTIAL_OPACITY_MOVES, 2)
+        self.assertEqual(tl.validate(doc_with(2)), [])
+        got = tl.validate(doc_with(3))
+        self.assertTrue(any("at most 2 may change opacity" in p for p in got), got)
+        # to or from nothing is a cheap fade, an unchanged opacity is nothing: neither counts
+        self.assertEqual(tl.validate(doc_with(5, 1.0, 0.0)), [])
+        self.assertEqual(tl.validate(doc_with(5, 0.0, 1.0)), [])
+        self.assertEqual(tl.validate(doc_with(5, 0.7, 0.7)), [])
+        self.assertEqual(tl.validate(doc_with(5, 1.0, 1.0)), [])
+
     def test_a_split_carries_the_move_across_the_cut(self):
         out = tl.split_clip(vdoc(out_s=4, move=mv(1, 0.5, 0.5, 3, 0.1, 0.9)), "c1", 1.0, "c2")
         a, b = out["tracks"][0]["clips"]

@@ -197,6 +197,10 @@ MAX_TOTAL_CLIPS = 5000
 #: them). Each is one more input and filter chain in the final pass; a video
 #: keeps a decoder open for its whole span.
 MAX_OVERLAYS = 16
+#: An overlay whose opacity goes from one visible value to another during a move rewrites its alpha
+#: plane per pixel and frame (``geq``): measured 3.6x slower for one video overlay, 13x for four, and
+#: out of memory at 4K60. A move to or from nothing is a cheap fade and is not counted.
+MAX_PARTIAL_OPACITY_MOVES = 2
 MAX_OVERLAY_VIDEOS = 4
 OVERLAY_W_MIN, OVERLAY_W_MAX = 0.05, 1.0
 MAX_TEXT = 500
@@ -812,6 +816,20 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
         _validate_anims(ov, where, problems, text=False)
         if "move" in ov:
             _validate_overlay_move(ov["move"], where, problems)
+    slow = sum(1 for ov in overlays if _partial_opacity_move(ov))
+    if slow > MAX_PARTIAL_OPACITY_MOVES:
+        problems.append(f"overlays: at most {MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible "
+                        f"values during a move (got {slow}) — fade to or from 0, or keep the opacity")
+
+
+def _partial_opacity_move(ov) -> bool:
+    """True for an overlay whose ``move.to.opacity`` is a different visible value from its ``opacity``."""
+    if not isinstance(ov, dict) or not isinstance(ov.get("move"), dict):
+        return False
+    to = ov["move"].get("to")
+    start = ov.get("opacity", 1.0)
+    end = to.get("opacity") if isinstance(to, dict) else None
+    return _is_num(start) and _is_num(end) and start > 0 and end > 0 and start != end
 
 
 def _validate_captions(captions, problems, claim) -> None:
