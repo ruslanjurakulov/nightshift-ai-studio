@@ -27,6 +27,23 @@ export const VOICE_PREVIEW_RATE: RateRule = { bucket: "elevenlabs.preview", max:
 /** Profile photo changes (upload or remove) per person: a few real edits, not a loop. */
 export const AVATAR_WRITE_RATE: RateRule = { bucket: "avatar.write", max: 20, windowSeconds: 3600 };
 
+/**
+ * The editor's writes, per person. They protect the database and the worker
+ * from a loop, not a person from their own pace: the editor saves when the
+ * person presses save or exports (its draft autosave is local), a few times a
+ * minute at the very most, so each limit is 5-10x what real editing needs. A
+ * refused save says "rate_limited" (429, retry-after) and the editor keeps its
+ * unsaved work in the local draft.
+ */
+/** Saves of a project (PUT): 300 per 10 minutes = 30 a minute. */
+export const EDITOR_SAVE_RATE: RateRule = { bucket: "editor.save", max: 300, windowSeconds: 600 };
+/** New projects (POST): 60 an hour; one organization may hold only so many anyway. */
+export const EDITOR_CREATE_RATE: RateRule = { bucket: "editor.create", max: 60, windowSeconds: 3600 };
+/** Export requests (POST): 30 an hour; the database also allows one at a time and a daily count. */
+export const EDITOR_EXPORT_RATE: RateRule = { bucket: "editor.export", max: 30, windowSeconds: 3600 };
+/** "Open in editor" sends (POST): 120 per 10 minutes = 12 a minute. */
+export const EDITOR_SEND_RATE: RateRule = { bucket: "editor.send", max: 120, windowSeconds: 600 };
+
 const local = new Map<string, { start: number; count: number }>();
 
 /** The in-process fallback (pre-0042). Exported for tests. */

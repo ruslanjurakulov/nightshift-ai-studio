@@ -1019,6 +1019,15 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   html[data-motion="paused"] .nx-chat .nx-dot, html[data-motion="paused"] .nx-chat .nx-chat-key { animation: none !important; }
 }
 .nx-typed { display: inline; }
+/* "Try an example": a quiet text entry under the two hero actions that scrolls to the plan demo (#try). Its own line from 640 px; on a phone it sits under the button. */
+.nx-sample { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 44px; padding: 4px; text-align: center; color: var(--ns-text); }
+.nx-sample-label { font-size: 16px; font-weight: 600; text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 6px; text-decoration-thickness: 1px; }
+.nx-sample:hover .nx-sample-label { color: var(--st-act-ink); text-decoration-color: currentColor; }
+.nx-sample-note { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
+@media (min-width: 640px) {
+  .nx-hero-copy .nx-actions { flex-wrap: wrap; }
+  .nx-hero-copy .nx-sample { flex-basis: 100%; align-items: flex-start; padding-inline: 0; text-align: left; }
+}
 /* A phone's first screen: the headline, the button and the whole of the chat card's picture. The pricing link is in the header's links and in the price block. */
 @media (max-width: 639px) {
   .nx-hero-copy .nx-actions .nx-link { display: none; }
@@ -1228,6 +1237,10 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   .nx-hero-top .nx-h1 { color: #fff; text-shadow: 0 1px 24px rgba(0, 0, 0, 0.35); }
   .nx-hero-top .nx-h1-b { color: #b3acff; }
   .nx-hero-top .nx-link { color: #fff; }
+  .nx-hero-top .nx-sample { color: #fff; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55); }
+  .nx-hero-top .nx-sample-label { text-decoration-color: rgba(255, 255, 255, 0.55); }
+  .nx-hero-top .nx-sample:hover .nx-sample-label { color: #fff; text-decoration-color: #fff; }
+  .nx-hero-top .nx-sample-note { color: rgba(255, 255, 255, 0.86); }
   .nx-hero .nx-chat .nx-result-art { display: none; }
   .nx-hero-visual { margin-top: 20px; }
 }

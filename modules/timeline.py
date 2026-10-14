@@ -12,15 +12,21 @@ not a project dependency — tests keep the two in sync)::
 
     { version: 1, width, height, fps,
       tracks: [ { id, kind: "V"|"A"|"T", name?, clips: [...] } ],
-      captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] } }
+      captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] },
+      overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ] }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
-              transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s },
-              speed?: 0.5..2, audio?: bool }
+              transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
+                             style?: <one of XFADE_STYLES, crossfade only> },
+              speed?: 0.5..2, audio?: bool,
+              grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
-              outline_width?, bold?, x?, y?, anchor?, fade_in_s?, fade_out_s? }
+              outline_width?, bold?, shadow?, box_color?, box_opacity?, x?, y?,
+              anchor?, fade_in_s?, fade_out_s? }
+    overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
+               opacity?: 0..1 }   (a picture or video over the picture; see below)
 
 Rules this module keeps:
 
@@ -39,6 +45,19 @@ Rules this module keeps:
   the dissolve. No material outside either clip's ``in_s``..``out_s`` is
   used (there are no hidden handles), so a cross-fade is never longer than
   either clip, and a clip's incoming and outgoing cross-fades never meet.
+* **A cross-fade has a style from a closed list.** ``transition.style`` (only on
+  a ``crossfade``) names one of ``XFADE_STYLES``: ffmpeg ``xfade`` transitions
+  that cost the same as the plain blend (``fade``, the default, is the
+  dissolve every older document renders; a ``fade`` written out is dropped by
+  ``normalise`` so it is the same document). The style changes how the two
+  pictures are mixed over the cross-fade's span and nothing else: the layout,
+  the length and the sound (always an equal-gain blend) are the same for every
+  style. Only the name is stored; ffmpeg's ``custom`` transition (an
+  expression) is not on the list.
+* **Text looks are fields, not effects.** A text clip may carry ``shadow``
+  (0-20 px, a soft black drop shadow), ``box_color`` (a ``#RRGGBB`` box drawn
+  behind the text instead of its outline) and ``box_opacity`` (0-1, only with
+  a ``box_color``). A text without them renders the ASS file it always did.
 * **Times are seconds, normalised to milliseconds**, and the render cuts on
   the frame grid (``round(t * fps)``), so the same document always renders
   the same frames.
@@ -57,6 +76,31 @@ Rules this module keeps:
   The envelope comes from where those clips sit on the timeline, so the same
   document always renders the same sound. A speech track cannot itself be
   ducked, which keeps "who lowers whom" a one-way question.
+* **Colour is a per-clip grade, not a filter chain.** ``grade`` holds exactly
+  three numbers that map one-to-one onto ffmpeg's ``eq`` filter (brightness
+  -1..1 added to the luma, contrast 0..2 around mid-grey, saturation 0..3 on
+  the chroma; 0 / 1 / 1 is "no change"). A clip without ``grade`` — every
+  older document — renders exactly the command it always did; a neutral
+  ``grade`` is dropped by ``normalise`` for the same reason. It applies to
+  the picture only (bars of a ``contain`` fit and fades to black stay black)
+  and to stills as well as video.
+* **Overlays are a layer above the picture, not a second picture lane.**
+  ``overlays`` is a top-level list (so "one V track" stays true): each one is
+  a picture or a video (``asset_id``) shown from ``start_s`` to ``end_s`` over
+  the composited picture, its CENTRE at (``x``, ``y``) and its width ``w``,
+  all fractions of the frame (so the same document fits any resolution; the
+  height follows the file's own aspect ratio), at ``opacity``. A picture
+  keeps its own transparency; a video plays from its first frame and is
+  never heard. They may overlap in time (that is stacking; the list order is
+  the layering, later on top) and sit under the texts and captions. They do
+  NOT lengthen the timeline: what runs past the picture's end is cut, and an
+  overlay of opacity 0 renders nothing. A video overlay must be at least as
+  long as its span (nothing loops or freezes). Neutral — no ``overlays``, or an
+  empty list, which ``normalise`` drops — renders the commands it always did.
+  At most ``MAX_OVERLAYS`` overlays and ``MAX_OVERLAY_VIDEOS`` of them videos:
+  each is an input of the final pass. Its ``asset_id`` is checked like a
+  clip's, in every layer (the database's editor_doc_problem sees ``asset_id``
+  at any depth).
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
   and speed; a source with no sound track is silent, never an error.
@@ -102,12 +146,33 @@ MAX_CUES = 5000
 #: ffmpeg pass (render_spec._timeline_command), so they are counted per document.
 MAX_AUDIO_CLIPS = 64
 MAX_TOTAL_CLIPS = 5000
+#: Picture overlays (render_spec.MAX_PICTURE_* are the same numbers; a test pins
+#: them). Each is one more input and filter chain in the final pass; a video
+#: keeps a decoder open for its whole span.
+MAX_OVERLAYS = 16
+MAX_OVERLAY_VIDEOS = 4
+OVERLAY_W_MIN, OVERLAY_W_MAX = 0.05, 1.0
 MAX_TEXT = 500
 MAX_ID = 64
 MAX_DOC_BYTES = 2_000_000
 
 FITS = ("contain", "cover")
+#: A clip's colour grade (ffmpeg ``eq`` brightness / contrast / saturation, each
+#: at its own range; render_spec.GRADE_* are the same numbers, a test pins them).
+#: Wider than that the picture is a flat colour: brightness +-1 is white / black,
+#: contrast 0 is a flat grey, saturation 0 is monochrome (3 is eq's own ceiling).
+GRADE_RANGES = {"brightness": (-1.0, 1.0), "contrast": (0.0, 2.0), "saturation": (0.0, 3.0)}
+GRADE_NEUTRAL = {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0}
 TRANSITIONS = ("cut", "dip_to_black", "crossfade")
+#: ffmpeg ``xfade`` transitions a cross-fade may use (render_spec.XFADE_STYLES is
+#: the same list, a test pins them). A closed whitelist: the name goes into a
+#: filter graph, so it is never free text, and ``custom`` (an expression) is
+#: not on it. Every one of these is a per-pixel mix of two frames that costs
+#: about what the plain ``fade`` does (measured, tests/test_editor_transitions.py).
+XFADE_STYLES = ("fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight",
+                "slideleft", "slideright", "slideup", "slidedown", "circleopen",
+                "circleclose", "radial", "zoomin")
+XFADE_DEFAULT_STYLE = "fade"
 #: A cross-fade's length: under 0.2 s it reads as a glitch, not a dissolve;
 #: over 2 s both clips are half-visible for longer than a viewer will wait.
 XFADE_MIN_S, XFADE_MAX_S = 0.2, 2.0
@@ -130,39 +195,57 @@ DUCK_RELEASE_MIN_S, DUCK_RELEASE_MAX_S = 0.1, 5.0
 DUCK_DEFAULTS = {"attack_s": 0.3, "release_s": 0.8}
 SIZE_MIN, SIZE_MAX = 8, 512
 OUTLINE_MAX = 20.0
+#: A text's drop shadow offset, in output pixels (render_spec.SHADOW_MAX is the
+#: same number); over 20 px the shadow is a second, detached text.
+SHADOW_MAX = 20.0
+#: A text's box opacity when ``box_color`` is set without one.
+BOX_OPACITY_DEFAULT = 0.7
 #: Per-clip playback speed. One atempo stage covers exactly this range
 #: (render_spec.SPEED_MIN/MAX are the same numbers; a test pins them).
 SPEED_MIN, SPEED_MAX = 0.5, 2.0
 
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
+#: Which asset kinds an overlay may use (a picture or a video, never a sound).
+OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
 #: Which asset kinds a clip on each track kind may use.
 TRACK_ASSET_KINDS = {KIND_V: (ASSET_VIDEO, ASSET_IMAGE), KIND_A: (ASSET_AUDIO,)}
 
 #: A pathological document must not become a megabyte of error text.
 _MAX_REPORTED = 20
 
+#: The patterns are the schema's (a test pins them equal), and are used with
+#: ``fullmatch``: ``$`` also matches before a trailing newline, so "c1\n" would pass
+#: ``match`` here and fail the web validator (JavaScript's ``$`` does not).
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 # Field lists — the schema's "required"/"properties" (tests pin them together).
 _DOC_REQUIRED = ("version", "width", "height", "fps", "tracks")
-_DOC_KEYS = _DOC_REQUIRED + ("captions",)
+_DOC_KEYS = _DOC_REQUIRED + ("captions", "overlays")
 _TRACK_REQUIRED = ("id", "kind", "clips")
 _TRACK_KEYS = _TRACK_REQUIRED + ("name",)
 _A_TRACK_KEYS = _TRACK_KEYS + ("role", "duck")
 _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
-_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio")
+_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
+                                  "grade")
+_GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
-_T_CLIP_KEYS = _T_REQUIRED + _TEXT_STYLE_KEYS + ("x", "y", "anchor", "fade_in_s", "fade_out_s")
+#: Looks only a text clip has (the captions' style has none: it stays as it is).
+_TEXT_LOOK_KEYS = ("shadow", "box_color", "box_opacity")
+_T_CLIP_KEYS = (_T_REQUIRED + _TEXT_STYLE_KEYS + _TEXT_LOOK_KEYS
+                + ("x", "y", "anchor", "fade_in_s", "fade_out_s"))
 _TRANSITION_KEYS = ("type", "duration_s")
+_TRANSITION_ALLOWED = _TRANSITION_KEYS + ("style",)
 _CAPTIONS_KEYS = ("style", "cues")
 _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y",)
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
+_OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
+_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity")
 
 #: Defaults normalise() fills in (and the schema documents).
 TEXT_DEFAULTS = {"font": "DejaVu Sans", "size": 64, "color": "#FFFFFF",
@@ -174,6 +257,8 @@ CAPTION_STYLE_DEFAULTS = {"font": "DejaVu Sans", "size": 56, "color": "#FFFFFF",
 V_DEFAULTS = {"fit": "contain", "fade_in_s": 0.0, "fade_out_s": 0.0,
               "transition": {"type": "cut", "duration_s": 0.0}, "speed": 1.0, "audio": False}
 A_DEFAULTS = {"gain_db": 0.0, "fade_in_s": 0.0, "fade_out_s": 0.0}
+#: An overlay's defaults: the middle of the frame, a third of its width, opaque.
+OVERLAY_DEFAULTS = {"x": 0.5, "y": 0.5, "w": 0.3, "opacity": 1.0}
 
 
 class TimelineError(ValueError):
@@ -206,11 +291,33 @@ AssetResolver = Callable[[str], Optional[ResolvedAsset]]
 # ── small predicates ────────────────────────────────────────────────────────
 
 def _is_num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return False
+    try:
+        return math.isfinite(v)
+    except OverflowError:
+        # An int too large for a float (reachable only by writing the database
+        # directly): not a number a timeline can use, never an exception.
+        return False
+
+
+def _shown(v, limit: int = 60) -> str:
+    """``repr`` for an error message, cut short (a 4000-digit int is not a message)."""
+    try:
+        s = repr(v)
+    except ValueError:
+        # An int of more than 4300 digits has no repr (Python's int-to-str limit).
+        return "<a number too large to show>"
+    return s if len(s) <= limit else s[:limit - 3] + "..."
 
 
 def _is_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _in_range(v) -> bool:
+    """A time the document may hold (0 to MAX_DURATION_S): safe to do arithmetic on."""
+    return _is_num(v) and 0 <= v <= MAX_DURATION_S
 
 
 def _ms(v: float) -> float:
@@ -218,11 +325,11 @@ def _ms(v: float) -> float:
 
 
 def _where(track: dict, clip: Optional[dict] = None) -> str:
-    t = f"track {track.get('id')!r}" if isinstance(track, dict) else "track"
+    t = f"track {_shown(track.get('id'), 200)}" if isinstance(track, dict) else "track"
     if clip is None:
         return t
     c = clip.get("id") if isinstance(clip, dict) else None
-    return f"{t} clip {c!r}"
+    return f"{t} clip {_shown(c, 200)}"
 
 
 def _fields(obj, allowed, required, where, problems) -> bool:
@@ -245,7 +352,7 @@ def _num_in(obj, key, lo, hi, where, problems, *, exclusive_lo=False) -> None:
     ok = _is_num(v) and (v > lo if exclusive_lo else v >= lo) and v <= hi
     if not ok:
         rng = f"{'>' if exclusive_lo else '>='} {lo:g} and <= {hi:g}"
-        problems.append(f"{where}: {key} must be a number {rng} (got {v!r})")
+        problems.append(f"{where}: {key} must be a number {rng} (got {_shown(v)})")
 
 
 def _text(obj, key, where, problems) -> None:
@@ -262,7 +369,7 @@ def _text_style(obj, where, problems) -> None:
     if "size" in obj and not (_is_int(obj["size"]) and SIZE_MIN <= obj["size"] <= SIZE_MAX):
         problems.append(f"{where}: size must be an integer from {SIZE_MIN} to {SIZE_MAX}")
     for k in ("color", "outline_color"):
-        if k in obj and not (isinstance(obj[k], str) and _HEX_RE.match(obj[k])):
+        if k in obj and not (isinstance(obj[k], str) and _HEX_RE.fullmatch(obj[k])):
             problems.append(f"{where}: {k} must be a #RRGGBB colour")
     _num_in(obj, "outline_width", 0, OUTLINE_MAX, where, problems)
     if "bold" in obj and not isinstance(obj["bold"], bool):
@@ -278,26 +385,28 @@ def validate(doc: Any) -> List[str]:
     problems: List[str] = []
     if not _fields(doc, _DOC_KEYS, _DOC_REQUIRED, "timeline", problems):
         return problems
-    if doc.get("version") != VERSION:
-        problems.append(f"timeline: version must be {VERSION} (got {doc.get('version')!r})")
+    ver = doc.get("version")
+    # `true == 1` and `1.0 == 1` in Python; the document's version is the integer 1.
+    if not _is_int(ver) or ver != VERSION:
+        problems.append(f"timeline: version must be {VERSION} (got {_shown(doc.get('version'))})")
     for k in ("width", "height"):
         v = doc.get(k)
         if not (_is_int(v) and MIN_SIDE <= v <= MAX_SIDE and v % 2 == 0):
             problems.append(f"timeline: {k} must be an even integer from {MIN_SIDE} to "
-                            f"{MAX_SIDE} (H.264 4:2:0 needs even sides; got {v!r})")
+                            f"{MAX_SIDE} (H.264 4:2:0 needs even sides; got {_shown(v)})")
     w, h = doc.get("width"), doc.get("height")
     if _is_int(w) and _is_int(h) and w * h > MAX_FRAME_PIXELS:
         problems.append(f"timeline: the frame is at most {MAX_FRAME_PIXELS} pixels (3840x2160 or "
-                        f"2160x3840; got {w}x{h})")
+                        f"2160x3840; got {_shown(w)}x{_shown(h)})")
     fps = doc.get("fps")
     if fps not in FPS_VALUES or not _is_int(fps):
-        problems.append(f"timeline: fps must be one of {list(FPS_VALUES)} (got {fps!r})")
+        problems.append(f"timeline: fps must be one of {list(FPS_VALUES)} (got {_shown(fps)})")
         fps = None
 
     ids: Dict[str, str] = {}
 
     def claim(ident, where):
-        if not (isinstance(ident, str) and _ID_RE.match(ident)):
+        if not (isinstance(ident, str) and _ID_RE.fullmatch(ident)):
             problems.append(f"{where}: id must be 1-{MAX_ID} letters, digits, '_' or '-'")
         elif ident in ids:
             problems.append(f"{where}: id {ident!r} is already used by {ids[ident]}")
@@ -361,16 +470,20 @@ def validate(doc: Any) -> List[str]:
     captions = doc.get("captions")
     if captions is not None:
         _validate_captions(captions, problems, claim)
+    if "overlays" in doc:
+        _validate_overlays(doc["overlays"], fps, problems, claim)
 
     if problems:
         return problems
     # Semantic checks need a structurally valid document.
-    found = overlaps(doc)
+    # One past the limit is enough to say "and more": 5000 captions on one span
+    # are 12.5 million pairs, and listing them all took seconds and a gigabyte.
+    found = overlaps(doc, limit=_MAX_REPORTED + 1)
     for ov in found[:_MAX_REPORTED]:
         problems.append(f"track {ov[0]!r}: clips {ov[1]!r} and {ov[2]!r} overlap "
                         f"({ov[3]:.3f}-{ov[4]:.3f} s) — move one to another track")
     if len(found) > _MAX_REPORTED:
-        problems.append(f"... and {len(found) - _MAX_REPORTED} more overlaps")
+        problems.append("... and more overlaps")
     problems.extend(_transition_problems(doc))
     total = duration_s(doc)
     if total <= 0:
@@ -403,8 +516,8 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
         return
     claim(clip.get("id"), where)
     aid = clip.get("asset_id")
-    if not (isinstance(aid, str) and _UUID_RE.match(aid)):
-        problems.append(f"{where}: asset_id must be a uuid (got {aid!r})")
+    if not (isinstance(aid, str) and _UUID_RE.fullmatch(aid)):
+        problems.append(f"{where}: asset_id must be a uuid (got {_shown(aid, 200)})")
     for k in ("start_s", "in_s", "out_s"):
         _num_in(clip, k, 0, MAX_DURATION_S, where, problems)
     for k in ("fade_in_s", "fade_out_s"):
@@ -416,7 +529,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
     if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
         problems.append(f"{where}: audio must be true or false")
     ins, outs = clip.get("in_s"), clip.get("out_s")
-    if _is_num(ins) and _is_num(outs) and speed:
+    # Range first, derived maths after: an out_s of 1e308 is already reported above, and
+    # `round(length * fps)` of it is an OverflowError, not a problem (a crash that left an
+    # export stuck rendering).
+    if _in_range(ins) and _in_range(outs) and speed:
         # How long the clip lasts ON THE TIMELINE: the source range at its speed.
         length = _ms((_ms(outs) - _ms(ins)) / speed)
         if _ms(outs) - _ms(ins) <= 0:
@@ -429,11 +545,20 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
     if kind == KIND_V:
         if "fit" in clip and clip["fit"] not in FITS:
             problems.append(f"{where}: fit must be one of {list(FITS)}")
+        if "grade" in clip and _fields(clip["grade"], _GRADE_KEYS, _GRADE_KEYS,
+                                       f"{where} grade", problems):
+            for k, (lo, hi) in GRADE_RANGES.items():
+                _num_in(clip["grade"], k, lo, hi, f"{where} grade", problems)
         if "transition" in clip:
             tr = clip["transition"]
-            if _fields(tr, _TRANSITION_KEYS, _TRANSITION_KEYS, f"{where} transition", problems):
+            if _fields(tr, _TRANSITION_ALLOWED, _TRANSITION_KEYS, f"{where} transition", problems):
                 if tr.get("type") not in TRANSITIONS:
                     problems.append(f"{where}: transition type must be one of {list(TRANSITIONS)}")
+                if "style" in tr:
+                    if not (isinstance(tr["style"], str) and tr["style"] in XFADE_STYLES):
+                        problems.append(f"{where} transition: style must be one of {list(XFADE_STYLES)}")
+                    elif tr.get("type") != "crossfade":
+                        problems.append(f"{where} transition: a style is only for a crossfade")
                 if tr.get("type") == "crossfade":
                     _num_in(tr, "duration_s", XFADE_MIN_S, XFADE_MAX_S, f"{where} transition", problems)
                 else:
@@ -459,6 +584,13 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     _text_style(clip, where, problems)
     for k in ("x", "y"):
         _num_in(clip, k, 0, 1, where, problems)
+    _num_in(clip, "shadow", 0, SHADOW_MAX, where, problems)
+    if "box_color" in clip and not (isinstance(clip["box_color"], str)
+                                    and _HEX_RE.fullmatch(clip["box_color"])):
+        problems.append(f"{where}: box_color must be a #RRGGBB colour")
+    _num_in(clip, "box_opacity", 0, 1, where, problems)
+    if "box_opacity" in clip and "box_color" not in clip:
+        problems.append(f"{where}: box_opacity needs a box_color")
     if "anchor" in clip and clip["anchor"] not in ANCHORS:
         problems.append(f"{where}: anchor must be one of {list(ANCHORS)}")
     for k in ("fade_in_s", "fade_out_s"):
@@ -467,6 +599,37 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
+
+
+def _validate_overlays(overlays, fps, problems, claim) -> None:
+    """``overlays`` (see the module docstring). Each is judged on its own: they
+    may overlap, so there is nothing to compare between them."""
+    if not isinstance(overlays, list):
+        problems.append("overlays must be a list")
+        return
+    if len(overlays) > MAX_OVERLAYS:
+        problems.append(f"overlays: at most {MAX_OVERLAYS}")
+        return
+    for i, ov in enumerate(overlays):
+        where = f"overlays[{i}]"
+        if not _fields(ov, _OVERLAY_KEYS, _OVERLAY_REQUIRED, where, problems):
+            continue
+        where = f"overlay {ov.get('id')!r}"
+        claim(ov.get("id"), where)
+        aid = ov.get("asset_id")
+        if not (isinstance(aid, str) and _UUID_RE.fullmatch(aid)):
+            problems.append(f"{where}: asset_id must be a uuid (got {_shown(aid)})")
+        for k in ("start_s", "end_s"):
+            _num_in(ov, k, 0, MAX_DURATION_S, where, problems)
+        s, e = ov.get("start_s"), ov.get("end_s")
+        if _in_range(s) and _in_range(e):   # arithmetic only on times the document may hold
+            if _ms(e) <= _ms(s):
+                problems.append(f"{where}: end_s ({_shown(e)}) must be greater than start_s ({_shown(s)})")
+            elif fps and round(_ms(e) * fps) - round(_ms(s) * fps) < 1:
+                problems.append(f"{where}: shorter than one frame at {fps} fps")
+        for k in ("x", "y", "opacity"):
+            _num_in(ov, k, 0, 1, where, problems)
+        _num_in(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems)
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -487,7 +650,7 @@ def _validate_captions(captions, problems, claim) -> None:
         where = f"captions cues[{i}]"
         if not _fields(cue, _CUE_KEYS, _CUE_KEYS, where, problems):
             continue
-        where = f"caption {cue.get('id')!r}"
+        where = f"caption {_shown(cue.get('id'), 200)}"
         claim(cue.get("id"), where)
         _validate_timed_text(cue, where, problems)
 
@@ -528,11 +691,12 @@ def duration_s(doc: dict) -> float:
     return max(ends) if ends else 0.0
 
 
-def overlaps(doc: dict) -> List[Tuple[str, str, str, float, float]]:
+def overlaps(doc: dict, limit: Optional[int] = None) -> List[Tuple[str, str, str, float, float]]:
     """``(track id, clip a, clip b, from_s, to_s)`` for every pair of items on
     the same track (or among the captions) that are on screen at once.
     Touching (one ends where the next starts) is not an overlap, and neither
-    is a cross-fade's own overlap with the clip before it."""
+    is a cross-fade's own overlap with the clip before it. With ``limit`` the
+    search stops at that many pairs (the first ones, in the usual order)."""
     blended = {(str(t["id"]), str(p["id"]), str(c["id"]))
                for t in doc.get("tracks") or [] if t.get("kind") == KIND_V
                for p, c, _d in crossfades(t)}
@@ -545,6 +709,8 @@ def overlaps(doc: dict) -> List[Tuple[str, str, str, float, float]]:
                 if (lane, id1, id2) in blended:
                     continue
                 found.append((lane, id1, id2, s2, min(e1, e2)))
+                if limit is not None and len(found) >= limit:
+                    return found
     return found
 
 
@@ -558,6 +724,16 @@ def crossfade_s(clip: dict) -> float:
     if tr.get("type") != "crossfade" or not _is_num(tr.get("duration_s")):
         return 0.0
     return _ms(tr["duration_s"])
+
+
+def crossfade_style(clip: dict) -> str:
+    """A V clip's cross-fade style (``fade`` when it has none, or it is not a
+    cross-fade: a style on a cut is a problem :func:`validate` reports)."""
+    tr = clip.get("transition") or {}
+    st = tr.get("style")
+    if tr.get("type") == "crossfade" and isinstance(st, str) and st in XFADE_STYLES:
+        return st
+    return XFADE_DEFAULT_STYLE
 
 
 def crossfades(track: dict) -> List[Tuple[dict, dict, float]]:
@@ -734,6 +910,14 @@ def normalise(doc: dict) -> dict:
                 for k in ("start_s", "end_s", "fade_in_s", "fade_out_s", "x", "y"):
                     c[k] = _ms(c[k])
                 c["outline_width"] = float(c["outline_width"])
+                # The looks are "off" by default: a text without them (or with
+                # a zero shadow) is the text it was before they existed.
+                if "shadow" in c:
+                    c["shadow"] = _ms(c["shadow"])
+                    if c["shadow"] == 0:
+                        del c["shadow"]
+                if "box_color" in c:
+                    c["box_opacity"] = _ms(c.get("box_opacity", BOX_OPACITY_DEFAULT))
             else:
                 defaults = V_DEFAULTS if kind == KIND_V else A_DEFAULTS
                 c = {**copy.deepcopy(defaults), **copy.deepcopy(clip)}
@@ -741,9 +925,15 @@ def normalise(doc: dict) -> dict:
                 for k in ("start_s", "in_s", "out_s", "fade_in_s", "fade_out_s"):
                     c[k] = _ms(c[k])
                 if kind == KIND_V:
-                    c["transition"] = {"type": c["transition"]["type"],
-                                       "duration_s": _ms(c["transition"]["duration_s"])}
+                    tr_in = c["transition"]
+                    c["transition"] = {"type": tr_in["type"], "duration_s": _ms(tr_in["duration_s"])}
+                    if tr_in.get("style", XFADE_DEFAULT_STYLE) != XFADE_DEFAULT_STYLE:
+                        c["transition"]["style"] = tr_in["style"]   # "fade" is no style: the cross-fade it was
                     c["speed"] = _ms(c["speed"])
+                    if "grade" in c:
+                        c["grade"] = {k: _ms(c["grade"][k]) for k in GRADE_RANGES}
+                        if c["grade"] == GRADE_NEUTRAL:
+                            del c["grade"]   # no change: the clip is the one it was without it
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
             t["clips"].append(c)
@@ -757,6 +947,16 @@ def normalise(doc: dict) -> dict:
                         "text": c["text"]} for c in doc["captions"]["cues"]),
                       key=lambda c: (c["start_s"], c["id"]))
         out["captions"] = {"style": style, "cues": cues}
+    if doc.get("overlays"):
+        # The list order is the layering: kept, not sorted. An empty list is
+        # the document without the field, so it is dropped.
+        out["overlays"] = []
+        for ov in doc["overlays"]:
+            o = {**OVERLAY_DEFAULTS, **copy.deepcopy(ov)}
+            o["asset_id"] = o["asset_id"].lower()
+            for k in ("start_s", "end_s", "x", "y", "w", "opacity"):
+                o[k] = _ms(o[k])
+            out["overlays"].append(o)
     return out
 
 
@@ -835,8 +1035,10 @@ def _local_path(path) -> bool:
 
 def asset_ids(doc: dict) -> List[str]:
     """Every asset id the document uses, lower-case, sorted, once each."""
-    return sorted({str(c["asset_id"]).lower() for t in doc.get("tracks") or []
-                   for c in t.get("clips") or [] if "asset_id" in c})
+    ids = {str(c["asset_id"]).lower() for t in doc.get("tracks") or []
+           for c in t.get("clips") or [] if "asset_id" in c}
+    ids.update(str(o["asset_id"]).lower() for o in doc.get("overlays") or [] if "asset_id" in o)
+    return sorted(ids)
 
 
 def resolve_assets(doc: dict, resolver: AssetResolver) -> Dict[str, ResolvedAsset]:
@@ -880,6 +1082,27 @@ def resolve_assets(doc: dict, resolver: AssetResolver) -> Dict[str, ResolvedAsse
             if asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["out_s"]) > _ms(dur) + 0.001:
                 problems.append(f"{where}: out_s {clip['out_s']} is past the end of asset "
                                 f"{asset.asset_id} ({dur} s)")
+    videos = 0
+    for ov in doc.get("overlays") or []:
+        asset = found.get(str(ov["asset_id"]).lower())
+        if asset is None:
+            continue
+        where = f"overlay {ov['id']!r}"
+        if asset.kind not in OVERLAY_ASSET_KINDS:
+            problems.append(f"{where}: asset {asset.asset_id} is {asset.kind!r}; an overlay "
+                            f"takes {' or '.join(OVERLAY_ASSET_KINDS)}")
+            continue
+        if not _local_path(asset.path):
+            problems.append(f"{where}: asset {asset.asset_id} has no local file to render from")
+            continue
+        if asset.kind == ASSET_VIDEO:
+            videos += 1
+            dur = asset.duration_s
+            if dur is not None and _ms(ov["end_s"]) - _ms(ov["start_s"]) > _ms(dur) + 0.001:
+                problems.append(f"{where}: runs {_ms(_ms(ov['end_s']) - _ms(ov['start_s']))} s but "
+                                f"video {asset.asset_id} is only {dur} s long")
+    if videos > MAX_OVERLAY_VIDEOS:
+        problems.append(f"timeline: at most {MAX_OVERLAY_VIDEOS} video overlays (got {videos})")
     if problems:
         raise TimelineError(problems)
     return found

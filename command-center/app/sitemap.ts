@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { runtimeSiteOrigin } from "@/lib/landing";
-import { SITEMAP_PATHS } from "@/lib/public-paths";
+import { SITEMAP_PATHS, STUDIO_PAGE_PATH } from "@/lib/public-paths";
 import { DEV_PAGE_PATHS, devPagesEnabled } from "@/lib/dev-pages";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return paths.map((path) => ({
     url: new URL(path, origin).toString(),
     changeFrequency: path === "/" || path === "/pricing" ? "weekly" : "monthly",
-    priority: path === "/" ? 1 : path === "/pricing" ? 0.8 : 0.6,
+    priority: path === "/" ? 1 : path === "/pricing" ? 0.8 : path === STUDIO_PAGE_PATH ? 0.7 : 0.6,
   }));
 }

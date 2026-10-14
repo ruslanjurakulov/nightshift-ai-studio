@@ -75,14 +75,16 @@ def commands(spec):
 
 
 FIT = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30"
+#: A still held without its move fills the frame (centre crop), as the move does.
+FILL = "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=30"
 PIN = ",settb=1/30,fps=30,format=yuv420p"
 ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
 #: Every timeline input is capped at the decoder (BR-L-004), with two decoder
 #: threads (BR-L-007): a clip at the video cap (8192x4352, BR-L-010), any other
 #: input at the still cap (100 MP), each plus the decoder's row padding of
 #: 63 x 16384 px (BR-L-009). Filter graphs get two threads; no -xerror (BR-L-008).
-CLIP = ["-max_pixels", "36683776", "-threads", "2"]
-STILL = ["-max_pixels", "101032192", "-threads", "2"]
+CLIP = ["-max_pixels", "36683776", "-threads", "2", "-protocol_whitelist", "file"]
+STILL = ["-max_pixels", "101032192", "-threads", "2", "-protocol_whitelist", "file"]
 TH = ["-filter_threads", "2", "-filter_complex_threads", "2"]
 #: The encoder's threads, before the output (BR-L-007).
 OUT = ["-threads", "4"]
@@ -116,14 +118,14 @@ GOLDEN_XFADE_SEGMENTS = [
      ["ffmpeg", *TH, "-y", "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", "-loop", "1", *STILL, "-i", "/media/i.png",
       "-filter_complex",
       f"[0:v]setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=30,setpts=PTS-STARTPTS{PIN}[xa];"
-      f"[1:v]{FIT}{PIN}[xb];"
+      f"[1:v]{FILL}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=1.000000:offset=0[xv]",
       "-map", "[xv]", "-frames:v", "30", "-an", *ENC, *OUT, "/w/seg_0003.mp4"]],
     # The still alone: the SAME move (same seed, same 60-frame span), cut at frame 30.
     [["ffmpeg", *TH, "-y", *STILL, "-i", "/media/i.png", "-frames:v", "30", "-vf",
       f"{PAN},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, *OUT, "/w/seg_0004.mp4"],
      ["ffmpeg", *TH, "-y", "-loop", "1", *STILL, "-i", "/media/i.png", "-frames:v", "30", "-vf",
-      f"{FIT},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, *OUT, "/w/seg_0004.mp4"]],
+      f"{FILL},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, *OUT, "/w/seg_0004.mp4"]],
 ]
 
 AF = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"

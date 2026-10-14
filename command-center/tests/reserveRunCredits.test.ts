@@ -17,7 +17,18 @@ const { reserveRunCredits, runCreditRefFor } = await import("../lib/server/credi
 const ORG = "0a000000-0000-0000-0000-00000000000a";
 
 /** `failing`: tables whose read returns an error (data null) instead of rows. */
-function fakeSupabase(agentConfig: Record<string, unknown>, opts: { failing?: string[]; rows?: Record<string, unknown> } = {}) {
+function fakeSupabase(
+  agentConfig: Record<string, unknown>,
+  opts: {
+    failing?: string[];
+    rows?: Record<string, unknown>;
+    /** credit_reservations rows that exist (any organization), and the organizations the caller's RLS shows. */
+    reservations?: { job_id: string; org_id: string }[];
+    visibleOrgs?: string[];
+    /** The reservation lookup errors (data null). */
+    reservationReadFails?: boolean;
+  } = {},
+) {
   const rpc = vi.fn(async (_fn: string, _args: Record<string, unknown>) => ({ data: { exempt: false }, error: null }));
   const rows: Record<string, unknown> = {
     credit_prices: [
@@ -27,12 +38,28 @@ function fakeSupabase(agentConfig: Record<string, unknown>, opts: { failing?: st
     video_costs: [],
     ...opts.rows,
   };
+  const lookups: { table: string; filters: [string, unknown][] }[] = [];
   const from = (table: string) => {
     const b: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "gte", "limit", "order", "in"]) b[m] = () => b;
+    const filters: [string, unknown][] = [];
+    for (const m of ["select", "gte", "limit", "order", "in"]) b[m] = () => b;
+    b.eq = (col: string, val: unknown) => {
+      filters.push([col, val]);
+      return b;
+    };
     const failed = opts.failing?.includes(table) ?? false;
     const err = { message: "boom", code: "XX000" };
-    b.maybeSingle = async () => ({ data: table === "channels" ? { org_id: ORG, agent_config: agentConfig } : null, error: null });
+    b.maybeSingle = async () => {
+      if (table === "credit_reservations") {
+        lookups.push({ table, filters });
+        if (opts.reservationReadFails) return { data: null, error: err };
+        // What the caller's session can see (RLS: its own organizations), narrowed by the query's own filters.
+        const visible = (opts.reservations ?? []).filter((r) => (opts.visibleOrgs ?? [ORG]).includes(r.org_id));
+        const hit = visible.find((r) => filters.every(([c, v]) => (r as Record<string, unknown>)[c] === v));
+        return { data: hit ? { job_id: hit.job_id } : null, error: null };
+      }
+      return { data: table === "channels" ? { org_id: ORG, agent_config: agentConfig } : null, error: null };
+    };
     b.then = (resolve: (v: unknown) => void) =>
       resolve(failed ? { data: null, error: err } : { data: rows[table] ?? [], error: null });
     return b;
@@ -44,7 +71,7 @@ function fakeSupabase(agentConfig: Record<string, unknown>, opts: { failing?: st
     const failed = opts.failing?.includes("credit_prices") ?? false;
     return failed ? { data: null, error: { message: "boom", code: "XX000" } } : { data: rows.credit_prices ?? [], error: null };
   };
-  return { client: { from, rpc: rates } as never, rpc };
+  return { client: { from, rpc: rates } as never, rpc, lookups };
 }
 
 describe("reserveRunCredits", () => {
@@ -196,3 +223,86 @@ describe("reserveRunCredits: a confirmed plan step", () => {
   });
 });
 
+
+/**
+ * A retry of a step whose answer was lost, after the price has gone up: the hold exists, so the answer is
+ * "already started" — not "price changed" (which would say nothing was held) and not a second hold.
+ * reserve_credits() already answers a reference it holds before it looks at the balance (0094), and a released
+ * or expired reference stays burnt (23505); the lookup puts the same answer ahead of the route's price check.
+ */
+describe("reserveRunCredits: a replay is answered before the price is compared", () => {
+  const REF = runCreditRefFor("rj", "user-1", "ch-a", "create-key-1");
+  const replay = { job_id: REF, org_id: ORG };
+  const already = { ok: false, status: 409, body: { error: "run_already_started" } };
+
+  it("the hold exists and the price went up: run_already_started, not price_changed, nothing held", async () => {
+    // 3 minutes at 12 credits = 36; the person confirmed 30.
+    const { client, rpc, lookups } = fakeSupabase({ target_duration_seconds: 180 }, { reservations: [replay] });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 30 })).toEqual(already);
+    expect(rpc).not.toHaveBeenCalled();
+    // Asked by reference, inside the channel's own organization.
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0].filters).toEqual([
+      ["job_id", REF],
+      ["org_id", ORG],
+    ]);
+  });
+
+  it("the hold exists and the balance is short: run_already_started, not insufficient_credits", async () => {
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180 }, { reservations: [replay] });
+    rpc.mockImplementation(async () => ({ data: null, error: { code: "NS402", message: "insufficient credits", details: "available=1 needed=36" } }) as never);
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 36 })).toEqual(already);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("no hold under the reference and the price went up: price_changed, exactly as before", async () => {
+    const { client, rpc, lookups } = fakeSupabase({ target_duration_seconds: 180 });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 30 })).toEqual({
+      ok: false,
+      status: 409,
+      body: { error: "price_changed", credits: 36 },
+    });
+    expect(lookups).toHaveLength(1);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("no hold and the price is fine: held with the reference, as before", async () => {
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180 });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 36 })).toMatchObject({ ok: true, creditRef: REF });
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_job_id: REF, p_amount: 36 });
+  });
+
+  it("the lookup fails: the flow falls through unchanged (price_changed, or the rpc's own answer)", async () => {
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180 }, { reservations: [replay], reservationReadFails: true });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 30 })).toEqual({
+      ok: false,
+      status: 409,
+      body: { error: "price_changed", credits: 36 },
+    });
+    // At a price that passes, reserve_credits() still has the last word: here it says the reference is held.
+    rpc.mockImplementationOnce(async () => ({ data: null, error: { code: "23505", message: "a reservation for this job already exists" } }) as never);
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 36 })).toEqual(already);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("another organization's reservation is not found (RLS shows only the caller's own, and the query names the organization)", async () => {
+    const OTHER = "0b000000-0000-0000-0000-00000000000b";
+    // The same reference exists, but in an organization this caller cannot see (and which is not the channel's).
+    const { client } = fakeSupabase({ target_duration_seconds: 180 }, { reservations: [{ job_id: REF, org_id: OTHER }], visibleOrgs: [ORG] });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 30 })).toMatchObject({
+      status: 409,
+      body: { error: "price_changed" },
+    });
+    // Even where RLS would show it (a platform admin reaches every tenant), the organization filter keeps it out.
+    const wide = fakeSupabase({ target_duration_seconds: 180 }, { reservations: [{ job_id: REF, org_id: OTHER }], visibleOrgs: [ORG, OTHER] });
+    expect(await reserveRunCredits(wide.client, "ch-a", undefined, "rj", { creditRef: REF, maxCredits: 30 })).toMatchObject({
+      body: { error: "price_changed" },
+    });
+  });
+
+  it("without a reference (no idempotency key) nothing is looked up", async () => {
+    const { client, lookups } = fakeSupabase({ target_duration_seconds: 180 }, { reservations: [replay] });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { maxCredits: 36 })).toMatchObject({ ok: true });
+    expect(lookups).toHaveLength(0);
+  });
+});

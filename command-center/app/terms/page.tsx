@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getDictionary } from "@/lib/i18n/server";
 import { getLegalTexts } from "@/lib/legal-docs";
+import { runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { LegalDocumentView } from "@/components/legal/LegalDocumentView";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
@@ -11,7 +12,23 @@ import { readPublicPlanCatalog } from "@/lib/server/public-catalog";
 export async function generateMetadata(): Promise<Metadata> {
   const { locale, t } = await getDictionary();
   const doc = getLegalTexts(locale).terms;
-  return { title: `${doc.title} · ${t.brand.name}`, description: doc.summary };
+  const title = `${doc.title} · ${t.brand.name}`;
+  // The page shows the document's own summary; the search-result text is its own short string.
+  const description = t.site.legalMeta.terms;
+  // Canonical, OpenGraph and the Twitter card through the helper every other public page uses.
+  return {
+    title,
+    description,
+    ...shareMetadata({
+      origin: runtimeSiteOrigin(),
+      path: "/terms",
+      title,
+      description,
+      siteName: t.brand.name,
+      imageAlt: t.landing.meta.ogAlt,
+      locale,
+    }),
+  };
 }
 
 /**

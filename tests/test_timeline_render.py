@@ -82,13 +82,15 @@ def full_argv(spec):
 
 
 FIT_1080x1920 = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"
+#: A still held without its move fills the frame (centre crop), as the move does.
+FILL_1080x1920 = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30"
 ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
 #: Every timeline input is capped at the decoder (BR-L-004), with two decoder
 #: threads (BR-L-007): a clip at the video cap (8192x4352, BR-L-010), any other
 #: input at the still cap (100 MP), each plus the decoder's row padding of
 #: 63 x 16384 px (BR-L-009). Filter graphs get two threads; no -xerror (BR-L-008).
-CLIP = ["-max_pixels", "36683776", "-threads", "2"]
-STILL = ["-max_pixels", "101032192", "-threads", "2"]
+CLIP = ["-max_pixels", "36683776", "-threads", "2", "-protocol_whitelist", "file"]
+STILL = ["-max_pixels", "101032192", "-threads", "2", "-protocol_whitelist", "file"]
 TH = ["-filter_threads", "2", "-filter_complex_threads", "2"]
 #: The encoder's threads, before the output (BR-L-007).
 OUT = ["-threads", "4"]
@@ -108,7 +110,7 @@ GOLDEN_SEGMENTS = [
     [["ffmpeg", *TH, "-y", *STILL, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
       KEN_BURNS_C2 + ",fade=t=out:st=2.700:d=0.300", *ENC, *OUT, "/w/seg_0001.mp4"],
      ["ffmpeg", *TH, "-y", "-loop", "1", *STILL, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
-      FIT_1080x1920 + ",fade=t=out:st=2.700:d=0.300", *ENC, *OUT, "/w/seg_0001.mp4"]],
+      FILL_1080x1920 + ",fade=t=out:st=2.700:d=0.300", *ENC, *OUT, "/w/seg_0001.mp4"]],
     # c3: trimmed from 1.0 s, letterboxed, the other half of the dip, own fade out.
     [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "1.000", *CLIP, "-i", "/media/a3.mov",
       "-frames:v", "90", "-an", "-vf",

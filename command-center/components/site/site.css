@@ -1168,6 +1168,10 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 /* ── Sign-in shell ───────────────────────────────────────────────────── */
 .st-auth {
   display: grid;
+  /* One column that may shrink below its content: with an implicit `auto` track the
+     form's inputs (about 262px wide as built) set the page's minimum width, so a
+     320px phone scrolled sideways. The two-column rule below replaces it. */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100dvh;
 }
 @media (min-width: 960px) {
