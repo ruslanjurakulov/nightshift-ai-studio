@@ -1,15 +1,26 @@
 name: Telegram Control Panel
 
-# Polls Telegram for admin commands (/status, /channels, /pending, /publish,
-# /pause, /resume) and replies. A scheduled poll rather than an always-on
-# webhook: replies land within the interval below, which is fine for a control
-# panel and needs no hosted service. Harmless until the secrets are set — the
-# script exits 0 and does nothing without TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID.
+# Polls Telegram for the operator bot's commands and button presses (the
+# read-only views, /mute, and the /publish /pause /resume intents) and replies.
+# Each run LONG-polls for about four and a half minutes, so while it is running a
+# reply goes out within a second or two; runs follow each other every five
+# minutes (GitHub's shortest schedule), and anything sent in a gap waits for the
+# next run (Telegram keeps it). A webhook (tools/operator_bot_server.py,
+# docs/operator-bot.md) is faster still but needs a host the owner sets up.
+# Harmless until the secrets are set — the script exits 0 and does nothing
+# without TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID.
+#
+# To go back to the old cadence (one quick poll every 15 minutes), set the cron
+# to "*/15 * * * *" and the duration below to 0.
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # every 15 minutes
+    - cron: "*/5 * * * *"    # every 5 minutes, each run long-polls ~4.5 minutes
   workflow_dispatch:
+    inputs:
+      duration:
+        description: "Seconds to keep long-polling (0 = one quick batch)"
+        default: "270"
 
 # One run at a time, and let an in-flight poll finish rather than cancelling it
 # (cancelling mid-batch could drop the offset write and reprocess messages).
@@ -17,16 +28,18 @@ concurrency:
   group: telegram-control
   cancel-in-progress: false
 
-# Least privilege (BR-S-001): nothing in this workflow calls the GitHub API or
-# pushes, so the job token can only read the repository. The cache and
-# artifact actions authenticate with the runner's own token, not this one.
+# Least privilege (BR-S-001): nothing in this workflow pushes. The job token can
+# read the repository and read workflow run status (the /deploys and /health
+# views); it cannot write. The cache and artifact actions authenticate with the
+# runner's own token, not this one.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   poll:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
 
     steps:
       - name: Checkout
@@ -40,15 +53,35 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Only what the poller imports (requests for the Telegram and Supabase
+      # calls, python-dotenv for config.py), at the floors requirements.txt pins.
+      # The full requirements pull in the render stack and would cost minutes of
+      # every run's listening window.
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: pip install "requests>=2.33.0" "python-dotenv>=1.0.0"
 
-      - name: Restore history state (holds the Telegram update offset + local db)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # READ-ONLY restore of the pipeline's history (chronos.db, for /status and
+      # /pending). It must never be saved from here: the poller now runs every five
+      # minutes, and an `actions/cache` step would save its older copy under the
+      # newest chronos-history-* key, which the next video run restores — losing
+      # the previous run's topic and run history. Only daily_video / intelligence_poll
+      # save that prefix.
+      - name: Restore history state (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
           restore-keys: chronos-history-
+
+      # The Telegram offset has its own cache prefix (and only the one small file),
+      # so saving it cannot touch the pipeline's history. Replays are harmless
+      # either way: updates are claimed by update_id in Supabase.
+      - name: Restore and save the Telegram offset
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: history/telegram_offset.json
+          key: telegram-offset-${{ github.run_number }}
+          restore-keys: telegram-offset-
 
       - name: Poll Telegram control panel
         env:
@@ -57,7 +90,20 @@ jobs:
           # Optional — lets StoreDeps read channel/video state when mirrored.
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python tools/run_telegram_control.py
+          # Optional — only for who may command in a GROUP chat (see .env.example).
+          TELEGRAM_ADMIN_USER_IDS: ${{ secrets.TELEGRAM_ADMIN_USER_IDS }}
+          # Read-only run status of this repository (the /deploys view).
+          GITHUB_TOKEN: ${{ github.token }}
+          ELEVENLABS_LOW_CREDITS: ${{ vars.ELEVENLABS_LOW_CREDITS }}
+          # Optional, non-sensitive settings (repository variables).
+          OPERATOR_APP_URL: ${{ vars.OPERATOR_APP_URL }}
+          OPERATOR_TZ: ${{ vars.OPERATOR_TZ }}
+          OPERATOR_QUIET_HOURS: ${{ vars.OPERATOR_QUIET_HOURS }}
+          OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
+          OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
+          OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          POLL_SECONDS: ${{ inputs.duration || '270' }}
+        run: python tools/run_telegram_control.py --duration "$POLL_SECONDS"
 
       - name: Upload log
         if: always()

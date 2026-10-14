@@ -1,0 +1,147 @@
+"""Pure derivations over rows the sources returned: what is stuck, which worker
+went quiet, what is low. Shared by the commands (so /queue and /health say it)
+and by the alert detector (so an alert and the command it points to cannot
+disagree). No I/O, no clock of its own: ``now`` is an argument.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from datetime import datetime, timedelta
+from typing import Optional
+
+from modules.operator_bot.config import (
+    OperatorConfig, STUCK_HEARTBEAT_MINUTES, WORKER_STALE_SECONDS,
+)
+from modules.operator_bot.sources import CREATIVE_ACTIVE, parse_ts
+
+
+def _num(value) -> Optional[float]:
+    if value is None or isinstance(value, bool) or value == "":
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f and f not in (float("inf"), float("-inf")) else None
+
+
+def classify_render_jobs(rows, now: datetime, cfg: OperatorConfig) -> dict:
+    """running / queued / stuck / failed / succeeded for ``render_jobs`` rows.
+
+    stuck = running with a heartbeat older than STUCK_HEARTBEAT_MINUTES (the
+    database's own "abandoned" line), or queued for longer than the configured
+    wait (with no worker taking it)."""
+    out = {"running": [], "queued": [], "stuck": [], "failed": [], "succeeded": []}
+    for r in rows or []:
+        status = r.get("status")
+        if status == "running":
+            out["running"].append(r)
+            beat = parse_ts(r.get("heartbeat_at")) or parse_ts(r.get("started_at"))
+            if beat is None or now - beat > timedelta(minutes=STUCK_HEARTBEAT_MINUTES):
+                out["stuck"].append(r)
+        elif status == "queued":
+            out["queued"].append(r)
+            created = parse_ts(r.get("created_at"))
+            if created is not None and now - created > timedelta(minutes=cfg.stuck_minutes):
+                out["stuck"].append(r)
+        elif status == "failed":
+            out["failed"].append(r)
+        elif status == "succeeded":
+            out["succeeded"].append(r)
+    return out
+
+
+def classify_creative_jobs(rows, now: datetime, cfg: OperatorConfig) -> dict:
+    out = {"running": [], "queued": [], "stuck": [], "failed": [], "completed": []}
+    for r in rows or []:
+        status = r.get("status")
+        if status in CREATIVE_ACTIVE:
+            (out["queued"] if status == "queued" else out["running"]).append(r)
+            if status == "queued":
+                created = parse_ts(r.get("created_at"))
+                if created is not None and now - created > timedelta(minutes=cfg.stuck_minutes):
+                    out["stuck"].append(r)
+            else:
+                beat = parse_ts(r.get("heartbeat_at"))
+                # provider_pending jobs wait on the provider and may not beat.
+                if beat is not None and status != "provider_pending" \
+                        and now - beat > timedelta(minutes=STUCK_HEARTBEAT_MINUTES):
+                    out["stuck"].append(r)
+        elif status == "failed":
+            out["failed"].append(r)
+        elif status == "completed":
+            out["completed"].append(r)
+    return out
+
+
+def classify_workers(rows, now: datetime) -> list[dict]:
+    """Each worker with ``age_s`` (since its last report) and ``stale``: said
+    'running'/'starting' but has not reported for WORKER_STALE_SECONDS."""
+    out = []
+    for r in rows or []:
+        updated = parse_ts(r.get("updated_at"))
+        age = None if updated is None else max(0, int((now - updated).total_seconds()))
+        state = r.get("state")
+        out.append({
+            **r, "age_s": age,
+            "stale": state in ("running", "starting") and (age is None or age > WORKER_STALE_SECONDS),
+        })
+    return out
+
+
+def balance_flags(rows, low_credits: float) -> list[dict]:
+    """Balance rows with ``low`` set. Only ElevenLabs has a threshold (the one
+    modules/provider_balance already uses); every other provider is never
+    called low, because nothing says what low means for it."""
+    out = []
+    for r in rows or []:
+        remaining = _num(r.get("remaining"))
+        low = r.get("provider") == "elevenlabs" and remaining is not None and remaining < low_credits
+        out.append({**r, "remaining_n": remaining, "low": low})
+    return out
+
+
+def summarize_costs(rows) -> dict:
+    """Provider cost in USD for ``creative_job_costs`` rows. ``usd`` is the sum
+    of the PRICED rows; ``complete`` is False when any row is unpriced, so the
+    caller labels the figure a floor, never the total (CLAUDE.md #5)."""
+    priced = 0.0
+    n_priced = n_unpriced = 0
+    for r in rows or []:
+        v = _num(r.get("usd_estimate"))
+        if v is None:
+            n_unpriced += 1
+        else:
+            priced += v
+            n_priced += 1
+    return {"usd": priced if n_priced else None, "priced": n_priced, "unpriced": n_unpriced,
+            "complete": n_unpriced == 0 and n_priced > 0, "rows": n_priced + n_unpriced}
+
+
+def sum_credits(rows) -> Optional[float]:
+    vals = [_num(r.get("charged_credits")) for r in rows or []]
+    known = [v for v in vals if v is not None]
+    return sum(known) if known else (0.0 if not rows else None)
+
+
+def count_by(rows, key) -> Counter:
+    return Counter(str(r.get(key) or "unknown") for r in rows or [])
+
+
+def event_counts(rows) -> dict:
+    """Distinct (event, video) pairs per event name — a retried emit is one."""
+    seen: dict = {}
+    for r in rows or []:
+        name = r.get("event")
+        vid = r.get("video_id") or r.get("ts")
+        seen.setdefault(name, set()).add(vid)
+    return {k: len(v) for k, v in seen.items()}
+
+
+def latest_run(runs: list) -> Optional[dict]:
+    """The newest COMPLETED run of a workflow (an in-progress one has no verdict yet)."""
+    for r in runs or []:
+        if r.get("status") == "completed":
+            return r
+    return None
