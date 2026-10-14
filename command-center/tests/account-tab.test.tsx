@@ -35,7 +35,6 @@ import { dictionaries } from "@/lib/i18n";
 import { SideNav } from "@/components/SideNav";
 import { Header } from "@/components/Header";
 import { AccountSection } from "@/components/account/AccountSection";
-import { accountInitial } from "@/lib/account";
 
 const en = dictionaries.en;
 const EMAIL = "ana.k@example.com";
@@ -119,14 +118,6 @@ describe("the bottom bar's Settings tab is the account", () => {
     const bar = document.querySelector("nav.ns-tabbar") as HTMLElement;
     expect(bar.querySelectorAll(".ns-tab-avatar")).toHaveLength(1);
     expect(bar.querySelectorAll("li")).toHaveLength(5);
-  });
-
-  it("takes the initial by code point and upper-cases it", () => {
-    expect(accountInitial("ana@a.test")).toBe("A");
-    expect(accountInitial("  zoe@a.test")).toBe("Z");
-    expect(accountInitial("\u{1F600}x@a.test")).toBe("\u{1F600}");
-    expect(accountInitial("")).toBeNull();
-    expect(accountInitial(null)).toBeNull();
   });
 });
 

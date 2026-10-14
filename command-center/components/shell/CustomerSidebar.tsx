@@ -45,7 +45,15 @@ function useSection(): string {
  * Presentation only: every destination is a customer section, and the layout
  * and RLS decide what anyone may open.
  */
-export function CustomerSidebar({ email, plan }: { email: string | null; plan: AccountPlan | null }) {
+export function CustomerSidebar({
+  email,
+  avatarV = null,
+  plan,
+}: {
+  email: string | null;
+  avatarV?: number | null;
+  plan: AccountPlan | null;
+}) {
   const { t } = useI18n();
   const path = useChannelPath();
   const { collapsed, toggle } = useSidebar();
@@ -110,7 +118,7 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
         <div className="flex shrink-0 flex-col gap-0.5 border-t border-[var(--shell-border)] px-3 pb-3 pt-2">
           <FooterRows items={footer} collapsed={collapsed} />
           <div className="pt-2">
-            <AccountMenu email={email} variant="card" plan={plan} />
+            <AccountMenu email={email} avatarV={avatarV} variant="card" plan={plan} />
           </div>
         </div>
       </MAside>

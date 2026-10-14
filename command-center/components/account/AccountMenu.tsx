@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Activity, Coins, Gift, LogOut, Settings, UserRound, X } from "lucide-react";
+import { Activity, Coins, Gift, LogOut, Settings, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
-import { accountInitial, planName, type AccountPlan } from "@/lib/account";
+import { planName, type AccountPlan } from "@/lib/account";
+import { Avatar } from "@/components/account/Avatar";
 import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSignOut } from "@/components/account/AccountParts";
 
 /**
@@ -31,10 +33,13 @@ import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSig
  */
 export function AccountMenu({
   email,
+  avatarV = null,
   variant = "button",
   plan = null,
 }: {
   email: string | null;
+  /** The photo's version (avatar_v) from the layout, or null for none: the initial is drawn then. */
+  avatarV?: number | null;
   /** "card": the customer sidebar's user card (initial, email, plan), opening
    *  upward from the foot of the sidebar. "button": the round avatar in the bar. */
   variant?: "button" | "card";
@@ -108,7 +113,6 @@ export function AccountMenu({
   const signOut = useSignOut();
 
   const shownEmail = data?.email ?? email;
-  const initial = accountInitial(shownEmail);
   const dash = t.common.dash;
   const credits = data?.credits ?? null;
   // The operator's own organization is never charged, so it has no credit
@@ -136,12 +140,7 @@ export function AccountMenu({
           data-shell-usercard=""
           className="flex w-full items-center gap-2.5 rounded-[12px] border border-[var(--shell-border)] bg-[var(--color-panel)] p-2 text-left transition-colors hover:bg-[var(--color-hover)] aria-expanded:bg-[var(--color-hover)]"
         >
-          <span
-            aria-hidden
-            className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--color-accent-soft)] text-sm font-semibold text-[var(--color-primary)]"
-          >
-            {initial ?? <UserRound className="size-4" />}
-          </span>
+          <Avatar email={shownEmail} version={avatarV} size={32} />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-xs font-medium text-[var(--color-fg)]">{shownEmail ?? dash}</span>
             {cardPlan && <span className="truncate text-xs text-[var(--color-muted)]">{cardPlan}</span>}
@@ -159,13 +158,7 @@ export function AccountMenu({
         title={shownEmail ?? undefined}
         className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center p-0"
       >
-        {initial ? (
-          <span aria-hidden className="text-sm font-medium text-[var(--color-primary)]">
-            {initial}
-          </span>
-        ) : (
-          <UserRound aria-hidden className="size-4" />
-        )}
+        <Avatar email={shownEmail} version={avatarV} size={32} />
       </button>
       )}
 
@@ -180,12 +173,7 @@ export function AccountMenu({
           className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : "right-0 top-full mt-3 max-h-[calc(100dvh-110px)]"} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
         >
           <header className="flex items-start gap-3">
-            <span
-              aria-hidden
-              className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[15px] font-medium text-[var(--color-primary)]"
-            >
-              {initial ?? <UserRound className="size-4" />}
-            </span>
+            <Avatar email={shownEmail} version={avatarV} size={40} ring />
             <div className="min-w-0 flex-1">
               <h2 id={titleId} className="text-xs text-[var(--color-muted)]">
                 {t.account.title}
@@ -271,6 +259,7 @@ export function AccountMenu({
               ))}
             </div>
             <ThemeToggle showLabel />
+            <ViewModeToggle showLabel />
           </div>
 
           <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">

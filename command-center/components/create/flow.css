@@ -255,27 +255,3 @@
 .home-quick-link:hover { background: var(--ns-act-soft); padding-inline: 12px; }
 .home-quick-link:hover svg { color: var(--ns-act-ink); }
 .home-assistant { border-top: 1px solid var(--ns-rule); padding: 4px 0 16px; }
-
-/* Home: the six goals as quiet cards above the create form */
-.home-goals { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
-@media (min-width: 720px) { .home-goals { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.home-goal {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 64px;
-  padding: 8px 10px 8px 8px;
-  text-align: left;
-  color: var(--color-fg);
-  background: transparent;
-  border: 1px solid var(--ns-rule);
-  border-radius: var(--ns-r-panel);
-  transition: background-color var(--ns-dur-1) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease);
-}
-.home-goal:hover { background: var(--ns-act-soft); border-color: var(--ns-act); }
-.home-goal:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
-.home-goal-art { flex: none; width: 44px; height: 44px; border-radius: var(--ns-r-key); }
-.home-goal-text { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
-.home-goal-title { font-size: 0.9375rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
-.home-goal-who { font-size: 0.8125rem; line-height: 1.3; color: var(--color-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

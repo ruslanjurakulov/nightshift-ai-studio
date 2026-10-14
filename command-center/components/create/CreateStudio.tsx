@@ -6,9 +6,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
-import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
 import { createAttempt } from "@/lib/create-attempt";
-import { useCreatePreset } from "@/components/create/preset";
+import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { clearDraft, draftStore, readDraft, writeDraft, type DraftScope } from "@/lib/create-draft";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
@@ -66,7 +65,8 @@ export function CreateStudio({
   targets = [],
   initial = null,
   dna = null,
-  draftOwner = null,
+  userId = "",
+  orgId = null,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -87,11 +87,11 @@ export function CreateStudio({
   initial?: RunPrefill | null;
   /** The channel's DNA (0056): where an empty field starts. Home's choices win; Create still asks. */
   dna?: (RunDna & { href: string }) | null;
-  /**
-   * Who is typing, for the unfinished-draft memory (lib/create-draft.ts): the signed-in user and the
-   * open organization. Without both there is no draft — nothing is kept or restored.
-   */
-  draftOwner?: { userId: string; orgId: string } | null;
+  /** The signed-in user's id from the server page (getUser()). It makes the idempotency key survive a reload of
+   *  this tab; empty (not known) = the key stays in memory only. Never shown, and never stored in the clear. */
+  userId?: string;
+  /** The open organization when the page knows it: part of what the stored key is for. */
+  orgId?: string | null;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -108,6 +108,8 @@ export function CreateStudio({
   const [customVoice, setCustomVoice] = useState("");
   // "platform:id" of the account this video is for, or "" (none chosen).
   const [target, setTarget] = useState("");
+  // The unfinished-draft memory (lib/create-draft.ts) needs to know whose form this is: user + organization + channel.
+  // Without all three nothing is kept or restored.
   // What the form starts with when no draft applies: Discard goes back to exactly this.
   const baseline = {
     topic: initial?.brief ?? "",
@@ -116,11 +118,8 @@ export function CreateStudio({
     look: "",
   };
   const baselineRef = useRef(baseline);
-  // What "nothing typed yet" is right now: the starting form, or the goal card's text after a pick. A card's
-  // starter is not the person's writing, so it is not kept as a draft until they change it.
-  const untouchedRef = useRef(baseline);
   const seenScope = useRef<string | null>(null);
-  const scope: DraftScope | null = draftOwner && channelId ? { ...draftOwner, channelId } : null;
+  const scope: DraftScope | null = userId && orgId && channelId ? { userId, orgId, channelId } : null;
   const scopeKey = scope ? `${scope.userId}|${scope.orgId}|${scope.channelId}` : "";
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
@@ -130,9 +129,7 @@ export function CreateStudio({
   const [phase, setPhase] = useState<Phase>("idle");
   // The one choice card that is open (length, voice or look): the rest stay a single line each.
   const [open, setOpen] = useState<Choice | null>(null);
-  const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
-  // A refusal about credits (not enough, no estimate, not set up) — said
-  // plainly, instead of the generic "couldn't start".
+  // Why the run did not start, in words that also say whether credits were taken or held (lib/run-answer.ts).
   const [creditError, setCreditError] = useState<string | null>(null);
   const [extraOff, setExtraOff] = useState(false);
   const [events, setEvents] = useState<Ev[]>([]);
@@ -140,29 +137,42 @@ export function CreateStudio({
   // for the worker is visible as waiting, not as a run that never started.
   const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // What the price card is saying right now. A figure on screen is sent as the run's ceiling; while it is
-  // loading or unreadable the confirm waits (an unknown price is never confirmed by accident).
+  // What the price card is saying right now. A figure on screen is sent as the run's ceiling (`max_credits`);
+  // while it is loading or unreadable the confirm waits, so a price nobody has seen is never confirmed.
   const [price, setPrice] = useState<PriceReport>({ state: "loading" });
   const shownPrice = price.state === "priced" ? price.credits : null;
   const priceHold = !!channelId && (price.state === "loading" || price.state === "failed");
+  // Bumped to read the price again (the Retry of an unreadable price, or a run refused as `price_changed`).
   const [priceNonce, setPriceNonce] = useState(0);
-  // One idempotency key per create attempt (lib/create-attempt.ts), kept across a retry of the same inputs.
-  const attempt = useRef(createAttempt());
-  // A press already on its way: a second click or Enter in the same tick must not post again.
+  // One idempotency key per intent (lib/create-attempt.ts), per channel, kept for a retry of the same inputs.
+  // The channel is part of what the key stands for (its signature), so another channel never gets this key.
+  const [attempt] = useState(() => createAttempt());
+  // A press already on its way: a second click in the same tick must not post again.
   const sending = useRef(false);
-  // The server said this exact attempt had already been started (a lost answer, a retry): nothing new was held.
+  // The server said this exact intent had already been started: shown as started, nothing new was held.
   const [replayed, setReplayed] = useState(false);
-  // Home's goal cards (components/create/preset.tsx) start the form here: topic and length only.
-  const preset = useCreatePreset()?.preset ?? null;
-  const topicRef = useRef<HTMLTextAreaElement>(null);
-  const [fromPreset, setFromPreset] = useState(false);
   // After the confirm press the button that was focused goes away; the result (started, or why not)
   // is read from here, so keyboard and screen-reader focus never drops to the page.
   const statusRef = useRef<HTMLParagraphElement>(null);
 
   const blocked = !channelId || !githubConfigured || !canRun;
 
-  // Restore this tab's unfinished draft — after mount (sessionStorage does not exist on the server), only for the
+  async function loadEvents() {
+    try {
+      const res = await fetch("/api/agent/events", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.events)) setEvents(data.events as Ev[]);
+      if (res.ok) setJobs(Array.isArray(data.jobs) ? (data.jobs as QueueJob[]) : null);
+    } catch {
+      /* a dropped poll is not an error worth showing */
+    }
+  }
+
+  useEffect(() => {
+    if (phase === "queued" || phase === "error") statusRef.current?.focus();
+  }, [phase]);
+
+  // Restore this tab's unfinished draft: after mount (sessionStorage does not exist on the server), only for the
   // same user + organization + channel, and never over a hand-off from Home's query, which is what the person just asked for.
   // Anything stored for another scope is removed by readDraft.
   useEffect(() => {
@@ -172,13 +182,11 @@ export function CreateStudio({
     // The same form kept mounted while the person moves to another channel or organization: what is typed
     // belongs to the one they left, so it starts over (and is never saved under the new scope).
     baselineRef.current = baseline;
-    untouchedRef.current = baseline;
     if (seenScope.current !== null && seenScope.current !== scopeKey) {
       setBrief(baseline.topic);
       setDuration(baseline.duration);
       setVoice(baseline.voice);
       setStyle(baseline.look);
-      setFromPreset(false);
       setPhase((p) => (p === "confirm" || p === "error" ? "idle" : p));
     }
     seenScope.current = scopeKey;
@@ -202,7 +210,7 @@ export function CreateStudio({
     const sc = scopeRef.current;
     if (!sc || !draftChecked || phase === "queued") return;
     const mine = { topic: brief, duration, voice: voice === CUSTOM_VOICE ? baselineRef.current.voice : voice, look: style };
-    const b = untouchedRef.current;
+    const b = baselineRef.current;
     const untouched = mine.topic.trim() === b.topic.trim() && mine.duration === b.duration && mine.voice === b.voice && mine.look.trim() === b.look;
     const timer = setTimeout(() => {
       // A form that started from Home's query leaves the stored draft alone until the person edits or discards:
@@ -220,62 +228,13 @@ export function CreateStudio({
     const sc = scopeRef.current;
     if (sc) clearDraft(draftStore(), sc);
     const b = baselineRef.current;
-    untouchedRef.current = b;
     setBrief(b.topic);
     setDuration(b.duration);
     setVoice(b.voice);
     setStyle(b.look);
-    setFromPreset(false);
     setRestored(false);
     setPhase((p) => (p === "confirm" || p === "error" ? "idle" : p));
   }
-
-  async function loadEvents() {
-    try {
-      const res = await fetch("/api/agent/events", { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.events)) setEvents(data.events as Ev[]);
-      if (res.ok) setJobs(Array.isArray(data.jobs) ? (data.jobs as QueueJob[]) : null);
-    } catch {
-      /* a dropped poll is not an error worth showing */
-    }
-  }
-
-  useEffect(() => {
-    if (phase === "queued" || phase === "error") statusRef.current?.focus();
-  }, [phase]);
-
-  // A goal card fills the form and leaves everything else as it was. A confirm that was open is asked
-  // again, since what it would have started has changed; the caret lands on the first [bracket], the
-  // part that is the person's to write.
-  const presetNonce = preset?.nonce ?? 0;
-  const caretAt = useRef<{ brief: string; at: number; to: number } | null>(null);
-  useEffect(() => {
-    if (!preset) return;
-    setBrief(preset.brief);
-    setDuration(preset.duration);
-    setFromPreset(true);
-    // The card replaces the form: whatever was restored is no longer what is on screen, and the card's own
-    // text is not kept as a draft until the person changes it.
-    setRestored(false);
-    untouchedRef.current = { ...untouchedRef.current, topic: preset.brief, duration: preset.duration };
-    setPhase((p) => (p === "confirm" ? "idle" : p));
-    caretAt.current = preset.brief.indexOf("[") >= 0 ? { brief: preset.brief, at: preset.brief.indexOf("["), to: preset.brief.indexOf("]", preset.brief.indexOf("[")) + 1 } : null;
-    topicRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-    // Keyed on the pick's nonce; the preset object itself is new on every provider render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetNonce]);
-
-  // After the card's text is in the box (committed, not just queued): focus it with the first [bracket]
-  // selected, the part that is the person's to write.
-  useEffect(() => {
-    const c = caretAt.current;
-    const el = topicRef.current;
-    if (!c || !el || el.value !== c.brief) return;
-    caretAt.current = null;
-    el.focus({ preventScroll: true });
-    el.setSelectionRange(c.at, Math.max(c.at, c.to));
-  }, [brief, presetNonce]);
 
   // Poll the pipeline's events while a run is in flight, so the panel is live.
   useEffect(() => {
@@ -292,6 +251,7 @@ export function CreateStudio({
     sending.current = true;
     setPhase("starting");
     setCreditError(null);
+    setExtraOff(false);
     setReplayed(false);
     const topic = brief.trim().slice(0, 300);
     const dur = Number(duration);
@@ -307,8 +267,12 @@ export function CreateStudio({
       ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
       ...(target ? { publish_hint: target } : {}),
     };
-    // The same key for the same inputs, so a retry after an error or a lost answer cannot hold twice.
-    const idempotency_key = attempt.current.keyFor(JSON.stringify(fields));
+    // One intent = one key: channel + topic + options. The price is NOT part of it (max_credits carries it), so a
+    // double press or a retry keeps the key even when the price moved; a changed topic or option is a new video
+    // and gets a new key. The key expires after 30 minutes. With a user id it is also kept in this tab's
+    // sessionStorage (a hash of the intent, never the topic), so a reload after a lost answer reuses it and cannot
+    // hold twice; without one it is in memory only (lib/create-attempt.ts).
+    const idempotency_key = attempt.keyFor(JSON.stringify(fields), userId ? { userId, orgId, channelId } : undefined);
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
@@ -321,35 +285,25 @@ export function CreateStudio({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        attempt.current.settle();
+      const answer = readRunAnswer(res, data, t, locale, attempt.isUnsure());
+      if (answer.outcome !== "failed") {
+        attempt.settle();
+        // A started run (a replay of one included) ends the draft: it is not offered back for a second video.
         if (scope) clearDraft(draftStore(), scope);
+        setReplayed(answer.outcome === "replay");
         setPhase("queued");
         return;
       }
-      // The same key was held before: an earlier press of this very attempt got through. Nothing new was held.
-      if (res.status === 409 && data.error === "run_already_started") {
-        attempt.current.settle();
-        if (scope) clearDraft(draftStore(), scope);
-        setReplayed(true);
-        setPhase("queued");
-        return;
-      }
-      // A hold was taken but the run did not start: a replay could only answer "already started", so the next try is a new attempt.
-      if (typeof data.credits_held === "number") attempt.current.settle();
-      if (data.error === "price_changed") {
-        setPriceNonce((n) => n + 1);
-        setErrorKey("failed");
-        setCreditError(t.creative.errors.price_changed);
-      } else {
-        setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
-        setCreditError(creditRunError(data, t, locale));
-      }
-      setExtraOff(isExtraOffRefusal(data));
+      if (answer.settled) attempt.settle();
+      if (answer.unsure) attempt.markUnsure();
+      if (answer.priceChanged) setPriceNonce((n) => n + 1);
+      setCreditError(answer.message);
+      setExtraOff(answer.extraOff);
       setPhase("error");
     } catch {
-      // Unknown whether it arrived: the key is kept, so trying again is safe.
-      setErrorKey("failed");
+      // Unknown whether it arrived: the key is kept (and remembered as unsure), so trying again is safe.
+      attempt.markUnsure();
+      setCreditError(unsureRunAnswer(t).message);
       setPhase("error");
     } finally {
       sending.current = false;
@@ -467,7 +421,6 @@ export function CreateStudio({
         </h2>
         <textarea
           id="run-brief"
-          ref={topicRef}
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={onKeyDown}
@@ -481,11 +434,6 @@ export function CreateStudio({
         <p id="fl-topic-hint" className="fl-hint">
           {f.topicHint}
         </p>
-        {fromPreset && /\[[^\]\n]+\]/.test(brief) && (
-          <p className="fl-hint" role="status" data-testid="brackets-hint">
-            {f.bracketsHint}
-          </p>
-        )}
         <div className="fl-try" role="group" aria-label={f.tryOne}>
           <span className="fl-try-label">{f.tryOne}</span>
           {examples.map((ex) => (
@@ -726,7 +674,7 @@ export function CreateStudio({
             <span className="text-[var(--color-ok)]">{replayed ? f.alreadySent : t.create.queued}</span>
           ) : phase === "error" ? (
             <span className="text-[var(--color-fail)]">
-              {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
+              {creditError ?? t.agents.runFailed}
               {extraOff && (
                 <>
                   {" "}

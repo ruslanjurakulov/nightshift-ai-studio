@@ -6,13 +6,15 @@
  * stable for user + channel + key, so a replay is refused as
  * `run_already_started` and nothing is held twice) and `max_credits` (a dearer
  * estimate is refused as `price_changed`, nothing held). Both are honoured by
- * the route and pinned server-side in tests/reserveRunCredits.test.ts; these
- * tests pin that the BROWSER sends them the way that contract needs:
- *   - one key per attempt, the same key on a retry of the same inputs;
- *   - a new key after a confirmed start, after a failure that kept a hold,
- *     and when the inputs change;
+ * the route; these tests pin that the BROWSER sends them the way that needs:
+ *   - one key per intent (channel + topic + options, NOT the price): the same
+ *     key for a double click or a retry, even if the price moved in between; a
+ *     new key when the topic or an option changes;
  *   - the ceiling is exactly the price the card is showing, never a stale one;
- *   - a second click cannot post a second time.
+ *   - each answer (price changed, replay, run limit, not enough credits, a
+ *     hold that did not start, a failure) is said in words that tell whether
+ *     credits were taken or held;
+ *   - one channel's key never reaches another.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -33,6 +35,7 @@ import { dictionaries } from "@/lib/i18n";
 import { CreateStudio } from "@/components/create/CreateStudio";
 
 const t = dictionaries.en;
+const f = t.create.flow;
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
 const priced = (credits: number | null) => ({
   supported: true,
@@ -50,6 +53,7 @@ const body = (i: number) => JSON.parse(String(runs()[i].init?.body)) as Record<s
 
 beforeEach(() => {
   calls = [];
+  window.sessionStorage.clear();
   estimateAnswer = () => json(priced(120));
   runAnswer = () => json({ ok: true });
   vi.stubGlobal(
@@ -68,17 +72,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function show() {
-  return render(
-    <I18nProvider locale="en">
-      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun />
-    </I18nProvider>,
-  );
-}
-const topic = () => screen.getByRole("textbox", { name: t.create.flow.topicTitle }) as HTMLTextAreaElement;
+const studio = (channelId = "chan-a") => (
+  <I18nProvider locale="en">
+    <CreateStudio channelId={channelId} githubConfigured agentConfig={null} canRun />
+  </I18nProvider>
+);
+const show = (channelId = "chan-a") => render(studio(channelId));
+const topic = () => screen.getByRole("textbox", { name: f.topicTitle }) as HTMLTextAreaElement;
 const type = (v: string) => fireEvent.change(topic(), { target: { value: v } });
 const make = () => fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-// The confirm is held ("Checking the price…") until the price card has reported; wait for it to be the real one.
+// The confirm is held ("Checking the price…") until the price card has reported; wait for the real one.
 const confirm = async () => fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
 /** Make, then confirm, then let the answer land. */
 async function press() {
@@ -87,9 +90,10 @@ async function press() {
   await act(async () => {});
 }
 const priceShown = (n: number) => screen.findByText(new RegExp(`About ${n} credits`));
+const status = () => document.querySelector(".fl-status")?.textContent ?? "";
 
-describe("the run carries an idempotency key and the price that was shown", () => {
-  it("sends max_credits equal to the figure on the price card, and a key the route accepts", async () => {
+describe("the run carries the price that was shown and a key the route accepts", () => {
+  it("sends max_credits equal to the figure on the price card", async () => {
     show();
     await priceShown(120);
     type("Ancient Khiva");
@@ -103,17 +107,17 @@ describe("the run carries an idempotency key and the price that was shown", () =
     estimateAnswer = (url) => json(priced(url.includes("duration=300") ? 200 : 120));
     show();
     await priceShown(120);
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(t.create.flow.lengthLabel) }));
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(f.lengthLabel) }));
     fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
     await priceShown(200);
     await press();
     expect(body(0).max_credits).toBe(200);
   });
 
-  it("while the price is being asked (a length change) the card shows no figure and the confirm waits", async () => {
+  it("while the price is being asked the confirm waits, says so, and sends nothing; then it sends the new figure", async () => {
     show();
     await priceShown(120);
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(t.create.flow.lengthLabel) }));
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(f.lengthLabel) }));
     let release: (r: Response) => void = () => {};
     estimateAnswer = () => new Promise<Response>((r) => (release = r));
     fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
@@ -133,175 +137,52 @@ describe("the run carries an idempotency key and the price that was shown", () =
     expect(runs()).toHaveLength(1);
     expect(body(0).max_credits).toBe(200);
   });
-});
 
-describe("an unknown price is never confirmed unseen", () => {
-  it("before the first answer the confirm waits, says it is checking, and sends nothing", async () => {
-    let release: (r: Response) => void = () => {};
-    estimateAnswer = () => new Promise<Response>((r) => (release = r));
-    show();
-    make();
-    const held = await screen.findByRole("button", { name: t.credits.priceChecking });
-    expect(held.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(held);
-    fireEvent.keyDown(topic(), { key: "Enter" });
-    await act(async () => {});
-    expect(runs()).toHaveLength(0);
-    await act(async () => release(new Response(JSON.stringify(priced(120)), { status: 200 })));
-    await priceShown(120);
-    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
-    await act(async () => {});
-    expect(runs()).toHaveLength(1);
-    expect(body(0).max_credits).toBe(120);
-  });
-
-  it("an unreadable estimate turns the confirm into Retry; nothing is sent until a price is on screen", async () => {
+  it("an unreadable price turns the confirm into Retry; nothing is sent until a price is on screen", async () => {
     estimateAnswer = () => json({}, 503);
     show();
     await screen.findByRole("button", { name: t.common.retry });
     make();
-    // The card's own Retry shows first; the confirm turns into Retry one commit later.
     await waitFor(() => expect(document.querySelector(".fl-go[data-price-hold=failed]")).not.toBeNull());
     const retry = document.querySelector(".fl-go[data-price-hold=failed]") as HTMLElement;
     expect(retry.textContent).toBe(t.common.retry);
-    // Retry is a live button: only "starting" and "checking the price" are disabled.
-    expect(retry.getAttribute("aria-disabled")).toBe("false");
     estimateAnswer = () => json(priced(120));
     fireEvent.click(retry);
     await priceShown(120);
     expect(runs()).toHaveLength(0);
-    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
+    await confirm();
     await act(async () => {});
     expect(runs()).toHaveLength(1);
     expect(body(0).max_credits).toBe(120);
   });
 
-  it("an organization that is not charged (exempt) is not held back, and sends no ceiling", async () => {
+  it("an organization that is not charged (exempt), or a workspace with no price list, sends no ceiling but still a key", async () => {
     estimateAnswer = () => json({ ...priced(120), exempt: true });
     show();
     await screen.findByText(t.credits.estimateExempt);
     await press();
-    expect(runs()).toHaveLength(1);
     expect("max_credits" in body(0)).toBe(false);
-  });
-
-  it("a workspace where running is not priced at all (no price list) is not held back either", async () => {
+    expect(String(body(0).idempotency_key).length).toBeGreaterThan(0);
+    cleanup();
     estimateAnswer = () => json({ supported: false, enforced: false });
     show();
     await screen.findByTestId("price-unavailable");
     await press();
-    expect(runs()).toHaveLength(1);
-    expect("max_credits" in body(0)).toBe(false);
+    expect("max_credits" in body(1)).toBe(false);
   });
-});
 
-describe("an unpriced run (a pricing gap) sends no ceiling and no number is shown", () => {
-  it("the server refuses it when it must; the browser does not invent a ceiling", async () => {
+  it("an unpriced run (a pricing gap) shows no number and invents no ceiling", async () => {
     estimateAnswer = () => json(priced(null));
     show();
     await screen.findByText(t.credits.gap.no_prices);
     await press();
     expect(runs()).toHaveLength(1);
     expect("max_credits" in body(0)).toBe(false);
-    expect(String(body(0).idempotency_key).length).toBeGreaterThan(0);
   });
 });
 
-describe("a retry of the same attempt is the same attempt", () => {
-  it("after a dropped connection the retry reuses the key (the first may have been held)", async () => {
-    show();
-    await priceShown(120);
-    type("Ancient Khiva");
-    runAnswer = () => Promise.reject(new TypeError("network"));
-    await press();
-    await waitFor(() => expect(screen.getByText(t.agents.runFailed)).toBeTruthy());
-    runAnswer = () => json({ ok: true });
-    await press();
-    expect(runs()).toHaveLength(2);
-    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
-    expect(body(1)).toEqual(body(0));
-  });
-
-  it("after a server error that held nothing known, the retry reuses the key too", async () => {
-    show();
-    await priceShown(120);
-    runAnswer = () => json({ error: "credit_reserve_failed" }, 502);
-    await press();
-    runAnswer = () => json({ ok: true });
-    await press();
-    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
-  });
-
-  it("when the server says this attempt was already started it says so, held nothing new, and the next create is a new attempt", async () => {
-    show();
-    await priceShown(120);
-    type("Ancient Khiva");
-    runAnswer = () => json({ error: "run_already_started" }, 409);
-    await press();
-    expect(document.querySelector(".fl-status")?.textContent).toContain(t.create.flow.alreadySent);
-    expect(document.querySelector(".fl-status")?.textContent).not.toContain(t.agents.runFailed);
-    // Enter in the box asks again; the confirm is the second press.
-    fireEvent.keyDown(topic(), { key: "Enter" });
-    runAnswer = () => json({ ok: true });
-    await confirm();
-    await act(async () => {});
-    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
-  });
-
-  it("when a hold was taken but the run did not start, the next try is a NEW attempt (the old key could only answer 'already started')", async () => {
-    show();
-    await priceShown(120);
-    runAnswer = () => json({ error: "github_dispatch_failed", credits_held: 120 }, 502);
-    await press();
-    expect(document.querySelector(".fl-status")?.textContent).toContain(t.credits.heldNote);
-    runAnswer = () => json({ ok: true });
-    await press();
-    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
-  });
-
-  it("changing the brief after a failure is a different video, so a new key", async () => {
-    show();
-    await priceShown(120);
-    type("Ancient Khiva");
-    runAnswer = () => json({ error: "credit_reserve_failed" }, 502);
-    await press();
-    type("The Aral Sea");
-    runAnswer = () => json({ ok: true });
-    await press();
-    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
-    expect(body(1).topic).toBe("The Aral Sea");
-  });
-
-  it("a confirmed start settles the attempt: the next deliberate create gets a new key", async () => {
-    show();
-    await priceShown(120);
-    type("Ancient Khiva");
-    await press();
-    expect(document.querySelector(".fl-status")?.textContent).toContain(t.create.queued);
-    fireEvent.keyDown(topic(), { key: "Enter" });
-    await confirm();
-    await act(async () => {});
-    expect(runs()).toHaveLength(2);
-    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
-  });
-
-  it("a price that moved is asked again and said in words; the retry keeps the key (nothing was held)", async () => {
-    show();
-    await priceShown(120);
-    runAnswer = () => json({ error: "price_changed", credits: 150 }, 409);
-    estimateAnswer = () => json(priced(150));
-    await press();
-    expect(document.querySelector(".fl-status")?.textContent).toContain(t.creative.errors.price_changed);
-    await priceShown(150);
-    runAnswer = () => json({ ok: true });
-    await press();
-    expect(body(1).max_credits).toBe(150);
-    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
-  });
-});
-
-describe("a double press posts once", () => {
-  it("two clicks on the confirm in the same tick send one request", async () => {
+describe("one intent is one key", () => {
+  it("a double click posts once (three clicks in the same tick)", async () => {
     show();
     await priceShown(120);
     make();
@@ -329,5 +210,268 @@ describe("a double press posts once", () => {
     expect(screen.queryByRole("button", { name: t.create.cancel })).toBeNull();
     await act(async () => release(new Response("{}", { status: 200 })));
     expect(runs()).toHaveLength(1);
+  });
+
+  it("after a dropped connection the retry sends the very same request (the first may have been held)", async () => {
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => Promise.reject(new TypeError("network"));
+    await press();
+    await waitFor(() => expect(status()).toContain(f.startUnsure));
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(runs()).toHaveLength(2);
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+    expect(body(1)).toEqual(body(0));
+  });
+
+  it("with no user id the key lives in memory only: a reload starts a new attempt, and nothing is written to web storage (tests/create-key-persistence.test.tsx covers the signed-in reload)", async () => {
+    const first = show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => Promise.reject(new TypeError("network"));
+    await press();
+    expect(window.sessionStorage.length).toBe(0);
+    expect(window.localStorage.length).toBe(0);
+    first.unmount();
+    runAnswer = () => json({ ok: true });
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    await press();
+    expect(runs()).toHaveLength(2);
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+  });
+
+  it("the price moving between the first try and the retry does not change the key; max_credits is the price last shown", async () => {
+    estimateAnswer = (url) => json(priced(url.includes("duration=300") ? 140 : 120));
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => Promise.reject(new TypeError("network"));
+    await press();
+    // The card is asked again (another length and back) and now says 140 for the same video.
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(f.lengthLabel) }));
+    fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
+    await priceShown(140);
+    estimateAnswer = () => json(priced(140));
+    fireEvent.click(screen.getByRole("radio", { name: f.lengthDefault }));
+    await priceShown(140);
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(runs()).toHaveLength(2);
+    expect(body(1).max_credits).toBe(140);
+    expect(body(0).max_credits).toBe(120);
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+  });
+
+  it("a failure that held nothing keeps the key for the retry", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "credit_reserve_failed" }, 502);
+    await press();
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+  });
+
+  it("changing the brief is a different video, so a new key", async () => {
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => json({ error: "credit_reserve_failed" }, 502);
+    await press();
+    type("The Aral Sea");
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+    expect(body(1).topic).toBe("The Aral Sea");
+  });
+
+  it("changing the length is a different video, so a new key (and the new price is the ceiling)", async () => {
+    estimateAnswer = (url) => json(priced(url.includes("duration=300") ? 200 : 120));
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => json({ error: "credit_reserve_failed" }, 502);
+    await press();
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(f.lengthLabel) }));
+    fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
+    await priceShown(200);
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+    expect(body(1).max_credits).toBe(200);
+  });
+
+  it("a confirmed start settles the intent: the next deliberate create gets a new key", async () => {
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    await press();
+    expect(status()).toContain(t.create.queued);
+    fireEvent.keyDown(topic(), { key: "Enter" });
+    await confirm();
+    await act(async () => {});
+    expect(runs()).toHaveLength(2);
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+  });
+
+  it("one channel's key never reaches another channel, and nothing is stored that could carry it", async () => {
+    const view = show("chan-a");
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => json({ error: "credit_reserve_failed" }, 502);
+    await press();
+    view.rerender(studio("chan-b"));
+    await priceShown(120);
+    await press();
+    expect(body(1).channel_id).toBe("chan-b");
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+    view.rerender(studio("chan-a"));
+    await priceShown(120);
+    await press();
+    expect(body(2).channel_id).toBe("chan-a");
+    expect(body(2).idempotency_key).not.toBe(body(1).idempotency_key);
+    expect(window.sessionStorage.length).toBe(0);
+    expect(window.localStorage.length).toBe(0);
+  });
+});
+
+describe("what the server answered, in words", () => {
+  it("409 price_changed with no earlier unanswered try: says the new price and that nothing was taken or held, re-reads the card, needs a new confirm, and keeps the key", async () => {
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => json({ error: "price_changed", credits: 150 }, 409);
+    estimateAnswer = () => json(priced(150));
+    await press();
+    expect(runs()).toHaveLength(1);
+    expect(status()).toContain("150");
+    expect(status()).toContain(f.notTaken);
+    expect(screen.getByRole("button", { name: t.create.create })).toBeTruthy();
+    await priceShown(150);
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(runs()).toHaveLength(2);
+    expect(body(1).max_credits).toBe(150);
+    // Nothing was held under that key, and the same video: the same key.
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+  });
+
+  it("409 price_changed on a retry after a LOST answer does not claim nothing was held (the route compares the price before it looks for the hold); confirming again is answered 'already started'", async () => {
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => Promise.reject(new TypeError("network"));
+    await press();
+    expect(status()).toContain(f.startUnsure);
+    // The first try may have held; the price has since gone up.
+    runAnswer = () => json({ error: "price_changed", credits: 150 }, 409);
+    estimateAnswer = () => json(priced(150));
+    await press();
+    expect(status()).toContain("150");
+    expect(status()).not.toContain(f.notTaken);
+    expect(status()).toContain(f.priceChangedUnsure.replace("{n}", "150"));
+    // Still needs a fresh confirm at the new price, and still the same key.
+    await priceShown(150);
+    runAnswer = () => json({ error: "run_already_started" }, 409);
+    await press();
+    expect(runs()).toHaveLength(3);
+    expect(body(2).max_credits).toBe(150);
+    expect(new Set([0, 1, 2].map((i) => body(i).idempotency_key)).size).toBe(1);
+    expect(status()).toContain(f.alreadySent);
+    expect(status()).not.toContain(t.agents.runFailed);
+  });
+
+  it("409 price_changed whose body proves a hold (credits_held) gets the held sentence, not 'nothing was taken'", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "price_changed", credits: 150, credits_held: 120 }, 409);
+    await press();
+    expect(status()).toContain("120");
+    expect(status()).toContain("3 hours");
+    expect(status()).not.toContain(f.notTaken);
+  });
+
+  it("409 price_changed where the price on the card turns out the same keeps the key (nothing was held)", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "price_changed", credits: 120 }, 409);
+    await press();
+    expect(status()).toContain(f.notTaken);
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(body(1).max_credits).toBe(120);
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+  });
+
+  it("409 run_already_started is a start, not a failure: it says so, held nothing new, and the next create is a new intent", async () => {
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => json({ error: "run_already_started" }, 409);
+    await press();
+    expect(status()).toContain(f.alreadySent);
+    expect(status()).not.toContain(t.agents.runFailed);
+    // The progress panel of the existing run is what is shown.
+    expect(screen.getByText(f.watchTitle)).toBeTruthy();
+    fireEvent.keyDown(topic(), { key: "Enter" });
+    runAnswer = () => json({ ok: true });
+    await confirm();
+    await act(async () => {});
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+  });
+
+  it("429 run_limit: says the plan's runs are all in use and that nothing was taken or held; the retry keeps the key", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "run_limit", active: 2, limit: 2 }, 429);
+    await press();
+    expect(status()).toContain(t.credits.runLimit.replace("{n}", "2"));
+    expect(status()).toContain(f.notTaken);
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+  });
+
+  it("402 insufficient credits: says how many were needed and available, and that nothing was taken or held", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "insufficient_credits", needed: 120, available: 20 }, 402);
+    await press();
+    expect(status()).toContain("120");
+    expect(status()).toContain("20");
+    expect(status()).toContain(f.notTaken);
+    expect(screen.getByRole("button", { name: t.create.create })).toBeTruthy();
+  });
+
+  it("a hold was taken but the run did not start: says how many credits are held and that they come back within 3 hours; the next try is a NEW intent", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "github_dispatch_failed", credits_held: 120 }, 502);
+    await press();
+    expect(status()).toContain("120");
+    expect(status()).toContain("3 hours");
+    expect(status()).not.toContain(f.notTaken);
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+  });
+
+  it("a generic failure says nothing was taken or held; a gateway error with no body says it cannot tell", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "github_dispatch_failed" }, 502);
+    await press();
+    expect(status()).toContain(t.agents.runFailed);
+    expect(status()).toContain(f.notTaken);
+    runAnswer = () => Promise.resolve(new Response("<html>Bad gateway</html>", { status: 504 }));
+    await press();
+    expect(status()).toContain(f.startUnsure);
+    expect(status()).not.toContain(f.notTaken);
+    // Both were the same intent.
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
   });
 });

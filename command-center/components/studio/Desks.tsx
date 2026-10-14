@@ -102,9 +102,15 @@ export function StudioOverview({
   return (
     <div className="flex flex-col gap-8">
       <section aria-labelledby="desk-bay-title" className="flex flex-col gap-3">
-        <h2 id="desk-bay-title" className="ns-eyebrow">
-          {t.desk.startTitle}
-        </h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 id="desk-bay-title" className="ns-eyebrow">
+            {t.desk.startTitle}
+          </h2>
+          {/* A quiet way into the presets gallery; it only opens forms. */}
+          <Link href={path("/presets")} className="tap-link text-xs text-[var(--color-primary)] underline">
+            {t.presets.entryLink}
+          </Link>
+        </div>
         <ol className="desk-bay">
           {bay.map((d, i) => {
             const Icon = DESK_ICONS[d];

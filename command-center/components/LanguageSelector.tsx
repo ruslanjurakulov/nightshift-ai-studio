@@ -55,12 +55,13 @@ export function LanguageSelector() {
       {open && (
         <ul
           role="listbox"
+          aria-label={t.common.language}
           className="drawer-enter absolute right-0 z-50 mt-3 overflow-hidden w-40 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-[var(--shadow-elevated)]"
         >
           {LOCALES.map((l) => {
             const active = l.code === locale;
             return (
-              <li key={l.code}>
+              <li key={l.code} role="none">
                 <button
                   type="button"
                   role="option"

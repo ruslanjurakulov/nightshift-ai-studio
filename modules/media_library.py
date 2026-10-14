@@ -905,6 +905,30 @@ def copy_and_hash(src: Path, dst: Path, limit: int) -> Tuple[int, str]:
 # ── Supabase (service key) ───────────────────────────────────────────────────
 
 
+def _bounded_int(text: str):
+    """``json.loads(parse_int=...)``: an integer past ``_MAX_INT_DIGITS`` digits becomes a
+    float (infinity), which no timeline field accepts, instead of an error."""
+    return int(text) if len(text) <= _MAX_INT_DIGITS else float(text)
+
+
+#: Python 3.11 refuses to turn more than 4300 digits into an int (ValueError), and so
+#: fails to parse a whole response that holds one. A claimed export's document is stored
+#: JSON a person's browser cannot make (JavaScript has no such number), but a row written
+#: any other way can hold it, and the export would be claimed and then never worked on.
+_MAX_INT_DIGITS = 1000
+
+
+def _response_json(r, name: str):
+    try:
+        return r.json()
+    except ValueError:
+        pass
+    try:
+        return json.loads(r.text, parse_int=_bounded_int)
+    except ValueError:
+        raise RuntimeError(f"{name}: unreadable response") from None
+
+
 class MediaStore:
     """media_uploads / media_assets over Supabase REST, through 0038's functions."""
 
@@ -934,7 +958,7 @@ class MediaStore:
             return None  # 0038 not applied: nothing to do
         if r.status_code >= 300:
             raise RuntimeError(f"{name}: HTTP {r.status_code}")
-        return r.json()
+        return _response_json(r, name)
 
     def claim(self, worker_id: str) -> Optional[dict]:
         rows = self._rpc("claim_media_upload", {"p_worker": worker_id})

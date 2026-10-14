@@ -282,14 +282,3 @@ export function planName(plan: AccountPlan | null | undefined, exemptLabel: stri
   if (plan.kind === "exempt") return exemptLabel;
   return null;
 }
-
-/**
- * The letter an account is drawn with (the bottom bar's Settings tab, the
- * sidebar card, the panel): the first character of the e-mail, upper-cased.
- * Taken by code point, not by UTF-16 unit, so a leading emoji is not cut in
- * half. null when there is no e-mail: the caller draws a neutral person.
- */
-export function accountInitial(email: string | null | undefined): string | null {
-  const first = Array.from((email ?? "").trim())[0];
-  return first ? first.toUpperCase() : null;
-}

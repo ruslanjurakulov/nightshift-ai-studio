@@ -67,7 +67,7 @@ afterEach(() => {
 type Props = Partial<Parameters<typeof CreateStudio>[0]>;
 const studio = (props: Props = {}) => (
   <I18nProvider locale="en">
-    <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun draftOwner={{ userId: "user-1", orgId: "org-1" }} {...props} />
+    <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun userId="user-1" orgId="org-1" {...props} />
   </I18nProvider>
 );
 const topic = () => screen.getByRole("textbox", { name: t.create.flow.topicTitle }) as HTMLTextAreaElement;
@@ -127,7 +127,7 @@ describe("restore on reload", () => {
 
   it("without a signed-in user and organization nothing is kept or restored", async () => {
     window.sessionStorage.setItem(draftKey(me), "{}");
-    render(studio({ draftOwner: null }));
+    render(studio({ userId: "" }));
     fireEvent.change(topic(), { target: { value: SECRET } });
     await wait();
     expect(JSON.stringify(Object.entries(window.sessionStorage))).not.toContain(SECRET);

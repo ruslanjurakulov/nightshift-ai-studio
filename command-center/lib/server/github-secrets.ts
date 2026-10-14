@@ -226,12 +226,17 @@ export async function dispatchWorkflow(
     body: JSON.stringify({ ref, inputs }),
   });
   if (res.status === 204) return;
-  throw new Error(
-    res.status === 401 || res.status === 403
-      ? "github_unauthorized"
-      : res.status === 404
-        ? "github_workflow_not_found"
-        : "github_dispatch_failed",
+  // The HTTP status rides along (message unchanged) so a caller that holds credits can tell a
+  // refusal from GitHub (4xx: nothing was started) from a failure that may have gone through (5xx).
+  throw Object.assign(
+    new Error(
+      res.status === 401 || res.status === 403
+        ? "github_unauthorized"
+        : res.status === 404
+          ? "github_workflow_not_found"
+          : "github_dispatch_failed",
+    ),
+    { status: res.status },
   );
 }
 

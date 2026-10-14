@@ -94,6 +94,7 @@ export default async function HomePage() {
       channelDnaForCreate(makeFor),
       isOperator(),
       readConnectedAccounts().catch(() => []),
+      // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
       getUser(),
     ]);
     run = (
@@ -106,7 +107,8 @@ export default async function HomePage() {
         operator={operator}
         targets={accounts.map(({ platform, id, name, connected: on }) => ({ platform, id, name, connected: on }))}
         dna={dna.run}
-        draftOwner={user && orgId ? { userId: user.id, orgId } : null}
+        userId={user?.id ?? ""}
+        orgId={orgId}
       />
     );
   }

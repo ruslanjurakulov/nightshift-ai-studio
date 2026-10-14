@@ -177,7 +177,7 @@ describe("the composer hands off and spends nothing", () => {
   it("says in plain words what is waiting for the person, and nothing when nothing is", () => {
     const { unmount } = render(wrap(<HomeHub channels={[card({ waiting: 2 })]} currentSlug="chronos" orgId={null} allPrivate storyboards={[]} />));
     const status = screen.getByTestId("home-status");
-    expect(status.textContent).toContain(`2 things are ready for your decision`);
+    expect(status.textContent).toContain("2 things are ready for your decision");
     expect(within(status).getByRole("link", { name: t.home.reviewNow }).getAttribute("href")).toBe("/chronos/videos");
     unmount();
     render(wrap(<HomeHub channels={[card({ waiting: 0 })]} currentSlug="chronos" orgId={null} allPrivate />));
@@ -293,7 +293,7 @@ describe("the run form takes the hand-off", () => {
     expect(screen.getByText(t.create.prefilled)).toBeTruthy();
     // The first press only asks; nothing reached the run route.
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    expect(await screen.findByRole("button", { name: t.create.confirm })).toBeTruthy();
+    expect(screen.getByRole("button", { name: t.create.confirm })).toBeTruthy();
     expect(writes()).toEqual([]);
   });
 

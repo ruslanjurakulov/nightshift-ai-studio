@@ -7,6 +7,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { loadMediaLibrary } from "@/lib/server/media";
 import { atLeast } from "@/lib/auth/roles-shared";
+import { parseView } from "@/components/media/libraryView";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,7 +28,11 @@ export const revalidate = 0;
  * organization (my_organizations -> org_role). Hiding them is for the reader;
  * the database refuses a viewer either way (0049, 0051).
  */
-export default async function LibraryPage() {
+export default async function LibraryPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
   const org = await getOrgContext();
@@ -50,7 +55,12 @@ export default async function LibraryPage() {
   return (
     <div className="rhythm ns-open">
       {header(org.current.name)}
-      <MediaLibrary orgId={org.current.id} initial={lib} canEditFolders={atLeast(org.current.role, "editor")} />
+      <MediaLibrary
+        orgId={org.current.id}
+        initial={lib}
+        canEditFolders={atLeast(org.current.role, "editor")}
+        initialView={parseView((await searchParams) ?? {})}
+      />
     </div>
   );
 }

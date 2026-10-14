@@ -3,10 +3,10 @@
 import { useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
+import { createAttempt } from "@/lib/create-attempt";
+import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
-import { createAttempt } from "@/lib/create-attempt";
 
 /**
  * "Run now" — trigger this channel's pipeline on demand.
@@ -17,10 +17,10 @@ import { createAttempt } from "@/lib/create-attempt";
  * the daily-video workflow for this channel on GitHub Actions — the server does
  * no heavy work, it just asks GitHub to start the same job the cron runs.
  *
- * The run carries an idempotency key (one per attempt, kept for a retry of the same inputs: a lost
- * answer cannot hold twice) and, when the estimate line is showing a price, that price as `max_credits`.
- * While the price is loading or unreadable the confirm waits, so a price is never confirmed unseen.
- * See lib/create-attempt.ts and CreateStudio, which do the same.
+ * The run carries an idempotency key (one per intent, kept for a retry of the same inputs, so a double
+ * click or a lost answer cannot hold credits twice) and, when the estimate line is showing a price, that
+ * price as `max_credits`. While the price is loading or unreadable the confirm waits, so a price nobody has
+ * seen is never confirmed. See lib/create-attempt.ts and lib/run-answer.ts, which CreateStudio shares.
  *
  * Two presentations, same logic:
  * - `variant="panel"` (default) is the Agents-page card, with a title and hint,
@@ -36,6 +36,8 @@ export function RunNowButton({
   variant = "panel",
   label,
   canRun = true,
+  userId = "",
+  orgId = null,
 }: {
   /** The scoped channel's id, or null when "All channels" is selected. */
   channelId: string | null;
@@ -48,18 +50,24 @@ export function RunNowButton({
   /** Whether the caller is an owner/admin of the channel's organization — the
    *  role /api/agent/run requires. Presentation only; the route re-checks. */
   canRun?: boolean;
+  /** The signed-in user's id from the server page (getUser()): lets the idempotency key survive a reload of this
+   *  tab. Empty (not known) = memory only. Never shown, never stored in the clear. */
+  userId?: string;
+  /** The open organization when the page knows it: part of what the stored key is for. */
+  orgId?: string | null;
 }) {
   const { t, locale } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const [creditError, setCreditError] = useState<string | null>(null);
   const [extraOff, setExtraOff] = useState(false);
   const toast = useToast();
   // What the estimate line says (it is mounted while the confirm is open): a figure is the run's ceiling.
   const [price, setPrice] = useState<PriceReport>({ state: "loading" });
+  const shownPrice = price.state === "priced" ? price.credits : null;
   const priceHold = !!channelId && (price.state === "loading" || price.state === "failed");
   const [retryNonce, setRetryNonce] = useState(0);
-  const attempt = useRef(createAttempt());
+  // The channel is part of what the key stands for (its signature), so another channel never gets this key.
+  const [attempt] = useState(() => createAttempt());
   const sending = useRef(false);
   const [replayed, setReplayed] = useState(false);
 
@@ -99,6 +107,7 @@ export function RunNowButton({
     sending.current = true;
     setPhase("starting");
     setCreditError(null);
+    setExtraOff(false);
     setReplayed(false);
     const trimmed = topic.trim();
     const dur = Number(duration);
@@ -110,7 +119,10 @@ export function RunNowButton({
       ...(language ? { language } : {}),
       ...(style ? { visual_style: style } : {}),
     };
-    const idempotency_key = attempt.current.keyFor(JSON.stringify(fields));
+    // One intent = one key: channel + topic + options, NOT the price (max_credits carries that), 30-minute expiry.
+    // With a user id it is also kept in this tab's sessionStorage as a hash (never the topic), so a reload after a
+    // lost answer reuses it; without one it is in memory only (lib/create-attempt.ts).
+    const idempotency_key = attempt.keyFor(JSON.stringify(fields), userId ? { userId, orgId, channelId } : undefined);
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
@@ -118,36 +130,31 @@ export function RunNowButton({
         body: JSON.stringify({
           ...fields,
           idempotency_key,
-          ...(price.state === "priced" ? { max_credits: price.credits } : {}),
+          ...(shownPrice !== null ? { max_credits: shownPrice } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        attempt.current.settle();
+      const answer = readRunAnswer(res, data, t, locale, attempt.isUnsure());
+      if (answer.outcome !== "failed") {
+        attempt.settle();
+        setReplayed(answer.outcome === "replay");
         setPhase("queued");
-        toast.success(t.agents.runQueued);
+        if (answer.outcome === "started") toast.success(t.agents.runQueued);
         return;
       }
-      if (res.status === 409 && data.error === "run_already_started") {
-        attempt.current.settle();
-        setReplayed(true);
-        setPhase("queued");
-        return;
-      }
-      if (typeof data.credits_held === "number") attempt.current.settle();
-      const unauthorized = data.error === "github_unauthorized";
-      const credit = data.error === "price_changed" ? t.creative.errors.price_changed : creditRunError(data, t, locale);
-      if (data.error === "price_changed") setRetryNonce((n) => n + 1);
-      setErrorKey(unauthorized ? "unauthorized" : "failed");
-      setCreditError(credit);
-      setExtraOff(isExtraOffRefusal(data));
+      if (answer.settled) attempt.settle();
+      if (answer.unsure) attempt.markUnsure();
+      setCreditError(answer.message);
+      setExtraOff(answer.extraOff);
       setPhase("error");
-      toast.error(credit ?? (unauthorized ? t.agents.runUnauthorized : t.agents.runFailed));
+      toast.error(answer.message);
     } catch {
-      // Unknown whether it arrived: the key is kept, so trying again is safe.
-      setErrorKey("failed");
+      // Unknown whether it arrived: the key is kept (and remembered as unsure), so trying again is safe.
+      attempt.markUnsure();
+      const unsure = unsureRunAnswer(t).message;
+      setCreditError(unsure);
       setPhase("error");
-      toast.error(t.agents.runFailed);
+      toast.error(unsure);
     } finally {
       sending.current = false;
     }
@@ -198,7 +205,7 @@ export function RunNowButton({
           <span className="text-[var(--color-ok)]">{replayed ? t.create.flow.alreadySent : t.agents.runQueued}</span>
         ) : phase === "error" ? (
           <span className="text-[var(--color-fail)]">
-            {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
+            {creditError ?? t.agents.runFailed}
             {extraOff && (
               <>
                 {" "}

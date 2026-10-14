@@ -162,7 +162,7 @@ export const devUz: DevDictionary = {
       description: "Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes va boshqalarni Nightshift’ga ulang va yordamchidan soʻrab video yarating.",
     },
     signinOff: {
-      description: "Claude Code, OpenClaw, Cursor, Hermes va boshqalarni Nightshift’ga API kalit bilan ulang va yordamchingizdan soʻrab video yarating. Claude va ChatGPT uchun kirish tez orada.",
+      description: "Claude Code, OpenClaw, Cursor, Hermes va boshqalarni Nightshift’ga API kalit bilan ulang, yordamchidan video soʻrang. Claude va ChatGPT kirishi tez orada.",
       paidLine: "API kalitlar sarlavha yubora oladigan har qanday yordamchi bilan hozir ishlaydi. Claude va ChatGPT kirish orqali ulanadi — tez orada.",
       paidTitle: "API balansi",
       paidBody: "API kalitlari va REST API oldindan toʻlangan API balansidan toʻlanadi. Har bir pullik tarifga kiradigan, kirish orqali ulanish tez orada ochiladi.",

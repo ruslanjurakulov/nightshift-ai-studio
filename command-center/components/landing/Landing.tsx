@@ -110,6 +110,11 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
               <Link href="/pricing" className="nx-link">
                 {h.secondary}
               </Link>
+              {/* Not a second button: it jumps to the plan demo below, which shows a plan and creates nothing. */}
+              <a href="#try" className="nx-sample">
+                <span className="nx-sample-label">{h.demo}</span>
+                <span className="nx-sample-note">{h.demoNote}</span>
+              </a>
             </div>
           </div>
           <p className="nx-lead">{h.lead}</p>

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
-import { readJsonBody } from "@/lib/server/media-folders";
+import { editorRateLimited } from "@/lib/server/editor-guard";
+import { readJsonBodyCapped } from "@/lib/server/json-body";
+import { EDITOR_SAVE_RATE } from "@/lib/server/web-rate";
 import { loadEditorProject, readDocAssetKinds } from "@/lib/server/editor";
 import { parseMediaId } from "@/lib/media";
 import {
@@ -68,10 +70,15 @@ export async function PUT(
   const { id: raw } = await params;
   const id = parseMediaId(raw);
   if (!id) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > MAX_DOC_BYTES * 2)
+  const limited = await editorRateLimited(user.id, EDITOR_SAVE_RATE);
+  if (limited) return limited;
+  // The body is read with a hard cap: Content-Length is only what the client
+  // says (a chunked body has none), and request.json() would buffer it all.
+  // The cap is twice the document's, for the wrapper and JSON escaping.
+  const read = await readJsonBodyCapped(request, MAX_DOC_BYTES * 2);
+  if (!read.ok && read.reason === "too_large")
     return NextResponse.json({ error: "doc_too_large" }, { status: 413 });
-  const body = await readJsonBody(request);
+  const body = read.ok ? read.value : undefined;
   if (!body || typeof body !== "object" || Array.isArray(body))
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const b = body as { base_rev?: unknown; title?: unknown; doc?: unknown };

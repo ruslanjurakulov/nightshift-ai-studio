@@ -9,7 +9,7 @@ import { BuyCredits, BuyCreditsAdminOnly } from "@/components/credits/BuyCredits
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
-import { coerceTransactions, isCreditExempt } from "@/lib/credits";
+import { coerceTransactions, inviteCardShown, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
@@ -25,6 +25,7 @@ import { readUsageSummary } from "@/lib/server/usage";
 import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
+import { ScrollToHash } from "@/components/navigation/ScrollToHash";
 
 const FAILED_READ = { state: "failed" as const };
 
@@ -94,6 +95,7 @@ export default async function CreditsPage() {
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
   const exempt = isCreditExempt(orgId);
+  const showInvite = inviteCardShown(org.current, inviteRead.state);
   const platformAdmin = admin.data === true;
   // The editor needs the base rates, margins and notes: the raw list, which
   // the database (0084) shows a platform owner/admin only. Never read for
@@ -139,6 +141,7 @@ export default async function CreditsPage() {
 
   return (
     <div className="rhythm ns-open">
+      <ScrollToHash />
       {header}
 
       {exempt ? (
@@ -159,7 +162,7 @@ export default async function CreditsPage() {
       )}
 
       {!exempt && summaryFailed && (
-        <section id="plans" className="panel flex scroll-mt-24 flex-col gap-2 p-5 sm:p-6" aria-labelledby="plan-title">
+        <section id="plans" className="panel flex scroll-mt-7 flex-col gap-2 p-5 sm:p-6" aria-labelledby="plan-title">
           <h2 id="plan-title" className="t-section">
             {t.plans.panelTitle}
           </h2>
@@ -196,11 +199,11 @@ export default async function CreditsPage() {
       {/* Invite friends: for a workspace that pays (the reward is paid into it);
           the database refuses anyone who does not run the workspace. Left out
           before migration 0092. */}
-      {!exempt && inviteRead.state === "ok" && (
+      {showInvite && inviteRead.state === "ok" && (
         <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
       )}
-      {!exempt && inviteRead.state === "failed" && (
-        <section id="invite" className="panel flex scroll-mt-24 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">
+      {showInvite && inviteRead.state === "failed" && (
+        <section id="invite" className="panel flex scroll-mt-7 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">
           <h2 id="invite-title" className="t-section">
             {t.invite.title}
           </h2>

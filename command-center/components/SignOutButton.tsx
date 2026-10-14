@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
+import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
 import { clearAllDrafts } from "@/lib/create-draft";
 
 export function SignOutButton() {
@@ -12,7 +14,12 @@ export function SignOutButton() {
     // The create form's unfinished draft is this person's; it goes with the session, before anything can fail.
     clearAllDrafts();
     const supabase = createClient();
-    if (supabase) await supabase.auth.signOut();
+    try {
+      if (supabase) await supabase.auth.signOut();
+    } finally {
+      clearAllCreateAttempts();
+      clearAllEditorDrafts();
+    }
     router.push("/login");
     router.refresh();
   }
