@@ -477,3 +477,30 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
     expect(scriptHosts.sort()).toEqual(["cdn.paddle.com", "public.profitwell.com"]);
   });
 });
+
+// ── 4 one clear call to action, 16 FAQ ──────────────────────────────────────
+
+describe.each(LOCALES)("4 one clear call to action and 16 FAQ (%s)", (locale) => {
+  it.each(PAGES)("$path carries the one header call to action, Start free, to /signup", async ({ module, props }) => {
+    const html = await htmlOf(module, props, locale);
+    const start = dictionaries[locale].site.nav.start;
+    const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    const keys = [...header.matchAll(/<a [^>]*class="[^"]*\bst-key\b[^"]*"[^>]*>/g)];
+    expect(keys, "primary buttons in the header").toHaveLength(1);
+    expect(keys[0][0]).toContain('href="/signup"');
+    expect(header).toContain(start);
+  }, 60_000);
+
+  it("the home page answers questions on the page and says so to search engines (FAQPage JSON-LD), with the same answers", async () => {
+    const html = await htmlOf("@/app/page", {}, locale);
+    expect(html).toMatch(/id="faq"/);
+    const ld = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1].replace(/\\u003c/g, "<")));
+    const faq = ld.find((d) => d["@type"] === "FAQPage");
+    expect(faq, "FAQPage JSON-LD").toBeTruthy();
+    // The questions the page shows (a question about plans or refunds appears only when that applies): a subset of the dictionary's, never a question the dictionary lacks.
+    const all = dictionaries[locale].landing.faq.items.map((i) => i.q);
+    const names: string[] = faq.mainEntity.map((q: { name: string }) => q.name);
+    expect(names.length).toBeGreaterThanOrEqual(3);
+    for (const n of names) expect(all).toContain(n);
+  }, 60_000);
+});

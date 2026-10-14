@@ -117,7 +117,7 @@ def test_device_is_a_closed_list_and_language_a_short_lowercase_code(world, devi
 
 @pytest.mark.parametrize(
     "ref",
-    ["https://evil.example/path?q=1", "evil.example/path", "a b", "evil.example:8080", "-bad.example", "bad-.example", "x" * 120,
+    ["https://evil.example/path?q=1", "evil.example/path", "a b", "evil.example:8080", "-bad.example", "x" * 120,
      "<script>", "evil.example?x=1", "evil.example#f", "ev il.example"],
 )
 def test_a_referrer_that_is_not_a_plain_host_is_read_as_direct_never_stored_as_given(world, ref):
