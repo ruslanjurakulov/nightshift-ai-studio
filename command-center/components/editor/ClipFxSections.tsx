@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import {
   ANGLE_MAX,
+  BLUR_MAX,
   CROP_MIN,
   FILTERS,
   ROTATIONS,
@@ -17,6 +18,7 @@ import {
   EFFECT_RANGES,
   STRENGTH_STEP,
   angleOf,
+  blurLimit,
   cropForAspect,
   cropOf,
   effectOf,
@@ -72,17 +74,20 @@ export function ClipEffectsSection({
     showClip(id);
   };
   const active = hasEffects(clip);
+  const blurMax = blurLimit(model, id);
   const slider = (key: EffectKey, label: string) => {
     const r = EFFECT_RANGES[key];
     const v = effectOf(clip, key);
+    const top = key === "blur" ? Math.min(r.max, blurMax) : r.max;
     return (
       <SliderRow
         key={key}
         label={label}
         value={v}
         min={r.min}
-        max={r.max}
+        max={top}
         step={r.step}
+        disabled={top <= r.min}
         text={
           key === "blur"
             ? fmt(e.blurValue, { v })
@@ -120,6 +125,11 @@ export function ClipEffectsSection({
       ) : null}
       {slider("vignette", e.vignette)}
       {slider("blur", e.blur)}
+      {blurMax < BLUR_MAX ? (
+        <p className="m-0 text-xs text-[var(--color-warn)]" data-testid="blur-large">
+          {fmt(e.largeBlur, { w: model.width, h: model.height })}
+        </p>
+      ) : null}
       {slider("sharpen", e.sharpen)}
       {slider("grain", e.grain)}
       {effectOf(clip, "sharpen") > 0 || effectOf(clip, "grain") > 0 ? (

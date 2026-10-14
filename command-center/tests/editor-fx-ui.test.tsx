@@ -32,6 +32,7 @@ import {
   ROTATIONS,
   addClip,
   addText,
+  setCrossfade,
   newDocForAsset,
   toDoc,
   toModel,
@@ -296,6 +297,30 @@ describe("the Look and effects section", () => {
     fireEvent.change(screen.getByRole("textbox", { name: te.projectTitle }), { target: { value: "Trip 2" } });
     const doc = await save();
     expect(clip0(doc)).toMatchObject({ filter: "warm", filter_strength: 0.5, vignette: 0.3, flip_v: true, rotate: 180 });
+  });
+});
+
+describe("blur on a cross-faded clip in a frame above 1440p", () => {
+  const bigDoc = (): TimelineDoc => {
+    const m = addClip(toModel(videoDoc()), VIDEO);
+    const d = toDoc(setCrossfade({ ...m, width: 3840, height: 2160 }, m.clips[1].id, 1));
+    return d;
+  };
+  it("the blur slider is off with the reason and the frame size; the other effects still work", () => {
+    mount(bigDoc());
+    const s = section(fxe.effects.title);
+    expect(slider(s, fxe.effects.blur).disabled).toBe(true);
+    expect(Number(slider(s, fxe.effects.blur).max)).toBe(0);
+    expect(within(s).getByTestId("blur-large").textContent).toBe(fmt(fxe.effects.largeBlur, { w: 3840, h: 2160 }));
+    expect(slider(s, fxe.effects.vignette).disabled).toBe(false);
+    cleanup();
+    mount(videoDoc());
+    expect(within(section(fxe.effects.title)).queryByTestId("blur-large")).toBeNull();
+  });
+  it("a normal frame keeps its blur even with a cross-fade", () => {
+    const m = addClip(toModel(videoDoc()), VIDEO);
+    mount(toDoc(setCrossfade(m, m.clips[1].id, 1)));
+    expect(slider(section(fxe.effects.title), fxe.effects.blur).disabled).toBe(false);
   });
 });
 

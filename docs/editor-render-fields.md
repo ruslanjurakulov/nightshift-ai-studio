@@ -476,3 +476,10 @@ Preview: look (curve tables as an SVG filter, pinned to
 and the entrance / exit at the playhead are drawn approximately; sharpen and film
 grain are not drawn. The note under the preview says the exported file is the
 reference.
+
+C1 limits mirrored in the UI after the engine's last changes: the room for an
+animation counts a text's plain fade on the other side (the validator refuses an
+animation plus the other side's fade longer than the time shown; shortening a text
+shortens the animation, and drops it when nothing is left); blur is off, with the
+frame size said, on a cross-faded clip in a frame above 1440p (`LARGE_FRAME_PX`,
+`XFADE_LARGE_BLUR_MAX`).

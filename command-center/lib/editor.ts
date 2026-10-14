@@ -2299,30 +2299,54 @@ export function fitAnims<
     anim_out?: string;
     anim_in_s?: number;
     anim_out_s?: number;
+    fade_in_s?: number;
+    fade_out_s?: number;
   },
 >(item: T): T {
   const shown = ms(item.end_s - item.start_s);
   const floor3 = (v: number) => Math.floor(v * 1000 + 1e-6) / 1000;
   const a = item.anim_in ? (item.anim_in_s ?? ANIM_DEFAULT_S) : 0;
   const b = item.anim_out ? (item.anim_out_s ?? ANIM_DEFAULT_S) : 0;
-  if (a + b <= shown + 1e-9) return item;
+  // A plain fade on the side with no animation is an animation too (the
+  // document counts it): it takes its time out of what the animations may use.
+  const fade =
+    (item.anim_in ? 0 : (item.fade_in_s ?? 0)) + (item.anim_out ? 0 : (item.fade_out_s ?? 0));
+  const room = shown - fade;
+  if (a + b <= room + 1e-9) return item;
   const next: T = { ...item };
+  const dropIn = () => {
+    delete next.anim_in;
+    delete next.anim_in_s;
+  };
+  const dropOut = () => {
+    delete next.anim_out;
+    delete next.anim_out_s;
+  };
   if (a > 0 && b > 0) {
-    const k = shown / (a + b);
+    const k = room / (a + b);
     const na = Math.max(ANIM_MIN_S, floor3(a * k));
     const nb = Math.max(ANIM_MIN_S, floor3(b * k));
-    if (na + nb <= shown + 1e-9) {
+    if (na + nb <= room + 1e-9) {
       next.anim_in_s = na;
       next.anim_out_s = nb;
       return next;
     }
-    delete next.anim_out;
-    delete next.anim_out_s;
-    next.anim_in_s = Math.max(ANIM_MIN_S, Math.min(a, floor3(shown)));
+    dropOut();
+    if (a > room) {
+      if (room < ANIM_MIN_S) dropIn();
+      else next.anim_in_s = Math.max(ANIM_MIN_S, Math.min(a, floor3(room)));
+    }
     return next;
   }
-  if (a > 0) next.anim_in_s = Math.max(ANIM_MIN_S, Math.min(a, floor3(shown)));
-  else next.anim_out_s = Math.max(ANIM_MIN_S, Math.min(b, floor3(shown)));
+  const own = a > 0 ? a : b;
+  if (room < ANIM_MIN_S - 1e-9) {
+    if (a > 0) dropIn();
+    else dropOut();
+    return next;
+  }
+  const cut = Math.max(ANIM_MIN_S, Math.min(own, floor3(room)));
+  if (a > 0) next.anim_in_s = cut;
+  else next.anim_out_s = cut;
   return next;
 }
 

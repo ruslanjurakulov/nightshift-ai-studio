@@ -22,8 +22,12 @@ import {
   CROP_MIN,
   FILTERS,
   MAX_TYPEWRITER_TEXTS,
+  LARGE_FRAME_PX,
   ROTATIONS,
+  XFADE_LARGE_BLUR_MAX,
   clamp,
+  crossfadeOf,
+  layout,
   fitAnims,
   ms,
   type AnimIn,
@@ -73,6 +77,9 @@ type Animated = {
   anim_out?: AnimOut;
   anim_in_s?: number;
   anim_out_s?: number;
+  /** A text's plain fades: one on the side that has no animation counts as an animation's time. */
+  fade_in_s?: number;
+  fade_out_s?: number;
 };
 
 /** The animations a text (with `typewriter` on entrance) or a picture has. */
@@ -96,10 +103,13 @@ export function shownFor(item: Pick<Animated, "start_s" | "end_s">): number {
 }
 
 /** The most seconds this side's animation may last: what is left of the time
- *  the item is shown after the other side's animation (0 when none is left). */
+ *  the item is shown after the other side's animation, or its plain fade (the
+ *  document counts a fade as an animation); 0 when none is left. */
 export function animRoom(item: Animated, side: AnimSide): number {
-  const other = animOf(item, side === "in" ? "out" : "in").seconds;
-  return Math.max(0, ms(Math.min(ANIM_MAX_S, shownFor(item) - other)));
+  const otherSide = side === "in" ? "out" : "in";
+  const other = animOf(item, otherSide);
+  const otherFade = other.anim ? 0 : ((otherSide === "in" ? item.fade_in_s : item.fade_out_s) ?? 0);
+  return Math.max(0, ms(Math.min(ANIM_MAX_S, shownFor(item) - other.seconds - otherFade)));
 }
 
 /** True when this side has no animation and there is no time to add one (the
@@ -256,6 +266,25 @@ export const EFFECT_RANGES: Record<EffectKey, { min: number; max: number; step: 
 /** A look's strength range (1 = fully the look; the document keeps nothing for 1). */
 export const STRENGTH_STEP = 0.05;
 
+/** Is the frame bigger than 1440p (2560 x 1440, either way up)? */
+export function isLargeFrame(model: Pick<EditorModel, "width" | "height">): boolean {
+  return model.width * model.height > LARGE_FRAME_PX;
+}
+
+/** Is clip `id` on either side of a cross-fade (it blends in, or the next one blends in)? */
+export function isCrossfaded(model: EditorModel, id: string): boolean {
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  if (i < 0) return false;
+  return crossfadeOf(clips[i]) > 0 || (i + 1 < clips.length && crossfadeOf(clips[i + 1]) > 0);
+}
+
+/** The most blur a clip may take: the document's, except on a cross-faded clip
+ *  in a frame above 1440p, where the export would run out of memory (none). */
+export function blurLimit(model: EditorModel, id: string): number {
+  return isLargeFrame(model) && isCrossfaded(model, id) ? XFADE_LARGE_BLUR_MAX : BLUR_MAX;
+}
+
 export function filterOf(clip: Pick<VideoClip, "filter">): ClipFilter | null {
   return clip.filter ?? null;
 }
@@ -320,8 +349,9 @@ export function setClipEffect(
   value: number,
 ): EditorModel {
   const r = EFFECT_RANGES[key];
+  const top = key === "blur" ? Math.min(r.max, blurLimit(model, id)) : r.max;
   return withClip(model, id, (c) => {
-    const v = round3(clamp(finite(value, 0), r.min, r.max));
+    const v = round3(clamp(finite(value, 0), r.min, top));
     if (v === (c[key] ?? 0)) return c;
     return v === 0 ? without(c, key) : { ...c, [key]: v };
   });
