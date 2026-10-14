@@ -228,6 +228,10 @@ FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contra
 BLUR_MAX = 30.0
 ROTATIONS = (0, 90, 180, 270)
 
+#: An overlay's chroma key (modules/timeline.py holds the same numbers).
+CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, CHROMA_SIMILARITY_DEFAULT = 0.01, 0.6, 0.15
+CHROMA_BLEND_MAX, CHROMA_BLEND_DEFAULT = 0.5, 0.1
+
 #: A clip's move: zoom window range (modules/timeline.py holds the same numbers).
 MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
 
@@ -540,6 +544,10 @@ class AudioTrack:
     duck_spans: Tuple[Tuple[float, float], ...] = ()
     #: Play the trimmed source backwards (the clip's own sound under ``reverse``).
     reverse: bool = False
+    #: Clean-up before the gain: FFT noise reduction, then single-pass loudness
+    #: normalisation (see audio_track_filter).
+    denoise: bool = False
+    loudnorm: bool = False
 
     @property
     def output_s(self) -> float:
@@ -553,6 +561,8 @@ class AudioTrack:
         _put_if(d, "speed", self.speed, 1.0)
         _put_if(d, "crossfade_s", self.crossfade_s, 0.0)
         _put_if(d, "reverse", self.reverse, False)
+        _put_if(d, "denoise", self.denoise, False)
+        _put_if(d, "loudnorm", self.loudnorm, False)
         if self.duck_spans:
             d["duck_db"] = self.duck_db
             d["duck_attack_s"] = self.duck_attack_s
@@ -577,6 +587,7 @@ class AudioTrack:
             duck_release_s=float(d.get("duck_release_s") or 0.0),
             duck_spans=tuple((float(a), float(b)) for a, b in (d.get("duck_spans") or [])),
             reverse=bool(d.get("reverse", False)),
+            denoise=bool(d.get("denoise", False)), loudnorm=bool(d.get("loudnorm", False)),
         )
 
 
@@ -681,6 +692,11 @@ class PictureOverlay:
     to_y: Optional[float] = None
     to_w: Optional[float] = None
     to_opacity: Optional[float] = None
+    #: Chroma key: pixels near this colour (``#RRGGBB``) become transparent
+    #: (None = none).
+    chroma_color: Optional[str] = None
+    chroma_similarity: float = CHROMA_SIMILARITY_DEFAULT
+    chroma_blend: float = CHROMA_BLEND_DEFAULT
 
     @property
     def moves(self) -> bool:
@@ -694,6 +710,10 @@ class PictureOverlay:
         for key in ("to_x", "to_y", "to_w", "to_opacity"):
             if getattr(self, key) is not None:
                 d[key] = getattr(self, key)
+        if self.chroma_color is not None:
+            d["chroma_color"] = self.chroma_color
+            d["chroma_similarity"] = self.chroma_similarity
+            d["chroma_blend"] = self.chroma_blend
         return d
 
     @staticmethod
@@ -707,6 +727,10 @@ class PictureOverlay:
             x=num("x", 0.5), y=num("y", 0.5), w=num("w", 0.3), opacity=num("opacity", 1.0),
             **_anims_from_dict(d),
             **{k: float(d[k]) for k in ("to_x", "to_y", "to_w", "to_opacity") if d.get(k) is not None},
+            **({"chroma_color": str(d["chroma_color"]),
+                "chroma_similarity": float(d.get("chroma_similarity", CHROMA_SIMILARITY_DEFAULT)),
+                "chroma_blend": float(d.get("chroma_blend", CHROMA_BLEND_DEFAULT))}
+               if d.get("chroma_color") is not None else {}),
         )
 
 
@@ -900,6 +924,15 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
         if not 0 <= o.opacity <= 1:
             problems.append(f"{name} opacity must be from 0 to 1")
         problems.extend(_anim_problems(name, o, ANIM_OUT, (o.start_s, o.end_s)))
+        if o.chroma_color is not None:
+            if not (isinstance(o.chroma_color, str) and _HEX.fullmatch(o.chroma_color)):
+                problems.append(f"{name} chroma colour must be a #RRGGBB colour")
+            if not (_finite(o.chroma_similarity)
+                    and CHROMA_SIMILARITY_MIN <= o.chroma_similarity <= CHROMA_SIMILARITY_MAX):
+                problems.append(f"{name} chroma similarity must be from {CHROMA_SIMILARITY_MIN:g} "
+                                f"to {CHROMA_SIMILARITY_MAX:g}")
+            if not (_finite(o.chroma_blend) and 0 <= o.chroma_blend <= CHROMA_BLEND_MAX):
+                problems.append(f"{name} chroma blend must be from 0 to {CHROMA_BLEND_MAX:g}")
         for key, lo, hi in (("to_x", 0, 1), ("to_y", 0, 1), ("to_opacity", 0, 1),
                             ("to_w", PICTURE_W_MIN, PICTURE_W_MAX)):
             v = getattr(o, key)
@@ -1064,6 +1097,15 @@ def _t(x: float) -> str:
     return f"{float(x):.3f}"
 
 
+#: FFT noise reduction with noise tracking, tuned for a steady background hiss
+#: below about -35 dB (a quiet room: measured -20 dB or more on 0.005-0.02 white
+#: noise, the tone beside it untouched; steady noise louder than that is left
+#: mostly alone), and single-pass EBU R128 loudness normalisation (integrated
+#: -16 LUFS, true peak -1.5 dB, range 11 LU).
+DENOISE_FILTER = "afftdn=nr=12:nf=-40:tn=1:tr=1"
+LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+
+
 def tempo_chain(speed: float) -> str:
     """``atempo=...`` stages that play sound ``speed`` times faster with its pitch
     kept. One stage covers 0.5-2 (the string older documents had); outside it the
@@ -1097,6 +1139,11 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
         chain += ["areverse", "asetpts=PTS-STARTPTS"]
     if track.speed != 1.0:
         chain.append(tempo_chain(track.speed))
+    if track.denoise:
+        chain.append(DENOISE_FILTER)
+    if track.loudnorm:
+        # loudnorm works at 192 kHz and hands that on: aformat below brings it back to 48 kHz.
+        chain.append(LOUDNORM_FILTER)
     chain.append("aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo")
     if track.gain_db:
         chain.append(f"volume={_t(track.gain_db)}dB")
@@ -1289,12 +1336,21 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
                ":force_divisible_by=2:flags=bicubic")
         yuva = f"scale={matrix}flags=bicubic,format=yuva420p"
         # An opaque video stays in its own YUV: no round trip through RGB.
-        if o.kind == KIND_VIDEO and op_static >= 1.0:
-            colour = f"{fit},format=yuva420p"
-        elif op_static >= 1.0:
-            colour = f"{fit},format=rgba,{yuva}"
+        if o.chroma_color is not None:
+            # Keyed on the source (before it is scaled): YUVA out, which the scaler and the
+            # opacity / alpha steps below keep. The colour is a validated #RRGGBB, written as 0xRRGGBB.
+            if not _HEX.fullmatch(o.chroma_color):
+                raise ValueError(f"unknown chroma colour {o.chroma_color!r}")
+            key = (f"chromakey=color=0x{o.chroma_color[1:].upper()}:similarity={o.chroma_similarity:.3f}"
+                   f":blend={o.chroma_blend:.3f},")
         else:
-            colour = f"{fit},format=rgba,colorchannelmixer=aa={op_static:.3f},{yuva}"
+            key = ""
+        if o.kind == KIND_VIDEO and op_static >= 1.0:
+            colour = f"{key}{fit},format=yuva420p"
+        elif op_static >= 1.0:
+            colour = f"{key}{fit},format=rgba,{yuva}"
+        else:
+            colour = f"{key}{fit},format=rgba,colorchannelmixer=aa={op_static:.3f},{yuva}"
         if o.kind == KIND_VIDEO:
             chain = f"setpts=PTS-STARTPTS,fps={fps},{colour}"
         else:

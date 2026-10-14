@@ -25,6 +25,7 @@ note for text looks).
 | 4 | `claude/render-keyframes` | V clip `move` (Ken Burns zoom/pan); overlay `move.to` (x, y, w, opacity) | PR open (stacked on 3) |
 | 5 | `claude/render-blur-fit` | V clip `fit: "blur"` | PR open (stacked on 4) |
 | 6 | `claude/render-speed` | V clip `speed` 0.25-4 (pitch kept), `reverse`, `freeze` | PR open (stacked on 5) |
+| 7 | `claude/render-chroma-audio` | overlay `chroma`; `denoise`, `loudnorm` on A clips and V clips | PR open (stacked on 6) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -223,3 +224,41 @@ like `contain` (the picture alone).
   timeline gets the LATER part of the source range (the halves swap their
   `in_s`/`out_s` roles); for a frozen clip both halves hold the same frame
   (`in_s` unchanged) and only their lengths (`out_s - in_s`) differ.
+
+## 7. Chroma key, noise reduction, loudness
+
+### Overlay `chroma` (picture or video overlays)
+
+```json
+"chroma": { "color": "#00FF00", "similarity": 0.15, "blend": 0.1 }
+```
+
+* `color` (required, `#RRGGBB`): the colour to remove. The UI should offer a
+  colour picker, ideally sampled from the overlay's own first frame.
+* `similarity` 0.01 to 0.6 (default 0.15): how far from `color` a pixel may be
+  and still go. Small = only almost exactly that colour; 0.3 to 0.4 for a
+  rough green screen.
+* `blend` 0 to 0.5 (default 0.1): how softly the edge fades (0 = hard).
+* it is applied to the overlay file BEFORE it is scaled; the overlay's
+  `opacity`, `move` and `anim_*` then act on what is left. Works on pictures
+  (PNG/JPG) too. A video overlay is still silent.
+* no despill (green fringes on hair etc. are not corrected).
+
+### `denoise` and `loudnorm` (boolean, default false) on A clips and on V clips
+
+* on an A clip, and on a V clip that plays its own sound (`audio: true`; the
+  flag does nothing without it). Order: speed/reverse, `denoise`, `loudnorm`,
+  then the clip's `gain_db` and fades, then ducking and the mix. So `loudnorm`
+  evens out the clip and `gain_db` is an offset on top of that level.
+* `denoise`: adaptive FFT noise reduction. It clears a steady background hiss
+  quieter than about -35 dB (a quiet room: measured 19 dB or more) and leaves
+  the voice or tone beside it alone; steady noise LOUDER than that is mostly
+  left as it is. Say "reduces background hiss" in the product, not "removes
+  all noise".
+* `loudnorm`: single-pass loudness normalisation to -16 LUFS (true peak
+  -1.5 dB). Two clips of very different levels come out within 2 dB of each
+  other. On a very short clip (under a few seconds) the measuring window is
+  short, so the result is approximate. Speech and music both go to the same
+  target, so use it per clip on purpose (a ducked music track normalised to
+  -16 LUFS is as loud as the voice before ducking).
+* a clip's length never changes.

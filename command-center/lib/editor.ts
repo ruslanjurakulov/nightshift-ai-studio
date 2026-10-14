@@ -195,6 +195,12 @@ export const ROTATIONS = [0, 90, 180, 270] as const;
 export const MOVE_ZOOM_MIN = 1;
 export const MOVE_ZOOM_MAX = 4;
 export const MOVE_POINT_DEFAULTS = { zoom: 1, x: 0.5, y: 0.5 } as const;
+/** An overlay's chroma key (modules/timeline.py CHROMA_*). */
+export const CHROMA_SIMILARITY_MIN = 0.01;
+export const CHROMA_SIMILARITY_MAX = 0.6;
+export const CHROMA_SIMILARITY_DEFAULT = 0.15;
+export const CHROMA_BLEND_MAX = 0.5;
+export const CHROMA_BLEND_DEFAULT = 0.1;
 /** Reverse holds every frame of the range in memory at the output size
  *  (modules/timeline.py REVERSE_MAX_BYTES / REVERSE_BYTES_PER_PIXEL). */
 export const REVERSE_MAX_BYTES = 512 * 1024 * 1024;
@@ -263,9 +269,18 @@ const V_CLIP_KEYS = [
   "move",
   "reverse",
   "freeze",
+  "denoise",
+  "loudnorm",
   ...EFFECT_KEYS,
 ];
-const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
+const A_CLIP_KEYS = [
+  ...MEDIA_REQUIRED,
+  "gain_db",
+  "fade_in_s",
+  "fade_out_s",
+  "denoise",
+  "loudnorm",
+];
 const T_REQUIRED = ["id", "start_s", "end_s", "text"];
 const TEXT_STYLE_KEYS = [
   "font",
@@ -305,6 +320,7 @@ const OVERLAY_KEYS = [
   "anim_in_s",
   "anim_out_s",
   "move",
+  "chroma",
 ];
 
 // ── document types ──────────────────────────────────────────────────────────
@@ -372,6 +388,10 @@ export interface VideoClip {
   /** Hold the frame at in_s for the clip's whole length; no sound, speed 1,
    *  not with reverse. Video only. */
   freeze?: boolean;
+  /** Clean-up of the clip's own sound: FFT noise reduction, then loudness
+   *  normalisation (-16 LUFS). Only matters with `audio: true`. */
+  denoise?: boolean;
+  loudnorm?: boolean;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -405,6 +425,9 @@ export interface SoundClip {
    *  document (the editor gives every sound a track of its own). */
   role?: SoundRole;
   duck?: Duck;
+  /** FFT noise reduction / loudness normalisation (-16 LUFS) of this sound. */
+  denoise?: boolean;
+  loudnorm?: boolean;
 }
 
 export interface TextClip {
@@ -462,6 +485,14 @@ export interface PictureOverlay {
   anim_out_s?: number;
   /** Two-keyframe move to the given values over start_s..end_s. */
   move?: { to: OverlayMoveTo };
+  /** Chroma key: pixels near `color` become transparent. */
+  chroma?: ChromaKey;
+}
+
+export interface ChromaKey {
+  color: string;
+  similarity?: number;
+  blend?: number;
 }
 
 /** What an overlay's optional fields mean when absent (modules/timeline.py
@@ -821,6 +852,9 @@ function validateMediaClip(
   }
   if (kind === "V" && "audio" in clip && typeof clip.audio !== "boolean")
     problems.push(`${where}: audio must be true or false`);
+  for (const k of ["denoise", "loudnorm"])
+    if (k in clip && typeof clip[k] !== "boolean")
+      problems.push(`${where}: ${k} must be true or false`);
   if (kind === "V") {
     for (const k of ["reverse", "freeze"])
       if (k in clip && typeof clip[k] !== "boolean")
@@ -921,6 +955,20 @@ function validateMediaClip(
   } else {
     numIn(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems);
   }
+}
+
+/** The twin of modules/timeline.py `_validate_chroma`. */
+function validateChroma(chroma: unknown, where: string, problems: string[]) {
+  const cw = `${where} chroma`;
+  if (!fields(chroma, ["color", "similarity", "blend"], ["color"], cw, problems))
+    return;
+  if (
+    "color" in chroma &&
+    !(typeof chroma.color === "string" && HEX_RE.test(chroma.color))
+  )
+    problems.push(`${cw}: color must be a #RRGGBB colour`);
+  numIn(chroma, "similarity", CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, cw, problems);
+  numIn(chroma, "blend", 0, CHROMA_BLEND_MAX, cw, problems);
 }
 
 /** The twin of modules/timeline.py `_validate_clip_move`. */
@@ -1119,6 +1167,7 @@ function validateOverlays(
     numIn(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems);
     validateAnims(ov, where, problems, false);
     if ("move" in ov) validateOverlayMove(ov.move, where, problems);
+    if ("chroma" in ov) validateChroma(ov.chroma, where, problems);
   });
 }
 
@@ -1599,6 +1648,7 @@ function overlaysOf(v: unknown): PictureOverlay[] {
       ...anim("anim_in"),
       ...anim("anim_out"),
       ...(isObj(o.move) ? { move: o.move as unknown as { to: OverlayMoveTo } } : {}),
+      ...(isObj(o.chroma) ? { chroma: o.chroma as unknown as ChromaKey } : {}),
     });
   }
   return out;
@@ -1622,6 +1672,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...effectsOf(c),
       ...(c.reverse === true ? { reverse: true } : {}),
       ...(c.freeze === true ? { freeze: true } : {}),
+      ...(c.denoise === true ? { denoise: true } : {}),
+      ...(c.loudnorm === true ? { loudnorm: true } : {}),
       ...(isObj(c.move) ? { move: c.move as unknown as ClipMove } : {}),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
@@ -1652,6 +1704,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
         // becomes a track of its own again in toDoc.
         ...(t.role === "music" || t.role === "speech" ? { role: t.role } : {}),
         ...(duckOf(t.duck) ? { duck: duckOf(t.duck) as Duck } : {}),
+        ...(c.denoise === true ? { denoise: true } : {}),
+        ...(c.loudnorm === true ? { loudnorm: true } : {}),
       })),
     );
   // Every text track's texts, in track order (later ones draw on top).
@@ -1735,6 +1789,8 @@ export function toDoc(model: EditorModel): TimelineDoc {
           gain_db: ms(x.gain_db),
           fade_in_s: ms(x.fade_in_s),
           fade_out_s: ms(x.fade_out_s),
+          ...(x.denoise ? { denoise: true } : {}),
+          ...(x.loudnorm ? { loudnorm: true } : {}),
         },
       ],
     });
@@ -1780,6 +1836,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
             ...(o.anim_in ? { anim_in: o.anim_in, anim_in_s: ms(o.anim_in_s ?? ANIM_DEFAULT_S) } : {}),
             ...(o.anim_out ? { anim_out: o.anim_out, anim_out_s: ms(o.anim_out_s ?? ANIM_DEFAULT_S) } : {}),
             ...(o.move ? { move: o.move } : {}),
+            ...(o.chroma ? { chroma: o.chroma } : {}),
           })),
         }
       : {}),

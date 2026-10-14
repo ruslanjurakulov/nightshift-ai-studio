@@ -338,6 +338,16 @@
           "type": "boolean",
           "default": false,
           "description": "Hold the frame at in_s for the clip's whole length (out_s - in_s). No sound; speed must be 1; not with reverse. Video only."
+        },
+        "denoise": {
+          "type": "boolean",
+          "default": false,
+          "description": "FFT noise reduction with noise tracking (afftdn) on the clip's own sound, before loudness and gain; clears a steady hiss below about -35 dB and mostly leaves louder noise alone."
+        },
+        "loudnorm": {
+          "type": "boolean",
+          "default": false,
+          "description": "Single-pass loudness normalisation (loudnorm: -16 LUFS, true peak -1.5 dB, range 11 LU) after denoise, before gain. Approximate on a very short clip."
         }
       }
     },
@@ -415,6 +425,16 @@
         "fade_out_s": {
           "$ref": "#/$defs/seconds",
           "default": 0
+        },
+        "denoise": {
+          "type": "boolean",
+          "default": false,
+          "description": "FFT noise reduction with noise tracking (afftdn) on the clip's own sound, before loudness and gain; clears a steady hiss below about -35 dB and mostly leaves louder noise alone."
+        },
+        "loudnorm": {
+          "type": "boolean",
+          "default": false,
+          "description": "Single-pass loudness normalisation (loudnorm: -16 LUFS, true peak -1.5 dB, range 11 LU) after denoise, before gain. Approximate on a very short clip."
         }
       }
     },
@@ -871,6 +891,34 @@
                   "maximum": 1
                 }
               }
+            }
+          }
+        },
+        "chroma": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "color"
+          ],
+          "description": "Chroma key: pixels near `color` become transparent (ffmpeg chromakey), before the overlay is scaled; opacity and animations apply to what is left.",
+          "properties": {
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "similarity": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 0.6,
+              "default": 0.15,
+              "description": "How far from the colour still counts as it."
+            },
+            "blend": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "default": 0.1,
+              "description": "How softly the edge fades."
             }
           }
         }

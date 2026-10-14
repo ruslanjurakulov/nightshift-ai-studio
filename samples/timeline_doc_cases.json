@@ -11461,6 +11461,359 @@
      }
     ]
    }
+  },
+  {
+   "name": "overlay with a green-screen key",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 3,
+      "chroma": {
+       "color": "#00FF00",
+       "similarity": 0.3,
+       "blend": 0.2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay chroma without a colour",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 3,
+      "chroma": {
+       "similarity": 0.3
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay chroma colour that is a name",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 3,
+      "chroma": {
+       "color": "green"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay chroma similarity too large",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 3,
+      "chroma": {
+       "color": "#00FF00",
+       "similarity": 0.9
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay chroma blend negative",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 3,
+      "chroma": {
+       "color": "#00FF00",
+       "blend": -0.1
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlay chroma with an unknown key",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 1,
+      "end_s": 3,
+      "chroma": {
+       "color": "#00FF00",
+       "spill": 0.5
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "sound with noise reduction and loudness",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     },
+     {
+      "id": "a1",
+      "kind": "A",
+      "clips": [
+       {
+        "id": "m1",
+        "asset_id": "22222222-2222-4222-8222-222222222222",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 3,
+        "denoise": true,
+        "loudnorm": true
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "sound denoise as text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     },
+     {
+      "id": "a1",
+      "kind": "A",
+      "clips": [
+       {
+        "id": "m1",
+        "asset_id": "22222222-2222-4222-8222-222222222222",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 3,
+        "denoise": "yes"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "video clip's own sound with loudness",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "audio": true,
+        "loudnorm": true
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "video clip loudness as a number",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "loudnorm": 1
+       }
+      ]
+     }
+    ]
+   }
   }
  ]
 }

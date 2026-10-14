@@ -19,19 +19,22 @@ not a project dependency — tests keep the two in sync)::
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
                              style?: <one of XFADE_STYLES, crossfade only> },
               speed?: 0.25..4, audio?: bool, reverse?: bool, freeze?: bool,
+              denoise?: bool, loudnorm?: bool,
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
               filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
               flip_h?, flip_v?, rotate?,
               move?: { from: {zoom?, x?, y?}, to: {zoom?, x?, y?} } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
-    A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
+    A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s?,
+              denoise?: bool, loudnorm?: bool }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
               outline_width?, bold?, shadow?, box_color?, box_opacity?, x?, y?,
               anchor?, fade_in_s?, fade_out_s?,
               anim_in?, anim_out?, anim_in_s?, anim_out_s? }
     overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
                opacity?: 0..1, anim_in?, anim_out?, anim_in_s?, anim_out_s?,
-               move?: { to: {x?, y?, w?, opacity?} } }
+               move?: { to: {x?, y?, w?, opacity?} },
+               chroma?: { color: "#RRGGBB", similarity?: 0.01..0.6, blend?: 0..0.5 } }
                (a picture or video over the picture; see below)
 
 Rules this module keeps:
@@ -143,6 +146,20 @@ Rules this module keeps:
   given ones over its ``start_s``..``end_s``; an entrance / exit animation adds
   to it. Animated opacity is the one part that costs real time (a per-pixel
   expression on the overlay), except a move to or from 0, which is a fade.
+* **Chroma key is an overlay option, sound clean-up a clip option.** An overlay
+  (picture or video) may carry ``chroma: {color, similarity?, blend?}``: pixels
+  near ``color`` (a ``#RRGGBB`` colour) become transparent (ffmpeg ``chromakey``);
+  ``similarity`` (``CHROMA_SIMILARITY_MIN``-``CHROMA_SIMILARITY_MAX``, default
+  0.15) is how far from the colour still counts, ``blend`` (0-``CHROMA_BLEND_MAX``,
+  default 0.1) how softly the edge fades. It runs before the picture is scaled,
+  so the overlay's ``opacity`` and animations apply to what is left. An A clip,
+  and a V clip that plays its own sound, may carry ``denoise: true`` (ffmpeg
+  ``afftdn`` with noise tracking: it clears a steady background hiss below about
+  -35 dB, the sound of a quiet room, and mostly leaves louder noise alone) and ``loudnorm: true`` (single-pass EBU R128 to -16 LUFS,
+  true peak -1.5 dB, range 11 LU; on a short clip the measuring window is short,
+  so it is approximate). Denoise runs first, then loudness, then the clip's
+  ``gain_db`` / fades; ducking and the mix are unchanged. Both are
+  dropped when false.
 * **Overlays are a layer above the picture, not a second picture lane.**
   ``overlays`` is a top-level list (so "one V track" stays true): each one is
   a picture or a video (``asset_id``) shown from ``start_s`` to ``end_s`` over
@@ -306,6 +323,11 @@ _OVERLAY_MOVE_KEYS = ("x", "y", "w", "opacity")
 REVERSE_MAX_BYTES = 512 * 1024 * 1024
 REVERSE_BYTES_PER_PIXEL = 1.5
 
+#: An overlay's chroma key (render_spec.CHROMA_* are the same; a test pins them).
+CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, CHROMA_SIMILARITY_DEFAULT = 0.01, 0.6, 0.15
+CHROMA_BLEND_MAX, CHROMA_BLEND_DEFAULT = 0.5, 0.1
+_CHROMA_KEYS = ("color", "similarity", "blend")
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -332,9 +354,9 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade", "move", "reverse", "freeze") + _EFFECT_KEYS
+                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
-_A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
+_A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
 #: Looks only a text clip has (the captions' style has none: it stays as it is).
@@ -348,7 +370,7 @@ _CAPTIONS_KEYS = ("style", "cues")
 _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y",)
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
 _OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
-_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity") + _ANIM_KEYS + ("move",)
+_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity") + _ANIM_KEYS + ("move", "chroma")
 
 #: Defaults normalise() fills in (and the schema documents).
 TEXT_DEFAULTS = {"font": "DejaVu Sans", "size": 64, "color": "#FFFFFF",
@@ -636,6 +658,9 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         speed = clip["speed"] if (_is_num(clip["speed"]) and SPEED_MIN <= clip["speed"] <= SPEED_MAX) else None
     if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
         problems.append(f"{where}: audio must be true or false")
+    for k in ("denoise", "loudnorm"):
+        if k in clip and not isinstance(clip[k], bool):
+            problems.append(f"{where}: {k} must be true or false")
     if kind == KIND_V:
         for k in ("reverse", "freeze"):
             if k in clip and not isinstance(clip[k], bool):
@@ -799,6 +824,16 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
 
 
+def _validate_chroma(chroma, where, problems) -> None:
+    cwhere = f"{where} chroma"
+    if not _fields(chroma, _CHROMA_KEYS, ("color",), cwhere, problems):
+        return
+    if "color" in chroma and not (isinstance(chroma["color"], str) and _HEX_RE.fullmatch(chroma["color"])):
+        problems.append(f"{cwhere}: color must be a #RRGGBB colour")
+    _num_in(chroma, "similarity", CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, cwhere, problems)
+    _num_in(chroma, "blend", 0, CHROMA_BLEND_MAX, cwhere, problems)
+
+
 def _validate_overlays(overlays, fps, problems, claim) -> None:
     """``overlays`` (see the module docstring). Each is judged on its own: they
     may overlap, so there is nothing to compare between them."""
@@ -831,6 +866,8 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
         _validate_anims(ov, where, problems, text=False)
         if "move" in ov:
             _validate_overlay_move(ov["move"], where, problems)
+        if "chroma" in ov:
+            _validate_chroma(ov["chroma"], where, problems)
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -1137,7 +1174,7 @@ def normalise(doc: dict) -> dict:
                         if c["grade"] == GRADE_NEUTRAL:
                             del c["grade"]   # no change: the clip is the one it was without it
                     _normalise_effects(c)
-                    for k in ("reverse", "freeze"):
+                    for k in ("reverse", "freeze", "denoise", "loudnorm"):
                         if c.get(k) is False:
                             del c[k]
                     if "move" in c:
@@ -1146,6 +1183,9 @@ def normalise(doc: dict) -> dict:
                             c["move"][k] = {n: _ms(v) for n, v in c["move"][k].items()}
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
+                    for k in ("denoise", "loudnorm"):
+                        if c.get(k) is False:
+                            del c[k]
             t["clips"].append(c)
         t["clips"].sort(key=lambda c: (c["start_s"], c["id"]))
         out["tracks"].append(t)
@@ -1169,6 +1209,11 @@ def normalise(doc: dict) -> dict:
             _normalise_anims(o)
             if "move" in o:
                 o["move"] = {"to": {k: _ms(v) for k, v in o["move"]["to"].items()}}
+            if "chroma" in o:
+                ch = o["chroma"]
+                o["chroma"] = {"color": ch["color"].upper(),
+                               "similarity": _ms(ch.get("similarity", CHROMA_SIMILARITY_DEFAULT)),
+                               "blend": _ms(ch.get("blend", CHROMA_BLEND_DEFAULT))}
             out["overlays"].append(o)
     return out
 

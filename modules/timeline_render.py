@@ -248,6 +248,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 in_s=clip["in_s"],
                 speed=clip["speed"],
                 reverse=bool(clip.get("reverse")),
+                denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
                 fade_in_s=d_in if d_in > 0 and not joined else 0.0,
                 fade_out_s=d_out if d_out > 0 and not sounding(i + 1) else 0.0,
                 crossfade_s=d_in if joined else 0.0,
@@ -280,6 +281,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 gain_db=clip["gain_db"],
                 fade_in_s=clip["fade_in_s"],
                 fade_out_s=clip["fade_out_s"],
+                denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
                 **extra,
             ))
     return tracks
@@ -352,6 +354,8 @@ def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay
             start_s=first / fps, end_s=last / fps,
             x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"], **_anims(ov),
             **{f"to_{k}": v for k, v in (ov.get("move") or {}).get("to", {}).items()},
+            **({"chroma_color": ov["chroma"]["color"], "chroma_similarity": ov["chroma"]["similarity"],
+                "chroma_blend": ov["chroma"]["blend"]} if "chroma" in ov else {}),
         ))
     return out
 
