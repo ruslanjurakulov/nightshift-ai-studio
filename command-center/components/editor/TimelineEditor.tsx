@@ -69,6 +69,7 @@ import {
   clipAt,
   clipEnd,
   crossfadeOf,
+  crossfadeStyleOf,
   exportActive,
   fitSoundToPicture,
   formatTime,
@@ -82,6 +83,7 @@ import {
   removeText,
   setClipAudio,
   setCrossfade,
+  setCrossfadeStyle,
   setSpeed,
   soundLength,
   soundWarnings,
@@ -103,6 +105,7 @@ import {
   type TextClip,
   type TextPosition,
   type TimelineDoc,
+  type XfadeStyle,
 } from "@/lib/editor";
 import {
   deleteProject,
@@ -139,6 +142,10 @@ import {
 } from "@/lib/editorOverlay";
 import { OverlayInspector, OverlayLayer, OverlayPicker } from "./OverlayPanel";
 import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
+import { TransitionStylePicker } from "./TransitionStylePicker";
+import { TextLookPicker } from "./TextLookPicker";
+import { applyTextLook } from "@/lib/editorTextLook";
+import { previewBoxStyle, previewTextStyle } from "@/lib/editorTextLookPreview";
 import {
   gradeOf,
   previewGradeStyle,
@@ -200,7 +207,12 @@ function textBoxStyle(x: TextClip, width: number): CSSProperties {
     fontSize: `${(x.size / width) * 100}cqw`,
     fontWeight: x.bold === false ? 400 : 700,
     color: x.color ?? TEXT_COLOR,
-    textShadow: `0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 3px ${TEXT_OUTLINE_COLOR}`,
+    // Outline, shadow and box of a text look; a text without any keeps the outline it had.
+    ...previewTextStyle(
+      x,
+      width,
+      `0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 3px ${TEXT_OUTLINE_COLOR}`,
+    ),
   };
 }
 
@@ -1019,7 +1031,11 @@ export function TimelineEditor({
                 className="pointer-events-none absolute whitespace-pre-wrap text-center leading-tight"
                 style={textBoxStyle(x, model.width)}
               >
-                {x.text}
+                {x.box_color ? (
+                  <span style={previewBoxStyle(x, model.width)}>{x.text}</span>
+                ) : (
+                  x.text
+                )}
               </span>
             ))}
           </div>
@@ -1389,6 +1405,10 @@ export function TimelineEditor({
               crossfade={crossfadeOf(clip)}
               maxCrossfade={maxCrossfade(model, clip.id)}
               onCrossfade={(d) => apply(setCrossfade(model, clip.id, d))}
+              crossfadeStyle={crossfadeStyleOf(clip)}
+              onCrossfadeStyle={(s) =>
+                apply(setCrossfadeStyle(model, clip.id, s))
+              }
               onSplit={onSplit}
               onMove={(by) => apply(moveClip(model, clip.id, by))}
               onDelete={() => apply(removeClip(model, clip.id))}
@@ -1399,6 +1419,7 @@ export function TimelineEditor({
               text={text}
               warning={warnings[text.id] ?? null}
               onChange={(patch) => apply(updateText(model, text.id, patch))}
+              onLook={(look) => apply(applyTextLook(model, text.id, look))}
               onDelete={() => apply(removeText(model, text.id))}
             />
           ) : (
@@ -1595,6 +1616,8 @@ function ClipInspector({
   crossfade,
   maxCrossfade: maxX,
   onCrossfade,
+  crossfadeStyle,
+  onCrossfadeStyle,
   onSplit,
   onMove,
   onDelete,
@@ -1629,6 +1652,9 @@ function ClipInspector({
   /** The longest it can be (0 = this clip cannot have one). */
   maxCrossfade: number;
   onCrossfade: (seconds: number) => void;
+  /** How the previous clip blends into this one (`fade` = the plain blend). */
+  crossfadeStyle: XfadeStyle;
+  onCrossfadeStyle: (style: XfadeStyle) => void;
   onSplit: () => void;
   onMove: (by: -1 | 1) => void;
   onDelete: () => void;
@@ -1747,6 +1773,12 @@ function ClipInspector({
             onCommit={onCrossfade}
           />
         ) : null}
+        {crossfade > 0 && maxX ? (
+          <TransitionStylePicker
+            value={crossfadeStyle}
+            onChange={onCrossfadeStyle}
+          />
+        ) : null}
         <p id={`${id}-xf`} className="m-0 text-xs text-[var(--color-muted)]">
           {first
             ? te.crossfadeFirst
@@ -1817,11 +1849,13 @@ function TextInspector({
   text,
   warning,
   onChange,
+  onLook,
   onDelete,
 }: {
   text: TextClip;
   warning: "empty" | "past_end" | null;
   onChange: (patch: Partial<Omit<TextClip, "id">>) => void;
+  onLook: (lookId: string) => void;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -1873,6 +1907,7 @@ function TextInspector({
           onCommit={(v) => onChange({ end_s: v })}
         />
       </div>
+      <TextLookPicker text={text} onPick={onLook} />
       <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
         {te.textSize} · {text.size}
         <input
