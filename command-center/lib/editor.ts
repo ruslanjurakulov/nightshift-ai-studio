@@ -155,6 +155,26 @@ export const XFADE_STYLES = [
 ] as const;
 export type XfadeStyle = (typeof XFADE_STYLES)[number];
 export const XFADE_DEFAULT_STYLE: XfadeStyle = "fade";
+/** Entrance / exit animations of a text or an overlay (modules/timeline.py
+ *  ANIM_IN / ANIM_OUT; a test pins them). Slides are named by the direction the
+ *  item MOVES; `typewriter` is for a text's entrance only. */
+export const ANIM_OUT = [
+  "fade",
+  "slide-up",
+  "slide-down",
+  "slide-left",
+  "slide-right",
+  "pop",
+] as const;
+export const ANIM_IN = [...ANIM_OUT, "typewriter"] as const;
+export type AnimOut = (typeof ANIM_OUT)[number];
+export type AnimIn = (typeof ANIM_IN)[number];
+/** An animation's length in seconds (ANIM_MIN_S / ANIM_MAX_S / ANIM_DEFAULT_S). */
+export const ANIM_MIN_S = 0.1;
+export const ANIM_MAX_S = 2;
+export const ANIM_DEFAULT_S = 0.4;
+/** Texts that may write themselves letter by letter in one document. */
+export const MAX_TYPEWRITER_TEXTS = 20;
 /** A text's drop shadow, in output pixels (modules/timeline.py SHADOW_MAX). */
 export const SHADOW_MAX = 20;
 /** A text box's opacity when its colour is set without one. */
@@ -212,6 +232,7 @@ const TEXT_STYLE_KEYS = [
 ];
 /** Looks only a text clip has; the captions' style stays as it is. */
 const TEXT_LOOK_KEYS = ["shadow", "box_color", "box_opacity"];
+const ANIM_KEYS = ["anim_in", "anim_out", "anim_in_s", "anim_out_s"];
 const T_CLIP_KEYS = [
   ...T_REQUIRED,
   ...TEXT_STYLE_KEYS,
@@ -221,13 +242,24 @@ const T_CLIP_KEYS = [
   "anchor",
   "fade_in_s",
   "fade_out_s",
+  ...ANIM_KEYS,
 ];
 const TRANSITION_KEYS = ["type", "duration_s"];
 const TRANSITION_ALLOWED = [...TRANSITION_KEYS, "style"];
 const CAPTION_STYLE_KEYS = [...TEXT_STYLE_KEYS, "y"];
 const CUE_KEYS = ["id", "start_s", "end_s", "text"];
 const OVERLAY_REQUIRED = ["id", "asset_id", "start_s", "end_s"];
-const OVERLAY_KEYS = [...OVERLAY_REQUIRED, "x", "y", "w", "opacity"];
+const OVERLAY_KEYS = [
+  ...OVERLAY_REQUIRED,
+  "x",
+  "y",
+  "w",
+  "opacity",
+  "anim_in",
+  "anim_out",
+  "anim_in_s",
+  "anim_out_s",
+];
 
 // ── document types ──────────────────────────────────────────────────────────
 
@@ -305,6 +337,12 @@ export interface TextClip {
   /** A box behind the text (instead of its outline); `box_opacity` needs it. */
   box_color?: string;
   box_opacity?: number;
+  /** Entrance / exit animation and its length (default ANIM_DEFAULT_S). Not
+   *  together with fade_in_s / fade_out_s on the same side. */
+  anim_in?: AnimIn;
+  anim_out?: AnimOut;
+  anim_in_s?: number;
+  anim_out_s?: number;
 }
 
 export interface TimelineTrack {
@@ -328,6 +366,11 @@ export interface PictureOverlay {
   y: number;
   w: number;
   opacity: number;
+  /** Entrance / exit animation and its length (no typewriter on a picture). */
+  anim_in?: AnimOut;
+  anim_out?: AnimOut;
+  anim_in_s?: number;
+  anim_out_s?: number;
 }
 
 /** What an overlay's optional fields mean when absent (modules/timeline.py
@@ -593,6 +636,17 @@ export function validateTimeline(doc: unknown): string[] {
     );
   if (counted.reduce((n, t) => n + t.clips.length, 0) > MAX_TOTAL_CLIPS)
     problems.push(`timeline: at most ${MAX_TOTAL_CLIPS} clips in one timeline`);
+  const nType = counted
+    .filter((t) => t.kind === "T")
+    .reduce(
+      (n, t) =>
+        n + t.clips.filter((c) => isObj(c) && c.anim_in === "typewriter").length,
+      0,
+    );
+  if (nType > MAX_TYPEWRITER_TEXTS)
+    problems.push(
+      `timeline: at most ${MAX_TYPEWRITER_TEXTS} typewriter texts (got ${nType})`,
+    );
 
   if (doc.captions !== undefined && doc.captions !== null)
     validateCaptions(doc.captions, problems, claim);
@@ -766,6 +820,39 @@ function validateTimedText(
   textField(obj, "text", where, problems);
 }
 
+/** The twin of modules/timeline.py `_validate_anims`. */
+function validateAnims(
+  obj: Record<string, unknown>,
+  where: string,
+  problems: string[],
+  text: boolean,
+) {
+  const lists: [string, readonly string[]][] = [
+    ["anim_in", text ? ANIM_IN : ANIM_OUT],
+    ["anim_out", ANIM_OUT],
+  ];
+  for (const [key, allowed] of lists) {
+    if (key in obj && !(typeof obj[key] === "string" && allowed.includes(obj[key] as string)))
+      problems.push(`${where}: ${key} is not an animation this item has`);
+    numIn(obj, `${key}_s`, ANIM_MIN_S, ANIM_MAX_S, where, problems);
+    if (`${key}_s` in obj && !(key in obj))
+      problems.push(`${where}: ${key}_s needs ${key}`);
+  }
+  const spans = ["anim_in", "anim_out"]
+    .filter((k) => k in obj)
+    .map((k) => obj[`${k}_s`] ?? ANIM_DEFAULT_S);
+  const { start_s: s, end_s: e } = obj;
+  if (
+    spans.length &&
+    spans.every(isNum) &&
+    isNum(s) &&
+    isNum(e) &&
+    e > s &&
+    (spans as number[]).reduce((a, b) => a + b, 0) > ms(e) - ms(s) + 1e-9
+  )
+    problems.push(`${where}: the animations are longer than the item is shown`);
+}
+
 function validateTextClip(
   clip: unknown,
   where: string,
@@ -794,6 +881,13 @@ function validateTextClip(
     problems.push(`${where}: anchor is not known`);
   numIn(clip, "fade_in_s", 0, MAX_DURATION_S, where, problems);
   numIn(clip, "fade_out_s", 0, MAX_DURATION_S, where, problems);
+  validateAnims(clip, where, problems, true);
+  for (const [anim, fade] of [
+    ["anim_in", "fade_in_s"],
+    ["anim_out", "fade_out_s"],
+  ] as const)
+    if (anim in clip && isNum(clip[fade]) && clip[fade] > 0)
+      problems.push(`${where}: ${anim} and ${fade} both set — use one`);
   const { start_s: s, end_s: e } = clip;
   const fi = clip.fade_in_s ?? 0;
   const fo = clip.fade_out_s ?? 0;
@@ -850,6 +944,7 @@ function validateOverlays(
     }
     for (const k of ["x", "y", "opacity"]) numIn(ov, k, 0, 1, where, problems);
     numIn(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems);
+    validateAnims(ov, where, problems, false);
   });
 }
 
@@ -1293,6 +1388,14 @@ function overlaysOf(v: unknown): PictureOverlay[] {
     )
       continue;
     const num = (x: unknown, d: number) => (isNum(x) ? x : d);
+    const anim = (key: "anim_in" | "anim_out") =>
+      typeof o[key] === "string" &&
+      (ANIM_OUT as readonly string[]).includes(o[key] as string)
+        ? {
+            [key]: o[key] as AnimOut,
+            [`${key}_s`]: num(o[`${key}_s`], ANIM_DEFAULT_S),
+          }
+        : {};
     out.push({
       id: o.id,
       asset_id: o.asset_id,
@@ -1302,6 +1405,8 @@ function overlaysOf(v: unknown): PictureOverlay[] {
       y: num(o.y, OVERLAY_DEFAULTS.y),
       w: num(o.w, OVERLAY_DEFAULTS.w),
       opacity: num(o.opacity, OVERLAY_DEFAULTS.opacity),
+      ...anim("anim_in"),
+      ...anim("anim_out"),
     });
   }
   return out;
@@ -1476,6 +1581,8 @@ export function toDoc(model: EditorModel): TimelineDoc {
             y: ms(o.y),
             w: ms(o.w),
             opacity: ms(o.opacity),
+            ...(o.anim_in ? { anim_in: o.anim_in, anim_in_s: ms(o.anim_in_s ?? ANIM_DEFAULT_S) } : {}),
+            ...(o.anim_out ? { anim_out: o.anim_out, anim_out_s: ms(o.anim_out_s ?? ANIM_DEFAULT_S) } : {}),
           })),
         }
       : {}),

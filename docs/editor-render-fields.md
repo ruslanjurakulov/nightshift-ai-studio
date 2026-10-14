@@ -20,6 +20,7 @@ note for text looks).
 | # | Branch | Fields | State |
 |---|--------|--------|-------|
 | 1 | `claude/render-xfade-more` | `transition.style` (23 more names) | PR open |
+| 2 | `claude/render-anim-inout` | text and overlay `anim_in`, `anim_out`, `anim_in_s`, `anim_out_s` | PR open (stacked on 1) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -43,3 +44,40 @@ old picture in a shrinking horizontal band. `pixelize`, `hblur` and
 `distance` look like a plain mix on flat colours — only textures show them.
 Duration limits are unchanged (0.2–2 s). The picker already lists every name
 (glyph + en/ru/uz label added with this change); the UI builder may regroup.
+
+## 2. Entrance / exit animations (text clips and overlays)
+
+Fields (all optional, on a T clip and on an entry of `overlays`):
+
+| field | values | default | notes |
+|-------|--------|---------|-------|
+| `anim_in` | `fade`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `pop`, `typewriter` | none | `typewriter` only on a TEXT |
+| `anim_out` | `fade`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `pop` | none | no typewriter |
+| `anim_in_s` | 0.1 – 2 s | 0.4 when `anim_in` is set | refused without `anim_in` |
+| `anim_out_s` | 0.1 – 2 s | 0.4 when `anim_out` is set | refused without `anim_out` |
+
+Rules the UI must respect (the validators refuse otherwise):
+
+* in + out durations (a missing one counts as 0.4) must fit in the time the
+  item is shown (`end_s - start_s`);
+* on a text, `anim_in` and `fade_in_s > 0` cannot both be set (same for
+  `anim_out` / `fade_out_s`): a fade IS an animation. The other side may keep
+  its plain fade. Offer either the old fade slider or the animation picker,
+  not both on the same side;
+* at most 20 texts per document with `typewriter`;
+* captions (`captions.style`) have no animation fields (the caption-styles
+  track owns captions).
+
+What each one does in the export: every animation except `typewriter` also fades
+the alpha (0 to 1 on entry, 1 to 0 on exit) over its duration. Slides are named
+by the direction the item MOVES: `slide-up` enters from below and leaves
+upwards. A slide travels 15 % of the frame (width for left/right, height for
+up/down). `pop` scales from 60 % to 100 % about the item's centre (a text:
+about its anchor). `typewriter` shows one more character at a time, left to
+right, with the text's final position and wrapping fixed from the first
+character. Easing is linear. There is no browser preview of these; say in the
+product that the export shows the motion.
+
+Model round trip: `toModel`/`toDoc` keep all four fields on texts (they are
+spread) and on overlays (`PictureOverlay` in `lib/editor.ts` gained the same
+four optional fields).

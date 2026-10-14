@@ -24,9 +24,11 @@ not a project dependency — tests keep the two in sync)::
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
               outline_width?, bold?, shadow?, box_color?, box_opacity?, x?, y?,
-              anchor?, fade_in_s?, fade_out_s? }
+              anchor?, fade_in_s?, fade_out_s?,
+              anim_in?, anim_out?, anim_in_s?, anim_out_s? }
     overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
-               opacity?: 0..1 }   (a picture or video over the picture; see below)
+               opacity?: 0..1, anim_in?, anim_out?, anim_in_s?, anim_out_s? }
+               (a picture or video over the picture; see below)
 
 Rules this module keeps:
 
@@ -58,6 +60,17 @@ Rules this module keeps:
   (0-20 px, a soft black drop shadow), ``box_color`` (a ``#RRGGBB`` box drawn
   behind the text instead of its outline) and ``box_opacity`` (0-1, only with
   a ``box_color``). A text without them renders the ASS file it always did.
+* **Entrance and exit animations are named, closed and short.** A text clip
+  or an overlay may carry ``anim_in`` / ``anim_out`` (one of ``ANIM_IN`` /
+  ``ANIM_OUT``) and ``anim_in_s`` / ``anim_out_s`` (``ANIM_MIN_S``-``ANIM_MAX_S``
+  seconds, ``ANIM_DEFAULT_S`` when absent; a duration without its animation is
+  refused). ``fade`` fades the alpha; ``slide-up|down|left|right`` moves the
+  item that way by ``ANIM_SLIDE`` of the frame while it fades; ``pop`` scales it
+  from ``ANIM_POP_FROM`` to full size while it fades; ``typewriter`` (text, in
+  only) reveals the characters one by one. In and out together never take
+  longer than the item is shown. On a text, ``anim_in`` replaces ``fade_in_s``
+  (and ``anim_out`` ``fade_out_s``): giving both is refused rather than guessed.
+  Without any of these fields every item renders as it always did.
 * **Times are seconds, normalised to milliseconds**, and the render cuts on
   the frame grid (``round(t * fps)``), so the same document always renders
   the same frames.
@@ -209,6 +222,21 @@ BOX_OPACITY_DEFAULT = 0.7
 #: (render_spec.SPEED_MIN/MAX are the same numbers; a test pins them).
 SPEED_MIN, SPEED_MAX = 0.5, 2.0
 
+#: Entrance / exit animations of a text or an overlay (render_spec.ANIM_* are
+#: the same lists; a test pins them). The name decides which filter or ASS tag
+#: is written, so it is never free text. Slides are named by the direction the
+#: item MOVES (``slide-up`` enters from below, leaves upwards).
+ANIM_OUT = ("fade", "slide-up", "slide-down", "slide-left", "slide-right", "pop")
+ANIM_IN = ANIM_OUT + ("typewriter",)
+ANIM_MIN_S, ANIM_MAX_S, ANIM_DEFAULT_S = 0.1, 2.0, 0.4
+#: How far a slide travels (a fraction of the frame's width or height) and the
+#: size a pop starts from / ends at.
+ANIM_SLIDE = 0.15
+ANIM_POP_FROM = 0.6
+#: A typewriter text writes one ASS event per step; this many per document keeps
+#: the subtitle file (and libass) small however long the document is.
+MAX_TYPEWRITER_TEXTS = 20
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -242,15 +270,16 @@ _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
 #: Looks only a text clip has (the captions' style has none: it stays as it is).
 _TEXT_LOOK_KEYS = ("shadow", "box_color", "box_opacity")
+_ANIM_KEYS = ("anim_in", "anim_out", "anim_in_s", "anim_out_s")
 _T_CLIP_KEYS = (_T_REQUIRED + _TEXT_STYLE_KEYS + _TEXT_LOOK_KEYS
-                + ("x", "y", "anchor", "fade_in_s", "fade_out_s"))
+                + ("x", "y", "anchor", "fade_in_s", "fade_out_s") + _ANIM_KEYS)
 _TRANSITION_KEYS = ("type", "duration_s")
 _TRANSITION_ALLOWED = _TRANSITION_KEYS + ("style",)
 _CAPTIONS_KEYS = ("style", "cues")
 _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y",)
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
 _OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
-_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity")
+_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity") + _ANIM_KEYS
 
 #: Defaults normalise() fills in (and the schema documents).
 TEXT_DEFAULTS = {"font": "DejaVu Sans", "size": 64, "color": "#FFFFFF",
@@ -472,6 +501,11 @@ def validate(doc: Any) -> List[str]:
     if sum(len(t["clips"]) for t in counted) > MAX_TOTAL_CLIPS:
         problems.append(f"timeline: at most {MAX_TOTAL_CLIPS} clips in one timeline")
 
+    n_type = sum(1 for t in counted if t.get("kind") == KIND_T
+                 for c in t["clips"] if isinstance(c, dict) and c.get("anim_in") == "typewriter")
+    if n_type > MAX_TYPEWRITER_TEXTS:
+        problems.append(f"timeline: at most {MAX_TYPEWRITER_TEXTS} typewriter texts (got {n_type})")
+
     captions = doc.get("captions")
     if captions is not None:
         _validate_captions(captions, problems, claim)
@@ -582,6 +616,24 @@ def _validate_timed_text(obj, where, problems) -> None:
     _text(obj, "text", where, problems)
 
 
+def _validate_anims(obj, where, problems, *, text: bool) -> None:
+    """``anim_in`` / ``anim_out`` and their durations (see the module docstring).
+    Pure shape and range; the span check needs the item's times."""
+    names = {"anim_in": ANIM_IN if text else ANIM_OUT, "anim_out": ANIM_OUT}
+    for key, allowed in names.items():
+        if key in obj and not (isinstance(obj[key], str) and obj[key] in allowed):
+            problems.append(f"{where}: {key} must be one of {list(allowed)}")
+        dur = key + "_s"
+        _num_in(obj, dur, ANIM_MIN_S, ANIM_MAX_S, where, problems)
+        if dur in obj and key not in obj:
+            problems.append(f"{where}: {dur} needs {key}")
+    s, e = obj.get("start_s"), obj.get("end_s")
+    spans = [obj.get(k + "_s", ANIM_DEFAULT_S) for k in ("anim_in", "anim_out") if k in obj]
+    if spans and all(_is_num(v) for v in spans) and _in_range(s) and _in_range(e) and e > s \
+            and sum(spans) > _ms(e) - _ms(s) + 1e-9:
+        problems.append(f"{where}: the animations ({sum(spans):g} s) are longer than the item is shown")
+
+
 def _validate_text_clip(clip, where, problems, claim) -> None:
     if not _fields(clip, _T_CLIP_KEYS, _T_REQUIRED, where, problems):
         return
@@ -601,6 +653,10 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
         problems.append(f"{where}: anchor must be one of {list(ANCHORS)}")
     for k in ("fade_in_s", "fade_out_s"):
         _num_in(clip, k, 0, MAX_DURATION_S, where, problems)
+    _validate_anims(clip, where, problems, text=True)
+    for anim, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
+        if anim in clip and _is_num(clip.get(fade)) and clip[fade] > 0:
+            problems.append(f"{where}: {anim} and {fade} both set — use one (a fade is an animation)")
     s, e = clip.get("start_s"), clip.get("end_s")
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
@@ -636,6 +692,7 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
         for k in ("x", "y", "opacity"):
             _num_in(ov, k, 0, 1, where, problems)
         _num_in(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems)
+        _validate_anims(ov, where, problems, text=False)
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -924,6 +981,7 @@ def normalise(doc: dict) -> dict:
                         del c["shadow"]
                 if "box_color" in c:
                     c["box_opacity"] = _ms(c.get("box_opacity", BOX_OPACITY_DEFAULT))
+                _normalise_anims(c)
             else:
                 defaults = V_DEFAULTS if kind == KIND_V else A_DEFAULTS
                 c = {**copy.deepcopy(defaults), **copy.deepcopy(clip)}
@@ -962,8 +1020,17 @@ def normalise(doc: dict) -> dict:
             o["asset_id"] = o["asset_id"].lower()
             for k in ("start_s", "end_s", "x", "y", "w", "opacity"):
                 o[k] = _ms(o[k])
+            _normalise_anims(o)
             out["overlays"].append(o)
     return out
+
+
+def _normalise_anims(item: dict) -> None:
+    """Fill the duration of each animation that is named (the item is valid:
+    a duration without its name was refused)."""
+    for key in ("anim_in", "anim_out"):
+        if key in item:
+            item[key + "_s"] = _ms(item.get(key + "_s", ANIM_DEFAULT_S))
 
 
 def _reject_constant(name):

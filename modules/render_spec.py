@@ -212,6 +212,15 @@ SHADOW_MAX = 20.0
 BOX_OPACITY_DEFAULT = 0.7
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
+#: Entrance / exit animations (modules/timeline.py holds the same lists and
+#: numbers, a test pins them). The name picks the ASS tags or filter written, so
+#: only a name on the list ever reaches either.
+ANIM_OUT = ("fade", "slide-up", "slide-down", "slide-left", "slide-right", "pop")
+ANIM_IN = ANIM_OUT + ("typewriter",)
+ANIM_MIN_S, ANIM_MAX_S, ANIM_DEFAULT_S = 0.1, 2.0, 0.4
+ANIM_SLIDE = 0.15
+ANIM_POP_FROM = 0.6
+
 #: Text overlay anchors: which point of the text box sits at (x, y). The ASS
 #: \an numpad code for each is in ass_captions.ANCHOR_AN.
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
@@ -241,6 +250,42 @@ def _put_if(d: dict, key: str, value, default) -> None:
     # is exactly what it always was (it is compared and cached elsewhere).
     if value != default:
         d[key] = value
+
+
+def _anims_to_dict(obj, d: dict) -> None:
+    """The animation fields of a TextOverlay / PictureOverlay, only when set."""
+    for key in ("anim_in", "anim_out"):
+        if getattr(obj, key) is not None:
+            d[key] = getattr(obj, key)
+            d[key + "_s"] = getattr(obj, key + "_s")
+
+
+def _anims_from_dict(d: dict) -> dict:
+    out = {}
+    for key in ("anim_in", "anim_out"):
+        if d.get(key) is not None:
+            out[key] = str(d[key])
+            out[key + "_s"] = float(d[key + "_s"] if d.get(key + "_s") is not None else ANIM_DEFAULT_S)
+    return out
+
+
+def _anim_problems(name: str, o, allowed_in: Sequence[str], span: Tuple[float, float]) -> List[str]:
+    problems: List[str] = []
+    total = 0.0
+    for key, allowed in (("anim_in", allowed_in), ("anim_out", ANIM_OUT)):
+        v = getattr(o, key)
+        dur = getattr(o, key + "_s")
+        if v is None:
+            continue
+        if v not in allowed:
+            problems.append(f"{name} has unknown {key} {v!r}")
+        if not (_finite(dur) and ANIM_MIN_S <= dur <= ANIM_MAX_S):
+            problems.append(f"{name} {key}_s must be from {ANIM_MIN_S:g} to {ANIM_MAX_S:g}")
+        else:
+            total += dur
+    if total and all(_finite(v) for v in span) and total > span[1] - span[0] + 1e-9:
+        problems.append(f"{name} animations are longer than it is shown")
+    return problems
 
 
 @dataclass(frozen=True)
@@ -422,6 +467,11 @@ class TextOverlay:
     shadow: float = 0.0
     box_color: Optional[str] = None
     box_opacity: float = BOX_OPACITY_DEFAULT
+    #: Entrance / exit animation (None = none: the overlay is the one it was).
+    anim_in: Optional[str] = None
+    anim_out: Optional[str] = None
+    anim_in_s: float = ANIM_DEFAULT_S
+    anim_out_s: float = ANIM_DEFAULT_S
 
     def to_dict(self) -> dict:
         d = {"start_s": self.start_s, "end_s": self.end_s, "text": self.text,
@@ -433,6 +483,7 @@ class TextOverlay:
         if self.box_color is not None:
             d["box_color"] = self.box_color
             d["box_opacity"] = self.box_opacity
+        _anims_to_dict(self, d)
         return d
 
     @staticmethod
@@ -458,6 +509,7 @@ class TextOverlay:
             box_color=(str(d["box_color"]) if d.get("box_color") is not None else None),
             box_opacity=float(d["box_opacity"] if d.get("box_opacity") is not None
                               else BOX_OPACITY_DEFAULT),
+            **_anims_from_dict(d),
         )
 
 
@@ -478,11 +530,18 @@ class PictureOverlay:
     y: float = 0.5
     w: float = 0.3
     opacity: float = 1.0
+    #: Entrance / exit animation (None = none; a typewriter is for text only).
+    anim_in: Optional[str] = None
+    anim_out: Optional[str] = None
+    anim_in_s: float = ANIM_DEFAULT_S
+    anim_out_s: float = ANIM_DEFAULT_S
 
     def to_dict(self) -> dict:
-        return {"path": self.path, "kind": self.kind, "start_s": self.start_s,
-                "end_s": self.end_s, "x": self.x, "y": self.y, "w": self.w,
-                "opacity": self.opacity}
+        d = {"path": self.path, "kind": self.kind, "start_s": self.start_s,
+             "end_s": self.end_s, "x": self.x, "y": self.y, "w": self.w,
+             "opacity": self.opacity}
+        _anims_to_dict(self, d)
+        return d
 
     @staticmethod
     def from_dict(d: dict) -> "PictureOverlay":
@@ -493,6 +552,7 @@ class PictureOverlay:
             kind=str(d.get("kind") or KIND_IMAGE),
             start_s=num("start_s", 0.0), end_s=num("end_s", 0.0),
             x=num("x", 0.5), y=num("y", 0.5), w=num("w", 0.3), opacity=num("opacity", 1.0),
+            **_anims_from_dict(d),
         )
 
 
@@ -671,6 +731,7 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
                             "of the frame")
         if not 0 <= o.opacity <= 1:
             problems.append(f"{name} opacity must be from 0 to 1")
+        problems.extend(_anim_problems(name, o, ANIM_OUT, (o.start_s, o.end_s)))
     return problems
 
 
@@ -744,6 +805,10 @@ def validate(spec: RenderSpec) -> List[str]:
             problems.append(f"overlay {i} box_color must be a #RRGGBB colour")
         if not (_finite(o.box_opacity) and 0 <= o.box_opacity <= 1):
             problems.append(f"overlay {i} box_opacity must be from 0 to 1")
+        problems.extend(_anim_problems(f"overlay {i}", o, ANIM_IN, (o.start_s, o.end_s)))
+        for anim, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
+            if getattr(o, anim) is not None and _finite(getattr(o, fade)) and getattr(o, fade) > 0:
+                problems.append(f"overlay {i} has {anim} and {fade}: use one of them")
     problems.extend(_picture_overlay_problems(spec))
     return problems
 
@@ -931,6 +996,54 @@ def picture_overlay_inputs(spec: RenderSpec) -> List[str]:
     return out
 
 
+def _overlay_anim_filters(o: PictureOverlay, t_start: float, t_end: float,
+                          spec: RenderSpec) -> Tuple[str, str, str]:
+    """``(filters, x term, y term)`` for an overlay's entrance and exit: the
+    filters are appended to its chain (after the shift to its first frame, so
+    ``t`` is output time), the terms are added to the overlay's centre. Every
+    animation fades the alpha plane (``fade ... alpha=1`` on the YUVA picture);
+    a slide also offsets the centre by ``ANIM_SLIDE`` of the frame, a pop also
+    scales the picture about its centre from ``ANIM_POP_FROM``. Only names on
+    ``ANIM_IN`` / ``ANIM_OUT`` and formatted numbers are written."""
+    filters = ""
+    move_x = move_y = ""
+    scale_terms: List[str] = []
+    dist_x, dist_y = ANIM_SLIDE * spec.width, ANIM_SLIDE * spec.height
+    for key, entering in (("anim_in", True), ("anim_out", False)):
+        kind = getattr(o, key)
+        if kind is None:
+            continue
+        if kind not in (ANIM_IN if entering else ANIM_OUT) or kind == "typewriter":
+            raise ValueError(f"unknown picture animation {kind!r}")
+        d = float(getattr(o, key + "_s"))
+        t0 = t_start if entering else t_end - d
+        filters += (f",fade=t={'in' if entering else 'out'}:st={t0:.3f}:d={d:.3f}:alpha=1")
+        progress = f"clip((t-{t0:.3f})/{d:.3f},0,1)"
+        if kind in _SLIDE_DIRECTIONS:
+            vx, vy = _SLIDE_DIRECTIONS[kind]
+            # entering: from -v*dist to 0; leaving: from 0 to +v*dist
+            amount = f"(1-{progress})" if entering else progress
+            sign = "-" if entering else "+"
+            if vx:
+                move_x += f"{sign}({vx * dist_x:.3f})*{amount}"
+            if vy:
+                move_y += f"{sign}({vy * dist_y:.3f})*{amount}"
+        elif kind == "pop":
+            small = 1.0 - ANIM_POP_FROM
+            scale_terms.append(f"(1-{small:.3f}*(1-{progress}))" if entering
+                               else f"(1-{small:.3f}*{progress})")
+    if scale_terms:
+        factor = "*".join(scale_terms)
+        filters += (f",scale=w='max(2,trunc(iw*{factor}/2)*2)':h='max(2,trunc(ih*{factor}/2)*2)'"
+                    ":eval=frame")
+    return filters, move_x, move_y
+
+
+#: Direction each slide moves (x, y); the same table the ASS writer has.
+_SLIDE_DIRECTIONS = {"slide-up": (0, -1), "slide-down": (0, 1), "slide-left": (-1, 0),
+                     "slide-right": (1, 0)}
+
+
 def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
                             ) -> Tuple[List[str], str]:
     """The filter-graph parts that lay the picture overlays over ``source`` (a
@@ -972,11 +1085,15 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
             chain = (f"trim=end_frame=1,setpts=PTS-STARTPTS,{colour},fps={fps},"
                      f"tpad=stop={last - first - 1}:stop_mode=clone")
         chain += f",setpts=PTS+{first}/({fps}*TB)"
+        move_x = move_y = ""
+        if o.anim_in is not None or o.anim_out is not None:
+            extra, move_x, move_y = _overlay_anim_filters(o, first / fps, last / fps, spec)
+            chain += extra
         parts.append(f"[{first_input + k}:v]{chain}[p{k}]")
         lo, hi = (first - 0.5) / fps, (last - 0.5) / fps
         out = f"[pv{k}]"
-        parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}-w/2)'"
-                     f":y='round({o.y * spec.height:.3f}-h/2)'"
+        parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}{move_x}-w/2)'"
+                     f":y='round({o.y * spec.height:.3f}{move_y}-h/2)'"
                      f":enable='between(t,{lo:.6f},{hi:.6f})':eof_action=pass{out}")
         source = out
     return parts, source

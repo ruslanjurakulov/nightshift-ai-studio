@@ -434,6 +434,43 @@
           "maximum": 1,
           "default": 0.7,
           "description": "Opacity of the box; needs box_color."
+        },
+        "anim_in": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop",
+            "typewriter"
+          ],
+          "description": "Entrance animation. fade/slide-*/pop also fade the alpha in; slides are named by the direction the item moves; typewriter writes a text letter by letter (text only). Not with fade_in_s."
+        },
+        "anim_out": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Exit animation. Not with fade_out_s."
+        },
+        "anim_in_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the entrance; needs anim_in."
+        },
+        "anim_out_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the exit; needs anim_out. In + out never exceed the time the item is shown."
         }
       }
     },
@@ -668,6 +705,42 @@
           "maximum": 1.0,
           "default": 1.0,
           "description": "0 = invisible (renders nothing), 1 = opaque."
+        },
+        "anim_in": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Entrance animation. fade/slide-*/pop also fade the alpha in; slides are named by the direction the item moves; typewriter writes a text letter by letter (text only)."
+        },
+        "anim_out": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Exit animation."
+        },
+        "anim_in_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the entrance; needs anim_in."
+        },
+        "anim_out_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the exit; needs anim_out. In + out never exceed the time the item is shown."
         }
       }
     }

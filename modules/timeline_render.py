@@ -50,6 +50,10 @@ How a timeline maps onto the spec:
   text, with ffmpeg ``overlay`` (``render_spec.picture_overlay_filters``). One
   that starts after the picture ends, or whose opacity is 0, renders nothing
   and is left out, so the command is the one the document without it gets.
+* **Animations** — a text's or overlay's ``anim_in`` / ``anim_out`` (and their
+  durations) are copied onto the ``TextOverlay`` / ``PictureOverlay``; the ASS
+  writer (text) and the overlay filter graph (pictures) turn them into the
+  entrance and exit. Items without them are the objects they always were.
 * **Text looks** — a T clip's ``shadow``, ``box_color`` and ``box_opacity`` become
   the overlay's ASS style (a drop shadow; an opaque or translucent box instead of
   the outline); a text without them is written as it always was.
@@ -262,6 +266,17 @@ def _text_looks(c: dict) -> dict:
     return out
 
 
+def _anims(c: dict) -> dict:
+    """A text's or overlay's animation fields as spec fields ({} without any:
+    the spec object is then exactly what it was before they existed)."""
+    out = {}
+    for key in ("anim_in", "anim_out"):
+        if key in c:
+            out[key] = c[key]
+            out[key + "_s"] = c[key + "_s"]
+    return out
+
+
 def _text(doc: dict) -> List[TextOverlay]:
     overlays: List[TextOverlay] = []
     for track in doc["tracks"]:
@@ -273,7 +288,7 @@ def _text(doc: dict) -> List[TextOverlay]:
                 size=c["size"], color=c["color"], outline_color=c["outline_color"],
                 outline_width=c["outline_width"], bold=c["bold"], x=c["x"], y=c["y"],
                 anchor=c["anchor"], fade_in_s=c["fade_in_s"], fade_out_s=c["fade_out_s"],
-                **_text_looks(c),
+                **_text_looks(c), **_anims(c),
             ))
     captions = doc.get("captions")
     if captions:
@@ -303,7 +318,7 @@ def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay
             path=asset.path,
             kind=KIND_VIDEO if asset.kind == tl.ASSET_VIDEO else KIND_IMAGE,
             start_s=first / fps, end_s=last / fps,
-            x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"],
+            x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"], **_anims(ov),
         ))
     return out
 
