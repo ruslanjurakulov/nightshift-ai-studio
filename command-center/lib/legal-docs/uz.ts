@@ -153,7 +153,26 @@ export const uz: LegalTexts = {
         id: "cookies",
         heading: "9. Cookie va mahalliy xotira",
         body: [
-          "Biz faqat Xizmat ishlashi uchun kerakli narsalardan foydalanamiz: kirish seansi cookieʼlari (Supabase), tanlangan tilni eslab qoluvchi cookie, oxirgi koʻrilgan kanalni eslab qoluvchi cookie, YouTube ulanayotganda ishlatiladigan 10 daqiqalik cookie va brauzeringizning mahalliy xotirasidagi mavzu (tema) tanlovi. Reklama yoki analitika cookieʼlaridan foydalanmaymiz.",
+          "Nightshift faqat ishlashi uchun zarur narsalardan foydalanadi. Biz reklama, kuzatuv va analitika cookieʼlarini oʻrnatmaymiz, uchinchi tomon analitikasini ulamaymiz va cookie bannerini koʻrsatmaymiz: quyidagilarning hammasi siz soʻragan narsa uchun qatʼiy zarur (tizimga kirish, saqlangan tanlov yoki kirish yoxud ulanish jarayonini himoya qilish).",
+          {
+            table: {
+              head: ["Nima", "Nima uchun", "Qancha muddat"],
+              rows: [
+                ["Kirish seansi cookieʼlari (ularni kirish xizmatimiz, Supabase, oʻrnatadi)", "Sizni tizimda saqlaydi va akkauntingiz maʼlumotlarini boshqalardan yashiradi.", "Chiqquningizcha yoki seans tugaguncha; Xizmatdan foydalanayotganingizda yangilanadi"],
+                ["`chronos_locale`", "Siz tanlagan tilni eslab qoladi.", "1 yil"],
+                ["`ns_view`", "Mobil yoki kompyuter koʻrinishidan qaysi birini tanlaganingizni eslab qoladi.", "1 yil"],
+                ["`chronos_channel`, `nightshift_org`, `ns_sidebar` (kirgandan keyin)", "Oxirgi marta qaysi kanal va tashkilotni koʻrganingizni hamda yon menyu kengligini eslab qoladi.", "1 yil"],
+                ["`ns_auth_pending`, `ns_recovery`, `ns_invite`", "Xatdagi havola orqali kirishni, parolni tiklashni yoki siz ochgan taklifni yakunlaydi. Ularni faqat kerak boʻlgan sahifalar oʻqiy oladi.", "10 daqiqa, 15 daqiqa va 24 soat"],
+                ["`yt_oauth_nonce`, `ig_oauth_nonce`, `tt_oauth_nonce`, `tt_oauth_pkce` (akkaunt ulanayotganda)", "Rozilik ekranida turganingizda YouTube (yoki boshqa) akkauntingizni ulashni saytlararo soxta soʻrovdan himoya qiladi.", "10 daqiqa"],
+                ["Mahalliy xotira: `chronos_theme`", "Yorugʻ yoki qorongʻi mavzuni eslab qoladi.", "Siz tozalamaguningizcha"],
+                ["Mahalliy xotira: tugallanmagan muharrir qoralamalari, yon menyu va panel joylashuvi tanlovlari, oʻqilgan bildirishnoma belgilari, tugallanmagan yordamchi rejasi, yashirilgan topshiriqlar", "Ekran sozlamalaringiz va tugallanmagan ishingizni qurilmangizda saqlaydi. Ular bizga yuborilmaydi. Muharrir qoralamalari tizimdan chiqqaningizda oʻchiriladi.", "Siz tozalamaguningizcha (qaytilmagan qoralama avtomatik oʻchiriladi)"],
+                ["Seans xotirasi (faqat shu brauzer varagʻi)", "Shu varaqda oʻtgan sahifalaringizni, tugallanmagan yaratish shaklini, bir martalik xabarni va animatsiyani pauzaga qoʻyganingizni eslab qoladi.", "Varaqni yopmaguningizcha"],
+              ],
+            },
+          },
+          "Uchinchi tomonlar. Narxlar sahifasi toʻlov provayderimiz Paddle’dan narxlarni koʻrib chiqish skriptini yuklaydi, shunda narxlar sizning valyutangizda koʻrinadi. Skript va u yoki Paddle’ning kontent tarmogʻi oʻrnatadigan har qanday cookie (masalan, botlardan himoya cookieʼsi) Paddle’ga tegishli; [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) bilan tanishing. Toʻlov Paddle’ning oʻz oynasida amalga oshadi. YouTube akkauntingizni ulaganingizda siz Google’ga yoʻnaltirilasiz. Boshqa uchinchi tomon skriptlarini yuklamaymiz.",
+          "Sahifa statistikasi. Qaysi ochiq sahifalar oʻqilishini bilish uchun biz koʻrishlarni oʻz serverlarimizda oʻzimiz sanaymiz: har bir ochiq sahifa va har bir kun uchun — nechta koʻrish, qaysi saytdan kelingan (faqat uning nomi), telefon oʻlchamidagi yoki kattaroq ekranda va qaysi tilda. Bunda cookie ham, mahalliy xotira ham ishlatilmaydi, IP manzil, user agent va hech qanday identifikator saqlanmaydi, shuning uchun statistikani siz yoki boshqa tashriflaringiz bilan bogʻlab boʻlmaydi. Brauzeringiz Do Not Track yoki Global Privacy Control yuborsa, hech narsa sanalmaydi. Hech qanday maʼlumot analitika provayderiga ketmaydi.",
+          "Cookie va mahalliy xotirani brauzer sozlamalarida istalgan vaqtda oʻchirishingiz mumkin. Shunda Xizmat tilingizni, mavzuingizni va koʻrinish tanlovingizni unutadi, siz esa tizimdan chiqasiz.",
         ],
       },
       {

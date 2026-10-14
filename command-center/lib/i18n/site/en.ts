@@ -464,6 +464,7 @@ export const siteEn = {
     googleAccess: "Manage Google access",
     contact: "Contact",
     signIn: "Sign in",
+    cookies: "Cookies and storage",
     note: "Made in the small hours. Published when you say.",
   },
   solutions: {

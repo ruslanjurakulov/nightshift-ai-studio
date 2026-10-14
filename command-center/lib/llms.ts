@@ -1,4 +1,4 @@
-import { dictionaries } from "@/lib/i18n";
+import { dictionaries, LOCALES } from "@/lib/i18n";
 import { getDevDictionary } from "@/lib/i18n/dev";
 import { getLegalTexts } from "@/lib/legal-docs";
 import { isSolutionId, solutionHref, SOLUTIONS_PATH } from "@/lib/solutions";
@@ -19,7 +19,7 @@ import { listedPagePaths } from "@/lib/site-pages";
  *   model names, prices and role words;
  * - no price is printed: /pricing is the only place a number lives.
  *
- * The site is one URL per page in all three languages (the language follows the
+ * The site is one URL per page in every language (the language follows the
  * visitor's cookie or browser setting), so there is one file, in English, and
  * it says so.
  */
@@ -92,7 +92,7 @@ export function llmsTxt(origin: string | null, devPages: boolean): string {
     "",
     `> ${oneLine(t.landing.meta.description)}`,
     "",
-    "Every page is available in English, Russian and Uzbek at the same address; the language follows the visitor's setting. This file lists the public pages only. The signed-in app is private.",
+    `Every page is available in ${LOCALES.map((l) => l.label).join(", ")} at the same address; the language follows the visitor's setting. This file lists the public pages only. The signed-in app is private.`,
     "",
   ];
   for (const section of SECTIONS) {

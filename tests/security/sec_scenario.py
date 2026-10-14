@@ -372,6 +372,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The unique @username (0096): tests/security/sec_user_handles_0096.py — Alice has one, Bob has none.
     import sec_user_handles_0096
     sec_user_handles_0096.seed(conn, sc)
+    # First-party page counts (0101): tests/security/sec_page_views_0101.py — one daily total.
+    import sec_page_views_0101
+    sec_page_views_0101.seed(conn, sc)
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
