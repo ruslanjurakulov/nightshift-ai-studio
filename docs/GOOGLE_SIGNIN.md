@@ -10,8 +10,10 @@ qilasiz: Google Cloud Console va Supabase Dashboard. Hammasi bir marta qilinadi.
 > (`external.google === true`). Siz Supabase'da Google'ni yoqmaguncha `/login` va
 > `/signup` oddiy email formasi bo'lib qoladi (tugma ham, "or" chizig'i ham
 > ko'rinmaydi). Yoqgach tugma **deploy qilmasdan** paydo bo'ladi. Javob
-> aniqlanmasa (tarmoq xatosi) ham tugma ko'rsatilmaydi. Qo'shimcha env o'zgaruvchi
-> kerak emas.
+> aniqlanmasa (tarmoq xatosi, timeout) ham tugma ko'rsatilmaydi. Savolni sahifani
+> chizayotgan **server** beradi va javobni bir daqiqagacha eslab qoladi: tugma
+> birinchi chizishdayoq bor yoki yo'q (sahifa keyin sakramaydi). Qo'shimcha env
+> o'zgaruvchi kerak emas.
 
 > **Eng muhim qoida.** Google'dan olinadigan **Client Secret** faqat Supabase
 > Dashboard'dagi maydonga yoziladi. Uni chatga, git'ga, GitHub'ga (issue, PR,
@@ -29,7 +31,7 @@ qilasiz: Google Cloud Console va Supabase Dashboard. Hammasi bir marta qilinadi.
               ▼
 Google tanlov va ruxsat oynasi (faqat openid, email, profile)
               ▼
-https://kgqzdjttlnhrxrlqxqge.supabase.co/auth/v1/callback   (Supabase)
+https://<project-ref>.supabase.co/auth/v1/callback   (Supabase)
               ▼
 /auth/callback?code=…      exchangeCodeForSession  →  sessiya cookie'lari
      • Google manzilni TASDIQLAGAN bo'lishi shart (email_verified === true),
@@ -119,10 +121,10 @@ alohida hech narsa yaratilmaydi va qo'shimcha migratsiya kerak emas:
    - **Authorized JavaScript origins**: `https://nightshift-ai.studio`
      (oqim serverda, Supabase orqali o'tadi, shuning uchun majburiy emas; qo'yish zarar qilmaydi).
    - **Authorized redirect URIs** — aynan shu bitta:
-     `https://kgqzdjttlnhrxrlqxqge.supabase.co/auth/v1/callback`
-     (loyiha ref'i bu hujjatning avvalgi tahriridan; repoda uni tasdiqlovchi ochiq
-     konfiguratsiya yo'q. Ishonch uchun Supabase → Authentication → Sign In /
-     Providers → Google ichidagi **Callback URL (for OAuth)** maydonidan nusxalang)
+     `https://<project-ref>.supabase.co/auth/v1/callback`
+     (Supabase → Authentication → Sign In / Providers → Google ichidagi
+     **Callback URL (for OAuth)** maydonidan nusxalang; `<project-ref>` ni o'zingiz
+     yozmang)
    - **Create**. Chiqqan **Client ID** va **Client secret** ni nusxalang
      (secret'ni faqat keyingi qadamda Supabase'ga qo'yasiz).
 
@@ -132,7 +134,7 @@ alohida hech narsa yaratilmaydi va qo'shimcha migratsiya kerak emas:
 
 ## 2. Supabase Dashboard
 
-Loyiha: `kgqzdjttlnhrxrlqxqge`.
+Loyihangiz: https://supabase.com/dashboard dagi Nightshift loyihasi.
 
 1. **Authentication → Sign In / Providers → Google**:
    - **Enable Sign in with Google: ON**.
@@ -161,7 +163,13 @@ ro'yxatiga o'sha domen ham qo'shilsin.
 ## 3. Sinash
 
 0. Provayderni yoqqach `/login` ni qayta oching: **Continue with Google** paydo
-   bo'lishi kerak (yo'q bo'lsa: Supabase'da Google ON va Save qilinganini tekshiring).
+   bo'lishi kerak (yo'q bo'lsa: Supabase'da Google ON va Save qilinganini tekshiring;
+   server javobni bir daqiqagacha eslab qoladi, shuning uchun 1-2 daqiqa kuting va
+   qayta yuklang). Tugma `auth/v1/settings` so'rovi muvaffaqiyatsiz bo'lsa ham
+   yashirin qoladi (masalan serverdan Supabase'ga yetib bo'lmasa); shuning uchun
+   yoqqach tugma chiqqanini albatta tekshiring.
+   **Sign-up o'chiq bo'lsa** (Allow new users to sign up = OFF) yangi Google
+   foydalanuvchilar `/login?error=google_failed` ga tushadi; mavjud hisoblar kira oladi.
 
 Kodni sinash uchun Google'ga to'liq aylanish kerak emas — `npm test` (tarmoqsiz)
 tugma, xato kodlari va `email_verified` tekshiruvini qamrab oladi. Haqiqiy

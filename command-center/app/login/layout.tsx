@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getDictionary } from "@/lib/i18n/server";
+import { GoogleEnabled } from "@/components/auth/GoogleEnabled";
 import { runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 
 /** The sign-in page is client code; its title and description live here. */
@@ -22,5 +23,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function LoginLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <GoogleEnabled>{children}</GoogleEnabled>;
 }
