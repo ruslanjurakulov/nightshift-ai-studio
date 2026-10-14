@@ -90,6 +90,22 @@ describe("the sidebar's collapse toggle", () => {
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
   });
 
+  it("the wordmark link is named Nightshift in both states: full lockup open, the bare N on the rail, never a tile", () => {
+    const { container } = sidebar();
+    const home = () => screen.getByRole("link", { name: "Nightshift" });
+    let mark = home().querySelector("svg")!;
+    expect(mark.getAttribute("data-wordmark")).toBe("full");
+    expect(mark.getAttribute("aria-hidden")).toBe("true");
+    expect(home().textContent).toBe(""); // the name is the link's aria-label, not a second copy in the text
+    expect(container.querySelector("aside svg rect[fill='#030303']")).toBeNull();
+
+    fireEvent.click(toggle("Collapse sidebar"));
+    mark = home().querySelector("svg")!;
+    expect(mark.getAttribute("data-wordmark")).toBe("mark");
+    expect(mark.querySelector("path[fill-rule='evenodd']")).toBeNull(); // no lettering on the rail
+    expect(container.querySelector("aside svg rect[fill='#030303']")).toBeNull();
+  });
+
   it("an open sidebar shows no tooltip (the names are written out)", () => {
     sidebar();
     fireEvent.mouseOver(screen.getByRole("link", { name: "Library" }));

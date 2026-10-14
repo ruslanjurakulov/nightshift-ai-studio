@@ -145,3 +145,63 @@ A Short is its own YouTube video with its own id and its own metrics, so it is
 its own row; these columns are what keep it from reading as a second long video.
 Additive: two columns, no drop, no rename, no delete. See `docs/MEASUREMENT.md`
 for why Shorts are off unless a channel turns them on.
+
+## Storage policies: migrations only, never the dashboard
+
+Policies on `storage.objects` are permissive and **add up**: one broad `select` policy overrides every
+narrow one beside it. So they are created by a migration, reviewed like any other SQL, and **not** by
+the dashboard's "New policy" button (it names them `<name> <random>_0` and offers a template that tests
+only the bucket).
+
+That happened once. The live project held a second read policy on the private `previews` bucket,
+`previews_read 1dyqf8r_0` (`select to authenticated using (bucket_id = 'previews')`), which no migration
+created: any signed-in user could list, read and sign every customer's review render
+(`<channel_id>/<video_id>.mp4`). The bucket held no objects at the time, so nothing had leaked.
+Migration **0098** drops it by name and re-asserts the tenant-scoped `previews_read` from 0018.
+`voice-previews` (shared on purpose), `avatars` and `publish-staging` are not touched.
+
+It also runs a **best-effort** clean-up: any other permissive `select`/`all` policy that names the
+`previews` bucket (the literal, or a `'{previews,...}'` array) without calling
+`accessible_channel_ids()`/`is_platform_admin()` is dropped, with a NOTICE. This is a heuristic for
+the known drift and common dashboard-style variants, **not a catch-all**, and restrictive policies
+are never dropped. Known survivors (pinned by tests in `tests/security/test_sec_previews_policy.py`):
+`bucket_id <> 'avatars'`, `like 'prev%'`, `~ '^prev'`, `'prev' || 'iews'`, a sub-select on
+`storage.buckets`, a policy with no bucket test, and a broad policy that also contains a scoping
+function name (`bucket_id = 'previews' or ... accessible_channel_ids(...)`, `... and
+(is_platform_admin() or true)`). So the check that counts after applying is the allowlist query below.
+
+**The live project needs 0098 applied; it is not a repo-only fix.** The security lab applies it to a
+scratch database and attacks the result, but CI never connects to the live project. Apply the whole
+file in one go (the `drop` and `create` of `previews_read` belong together: the drop alone leaves
+previews unreadable for everyone until the create runs, which is safe but breaks the review panel),
+then verify read-only with these queries (all are at the bottom of the migration):
+
+```sql
+-- 1. THE CHECK THAT COUNTS: strict allowlist. Expected: 0 rows. A row is a policy this repo did not create.
+select policyname, cmd, roles::text, permissive, qual as using_expr, with_check as check_expr
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+   and policyname not in ('avatars_delete_own','avatars_insert_own','avatars_select_own',
+                          'avatars_update_own','previews_read','voice_previews_read');
+-- 2. all policies, USING and WITH CHECK separately. Expected: exactly those six.
+select policyname, cmd, roles::text, permissive, qual as using_expr, with_check as check_expr
+  from pg_policies where schemaname = 'storage' and tablename = 'objects' order by policyname;
+-- 3. what the clean-up looks for (heuristic). Expected: 0 rows; passing it does not prove there is no leak.
+-- 4. SELECT/ALL policies that name no bucket at all. Expected: 0 rows.
+-- 5. select tablename, policyname, cmd, roles::text, qual from pg_policies
+--     where schemaname = 'storage' and tablename <> 'objects';   -- expected 0 rows or known ones
+-- 6. select id, public from storage.buckets where id = 'previews';   -- public = false; ZERO rows = no such bucket row
+```
+
+Queries 3 to 6 are written out in the migration. Query 5 was not checked against a real project (the
+lab does not model the real storage schema). Rolling back means re-running the scoped `previews_read`
+drop and create together; never recreate a broad one. If a row shows up in query 1, read it with query
+2 and remove it by a migration, not by hand.
+
+## Deleting an account: the profile photo
+
+A person's profile photo is a Storage object, `avatars/<uid>/avatar.jpg` (migration 0097), and it
+is **not** removed when the account is (there is no row to cascade from; the version marker lives in
+the user's auth metadata). When an account is deleted, remove that object too: with the Storage API
+and the service key, e.g. `DELETE /storage/v1/object/avatars/<uid>/avatar.jpg` (or `remove()` in
+supabase-js), **never** with `delete from storage.objects` in SQL. A row deleted in SQL leaves the file
+behind in the object store, so the photo would stay on disk with nothing pointing at it.

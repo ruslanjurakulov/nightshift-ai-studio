@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
+import { AttemptsFullError, createAttempt } from "@/lib/create-attempt";
+import { formatCredits } from "@/lib/credits";
+import { fmt } from "@/lib/i18n";
+import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
-import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
+import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
 
 /**
  * "Run now" — trigger this channel's pipeline on demand.
@@ -15,6 +18,11 @@ import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
  * rather than starting the run. Confirm POSTs to /api/agent/run, which dispatches
  * the daily-video workflow for this channel on GitHub Actions — the server does
  * no heavy work, it just asks GitHub to start the same job the cron runs.
+ *
+ * The run carries an idempotency key (one per intent, kept for a retry of the same inputs, so a double
+ * click or a lost answer cannot hold credits twice) and, when the estimate line is showing a price, that
+ * price as `max_credits`. While the price is loading or unreadable the confirm waits, so a price nobody has
+ * seen is never confirmed. See lib/create-attempt.ts and lib/run-answer.ts, which CreateStudio shares.
  *
  * Two presentations, same logic:
  * - `variant="panel"` (default) is the Agents-page card, with a title and hint,
@@ -30,6 +38,8 @@ export function RunNowButton({
   variant = "panel",
   label,
   canRun = true,
+  userId = "",
+  orgId = null,
 }: {
   /** The scoped channel's id, or null when "All channels" is selected. */
   channelId: string | null;
@@ -42,13 +52,30 @@ export function RunNowButton({
   /** Whether the caller is an owner/admin of the channel's organization — the
    *  role /api/agent/run requires. Presentation only; the route re-checks. */
   canRun?: boolean;
+  /** The signed-in user's id from the server page (getUser()): lets the idempotency key survive a reload of this
+   *  tab. Empty (not known) = memory only. Never shown, never stored in the clear. */
+  userId?: string;
+  /** The open organization when the page knows it: part of what the stored key is for. */
+  orgId?: string | null;
 }) {
   const { t, locale } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const [creditError, setCreditError] = useState<string | null>(null);
   const [extraOff, setExtraOff] = useState(false);
   const toast = useToast();
+  // What the estimate line says (it is mounted while the confirm is open): a figure is the run's ceiling.
+  const [price, setPrice] = useState<PriceReport>({ state: "loading" });
+  const shownPrice = price.state === "priced" ? price.credits : null;
+  const priceHold = !!channelId && (price.state === "loading" || price.state === "failed");
+  const [retryNonce, setRetryNonce] = useState(0);
+  // The channel is part of what the key stands for (its signature), so another channel never gets this key.
+  const [attempt] = useState(() => createAttempt());
+  const sending = useRef(false);
+  const [replayed, setReplayed] = useState(false);
+  // Bumped when an answer changes what the attempt knows (settled, unsure, blocked), so the button re-reads it.
+  const [tick, setTick] = useState(0);
+  // The error on screen is the "credits are held" one: it goes away when the input changes (a new intent).
+  const [errorBlocked, setErrorBlocked] = useState(false);
 
   // Optional per-run topic + data-backed suggestions (panel variant only).
   type Idea = { label: string; source: "demand" | "proven" };
@@ -64,6 +91,43 @@ export function RunNowButton({
   const [styleOverride, setStyleOverride] = useState("");
 
   const blocked = !channelId || !githubConfigured || !canRun;
+
+  // What the person decided, as the run's body (without the key and the price). Its JSON is the intent's signature.
+  function runFields() {
+    const trimmed = topic.trim();
+    const dur = Number(duration);
+    const style = styleOverride.trim();
+    return {
+      channel_id: channelId,
+      ...(trimmed ? { topic: trimmed } : {}),
+      ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
+      ...(language ? { language } : {}),
+      ...(style ? { visual_style: style } : {}),
+    };
+  }
+  const scope = userId && channelId ? { userId, orgId, channelId } : undefined;
+  const intentSig = JSON.stringify(runFields());
+  const intentRef = useRef(intentSig);
+  intentRef.current = intentSig;
+  // What this attempt knows about this intent (credits still held after a start that definitely failed, unsure, or
+  // the scope full of such intents). It lives in sessionStorage, which the server render cannot see, so it is read
+  // AFTER mount, never during render: the server and the first client render both show "not read yet", and the
+  // hydration matches. Until it has been read for THIS intent, nothing can be sent: Make is disabled (a brief,
+  // honest wait), and the notice appears one tick after mount.
+  const statusStamp = `${userId}\0${orgId ?? ""}\0${channelId ?? ""}\0${intentSig}`;
+  const [read, setRead] = useState<{ stamp: string; status: ReturnType<typeof attempt.status> } | null>(null);
+  useEffect(() => {
+    setRead({ stamp: statusStamp, status: channelId ? attempt.status(intentSig, scope) : { unsure: false, blocked: null, full: false } });
+    // scope is derived from the stamp's parts; tick bumps when an answer changes what is known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt, statusStamp, tick]);
+  const statusRead = !channelId || read?.stamp === statusStamp;
+  const known = read?.stamp === statusStamp ? read.status : { unsure: false, blocked: null, full: false };
+  const heldBlock = known.blocked;
+  // Too many earlier requests are still waiting for their credits: a NEW intent is refused (no key, no request).
+  const tooMany = known.full;
+  const stopped = !statusRead || heldBlock !== null || tooMany;
+  const heldText = tooMany ? t.create.flow.startTooMany : heldBlock === null ? null : heldBlock > 0 ? fmt(t.create.flow.startFailedHeld, { n: formatCredits(heldBlock, locale) }) : t.create.flow.startFailedHeldShort;
 
   async function loadIdeas() {
     setIdeasPhase("loading");
@@ -81,42 +145,98 @@ export function RunNowButton({
     }
   }
 
+  // This same intent waits for credits that are still held, or the scope is full of such intents (lib/create-attempt.ts).
+  const isStopped = () => {
+    const k = attempt.status(JSON.stringify(runFields()), scope);
+    return k.blocked !== null || k.full;
+  };
+
   async function run() {
-    if (!channelId) return;
+    // A start that definitely failed while its credits are still held: this same intent is not sent again (lib/run-answer.ts).
+    if (!channelId || sending.current || priceHold || isStopped()) return;
+    sending.current = true;
     setPhase("starting");
     setCreditError(null);
-    const trimmed = topic.trim();
-    const dur = Number(duration);
-    const style = styleOverride.trim();
+    setExtraOff(false);
+    setReplayed(false);
+    const fields = runFields();
+    const sig = JSON.stringify(fields);
+    // One intent = one key: channel + topic + options, NOT the price (max_credits carries that), 30-minute expiry.
+    // With a user id it is also kept in this tab's sessionStorage as a hash (never the topic), so a reload after a
+    // lost answer reuses it; without one it is in memory only (lib/create-attempt.ts).
+    let idempotency_key: string;
+    try {
+      idempotency_key = attempt.keyFor(sig, scope);
+    } catch (e) {
+      // keyFor and status() read the same state, so this should not happen; if they ever disagree the form must not hang
+      // in "starting". Nothing was sent, so no credits were taken or held.
+      sending.current = false;
+      setTick((n) => n + 1);
+      const message = e instanceof AttemptsFullError ? t.create.flow.startTooMany : `${t.agents.runFailed} ${t.create.flow.notTaken}`;
+      setCreditError(message);
+      setExtraOff(false);
+      setErrorBlocked(false);
+      setPhase("error");
+      toast.error(message);
+      return;
+    }
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          channel_id: channelId,
-          ...(trimmed ? { topic: trimmed } : {}),
-          ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
-          ...(language ? { language } : {}),
-          ...(style ? { visual_style: style } : {}),
+          ...fields,
+          idempotency_key,
+          ...(shownPrice !== null ? { max_credits: shownPrice } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const unauthorized = data.error === "github_unauthorized";
-        const credit = creditRunError(data, t, locale);
-        setErrorKey(unauthorized ? "unauthorized" : "failed");
-        setCreditError(credit);
-        setExtraOff(isExtraOffRefusal(data));
-        setPhase("error");
-        toast.error(credit ?? (unauthorized ? t.agents.runUnauthorized : t.agents.runFailed));
+      const answer = readRunAnswer(res, data, t, locale, attempt.isUnsure());
+      // The answer is about THIS key. If the person changed the intent while it was on its way, what it taught
+      // (settled, unsure, blocked) is recorded against that key only, and nothing is said about the new intent.
+      const stale = intentRef.current !== sig;
+      if (answer.outcome !== "failed") {
+        attempt.settle(idempotency_key);
+        setTick((n) => n + 1);
+        if (answer.outcome === "started") toast.success(t.agents.runQueued);
+        // Started (or already started) is true of the intent that was sent. If the person has since changed the form,
+        // it is not said about, and does not disable, what is on screen now.
+        if (stale) {
+          setPhase("idle");
+          return;
+        }
+        setReplayed(answer.outcome === "replay");
+        setPhase("queued");
         return;
       }
-      setPhase("queued");
-      toast.success(t.agents.runQueued);
-    } catch {
-      setErrorKey("failed");
+      if (answer.settled) attempt.settle(idempotency_key);
+      if (answer.unsure) attempt.markUnsure(idempotency_key);
+      if (answer.blockedCredits !== null) attempt.markBlocked(answer.blockedCredits, idempotency_key);
+      setTick((n) => n + 1);
+      if (stale) {
+        setPhase("idle");
+        return;
+      }
+      setCreditError(answer.message);
+      setExtraOff(answer.extraOff);
+      setErrorBlocked(answer.blockedCredits !== null);
       setPhase("error");
-      toast.error(t.agents.runFailed);
+      toast.error(answer.message);
+    } catch {
+      // Unknown whether it arrived: the key is kept (and remembered as unsure), so trying again is safe.
+      attempt.markUnsure(idempotency_key);
+      setTick((n) => n + 1);
+      if (intentRef.current !== sig) {
+        setPhase("idle");
+        return;
+      }
+      const unsure = unsureRunAnswer(t).message;
+      setCreditError(unsure);
+      setErrorBlocked(false);
+      setPhase("error");
+      toast.error(unsure);
+    } finally {
+      sending.current = false;
     }
   }
 
@@ -126,11 +246,18 @@ export function RunNowButton({
         <>
           <button
             type="button"
-            onClick={run}
+            aria-disabled={(priceHold && price.state === "loading") || stopped}
+            data-price-hold={priceHold ? price.state : undefined}
+            onClick={() => {
+              // Unreadable: the button is the retry. Loading: nothing until the figure arrives.
+              if (stopped) return;
+              if (price.state === "failed") setRetryNonce((n) => n + 1);
+              else void run();
+            }}
             className="btn-primary text-sm"
             style={{ borderColor: "var(--color-warn)", color: "var(--color-warn)" }}
           >
-            {t.agents.runConfirm}
+            {priceHold ? (price.state === "failed" ? t.common.retry : t.credits.priceChecking) : t.agents.runConfirm}
           </button>
           <button
             type="button"
@@ -143,8 +270,11 @@ export function RunNowButton({
       ) : (
         <button
           type="button"
-          disabled={blocked || phase === "starting"}
-          onClick={() => setPhase("confirm")}
+          disabled={blocked || phase === "starting" || stopped}
+          onClick={() => {
+            setPrice({ state: "loading" });
+            setPhase("confirm");
+          }}
           className="btn-primary text-sm disabled:opacity-40"
         >
           {phase === "starting" ? t.agents.runStarting : label ?? t.agents.runBtn}
@@ -153,10 +283,14 @@ export function RunNowButton({
 
       <span className="tnum text-sm" aria-live="polite">
         {phase === "queued" ? (
-          <span className="text-[var(--color-ok)]">{t.agents.runQueued}</span>
-        ) : phase === "error" ? (
+          <span className="text-[var(--color-ok)]">{replayed ? t.create.flow.alreadySent : t.agents.runQueued}</span>
+        ) : heldText !== null ? (
+          // A start that definitely failed with its credits still held: said again after a reload, and for as long as
+          // this same intent is the one on screen.
+          <span className="text-[var(--color-fail)]">{heldText}</span>
+        ) : phase === "error" && !errorBlocked ? (
           <span className="text-[var(--color-fail)]">
-            {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
+            {creditError ?? t.agents.runFailed}
             {extraOff && (
               <>
                 {" "}
@@ -169,7 +303,12 @@ export function RunNowButton({
       {/* The estimate before the run is confirmed (nothing before 0020). */}
       {phase === "confirm" && (
         <div className="basis-full">
-          <CreditEstimateLine channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
+          <CreditEstimateLine
+            channelId={channelId}
+            durationS={Number(duration) > 0 ? Number(duration) : null}
+            onPrice={setPrice}
+            refreshKey={retryNonce}
+          />
         </div>
       )}
     </div>

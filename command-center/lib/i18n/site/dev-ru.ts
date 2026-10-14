@@ -162,7 +162,7 @@ export const devRu: DevDictionary = {
       description: "Подключите Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes и другие к Nightshift и создавайте видео обычной просьбой к ассистенту.",
     },
     signinOff: {
-      description: "Подключите Claude Code, OpenClaw, Cursor, Hermes и другие к Nightshift с API-ключом и делайте видео, просто попросив ассистента. Вход для Claude и ChatGPT скоро появится.",
+      description: "Подключите Claude Code, OpenClaw, Cursor, Hermes и другие к Nightshift по API-ключу и делайте видео просьбой к ассистенту. Вход для Claude и ChatGPT скоро.",
       paidLine: "API-ключи уже работают с любым ассистентом, который умеет отправлять заголовок. Claude и ChatGPT будут подключаться через вход — скоро.",
       paidTitle: "Баланс API",
       paidBody: "API-ключи и REST API оплачиваются с предоплаченного баланса API. Подключение через вход, которое войдёт в каждый платный тариф, скоро появится.",

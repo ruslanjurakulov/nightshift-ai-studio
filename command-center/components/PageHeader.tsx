@@ -74,15 +74,18 @@ export function PageHeader({
   title,
   subtitle,
   actions,
+  compactPhone = false,
 }: {
   icon: PageIcon;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   actions?: React.ReactNode;
+  /** A tool page whose controls should start on the first phone screen: below sm the slug line and the lead line are left out (the title stays, it is the page's h1). */
+  compactPhone?: boolean;
 }) {
   const Icon = ICONS[icon] ?? Sparkles;
   return (
-    <header className="ns-pagehead">
+    <header className="ns-pagehead" data-compact-phone={compactPhone || undefined}>
       {/* The slug line the public pages open with: the page's mark, then a hairline. Decorative; the title names the page. */}
       <div aria-hidden className="ns-slug">
         <Icon className="size-[18px]" strokeWidth={1.9} />

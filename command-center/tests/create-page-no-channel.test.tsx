@@ -24,7 +24,7 @@ vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: t
 vi.mock("@/lib/server/creative", () => ({ loadStudioModels: async () => [] }));
 vi.mock("@/lib/server/upsell", () => ({ loadUpsellCatalog: async () => null }));
 vi.mock("@/lib/server/channel-dna", () => ({ channelDnaForCreate: async () => ({ withStudio: (p: unknown) => p, run: null, studio: null }) }));
-vi.mock("@/lib/supabase/server", () => ({ createClient: async () => null }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => null, getUser: async () => null }));
 vi.mock("@/lib/server/credits", () => ({ readCreditAccount: async () => null }));
 vi.mock("@/lib/server/editor", () => ({ loadEditorProjects: async () => ({ state: "not_available" }) }));
 

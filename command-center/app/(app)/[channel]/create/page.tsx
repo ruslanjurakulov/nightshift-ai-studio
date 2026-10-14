@@ -15,6 +15,7 @@ import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
+import { presetPrefill } from "@/lib/presets";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
@@ -22,7 +23,7 @@ import { parseStyleId } from "@/lib/style-kits";
 import { prefillModel } from "@/lib/models-discovery";
 import { deskFromQuery, isMediaDesk } from "@/lib/creative/desks";
 import { DeskBar, StudioOverview, YouTubeDesk, type CreditsReading, type ProjectsReading } from "@/components/studio/Desks";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
 
@@ -65,11 +66,14 @@ export default async function CreatePage({
   const dna = await channelDnaForCreate(scopedChannel);
   // "Use in Studio" from the Models catalog (/create?tool=t2v&model=<id>) also picks
   // that model — shape-checked here; the panel keeps it only if it offers it for the tool.
-  const initial = prefillModel(dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool)), q.model);
+  // The Presets gallery adds a template or a voice (lib/presets): it fills the same form.
+  const initial = prefillModel(presetPrefill(dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool)), q), q.model);
   // Home's composer: topic, length and language for the channel run below.
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
   const operator = await isOperator();
+  // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
+  const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
   // kit as the starting style — fills the chip, nothing more. The panel keeps it only
   // if it is one of the organization's kits as loaded, so a stale or foreign id reads
@@ -88,6 +92,8 @@ export default async function CreatePage({
       targets={targets}
       initial={runInitial}
       dna={dna.run}
+      userId={user?.id ?? ""}
+      orgId={genOrgId}
     />
   );
 
@@ -146,7 +152,7 @@ export default async function CreatePage({
           // sidebar's rows is a client navigation to the same page, and without a
           // new key the panel would keep the tool it already had.
           <GenerateSection
-            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}`}
+            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}`}
             desk={desk}
             orgId={genOrgId}
             models={models}

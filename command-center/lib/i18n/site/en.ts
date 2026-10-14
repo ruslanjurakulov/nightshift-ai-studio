@@ -1,3 +1,5 @@
+import { studioPageEn } from "../studio-page/en";
+
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
  * out of the big dictionaries so the marketing pages can change without
@@ -104,6 +106,10 @@ export const siteEn = {
     source: "From the live price list",
     cta: "Start free",
     more: "See all prices",
+  },
+  /** The /terms search-result description. The page shows the full summary of the document; this is only the meta text. */
+  legalMeta: {
+    terms: "The rules for using Nightshift: your channel and content, what is not allowed, prepaid credits, payments and refunds, and our liability.",
   },
   compare: {
     slug: "By hand or with Nightshift",
@@ -435,6 +441,8 @@ export const siteEn = {
     paySlug: "Payments",
     faqSlug: "Questions",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and approve every video before it airs.",
@@ -589,6 +597,18 @@ export const siteEn = {
     welcomeNote: "{n} free credits once, when you create an account.",
     unavailable: "Sign-in is switched off on this server for now, so nothing you type here is sent anywhere. Please come back a little later.",
     unavailableSignup: "Sign-up is switched off on this server for now, so nothing you type here is sent anywhere. Please come back a little later.",
+    google: {
+      button: "Continue with Google",
+      or: "or",
+      consentPre: "By continuing you agree to the",
+      terms: "Terms of Service",
+      consentAnd: "and",
+      privacy: "Privacy Policy",
+      consentPost: ".",
+      errDenied: "Google sign-in was cancelled. Nothing was changed. You can try again, or use your email below.",
+      errUnverified: "Google has not confirmed that email address, so we did not sign you in. Confirm it with Google, or use your email and a password.",
+      errFailed: "Couldn't sign you in with Google. Please try again, or use your email below.",
+    },
   },
   notFound: {
     meta: "Off air",
@@ -597,6 +617,7 @@ export const siteEn = {
     body: "The link may be old or mistyped, or it points to something this account cannot see.",
     home: "Back to the homepage",
     pricing: "See pricing",
+    more: "Other pages",
   },
 };
 

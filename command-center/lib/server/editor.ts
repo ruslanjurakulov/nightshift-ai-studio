@@ -128,6 +128,14 @@ export async function loadEditorSounds(
   return loadEditorFiles(orgId, "audio");
 }
 
+/** The organization's pictures a project can lay over the video as an overlay
+ *  (newest first). A picture has no length, so none is required. */
+export async function loadEditorImages(
+  orgId: string,
+): Promise<EditorRead<EditorAsset[]>> {
+  return loadEditorFiles(orgId, "image");
+}
+
 /** The organization's videos a project can start from or add (newest first). */
 export async function loadEditorVideos(
   orgId: string,
@@ -137,7 +145,7 @@ export async function loadEditorVideos(
 
 async function loadEditorFiles(
   orgId: string,
-  kind: "video" | "audio",
+  kind: "video" | "audio" | "image",
 ): Promise<EditorRead<EditorAsset[]>> {
   const supabase = await createClient();
   if (!supabase || !parseMediaId(orgId)) return { state: "not_available" };
@@ -157,7 +165,7 @@ async function loadEditorFiles(
     return {
       state: "ok",
       value: Object.values(toEditorAssets(data)).filter(
-        (a) => (a.durationS ?? 0) > 0,
+        (a) => kind === "image" || (a.durationS ?? 0) > 0,
       ),
     };
   } catch {

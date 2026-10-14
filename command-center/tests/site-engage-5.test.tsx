@@ -317,13 +317,13 @@ describe("the capability wall (round 8): eight stock photographs, one per tool",
 });
 
 describe("one Start free at a time (round 5)", () => {
-  it("tells the page while the sticky bar is up, so the header's button steps aside on a phone, and the bar is not drawn from 1024 px", () => {
+  it("tells the page while the sticky bar is up, and the bar is not drawn from 1024 px (the header is not sticky below it, so its button no longer steps aside)", () => {
     const { see } = env();
     document.body.innerHTML = '<div class="nx-hero"><div class="nx-actions"></div></div>';
     render(<StickyCta label="l" text="t" cta="c" dismiss="d" />);
     expect(document.documentElement.getAttribute("data-bar")).toBe("off");
     expect(css).toMatch(/@media \(min-width: 1024px\) \{ \.nx-bar \{ display: none; \} \}/);
-    expect(css).toMatch(/@media \(max-width: 1023px\) \{ html\[data-bar="on"\] \.st-header-tools > \.st-key \{ visibility: hidden; \} \}/);
+    expect(css).not.toMatch(/html\[data-bar="on"\] \.st-header-tools/);
     void see;
     cleanup();
     expect(document.documentElement.hasAttribute("data-bar")).toBe(false);

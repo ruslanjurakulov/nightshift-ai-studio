@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 /**
- * The first-run path to a first result: the landing hero offers the free
- * example (and only the example) beside the one filled key, /welcome offers a
+ * The first-run path to a first result: /welcome offers a
  * no-channel person the picture, clip and voice desks, and an empty Home says
  * the same under "Connect a channel". Every link target is a route that
  * exists (tests/create-page-no-channel.test.tsx renders the page itself), and
  * the new words make no promise about outcomes or speed.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -28,17 +27,14 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
-import { Landing } from "@/components/landing/Landing";
 import { WelcomeFlow } from "@/components/welcome/WelcomeFlow";
 import { HomeHub } from "@/components/home/HomeHub";
-import type { MoneyAnchor } from "@/lib/landing";
 import { SECTIONS, isSection } from "@/lib/channels";
 import { deskFromQuery, deskHref, isMediaDesk } from "@/lib/creative/desks";
 
 afterEach(cleanup);
 
 const LOCALES: Locale[] = ["en", "ru", "uz"];
-const NO_MONEY: MoneyAnchor = { pack: { kind: "none" }, api: null, site: null };
 
 /** Outcome and money promises the new copy must not make (the owner's hypotheses are not claims). */
 const CLAIMS: Record<Locale, RegExp> = {
@@ -48,56 +44,7 @@ const CLAIMS: Record<Locale, RegExp> = {
   uz: /daromad|tomosha|monetizats|kafolat|foyda|viral|oʻsish|tez|zumda|daqiqalarda/i,
 };
 
-function renderLanding(locale: Locale) {
-  return render(<Landing t={dictionaries[locale]} locale={locale} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
-}
-
-describe("the landing hero offers the free example next to the one primary key", () => {
-  for (const locale of LOCALES) {
-    it(`renders both entries in ${locale}, and the example link lands on the real #try section`, () => {
-      const t = dictionaries[locale];
-      const { container } = renderLanding(locale);
-      const hero = container.querySelector(".nx-hero") as HTMLElement;
-
-      const primary = within(hero).getByRole("link", { name: t.site.hero.cta });
-      expect(primary.getAttribute("href")).toBe("/signup");
-
-      const demo = within(hero).getByRole("link", { name: new RegExp(t.site.hero.demo) });
-      expect(demo.getAttribute("href")).toBe("#try");
-      // The honest sub-label is part of the link's own words, so a screen reader hears it with the name.
-      expect(demo.textContent).toContain(t.site.hero.demoNote);
-
-      // The anchor resolves: exactly one section carries the id, and it holds the example.
-      const targets = container.querySelectorAll("#try");
-      expect(targets.length).toBe(1);
-      expect(targets[0].tagName).toBe("SECTION");
-      expect(targets[0].getAttribute("aria-labelledby")).toBe("try-title");
-      expect(container.querySelector("#try-title")).toBeTruthy();
-    });
-
-    it(`keeps "${locale}" Start free the only filled key in the hero`, () => {
-      const { container } = renderLanding(locale);
-      const hero = container.querySelector(".nx-hero") as HTMLElement;
-      expect(hero.querySelectorAll(".nx-btn").length).toBe(1);
-      expect(hero.querySelector(".nx-sample")?.classList.contains("nx-btn")).toBe(false);
-    });
-  }
-
-  it("keeps pricing as a quiet link under the example (shown only from 640 to 1023 px by CSS), and the closing call still links to it", () => {
-    const { container } = renderLanding("en");
-    const hero = container.querySelector(".nx-hero") as HTMLElement;
-    const pricing = hero.querySelector('a[href="/pricing"]') as HTMLElement;
-    const demo = hero.querySelector('a[href="#try"]') as HTMLElement;
-    expect(pricing.className).toContain("nx-hero-price");
-    expect(pricing.className).not.toContain("nx-btn");
-    expect(demo.compareDocumentPosition(pricing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(container.querySelectorAll('a[href="/pricing"]').length).toBeGreaterThan(1);
-    // The rule that hides it on phones and on the desktop (where the nav has it) is in the stylesheet.
-    const css = readFileSync(path.join(process.cwd(), "components/site/site-next.css"), "utf8");
-    expect(/\.nx-hero-copy \.nx-actions \.nx-hero-price \{ display: none; \}/.test(css)).toBe(true);
-    expect(/@media \(min-width: 640px\) and \(max-width: 1023px\) \{[\s\S]{0,200}?\.nx-hero-price \{ display: inline-flex/.test(css)).toBe(true);
-  });
-
+describe("the landing hero's free example (the entry itself is tests/landing-example-entry.test.tsx)", () => {
   it("says in the sub-label that the example only shows a plan and creates nothing", () => {
     expect(dictionaries.en.site.hero.demoNote).toMatch(/nothing is created/i);
     expect(dictionaries.ru.site.hero.demoNote).toMatch(/ничего не создаётся/i);

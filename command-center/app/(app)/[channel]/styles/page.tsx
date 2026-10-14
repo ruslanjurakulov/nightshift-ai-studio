@@ -7,6 +7,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isMissingRelation, parseStyleId } from "@/lib/style-kits";
 import { LIBRARY_ID_RE } from "@/lib/styles/library";
+import { lookFromQuery } from "@/lib/presets";
 import { StyleLibrary, type AddState } from "@/components/styles/StyleLibrary";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +21,16 @@ export const revalidate = 0;
  * so and keeps the browse working — never an empty "added" list that reads as
  * "you have none".
  */
-export default async function StylesPage() {
+export default async function StylesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
   const org = await getOrgContext();
+  // The Presets gallery opens a look (?style=<library id>): it only opens the detail, nothing is added.
+  const openLook = lookFromQuery(await searchParams)?.id ?? null;
 
   let addState: AddState = "no-org";
   const added: Record<string, string> = {};
@@ -52,7 +59,7 @@ export default async function StylesPage() {
   return (
     <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="styles" title={t.styleLibrary.title} subtitle={t.styleLibrary.subtitle} />
-      <StyleLibrary orgId={org.current?.id ?? null} addState={addState} initialAdded={added} />
+      <StyleLibrary orgId={org.current?.id ?? null} addState={addState} initialAdded={added} initialOpenId={openLook} />
     </div>
   );
 }

@@ -107,17 +107,14 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
                 {h.cta}
                 <ArrowRight aria-hidden />
               </Link>
-              {/* The quiet second way in: the free example further down, which only shows a plan. Pricing sits under it on tablets and stays in the header menu, the price block and the closing call. */}
-              <div className="nx-hero-more">
-                <a href="#try" className="nx-sample">
-                  <span className="nx-sample-label">{h.demo}</span>
-                  <span className="nx-sample-note">{h.demoNote}</span>
-                </a>
-                {/* Below the example, and only from a tablet up to the desktop header: a phone has the menu and the price block, a desktop has the nav. */}
-                <Link href="/pricing" className="nx-link nx-hero-price">
-                  {h.secondary}
-                </Link>
-              </div>
+              <Link href="/pricing" className="nx-link">
+                {h.secondary}
+              </Link>
+              {/* Not a second button: it jumps to the plan demo below, which shows a plan and creates nothing. */}
+              <a href="#try" className="nx-sample">
+                <span className="nx-sample-label">{h.demo}</span>
+                <span className="nx-sample-note">{h.demoNote}</span>
+              </a>
             </div>
           </div>
           <p className="nx-lead">{h.lead}</p>

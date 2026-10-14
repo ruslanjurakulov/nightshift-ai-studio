@@ -41,6 +41,12 @@ body .app-shell.atmos {
 .ns-slug svg { color: var(--ns-act-ink); flex: none; }
 .ns-slug-rule { flex: 1; height: 1px; background: var(--ns-rule); }
 .ns-pagehead { display: flex; flex-direction: column; gap: 20px; }
+/* compactPhone (PageHeader): on a phone the slug line and the lead line give way, so a tool's controls start on the first screen. */
+@media (max-width: 639.98px) {
+  .ns-pagehead[data-compact-phone] { gap: 8px; }
+  .ns-pagehead[data-compact-phone] .ns-slug,
+  .ns-pagehead[data-compact-phone] .t-lead { display: none; }
+}
 .ns-pagehead-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; }
 .app-shell .ns-pagehead .t-hero,
 .app-shell .ns-title {
@@ -269,7 +275,7 @@ body .app-shell.atmos {
 .ns-step[data-state="current"] { border-color: var(--ns-act); background: var(--ns-act-soft); }
 
 /* ── Sidebar: full, or a slim rail of icons ────────────────────────────────── */
-.shell-sidebar { width: 240px; }
+.shell-sidebar { width: 256px; } /* the wordmark lockup is 31px high, 183px wide, beside the 44px toggle */
 .shell-sidebar[data-collapsed="true"] { width: 72px; }
 @media (prefers-reduced-motion: no-preference) {
   .shell-sidebar { transition: width var(--ns-dur-2) var(--ns-ease); }
@@ -281,7 +287,7 @@ body .app-shell.atmos {
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding: 0 8px 0 20px;
+  padding: 0 8px 0 16px;
 }
 .shell-sidebar-toggle {
   display: inline-grid;
@@ -294,7 +300,7 @@ body .app-shell.atmos {
   transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
 }
 .shell-sidebar-toggle:hover { background: var(--ns-hover); color: var(--color-fg); }
-/* The rail: the N tile above its toggle, rows reduced to their icons, group names to their rule. */
+/* The rail: the bare N above its toggle, rows reduced to their icons, group names to their rule. */
 .shell-sidebar[data-collapsed="true"] .shell-sidebar-head {
   height: auto;
   flex-direction: column;
@@ -337,3 +343,38 @@ body .app-shell.atmos {
 .ns-price-button[data-tone="quiet"]:hover:not(:disabled) { background: var(--ns-act-soft); color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--ns-act); }
 .ns-price-button[data-tone="quiet"]:disabled { box-shadow: inset 0 0 0 1px var(--color-border); background: var(--studio-field); color: var(--color-muted); }
 .ns-price-button[data-tone="quiet"]:disabled .ns-price-tag { color: var(--color-muted); }
+
+/* ── Skip to content (the app's twin of the public pages' .st-skip) ─────────── */
+.app-skip {
+  position: fixed;
+  left: 12px;
+  top: -80px;
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--ns-r-key);
+  background: var(--ns-cta-bg);
+  color: var(--ns-cta-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+.app-skip:focus,
+.app-skip:focus-visible {
+  top: max(10px, env(safe-area-inset-top));
+  outline: 3px solid var(--ns-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--color-fg);
+}
+
+/* ── A scroll area that says it scrolls ─────────────────────────────────────
+   A soft shadow at the edge that still has more behind it (CSS only: the
+   `local` layers cover it once that edge is reached). Needs a solid ground. */
+.scroll-cue {
+  background:
+    linear-gradient(var(--color-panel) 30%, transparent) center top / 100% 2rem no-repeat local,
+    linear-gradient(transparent, var(--color-panel) 70%) center bottom / 100% 2rem no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 0.22), transparent) center top / 100% 0.75rem no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.22), transparent) center bottom / 100% 0.75rem no-repeat scroll;
+}

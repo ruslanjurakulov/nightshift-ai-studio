@@ -33,6 +33,7 @@ export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/docs/api/op
  *  path that answers the public 404 itself. */
 export const PUBLIC_PAGE_PATHS = [
   "/",
+  "/studio",
   "/pricing",
   "/solutions",
   "/solutions/youtube-channels",

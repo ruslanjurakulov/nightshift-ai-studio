@@ -1,4 +1,5 @@
 import type { SiteDictionary } from "./en";
+import { studioPageUz } from "../studio-page/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -97,6 +98,10 @@ export const siteUz: SiteDictionary = {
     source: "Amaldagi narxlar roʻyxatidan",
     cta: "Bepul boshlash",
     more: "Barcha narxlar",
+  },
+  /** The /terms search-result description. The page shows the full summary of the document; this is only the meta text. */
+  legalMeta: {
+    terms: "Nightshift’dan foydalanish qoidalari: kanal va kontent, taqiqlanganlar, oldindan toʻlangan kreditlar, toʻlov va qaytarish, javobgarlik chegaralari.",
   },
   compare: {
     slug: "Qoʻlda yoki Nightshift bilan",
@@ -425,6 +430,8 @@ export const siteUz: SiteDictionary = {
     paySlug: "Toʻlovlar",
     faqSlug: "Savollar",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir videoni efirdan oldin tasdiqlaysiz.",
@@ -579,6 +586,18 @@ export const siteUz: SiteDictionary = {
     welcomeNote: "Hisob yaratganingizda bir marta {n} bepul kredit.",
     unavailable: "Bu serverda kirish hozircha oʻchirilgan, shuning uchun bu yerda yozganlaringiz hech qayerga yuborilmaydi. Birozdan keyin qaytib keling.",
     unavailableSignup: "Bu serverda roʻyxatdan oʻtish hozircha oʻchirilgan, shuning uchun bu yerda yozganlaringiz hech qayerga yuborilmaydi. Birozdan keyin qaytib keling.",
+    google: {
+      button: "Google bilan davom etish",
+      or: "yoki",
+      consentPre: "Davom etish orqali siz",
+      terms: "Foydalanish shartlari",
+      consentAnd: "va",
+      privacy: "Maxfiylik siyosati",
+      consentPost: "ga rozilik bildirasiz.",
+      errDenied: "Google orqali kirish bekor qilindi. Hech narsa oʻzgarmadi. Qayta urinib koʻring yoki quyida email orqali kiring.",
+      errUnverified: "Google bu email manzilni tasdiqlamagan, shuning uchun tizimga kirish bajarilmadi. Uni Google hisobingizda tasdiqlang yoki email va parol bilan kiring.",
+      errFailed: "Google orqali kirib boʻlmadi. Qayta urinib koʻring yoki quyida email orqali kiring.",
+    },
   },
   notFound: {
     meta: "Signal yoʻq",
@@ -587,5 +606,6 @@ export const siteUz: SiteDictionary = {
     body: "Havola eskirgan yoki xato yozilgan boʻlishi mumkin — yoki bu hisob koʻra olmaydigan narsaga olib boradi.",
     home: "Bosh sahifaga",
     pricing: "Narxlarni koʻrish",
+    more: "Boshqa sahifalar",
   },
 };

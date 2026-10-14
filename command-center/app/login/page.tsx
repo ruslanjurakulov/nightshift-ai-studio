@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
+import { GoogleButton } from "@/components/auth/GoogleButton";
 import { safeLoginReturn } from "@/lib/safe-redirect";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
 import { FORGOT_PASSWORD_PATH } from "@/lib/public-paths";
@@ -67,6 +68,8 @@ export default function LoginPage() {
           <AuthAlert tone="warn">{t.site.auth.unavailable}</AuthAlert>
         </div>
       )}
+
+      <GoogleButton mode="signin" />
 
       <form onSubmit={onSubmit} className="mt-8">
         <fieldset disabled={!isSupabaseConfigured} className="st-fieldset">

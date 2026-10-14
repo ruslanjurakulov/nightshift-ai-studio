@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import "@/components/site/site.css";
 
@@ -21,9 +21,8 @@ export function OAuthShell({ title, children }: { title: React.ReactNode; childr
     <div className="st st-auth" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
       <main className="st-auth-main">
         <div className="flex min-h-14 items-center justify-between gap-3">
-          <Link href="/" className="st-brand">
-            <BrandMark />
-            {t.brand.name}
+          <Link href="/" className="st-brand" aria-label={t.brand.name}>
+            <Wordmark />
           </Link>
           <div className="flex items-center gap-2">
             <LanguageSelector />

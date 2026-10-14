@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { LEGAL } from "@/lib/legal";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 
 /**
  * Pricing, Privacy and Terms links for every page a signed-out visitor can
@@ -38,6 +39,7 @@ export function LegalFooter({ className = "" }: { className?: string }) {
           {LEGAL.contactEmail}
         </a>
       )}
+      <ViewModeToggle variant="link" />
     </footer>
   );
 }
