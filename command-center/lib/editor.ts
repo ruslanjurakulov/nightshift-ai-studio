@@ -902,6 +902,27 @@ function validateTextClip(
     fi + fo > e - s + 1e-9
   )
     problems.push(`${where}: fades are longer than the text is shown`);
+  // An animation on one side and a plain fade on the other: the fade becomes
+  // an animation too, so a long entrance would be cut short by the exit that
+  // starts at end_s - fade_out_s (modules/timeline.py, same words).
+  if (("anim_in" in clip) !== ("anim_out" in clip)) {
+    const animKey = "anim_in" in clip ? "anim_in" : "anim_out";
+    const side = "anim_in" in clip ? "fade_out_s" : "fade_in_s";
+    const mixed = clip[`${animKey}_s`] ?? ANIM_DEFAULT_S;
+    const other = clip[side] ?? 0;
+    if (
+      isNum(s) &&
+      isNum(e) &&
+      isNum(mixed) &&
+      isNum(other) &&
+      e > s &&
+      other > 0 &&
+      mixed + other > ms(e) - ms(s) + 1e-9
+    )
+      problems.push(
+        `${where}: the animation (${mixed} s) and ${side} (${other} s) are longer than the text is shown`,
+      );
+  }
 }
 
 /** Python's `round` (half to even) for the frame check below: the worker rounds
