@@ -67,6 +67,7 @@ UNPRICED_ON_PURPOSE = {
     "model_seedance_1_5_pro_second_480p_silent": "registry: no price read, not sold",
     "model_seedance_1_5_pro_second_480p_audio": "registry: no price read, not sold",
     "model_seedance_1_5_pro_second_1080p_silent": "registry: no price read, not sold",
+    "model_assemblyai_universal_2_second": "registry: no price read, not sold (terms not reviewed)",
     "usd": "pricing a ledger unit changes run settlement (metered vs hold): owner policy",
     "gemini_input_tokens": "ledger unit: owner policy",
     "gemini_output_tokens": "ledger unit: owner policy",

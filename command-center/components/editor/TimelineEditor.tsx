@@ -239,6 +239,7 @@ export function TimelineEditor({
   imageFiles = [],
   orgId = "",
   captionModels = [],
+  captionModelsStatus = "ok",
   userId = "",
 }: {
   projectId: string;
@@ -256,6 +257,8 @@ export function TimelineEditor({
   orgId?: string;
   /** The transcription models the member may be sold (empty: auto-captions are not offered). */
   captionModels?: readonly CaptionModelOption[];
+  /** Why that list may be empty (not set up here / not enabled / could not be read). */
+  captionModelsStatus?: "ok" | "not_enabled" | "error";
   /** The signed-in member: a local draft is kept per member (none without it). */
   userId?: string;
 }) {
@@ -1437,6 +1440,7 @@ export function TimelineEditor({
         model={model}
         assets={assets}
         models={captionModels}
+        modelsStatus={captionModelsStatus}
         pictureEnd={picture}
         onChange={apply}
       />
