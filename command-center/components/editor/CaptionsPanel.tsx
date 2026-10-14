@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Captions as CaptionsIcon, Download, Trash2 } from "lucide-react";
+import { Captions as CaptionsIcon, Download, FileUp, Merge, Plus, Scissors, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { formatTime, type EditorAsset, type EditorModel } from "@/lib/editor";
+import { MAX_CUES, formatTime, type EditorAsset, type EditorModel } from "@/lib/editor";
 import {
+  addCueAfter,
   CAPTION_LANGUAGES,
   CAPTION_PRESETS,
   DEFAULT_PRESET,
@@ -21,12 +22,15 @@ import {
   coerceTrackSummary,
   cueWarnings,
   defaultCaptionLanguage,
+  mergeWithNext,
   playedClips,
   presetMatching,
   recordingProblem,
   removeCue,
+  replaceInCues,
   setCaptionStyle,
   setCaptions,
+  splitCue,
   styleFor,
   updateCue,
   type CaptionJob,
@@ -35,10 +39,14 @@ import {
   type CaptionTrack,
   type CaptionTrackSummary,
 } from "@/lib/captions";
+import { IMPORT_MAX_BYTES, addCue, captionsFromImport, parseCaptionFile } from "@/lib/captionCues";
+import { isCaptionStyleId } from "@/lib/captionStyleTable";
+import { CaptionStylesPicker } from "./CaptionStylesPicker";
 import {
   apiErrorMessage,
   asCreativeError,
   errorAction,
+  failureReason,
   newIdempotencyKey,
   isActiveStatus,
   type QuoteState,
@@ -100,6 +108,9 @@ function CueRow({
   onText,
   onTimes,
   onDelete,
+  onMerge,
+  onSplit,
+  onAddAfter,
 }: {
   n: number;
   text: string;
@@ -109,8 +120,12 @@ function CueRow({
   onText: (v: string) => void;
   onTimes: (s: number, e: number) => void;
   onDelete: () => void;
+  /** null = this is the last caption, there is nothing to join it with. */
+  onMerge: (() => void) | null;
+  onSplit: () => void;
+  onAddAfter: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
   const tc = t.captions;
   // Typed numbers are committed on blur or Enter: a half-typed "1." must not
   // be clamped into the neighbouring cue while the person is still typing.
@@ -130,6 +145,8 @@ function CueRow({
       setE(String(end));
     }
   };
+  // A row's buttons say which caption they act on (a list of identical "Split" buttons is unusable by ear).
+  const where = (template: string) => fmt(template, { n: String(n), time: formatTime(start) });
   const key = (ev: React.KeyboardEvent) => {
     if (ev.key === "Enter") commit();
   };
@@ -156,7 +173,7 @@ function CueRow({
           }}
           className={`${fieldClass} min-w-0 flex-1 resize-y`}
         />
-        <button type="button" onClick={onDelete} aria-label={tc.deleteCue} className={quietBtn}>
+        <button type="button" onClick={onDelete} aria-label={where(tc.deleteCueN)} className={quietBtn}>
           <Trash2 className="size-3.5" aria-hidden />
         </button>
       </div>
@@ -184,6 +201,22 @@ function CueRow({
           />
         </label>
       </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={onSplit} aria-label={where(tc.splitCueN)} className={quietBtn}>
+          <Scissors className="size-3.5" aria-hidden />
+          {tc.splitCue}
+        </button>
+        {onMerge ? (
+          <button type="button" onClick={onMerge} aria-label={where(tc.mergeCueN)} className={quietBtn}>
+            <Merge className="size-3.5" aria-hidden />
+            {tc.mergeCue}
+          </button>
+        ) : null}
+        <button type="button" onClick={onAddAfter} aria-label={where(tc.addCueAfterN)} className={quietBtn}>
+          <Plus className="size-3.5" aria-hidden />
+          {tc.addCueAfter}
+        </button>
+      </div>
       {warning === "empty" ? (
         <p role="alert" className="m-0 text-xs text-[var(--color-fail)]">
           {tc.cueEmpty}
@@ -191,6 +224,17 @@ function CueRow({
       ) : null}
     </li>
   );
+}
+
+/** A file's text (older browsers have no Blob.text). */
+function readText(file: File): Promise<string> {
+  if (typeof file.text === "function") return file.text();
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result ?? ""));
+    r.onerror = () => reject(r.error);
+    r.readAsText(file);
+  });
 }
 
 function download(name: string, mime: string, body: string): void {
@@ -227,16 +271,27 @@ export function CaptionsPanel({
   model,
   assets,
   models,
+  modelsStatus = "ok",
   pictureEnd,
   onChange,
+  preselect = null,
 }: {
   orgId: string;
   projectTitle: string;
   model: EditorModel;
   assets: Record<string, EditorAsset>;
   models: readonly CaptionModelOption[];
+  /**
+   * Why `models` may be empty: "ok" = the list was read (empty = no transcription
+   * is set up and priced here), "not_enabled" = the database has no captions yet,
+   * "error" = the list could not be read just now (not the same as "not set up").
+   */
+  modelsStatus?: "ok" | "not_enabled" | "error";
   pictureEnd: number;
-  onChange: (next: EditorModel) => void;
+  /** `group`: the changes of one gesture (a slider drag) are one undo step. */
+  onChange: (next: EditorModel, group?: string) => void;
+  /** "Improve with AI" → Captions on a clip: that clip's recording is the one picked (a new nonce re-picks). */
+  preselect?: { id: string; nonce: number } | null;
 }) {
   const { t, fmt, locale } = useI18n();
   const tc = t.captions;
@@ -244,6 +299,13 @@ export function CaptionsPanel({
 
   const recordings = useMemo(() => recordingsOf(model, assets), [model, assets]);
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const preselectNonce = preselect?.nonce;
+  const preselectId = preselect?.id;
+  useEffect(() => {
+    if (preselectId && recordings.some((r) => r.id === preselectId)) setSourceId(preselectId);
+    // only when the request changes, not whenever the timeline does
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectNonce, preselectId]);
   const picked = recordings.find((r) => r.id === sourceId) ?? recordings.find((r) => recordingProblem(r) === null) ?? recordings[0] ?? null;
   const [language, setLanguage] = useState<CaptionLanguage | "detect">(() => defaultCaptionLanguage(locale));
   const [modelId, setModelId] = useState<string>(models[0]?.id ?? "");
@@ -264,8 +326,12 @@ export function CaptionsPanel({
   const [track, setTrack] = useState<CaptionTrack | null>(null);
   const [loadingTrack, setLoadingTrack] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // What adding or importing a caption by hand answered (those need no transcription).
+  const [cueNotice, setCueNotice] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [shown, setShown] = useState(CUES_SHOWN);
+  const [find, setFind] = useState("");
+  const [replacement, setReplacement] = useState("");
 
   const chosen = models.find((m) => m.id === modelId) ?? models[0] ?? null;
   // A language the picked model was not proven for is not offered: back to "detect it".
@@ -497,7 +563,9 @@ export function CaptionsPanel({
     }
     setArmed(false);
     setShown(CUES_SHOWN);
-    onChange(setCaptions(model, made));
+    // New words under the animated style the person already chose: the style stays.
+    const keep = current && isCaptionStyleId(current.style.preset) ? current.style : made.style;
+    onChange(setCaptions(model, { ...made, style: keep }));
     setNotice(fmt(tc.added, { n: made.cues.length }));
   }
 
@@ -505,6 +573,70 @@ export function CaptionsPanel({
     setPreset(id);
     // An existing set of captions only changes its look: the person's edits to the words stay.
     if (current) onChange(setCaptionStyle(model, styleFor(id, model.width, model.height)));
+  }
+
+  function addAfter(afterId: string | null) {
+    // Unchanged for two reasons: the project holds as many captions as it may, or there is no time.
+    if (cues.length >= MAX_CUES) {
+      setCueNotice(tc.cueLimit);
+      return;
+    }
+    const next = addCueAfter(model, afterId, pictureEnd);
+    if (next === model) setCueNotice(tc.noRoomForCue);
+    else {
+      setCueNotice(null);
+      onChange(next);
+    }
+  }
+
+  function replaceAll() {
+    const out = replaceInCues(model, find, replacement);
+    const left = out.skipped ? ` ${fmt(tc.replaceSkipped, { n: out.skipped })}` : "";
+    setCueNotice(out.changed ? `${fmt(tc.replaced, { n: out.changed })}${left}` : out.skipped ? fmt(tc.replaceSkipped, { n: out.skipped }) : tc.nothingToReplace);
+    if (out.changed) onChange(out.model);
+  }
+
+  // ── typed and imported captions (free, local) ───────────────────────────────
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  function addTyped() {
+    const next = addCue(model, tc.newCueText, pictureEnd);
+    if (!next) {
+      setCueNotice(tc.addNoRoom);
+      return;
+    }
+    setCueNotice(null);
+    onChange(next);
+  }
+
+  async function importFile(file: File | undefined) {
+    if (fileInput.current) fileInput.current.value = "";
+    if (!file) return;
+    if (file.size > IMPORT_MAX_BYTES) {
+      setCueNotice(tc.importTooBig);
+      return;
+    }
+    let text = "";
+    try {
+      text = await readText(file);
+    } catch {
+      setCueNotice(tc.importFailed);
+      return;
+    }
+    const parsed = parseCaptionFile(text);
+    const made = captionsFromImport(model, parsed, pictureEnd);
+    if (!made) {
+      setCueNotice(parsed.cues.length ? tc.importOutside : tc.importNone);
+      return;
+    }
+    if (cues.length > 0 && !window.confirm(tc.importReplace)) return;
+    setShown(CUES_SHOWN);
+    onChange(setCaptions(model, made));
+    setCueNotice(
+      parsed.cues.length > made.cues.length || parsed.skipped > 0
+        ? fmt(tc.importedSome, { n: made.cues.length, skipped: parsed.skipped + parsed.cues.length - made.cues.length })
+        : fmt(tc.imported, { n: made.cues.length }),
+    );
   }
 
   const downloadLanguage = activeTrack?.language ?? spoken ?? "und";
@@ -518,7 +650,8 @@ export function CaptionsPanel({
         ? "ready"
         : "failed"
     : null;
-  const failReason = job && status === "failed" ? t.gen.reasons[(job.errorCode === "no_speech" ? "no_speech" : "generic")] : null;
+  // The same plain sentences the Studio uses: a refused recording, a busy service and "no speech" read differently.
+  const failReason = job && status === "failed" ? failureReason(t, { status: job.status, error_code: job.errorCode }) : null;
   const priceLabel =
     quote.status === "quoting"
       ? tc.quoting
@@ -529,7 +662,7 @@ export function CaptionsPanel({
   const action = quoteErrorCode ? errorAction(quoteErrorCode) : null;
 
   return (
-    <section aria-labelledby="captions-heading" className="panel flex flex-col gap-3 p-5 sm:p-6">
+    <section aria-labelledby="captions-heading" tabIndex={-1} data-captions-panel="" className="panel flex flex-col gap-3 p-5 sm:p-6 outline-none">
       <div className="flex items-center gap-2">
         <CaptionsIcon className="size-4 text-[var(--color-primary)]" aria-hidden />
         <h2 id="captions-heading" className="m-0 text-[15px] font-semibold">
@@ -555,7 +688,9 @@ export function CaptionsPanel({
       ) : null}
 
       {models.length === 0 ? (
-        <p className="m-0 text-sm text-[var(--color-muted)]">{tc.noModels}</p>
+        <p role={modelsStatus === "error" ? "alert" : undefined} className="m-0 text-sm text-[var(--color-muted)]">
+          {modelsStatus === "not_enabled" ? tc.notEnabled : modelsStatus === "error" ? tc.modelsError : tc.noModels}
+        </p>
       ) : recordings.length === 0 ? (
         <p className="m-0 text-sm text-[var(--color-muted)]">{tc.noRecordings}</p>
       ) : (
@@ -755,11 +890,37 @@ export function CaptionsPanel({
         </>
       )}
 
-      {/* the captions the project holds: edit, delete, download */}
+      {/* typed or imported captions need no transcription: always here, free */}
       <div className="flex flex-col gap-2">
         <h3 className="m-0 text-sm font-semibold">{fmt(tc.cuesHeading, { n: cues.length })}</h3>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={addTyped} className={quietBtn + " min-h-11"}>
+            <Plus className="size-3.5" aria-hidden />
+            {tc.addCue}
+          </button>
+          <button type="button" onClick={() => fileInput.current?.click()} className={quietBtn + " min-h-11"}>
+            <FileUp className="size-3.5" aria-hidden />
+            {tc.importFile}
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".srt,.vtt,text/vtt,application/x-subrip,text/plain"
+            aria-label={tc.importFile}
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => void importFile(e.target.files?.[0])}
+          />
+        </div>
+        <p className="m-0 text-xs text-[var(--color-muted)]">{tc.importNote}</p>
+        {cueNotice ? (
+          <p role="status" className="m-0 text-xs text-[var(--color-muted)]">
+            {cueNotice}
+          </p>
+        ) : null}
+        <CaptionStylesPicker model={model} onChange={onChange} />
         {cues.length === 0 ? (
-          <p className="m-0 text-xs text-[var(--color-muted)]">{tc.noCues}</p>
+          <p className="m-0 text-xs text-[var(--color-muted)]">{models.length === 0 ? tc.noCuesManual : tc.noCues}</p>
         ) : (
           <>
             <p className="m-0 text-xs text-[var(--color-muted)]">{tc.burnedNote}</p>
@@ -775,9 +936,54 @@ export function CaptionsPanel({
                   onText={(v) => onChange(updateCue(model, c.id, { text: v }))}
                   onTimes={(s, e) => onChange(updateCue(model, c.id, { start_s: s, end_s: e }))}
                   onDelete={() => onChange(removeCue(model, c.id))}
+                  onMerge={
+                    i + 1 < cues.length
+                      ? () => {
+                          const next = mergeWithNext(model, c.id);
+                          // The only refusal here is length: the two together would not fit one caption.
+                          if (next === model) setCueNotice(tc.cannotJoin);
+                          else onChange(next);
+                        }
+                      : null
+                  }
+                  onSplit={() => {
+                    if (cues.length >= MAX_CUES) {
+                      setCueNotice(tc.cueLimit);
+                      return;
+                    }
+                    const next = splitCue(model, c.id);
+                    if (next === model) setCueNotice(tc.cannotSplit);
+                    else onChange(next);
+                  }}
+                  onAddAfter={() => addAfter(c.id)}
                 />
               ))}
             </ul>
+            <div className="flex flex-col gap-1.5">
+              <h3 className="m-0 text-sm font-semibold">{tc.replaceHeading}</h3>
+              <p className="m-0 text-xs text-[var(--color-muted)]">{tc.replaceNote}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  value={find}
+                  onChange={(ev) => setFind(ev.target.value)}
+                  maxLength={100}
+                  aria-label={tc.findLabel}
+                  placeholder={tc.findLabel}
+                  className={fieldClass}
+                />
+                <input
+                  value={replacement}
+                  onChange={(ev) => setReplacement(ev.target.value)}
+                  maxLength={100}
+                  aria-label={tc.replaceLabel}
+                  placeholder={tc.replaceLabel}
+                  className={fieldClass}
+                />
+              </div>
+              <button type="button" onClick={replaceAll} disabled={!find.trim()} className={`${quietBtn} self-start`}>
+                {tc.replaceAll}
+              </button>
+            </div>
             {cues.length > shown ? (
               <button type="button" onClick={() => setShown((n) => n + CUES_SHOWN)} className={`${quietBtn} self-start`}>
                 +{Math.min(CUES_SHOWN, cues.length - shown)}

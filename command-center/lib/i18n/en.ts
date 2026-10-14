@@ -1,8 +1,10 @@
+import { improveEn } from "./improve/en";
 import { libraryUxEn } from "./library-ux/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
 import { looksEn } from "./editor-looks/en";
+import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
 
 /**
@@ -20,6 +22,7 @@ export const en = {
   site: siteEn,
   presets: presetsEn,
   libraryUx: libraryUxEn,
+  improveAi: improveEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",
@@ -3256,7 +3259,7 @@ export const en = {
     subtitle: "Describe it, see the price, generate. Credits are held while it works and charged only when it succeeds.",
     kindLabel: "What to make",
     toolRowLabel: "Tools",
-    kinds: { t2i: "Image", t2v: "Video", tts: "Voice", sfx: "Sound", music: "Music", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Remove background", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", captions: "Captions" },
+    kinds: { t2i: "Image", t2v: "Video", tts: "Voice", sfx: "Sound", music: "Music", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Remove background", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", captions: "Captions", expand: "Extend picture", relight: "Relight", erase: "Erase object" },
     promptLabel: "Describe it",
     voiceTextLabel: "Words to speak",
     promptPh: {
@@ -3271,6 +3274,9 @@ export const en = {
       dub: "",
       video_upscale: "",
       describe: "",
+      expand: "Optional: what the new areas show — more sky, a field of grass",
+      relight: "Or describe the light — low sun from the left, candlelight",
+      erase: "The object to remove — the red car on the left",
     },
     toolsLabel: "Start from a picture",
     optional: "optional",
@@ -3286,6 +3292,16 @@ export const en = {
     sourceRetry: "Try again",
     noPreview: "no preview",
     keepsShape: "The result keeps the picture's shape.",
+    shapeLabel: "Extend to",
+    lookLabel: "Light",
+    looks: { soft: "Soft", warm: "Warm", cool: "Cool", golden_hour: "Golden hour", dramatic: "Dramatic", studio: "Studio" },
+    lookOrWords: "Or describe the light below. Your words replace the chosen light.",
+    opWords: { expand: "What the new areas show", relight: "Describe the light", erase: "What to erase" },
+    expandNote: "The picture is extended to the shape you pick and the new edges are filled in. The result is saved to your Library as a new version. The price is the same for every shape.",
+    relightNote: "Only the light and the shadows change. Pick a light or describe it. The result is saved to your Library as a new version.",
+    eraseNote: "Name one object. It is taken out and the space is filled in; nothing to draw. The result is saved to your Library as a new version.",
+    aiEditNote: "The picture is redrawn as a whole, so small details outside the change can differ slightly.",
+    notAvailableYet: "This tool is not available on this deployment yet.",
     recordingLabel: "Audio or video",
     recordingPick: "Pick an audio or video file from your library",
     recordingChange: "Change file",
@@ -3377,7 +3393,7 @@ export const en = {
     dismiss: "Dismiss",
     cancel: "Cancel",
     cancelling: "Cancelling…",
-    tabs: { t2i: "Image", t2v: "Video", tts: "Voice", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Cut out", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe" },
+    tabs: { t2i: "Image", t2v: "Video", tts: "Voice", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Cut out", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", expand: "Extend", relight: "Relight", erase: "Erase" },
     modelChange: "Change",
     modelChangeLabel: "Change model",
     blocked: {
@@ -3389,6 +3405,9 @@ export const en = {
       need_language: "Pick a language to see the price.",
       need_video: "Pick a video to see the price.",
       need_target: "No size can be offered for this video right now.",
+      need_shape: "Pick the shape to see the price.",
+      need_look: "Pick a light, or describe it, to see the price.",
+      need_object: "Name the object to remove to see the price.",
     },
     holdNote: "Credits are held while it works and charged only when it succeeds.",
     sheetTitle: "Choose a model",
@@ -4272,6 +4291,9 @@ export const en = {
       dub: "Dub",
       describe: "Describe",
       video_upscale: "Upscale video",
+      expand: "Extend picture",
+      relight: "Relight",
+      erase: "Erase object",
     },
     toolFrom: {
       t2i: "from a description",
@@ -4285,6 +4307,9 @@ export const en = {
       dub: "into another language",
       describe: "picture to prompt",
       video_upscale: "sharper and larger",
+      expand: "to another shape",
+      relight: "change the light",
+      erase: "remove one thing",
     },
     voiceStyles: {
       "pNInz6obpgDQGcFmaJgB": "deep, narration",
@@ -4549,7 +4574,42 @@ export const en = {
     downloadNote: "For other players and sites. Made from the captions above, free.",
     downloadSrt: "Download .srt",
     downloadVtt: "Download .vtt",
+    modelsError: "We could not check whether auto-captions are available just now. Reload the page to try again.",
+    splitCue: "Split",
+    mergeCue: "Join with next",
+    addCueAfter: "Add after",
+    noRoomForCue: "There is no room for a new caption here: the next caption starts too soon or the video ends.",
+    cannotSplit: "This caption cannot be split: it needs at least two words and enough time for both parts.",
+    replaceHeading: "Fix a word everywhere",
+    replaceNote: "Replaces a word or phrase in all captions at once, for a name the transcript heard wrongly. Capital and small letters are treated alike.",
+    findLabel: "Word or phrase to find",
+    replaceLabel: "Replace with",
+    replaceAll: "Replace in all captions",
+    replaced: "Changed {n} captions. Save the project to keep them.",
+    nothingToReplace: "That text was not found in any caption.",
+    deleteCueN: "Delete caption {n} (at {time})",
+    splitCueN: "Split caption {n} (at {time})",
+    mergeCueN: "Join caption {n} with the next one (at {time})",
+    addCueAfterN: "Add a caption after caption {n} (at {time})",
+    cueLimit: "This project already has the most captions it can hold. Join or delete some first.",
+    cannotJoin: "These two captions together would be too long for one caption.",
+    replaceSkipped: "{n} captions were left as they were because the result would be too long.",
     defaultFile: "captions",
+    /** Animated styles: ./caption-styles/en.ts. */
+    animated: captionStylesEn,
+    addCue: "Add a caption",
+    importFile: "Import .srt or .vtt",
+    importNote: "Type captions or bring a subtitle file. Both are free; no transcription is needed.",
+    newCueText: "New caption",
+    addNoRoom: "There is no room for another caption: the picture ends too soon.",
+    importTooBig: "That file is too large (over 1 MB).",
+    importFailed: "The file could not be read.",
+    importOutside: "All the captions in this file come after the end of the picture, so none were added.",
+    importNone: "No captions were found in this file. Use a .srt or .vtt file.",
+    importReplace: "This replaces the captions you see, including your edits. Continue?",
+    imported: "{n} captions imported. Save the project to keep them.",
+    importedSome: "{n} captions imported; {skipped} could not be used. Save the project to keep them.",
+    noCuesManual: "No captions yet. Add one, or import a .srt or .vtt file.",
   },
   workflows: {
     title: "Workflows",
