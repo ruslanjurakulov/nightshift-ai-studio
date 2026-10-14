@@ -38,6 +38,7 @@ import {
 } from "@/lib/editorFx";
 import { Disclosure, RadioChips, SliderRow, ToggleRow } from "./FxControls";
 import { ClipMoveSection } from "./ClipMotionSections";
+import { ClipCleanSection } from "./CleanSections";
 
 /**
  * The selected clip's look and effects, and its crop and tilt, as two native
@@ -407,6 +408,7 @@ export function ClipFxSections({
         apply={apply}
         showClip={showClip}
       />
+      <ClipCleanSection model={model} clip={clip} still={still} apply={apply} />
     </>
   );
 }

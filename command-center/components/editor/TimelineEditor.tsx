@@ -149,6 +149,7 @@ import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
 import { ClipPicture, LookFilterDefs } from "./ClipPicture";
 import { ClipFxSections } from "./ClipFxSections";
 import { ClipSpeedSection, OverlayMoveSection } from "./ClipMotionSections";
+import { OverlayChromaSection, SoundCleanSection } from "./CleanSections";
 import { OverlayAnimSection, TextAnimSection } from "./AnimPicker";
 import { ANIM_REST, animFrame, playsNatively, writtenText, type AnimFrame } from "@/lib/editorFxPreview";
 import { trimLimited } from "@/lib/editorMotion";
@@ -1531,6 +1532,7 @@ export function TimelineEditor({
                 <>
                   <OverlayMoveSection model={model} overlay={overlay} apply={apply} />
                   <OverlayAnimSection model={model} overlay={overlay} apply={apply} />
+                  <OverlayChromaSection model={model} overlay={overlay} apply={apply} />
                 </>
               }
               onDelete={() => {
@@ -1562,6 +1564,7 @@ export function TimelineEditor({
                 )
               }
               onFit={() => apply(fitSoundToPicture(model, sound.id))}
+              clean={<SoundCleanSection model={model} sound={sound} apply={apply} />}
               onDelete={() => apply(removeSound(model, sound.id))}
             />
           ) : clip ? (
@@ -2168,6 +2171,7 @@ function SoundInspector({
   onChange,
   onToPlayhead,
   onFit,
+  clean,
   onDelete,
 }: {
   sound: SoundClip;
@@ -2179,6 +2183,8 @@ function SoundInspector({
   onChange: (patch: Partial<Omit<SoundClip, "id" | "asset_id">>) => void;
   onToPlayhead: () => void;
   onFit: () => void;
+  /** The clean-up section (SoundCleanSection). */
+  clean?: ReactNode;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -2389,6 +2395,7 @@ function SoundInspector({
           ) : null}
         </div>
       ) : null}
+      {clean}
       <button
         type="button"
         onClick={onDelete}

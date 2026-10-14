@@ -397,6 +397,9 @@ project keeps exactly its document.
 | overlay `move.to` | "Move to an end position" (`OverlayMoveSection`) | C2 |
 | clip `fit: "blur"` | third key of "Picture in the frame" (`FitPicker`); `fitOf()` reports it | C2 |
 | clip `speed` 0.25-4, `reverse`, `freeze` | "Speed" keys + number box, "Direction, freeze and slow motion" (`ClipSpeedSection`), "Freeze the frame at the playhead" | C2 |
+| overlay `chroma` | "Remove a background colour" (`OverlayChromaSection`): ready screens, colour box, code, screen picker where the browser has one, how much, softness | C3 |
+| `denoise`, `loudnorm` | "Steady picture and clean sound" on a clip (`ClipCleanSection`), "Clean up sound" on a music / sound clip | C3 |
+| clip `stabilize` | toggle in "Steady picture and clean sound", with the cost, the limits and the project's use | C3 |
 | clip `speed_curve`, `interpolate` | "Speed curve" (point rows and a plot), "Smoother slow motion" with its budget | C2 |
 
 Preview: look (curve tables as an SVG filter, pinned to
@@ -416,3 +419,13 @@ slow, is backwards or frozen, or would pass the per-clip / per-project frame
 budget (`interpolateCheck`, the longest part that fits is shown), and trimming a
 clip that uses it stops at the budget. A reversed, frozen or ramped clip is
 stepped through frame by frame in the preview (no sound).
+
+C3 notes: the chroma preview (`lib/editorChromaPreview.ts`) is the export's
+`chromakey` rule as an SVG filter (distance in the two chroma planes only,
+`diff = sqrt((du^2 + dv^2) / 2)`, alpha ramp `(diff - similarity) / blend`), pinned
+by a test that runs the filter's own arithmetic against the definition; it is
+rough, and the panel says the exported file is the reference. Clean-up and
+stabilise are not shown in the preview (the note says so). Stabilise is off, with
+the numbers, for a photo, a frozen frame, a part over `STABILIZE_MAX_S` or a
+project total over `STABILIZE_MAX_DOC_S`; trimming a steadied clip stops at what
+is left; freezing a clip turns steadiness off.
