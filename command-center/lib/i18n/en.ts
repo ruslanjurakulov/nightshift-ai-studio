@@ -939,6 +939,12 @@ export const en = {
       notTaken: "No credits were taken or held.",
       startHeld: "The video did not start, but {n} credits are on hold for it. They return to your balance automatically in about 3 hours. Making it again puts credits on hold again until then.",
       startUnsure: "We could not tell whether this started. Look under Videos before you try again. If credits were held, trying again will not hold them twice.",
+      startUnsureHeld: "It may have started. {n} credits are held. Check Videos before trying again; the hold returns by itself in about 3 hours if it did not start.",
+      startUnsureReplay: "A hold exists for this video, and it may or may not have started. Check Videos before trying again; if it did not start, the hold returns by itself in about 3 hours.",
+      startFailedHeld: "Did not start. {n} credits are held and return automatically in about 3 hours. You can try again then, or change the request.",
+      startFailedHeldShort: "Did not start. Your credits are held and return automatically in about 3 hours. You can try again then, or change the request.",
+      startFailedReleased: "Did not start, and no credits are held. You can try again.",
+      startTooMany: "Too many earlier requests are still waiting for their credits to return. Check Videos, or try again later — they return by themselves in about 3 hours.",
     },
   },
   voice: {

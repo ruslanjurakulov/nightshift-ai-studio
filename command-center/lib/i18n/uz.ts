@@ -929,6 +929,12 @@ export const uz: Dictionary = {
       notTaken: "Kreditlar yechilmadi va band qilinmadi.",
       startHeld: "Video boshlanmadi, lekin u uchun {n} kredit band qilingan. U taxminan 3 soatdan keyin balansga avtomatik qaytadi. Videoni qayta yaratsangiz, shu vaqtgacha kreditlar yana band qilinadi.",
       startUnsure: "Video boshlanganini aniqlab boʻlmadi. Qayta urinishdan oldin «Videolar» boʻlimini tekshiring. Kreditlar band qilingan boʻlsa, qayta urinish ularni ikkinchi marta band qilmaydi.",
+      startUnsureHeld: "Video boshlangan boʻlishi mumkin. Band qilingan kreditlar: {n}. Qayta urinishdan oldin «Videolar» boʻlimini tekshiring; agar boshlanmagan boʻlsa, band qilingan kreditlar taxminan 3 soatdan keyin oʻzi qaytadi.",
+      startUnsureReplay: "Bu video uchun kreditlar band qilingan, video esa boshlangan ham, boshlanmagan ham boʻlishi mumkin. Qayta urinishdan oldin «Videolar» boʻlimini tekshiring; agar boshlanmagan boʻlsa, band qilingan kreditlar taxminan 3 soatdan keyin oʻzi qaytadi.",
+      startFailedHeld: "Boshlanmadi. Band qilingan kreditlar: {n}; ular taxminan 3 soatdan keyin avtomatik qaytadi. Oʻshanda qayta urinib koʻrishingiz yoki soʻrovni oʻzgartirishingiz mumkin.",
+      startFailedHeldShort: "Boshlanmadi. Kreditlar band qilingan va taxminan 3 soatdan keyin avtomatik qaytadi. Oʻshanda qayta urinib koʻrishingiz yoki soʻrovni oʻzgartirishingiz mumkin.",
+      startFailedReleased: "Boshlanmadi, kreditlar band qilinmagan. Qayta urinib koʻrishingiz mumkin.",
+      startTooMany: "Oldingi soʻrovlar juda koʻp va ularning kreditlari hali qaytmagan. «Videolar» boʻlimini tekshiring yoki keyinroq urinib koʻring: ular taxminan 3 soatdan keyin oʻzi qaytadi.",
     },
   },
   voice: {
