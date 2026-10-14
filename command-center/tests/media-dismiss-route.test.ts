@@ -65,7 +65,8 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => client,
   getUser: async () => h.user,
 }));
-vi.mock("@/lib/server/audit", () => ({ logAudit: async () => {} }));
+const audit = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("@/lib/server/audit", () => ({ logAudit: audit }));
 
 const { POST } = await import("../app/api/media/uploads/[ticket]/dismiss/route");
 const { DISMISS_META_KEY, DISMISS_MAX } = await import("../lib/media-dismiss");
@@ -95,6 +96,7 @@ beforeEach(() => {
   h.updateThrows = false;
   h.updates = [];
   h.tableCalls = [];
+  audit.mockClear();
 });
 
 describe("who may dismiss", () => {
@@ -167,6 +169,11 @@ describe("what is written", () => {
     expect(h.updates).toEqual([{ data: { [DISMISS_META_KEY]: [id(1)] } }]);
     expect(h.tableCalls).toHaveLength(1);
     expect(h.tableCalls[0]).toEqual({ table: "media_uploads", chain: ["select", "eq", "maybeSingle"] });
+  });
+
+  it("writes no audit row: an audit action needs a database migration, and a personal hide changes nothing shared", async () => {
+    expect((await call(id(1))).status).toBe(200);
+    expect(audit).not.toHaveBeenCalled();
   });
 
   it("newest first, no repeats: pressing twice is the same as once", async () => {
