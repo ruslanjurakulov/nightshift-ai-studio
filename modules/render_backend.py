@@ -495,15 +495,42 @@ def _segment_commands(
     # clip that would drift every later cut off the audio timeline. -ss before
     # -i is an input seek, frame-accurate when transcoding, and the output's
     # timestamps start at 0 — so the fades above are relative to the cut.
-    seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
-    fit = _fit_for(seg)
-    return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
-             "-vf", (speed_filter(seg.speed) + geometry_filter(seg)
-                     + fit(width, height, fps, grade_filter(seg))
+    inputs, chain = _video_source(seg, width, height, fps, full)
+    return [[ffmpeg, "-y", *inputs, *length, "-an",
+             "-vf", (chain
                      + (move_filter(seg.move, width, height, full) if seg.move is not None else "")
                      + fades),
              *common,
              str(out_path)]]
+
+
+def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
+                  tag: str = "") -> tuple:
+    """``(input args, filter chain)`` that read a video clip and bring it to the
+    output frame: forward (retimed first, then fitted — the chain this backend
+    always had), reversed, or one held frame.
+
+    Reverse fits the picture to the output size and rate FIRST and reverses
+    after, so the frames ffmpeg holds in memory are output-sized (the document
+    caps the range for that, timeline.REVERSE_MAX_BYTES), then retimes and
+    resamples. It reads only the range (``-t``): a reversed clip is not looped.
+    A frozen clip keeps its first frame and repeats it for the rest of the clip."""
+    seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
+    fit = _fit_for(seg)
+    grade = grade_filter(seg)
+    framed = (_scale_blur(width, height, fps, grade, tag) if fit is _scale_blur
+              else fit(width, height, fps, grade))
+    geo = geometry_filter(seg)
+    if seg.freeze:
+        return ([*seek, "-i", seg.path],
+                f"{geo}trim=end_frame=1,setpts=PTS-STARTPTS,{framed},"
+                f"tpad=stop={max(full - 1, 0)}:stop_mode=clone")
+    if seg.reverse:
+        span = full / fps * seg.speed          # seconds of SOURCE the clip plays
+        return ([*seek, "-t", f"{span:.3f}", "-i", seg.path],
+                f"{geo}{framed},reverse,setpts=(PTS-STARTPTS)/{float(seg.speed):.3f},fps={fps}")
+    return (["-stream_loop", "-1", *seek, "-i", seg.path],
+            speed_filter(seg.speed) + geo + framed)
 
 
 def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
@@ -528,12 +555,8 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
         return (["-i", seg.path],
                 geometry_filter(seg) + ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
                 + _then(grade) + tail)
-    seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
-    fit = _fit_for(seg)
-    framed = (_scale_blur(width, height, fps, grade, tag) if fit is _scale_blur
-              else fit(width, height, fps, grade))
-    return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            speed_filter(seg.speed) + geometry_filter(seg) + framed + mv + tail)
+    inputs, chain = _video_source(seg, width, height, fps, full, tag)
+    return inputs, chain + mv + tail
 
 
 def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,

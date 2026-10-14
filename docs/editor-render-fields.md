@@ -24,6 +24,7 @@ note for text looks).
 | 3 | `claude/render-effects` | V clip `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h`, `flip_v`, `rotate` | PR open (stacked on 2) |
 | 4 | `claude/render-keyframes` | V clip `move` (Ken Burns zoom/pan); overlay `move.to` (x, y, w, opacity) | PR open (stacked on 3) |
 | 5 | `claude/render-blur-fit` | V clip `fit: "blur"` | PR open (stacked on 4) |
+| 6 | `claude/render-speed` | V clip `speed` 0.25-4 (pitch kept), `reverse`, `freeze` | PR open (stacked on 5) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -186,3 +187,39 @@ like `contain` (the picture alone).
   the preview with a CSS `filter: blur()` copy of the video behind the picture
   (approximate; say so).
 * Cross-fades: both sides can use `blur`.
+
+## 6. Speed 0.25 to 4, reverse, freeze
+
+* `speed` on a V clip is now 0.25 to 4 (was 0.5 to 2). `in_s`/`out_s` stay SOURCE
+  times; the clip lasts `(out_s - in_s) / speed` on the timeline. Its own sound
+  (`audio: true`) keeps its pitch at every speed (chained `atempo` stages).
+  The editor's own list (`SPEEDS` in `lib/editor.ts`, 0.5 to 2) is a subset
+  the picker offers; the constants `SPEED_MIN`/`SPEED_MAX` are the document's
+  (0.25/4), and `setSpeed` clamps to them. Track C: widen `SPEEDS` (and the
+  picker) as wanted, e.g. 0.25, 0.5, ..., 3, 4.
+  At 0.25x a frame is shown four times; there is no frame interpolation (a
+  later item adds optional flow-based slow motion).
+* `reverse: true`: plays the source range backwards (picture and the clip's own
+  sound), at its `speed`. ffmpeg's `reverse` holds the whole range in memory,
+  so the range is capped: `out_s - in_s` frames at the DOCUMENT's frame size
+  and rate must fit 512 MiB of 4:2:0 frames. Use `reverseMaxSeconds(width,
+  height, fps)` from `lib/editor.ts` to tell the user the limit: 1920x1080 at 30
+  fps = 5.75 s, 1280x720 at 30 fps = 12.9 s, 1080x1920 (portrait) at 30 fps =
+  5.75 s, 3840x2160 at 60 fps = 0.7 s. The validators refuse a longer range
+  with that number in the message. (Measured: a range at the cap peaks near
+  660 MB resident, inside the export's 2 GiB limit.)
+* `freeze: true`: holds the frame at `in_s` for the clip's whole length
+  (`out_s - in_s`; the file does not have to reach `out_s`, only `in_s`). No
+  sound; `speed` must be 1 (or absent); cannot be combined with `reverse` or
+  `audio: true`. A "freeze frame at the playhead" edit in the UI is: split
+  the clip at the playhead, set `freeze: true` on a new clip with `in_s` =
+  the playhead's source time and `out_s` = `in_s` + the hold length, and
+  shift the rest of the timeline.
+* both are for VIDEO clips; the export refuses them on a picture
+  ("for video, not a picture").
+* splitting: `reverse` and `freeze` stay on both halves, and both splitters
+  (`splitClip` in `lib/editor.ts`, `split_clip` in the backend) keep the
+  picture continuous: for a reversed clip the part that comes first on the
+  timeline gets the LATER part of the source range (the halves swap their
+  `in_s`/`out_s` roles); for a frozen clip both halves hold the same frame
+  (`in_s` unchanged) and only their lengths (`out_s - in_s`) differ.

@@ -46,9 +46,9 @@ export const MAX_AUDIO_CLIPS = 64;
 export const MAX_TOTAL_CLIPS = 5000;
 export const MAX_CUES = 5000;
 export const MAX_TEXT = 500;
-export const SPEED_MIN = 0.5;
-export const SPEED_MAX = 2;
-/** The speeds the editor offers (any value in 0.5–2 is valid in a document). */
+export const SPEED_MIN = 0.25;
+export const SPEED_MAX = 4;
+/** The speeds the editor offers (any value in 0.25–4 is valid in a document). */
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export const SIZE_MIN = 8;
 export const SIZE_MAX = 512;
@@ -195,6 +195,15 @@ export const ROTATIONS = [0, 90, 180, 270] as const;
 export const MOVE_ZOOM_MIN = 1;
 export const MOVE_ZOOM_MAX = 4;
 export const MOVE_POINT_DEFAULTS = { zoom: 1, x: 0.5, y: 0.5 } as const;
+/** Reverse holds every frame of the range in memory at the output size
+ *  (modules/timeline.py REVERSE_MAX_BYTES / REVERSE_BYTES_PER_PIXEL). */
+export const REVERSE_MAX_BYTES = 512 * 1024 * 1024;
+export const REVERSE_BYTES_PER_PIXEL = 1.5;
+/** The longest source range a clip may play reversed at this frame size and
+ *  rate, in seconds (rounded down to a millisecond). */
+export function reverseMaxSeconds(width: number, height: number, fps: number): number {
+  return Math.floor((REVERSE_MAX_BYTES / (fps * width * height * REVERSE_BYTES_PER_PIXEL)) * 1000) / 1000;
+}
 export type Rotation = (typeof ROTATIONS)[number];
 const EFFECT_KEYS = [
   "filter",
@@ -252,6 +261,8 @@ const V_CLIP_KEYS = [
   "audio",
   "grade",
   "move",
+  "reverse",
+  "freeze",
   ...EFFECT_KEYS,
 ];
 const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
@@ -355,6 +366,12 @@ export interface VideoClip {
   /** Ken Burns style move over the fitted picture (a still with one has it
    *  instead of the automatic slow zoom). */
   move?: ClipMove;
+  /** Play the source range backwards; holds the whole range in memory, so the
+   *  range is capped (see reverseMaxSeconds). Video only. */
+  reverse?: boolean;
+  /** Hold the frame at in_s for the clip's whole length; no sound, speed 1,
+   *  not with reverse. Video only. */
+  freeze?: boolean;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -689,7 +706,7 @@ export function validateTimeline(doc: unknown): string[] {
           ? `${where} clip ${String(clip.id)}`
           : `${where} clips[${ci}]`;
       if (kind === "T") validateTextClip(clip, cwhere, problems, claim);
-      else validateMediaClip(clip, kind, cwhere, fps, problems, claim);
+      else validateMediaClip(clip, kind, cwhere, fps, problems, claim, [doc.width, doc.height]);
     });
   });
   if (vTracks > 1)
@@ -785,6 +802,7 @@ function validateMediaClip(
   fps: number | null,
   problems: string[],
   claim: (i: unknown, w: string) => void,
+  frame: [unknown, unknown] = [null, null],
 ) {
   const keys = kind === "V" ? V_CLIP_KEYS : A_CLIP_KEYS;
   if (!fields(clip, keys, MEDIA_REQUIRED, where, problems)) return;
@@ -803,6 +821,19 @@ function validateMediaClip(
   }
   if (kind === "V" && "audio" in clip && typeof clip.audio !== "boolean")
     problems.push(`${where}: audio must be true or false`);
+  if (kind === "V") {
+    for (const k of ["reverse", "freeze"])
+      if (k in clip && typeof clip[k] !== "boolean")
+        problems.push(`${where}: ${k} must be true or false`);
+    if (clip.freeze === true) {
+      if (clip.reverse === true)
+        problems.push(`${where}: a frozen clip cannot also be reversed`);
+      if (isNum(clip.speed ?? 1) && (clip.speed ?? 1) !== 1)
+        problems.push(`${where}: a frozen clip has no speed (it holds one frame)`);
+      if (clip.audio === true)
+        problems.push(`${where}: a frozen clip has no sound`);
+    }
+  }
   const ins = clip.in_s;
   const outs = clip.out_s;
   if (isNum(ins) && isNum(outs) && speed) {
@@ -813,6 +844,18 @@ function validateMediaClip(
       problems.push(`${where}: out_s must be greater than in_s`);
     else if (fps && Math.round(length * fps) < 1)
       problems.push(`${where}: shorter than one frame`);
+    else if (
+      kind === "V" &&
+      clip.reverse === true &&
+      fps &&
+      isInt(frame[0]) &&
+      isInt(frame[1]) &&
+      Math.ceil((ms(outs) - ms(ins)) * fps) * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL >
+        REVERSE_MAX_BYTES
+    )
+      problems.push(
+        `${where}: reverse holds every frame of the range in memory — at most ${reverseMaxSeconds(frame[0], frame[1], fps)} s at this frame size`,
+      );
     else if (isNum(fi) && isNum(fo) && fi + fo > length + 1e-9)
       problems.push(`${where}: fade_in_s + fade_out_s is longer than the clip`);
   }
@@ -1577,6 +1620,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
         : {}),
       ...gradeFieldOf(c.grade),
       ...effectsOf(c),
+      ...(c.reverse === true ? { reverse: true } : {}),
+      ...(c.freeze === true ? { freeze: true } : {}),
       ...(isObj(c.move) ? { move: c.move as unknown as ClipMove } : {}),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
@@ -2012,9 +2057,19 @@ export function splitClip(
   const newId = freshId(model, "c");
   // modules/timeline.py split_clip: the first half keeps the way in (its
   // transition and fade in), the second the way out (its fade out).
-  const first: VideoClip = { ...c, out_s: cut };
+  // Played backwards, the part that comes first on the timeline is the LATER
+  // part of the source range; a frozen clip's halves hold the same frame.
+  const first: VideoClip = c.reverse
+    ? { ...c, in_s: cut }
+    : { ...c, out_s: cut };
   delete first.fade_out_s;
-  const second: VideoClip = withoutTransition({ ...c, id: newId, in_s: cut });
+  const second: VideoClip = withoutTransition(
+    c.reverse
+      ? { ...c, id: newId, out_s: cut }
+      : c.freeze
+        ? { ...c, id: newId, out_s: ms(c.in_s + (clipEnd(c) - ms(t))) }
+        : { ...c, id: newId, in_s: cut },
+  );
   delete second.fade_in_s;
   if (second.audio && audioInputs(model) >= MAX_AUDIO_CLIPS)
     second.audio = false;

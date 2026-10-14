@@ -18,7 +18,7 @@ not a project dependency — tests keep the two in sync)::
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
                              style?: <one of XFADE_STYLES, crossfade only> },
-              speed?: 0.5..2, audio?: bool,
+              speed?: 0.25..4, audio?: bool, reverse?: bool, freeze?: bool,
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
               filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
               flip_h?, flip_v?, rotate?,
@@ -81,9 +81,17 @@ Rules this module keeps:
 * **Speed changes how long a clip lasts, not what it shows.** ``in_s`` and
   ``out_s`` are SOURCE times; a V clip at ``speed`` 2 plays that range in
   half the time, so its end on the timeline is
-  ``start_s + (out_s - in_s) / speed``. The range 0.5-2 is what one ffmpeg
-  ``atempo`` stage keeps in tune, so a sped-up clip's own sound never needs
-  a chain of filters to stay intelligible.
+  ``start_s + (out_s - in_s) / speed``. The range is 0.25-4; the clip's own
+  sound keeps its pitch (a chain of ``atempo`` stages, each within 0.5-2).
+* **Reverse and freeze are clip options.** ``reverse: true`` plays the source
+  range ``in_s``..``out_s`` backwards (picture and the clip's own sound), at its
+  ``speed``. ffmpeg's ``reverse`` holds every frame of the range in memory, so
+  the range must fit ``REVERSE_MAX_BYTES`` of frames at the document's frame size
+  and rate (a 1080p / 30 fps frame is ~3 MB: about 5.5 s; a 720p one about 13 s).
+  ``freeze: true`` holds the frame at ``in_s`` for the clip's whole length
+  (``out_s - in_s``; the file need not be that long, only reach ``in_s``) and has
+  no sound: it cannot be combined with ``speed`` other than 1, ``reverse`` or
+  ``audio``. Both are for video files, not stills.
 * **Ducking is a track option, not an effect on a clip.** An A track may carry
   ``duck: {amount_db, attack_s?, release_s?}``: while speech plays, that
   track's sound is lowered by ``amount_db`` (an exact amount, not a
@@ -256,9 +264,10 @@ OUTLINE_MAX = 20.0
 SHADOW_MAX = 20.0
 #: A text's box opacity when ``box_color`` is set without one.
 BOX_OPACITY_DEFAULT = 0.7
-#: Per-clip playback speed. One atempo stage covers exactly this range
-#: (render_spec.SPEED_MIN/MAX are the same numbers; a test pins them).
-SPEED_MIN, SPEED_MAX = 0.5, 2.0
+#: Per-clip playback speed (render_spec.SPEED_MIN/MAX are the same numbers; a test
+#: pins them). The sound of a clip outside 0.5-2 goes through a chain of
+#: ``atempo`` stages, each inside that range, so its pitch is kept.
+SPEED_MIN, SPEED_MAX = 0.25, 4.0
 
 #: Entrance / exit animations of a text or an overlay (render_spec.ANIM_* are
 #: the same lists; a test pins them). The name decides which filter or ASS tag
@@ -291,6 +300,12 @@ _MOVE_POINT_KEYS = tuple(MOVE_POINT_DEFAULTS)
 #: What an overlay's ``move.to`` may change.
 _OVERLAY_MOVE_KEYS = ("x", "y", "w", "opacity")
 
+#: Reverse buffers the whole range at the output frame size (render_backend);
+#: 4:2:0 is 1.5 bytes per pixel. 512 MiB keeps one segment well inside the export's
+#: 2 GiB address-space limit (ffmpeg_limits.CHILD_MEM_BYTES; measured, tests pin it).
+REVERSE_MAX_BYTES = 512 * 1024 * 1024
+REVERSE_BYTES_PER_PIXEL = 1.5
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -317,7 +332,7 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade", "move") + _EFFECT_KEYS
+                                  "grade", "move", "reverse", "freeze") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -540,7 +555,7 @@ def validate(doc: Any) -> List[str]:
             if kind == KIND_T:
                 _validate_text_clip(clip, cwhere, problems, claim)
             else:
-                _validate_media_clip(clip, kind, cwhere, fps, problems, claim)
+                _validate_media_clip(clip, kind, cwhere, fps, problems, claim, frame=(w, h))
     if v_tracks > 1:
         problems.append("timeline: only one video (V) track is supported — overlapping "
                         "video (picture-in-picture) is not available yet")
@@ -603,7 +618,7 @@ def _validate_audio_track_options(track, where, problems) -> None:
                         "or set role to music)")
 
 
-def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
+def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, None)) -> None:
     keys = _V_CLIP_KEYS if kind == KIND_V else _A_CLIP_KEYS
     if not _fields(clip, keys, _MEDIA_REQUIRED, where, problems):
         return
@@ -621,6 +636,17 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
         speed = clip["speed"] if (_is_num(clip["speed"]) and SPEED_MIN <= clip["speed"] <= SPEED_MAX) else None
     if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
         problems.append(f"{where}: audio must be true or false")
+    if kind == KIND_V:
+        for k in ("reverse", "freeze"):
+            if k in clip and not isinstance(clip[k], bool):
+                problems.append(f"{where}: {k} must be true or false")
+        if clip.get("freeze") is True:
+            if clip.get("reverse") is True:
+                problems.append(f"{where}: a frozen clip cannot also be reversed")
+            if _is_num(clip.get("speed", 1.0)) and clip.get("speed", 1.0) != 1.0:
+                problems.append(f"{where}: a frozen clip has no speed (it holds one frame)")
+            if clip.get("audio") is True:
+                problems.append(f"{where}: a frozen clip has no sound")
     ins, outs = clip.get("in_s"), clip.get("out_s")
     # Range first, derived maths after: an out_s of 1e308 is already reported above, and
     # `round(length * fps)` of it is an OverflowError, not a problem (a crash that left an
@@ -632,6 +658,12 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
             problems.append(f"{where}: out_s ({outs}) must be greater than in_s ({ins})")
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
+        elif (clip.get("reverse") is True and fps and _is_int(frame[0]) and _is_int(frame[1])
+              and math.ceil((_ms(outs) - _ms(ins)) * fps) * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL
+              > REVERSE_MAX_BYTES):
+            problems.append(f"{where}: reverse holds every frame of the range in memory — at "
+                            f"{frame[0]}x{frame[1]} and {fps} fps at most "
+                            f"{_ms(REVERSE_MAX_BYTES / (fps * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL))} s")
         elif (_is_num(clip.get("fade_in_s", 0)) and _is_num(clip.get("fade_out_s", 0))
               and clip.get("fade_in_s", 0) + clip.get("fade_out_s", 0) > length + 1e-9):
             problems.append(f"{where}: fade_in_s + fade_out_s is longer than the clip ({length:.3f} s)")
@@ -1105,6 +1137,9 @@ def normalise(doc: dict) -> dict:
                         if c["grade"] == GRADE_NEUTRAL:
                             del c["grade"]   # no change: the clip is the one it was without it
                     _normalise_effects(c)
+                    for k in ("reverse", "freeze"):
+                        if c.get(k) is False:
+                            del c[k]
                     if "move" in c:
                         c["move"] = {k: {**MOVE_POINT_DEFAULTS, **c["move"][k]} for k in ("from", "to")}
                         for k in ("from", "to"):
@@ -1235,9 +1270,19 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
                 mid = {k: _ms(a[k] + (b[k] - a[k]) * frac) for k in MOVE_POINT_DEFAULTS}
                 clip["move"] = {"from": clip["move"]["from"], "to": mid}
                 second["move"] = {"from": dict(mid), "to": second["move"]["to"]}
-            second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
+            if clip.get("reverse"):
+                # Played backwards, the part that comes first on the timeline is the LATER
+                # part of the source range.
+                second.update(id=new_id, start_s=at, out_s=cut, fade_in_s=0.0)
+                clip.update(in_s=cut, fade_out_s=0.0)
+            elif clip.get("freeze"):
+                # Both halves hold the same frame; only how long differs.
+                second.update(id=new_id, start_s=at, out_s=_ms(_ms(clip["in_s"]) + (end - at)), fade_in_s=0.0)
+                clip.update(out_s=cut, fade_out_s=0.0)
+            else:
+                second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
+                clip.update(out_s=cut, fade_out_s=0.0)
             second.pop("transition", None)
-            clip.update(out_s=cut, fade_out_s=0.0)
             track["clips"].insert(i + 1, second)
             return out
     raise TimelineError([f"no clip {clip_id!r} in this timeline"])
@@ -1296,7 +1341,14 @@ def resolve_assets(doc: dict, resolver: AssetResolver) -> Dict[str, ResolvedAsse
                 problems.append(f"{where}: asset {asset.asset_id} has no local file to render from")
                 continue
             dur = asset.duration_s
-            if asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["out_s"]) > _ms(dur) + 0.001:
+            if asset.kind == ASSET_IMAGE and (clip.get("reverse") or clip.get("freeze")):
+                problems.append(f"{where}: reverse and freeze are for video, not a picture")
+            if clip.get("freeze"):
+                # A frozen clip only needs its frame to exist; its length is out_s - in_s.
+                if asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["in_s"]) >= _ms(dur):
+                    problems.append(f"{where}: in_s {clip['in_s']} is past the end of asset "
+                                    f"{asset.asset_id} ({dur} s)")
+            elif asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["out_s"]) > _ms(dur) + 0.001:
                 problems.append(f"{where}: out_s {clip['out_s']} is past the end of asset "
                                 f"{asset.asset_id} ({dur} s)")
     videos = 0

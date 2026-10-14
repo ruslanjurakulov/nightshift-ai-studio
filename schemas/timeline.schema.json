@@ -231,8 +231,8 @@
         },
         "speed": {
           "type": "number",
-          "minimum": 0.5,
-          "maximum": 2.0,
+          "minimum": 0.25,
+          "maximum": 4.0,
           "default": 1,
           "description": "Playback speed. in_s/out_s stay source times; the clip lasts (out_s - in_s) / speed. Its own sound (audio: true) keeps its pitch."
         },
@@ -328,6 +328,16 @@
               "$ref": "#/$defs/move_point"
             }
           }
+        },
+        "reverse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Play the source range in_s..out_s backwards (picture and the clip's own sound). The range is limited by memory: at most REVERSE_MAX_BYTES of frames at the document's frame size and rate. Video only."
+        },
+        "freeze": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hold the frame at in_s for the clip's whole length (out_s - in_s). No sound; speed must be 1; not with reverse. Video only."
         }
       }
     },

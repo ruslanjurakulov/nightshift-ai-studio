@@ -84,9 +84,10 @@ describe("validateTimeline agrees with modules/timeline.py", () => {
   });
 
   it("speed bounds are the renderer's", () => {
-    expect([SPEED_MIN, SPEED_MAX]).toEqual([0.5, 2]);
-    expect(SPEEDS[0]).toBe(SPEED_MIN);
-    expect(SPEEDS[SPEEDS.length - 1]).toBe(SPEED_MAX);
+    expect([SPEED_MIN, SPEED_MAX]).toEqual([0.25, 4]);
+    // the picker offers a subset of what a document may hold
+    expect(SPEEDS[0]).toBeGreaterThanOrEqual(SPEED_MIN);
+    expect(SPEEDS[SPEEDS.length - 1]).toBeLessThanOrEqual(SPEED_MAX);
   });
 });
 
@@ -176,13 +177,13 @@ describe("split", () => {
 });
 
 describe("speed and sound", () => {
-  it("speeds change the clip's length on the timeline, clamped to 0.5–2", () => {
+  it("speeds change the clip's length on the timeline, clamped to 0.25–4", () => {
     let m = addClip(toModel(start()), { id: B, durationS: 4 });
     m = setSpeed(m, "c1", 0.5);
     expect(clipEnd(layout(m.clips)[0])).toBe(20);
     expect(layout(m.clips)[1].start_s).toBe(20);
-    expect(setSpeed(m, "c1", 9).clips[0].speed).toBe(2);
-    expect(setSpeed(m, "c1", 0.1).clips[0].speed).toBe(0.5);
+    expect(setSpeed(m, "c1", 9).clips[0].speed).toBe(4);
+    expect(setSpeed(m, "c1", 0.1).clips[0].speed).toBe(0.25);
     expect(validateTimeline(toDoc(m))).toEqual([]);
   });
 

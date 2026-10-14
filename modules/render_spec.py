@@ -236,10 +236,9 @@ MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
            "bottom-left", "bottom", "bottom-right")
 
-#: Playback speed bounds. ffmpeg's atempo takes 0.5-100 per stage, but below
-#: 0.5 it needs chained stages and above 2 speech stops being followable;
-#: modules/timeline.py offers exactly this range.
-SPEED_MIN, SPEED_MAX = 0.5, 2.0
+#: Playback speed bounds (modules/timeline.py offers exactly this range). A sound
+#: outside 0.5-2 goes through chained ``atempo`` stages, each within it.
+SPEED_MIN, SPEED_MAX = 0.25, 4.0
 
 
 def _speed_ok(v) -> bool:
@@ -451,6 +450,9 @@ class Segment:
     #: A Ken Burns style move over the fitted picture (None = none; a still
     #: then keeps its automatic slow zoom).
     move: Optional[ClipMove] = None
+    #: Play the source range backwards / hold its first frame (video only).
+    reverse: bool = False
+    freeze: bool = False
 
     @property
     def graded(self) -> bool:
@@ -474,6 +476,8 @@ class Segment:
             d["effects"] = self.effects.to_dict()
         if self.move is not None:
             d["move"] = self.move.to_dict()
+        _put_if(d, "reverse", self.reverse, False)
+        _put_if(d, "freeze", self.freeze, False)
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -499,6 +503,7 @@ class Segment:
             saturation=float(1.0 if d.get("saturation") is None else d["saturation"]),
             effects=(ClipEffects.from_dict(d["effects"]) if isinstance(d.get("effects"), dict) else None),
             move=(ClipMove.from_dict(d["move"]) if isinstance(d.get("move"), dict) else None),
+            reverse=bool(d.get("reverse", False)), freeze=bool(d.get("freeze", False)),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -533,6 +538,8 @@ class AudioTrack:
     duck_attack_s: float = 0.0
     duck_release_s: float = 0.0
     duck_spans: Tuple[Tuple[float, float], ...] = ()
+    #: Play the trimmed source backwards (the clip's own sound under ``reverse``).
+    reverse: bool = False
 
     @property
     def output_s(self) -> float:
@@ -545,6 +552,7 @@ class AudioTrack:
              "fade_out_s": self.fade_out_s}
         _put_if(d, "speed", self.speed, 1.0)
         _put_if(d, "crossfade_s", self.crossfade_s, 0.0)
+        _put_if(d, "reverse", self.reverse, False)
         if self.duck_spans:
             d["duck_db"] = self.duck_db
             d["duck_attack_s"] = self.duck_attack_s
@@ -568,6 +576,7 @@ class AudioTrack:
             duck_attack_s=float(d.get("duck_attack_s") or 0.0),
             duck_release_s=float(d.get("duck_release_s") or 0.0),
             duck_spans=tuple((float(a), float(b)) for a, b in (d.get("duck_spans") or [])),
+            reverse=bool(d.get("reverse", False)),
         )
 
 
@@ -804,6 +813,14 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
                         f"(got {seg.speed})")
     if seg.effects is not None:
         problems.extend(_effects_problems(name, seg.effects))
+    if seg.reverse and seg.freeze:
+        problems.append(f"{name} cannot be both reversed and frozen")
+    if seg.freeze and seg.speed != 1.0:
+        problems.append(f"{name} is frozen, which has no speed")
+    if (seg.reverse or seg.freeze) and seg.kind != KIND_VIDEO:
+        problems.append(f"{name} reverse and freeze are for video, not a {seg.kind}")
+    if seg.reverse and not frame_exact:
+        problems.append(f"{name} is reversed, which needs frame_exact")
     if seg.move is not None:
         problems.extend(_move_problems(name, seg.move))
         if not frame_exact:
@@ -1047,6 +1064,23 @@ def _t(x: float) -> str:
     return f"{float(x):.3f}"
 
 
+def tempo_chain(speed: float) -> str:
+    """``atempo=...`` stages that play sound ``speed`` times faster with its pitch
+    kept. One stage covers 0.5-2 (the string older documents had); outside it the
+    speed is split into stages that each do, so it works on every ffmpeg."""
+    stages: List[float] = []
+    s = float(speed)
+    while s > 2.0 + 1e-9:
+        stages.append(2.0)
+        s /= 2.0
+    while s < 0.5 - 1e-9:
+        stages.append(0.5)
+        s /= 0.5
+    if abs(s - 1.0) > 1e-9 or not stages:
+        stages.append(s)
+    return ",".join(f"atempo={_t(x)}" for x in stages)
+
+
 def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
                        delay: bool = True) -> str:
     """The filter chain placing one audio track: cut ``duration_s`` from
@@ -1059,8 +1093,10 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
         f"atrim=start={_t(track.in_s)}:duration={_t(track.duration_s)}",
         "asetpts=PTS-STARTPTS",
     ]
+    if track.reverse:
+        chain += ["areverse", "asetpts=PTS-STARTPTS"]
     if track.speed != 1.0:
-        chain.append(f"atempo={_t(track.speed)}")
+        chain.append(tempo_chain(track.speed))
     chain.append("aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo")
     if track.gain_db:
         chain.append(f"volume={_t(track.gain_db)}dB")

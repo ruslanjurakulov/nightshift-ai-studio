@@ -54,16 +54,16 @@ def assets(has_audio=True):
 class SpeedValidationTestCase(unittest.TestCase):
     def test_speed_range_is_the_same_in_the_document_and_the_spec(self):
         self.assertEqual((tl.SPEED_MIN, tl.SPEED_MAX), (rs.SPEED_MIN, rs.SPEED_MAX))
-        self.assertEqual((tl.SPEED_MIN, tl.SPEED_MAX), (0.5, 2.0))
+        self.assertEqual((tl.SPEED_MIN, tl.SPEED_MAX), (0.25, 4.0))
         schema = json.loads(tl.SCHEMA_PATH.read_text(encoding="utf-8"))
         speed = schema["$defs"]["video_clip"]["properties"]["speed"]
         self.assertEqual((speed["minimum"], speed["maximum"]), (tl.SPEED_MIN, tl.SPEED_MAX))
 
-    def test_speeds_outside_half_to_double_are_refused(self):
-        for bad in (0.25, 0.49, 2.01, 4, 0, -1, "2", True, None, float("nan"), float("inf")):
+    def test_speeds_outside_quarter_to_four_are_refused(self):
+        for bad in (0.24, 0.249, 4.01, 5, 100, 0, -1, "2", True, None, float("nan"), float("inf")):
             problems = tl.validate(doc(speed=bad))
             self.assertTrue(any("speed" in p for p in problems), (bad, problems))
-        for ok in (0.5, 0.75, 1, 1.25, 1.5, 2, 2.0):
+        for ok in (0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.0, 3, 4, 4.0):
             self.assertEqual(tl.validate(doc(speed=ok)), [], ok)
 
     def test_audio_flag_must_be_a_boolean(self):
@@ -220,8 +220,8 @@ class SpeedArgvTestCase(unittest.TestCase):
         self.assertEqual(rs.AudioTrack.from_dict(t.to_dict()), t)
 
     def test_spec_validation_refuses_out_of_range_speed(self):
-        bad = rs.RenderSpec(output_path="/o.mp4", segments=[rs.Segment(1.0, "/v.mp4", speed=3.0)],
-                            audio_tracks=[rs.AudioTrack("/a.wav", 1.0, speed=0.25)])
+        bad = rs.RenderSpec(output_path="/o.mp4", segments=[rs.Segment(1.0, "/v.mp4", speed=5.0)],
+                            audio_tracks=[rs.AudioTrack("/a.wav", 1.0, speed=0.2)])
         problems = rs.validate(bad)
         self.assertTrue(any("segment 0 speed" in p for p in problems))
         self.assertTrue(any("audio track 0 speed" in p for p in problems))
@@ -324,7 +324,7 @@ class ExportWorkerTestCase(unittest.TestCase):
         self.assertFalse((self.root / editor_export.WORK_DIRNAME / EXPORT).exists())
 
     def test_an_invalid_document_fails_without_rendering(self):
-        for bad in (doc(speed=3), doc(out_s=1, in_s=2), {"version": 1}, "not json", None):
+        for bad in (doc(speed=5), doc(out_s=1, in_s=2), {"version": 1}, "not json", None):
             status, store, render, _ = self.run_export(export_row(doc=bad))
             self.assertEqual(status, "failed")
             self.assertEqual(store.finished[-1][2:], (None, "invalid_timeline"), bad)

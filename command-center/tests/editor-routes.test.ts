@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * (migration 0054).
  *
  * What would break without these: a document the renderer would refuse (a
- * speed of 3, a clip past its own end, a 600-character title card) reaching the
+ * speed of 5, a clip past its own end, a 600-character title card) reaching the
  * database; a new project built from another organization's video; a refusal
  * turning into a 500 or a fake success; an export request that carries
  * anything but the revision (the database copies the SAVED document); and a
@@ -243,8 +243,8 @@ describe("PUT /api/editor/projects/<id>", () => {
   });
 
   it.each([
-    ["speed 3", goodDoc({ speed: 3 })],
-    ["speed 0.25", goodDoc({ speed: 0.25 })],
+    ["speed 5", goodDoc({ speed: 5 })],
+    ["speed 0.2", goodDoc({ speed: 0.2 })],
     ["out before in", goodDoc({ in_s: 9, out_s: 1 })],
     ["a path smuggled in", goodDoc({ path: "/etc/passwd" })],
     ["audio as text", goodDoc({ audio: "yes" })],
