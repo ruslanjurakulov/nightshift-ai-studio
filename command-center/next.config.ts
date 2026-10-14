@@ -23,7 +23,7 @@ export const SECURITY_HEADERS = [
 ];
 
 /** The public paths that are route handlers (files), not pages. */
-export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/docs/api/openapi.json"] as const;
+export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/llms.txt", "/docs/api/openapi.json"] as const;
 
 /** The public PAGES (lib/public-paths.ts SITEMAP_PATHS, the two flag-gated
  *  developer pages of lib/dev-pages.ts, sign-in and sign-up;

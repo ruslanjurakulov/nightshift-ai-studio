@@ -19,6 +19,11 @@ import { EmbedBridge } from "@/components/view-mode/EmbedBridge";
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
   description: "Nightshift makes finished YouTube videos for your channel, shows the price before every run, and waits for your approval before anything goes public.",
+  // Explicit, though app/manifest.ts alone would be linked: the root layout is where the head is read, and the link
+  // is then one line a test can hold.
+  manifest: "/manifest.webmanifest",
+  // iOS ignores the manifest's name and display for a home-screen app; these are what it reads.
+  appleWebApp: { capable: true, title: "Nightshift", statusBarStyle: "default" },
   // The tab icon is the tile with the N set larger (icon.svg, favicon.ico). Without this the head also
   // links the 512 px icon.png, whose N is 6 px wide at tab size, and a high-density tab can pick that one.
   // An explicit `icons` object also replaces Next's auto-generated links, so app/apple-icon.png is not linked on its

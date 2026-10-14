@@ -453,6 +453,7 @@ export const siteRu: SiteDictionary = {
     googleAccess: "Управлять доступом Google",
     contact: "Контакты",
     signIn: "Войти",
+    cookies: "Cookie и хранилище",
     note: "Сделано глубокой ночью. Публикуется, когда скажете.",
   },
   solutions: {

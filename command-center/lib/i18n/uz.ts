@@ -80,6 +80,14 @@ export const uz: Dictionary = {
     audit: "Audit jurnali",
     developers: "Dasturchilar",
   },
+  installHint: {
+    title: "Nightshift’ni bosh ekranga qoʻshing",
+    android: "Kanallaringizni bir bosishda, ilova kabi oching.",
+    ios: "«Ulashish» tugmasini bosing, soʻng «Bosh ekranga qoʻshish»ni tanlang.",
+    add: "Qoʻshish",
+    notNow: "Hozir emas",
+    gotIt: "Tushunarli",
+  },
   navigation: {
     back: "Orqaga",
     breadcrumb: "Navigatsiya yoʻli",
