@@ -518,7 +518,7 @@ describe("the composer", () => {
   it("Extend: the model's shapes, the database's price, generate at that price", async () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={[EXPANDER, OTHER]} initial={start("expand", "ops-expand")} desk="enhance" />));
     const shapes = within(await screen.findByRole("group", { name: t.gen.shapeLabel })).getAllByRole("button");
-    expect(shapes.map((b) => b.textContent)).toEqual(["16:9", "9:16", "1:1"]);
+    expect(shapes.map((b) => b.textContent)).toEqual(["16:9", "1:1", "9:16"]);
     await screen.findByRole("button", { name: "Generate · 3 credits" }, { timeout: 2000 });
     expect(quotes.at(-1)).toEqual({
       org_id: ORG,
@@ -526,7 +526,7 @@ describe("the composer", () => {
       model: "ops-expand",
       params: { source_asset_id: PIC, aspect_ratio: "16:9" },
     });
-    fireEvent.click(shapes[2]);
+    fireEvent.click(shapes[1]);
     await waitFor(() => expect(quotes.at(-1)?.params).toEqual({ source_asset_id: PIC, aspect_ratio: "1:1" }), { timeout: 2000 });
     fireEvent.change(screen.getByLabelText(new RegExp(t.gen.opWords.expand)), { target: { value: "more sky" } });
     await waitFor(() => expect(quotes.at(-1)?.params).toEqual({ source_asset_id: PIC, aspect_ratio: "1:1", prompt: "more sky" }), { timeout: 2000 });

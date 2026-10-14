@@ -580,9 +580,10 @@ function fn(name: string): string {
 describe("pinned to 0072", () => {
   it("every capability and param key the code sends is one 0072 accepts", () => {
     const supported = fn("creative_capability_supported");
-    for (const c of CREATIVE_CAPABILITIES) expect(supported, c).toContain(`'${c}'`);
+    // The picture ops and their `look` (0099) are pinned to 0099, which replaces these functions on top of 0072's.
+    for (const c of CREATIVE_CAPABILITIES) if (!["expand", "relight", "erase"].includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
-    for (const k of PARAM_KEYS) expect(params, k).toContain(`'${k}'`);
+    for (const k of PARAM_KEYS) if (k !== "look") expect(params, k).toContain(`'${k}'`);
     expect(CAPABILITIES as readonly string[]).toContain("captions");
   });
 
