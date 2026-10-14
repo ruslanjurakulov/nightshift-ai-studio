@@ -75,6 +75,13 @@ describe("reverse and freeze", () => {
     expect(validateTimeline(doc({ freeze: true, audio: true })).join(";")).toContain("no sound");
     expect(validateTimeline(doc({ freeze: true, reverse: true })).join(";")).toContain("cannot also be reversed");
   });
+  it("a zero-sized frame with a reversed clip is a problem list, not an error", () => {
+    for (const [width, height] of [[0, 360], [640, 0], [0, 0]]) {
+      const got = validateTimeline(doc({ reverse: true }, { width, height }));
+      expect(got.length).toBeGreaterThan(0);
+      expect(got.join(";")).not.toContain("reverse holds");
+    }
+  });
   it("a reversed range fits the memory it holds, by the backend's arithmetic", () => {
     const big = { width: 1920, height: 1080, fps: 30 };
     // a whole number of frames: 172 of them at 1080p (the old floor to the millisecond, 5.753 s, was 173)
