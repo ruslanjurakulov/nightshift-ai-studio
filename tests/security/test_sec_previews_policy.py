@@ -62,7 +62,7 @@ OFFENDERS = (
 # The check that counts (the owner's primary verify): every policy on
 # storage.objects must be one this repo creates.
 ALLOWED = ("avatars_delete_own", "avatars_insert_own", "avatars_select_own", "avatars_update_own",
-           "previews_read", "voice_previews_read")
+           "previews_read", "previews_review_link_read", "voice_previews_read")
 ALLOWLIST = (
     "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects' "
     "and policyname not in ('" + "', '".join(ALLOWED) + "') order by policyname")
