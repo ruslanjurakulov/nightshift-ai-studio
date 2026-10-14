@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = path.join(REPO, "command-center", "app");
+const PUBLIC = path.join(REPO, "command-center", "public");
 const LOGO = path.join(REPO, "command-center", "brand", "logo");
 const PNG = path.join(LOGO, "png");
 const require = createRequire(path.join(REPO, "command-center", "package.json"));
@@ -32,7 +33,7 @@ async function png(svgFile, size, out, { flatten } = {}) {
 }
 
 // Brand kit: rounded app-icon tile, square (maskable / iOS) tile, white mark on transparent.
-for (const s of [1024, 512, 256, 180, 64, 32, 16]) {
+for (const s of [1024, 512, 256, 192, 180, 64, 32, 16]) {
   await png(path.join(LOGO, "nightshift-app-icon.svg"), s, path.join(PNG, `nightshift-app-icon-${s}.png`));
 }
 for (const s of [512, 192]) {
@@ -48,6 +49,14 @@ writeFileSync(
 // icon.png and apple-icon.png are the owner's picture itself: the square tile, same framing.
 await png(path.join(LOGO, "nightshift-maskable.svg"), 512, path.join(APP, "icon.png"));
 await png(path.join(LOGO, "nightshift-maskable.svg"), 180, path.join(APP, "apple-icon.png"), { flatten: "#030303" });
+
+// The web app manifest's icons (command-center/app/manifest.ts), served from public/ under these exact names
+// (middleware.ts matcher). "any" is the rounded app icon; "maskable" is the square tile with the owner's framing,
+// whose N (37.9% of the width) sits well inside the 80% safe circle a launcher may crop to.
+for (const s of [192, 512]) {
+  await png(path.join(LOGO, "nightshift-app-icon.svg"), s, path.join(PUBLIC, `pwa-${s}.png`));
+  await png(path.join(LOGO, "nightshift-maskable.svg"), s, path.join(PUBLIC, `pwa-maskable-${s}.png`), { flatten: "#030303" });
+}
 
 // favicon.ico: PNG-in-ICO at 16, 32, 48 (the tab composition).
 const sizes = [16, 32, 48];

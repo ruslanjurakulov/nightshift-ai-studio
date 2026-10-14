@@ -5,13 +5,13 @@ import { gateDecision, isPublicPath } from "@/lib/public-paths";
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("robots.txt and sitemap.xml", () => {
+describe("robots.txt, sitemap.xml and llms.txt", () => {
   it("are public to a signed-out crawler, exactly", () => {
-    for (const p of ["/robots.txt", "/sitemap.xml"]) {
+    for (const p of ["/robots.txt", "/sitemap.xml", "/llms.txt"]) {
       expect(isPublicPath(p)).toBe(true);
       expect(gateDecision(p, false)).toBe("pass");
     }
-    for (const p of ["/robots.txt/x", "/sitemap.xml.bak", "/sitemaps.xml"]) expect(gateDecision(p, false)).not.toBe("pass");
+    for (const p of ["/robots.txt/x", "/sitemap.xml.bak", "/sitemaps.xml", "/llms.txt/x", "/llms.txt.bak", "/llms-full.txt"]) expect(gateDecision(p, false)).not.toBe("pass");
   });
 
   it("list only the public pages, on the site's own origin", () => {

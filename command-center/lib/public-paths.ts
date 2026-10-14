@@ -59,8 +59,8 @@ export const INVITE_NOTICE_PATH = "/invite";
  */
 export const STUDIO_PAGE_PATH = "/studio";
 
-/** Always public: the crawler files (app/robots.ts, app/sitemap.ts). */
-export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"] as const;
+/** Always public: the crawler files (app/robots.ts, app/sitemap.ts, app/llms.txt/route.ts). */
+export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml", "/llms.txt"] as const;
 
 /** Always public: what the product does, by who it is for (lib/solutions.ts).
  *  Listed one by one — the index and each page — never as a prefix. */

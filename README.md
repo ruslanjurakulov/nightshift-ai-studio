@@ -74,8 +74,15 @@ Standing brief: [`CLAUDE.md`](CLAUDE.md). The short version:
   row that a worker (`tools/queue_worker.py`, `Dockerfile.worker`) claims
   ([`docs/WORKER_VPS.md`](docs/WORKER_VPS.md)).
 - **Other workflows:** intelligence poll, provider balances, pending approvals,
-  Telegram control, model probes, and the CI workflows (`tests`, `frontend`,
-  `security`, `video-engine`).
+  Telegram control, operator alerts, model probes, and the CI workflows (`tests`,
+  `frontend`, `security`, `video-engine`).
+- **Operator bot** (`@NightshiftAiStudio_bot`): the owner's read-only control panel in
+  Telegram. Commands and inline buttons for `/health`, `/queue`, `/errors`,
+  `/balance`, `/spend`, `/today`, `/users`, `/deploys`, `/approvals`, `/digest`;
+  de-duplicated, rate-limited proactive alerts with quiet hours and a daily digest;
+  replies in seconds (long polling, or an optional webhook). It cannot publish,
+  spend, approve, change prices or grant roles. Commands, alerts and the exact
+  go-live steps: [`docs/operator-bot.md`](docs/operator-bot.md).
 
 ## Security
 
@@ -116,9 +123,10 @@ cd command-center && npx tsc --noEmit && npx next lint && npx vitest run && npx 
 installed. Every user-visible string lives in all three of
 `command-center/lib/i18n/{en,ru,uz}.ts`.
 
-CI's `Frontend / checks` job currently shows a red "Dependency advisories" step:
-a dev-only `npm audit` finding with no non-breaking fix. Read which step fails
-before treating a red job as a real failure.
+CI's "Dependency advisories" step is `command-center/scripts/audit-gate.mjs`: production
+dependencies fail it at moderate, dev ones at high, except advisories dated in
+`command-center/scripts/audit-allowlist.mjs` (today: braces, which has no patched release
+and is only reached by the linter). Read which step fails before treating a red job as real.
 
 ## Docs
 

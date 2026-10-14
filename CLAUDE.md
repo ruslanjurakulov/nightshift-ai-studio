@@ -95,7 +95,7 @@ tools/                   scripts the workflows call (list_channels.py builds the
 command-center/          Next.js App Router dashboard
 supabase/migrations/     additive only, applied by hand
 .github/workflows/       daily_video.yml (bot), tests.yml (Python), frontend.yml (dashboard)
-docs/                    ARCHITECTURE, MULTI_CHANNEL, MEASUREMENT, AUTONOMY, SUPABASE …
+docs/                    ARCHITECTURE, MULTI_CHANNEL, MEASUREMENT, AUTONOMY, SUPABASE, LAUNCH_CHECKLIST …
 ```
 
 Per-channel settings live on `ChannelContext` (`modules/channels.py`) and are
