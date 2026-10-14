@@ -57,7 +57,7 @@ What a scan of the code found (every cookie constant, every `localStorage` and
   in: last channel, organization, menu width), `ns_auth_pending`, `ns_recovery`,
   `ns_invite` (10 min / 15 min / 24 h, one purpose each), and the connect-flow
   nonces `yt_oauth_nonce`, `ig_oauth_nonce`, `tt_oauth_nonce`, `tt_oauth_pkce`
-  (10 min).
+  (10 min), and `ns_connect_pending` (the held sign-in handle while an account is picked, 10 min, httpOnly).
 - **Local storage:** `chronos_theme`, the editor's on-device drafts
   (`ns.editor.draft.v1…`, cleared at sign-out), screen preferences. **Session
   storage (per tab):** navigation stack, unfinished create form, one-time notice,
