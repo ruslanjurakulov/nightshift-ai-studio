@@ -706,7 +706,10 @@ def _validate_effects(clip, where, problems) -> None:
     for k in ("flip_h", "flip_v"):
         if k in clip and not isinstance(clip[k], bool):
             problems.append(f"{where}: {k} must be true or false")
-    if "rotate" in clip and not (_is_int(clip["rotate"]) and clip["rotate"] in ROTATIONS):
+    # 90.0 is accepted as 90: the TypeScript twin cannot tell them apart after JSON.parse, so the two
+    # validators agree by both taking the whole number (normalise writes it as an int).
+    if "rotate" in clip and not (_is_num(clip["rotate"]) and clip["rotate"] == int(clip["rotate"])
+                                 and int(clip["rotate"]) in ROTATIONS):
         problems.append(f"{where}: rotate must be one of {list(ROTATIONS)}")
 
 
@@ -764,6 +767,17 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
+    # An animation on one side and a plain fade on the other: the fade becomes an animation too, so a
+    # long entrance would be cut short by the exit that starts at end_s - fade_out_s.
+    if ("anim_in" in clip) != ("anim_out" in clip):
+        mixed = [clip.get("anim_in_s", ANIM_DEFAULT_S) if k == "anim_in" else clip.get(k + "_s", 0)
+                 for k in ("anim_in", "anim_out") if k in clip]
+        side = "fade_out_s" if "anim_in" in clip else "fade_in_s"
+        other = clip.get(side, 0)
+        if (all(_is_num(v) for v in (s, e, other, *mixed)) and e > s and other > 0
+                and sum(mixed) + other > _ms(e) - _ms(s) + 1e-9):
+            problems.append(f"{where}: the animation ({sum(mixed):g} s) and {side} ({other:g} s) "
+                            f"are longer than the text is shown")
 
 
 def _validate_overlays(overlays, fps, problems, claim) -> None:
@@ -1166,6 +1180,8 @@ def _normalise_effects(c: dict) -> None:
     for k in ("flip_h", "flip_v"):
         if c.get(k) is False:
             del c[k]
+    if "rotate" in c:
+        c["rotate"] = int(c["rotate"])
     if c.get("rotate") == 0:
         del c["rotate"]
 
