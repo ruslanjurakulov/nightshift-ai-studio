@@ -9,7 +9,13 @@
 import { describe, expect, it } from "vitest";
 import {
   INTERP_MAX_FRAMES,
+  INTERP_SECONDS_PER_FRAME,
   MAX_EDITOR_CLIPS,
+  MAX_PARTIAL_OPACITY_MOVES,
+  XFADE_LARGE_ZOOM_MAX,
+  MOVE_ZOOM_MAX,
+  setCrossfade,
+  partialOpacityMove,
   RAMP_MAX_POINTS,
   RAMP_MIN_GAP,
   RAMP_MIN_POINTS,
@@ -19,8 +25,10 @@ import {
   canSplit,
   clipLength,
   newDocForAsset,
+  renderTimeoutS,
   reverseMaxSeconds,
   setClipAudio,
+  stabilizeSeconds,
   sourceTimeAt,
   splitClip,
   toDoc,
@@ -29,7 +37,7 @@ import {
   type EditorAsset,
   type EditorModel,
 } from "@/lib/editor";
-import { addOverlay } from "@/lib/editorOverlay";
+import { addOverlay, updateOverlay } from "@/lib/editorOverlay";
 import { fitOf, previewObjectFit, setClipFit } from "@/lib/editorFrame";
 import {
   CURVE_PRESETS,
@@ -44,7 +52,11 @@ import {
   interpolateCheck,
   interpolateMaxSeconds,
   maxRangeFor,
+  renderWork,
   moveOf,
+  canPartialOpacity,
+  partialMovesElsewhere,
+  zoomLimit,
   movePresetOf,
   overlayAt,
   overlayEndOf,
@@ -438,20 +450,109 @@ describe("smoother slow motion (interpolation) and its budget", () => {
     expect(interpolateMaxSeconds({ fps: 30, width: 1280, height: 720 }, 0.5)).toBe(11.2);
   });
 
-  it("the project's budget is shared: a second clip is refused when the first used it up", () => {
-    let m = slow(5, 0.5);
-    m = setClipInterpolate(m, "c1", true);
-    for (let i = 0; i < 2; i += 1) {
-      m = addClip(m, VIDEO);
+  const LONGV: EditorAsset = { ...VIDEO, durationS: 300 };
+  /** A project with a long plain clip first, so the export has time for slow work. */
+  const roomy = (): EditorModel => addClip(base(), LONGV);
+  const slowClip = (m: EditorModel, range: number, speed: number): EditorModel => {
+    const m2 = addClip(m, VIDEO);
+    const last = m2.clips[m2.clips.length - 1];
+    return {
+      ...m2,
+      clips: m2.clips.map((c) => (c.id === last.id ? { ...c, out_s: range, speed } : c)),
+    };
+  };
+
+  it("the project's frame budget is shared: a third clip is refused when two used it up", () => {
+    let m = roomy();
+    for (let i = 0; i < 3; i += 1) {
+      m = slowClip(m, 5, 0.5);
       const last = m.clips[m.clips.length - 1];
-      m = { ...m, clips: m.clips.map((c) => (c.id === last.id ? { ...c, out_s: 5, speed: 0.5 } : c)) };
-      if (i === 0) m = setClipInterpolate(m, last.id, true);
+      if (i < 2) m = setClipInterpolate(m, last.id, true);
     }
     // two clips use 300 + 300 of the project's 600: the third has nothing left
     expect(m.clips.filter((c) => c.interpolate)).toHaveLength(2);
-    const r = interpolateCheck(m, m.clips[2]);
-    expect(r).toMatchObject({ ok: false, reason: "doc_budget" });
-    expect(setClipInterpolate(m, m.clips[2].id, true)).toBe(m);
+    const third = m.clips[m.clips.length - 1];
+    expect(interpolateCheck(m, third)).toMatchObject({ ok: false, reason: "doc_budget" });
+    expect(setClipInterpolate(m, third.id, true)).toBe(m);
+  });
+
+  it("the export's time allowance is shared too: slow work on a short timeline is refused with the estimate", () => {
+    // two clips of 300 frames each on a 20 s timeline: 20 + 0.4 x 600 = 260 s against 3 x 20 + 120 = 180 s
+    let m = slowClip(slowClip(base(), 5, 0.5), 5, 0.5);
+    m = { ...m, clips: m.clips.slice(1) };
+    const first = m.clips[0];
+    const on = setClipInterpolate(m, first.id, true);
+    expect(on.clips[0].interpolate).toBe(true);
+    const r = interpolateCheck(on, on.clips[1]);
+    expect(r).toMatchObject({ ok: false, reason: "render_time" });
+    if (r.ok || !r.render) throw new Error("render");
+    expect(r.render.length).toBe(20);
+    expect(r.render.work).toBeCloseTo(20 + INTERP_SECONDS_PER_FRAME * 600, 6);
+    expect(r.render.allowed).toBe(renderTimeoutS(20));
+    expect(setClipInterpolate(on, on.clips[1].id, true)).toBe(on);
+    // a longer timeline has the time
+    const longer = addClip(on, LONGV);
+    expect(interpolateCheck(longer, longer.clips[1]).ok).toBe(true);
+    // renderWork is the validator's rule
+    expect(renderWork(base()).ok).toBe(true);
+    expect(renderWork(on).ok).toBe(true);
+    const both = { ...on, clips: on.clips.map((c, i) => (i === 1 ? { ...c, interpolate: true } : c)) };
+    expect(renderWork(both).ok).toBe(false);
+    expect(validateTimeline(toDoc(both)).join(" ")).toContain("would take about");
+  });
+
+  it("steadying counts against the same allowance, weighted by frame size", () => {
+    let m = base();
+    m = { ...m, clips: [{ ...c0(m), stabilize: true }] };
+    expect(renderWork(m).stabEst).toBeCloseTo(stabilizeSeconds(c0(m) as never, 30, 1920, 1080), 6);
+    // a longer slow part makes a short timeline fail, and the model says so
+    const forty = { ...m, clips: [{ ...c0(m), out_s: 40, stabilize: true }] };
+    expect(renderWork(forty).ok).toBe(true);
+    const slowDown = setClipSpeed(forty, "c1", 4);
+    // 4x: the timeline shrinks to 10 s (allowed 150 s), 40 s of steadying needs about 181 s: it is switched off
+    expect(c0(slowDown).stabilize).toBeUndefined();
+    valid(slowDown);
+  });
+
+  it("changing a clip that smooths slow motion drops the smoothing when the allowance no longer fits", () => {
+    let m = slowClip(slowClip(roomy(), 5, 0.5), 5, 0.5);
+    const a = m.clips[2].id;
+    const b = m.clips[3].id;
+    m = setClipInterpolate(setClipInterpolate(m, a, true), b, true);
+    expect(m.clips.filter((c) => c.interpolate)).toHaveLength(2);
+    expect(renderWork(m).ok).toBe(true);
+    // shorten the long clip: 600 frames cost 240 s, the allowance falls to 3 x length + 120
+    const short = { ...m, clips: m.clips.map((c, i) => (i === 1 ? { ...c, out_s: 1 } : c)) };
+    expect(renderWork(short).ok).toBe(false);
+    // the panel's notice says so with the validator's numbers
+    expect(validateTimeline(toDoc(short)).join(" ")).toContain("would take about");
+    // an edit of one of the two re-settles it: that clip's smoothing goes, the document is valid again
+    const settled = setClipSpeed(short, b, 0.75);
+    expect(settled.clips[3].interpolate).toBeUndefined();
+    expect(settled.clips[2].interpolate).toBe(true);
+    valid(settled);
+  });
+
+  it("interpolation is not offered above 1440p, whatever the length", () => {
+    const m = { ...slowClip(roomy(), 2, 0.5), width: 3840, height: 2160 };
+    const last = m.clips[m.clips.length - 1];
+    expect(interpolateCheck(m, last)).toMatchObject({ ok: false, reason: "frame_size" });
+    expect(setClipInterpolate(m, last.id, true)).toBe(m);
+    const p1440 = { ...m, width: 2560, height: 1440 };
+    expect(interpolateCheck(p1440, p1440.clips[p1440.clips.length - 1]).ok).toBe(true);
+  });
+
+  it("trimming a clip that interpolates stops where the export's allowance is used up", () => {
+    // 20 s of long clip, then a slow clip: 0.4 s per frame limits how much of it fits
+    let m = slowClip(addClip(base(), { ...VIDEO, durationS: 20 }), 3, 0.5);
+    const id = m.clips[m.clips.length - 1].id;
+    m = setClipInterpolate(m, id, true);
+    expect(m.clips[m.clips.length - 1].interpolate).toBe(true);
+    const t = trimLimited(m, id, "out", 10, 10);
+    const got = t.clips[t.clips.length - 1];
+    expect(got.out_s).toBeGreaterThanOrEqual(3);
+    expect(renderWork(t).ok).toBe(true);
+    valid(t);
   });
 
   it("trimming stops at what the clip's own settings allow (backwards, interpolation)", () => {
@@ -473,5 +574,81 @@ describe("smoother slow motion (interpolation) and its budget", () => {
     expect(maxRangeFor(plain, c0(plain))).toBe(Number.POSITIVE_INFINITY);
     expect(c0(trimLimited(plain, "c1", "out", 7, 10)).out_s).toBe(7);
     expect(trimLimited(plain, "nope", "out", 7, 10)).toBe(plain);
+  });
+});
+
+describe("zoom on a cross-faded clip in a frame above 1440p", () => {
+  const two = (w: number, h: number, fade = true): EditorModel => {
+    let m = addClip(base(), VIDEO);
+    m = { ...m, width: w, height: h };
+    return fade ? setCrossfade(m, m.clips[1].id, 1) : m;
+  };
+  it("is held to the document's own cap on either side of the blend, and free otherwise", () => {
+    const big = two(3840, 2160);
+    expect(XFADE_LARGE_ZOOM_MAX).toBe(2);
+    expect(zoomLimit(big, big.clips[0].id)).toBe(XFADE_LARGE_ZOOM_MAX);
+    expect(zoomLimit(big, big.clips[1].id)).toBe(XFADE_LARGE_ZOOM_MAX);
+    const m = setMovePoint(big, big.clips[0].id, "to", { zoom: 4 });
+    expect(moveOf(m.clips[0])!.to.zoom).toBe(XFADE_LARGE_ZOOM_MAX);
+    valid(m);
+    // a cut, a smaller frame, or a clip away from the blend zoom to the full range
+    const cut = two(3840, 2160, false);
+    expect(zoomLimit(cut, cut.clips[0].id)).toBe(MOVE_ZOOM_MAX);
+    const small = two(1920, 1080);
+    expect(moveOf(setMovePoint(small, small.clips[0].id, "to", { zoom: 4 }).clips[0])!.to.zoom).toBe(MOVE_ZOOM_MAX);
+    const three = addClip(big, VIDEO);
+    expect(zoomLimit(three, three.clips[2].id)).toBe(MOVE_ZOOM_MAX);
+  });
+});
+
+describe("overlays that move between two visible opacities (at most a few)", () => {
+  const overlays = (n: number) => {
+    let m = base();
+    const ids: string[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const out = addOverlay(m, PHOTO, 0, () => false)!;
+      m = out.model;
+      ids.push(out.id);
+    }
+    return { m, ids };
+  };
+  it("the allowance is the document's; a fade to or from clear never uses it", () => {
+    expect(MAX_PARTIAL_OPACITY_MOVES).toBe(2);
+    const { m, ids } = overlays(MAX_PARTIAL_OPACITY_MOVES + 1);
+    let cur = m;
+    for (const id of ids.slice(0, 2)) cur = setOverlayEnd(cur, id, "opacity", 0.5);
+    expect(partialMovesElsewhere(cur, ids[2])).toBe(2);
+    expect(canPartialOpacity(cur, ids[2])).toBe(false);
+    expect(canPartialOpacity(cur, ids[0])).toBe(true);
+    // the third cannot be given a partial opacity ...
+    expect(setOverlayEnd(cur, ids[2], "opacity", 0.4)).toBe(cur);
+    // ... but may fade to clear
+    const faded = setOverlayEnd(cur, ids[2], "opacity", 0);
+    expect(faded.overlays![2].move!.to.opacity).toBe(0);
+    expect(partialOpacityMove(faded.overlays![2])).toBe(false);
+    valid(faded);
+    // one that already has it can change it
+    expect(setOverlayEnd(cur, ids[0], "opacity", 0.2)).not.toBe(cur);
+    valid(cur);
+    expect((cur.overlays ?? []).filter(partialOpacityMove)).toHaveLength(2);
+  });
+  it("changing an overlay's own opacity cannot make a third one (the move's opacity end goes, its other ends stay)", () => {
+    const { m, ids } = overlays(3);
+    let cur = m;
+    for (const id of ids.slice(0, 2)) cur = setOverlayEnd(cur, id, "opacity", 0.5);
+    // an imported third overlay: its opacity end equals its own (not a partial move yet), and it also moves sideways
+    cur = {
+      ...cur,
+      overlays: cur.overlays!.map((o) => (o.id === ids[2] ? { ...o, opacity: 0.6, move: { to: { opacity: 0.6, x: 0.8 } } } : o)),
+    };
+    expect(partialOpacityMove(cur.overlays![2])).toBe(false);
+    const changed = updateOverlay(cur, ids[2], { opacity: 0.9 });
+    expect(changed.overlays![2].opacity).toBe(0.9);
+    expect(changed.overlays![2].move).toEqual({ to: { x: 0.8 } });
+    expect((changed.overlays ?? []).filter(partialOpacityMove)).toHaveLength(2);
+    valid(changed);
+    // with room it is allowed (one of the others is not partial)
+    const roomy = setOverlayEnd(cur, ids[0], "opacity", 0);
+    expect(updateOverlay(roomy, ids[2], { opacity: 0.9 }).overlays![2].move).toEqual({ to: { opacity: 0.6, x: 0.8 } });
   });
 });

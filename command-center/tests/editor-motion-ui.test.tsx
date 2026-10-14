@@ -29,9 +29,17 @@ import {
   INTERP_MAX_FRAMES_DOC,
   MOVE_ZOOM_MAX,
   RAMP_MAX_POINTS,
+  RENDER_TIMEOUT_BASE_S,
+  RENDER_TIMEOUT_MAX_S,
+  RENDER_TIMEOUT_PER_S,
   SPEEDS,
   SPEED_MAX,
   SPEED_MIN,
+  MAX_PARTIAL_OPACITY_MOVES,
+  XFADE_LARGE_ZOOM_MAX,
+  addClip,
+  setCrossfade,
+  INTERP_SECONDS_PER_FRAME,
   newDocForAsset,
   toDoc,
   toModel,
@@ -438,7 +446,7 @@ describe("smoother slow motion", () => {
     expect(toggle().disabled).toBe(true);
     const text = more().textContent ?? "";
     expect(text).toContain(sp.interpolate.notSlow);
-    expect(text).toContain(fmt(sp.interpolate.hint, { clipMax: INTERP_MAX_FRAMES, docMax: INTERP_MAX_FRAMES_DOC }));
+    expect(text).toContain(fmt(sp.interpolate.hint, { clipMax: INTERP_MAX_FRAMES, docMax: INTERP_MAX_FRAMES_DOC, per: RENDER_TIMEOUT_PER_S, base: RENDER_TIMEOUT_BASE_S, max: RENDER_TIMEOUT_MAX_S }));
   });
 
   it("can be turned on for a short slow part, is saved, undone, and shows its frames", async () => {
@@ -615,6 +623,102 @@ describe("an overlay's end position", () => {
     fireEvent.click(check(sec(), fxe.overlayMove.toggle));
     expect(((toDoc(toModel(videoDoc())).overlays) ?? []).length).toBe(0);
     expect(screen.getByText(te.unsaved)).toBeTruthy();
+  });
+});
+
+describe("the engine's last limits, on the screen", () => {
+  const holes = (t: string, v: Record<string, string | number>) => fmt(t, v);
+
+  it("a zoom above the cap is off on a cross-faded clip in a 4K frame, with the frame size said", () => {
+    const m = addClip(toModel(videoDoc()), VIDEO);
+    mount(toDoc(setCrossfade({ ...m, width: 3840, height: 2160 }, m.clips[1].id, 1)));
+    const sec = section(fxe.move.title);
+    fireEvent.click(radio(within(sec).getByRole("group", { name: fxe.move.legend }), fxe.move.presets.zoomIn));
+    const zoom = slider(within(sec).getByTestId("move-to"), fxe.move.zoom);
+    expect(Number(zoom.max)).toBe(XFADE_LARGE_ZOOM_MAX);
+    expect(within(sec).getByTestId("zoom-large").textContent).toBe(holes(fxe.move.largeZoom, { max: 2, w: 3840, h: 2160 }));
+    setSlider(zoom, 4);
+    expect(Number(slider(within(sec).getByTestId("move-to"), fxe.move.zoom).value)).toBeLessThanOrEqual(XFADE_LARGE_ZOOM_MAX);
+  });
+
+  it("a normal frame keeps the full zoom range even with a cross-fade", () => {
+    const m = addClip(toModel(videoDoc()), VIDEO);
+    mount(toDoc(setCrossfade(m, m.clips[1].id, 1)));
+    const sec = section(fxe.move.title);
+    fireEvent.click(radio(within(sec).getByRole("group", { name: fxe.move.legend }), fxe.move.presets.zoomIn));
+    expect(Number(slider(within(sec).getByTestId("move-to"), fxe.move.zoom).max)).toBe(MOVE_ZOOM_MAX);
+    expect(within(sec).queryByTestId("zoom-large")).toBeNull();
+  });
+
+  it("smoother slow motion is off above 1440p, with the frame size said", () => {
+    const d = videoDoc({ out_s: 4, speed: 0.5 });
+    mount({ ...d, width: 3840, height: 2160 });
+    const toggle = check(more(), sp.interpolate.toggle);
+    expect(toggle.disabled).toBe(true);
+    expect(more().textContent).toContain(fmt(sp.interpolate.frameSize, { w: 3840, h: 2160 }));
+  });
+
+  it("smoother slow motion is off when the export's time allowance would be used up, with the estimate", () => {
+    // two clips of 300 frames each on a 20 s timeline: 20 + 0.4 x 600 = 260 s against 180 s
+    const m = addClip(toModel(videoDoc({ out_s: 5, speed: 0.5, interpolate: true })), VIDEO);
+    const two = { ...m, clips: m.clips.map((c, i) => (i === 1 ? { ...c, out_s: 5, speed: 0.5 } : c)) };
+    mount(toDoc(two));
+    fireEvent.click(within(screen.getByRole("list", { name: te.clipsTrack })).getAllByRole("button")[1]);
+    expect(check(more(), sp.interpolate.toggle).disabled).toBe(true);
+    expect(more().textContent).toContain(fmt(sp.interpolate.renderTime, { work: Math.round(20 + INTERP_SECONDS_PER_FRAME * 600), length: 20, allowed: 180 }));
+  });
+
+  it("a document whose slow work no longer fits says so under the toolbar, with the numbers, and clears when it fits", () => {
+    const base2 = toModel(videoDoc({ out_s: 5, speed: 0.5, interpolate: true }));
+    const m = addClip(base2, VIDEO);
+    const bad = { ...m, clips: m.clips.map((c, i) => (i === 1 ? { ...c, out_s: 5, speed: 0.5, interpolate: true } : c)) };
+    mount(toDoc(bad));
+    const note = screen.getByTestId("render-budget");
+    expect(note.textContent).toBe(fmt(fxe.renderBudget, { work: 260, length: 20, allowed: 180 }));
+    cleanup();
+    mount(videoDoc({ out_s: 5, speed: 0.5, interpolate: true }));
+    expect(screen.queryByTestId("render-budget")).toBeNull();
+  });
+
+  it("the interpolation hint states the time allowance with the document's own numbers", () => {
+    mount(videoDoc({ out_s: 4 }));
+    const hint = fmt(sp.interpolate.hint, { clipMax: INTERP_MAX_FRAMES, docMax: INTERP_MAX_FRAMES_DOC, per: RENDER_TIMEOUT_PER_S, base: RENDER_TIMEOUT_BASE_S, max: RENDER_TIMEOUT_MAX_S });
+    expect(more().textContent).toContain(hint);
+    expect(hint).not.toContain("{");
+    expect(hint).toContain(String(RENDER_TIMEOUT_PER_S));
+  });
+
+  it("a third overlay cannot change opacity between two visible values: it can keep or fade to clear, and the cap is said", async () => {
+    const d = videoDoc();
+    d.overlays = ["o1", "o2", "o3"].map((id, i) => ({
+      id, asset_id: P, start_s: i * 0.5, end_s: i * 0.5 + 4, x: 0.5, y: 0.5, w: 0.3, opacity: 1,
+      ...(i < MAX_PARTIAL_OPACITY_MOVES ? { move: { to: { opacity: 0.5 } } } : {}),
+    }));
+    mount(d);
+    fireEvent.click(screen.getAllByRole("button", { name: /logo\.png/ })[2]);
+    const sec = section(fxe.overlayMove.title);
+    expect(check(sec, fxe.overlayMove.toggle).checked).toBe(false);
+    fireEvent.click(check(sec, fxe.overlayMove.toggle));
+    const capped = within(section(fxe.overlayMove.title)).getByTestId("opacity-capped");
+    expect(capped.textContent).toContain(fmt(fxe.overlayMove.cap, { max: MAX_PARTIAL_OPACITY_MOVES }));
+    expect(within(capped).queryByRole("slider")).toBeNull();
+    fireEvent.click(radio(capped, fxe.overlayMove.fadeClear));
+    const doc = await save();
+    const third = (doc.overlays as Record<string, unknown>[])[2];
+    expect((third.move as { to: Record<string, number> }).to.opacity).toBe(0);
+    expect(validateTimeline(doc)).toEqual([]);
+    // the first of them is not capped: it keeps its slider
+    fireEvent.click(screen.getAllByRole("button", { name: /logo\.png/ })[0]);
+    expect(within(section(fxe.overlayMove.title)).queryByTestId("opacity-capped")).toBeNull();
+  });
+
+  it("the speed curve says that sound is in step with the picture only at a few points", () => {
+    mount(videoDoc({ out_s: 4 }));
+    more();
+    expect(section(sp.curve.title).textContent).toContain(
+      fmt(sp.curve.hint, { min: 2, max: 6, smin: SPEED_MIN, smax: SPEED_MAX }),
+    );
+    expect(sp.curve.hint).toMatch(/a few seconds/);
   });
 });
 

@@ -108,6 +108,28 @@ class DocumentTestCase(unittest.TestCase):
         self.assertTrue(any("anim_out_s needs anim_out" in p
                             for p in tl.validate(text_doc(anim_in="fade", anim_out_s=0.5))))
 
+    def test_an_animation_and_the_other_sides_plain_fade_fit_too(self):
+        # shown 2 s: a 1.5 s pop and a 1 s fade-out would cut the pop at 66 % (the fade is an exit animation
+        # starting at end - 1 s); both validators, the spec, and the shared doc cases say so
+        for doc in (text_doc(anim_in="pop", anim_in_s=1.5, fade_out_s=1.0),
+                    text_doc(anim_out="fade", anim_out_s=1.5, fade_in_s=1.0)):
+            got = tl.validate(doc)
+            self.assertTrue(any("longer than the text is shown" in p for p in got), got)
+        self.assertEqual(tl.validate(text_doc(anim_in="pop", anim_in_s=1.0, fade_out_s=1.0)), [])
+        self.assertEqual(tl.validate(text_doc(anim_in="pop", anim_in_s=1.5, fade_out_s=0.5)), [])
+        # a missing duration is the default
+        self.assertEqual(tl.validate(text_doc(anim_in="pop", fade_out_s=1.0)), [])
+        self.assertTrue(tl.validate(text_doc(end_s=2.3, anim_in="pop", fade_out_s=1.0)))
+        base = spec_of(text_doc())
+        ov = base.overlays[0]
+        for kw in ({"anim_in": "pop", "anim_in_s": 1.5, "fade_out_s": 1.0},
+                   {"anim_out": "fade", "anim_out_s": 1.5, "fade_in_s": 1.0}):
+            got = rs.validate(rs.RenderSpec(**{**base.__dict__, "overlays": [rs.TextOverlay(**{**ov.__dict__, **kw})]}))
+            self.assertTrue(any("longer than it is shown" in p for p in got), (kw, got))
+        ok = rs.validate(rs.RenderSpec(**{**base.__dict__, "overlays": [rs.TextOverlay(
+            **{**ov.__dict__, "anim_in": "pop", "anim_in_s": 1.0, "fade_out_s": 1.0})]}))
+        self.assertEqual(ok, [])
+
     def test_in_and_out_fit_in_the_time_the_item_is_shown(self):
         # the text is shown for 2 s
         self.assertEqual(tl.validate(text_doc(anim_in="fade", anim_in_s=1, anim_out="fade", anim_out_s=1)), [])

@@ -27,8 +27,10 @@ import {
   OVERLAY_W_MAX,
   OVERLAY_W_MIN,
   clamp,
+  MAX_PARTIAL_OPACITY_MOVES,
   fitAnims,
   freshId,
+  partialOpacityMove,
   ms,
   pictureEndOf,
   type EditorAsset,
@@ -165,7 +167,21 @@ export function updateOverlay(
     next.end_s = ms(Math.min(next.end_s, next.start_s + sourceS));
   for (const k of OVERLAY_KEYS) next[k] = clampKey(k, next[k]);
   // A shorter overlay shortens its entrance and exit with it.
-  const fitted = fitAnims(next);
+  let fitted = fitAnims(next);
+  // Changing its own opacity can make its move one between two visible values; the
+  // document allows only a few of those, so past that the move keeps its other ends only.
+  if (
+    patch.opacity !== undefined &&
+    fitted.move?.to.opacity !== undefined &&
+    partialOpacityMove(fitted) &&
+    list.filter((o) => o.id !== id && partialOpacityMove(o)).length >= MAX_PARTIAL_OPACITY_MOVES
+  ) {
+    const { opacity: _gone, ...to } = fitted.move.to;
+    void _gone;
+    const { move: _m, ...rest } = fitted;
+    void _m;
+    fitted = Object.keys(to).length ? { ...rest, move: { to } } : rest;
+  }
   if (JSON.stringify(fitted) === JSON.stringify(at)) return model;
   return {
     ...model,

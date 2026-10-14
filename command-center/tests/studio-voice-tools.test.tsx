@@ -254,7 +254,7 @@ describe("pinned to 0050", () => {
 
   it("every capability and param key the code sends is one 0050 accepts (0052's own are pinned to 0052)", () => {
     // 0052's and 0055's own are pinned to 0052 / 0055 (studio-video-tools, studio-describe).
-    const later: readonly string[] = ["video_upscale", "target_resolution", "end_asset_id", "describe", "language", "captions", "quality", "audio", "expand", "relight", "erase", "look"];
+    const later: readonly string[] = ["video_upscale", "target_resolution", "end_asset_id", "describe", "language", "captions", "quality", "audio", "expand", "relight", "erase", "look", "video_edit", "video_reframe", "video_remove_bg"];
     const supported = fn("creative_capability_supported");
     for (const c of CREATIVE_CAPABILITIES) if (!later.includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");

@@ -120,6 +120,22 @@ vignette with CSS filters/transforms; vintage/cinematic/cool/warm/high-contrast
 are curve looks the preview can only approximate, and grain/sharpen have no
 faithful CSS equivalent. Say so in the product.
 
+Limits that come from memory and disk (measured, the validators refuse them):
+
+* a clip that is CROSS-FADED (either side of a blend) in a frame above 1440p
+  (2560x1440, either way up) takes NO `blur`: a cross-fade on 4K60 already needs
+  about 1.75 of the worker's 2 GiB, and a blur failed it ("Cannot allocate
+  memory") with ffmpeg 7.0.2 at every sigma tried and with 5.1.1 from sigma 30.
+  The other effects (look, sharpen, grain, vignette, turns) passed with both.
+  `LARGE_FRAME_PX` / `XFADE_LARGE_BLUR_MAX` (0) in `lib/editor.ts`; a UI should
+  disable the blur control on such a clip. Single clips and hard cuts are fine.
+* `grain` makes the intermediate video about 13x bigger (42.7 MB/s at 1080p30,
+  73 MB/s at 1080p60). The disk guard charges grainy seconds 12x and falls back
+  to compact intermediates (slower) when the temp disk is short; nothing for the
+  UI to do, but a long grainy export is slower on a nearly full disk.
+* `rotate` is an integer; `90.0` is accepted as `90` (the editor cannot tell them
+  apart after JSON.parse).
+
 Not done here (later items): free-angle rotation and crop (item 8).
 
 ## 4. Moves and two-point keyframes
@@ -148,6 +164,17 @@ Not done here (later items): free-angle rotation and crop (item 8).
 * works on both sides of a cross-fade; the move runs over each clip's WHOLE
   length, not just the part outside the blend.
 * rotate/flip (item 3) happen before the move; effects after.
+* MEMORY LIMIT: the fitted picture is scaled up to `zoom` x the frame on every
+  frame, so a zoom is refused above 2 (`XFADE_LARGE_ZOOM_MAX`) on a CROSS-FADED
+  clip (either side of a blend, either keyframe) in a frame above 1440p
+  (2560x1440, either way up): a cross-faded 4K60 clip failed at a zoom of 3 with
+  ffmpeg 7.0.2 under the worker's 2 GiB limit (up to 2 passed with both 7.0.2 and
+  5.1.1; 5.1.1 alone passed 4). A single clip or a hard cut zooms to 4 at any
+  size (measured at 4K60), and so does any frame up to 1440p. A UI should clamp
+  the zoom control for such a clip. (Cutting the window first and scaling it
+  would avoid the big frame, but ffmpeg's `crop` size cannot change per frame and
+  `zoompan` rounds the window to whole pixels, which jitters; the cap keeps the
+  exact, smooth zoom the preview shows.)
 
 ### Overlay `move.to`: end keyframe of an overlay
 
@@ -161,8 +188,10 @@ Not done here (later items): free-angle rotation and crop (item 8).
 * entrance/exit animations (item 2) add to a move (a slide moves from where the
   move has the overlay).
 * an opacity move to or from 0 is a cheap fade; any other opacity move is
-  rendered per pixel and is slower on a large overlay (still fine for the
-  caps in place: 16 overlays, 4 videos).
+  rendered per pixel (`geq`: 3.6x slower for one video overlay, 13x for four,
+  out of memory at 4K60), so at most TWO overlays per document may move between
+  two visible opacities (`MAX_PARTIAL_OPACITY_MOVES`, `partialOpacityMove()` in
+  `lib/editor.ts`); the validators refuse a third.
 * an overlay whose own `opacity` is 0 is still rendered when its move brings
   the opacity above 0.
 * no preview parity in a browser beyond straight CSS interpolation: say that
@@ -191,6 +220,14 @@ like `contain` (the picture alone).
   the preview with a CSS `filter: blur()` copy of the video behind the picture
   (approximate; say so).
 * Cross-fades: both sides can use `blur`.
+* Pixel shape: a `blur` clip comes out with SQUARE pixels (the chain ends with
+  `setsar=1`; without it the scaler's rounding left e.g. 1697:1711 for a 16:9
+  clip in a portrait frame and a player would stretch it). KNOWN ISSUE, not
+  changed here: the legacy `contain` chain (scale + pad, in use before any of
+  this work) can leave a non-square sample aspect ratio on main too (measured
+  1216:1215); touching it would change every older document's command, so it is
+  left alone and listed for the owner. Chains of the new fields (`blur`, turns,
+  crop, effects that turn) add `setsar=1` themselves.
 
 ## 6. Speed 0.25 to 4, reverse, freeze
 
@@ -245,6 +282,11 @@ like `contain` (the picture alone).
 * it is applied to the overlay file BEFORE it is scaled; the overlay's
   `opacity`, `move` and `anim_*` then act on what is left. Works on pictures
   (PNG/JPG) too. A video overlay is still silent.
+* a PICTURE that has transparency of its own (a PNG sticker) keeps it: the
+  backend multiplies the key's alpha by the picture's own, so keying only ever
+  removes more. A VIDEO overlay with an alpha channel (a WebM with alpha) does
+  not: the key replaces its alpha, so do not key a video that is already
+  transparent (it is rare; the UI need not special-case it).
 * no despill (green fringes on hair etc. are not corrected).
 
 ### `denoise` and `loudnorm` (boolean, default false) on A clips and on V clips
@@ -326,6 +368,16 @@ like `contain` (the picture alone).
   is therefore on the picture at every slice boundary; inside a slice the speed
   is the average, so a steep ramp on a short clip is stepped, not smooth.
   Everything stays within 0.25 to 4, so nothing is dropped for exceeding atempo.
+* SYNC IS EXACT ONLY AT THE SLICE BOUNDARIES, and there are at most 16 slices
+  (`SLICES_MAX`), so on a long range each slice is longer than half a second and
+  the sound can be off the picture BETWEEN boundaries: the worst measured offsets
+  of a steep ramp were 0.15 s on a 10 s range, 0.44 s on 30 s and 1.7 s on 120 s
+  (it is back to zero at every boundary and at the end, so the clip's length and
+  what follows are not affected). Say so in the product (or keep ramps on clips
+  of a few seconds, where it is under a frame or two); a gentle ramp is much closer.
+* the ramp's expression is printed with 9 decimals (12 for the slope), and two
+  speeds that differ by less than one part in ten million count as the same
+  speed, so a very slight ramp still renders and nothing drifts over an hour.
 * a clip with a curve CANNOT be split (the editor's `canSplit` is false, the
   backend's `split_clip` refuses): remove the curve first. Trimming it changes the
   range, and so the shape in time, the points stay at the same fractions.
@@ -353,6 +405,19 @@ like `contain` (the picture alone).
   Examples at 30 fps, 0.5x: 5 s of source at 1080p, 11.2 s at 720p. The validator
   names the limit; `interpolatedFrames()` in `lib/editor.ts` computes it for a UI
   that wants to disable the switch or warn before saving.
+* the budget is ALSO in ESTIMATED SECONDS and must fit the worker's timeout: each
+  1080p-equivalent frame is charged `INTERP_SECONDS_PER_FRAME` (0.4 s; measured
+  0.39 s on a loaded box, so one clip of 300 is about 117 s), the timeline itself
+  `RENDER_PLAIN_FACTOR` (1) s per second, and the total must be at most the
+  worker's `renderTimeoutS(length)` = `min(5400, 3 x length + 120)` seconds
+  (`RENDER_TIMEOUT_*` in `lib/editor.ts`). So two clips that are each inside the
+  per-clip cap can still be refused on a short timeline ("would take about 255 s
+  to render, but a 20 s timeline is allowed 179 s"): slow less of it or make the
+  timeline longer. A UI can show the estimate with the same constants.
+* NOT OFFERED ABOVE 1440p: a frame of more than 2560 x 1440 pixels (either way
+  up, `INTERP_MAX_PIXELS`) is refused ("interpolate is not offered above
+  1440p"): a 4K render died with "Cannot allocate memory" under the worker's 2 GiB
+  limit. Disable the switch for those projects; plain slow motion is unaffected.
 * the source frames are first taken at the project's frame rate, then
   interpolated: a 24 fps source in a 30 fps project is interpolated from the
   30 fps (duplicated-frame) version, which is smoother than nothing but not
@@ -374,6 +439,18 @@ like `contain` (the picture alone).
 * the first pass is a real extra decode of the clip, so the budget: a stabilised
   clip's source range is at most 120 s and a document's stabilised ranges at most
   300 s in all (validators, same numbers: `STABILIZE_MAX_S`, `STABILIZE_MAX_DOC_S`).
+* the budget is ALSO in ESTIMATED SECONDS, weighted by frame size, and must fit
+  the worker's timeout (the same rule as `interpolate`, and they add up). Measured
+  on the shared 4-core box, detect + transform ran at 9.6 frames per second at
+  1080p30 and 1.75 at 4K30; 7 frames per second of 1080p-equivalent frame
+  (`STABILIZE_FPS_1080P`, `stabilizeSeconds()` in `lib/editor.ts`) is charged, so a
+  minute of 1080p30 is about 257 s and a minute of 4K30 about 1030 s, plus the
+  timeline itself, against `min(5400, 3 x length + 120)` s. So 60 s of 1080p
+  stabilised on a 60 s timeline is refused ("stabilising would take about 317 s to
+  render, but a 60 s timeline is allowed 300 s"), and so is 60 s of 4K; stabilise
+  less of it or make the timeline longer. A UI can show the estimate. The
+  `deshake` fallback is for a build without vidstab, not a way to make a slow clip
+  fit.
 * video only; not with `freeze`. It runs on the source frames, right after
   `rotate`/`flip`/`crop` and before speed, fit, effects and `angle`.
 * if the detect pass cannot run, the export FAILS (it is never quietly exported
@@ -429,3 +506,26 @@ stabilise are not shown in the preview (the note says so). Stabilise is off, wit
 the numbers, for a photo, a frozen frame, a part over `STABILIZE_MAX_S` or a
 project total over `STABILIZE_MAX_DOC_S`; trimming a steadied clip stops at what
 is left; freezing a clip turns steadiness off.
+
+C1 limits mirrored in the UI after the engine's last changes: the room for an
+animation counts a text's plain fade on the other side (the validator refuses an
+animation plus the other side's fade longer than the time shown; shortening a text
+shortens the animation, and drops it when nothing is left); blur is off, with the
+frame size said, on a cross-faded clip in a frame above 1440p (`LARGE_FRAME_PX`,
+`XFADE_LARGE_BLUR_MAX`).
+
+C2 limits mirrored in the UI after the engine's last changes (all from the shared
+constants, none copied): the reverse limit is the validator's own whole-frame
+number (`reverseMaxSeconds`); smoother slow motion is judged by its per-clip and
+per-project frame budgets, by "not above 1440p" (`INTERP_MAX_PIXELS`) and by the
+export's time allowance (`renderWork()`: the timeline's length + 0.4 s per
+interpolated 1080p frame + the steadying estimate, against `renderTimeoutS(length)`),
+and the panel shows the estimate and the allowance; after any edit that changes a
+clip's speed or length its smoothing / steadying is switched off if it no longer
+fits, a notice under the toolbar names the numbers when a document does not fit
+(a shorter timeline, for example), and trimming such a clip stops where it last
+fitted; a zoom above `XFADE_LARGE_ZOOM_MAX` is off on a cross-faded clip in a frame
+above 1440p; an overlay can change opacity between two visible values only while
+fewer than `MAX_PARTIAL_OPACITY_MOVES` others do (past that the control offers
+"keep" and "fade to clear"); the speed curve says that sound is in step with the
+picture only at a few points along a long clip.

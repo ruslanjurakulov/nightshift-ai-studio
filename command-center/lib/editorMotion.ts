@@ -19,7 +19,10 @@
 import {
   INTERP_MAX_FRAMES,
   INTERP_MAX_FRAMES_DOC,
+  INTERP_MAX_PIXELS,
+  INTERP_SECONDS_PER_FRAME,
   MAX_EDITOR_CLIPS,
+  MAX_PARTIAL_OPACITY_MOVES,
   MIN_CLIP_S,
   MOVE_POINT_DEFAULTS,
   MOVE_ZOOM_MAX,
@@ -29,20 +32,24 @@ import {
   RAMP_MAX_POINTS,
   RAMP_MIN_GAP,
   RAMP_MIN_POINTS,
-  REVERSE_BYTES_PER_PIXEL,
-  REVERSE_MAX_BYTES,
+  RENDER_PLAIN_FACTOR,
   SPEED_MAX,
   SPEED_MIN,
   STABILIZE_MAX_DOC_S,
   STABILIZE_MAX_S,
+  XFADE_LARGE_ZOOM_MAX,
   clamp,
   freshId,
   interpolatedFrames,
   layout,
+  modelDuration,
   ms,
+  partialOpacityMove,
+  renderTimeoutS,
   reverseMaxSeconds,
   setSpeed,
   splitClip,
+  stabilizeSeconds,
   trimClip,
   type ClipMove,
   type EditorModel,
@@ -52,6 +59,8 @@ import {
   type SpeedPoint,
   type VideoClip,
 } from "@/lib/editor";
+
+import { isCrossfaded, isLargeFrame } from "@/lib/editorFx";
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const finite = (v: number, d: number) => (Number.isFinite(v) ? v : d);
@@ -107,8 +116,14 @@ export function centreHeld(w: MoveWindow): boolean {
   );
 }
 
-const cleanWindow = (w: MoveWindow): MoveWindow => ({
-  zoom: round3(clamp(finite(w.zoom, 1), MOVE_ZOOM_MIN, MOVE_ZOOM_MAX)),
+/** The most zoom a clip's move may have: the document's, except on a cross-faded
+ *  clip in a frame above 1440p, where the export would run out of memory. */
+export function zoomLimit(model: EditorModel, id: string): number {
+  return isLargeFrame(model) && isCrossfaded(model, id) ? XFADE_LARGE_ZOOM_MAX : MOVE_ZOOM_MAX;
+}
+
+const cleanWindow = (w: MoveWindow, top: number = MOVE_ZOOM_MAX): MoveWindow => ({
+  zoom: round3(clamp(finite(w.zoom, 1), MOVE_ZOOM_MIN, top)),
   x: round3(clamp(finite(w.x, 0.5), 0, 1)),
   y: round3(clamp(finite(w.y, 0.5), 0, 1)),
 });
@@ -159,7 +174,8 @@ export function setClipMove(
 ): EditorModel {
   return withClip(model, id, (c) => {
     if (move === null) return c.move ? drop(c, "move") : c;
-    const next: ClipMove = { from: cleanWindow(move.from), to: cleanWindow(move.to) };
+    const top = zoomLimit(model, id);
+    const next: ClipMove = { from: cleanWindow(move.from, top), to: cleanWindow(move.to, top) };
     return JSON.stringify(next) === JSON.stringify(c.move) ? c : { ...c, move: next };
   });
 }
@@ -249,7 +265,11 @@ export function setOverlayEnd(
     const to: OverlayMoveTo = { ...(o.move?.to ?? {}) };
     if (v === o[key]) delete to[key];
     else to[key] = v;
-    return JSON.stringify(to) === JSON.stringify(o.move?.to ?? {}) ? o : withMoveTo(o, to);
+    if (JSON.stringify(to) === JSON.stringify(o.move?.to ?? {})) return o;
+    const next = withMoveTo(o, to);
+    // A third move between two visible opacities is refused by the document.
+    if (partialOpacityMove(next) && !partialOpacityMove(o) && !canPartialOpacity(model, id)) return o;
+    return next;
   });
 }
 
@@ -267,11 +287,21 @@ export function overlayAt(
   return { x: mix("x"), y: mix("y"), w: mix("w"), opacity: mix("opacity") };
 }
 
-/** Does the move change opacity somewhere other than to or from fully clear?
- *  That is rendered per pixel and is slower on a large overlay. */
+/** Does the move change opacity between two visible values? That is rendered
+ *  per pixel and is slow, so the document allows only MAX_PARTIAL_OPACITY_MOVES
+ *  overlays like that (a fade to or from fully clear is cheap). */
 export function slowOpacityMove(o: PictureOverlay): boolean {
-  const to = o.move?.to.opacity;
-  return to !== undefined && to !== 0 && o.opacity !== 0 && to !== o.opacity;
+  return partialOpacityMove(o);
+}
+
+/** How many OTHER overlays of the project already use such a move. */
+export function partialMovesElsewhere(model: EditorModel, id: string): number {
+  return (model.overlays ?? []).filter((o) => o.id !== id && partialOpacityMove(o)).length;
+}
+
+/** May this overlay change opacity between two visible values (the others have not used the allowance up)? */
+export function canPartialOpacity(model: EditorModel, id: string): boolean {
+  return partialMovesElsewhere(model, id) < MAX_PARTIAL_OPACITY_MOVES;
 }
 
 // ── speed, direction, freeze ────────────────────────────────────────────────
@@ -296,6 +326,22 @@ function dropStaleInterpolate(c: VideoClip): VideoClip {
     : c;
 }
 
+/**
+ * After an edit that changes a clip's speed or length: if the clip smooths slow
+ * motion or is steadied and the export would no longer fit its time allowance
+ * (or the budgets), the smoothing / steadying of THAT clip is switched off, so
+ * the document stays one the export accepts. The panel then shows why it is off.
+ */
+export function settleBudgets(model: EditorModel, id: string): EditorModel {
+  const at = model.clips.find((c) => c.id === id);
+  if (!at) return model;
+  let m = model;
+  if (at.interpolate && !interpolateCheck(m, at).ok) m = withClip(m, id, (c) => drop(c, "interpolate"));
+  const now = m.clips.find((c) => c.id === id);
+  if (now?.stabilize && !renderWork(m).ok) m = withClip(m, id, (c) => drop(c, "stabilize"));
+  return m;
+}
+
 /** A constant speed (it replaces a curve and, if frozen, the freeze). */
 export function setClipSpeed(model: EditorModel, id: string, speed: number): EditorModel {
   const at = model.clips.find((c) => c.id === id);
@@ -303,22 +349,13 @@ export function setClipSpeed(model: EditorModel, id: string, speed: number): Edi
   const s = clamp(ms(finite(speed, at.speed)), SPEED_MIN, SPEED_MAX);
   if (s === at.speed && !at.speed_curve) return model;
   const next = setSpeed(model, id, s);
-  return withClip(next, id, dropStaleInterpolate);
+  return settleBudgets(withClip(next, id, dropStaleInterpolate), id);
 }
 
-/**
- * The longest source range that can play backwards at this project's size and
- * rate, in seconds: whole frames only, because the validator counts
- * `ceil(range * fps)` frames. (`reverseMaxSeconds` rounds the limit down to a
- * millisecond instead, so a range exactly at ITS number can be one frame over;
- * a range this function allows always validates.)
- */
+/** The longest source range that can play backwards at this project's size
+ *  and rate, in seconds: the validator's own number (whole frames). */
 export function reverseLimit(model: Pick<EditorModel, "width" | "height" | "fps">): number {
-  const frames = Math.floor(
-    REVERSE_MAX_BYTES / (model.width * model.height * REVERSE_BYTES_PER_PIXEL),
-  );
-  const s = Math.floor((frames / model.fps) * 1000) / 1000;
-  return Math.min(s, reverseMaxSeconds(model.width, model.height, model.fps));
+  return reverseMaxSeconds(model.width, model.height, model.fps);
 }
 
 export function sourceRange(c: Pick<VideoClip, "in_s" | "out_s">): number {
@@ -470,26 +507,27 @@ export function setClipCurve(
   if (!at) return model;
   if (points === null) {
     if (!at.speed_curve) return model;
-    return withClip(
-      model,
+    return settleBudgets(
+      withClip(model, id, (c) => dropStaleInterpolate({ ...drop(c, "speed_curve"), speed: 1 }), true),
       id,
-      (c) => dropStaleInterpolate({ ...drop(c, "speed_curve"), speed: 1 }),
-      true,
     );
   }
   const clean = cleanCurve(points);
   if (!clean) return model;
   if (JSON.stringify(clean) === JSON.stringify(at.speed_curve)) return model;
-  return withClip(
-    model,
+  return settleBudgets(
+    withClip(
+      model,
+      id,
+      (c) =>
+        dropStaleInterpolate({
+          ...drop(c, "reverse", "freeze"),
+          speed: 1,
+          speed_curve: clean,
+        }),
+      true,
+    ),
     id,
-    (c) =>
-      dropStaleInterpolate({
-        ...drop(c, "reverse", "freeze"),
-        speed: 1,
-        speed_curve: clean,
-      }),
-    true,
   );
 }
 
@@ -570,24 +608,74 @@ export function interpolateMaxSeconds(
   return perSecond > 0 ? Math.floor((budget / perSecond) * 10) / 10 : 0;
 }
 
+/** What the export is charged against the worker's timeout, in estimated
+ *  seconds (modules/timeline.py, the same numbers): the timeline itself, each
+ *  1080p-equivalent interpolated frame, and each steadied second weighted by
+ *  frame size. `ok` is the validator's rule: nothing slow, or the sum fits
+ *  `renderTimeoutS(length)`. */
+export interface RenderWork {
+  length: number;
+  interpEst: number;
+  stabEst: number;
+  work: number;
+  allowed: number;
+  ok: boolean;
+}
+
+export function renderWork(model: EditorModel): RenderWork {
+  const length = modelDuration(model);
+  const frames = model.clips
+    .filter((c) => c.interpolate)
+    .reduce((n, c) => n + interpolateFrames(model, c), 0);
+  // above its own cap the frames are refused on their own (the estimate is not added)
+  const interpEst = frames <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * frames : 0;
+  const stabEst = model.clips
+    .filter((c) => c.stabilize)
+    .reduce(
+      (n, c) =>
+        n + stabilizeSeconds(c as unknown as Record<string, unknown>, model.fps, model.width, model.height),
+      0,
+    );
+  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst;
+  const allowed = renderTimeoutS(length);
+  return {
+    length,
+    interpEst,
+    stabEst,
+    work,
+    allowed,
+    ok: interpEst + stabEst <= 0 || work <= allowed + 1e-9,
+  };
+}
+
 export type InterpolateCheck =
   | { ok: true; frames: number }
   | {
       ok: false;
-      reason: "not_slow" | "direction" | "clip_budget" | "doc_budget";
+      reason: "not_slow" | "direction" | "frame_size" | "clip_budget" | "doc_budget" | "render_time";
       frames: number;
       maxS: number;
+      render?: RenderWork;
     };
 
+/** Can this clip be interpolated? (Judged as if it were on: the same answer
+ *  tells a clip that is on whether it still fits.) */
 export function interpolateCheck(model: EditorModel, c: VideoClip): InterpolateCheck {
   const frames = interpolateFrames(model, c);
   const slow = slowestSpeed(c);
   const maxS = interpolateMaxSeconds(model, Math.min(slow, 0.9999));
   if (c.reverse || c.freeze) return { ok: false, reason: "direction", frames, maxS };
   if (slow >= 1) return { ok: false, reason: "not_slow", frames, maxS };
+  if (model.width * model.height > INTERP_MAX_PIXELS)
+    return { ok: false, reason: "frame_size", frames, maxS };
   if (frames > INTERP_MAX_FRAMES) return { ok: false, reason: "clip_budget", frames, maxS };
   if (frames + interpolateUsedByOthers(model, c.id) > INTERP_MAX_FRAMES_DOC)
     return { ok: false, reason: "doc_budget", frames, maxS };
+  const render = renderWork({
+    ...model,
+    clips: model.clips.map((x) => (x.id === c.id ? { ...x, interpolate: true } : x)),
+  });
+  if (!render.ok) return { ok: false, reason: "render_time", frames, maxS, render };
   return { ok: true, frames };
 }
 
@@ -652,11 +740,34 @@ export function trimLimited(
   if (!t) return next;
   const cap = maxRangeFor(next, t);
   const range = sourceRange(t);
-  if (range <= cap + 1e-9) return next;
-  const fixed =
-    edge === "in"
-      ? trimClip(next, id, "in", ms(t.out_s - cap), sourceS)
-      : trimClip(next, id, "out", ms(t.in_s + cap), frozen ? null : sourceS);
-  return fixed;
+  let out = next;
+  if (range > cap + 1e-9)
+    out =
+      edge === "in"
+        ? trimClip(next, id, "in", ms(t.out_s - cap), sourceS)
+        : trimClip(next, id, "out", ms(t.in_s + cap), frozen ? null : sourceS);
+  // The export's time allowance: slow work on this clip (and the timeline's own
+  // length) must fit it; the edge stops where it last did.
+  const slow = (m: EditorModel) => {
+    const x = m.clips.find((k) => k.id === id);
+    return Boolean(x && (x.interpolate || x.stabilize));
+  };
+  if (slow(out) && !renderWork(out).ok) {
+    const from = edge === "in" ? c.in_s : c.out_s;
+    const to = edge === "in" ? out.clips.find((k) => k.id === id)!.in_s : out.clips.find((k) => k.id === id)!.out_s;
+    let good = from;
+    let bad = to;
+    let best = model;
+    for (let i = 0; i < 24 && Math.abs(bad - good) > 0.002; i += 1) {
+      const mid = ms((good + bad) / 2);
+      const cand = trimClip(model, id, edge, mid, frozen && edge === "out" ? null : sourceS);
+      if (renderWork(cand).ok) {
+        good = mid;
+        best = cand;
+      } else bad = mid;
+    }
+    return best;
+  }
+  return out;
 }
 
