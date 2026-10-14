@@ -247,7 +247,9 @@ Rules this module keeps:
   opacity move, so the per-pixel opacity budget is untouched) work as on a picture overlay; the
   progress bar takes a fade only and no move. Each shape is one more input of the final pass, so
   ``overlays`` and ``shapes`` together are at most ``MAX_OVERLAYS``, and shapes at most
-  ``shape_art.MAX_SHAPES``. The export draws each into a PNG (Pillow) and lays it with the
+  ``shape_art.MAX_SHAPES``; in a frame above 1440p a document with shapes takes at most
+  ``shape_art.LARGE_FRAME_LAYERS_MAX`` layers in all (measured: the final pass ran out of memory at 6).
+  The export draws each into a PNG (Pillow) and lays it with the
   picture-overlay path; a document without ``shapes`` renders the commands it always did.
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
@@ -808,6 +810,11 @@ def validate(doc: Any) -> List[str]:
             + (len(doc["shapes"]) if isinstance(doc["shapes"], list) else 0)
         if layers > MAX_OVERLAYS:
             problems.append(f"overlays and shapes together: at most {MAX_OVERLAYS} (got {layers})")
+        elif (isinstance(doc["shapes"], list) and doc["shapes"] and layers > shape_art.LARGE_FRAME_LAYERS_MAX
+              and _is_int(doc.get("width")) and _is_int(doc.get("height"))
+              and doc["width"] * doc["height"] > LARGE_FRAME_PX):
+            problems.append(f"overlays and shapes together: at most {shape_art.LARGE_FRAME_LAYERS_MAX} in a frame "
+                            f"above 1440p (got {layers}) — the export would run out of memory")
 
     if problems:
         return problems

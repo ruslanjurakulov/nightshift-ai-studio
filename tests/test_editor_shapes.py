@@ -210,6 +210,25 @@ class DocumentTestCase(unittest.TestCase):
         self.assertEqual(sa.MAX_LAYERS, tl.MAX_OVERLAYS, "the layers are the final pass's inputs")
         self.assertEqual(sa.MAX_LAYERS, rs.MAX_PICTURE_OVERLAYS)
 
+    def test_a_frame_above_1440p_takes_fewer_layers_once_it_has_a_shape(self):
+        """Measured on the bundled ffmpeg 7.0.2 under the export's 2 GiB: at 3840x2160 and 60 fps six
+        layers ran out of memory whatever their size (five passed); a frame up to 1440p passed twelve.
+        The guard is only asked of a document that has shapes, so no older document changes."""
+        self.assertEqual(sa.LARGE_FRAME_LAYERS_MAX, 5)
+        pics = lambda n: [{"id": f"o{i}", "asset_id": PIC, "start_s": 0, "end_s": 2} for i in range(n)]
+        shapes = lambda n: [sh(id=f"s{i}") for i in range(n)]
+        for w, h in ((3840, 2160), (2160, 3840), (3000, 2000)):
+            with self.subTest(frame=(w, h)):
+                self.assertEqual(problems(doc_with(shapes(3), overlays=pics(2), width=w, height=h)), [])
+                got = problems(doc_with(shapes(3), overlays=pics(3), width=w, height=h))
+                self.assertTrue(any("at most 5 in a frame above 1440p (got 6)" in p for p in got), got)
+        self.assertEqual(problems(doc_with(shapes(12), overlays=pics(4), width=2560, height=1440)), [],
+                         "1440p itself is not above 1440p")
+        self.assertEqual(problems(doc_with(None, overlays=pics(8), width=3840, height=2160)), [],
+                         "no shapes: the picture overlays are as they were")
+        self.assertEqual(problems(doc_with([], overlays=pics(8), width=3840, height=2160)), [])
+        self.assertEqual(tl.LARGE_FRAME_PX, 2560 * 1440)
+
     def test_the_shape_is_strict(self):
         for extra in ({"path": "/etc/passwd"}, {"asset_id": PIC}, {"chroma": {"color": "#00FF00"}},
                       {"rotation": 90}, {"font": "DejaVu Sans"}):
@@ -313,6 +332,7 @@ class DocumentTestCase(unittest.TestCase):
                           "ASPECT_DEFAULT": sa.ASPECT_DEFAULT, "SHAPE_W_MIN": sa.W_MIN,
                           "SHAPE_W_MAX": sa.W_MAX, "SHAPE_W_DEFAULT": sa.W_DEFAULT})
         self.assertIn(f'export const SHAPE_COLOR_DEFAULT = "{sa.COLOR_DEFAULT}";', ts)
+        self.assertIn(f"export const LARGE_FRAME_LAYERS_MAX = {sa.LARGE_FRAME_LAYERS_MAX};", ts)
         self.assertIn(f'THICK_DEFAULTS = {{ line: {sa.THICK_DEFAULTS["line"]}, progress: {sa.THICK_DEFAULTS["progress"]} }}', ts)
         for kind, fields in sa.KIND_FIELDS.items():
             m = re.search(rf"\b{kind}: \[([^\]]*)\]", ts[ts.index("export const KIND_FIELDS"):])
@@ -799,6 +819,7 @@ class ShapePixelsTestCase(_Real):
             self.close(self.px(raw, int(tip[0] * FW), int(tip[1] * FH)), self.RED, 30, f"{d} tip")
             self.close(self.px(raw, int(off[0] * FW), int(off[1] * FH)), GREY, 8, f"{d} beside the tip")
 
+    @unittest.skipUnless(have_font(), "no bold font on this machine (the worker image has fonts-dejavu)")
     def test_a_pill_has_a_box_and_its_text_in_a_contrasting_colour(self):
         raw = self.frame(sh(kind="pill", text="Subscribe", x=0.5, y=0.5, w=0.5, color="#FF0000"))
         box_h = int(0.5 * FW / sa.pill_aspect("Subscribe"))
@@ -810,6 +831,7 @@ class ShapePixelsTestCase(_Real):
         other = self.frame(sh(kind="pill", text="New", x=0.5, y=0.5, w=0.5, color="#FF0000"))
         self.assertNotEqual(raw, other, "the text is part of the picture")
 
+    @unittest.skipUnless(have_font(), "no bold font on this machine (the worker image has fonts-dejavu)")
     def test_a_label_in_cyrillic_is_drawn(self):
         raw = self.frame(sh(kind="pill", text="Подписаться", x=0.5, y=0.5, w=0.6,
                             color="#FF0000"))

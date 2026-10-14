@@ -151,6 +151,7 @@ import { ShapeInspector, ShapeLayerView, ShapeMoveSection, ShapePicker } from ".
 import {
   addShape,
   canAddShape,
+  layersAllowed,
   moveShape,
   nudgeShape,
   removeShape,
@@ -1465,7 +1466,7 @@ export function TimelineEditor({
             >
               {overlays.length >= MAX_OVERLAYS
                 ? fmt(te.overlay.full, { max: MAX_OVERLAYS })
-                : fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })}
+                : fmt(te.shapes.layersFull, { max: layersAllowed(model, shapes.length) })}
             </p>
           ) : !canAddOverlay(model, "video", isVideoAsset) ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">
@@ -1480,7 +1481,7 @@ export function TimelineEditor({
             >
               {shapes.length >= MAX_SHAPES
                 ? fmt(te.shapes.shapesFull, { max: MAX_SHAPES })
-                : fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })}
+                : fmt(te.shapes.layersFull, { max: layersAllowed(model, shapes.length + 1) })}
             </p>
           ) : null}
           {addingShape ? (

@@ -40,6 +40,12 @@ PROGRESS_EDGES = ("bottom", "top")
 #: picture: render_spec.MAX_PICTURE_OVERLAYS is the same 16 and each layer is an input of the final pass.
 MAX_SHAPES = 12
 MAX_LAYERS = 16
+#: Above 1440p (more than 2560x1440 pixels, either way up) a document with shapes may lay at most this many
+#: layers (picture overlays + shapes) over the picture: each is a filter chain of the final pass, and the
+#: bundled ffmpeg 7.0.2 ran out of the export's 2 GiB (``Cannot allocate memory``, exit 187) at 6 layers at
+#: 3840x2160 and 60 fps whatever their size (5 passed; 6 passed at 30 fps, 8 failed; 1440p60 passed 12;
+#: 5.1.1 passed 7). Not asked of a document without shapes: its picture overlays are as they were.
+LARGE_FRAME_LAYERS_MAX = 5
 #: A pill's label, in characters (code points). Short on purpose: a label, not a caption.
 TEXT_MAX = 24
 #: What a shape draws in when it names no colour, and the most a stroke may take of the

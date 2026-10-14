@@ -532,6 +532,14 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
   (`MAX_OVERLAYS`): each is one more input of the final pass ("overlays and shapes together: at most
   16"). The editor counts both (`layerCount`, `canAddShape`, and `canAddOverlay` now counts shapes
   too). A shape never lengthens the timeline (what runs past the picture is cut).
+* **Above 1440p** (more than 2560x1440 pixels, either way up) a document that has shapes takes at
+  most 5 layers in all (`LARGE_FRAME_LAYERS_MAX`): "overlays and shapes together: at most 5 in a
+  frame above 1440p". Measured with the bundled ffmpeg 7.0.2 under the export's 2 GiB: at 3840x2160
+  and 60 fps six layers ran out of memory (exit 187, "Cannot allocate memory") whatever their size and
+  five passed; at 30 fps six passed and eight failed; a 1440p frame passed twelve; ffmpeg 5.1.1 passed
+  seven at 4K60. The same limit exists for picture overlays alone (not guarded, so an older document
+  is judged as before): the guard is asked only of a document with shapes, and the editor stops adding
+  at it. The editor's own frames are 1080p, so this only meets a project made by another tool.
 * **Layering**: shapes are drawn after the pictures (so over them), under the texts and captions;
   list order is the layering among shapes.
 * **Worker**: `modules/timeline_render._shapes` turns each shape into a `PictureOverlay` carrying a
@@ -539,7 +547,9 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
   directory and fills the paths in; the rest is `picture_overlay_filters`. The command of a
   document without shapes is unchanged (the existing digest tests, plus a new one with an empty list,
   an invisible shape and one after the end).
-* **ffmpeg versions**: every pixel test passes with the bundled static 7.0.2 and with 5.1.1. The
+* **ffmpeg versions**: every pixel test passes with the bundled static 7.0.2 and with 5.1.1. A
+  1080p export of twelve full-frame circles took 6 s (about 3 s of it drawing the PNGs) against 3 s for
+  twelve picture overlays of the same size. The
   only filters used are the overlay path's own (`scale`, `format`, `colorchannelmixer`, `fade`,
   `tpad`, `overlay`) plus the `x` expression above; nothing in it is version-sensitive that was
   seen. Pillow is a worker dependency (requirements.txt, `Pillow>=12.3.0`).

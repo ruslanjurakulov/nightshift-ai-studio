@@ -15,6 +15,7 @@ import {
   MAX_OVERLAYS,
   MIN_CLIP_S,
   HEX_RE,
+  LARGE_FRAME_PX,
   clamp,
   fitAnims,
   freshId,
@@ -45,6 +46,7 @@ import {
   THICK_MIN,
   cleanShapeText,
   isShapeKind,
+  layerLimit,
   shapeTextProblem,
   type ShapeKind,
   type ShapeLayer,
@@ -76,9 +78,16 @@ export function layerCount(model: EditorModel): number {
   return (model.overlays?.length ?? 0) + shapesOf(model).length;
 }
 
-/** Can one more shape be added? At most MAX_SHAPES, and with the picture overlays at most MAX_OVERLAYS. */
+/** The most layers the project may carry once it has `shapes` shapes (fewer above 1440p). */
+export function layersAllowed(model: EditorModel, shapes: number): number {
+  return layerLimit(model, shapes, MAX_OVERLAYS, LARGE_FRAME_PX);
+}
+
+/** Can one more shape be added? At most MAX_SHAPES, and with the picture overlays at most MAX_OVERLAYS
+ *  (above 1440p a document with shapes takes fewer, see LARGE_FRAME_LAYERS_MAX). */
 export function canAddShape(model: EditorModel): boolean {
-  return shapesOf(model).length < MAX_SHAPES && layerCount(model) < MAX_OVERLAYS;
+  const n = shapesOf(model).length;
+  return n < MAX_SHAPES && layerCount(model) < layersAllowed(model, n + 1);
 }
 
 /** The kind's own starting look: a ring and a frame are outlines, the rest solid; a label sits low,

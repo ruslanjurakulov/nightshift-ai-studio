@@ -30,6 +30,7 @@ import { setFrame } from "@/lib/editorFrame";
 import {
   ARROW_DIRS,
   KIND_FIELDS,
+  LARGE_FRAME_LAYERS_MAX,
   MAX_SHAPES,
   PROGRESS_ANIMS,
   PROGRESS_EDGES,
@@ -55,6 +56,7 @@ import {
   canAddShape,
   clearShapeMove,
   layerCount,
+  layersAllowed,
   moveShape,
   nudgeShape,
   removeShape,
@@ -248,6 +250,41 @@ describe("adding", () => {
     expect(canAddShape(n)).toBe(false);
     valid(n);
     expect(addOverlay(n, { id: PIC, kind: "image", durationS: null }, 0)).toBeNull();
+  });
+});
+
+describe("a frame above 1440p takes fewer layers once it has a shape", () => {
+  const big = (): EditorModel => ({ ...base(), width: 3840, height: 2160 });
+  it("the limit is the worker's, and only asked once there is a shape", () => {
+    expect(LARGE_FRAME_LAYERS_MAX).toBe(5);
+    expect(layersAllowed(big(), 0)).toBe(MAX_OVERLAYS);
+    expect(layersAllowed(big(), 1)).toBe(5);
+    expect(layersAllowed(base(), 1)).toBe(MAX_OVERLAYS);
+    expect(layersAllowed({ ...base(), width: 2560, height: 1440 }, 3)).toBe(MAX_OVERLAYS);
+    expect(layersAllowed({ ...base(), width: 1440, height: 2560 }, 3)).toBe(MAX_OVERLAYS);
+    expect(layersAllowed({ ...base(), width: 2160, height: 3840 }, 3)).toBe(5);
+  });
+  it("the editor stops adding at five, shapes and pictures together, and the document is valid", () => {
+    let m = big();
+    for (let i = 0; i < 3; i += 1) m = add(m, "star").model;
+    for (let i = 0; i < 2; i += 1) m = addOverlay(m, { id: PIC, kind: "image", durationS: null }, 0)!.model;
+    expect(layerCount(m)).toBe(5);
+    expect(canAddShape(m)).toBe(false);
+    expect(canAddOverlay(m)).toBe(false);
+    expect(addShape(m, "star", 0)).toBeNull();
+    valid(m);
+    // a project without shapes keeps its overlays' own limit
+    let n = big();
+    for (let i = 0; i < 8; i += 1) n = addOverlay(n, { id: PIC, kind: "image", durationS: null }, 0)!.model;
+    expect(canAddOverlay(n)).toBe(true);
+    expect(canAddShape(n)).toBe(false); // the first shape would make it nine layers above 1440p
+    valid(n);
+  });
+  it("the validator says so", () => {
+    let m = big();
+    for (let i = 0; i < 6; i += 1) m = { ...m, shapes: [...(m.shapes ?? []), { ...add(base(), "star").model.shapes![0], id: `z${i}` }] };
+    const problems = validateTimeline(toDoc(m));
+    expect(problems.some((p) => p.includes("at most 5 in a frame above 1440p (got 6)"))).toBe(true);
   });
 });
 

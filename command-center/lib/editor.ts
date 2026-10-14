@@ -33,6 +33,7 @@ import {
   ASPECT_MAX,
   ASPECT_MIN,
   KIND_FIELDS,
+  LARGE_FRAME_LAYERS_MAX,
   MAX_SHAPES,
   PROGRESS_ANIMS,
   PROGRESS_EDGES,
@@ -1013,6 +1014,17 @@ export function validateTimeline(doc: unknown): string[] {
       (Array.isArray(doc.shapes) ? doc.shapes.length : 0);
     if (layers > MAX_OVERLAYS)
       problems.push(`overlays and shapes together: at most ${MAX_OVERLAYS} (got ${layers})`);
+    else if (
+      Array.isArray(doc.shapes) &&
+      doc.shapes.length > 0 &&
+      layers > LARGE_FRAME_LAYERS_MAX &&
+      isInt(doc.width) &&
+      isInt(doc.height) &&
+      doc.width * doc.height > LARGE_FRAME_PX
+    )
+      problems.push(
+        `overlays and shapes together: at most ${LARGE_FRAME_LAYERS_MAX} in a frame above 1440p (got ${layers}) — the export would run out of memory`,
+      );
   }
 
   if (problems.length) return problems;

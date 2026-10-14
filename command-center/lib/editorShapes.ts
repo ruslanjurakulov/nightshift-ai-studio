@@ -39,6 +39,9 @@ export type ProgressEdge = (typeof PROGRESS_EDGES)[number];
 
 /** Shapes in a document; with the picture overlays they share MAX_OVERLAYS layers. */
 export const MAX_SHAPES = 12;
+/** Above 1440p a document with shapes takes at most this many layers (pictures + shapes) in all: the
+ *  export's final pass ran out of memory at 6 at 4K60 (modules/shape_art.py LARGE_FRAME_LAYERS_MAX). */
+export const LARGE_FRAME_LAYERS_MAX = 5;
 /** A pill's label, in characters (code points). */
 export const SHAPE_TEXT_MAX = 24;
 export const SHAPE_COLOR_DEFAULT = "#FFD60A";
@@ -95,6 +98,17 @@ const STAR_WIDTH_R = 2 * Math.sin((72 * Math.PI) / 180);
 const STAR_HEIGHT_R = 1 + Math.cos((36 * Math.PI) / 180);
 const ARROW_SHAFT = 0.36;
 const ARROW_HEAD_AT = 0.52;
+
+/** The most layers (picture overlays + shapes) a frame of this size may carry when the document has
+ *  `shapes` shapes: MAX_LAYERS, or LARGE_FRAME_LAYERS_MAX above 1440p once there is a shape. */
+export function layerLimit(
+  frame: { width: number; height: number },
+  shapes: number,
+  maxLayers: number,
+  largePx: number,
+): number {
+  return shapes > 0 && frame.width * frame.height > largePx ? LARGE_FRAME_LAYERS_MAX : maxLayers;
+}
 
 export const isShapeKind = (v: unknown): v is ShapeKind =>
   typeof v === "string" && (SHAPE_KINDS as readonly string[]).includes(v);

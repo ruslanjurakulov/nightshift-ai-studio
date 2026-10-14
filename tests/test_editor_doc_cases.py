@@ -291,12 +291,14 @@ class DocCasesTestCase(unittest.TestCase):
             "shape with a bad id": "id must be 1-64 letters",
             "overlays and shapes past the layer limit": "overlays and shapes together: at most 16 (got 17)",
             "shape id used by an overlay": "id 'o1' is already used",
+            "overlays and shapes past the large-frame layer limit": "at most 5 in a frame above 1440p (got 6)",
+            "shapes in a tall large frame past the layer limit": "at most 5 in a frame above 1440p (got 6)",
         }
         for name, needle in needles.items():
             with self.subTest(name):
                 problems = verdict(cases[name])
                 self.assertTrue(any(needle in p for p in problems), problems)
-        valid = [n for n, c in cases.items() if c["valid"] and n.startswith(("shape", "pill text", "twelve shapes", "an empty shapes"))]
+        valid = [n for n, c in cases.items() if c["valid"] and n.startswith(("shape", "pill text", "twelve shapes", "an empty shapes", "many overlays in a large"))]
         self.assertGreater(len(valid), 20)
         for name in valid:
             with self.subTest(name):

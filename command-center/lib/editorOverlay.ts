@@ -19,8 +19,10 @@
  * tolerance is the honest gap.
  */
 import type { CSSProperties } from "react";
+import { layerLimit } from "@/lib/editorShapes";
 import {
   MAX_OVERLAYS,
+  LARGE_FRAME_PX,
   MAX_OVERLAY_VIDEOS,
   MIN_CLIP_S,
   OVERLAY_DEFAULTS,
@@ -98,7 +100,11 @@ export function canAddOverlay(
 ): boolean {
   const list = overlaysOf(model);
   // Drawn shapes take layers of the same final pass (modules/timeline.py: together at most MAX_OVERLAYS).
-  if (kind === "audio" || list.length + (model.shapes?.length ?? 0) >= MAX_OVERLAYS)
+  const shapes = model.shapes?.length ?? 0;
+  if (
+    kind === "audio" ||
+    list.length + shapes >= layerLimit(model, shapes, MAX_OVERLAYS, LARGE_FRAME_PX)
+  )
     return false;
   if (kind !== "video" || !isVideoAsset) return true;
   return (
