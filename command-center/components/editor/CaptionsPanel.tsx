@@ -529,7 +529,7 @@ export function CaptionsPanel({
   const action = quoteErrorCode ? errorAction(quoteErrorCode) : null;
 
   return (
-    <section aria-labelledby="captions-heading" className="panel flex flex-col gap-3 p-5 sm:p-6">
+    <section aria-labelledby="captions-heading" tabIndex={-1} data-captions-panel="" className="panel flex flex-col gap-3 p-5 sm:p-6 outline-none">
       <div className="flex items-center gap-2">
         <CaptionsIcon className="size-4 text-[var(--color-primary)]" aria-hidden />
         <h2 id="captions-heading" className="m-0 text-[15px] font-semibold">

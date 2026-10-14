@@ -24,6 +24,8 @@ import { SEARCH_MAX, cleanSearch, type FolderError } from "@/lib/media-folders";
 import { KIND_ICON } from "./kindIcon";
 import { LibrarySkeleton } from "./LibrarySkeleton";
 import { MediaViewer } from "./MediaViewer";
+import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
+import { isImproveKind } from "@/lib/creative/improve";
 import { FolderRail } from "./FolderRail";
 import { FolderMenu } from "./FolderMenu";
 import { DeleteFolderDialog, FolderNameDialog } from "./FolderDialogs";
@@ -119,8 +121,11 @@ export function MediaLibrary({
   initial,
   canEditFolders = true,
   initialView,
+  aiTools = null,
 }: {
   orgId: string;
+  /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives the tiles' "Improve with AI". */
+  aiTools?: readonly string[] | null;
   initial?: MediaLibraryData | null;
   /** The view named by the address (?kind=&q=&sort=), read on the server so the first paint already has it. */
   initialView?: LibraryView;
@@ -1097,6 +1102,20 @@ export function MediaLibrary({
                             </span>
                           )}
                         </button>
+                        {/* "Improve with AI": a sibling of the open button (never nested in it); hidden while selecting. */}
+                        {!selecting && isImproveKind(a.kind) && (
+                          <div className="absolute bottom-1.5 right-1.5 z-10">
+                            <ImproveWithAi
+                              assetId={a.id}
+                              kind={a.kind}
+                              name={a.name}
+                              available={aiTools}
+                              orgId={orgId}
+                              variant="icon"
+                              className="studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11 pointer-coarse:size-11"
+                            />
+                          </div>
+                        )}
                       </Frame>
                     );
                   })}
@@ -1199,6 +1218,7 @@ export function MediaLibrary({
           opener={opener}
           folderName={foldersOn ? folderName : undefined}
           orgId={orgId}
+          aiTools={aiTools}
         />
       )}
 

@@ -30,6 +30,8 @@ import { Chip } from "@/components/ui/Chip";
 import { Timecode } from "@/components/ui/Timecode";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
+import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
+import { isImproveKind } from "@/lib/creative/improve";
 import {
   GAIN_DB_MAX,
   GAIN_DB_MIN,
@@ -61,6 +63,7 @@ import {
   TEXT_SIZE_MIN,
   addClip,
   addSound,
+  addStill,
   addText,
   audioInputs,
   canAddSound,
@@ -240,6 +243,9 @@ export function TimelineEditor({
   orgId = "",
   captionModels = [],
   userId = "",
+  aiTools = null,
+  offerAssetId = null,
+  focusPanel = null,
 }: {
   projectId: string;
   title: string;
@@ -258,6 +264,12 @@ export function TimelineEditor({
   captionModels?: readonly CaptionModelOption[];
   /** The signed-in member: a local draft is kept per member (none without it). */
   userId?: string;
+  /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives "Improve with AI" on a clip or picture. */
+  aiTools?: readonly string[] | null;
+  /** A finished AI result (a library file id) the Studio sent the person back with: offered as "Add to project". */
+  offerAssetId?: string | null;
+  /** Open scrolled to a panel ("Improve with AI" → Captions from the library). */
+  focusPanel?: "captions" | null;
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -710,6 +722,68 @@ export function TimelineEditor({
     setSelected({ kind: "text", id: out.id });
   }
 
+  // ── "Add to project": a finished AI result, offered once, added only on the press ──
+  const [offer, setOffer] = useState<"open" | "added" | "failed" | "closed">("open");
+  const offered = offerAssetId
+    ? [...videos, ...imageFiles, ...soundFiles].find((a) => a.id.toLowerCase() === offerAssetId.toLowerCase())
+    : undefined;
+  function onOfferAdd() {
+    if (!offered) return;
+    let next: EditorModel | null = null;
+    let pick: Selection = null;
+    if (offered.kind === "audio") {
+      const out = addSound(model, offered, playhead < picture ? playhead : 0);
+      if (out) {
+        next = out.model;
+        pick = { kind: "sound", id: out.id };
+      }
+    } else {
+      const m = offered.kind === "video" ? addClip(model, offered) : addStill(model, offered);
+      if (m !== model) {
+        next = m;
+        pick = { kind: "clip", id: m.clips[m.clips.length - 1].id };
+      }
+    }
+    if (!next) {
+      setOffer("failed");
+      return;
+    }
+    setAssets((x) => ({ ...x, [offered.id]: offered }));
+    apply(next);
+    setSelected(pick);
+    setOffer("added");
+  }
+
+  // "Improve with AI" → Captions: the Captions panel is lower on the page.
+  function goCaptions() {
+    const el = document.querySelector<HTMLElement>("[data-captions-panel]");
+    el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    el?.focus({ preventScroll: true });
+  }
+  useEffect(() => {
+    if (focusPanel === "captions") setTimeout(goCaptions, 0);
+    // once, when the editor opens on that panel
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** "Improve with AI" for the file a clip or overlay shows (nothing without an organization to price in). */
+  function improveFor(assetId: string, withCaptions: boolean) {
+    const a = assets[assetId];
+    if (!orgId || !a || !isImproveKind(a.kind)) return null;
+    return (
+      <ImproveWithAi
+        key={assetId}
+        assetId={assetId}
+        kind={a.kind}
+        name={a.name}
+        available={aiTools}
+        project={projectId}
+        onCaptions={withCaptions ? goCaptions : undefined}
+        className={quietBtn}
+      />
+    );
+  }
+
   function onAddVideo(a: EditorAsset) {
     const next = addClip(model, a);
     if (next === model) return;
@@ -785,6 +859,50 @@ export function TimelineEditor({
 
   return (
     <div className="flex flex-col gap-4" data-editor-root="">
+      {offerAssetId && offer !== "closed" ? (
+        <section
+          aria-label={fmt(t.improveAi.offerTitle, { name: offered?.name ?? t.improveAi.unnamed })}
+          className="panel flex flex-col gap-2 p-4 sm:p-5"
+          data-testid="offer-add"
+        >
+          {offer === "added" ? (
+            <p role="status" className="m-0 text-sm text-[var(--color-fg)]">
+              {t.improveAi.offerAdded}
+            </p>
+          ) : !offered ? (
+            <p role="status" className="m-0 text-sm text-[var(--color-muted)]">
+              {t.improveAi.offerMissing}
+            </p>
+          ) : (
+            <>
+              <h2 className="m-0 text-sm font-semibold">
+                {fmt(t.improveAi.offerTitle, { name: offered.name ?? t.improveAi.unnamed })}
+              </h2>
+              <p className="m-0 text-xs text-[var(--color-muted)]">{t.improveAi.offerBody}</p>
+              {offer === "failed" ? (
+                <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
+                  {t.improveAi.offerFailed}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={onOfferAdd} className="btn-primary text-sm">
+                  {t.improveAi.offerAdd}
+                </button>
+                <button type="button" onClick={() => setOffer("closed")} className={quietBtn}>
+                  {t.improveAi.offerNotNow}
+                </button>
+              </div>
+            </>
+          )}
+          {offer === "added" || !offered ? (
+            <div>
+              <button type="button" onClick={() => setOffer("closed")} className={quietBtn}>
+                {t.improveAi.close}
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       {/* header: name, history, save, export */}
       <div className="panel flex flex-col gap-3 p-4 sm:p-5 sm:p-4">
         {/* One grid, placed per breakpoint. From sm up the back link and the saved
@@ -1312,6 +1430,7 @@ export function TimelineEditor({
           }
         >
           {overlay ? (
+            <>
             <OverlayInspector
               key={overlay.id}
               n={overlayNumber(overlay.id)}
@@ -1347,6 +1466,8 @@ export function TimelineEditor({
                 apply(removeOverlay(model, overlay.id));
               }}
             />
+            {improveFor(overlay.asset_id, false)}
+            </>
           ) : sound ? (
             <SoundInspector
               key={sound.id}
@@ -1372,6 +1493,7 @@ export function TimelineEditor({
               onDelete={() => apply(removeSound(model, sound.id))}
             />
           ) : clip ? (
+            <>
             <ClipInspector
               key={clip.id}
               n={clipIndex + 1}
@@ -1413,6 +1535,8 @@ export function TimelineEditor({
               onMove={(by) => apply(moveClip(model, clip.id, by))}
               onDelete={() => apply(removeClip(model, clip.id))}
             />
+            {improveFor(clip.asset_id, true)}
+            </>
           ) : text ? (
             <TextInspector
               key={text.id}
