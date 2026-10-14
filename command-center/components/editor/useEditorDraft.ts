@@ -74,10 +74,11 @@ export function useEditorDraft(p: {
   const first = useRef({ saved: p.saved, savedTitle: p.savedTitle });
   const pending = resume.kind === "restore";
 
+  // Updated while rendering, not in an effect: the tab can be hidden between a
+  // render being committed and its effects running, and `flush` must then see the
+  // document as it is now (a saved one is clean), never write a draft of old state.
   const latest = useRef({ ...p, pending });
-  useEffect(() => {
-    latest.current = { ...p, pending };
-  });
+  latest.current = { ...p, pending };
 
   // Opening the project: is there a draft to offer?
   useEffect(() => {
@@ -172,6 +173,18 @@ export function useEditorDraft(p: {
     p.onRestore(resume.draft, assets);
   }, [resume, p]);
 
+  // A save just moved the project to `newRev`: no draft of older state may outlive it.
+  // Called right where the save succeeds (the rev effect above does the same a moment
+  // later; this one leaves no window in which a hidden tab could keep a stale draft).
+  const afterSave = useCallback(
+    (newRev: number) => {
+      if (!userId) return;
+      clearOtherDrafts(userId, projectId, newRev);
+      wrote.current = false;
+    },
+    [userId, projectId],
+  );
+
   const discard = useCallback(() => {
     if (userId) clearOtherDrafts(userId, projectId, null);
     wrote.current = false;
@@ -179,5 +192,5 @@ export function useEditorDraft(p: {
     setKept(null);
   }, [userId, projectId]);
 
-  return { resume, kept, restore, discard };
+  return { resume, kept, restore, discard, afterSave };
 }

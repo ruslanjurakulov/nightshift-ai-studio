@@ -667,6 +667,7 @@ export function TimelineEditor({
       return;
     }
     setRev(out.value.rev);
+    draft.afterSave(out.value.rev);
     setSaved(JSON.stringify(docNow));
     setSavedTitle(title.trim());
   }

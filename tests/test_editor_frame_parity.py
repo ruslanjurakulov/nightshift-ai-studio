@@ -270,9 +270,19 @@ class SharedDefinitionsTestCase(unittest.TestCase):
         self.assertEqual(found, dict(tl.PRESETS))
 
     def test_fits_are_the_documents(self):
+        """The editor's `Fit` type, its validator's list and the picker's keys are the
+        document's FITS (modules/timeline.py), in the same order."""
         ts = FRAME_TS.read_text(encoding="utf-8")
-        self.assertIn('export type Fit = "contain" | "cover";', ts)
-        self.assertEqual(tuple(tl.FITS), ("contain", "cover", "blur"))   # the picker still offers the first two
+        m = re.search(r'export type Fit = ([^;]+);', ts)
+        self.assertIsNotNone(m, "export type Fit is gone from lib/editorFrame.ts")
+        self.assertEqual(tuple(re.findall(r'"([a-z]+)"', m.group(1))), tuple(tl.FITS))
+        editor = (ROOT / "command-center" / "lib" / "editor.ts").read_text(encoding="utf-8")
+        m = re.search(r'const FITS = \[([^\]]+)\] as const;', editor)
+        self.assertIsNotNone(m, "FITS is gone from lib/editor.ts")
+        self.assertEqual(tuple(re.findall(r'"([a-z]+)"', m.group(1))), tuple(tl.FITS))
+        picker = (ROOT / "command-center" / "components" / "editor" / "FrameFitControls.tsx").read_text(encoding="utf-8")
+        offered = tuple(re.findall(r'\{ value: "([a-z]+)", label: te\.fit', picker))
+        self.assertEqual(offered, tuple(tl.FITS))   # every fit the document has can be chosen
 
     def test_a_cover_clip_and_each_preset_validate(self):
         for preset in tl.PRESETS:
