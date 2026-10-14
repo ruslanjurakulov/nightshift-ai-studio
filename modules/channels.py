@@ -495,6 +495,37 @@ class ChannelDNA:
         )
 
 
+def ui_auto_publish_from_row(d: dict | None) -> Optional[bool]:
+    """The Command Center's auto-publish switch (``channels.auto_publish``
+    column) as read from a stored row.
+
+    * key absent -> None: the source has no such switch (a database from before
+      migration 0004, a context built in code). Unrestricted, as before.
+    * key present and exactly True -> True.
+    * key present and anything else (False, a NULL the NOT NULL column cannot
+      hold, the string "true", 1) -> False. Fail closed: a switch that is there
+      but not plainly on is off.
+    """
+    if not isinstance(d, dict) or "auto_publish" not in d:
+        return None
+    return d["auto_publish"] is True
+
+
+def effective_privacy(requested: str | None, ui_auto_publish: Optional[bool]) -> str | None:
+    """The privacy a run may upload with: OFF means "never public".
+
+    The switch limits privacy, never the upload itself. Unrestricted (None: no
+    switch carried) and ON (True) return ``requested`` unchanged, so the
+    existing publish gate and approvals still decide. Anything else -- the
+    switch is off, or present but not plainly true -- clamps to "private",
+    whatever was asked for (``--privacy public``, ``YOUTUBE_PRIVACY=public``,
+    unlisted, an unknown value, nothing).
+    """
+    if ui_auto_publish is None or ui_auto_publish is True:
+        return requested
+    return "private"
+
+
 @dataclass(frozen=True)
 class ChannelContext:
     """One channel, fully resolved. Flows through the pipeline as an argument.
@@ -521,6 +552,14 @@ class ChannelContext:
     # Channel DNA (migration 0056): tone, format, aspect, default style kit.
     # Not in to_dict(), for the same reason as org_id.
     dna: ChannelDNA = field(default_factory=ChannelDNA)
+    # The Command Center's "auto publish" switch: the ``channels.auto_publish``
+    # COLUMN (migration 0004, default false), distinct from the
+    # ``agent_config.auto_publish`` key. None = the source carried no such
+    # switch (channels.json, the legacy default channel, a database from before
+    # 0004, a context built in code). It only ever limits the privacy a run may
+    # ask for (``effective_privacy``); it does not decide whether a video
+    # uploads. Not in to_dict(): the mirror must not write it into agent_config.
+    ui_auto_publish: Optional[bool] = None
 
     @property
     def is_operators(self) -> bool:
@@ -599,6 +638,7 @@ class ChannelContext:
             updated_at=d.get("updated_at") or "",
             org_id=str(d.get("org_id") or DEFAULT_ORG_ID),
             dna=ChannelDNA.from_row(d),
+            ui_auto_publish=ui_auto_publish_from_row(d),
         )
 
 
@@ -718,7 +758,21 @@ class ChannelRegistry:
             )
             return []
         rows = data.get("channels") if isinstance(data, dict) else data
-        return _parse_rows(rows if isinstance(rows, list) else [], source=str(path))
+        rows = rows if isinstance(rows, list) else []
+        # A channels.json row has no Command Center switch. A stray top-level
+        # `auto_publish` there would otherwise be read as the `channels` column
+        # (from_dict reads both sources the same way), so drop it and say so.
+        cleaned = []
+        for row in rows:
+            if isinstance(row, dict) and "auto_publish" in row:
+                logger.warning(
+                    "Ignoring top-level 'auto_publish' in %s (channel %r): the Command Center "
+                    "switch lives in the database, not in this file; use agent_config.auto_publish",
+                    path, row.get("channel_id"),
+                )
+                row = {k: v for k, v in row.items() if k != "auto_publish"}
+            cleaned.append(row)
+        return _parse_rows(cleaned, source=str(path))
 
     # -- public API --------------------------------------------------------
 

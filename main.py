@@ -41,7 +41,7 @@ from modules.avatar import (
 )
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
-from modules.channels import ChannelContext, resolve_channel
+from modules.channels import ChannelContext, effective_privacy, resolve_channel
 from modules.credential_health import check_run_credentials
 from modules.cost_ledger import (
     CostLedger, IMAGE_GENERATIONS, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS,
@@ -352,6 +352,19 @@ def _flush_costs(costs, slug: str | None = None) -> None:
                        type(e).__name__, e)
 
 
+def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
+    """The privacy this run may upload with. If the channel's Command Center
+    auto-publish switch is not ON (and the source carries one at all), anything
+    other than private is clamped to private with a one-line warning; see
+    modules.channels.effective_privacy. ON or no switch: unchanged."""
+    allowed = effective_privacy(privacy, ctx.ui_auto_publish)
+    if str(privacy or "").strip().lower() not in ("", "private") and allowed != privacy:
+        logger.warning(
+            "[channel: %s] Auto publish is not ON for this channel: %r requested, uploading "
+            "private instead (the switch means never public)", ctx.channel_id, privacy)
+    return allowed
+
+
 def run(
     niche: str | None = None,
     topic: str | None = None,
@@ -386,6 +399,10 @@ def run(
     """
     Path("logs").mkdir(exist_ok=True)
     ctx = channel if isinstance(channel, ChannelContext) else resolve_channel(channel)
+    # The Command Center's auto-publish switch OFF means "never public": clamp
+    # the requested privacy here, before any stage (the upload, the Short, the
+    # two-person check) can read it. Uploads themselves are unchanged.
+    privacy = _effective_privacy(ctx, privacy)
     # Per-run overrides for the generator settings. AgentConfig and
     # ChannelContext are frozen, so this builds an overridden COPY for this run
     # rather than mutating shared state — two channels (or two tests) in one
