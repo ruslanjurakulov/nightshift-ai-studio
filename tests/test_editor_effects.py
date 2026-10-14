@@ -504,6 +504,27 @@ class GeometryRenderTestCase(_Real):
         self.assertLess(max(self.px(raw, self.W, 10, 90)), 40, "black bar at the left")
         self.assertGreater(self.px(raw, self.W, 160, 30)[0], 150)
 
+    def sar_of(self, path):
+        import subprocess
+        err = subprocess.run([self.ffmpeg, "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+        return re.search(r"SAR (\d+:\d+)", err).group(1)
+
+    def test_a_turned_clip_comes_out_with_square_pixels(self):
+        # the scaler's rounding left 405:406 (a player would stretch the picture) before setsar=1
+        src = self.split_source()
+        for fx in ({"rotate": 90}, {"rotate": 270}, {"rotate": 90, "fit": "cover"}, {"rotate": 180}, {}):
+            out = self.export(vdoc(width=self.W, height=self.H, **fx), {BASE: src})
+            self.assertEqual(self.sar_of(out), "1:1", fx)
+
+    def test_the_sar_filter_is_only_for_a_quarter_turn(self):
+        quarter = rs.Segment(2.0, "/m/a.mp4", effects=rs.ClipEffects(rotate=90))
+        self.assertTrue(vf_of(quarter).endswith("pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1"))
+        for fx in (rs.ClipEffects(), rs.ClipEffects(rotate=180), rs.ClipEffects(flip_h=True)):
+            self.assertNotIn("setsar", vf_of(rs.Segment(2.0, "/m/a.mp4", effects=fx)))
+        still = rs.Segment(2.0, "/m/p.png", kind=rs.KIND_IMAGE, effects=rs.ClipEffects(rotate=270))
+        for i in (0, 1):
+            self.assertIn("setsar=1", vf_of(still, i))
+
     def test_a_still_is_turned_too(self):
         # an image half red, half blue (left/right)
         import struct
