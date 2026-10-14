@@ -223,9 +223,33 @@ class ServerTestCase(unittest.TestCase):
         self.assertEqual(conn.getresponse().status, 413)
         conn.close()
 
+    def test_the_secret_is_checked_before_the_body_is_read(self):
+        """A caller without the secret declares a body and never sends it: the
+        answer must come at once (403), not after the server waits for the bytes."""
+        for headers in ({}, {"X-Telegram-Bot-Api-Secret-Token": "wrong"}):
+            conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=3)
+            conn.putrequest("POST", webhook.DEFAULT_PATH)
+            conn.putheader("Content-Length", "900000")
+            for k, v in headers.items():
+                conn.putheader(k, v)
+            conn.endheaders()                       # headers only; the 900 KB body is never sent
+            self.assertEqual(conn.getresponse().status, 403)
+            conn.close()
+
+    def test_precheck_order_is_method_path_secret_then_size(self):
+        service, *_ = build()
+        ok = {"X-Telegram-Bot-Api-Secret-Token": SECRET}
+        self.assertEqual(service.precheck("GET", webhook.DEFAULT_PATH, ok, 5)[0], 404)
+        self.assertEqual(service.precheck("POST", "/x", ok, 5)[0], 404)
+        self.assertEqual(service.precheck("POST", webhook.DEFAULT_PATH, {}, None)[0], 403)   # not 411: secret first
+        self.assertEqual(service.precheck("POST", webhook.DEFAULT_PATH, ok, None)[0], 411)
+        self.assertEqual(service.precheck("POST", webhook.DEFAULT_PATH, ok, webhook.MAX_BODY_BYTES + 1)[0], 413)
+        self.assertIsNone(service.precheck("POST", webhook.DEFAULT_PATH, ok, 10))
+
     def test_missing_content_length_is_411(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         conn.putrequest("POST", webhook.DEFAULT_PATH)
+        conn.putheader("X-Telegram-Bot-Api-Secret-Token", SECRET)
         conn.endheaders()
         self.assertEqual(conn.getresponse().status, 411)
         conn.close()

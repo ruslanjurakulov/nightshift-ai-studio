@@ -75,6 +75,17 @@ _TOO_OLD_REPLY = operator_router.TOO_OLD_REPLY
 ALLOWED_UPDATES = ["message", "callback_query"]
 #: One Telegram long poll lasts at most this long (seconds).
 LONG_POLL_S = 25
+#: getUpdates answers that will not change by retrying: 409 = a webhook is set
+#: for this bot (polling is refused while it is), 401 = the token was rejected.
+FATAL_POLL_STATUS = {
+    409: "a webhook is set for this bot, so Telegram refuses polling (run "
+         "`tools/operator_bot_server.py delete-webhook` to poll again)",
+    401: "Telegram rejected the bot token (check TELEGRAM_BOT_TOKEN)",
+}
+
+
+class PollFatal(Exception):
+    """getUpdates failed in a way that retrying cannot fix; ``run`` stops."""
 
 _API_BASE = "https://api.telegram.org"
 _OFFSET_FILE = HISTORY_DIR / "telegram_offset.json"
@@ -186,11 +197,13 @@ def _default_store():
 
 
 def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, timeout: int = 0,
-              store=None, now=None, bot=None) -> int:
+              store=None, now=None, bot=None, raise_fatal: bool = False) -> int:
     """Fetch one batch of updates, claim them durably, hand each new one to the
     operator router (reply, buttons, and an event per action intent). Returns
     the offset to use next (max update_id + 1). Never raises — a bad batch
-    returns the offset unchanged."""
+    returns the offset unchanged — except that with ``raise_fatal`` a 409 or 401
+    from Telegram raises :class:`PollFatal`, which ``run`` uses to stop instead of
+    retrying for the rest of its window."""
     import requests
     session = session or requests
     now = time.time() if now is None else now
@@ -208,6 +221,9 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
         # Type and HTTP status only: raise_for_status() and every connection
         # error quote the URL, and the bot token is part of it.
         logger.warning("Telegram getUpdates failed (%s)", describe_http_error(e))
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if raise_fatal and status in FATAL_POLL_STATUS:
+            raise PollFatal(FATAL_POLL_STATUS[status]) from None
         return offset
 
     # Only updates from an allow-listed sender are claimed (a database write):
@@ -266,8 +282,12 @@ def run(control: TelegramControl, bot, store, *, duration: float = 0, session=No
         t0 = monotonic()
         remaining = deadline - t0
         timeout = 0 if duration <= 0 else int(max(0, min(LONG_POLL_S, remaining)))
-        new_offset = poll_once(control, None, session=session, offset=offset, timeout=timeout,
-                               store=store, bot=bot)
+        try:
+            new_offset = poll_once(control, None, session=session, offset=offset, timeout=timeout,
+                                   store=store, bot=bot, raise_fatal=True)
+        except PollFatal as e:
+            logger.error("Telegram polling stopped: %s", e)
+            break
         if new_offset != offset:
             _save_offset(new_offset)
             offset = new_offset

@@ -36,8 +36,9 @@ _MD2_RE = re.compile("([" + re.escape(_MD2_SPECIAL) + "])")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+")
 _BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=\-]{12,}")
 # JWT-shaped (header.payload.signature), Stripe/OpenAI/Slack/GitHub style
-# prefixes, and any unbroken run of 48+ key-alphabet characters (long enough that
-# an id or a 40-character commit hash is left alone).
+# prefixes, and any unbroken run of 48+ key-alphabet characters that MIXES upper
+# case, lower case and digits (as a generated key does; a long lower-case worker
+# id, a hex hash or a uuid does not).
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}")
 _PREFIXED = re.compile(r"\b(?:sk|pk|rk|xox[abprs]|gh[pousr]|AIza)[-_A-Za-z0-9]{16,}")
 _LONG_TOKEN = re.compile(r"\b[A-Za-z0-9_\-]{48,}\b")
@@ -81,7 +82,9 @@ def sanitize_outgoing(text: str) -> str:
     text = _BEARER.sub(lambda m: f"{m.group(1)} {_PLACEHOLDER}", text)
     text = _JWT.sub(_PLACEHOLDER, text)
     text = _PREFIXED.sub(_PLACEHOLDER, text)
-    text = _LONG_TOKEN.sub(_PLACEHOLDER, text)
+    text = _LONG_TOKEN.sub(
+        lambda m: _PLACEHOLDER if (re.search("[A-Z]", m.group(0)) and re.search("[a-z]", m.group(0))
+                                   and re.search("[0-9]", m.group(0))) else m.group(0), text)
     return text
 
 

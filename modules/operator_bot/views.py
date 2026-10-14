@@ -4,8 +4,12 @@ Every function takes the sources and returns a :class:`Reply`: HTML text and an
 inline keyboard. Rules the whole file keeps:
 
 * Dynamic text is escaped with ``html_escape`` at the point it is interpolated,
-  and free text is ``clip``-ped first. In practice nothing here prints free
-  text: ids, counts, statuses, short codes, ages.
+  and free text is ``clip``-ped first. Nothing here prints a person's words:
+  ids, counts, statuses, short codes, ages. The only strings that are not
+  one of those are a failed worker's own ``detail`` (its scrubbed remedy line)
+  and an audit row's ``target``; both are clipped, scrubbed and escaped.
+* A read that hit its row limit says so ("list cut at N"): a cut list is a
+  floor, never presented as the whole.
 * A source that could not answer prints its neutral note, never a zero.
 * Money is shown only as the sources hold it: a USD figure built from rows that
   were not all priced is labelled "at least", never a total.
@@ -133,6 +137,11 @@ def _c(text) -> str:
 
 def _unknown(sec: Section) -> str:
     return f"unknown ({html_escape(sec.note or 'unavailable')})"
+
+
+def _cut(sec: Section) -> str:
+    """A suffix for a line built from a read that hit its row limit."""
+    return f" (list cut at {sec.cap} rows: a floor, not the whole)" if getattr(sec, "cap", 0) else ""
 
 
 def _n(value, digits: int = 0) -> str:
@@ -278,7 +287,7 @@ def view_queue(ops: OperatorSources) -> Reply:
         c = analysis.classify_render_jobs(rj.data, now, cfg)
         stuck_ids = {r["id"] for r in c["stuck"]}
         lines.append(f"Render jobs: {len(c['running'])} running, {len(c['queued'])} queued, "
-                     f"{len(c['stuck'])} stuck")
+                     f"{len(c['stuck'])} stuck{html_escape(_cut(rj))}")
         for r in (c["running"] + c["queued"])[:8]:
             lines.append(_job_line(r, now, "run", stuck_ids))
 
@@ -289,7 +298,7 @@ def view_queue(ops: OperatorSources) -> Reply:
         c = analysis.classify_creative_jobs(cj.data, now, cfg)
         stuck_ids = {r["id"] for r in c["stuck"]}
         lines.append(f"Creative jobs: {len(c['running'])} running, {len(c['queued'])} queued, "
-                     f"{len(c['stuck'])} stuck")
+                     f"{len(c['stuck'])} stuck{html_escape(_cut(cj))}")
         for r in (c["running"] + c["queued"])[:8]:
             lines.append(_job_line(r, now, "job", stuck_ids))
     lines.append(f"Stuck = no heartbeat for {STUCK_HEARTBEAT_MINUTES} min, or queued over {cfg.stuck_minutes} min.")
@@ -321,7 +330,7 @@ def view_errors(ops: OperatorSources) -> Reply:
         if not failed:
             lines.append("Render jobs: none failed")
         else:
-            lines.append(f"Render jobs: {len(failed)} failed — {html_escape(_grouped(analysis.count_by(failed, 'channel_id')))}")
+            lines.append(f"Render jobs: {len(failed)} failed — {html_escape(_grouped(analysis.count_by(failed, 'channel_id')))}{html_escape(_cut(rj))}")
             lines.append("ids: " + html_escape(", ".join(f"#{safe_id(r['id'], 12)}" for r in failed[:8])))
 
     cj = ops.creative_jobs(since)
@@ -333,7 +342,7 @@ def view_errors(ops: OperatorSources) -> Reply:
         if not failed:
             lines.append("Creative jobs: none failed")
         else:
-            lines.append(f"Creative jobs: {len(failed)} failed — {html_escape(_grouped(analysis.count_by(failed, 'error_code')))}")
+            lines.append(f"Creative jobs: {len(failed)} failed — {html_escape(_grouped(analysis.count_by(failed, 'error_code')))}{html_escape(_cut(cj))}")
 
     ev = ops.events(since, ("render.failed", "upload.failed", "short.failed", "repair.failed"))
     if not ev.ok:
@@ -341,7 +350,7 @@ def view_errors(ops: OperatorSources) -> Reply:
     else:
         counts = analysis.event_counts(ev.data)
         lines.append("Pipeline events: " + (html_escape(", ".join(f"{k} ×{v}" for k, v in sorted(counts.items())))
-                                            if counts else "none failed"))
+                                            if counts else "none failed") + html_escape(_cut(ev)))
     lines.append("No error text is shown here, only ids and codes. The Errors page has the detail.")
     return Reply("\n".join(lines), _with_menu(
         [[cb("Queue", "c:queue"), cb("Health", "c:health")]],
@@ -407,7 +416,7 @@ def view_spend(ops: OperatorSources) -> Reply:
     if cap.ok:
         today_rows = [r for r in cap.data if (parse_ts(r.get("finished_at")) or week) >= day]
         lines.append(f"Credits captured (completed creative jobs): today {_n(analysis.sum_credits(today_rows))}, "
-                     f"7 days {_n(analysis.sum_credits(cap.data))}")
+                     f"7 days {_n(analysis.sum_credits(cap.data))}{html_escape(_cut(cap))}")
     else:
         lines.append(f"Credits captured: {_unknown(cap)}")
     lines.append("Revenue in USD is not computed here: it needs the operator session "
@@ -431,14 +440,14 @@ def view_today(ops: OperatorSources) -> Reply:
         c = analysis.event_counts(ev.data)
         lines.append(f"Videos made {c.get('render.completed', 0)} · published {c.get('video.published', 0)} · "
                      f"held {c.get('publish.held', 0)} · blocked by the gate {c.get('publish.blocked', 0)} · "
-                     f"failed {c.get('render.failed', 0) + c.get('upload.failed', 0)}")
+                     f"failed {c.get('render.failed', 0) + c.get('upload.failed', 0)}{html_escape(_cut(ev))}")
     rj = ops.render_jobs(day)
     if rj.ok:
         c = analysis.classify_render_jobs(rj.data, now, cfg)
         done = [r for r in c["succeeded"] if (parse_ts(r.get("finished_at")) or day) >= day]
         bad = [r for r in c["failed"] if (parse_ts(r.get("finished_at")) or day) >= day]
         lines.append(f"Render jobs: {len(done)} succeeded, {len(bad)} failed, {len(c['running'])} running, "
-                     f"{len(c['queued'])} queued")
+                     f"{len(c['queued'])} queued{html_escape(_cut(rj))}")
     else:
         lines.append(f"Render jobs: {_unknown(rj)}")
     cj = ops.creative_jobs(day)
@@ -446,11 +455,11 @@ def view_today(ops: OperatorSources) -> Reply:
         c = analysis.classify_creative_jobs(cj.data, now, cfg)
         done = [r for r in c["completed"] if (parse_ts(r.get("finished_at")) or day) >= day]
         bad = [r for r in c["failed"] if (parse_ts(r.get("finished_at")) or day) >= day]
-        lines.append(f"Creative jobs: {len(done)} completed, {len(bad)} failed")
+        lines.append(f"Creative jobs: {len(done)} completed, {len(bad)} failed{html_escape(_cut(cj))}")
     else:
         lines.append(f"Creative jobs: {_unknown(cj)}")
     su = ops.signups(day)
-    lines.append(f"New accounts: {len(su.data)}" if su.ok else f"New accounts: {_unknown(su)}")
+    lines.append(f"New accounts: {len(su.data)}{html_escape(_cut(su))}" if su.ok else f"New accounts: {_unknown(su)}")
     lines.append("Video counts come from the mirrored event log; a run whose events were not mirrored is not counted.")
     return Reply("\n".join(lines), _with_menu([[cb("Users", "c:users"), cb("Errors", "c:errors")]], again="today"))
 
@@ -542,6 +551,8 @@ def view_security(ops: OperatorSources) -> Reply:
                          f"{html_escape(age_label(parse_ts(r.get('at')), now))} ago")
         if len(sec.data) > 12:
             lines.append(f"+{len(sec.data) - 12} more")
+        if sec.cap:
+            lines.append(html_escape(_cut(sec).strip()))
     lines.append("Actors are not shown (no e-mails). The Audit page names them.")
     return Reply("\n".join(lines), _with_menu([], [url_button("Open audit", app_link(cfg, "audit"))], again="security"))
 
@@ -575,13 +586,13 @@ def view_digest(ops: OperatorSources, held: Optional[list] = None) -> Reply:
         c = analysis.classify_render_jobs(rj.data, now, cfg)
         fin = lambda rs: [r for r in rs if (parse_ts(r.get("finished_at")) or since24) >= since24]
         lines.append(f"Render jobs (24h): {len(fin(c['succeeded']))} ok, {len(fin(c['failed']))} failed, "
-                     f"{len(c['stuck'])} stuck now")
+                     f"{len(c['stuck'])} stuck now{html_escape(_cut(rj))}")
     else:
         lines.append(f"Render jobs: {_unknown(rj)}")
     if cj.ok:
         c = analysis.classify_creative_jobs(cj.data, now, cfg)
         fin = lambda rs: [r for r in rs if (parse_ts(r.get("finished_at")) or since24) >= since24]
-        lines.append(f"Creative jobs (24h): {len(fin(c['completed']))} completed, {len(fin(c['failed']))} failed")
+        lines.append(f"Creative jobs (24h): {len(fin(c['completed']))} completed, {len(fin(c['failed']))} failed{html_escape(_cut(cj))}")
     else:
         lines.append(f"Creative jobs: {_unknown(cj)}")
 
@@ -635,7 +646,10 @@ def view_alerts(cfg: OperatorConfig, state, now: datetime) -> Reply:
     else:
         if state.mutes:
             for kind, until in sorted(state.mutes.items()):
-                local = until.astimezone(cfg.tz).strftime("%H:%M")
+                try:
+                    local = until.astimezone(cfg.tz).strftime("%H:%M")
+                except (OverflowError, ValueError):
+                    local = "?"
                 lines.append(f"Muted: {html_escape(kind)} until {local} {html_escape(str(cfg.tz))}")
         else:
             lines.append("Muted: nothing")

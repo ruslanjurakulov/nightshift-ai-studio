@@ -67,13 +67,26 @@ class WebhookService:
         self.path = path
         self._lock = threading.Lock()   # the router's limiters are not thread-safe
 
-    def handle(self, method: str, path: str, headers: Mapping[str, str], body: bytes) -> tuple[int, bytes]:
+    def precheck(self, method: str, path: str, headers: Mapping[str, str],
+                 content_length: Optional[int]) -> Optional[tuple[int, bytes]]:
+        """The checks that need no body: method, path, the secret, the declared
+        size. A server calls this BEFORE reading a single byte of the body, so a
+        caller without the secret cannot make it buffer a megabyte. Returns the
+        refusal, or None when the request may be read."""
         if method != "POST" or path != self.path:
             return 404, b""
         if not verify_secret(_header(headers, SECRET_HEADER), self.secret):
             return 403, b""
-        if len(body) > MAX_BODY_BYTES:
+        if content_length is None:
+            return 411, b""
+        if content_length < 0 or content_length > MAX_BODY_BYTES:
             return 413, b""
+        return None
+
+    def handle(self, method: str, path: str, headers: Mapping[str, str], body: bytes) -> tuple[int, bytes]:
+        refused = self.precheck(method, path, headers, len(body))
+        if refused:
+            return refused
         try:
             upd = json.loads(body.decode("utf-8"))
         except Exception:

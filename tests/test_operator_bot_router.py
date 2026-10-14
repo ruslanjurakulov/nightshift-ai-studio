@@ -211,6 +211,30 @@ class AuthorizedTestCase(unittest.TestCase):
         bot.handle_update(update_message("/Health@NightshiftAiStudio_bot"))
         self.assertIn("Health", tg.texts()[0])
 
+    def test_a_command_addressed_to_another_bot_is_ignored(self):
+        for command in ("/health@OtherBot", "/publish@OtherBot v1", "/mute@OtherBot all", "/status@someone_else"):
+            bot, tg, sync, store, deps = build()
+            with patch("modules.event_log.emit") as emit:
+                bot.handle_update(update_message(command))
+            emit.assert_not_called()
+            self.assertEqual(tg.sent(), [], command)
+            untouched(self, sync, store, deps)
+
+    def test_a_command_with_this_bots_own_name_is_served_and_the_name_is_asked_once(self):
+        bot, tg, *_ = build()
+        bot.handle_update(update_message("/health@NightshiftAiStudio_bot"))
+        bot.handle_update(update_message("/queue@nightshiftaistudio_bot"))
+        self.assertEqual(len(tg.sent()), 2)
+        self.assertEqual([m for m, _ in tg.calls].count("getMe"), 1)
+
+    def test_when_the_bots_name_cannot_be_learned_a_suffixed_command_is_ignored(self):
+        bot, tg, *_ = build()
+        tg.status = 500
+        bot.handle_update(update_message("/health@NightshiftAiStudio_bot"))
+        self.assertEqual(tg.sent(), [])
+        bot.handle_update(update_message("/help"))              # a plain command still needs no name
+        self.assertEqual(len(tg.sent()), 1)
+
     def test_legacy_commands_still_answer_in_plain_text(self):
         bot, tg, _, _, deps = build()
         bot.handle_update(update_message("/status"))
@@ -335,6 +359,13 @@ class MuteTestCase(unittest.TestCase):
         bot.handle_update(update_message("/mute"))
         self.assertIn("Usage", tg.texts()[0])
         self.assertEqual(store.rows, [])
+
+    def test_mute_all_says_critical_alerts_still_come_through(self):
+        bot, tg, *_ = build()
+        bot.handle_update(update_message("/mute all"))
+        self.assertIn("Critical alerts still come through", tg.texts()[-1])
+        bot.handle_update(update_message("/mute run"))
+        self.assertNotIn("Critical alerts still come through", tg.texts()[-1])
 
     def test_mute_button_writes_a_24_hour_mute_and_offers_unmute(self):
         bot, tg, sync, store, _ = build()

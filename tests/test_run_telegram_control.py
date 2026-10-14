@@ -277,6 +277,35 @@ class LongPollLoopTestCase(unittest.TestCase):
         self.assertLess(session.get.call_count, 30)
         self.assertTrue(calls and all(c >= 1 for c in calls))
 
+    def test_a_webhook_409_or_a_rejected_token_401_stops_the_run_at_once(self):
+        import requests
+        for status in (409, 401):
+            t, mono, sleep = self.clock()
+            session = MagicMock()
+            err = requests.HTTPError("boom", response=MagicMock(status_code=status))
+            session.get.return_value.raise_for_status.side_effect = err
+            slept = []
+            with self.assertLogs("run_telegram_control", level="ERROR") as logs:
+                mod.run(self.control, MagicMock(), _Claims(), duration=270, session=session,
+                        sleep=lambda s: slept.append(s), monotonic=mono)
+            self.assertEqual(session.get.call_count, 1, status)       # one call, not ~135
+            self.assertEqual(slept, [])
+            self.assertIn("polling stopped", logs.output[0])
+        self.assertIn("webhook", mod.FATAL_POLL_STATUS[409])
+
+    def test_other_errors_still_retry_and_poll_once_never_raises_by_default(self):
+        import requests
+        session = MagicMock()
+        session.get.return_value.raise_for_status.side_effect = requests.HTTPError(
+            "boom", response=MagicMock(status_code=409))
+        control = TelegramControl(token="tok", chat_id="100")
+        self.assertEqual(mod.poll_once(control, MagicMock(), session=session, offset=7), 7)   # no raise_fatal
+        with self.assertRaises(mod.PollFatal):
+            mod.poll_once(control, MagicMock(), session=session, offset=7, raise_fatal=True)
+        session.get.return_value.raise_for_status.side_effect = requests.HTTPError(
+            "boom", response=MagicMock(status_code=502))
+        self.assertEqual(mod.poll_once(control, MagicMock(), session=session, offset=7, raise_fatal=True), 7)
+
     def test_main_is_off_without_a_token(self):
         with patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}):
             self.assertEqual(mod.main(["--duration", "5"]), 0)

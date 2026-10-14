@@ -131,6 +131,36 @@ class WorkflowsTestCase(unittest.TestCase):
         # the polling window plus start-up must fit the job limit
         self.assertGreaterEqual(doc["jobs"]["poll"]["timeout-minutes"], 8)
 
+    def test_no_operator_workflow_can_save_the_pipelines_history_cache(self):
+        """The poller runs every five minutes. An actions/cache step (restore AND
+        save) on the chronos-history prefix would save its older copy as the newest
+        entry, and the next video run would restore it and lose the previous run's
+        topic and run history. Only restore-only steps may touch that prefix here;
+        the Telegram offset lives under its own key."""
+        for name in ("telegram_control.yml", "operator_alerts.yml"):
+            doc = self.load(name)
+            for job in doc["jobs"].values():
+                for step in job["steps"]:
+                    uses = str(step.get("uses", ""))
+                    if not uses.startswith("actions/cache"):
+                        continue
+                    key = str((step.get("with") or {}).get("key", ""))
+                    restore_keys = str((step.get("with") or {}).get("restore-keys", ""))
+                    touches = "chronos-history" in key or "chronos-history" in restore_keys
+                    saves = not uses.startswith("actions/cache/restore@")
+                    with self.subTest(workflow=name, step=step.get("name")):
+                        self.assertFalse(touches and saves, "this step could SAVE a chronos-history key")
+                        if saves:
+                            self.assertTrue(key.startswith("telegram-offset-"), key)
+                            self.assertEqual((step["with"]["path"]), "history/telegram_offset.json")
+
+    def test_the_poller_still_restores_history_read_only_and_the_offset_has_its_own_cache(self):
+        steps = self.load("telegram_control.yml")["jobs"]["poll"]["steps"]
+        uses = [str(s.get("uses", "")) for s in steps]
+        self.assertTrue(any(u.startswith("actions/cache/restore@") for u in uses))
+        self.assertTrue(any(u.startswith("actions/cache@") for u in uses))
+        self.assertEqual(sum(u.startswith("actions/cache@") for u in uses), 1)
+
     def test_deploy_web_was_not_touched_by_this_feature(self):
         text = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
         self.assertNotIn("TELEGRAM_WEBHOOK_SECRET", text)

@@ -66,16 +66,20 @@ def make_handler(service: WebhookService):
             try:
                 length = int(self.headers.get("Content-Length", ""))
             except ValueError:
-                return self._respond(411, b"")
-            if length < 0 or length > MAX_BODY_BYTES:
-                return self._respond(413, b"")
-            # Headers are checked by the service BEFORE any more than the
-            # declared bytes are used; the body is already bounded above.
+                length = None
+            headers = dict(self.headers.items())
+            # Method, path, secret and declared size are decided BEFORE the body
+            # is read: an unauthenticated caller costs one header comparison.
+            refused = service.precheck("POST", self.path, headers, length)
+            if refused:
+                self.close_connection = True      # the unread body is not worth keeping the connection for
+                return self._respond(*refused)
             body = self.rfile.read(length)
-            status, out = service.handle("POST", self.path, dict(self.headers.items()), body)
+            status, out = service.handle("POST", self.path, headers, body)
             self._respond(status, out)
 
         def do_GET(self):
+            self.close_connection = True
             self._respond(404, b"")
 
         do_PUT = do_DELETE = do_PATCH = do_HEAD = do_GET

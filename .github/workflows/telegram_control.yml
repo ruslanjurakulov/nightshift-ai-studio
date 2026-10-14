@@ -60,12 +60,28 @@ jobs:
       - name: Install Python dependencies
         run: pip install "requests>=2.33.0" "python-dotenv>=1.0.0"
 
-      - name: Restore history state (holds the Telegram update offset + local db)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # READ-ONLY restore of the pipeline's history (chronos.db, for /status and
+      # /pending). It must never be saved from here: the poller now runs every five
+      # minutes, and an `actions/cache` step would save its older copy under the
+      # newest chronos-history-* key, which the next video run restores — losing
+      # the previous run's topic and run history. Only daily_video / intelligence_poll
+      # save that prefix.
+      - name: Restore history state (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
           restore-keys: chronos-history-
+
+      # The Telegram offset has its own cache prefix (and only the one small file),
+      # so saving it cannot touch the pipeline's history. Replays are harmless
+      # either way: updates are claimed by update_id in Supabase.
+      - name: Restore and save the Telegram offset
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: history/telegram_offset.json
+          key: telegram-offset-${{ github.run_number }}
+          restore-keys: telegram-offset-
 
       - name: Poll Telegram control panel
         env:

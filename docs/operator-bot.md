@@ -54,10 +54,11 @@ A source that cannot answer says so ("unknown (not configured)", "unknown
   only), so `/health` says so instead of guessing.
 * **Role changes and webhook signature failures are not alerted**: nothing writes
   them to the audit log today. The security alert covers the audit actions that
-  exist (`api_key.*`, `mcp.*`, `secret.write`, `variable.write`,
-  `channel.youtube.disconnect`, `billing.settings`, `api.monthly_limit`,
-  `api.activate`, `model.availability`) and any `role.*` / `member.*` action the
-  day one is logged.
+  exist AND are performed by the platform operator (`secret.write`,
+  `variable.write`, `billing.settings`, `model.availability`) and any `role.*` /
+  `member.*` action the day one is logged. Customer-triggered actions
+  (`api_key.*`, `mcp.*`, `api.*`, `channel.youtube.disconnect`) are ordinary tenant
+  activity, not alerts, and rows about a customer's channel are ignored.
 * **Low balance** uses the one threshold that already exists,
   `ELEVENLABS_LOW_CREDITS` (default 15000), the same line the Billing page uses. No
   other provider and no platform-credit threshold exists, so none is invented.
@@ -79,7 +80,7 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `deploy` | the latest finished `deploy_web.yml`, `tests.yml` or `frontend.yml` run on `main` failed | warn | once per run |
 | `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that kind exists); a worker reported FAILED | **critical** | every 3 h while it lasts |
 | `approval` | a new pending publish approval | info | once |
-| `audit` | a security-relevant audit event (see above) | **critical** | once |
+| `audit` | an operator-level audit event with no channel (see above) | **critical** | once |
 
 Restraint, so it never spams:
 
@@ -87,22 +88,38 @@ Restraint, so it never spams:
   (one-offs for the 48 hours the memory covers, standing conditions until their
   repeat time above).
 * **Rate-limited.** At most `OPERATOR_ALERT_MAX_PER_HOUR` (default 6) non-critical
-  alerts an hour; the rest wait for the next hour and the message says how many.
-  Alerts of one kind in one pass are merged into one message.
+  alerts an hour, and separately at most 20 critical ones, so a flood of one kind
+  cannot starve the other and neither is unlimited; the rest wait for the next
+  hour and the message says how many. Alerts of one kind in one pass are merged
+  into one message.
 * **Quiet hours** (`OPERATOR_QUIET_HOURS`, e.g. `23-7`, in `OPERATOR_TZ`): only
   critical alerts go out. The others are held, not dropped, and are sent after.
-* **Mute.** *Mute 24h* (or `/mute <kind>`) silences a kind; alerts that arrive
-  muted are marked seen, so a mute ending is not a flood. The daily digest is not
-  alerts and is not muted.
+* **Mute.** *Mute 24h* (or `/mute <kind>`) silences one kind at every severity.
+  `/mute all` silences everything EXCEPT critical alerts (it says so), so a blanket
+  mute cannot hide a dead worker or a security event. Alerts that arrive muted are
+  marked seen, so a mute ending is not a flood. A mute lasts at most 24 hours. The
+  daily digest is not an alert and is not muted.
 * **First run is silent.** It announces "Operator alerts are on" once and marks
   what already exists as seen.
 * **No memory, no message.** If the alert memory cannot be read, nothing is sent.
-* **Daily digest** at `OPERATOR_DIGEST_HOUR` (local), once a day, never in quiet hours.
+* **Daily digest** from `OPERATOR_DIGEST_HOUR` (local), once a day, never in quiet
+  hours: a digest hour inside the quiet window goes out when the window ends.
 
 Alert text is ids, counts and fixed words: a failed job is "Render job #123 failed
 — default", never its log. The memory is rows of the existing `alert_events` feed
-(`kind` starts `operator.`), so **there is no migration**; those rows also show on
-the Alerts page.
+(`kind` starts `operator.`), so **there is no migration**. Every such row is written
+with `channel_id` NULL (only a platform admin or the service key can write those)
+and the bot reads only `channel_id IS NULL` rows, because the table's insert policy
+lets anyone who can see a channel insert rows with that channel and any kind: a
+tenant who forges an `operator.mute` or `operator.alert` row changes nothing the
+bot believes, and a customer never sees the operator's alerts on their page.
+Mutes are capped at 24 hours inside the reader too.
+
+A read that hits its row limit says so ("list cut at N rows: a floor, not the
+whole"). Queued and running jobs are read oldest first, separately from the
+recently finished ones, so a stuck job is never the row a cut drops. If the alert
+memory ever exceeds what the bot reads (5,000 rows in 48 hours) it sends nothing
+rather than repeat itself.
 
 ## Safety
 
@@ -119,10 +136,15 @@ the Alerts page.
 * Replies are scrubbed (`modules/log_redaction.py` and `modules/tg_text.py`: token
   URLs, e-mail addresses, bearer/JWT/key shapes), HTML-escaped, and split under
   4096 characters. No raw exception text reaches the chat.
-* Reads never select free-text columns (no job `error`/`params`, no topic, no
-  e-mail, no actor): ids, statuses, counts and short codes only.
+* Reads select no person's words (no job `error`/`params`, no topic, no e-mail, no
+  audit actor): ids, statuses, counts and short codes, plus a failed worker's own
+  scrubbed `detail` line and an audit row's `target`, both clipped and escaped.
 * Nothing in a browser or the bot publishes, re-renders or spends; the bot holds the
   service key only where the poller and alert jobs already did.
+* The poller restores the pipeline's `history/` cache READ-ONLY and keeps the Telegram
+  offset under its own `telegram-offset-` cache key, so running every five minutes
+  can never overwrite the history the video run depends on.
+* A command addressed to another bot (`/health@OtherBot`) is ignored.
 
 ## Go-live: what the owner does
 
@@ -181,8 +203,11 @@ reachable over HTTPS:
    https://<your host>/telegram/operator` (the secret is read from the environment,
    never from the command line). `... info` shows whether it is set and how many
    updates are pending.
-6. **While a webhook is set Telegram refuses polling** (HTTP 409), so the scheduled
-   poller just logs that and does nothing. To go back: `... delete-webhook`.
+6. **While a webhook is set Telegram refuses polling** (HTTP 409). The scheduled
+   poller recognises that (and a rejected token, HTTP 401), logs one clear line
+   ("a webhook is set for this bot ...") and stops that run at once instead of
+   retrying for its whole window; every later run does the same. To go back:
+   `... delete-webhook`.
 
 What the endpoint does, in order: the method and path, the
 `X-Telegram-Bot-Api-Secret-Token` header against `TELEGRAM_WEBHOOK_SECRET` (constant

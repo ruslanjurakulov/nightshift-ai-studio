@@ -39,6 +39,8 @@ class FakeTelegram:
     def post(self, url, json=None, timeout=None):
         method = url.rsplit("/", 1)[-1]
         self.calls.append((method, json))
+        if method == "getMe":
+            return FakeResponse(self.status, {"ok": True, "result": {"username": "NightshiftAiStudio_bot"}})
         return FakeResponse(self.status)
 
     def sent(self):
@@ -73,10 +75,15 @@ class FakeSync:
             for key, cond in (params or {}).items():
                 if isinstance(cond, str) and cond.startswith("eq."):
                     rows = [r for r in rows if str(r.get(key)) == cond[3:]]
+                elif cond == "is.null":
+                    rows = [r for r in rows if r.get(key) in (None, "")]
                 elif isinstance(cond, str) and cond.startswith("gte."):
                     rows = [r for r in rows if str(r.get(key, "")) >= cond[4:]]
                 elif isinstance(cond, str) and cond.startswith("like.") and cond.endswith("*"):
                     rows = [r for r in rows if str(r.get(key, "")).startswith(cond[5:-1])]
+            if (params or {}).get("limit"):
+                start = int((params or {}).get("offset") or 0)
+                rows = rows[start:start + int(params["limit"])]
         return rows
 
     def upsert(self, table, rows, on_conflict=None, ignore_duplicates=False):

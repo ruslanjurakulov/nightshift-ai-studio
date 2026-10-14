@@ -75,7 +75,7 @@ class SanitizeTestCase(unittest.TestCase):
         for secret in (
             "Bearer abcdefghijklmnop12345", jwt, "sk-abcdefghijklmnopqrstuvwxyz",
             "ghp_abcdefghijklmnopqrstuvwxyz0123", "AIzaSyABCDEFGHIJKLMNOPQRSTUV",
-            "A" * 50,
+            "aB3" * 17,
         ):
             out = tg_text.sanitize_outgoing(f"value {secret} end")
             self.assertNotIn(secret, out, secret)
@@ -91,6 +91,10 @@ class SanitizeTestCase(unittest.TestCase):
 
     def test_a_commit_hash_and_a_uuid_are_left_alone(self):
         text = "sha 0123456789abcdef0123456789abcdef01234567 job 123e4567-e89b-12d3-a456-426614174000"
+        self.assertEqual(tg_text.sanitize_outgoing(text), text)
+
+    def test_a_long_worker_id_is_not_mistaken_for_a_key(self):
+        text = "worker nightshift-creative-worker-eu-central-01-pipeline-primary-instance lost"
         self.assertEqual(tg_text.sanitize_outgoing(text), text)
 
     def test_none_is_empty(self):

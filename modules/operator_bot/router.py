@@ -223,8 +223,10 @@ class OperatorBot:
         if not parts or not parts[0].startswith("/"):
             self._reply(chat_id, views.Reply("Not a command. Send /help for the list.", parse_mode=None))
             return
-        cmd = parts[0][1:].lower().split("@")[0]
+        cmd, _, addressee = parts[0][1:].lower().partition("@")
         args = parts[1:]
+        if addressee and addressee != (self.control.bot_username() or ""):
+            return          # addressed to another bot (or to us, but we cannot tell): not ours to answer
 
         if cmd in _LEGACY_ACTION:
             self._legacy_action(inbound, durable)
@@ -346,7 +348,8 @@ class OperatorBot:
             if until is None:
                 return views.Reply(f"Could not mute that. Kinds: all, {', '.join(views.ALERT_KINDS)}.", parse_mode=None)
             local = until.astimezone(self.cfg.tz).strftime("%H:%M")
-            return views.Reply(f"Muted <b>{html_escape(kind)}</b> alerts until {local} {html_escape(str(self.cfg.tz))}.",
+            note = " Critical alerts still come through; mute a single kind to silence it." if kind == "all" else ""
+            return views.Reply(f"Muted <b>{html_escape(kind)}</b> alerts until {local} {html_escape(str(self.cfg.tz))}.{note}",
                                [[views.cb("Unmute", f"a:unmute:{kind}"), views.cb("Alerts", "c:alerts")]])
         ok = alerts_mod.unmute(self.store, kind)
         return views.Reply(f"Unmuted <b>{html_escape(kind)}</b>." if ok else "Could not unmute that.",

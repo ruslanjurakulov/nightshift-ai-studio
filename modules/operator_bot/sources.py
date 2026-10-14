@@ -6,8 +6,11 @@ Four kinds of source, none of them new:
   worker_status 0045, provider_balances 0012, creative_job_costs 0037,
   publish_approvals 0009, app_audit_log 0008, system_events, organizations),
   read with the service key by the same SupabaseSync client the pipeline uses.
-  Reads never select a free-text column: no `params`, no `error`, no topic, no
-  e-mail. The operator sees ids, statuses, counts and short codes.
+  Reads select no person's free text: no job `params` or `error`, no topic, no
+  e-mail, no audit actor or detail. What is selected is ids, statuses, counts and
+  short codes, plus two short strings that are clipped and escaped before they are
+  shown: a worker's own `detail` (its scrubbed remedy line) and an audit row's
+  `target` (an id or a variable name).
 * GitHub Actions run status (the repository's own, via the job token).
 * The public pages of the site (a GET, status code only).
 
@@ -35,17 +38,15 @@ DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
 
 CREATIVE_ACTIVE = ("queued", "planning", "running", "provider_pending", "processing", "rendering")
 
-#: Audit actions worth a push, each of which the app really writes today
-#: (command-center lib/server/audit callers and the SQL functions that insert
-#: into app_audit_log). `role.` / `member.` prefixes are matched too so a role
-#: change is covered the day one is logged; none is today.
+#: Audit actions worth a push: only those a PLATFORM OPERATOR performs (setup
+#: secrets and variables, provider billing settings, model availability). The
+#: customer-triggered ones (api_key.*, mcp.*, api.*, channel.youtube.disconnect)
+#: are ordinary tenant activity that any signed-in customer can generate, so they
+#: are not alerts. `role.` / `member.` prefixes are matched too so a role change
+#: is covered the day one is logged; none is today. Only rows with no channel
+#: count: an operator action is not about a customer's channel.
 SECURITY_AUDIT_ACTIONS = (
-    "api_key.create", "api_key.revoke", "api_key.access",
-    "mcp.connect", "mcp.disconnect", "mcp.disconnect_all",
-    "secret.write", "variable.write",
-    "channel.youtube.disconnect",
-    "billing.settings", "api.monthly_limit", "api.activate",
-    "model.availability",
+    "secret.write", "variable.write", "billing.settings", "model.availability",
 )
 SECURITY_AUDIT_PREFIXES = ("role.", "member.")
 
@@ -61,6 +62,9 @@ class Section:
     ok: bool
     data: Any = None
     note: str = ""
+    #: The row limit this read hit, or 0. A cut read is never a measurement of
+    #: "all": the view says "showing the newest N" instead of presenting it whole.
+    cap: int = 0
 
     @classmethod
     def fail(cls, note: str) -> "Section":
@@ -136,7 +140,8 @@ class OperatorSources:
 
         try:
             rows = self.sync.select_strict(table, params)
-            out = Section(True, rows)
+            limit = int(params.get("limit") or 0)
+            out = Section(True, rows, cap=limit if limit and len(rows) >= limit else 0)
         except SupabaseReadError as e:
             out = Section.fail("not set up yet" if e.table_missing else "unavailable")
             logger.warning("operator read of %s failed (%s)", table, e.detail)
@@ -148,22 +153,41 @@ class OperatorSources:
 
     # -- queue ------------------------------------------------------------
 
+    ACTIVE_LIMIT = 200
+    RECENT_LIMIT = 500
+
+    def _jobs(self, table: str, columns: str, active: str, since: datetime) -> Section:
+        """Active jobs, OLDEST first (a stuck job is an old one: a newest-first
+        cut would drop exactly the rows that matter), plus everything that
+        finished since ``since``, newest first. ``cap`` says which was cut."""
+        act = self._read(table, {"select": columns, "status": f"in.({active})",
+                                 "order": "created_at.asc", "limit": str(self.ACTIVE_LIMIT)})
+        rec = self._read(table, {"select": columns, "finished_at": f"gte.{iso(since)}",
+                                 "order": "finished_at.desc", "limit": str(self.RECENT_LIMIT)})
+        if not act.ok:
+            return act
+        if not rec.ok:
+            return rec
+        seen, rows = set(), []
+        for r in list(act.data or []) + list(rec.data or []):
+            if r.get("id") not in seen:
+                seen.add(r.get("id"))
+                rows.append(r)
+        return Section(True, rows, cap=act.cap or rec.cap)
+
     def render_jobs(self, since: datetime) -> Section:
         """Queued + running jobs, and anything that finished since ``since``.
         No `params`, no `error` column: both can carry a person's words."""
-        return self._read("render_jobs", {
-            "select": "id,channel_id,kind,status,attempts,max_attempts,heartbeat_at,started_at,finished_at,created_at",
-            "or": f"(status.in.(queued,running),finished_at.gte.{iso(since)})",
-            "order": "created_at.desc", "limit": "500",
-        })
+        return self._jobs(
+            "render_jobs",
+            "id,channel_id,kind,status,attempts,max_attempts,heartbeat_at,started_at,finished_at,created_at",
+            "queued,running", since)
 
     def creative_jobs(self, since: datetime) -> Section:
-        active = ",".join(CREATIVE_ACTIVE)
-        return self._read("creative_jobs", {
-            "select": "id,capability,status,attempts,heartbeat_at,started_at,finished_at,created_at,error_code,charged_credits",
-            "or": f"(status.in.({active}),finished_at.gte.{iso(since)})",
-            "order": "created_at.desc", "limit": "500",
-        })
+        return self._jobs(
+            "creative_jobs",
+            "id,capability,status,attempts,heartbeat_at,started_at,finished_at,created_at,error_code,charged_credits",
+            ",".join(CREATIVE_ACTIVE), since)
 
     def workers(self) -> Section:
         return self._read("worker_status", {
@@ -236,17 +260,26 @@ class OperatorSources:
         })
 
     def audit(self, since: datetime) -> Section:
-        # actor_email is never selected.
+        """Operator-level audit events only, filtered by the database (a Python
+        filter after a row limit would let ordinary activity push the rows that
+        matter out of the page). Rows about a customer's channel are excluded:
+        an operator action has no channel. The actor is never selected."""
+        names = ",".join(SECURITY_AUDIT_ACTIONS)
+        prefixes = ",".join(f"action.like.{p}*" for p in SECURITY_AUDIT_PREFIXES)
         sec = self._read("app_audit_log", {
-            "select": "id,at,action,target,channel_id",
+            "select": "id,at,action,target",
+            "channel_id": "is.null",
+            "or": f"(action.in.({names}),{prefixes})",
             "at": f"gte.{iso(since)}", "order": "at.desc", "limit": "300",
         })
         if not sec.ok:
             return sec
+        # Belt and braces for a source that ignored the filter.
         rows = [r for r in sec.data or []
-                if str(r.get("action") or "") in SECURITY_AUDIT_ACTIONS
-                or str(r.get("action") or "").startswith(SECURITY_AUDIT_PREFIXES)]
-        return Section(True, rows)
+                if (str(r.get("action") or "") in SECURITY_AUDIT_ACTIONS
+                    or str(r.get("action") or "").startswith(SECURITY_AUDIT_PREFIXES))
+                and r.get("channel_id") in (None, "")]
+        return Section(True, rows, cap=sec.cap)
 
     # -- outside ----------------------------------------------------------
 

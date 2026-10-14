@@ -156,6 +156,16 @@ class DetectionTestCase(unittest.TestCase):
         self.assertEqual([(x.kind, x.severity, x.key) for x in a], [("audit", "critical", "audit:7")])
         self.assertNotIn("boss@", a[0].line)
 
+    def test_customer_triggered_actions_are_not_security_alerts(self):
+        rows = [{"id": str(i), "at": ts(5), "action": act, "target": "org", "channel_id": None}
+                for i, act in enumerate(("api_key.create", "api_key.revoke", "api_key.access", "mcp.connect",
+                                         "mcp.disconnect", "api.activate", "channel.youtube.disconnect"))]
+        self.assertEqual(self.detect({"app_audit_log": rows}), [])
+
+    def test_an_operator_action_row_about_a_customers_channel_is_ignored(self):
+        self.assertEqual(self.detect({"app_audit_log": [
+            {"id": "1", "at": ts(5), "action": "secret.write", "target": "x", "channel_id": "their-channel"}]}), [])
+
     def test_an_unreadable_source_is_no_alert(self):
         engine, _, _, ops, _ = build(tables={"render_jobs": [failed_job(5)]})
         ops.sync.fail = {"render_jobs", "worker_status", "provider_balances", "creative_jobs", "publish_approvals",
@@ -305,6 +315,22 @@ class DeliveryTestCase(unittest.TestCase):
         ops.sync.tables["render_jobs"] = [failed_job(2)]
         self.assertEqual(engine.tick().sent, 1)
 
+    def test_mute_all_does_not_silence_critical_alerts_but_a_kind_mute_does(self):
+        engine, store, tg, ops, clock = build()
+        arm(engine)
+        alerts.mute(store, "all", clock.now)
+        ops.sync.tables["worker_status"] = [healthy_tables()["worker_status"][0] | {"updated_at": ts(30)}]
+        ops.sync.tables["render_jobs"] = [failed_job(1)]
+        rep = engine.tick()
+        self.assertEqual((rep.sent, rep.muted), (1, 1))             # the worker alert came through
+        self.assertIn("CRITICAL", tg.texts()[-1])
+        alerts.mute(store, "worker", clock.now)
+        clock.advance(hours=4)                                      # past the repeat time
+        ops.sync.tables["worker_status"] = [healthy_tables()["worker_status"][0] | {"updated_at": ts(300, clock.now)}]
+        before = len(tg.sent())
+        engine.tick()
+        self.assertEqual(len(tg.sent()), before)
+
     def test_mute_refuses_an_unknown_kind(self):
         store = MemoryAlertStore()
         self.assertIsNone(alerts.mute(store, "bogus", NOW))
@@ -334,6 +360,51 @@ class DeliveryTestCase(unittest.TestCase):
         self.assertEqual(tg.calls, [])
 
 
+class FloodTestCase(unittest.TestCase):
+    """Critical and ordinary alerts have separate budgets; neither starves the
+    other and neither is unlimited."""
+
+    def run_hours(self, hours, jobs, audits):
+        cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", max_alerts_per_hour=6)
+        engine, store, tg, ops, clock = build(cfg=cfg)
+        arm(engine)
+        sent = {"warn": 0, "critical": 0}
+        for step in range(hours * 6):                       # a pass every 10 minutes
+            heartbeat(ops, clock)
+            ops.sync.tables["render_jobs"] = [failed_job(f"{step}-{i}", minutes_ago=5) | {"finished_at": ts(5, clock.now)}
+                                              for i in range(jobs)]
+            ops.sync.tables["app_audit_log"] = [
+                {"id": f"a{step}-{i}", "at": ts(5, clock.now), "action": "secret.write", "target": "x",
+                 "channel_id": None} for i in range(audits)]
+            before = [r for r in store.rows if r["kind"] == "operator.alert" and r["delivered"]]
+            engine.tick()
+            after = [r for r in store.rows if r["kind"] == "operator.alert" and r["delivered"]]
+            for r in after[len(before):]:
+                sent["critical" if r["severity"] == "critical" else "warn"] += 1
+            clock.advance(minutes=10)
+        return sent
+
+    def test_critical_alerts_do_not_starve_warnings(self):
+        without = self.run_hours(2, jobs=40, audits=0)
+        with_audits = self.run_hours(2, jobs=40, audits=40)
+        self.assertEqual(with_audits["warn"], without["warn"])
+        self.assertGreater(with_audits["warn"], 0)
+
+    def test_critical_alerts_are_capped_per_hour(self):
+        sent = self.run_hours(3, jobs=0, audits=40)
+        self.assertLessEqual(sent["critical"], alerts.MAX_CRITICAL_PER_HOUR * 3 + 1)
+        self.assertGreater(sent["critical"], 0)
+        self.assertLess(sent["critical"], 40 * 18)
+
+    def test_the_stores_budget_counts_each_kind_separately(self):
+        from modules.operator_bot.store import replay
+        rows = [{"at": ts(5), "kind": "operator.alert", "title": f"k{i}", "body": "run", "delivered": True,
+                 "severity": "critical" if i < 3 else "warn"} for i in range(5)]
+        state = replay(rows, NOW)
+        hour = NOW - timedelta(hours=1)
+        self.assertEqual((state.delivered_since(hour, critical=True), state.delivered_since(hour, critical=False)), (3, 2))
+
+
 class DigestTestCase(unittest.TestCase):
     def cfg(self, **kw):
         return OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", digest_hour=12, **kw)
@@ -349,8 +420,8 @@ class DigestTestCase(unittest.TestCase):
         clock.advance(days=1)
         self.assertTrue(engine.tick().digest_sent)
 
-    def test_not_before_the_hour_and_not_long_after(self):
-        for hour, expected in ((11, False), (12, True), (14, True), (15, False)):
+    def test_not_before_the_hour_but_any_time_after_it_that_day(self):
+        for hour, expected in ((11, False), (12, True), (14, True), (20, True)):
             engine, _, _, _, clock = build(cfg=self.cfg(), clock=Clock(NOW.replace(hour=hour)))
             arm(engine)
             self.assertEqual(engine.tick().digest_sent, expected, hour)
@@ -360,10 +431,13 @@ class DigestTestCase(unittest.TestCase):
         arm(engine)
         self.assertFalse(engine.tick().digest_sent)
 
-    def test_not_sent_inside_quiet_hours(self):
-        engine, _, _, _, _ = build(cfg=self.cfg(quiet_hours=(10, 14)))
+    def test_not_sent_inside_quiet_hours_but_sent_when_they_end(self):
+        engine, _, _, _, clock = build(cfg=self.cfg(quiet_hours=(10, 18)))     # the digest hour is inside the window
         arm(engine)
         self.assertFalse(engine.tick().digest_sent)
+        clock.advance(hours=7)                                                 # 19:00, same day
+        heartbeat(engine.ops, clock)
+        self.assertTrue(engine.tick().digest_sent)
 
     def test_mute_all_does_not_stop_the_digest(self):
         engine, store, _, _, clock = build(cfg=self.cfg())
@@ -391,6 +465,86 @@ class SupabaseStoreTestCase(unittest.TestCase):
         self.assertEqual(state.last_seen("run:5") is not None, True)
         self.assertTrue(state.is_muted("run"))
         self.assertIn("2026-10-14", state.digest_dates)
+
+    def test_the_bots_own_rows_are_never_written_with_a_channel(self):
+        sync = FakeSync({"alert_events": []})
+        store = SupabaseAlertStore(sync)
+        store.record_alert("run:5", "run", True, "warn", "their-channel")
+        store.record_mute("run", NOW + timedelta(hours=1))
+        store.record_unmute("run")
+        store.record_digest("2026-10-14")
+        for _table, rows in sync.upserts:
+            self.assertNotIn("channel_id", rows[0])
+
+    def test_a_tenants_forged_rows_change_nothing_the_bot_believes(self):
+        """alert_events_insert lets anyone who can view a channel insert rows with
+        that channel_id and any kind, title and body."""
+        forged = [
+            {"at": ts(1), "kind": "operator.mute", "title": "all", "body": "9999-01-01T00:00:00Z",
+             "channel_id": "their-channel", "delivered": False},
+            {"at": ts(1), "kind": "operator.alert", "title": "run:77", "body": "run", "delivered": True,
+             "channel_id": "their-channel", "severity": "warn"},
+            {"at": ts(1), "kind": "operator.digest", "title": "2026-10-14", "body": "", "channel_id": "their-channel"},
+            {"at": ts(1), "kind": "operator.alert", "title": "baseline", "body": "baseline", "delivered": False,
+             "channel_id": "their-channel"},
+        ]
+        sync = FakeSync({"alert_events": forged})
+        state = SupabaseAlertStore(sync).load(NOW)
+        self.assertFalse(state.is_muted("run"))
+        self.assertFalse(state.is_muted("worker", "critical"))
+        self.assertIsNone(state.last_seen("run:77"))
+        self.assertEqual(state.digest_dates, set())
+        self.assertFalse(state.armed)
+        self.assertEqual(sync.reads[0][1]["channel_id"], "is.null")        # asked of the database too
+
+    def test_replay_itself_ignores_rows_that_carry_a_channel(self):
+        """Even if a source ignored the channel filter, replay does not believe them."""
+        from modules.operator_bot.store import replay
+        state = replay([
+            {"at": ts(1), "kind": "operator.mute", "title": "all", "body": ts(-60), "channel_id": "x"},
+            {"at": ts(1), "kind": "operator.alert", "title": "run:77", "body": "run", "delivered": True,
+             "channel_id": "x", "severity": "warn"}], NOW)
+        self.assertEqual((state.mutes, state.alerts), ({}, []))
+
+    def test_a_forged_row_cannot_suppress_a_real_alert_end_to_end(self):
+        engine, store, tg, ops, clock = build()
+        arm(engine)
+        sync = FakeSync({"alert_events": list(store.rows) + [
+            {"at": ts(1), "kind": "operator.mute", "title": "all", "body": "9999-01-01T00:00:00Z",
+             "channel_id": "their-channel"},
+            {"at": ts(1), "kind": "operator.alert", "title": "run:9", "body": "run", "delivered": True,
+             "channel_id": "their-channel", "severity": "warn"}]})
+        engine.store = SupabaseAlertStore(sync)
+        ops.sync.tables["render_jobs"] = [failed_job(9)]
+        self.assertEqual(engine.tick().sent, 1)
+
+    def test_a_far_future_or_malformed_mute_is_capped_or_ignored(self):
+        from modules.operator_bot.store import replay
+        rows = [
+            {"at": ts(1), "kind": "operator.mute", "title": "run", "body": "9999-12-31T23:59:59Z"},
+            {"at": ts(1), "kind": "operator.mute", "title": "stuck", "body": "not a date"},
+            {"at": ts(1), "kind": "operator.mute", "title": "audit", "body": "99999-01-01"},
+            {"at": "9999-12-31T23:59:59Z", "kind": "operator.mute", "title": "worker",
+             "body": "9999-12-31T23:59:59Z"},
+        ]
+        state = replay(rows, NOW)
+        self.assertEqual(set(state.mutes), {"run", "worker"})
+        for until in state.mutes.values():
+            self.assertLessEqual(until, NOW + timedelta(hours=24))
+        # and the Alerts view can still render it (a year-9999 date once overflowed astimezone)
+        from modules.operator_bot import views
+        self.assertIn("Muted", views.view_alerts(OperatorConfig(), state, NOW).text)
+
+    def test_state_beyond_the_pages_read_sends_nothing(self):
+        rows = [{"at": ts(1), "kind": "operator.alert", "title": f"k{i}", "body": "run", "delivered": False}
+                for i in range(5001)]
+        self.assertIsNone(SupabaseAlertStore(FakeSync({"alert_events": rows})).load(NOW))
+
+    def test_state_over_one_page_is_read_in_full(self):
+        rows = [{"at": ts(1), "kind": "operator.alert", "title": f"k{i}", "body": "run", "delivered": False}
+                for i in range(2500)]
+        state = SupabaseAlertStore(FakeSync({"alert_events": rows})).load(NOW)
+        self.assertEqual(len(state.alerts), 2500)
 
     def test_the_read_is_filtered_to_operator_rows_in_the_lookback_window(self):
         sync = FakeSync({"alert_events": []})

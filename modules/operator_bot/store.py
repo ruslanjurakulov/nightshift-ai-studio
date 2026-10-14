@@ -18,6 +18,15 @@ database automatically. Reusing the feed means this feature adds no SQL at all.
 The cost is that these rows also show on the Alerts page; they carry only ids
 and kind names.
 
+Who may write this table matters, because the bot trusts what it reads back.
+alert_events_insert (0033) lets anyone who can view a channel insert rows with
+that channel_id and ANY kind, title and body. So the bot's own rows are all
+written with channel_id NULL (RLS lets only a platform admin or the service key
+write those), it reads ONLY channel_id IS NULL rows, replay ignores any row that
+still carries a channel, and a mute is capped at 24 hours from the moment it was
+written no matter what its body says. A tenant who forges an `operator.mute`
+or an `operator.alert` row therefore changes nothing the bot believes.
+
 A store that cannot be read answers None, and the engine then sends NOTHING:
 without memory it could not tell a new alert from one it already sent, and
 a monitor that repeats itself is worse than one that waits.
@@ -37,11 +46,13 @@ logger = logging.getLogger(__name__)
 LOOKBACK = timedelta(hours=48)
 MUTE_FOR = timedelta(hours=24)
 KIND_PREFIX = "operator."
+PAGE = 1000
+MAX_PAGES = 5
 
 
 @dataclass
 class AlertState:
-    #: (at, key, alert kind, delivered) for each operator.alert row
+    #: (at, key, alert kind, delivered, severity) for each operator.alert row
     alerts: list = field(default_factory=list)
     #: alert kind (or "all") -> mute end, only those still in the future
     mutes: dict = field(default_factory=dict)
@@ -55,11 +66,18 @@ class AlertState:
         times = [a[0] for a in self.alerts if a[1] == key]
         return max(times) if times else None
 
-    def delivered_since(self, since: datetime) -> int:
-        return sum(1 for at, _k, _kind, delivered in self.alerts if delivered and at >= since)
+    def delivered_since(self, since: datetime, critical: bool) -> int:
+        """Alerts delivered since ``since``, counting only critical ones when
+        ``critical`` is true and only the others when it is false: the two have
+        separate budgets, so a flood of one cannot starve the other."""
+        return sum(1 for at, _k, _kind, delivered, sev in self.alerts
+                   if delivered and at >= since and (sev == "critical") == critical)
 
-    def is_muted(self, kind: str) -> bool:
-        return kind in self.mutes or "all" in self.mutes
+    def is_muted(self, kind: str, severity: str = "warn") -> bool:
+        """A mute of this kind silences it at any severity. ``all`` silences
+        everything EXCEPT critical alerts: a blanket mute must not hide a dead
+        worker or a security event."""
+        return kind in self.mutes or ("all" in self.mutes and severity != "critical")
 
     @property
     def armed(self) -> bool:
@@ -77,19 +95,28 @@ class AlertStore(Protocol):
 
 
 def replay(rows: list, now: datetime, baseline_seen: bool = False) -> AlertState:
-    """Build the state from alert_events rows (any order)."""
+    """Build the state from alert_events rows (any order).
+
+    Defensive about what the table may hold: a row that carries a channel is not
+    the bot's and is skipped; a timestamp in the future counts as now; a mute
+    lasts at most 24 hours from when it was written, whatever its body says."""
     state = AlertState(baseline_seen=baseline_seen)
     mutes: dict = {}
     for row in sorted(rows, key=lambda r: str(r.get("at") or "")):
+        if row.get("channel_id") not in (None, ""):
+            continue
         kind = str(row.get("kind") or "")
         at = parse_ts(row.get("at"))
+        if at is not None and at > now:
+            at = now
         title = str(row.get("title") or "")
         if kind == "operator.alert" and at:
-            state.alerts.append((at, title, str(row.get("body") or ""), bool(row.get("delivered"))))
-        elif kind == "operator.mute":
+            state.alerts.append((at, title, str(row.get("body") or ""), bool(row.get("delivered")),
+                                 str(row.get("severity") or "")))
+        elif kind == "operator.mute" and at:
             until = parse_ts(row.get("body"))
             if until:
-                mutes[title] = until
+                mutes[title] = min(until, at + MUTE_FOR)
         elif kind == "operator.unmute":
             mutes.pop(title, None)
         elif kind == "operator.digest":
@@ -114,13 +141,25 @@ class SupabaseAlertStore:
         from modules.supabase_sync import SupabaseReadError
 
         try:
-            rows = self.sync.select_strict("alert_events", {
-                "select": "at,kind,title,body,delivered",
-                "kind": f"like.{KIND_PREFIX}*", "at": f"gte.{iso(now - LOOKBACK)}",
-                "order": "at.desc", "limit": "2000",
-            })
+            rows = []
+            for page in range(MAX_PAGES):
+                chunk = self.sync.select_strict("alert_events", {
+                    "select": "at,kind,title,body,delivered,severity,channel_id",
+                    "kind": f"like.{KIND_PREFIX}*", "channel_id": "is.null",
+                    "at": f"gte.{iso(now - LOOKBACK)}",
+                    "order": "at.desc", "limit": str(PAGE), "offset": str(page * PAGE),
+                })
+                rows.extend(chunk)
+                if len(chunk) < PAGE:
+                    break
+            else:
+                # More rows than the pages cover: the oldest dedupe keys would be
+                # forgotten and alerts repeated. Better to say nothing.
+                logger.warning("operator alert state exceeds %d rows — nothing is sent", MAX_PAGES * PAGE)
+                return None
             marker = self.sync.select_strict("alert_events", {
-                "select": "at", "kind": "eq.operator.alert", "title": "eq.baseline", "limit": "1",
+                "select": "at", "kind": "eq.operator.alert", "title": "eq.baseline",
+                "channel_id": "is.null", "limit": "1",
             })
         except SupabaseReadError as e:
             logger.warning("operator alert state unreadable (%s)", e.detail)
@@ -131,17 +170,19 @@ class SupabaseAlertStore:
         return replay(rows, now, baseline_seen=bool(marker))
 
     def _write(self, kind: str, title: str, body: str = "", severity: str = "info",
-               channel_id: Optional[str] = None, delivered: bool = False) -> bool:
+               delivered: bool = False) -> bool:
         if not self.durable:
             return False
+        # channel_id is deliberately absent (NULL): see the module docstring. An
+        # alert about a customer's channel must not become readable on, or
+        # writable from, that customer's Alerts page.
         row = {"kind": kind, "severity": severity, "title": title[:200], "body": body[:300],
                "delivered": delivered}
-        if channel_id:
-            row["channel_id"] = channel_id
         return self.sync.upsert("alert_events", [row]) > 0
 
     def record_alert(self, key, kind, delivered, severity="info", channel_id=None) -> bool:
-        return self._write("operator.alert", key, kind, severity, channel_id, delivered)
+        # `channel_id` is accepted for the interface and never stored.
+        return self._write("operator.alert", key, kind, severity, delivered)
 
     def record_mute(self, kind, until) -> bool:
         return self._write("operator.mute", kind, iso(until))
@@ -167,15 +208,15 @@ class MemoryAlertStore:
     def load(self, now):
         return None if self.fail_load else replay(self.rows, now)
 
-    def _add(self, kind, title, body="", delivered=False) -> bool:
+    def _add(self, kind, title, body="", delivered=False, severity="info") -> bool:
         if self.fail_write:
             return False
         self.rows.append({"at": iso(self._now()), "kind": kind, "title": title, "body": body,
-                          "delivered": delivered})
+                          "delivered": delivered, "severity": severity})
         return True
 
     def record_alert(self, key, kind, delivered, severity="info", channel_id=None) -> bool:
-        return self._add("operator.alert", key, kind, delivered)
+        return self._add("operator.alert", key, kind, delivered, severity)
 
     def record_mute(self, kind, until) -> bool:
         return self._add("operator.mute", kind, iso(until))

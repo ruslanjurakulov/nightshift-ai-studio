@@ -55,6 +55,7 @@ class TelegramControl:
         # `session` is anything with requests' `post` (a fake in tests); None
         # means the real `requests` module, imported lazily.
         self._session = session
+        self._username: Optional[str] = None
         self._token = (token if token is not None else os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
         self._chat_id = (chat_id if chat_id is not None else os.getenv("TELEGRAM_CHAT_ID", "")).strip()
         raw_ids = admin_user_ids if admin_user_ids is not None else os.getenv("TELEGRAM_ADMIN_USER_IDS", "")
@@ -130,6 +131,29 @@ class TelegramControl:
         if text:
             payload["text"] = sanitize_outgoing(text)[:180]
         return self._call("answerCallbackQuery", payload)
+
+    def bot_username(self) -> Optional[str]:
+        """This bot's @username (from getMe, asked once and remembered), or None
+        when it cannot be learned. Used to ignore a command addressed to
+        ANOTHER bot in a shared chat (`/health@OtherBot`). Never raises."""
+        if self._username:
+            return self._username
+        if not self._token:
+            return None
+        try:
+            session = self._session
+            if session is None:
+                import requests as session
+
+            resp = session.post(f"{_API_BASE}/bot{self._token}/getMe", json={}, timeout=10)
+            if resp.status_code != 200:
+                return None
+            name = ((resp.json() or {}).get("result") or {}).get("username")
+            self._username = str(name).lower() if name else None
+            return self._username
+        except Exception as e:
+            logger.warning("Telegram getMe failed (%s)", describe_http_error(e))
+            return None
 
     def _call(self, method: str, payload: dict) -> bool:
         try:

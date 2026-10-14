@@ -8,14 +8,16 @@ Detection is pure over the sources (:func:`detect`). Delivery is
   A key already seen is not sent again: for a one-off event (a failed job) for
   the 48 hours the store remembers, for a standing condition (a low balance, a
   silent worker) until its cooldown has passed.
-* **Rate limit.** At most ``max_alerts_per_hour`` non-critical alerts an hour.
-  Alerts of one kind in one pass are merged into one message, so a burst reads
-  as one line list, not a stack of pings.
+* **Rate limit.** At most ``max_alerts_per_hour`` non-critical alerts an hour,
+  and (separately, so neither starves the other) at most MAX_CRITICAL_PER_HOUR
+  critical ones. Alerts of one kind in one pass are merged into one message, so
+  a burst reads as one line list, not a stack of pings.
 * **Quiet hours.** Only ``critical`` alerts (a worker gone silent, a security
   event) get through; the rest are held, NOT dropped: they are not recorded, so
   they go out after the window if they still apply.
-* **Mute.** The Mute button silences one kind (or all) for 24 hours. Muted
-  alerts are recorded as seen, so a mute never becomes a flood when it ends.
+* **Mute.** The Mute button silences one kind for 24 hours, or ``all`` for
+  everything except critical alerts. Muted alerts are recorded as seen, so a
+  mute never becomes a flood when it ends.
 * **First run.** The first pass only records what already exists, and says so
   once, so turning the bot on does not announce the last day's history.
 * **No memory, no message.** If the state cannot be read the engine sends
@@ -55,6 +57,11 @@ CREATIVE_COOLDOWN = 3 * 60
 #: A silent worker whose last word is older than this is gone, not lost
 #: (e.g. an old container id); the table keeps such rows for two weeks.
 WORKER_LOST_MAX_AGE = timedelta(hours=24)
+
+#: Critical alerts are not subject to quiet hours, mutes of "all" or the normal
+#: hourly budget, but they are not unlimited: a flood of forged or merely noisy
+#: events must not become a flood of pings. Generous and finite; the rest wait.
+MAX_CRITICAL_PER_HOUR = 20
 
 SEVERITY_ORDER = {"critical": 0, "warn": 1, "info": 2}
 
@@ -243,7 +250,7 @@ class AlertEngine:
         for a in found:
             if self._deduped(a, state, now):
                 rep.deduped += 1
-            elif state.is_muted(a.kind):
+            elif state.is_muted(a.kind, a.severity):
                 rep.muted += 1
                 self.store.record_alert(a.key, a.kind, False, a.severity, a.channel_id)
             elif quiet and a.severity != "critical":
@@ -251,13 +258,20 @@ class AlertEngine:
             else:
                 fresh.append(a)
 
-        # Critical alerts always go; the rest share this hour's budget.
-        budget = max(0, self.cfg.max_alerts_per_hour - state.delivered_since(now - timedelta(hours=1)))
+        # Critical and other alerts have separate hourly budgets, so a flood of
+        # one cannot starve the other (and neither is unlimited).
+        hour_ago = now - timedelta(hours=1)
+        budget = max(0, self.cfg.max_alerts_per_hour - state.delivered_since(hour_ago, critical=False))
+        crit_budget = max(0, MAX_CRITICAL_PER_HOUR - state.delivered_since(hour_ago, critical=True))
         fresh.sort(key=lambda a: (SEVERITY_ORDER.get(a.severity, 9), a.key))
         chosen, held = [], 0
         for a in fresh:
             if a.severity == "critical":
-                chosen.append(a)
+                if crit_budget > 0:
+                    chosen.append(a)
+                    crit_budget -= 1
+                else:
+                    held += 1
             elif budget > 0:
                 chosen.append(a)
                 budget -= 1
@@ -312,7 +326,9 @@ class AlertEngine:
         if h is None or quiet:
             return
         local_hour, date = self.cfg.local_hour(now), self.cfg.local_date(now)
-        if (local_hour - h) % 24 > 2 or date in state.digest_dates:
+        # From the chosen hour on, once per local date, and never in quiet hours:
+        # a digest hour inside the quiet window goes out when the window ends.
+        if local_hour < h or date in state.digest_dates:
             return
         reply = send_digest_reply(self.ops, self.held_fn)
         if self.control.send(self.control.chat_id, reply.text, parse_mode=reply.parse_mode,

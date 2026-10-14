@@ -308,17 +308,29 @@ class ActivityTestCase(unittest.TestCase):
         self.assertNotIn("private note", out)
         self.assertTrue(any(b.get("url", "").endswith("/all-channels/approvals") for b in buttons(views.view_approvals(ops_with(t)))))
 
-    def test_security_lists_only_watched_actions_without_actors(self):
+    def test_security_lists_only_operator_level_actions_without_actors(self):
         t = {"app_audit_log": [
-            {"id": "1", "at": ts(10), "action": "api_key.create", "target": "org-1", "channel_id": None,
+            {"id": "1", "at": ts(10), "action": "secret.write", "target": "GEMINI_API_KEY", "channel_id": None,
              "actor_email": "boss@example.com"},
             {"id": "2", "at": ts(11), "action": "video.publish_request", "target": "v", "channel_id": "default"},
-            {"id": "3", "at": ts(12), "action": "role.change", "target": "u-2", "channel_id": None}]}
+            {"id": "3", "at": ts(12), "action": "role.change", "target": "u-2", "channel_id": None},
+            # ordinary tenant activity any customer can generate: not security alerts
+            {"id": "4", "at": ts(13), "action": "api_key.create", "target": "org-9", "channel_id": None},
+            {"id": "5", "at": ts(14), "action": "mcp.connect", "target": "org-9", "channel_id": None},
+            {"id": "6", "at": ts(15), "action": "secret.write", "target": "x", "channel_id": "their-channel"}]}
         out = views.view_security(ops_with(t)).text
-        self.assertIn("api_key.create", out)
+        self.assertIn("secret.write", out)
         self.assertIn("role.change", out)
-        self.assertNotIn("video.publish_request", out)
-        self.assertNotIn("boss@example.com", out)
+        for absent in ("video.publish_request", "api_key.create", "mcp.connect", "boss@example.com", "their-channel"):
+            self.assertNotIn(absent, out)
+
+    def test_audit_is_filtered_by_the_database_not_after_a_row_limit(self):
+        ops = ops_with()
+        views.view_security(ops)
+        params = [p for t, p in ops.sync.reads if t == "app_audit_log"][0]
+        self.assertEqual(params["channel_id"], "is.null")
+        self.assertIn("action.in.(secret.write", params["or"])
+        self.assertIn("action.like.role.*", params["or"])
 
     def test_audit_read_never_selects_the_actor_email(self):
         ops = ops_with()
@@ -326,6 +338,37 @@ class ActivityTestCase(unittest.TestCase):
         cols = [p["select"] for t, p in ops.sync.reads if t == "app_audit_log"][0].split(",")
         self.assertNotIn("actor_email", cols)
         self.assertNotIn("detail", cols)
+
+
+class TruncationTestCase(unittest.TestCase):
+    """A read that hit its limit is a floor and says so; stuck jobs are never the rows a cut drops."""
+
+    def test_queue_reads_active_jobs_oldest_first_and_separately_from_finished_ones(self):
+        ops = ops_with()
+        views.view_queue(ops)
+        reads = [p for t, p in ops.sync.reads if t == "render_jobs"]
+        active = [p for p in reads if "status" in p][0]
+        self.assertEqual(active["order"], "created_at.asc")
+        self.assertEqual(active["status"], "in.(queued,running)")
+        self.assertTrue(any("finished_at" in p for p in reads))
+
+    def test_a_cut_list_says_so(self):
+        many = [{"id": i, "channel_id": "c", "kind": "daily", "status": "queued", "created_at": ts(5)}
+                for i in range(200)]
+        out = views.view_queue(ops_with({"render_jobs": many})).text
+        self.assertIn("list cut at 200 rows", out)
+
+    def test_an_uncut_list_has_no_note(self):
+        self.assertNotIn("list cut", views.view_queue(ops_with()).text)
+
+    def test_cut_events_and_credits_and_security_say_so(self):
+        evs = [{"event": "render.completed", "video_id": str(i), "ts": ts(1)} for i in range(2000)]
+        self.assertIn("list cut at 2000", views.view_today(ops_with({"system_events": evs})).text)
+        caps = [{"charged_credits": 1, "finished_at": ts(1)} for _ in range(5000)]
+        self.assertIn("list cut at 5000", views.view_spend(ops_with({"creative_jobs": caps})).text)
+        aud = [{"id": str(i), "at": ts(1), "action": "secret.write", "target": "x", "channel_id": None}
+               for i in range(300)]
+        self.assertIn("list cut at 300", views.view_security(ops_with({"app_audit_log": aud})).text)
 
 
 class DigestTestCase(unittest.TestCase):
