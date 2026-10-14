@@ -146,12 +146,13 @@ describe("back to top steps out of the way", () => {
     const { btn, scrollTo } = setup();
     scrollTo(3000);
     expect(btn.dataset.hidden).toBe("true");
-    expect(btn.tabIndex).toBe(-1);
+    // hidden is visual only: still reachable by keyboard and not aria-hidden
+    expect(btn.tabIndex).toBe(0);
+    expect(btn.hasAttribute("aria-hidden")).toBe(false);
     scrollTo(2990);
     expect(btn.dataset.hidden).toBe("true");
     scrollTo(2900);
     expect(btn.dataset.hidden).toBeUndefined();
-    expect(btn.tabIndex).toBe(0);
     scrollTo(3300);
     expect(btn.dataset.hidden).toBe("true");
     vi.unstubAllGlobals();
@@ -163,6 +164,11 @@ describe("back to top steps out of the way", () => {
     scrollTo(700);
     expect(btn.dataset.hidden).toBe("true");
     vi.unstubAllGlobals();
+  });
+
+  it("a focused 'hidden' button shows itself", () => {
+    const css = read("app/globals.css");
+    expect(css).toMatch(/\.scroll-top\[data-hidden="true"\]:focus-visible \{[^}]*opacity: 1;[^}]*pointer-events: auto;/);
   });
 
   it("is still 44px, the page keeps its end clear of it, and the library's action bar owns its strip", () => {

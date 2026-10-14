@@ -162,7 +162,7 @@ export default async function CreditsPage() {
       )}
 
       {!exempt && summaryFailed && (
-        <section id="plans" className="panel flex scroll-mt-24 flex-col gap-2 p-5 sm:p-6" aria-labelledby="plan-title">
+        <section id="plans" className="panel flex scroll-mt-7 flex-col gap-2 p-5 sm:p-6" aria-labelledby="plan-title">
           <h2 id="plan-title" className="t-section">
             {t.plans.panelTitle}
           </h2>
@@ -203,7 +203,7 @@ export default async function CreditsPage() {
         <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
       )}
       {showInvite && inviteRead.state === "failed" && (
-        <section id="invite" className="panel flex scroll-mt-24 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">
+        <section id="invite" className="panel flex scroll-mt-7 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">
           <h2 id="invite-title" className="t-section">
             {t.invite.title}
           </h2>

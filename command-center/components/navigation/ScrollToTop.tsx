@@ -16,8 +16,9 @@ const UP_BY = 24;
  * you read downwards, so it is never parked over the colour hint, a "Cancel" at
  * the right edge or the last line of a page you are still reading.
  *
- * Kept in the DOM while hidden, but out of the tab order and the accessibility
- * tree, so a keyboard user never lands on an invisible button.
+ * Hidden means invisible and unclickable, not gone: it stays in the tab order
+ * and the accessibility tree, so Tab or End at the bottom of a page still reaches
+ * it, and focusing it shows it (`.scroll-top[data-hidden]:focus-visible`).
  *
  * `dock` is for a phone layout that has the bottom tab bar: the button then
  * sits above the bar (see `.scroll-top[data-dock]`) rather than over a tab.
@@ -62,8 +63,6 @@ export function ScrollToTop({ dock = false }: { dock?: boolean }) {
       onClick={toTop}
       aria-label={t.navigation.scrollTop}
       title={t.navigation.scrollTop}
-      aria-hidden={!visible}
-      tabIndex={visible ? 0 : -1}
       data-hidden={visible ? undefined : "true"}
       data-dock={dock ? "true" : undefined}
       className="scroll-top"
