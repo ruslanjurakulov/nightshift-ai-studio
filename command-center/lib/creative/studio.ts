@@ -20,6 +20,7 @@ import {
   type ExpandAspect,
   IMAGE_QUALITIES,
   type ImageQuality,
+  MAX_VIDEO_EDIT_WORDS,
   MEDIA_SOURCE_CAPABILITIES,
   PARAM_KEYS,
   PICTURE_OP_CAPABILITIES,
@@ -34,7 +35,8 @@ import {
   UPSCALE_FACTORS,
   UPSCALE_TARGETS,
   type UpscaleTarget,
-  VIDEO_SOURCE_CAPABILITIES,
+  VIDEO_FILE_CAPABILITIES,
+  VIDEO_OP_CAPABILITIES,
   VOICE_ID_RE,
   isImageQuality,
   isUuid,
@@ -84,8 +86,16 @@ export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS, ..
  */
 export const PICTURE_OPS = PICTURE_OP_CAPABILITIES;
 
+/**
+ * The video AI edit tools of the Enhance desk (migration 0100): change a video
+ * by a prompt, change its shape without cropping, take its background out.
+ * Offered like the picture ops: on the desk, and only usable once the owner has
+ * proven and priced a model for each.
+ */
+export const VIDEO_OPS = VIDEO_OP_CAPABILITIES;
+
 /** Everything the composer can make, in the order its tabs show the tools. */
-export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS] as const;
+export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS, ...VIDEO_OPS] as const;
 export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
@@ -102,6 +112,20 @@ export function isPictureOp(c: unknown): c is (typeof PICTURE_OPS)[number] {
   return typeof c === "string" && (PICTURE_OPS as readonly string[]).includes(c);
 }
 
+export function isVideoOp(c: unknown): c is (typeof VIDEO_OPS)[number] {
+  return typeof c === "string" && (VIDEO_OPS as readonly string[]).includes(c);
+}
+
+/** An AI edit tool (0099, 0100): nothing is sold for it until the owner proves and prices a model. */
+export function isAiEdit(c: unknown): boolean {
+  return isPictureOp(c) || isVideoOp(c);
+}
+
+/** The tools asked by a shape: an expand extends a picture to it, a reframe changes a video to it. */
+export function takesShape(c: unknown): c is "expand" | "video_reframe" {
+  return c === "expand" || c === "video_reframe";
+}
+
 export function isExpandAspect(v: unknown): v is ExpandAspect {
   return typeof v === "string" && (EXPAND_ASPECTS as readonly string[]).includes(v);
 }
@@ -112,7 +136,7 @@ export function isRelightLook(v: unknown): v is RelightLook {
 
 /** The longest words a picture op takes (0099), for the field's limit. */
 export function wordsMax(c: string): number {
-  return isPictureOp(c) ? PICTURE_OP_PROMPT_MAX[c] : PROMPT_MAX;
+  return isPictureOp(c) ? PICTURE_OP_PROMPT_MAX[c] : c === "video_edit" ? MAX_VIDEO_EDIT_WORDS : PROMPT_MAX;
 }
 
 /** A picture op's words are one line: line breaks and runs of spaces become one space, then cut to the limit. */
@@ -128,10 +152,10 @@ export function needsRecording(c: string): c is RecordingCapability {
 }
 
 /** The tools that start from a video in the library (migration 0052). */
-export type VideoCapability = (typeof VIDEO_SOURCE_CAPABILITIES)[number];
+export type VideoCapability = (typeof VIDEO_FILE_CAPABILITIES)[number];
 
 export function needsVideo(c: string): c is VideoCapability {
-  return (VIDEO_SOURCE_CAPABILITIES as readonly string[]).includes(c);
+  return (VIDEO_FILE_CAPABILITIES as readonly string[]).includes(c);
 }
 
 export { UPSCALE_TARGETS, type UpscaleTarget };
@@ -209,6 +233,8 @@ export function takesStyle(c: string): boolean {
 
 /** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice and video tools and describe. */
 export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
+  // A video edit is asked by its words (0100); the other video tools take none.
+  if (c === "video_edit") return "required";
   if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c)) return "none";
   // expand (what the new areas show) and relight (the light, instead of a look) are asked by a choice; their words are optional.
   if (c === "i2v" || c === "upscale" || c === "expand" || c === "relight") return "optional";
@@ -250,6 +276,8 @@ export interface StudioModel {
   expandAspects?: ExpandAspect[];
   /** 0099: the lights it relights with by name (spec.relight_looks), in the canonical order. */
   relightLooks?: RelightLook[];
+  /** 0100: the shapes it reframes a video to (spec.aspect_ratios_by_capability.video_reframe), in the canonical order. */
+  reframeAspects?: ExpandAspect[];
   /**
    * 0060: the render qualities the model is sold by (spec.qualities), cheapest
    * first; absent = it has no tiers. Prices per tier are never kept here: each
@@ -285,7 +313,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
   if (!Array.isArray(sellable)) return models;
   type Marks = Pick<
     StudioModel,
-    "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice" | "expandAspects" | "relightLooks"
+    "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice" | "expandAspects" | "relightLooks" | "reframeAspects"
   >;
   const marks = new Map<string, Marks>();
   for (const r of sellable) {
@@ -303,6 +331,11 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
         ? ((byCap as Record<string, unknown[]>).expand as unknown[])
         : [];
     const shapes = EXPAND_ASPECTS.filter((a) => expandList.includes(a));
+    const reframeList =
+      byCap && typeof byCap === "object" && !Array.isArray(byCap) && Array.isArray((byCap as Record<string, unknown>).video_reframe)
+        ? ((byCap as Record<string, unknown[]>).video_reframe as unknown[])
+        : [];
+    const reframes = EXPAND_ASPECTS.filter((a) => reframeList.includes(a));
     const looks = Array.isArray(spec.relight_looks) ? RELIGHT_LOOKS.filter((l) => (spec.relight_looks as unknown[]).includes(l)) : [];
     // In the canonical order, so the selector reads low, medium, high whatever the row's order.
     const tiers = Array.isArray(spec.qualities) ? IMAGE_QUALITIES.filter((q) => (spec.qualities as unknown[]).includes(q)) : [];
@@ -315,6 +348,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       ...(spec.end_frame === true ? { endFrame: true } : {}),
       ...(targets.length ? { upscaleTargets: targets } : {}),
       ...(shapes.length ? { expandAspects: shapes } : {}),
+      ...(reframes.length ? { reframeAspects: reframes } : {}),
       ...(looks.length ? { relightLooks: looks } : {}),
       ...(tiers.length ? { qualities: tiers } : {}),
       ...(spec.audio_out === true && (spec.price_variants_by === "audio" || spec.price_variants_by === "resolution_audio")
@@ -375,7 +409,7 @@ export interface StudioForm {
   endFrameId?: string | null;
   /** The size a video upscale makes (0052). */
   target?: UpscaleTarget | null;
-  /** The shape an expand extends the picture to (0099). */
+  /** The shape an expand extends the picture to (0099), or a reframe changes the video to (0100). */
   shape?: ExpandAspect | null;
   /** The light a relight is asked for by name (0099); the words replace it when typed. */
   look?: RelightLook | null;
@@ -445,6 +479,13 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     }
     case "erase":
       return { source_asset_id: source, prompt: oneLine(form.prompt, PICTURE_OP_PROMPT_MAX.erase) };
+    case "video_edit":
+      // What to change, on one line. The length (and so the price) is the video's own: never sent (0100).
+      return { source_asset_id: source, prompt: oneLine(form.prompt, MAX_VIDEO_EDIT_WORDS) };
+    case "video_reframe":
+      return { source_asset_id: source, aspect_ratio: form.shape ?? "" };
+    case "video_remove_bg":
+      return { source_asset_id: source };
     case "remove_bg":
       return { source_asset_id: source };
     case "describe":
@@ -502,7 +543,7 @@ export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReaso
   if (needsRecording(form.capability) && !isUuid(form.sourceId)) return "need_recording";
   if (needsVideo(form.capability) && !isUuid(form.sourceId)) return "need_video";
   if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return "need_target";
-  if (form.capability === "expand" && !isExpandAspect(form.shape)) return "need_shape";
+  if ((form.capability === "expand" || form.capability === "video_reframe") && !isExpandAspect(form.shape)) return "need_shape";
   if (form.capability === "relight" && !isRelightLook(form.look) && !form.prompt.trim()) return "need_look";
   if (form.capability === "erase" && !oneLine(form.prompt, PROMPT_MAX)) return "need_object";
   if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
@@ -537,6 +578,10 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "expand",
   "relight",
   "erase",
+  // 0100: priced by the video's own seconds, whatever the words or the shape.
+  "video_edit",
+  "video_reframe",
+  "video_remove_bg",
 ];
 const PRICE_STAND_IN = "price check";
 
@@ -559,7 +604,7 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
   // A video upscale is priced per size: no stand-in size is ever asked about.
   if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return null;
   // An expand is quoted for the shape asked; no stand-in shape is ever asked about.
-  if (form.capability === "expand" && !isExpandAspect(form.shape)) return null;
+  if ((form.capability === "expand" || form.capability === "video_reframe") && !isExpandAspect(form.shape)) return null;
   if (!WORDS_FREE_PRICE.includes(form.capability)) return null;
   return buildParams({
     ...form,
@@ -687,6 +732,16 @@ export function expandShapesFor(
 ): ExpandAspect[] {
   if (!routed) return current?.expandAspects ?? [];
   return EXPAND_ASPECTS.filter((x) => available.some((m) => m.expandAspects?.includes(x)));
+}
+
+/** The lights a relight offers by name, chosen the same way as the shapes. */
+export function reframeShapesFor(
+  available: readonly Pick<StudioModel, "reframeAspects">[],
+  current: Pick<StudioModel, "reframeAspects"> | null,
+  routed: boolean,
+): ExpandAspect[] {
+  if (!routed) return current?.reframeAspects ?? [];
+  return EXPAND_ASPECTS.filter((x) => available.some((m) => m.reframeAspects?.includes(x)));
 }
 
 /** The lights a relight offers by name, chosen the same way as the shapes. */
@@ -1077,7 +1132,7 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
           target: isUpscaleTarget(p.target_resolution) ? p.target_resolution : null,
         }
       : {}),
-    ...(job.capability === "expand" ? { shape: isExpandAspect(p.aspect_ratio) ? p.aspect_ratio : null } : {}),
+    ...(takesShape(job.capability) ? { shape: isExpandAspect(p.aspect_ratio) ? p.aspect_ratio : null } : {}),
     ...(job.capability === "relight" ? { look: isRelightLook(p.look) ? p.look : null } : {}),
     ...(takesQuality(job.capability) && isImageQuality(p.quality) ? { quality: p.quality } : {}),
     ...(takesSound(job.capability) && typeof p.audio === "boolean" ? { audio: p.audio } : {}),

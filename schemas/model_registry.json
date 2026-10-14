@@ -1814,6 +1814,187 @@
       }
     },
     {
+      "id": "generic-video-edit",
+      "display_name": "Video edit (operator-configured provider)",
+      "provider": "operator",
+      "adapter": "video.generic_ops",
+      "vendor_model": "operator-configured",
+      "capabilities": [
+        "video_edit"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://github.com/ruslanjurakulov/nightshift-ai-studio",
+        "checked_at": "2026-10-14",
+        "source": "third_party",
+        "evidence": "No vendor documentation: this is the repository's own generic async dialect (modules/capabilities/video_ops.py), not a vendor's API",
+        "note": "UNVERIFIED: matches no vendor yet; the operator sets the host, paths and key, and names the real model above. No real call made"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price set: the owner sets credit_prices for this unit, per second of the source video, before it can sell"
+      },
+      "credit_unit": "model_generic_video_edit_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "UNVERIFIED: no vendor is wired for this video op. The adapter speaks the repository's generic async dialect against a host the operator configures; no real call has been made",
+        "Before clearing this gate: name the real vendor model in vendor_model, read the vendor's terms (including who owns and may reuse an uploaded video), run tools/probe_models.py with the operator's key, then set the credit price"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 500,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 30
+      },
+      "quality_tier": 3,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "video_edit",
+        "prompt": "make the colours warmer",
+        "input_video": "generated"
+      }
+    },
+    {
+      "id": "generic-video-reframe",
+      "display_name": "Video reframe (operator-configured provider)",
+      "provider": "operator",
+      "adapter": "video.generic_ops",
+      "vendor_model": "operator-configured",
+      "capabilities": [
+        "video_reframe"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4"
+      ],
+      "aspect_ratios_by_capability": {
+        "video_reframe": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4"
+        ]
+      },
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://github.com/ruslanjurakulov/nightshift-ai-studio",
+        "checked_at": "2026-10-14",
+        "source": "third_party",
+        "evidence": "No vendor documentation: this is the repository's own generic async dialect (modules/capabilities/video_ops.py), not a vendor's API",
+        "note": "UNVERIFIED: matches no vendor yet; the operator sets the host, paths and key, and names the real model above. No real call made"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price set: the owner sets credit_prices for this unit, per second of the source video, before it can sell"
+      },
+      "credit_unit": "model_generic_video_reframe_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "UNVERIFIED: no vendor is wired for this video op. The adapter speaks the repository's generic async dialect against a host the operator configures; no real call has been made",
+        "Before clearing this gate: name the real vendor model in vendor_model, read the vendor's terms (including who owns and may reuse an uploaded video), run tools/probe_models.py with the operator's key, then set the credit price"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 500,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 30
+      },
+      "quality_tier": 3,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "video_reframe",
+        "prompt": "reframe",
+        "aspect_ratio": "1:1",
+        "input_video": "generated"
+      }
+    },
+    {
+      "id": "generic-video-remove-bg",
+      "display_name": "Video background removal (operator-configured provider)",
+      "provider": "operator",
+      "adapter": "video.generic_ops",
+      "vendor_model": "operator-configured",
+      "capabilities": [
+        "video_remove_bg"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://github.com/ruslanjurakulov/nightshift-ai-studio",
+        "checked_at": "2026-10-14",
+        "source": "third_party",
+        "evidence": "No vendor documentation: this is the repository's own generic async dialect (modules/capabilities/video_ops.py), not a vendor's API",
+        "note": "UNVERIFIED: matches no vendor yet; the operator sets the host, paths and key, and names the real model above. No real call made"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price set: the owner sets credit_prices for this unit, per second of the source video, before it can sell"
+      },
+      "credit_unit": "model_generic_video_remove_bg_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "UNVERIFIED: no vendor is wired for this video op. The adapter speaks the repository's generic async dialect against a host the operator configures; no real call has been made",
+        "Before clearing this gate: name the real vendor model in vendor_model, read the vendor's terms (including who owns and may reuse an uploaded video), run tools/probe_models.py with the operator's key, then set the credit price"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 500,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 30
+      },
+      "quality_tier": 3,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "video_remove_bg",
+        "prompt": "remove the background",
+        "input_video": "generated"
+      }
+    },
+    {
       "id": "luma-ray-3.2",
       "display_name": "Luma Ray 3.2",
       "provider": "luma",
