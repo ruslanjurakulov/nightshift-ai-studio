@@ -348,6 +348,44 @@
           "type": "boolean",
           "default": false,
           "description": "Single-pass loudness normalisation (loudnorm: -16 LUFS, true peak -1.5 dB, range 11 LU) after denoise, before gain. Approximate on a very short clip."
+        },
+        "crop": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Keep a rectangle of the source picture, as fractions of it, after rotate/flip and before the fit. x + w and y + h must not go past 1.",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0
+            },
+            "w": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 1
+            },
+            "h": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 1
+            }
+          }
+        },
+        "angle": {
+          "type": "number",
+          "minimum": -180.0,
+          "maximum": 180.0,
+          "default": 0,
+          "description": "Degrees clockwise: turns the FITTED picture about its centre inside the frame; what leaves the frame is cut, what is uncovered is black. 0 = none."
         }
       }
     },

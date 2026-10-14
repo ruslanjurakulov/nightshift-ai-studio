@@ -214,19 +214,34 @@ def effect_filters(fx) -> List[str]:
 
 
 def geometry_filter(seg: Segment) -> str:
-    """``transpose / hflip / vflip,`` for a clip's turn and mirror ('' without
-    them, so the chain is the one it was). It runs on the SOURCE, before the
-    fit, so a quarter turn is fitted as the portrait picture it has become.
-    Turn first, then mirror."""
+    """``transpose / hflip / vflip / crop,`` for a clip's turn, mirror and crop
+    ('' without them, so the chain is the one it was). It runs on the SOURCE,
+    before the fit, so a quarter turn is fitted as the portrait picture it has
+    become and a crop is what gets fitted. Turn first, then mirror, then the
+    crop rectangle of the picture as turned (even pixel sizes, rounded down,
+    so 4:2:0 never gets an odd window)."""
     fx = seg.effects
-    if fx is None or not fx.geometric:
+    steps: List[str] = []
+    if fx is not None and fx.geometric:
+        steps = {90: ["transpose=1"], 180: ["hflip", "vflip"], 270: ["transpose=2"]}.get(fx.rotate, [])
+        if fx.flip_h:
+            steps.append("hflip")
+        if fx.flip_v:
+            steps.append("vflip")
+    c = seg.crop
+    if c is not None and (c.x, c.y, c.w, c.h) != (0.0, 0.0, 1.0, 1.0):
+        steps.append(f"crop=w='max(2,trunc(iw*{c.w:.4f}/2)*2)':h='max(2,trunc(ih*{c.h:.4f}/2)*2)'"
+                     f":x='trunc(iw*{c.x:.4f}/2)*2':y='trunc(ih*{c.y:.4f}/2)*2'")
+    return ",".join(steps) + "," if steps else ""
+
+
+def angle_filter(seg: Segment, width: int, height: int) -> str:
+    """``,rotate=...`` that turns the FITTED picture ``seg.angle`` degrees clockwise
+    about its centre inside the frame ('' for no turn): the frame keeps its size,
+    what leaves it is cut, and what the turn uncovers is black."""
+    if not seg.angle:
         return ""
-    steps = {90: ["transpose=1"], 180: ["hflip", "vflip"], 270: ["transpose=2"]}.get(fx.rotate, [])
-    if fx.flip_h:
-        steps.append("hflip")
-    if fx.flip_v:
-        steps.append("vflip")
-    return ",".join(steps) + ","
+    return f",rotate=a={math.radians(seg.angle):.6f}:ow={int(width)}:oh={int(height)}:c=black:bilinear=1"
 
 
 def _then(grade: str) -> str:
@@ -474,9 +489,10 @@ def _segment_commands(
         grade = grade_filter(seg)
         pre = geometry_filter(seg)
         mv = move_filter(seg.move, width, height, full)
+        ang = angle_filter(seg, width, height)
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
-                                 length=length, extra_vf=fades, fill=True, grade=grade, pre=pre)
-        vf = pre + _scale_crop(width, height, fps, grade) + mv + fades
+                                 length=length, extra_vf=ang + fades, fill=True, grade=grade, pre=pre)
+        vf = pre + _scale_crop(width, height, fps, grade) + ang + mv + fades
         return [[ffmpeg, "-y", "-loop", "1", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     if seg.kind == KIND_IMAGE:
         style = ken_burns_style(seed if seed is not None else seg.path)
@@ -484,10 +500,11 @@ def _segment_commands(
         # old path produced, only the pixels move.
         grade = grade_filter(seg)
         pre = geometry_filter(seg)     # turn / mirror the picture before it is scaled and moved
+        ang = angle_filter(seg, width, height)
         vf = pre + ken_burns_filter(style, width, height, fps,
-                                    float(full) if frame_exact else float(dur) * fps) + _then(grade) + fades
+                                    float(full) if frame_exact else float(dur) * fps) + _then(grade) + ang + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
-                                 length=length if frame_exact else None, extra_vf=fades,
+                                 length=length if frame_exact else None, extra_vf=ang + fades,
                                  fill=frame_exact, grade=grade, pre=pre)
         return [[ffmpeg, "-y", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     # KIND_VIDEO. -stream_loop -1: a source shorter than its slot is looped (as
@@ -519,7 +536,7 @@ def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
     fit = _fit_for(seg)
     grade = grade_filter(seg)
     framed = (_scale_blur(width, height, fps, grade, tag) if fit is _scale_blur
-              else fit(width, height, fps, grade))
+              else fit(width, height, fps, grade)) + angle_filter(seg, width, height)
     geo = geometry_filter(seg)
     if seg.freeze:
         return ([*seek, "-i", seg.path],
@@ -545,16 +562,18 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
             + f",settb=1/{fps},fps={fps},format=yuv420p")
     grade = grade_filter(seg)
     mv = move_filter(seg.move, width, height, full) if seg.move is not None else ""
+    ang = angle_filter(seg, width, height)
     if seg.kind == KIND_IMAGE and seg.move is not None:
         return (["-loop", "1", "-i", seg.path],
-                geometry_filter(seg) + _scale_crop(width, height, fps, grade) + mv + tail)
+                geometry_filter(seg) + _scale_crop(width, height, fps, grade) + ang + mv + tail)
     if seg.kind == KIND_IMAGE:
         if hold:
             # A timeline's still fills the frame in the move, so it does held too.
-            return ["-loop", "1", "-i", seg.path], geometry_filter(seg) + _scale_crop(width, height, fps, grade) + tail
+            return (["-loop", "1", "-i", seg.path],
+                    geometry_filter(seg) + _scale_crop(width, height, fps, grade) + ang + tail)
         return (["-i", seg.path],
                 geometry_filter(seg) + ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
-                + _then(grade) + tail)
+                + _then(grade) + ang + tail)
     inputs, chain = _video_source(seg, width, height, fps, full, tag)
     return inputs, chain + mv + tail
 

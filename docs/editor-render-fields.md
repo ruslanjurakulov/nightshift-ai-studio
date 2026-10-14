@@ -26,6 +26,7 @@ note for text looks).
 | 5 | `claude/render-blur-fit` | V clip `fit: "blur"` | PR open (stacked on 4) |
 | 6 | `claude/render-speed` | V clip `speed` 0.25-4 (pitch kept), `reverse`, `freeze` | PR open (stacked on 5) |
 | 7 | `claude/render-chroma-audio` | overlay `chroma`; `denoise`, `loudnorm` on A clips and V clips | PR open (stacked on 6) |
+| 8 | `claude/render-crop` | V clip `crop` rectangle, free `angle` | PR open (stacked on 7) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -262,3 +263,38 @@ like `contain` (the picture alone).
   target, so use it per clip on purpose (a ducked music track normalised to
   -16 LUFS is as loud as the voice before ducking).
 * a clip's length never changes.
+
+## 8. Crop and free-angle rotation
+
+### `crop` (V clips, video and stills)
+
+```json
+"crop": { "x": 0.25, "y": 0.1, "w": 0.5, "h": 0.8 }
+```
+
+* a rectangle of the SOURCE picture as fractions of it: `x`,`y` the top-left
+  corner (0 to 1; defaults 0), `w`,`h` its size (0.05 to 1; defaults 1).
+  `x + w` and `y + h` must not exceed 1 (refused otherwise). The whole picture
+  (0, 0, 1, 1) is dropped on save.
+* it is taken AFTER `rotate`/`flip_*` (so it is the rectangle of the picture the
+  user sees once turned/mirrored) and BEFORE the fit: the cropped part is what
+  is fitted to the frame (`contain` bars, `cover` fill, `blur` background all
+  work on the cropped picture). Sizes are rounded down to even pixels.
+* a crop of a landscape clip to a portrait window in a portrait frame fills
+  it with `fit: "cover"` (or by `contain` if the window has the frame's shape).
+* a split keeps the same crop on both halves; a `move` (Ken Burns) zooms into
+  the cropped, fitted picture.
+
+### `angle` (V clips), degrees clockwise, -180 to 180
+
+* turns the FITTED picture about the centre of the frame. The frame keeps its
+  size: what leaves it is cut, what the turn uncovers is black (a layer
+  turned in the frame; it does not straighten-and-crop). Positive = clockwise.
+  0 is dropped on save.
+* separate from `rotate` (0/90/180/270), which turns the SOURCE before the
+  fit and re-fits it (so a landscape clip becomes a portrait picture with bars);
+  both can be set (the quarter turn first).
+* with `fit: "blur"` the whole composed frame turns, background included; a
+  `move` zooms into the turned frame.
+* a 45 degree turn of a picture that fills the frame leaves black corners; the
+  UI may suggest a zoom (`move` or a `cover` fit of a crop) to hide them.

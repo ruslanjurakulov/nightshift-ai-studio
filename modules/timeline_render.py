@@ -24,6 +24,9 @@ How a timeline maps onto the spec:
   ``flip_*`` and ``rotate`` become the segment's ``ClipEffects``; the backend
   turns the geometric ones into a prefix of the clip's chain and the rest into
   filters after the colour grade. A clip without them has ``effects=None``.
+* **Crop and angle** — a V clip's ``crop`` rectangle and free ``angle`` become the
+  segment's ``ClipCrop`` and ``angle``; the backend takes the crop after the turn
+  and mirror and before the fit, and turns the fitted picture by the angle.
 * **Move** — a V clip's ``move`` becomes ``Segment.move`` (a still then has it
   instead of its automatic zoom); an overlay's ``move.to`` becomes the
   ``PictureOverlay.to_*`` end values. Both are linear over the clip / the span.
@@ -83,6 +86,7 @@ from modules.render_spec import (
     KIND_IMAGE,
     KIND_VIDEO,
     AudioTrack,
+    ClipCrop,
     ClipEffects,
     ClipMove,
     PictureOverlay,
@@ -123,6 +127,16 @@ def _effects(clip: dict) -> dict:
     value that means "off")."""
     given = {k: clip[k] for k in tl._EFFECT_KEYS if k in clip}
     return {"effects": ClipEffects(**given)} if given else {}
+
+
+def _crop_angle(clip: dict) -> dict:
+    """The clip's crop rectangle and free angle as Segment fields ({} without them)."""
+    out = {}
+    if "crop" in clip:
+        out["crop"] = ClipCrop(**clip["crop"])
+    if "angle" in clip:
+        out["angle"] = clip["angle"]
+    return out
 
 
 def _move(clip: dict) -> dict:
@@ -171,6 +185,7 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 **_grade(clip),
                 **_effects(clip),
                 **_move(clip),
+                **_crop_angle(clip),
             )
 
         for i, clip in enumerate(clips):

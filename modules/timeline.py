@@ -20,6 +20,7 @@ not a project dependency — tests keep the two in sync)::
                              style?: <one of XFADE_STYLES, crossfade only> },
               speed?: 0.25..4, audio?: bool, reverse?: bool, freeze?: bool,
               denoise?: bool, loudnorm?: bool,
+              crop?: {x?, y?, w?, h?}, angle?: -180..180,
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
               filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
               flip_h?, flip_v?, rotate?,
@@ -146,6 +147,19 @@ Rules this module keeps:
   given ones over its ``start_s``..``end_s``; an entrance / exit animation adds
   to it. Animated opacity is the one part that costs real time (a per-pixel
   expression on the overlay), except a move to or from 0, which is a fade.
+* **Crop and a free angle.** A V clip's ``crop: {x, y, w, h}`` keeps a rectangle of
+  the SOURCE picture, as fractions of it (``x``/``y`` the top-left corner 0-1,
+  ``w``/``h`` its size ``CROP_MIN``-1; defaults 0, 0, 1, 1; the rectangle must
+  lie inside the picture). It is taken after the quarter turn and mirror
+  (``rotate``, ``flip_*``), so it is the rectangle of the picture the editor
+  shows, and BEFORE the fit: the cropped part is what is fitted, so a crop of a
+  landscape clip to a portrait window fills a portrait frame. ``angle``
+  (degrees clockwise, -180..180, 0 = none) turns the FITTED picture about its
+  centre inside the frame: what leaves the frame is cut off, and what the turn
+  uncovers is black (it is a layer turned in the frame, not a straightened
+  crop; with ``fit: blur`` the whole composed frame turns). The move (``move``)
+  zooms into the turned frame. Neither changes how long the clip lasts; both
+  are dropped when they mean no change.
 * **Chroma key is an overlay option, sound clean-up a clip option.** An overlay
   (picture or video) may carry ``chroma: {color, similarity?, blend?}``: pixels
   near ``color`` (a ``#RRGGBB`` colour) become transparent (ffmpeg ``chromakey``);
@@ -328,6 +342,12 @@ CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, CHROMA_SIMILARITY_DEFAULT = 0.01, 
 CHROMA_BLEND_MAX, CHROMA_BLEND_DEFAULT = 0.5, 0.1
 _CHROMA_KEYS = ("color", "similarity", "blend")
 
+#: A clip's crop rectangle (render_spec.CROP_MIN is the same number) and free angle.
+CROP_MIN = 0.05
+CROP_DEFAULTS = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+ANGLE_MAX = 180.0
+_CROP_KEYS = tuple(CROP_DEFAULTS)
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -354,7 +374,7 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm") + _EFFECT_KEYS
+                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -702,6 +722,9 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         _validate_effects(clip, where, problems)
         if "move" in clip:
             _validate_clip_move(clip["move"], where, problems)
+        if "crop" in clip:
+            _validate_crop(clip["crop"], where, problems)
+        _num_in(clip, "angle", -ANGLE_MAX, ANGLE_MAX, where, problems)
         if "transition" in clip:
             tr = clip["transition"]
             if _fields(tr, _TRANSITION_ALLOWED, _TRANSITION_KEYS, f"{where} transition", problems):
@@ -719,6 +742,20 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
                     _num_in(tr, "duration_s", 0, 10.0, f"{where} transition", problems)
     else:
         _num_in(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems)
+
+
+def _validate_crop(crop, where, problems) -> None:
+    cwhere = f"{where} crop"
+    if not _fields(crop, _CROP_KEYS, (), cwhere, problems):
+        return
+    for k in ("x", "y"):
+        _num_in(crop, k, 0, 1, cwhere, problems)
+    for k in ("w", "h"):
+        _num_in(crop, k, CROP_MIN, 1, cwhere, problems)
+    for pos, size in (("x", "w"), ("y", "h")):
+        a, b = crop.get(pos, 0.0), crop.get(size, 1.0)
+        if _is_num(a) and _is_num(b) and a + b > 1 + 1e-9:
+            problems.append(f"{cwhere}: {pos} + {size} must not go past the picture (got {a + b:g})")
 
 
 def _validate_move_point(point, where, problems) -> None:
@@ -1177,6 +1214,14 @@ def normalise(doc: dict) -> dict:
                     for k in ("reverse", "freeze", "denoise", "loudnorm"):
                         if c.get(k) is False:
                             del c[k]
+                    if "crop" in c:
+                        c["crop"] = {k: _ms({**CROP_DEFAULTS, **c["crop"]}[k]) for k in CROP_DEFAULTS}
+                        if c["crop"] == CROP_DEFAULTS:
+                            del c["crop"]   # the whole picture: the clip it was without it
+                    if "angle" in c:
+                        c["angle"] = _ms(c["angle"])
+                        if c["angle"] == 0:
+                            del c["angle"]
                     if "move" in c:
                         c["move"] = {k: {**MOVE_POINT_DEFAULTS, **c["move"][k]} for k in ("from", "to")}
                         for k in ("from", "to"):

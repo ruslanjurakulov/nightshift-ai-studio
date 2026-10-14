@@ -195,6 +195,11 @@ export const ROTATIONS = [0, 90, 180, 270] as const;
 export const MOVE_ZOOM_MIN = 1;
 export const MOVE_ZOOM_MAX = 4;
 export const MOVE_POINT_DEFAULTS = { zoom: 1, x: 0.5, y: 0.5 } as const;
+/** A clip's crop rectangle (smallest side) and free angle (modules/timeline.py
+ *  CROP_MIN / ANGLE_MAX). */
+export const CROP_MIN = 0.05;
+export const ANGLE_MAX = 180;
+export const CROP_DEFAULTS = { x: 0, y: 0, w: 1, h: 1 } as const;
 /** An overlay's chroma key (modules/timeline.py CHROMA_*). */
 export const CHROMA_SIMILARITY_MIN = 0.01;
 export const CHROMA_SIMILARITY_MAX = 0.6;
@@ -271,6 +276,8 @@ const V_CLIP_KEYS = [
   "freeze",
   "denoise",
   "loudnorm",
+  "crop",
+  "angle",
   ...EFFECT_KEYS,
 ];
 const A_CLIP_KEYS = [
@@ -353,6 +360,15 @@ export interface OverlayMoveTo {
   opacity?: number;
 }
 
+/** A rectangle of the source picture as fractions of it (after rotate/flip,
+ *  before the fit); missing keys take CROP_DEFAULTS. */
+export interface ClipCrop {
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+}
+
 export interface VideoClip {
   id: string;
   asset_id: string;
@@ -392,6 +408,10 @@ export interface VideoClip {
    *  normalisation (-16 LUFS). Only matters with `audio: true`. */
   denoise?: boolean;
   loudnorm?: boolean;
+  /** Keep a rectangle of the source before the fit. */
+  crop?: ClipCrop;
+  /** Degrees clockwise (-180..180) the fitted picture is turned in the frame. */
+  angle?: number;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -917,6 +937,8 @@ function validateMediaClip(
         );
     validateEffects(clip, where, problems);
     if ("move" in clip) validateClipMove(clip.move, where, problems);
+    if ("crop" in clip) validateCrop(clip.crop, where, problems);
+    numIn(clip, "angle", -ANGLE_MAX, ANGLE_MAX, where, problems);
     if ("transition" in clip) {
       const tr = clip.transition;
       if (
@@ -954,6 +976,23 @@ function validateMediaClip(
     }
   } else {
     numIn(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems);
+  }
+}
+
+/** The twin of modules/timeline.py `_validate_crop`. */
+function validateCrop(crop: unknown, where: string, problems: string[]) {
+  const cw = `${where} crop`;
+  if (!fields(crop, ["x", "y", "w", "h"], [], cw, problems)) return;
+  for (const k of ["x", "y"]) numIn(crop, k, 0, 1, cw, problems);
+  for (const k of ["w", "h"]) numIn(crop, k, CROP_MIN, 1, cw, problems);
+  for (const [pos, size] of [
+    ["x", "w"],
+    ["y", "h"],
+  ] as const) {
+    const a = crop[pos] ?? 0;
+    const b = crop[size] ?? 1;
+    if (isNum(a) && isNum(b) && a + b > 1 + 1e-9)
+      problems.push(`${cw}: ${pos} + ${size} must not go past the picture`);
   }
 }
 
@@ -1674,6 +1713,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(c.freeze === true ? { freeze: true } : {}),
       ...(c.denoise === true ? { denoise: true } : {}),
       ...(c.loudnorm === true ? { loudnorm: true } : {}),
+      ...(isObj(c.crop) ? { crop: c.crop as ClipCrop } : {}),
+      ...(isNum(c.angle) && c.angle !== 0 ? { angle: c.angle } : {}),
       ...(isObj(c.move) ? { move: c.move as unknown as ClipMove } : {}),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0

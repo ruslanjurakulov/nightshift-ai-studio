@@ -228,6 +228,10 @@ FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contra
 BLUR_MAX = 30.0
 ROTATIONS = (0, 90, 180, 270)
 
+#: A clip's crop rectangle / free angle (modules/timeline.py holds the same numbers).
+CROP_MIN = 0.05
+ANGLE_MAX = 180.0
+
 #: An overlay's chroma key (modules/timeline.py holds the same numbers).
 CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, CHROMA_SIMILARITY_DEFAULT = 0.01, 0.6, 0.15
 CHROMA_BLEND_MAX, CHROMA_BLEND_DEFAULT = 0.5, 0.1
@@ -412,6 +416,39 @@ def _effects_problems(name: str, fx: ClipEffects) -> List[str]:
 
 
 @dataclass(frozen=True)
+class ClipCrop:
+    """A rectangle of the source picture kept before the fit, as fractions of it
+    (taken after the turn and mirror). The whole picture is ``(0, 0, 1, 1)``."""
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 1.0
+    h: float = 1.0
+
+    def to_dict(self) -> dict:
+        return {"x": self.x, "y": self.y, "w": self.w, "h": self.h}
+
+    @staticmethod
+    def from_dict(d: dict) -> "ClipCrop":
+        return ClipCrop(float(d.get("x", 0.0)), float(d.get("y", 0.0)), float(d.get("w", 1.0)),
+                        float(d.get("h", 1.0)))
+
+
+def _crop_problems(name: str, c: ClipCrop) -> List[str]:
+    problems: List[str] = []
+    for key in ("x", "y"):
+        v = getattr(c, key)
+        if not (_finite(v) and 0 <= v <= 1):
+            problems.append(f"{name} crop {key} must be from 0 to 1")
+    for key in ("w", "h"):
+        v = getattr(c, key)
+        if not (_finite(v) and CROP_MIN <= v <= 1):
+            problems.append(f"{name} crop {key} must be from {CROP_MIN:g} to 1")
+    if not problems and (c.x + c.w > 1 + 1e-9 or c.y + c.h > 1 + 1e-9):
+        problems.append(f"{name} crop goes past the picture")
+    return problems
+
+
+@dataclass(frozen=True)
 class Segment:
     """One timeline segment. `path` is a pre-normalised clip/image file, or None
     for a solid-colour placeholder. `duration` is the seconds it occupies.
@@ -457,6 +494,10 @@ class Segment:
     #: Play the source range backwards / hold its first frame (video only).
     reverse: bool = False
     freeze: bool = False
+    #: Keep a rectangle of the source (None = all of it) / turn the fitted
+    #: picture by this many degrees clockwise about its centre (0 = no turn).
+    crop: Optional[ClipCrop] = None
+    angle: float = 0.0
 
     @property
     def graded(self) -> bool:
@@ -482,6 +523,9 @@ class Segment:
             d["move"] = self.move.to_dict()
         _put_if(d, "reverse", self.reverse, False)
         _put_if(d, "freeze", self.freeze, False)
+        if self.crop is not None:
+            d["crop"] = self.crop.to_dict()
+        _put_if(d, "angle", self.angle, 0.0)
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -508,6 +552,8 @@ class Segment:
             effects=(ClipEffects.from_dict(d["effects"]) if isinstance(d.get("effects"), dict) else None),
             move=(ClipMove.from_dict(d["move"]) if isinstance(d.get("move"), dict) else None),
             reverse=bool(d.get("reverse", False)), freeze=bool(d.get("freeze", False)),
+            crop=(ClipCrop.from_dict(d["crop"]) if isinstance(d.get("crop"), dict) else None),
+            angle=float(d.get("angle") or 0.0),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -837,6 +883,10 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
                         f"(got {seg.speed})")
     if seg.effects is not None:
         problems.extend(_effects_problems(name, seg.effects))
+    if seg.crop is not None:
+        problems.extend(_crop_problems(name, seg.crop))
+    if not (_finite(seg.angle) and -ANGLE_MAX <= seg.angle <= ANGLE_MAX):
+        problems.append(f"{name} angle must be from {-ANGLE_MAX:g} to {ANGLE_MAX:g}")
     if seg.reverse and seg.freeze:
         problems.append(f"{name} cannot be both reversed and frozen")
     if seg.freeze and seg.speed != 1.0:
