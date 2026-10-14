@@ -20,6 +20,23 @@ How a timeline maps onto the spec:
 * **Colour** — a V clip's ``grade`` (brightness / contrast / saturation) becomes
   the segment's fields and the backend's ffmpeg ``eq``, on video and stills,
   on a cross-fade's two sides alike; a clip without it adds no filter at all.
+* **Effects** — a V clip's ``filter``, ``vignette``, ``blur``, ``sharpen``, ``grain``,
+  ``flip_*`` and ``rotate`` become the segment's ``ClipEffects``; the backend
+  turns the geometric ones into a prefix of the clip's chain and the rest into
+  filters after the colour grade. A clip without them has ``effects=None``.
+* **Stabilise** — a V clip's ``stabilize`` becomes the segment's flag; the backend
+  adds the detect pass (vidstab) or the single-pass filter (deshake).
+* **Speed ramp** — a V clip's ``speed_curve`` becomes ``Segment.curve`` (its points
+  and the source range), ``interpolate`` the segment's flag; the clip's sound is
+  the track's ``tempos``, one per equal slice of the range
+  (``modules/speed_ramp.py``), so the sound is on the picture at every slice
+  boundary.
+* **Crop and angle** — a V clip's ``crop`` rectangle and free ``angle`` become the
+  segment's ``ClipCrop`` and ``angle``; the backend takes the crop after the turn
+  and mirror and before the fit, and turns the fitted picture by the angle.
+* **Move** — a V clip's ``move`` becomes ``Segment.move`` (a still then has it
+  instead of its automatic zoom); an overlay's ``move.to`` becomes the
+  ``PictureOverlay.to_*`` end values. Both are linear over the clip / the span.
 * **Cross-fade** — two V clips that overlap by a ``crossfade`` transition
   become: the first clip's own part, ONE segment of the overlap that holds
   both pictures (``Segment.xfade``; the backend blends them with ffmpeg
@@ -50,6 +67,10 @@ How a timeline maps onto the spec:
   text, with ffmpeg ``overlay`` (``render_spec.picture_overlay_filters``). One
   that starts after the picture ends, or whose opacity is 0, renders nothing
   and is left out, so the command is the one the document without it gets.
+* **Animations** — a text's or overlay's ``anim_in`` / ``anim_out`` (and their
+  durations) are copied onto the ``TextOverlay`` / ``PictureOverlay``; the ASS
+  writer (text) and the overlay filter graph (pictures) turn them into the
+  entrance and exit. Items without them are the objects they always were.
 * **Text looks** — a T clip's ``shadow``, ``box_color`` and ``box_opacity`` become
   the overlay's ASS style (a drop shadow; an opaque or translucent box instead of
   the outline); a text without them is written as it always was.
@@ -66,12 +87,17 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import List, Optional, Union
 
+from modules import speed_ramp
 from modules import timeline as tl
 from modules.render_spec import (
     KIND_COLOR,
     KIND_IMAGE,
     KIND_VIDEO,
     AudioTrack,
+    ClipCrop,
+    ClipEffects,
+    ClipMove,
+    SpeedCurve,
     PictureOverlay,
     RenderSpec,
     Segment,
@@ -104,6 +130,46 @@ def _grade(clip: dict) -> dict:
     return dict(clip["grade"]) if "grade" in clip else {}
 
 
+def _effects(clip: dict) -> dict:
+    """The clip's effects as a Segment field ({} without any: the segment is then
+    exactly what it was before effects existed; normalise() has dropped every
+    value that means "off")."""
+    given = {k: clip[k] for k in tl._EFFECT_KEYS if k in clip}
+    return {"effects": ClipEffects(**given)} if given else {}
+
+
+def _crop_angle(clip: dict) -> dict:
+    """The clip's crop rectangle and free angle as Segment fields ({} without them)."""
+    out = {}
+    if "crop" in clip:
+        out["crop"] = ClipCrop(**clip["crop"])
+    if "angle" in clip:
+        out["angle"] = clip["angle"]
+    return out
+
+
+def _ramp(clip: dict, asset_kind: str) -> dict:
+    """The clip's speed curve and interpolation as Segment fields ({} without them)."""
+    out = {}
+    if clip.get("speed_curve") and asset_kind == tl.ASSET_VIDEO:
+        out["curve"] = SpeedCurve(tuple((p["at"], p["speed"]) for p in clip["speed_curve"]),
+                                  round(clip["out_s"] - clip["in_s"], 3))
+    if clip.get("interpolate") and asset_kind == tl.ASSET_VIDEO:
+        out["interpolate"] = True
+    if clip.get("stabilize") and asset_kind == tl.ASSET_VIDEO:
+        out["stabilize"] = True
+    return out
+
+
+def _move(clip: dict) -> dict:
+    """The clip's move as a Segment field ({} without one)."""
+    mv = clip.get("move")
+    if mv is None:
+        return {}
+    a, b = mv["from"], mv["to"]
+    return {"move": ClipMove(a["zoom"], a["x"], a["y"], b["zoom"], b["x"], b["y"])}
+
+
 def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
     fps = doc["fps"]
     segments: List[Segment] = []
@@ -132,11 +198,17 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 fit=clip["fit"],
                 fade_in_s=fade_in,
                 fade_out_s=fade_out,
-                speed=clip["speed"] if asset.kind == tl.ASSET_VIDEO else 1.0,
+                speed=(1.0 if clip.get("freeze") else clip["speed"]) if asset.kind == tl.ASSET_VIDEO else 1.0,
+                reverse=bool(clip.get("reverse")),
+                freeze=bool(clip.get("freeze")),
                 clip_s=full / fps if full else 0.0,
                 offset_s=offset / fps,
                 seed=seed,
                 **_grade(clip),
+                **_effects(clip),
+                **_move(clip),
+                **_crop_angle(clip),
+                **_ramp(clip, asset.kind),
             )
 
         for i, clip in enumerate(clips):
@@ -184,6 +256,15 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
     return segments
 
 
+def _tempos(clip: dict) -> dict:
+    """A speed ramp's sound: the slice tempos that keep it on the picture ({} without a ramp)."""
+    pts = tl.clip_ramp_points(clip)
+    if pts is None:
+        return {}
+    n = speed_ramp.slice_count(pts[-1][0])
+    return {"tempos": tuple(round(t, 6) for t in speed_ramp.slice_tempos(pts, pts[-1][0], n))}
+
+
 def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
     tracks: List[AudioTrack] = []
     for track in doc["tracks"]:
@@ -213,6 +294,9 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 start_s=clip["start_s"],
                 in_s=clip["in_s"],
                 speed=clip["speed"],
+                reverse=bool(clip.get("reverse")),
+                denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
+                **_tempos(clip),
                 fade_in_s=d_in if d_in > 0 and not joined else 0.0,
                 fade_out_s=d_out if d_out > 0 and not sounding(i + 1) else 0.0,
                 crossfade_s=d_in if joined else 0.0,
@@ -245,6 +329,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 gain_db=clip["gain_db"],
                 fade_in_s=clip["fade_in_s"],
                 fade_out_s=clip["fade_out_s"],
+                denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
                 **extra,
             ))
     return tracks
@@ -262,6 +347,15 @@ def _text_looks(c: dict) -> dict:
     return out
 
 
+def _anims(c: dict) -> dict:
+    """A text's or overlay's animation fields as spec fields ({} without any:
+    the spec object is then exactly what it was before they existed)."""
+    out = {}
+    for key in ("anim_in", "anim_out"):
+        if key in c:
+            out[key] = c[key]
+            out[key + "_s"] = c[key + "_s"]
+    return out
 def _caption_style(st: dict) -> dict:
     """An animated style's TextOverlay fields ({} without one: the cue is then
     the plain overlay it always was). The style also owns where its anchor sits
@@ -286,7 +380,7 @@ def _text(doc: dict) -> List[TextOverlay]:
                 size=c["size"], color=c["color"], outline_color=c["outline_color"],
                 outline_width=c["outline_width"], bold=c["bold"], x=c["x"], y=c["y"],
                 anchor=c["anchor"], fade_in_s=c["fade_in_s"], fade_out_s=c["fade_out_s"],
-                **_text_looks(c),
+                **_text_looks(c), **_anims(c),
             ))
     captions = doc.get("captions")
     if captions:
@@ -309,14 +403,18 @@ def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay
     for ov in doc.get("overlays") or []:
         first = _frame(ov["start_s"], fps)
         last = min(_frame(ov["end_s"], fps), total_frames)
-        if last <= first or ov["opacity"] <= 0:
+        end_opacity = (ov.get("move") or {}).get("to", {}).get("opacity", ov["opacity"])
+        if last <= first or (ov["opacity"] <= 0 and end_opacity <= 0):
             continue   # nothing of it is shown
         asset = assets[ov["asset_id"]]
         out.append(PictureOverlay(
             path=asset.path,
             kind=KIND_VIDEO if asset.kind == tl.ASSET_VIDEO else KIND_IMAGE,
             start_s=first / fps, end_s=last / fps,
-            x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"],
+            x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"], **_anims(ov),
+            **{f"to_{k}": v for k, v in (ov.get("move") or {}).get("to", {}).items()},
+            **({"chroma_color": ov["chroma"]["color"], "chroma_similarity": ov["chroma"]["similarity"],
+                "chroma_blend": ov["chroma"]["blend"]} if "chroma" in ov else {}),
         ))
     return out
 

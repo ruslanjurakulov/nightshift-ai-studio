@@ -323,6 +323,9 @@ def build_overlay_ass(overlays: Sequence, *, width: int, height: int) -> str:
             lines.extend(styled_events(i, o, w, h, next(flags)))
             continue
         x, y = int(round(float(o.x) * w)), int(round(float(o.y) * h))
+        if getattr(o, "anim_in", None) is not None or getattr(o, "anim_out", None) is not None:
+            lines.extend(_animated_events(i, o, x, y, w, h))
+            continue
         tags = f"\\pos({x},{y})"
         fi, fo = int(round(float(o.fade_in_s) * 1000)), int(round(float(o.fade_out_s) * 1000))
         if fi or fo:
@@ -330,6 +333,86 @@ def build_overlay_ass(overlays: Sequence, *, width: int, height: int) -> str:
         lines.append(f"Dialogue: {i},{ass_time(o.start_s)},{ass_time(o.end_s)},O{i},,0,0,0,,"
                      "{" + tags + "}" + overlay_text(o.text))
     return "\n".join(lines) + "\n"
+
+
+# ── entrance / exit animations ──────────────────────────────────────────────
+#
+# libass cannot animate a position and keep a second move, so an animated text
+# is a few back-to-back events instead of one: the entrance (which then holds),
+# and, when it has an exit, the exit as its own event. Both phases are built
+# from numbers formatted here and names from render_spec.ANIM_*; the text is
+# only ever the escaped overlay_text(). A typewriter is a run of events that
+# show a growing prefix and keep the rest transparent, so the text never moves
+# while it is being written.
+
+#: Direction each slide MOVES (x, y), in the frame's own axes.
+_SLIDE = {"slide-up": (0, -1), "slide-down": (0, 1), "slide-left": (-1, 0), "slide-right": (1, 0)}
+_TYPEWRITER_MAX_STEPS = 60
+_TYPEWRITER_STEPS_PER_S = 30
+
+
+def _anim_phase(kind: str, ms: int, x: int, y: int, dx: int, dy: int, entering: bool) -> str:
+    """The override tags of one entrance (``entering``) or exit phase."""
+    from modules.render_spec import ANIM_POP_FROM
+    pop = int(round(ANIM_POP_FROM * 100))
+    fade_to = "\\alpha&H00&" if entering else "\\alpha&HFF&"
+    start = "\\alpha&HFF&" if entering else ""
+    if kind == "fade":
+        return f"\\pos({x},{y}){start}\\t(0,{ms},{fade_to})"
+    if kind in _SLIDE:
+        vx, vy = _SLIDE[kind]
+        far = (x - vx * dx, y - vy * dy) if entering else (x + vx * dx, y + vy * dy)
+        a, b = (far, (x, y)) if entering else ((x, y), far)
+        return f"\\move({a[0]},{a[1]},{b[0]},{b[1]},0,{ms}){start}\\t(0,{ms},{fade_to})"
+    if kind == "pop":
+        small = f"\\fscx{pop}\\fscy{pop}"
+        if entering:
+            return f"\\pos({x},{y}){small}{start}\\t(0,{ms},\\fscx100\\fscy100{fade_to})"
+        return f"\\pos({x},{y})\\t(0,{ms},{small}{fade_to})"
+    raise ValueError(f"unknown animation {kind!r}")
+
+
+def _animated_events(i: int, o, x: int, y: int, w: int, h: int) -> List[str]:
+    from modules.render_spec import ANIM_SLIDE
+    s, e = float(o.start_s), float(o.end_s)
+    a_in, a_out = o.anim_in, o.anim_out
+    d_in, d_out = float(o.anim_in_s), float(o.anim_out_s)
+    # A plain fade_in_s / fade_out_s next to an animation on the other side is a fade
+    # animation of its own (the spec refuses both on the SAME side).
+    if a_in is None and float(o.fade_in_s) > 0:
+        a_in, d_in = "fade", float(o.fade_in_s)
+    if a_out is None and float(o.fade_out_s) > 0:
+        a_out, d_out = "fade", float(o.fade_out_s)
+    dx, dy = int(round(ANIM_SLIDE * w)), int(round(ANIM_SLIDE * h))
+    text = overlay_text(o.text)
+    t_out = e - d_out if a_out else e
+    events: List[str] = []
+
+    def add(start: float, end: float, tags: str, body: str) -> None:
+        if round(end * 100) <= round(start * 100):
+            return   # shorter than a centisecond: nothing to show
+        events.append(f"Dialogue: {i},{ass_time(start)},{ass_time(end)},O{i},,0,0,0,,"
+                      "{" + tags + "}" + body)
+
+    hold = f"\\pos({x},{y})"
+    if a_in == "typewriter":
+        tokens = re.findall(r"\\N|.", text)
+        steps = max(1, min(len(tokens), _TYPEWRITER_MAX_STEPS,
+                           int(d_in * _TYPEWRITER_STEPS_PER_S)))
+        for k in range(1, steps + 1):
+            shown = -(-len(tokens) * k // steps)   # ceil: the last step shows everything
+            body = "".join(tokens[:shown])
+            if shown < len(tokens):
+                body += "{\\alpha&HFF&}" + "".join(tokens[shown:])
+            add(s + d_in * (k - 1) / steps, s + d_in * k / steps, hold, body)
+        add(s + d_in, t_out, hold, text)
+    elif a_in:
+        add(s, t_out, _anim_phase(a_in, int(round(d_in * 1000)), x, y, dx, dy, True), text)
+    else:
+        add(s, t_out, hold, text)
+    if a_out:
+        add(t_out, e, _anim_phase(a_out, int(round(d_out * 1000)), x, y, dx, dy, False), text)
+    return events
 
 
 # ── animated caption styles ─────────────────────────────────────────────────

@@ -20,15 +20,27 @@ not a project dependency — tests keep the two in sync)::
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
                              style?: <one of XFADE_STYLES, crossfade only> },
-              speed?: 0.5..2, audio?: bool,
-              grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 } }
+              speed?: 0.25..4, audio?: bool, reverse?: bool, freeze?: bool,
+              denoise?: bool, loudnorm?: bool,
+              crop?: {x?, y?, w?, h?}, angle?: -180..180,
+              speed_curve?: [ {at: 0..1, speed: 0.25..4}, ... 2-6 points ], interpolate?: bool,
+              stabilize?: bool,
+              grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
+              filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
+              flip_h?, flip_v?, rotate?,
+              move?: { from: {zoom?, x?, y?}, to: {zoom?, x?, y?} } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
-    A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
+    A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s?,
+              denoise?: bool, loudnorm?: bool }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
               outline_width?, bold?, shadow?, box_color?, box_opacity?, x?, y?,
-              anchor?, fade_in_s?, fade_out_s? }
+              anchor?, fade_in_s?, fade_out_s?,
+              anim_in?, anim_out?, anim_in_s?, anim_out_s? }
     overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
-               opacity?: 0..1 }   (a picture or video over the picture; see below)
+               opacity?: 0..1, anim_in?, anim_out?, anim_in_s?, anim_out_s?,
+               move?: { to: {x?, y?, w?, opacity?} },
+               chroma?: { color: "#RRGGBB", similarity?: 0.01..0.6, blend?: 0..0.5 } }
+               (a picture or video over the picture; see below)
 
 Rules this module keeps:
 
@@ -60,15 +72,34 @@ Rules this module keeps:
   (0-20 px, a soft black drop shadow), ``box_color`` (a ``#RRGGBB`` box drawn
   behind the text instead of its outline) and ``box_opacity`` (0-1, only with
   a ``box_color``). A text without them renders the ASS file it always did.
+* **Entrance and exit animations are named, closed and short.** A text clip
+  or an overlay may carry ``anim_in`` / ``anim_out`` (one of ``ANIM_IN`` /
+  ``ANIM_OUT``) and ``anim_in_s`` / ``anim_out_s`` (``ANIM_MIN_S``-``ANIM_MAX_S``
+  seconds, ``ANIM_DEFAULT_S`` when absent; a duration without its animation is
+  refused). ``fade`` fades the alpha; ``slide-up|down|left|right`` moves the
+  item that way by ``ANIM_SLIDE`` of the frame while it fades; ``pop`` scales it
+  from ``ANIM_POP_FROM`` to full size while it fades; ``typewriter`` (text, in
+  only) reveals the characters one by one. In and out together never take
+  longer than the item is shown. On a text, ``anim_in`` replaces ``fade_in_s``
+  (and ``anim_out`` ``fade_out_s``): giving both is refused rather than guessed.
+  Without any of these fields every item renders as it always did.
 * **Times are seconds, normalised to milliseconds**, and the render cuts on
   the frame grid (``round(t * fps)``), so the same document always renders
   the same frames.
 * **Speed changes how long a clip lasts, not what it shows.** ``in_s`` and
   ``out_s`` are SOURCE times; a V clip at ``speed`` 2 plays that range in
   half the time, so its end on the timeline is
-  ``start_s + (out_s - in_s) / speed``. The range 0.5-2 is what one ffmpeg
-  ``atempo`` stage keeps in tune, so a sped-up clip's own sound never needs
-  a chain of filters to stay intelligible.
+  ``start_s + (out_s - in_s) / speed``. The range is 0.25-4; the clip's own
+  sound keeps its pitch (a chain of ``atempo`` stages, each within 0.5-2).
+* **Reverse and freeze are clip options.** ``reverse: true`` plays the source
+  range ``in_s``..``out_s`` backwards (picture and the clip's own sound), at its
+  ``speed``. ffmpeg's ``reverse`` holds every frame of the range in memory, so
+  the range must fit ``REVERSE_MAX_BYTES`` of frames at the document's frame size
+  and rate (a 1080p / 30 fps frame is ~3 MB: about 5.5 s; a 720p one about 13 s).
+  ``freeze: true`` holds the frame at ``in_s`` for the clip's whole length
+  (``out_s - in_s``; the file need not be that long, only reach ``in_s``) and has
+  no sound: it cannot be combined with ``speed`` other than 1, ``reverse`` or
+  ``audio``. Both are for video files, not stills.
 * **Ducking is a track option, not an effect on a clip.** An A track may carry
   ``duck: {amount_db, attack_s?, release_s?}``: while speech plays, that
   track's sound is lowered by ``amount_db`` (an exact amount, not a
@@ -86,6 +117,97 @@ Rules this module keeps:
   ``grade`` is dropped by ``normalise`` for the same reason. It applies to
   the picture only (bars of a ``contain`` fit and fades to black stay black)
   and to stills as well as video.
+* **A fit is ``contain`` (bars), ``cover`` (crop) or ``blur``.** ``blur`` shows the
+  whole picture like ``contain`` and, instead of black bars, fills the frame
+  behind it with the same picture scaled to cover it and blurred
+  (``render_backend._scale_blur``). It only matters when the picture's aspect
+  differs from the frame's; where they match it is the picture alone. A fit is
+  for video clips: a still is always drawn filling the frame (its slow zoom
+  starts from a cover-scaled picture). Colour grade and effects act on the
+  composed frame, background included.
+* **Effects are named, closed and clamped.** A V clip may carry ``filter`` (one
+  of ``FILTERS``: a colour look) with ``filter_strength`` (0-1, 1 when absent,
+  needs a ``filter``), ``vignette`` / ``sharpen`` / ``grain`` (0-1), ``blur`` (a
+  Gaussian sigma in output pixels, 0-``BLUR_MAX``), ``flip_h`` / ``flip_v``
+  (mirror) and ``rotate`` (0, 90, 180 or 270 degrees clockwise). Rotation and
+  mirroring happen on the source before it is fitted to the frame (so a 90-degree
+  turn of a landscape clip is fitted as a portrait picture); the colour and
+  texture effects run on the fitted picture, after ``grade`` and before the
+  bars of a ``contain`` fit are added (bars stay black). They apply to stills
+  as well as video, on both sides of a cross-fade. Every value that means "off"
+  (no ``filter``, 0, ``false``, 0 degrees) is dropped by ``normalise``, and a
+  clip without effects renders the command it always did.
+* **A move is two keyframes, linear between them.** A V clip's ``move`` has a
+  ``from`` and a ``to`` point, each a window onto the FITTED picture: ``zoom``
+  (``MOVE_ZOOM_MIN``-``MOVE_ZOOM_MAX``, 1 = the whole picture, 2 = the middle
+  quarter) and the window's centre ``x`` / ``y`` (0-1; defaults 1 / 0.5 / 0.5).
+  The centre is held where the window stays inside the picture. The window
+  travels from ``from`` on the clip's first frame to ``to`` on its last, in
+  steps of whole frames. A still with a ``move`` has THAT move instead of the
+  automatic slow zoom it otherwise gets (a ``move`` whose two points are equal
+  is a still that does not move at all); a video clip with an unmoving move is
+  unchanged. An overlay's ``move: {to: {...}}`` moves its centre (``x``,
+  ``y``), width (``w``) and ``opacity`` from the overlay's own values to the
+  given ones over its ``start_s``..``end_s``; an entrance / exit animation adds
+  to it. Animated opacity is the one part that costs real time (a per-pixel
+  expression on the overlay), except a move to or from 0, which is a fade.
+* **A speed curve is a few points, linear between them.** ``speed_curve`` (2 to
+  ``RAMP_MAX_POINTS`` points ``{at, speed}``) replaces ``speed`` (which must then
+  be absent or 1): ``at`` is a fraction of the source range ``in_s``..``out_s``
+  (the first point at 0, the last at 1, each at least ``RAMP_MIN_GAP`` after the
+  one before), ``speed`` is 0.25-4 and moves linearly between points, so a ramp
+  is smooth. The clip lasts the integral of ``1 / speed`` over its range
+  (``modules/speed_ramp.py``, one closed form shared by every validator and the
+  render), and its own sound follows: the range is cut into equal slices
+  (about one per half second, 2 to 16), each played at the tempo that makes it last
+  exactly as long as the picture does there, pitch kept (so the sound is on
+  the picture at every slice boundary; the speed inside a slice is its average).
+  A curve cannot be combined with ``reverse`` or ``freeze``, and splitting a
+  clip with a curve is refused (remove the curve first). ``interpolate: true``
+  makes slow motion smoother with ffmpeg's motion-compensated interpolation
+  (``minterpolate``): only for a clip that goes below speed 1 at some point, not
+  with reverse / freeze, and bounded in cost: the frames it has to make (the
+  range at the interpolated rate, ``ceil(fps / slowest speed)`` capped at
+  ``INTERP_MAX_FPS``) weighted by frame size must stay inside
+  ``INTERP_MAX_FRAMES`` per clip and ``INTERP_MAX_FRAMES_DOC`` per document
+  (1080p-equivalent frames; it is slow, about 3 frames a second at 1080p on a busy
+  machine). The source frames are first taken at the project's frame rate.
+* **Stabilise is a toggle on a video clip.** ``stabilize: true`` smooths camera
+  shake. With the ffmpeg build's ``vidstab`` filters it is two passes over the
+  source frames of the clip (detect the motion, then apply a smoothed path, with
+  an automatic zoom to hide the moving borders); without them it falls back to
+  ffmpeg's built-in single-pass ``deshake`` (weaker). It runs on the source before
+  the fit, retime and effects. Video only, not with ``freeze``. The detect pass
+  doubles the decoding of that clip, so a clip's source range is at most
+  ``STABILIZE_MAX_S`` and a document's stabilised ranges at most
+  ``STABILIZE_MAX_DOC_S`` seconds in all.
+* **Crop and a free angle.** A V clip's ``crop: {x, y, w, h}`` keeps a rectangle of
+  the SOURCE picture, as fractions of it (``x``/``y`` the top-left corner 0-1,
+  ``w``/``h`` its size ``CROP_MIN``-1; defaults 0, 0, 1, 1; the rectangle must
+  lie inside the picture). It is taken after the quarter turn and mirror
+  (``rotate``, ``flip_*``), so it is the rectangle of the picture the editor
+  shows, and BEFORE the fit: the cropped part is what is fitted, so a crop of a
+  landscape clip to a portrait window fills a portrait frame. ``angle``
+  (degrees clockwise, -180..180, 0 = none) turns the FITTED picture about its
+  centre inside the frame: what leaves the frame is cut off, and what the turn
+  uncovers is black (it is a layer turned in the frame, not a straightened
+  crop; with ``fit: blur`` the whole composed frame turns). The move (``move``)
+  zooms into the turned frame. Neither changes how long the clip lasts; both
+  are dropped when they mean no change.
+* **Chroma key is an overlay option, sound clean-up a clip option.** An overlay
+  (picture or video) may carry ``chroma: {color, similarity?, blend?}``: pixels
+  near ``color`` (a ``#RRGGBB`` colour) become transparent (ffmpeg ``chromakey``);
+  ``similarity`` (``CHROMA_SIMILARITY_MIN``-``CHROMA_SIMILARITY_MAX``, default
+  0.15) is how far from the colour still counts, ``blend`` (0-``CHROMA_BLEND_MAX``,
+  default 0.1) how softly the edge fades. It runs before the picture is scaled,
+  so the overlay's ``opacity`` and animations apply to what is left. An A clip,
+  and a V clip that plays its own sound, may carry ``denoise: true`` (ffmpeg
+  ``afftdn`` with noise tracking: it clears a steady background hiss below about
+  -35 dB, the sound of a quiet room, and mostly leaves louder noise alone) and ``loudnorm: true`` (single-pass EBU R128 to -16 LUFS,
+  true peak -1.5 dB, range 11 LU; on a short clip the measuring window is short,
+  so it is approximate). Denoise runs first, then loudness, then the clip's
+  ``gain_db`` / fades; ducking and the mix are unchanged. Both are
+  dropped when false.
 * **Overlays are a layer above the picture, not a second picture lane.**
   ``overlays`` is a top-level list (so "one V track" stays true): each one is
   a picture or a video (``asset_id``) shown from ``start_s`` to ``end_s`` over
@@ -118,7 +240,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from modules import caption_styles
+from modules import caption_styles, speed_ramp
 
 VERSION = 1
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "timeline.schema.json"
@@ -154,13 +276,17 @@ MAX_TOTAL_CLIPS = 5000
 #: them). Each is one more input and filter chain in the final pass; a video
 #: keeps a decoder open for its whole span.
 MAX_OVERLAYS = 16
+#: An overlay whose opacity goes from one visible value to another during a move rewrites its alpha
+#: plane per pixel and frame (``geq``): measured 3.6x slower for one video overlay, 13x for four, and
+#: out of memory at 4K60. A move to or from nothing is a cheap fade and is not counted.
+MAX_PARTIAL_OPACITY_MOVES = 2
 MAX_OVERLAY_VIDEOS = 4
 OVERLAY_W_MIN, OVERLAY_W_MAX = 0.05, 1.0
 MAX_TEXT = 500
 MAX_ID = 64
 MAX_DOC_BYTES = 2_000_000
 
-FITS = ("contain", "cover")
+FITS = ("contain", "cover", "blur")
 #: A clip's colour grade (ffmpeg ``eq`` brightness / contrast / saturation, each
 #: at its own range; render_spec.GRADE_* are the same numbers, a test pins them).
 #: Wider than that the picture is a flat colour: brightness +-1 is white / black,
@@ -209,9 +335,135 @@ OUTLINE_MAX = 20.0
 SHADOW_MAX = 20.0
 #: A text's box opacity when ``box_color`` is set without one.
 BOX_OPACITY_DEFAULT = 0.7
-#: Per-clip playback speed. One atempo stage covers exactly this range
-#: (render_spec.SPEED_MIN/MAX are the same numbers; a test pins them).
-SPEED_MIN, SPEED_MAX = 0.5, 2.0
+#: Per-clip playback speed (render_spec.SPEED_MIN/MAX are the same numbers; a test
+#: pins them). The sound of a clip outside 0.5-2 goes through a chain of
+#: ``atempo`` stages, each inside that range, so its pitch is kept.
+SPEED_MIN, SPEED_MAX = 0.25, 4.0
+
+#: Entrance / exit animations of a text or an overlay (render_spec.ANIM_* are
+#: the same lists; a test pins them). The name decides which filter or ASS tag
+#: is written, so it is never free text. Slides are named by the direction the
+#: item MOVES (``slide-up`` enters from below, leaves upwards).
+ANIM_OUT = ("fade", "slide-up", "slide-down", "slide-left", "slide-right", "pop")
+ANIM_IN = ANIM_OUT + ("typewriter",)
+ANIM_MIN_S, ANIM_MAX_S, ANIM_DEFAULT_S = 0.1, 2.0, 0.4
+#: How far a slide travels (a fraction of the frame's width or height) and the
+#: size a pop starts from / ends at.
+ANIM_SLIDE = 0.15
+ANIM_POP_FROM = 0.6
+#: A typewriter text writes one ASS event per step; this many per document keeps
+#: the subtitle file (and libass) small however long the document is.
+MAX_TYPEWRITER_TEXTS = 20
+
+#: Clip effects (render_spec.FILTERS / EFFECT_* are the same; a test pins them).
+#: The name picks the filter written, so it is never free text.
+FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
+UNIT_EFFECTS = ("vignette", "sharpen", "grain")      # 0..1, 0 = off
+BLUR_MAX = 30.0                                       # Gaussian sigma, output pixels
+#: A cross-fade renders its two clips in one ffmpeg run, and above 1440p that run already needs ~1.75 of
+#: the worker's 2 GiB address space (4K60, measured with ffmpeg 5.1.1 and 7.0.2). A Gaussian blur on top
+#: failed it ("Cannot allocate memory", exit 187): with 7.0.2 at every sigma tried (5, 10, 15, 20, 30), with
+#: 5.1.1 from sigma 30 (up to 20 passed) and, with 5.1.1, a blur of 5 or more together with a zoom to 2
+#: or more. So a cross-faded clip in such a frame takes no blur at all. The other effects (look, sharpen,
+#: grain, vignette, turns) passed with both builds. render_backend.LARGE_OUTPUT_PX is the same 2560x1440.
+LARGE_FRAME_PX = 2560 * 1440
+XFADE_LARGE_BLUR_MAX = 0.0
+#: The same for a move that zooms: the fitted picture is scaled up to ``zoom`` x the frame every frame, and
+#: on a cross-faded 4K60 clip a zoom of 3 failed it with ffmpeg 7.0.2 (up to 2 passed with both builds; 4
+#: passed with 5.1.1 alone, and any zoom passes on a single clip).
+XFADE_LARGE_ZOOM_MAX = 2.0
+ROTATIONS = (0, 90, 180, 270)
+_EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
+                "flip_h", "flip_v", "rotate")
+
+#: A clip's move (render_spec.MOVE_* are the same; a test pins them).
+MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
+MOVE_POINT_DEFAULTS = {"zoom": 1.0, "x": 0.5, "y": 0.5}
+_MOVE_POINT_KEYS = tuple(MOVE_POINT_DEFAULTS)
+#: What an overlay's ``move.to`` may change.
+_OVERLAY_MOVE_KEYS = ("x", "y", "w", "opacity")
+
+#: Reverse buffers the whole range at the output frame size (render_backend);
+#: 4:2:0 is 1.5 bytes per pixel. 512 MiB keeps one segment well inside the export's
+#: 2 GiB address-space limit (ffmpeg_limits.CHILD_MEM_BYTES; measured, tests pin it).
+REVERSE_MAX_BYTES = 512 * 1024 * 1024
+REVERSE_BYTES_PER_PIXEL = 1.5
+
+#: An overlay's chroma key (render_spec.CHROMA_* are the same; a test pins them).
+CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, CHROMA_SIMILARITY_DEFAULT = 0.01, 0.6, 0.15
+CHROMA_BLEND_MAX, CHROMA_BLEND_DEFAULT = 0.5, 0.1
+_CHROMA_KEYS = ("color", "similarity", "blend")
+
+#: A clip's crop rectangle (render_spec.CROP_MIN is the same number) and free angle.
+CROP_MIN = 0.05
+CROP_DEFAULTS = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+ANGLE_MAX = 180.0
+_CROP_KEYS = tuple(CROP_DEFAULTS)
+
+#: A speed curve (modules/speed_ramp.py has the arithmetic; render_spec.RAMP_* are
+#: the same numbers, a test pins them).
+RAMP_MIN_POINTS, RAMP_MAX_POINTS = 2, 6
+RAMP_MIN_GAP = 0.01
+#: Interpolated slow motion: the dense frame rate, and the budget of
+#: 1080p-equivalent frames it may make for one clip and for a whole document.
+INTERP_MAX_FPS = 120
+INTERP_MAX_FRAMES = 300
+INTERP_MAX_FRAMES_DOC = 600
+_INTERP_REF_PIXELS = 1920 * 1080
+#: ``interpolate`` is not offered for a frame bigger than 1440p (2560x1440, either way up): the
+#: motion search holds several frames at once and a 4K clip died with "Cannot allocate memory"
+#: under the worker's 2 GiB limit (measured). The count is pixels, so 1440x2560 passes too.
+INTERP_MAX_PIXELS = 2560 * 1440
+#: What a render is allowed to take, as seconds of estimated work, and the worker's wall-clock
+#: budget for it (modules/editor_export.py has the SAME numbers: ``render_timeout_s``). The cost
+#: of ``interpolate`` is an estimate in seconds, not just a frame count: a 1080p-equivalent frame
+#: took 0.39 s (117 s for the 300 a clip may make) on the loaded, shared box; 0.4 is what is
+#: charged. The ordinary render of the timeline is charged ``RENDER_PLAIN_FACTOR`` s per second
+#: of it. The estimate has to fit the timeout, or the render would be killed after the user waited.
+RENDER_TIMEOUT_PER_S = 3.0
+RENDER_TIMEOUT_BASE_S = 120.0
+RENDER_TIMEOUT_MAX_S = 5400.0
+RENDER_PLAIN_FACTOR = 1.0
+INTERP_SECONDS_PER_FRAME = 0.4
+
+
+def render_timeout_s(length_s: float) -> float:
+    """The worker's wall-clock budget for a timeline of ``length_s`` seconds
+    (``editor_export.render_timeout_s`` is this function's twin for any input)."""
+    return min(RENDER_TIMEOUT_MAX_S, RENDER_TIMEOUT_PER_S * max(0.0, length_s) + RENDER_TIMEOUT_BASE_S)
+
+
+def reverse_max_frames(width: int, height: int) -> int:
+    """The most frames a reversed range may hold in memory at this frame size."""
+    return int(REVERSE_MAX_BYTES // (width * height * REVERSE_BYTES_PER_PIXEL))
+
+
+def _range_frames(range_s: float, fps: int) -> int:
+    """Frames a source range of ``range_s`` seconds decodes (``ceil``, with the float
+    noise of ``0.1 * 30`` removed so a range that is a whole number of frames is not one more)."""
+    return math.ceil(round(range_s * fps, 6))
+
+
+def reverse_max_seconds(width: int, height: int, fps: int) -> float:
+    """The longest source range a clip may play reversed at this frame size and rate,
+    in seconds: a WHOLE number of frames (what ``validate`` allows exactly, so a range
+    of this length passes and one more millisecond past its last frame does not),
+    rounded down to a millisecond. The Command Center's ``reverseMaxSeconds`` is its twin."""
+    cap = reverse_max_frames(width, height)
+    limit = math.floor(cap / fps * 1000 + 1e-9) / 1000
+    while limit > 0 and _range_frames(limit, fps) > cap:
+        limit = round(limit - 0.001, 3)
+    return limit
+
+#: Stabilisation costs a second decode of the clip (render_spec.STABILIZE_* are the same).
+STABILIZE_MAX_S = 120.0
+STABILIZE_MAX_DOC_S = 300.0
+#: What stabilising is charged in the render's estimate (see ``RENDER_TIMEOUT_*``): the two vidstab passes
+#: plus the transform ran at 9.6 frames per second at 1080p30 and 1.75 at 4K30 (measured, shared 4-core
+#: box), so 7 frames per second of 1080p-equivalent frame (frame area / 1920x1080) is charged: a
+#: minute of 1080p30 is ~257 s, a minute of 4K30 ~1030 s. A clip that cannot finish inside the worker's
+#: timeout is refused up front (the deshake fallback is for a missing vidstab, not for a slow one).
+STABILIZE_FPS_1080P = 7.0
 
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
@@ -239,15 +491,17 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade")
+                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle", "speed_curve",
+                                  "interpolate", "stabilize") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
-_A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
+_A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
 #: Looks only a text clip has (the captions' style has none: it stays as it is).
 _TEXT_LOOK_KEYS = ("shadow", "box_color", "box_opacity")
+_ANIM_KEYS = ("anim_in", "anim_out", "anim_in_s", "anim_out_s")
 _T_CLIP_KEYS = (_T_REQUIRED + _TEXT_STYLE_KEYS + _TEXT_LOOK_KEYS
-                + ("x", "y", "anchor", "fade_in_s", "fade_out_s"))
+                + ("x", "y", "anchor", "fade_in_s", "fade_out_s") + _ANIM_KEYS)
 _TRANSITION_KEYS = ("type", "duration_s")
 _TRANSITION_ALLOWED = _TRANSITION_KEYS + ("style",)
 _CAPTIONS_KEYS = ("style", "cues")
@@ -257,7 +511,7 @@ _CAPTIONS_KEYS = ("style", "cues")
 _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y", "preset", "highlight_color")
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
 _OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
-_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity")
+_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity") + _ANIM_KEYS + ("move", "chroma")
 
 #: Defaults normalise() fills in (and the schema documents).
 TEXT_DEFAULTS = {"font": "DejaVu Sans", "size": 64, "color": "#FFFFFF",
@@ -464,7 +718,7 @@ def validate(doc: Any) -> List[str]:
             if kind == KIND_T:
                 _validate_text_clip(clip, cwhere, problems, claim)
             else:
-                _validate_media_clip(clip, kind, cwhere, fps, problems, claim)
+                _validate_media_clip(clip, kind, cwhere, fps, problems, claim, frame=(w, h))
     if v_tracks > 1:
         problems.append("timeline: only one video (V) track is supported — overlapping "
                         "video (picture-in-picture) is not available yet")
@@ -478,6 +732,39 @@ def validate(doc: Any) -> List[str]:
                         f"(got {n_audio}) — join short pieces into one file")
     if sum(len(t["clips"]) for t in counted) > MAX_TOTAL_CLIPS:
         problems.append(f"timeline: at most {MAX_TOTAL_CLIPS} clips in one timeline")
+
+    n_type = sum(1 for t in counted if t.get("kind") == KIND_T
+                 for c in t["clips"] if isinstance(c, dict) and c.get("anim_in") == "typewriter")
+    if n_type > MAX_TYPEWRITER_TEXTS:
+        problems.append(f"timeline: at most {MAX_TYPEWRITER_TEXTS} typewriter texts (got {n_type})")
+
+    if not problems and _is_int(w) and _is_int(h) and fps:
+        total_interp = sum(interpolated_frames(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
+                           for c in t["clips"] if isinstance(c, dict) and c.get("interpolate") is True)
+        if total_interp > INTERP_MAX_FRAMES_DOC:
+            problems.append(f"timeline: interpolated slow motion would make about {total_interp:.0f} frames "
+                            f"(1080p equivalent) in all; at most {INTERP_MAX_FRAMES_DOC} per timeline")
+        stab_est = sum(stabilize_seconds(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
+                       for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
+        interp_est = INTERP_SECONDS_PER_FRAME * total_interp if total_interp <= INTERP_MAX_FRAMES_DOC else 0.0
+        if interp_est + stab_est > 0:
+            length = duration_s(doc)
+            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est
+            allowed = render_timeout_s(length)
+            if work > allowed + 1e-9:
+                what = " and ".join(n for n, v in (("interpolated slow motion", interp_est),
+                                                   ("stabilising", stab_est)) if v > 0)
+                fix = " and ".join(n for n, v in (("slow less of it", interp_est),
+                                                  ("stabilise less of it", stab_est)) if v > 0)
+                problems.append(f"timeline: {what} would take about {work:.0f} s to render, but a {length:.0f} s "
+                                f"timeline is allowed {allowed:.0f} s — {fix} or make the timeline longer")
+
+    stab_s = sum(_ms(c["out_s"]) - _ms(c["in_s"]) for t in counted if t.get("kind") == KIND_V
+                 for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True
+                 and _in_range(c.get("in_s")) and _in_range(c.get("out_s")))
+    if stab_s > STABILIZE_MAX_DOC_S + 1e-9:
+        problems.append(f"timeline: at most {STABILIZE_MAX_DOC_S:g} s of video can be stabilised in all "
+                        f"(got {stab_s:.0f} s)")
 
     captions = doc.get("captions")
     if captions is not None:
@@ -522,7 +809,7 @@ def _validate_audio_track_options(track, where, problems) -> None:
                         "or set role to music)")
 
 
-def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
+def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, None)) -> None:
     keys = _V_CLIP_KEYS if kind == KIND_V else _A_CLIP_KEYS
     if not _fields(clip, keys, _MEDIA_REQUIRED, where, problems):
         return
@@ -540,20 +827,59 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
         speed = clip["speed"] if (_is_num(clip["speed"]) and SPEED_MIN <= clip["speed"] <= SPEED_MAX) else None
     if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
         problems.append(f"{where}: audio must be true or false")
+    ramp = None
+    if kind == KIND_V and "speed_curve" in clip:
+        ramp = _validate_speed_curve(clip, where, problems)
+    if kind == KIND_V and "interpolate" in clip and not isinstance(clip["interpolate"], bool):
+        problems.append(f"{where}: interpolate must be true or false")
+    if kind == KIND_V and "stabilize" in clip:
+        if not isinstance(clip["stabilize"], bool):
+            problems.append(f"{where}: stabilize must be true or false")
+        elif clip["stabilize"] and clip.get("freeze") is True:
+            problems.append(f"{where}: a frozen clip is one still frame — nothing to stabilise")
+        elif (clip["stabilize"] and _in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))
+              and _ms(clip["out_s"]) - _ms(clip["in_s"]) > STABILIZE_MAX_S + 1e-9):
+            problems.append(f"{where}: stabilising a range of more than {STABILIZE_MAX_S:g} s is not offered "
+                            "(it decodes the clip twice) — split it")
+    for k in ("denoise", "loudnorm"):
+        if k in clip and not isinstance(clip[k], bool):
+            problems.append(f"{where}: {k} must be true or false")
+    if kind == KIND_V:
+        for k in ("reverse", "freeze"):
+            if k in clip and not isinstance(clip[k], bool):
+                problems.append(f"{where}: {k} must be true or false")
+        if clip.get("freeze") is True:
+            if clip.get("reverse") is True:
+                problems.append(f"{where}: a frozen clip cannot also be reversed")
+            if _is_num(clip.get("speed", 1.0)) and clip.get("speed", 1.0) != 1.0:
+                problems.append(f"{where}: a frozen clip has no speed (it holds one frame)")
+            if clip.get("audio") is True:
+                problems.append(f"{where}: a frozen clip has no sound")
+    if kind == KIND_V and ramp is not None:
+        speed = None    # the length comes from the curve (below), not from one speed
     ins, outs = clip.get("in_s"), clip.get("out_s")
     # Range first, derived maths after: an out_s of 1e308 is already reported above, and
     # `round(length * fps)` of it is an OverflowError, not a problem (a crash that left an
     # export stuck rendering).
-    if _in_range(ins) and _in_range(outs) and speed:
+    if _in_range(ins) and _in_range(outs) and (speed or ramp is not None):
         # How long the clip lasts ON THE TIMELINE: the source range at its speed.
-        length = _ms((_ms(outs) - _ms(ins)) / speed)
+        length = (_ms(speed_ramp.out_length(speed_ramp.absolute(ramp, _ms(outs) - _ms(ins))))
+                  if ramp is not None else _ms((_ms(outs) - _ms(ins)) / speed))
         if _ms(outs) - _ms(ins) <= 0:
             problems.append(f"{where}: out_s ({outs}) must be greater than in_s ({ins})")
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
+        elif (clip.get("reverse") is True and fps and _is_int(frame[0]) and _is_int(frame[1])
+              and frame[0] > 0 and frame[1] > 0      # a zero size is the frame's own problem, not a division
+              and _range_frames(_ms(outs) - _ms(ins), fps) > reverse_max_frames(frame[0], frame[1])):
+            problems.append(f"{where}: reverse holds every frame of the range in memory — at "
+                            f"{frame[0]}x{frame[1]} and {fps} fps at most "
+                            f"{reverse_max_seconds(frame[0], frame[1], fps)} s")
         elif (_is_num(clip.get("fade_in_s", 0)) and _is_num(clip.get("fade_out_s", 0))
               and clip.get("fade_in_s", 0) + clip.get("fade_out_s", 0) > length + 1e-9):
             problems.append(f"{where}: fade_in_s + fade_out_s is longer than the clip ({length:.3f} s)")
+    if kind == KIND_V and clip.get("interpolate") is True:
+        _validate_interpolate(clip, where, frame, fps, ramp, problems)
     if kind == KIND_V:
         if "fit" in clip and clip["fit"] not in FITS:
             problems.append(f"{where}: fit must be one of {list(FITS)}")
@@ -561,6 +887,12 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
                                        f"{where} grade", problems):
             for k, (lo, hi) in GRADE_RANGES.items():
                 _num_in(clip["grade"], k, lo, hi, f"{where} grade", problems)
+        _validate_effects(clip, where, problems)
+        if "move" in clip:
+            _validate_clip_move(clip["move"], where, problems)
+        if "crop" in clip:
+            _validate_crop(clip["crop"], where, problems)
+        _num_in(clip, "angle", -ANGLE_MAX, ANGLE_MAX, where, problems)
         if "transition" in clip:
             tr = clip["transition"]
             if _fields(tr, _TRANSITION_ALLOWED, _TRANSITION_KEYS, f"{where} transition", problems):
@@ -580,6 +912,130 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
         _num_in(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems)
 
 
+def _validate_speed_curve(clip, where, problems):
+    """The ``speed_curve`` field. Returns its ``[(at, speed)]`` points when it is
+    well-formed (so the length can be worked out), else None."""
+    cw = f"{where} speed_curve"
+    curve = clip["speed_curve"]
+    if not isinstance(curve, list) or not RAMP_MIN_POINTS <= len(curve) <= RAMP_MAX_POINTS:
+        problems.append(f"{cw}: must be a list of {RAMP_MIN_POINTS} to {RAMP_MAX_POINTS} points")
+        return None
+    ok = True
+    pts = []
+    for i, p in enumerate(curve):
+        pw = f"{cw} point {i}"
+        if not _fields(p, ("at", "speed"), ("at", "speed"), pw, problems):
+            ok = False
+            continue
+        _num_in(p, "at", 0, 1, pw, problems)
+        _num_in(p, "speed", SPEED_MIN, SPEED_MAX, pw, problems)
+        if not (_is_num(p.get("at")) and 0 <= p["at"] <= 1 and _is_num(p.get("speed"))
+                and SPEED_MIN <= p["speed"] <= SPEED_MAX):
+            ok = False
+            continue
+        pts.append((p["at"], p["speed"]))
+    if not ok:
+        return None
+    if pts[0][0] != 0 or pts[-1][0] != 1:
+        problems.append(f"{cw}: the first point must be at 0 and the last at 1")
+        return None
+    if any(b[0] - a[0] < RAMP_MIN_GAP - 1e-12 for a, b in zip(pts, pts[1:])):
+        problems.append(f"{cw}: points must be at least {RAMP_MIN_GAP:g} apart, in order")
+        return None
+    if _is_num(clip.get("speed", 1.0)) and clip.get("speed", 1.0) != 1.0:
+        problems.append(f"{where}: a speed curve replaces speed (leave speed out or 1)")
+    for k in ("reverse", "freeze"):
+        if clip.get(k) is True:
+            problems.append(f"{where}: a speed curve cannot be combined with {k}")
+    return pts
+
+
+def _validate_interpolate(clip, where, frame, fps, ramp, problems) -> None:
+    if clip.get("reverse") is True or clip.get("freeze") is True:
+        problems.append(f"{where}: interpolate is for forward slow motion (not with reverse or freeze)")
+        return
+    speeds = [s for _a, s in ramp] if ramp is not None else [clip.get("speed", 1.0)]
+    if not all(_is_num(v) for v in speeds) or min(speeds) >= 1.0:
+        problems.append(f"{where}: interpolate is for slow motion (some part must play below speed 1)")
+        return
+    if not (_is_int(frame[0]) and _is_int(frame[1]) and fps and _in_range(clip.get("in_s"))
+            and _in_range(clip.get("out_s"))):
+        return
+    if frame[0] * frame[1] > INTERP_MAX_PIXELS:
+        problems.append(f"{where}: interpolate is not offered above 1440p ({frame[0]}x{frame[1]} is too big: "
+                        f"the render would run out of memory) — lower the timeline's size or leave it out")
+        return
+    probe = {"in_s": clip["in_s"], "out_s": clip["out_s"], "speed": min(speeds)}
+    cost = interpolated_frames(probe, fps, frame[0], frame[1])
+    if cost > INTERP_MAX_FRAMES:
+        problems.append(f"{where}: interpolating this range would make about {cost:.0f} frames (1080p "
+                        f"equivalent); at most {INTERP_MAX_FRAMES} per clip — shorten the range")
+
+
+def _validate_crop(crop, where, problems) -> None:
+    cwhere = f"{where} crop"
+    if not _fields(crop, _CROP_KEYS, (), cwhere, problems):
+        return
+    for k in ("x", "y"):
+        _num_in(crop, k, 0, 1, cwhere, problems)
+    for k in ("w", "h"):
+        _num_in(crop, k, CROP_MIN, 1, cwhere, problems)
+    for pos, size in (("x", "w"), ("y", "h")):
+        a, b = crop.get(pos, 0.0), crop.get(size, 1.0)
+        if _is_num(a) and _is_num(b) and a + b > 1 + 1e-9:
+            problems.append(f"{cwhere}: {pos} + {size} must not go past the picture (got {a + b:g})")
+
+
+def _validate_move_point(point, where, problems) -> None:
+    if not _fields(point, _MOVE_POINT_KEYS, (), where, problems):
+        return
+    _num_in(point, "zoom", MOVE_ZOOM_MIN, MOVE_ZOOM_MAX, where, problems)
+    for k in ("x", "y"):
+        _num_in(point, k, 0, 1, where, problems)
+
+
+def _validate_clip_move(move, where, problems) -> None:
+    if not _fields(move, ("from", "to"), ("from", "to"), f"{where} move", problems):
+        return
+    for k in ("from", "to"):
+        if k in move:
+            _validate_move_point(move[k], f"{where} move {k}", problems)
+
+
+def _validate_overlay_move(move, where, problems) -> None:
+    if not _fields(move, ("to",), ("to",), f"{where} move", problems) or "to" not in move:
+        return
+    to = move["to"]
+    twhere = f"{where} move to"
+    if not _fields(to, _OVERLAY_MOVE_KEYS, (), twhere, problems):
+        return
+    if not to:
+        problems.append(f"{twhere}: give at least one of {list(_OVERLAY_MOVE_KEYS)}")
+    for k in ("x", "y", "opacity"):
+        _num_in(to, k, 0, 1, twhere, problems)
+    _num_in(to, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, twhere, problems)
+
+
+def _validate_effects(clip, where, problems) -> None:
+    """The effect fields of a V clip (see the module docstring)."""
+    if "filter" in clip and not (isinstance(clip["filter"], str) and clip["filter"] in FILTERS):
+        problems.append(f"{where}: filter must be one of {list(FILTERS)}")
+    _num_in(clip, "filter_strength", 0, 1, where, problems)
+    if "filter_strength" in clip and "filter" not in clip:
+        problems.append(f"{where}: filter_strength needs a filter")
+    for k in UNIT_EFFECTS:
+        _num_in(clip, k, 0, 1, where, problems)
+    _num_in(clip, "blur", 0, BLUR_MAX, where, problems)
+    for k in ("flip_h", "flip_v"):
+        if k in clip and not isinstance(clip[k], bool):
+            problems.append(f"{where}: {k} must be true or false")
+    # 90.0 is accepted as 90: the TypeScript twin cannot tell them apart after JSON.parse, so the two
+    # validators agree by both taking the whole number (normalise writes it as an int).
+    if "rotate" in clip and not (_is_num(clip["rotate"]) and clip["rotate"] == int(clip["rotate"])
+                                 and int(clip["rotate"]) in ROTATIONS):
+        problems.append(f"{where}: rotate must be one of {list(ROTATIONS)}")
+
+
 def _validate_timed_text(obj, where, problems) -> None:
     for k in ("start_s", "end_s"):
         _num_in(obj, k, 0, MAX_DURATION_S, where, problems)
@@ -587,6 +1043,24 @@ def _validate_timed_text(obj, where, problems) -> None:
     if _is_num(s) and _is_num(e) and _ms(e) <= _ms(s):
         problems.append(f"{where}: end_s ({e}) must be greater than start_s ({s})")
     _text(obj, "text", where, problems)
+
+
+def _validate_anims(obj, where, problems, *, text: bool) -> None:
+    """``anim_in`` / ``anim_out`` and their durations (see the module docstring).
+    Pure shape and range; the span check needs the item's times."""
+    names = {"anim_in": ANIM_IN if text else ANIM_OUT, "anim_out": ANIM_OUT}
+    for key, allowed in names.items():
+        if key in obj and not (isinstance(obj[key], str) and obj[key] in allowed):
+            problems.append(f"{where}: {key} must be one of {list(allowed)}")
+        dur = key + "_s"
+        _num_in(obj, dur, ANIM_MIN_S, ANIM_MAX_S, where, problems)
+        if dur in obj and key not in obj:
+            problems.append(f"{where}: {dur} needs {key}")
+    s, e = obj.get("start_s"), obj.get("end_s")
+    spans = [obj.get(k + "_s", ANIM_DEFAULT_S) for k in ("anim_in", "anim_out") if k in obj]
+    if spans and all(_is_num(v) for v in spans) and _in_range(s) and _in_range(e) and e > s \
+            and sum(spans) > _ms(e) - _ms(s) + 1e-9:
+        problems.append(f"{where}: the animations ({sum(spans):g} s) are longer than the item is shown")
 
 
 def _validate_text_clip(clip, where, problems, claim) -> None:
@@ -608,10 +1082,34 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
         problems.append(f"{where}: anchor must be one of {list(ANCHORS)}")
     for k in ("fade_in_s", "fade_out_s"):
         _num_in(clip, k, 0, MAX_DURATION_S, where, problems)
+    _validate_anims(clip, where, problems, text=True)
+    for anim, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
+        if anim in clip and _is_num(clip.get(fade)) and clip[fade] > 0:
+            problems.append(f"{where}: {anim} and {fade} both set — use one (a fade is an animation)")
     s, e = clip.get("start_s"), clip.get("end_s")
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
+    # An animation on one side and a plain fade on the other: the fade becomes an animation too, so a
+    # long entrance would be cut short by the exit that starts at end_s - fade_out_s.
+    if ("anim_in" in clip) != ("anim_out" in clip):
+        mixed = [clip.get(k + "_s", ANIM_DEFAULT_S) for k in ("anim_in", "anim_out") if k in clip]
+        side = "fade_out_s" if "anim_in" in clip else "fade_in_s"
+        other = clip.get(side, 0)
+        if (all(_is_num(v) for v in (s, e, other, *mixed)) and e > s and other > 0
+                and sum(mixed) + other > _ms(e) - _ms(s) + 1e-9):
+            problems.append(f"{where}: the animation ({sum(mixed):g} s) and {side} ({other:g} s) "
+                            f"are longer than the text is shown")
+
+
+def _validate_chroma(chroma, where, problems) -> None:
+    cwhere = f"{where} chroma"
+    if not _fields(chroma, _CHROMA_KEYS, ("color",), cwhere, problems):
+        return
+    if "color" in chroma and not (isinstance(chroma["color"], str) and _HEX_RE.fullmatch(chroma["color"])):
+        problems.append(f"{cwhere}: color must be a #RRGGBB colour")
+    _num_in(chroma, "similarity", CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, cwhere, problems)
+    _num_in(chroma, "blend", 0, CHROMA_BLEND_MAX, cwhere, problems)
 
 
 def _validate_overlays(overlays, fps, problems, claim) -> None:
@@ -643,6 +1141,25 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
         for k in ("x", "y", "opacity"):
             _num_in(ov, k, 0, 1, where, problems)
         _num_in(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems)
+        _validate_anims(ov, where, problems, text=False)
+        if "move" in ov:
+            _validate_overlay_move(ov["move"], where, problems)
+        if "chroma" in ov:
+            _validate_chroma(ov["chroma"], where, problems)
+    slow = sum(1 for ov in overlays if _partial_opacity_move(ov))
+    if slow > MAX_PARTIAL_OPACITY_MOVES:
+        problems.append(f"overlays: at most {MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible "
+                        f"values during a move (got {slow}) — fade to or from 0, or keep the opacity")
+
+
+def _partial_opacity_move(ov) -> bool:
+    """True for an overlay whose ``move.to.opacity`` is a different visible value from its ``opacity``."""
+    if not isinstance(ov, dict) or not isinstance(ov.get("move"), dict):
+        return False
+    to = ov["move"].get("to")
+    start = ov.get("opacity", 1.0)
+    end = to.get("opacity") if isinstance(to, dict) else None
+    return _is_num(start) and _is_num(end) and start > 0 and end > 0 and start != end
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -681,12 +1198,54 @@ def clip_speed(clip: dict) -> float:
     return float(v) if _is_num(v) and v > 0 else 1.0
 
 
+def clip_ramp_points(clip: dict) -> Optional[List[Tuple[float, float]]]:
+    """A clip's speed curve as ``(source seconds, speed)`` points, or None."""
+    curve = clip.get("speed_curve")
+    if not curve:
+        return None
+    return speed_ramp.absolute([(p["at"], p["speed"]) for p in curve],
+                               _ms(clip["out_s"]) - _ms(clip["in_s"]))
+
+
+def clip_length_s(clip: dict) -> float:
+    """How long a media clip lasts on the timeline: its source range at its speed,
+    or at its speed curve."""
+    pts = clip_ramp_points(clip)
+    if pts is not None:
+        return _ms(speed_ramp.out_length(pts))
+    return _ms((_ms(clip["out_s"]) - _ms(clip["in_s"])) / clip_speed(clip))
+
+
+def clip_min_speed(clip: dict) -> float:
+    """The slowest the clip ever plays."""
+    curve = clip.get("speed_curve")
+    if curve:
+        return min(p["speed"] for p in curve)
+    return clip_speed(clip)
+
+
+def stabilize_seconds(clip: dict, fps: int, width: int, height: int) -> float:
+    """The estimated seconds of render work stabilising this clip's range costs (0 when the range
+    is not a usable number): frames x frame area / 1080p, at ``STABILIZE_FPS_1080P``."""
+    if not (_in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))):
+        return 0.0
+    frames = max(0.0, _ms(clip["out_s"]) - _ms(clip["in_s"])) * fps
+    return frames * width * height / _INTERP_REF_PIXELS / STABILIZE_FPS_1080P
+
+
+def interpolated_frames(clip: dict, fps: int, width: int, height: int) -> float:
+    """The 1080p-equivalent frames ``interpolate`` has to make for this clip."""
+    rate = min(INTERP_MAX_FPS, math.ceil(fps / clip_min_speed(clip)))
+    frames = math.ceil((_ms(clip["out_s"]) - _ms(clip["in_s"])) * rate)
+    return frames * width * height / _INTERP_REF_PIXELS
+
+
 def clip_end_s(clip: dict) -> float:
     """Where a clip ends on the timeline, in seconds (ms-rounded): a text's
     ``end_s``, or a media clip's start plus its source range at its speed."""
     if "end_s" in clip:
         return _ms(clip["end_s"])
-    return _ms(_ms(clip["start_s"]) + (_ms(clip["out_s"]) - _ms(clip["in_s"])) / clip_speed(clip))
+    return _ms(_ms(clip["start_s"]) + clip_length_s(clip))
 
 
 def _spans(doc: dict):
@@ -885,12 +1444,39 @@ def _crossfade_problems(track: dict) -> List[str]:
     return problems
 
 
+def _large_frame_crossfade_problems(doc: dict, track: dict) -> List[str]:
+    """Effects a cross-fade on a frame above 1440p cannot afford (see ``LARGE_FRAME_PX``)."""
+    w, h = doc.get("width"), doc.get("height")
+    if not (_is_int(w) and _is_int(h) and w * h > LARGE_FRAME_PX):
+        return []
+    problems, seen = [], set()
+    for prev, clip, _d in crossfades(track):
+        for c in (prev, clip):
+            cid = str(c["id"])
+            blur = c.get("blur")
+            if cid not in seen and _is_num(blur) and blur > XFADE_LARGE_BLUR_MAX:
+                seen.add(cid)
+                problems.append(f"{_where(track, c)}: blur is not offered on a cross-faded clip in a frame above "
+                                f"1440p ({w}x{h}) — the render would run out of memory; remove the blur, the "
+                                f"cross-fade or lower the frame size")
+            move = c.get("move")
+            zooms = [p.get("zoom", 1.0) for p in (move.get("from"), move.get("to")) if isinstance(p, dict)] \
+                if isinstance(move, dict) else []
+            if cid + ":zoom" not in seen and any(_is_num(z) and z > XFADE_LARGE_ZOOM_MAX for z in zooms):
+                seen.add(cid + ":zoom")
+                problems.append(f"{_where(track, c)}: a zoom above {XFADE_LARGE_ZOOM_MAX:g} is not offered on a "
+                                f"cross-faded clip in a frame above 1440p ({w}x{h}) — the render would run out "
+                                f"of memory; lower the zoom, remove the cross-fade or lower the frame size")
+    return problems
+
+
 def _transition_problems(doc: dict) -> List[str]:
     problems = []
     for track in doc.get("tracks") or []:
         if track.get("kind") != KIND_V:
             continue
         problems.extend(_crossfade_problems(track))
+        problems.extend(_large_frame_crossfade_problems(doc, track))
         fades = effective_fades(track)
         for clip in track.get("clips") or []:
             fi, fo = fades[str(clip["id"])]
@@ -936,6 +1522,7 @@ def normalise(doc: dict) -> dict:
                         del c["shadow"]
                 if "box_color" in c:
                     c["box_opacity"] = _ms(c.get("box_opacity", BOX_OPACITY_DEFAULT))
+                _normalise_anims(c)
             else:
                 defaults = V_DEFAULTS if kind == KIND_V else A_DEFAULTS
                 c = {**copy.deepcopy(defaults), **copy.deepcopy(clip)}
@@ -952,8 +1539,32 @@ def normalise(doc: dict) -> dict:
                         c["grade"] = {k: _ms(c["grade"][k]) for k in GRADE_RANGES}
                         if c["grade"] == GRADE_NEUTRAL:
                             del c["grade"]   # no change: the clip is the one it was without it
+                    _normalise_effects(c)
+                    for k in ("reverse", "freeze", "denoise", "loudnorm"):
+                        if c.get(k) is False:
+                            del c[k]
+                    if "speed_curve" in c:
+                        c["speed_curve"] = [{"at": _ms(p["at"]), "speed": _ms(p["speed"])} for p in c["speed_curve"]]
+                    for k in ("interpolate", "stabilize"):
+                        if c.get(k) is False:
+                            del c[k]
+                    if "crop" in c:
+                        c["crop"] = {k: _ms({**CROP_DEFAULTS, **c["crop"]}[k]) for k in CROP_DEFAULTS}
+                        if c["crop"] == CROP_DEFAULTS:
+                            del c["crop"]   # the whole picture: the clip it was without it
+                    if "angle" in c:
+                        c["angle"] = _ms(c["angle"])
+                        if c["angle"] == 0:
+                            del c["angle"]
+                    if "move" in c:
+                        c["move"] = {k: {**MOVE_POINT_DEFAULTS, **c["move"][k]} for k in ("from", "to")}
+                        for k in ("from", "to"):
+                            c["move"][k] = {n: _ms(v) for n, v in c["move"][k].items()}
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
+                    for k in ("denoise", "loudnorm"):
+                        if c.get(k) is False:
+                            del c[k]
             t["clips"].append(c)
         t["clips"].sort(key=lambda c: (c["start_s"], c["id"]))
         out["tracks"].append(t)
@@ -980,8 +1591,48 @@ def normalise(doc: dict) -> dict:
             o["asset_id"] = o["asset_id"].lower()
             for k in ("start_s", "end_s", "x", "y", "w", "opacity"):
                 o[k] = _ms(o[k])
+            _normalise_anims(o)
+            if "move" in o:
+                o["move"] = {"to": {k: _ms(v) for k, v in o["move"]["to"].items()}}
+            if "chroma" in o:
+                ch = o["chroma"]
+                o["chroma"] = {"color": ch["color"].upper(),
+                               "similarity": _ms(ch.get("similarity", CHROMA_SIMILARITY_DEFAULT)),
+                               "blend": _ms(ch.get("blend", CHROMA_BLEND_DEFAULT))}
             out["overlays"].append(o)
     return out
+
+
+def _normalise_effects(c: dict) -> None:
+    """Round the effect numbers and drop every one that means "off", so a clip
+    that says "no effect" is the clip that never mentioned one."""
+    for k in (*UNIT_EFFECTS, "blur", "filter_strength"):
+        if k in c:
+            c[k] = _ms(c[k])
+    for k in (*UNIT_EFFECTS, "blur"):
+        if c.get(k) == 0:
+            del c[k]
+    if "filter" in c:
+        if c.get("filter_strength", 1.0) == 0:
+            del c["filter"]
+            c.pop("filter_strength", None)
+        elif c.get("filter_strength") == 1.0:
+            del c["filter_strength"]
+    for k in ("flip_h", "flip_v"):
+        if c.get(k) is False:
+            del c[k]
+    if "rotate" in c:
+        c["rotate"] = int(c["rotate"])
+    if c.get("rotate") == 0:
+        del c["rotate"]
+
+
+def _normalise_anims(item: dict) -> None:
+    """Fill the duration of each animation that is named (the item is valid:
+    a duration without its name was refused)."""
+    for key in ("anim_in", "anim_out"):
+        if key in item:
+            item[key + "_s"] = _ms(item.get(key + "_s", ANIM_DEFAULT_S))
 
 
 def _reject_constant(name):
@@ -1025,7 +1676,8 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
     The timeline's length and every other clip are unchanged; for a video,
     a split on the frame grid plays the same source frames as before. Both
     halves keep the clip's speed and sound: ``at_s`` is timeline time, so the
-    source cut is ``in_s + (at_s - start_s) * speed``."""
+    source cut is ``in_s + (at_s - start_s) * speed`` — and ``out_s - (at_s -
+    start_s) * speed`` for a reversed clip, which plays its range from the end."""
     out = copy.deepcopy(doc)
     for track in out.get("tracks") or []:
         for i, clip in enumerate(track.get("clips") or []):
@@ -1033,18 +1685,42 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
                 continue
             if track.get("kind") == KIND_T:
                 raise TimelineError([f"clip {clip_id!r} is text — change its times instead"])
+            if clip.get("speed_curve"):
+                raise TimelineError([f"clip {clip_id!r} has a speed curve — remove it before splitting"])
             start, end = _ms(clip["start_s"]), clip_end_s(clip)
             at = _ms(at_s)
             if not start < at < end:
                 raise TimelineError([f"split point {at} s is not inside clip {clip_id!r} "
                                      f"({start}-{end} s)"])
-            cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
+            if clip.get("reverse"):
+                cut = _ms(_ms(clip["out_s"]) - (at - start) * clip_speed(clip))
+            else:
+                cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
             if not _ms(clip["in_s"]) < cut < _ms(clip["out_s"]):
                 raise TimelineError([f"split point {at} s is too close to an end of clip {clip_id!r}"])
             second = copy.deepcopy(clip)
-            second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
+            if "move" in clip:
+                # The move goes on across the cut: the first half ends where the second
+                # begins, at the window the whole move had reached.
+                frac = (at - start) / (end - start)
+                a = {**MOVE_POINT_DEFAULTS, **clip["move"]["from"]}
+                b = {**MOVE_POINT_DEFAULTS, **clip["move"]["to"]}
+                mid = {k: _ms(a[k] + (b[k] - a[k]) * frac) for k in MOVE_POINT_DEFAULTS}
+                clip["move"] = {"from": clip["move"]["from"], "to": mid}
+                second["move"] = {"from": dict(mid), "to": second["move"]["to"]}
+            if clip.get("reverse"):
+                # Played backwards, the part that comes first on the timeline is the LATER
+                # part of the source range.
+                second.update(id=new_id, start_s=at, out_s=cut, fade_in_s=0.0)
+                clip.update(in_s=cut, fade_out_s=0.0)
+            elif clip.get("freeze"):
+                # Both halves hold the same frame; only how long differs.
+                second.update(id=new_id, start_s=at, out_s=_ms(_ms(clip["in_s"]) + (end - at)), fade_in_s=0.0)
+                clip.update(out_s=cut, fade_out_s=0.0)
+            else:
+                second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
+                clip.update(out_s=cut, fade_out_s=0.0)
             second.pop("transition", None)
-            clip.update(out_s=cut, fade_out_s=0.0)
             track["clips"].insert(i + 1, second)
             return out
     raise TimelineError([f"no clip {clip_id!r} in this timeline"])
@@ -1103,7 +1779,16 @@ def resolve_assets(doc: dict, resolver: AssetResolver) -> Dict[str, ResolvedAsse
                 problems.append(f"{where}: asset {asset.asset_id} has no local file to render from")
                 continue
             dur = asset.duration_s
-            if asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["out_s"]) > _ms(dur) + 0.001:
+            if asset.kind == ASSET_IMAGE and (clip.get("reverse") or clip.get("freeze")):
+                problems.append(f"{where}: reverse and freeze are for video, not a picture")
+            if asset.kind == ASSET_IMAGE and clip.get("stabilize"):
+                problems.append(f"{where}: stabilize is for video, not a picture")
+            if clip.get("freeze"):
+                # A frozen clip only needs its frame to exist; its length is out_s - in_s.
+                if asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["in_s"]) >= _ms(dur):
+                    problems.append(f"{where}: in_s {clip['in_s']} is past the end of asset "
+                                    f"{asset.asset_id} ({dur} s)")
+            elif asset.kind != ASSET_IMAGE and dur is not None and _ms(clip["out_s"]) > _ms(dur) + 0.001:
                 problems.append(f"{where}: out_s {clip['out_s']} is past the end of asset "
                                 f"{asset.asset_id} ({dur} s)")
     videos = 0

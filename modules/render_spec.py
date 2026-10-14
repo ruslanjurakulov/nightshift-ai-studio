@@ -94,7 +94,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
-from modules import caption_styles, ffmpeg_limits
+from modules import caption_styles, ffmpeg_limits, speed_ramp
 
 #: The ONE quality encode of a render (the final pass). These are libx264's own
 #: defaults — what this backend always encoded with implicitly — spelled out so
@@ -181,7 +181,8 @@ _KINDS = (KIND_VIDEO, KIND_IMAGE, KIND_COLOR)
 
 FIT_CONTAIN = "contain"   # letter/pillar-box inside the frame (the original behaviour)
 FIT_COVER = "cover"       # fill the frame, cropping the overflow
-FITS = (FIT_CONTAIN, FIT_COVER)
+FIT_BLUR = "blur"         # the whole picture over a blurred, enlarged copy of itself
+FITS = (FIT_CONTAIN, FIT_COVER, FIT_BLUR)
 
 #: A segment's colour grade, ffmpeg ``eq`` (brightness added to the luma, contrast
 #: around mid-grey, saturation on the chroma); the neutral triple is "no change".
@@ -216,15 +217,48 @@ SHADOW_MAX = 20.0
 BOX_OPACITY_DEFAULT = 0.7
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
+#: Entrance / exit animations (modules/timeline.py holds the same lists and
+#: numbers, a test pins them). The name picks the ASS tags or filter written, so
+#: only a name on the list ever reaches either.
+ANIM_OUT = ("fade", "slide-up", "slide-down", "slide-left", "slide-right", "pop")
+ANIM_IN = ANIM_OUT + ("typewriter",)
+ANIM_MIN_S, ANIM_MAX_S, ANIM_DEFAULT_S = 0.1, 2.0, 0.4
+ANIM_SLIDE = 0.15
+ANIM_POP_FROM = 0.6
+
+#: Clip effects (modules/timeline.py holds the same lists and numbers; a test pins
+#: them). Only a name on FILTERS and formatted numbers reach a filter graph.
+FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
+BLUR_MAX = 30.0
+ROTATIONS = (0, 90, 180, 270)
+
+#: A speed curve / interpolated slow motion (modules/timeline.py holds the same
+#: numbers; a test pins them).
+RAMP_MIN_POINTS, RAMP_MAX_POINTS = 2, 6
+INTERP_MAX_FPS = 120
+
+#: Stabilisation budget (modules/timeline.py holds the same numbers).
+STABILIZE_MAX_S = 120.0
+
+#: A clip's crop rectangle / free angle (modules/timeline.py holds the same numbers).
+CROP_MIN = 0.05
+ANGLE_MAX = 180.0
+
+#: An overlay's chroma key (modules/timeline.py holds the same numbers).
+CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, CHROMA_SIMILARITY_DEFAULT = 0.01, 0.6, 0.15
+CHROMA_BLEND_MAX, CHROMA_BLEND_DEFAULT = 0.5, 0.1
+
+#: A clip's move: zoom window range (modules/timeline.py holds the same numbers).
+MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
+
 #: Text overlay anchors: which point of the text box sits at (x, y). The ASS
 #: \an numpad code for each is in ass_captions.ANCHOR_AN.
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
            "bottom-left", "bottom", "bottom-right")
 
-#: Playback speed bounds. ffmpeg's atempo takes 0.5-100 per stage, but below
-#: 0.5 it needs chained stages and above 2 speech stops being followable;
-#: modules/timeline.py offers exactly this range.
-SPEED_MIN, SPEED_MAX = 0.5, 2.0
+#: Playback speed bounds (modules/timeline.py offers exactly this range). A sound
+#: outside 0.5-2 goes through chained ``atempo`` stages, each within it.
+SPEED_MIN, SPEED_MAX = 0.25, 4.0
 
 
 def _speed_ok(v) -> bool:
@@ -245,6 +279,231 @@ def _put_if(d: dict, key: str, value, default) -> None:
     # is exactly what it always was (it is compared and cached elsewhere).
     if value != default:
         d[key] = value
+
+
+def _anims_to_dict(obj, d: dict) -> None:
+    """The animation fields of a TextOverlay / PictureOverlay, only when set."""
+    for key in ("anim_in", "anim_out"):
+        if getattr(obj, key) is not None:
+            d[key] = getattr(obj, key)
+            d[key + "_s"] = getattr(obj, key + "_s")
+
+
+def _anims_from_dict(d: dict) -> dict:
+    out = {}
+    for key in ("anim_in", "anim_out"):
+        if d.get(key) is not None:
+            out[key] = str(d[key])
+            out[key + "_s"] = float(d[key + "_s"] if d.get(key + "_s") is not None else ANIM_DEFAULT_S)
+    return out
+
+
+def _anim_problems(name: str, o, allowed_in: Sequence[str], span: Tuple[float, float]) -> List[str]:
+    problems: List[str] = []
+    total = 0.0
+    for key, allowed in (("anim_in", allowed_in), ("anim_out", ANIM_OUT)):
+        v = getattr(o, key)
+        dur = getattr(o, key + "_s")
+        if v is None:
+            continue
+        if v not in allowed:
+            problems.append(f"{name} has unknown {key} {v!r}")
+        if not (_finite(dur) and ANIM_MIN_S <= dur <= ANIM_MAX_S):
+            problems.append(f"{name} {key}_s must be from {ANIM_MIN_S:g} to {ANIM_MAX_S:g}")
+        else:
+            total += dur
+    if total:
+        # The OTHER side's plain fade is an animation too (a fade-out becomes an exit at e - fade_out_s,
+        # cutting a long entrance short): it counts against the time the item is shown.
+        for key, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
+            f = getattr(o, fade, 0.0)
+            if getattr(o, key) is None and _finite(f) and f > 0:
+                total += f
+    if total and all(_finite(v) for v in span) and total > span[1] - span[0] + 1e-9:
+        problems.append(f"{name} animations and fades are longer than it is shown")
+    return problems
+
+
+@dataclass(frozen=True)
+class ClipEffects:
+    """A clip's look beyond the colour grade (see modules/timeline.py): a named
+    colour ``filter`` at ``filter_strength``, ``vignette`` / ``sharpen`` /
+    ``grain`` (0-1), ``blur`` (a sigma in output pixels), mirror and a turn in
+    quarter steps. Every default is "off"; a segment without effects has
+    ``effects=None`` and renders the command it always did."""
+    filter: Optional[str] = None
+    filter_strength: float = 1.0
+    vignette: float = 0.0
+    blur: float = 0.0
+    sharpen: float = 0.0
+    grain: float = 0.0
+    flip_h: bool = False
+    flip_v: bool = False
+    rotate: int = 0
+
+    @property
+    def active(self) -> bool:
+        return self != ClipEffects()
+
+    @property
+    def geometric(self) -> bool:
+        return bool(self.flip_h or self.flip_v or self.rotate)
+
+    def to_dict(self) -> dict:
+        d: dict = {}
+        base = ClipEffects()
+        for key in ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
+                    "flip_h", "flip_v", "rotate"):
+            _put_if(d, key, getattr(self, key), getattr(base, key))
+        return d
+
+    @staticmethod
+    def from_dict(d: dict) -> "ClipEffects":
+        base = ClipEffects()
+        return ClipEffects(
+            filter=(str(d["filter"]) if d.get("filter") is not None else None),
+            filter_strength=float(d["filter_strength"] if d.get("filter_strength") is not None
+                                  else base.filter_strength),
+            vignette=float(d.get("vignette") or 0.0), blur=float(d.get("blur") or 0.0),
+            sharpen=float(d.get("sharpen") or 0.0), grain=float(d.get("grain") or 0.0),
+            flip_h=bool(d.get("flip_h", False)), flip_v=bool(d.get("flip_v", False)),
+            rotate=int(d.get("rotate") or 0),
+        )
+
+
+@dataclass(frozen=True)
+class ClipMove:
+    """Two keyframes of a window onto the fitted picture: ``zoom`` (1 = all of
+    it) and the window's centre (fractions of the picture), from the clip's
+    first frame to its last, linear in frames. Equal points = no motion."""
+    from_zoom: float = 1.0
+    from_x: float = 0.5
+    from_y: float = 0.5
+    to_zoom: float = 1.0
+    to_x: float = 0.5
+    to_y: float = 0.5
+
+    @property
+    def still(self) -> bool:
+        """True when the window never moves; at zoom 1 centred it is the whole picture."""
+        return (self.from_zoom, self.from_x, self.from_y) == (self.to_zoom, self.to_x, self.to_y)
+
+    @property
+    def neutral(self) -> bool:
+        return self.still and self.from_zoom == 1.0
+
+    def to_dict(self) -> dict:
+        return {"from": {"zoom": self.from_zoom, "x": self.from_x, "y": self.from_y},
+                "to": {"zoom": self.to_zoom, "x": self.to_x, "y": self.to_y}}
+
+    @staticmethod
+    def from_dict(d: dict) -> "ClipMove":
+        def pt(key):
+            p = d.get(key) or {}
+            return (float(p.get("zoom", 1.0)), float(p.get("x", 0.5)), float(p.get("y", 0.5)))
+        a, b = pt("from"), pt("to")
+        return ClipMove(*a, *b)
+
+
+def _move_problems(name: str, mv: ClipMove) -> List[str]:
+    problems: List[str] = []
+    for label, zoom, x, y in (("from", mv.from_zoom, mv.from_x, mv.from_y),
+                              ("to", mv.to_zoom, mv.to_x, mv.to_y)):
+        if not (_finite(zoom) and MOVE_ZOOM_MIN <= zoom <= MOVE_ZOOM_MAX):
+            problems.append(f"{name} move {label} zoom must be from {MOVE_ZOOM_MIN:g} to {MOVE_ZOOM_MAX:g}")
+        if not (_finite(x) and _finite(y) and 0 <= x <= 1 and 0 <= y <= 1):
+            problems.append(f"{name} move {label} centre must be fractions of the picture (0..1)")
+    return problems
+
+
+def _effects_problems(name: str, fx: ClipEffects) -> List[str]:
+    problems: List[str] = []
+    if fx.filter is not None and fx.filter not in FILTERS:
+        problems.append(f"{name} has unknown filter {fx.filter!r}")
+    for key in ("filter_strength", "vignette", "sharpen", "grain"):
+        v = getattr(fx, key)
+        if not (_finite(v) and 0 <= v <= 1):
+            problems.append(f"{name} {key} must be from 0 to 1 (got {v})")
+    if not (_finite(fx.blur) and 0 <= fx.blur <= BLUR_MAX):
+        problems.append(f"{name} blur must be from 0 to {BLUR_MAX:g} (got {fx.blur})")
+    for key in ("flip_h", "flip_v"):
+        if not isinstance(getattr(fx, key), bool):
+            problems.append(f"{name} {key} must be true or false")
+    if not (isinstance(fx.rotate, int) and not isinstance(fx.rotate, bool) and fx.rotate in ROTATIONS):
+        problems.append(f"{name} rotate must be one of {list(ROTATIONS)}")
+    return problems
+
+
+@dataclass(frozen=True)
+class SpeedCurve:
+    """A clip's speed ramp (modules/speed_ramp.py): ``points`` are ``(at, speed)``
+    with ``at`` a fraction 0-1 of the source range, which is ``range_s`` long."""
+    points: Tuple[Tuple[float, float], ...]
+    range_s: float
+
+    def absolute(self) -> List[Tuple[float, float]]:
+        return speed_ramp.absolute(self.points, self.range_s)
+
+    def to_dict(self) -> dict:
+        return {"points": [[a, s] for a, s in self.points], "range_s": self.range_s}
+
+    @staticmethod
+    def from_dict(d: dict) -> "SpeedCurve":
+        return SpeedCurve(tuple((float(a), float(s)) for a, s in (d.get("points") or [])),
+                          float(d.get("range_s") or 0.0))
+
+
+def _curve_problems(name: str, c: SpeedCurve) -> List[str]:
+    pts = c.points
+    if not (RAMP_MIN_POINTS <= len(pts) <= RAMP_MAX_POINTS):
+        return [f"{name} speed curve needs {RAMP_MIN_POINTS} to {RAMP_MAX_POINTS} points"]
+    if not all(len(p) == 2 and all(_finite(v) for v in p) for p in pts) or not (_finite(c.range_s) and c.range_s > 0):
+        return [f"{name} speed curve has a non-finite number"]
+    problems: List[str] = []
+    if pts[0][0] != 0 or pts[-1][0] != 1 or any(b[0] <= a[0] for a, b in zip(pts, pts[1:])):
+        problems.append(f"{name} speed curve must run from 0 to 1 in increasing order")
+    if not all(SPEED_MIN <= s <= SPEED_MAX for _a, s in pts):
+        problems.append(f"{name} speed curve speeds must be from {SPEED_MIN:g} to {SPEED_MAX:g}")
+    return problems
+
+
+def interp_fps(min_speed: float, fps: int) -> int:
+    """The frame rate slow motion is interpolated up to: enough that every output
+    frame of the slowest part is a distinct source-rate frame, at most INTERP_MAX_FPS."""
+    return int(min(INTERP_MAX_FPS, math.ceil(int(fps) / float(min_speed))))
+
+
+@dataclass(frozen=True)
+class ClipCrop:
+    """A rectangle of the source picture kept before the fit, as fractions of it
+    (taken after the turn and mirror). The whole picture is ``(0, 0, 1, 1)``."""
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 1.0
+    h: float = 1.0
+
+    def to_dict(self) -> dict:
+        return {"x": self.x, "y": self.y, "w": self.w, "h": self.h}
+
+    @staticmethod
+    def from_dict(d: dict) -> "ClipCrop":
+        return ClipCrop(float(d.get("x", 0.0)), float(d.get("y", 0.0)), float(d.get("w", 1.0)),
+                        float(d.get("h", 1.0)))
+
+
+def _crop_problems(name: str, c: ClipCrop) -> List[str]:
+    problems: List[str] = []
+    for key in ("x", "y"):
+        v = getattr(c, key)
+        if not (_finite(v) and 0 <= v <= 1):
+            problems.append(f"{name} crop {key} must be from 0 to 1")
+    for key in ("w", "h"):
+        v = getattr(c, key)
+        if not (_finite(v) and CROP_MIN <= v <= 1):
+            problems.append(f"{name} crop {key} must be from {CROP_MIN:g} to 1")
+    if not problems and (c.x + c.w > 1 + 1e-9 or c.y + c.h > 1 + 1e-9):
+        problems.append(f"{name} crop goes past the picture")
+    return problems
 
 
 @dataclass(frozen=True)
@@ -285,6 +544,24 @@ class Segment:
     brightness: float = 0.0
     contrast: float = 1.0
     saturation: float = 1.0
+    #: Filters, vignette, blur, mirror, turn (None = none).
+    effects: Optional[ClipEffects] = None
+    #: A Ken Burns style move over the fitted picture (None = none; a still
+    #: then keeps its automatic slow zoom).
+    move: Optional[ClipMove] = None
+    #: Play the source range backwards / hold its first frame (video only).
+    reverse: bool = False
+    freeze: bool = False
+    #: Keep a rectangle of the source (None = all of it) / turn the fitted
+    #: picture by this many degrees clockwise about its centre (0 = no turn).
+    crop: Optional[ClipCrop] = None
+    angle: float = 0.0
+    #: A speed ramp instead of one ``speed`` (``speed`` is then 1) and smoother
+    #: slow motion by motion-compensated interpolation (only below speed 1).
+    curve: Optional[SpeedCurve] = None
+    interpolate: bool = False
+    #: Smooth camera shake (vidstab, two passes, else deshake). Video only.
+    stabilize: bool = False
 
     @property
     def graded(self) -> bool:
@@ -304,6 +581,19 @@ class Segment:
         _put_if(d, "brightness", self.brightness, 0.0)
         _put_if(d, "contrast", self.contrast, 1.0)
         _put_if(d, "saturation", self.saturation, 1.0)
+        if self.effects is not None:
+            d["effects"] = self.effects.to_dict()
+        if self.move is not None:
+            d["move"] = self.move.to_dict()
+        _put_if(d, "reverse", self.reverse, False)
+        _put_if(d, "freeze", self.freeze, False)
+        if self.crop is not None:
+            d["crop"] = self.crop.to_dict()
+        _put_if(d, "angle", self.angle, 0.0)
+        if self.curve is not None:
+            d["curve"] = self.curve.to_dict()
+        _put_if(d, "interpolate", self.interpolate, False)
+        _put_if(d, "stabilize", self.stabilize, False)
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -327,6 +617,13 @@ class Segment:
             brightness=float(d.get("brightness") or 0.0),
             contrast=float(1.0 if d.get("contrast") is None else d["contrast"]),
             saturation=float(1.0 if d.get("saturation") is None else d["saturation"]),
+            effects=(ClipEffects.from_dict(d["effects"]) if isinstance(d.get("effects"), dict) else None),
+            move=(ClipMove.from_dict(d["move"]) if isinstance(d.get("move"), dict) else None),
+            reverse=bool(d.get("reverse", False)), freeze=bool(d.get("freeze", False)),
+            crop=(ClipCrop.from_dict(d["crop"]) if isinstance(d.get("crop"), dict) else None),
+            angle=float(d.get("angle") or 0.0),
+            curve=(SpeedCurve.from_dict(d["curve"]) if isinstance(d.get("curve"), dict) else None),
+            interpolate=bool(d.get("interpolate", False)), stabilize=bool(d.get("stabilize", False)),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -361,10 +658,21 @@ class AudioTrack:
     duck_attack_s: float = 0.0
     duck_release_s: float = 0.0
     duck_spans: Tuple[Tuple[float, float], ...] = ()
+    #: Play the trimmed source backwards (the clip's own sound under ``reverse``).
+    reverse: bool = False
+    #: Clean-up before the gain: FFT noise reduction, then single-pass loudness
+    #: normalisation (see audio_track_filter).
+    denoise: bool = False
+    loudnorm: bool = False
+    #: A speed ramp's sound: the trimmed source is cut into ``len(tempos)`` equal
+    #: slices, slice ``j`` played at ``tempos[j]`` (``speed`` is then 1).
+    tempos: Tuple[float, ...] = ()
 
     @property
     def output_s(self) -> float:
         """How long the track sounds in the output."""
+        if self.tempos:
+            return sum((self.duration_s / len(self.tempos)) / t for t in self.tempos)
         return self.duration_s / self.speed if self.speed else self.duration_s
 
     def to_dict(self) -> dict:
@@ -373,6 +681,11 @@ class AudioTrack:
              "fade_out_s": self.fade_out_s}
         _put_if(d, "speed", self.speed, 1.0)
         _put_if(d, "crossfade_s", self.crossfade_s, 0.0)
+        _put_if(d, "reverse", self.reverse, False)
+        _put_if(d, "denoise", self.denoise, False)
+        _put_if(d, "loudnorm", self.loudnorm, False)
+        if self.tempos:
+            d["tempos"] = list(self.tempos)
         if self.duck_spans:
             d["duck_db"] = self.duck_db
             d["duck_attack_s"] = self.duck_attack_s
@@ -396,6 +709,9 @@ class AudioTrack:
             duck_attack_s=float(d.get("duck_attack_s") or 0.0),
             duck_release_s=float(d.get("duck_release_s") or 0.0),
             duck_spans=tuple((float(a), float(b)) for a, b in (d.get("duck_spans") or [])),
+            reverse=bool(d.get("reverse", False)),
+            denoise=bool(d.get("denoise", False)), loudnorm=bool(d.get("loudnorm", False)),
+            tempos=tuple(float(t) for t in (d.get("tempos") or [])),
         )
 
 
@@ -426,6 +742,11 @@ class TextOverlay:
     shadow: float = 0.0
     box_color: Optional[str] = None
     box_opacity: float = BOX_OPACITY_DEFAULT
+    #: Entrance / exit animation (None = none: the overlay is the one it was).
+    anim_in: Optional[str] = None
+    anim_out: Optional[str] = None
+    anim_in_s: float = ANIM_DEFAULT_S
+    anim_out_s: float = ANIM_DEFAULT_S
     #: An animated caption style (modules/caption_styles.py STYLE_IDS) and its
     #: highlight colour: ass_captions writes such a cue with the style's own
     #: tags instead of the plain overlay. None = the plain overlay it always was.
@@ -442,6 +763,7 @@ class TextOverlay:
         if self.box_color is not None:
             d["box_color"] = self.box_color
             d["box_opacity"] = self.box_opacity
+        _anims_to_dict(self, d)
         _put_if(d, "caption_style", self.caption_style, None)
         _put_if(d, "highlight_color", self.highlight_color, None)
         return d
@@ -469,6 +791,7 @@ class TextOverlay:
             box_color=(str(d["box_color"]) if d.get("box_color") is not None else None),
             box_opacity=float(d["box_opacity"] if d.get("box_opacity") is not None
                               else BOX_OPACITY_DEFAULT),
+            **_anims_from_dict(d),
             caption_style=(str(d["caption_style"]) if d.get("caption_style") is not None else None),
             highlight_color=(str(d["highlight_color"]) if d.get("highlight_color") is not None
                              else None),
@@ -492,11 +815,40 @@ class PictureOverlay:
     y: float = 0.5
     w: float = 0.3
     opacity: float = 1.0
+    #: Entrance / exit animation (None = none; a typewriter is for text only).
+    anim_in: Optional[str] = None
+    anim_out: Optional[str] = None
+    anim_in_s: float = ANIM_DEFAULT_S
+    anim_out_s: float = ANIM_DEFAULT_S
+    #: End keyframe: where the centre, width and opacity are at ``end_s`` (None =
+    #: unchanged). Linear from the values above at ``start_s``.
+    to_x: Optional[float] = None
+    to_y: Optional[float] = None
+    to_w: Optional[float] = None
+    to_opacity: Optional[float] = None
+    #: Chroma key: pixels near this colour (``#RRGGBB``) become transparent
+    #: (None = none).
+    chroma_color: Optional[str] = None
+    chroma_similarity: float = CHROMA_SIMILARITY_DEFAULT
+    chroma_blend: float = CHROMA_BLEND_DEFAULT
+
+    @property
+    def moves(self) -> bool:
+        return any(v is not None for v in (self.to_x, self.to_y, self.to_w, self.to_opacity))
 
     def to_dict(self) -> dict:
-        return {"path": self.path, "kind": self.kind, "start_s": self.start_s,
-                "end_s": self.end_s, "x": self.x, "y": self.y, "w": self.w,
-                "opacity": self.opacity}
+        d = {"path": self.path, "kind": self.kind, "start_s": self.start_s,
+             "end_s": self.end_s, "x": self.x, "y": self.y, "w": self.w,
+             "opacity": self.opacity}
+        _anims_to_dict(self, d)
+        for key in ("to_x", "to_y", "to_w", "to_opacity"):
+            if getattr(self, key) is not None:
+                d[key] = getattr(self, key)
+        if self.chroma_color is not None:
+            d["chroma_color"] = self.chroma_color
+            d["chroma_similarity"] = self.chroma_similarity
+            d["chroma_blend"] = self.chroma_blend
+        return d
 
     @staticmethod
     def from_dict(d: dict) -> "PictureOverlay":
@@ -507,6 +859,12 @@ class PictureOverlay:
             kind=str(d.get("kind") or KIND_IMAGE),
             start_s=num("start_s", 0.0), end_s=num("end_s", 0.0),
             x=num("x", 0.5), y=num("y", 0.5), w=num("w", 0.3), opacity=num("opacity", 1.0),
+            **_anims_from_dict(d),
+            **{k: float(d[k]) for k in ("to_x", "to_y", "to_w", "to_opacity") if d.get(k) is not None},
+            **({"chroma_color": str(d["chroma_color"]),
+                "chroma_similarity": float(d.get("chroma_similarity", CHROMA_SIMILARITY_DEFAULT)),
+                "chroma_blend": float(d.get("chroma_blend", CHROMA_BLEND_DEFAULT))}
+               if d.get("chroma_color") is not None else {}),
         )
 
 
@@ -611,6 +969,38 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
     if not _speed_ok(seg.speed):
         problems.append(f"{name} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g} "
                         f"(got {seg.speed})")
+    if seg.effects is not None:
+        problems.extend(_effects_problems(name, seg.effects))
+    if seg.curve is not None:
+        problems.extend(_curve_problems(name, seg.curve))
+        if seg.speed != 1.0:
+            problems.append(f"{name} has a speed curve and a speed")
+        if seg.reverse or seg.freeze:
+            problems.append(f"{name} has a speed curve with reverse or freeze")
+        if seg.kind != KIND_VIDEO:
+            problems.append(f"{name} speed curve is for video, not a {seg.kind}")
+    if seg.interpolate:
+        slowest = seg.speed if seg.curve is None else min((s for _a, s in seg.curve.points), default=1.0)
+        if seg.kind != KIND_VIDEO or seg.reverse or seg.freeze or not slowest < 1.0:
+            problems.append(f"{name} interpolate is for forward slow motion of a video")
+    if seg.stabilize and (seg.kind != KIND_VIDEO or seg.freeze):
+        problems.append(f"{name} stabilize is for moving video (not a picture or a frozen frame)")
+    if seg.crop is not None:
+        problems.extend(_crop_problems(name, seg.crop))
+    if not (_finite(seg.angle) and -ANGLE_MAX <= seg.angle <= ANGLE_MAX):
+        problems.append(f"{name} angle must be from {-ANGLE_MAX:g} to {ANGLE_MAX:g}")
+    if seg.reverse and seg.freeze:
+        problems.append(f"{name} cannot be both reversed and frozen")
+    if seg.freeze and seg.speed != 1.0:
+        problems.append(f"{name} is frozen, which has no speed")
+    if (seg.reverse or seg.freeze) and seg.kind != KIND_VIDEO:
+        problems.append(f"{name} reverse and freeze are for video, not a {seg.kind}")
+    if seg.reverse and not frame_exact:
+        problems.append(f"{name} is reversed, which needs frame_exact")
+    if seg.move is not None:
+        problems.extend(_move_problems(name, seg.move))
+        if not frame_exact:
+            problems.append(f"{name} has a move, which needs frame_exact")
     if seg.xfade_style not in XFADE_STYLES:
         problems.append(f"{name} has unknown cross-fade style {seg.xfade_style!r}")
     elif seg.xfade_style != XFADE_DEFAULT_STYLE and seg.xfade is None:
@@ -685,6 +1075,21 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
                             "of the frame")
         if not 0 <= o.opacity <= 1:
             problems.append(f"{name} opacity must be from 0 to 1")
+        problems.extend(_anim_problems(name, o, ANIM_OUT, (o.start_s, o.end_s)))
+        if o.chroma_color is not None:
+            if not (isinstance(o.chroma_color, str) and _HEX.fullmatch(o.chroma_color)):
+                problems.append(f"{name} chroma colour must be a #RRGGBB colour")
+            if not (_finite(o.chroma_similarity)
+                    and CHROMA_SIMILARITY_MIN <= o.chroma_similarity <= CHROMA_SIMILARITY_MAX):
+                problems.append(f"{name} chroma similarity must be from {CHROMA_SIMILARITY_MIN:g} "
+                                f"to {CHROMA_SIMILARITY_MAX:g}")
+            if not (_finite(o.chroma_blend) and 0 <= o.chroma_blend <= CHROMA_BLEND_MAX):
+                problems.append(f"{name} chroma blend must be from 0 to {CHROMA_BLEND_MAX:g}")
+        for key, lo, hi in (("to_x", 0, 1), ("to_y", 0, 1), ("to_opacity", 0, 1),
+                            ("to_w", PICTURE_W_MIN, PICTURE_W_MAX)):
+            v = getattr(o, key)
+            if v is not None and not (_finite(v) and lo <= v <= hi):
+                problems.append(f"{name} {key} must be from {lo:g} to {hi:g}")
     return problems
 
 
@@ -730,6 +1135,11 @@ def validate(spec: RenderSpec) -> List[str]:
         if not _speed_ok(t.speed):
             problems.append(f"audio track {i} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g}")
             continue
+        if t.tempos and (len(t.tempos) > speed_ramp.SLICES_MAX or t.speed != 1.0
+                         or not all(_finite(x) and SPEED_MIN <= x <= SPEED_MAX for x in t.tempos)):
+            problems.append(f"audio track {i} has bad speed-ramp tempos (at most {speed_ramp.SLICES_MAX}, "
+                            f"each from {SPEED_MIN:g} to {SPEED_MAX:g}, with speed 1)")
+            continue
         if t.fade_in_s + t.fade_out_s > t.output_s + 1e-9:
             problems.append(f"audio track {i} fades are longer than the track")
         if t.crossfade_s < 0 or (t.crossfade_s > 0 and i == 0):
@@ -758,6 +1168,10 @@ def validate(spec: RenderSpec) -> List[str]:
             problems.append(f"overlay {i} box_color must be a #RRGGBB colour")
         if not (_finite(o.box_opacity) and 0 <= o.box_opacity <= 1):
             problems.append(f"overlay {i} box_opacity must be from 0 to 1")
+        problems.extend(_anim_problems(f"overlay {i}", o, ANIM_IN, (o.start_s, o.end_s)))
+        for anim, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
+            if getattr(o, anim) is not None and _finite(getattr(o, fade)) and getattr(o, fade) > 0:
+                problems.append(f"overlay {i} has {anim} and {fade}: use one of them")
         if o.caption_style is not None and not caption_styles.is_style(o.caption_style):
             problems.append(f"overlay {i} caption_style must be one of {list(caption_styles.STYLE_IDS)}")
         if o.highlight_color is not None and not (isinstance(o.highlight_color, str)
@@ -845,6 +1259,32 @@ def _t(x: float) -> str:
     return f"{float(x):.3f}"
 
 
+#: FFT noise reduction with noise tracking, tuned for a steady background hiss
+#: below about -35 dB (a quiet room: measured -20 dB or more on 0.005-0.02 white
+#: noise, the tone beside it untouched; steady noise louder than that is left
+#: mostly alone), and single-pass EBU R128 loudness normalisation (integrated
+#: -16 LUFS, true peak -1.5 dB, range 11 LU).
+DENOISE_FILTER = "afftdn=nr=12:nf=-40:tn=1:tr=1"
+LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+
+
+def tempo_chain(speed: float) -> str:
+    """``atempo=...`` stages that play sound ``speed`` times faster with its pitch
+    kept. One stage covers 0.5-2 (the string older documents had); outside it the
+    speed is split into stages that each do, so it works on every ffmpeg."""
+    stages: List[float] = []
+    s = float(speed)
+    while s > 2.0 + 1e-9:
+        stages.append(2.0)
+        s /= 2.0
+    while s < 0.5 - 1e-9:
+        stages.append(0.5)
+        s /= 0.5
+    if abs(s - 1.0) > 1e-9 or not stages:
+        stages.append(s)
+    return ",".join(f"atempo={_t(x)}" for x in stages)
+
+
 def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
                        delay: bool = True) -> str:
     """The filter chain placing one audio track: cut ``duration_s`` from
@@ -857,8 +1297,29 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
         f"atrim=start={_t(track.in_s)}:duration={_t(track.duration_s)}",
         "asetpts=PTS-STARTPTS",
     ]
+    if track.reverse:
+        chain += ["areverse", "asetpts=PTS-STARTPTS"]
     if track.speed != 1.0:
-        chain.append(f"atempo={_t(track.speed)}")
+        chain.append(tempo_chain(track.speed))
+    ramp = ""
+    if track.tempos:
+        # A speed ramp's sound: asplit the trimmed source into equal slices, each at its own
+        # tempo, and join them. The slices are labelled from this track's label (unique).
+        n = len(track.tempos)
+        step = track.duration_s / n
+        chain.append(f"asplit={n}" + "".join(f"[{label}i{j}]" for j in range(n)))
+        parts = [",".join(chain)]
+        for j, tempo in enumerate(track.tempos):
+            parts.append(f"[{label}i{j}]atrim=start={_t(j * step)}:duration={_t(step)},"
+                         f"asetpts=PTS-STARTPTS,{tempo_chain(tempo)}[{label}o{j}]")
+        ramp = (f"[{input_index}:a]" + ";".join(parts) + ";"
+                + "".join(f"[{label}o{j}]" for j in range(n)) + f"concat=n={n}:v=0:a=1")
+        chain = []
+    if track.denoise:
+        chain.append(DENOISE_FILTER)
+    if track.loudnorm:
+        # loudnorm works at 192 kHz and hands that on: aformat below brings it back to 48 kHz.
+        chain.append(LOUDNORM_FILTER)
     chain.append("aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo")
     if track.gain_db:
         chain.append(f"volume={_t(track.gain_db)}dB")
@@ -870,6 +1331,8 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
     delay_ms = int(round(track.start_s * 1000))
     if delay and delay_ms > 0:
         chain.append(f"adelay=delays={delay_ms}:all=1")
+    if ramp:
+        return ramp + "," + ",".join(chain) + f"[{label}]"
     return f"[{input_index}:a]" + ",".join(chain) + f"[{label}]"
 
 
@@ -950,6 +1413,75 @@ def picture_overlay_inputs(spec: RenderSpec) -> List[str]:
     return out
 
 
+def _overlay_anim_filters(o: PictureOverlay, t_start: float, t_end: float,
+                          spec: RenderSpec) -> Tuple[str, str, str]:
+    """``(filters, x term, y term)`` for an overlay's entrance and exit: the
+    filters are appended to its chain (after the shift to its first frame, so
+    ``t`` is output time), the terms are added to the overlay's centre. Every
+    animation fades the alpha plane (``fade ... alpha=1`` on the YUVA picture);
+    a slide also offsets the centre by ``ANIM_SLIDE`` of the frame, a pop also
+    scales the picture about its centre from ``ANIM_POP_FROM``. Only names on
+    ``ANIM_IN`` / ``ANIM_OUT`` and formatted numbers are written."""
+    filters = ""
+    move_x = move_y = ""
+    scale_terms: List[str] = []
+    dist_x, dist_y = ANIM_SLIDE * spec.width, ANIM_SLIDE * spec.height
+    # The end keyframe: linear over the whole span (``span`` is 0..1 at ``t``).
+    span_s = max(t_end - t_start, 1e-3)
+    span = f"clip((t-{t_start:.3f})/{span_s:.3f},0,1)"
+    if o.to_x is not None and o.to_x != o.x:
+        move_x += f"+({(o.to_x - o.x) * spec.width:.3f})*{span}"
+    if o.to_y is not None and o.to_y != o.y:
+        move_y += f"+({(o.to_y - o.y) * spec.height:.3f})*{span}"
+    if o.to_w is not None and o.to_w != o.w:
+        scale_terms.append(f"(({o.w:.4f}+({o.to_w - o.w:.4f})*{span})/{max(o.w, o.to_w):.4f})")
+    if o.to_opacity is not None and o.to_opacity != o.opacity:
+        # A move to or from nothing is a fade (cheap); anything else rewrites the
+        # alpha plane per pixel with the time (geq): exact, but slow on a big overlay.
+        if o.opacity <= 0:
+            filters += f",fade=t=in:st={t_start:.3f}:d={span_s:.3f}:alpha=1"
+        elif o.to_opacity <= 0:
+            filters += f",fade=t=out:st={t_start:.3f}:d={span_s:.3f}:alpha=1"
+        else:
+            top = max(o.opacity, o.to_opacity)
+            m0, m1 = o.opacity / top, o.to_opacity / top
+            filters += (",geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*("
+                        f"{m0:.4f}+({m1 - m0:.4f})*clip((T-{t_start:.3f})/{span_s:.3f},0,1))'")
+    for key, entering in (("anim_in", True), ("anim_out", False)):
+        kind = getattr(o, key)
+        if kind is None:
+            continue
+        if kind not in (ANIM_IN if entering else ANIM_OUT) or kind == "typewriter":
+            raise ValueError(f"unknown picture animation {kind!r}")
+        d = float(getattr(o, key + "_s"))
+        t0 = t_start if entering else t_end - d
+        filters += (f",fade=t={'in' if entering else 'out'}:st={t0:.3f}:d={d:.3f}:alpha=1")
+        progress = f"clip((t-{t0:.3f})/{d:.3f},0,1)"
+        if kind in _SLIDE_DIRECTIONS:
+            vx, vy = _SLIDE_DIRECTIONS[kind]
+            # entering: from -v*dist to 0; leaving: from 0 to +v*dist
+            amount = f"(1-{progress})" if entering else progress
+            sign = "-" if entering else "+"
+            if vx:
+                move_x += f"{sign}({vx * dist_x:.3f})*{amount}"
+            if vy:
+                move_y += f"{sign}({vy * dist_y:.3f})*{amount}"
+        elif kind == "pop":
+            small = 1.0 - ANIM_POP_FROM
+            scale_terms.append(f"(1-{small:.3f}*(1-{progress}))" if entering
+                               else f"(1-{small:.3f}*{progress})")
+    if scale_terms:
+        factor = "*".join(scale_terms)
+        filters += (f",scale=w='max(2,trunc(iw*{factor}/2)*2)':h='max(2,trunc(ih*{factor}/2)*2)'"
+                    ":eval=frame")
+    return filters, move_x, move_y
+
+
+#: Direction each slide moves (x, y); the same table the ASS writer has.
+_SLIDE_DIRECTIONS = {"slide-up": (0, -1), "slide-down": (0, 1), "slide-left": (-1, 0),
+                     "slide-right": (1, 0)}
+
+
 def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
                             ) -> Tuple[List[str], str]:
     """The filter-graph parts that lay the picture overlays over ``source`` (a
@@ -974,28 +1506,62 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
     for k, o in enumerate(spec.picture_overlays):
         first = _frame_of(o.start_s, fps)
         last = _frame_of(o.end_s, fps)          # the first frame it is NOT shown on
-        box_w = max(2, int(round(o.w * spec.width)) // 2 * 2)
+        # The widest the picture ever is: a move to a bigger width scales DOWN from it.
+        wide = max(o.w, o.to_w) if o.to_w is not None else o.w
+        op_static = max(o.opacity, o.to_opacity) if o.to_opacity is not None else o.opacity
+        box_w = max(2, int(round(wide * spec.width)) // 2 * 2)
         fit = (f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease"
                ":force_divisible_by=2:flags=bicubic")
         yuva = f"scale={matrix}flags=bicubic,format=yuva420p"
+        key = ""
+        keyed_still = False
+        if o.chroma_color is not None:
+            # Keyed on the source (before it is scaled): YUVA out, which the scaler and the
+            # opacity / alpha steps below keep. The colour is a validated #RRGGBB, written as 0xRRGGBB.
+            if not _HEX.fullmatch(o.chroma_color):
+                raise ValueError(f"unknown chroma colour {o.chroma_color!r}")
+            keyer = (f"chromakey=color=0x{o.chroma_color[1:].upper()}:similarity={o.chroma_similarity:.3f}"
+                     f":blend={o.chroma_blend:.3f}")
+            if o.kind == KIND_VIDEO:
+                key = keyer + ","
+            else:
+                keyed_still = True
         # An opaque video stays in its own YUV: no round trip through RGB.
-        if o.kind == KIND_VIDEO and o.opacity >= 1.0:
-            colour = f"{fit},format=yuva420p"
-        elif o.opacity >= 1.0:
-            colour = f"{fit},format=rgba,{yuva}"
+        if o.kind == KIND_VIDEO and op_static >= 1.0:
+            colour = f"{key}{fit},format=yuva420p"
+        elif op_static >= 1.0:
+            colour = f"{key}{fit},format=rgba,{yuva}"
         else:
-            colour = f"{fit},format=rgba,colorchannelmixer=aa={o.opacity:.3f},{yuva}"
+            colour = f"{key}{fit},format=rgba,colorchannelmixer=aa={op_static:.3f},{yuva}"
+        src = f"[{first_input + k}:v]"
         if o.kind == KIND_VIDEO:
             chain = f"setpts=PTS-STARTPTS,fps={fps},{colour}"
+        elif keyed_still:
+            # chromakey WRITES the alpha (opaque everywhere but the keyed colour), so a picture
+            # with transparency of its own would lose it. The key's alpha is multiplied by the
+            # picture's own, on its one frame, and merged back onto the colours.
+            parts.append(f"{src}trim=end_frame=1,setpts=PTS-STARTPTS,fps={fps},format=rgba,"
+                         f"split=3[ca{k}][cb{k}][cc{k}]")
+            parts.append(f"[ca{k}]{keyer},format=yuva420p,alphaextract[ka{k}]")
+            parts.append(f"[cb{k}]alphaextract[oa{k}]")
+            parts.append(f"[ka{k}][oa{k}]blend=all_mode=multiply,format=gray[ma{k}]")
+            src = f"[cc{k}][ma{k}]"
+            # (the frame rate is set before the split: fps after alphamerge emits nothing for
+            # one frame, measured)
+            chain = f"alphamerge,{colour},tpad=stop={last - first - 1}:stop_mode=clone"
         else:
             chain = (f"trim=end_frame=1,setpts=PTS-STARTPTS,{colour},fps={fps},"
                      f"tpad=stop={last - first - 1}:stop_mode=clone")
         chain += f",setpts=PTS+{first}/({fps}*TB)"
-        parts.append(f"[{first_input + k}:v]{chain}[p{k}]")
+        move_x = move_y = ""
+        if o.anim_in is not None or o.anim_out is not None or o.moves:
+            extra, move_x, move_y = _overlay_anim_filters(o, first / fps, last / fps, spec)
+            chain += extra
+        parts.append(f"{src}{chain}[p{k}]")
         lo, hi = (first - 0.5) / fps, (last - 0.5) / fps
         out = f"[pv{k}]"
-        parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}-w/2)'"
-                     f":y='round({o.y * spec.height:.3f}-h/2)'"
+        parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}{move_x}-w/2)'"
+                     f":y='round({o.y * spec.height:.3f}{move_y}-h/2)'"
                      f":enable='between(t,{lo:.6f},{hi:.6f})':eof_action=pass{out}")
         source = out
     return parts, source

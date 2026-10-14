@@ -212,10 +212,11 @@
         "fit": {
           "enum": [
             "contain",
-            "cover"
+            "cover",
+            "blur"
           ],
           "default": "contain",
-          "description": "contain = letter/pillar-box, cover = fill and crop."
+          "description": "contain = letter/pillar-box, cover = fill and crop. blur = the whole picture over a blurred, enlarged copy of itself instead of black bars (video clips only)."
         },
         "fade_in_s": {
           "$ref": "#/$defs/seconds",
@@ -230,8 +231,8 @@
         },
         "speed": {
           "type": "number",
-          "minimum": 0.5,
-          "maximum": 2.0,
+          "minimum": 0.25,
+          "maximum": 4.0,
           "default": 1,
           "description": "Playback speed. in_s/out_s stay source times; the clip lasts (out_s - in_s) / speed. Its own sound (audio: true) keeps its pitch."
         },
@@ -243,6 +244,184 @@
         "grade": {
           "$ref": "#/$defs/grade",
           "description": "Per-clip colour grade (ffmpeg eq). Absent = no change, and the clip renders exactly as it did before colour existed."
+        },
+        "filter": {
+          "enum": [
+            "mono",
+            "sepia",
+            "vintage",
+            "cinematic",
+            "cool",
+            "warm",
+            "high-contrast"
+          ],
+          "description": "A colour look applied to the fitted picture (after grade, before the bars of a contain fit)."
+        },
+        "filter_strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1,
+          "description": "How far toward the look; needs filter. 0 drops the look."
+        },
+        "vignette": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0,
+          "description": "Darkened edges; 0 = off."
+        },
+        "blur": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30.0,
+          "default": 0,
+          "description": "Gaussian blur sigma in output pixels; 0 = off."
+        },
+        "sharpen": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0,
+          "description": "Unsharp mask; 0 = off."
+        },
+        "grain": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0,
+          "description": "Film grain (fixed seed, so a render repeats); 0 = off."
+        },
+        "flip_h": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mirror left-right (after rotate, on the source)."
+        },
+        "flip_v": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mirror top-bottom (after rotate, on the source)."
+        },
+        "rotate": {
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ],
+          "default": 0,
+          "description": "Degrees clockwise, on the source before it is fitted."
+        },
+        "move": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to"
+          ],
+          "description": "Ken Burns style move: the window goes linearly from `from` on the clip's first frame to `to` on its last. A still with a move has this instead of its automatic slow zoom.",
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/move_point"
+            },
+            "to": {
+              "$ref": "#/$defs/move_point"
+            }
+          }
+        },
+        "reverse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Play the source range in_s..out_s backwards (picture and the clip's own sound). The range is limited by memory: at most REVERSE_MAX_BYTES of frames at the document's frame size and rate. Video only."
+        },
+        "freeze": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hold the frame at in_s for the clip's whole length (out_s - in_s). No sound; speed must be 1; not with reverse. Video only."
+        },
+        "denoise": {
+          "type": "boolean",
+          "default": false,
+          "description": "FFT noise reduction with noise tracking (afftdn) on the clip's own sound, before loudness and gain; clears a steady hiss below about -35 dB and mostly leaves louder noise alone."
+        },
+        "loudnorm": {
+          "type": "boolean",
+          "default": false,
+          "description": "Single-pass loudness normalisation (loudnorm: -16 LUFS, true peak -1.5 dB, range 11 LU) after denoise, before gain. Approximate on a very short clip."
+        },
+        "crop": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Keep a rectangle of the source picture, as fractions of it, after rotate/flip and before the fit. x + w and y + h must not go past 1.",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0
+            },
+            "w": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 1
+            },
+            "h": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 1
+            }
+          }
+        },
+        "angle": {
+          "type": "number",
+          "minimum": -180.0,
+          "maximum": 180.0,
+          "default": 0,
+          "description": "Degrees clockwise: turns the FITTED picture about its centre inside the frame; what leaves the frame is cut, what is uncovered is black. 0 = none."
+        },
+        "speed_curve": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "description": "A speed ramp instead of speed: points {at, speed}, at = fraction of the source range (first 0, last 1, at least 0.01 apart, increasing), speed 0.25-4 moving linearly between points. Not with speed other than 1, reverse or freeze. The clip lasts the integral of 1/speed; its sound follows in slices.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "at",
+              "speed"
+            ],
+            "properties": {
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "speed": {
+                "type": "number",
+                "minimum": 0.25,
+                "maximum": 4.0
+              }
+            }
+          }
+        },
+        "interpolate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Smoother slow motion by motion-compensated interpolation (slow to render, bounded: INTERP_MAX_FRAMES per clip, INTERP_MAX_FRAMES_DOC per document). Only for a clip that plays below speed 1 somewhere; not with reverse or freeze."
+        },
+        "stabilize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Smooth camera shake (ffmpeg vidstab, two passes, with an automatic zoom to hide the borders; the built-in deshake if the build has no vidstab). Video only; not with freeze. The source range is at most STABILIZE_MAX_S (120 s) and a document's stabilised ranges 300 s in all."
         }
       }
     },
@@ -320,6 +499,16 @@
         "fade_out_s": {
           "$ref": "#/$defs/seconds",
           "default": 0
+        },
+        "denoise": {
+          "type": "boolean",
+          "default": false,
+          "description": "FFT noise reduction with noise tracking (afftdn) on the clip's own sound, before loudness and gain; clears a steady hiss below about -35 dB and mostly leaves louder noise alone."
+        },
+        "loudnorm": {
+          "type": "boolean",
+          "default": false,
+          "description": "Single-pass loudness normalisation (loudnorm: -16 LUFS, true peak -1.5 dB, range 11 LU) after denoise, before gain. Approximate on a very short clip."
         }
       }
     },
@@ -434,6 +623,43 @@
           "maximum": 1,
           "default": 0.7,
           "description": "Opacity of the box; needs box_color."
+        },
+        "anim_in": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop",
+            "typewriter"
+          ],
+          "description": "Entrance animation. fade/slide-*/pop also fade the alpha in; slides are named by the direction the item moves; typewriter writes a text letter by letter (text only). Not with fade_in_s."
+        },
+        "anim_out": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Exit animation. Not with fade_out_s."
+        },
+        "anim_in_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the entrance; needs anim_in."
+        },
+        "anim_out_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the exit; needs anim_out. In + out never exceed the time the item is shown."
         }
       }
     },
@@ -688,6 +914,132 @@
           "maximum": 1.0,
           "default": 1.0,
           "description": "0 = invisible (renders nothing), 1 = opaque."
+        },
+        "anim_in": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Entrance animation. fade/slide-*/pop also fade the alpha in; slides are named by the direction the item moves; typewriter writes a text letter by letter (text only)."
+        },
+        "anim_out": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Exit animation."
+        },
+        "anim_in_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the entrance; needs anim_in."
+        },
+        "anim_out_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the exit; needs anim_out. In + out never exceed the time the item is shown."
+        },
+        "move": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "to"
+          ],
+          "description": "Two-keyframe move: the overlay's own x, y, w and opacity at start_s go linearly to these at end_s. A move to or from opacity 0 is a cheap fade; any other opacity change is slower to render.",
+          "properties": {
+            "to": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "w": {
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 1.0
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            }
+          }
+        },
+        "chroma": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "color"
+          ],
+          "description": "Chroma key: pixels near `color` become transparent (ffmpeg chromakey), before the overlay is scaled; opacity and animations apply to what is left.",
+          "properties": {
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "similarity": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 0.6,
+              "default": 0.15,
+              "description": "How far from the colour still counts as it."
+            },
+            "blend": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "default": 0.1,
+              "description": "How softly the edge fades."
+            }
+          }
+        }
+      }
+    },
+    "move_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A window onto the fitted picture: zoom (1 = all of it) and its centre as fractions of the picture. Missing keys take 1 / 0.5 / 0.5; the centre is held where the window stays inside.",
+      "properties": {
+        "zoom": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 4.0,
+          "default": 1.0
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
         }
       }
     }

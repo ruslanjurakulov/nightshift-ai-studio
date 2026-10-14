@@ -24,6 +24,11 @@
 
 import { CAPTION_STYLE_IDS, isCaptionStyleId } from "@/lib/captionStyleTable";
 import {
+  rampAbsolute,
+  rampOutLength,
+  rampSourceAt,
+} from "@/lib/editorSpeedRamp";
+import {
   GRADE_KEYS,
   GRADE_RANGES,
   isNeutralGrade,
@@ -47,9 +52,9 @@ export const MAX_AUDIO_CLIPS = 64;
 export const MAX_TOTAL_CLIPS = 5000;
 export const MAX_CUES = 5000;
 export const MAX_TEXT = 500;
-export const SPEED_MIN = 0.5;
-export const SPEED_MAX = 2;
-/** The speeds the editor offers (any value in 0.5–2 is valid in a document). */
+export const SPEED_MIN = 0.25;
+export const SPEED_MAX = 4;
+/** The speeds the editor offers (any value in 0.25–4 is valid in a document). */
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export const SIZE_MIN = 8;
 export const SIZE_MAX = 512;
@@ -104,11 +109,14 @@ export const MAX_DOC_BYTES = 262_144;
  *  OVERLAY_W_MIN / OVERLAY_W_MAX): each is one more input of the final pass,
  *  and a video keeps a decoder open for its whole span. */
 export const MAX_OVERLAYS = 16;
+/** Overlays that change opacity between two visible values in a move cost a per-pixel
+ *  filter (modules/timeline.py MAX_PARTIAL_OPACITY_MOVES). */
+export const MAX_PARTIAL_OPACITY_MOVES = 2;
 export const MAX_OVERLAY_VIDEOS = 4;
 export const OVERLAY_W_MIN = 0.05;
 export const OVERLAY_W_MAX = 1;
 
-const FITS = ["contain", "cover"] as const;
+const FITS = ["contain", "cover", "blur"] as const;
 const TRANSITIONS = ["cut", "dip_to_black", "crossfade"] as const;
 /** The ffmpeg `xfade` transitions a cross-fade may use, in the order the
  *  picker lists them (modules/timeline.py XFADE_STYLES; a test pins them). The
@@ -156,6 +164,140 @@ export const XFADE_STYLES = [
 ] as const;
 export type XfadeStyle = (typeof XFADE_STYLES)[number];
 export const XFADE_DEFAULT_STYLE: XfadeStyle = "fade";
+/** Entrance / exit animations of a text or an overlay (modules/timeline.py
+ *  ANIM_IN / ANIM_OUT; a test pins them). Slides are named by the direction the
+ *  item MOVES; `typewriter` is for a text's entrance only. */
+export const ANIM_OUT = [
+  "fade",
+  "slide-up",
+  "slide-down",
+  "slide-left",
+  "slide-right",
+  "pop",
+] as const;
+export const ANIM_IN = [...ANIM_OUT, "typewriter"] as const;
+export type AnimOut = (typeof ANIM_OUT)[number];
+export type AnimIn = (typeof ANIM_IN)[number];
+/** An animation's length in seconds (ANIM_MIN_S / ANIM_MAX_S / ANIM_DEFAULT_S). */
+export const ANIM_MIN_S = 0.1;
+export const ANIM_MAX_S = 2;
+export const ANIM_DEFAULT_S = 0.4;
+/** Texts that may write themselves letter by letter in one document. */
+export const MAX_TYPEWRITER_TEXTS = 20;
+/** Clip effects (modules/timeline.py FILTERS / UNIT_EFFECTS / BLUR_MAX /
+ *  ROTATIONS; a test pins them). */
+export const FILTERS = [
+  "mono",
+  "sepia",
+  "vintage",
+  "cinematic",
+  "cool",
+  "warm",
+  "high-contrast",
+] as const;
+export type ClipFilter = (typeof FILTERS)[number];
+export const UNIT_EFFECTS = ["vignette", "sharpen", "grain"] as const;
+/** A Gaussian blur's sigma in output pixels. */
+export const BLUR_MAX = 30;
+/** A cross-faded clip in a frame above 1440p takes no blur (the render would run out of
+ *  memory; modules/timeline.py LARGE_FRAME_PX / XFADE_LARGE_BLUR_MAX). */
+export const LARGE_FRAME_PX = 2560 * 1440;
+export const XFADE_LARGE_BLUR_MAX = 0;
+/** ... and a zoom above this on such a clip (modules/timeline.py XFADE_LARGE_ZOOM_MAX). */
+export const XFADE_LARGE_ZOOM_MAX = 2;
+export const ROTATIONS = [0, 90, 180, 270] as const;
+/** A clip's move: the zoom window's range (modules/timeline.py MOVE_ZOOM_*). */
+export const MOVE_ZOOM_MIN = 1;
+export const MOVE_ZOOM_MAX = 4;
+export const MOVE_POINT_DEFAULTS = { zoom: 1, x: 0.5, y: 0.5 } as const;
+/** A clip's speed curve (modules/timeline.py RAMP_* / INTERP_*): 2 to 6 points,
+ *  and the budget of motion-interpolated frames (1080p equivalent). */
+export const RAMP_MIN_POINTS = 2;
+export const RAMP_MAX_POINTS = 6;
+export const RAMP_MIN_GAP = 0.01;
+export const INTERP_MAX_FPS = 120;
+export const INTERP_MAX_FRAMES = 300;
+export const INTERP_MAX_FRAMES_DOC = 600;
+const INTERP_REF_PIXELS = 1920 * 1080;
+/** Stabilising decodes a clip twice: the longest range of one clip and the
+ *  total per document, in seconds (modules/timeline.py STABILIZE_*). */
+export const STABILIZE_MAX_S = 120;
+export const STABILIZE_MAX_DOC_S = 300;
+/** What stabilising is charged in the render's estimate, in 1080p-equivalent frames per
+ *  second (modules/timeline.py STABILIZE_FPS_1080P). */
+export const STABILIZE_FPS_1080P = 7;
+/** The estimated seconds of render work stabilising a clip costs
+ *  (modules/timeline.py `stabilize_seconds`). */
+export function stabilizeSeconds(
+  clip: Record<string, unknown>,
+  fps: number,
+  width: number,
+  height: number,
+): number {
+  if (!isNum(clip.in_s) || !isNum(clip.out_s)) return 0;
+  const frames = Math.max(0, ms(clip.out_s) - ms(clip.in_s)) * fps;
+  return (frames * width * height) / INTERP_REF_PIXELS / STABILIZE_FPS_1080P;
+}
+/** No interpolation above 1440p (modules/timeline.py INTERP_MAX_PIXELS). */
+export const INTERP_MAX_PIXELS = 2560 * 1440;
+/** The worker's render budget and what a render is charged against it
+ *  (modules/timeline.py RENDER_*, INTERP_SECONDS_PER_FRAME; editor_export has the same). */
+export const RENDER_TIMEOUT_PER_S = 3;
+export const RENDER_TIMEOUT_BASE_S = 120;
+export const RENDER_TIMEOUT_MAX_S = 5400;
+export const RENDER_PLAIN_FACTOR = 1;
+export const INTERP_SECONDS_PER_FRAME = 0.4;
+export function renderTimeoutS(lengthS: number): number {
+  return Math.min(
+    RENDER_TIMEOUT_MAX_S,
+    RENDER_TIMEOUT_PER_S * Math.max(0, lengthS) + RENDER_TIMEOUT_BASE_S,
+  );
+}
+/** A clip's crop rectangle (smallest side) and free angle (modules/timeline.py
+ *  CROP_MIN / ANGLE_MAX). */
+export const CROP_MIN = 0.05;
+export const ANGLE_MAX = 180;
+export const CROP_DEFAULTS = { x: 0, y: 0, w: 1, h: 1 } as const;
+/** An overlay's chroma key (modules/timeline.py CHROMA_*). */
+export const CHROMA_SIMILARITY_MIN = 0.01;
+export const CHROMA_SIMILARITY_MAX = 0.6;
+export const CHROMA_SIMILARITY_DEFAULT = 0.15;
+export const CHROMA_BLEND_MAX = 0.5;
+export const CHROMA_BLEND_DEFAULT = 0.1;
+/** Reverse holds every frame of the range in memory at the output size
+ *  (modules/timeline.py REVERSE_MAX_BYTES / REVERSE_BYTES_PER_PIXEL). */
+export const REVERSE_MAX_BYTES = 512 * 1024 * 1024;
+export const REVERSE_BYTES_PER_PIXEL = 1.5;
+/** The most frames a reversed range may hold at this frame size
+ *  (modules/timeline.py `reverse_max_frames`). */
+export function reverseMaxFrames(width: number, height: number): number {
+  return Math.floor(REVERSE_MAX_BYTES / (width * height * REVERSE_BYTES_PER_PIXEL));
+}
+/** Frames a source range decodes (`_range_frames`: ceil, float noise removed). */
+function rangeFrames(rangeS: number, fps: number): number {
+  return Math.ceil(Math.round(rangeS * fps * 1e6) / 1e6);
+}
+/** The longest source range a clip may play reversed at this frame size and
+ *  rate, in seconds: a whole number of frames, rounded down to a millisecond —
+ *  exactly what the validator allows (modules/timeline.py `reverse_max_seconds`). */
+export function reverseMaxSeconds(width: number, height: number, fps: number): number {
+  const cap = reverseMaxFrames(width, height);
+  let limit = Math.floor((cap / fps) * 1000 + 1e-9) / 1000;
+  while (limit > 0 && rangeFrames(limit, fps) > cap) limit = Math.round((limit - 0.001) * 1000) / 1000;
+  return limit;
+}
+export type Rotation = (typeof ROTATIONS)[number];
+const EFFECT_KEYS = [
+  "filter",
+  "filter_strength",
+  "vignette",
+  "blur",
+  "sharpen",
+  "grain",
+  "flip_h",
+  "flip_v",
+  "rotate",
+];
 /** A text's drop shadow, in output pixels (modules/timeline.py SHADOW_MAX). */
 export const SHADOW_MAX = 20;
 /** A text box's opacity when its colour is set without one. */
@@ -200,8 +342,26 @@ const V_CLIP_KEYS = [
   "speed",
   "audio",
   "grade",
+  "move",
+  "reverse",
+  "freeze",
+  "denoise",
+  "loudnorm",
+  "crop",
+  "angle",
+  "speed_curve",
+  "interpolate",
+  "stabilize",
+  ...EFFECT_KEYS,
 ];
-const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
+const A_CLIP_KEYS = [
+  ...MEDIA_REQUIRED,
+  "gain_db",
+  "fade_in_s",
+  "fade_out_s",
+  "denoise",
+  "loudnorm",
+];
 const T_REQUIRED = ["id", "start_s", "end_s", "text"];
 const TEXT_STYLE_KEYS = [
   "font",
@@ -213,6 +373,7 @@ const TEXT_STYLE_KEYS = [
 ];
 /** Looks only a text clip has; the captions' style stays as it is. */
 const TEXT_LOOK_KEYS = ["shadow", "box_color", "box_opacity"];
+const ANIM_KEYS = ["anim_in", "anim_out", "anim_in_s", "anim_out_s"];
 const T_CLIP_KEYS = [
   ...T_REQUIRED,
   ...TEXT_STYLE_KEYS,
@@ -222,6 +383,7 @@ const T_CLIP_KEYS = [
   "anchor",
   "fade_in_s",
   "fade_out_s",
+  ...ANIM_KEYS,
 ];
 const TRANSITION_KEYS = ["type", "duration_s"];
 const TRANSITION_ALLOWED = [...TRANSITION_KEYS, "style"];
@@ -229,7 +391,19 @@ const TRANSITION_ALLOWED = [...TRANSITION_KEYS, "style"];
 const CAPTION_STYLE_KEYS = [...TEXT_STYLE_KEYS, "y", "preset", "highlight_color"];
 const CUE_KEYS = ["id", "start_s", "end_s", "text"];
 const OVERLAY_REQUIRED = ["id", "asset_id", "start_s", "end_s"];
-const OVERLAY_KEYS = [...OVERLAY_REQUIRED, "x", "y", "w", "opacity"];
+const OVERLAY_KEYS = [
+  ...OVERLAY_REQUIRED,
+  "x",
+  "y",
+  "w",
+  "opacity",
+  "anim_in",
+  "anim_out",
+  "anim_in_s",
+  "anim_out_s",
+  "move",
+  "chroma",
+];
 
 // ── document types ──────────────────────────────────────────────────────────
 
@@ -242,6 +416,40 @@ export interface Transition {
   style?: XfadeStyle;
 }
 
+/** A window onto the fitted picture: zoom 1-4 (1 = all of it) and its centre
+ *  as fractions of the picture. Missing keys take MOVE_POINT_DEFAULTS. */
+export interface MovePoint {
+  zoom?: number;
+  x?: number;
+  y?: number;
+}
+export interface ClipMove {
+  from: MovePoint;
+  to: MovePoint;
+}
+/** An overlay's end keyframe: the overlay's own values go linearly to these. */
+export interface OverlayMoveTo {
+  x?: number;
+  y?: number;
+  w?: number;
+  opacity?: number;
+}
+
+/** One point of a speed curve: `at` is a fraction of the source range. */
+export interface SpeedPoint {
+  at: number;
+  speed: number;
+}
+
+/** A rectangle of the source picture as fractions of it (after rotate/flip,
+ *  before the fit); missing keys take CROP_DEFAULTS. */
+export interface ClipCrop {
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+}
+
 export interface VideoClip {
   id: string;
   asset_id: string;
@@ -250,9 +458,48 @@ export interface VideoClip {
   out_s: number;
   speed: number;
   audio: boolean;
-  fit?: "contain" | "cover";
+  /** blur = the whole picture over a blurred copy of itself (no bars). */
+  fit?: "contain" | "cover" | "blur";
   /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorGrade.ts. */
   grade?: ClipGrade;
+  /** Effects (modules/timeline.py): all optional, absent = off. A turn and
+   *  mirror act on the source before it is fitted; the rest on the picture. */
+  filter?: ClipFilter;
+  /** 0-1; 1 when absent. Needs a `filter`. */
+  filter_strength?: number;
+  vignette?: number;
+  /** Gaussian sigma in output pixels, 0-BLUR_MAX. */
+  blur?: number;
+  sharpen?: number;
+  grain?: number;
+  flip_h?: boolean;
+  flip_v?: boolean;
+  /** Degrees clockwise: 0, 90, 180 or 270. */
+  rotate?: Rotation;
+  /** Ken Burns style move over the fitted picture (a still with one has it
+   *  instead of the automatic slow zoom). */
+  move?: ClipMove;
+  /** Play the source range backwards; holds the whole range in memory, so the
+   *  range is capped (see reverseMaxSeconds). Video only. */
+  reverse?: boolean;
+  /** Hold the frame at in_s for the clip's whole length; no sound, speed 1,
+   *  not with reverse. Video only. */
+  freeze?: boolean;
+  /** Clean-up of the clip's own sound: FFT noise reduction, then loudness
+   *  normalisation (-16 LUFS). Only matters with `audio: true`. */
+  denoise?: boolean;
+  loudnorm?: boolean;
+  /** Keep a rectangle of the source before the fit. */
+  crop?: ClipCrop;
+  /** Degrees clockwise (-180..180) the fitted picture is turned in the frame. */
+  angle?: number;
+  /** A speed ramp instead of `speed` (which is then 1): 2-6 points, linear
+   *  between them; the first at 0 and the last at 1 of the source range. */
+  speed_curve?: SpeedPoint[];
+  /** Smoother slow motion by interpolation (slow to render; budgeted). */
+  interpolate?: boolean;
+  /** Smooth camera shake (decodes the clip twice; video only, not with freeze). */
+  stabilize?: boolean;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -286,6 +533,9 @@ export interface SoundClip {
    *  document (the editor gives every sound a track of its own). */
   role?: SoundRole;
   duck?: Duck;
+  /** FFT noise reduction / loudness normalisation (-16 LUFS) of this sound. */
+  denoise?: boolean;
+  loudnorm?: boolean;
 }
 
 export interface TextClip {
@@ -307,6 +557,12 @@ export interface TextClip {
   /** A box behind the text (instead of its outline); `box_opacity` needs it. */
   box_color?: string;
   box_opacity?: number;
+  /** Entrance / exit animation and its length (default ANIM_DEFAULT_S). Not
+   *  together with fade_in_s / fade_out_s on the same side. */
+  anim_in?: AnimIn;
+  anim_out?: AnimOut;
+  anim_in_s?: number;
+  anim_out_s?: number;
 }
 
 export interface TimelineTrack {
@@ -330,6 +586,21 @@ export interface PictureOverlay {
   y: number;
   w: number;
   opacity: number;
+  /** Entrance / exit animation and its length (no typewriter on a picture). */
+  anim_in?: AnimOut;
+  anim_out?: AnimOut;
+  anim_in_s?: number;
+  anim_out_s?: number;
+  /** Two-keyframe move to the given values over start_s..end_s. */
+  move?: { to: OverlayMoveTo };
+  /** Chroma key: pixels near `color` become transparent. */
+  chroma?: ChromaKey;
+}
+
+export interface ChromaKey {
+  color: string;
+  similarity?: number;
+  blend?: number;
 }
 
 /** What an overlay's optional fields mean when absent (modules/timeline.py
@@ -392,15 +663,40 @@ export function clipEnd(
 ): number {
   const r = c as Record<string, unknown>;
   if ("end_s" in r) return ms(Number(r.end_s));
-  return ms(
-    ms(Number(r.start_s)) +
-      (ms(Number(r.out_s)) - ms(Number(r.in_s))) / speedOf(r),
-  );
+  return ms(ms(Number(r.start_s)) + mediaLength(r));
+}
+
+/** How long a media clip lasts on the timeline (modules/timeline.py
+ *  `clip_length_s`): its source range at its speed, or at its speed curve. */
+function mediaLength(r: Record<string, unknown>): number {
+  const range = ms(Number(r.out_s)) - ms(Number(r.in_s));
+  const curve = usableCurve(r.speed_curve);
+  if (curve) return ms(rampOutLength(rampAbsolute(curve, range)));
+  return ms(range / speedOf(r));
+}
+
+/** A speed curve that can be worked with (the validator has the strict rules). */
+function usableCurve(v: unknown): SpeedPoint[] | null {
+  if (!Array.isArray(v) || v.length < RAMP_MIN_POINTS) return null;
+  return v.every(
+    (p) => isObj(p) && isNum(p.at) && isNum(p.speed) && p.speed > 0,
+  )
+    ? (v as SpeedPoint[])
+    : null;
 }
 
 /** How long a video clip lasts on the timeline. */
 export function clipLength(c: VideoClip): number {
-  return ms((ms(c.out_s) - ms(c.in_s)) / c.speed);
+  return mediaLength(c as unknown as Record<string, unknown>);
+}
+
+/** The source time shown at timeline time `t` in clip `c` (a speed curve is
+ *  inverted numerically). */
+export function sourceTimeAt(c: VideoClip, t: number): number {
+  const curve = usableCurve(c.speed_curve);
+  if (!curve) return ms(c.in_s + (t - c.start_s) * c.speed);
+  const range = ms(c.out_s) - ms(c.in_s);
+  return ms(c.in_s + rampSourceAt(rampAbsolute(curve, range), t - c.start_s));
 }
 
 // ── validation: the twin of modules/timeline.py validate() ──────────────────
@@ -574,7 +870,7 @@ export function validateTimeline(doc: unknown): string[] {
           ? `${where} clip ${String(clip.id)}`
           : `${where} clips[${ci}]`;
       if (kind === "T") validateTextClip(clip, cwhere, problems, claim);
-      else validateMediaClip(clip, kind, cwhere, fps, problems, claim);
+      else validateMediaClip(clip, kind, cwhere, fps, problems, claim, [doc.width, doc.height]);
     });
   });
   if (vTracks > 1)
@@ -595,6 +891,75 @@ export function validateTimeline(doc: unknown): string[] {
     );
   if (counted.reduce((n, t) => n + t.clips.length, 0) > MAX_TOTAL_CLIPS)
     problems.push(`timeline: at most ${MAX_TOTAL_CLIPS} clips in one timeline`);
+  const nType = counted
+    .filter((t) => t.kind === "T")
+    .reduce(
+      (n, t) =>
+        n + t.clips.filter((c) => isObj(c) && c.anim_in === "typewriter").length,
+      0,
+    );
+  if (nType > MAX_TYPEWRITER_TEXTS)
+    problems.push(
+      `timeline: at most ${MAX_TYPEWRITER_TEXTS} typewriter texts (got ${nType})`,
+    );
+  let stabS = 0;
+  for (const t of counted)
+    if (t.kind === "V")
+      for (const c of t.clips)
+        if (isObj(c) && c.stabilize === true && isNum(c.in_s) && isNum(c.out_s))
+          stabS += ms(c.out_s) - ms(c.in_s);
+  if (stabS > STABILIZE_MAX_DOC_S + 1e-9)
+    problems.push(
+      `timeline: at most ${STABILIZE_MAX_DOC_S} s of video can be stabilised in all (got ${Math.round(stabS)} s)`,
+    );
+  if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
+    let interp = 0;
+    for (const t of counted)
+      if (t.kind === "V")
+        for (const c of t.clips)
+          if (isObj(c) && c.interpolate === true && isNum(c.in_s) && isNum(c.out_s)) {
+            const pts = usableCurve(c.speed_curve);
+            const slowest = pts
+              ? Math.min(...pts.map((p) => p.speed))
+              : isNum(c.speed) && c.speed > 0
+                ? c.speed
+                : 1;
+            interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, doc.width, doc.height);
+          }
+    if (interp > INTERP_MAX_FRAMES_DOC)
+      problems.push(
+        `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
+      );
+    let stabEst = 0;
+    for (const t of counted)
+      if (t.kind === "V")
+        for (const c of t.clips)
+          if (isObj(c) && c.stabilize === true)
+            stabEst += stabilizeSeconds(c, fps, doc.width, doc.height);
+    const interpEst = interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0;
+    if (interpEst + stabEst > 0) {
+      const length = docDuration(doc as unknown as TimelineDoc);
+      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst;
+      const allowed = renderTimeoutS(length);
+      if (work > allowed + 1e-9) {
+        const what = [
+          interpEst > 0 ? "interpolated slow motion" : "",
+          stabEst > 0 ? "stabilising" : "",
+        ]
+          .filter(Boolean)
+          .join(" and ");
+        const fix = [
+          interpEst > 0 ? "slow less of it" : "",
+          stabEst > 0 ? "stabilise less of it" : "",
+        ]
+          .filter(Boolean)
+          .join(" and ");
+        problems.push(
+          `timeline: ${what} would take about ${Math.round(work)} s to render, but a ${Math.round(length)} s timeline is allowed ${Math.round(allowed)} s — ${fix} or make the timeline longer`,
+        );
+      }
+    }
+  }
 
   if (doc.captions !== undefined && doc.captions !== null)
     validateCaptions(doc.captions, problems, claim);
@@ -659,6 +1024,7 @@ function validateMediaClip(
   fps: number | null,
   problems: string[],
   claim: (i: unknown, w: string) => void,
+  frame: [unknown, unknown] = [null, null],
 ) {
   const keys = kind === "V" ? V_CLIP_KEYS : A_CLIP_KEYS;
   if (!fields(clip, keys, MEDIA_REQUIRED, where, problems)) return;
@@ -677,22 +1043,76 @@ function validateMediaClip(
   }
   if (kind === "V" && "audio" in clip && typeof clip.audio !== "boolean")
     problems.push(`${where}: audio must be true or false`);
+  let curve: SpeedPoint[] | null = null;
+  if (kind === "V" && "speed_curve" in clip)
+    curve = validateSpeedCurve(clip, where, problems);
+  if (kind === "V" && "interpolate" in clip && typeof clip.interpolate !== "boolean")
+    problems.push(`${where}: interpolate must be true or false`);
+  if (kind === "V" && "stabilize" in clip) {
+    if (typeof clip.stabilize !== "boolean")
+      problems.push(`${where}: stabilize must be true or false`);
+    else if (clip.stabilize && clip.freeze === true)
+      problems.push(`${where}: a frozen clip is one still frame — nothing to stabilise`);
+    else if (
+      clip.stabilize &&
+      isNum(clip.in_s) &&
+      isNum(clip.out_s) &&
+      ms(clip.out_s) - ms(clip.in_s) > STABILIZE_MAX_S + 1e-9
+    )
+      problems.push(
+        `${where}: stabilising a range of more than ${STABILIZE_MAX_S} s is not offered (it decodes the clip twice) — split it`,
+      );
+  }
+  for (const k of ["denoise", "loudnorm"])
+    if (k in clip && typeof clip[k] !== "boolean")
+      problems.push(`${where}: ${k} must be true or false`);
+  if (kind === "V") {
+    for (const k of ["reverse", "freeze"])
+      if (k in clip && typeof clip[k] !== "boolean")
+        problems.push(`${where}: ${k} must be true or false`);
+    if (clip.freeze === true) {
+      if (clip.reverse === true)
+        problems.push(`${where}: a frozen clip cannot also be reversed`);
+      if (isNum(clip.speed ?? 1) && (clip.speed ?? 1) !== 1)
+        problems.push(`${where}: a frozen clip has no speed (it holds one frame)`);
+      if (clip.audio === true)
+        problems.push(`${where}: a frozen clip has no sound`);
+    }
+  }
+  if (curve) speed = null; // the length comes from the curve below
   const ins = clip.in_s;
   const outs = clip.out_s;
-  if (isNum(ins) && isNum(outs) && speed) {
-    const length = ms((ms(outs) - ms(ins)) / speed);
+  if (isNum(ins) && isNum(outs) && (speed || curve)) {
+    const length = curve
+      ? ms(rampOutLength(rampAbsolute(curve, ms(outs) - ms(ins))))
+      : ms((ms(outs) - ms(ins)) / (speed as number));
     const fi = clip.fade_in_s ?? 0;
     const fo = clip.fade_out_s ?? 0;
     if (ms(outs) - ms(ins) <= 0)
       problems.push(`${where}: out_s must be greater than in_s`);
     else if (fps && Math.round(length * fps) < 1)
       problems.push(`${where}: shorter than one frame`);
+    else if (
+      kind === "V" &&
+      clip.reverse === true &&
+      fps &&
+      isInt(frame[0]) &&
+      isInt(frame[1]) &&
+      frame[0] > 0 &&
+      frame[1] > 0 &&
+      rangeFrames(ms(outs) - ms(ins), fps) > reverseMaxFrames(frame[0], frame[1])
+    )
+      problems.push(
+        `${where}: reverse holds every frame of the range in memory — at most ${reverseMaxSeconds(frame[0], frame[1], fps)} s at this frame size`,
+      );
     else if (isNum(fi) && isNum(fo) && fi + fo > length + 1e-9)
       problems.push(`${where}: fade_in_s + fade_out_s is longer than the clip`);
   }
+  if (kind === "V" && clip.interpolate === true)
+    validateInterpolate(clip, where, frame, fps, curve, problems);
   if (kind === "V") {
     if ("fit" in clip && !(FITS as readonly unknown[]).includes(clip.fit))
-      problems.push(`${where}: fit must be contain or cover`);
+      problems.push(`${where}: fit must be contain, cover or blur`);
     if (
       "grade" in clip &&
       fields(
@@ -712,6 +1132,10 @@ function validateMediaClip(
           `${where} grade`,
           problems,
         );
+    validateEffects(clip, where, problems);
+    if ("move" in clip) validateClipMove(clip.move, where, problems);
+    if ("crop" in clip) validateCrop(clip.crop, where, problems);
+    numIn(clip, "angle", -ANGLE_MAX, ANGLE_MAX, where, problems);
     if ("transition" in clip) {
       const tr = clip.transition;
       if (
@@ -752,6 +1176,212 @@ function validateMediaClip(
   }
 }
 
+/** The twin of modules/timeline.py `_validate_speed_curve`: the curve's points
+ *  when it is well-formed, else null. */
+function validateSpeedCurve(
+  clip: Record<string, unknown>,
+  where: string,
+  problems: string[],
+): SpeedPoint[] | null {
+  const cw = `${where} speed_curve`;
+  const curve = clip.speed_curve;
+  if (
+    !Array.isArray(curve) ||
+    curve.length < RAMP_MIN_POINTS ||
+    curve.length > RAMP_MAX_POINTS
+  ) {
+    problems.push(
+      `${cw}: must be a list of ${RAMP_MIN_POINTS} to ${RAMP_MAX_POINTS} points`,
+    );
+    return null;
+  }
+  let ok = true;
+  const pts: SpeedPoint[] = [];
+  curve.forEach((p, i) => {
+    const pw = `${cw} point ${i}`;
+    if (!fields(p, ["at", "speed"], ["at", "speed"], pw, problems)) {
+      ok = false;
+      return;
+    }
+    numIn(p, "at", 0, 1, pw, problems);
+    numIn(p, "speed", SPEED_MIN, SPEED_MAX, pw, problems);
+    if (
+      !(
+        isNum(p.at) &&
+        p.at >= 0 &&
+        p.at <= 1 &&
+        isNum(p.speed) &&
+        p.speed >= SPEED_MIN &&
+        p.speed <= SPEED_MAX
+      )
+    ) {
+      ok = false;
+      return;
+    }
+    pts.push({ at: p.at, speed: p.speed });
+  });
+  if (!ok) return null;
+  if (pts[0].at !== 0 || pts[pts.length - 1].at !== 1) {
+    problems.push(`${cw}: the first point must be at 0 and the last at 1`);
+    return null;
+  }
+  if (pts.some((p, i) => i > 0 && p.at - pts[i - 1].at < RAMP_MIN_GAP - 1e-12)) {
+    problems.push(`${cw}: points must be at least ${RAMP_MIN_GAP} apart, in order`);
+    return null;
+  }
+  if (isNum(clip.speed ?? 1) && (clip.speed ?? 1) !== 1)
+    problems.push(`${where}: a speed curve replaces speed (leave speed out or 1)`);
+  for (const k of ["reverse", "freeze"])
+    if (clip[k] === true)
+      problems.push(`${where}: a speed curve cannot be combined with ${k}`);
+  return pts;
+}
+
+/** The 1080p-equivalent frames `interpolate` has to make for a clip
+ *  (modules/timeline.py `interpolated_frames`). */
+export function interpolatedFrames(
+  inS: number,
+  outS: number,
+  minSpeed: number,
+  fps: number,
+  width: number,
+  height: number,
+): number {
+  const rate = Math.min(INTERP_MAX_FPS, Math.ceil(fps / minSpeed));
+  const frames = Math.ceil((ms(outS) - ms(inS)) * rate);
+  return (frames * width * height) / INTERP_REF_PIXELS;
+}
+
+function validateInterpolate(
+  clip: Record<string, unknown>,
+  where: string,
+  frame: [unknown, unknown],
+  fps: number | null,
+  curve: SpeedPoint[] | null,
+  problems: string[],
+) {
+  if (clip.reverse === true || clip.freeze === true) {
+    problems.push(
+      `${where}: interpolate is for forward slow motion (not with reverse or freeze)`,
+    );
+    return;
+  }
+  const speeds: unknown[] = curve ? curve.map((p) => p.speed) : [clip.speed ?? 1];
+  if (!speeds.every(isNum) || Math.min(...(speeds as number[])) >= 1) {
+    problems.push(
+      `${where}: interpolate is for slow motion (some part must play below speed 1)`,
+    );
+    return;
+  }
+  if (
+    !(isInt(frame[0]) && isInt(frame[1]) && fps && isNum(clip.in_s) && isNum(clip.out_s))
+  )
+    return;
+  if (frame[0] * frame[1] > INTERP_MAX_PIXELS) {
+    problems.push(
+      `${where}: interpolate is not offered above 1440p (${frame[0]}x${frame[1]} is too big: the render would run out of memory) — lower the timeline's size or leave it out`,
+    );
+    return;
+  }
+  const cost = interpolatedFrames(
+    clip.in_s,
+    clip.out_s,
+    Math.min(...(speeds as number[])),
+    fps,
+    frame[0],
+    frame[1],
+  );
+  if (cost > INTERP_MAX_FRAMES)
+    problems.push(
+      `${where}: interpolating this range would make about ${Math.round(cost)} frames (1080p equivalent); at most ${INTERP_MAX_FRAMES} per clip — shorten the range`,
+    );
+}
+
+/** The twin of modules/timeline.py `_validate_crop`. */
+function validateCrop(crop: unknown, where: string, problems: string[]) {
+  const cw = `${where} crop`;
+  if (!fields(crop, ["x", "y", "w", "h"], [], cw, problems)) return;
+  for (const k of ["x", "y"]) numIn(crop, k, 0, 1, cw, problems);
+  for (const k of ["w", "h"]) numIn(crop, k, CROP_MIN, 1, cw, problems);
+  for (const [pos, size] of [
+    ["x", "w"],
+    ["y", "h"],
+  ] as const) {
+    const a = crop[pos] ?? 0;
+    const b = crop[size] ?? 1;
+    if (isNum(a) && isNum(b) && a + b > 1 + 1e-9)
+      problems.push(`${cw}: ${pos} + ${size} must not go past the picture`);
+  }
+}
+
+/** The twin of modules/timeline.py `_validate_chroma`. */
+function validateChroma(chroma: unknown, where: string, problems: string[]) {
+  const cw = `${where} chroma`;
+  if (!fields(chroma, ["color", "similarity", "blend"], ["color"], cw, problems))
+    return;
+  if (
+    "color" in chroma &&
+    !(typeof chroma.color === "string" && HEX_RE.test(chroma.color))
+  )
+    problems.push(`${cw}: color must be a #RRGGBB colour`);
+  numIn(chroma, "similarity", CHROMA_SIMILARITY_MIN, CHROMA_SIMILARITY_MAX, cw, problems);
+  numIn(chroma, "blend", 0, CHROMA_BLEND_MAX, cw, problems);
+}
+
+/** The twin of modules/timeline.py `_validate_clip_move`. */
+function validateClipMove(move: unknown, where: string, problems: string[]) {
+  if (!fields(move, ["from", "to"], ["from", "to"], `${where} move`, problems))
+    return;
+  for (const k of ["from", "to"] as const) {
+    if (!(k in move)) continue;
+    const pw = `${where} move ${k}`;
+    const point = move[k];
+    if (!fields(point, ["zoom", "x", "y"], [], pw, problems)) continue;
+    numIn(point, "zoom", MOVE_ZOOM_MIN, MOVE_ZOOM_MAX, pw, problems);
+    numIn(point, "x", 0, 1, pw, problems);
+    numIn(point, "y", 0, 1, pw, problems);
+  }
+}
+
+/** The twin of modules/timeline.py `_validate_overlay_move`. */
+function validateOverlayMove(move: unknown, where: string, problems: string[]) {
+  if (!fields(move, ["to"], ["to"], `${where} move`, problems) || !("to" in move))
+    return;
+  const to = move.to;
+  const tw = `${where} move to`;
+  if (!fields(to, ["x", "y", "w", "opacity"], [], tw, problems)) return;
+  if (Object.keys(to).length === 0)
+    problems.push(`${tw}: give at least one of x, y, w, opacity`);
+  for (const k of ["x", "y", "opacity"]) numIn(to, k, 0, 1, tw, problems);
+  numIn(to, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, tw, problems);
+}
+
+/** The twin of modules/timeline.py `_validate_effects`. */
+function validateEffects(
+  clip: Record<string, unknown>,
+  where: string,
+  problems: string[],
+) {
+  if (
+    "filter" in clip &&
+    !(typeof clip.filter === "string" && (FILTERS as readonly string[]).includes(clip.filter))
+  )
+    problems.push(`${where}: filter is not available`);
+  numIn(clip, "filter_strength", 0, 1, where, problems);
+  if ("filter_strength" in clip && !("filter" in clip))
+    problems.push(`${where}: filter_strength needs a filter`);
+  for (const k of UNIT_EFFECTS) numIn(clip, k, 0, 1, where, problems);
+  numIn(clip, "blur", 0, BLUR_MAX, where, problems);
+  for (const k of ["flip_h", "flip_v"])
+    if (k in clip && typeof clip[k] !== "boolean")
+      problems.push(`${where}: ${k} must be true or false`);
+  if (
+    "rotate" in clip &&
+    !(isInt(clip.rotate) && (ROTATIONS as readonly number[]).includes(clip.rotate))
+  )
+    problems.push(`${where}: rotate must be 0, 90, 180 or 270`);
+}
+
 function validateTimedText(
   obj: Record<string, unknown>,
   where: string,
@@ -766,6 +1396,39 @@ function validateTimedText(
   )
     problems.push(`${where}: end_s must be greater than start_s`);
   textField(obj, "text", where, problems);
+}
+
+/** The twin of modules/timeline.py `_validate_anims`. */
+function validateAnims(
+  obj: Record<string, unknown>,
+  where: string,
+  problems: string[],
+  text: boolean,
+) {
+  const lists: [string, readonly string[]][] = [
+    ["anim_in", text ? ANIM_IN : ANIM_OUT],
+    ["anim_out", ANIM_OUT],
+  ];
+  for (const [key, allowed] of lists) {
+    if (key in obj && !(typeof obj[key] === "string" && allowed.includes(obj[key] as string)))
+      problems.push(`${where}: ${key} is not an animation this item has`);
+    numIn(obj, `${key}_s`, ANIM_MIN_S, ANIM_MAX_S, where, problems);
+    if (`${key}_s` in obj && !(key in obj))
+      problems.push(`${where}: ${key}_s needs ${key}`);
+  }
+  const spans = ["anim_in", "anim_out"]
+    .filter((k) => k in obj)
+    .map((k) => obj[`${k}_s`] ?? ANIM_DEFAULT_S);
+  const { start_s: s, end_s: e } = obj;
+  if (
+    spans.length &&
+    spans.every(isNum) &&
+    isNum(s) &&
+    isNum(e) &&
+    e > s &&
+    (spans as number[]).reduce((a, b) => a + b, 0) > ms(e) - ms(s) + 1e-9
+  )
+    problems.push(`${where}: the animations are longer than the item is shown`);
 }
 
 function validateTextClip(
@@ -796,6 +1459,13 @@ function validateTextClip(
     problems.push(`${where}: anchor is not known`);
   numIn(clip, "fade_in_s", 0, MAX_DURATION_S, where, problems);
   numIn(clip, "fade_out_s", 0, MAX_DURATION_S, where, problems);
+  validateAnims(clip, where, problems, true);
+  for (const [anim, fade] of [
+    ["anim_in", "fade_in_s"],
+    ["anim_out", "fade_out_s"],
+  ] as const)
+    if (anim in clip && isNum(clip[fade]) && clip[fade] > 0)
+      problems.push(`${where}: ${anim} and ${fade} both set — use one`);
   const { start_s: s, end_s: e } = clip;
   const fi = clip.fade_in_s ?? 0;
   const fo = clip.fade_out_s ?? 0;
@@ -808,6 +1478,27 @@ function validateTextClip(
     fi + fo > e - s + 1e-9
   )
     problems.push(`${where}: fades are longer than the text is shown`);
+  // An animation on one side and a plain fade on the other: the fade becomes
+  // an animation too, so a long entrance would be cut short by the exit that
+  // starts at end_s - fade_out_s (modules/timeline.py, same words).
+  if (("anim_in" in clip) !== ("anim_out" in clip)) {
+    const animKey = "anim_in" in clip ? "anim_in" : "anim_out";
+    const side = "anim_in" in clip ? "fade_out_s" : "fade_in_s";
+    const mixed = clip[`${animKey}_s`] ?? ANIM_DEFAULT_S;
+    const other = clip[side] ?? 0;
+    if (
+      isNum(s) &&
+      isNum(e) &&
+      isNum(mixed) &&
+      isNum(other) &&
+      e > s &&
+      other > 0 &&
+      mixed + other > ms(e) - ms(s) + 1e-9
+    )
+      problems.push(
+        `${where}: the animation (${mixed} s) and ${side} (${other} s) are longer than the text is shown`,
+      );
+  }
 }
 
 /** Python's `round` (half to even) for the frame check below: the worker rounds
@@ -852,7 +1543,25 @@ function validateOverlays(
     }
     for (const k of ["x", "y", "opacity"]) numIn(ov, k, 0, 1, where, problems);
     numIn(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems);
+    validateAnims(ov, where, problems, false);
+    if ("move" in ov) validateOverlayMove(ov.move, where, problems);
+    if ("chroma" in ov) validateChroma(ov.chroma, where, problems);
   });
+  const slow = overlays.filter(partialOpacityMove).length;
+  if (slow > MAX_PARTIAL_OPACITY_MOVES)
+    problems.push(
+      `overlays: at most ${MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible values during a move (got ${slow}) — fade to or from 0, or keep the opacity`,
+    );
+}
+
+/** An overlay whose `move.to.opacity` is another visible value than its `opacity`
+ *  (modules/timeline.py `_partial_opacity_move`). */
+export function partialOpacityMove(ov: unknown): boolean {
+  if (!isObj(ov) || !isObj(ov.move)) return false;
+  const to = ov.move.to;
+  const start = ov.opacity ?? 1;
+  const end = isObj(to) ? to.opacity : undefined;
+  return isNum(start) && isNum(end) && start > 0 && end > 0 && start !== end;
 }
 
 function validateCaptions(
@@ -1047,11 +1756,43 @@ function crossfadeProblems(track: TimelineTrack): string[] {
   return problems;
 }
 
+/** Effects a cross-fade on a frame above 1440p cannot afford
+ *  (modules/timeline.py `_large_frame_crossfade_problems`). */
+function largeFrameCrossfadeProblems(doc: TimelineDoc, track: TimelineTrack): string[] {
+  const w = doc.width;
+  const h = doc.height;
+  if (!(isInt(w) && isInt(h) && w * h > LARGE_FRAME_PX)) return [];
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const [prev, clip] of crossfades(track))
+    for (const c of [prev, clip]) {
+      const id = String(c.id);
+      if (!seen.has(id) && isNum(c.blur) && c.blur > XFADE_LARGE_BLUR_MAX) {
+        seen.add(id);
+        problems.push(
+          `track ${track.id} clip ${id}: blur is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory; remove the blur, the cross-fade or lower the frame size`,
+        );
+      }
+      const mv = c.move;
+      const zooms = isObj(mv)
+        ? [mv.from, mv.to].filter(isObj).map((p) => (p as Record<string, unknown>).zoom ?? 1)
+        : [];
+      if (!seen.has(`${id}:zoom`) && zooms.some((z) => isNum(z) && z > XFADE_LARGE_ZOOM_MAX)) {
+        seen.add(`${id}:zoom`);
+        problems.push(
+          `track ${track.id} clip ${id}: a zoom above ${XFADE_LARGE_ZOOM_MAX} is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory; lower the zoom, remove the cross-fade or lower the frame size`,
+        );
+      }
+    }
+  return problems;
+}
+
 function transitionProblems(doc: TimelineDoc): string[] {
   const problems: string[] = [];
   for (const track of doc.tracks) {
     if (track.kind !== "V") continue;
     problems.push(...crossfadeProblems(track));
+    problems.push(...largeFrameCrossfadeProblems(doc, track));
     const clips = [...track.clips].sort(
       (a, b) =>
         ms(Number(a.start_s)) - ms(Number(b.start_s)) ||
@@ -1262,6 +2003,23 @@ function gradeFieldOf(v: unknown): { grade: ClipGrade } | object {
   return isNeutralGrade(grade) ? {} : { grade };
 }
 
+/** A document clip's effect fields as the model holds them: only the ones
+ *  that are usable and not "off" (the validator has the strict rules). */
+function effectsOf(c: Record<string, unknown>): Partial<VideoClip> {
+  const out: Record<string, unknown> = {};
+  if (typeof c.filter === "string" && (FILTERS as readonly string[]).includes(c.filter)) {
+    out.filter = c.filter;
+    if (isNum(c.filter_strength) && c.filter_strength !== 1)
+      out.filter_strength = c.filter_strength;
+  }
+  for (const k of [...UNIT_EFFECTS, "blur"])
+    if (isNum(c[k]) && c[k] !== 0) out[k] = c[k];
+  for (const k of ["flip_h", "flip_v"]) if (c[k] === true) out[k] = true;
+  if (isInt(c.rotate) && (ROTATIONS as readonly number[]).includes(c.rotate) && c.rotate !== 0)
+    out.rotate = c.rotate;
+  return out as Partial<VideoClip>;
+}
+
 function transitionOf(v: unknown): { transition: Transition } | object {
   if (
     !isObj(v) ||
@@ -1304,6 +2062,14 @@ function overlaysOf(v: unknown): PictureOverlay[] {
     )
       continue;
     const num = (x: unknown, d: number) => (isNum(x) ? x : d);
+    const anim = (key: "anim_in" | "anim_out") =>
+      typeof o[key] === "string" &&
+      (ANIM_OUT as readonly string[]).includes(o[key] as string)
+        ? {
+            [key]: o[key] as AnimOut,
+            [`${key}_s`]: num(o[`${key}_s`], ANIM_DEFAULT_S),
+          }
+        : {};
     out.push({
       id: o.id,
       asset_id: o.asset_id,
@@ -1313,6 +2079,10 @@ function overlaysOf(v: unknown): PictureOverlay[] {
       y: num(o.y, OVERLAY_DEFAULTS.y),
       w: num(o.w, OVERLAY_DEFAULTS.w),
       opacity: num(o.opacity, OVERLAY_DEFAULTS.opacity),
+      ...anim("anim_in"),
+      ...anim("anim_out"),
+      ...(isObj(o.move) ? { move: o.move as unknown as { to: OverlayMoveTo } } : {}),
+      ...(isObj(o.chroma) ? { chroma: o.chroma as unknown as ChromaKey } : {}),
     });
   }
   return out;
@@ -1329,10 +2099,21 @@ export function toModel(doc: TimelineDoc): EditorModel {
       out_s: Number(c.out_s),
       speed: isNum(c.speed) ? c.speed : 1,
       audio: c.audio === true,
-      ...(c.fit === "cover" || c.fit === "contain"
-        ? { fit: c.fit as "cover" | "contain" }
+      ...(c.fit === "cover" || c.fit === "contain" || c.fit === "blur"
+        ? { fit: c.fit as "cover" | "contain" | "blur" }
         : {}),
       ...gradeFieldOf(c.grade),
+      ...effectsOf(c),
+      ...(c.reverse === true ? { reverse: true } : {}),
+      ...(c.freeze === true ? { freeze: true } : {}),
+      ...(c.denoise === true ? { denoise: true } : {}),
+      ...(c.loudnorm === true ? { loudnorm: true } : {}),
+      ...(isObj(c.crop) ? { crop: c.crop as ClipCrop } : {}),
+      ...(isNum(c.angle) && c.angle !== 0 ? { angle: c.angle } : {}),
+      ...(usableCurve(c.speed_curve) ? { speed_curve: c.speed_curve as SpeedPoint[] } : {}),
+      ...(c.interpolate === true ? { interpolate: true } : {}),
+      ...(c.stabilize === true ? { stabilize: true } : {}),
+      ...(isObj(c.move) ? { move: c.move as unknown as ClipMove } : {}),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
         ? { fade_in_s: c.fade_in_s }
@@ -1362,6 +2143,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
         // becomes a track of its own again in toDoc.
         ...(t.role === "music" || t.role === "speech" ? { role: t.role } : {}),
         ...(duckOf(t.duck) ? { duck: duckOf(t.duck) as Duck } : {}),
+        ...(c.denoise === true ? { denoise: true } : {}),
+        ...(c.loudnorm === true ? { loudnorm: true } : {}),
       })),
     );
   // Every text track's texts, in track order (later ones draw on top).
@@ -1445,6 +2228,8 @@ export function toDoc(model: EditorModel): TimelineDoc {
           gain_db: ms(x.gain_db),
           fade_in_s: ms(x.fade_in_s),
           fade_out_s: ms(x.fade_out_s),
+          ...(x.denoise ? { denoise: true } : {}),
+          ...(x.loudnorm ? { loudnorm: true } : {}),
         },
       ],
     });
@@ -1487,6 +2272,10 @@ export function toDoc(model: EditorModel): TimelineDoc {
             y: ms(o.y),
             w: ms(o.w),
             opacity: ms(o.opacity),
+            ...(o.anim_in ? { anim_in: o.anim_in, anim_in_s: ms(o.anim_in_s ?? ANIM_DEFAULT_S) } : {}),
+            ...(o.anim_out ? { anim_out: o.anim_out, anim_out_s: ms(o.anim_out_s ?? ANIM_DEFAULT_S) } : {}),
+            ...(o.move ? { move: o.move } : {}),
+            ...(o.chroma ? { chroma: o.chroma } : {}),
           })),
         }
       : {}),
@@ -1729,10 +2518,16 @@ export function clipAt(
       return {
         clip: c,
         index: i,
-        sourceS: ms(c.in_s + (t - c.start_s) * c.speed),
+        sourceS: sourceTimeAt(c, t),
       };
   }
   return null;
+}
+
+/** The source second a split at timeline time `t` cuts at (modules/timeline.py
+ *  split_clip): a reversed clip plays its range from the end. */
+function cutPoint(c: VideoClip, t: number): number {
+  return ms(c.reverse ? c.out_s - (t - c.start_s) * c.speed : c.in_s + (t - c.start_s) * c.speed);
 }
 
 /** Can clip `id` be split at timeline time `t` (both halves at least MIN_CLIP_S of source)? */
@@ -1740,7 +2535,10 @@ export function canSplit(model: EditorModel, id: string, t: number): boolean {
   if (model.clips.length >= MAX_EDITOR_CLIPS) return false;
   const c = layout(model.clips).find((x) => x.id === id);
   if (!c) return false;
-  const cut = c.in_s + (t - c.start_s) * c.speed;
+  // A clip with a speed curve is not split (the part left of the cut would
+  // need its own curve): remove the curve first, as the backend asks.
+  if (c.speed_curve) return false;
+  const cut = cutPoint(c, t);
   return (
     t > c.start_s &&
     t < clipEnd(c) &&
@@ -1760,16 +2558,39 @@ export function splitClip(
   const clips = layout(model.clips);
   const i = clips.findIndex((x) => x.id === id);
   const c = clips[i];
-  const cut = ms(c.in_s + (ms(t) - c.start_s) * c.speed);
+  const cut = cutPoint(c, ms(t));
   const newId = freshId(model, "c");
   // modules/timeline.py split_clip: the first half keeps the way in (its
   // transition and fade in), the second the way out (its fade out).
-  const first: VideoClip = { ...c, out_s: cut };
+  // Played backwards, the part that comes first on the timeline is the LATER
+  // part of the source range; a frozen clip's halves hold the same frame.
+  const first: VideoClip = c.reverse
+    ? { ...c, in_s: cut }
+    : { ...c, out_s: cut };
   delete first.fade_out_s;
-  const second: VideoClip = withoutTransition({ ...c, id: newId, in_s: cut });
+  const second: VideoClip = withoutTransition(
+    c.reverse
+      ? { ...c, id: newId, out_s: cut }
+      : c.freeze
+        ? { ...c, id: newId, out_s: ms(c.in_s + (clipEnd(c) - ms(t))) }
+        : { ...c, id: newId, in_s: cut },
+  );
   delete second.fade_in_s;
   if (second.audio && audioInputs(model) >= MAX_AUDIO_CLIPS)
     second.audio = false;
+  if (c.move) {
+    // The move goes on across the cut: the first half ends where the second
+    // begins, at the window the whole move had reached at the cut.
+    const f = (ms(t) - c.start_s) / clipLength(c);
+    const at = (k: keyof typeof MOVE_POINT_DEFAULTS) => {
+      const a = c.move!.from[k] ?? MOVE_POINT_DEFAULTS[k];
+      const b = c.move!.to[k] ?? MOVE_POINT_DEFAULTS[k];
+      return ms(a + (b - a) * f);
+    };
+    const mid = { zoom: at("zoom"), x: at("x"), y: at("y") };
+    first.move = { from: c.move.from, to: mid };
+    second.move = { from: mid, to: c.move.to };
+  }
   const next = [...clips.slice(0, i), first, second, ...clips.slice(i + 1)];
   return { model: { ...model, clips: layout(next) }, newId };
 }
@@ -1783,7 +2604,13 @@ export function setSpeed(
   return {
     ...model,
     clips: layout(
-      model.clips.map((c) => (c.id === id ? { ...c, speed: s } : c)),
+      model.clips.map((c) => {
+        if (c.id !== id) return c;
+        // One constant speed replaces a curve (a document has either).
+        const { speed_curve: _curve, ...rest } = c;
+        void _curve;
+        return { ...rest, speed: s };
+      }),
     ),
   };
 }

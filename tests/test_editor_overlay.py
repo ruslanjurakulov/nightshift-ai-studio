@@ -240,7 +240,7 @@ class DocumentTestCase(unittest.TestCase):
         defaults = re.search(r"OVERLAY_DEFAULTS = \{([^}]*)\}", ts).group(1)
         self.assertEqual({k: float(v) for k, v in re.findall(r"(\w+):\s*([\d.]+)", defaults)},
                          tl.OVERLAY_DEFAULTS)
-        keys = re.search(r"const OVERLAY_KEYS = \[\.\.\.OVERLAY_REQUIRED, ([^\]]*)\]", ts).group(1)
+        keys = re.search(r"const OVERLAY_KEYS = \[\s*\.\.\.OVERLAY_REQUIRED,\s*([^\]]*)\]", ts).group(1)
         self.assertEqual(tuple(re.findall(r'"(\w+)"', keys)), tl._OVERLAY_KEYS[len(tl._OVERLAY_REQUIRED):])
 
     def test_the_editor_ranges_file_has_the_same_ranges(self):
