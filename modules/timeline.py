@@ -171,7 +171,12 @@ TRANSITIONS = ("cut", "dip_to_black", "crossfade")
 #: about what the plain ``fade`` does (measured, tests/test_editor_transitions.py).
 XFADE_STYLES = ("fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight",
                 "slideleft", "slideright", "slideup", "slidedown", "circleopen",
-                "circleclose", "radial", "zoomin")
+                "circleclose", "radial", "zoomin",
+                "wipeup", "wipedown", "smoothleft", "smoothright", "smoothup",
+                "smoothdown", "vertopen", "vertclose", "horzopen", "horzclose",
+                "diagtl", "diagtr", "diagbl", "diagbr", "wipetl",
+                "wipetr", "wipebl", "wipebr", "squeezeh", "squeezev",
+                "pixelize", "hblur", "distance")
 XFADE_DEFAULT_STYLE = "fade"
 #: A cross-fade's length: under 0.2 s it reads as a glitch, not a dissolve;
 #: over 2 s both clips are half-visible for longer than a viewer will wait.
@@ -556,7 +561,8 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
                     problems.append(f"{where}: transition type must be one of {list(TRANSITIONS)}")
                 if "style" in tr:
                     if not (isinstance(tr["style"], str) and tr["style"] in XFADE_STYLES):
-                        problems.append(f"{where} transition: style must be one of {list(XFADE_STYLES)}")
+                        problems.append(f"{where} transition: style must be one of the {len(XFADE_STYLES)} "
+                                        "blend styles in schemas/timeline.schema.json")
                     elif tr.get("type") != "crossfade":
                         problems.append(f"{where} transition: a style is only for a crossfade")
                 if tr.get("type") == "crossfade":

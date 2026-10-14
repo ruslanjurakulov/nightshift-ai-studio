@@ -65,6 +65,60 @@ export function glyphStyle(style: XfadeStyle): CSSProperties {
       return {
         background: `linear-gradient(${OLD}, ${OLD}) center / 62% 62% no-repeat, ${NEW}`,
       };
+    case "wipeup":
+      return { background: half("180deg", OLD, NEW) };
+    case "wipedown":
+      return { background: half("180deg", NEW, OLD) };
+    case "smoothleft":
+      return { background: `linear-gradient(90deg, ${OLD} 30%, ${NEW} 70%)` };
+    case "smoothright":
+      return { background: `linear-gradient(90deg, ${NEW} 30%, ${OLD} 70%)` };
+    case "smoothup":
+      return { background: `linear-gradient(180deg, ${OLD} 30%, ${NEW} 70%)` };
+    case "smoothdown":
+      return { background: `linear-gradient(180deg, ${NEW} 30%, ${OLD} 70%)` };
+    case "vertopen":
+      return { background: `linear-gradient(90deg, ${OLD} 0 30%, ${NEW} 30% 70%, ${OLD} 70%)` };
+    case "vertclose":
+      return { background: `linear-gradient(90deg, ${NEW} 0 30%, ${OLD} 30% 70%, ${NEW} 70%)` };
+    case "horzopen":
+      return { background: `linear-gradient(180deg, ${OLD} 0 30%, ${NEW} 30% 70%, ${OLD} 70%)` };
+    case "horzclose":
+      return { background: `linear-gradient(180deg, ${NEW} 0 30%, ${OLD} 30% 70%, ${NEW} 70%)` };
+    case "diagtl":
+      return { background: `linear-gradient(135deg, ${OLD} 50%, ${NEW} 50%)` };
+    case "diagtr":
+      return { background: `linear-gradient(225deg, ${OLD} 50%, ${NEW} 50%)` };
+    case "diagbl":
+      return { background: `linear-gradient(45deg, ${OLD} 50%, ${NEW} 50%)` };
+    case "diagbr":
+      return { background: `linear-gradient(315deg, ${OLD} 50%, ${NEW} 50%)` };
+    case "wipetl":
+      return { background: `linear-gradient(${NEW}, ${NEW}) right bottom / 55% 55% no-repeat, ${OLD}` };
+    case "wipetr":
+      return { background: `linear-gradient(${NEW}, ${NEW}) left bottom / 55% 55% no-repeat, ${OLD}` };
+    case "wipebl":
+      return { background: `linear-gradient(${NEW}, ${NEW}) right top / 55% 55% no-repeat, ${OLD}` };
+    case "wipebr":
+      return { background: `linear-gradient(${NEW}, ${NEW}) left top / 55% 55% no-repeat, ${OLD}` };
+    case "squeezeh":
+      return { background: `linear-gradient(${OLD}, ${OLD}) center / 100% 40% no-repeat, ${NEW}` };
+    case "squeezev":
+      return { background: `linear-gradient(${OLD}, ${OLD}) center / 40% 100% no-repeat, ${NEW}` };
+    case "pixelize":
+      return {
+        backgroundColor: OLD,
+        backgroundImage: `linear-gradient(${NEW} 0 0), linear-gradient(${NEW} 0 0)`,
+        backgroundSize: "6px 6px, 6px 6px",
+        backgroundPosition: "0 0, 6px 6px",
+        backgroundRepeat: "repeat",
+      };
+    case "hblur":
+      return { background: `linear-gradient(90deg, ${OLD}, ${NEW} 25%, ${OLD} 50%, ${NEW} 75%, ${OLD})` };
+    case "distance":
+      return {
+        background: `radial-gradient(circle at 30% 50%, ${NEW} 0 22%, ${OLD} 60%)`,
+      };
   }
 }
 
