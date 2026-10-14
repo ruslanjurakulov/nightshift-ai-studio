@@ -24,6 +24,7 @@ def extend(tables: dict, functions: dict) -> None:
     functions.update({
         "email_prefs_get": USER,
         "email_prefs_set": USER,
+        "email_worker_online": USER,
         # The signed-out one-click opt-out: the token is the authority.
         "email_unsubscribe": HELPER_ANON,
         # The worker's functions and the digest they call: the service key only.

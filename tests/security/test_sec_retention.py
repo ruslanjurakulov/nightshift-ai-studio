@@ -624,6 +624,36 @@ def test_unsubscribing_from_weekly_stops_it(conn, sc):
     assert got == []
 
 
+# ── is anything sending? ────────────────────────────────────────────────────
+
+def test_the_switches_are_offered_only_while_the_email_worker_reports(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        as_user(s, sc.alice.actor)
+        none = s.value("select public.email_worker_online()")
+        as_owner(s)
+        as_service(s)
+        s.value("select public.report_worker_status('email-test', 'other', 'running', null, null)")
+        as_owner(s)
+        as_user(s, sc.alice.actor)
+        up = s.value("select public.email_worker_online()")
+        as_owner(s)
+        s.rows("update public.worker_status set updated_at = now() - interval '10 minutes' where worker_id = 'email-test' returning 1")
+        as_user(s, sc.alice.actor)
+        stale = s.value("select public.email_worker_online()")
+        as_owner(s)
+        s.rows("update public.worker_status set updated_at = now(), state = 'failed' where worker_id = 'email-test' returning 1")
+        as_user(s, sc.alice.actor)
+        failed = s.value("select public.email_worker_online()")
+        as_owner(s)
+        s.rows("update public.worker_status set worker_id = 'media-x', state = 'running' where worker_id = 'email-test' returning 1")
+        as_user(s, sc.alice.actor)
+        other = s.value("select public.email_worker_online()")
+    assert (none, up, stale, failed, other) == (False, True, False, False, False)
+    with acting(conn, ANON) as s:
+        out = s.run("select public.email_worker_online()")
+    assert not out.ok and out.sqlstate == "42501", out
+
+
 # ── shape ───────────────────────────────────────────────────────────────────
 
 def test_the_ledger_and_preferences_reject_shapes_the_functions_never_write(conn, sc):
@@ -652,9 +682,9 @@ def test_every_function_of_0101_pins_its_search_path(conn):
              where p.pronamespace = 'public'::regnamespace
                and p.proname in ('notify_video_ready', 'notify_storyboard_ready', 'email_prefs_get', 'email_prefs_set',
                                  'email_unsubscribe', 'email_weekly_digest', 'email_claim_ready', 'email_claim_weekly',
-                                 'email_complete')
+                                 'email_complete', 'email_worker_online')
             """)
-    assert len(rows) == 9 and all(r[1] and r[2] for r in rows), rows
+    assert len(rows) == 10 and all(r[1] and r[2] for r in rows), rows
 
 
 def test_the_tables_have_rls_on_and_no_policy(conn):

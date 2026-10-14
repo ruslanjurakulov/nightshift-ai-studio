@@ -42,6 +42,7 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
 
 from modules import email_notify as mail  # noqa: E402
+from modules.worker_status import WorkerStatusReporter  # noqa: E402
 
 logger = logging.getLogger("email_worker")
 
@@ -134,7 +135,8 @@ def run_once(store: EmailStore, transport: Any, origin: str, worker: str) -> Dic
 
 
 def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = None,
-         store_factory: Optional[Callable[[], EmailStore]] = None) -> int:
+         store_factory: Optional[Callable[[], EmailStore]] = None,
+         reporter_factory: Optional[Callable[[str], Any]] = None) -> int:
     env = os.environ if env is None else env
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--once", action="store_true", help="one pass, then exit")
@@ -154,24 +156,40 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
     else:
         store = store_factory()
     origin = mail.safe_origin(env.get("APP_ORIGIN")) or ""
-    worker = (env.get("NIGHTSHIFT_WORKER_ID") or f"email-{socket.gethostname()}")[:64]
+    # The id starts with "email-": that prefix is what email_worker_online() looks for,
+    # and the Settings switches are shown only while it reports.
+    worker = ("email-" + (env.get("NIGHTSHIFT_WORKER_ID") or socket.gethostname()).removeprefix("email-"))[:64]
     poll = float(env.get("EMAIL_WORKER_POLL_SECONDS") or DEFAULT_POLL_SECONDS)
 
+    reporter: Optional[Any] = None
+    if not args.once:
+        if reporter_factory is not None:
+            reporter = reporter_factory(worker)
+        elif env.get("SUPABASE_URL") and env.get("SUPABASE_SERVICE_KEY"):
+            reporter = WorkerStatusReporter(env["SUPABASE_URL"], env["SUPABASE_SERVICE_KEY"], worker_id=worker, kind="other")
+        if reporter is not None:
+            reporter.start_heartbeat()
+
     stop = {"now": False}
-    signal.signal(signal.SIGTERM, lambda *_: stop.update(now=True))
-    signal.signal(signal.SIGINT, lambda *_: stop.update(now=True))
+    previous = (signal.signal(signal.SIGTERM, lambda *_: stop.update(now=True)),
+                signal.signal(signal.SIGINT, lambda *_: stop.update(now=True)))
     while True:
         counts = run_once(store, transport, origin, worker)
         if any(counts.values()):
             logger.info("pass done via %s: %s", transport.name, counts)
         if args.once or stop["now"]:
-            return 0
+            break
         slept = 0.0
         while slept < poll and not stop["now"]:
             time.sleep(1.0)
             slept += 1.0
         if stop["now"]:
-            return 0
+            break
+    signal.signal(signal.SIGTERM, previous[0])
+    signal.signal(signal.SIGINT, previous[1])
+    if reporter is not None:
+        reporter.close("stopped")
+    return 0
 
 
 if __name__ == "__main__":

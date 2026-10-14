@@ -338,6 +338,41 @@ class Worker(unittest.TestCase):
             self.assertEqual(len(list(Path(d).glob("*.json"))), 1)
         self.assertEqual(store.done[0][1], "sent")
 
+    def test_a_looping_worker_reports_as_an_email_worker_and_stops_cleanly(self):
+        class Rep:
+            def __init__(self, wid):
+                self.wid, self.events = wid, []
+
+            def start_heartbeat(self):
+                self.events.append("start")
+
+            def close(self, state="stopped", detail=None):
+                self.events.append(state)
+
+        made = []
+
+        def factory(wid):
+            made.append(Rep(wid))
+            return made[0]
+
+        import signal as _signal
+
+        with tempfile.TemporaryDirectory() as d:
+            store = FakeStore()
+            env = {"NIGHTSHIFT_EMAIL_TRANSPORT": "fake", "APP_ORIGIN": ORIGIN, "NIGHTSHIFT_EMAIL_FAKE_DIR": d,
+                   "EMAIL_WORKER_POLL_SECONDS": "0"}
+            # Stop the loop after the first pass the way docker stop does.
+            orig = store.claim_weekly
+
+            def stop_after(*a, **k):
+                _signal.raise_signal(_signal.SIGTERM)
+                return orig(*a, **k)
+
+            store.claim_weekly = stop_after
+            self.assertEqual(worker.main([], env=env, store_factory=lambda: store, reporter_factory=factory), 0)
+        self.assertTrue(made[0].wid.startswith("email-"))
+        self.assertEqual(made[0].events, ["start", "stopped"])
+
     def test_the_store_calls_only_the_0101_functions_with_the_service_key(self):
         calls = []
 

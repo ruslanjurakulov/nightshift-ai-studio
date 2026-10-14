@@ -17,7 +17,7 @@ CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 OLD_CODE = "\n".join(line.split("--", 1)[0] for line in OLD.splitlines())
 
 DEFINER = ("notify_video_ready", "notify_storyboard_ready", "email_prefs_get", "email_prefs_set", "email_unsubscribe",
-           "email_weekly_digest", "email_claim_ready", "email_claim_weekly", "email_complete")
+           "email_weekly_digest", "email_claim_ready", "email_claim_weekly", "email_complete", "email_worker_online")
 
 
 def function_body(code, name):
@@ -69,6 +69,7 @@ class RetentionMigration(unittest.TestCase):
         for name in DEFINER:
             self.assertRegex(CODE, rf"revoke all on function public\.{name}\([^)]*\) from public, anon, authenticated, service_role;", name)
         self.assertEqual(grants("email_prefs_get"), ["authenticated"])
+        self.assertEqual(grants("email_worker_online"), ["authenticated"])
         self.assertEqual(grants("email_prefs_set"), ["authenticated"])
         self.assertEqual(grants("email_unsubscribe"), ["anon", "authenticated"])
         for name in ("email_claim_ready", "email_claim_weekly", "email_complete"):

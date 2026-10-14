@@ -26,6 +26,11 @@
 --   email_prefs_get / email_prefs_set      the person's own switches (authenticated).
 --   email_unsubscribe(token, scope)        the signed-out, one-click opt-out
 --                                          (anon + authenticated).
+--   email_worker_online()    true when the e-mail worker has reported to
+--                            worker_status (0045) in the last 3 minutes. The
+--                            Settings switches are shown only then: a switch
+--                            for mail nothing is sending would be a promise
+--                            nobody keeps (authenticated; reveals nothing else).
 --   email_claim_ready / email_claim_weekly / email_complete
 --                            the e-mail worker's three functions (service key only).
 --
@@ -76,7 +81,7 @@
 -- function other than notify_storyboard_ready is replaced. Additive and
 -- idempotent: guarded creates, drop-then-create constraints and triggers.
 --
--- REQUIRES 0064 (notifications), 0016 (videos.publish_state), 0018 (organizations,
+-- REQUIRES 0064 (notifications), 0045 (worker_status, optional: without it the switches stay hidden), 0016 (videos.publish_state), 0018 (organizations,
 -- channels.org_id), 0020 (credits), 0057 (storyboards).
 
 do $$
@@ -296,6 +301,25 @@ begin
          updated_at = now()
    where unsubscribe_token = p_token;
   return case when found then 'ok' else 'invalid' end;
+end
+$$;
+
+-- Is anything actually sending? The e-mail worker reports to worker_status
+-- (migration 0045) as kind 'other' under an id that starts with 'email-', and
+-- only when it is configured. A bare boolean: no worker id, no detail.
+create or replace function public.email_worker_online() returns boolean
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if to_regclass('public.worker_status') is null then
+    return false;
+  end if;
+  return exists (select 1 from public.worker_status w
+                  where w.kind = 'other' and w.worker_id like 'email-%'
+                    and w.state in ('starting', 'running')
+                    and w.updated_at > now() - interval '180 seconds');
 end
 $$;
 
@@ -603,6 +627,9 @@ revoke all on function public.email_prefs_set(boolean, integer, text) from publi
 grant execute on function public.email_prefs_get() to authenticated;
 grant execute on function public.email_prefs_set(boolean, integer, text) to authenticated;
 
+revoke all on function public.email_worker_online() from public, anon, authenticated, service_role;
+grant execute on function public.email_worker_online() to authenticated;
+
 revoke all on function public.email_unsubscribe(text, text) from public, anon, authenticated, service_role;
 grant execute on function public.email_unsubscribe(text, text) to anon, authenticated;
 
@@ -636,7 +663,7 @@ grant execute on function public.email_complete(uuid, text, text, text, text) to
 --      from pg_proc p where p.pronamespace = 'public'::regnamespace
 --       and p.proname in ('notify_video_ready', 'notify_storyboard_ready', 'email_prefs_get', 'email_prefs_set',
 --                         'email_unsubscribe', 'email_weekly_digest', 'email_claim_ready', 'email_claim_weekly',
---                         'email_complete')) as definer_functions_pin_search_path,
+--                         'email_complete', 'email_worker_online')) as definer_functions_pin_search_path,
 --   exists (select 1 from pg_trigger where tgname = 'videos_notify_ready' and not tgisinternal) as video_trigger_on,
 --   (select pg_get_constraintdef(oid) like '%video_ready%' from pg_constraint
 --     where conname = 'notifications_kind_check' and conrelid = 'public.notifications'::regclass) as kind_accepted;
