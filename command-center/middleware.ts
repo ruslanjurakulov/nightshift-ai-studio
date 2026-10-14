@@ -15,6 +15,7 @@ import {
   gateDecision,
   isPublicApiPath,
   isPublicFontPath,
+  isReviewLinkPath,
   isSignedMediaPath,
   isUnknownDocsPath,
   isUnknownSolutionPath,
@@ -183,6 +184,9 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
   // A signed media link carries its own authorization (lib/server/media.ts).
   if (isSignedMediaPath(request.nextUrl.pathname)) return NextResponse.next();
+  // A review link carries its own authorization too (its token, checked by the database): no session to
+  // refresh, and none to spend a round trip on for every range a phone asks for.
+  if (isReviewLinkPath(request.nextUrl.pathname)) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
 

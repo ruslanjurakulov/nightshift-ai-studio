@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import {
   gateDecision,
   isInviteLinkPath,
+  isReviewLinkPath,
   isPublicFontPath,
   isPublicPath,
   isUnknownSolutionPath,
@@ -391,5 +392,53 @@ describe("invite links", () => {
     expect(gateDecision("/i/x", false)).toBe("to-login");
     expect(gateDecision("/invite", false)).toBe("pass");
     expect(gateDecision("/invite", true)).toBe("pass");
+  });
+});
+
+// Private review links (migration 0101): /r/<token> and /r/<token>/video work
+// signed out by an anchored pattern and nothing wider, and never touch a session.
+describe("review links", () => {
+  const TOKEN = "ab".repeat(32);
+
+  it.each([`/r/${TOKEN}`, `/r/${TOKEN}/`, `/r/${TOKEN}/video`, `/r/${"a".repeat(16)}`])(
+    "%s passes signed out and signed in, with no channel resolved and no sign-in redirect",
+    async (path) => {
+      for (const signedIn of [false, true]) {
+        const { redirect, res } = await visit(path, signedIn);
+        expect(redirect).toBeNull();
+        expect(res.status).toBe(200);
+        expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+      }
+    },
+  );
+
+  it.each([
+    "/r",
+    "/r/",
+    "/r/short",
+    `/r/${"a".repeat(129)}`,
+    `/r/${TOKEN}/x`,
+    `/r/${TOKEN}/video/x`,
+    `/r/${TOKEN}/videos`,
+    `/r/${TOKEN}.rsc`,
+    `/r/${TOKEN}%2Fvideo`,
+    `/r//${TOKEN}`,
+    `/R/${TOKEN}`,
+    `/rr/${TOKEN}`,
+    `/chronos/r/${TOKEN}`,
+    `/api/r/${TOKEN}`,
+  ])("%s is gated like any app URL", async (path) => {
+    expect(isReviewLinkPath(path)).toBe(false);
+    expect((await visit(path, false)).redirect).toMatch(/^\/login\/?$/);
+  });
+
+  it("is not a channel: the word r is reserved, so no channel's screen is shadowed", () => {
+    expect(isValidChannelId("r")).toBe(false);
+  });
+
+  it("gateDecision", () => {
+    expect(gateDecision(`/r/${TOKEN}`, false)).toBe("pass");
+    expect(gateDecision(`/r/${TOKEN}/video`, true)).toBe("pass");
+    expect(gateDecision("/r/x", false)).toBe("to-login");
   });
 });
