@@ -15,10 +15,10 @@ const read = (p: string) => readFileSync(join(__dirname, "..", p), "utf8");
 describe("shell: the page keeps its end above the bottom tab bar", () => {
   it("the customer <main> opts in with the unlayered class, not a pb-* utility the unlayered .pad-page would beat", () => {
     const layout = read("app/(app)/layout.tsx");
-    expect(layout).toContain('className="pad-page pad-page-tabbar min-w-0 flex-1"');
+    expect(layout).toContain('className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none"');
     expect(layout).not.toContain("pb-24");
     const css = read("app/globals.css");
-    expect(css).toMatch(/@media \(max-width: 1023\.98px\) \{\s*\.pad-page-tabbar \{ padding-bottom: calc\(6rem \+ env\(safe-area-inset-bottom\)\); \}/);
+    expect(css).toMatch(/@media \(max-width: 1023\.98px\) \{\s*(?:\/\*[^*]*\*\/\s*)?\.pad-page-tabbar \{ padding-bottom: calc\(7\.5rem \+ env\(safe-area-inset-bottom\)\); \}/);
   });
 });
 

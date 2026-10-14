@@ -670,7 +670,8 @@ h1 { letter-spacing: -0.02em; }
    (the last ~65px of every phone page sat under the bar). The bar is shown
    below lg only. */
 @media (max-width: 1023.98px) {
-  .pad-page-tabbar { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+  /* 7.5rem: the tab bar (~4.75rem with the button above it) plus the 44px back-to-top button, so the end of a page is never under it. */
+  .pad-page-tabbar { padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); }
 }
 /* The bar's own contents follow the same measure, so the wordmark and the
    controls stay in line with the page under them instead of hugging the edges. */
@@ -790,6 +791,8 @@ option {
 }
 .scroll-top:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .scroll-top[data-hidden="true"] { opacity: 0; transform: translateY(8px); pointer-events: none; }
+/* Reached by keyboard while "hidden" (it is still in the tab order): show it. */
+.scroll-top[data-hidden="true"]:focus-visible { opacity: 1; transform: none; pointer-events: auto; outline: 3px solid var(--ns-focus); outline-offset: 2px; }
 /* Where the phone's tab bar is shown (the bar is ~65px with the raised Studio key),
    the button rides above it instead of covering the right-most tab. While the
    composer's Generate dock is pinned above the bar (about 108px tall, 60px up),
@@ -798,6 +801,8 @@ option {
   .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
   .app-shell:has(.studio-dock:not([data-at-top="true"])) .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 11rem); }
 }
+/* A fixed bottom action bar (the library's selection bar) owns that strip: the button steps away rather than sit on its actions. */
+.app-shell:has([data-bottom-bar]) .scroll-top { visibility: hidden; }
 
 /* A bar nav link carries the same sweep as every other control: the fill rises
    from the bottom edge on hover and the press scales in. The page you are on
@@ -2462,6 +2467,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 /* The text and sound lanes of the timeline strip: 28px chips on a 30px step with
    a mouse, 44px chips on a 46px step under a finger (same condition as the trim
    handles below). */
+/* The shell's sticky top bar covers the top of every viewport it is drawn in: a control reached by keyboard is scrolled to
+   BELOW it (--ns-shell-h is the bar's measured height, set by ShellOffsets; 4rem until then). Declared before the editor's
+   rule below so the editor's taller offset (bar + pinned preview) still wins where the preview is pinned. */
+html:has(.app-shell) { scroll-padding-top: calc(var(--ns-shell-h, 4rem) + 0.5rem); }
 /* The editor pins its preview under the top bar below lg (useStickyOffsets
    publishes both heights): a control scrolled to or focused by keyboard is
    brought into view BELOW the pinned picture, not under it. */

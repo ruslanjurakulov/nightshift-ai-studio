@@ -152,7 +152,7 @@ export function ChannelDnaSection({
     <section
       id={dnaAnchor(channelId)}
       aria-labelledby={`${uid}-title`}
-      className="g2-sub-block scroll-mt-24"
+      className="g2-sub-block scroll-mt-7"
     >
       <div className="g2-sub-head">
         <h3 id={`${uid}-title`} className="g2-strong flex items-center gap-2">

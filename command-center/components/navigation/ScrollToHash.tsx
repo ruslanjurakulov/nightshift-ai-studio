@@ -10,7 +10,7 @@ const WAIT_MS = 6000;
  *
  * A link from another page (Settings → Invite friends) reaches a page that streams in: the router looks for the id
  * before the section exists, finds nothing and stays at the top. This waits for the section to be drawn and then
- * scrolls to it once per address. The section's own `scroll-mt-*` keeps it clear of the sticky header. An address with no hash, or
+ * scrolls to it once per address. In the signed-in app the sticky header is cleared by the shell's `scroll-padding-top` (globals.css, `--ns-shell-h`), so a section there needs no `scroll-mt-*` of its own (only a small one, for air): the two would add up. An address with no hash, or
  * one that names nothing here, does nothing; opening the page directly already scrolled and this lands on the same
  * spot. It stands down after a few seconds, or the moment the person scrolls, touches or presses a key, so it never fights them.
  */

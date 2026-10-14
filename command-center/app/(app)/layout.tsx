@@ -33,6 +33,8 @@ import { AppProviders } from "@/components/AppProviders";
 import { getLocale } from "@/lib/i18n/server";
 import { MotionProvider } from "@/components/motion/MotionProvider";
 import { FlashNotice } from "@/components/account/FlashNotice";
+import { SkipLink } from "@/components/shell/SkipLink";
+import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import "./app-redesign.css";
 import "./app-pages-1.css";
 
@@ -152,13 +154,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ShellProvider operator={operator}>
         <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
+            {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}
+            <SkipLink />
+            <ShellOffsets />
             <NeuralBackdrop dim />
             {operator ? (
               <div className="relative z-10 flex min-h-svh flex-col">
                 {header}
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                   <SideNav operator />
-                  <main className="pad-page min-w-0 flex-1">{children}</main>
+                  <main id="main" tabIndex={-1} className="pad-page min-w-0 flex-1 focus:outline-none">{children}</main>
                 </div>
               </div>
             ) : (
@@ -170,7 +175,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <SideNav email={email} avatarV={avatarV} plan={plan} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   {header}
-                  <main className="pad-page pad-page-tabbar min-w-0 flex-1">{children}</main>
+                  <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}</main>
                 </div>
               </div>
             )}
