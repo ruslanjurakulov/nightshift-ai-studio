@@ -12,7 +12,8 @@ import { renderToStaticMarkup } from "react-dom/server";
  * canonical / share card / single h1, the custom 404, alt text on every image,
  * the icon and share-image files, internal links, the cookie disclosure, and the
  * absence of any third-party tracker. Items a machine cannot judge (page speed
- * on real hardware, a lawyer's reading of the policy, whether a speed figure is good enough) are listed as owner items in the document.
+ * on real hardware, a lawyer's reading of the policy, whether the analytics
+ * read-out is used) are listed as owner items in the document.
  *
  * Extends, does not repeat: tests/crawler.test.ts (the public gate of the three
  * crawler files), tests/public-404.test.ts (the 404 with no backend) and
@@ -432,12 +433,12 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
     "yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "chronos_theme",
   ];
 
-  it.each(LOCALES)("%s: the Cookies section lists every cookie and the theme key the code sets", (locale) => {
+  it.each(LOCALES)("%s: the Cookies section lists every cookie and the theme key the code sets, and the page statistics", (locale) => {
     const section = LEGAL_TEXTS[locale].privacy.sections.find((s) => s.id === "cookies")!;
     const text = section.body.flatMap(textOf).join("\n");
     for (const n of NAMES) expect(text, n).toContain(`\`${n}\``);
-    // Nothing here counts visitors, so the policy must not say it does (page counts are a separate change).
-    expect(text).not.toMatch(/Do Not Track|page statistics|Статистика страниц|Sahifa statistikasi/i);
+    expect(text).toContain("Do Not Track");
+    expect(text).toContain("Global Privacy Control");
     expect(text).toContain("Paddle");
   });
 

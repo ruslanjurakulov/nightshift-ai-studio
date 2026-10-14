@@ -509,3 +509,8 @@ sec_friend_invites_0092.extend(TABLES, FUNCTIONS)
 import sec_user_handles_0096  # noqa: E402
 
 sec_user_handles_0096.extend(TABLES, FUNCTIONS)
+
+# Migration 0103 (first-party page counts): tests/security/sec_page_views_0103.py
+import sec_page_views_0103  # noqa: E402
+
+sec_page_views_0103.extend(TABLES, FUNCTIONS)

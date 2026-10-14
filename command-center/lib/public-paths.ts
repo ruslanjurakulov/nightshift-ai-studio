@@ -75,6 +75,13 @@ export const SOLUTION_PATHS = [SOLUTIONS_PATH, ...SOLUTION_IDS.map(solutionHref)
  */
 export const PUBLIC_API_PREFIX = "/api/v1";
 
+/**
+ * The public site's page count (app/api/pv, lib/page-views.ts, migration 0103): the page posts four short strings,
+ * the route answers 204 whatever happened. It reads no cookie and no session, so the cookie gate must neither
+ * redirect it nor spend a Supabase round trip on a session the visitor does not have. Exactly this path.
+ */
+export const PAGE_VIEW_PATH = "/api/pv";
+
 /** The MCP endpoint (Streamable HTTP): the same bearer keys, exactly this path. */
 export const MCP_PATH = "/api/mcp";
 
@@ -95,6 +102,7 @@ export function isOAuthPublicPath(pathname: string): boolean {
 
 export function isPublicApiPath(pathname: string): boolean {
   return (
+    pathname === PAGE_VIEW_PATH ||
     pathname === PUBLIC_API_PREFIX ||
     pathname.startsWith(PUBLIC_API_PREFIX + "/") ||
     pathname === MCP_PATH ||
