@@ -335,6 +335,8 @@ export function startFakeSupabase(port = 54399) {
     const url = new URL(req.url, "http://x");
     if (req.method === "OPTIONS") return send(res, 204);
     if (url.pathname === "/auth/v1/user") return send(res, 200, userFor(claimsOf(req).av));
+    // Which sign-in providers are on (the "Continue with Google" button asks). FAKE_GOOGLE=1 switches Google on.
+    if (url.pathname === "/auth/v1/settings") return send(res, 200, { external: { email: true, google: process.env.FAKE_GOOGLE === "1" } });
     if (url.pathname.startsWith("/auth/v1/")) return send(res, 200, {});
     const state = stateOf(req);
     const rpc = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z_0-9]+)/);
