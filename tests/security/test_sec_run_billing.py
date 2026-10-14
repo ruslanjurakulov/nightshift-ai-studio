@@ -171,6 +171,35 @@ def test_browser_cannot_pay_with_a_hold_that_is_not_its_own_open_queue_hold(conn
     assert not out.ok, f"{case}: {out!r}"
 
 
+# ── a start that failed after its hold (app/api/agent/run, lib/server/run-start.ts) ──
+#
+# "Run now" with an idempotency key holds under a reference that is the same for the same
+# (user, channel, key). The route answers a start that failed as start_failed (rotate the key)
+# or start_unsure (keep it); these two facts are why, and what stands in the way of a release.
+
+def test_a_released_holds_reference_is_burnt_so_a_failed_start_needs_a_new_key(conn, sc):
+    with world(conn, sc, target=300) as su:
+        ref = hold(su, sc.bob.org)
+        su.value("select public.release_credits(%s)", [ref])  # the failed start's hold, released
+        with acting(conn, sc.bob.actor) as s:
+            again = s.run("select public.reserve_credits(%s, %s, %s)", [sc.bob.org, ref, 60])
+        with acting(conn, sc.bob.actor) as s:
+            fresh = s.run("select public.reserve_credits(%s, %s, %s)", [sc.bob.org, f"rj-{uuid.uuid4()}", 60])
+    # The same reference is refused even though its hold was released: the route answers it run_already_started.
+    assert not again.ok and again.sqlstate == "23505", again
+    assert fresh.ok, f"control: a new reference holds: {fresh!r}"
+
+
+def test_the_browser_cannot_release_its_own_unstarted_hold(conn, sc):
+    """Why the route cannot free a hold after a definite start failure: release is service-only and the
+    app never holds that key. (A user-callable release, like 0057's storyboard_dispatch_failed, is the missing piece.)"""
+    with world(conn, sc, target=300) as su:
+        ref = hold(su, sc.bob.org)
+        with acting(conn, sc.bob.actor) as s:
+            out = s.run("select public.release_credits(%s)", [ref])
+    assert not out.ok and out.sqlstate == "42501", out
+
+
 # ── C1: the length the hold priced is the length that runs ──────────────────
 
 def test_the_channels_target_is_frozen_into_the_job_at_insert(conn, sc):
