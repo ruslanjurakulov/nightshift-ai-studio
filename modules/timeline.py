@@ -709,6 +709,17 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
+    # An animation on one side and a plain fade on the other: the fade becomes an animation too, so a
+    # long entrance would be cut short by the exit that starts at end_s - fade_out_s.
+    if ("anim_in" in clip) != ("anim_out" in clip):
+        mixed = [clip.get("anim_in_s", ANIM_DEFAULT_S) if k == "anim_in" else clip.get(k + "_s", 0)
+                 for k in ("anim_in", "anim_out") if k in clip]
+        side = "fade_out_s" if "anim_in" in clip else "fade_in_s"
+        other = clip.get(side, 0)
+        if (all(_is_num(v) for v in (s, e, other, *mixed)) and e > s and other > 0
+                and sum(mixed) + other > _ms(e) - _ms(s) + 1e-9):
+            problems.append(f"{where}: the animation ({sum(mixed):g} s) and {side} ({other:g} s) "
+                            f"are longer than the text is shown")
 
 
 def _validate_overlays(overlays, fps, problems, claim) -> None:
