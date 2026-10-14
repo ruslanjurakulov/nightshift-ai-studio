@@ -16,14 +16,20 @@ import {
   AUDIO_CAPABILITIES,
   DUB_LANGUAGES,
   type DubLanguage,
+  EXPAND_ASPECTS,
+  type ExpandAspect,
   IMAGE_QUALITIES,
   type ImageQuality,
   MEDIA_SOURCE_CAPABILITIES,
   PARAM_KEYS,
+  PICTURE_OP_CAPABILITIES,
+  PICTURE_OP_PROMPT_MAX,
   QUALITY_CAPABILITIES,
+  RELIGHT_LOOKS,
+  type RelightLook,
   ROUTE_REASONS,
   type RouteReason,
-  SOURCE_CAPABILITIES,
+  PICTURE_SOURCE_CAPABILITIES,
   STYLE_CAPABILITIES,
   UPSCALE_FACTORS,
   UPSCALE_TARGETS,
@@ -70,16 +76,48 @@ export const VIDEO_TOOLS = ["video_upscale"] as const satisfies readonly Creativ
 /** The sidebar's tools in the composer's order: what lib/navigation's STUDIO_TOOLS mirrors. */
 export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS, ...READ_TOOLS, ...VIDEO_TOOLS] as const;
 
+/**
+ * The AI edit tools of the Enhance desk (migration 0099): extend a picture to
+ * another shape, change its light, erase one named object. They are offered on
+ * the desk (and by a link that names them), not in the sidebar's tool rows,
+ * and each is only usable once the owner has proven and priced a model for it.
+ */
+export const PICTURE_OPS = PICTURE_OP_CAPABILITIES;
+
 /** Everything the composer can make, in the order its tabs show the tools. */
-export const PANEL_CAPABILITIES = COMPOSER_CAPABILITIES;
+export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS] as const;
 export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
-export type SourceCapability = (typeof SOURCE_CAPABILITIES)[number];
+export type SourceCapability = (typeof PICTURE_SOURCE_CAPABILITIES)[number];
 export type UpscaleFactor = (typeof UPSCALE_FACTORS)[number];
 
 export function needsSource(c: string): c is SourceCapability {
-  return (SOURCE_CAPABILITIES as readonly string[]).includes(c);
+  return (PICTURE_SOURCE_CAPABILITIES as readonly string[]).includes(c);
+}
+
+export { EXPAND_ASPECTS, RELIGHT_LOOKS, type ExpandAspect, type RelightLook };
+
+export function isPictureOp(c: unknown): c is (typeof PICTURE_OPS)[number] {
+  return typeof c === "string" && (PICTURE_OPS as readonly string[]).includes(c);
+}
+
+export function isExpandAspect(v: unknown): v is ExpandAspect {
+  return typeof v === "string" && (EXPAND_ASPECTS as readonly string[]).includes(v);
+}
+
+export function isRelightLook(v: unknown): v is RelightLook {
+  return typeof v === "string" && (RELIGHT_LOOKS as readonly string[]).includes(v);
+}
+
+/** The longest words a picture op takes (0099), for the field's limit. */
+export function wordsMax(c: string): number {
+  return isPictureOp(c) ? PICTURE_OP_PROMPT_MAX[c] : PROMPT_MAX;
+}
+
+/** A picture op's words are one line: line breaks and runs of spaces become one space, then cut to the limit. */
+export function oneLine(text: string, max: number): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 /** The tools that start from a recording (audio or video) in the library (migration 0050). */
@@ -172,7 +210,8 @@ export function takesStyle(c: string): boolean {
 /** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice and video tools and describe. */
 export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
   if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c)) return "none";
-  if (c === "i2v" || c === "upscale") return "optional";
+  // expand (what the new areas show) and relight (the light, instead of a look) are asked by a choice; their words are optional.
+  if (c === "i2v" || c === "upscale" || c === "expand" || c === "relight") return "optional";
   return "required";
 }
 
@@ -207,6 +246,10 @@ export interface StudioModel {
   upscaleTargets?: UpscaleTarget[];
   /** 0052: the longest source it takes, in seconds (spec.limits.max_source_seconds); null = not stated. */
   maxSourceSeconds?: number | null;
+  /** 0099: the shapes it extends a picture to (spec.aspect_ratios_by_capability.expand), in the canonical order. */
+  expandAspects?: ExpandAspect[];
+  /** 0099: the lights it relights with by name (spec.relight_looks), in the canonical order. */
+  relightLooks?: RelightLook[];
   /**
    * 0060: the render qualities the model is sold by (spec.qualities), cheapest
    * first; absent = it has no tiers. Prices per tier are never kept here: each
@@ -240,7 +283,10 @@ const tier = (v: unknown): number | null => (typeof v === "number" && Number.isI
  */
 export function withTiers(models: StudioModel[], sellable: unknown): StudioModel[] {
   if (!Array.isArray(sellable)) return models;
-  type Marks = Pick<StudioModel, "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice">;
+  type Marks = Pick<
+    StudioModel,
+    "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice" | "expandAspects" | "relightLooks"
+  >;
   const marks = new Map<string, Marks>();
   for (const r of sellable) {
     if (!r || typeof r !== "object") continue;
@@ -250,6 +296,14 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     const longest = limits.max_source_seconds;
     if (typeof row.id !== "string") continue;
     const targets = Array.isArray(spec.upscale_targets) ? spec.upscale_targets.filter(isUpscaleTarget) : [];
+    // 0099: in the canonical order, like the tiers; only what the spec states.
+    const byCap = spec.aspect_ratios_by_capability;
+    const expandList =
+      byCap && typeof byCap === "object" && !Array.isArray(byCap) && Array.isArray((byCap as Record<string, unknown>).expand)
+        ? ((byCap as Record<string, unknown[]>).expand as unknown[])
+        : [];
+    const shapes = EXPAND_ASPECTS.filter((a) => expandList.includes(a));
+    const looks = Array.isArray(spec.relight_looks) ? RELIGHT_LOOKS.filter((l) => (spec.relight_looks as unknown[]).includes(l)) : [];
     // In the canonical order, so the selector reads low, medium, high whatever the row's order.
     const tiers = Array.isArray(spec.qualities) ? IMAGE_QUALITIES.filter((q) => (spec.qualities as unknown[]).includes(q)) : [];
     // Only what the spec states: a model that says nothing about the video
@@ -260,6 +314,8 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       entitlement: typeof row.entitlement === "string" && row.entitlement ? row.entitlement : null,
       ...(spec.end_frame === true ? { endFrame: true } : {}),
       ...(targets.length ? { upscaleTargets: targets } : {}),
+      ...(shapes.length ? { expandAspects: shapes } : {}),
+      ...(looks.length ? { relightLooks: looks } : {}),
       ...(tiers.length ? { qualities: tiers } : {}),
       ...(spec.audio_out === true && (spec.price_variants_by === "audio" || spec.price_variants_by === "resolution_audio")
         ? { soundChoice: true }
@@ -319,6 +375,10 @@ export interface StudioForm {
   endFrameId?: string | null;
   /** The size a video upscale makes (0052). */
   target?: UpscaleTarget | null;
+  /** The shape an expand extends the picture to (0099). */
+  shape?: ExpandAspect | null;
+  /** The light a relight is asked for by name (0099); the words replace it when typed. */
+  look?: RelightLook | null;
   /** The language a description is written in (0055); absent = English. */
   describeLanguage?: DescribeLanguage | null;
   /**
@@ -373,6 +433,18 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
       };
     case "upscale":
       return { ...(prompt ? { prompt } : {}), source_asset_id: source, factor: form.factor ?? 2 };
+    case "expand": {
+      // The shape is the ask; the words (optional) say what the new areas show.
+      const words = oneLine(form.prompt, PICTURE_OP_PROMPT_MAX.expand);
+      return { ...(words ? { prompt: words } : {}), source_asset_id: source, aspect_ratio: form.shape ?? "" };
+    }
+    case "relight": {
+      // EXACTLY ONE of the words and the look: typed words win, the chip is then not sent (0099 refuses both).
+      const words = oneLine(form.prompt, PICTURE_OP_PROMPT_MAX.relight);
+      return words ? { source_asset_id: source, prompt: words } : { source_asset_id: source, look: form.look ?? "" };
+    }
+    case "erase":
+      return { source_asset_id: source, prompt: oneLine(form.prompt, PICTURE_OP_PROMPT_MAX.erase) };
     case "remove_bg":
       return { source_asset_id: source };
     case "describe":
@@ -417,6 +489,9 @@ export type BlockedReason =
   | "need_recording"
   | "need_video"
   | "need_target"
+  | "need_shape"
+  | "need_look"
+  | "need_object"
   | "need_voice"
   | "need_language"
   | "need_words";
@@ -427,6 +502,9 @@ export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReaso
   if (needsRecording(form.capability) && !isUuid(form.sourceId)) return "need_recording";
   if (needsVideo(form.capability) && !isUuid(form.sourceId)) return "need_video";
   if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return "need_target";
+  if (form.capability === "expand" && !isExpandAspect(form.shape)) return "need_shape";
+  if (form.capability === "relight" && !isRelightLook(form.look) && !form.prompt.trim()) return "need_look";
+  if (form.capability === "erase" && !oneLine(form.prompt, PROMPT_MAX)) return "need_object";
   if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
   if (form.capability === "dub" && !isDubLanguage(form.targetLanguage)) return "need_language";
   if (promptRule(form.capability) === "required" && !form.prompt.trim()) return "need_words";
@@ -455,6 +533,10 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "dub",
   "video_upscale",
   "describe",
+  // 0099: one picture each, whatever the shape, the light or the object.
+  "expand",
+  "relight",
+  "erase",
 ];
 const PRICE_STAND_IN = "price check";
 
@@ -476,6 +558,8 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
     return null;
   // A video upscale is priced per size: no stand-in size is ever asked about.
   if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return null;
+  // An expand is quoted for the shape asked; no stand-in shape is ever asked about.
+  if (form.capability === "expand" && !isExpandAspect(form.shape)) return null;
   if (!WORDS_FREE_PRICE.includes(form.capability)) return null;
   return buildParams({
     ...form,
@@ -588,6 +672,31 @@ export function upscaleTargetsFor(
 ): UpscaleTarget[] {
   if (!routed) return current?.upscaleTargets ?? [];
   return UPSCALE_TARGETS.filter((x) => available.some((m) => m.upscaleTargets?.includes(x)));
+}
+
+/**
+ * The shapes an expand offers. A picked model: its own. Auto: every shape some
+ * model of this kind extends to (in the fixed order) — never the hand-picked
+ * model's list, which Auto does not use; the database then picks among the
+ * models that make the chosen shape.
+ */
+export function expandShapesFor(
+  available: readonly Pick<StudioModel, "expandAspects">[],
+  current: Pick<StudioModel, "expandAspects"> | null,
+  routed: boolean,
+): ExpandAspect[] {
+  if (!routed) return current?.expandAspects ?? [];
+  return EXPAND_ASPECTS.filter((x) => available.some((m) => m.expandAspects?.includes(x)));
+}
+
+/** The lights a relight offers by name, chosen the same way as the shapes. */
+export function relightLooksFor(
+  available: readonly Pick<StudioModel, "relightLooks">[],
+  current: Pick<StudioModel, "relightLooks"> | null,
+  routed: boolean,
+): RelightLook[] {
+  if (!routed) return current?.relightLooks ?? [];
+  return RELIGHT_LOOKS.filter((x) => available.some((m) => m.relightLooks?.includes(x)));
 }
 
 /** A route's error code -> the sentence the person reads (never the code itself). */
@@ -784,7 +893,7 @@ export function resultHref(job: Pick<StudioJob, "result">): string | null {
 }
 
 /** Tools whose result is the same picture changed: shown against it, before and after. */
-export const COMPARE_CAPABILITIES = ["edit", "upscale", "remove_bg"] as const;
+export const COMPARE_CAPABILITIES = ["edit", "upscale", "remove_bg", "expand", "relight", "erase"] as const;
 
 /** A finished picture job's source and first result, when both are known; else null. */
 export function compareSources(job: Pick<StudioJob, "status" | "capability" | "params" | "result_asset_ids">): {
@@ -799,7 +908,7 @@ export function compareSources(job: Pick<StudioJob, "status" | "capability" | "p
 }
 
 /** Kinds whose result is a picture another tool can start from. */
-const PICTURE_RESULTS = ["t2i", "edit", "upscale", "remove_bg"] as const;
+const PICTURE_RESULTS = ["t2i", "edit", "upscale", "remove_bg", "expand", "relight", "erase"] as const;
 
 /** "Use as picture": the finished job's first result, when it is a library picture; else null. */
 export function sourceFromJob(job: Pick<StudioJob, "status" | "capability" | "result_asset_ids">): string | null {
@@ -930,6 +1039,10 @@ export interface StudioPrefill {
   endFrameId?: string | null;
   /** A video upscale's size (0052), when the job had an offered one. */
   target?: UpscaleTarget | null;
+  /** An expand's shape (0099), when the job had an offered one. */
+  shape?: ExpandAspect | null;
+  /** A relight's light by name (0099), when the job had an offered one. */
+  look?: RelightLook | null;
   /** A picture's render quality (0060), when the job named one. */
   quality?: ImageQuality | null;
   /** A clip's soundtrack (0070), when the job named one. */
@@ -964,6 +1077,8 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
           target: isUpscaleTarget(p.target_resolution) ? p.target_resolution : null,
         }
       : {}),
+    ...(job.capability === "expand" ? { shape: isExpandAspect(p.aspect_ratio) ? p.aspect_ratio : null } : {}),
+    ...(job.capability === "relight" ? { look: isRelightLook(p.look) ? p.look : null } : {}),
     ...(takesQuality(job.capability) && isImageQuality(p.quality) ? { quality: p.quality } : {}),
     ...(takesSound(job.capability) && typeof p.audio === "boolean" ? { audio: p.audio } : {}),
     ...(job.capability === "describe" ? { describeLanguage: isDescribeLanguage(p.language) ? p.language : "en" } : {}),

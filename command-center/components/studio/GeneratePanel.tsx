@@ -22,7 +22,7 @@ import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { creditUnit } from "@/lib/credits";
 import type { StudioDna } from "@/lib/channel-dna";
 import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/lib/upsell";
-import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
+import { RELIGHT_LOOKS, UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
   DESCRIBE_LANGUAGES,
@@ -41,27 +41,33 @@ import {
   effectiveQuality,
   effectiveSound,
   errorAction,
+  expandShapesFor,
   generateLabel,
+  isPictureOp,
   modelsFor,
   needsRecording,
   needsSource,
   needsVideo,
   newIdempotencyKey,
   promptRule,
+  relightLooksFor,
   sheetQuoteParams,
   soundQuoteParams,
   takesQuality,
   takesSound,
   takesStyle,
   tierQuoteParams,
+  wordsMax,
   type AspectRatio,
   type DescribeLanguage,
   type DubLanguage,
+  type ExpandAspect,
   type ImageQuality,
   type QuoteState,
   routedLine,
   routedPick,
   upscaleTargetsFor,
+  type RelightLook,
   type StudioCapability,
   type StudioModel,
   type StudioPrefill,
@@ -169,6 +175,9 @@ export function GeneratePanel({
   const [endFrameId, setEndFrameId] = useState<string | null>(initial?.endFrameId ?? null);
   const [endOpen, setEndOpen] = useState(false);
   const [target, setTarget] = useState<UpscaleTarget | null>(initial?.target ?? null);
+  // 0099: the shape an expand extends the picture to, and the light a relight is asked for by name.
+  const [shape, setShape] = useState<ExpandAspect | null>(initial?.shape ?? null);
+  const [look, setLook] = useState<RelightLook | null>(initial?.look ?? null);
   // A description is written in the language the app is read in, unless the person picks another.
   const [describeLanguage, setDescribeLanguage] = useState<DescribeLanguage>(
     initial?.describeLanguage ?? defaultDescribeLanguage(locale),
@@ -210,6 +219,12 @@ export function GeneratePanel({
   // Auto: the sizes any model of this kind makes, never the hand-picked one's.
   const targets = upscaleTargetsFor(available, current, routed);
   const effectiveTarget = capability !== "video_upscale" ? null : target && targets.includes(target) ? target : (targets[0] ?? null);
+  // The shape: the one picked if this model makes it, else the model's first. A light is never defaulted:
+  // the person picks one (or describes it), because the press pays for exactly that.
+  const shapes = expandShapesFor(available, current, routed);
+  const effectiveShape = capability !== "expand" ? null : shape && shapes.includes(shape) ? shape : (shapes[0] ?? null);
+  const looks = relightLooksFor(available, current, routed);
+  const effectiveLook = capability !== "relight" ? null : look && looks.includes(look) ? look : null;
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
   const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;
   // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
@@ -226,6 +241,8 @@ export function GeneratePanel({
     targetLanguage,
     endFrameId: effectiveEnd,
     target: effectiveTarget,
+    shape: effectiveShape,
+    look: effectiveLook,
     describeLanguage,
     quality: effectiveQ,
     audio: effectiveSnd,
@@ -244,11 +261,13 @@ export function GeneratePanel({
         targetLanguage,
         endFrameId: effectiveEnd,
         target: effectiveTarget,
+        shape: effectiveShape,
+        look: effectiveLook,
         describeLanguage,
         quality: effectiveQ,
         audio: effectiveSnd,
       }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, describeLanguage, effectiveQ, effectiveSnd],
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -415,7 +434,8 @@ export function GeneratePanel({
   const filmed = needsVideo(capability);
   const words = promptRule(capability);
   const blocked = blockedReason(form, !!effectiveModel);
-  const blockedText = blocked ? t.gen.blocked[blocked] : null;
+  // A picture op nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
+  const blockedText = blocked === "no_model" && isPictureOp(capability) ? t.gen.notAvailableYet : blocked ? t.gen.blocked[blocked] : null;
 
   const pick = (c: StudioCapability) => {
     // A picture, a recording and a video are never the same pick: switching
@@ -508,10 +528,15 @@ export function GeneratePanel({
   }
 
   const hasSettings =
-    capability === "t2i" || capability === "t2v" || capability === "i2v" || capability === "upscale" || (filmed && targets.length > 0);
+    capability === "t2i" ||
+    capability === "t2v" ||
+    capability === "i2v" ||
+    capability === "upscale" ||
+    (filmed && targets.length > 0) ||
+    (capability === "expand" && shapes.length > 0);
   // On a desk the keys say more than the bare value: the shape drawn, the
   // length as a counter. Same values, same buttons, same group names.
-  const aspectText = (a: AspectRatio): ReactNode =>
+  const aspectText = (a: AspectRatio | ExpandAspect): ReactNode =>
     desk ? (
       <span className="inline-flex items-center gap-1.5">
         <span aria-hidden className="desk-shape" data-shape={a} />
@@ -533,6 +558,7 @@ export function GeneratePanel({
       {filmed &&
         effectiveTarget &&
         seg(t.gen.targetLabel, Maximize2, targets, effectiveTarget, setTarget, (v) => v.replace(/k$/, "K"), true)}
+      {capability === "expand" && effectiveShape && seg(t.gen.shapeLabel, desk ? null : RectangleHorizontal, shapes, effectiveShape, setShape, aspectText, true)}
     </div>
   ) : null;
   const ToolIcon = TOOL_ICONS[capability];
@@ -632,7 +658,9 @@ export function GeneratePanel({
       </button>
     </div>
   ) : (
-    <p className="studio-field p-3 text-sm text-[var(--color-muted)]">{t.gen.noModels}</p>
+    <p className="studio-field p-3 text-sm text-[var(--color-muted)]" data-testid="gen-no-model">
+      {isPictureOp(capability) ? t.gen.notAvailableYet : t.gen.noModels}
+    </p>
   );
 
   // Image and Enhance lay the picture on the table, large; elsewhere it is a thumbnail.
@@ -652,10 +680,48 @@ export function GeneratePanel({
         libraryHref={path("/library")}
       />
       <span className="text-xs text-[var(--color-muted)]">
-        {capability === "describe" ? t.gen.describeNote : t.gen.keepsShape}
+        {capability === "describe"
+          ? t.gen.describeNote
+          : capability === "expand"
+            ? t.gen.expandNote
+            : capability === "relight"
+              ? t.gen.relightNote
+              : capability === "erase"
+                ? t.gen.eraseNote
+                : t.gen.keepsShape}
       </span>
+      {isPictureOp(capability) && <span className="text-xs text-[var(--color-muted)]">{t.gen.aiEditNote}</span>}
     </div>
   ) : null;
+
+  // A relight is asked for by a named light OR by words, never both: a chip clears the words, typing clears the chip.
+  const lookBlock =
+    capability === "relight" && looks.length > 0 ? (
+      <div className="flex flex-col gap-2" data-testid="gen-looks">
+        <span className="studio-label" id="gen-look-label">
+          {t.gen.lookLabel}
+        </span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-look-label">
+          {RELIGHT_LOOKS.filter((l) => looks.includes(l)).map((l) => (
+            <button
+              key={l}
+              type="button"
+              data-testid={`gen-look-${l}`}
+              aria-pressed={effectiveLook === l && !prompt.trim()}
+              onClick={() => {
+                setLook(l);
+                setPrompt("");
+                edited();
+              }}
+              className="studio-chip"
+            >
+              {t.gen.looks[l]}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-[var(--color-muted)]">{t.gen.lookOrWords}</span>
+      </div>
+    ) : null;
 
   const describeLangBlock =
     capability === "describe" ? (
@@ -874,7 +940,15 @@ export function GeneratePanel({
     words !== "none" ? (
       <div className="flex flex-col gap-2">
         <label htmlFor="gen-prompt" className="studio-label">
-          {isVoice ? (desk === "voice" ? t.desk.script : t.gen.voiceTextLabel) : desk === "video" ? t.desk.shot : t.gen.promptLabel}
+          {isVoice
+            ? desk === "voice"
+              ? t.desk.script
+              : t.gen.voiceTextLabel
+            : isPictureOp(capability)
+              ? t.gen.opWords[capability]
+              : desk === "video"
+                ? t.desk.shot
+                : t.gen.promptLabel}
           {words === "optional" && <span> · {t.gen.optional}</span>}
         </label>
         <div className="studio-field flex flex-col">
@@ -885,8 +959,8 @@ export function GeneratePanel({
               setPrompt(e.target.value);
               edited();
             }}
-            rows={isVoice ? (desk === "voice" ? 10 : 6) : 4}
-            maxLength={PROMPT_MAX}
+            rows={isVoice ? (desk === "voice" ? 10 : 6) : isPictureOp(capability) ? 2 : 4}
+            maxLength={wordsMax(capability)}
             autoFocus={initial !== null}
             placeholder={t.gen.promptPh[capability]}
             className={`${desk === "voice" && isVoice ? "desk-script " : ""}${isVoice ? "" : "studio-shot "}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
@@ -921,7 +995,9 @@ export function GeneratePanel({
   const sizeBlock =
     !settingsInField && settings ? (
       <div className="flex flex-col gap-2">
-        <span className="studio-label">{capability === "upscale" ? t.gen.factorLabel : t.gen.targetLabel}</span>
+        <span className="studio-label">
+          {capability === "upscale" ? t.gen.factorLabel : capability === "expand" ? t.gen.shapeLabel : t.gen.targetLabel}
+        </span>
         <div className="desk-size">{settings}</div>
       </div>
     ) : null;
@@ -1248,6 +1324,7 @@ export function GeneratePanel({
               </div>
               <div className="desk-bench-size">
                 {sizeBlock}
+                {lookBlock}
                 {promptBlock}
               </div>
               <div className="desk-bench-go">
@@ -1275,6 +1352,7 @@ export function GeneratePanel({
           <>
             {sourceBlock}
             {describeLangBlock}
+            {lookBlock}
             {promptBlock}
             {styleBlock}
             {qualityBlock}
@@ -1303,6 +1381,7 @@ export function GeneratePanel({
           {recordingBlock}
           {voiceBlock}
           {dubLangBlock}
+          {lookBlock}
           {promptBlock}
           {qualityBlock}
           {soundBlock}

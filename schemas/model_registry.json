@@ -517,6 +517,196 @@
       }
     },
     {
+      "id": "gemini-2.5-flash-image-expand",
+      "display_name": "Gemini 2.5 Flash Image (extend)",
+      "provider": "google",
+      "adapter": "image.gemini_ops",
+      "vendor_model": "gemini-2.5-flash-image",
+      "capabilities": [
+        "expand"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4"
+      ],
+      "aspect_ratios_by_capability": {
+        "expand": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4"
+        ]
+      },
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30: the same generateContent image call as edit",
+        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price set: billed per output token by the provider; the owner sets credit_prices for this unit before it can sell"
+      },
+      "credit_unit": "model_gemini_2_5_flash_image_expand_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 300,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "expand",
+        "prompt": "extend the scene",
+        "aspect_ratio": "1:1",
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "gemini-2.5-flash-image-relight",
+      "display_name": "Gemini 2.5 Flash Image (relight)",
+      "provider": "google",
+      "adapter": "image.gemini_ops",
+      "vendor_model": "gemini-2.5-flash-image",
+      "capabilities": [
+        "relight"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "relight_looks": [
+        "soft",
+        "warm",
+        "cool",
+        "golden_hour",
+        "dramatic",
+        "studio"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30: the same generateContent image call as edit",
+        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price set: billed per output token by the provider; the owner sets credit_prices for this unit before it can sell"
+      },
+      "credit_unit": "model_gemini_2_5_flash_image_relight_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 300,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "relight",
+        "prompt": "warm light",
+        "look": "warm",
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "gemini-2.5-flash-image-erase",
+      "display_name": "Gemini 2.5 Flash Image (erase)",
+      "provider": "google",
+      "adapter": "image.gemini_ops",
+      "vendor_model": "gemini-2.5-flash-image",
+      "capabilities": [
+        "erase"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30: the same generateContent image call as edit",
+        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price set: billed per output token by the provider; the owner sets credit_prices for this unit before it can sell"
+      },
+      "credit_unit": "model_gemini_2_5_flash_image_erase_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "erase",
+        "prompt": "the brightest spot",
+        "input_image": "generated"
+      }
+    },
+    {
       "id": "gemini-3.6-flash",
       "display_name": "Gemini 3.6 Flash",
       "provider": "google",

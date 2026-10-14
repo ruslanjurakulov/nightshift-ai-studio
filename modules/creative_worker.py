@@ -60,7 +60,8 @@ and ``poll`` — and a ``resolve_adapter(model_id)`` function handed to
 
 Inputs from the media library (migration 0046)
 -----------------------------------------------
-``edit``, ``i2v``, ``upscale`` and ``remove_bg`` start from a picture the
+``edit``, ``i2v``, ``upscale``, ``remove_bg`` and (0099) ``expand``, ``relight`` and
+``erase`` start from a picture the
 organization owns (``params.source_asset_id``). The database checked it when
 the job was created; the worker asks again right before the paid call
 (``creative_job_source`` — for the job it holds, in the JOB's organization, so
@@ -197,16 +198,17 @@ ADAPTERS_ENV = "NIGHTSHIFT_CREATIVE_ADAPTERS"
 #: Capabilities whose input is a library asset (params.source_asset_id): an
 #: image (0046) or, for the voice tools, a recording (0050).
 SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg", "voice_change", "dub", "video_upscale",
-                                 "describe", "captions"})
+                                 "describe", "captions", "expand", "relight", "erase"})
 #: Of those, the ones whose input is a file copied whole: a recording (audio
 #: or video, 0050) or a video (0052).
 MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub", "video_upscale", "captions"})
 #: Of those, the ones that take a VIDEO and nothing else (0052).
 VIDEO_SOURCE_CAPABILITIES = frozenset({"video_upscale"})
 #: Of those, the ones whose output is a new version of the input.
-VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg", "video_upscale"})
+VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg", "video_upscale", "expand", "relight", "erase"})
 #: What each capability produces (the library checks the provider's output).
 OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg": "image",
+               "expand": "image", "relight": "image", "erase": "image",
                "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio",
                "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text", "captions": "text"}
 #: Capabilities whose result is text on the job row, never a library asset (0055).
