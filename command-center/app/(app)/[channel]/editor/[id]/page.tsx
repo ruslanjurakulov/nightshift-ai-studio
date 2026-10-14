@@ -5,9 +5,11 @@ import { PageHeader } from "@/components/PageHeader";
 import { Note } from "@/components/g3/Section";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { getOrgContext } from "@/lib/orgs-server";
+import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { loadSellableModels } from "@/lib/creative/registry";
 import {
+  loadEditorImages,
   loadEditorProject,
   loadEditorSounds,
   loadEditorVideos,
@@ -46,9 +48,10 @@ export default async function EditorProjectPage({
   if (project.state === "not_found") notFound();
   if (project.state === "not_available") return note(t.editor.notEnabled);
   if (project.state !== "ok") return note(t.editor.readFailed);
-  const [videos, sounds, sellable] = await Promise.all([
+  const [videos, sounds, images, sellable] = await Promise.all([
     loadEditorVideos(project.value.orgId),
     loadEditorSounds(project.value.orgId),
+    loadEditorImages(project.value.orgId),
     // Auto-captions (0072): only a model the database would sell (verified,
     // priced, no open terms gate) is offered; none = the panel says so.
     loadSellableModels("captions"),
@@ -59,10 +62,12 @@ export default async function EditorProjectPage({
     languages: m.spec.languages,
   }));
   const p = project.value;
+  // Keys the local draft: a draft is only ever offered to the member who wrote it.
+  const user = await getUser();
 
   return (
     <div className="rhythm">
-      <PageHeader icon="editor" title={p.title} subtitle={t.editor.subtitle} />
+      <PageHeader icon="editor" title={p.title} subtitle={t.editor.subtitle} compactPhone />
       <TimelineEditor
         projectId={p.id}
         title={p.title}
@@ -72,8 +77,10 @@ export default async function EditorProjectPage({
         assets={p.assets}
         videos={videos.state === "ok" ? videos.value : []}
         soundFiles={sounds.state === "ok" ? sounds.value : []}
+        imageFiles={images.state === "ok" ? images.value : []}
         orgId={p.orgId}
         captionModels={captionModels}
+        userId={user?.id ?? ""}
       />
     </div>
   );

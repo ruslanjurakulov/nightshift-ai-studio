@@ -20,7 +20,8 @@ import {
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { QUICK_ACTIONS, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
+import { HOME_FORMATS, QUICK_ACTIONS, buildReady, defaultLanguage, lengthSeconds, runHandoffHref, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
+import { FormatArt } from "@/components/home/FormatArt";
 import { HomeComposer, type ComposerChannel, type ComposerHandle } from "@/components/home/HomeComposer";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
@@ -59,6 +60,7 @@ export function HomeHub({
   assistant,
   run,
   videos = null,
+  storyboards = null,
 }: {
   channels: HomeChannel[];
   /** The channel in the URL — the composer's first choice. */
@@ -76,6 +78,8 @@ export function HomeHub({
   run?: ReactNode;
   /** The newest videos across the channels; null = the read failed or was not made. */
   videos?: HomeVideo[] | null;
+  /** Storyboards waiting for approval, by their channel's slug; null = the read failed or was not made. */
+  storyboards?: { channelSlug: string }[] | null;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -91,8 +95,10 @@ export function HomeHub({
     [channels],
   );
 
-  // What needs the person, in plain words: finished videos waiting for them, clips being made.
-  const waiting = channels.reduce((n, c) => n + (c.waiting ?? 0), 0);
+  // What needs the person, in plain words: finished videos and storyboards waiting for their decision.
+  const ready = buildReady({ channels, storyboards });
+  // The channel a goal card opens the create form for: the composer's own choice (the URL's channel, else the first runnable one).
+  const goalChannel = runnable.find((c) => c.slug === currentSlug) ?? runnable[0] ?? null;
   const target = channels.find((c) => c.slug === currentSlug && c.standing !== "draft") ?? channels.find((c) => c.standing !== "draft");
 
   return (
@@ -110,34 +116,38 @@ export function HomeHub({
           <p className="max-w-[60ch] text-base leading-relaxed text-[var(--color-muted)]">{t.home.heroLead}</p>
         </div>
 
-        {waiting > 0 && (
+        {ready && (
           <div className="flex flex-col gap-3" data-testid="home-status">
-            {waiting > 0 && (
-              <div className="fl-card sm:!flex-row sm:items-center sm:justify-between" data-tone="waiting">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <p className="text-lg font-semibold leading-snug text-[var(--color-fg)]">
-                    {waiting === 1 ? t.home.waitingOne : fmt(t.home.waitingMany, { n: waiting })}
-                  </p>
-                  <p className="fl-hint">{t.home.waitingBody}</p>
-                </div>
-                <Link href={path("/videos")} className="btn-quiet shrink-0 sm:self-center">
-                  {t.home.reviewNow}
-                </Link>
+            <div className="fl-card sm:!flex-row sm:items-center sm:justify-between" data-tone="waiting">
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="text-lg font-semibold leading-snug text-[var(--color-fg)]">
+                  {ready.total === 1 && !ready.atLeast
+                    ? t.home.readyOne
+                    : fmt(t.home.readyMany, { n: ready.atLeast ? `${ready.total}+` : ready.total })}
+                </p>
+                <p className="fl-hint">{t.home.readyBody}</p>
+                {ready.channelCount > 1 && <p className="fl-hint">{fmt(t.home.readyAcross, { n: ready.channelCount })}</p>}
               </div>
-            )}
+              <Link href={`/${encodeURIComponent(ready.slug)}/videos`} className="btn-quiet shrink-0 sm:self-center">
+                {t.home.reviewNow}
+              </Link>
+            </div>
           </div>
         )}
 
         {run ? (
           <div className="home-desk">
-            <div className="flex min-w-0 flex-col gap-3">
-              {target && channels.filter((c) => c.standing !== "draft").length > 1 && (
-                <p className="px-1 text-sm text-[var(--color-muted)]">{fmt(t.home.forChannel, { name: target.name })}</p>
-              )}
-              {run}
+              <div className="flex min-w-0 flex-col gap-3">
+                {target && channels.filter((c) => c.standing !== "draft").length > 1 && (
+                  <p className="px-1 text-sm text-[var(--color-muted)]">{fmt(t.home.forChannel, { name: target.name })}</p>
+                )}
+                {/* Only where the form below can actually start a run: a viewer who may not, or a
+                    deployment without Run now, would be handed a goal and a disabled button. */}
+                {(!assistant || (assistant.canRun && assistant.runConfigured)) && goalChannel && <GoalCards slug={goalChannel.slug} />}
+                {run}
+              </div>
+              <Promises items={[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate]} />
             </div>
-            <Promises items={[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate]} />
-          </div>
         ) : runnable.length === 0 ? (
           <div className="fl-card items-start">
             <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-panel)] bg-[var(--color-panel-2)] text-[var(--color-primary)]">
@@ -199,9 +209,15 @@ export function HomeHub({
 
       {/* ── The other things Nightshift makes, one line each ───────────── */}
       <section aria-labelledby="home-quick" className="flex flex-col gap-3">
-        <h2 id="home-quick" className="fl-q">
-          {t.home.quickTitle}
-        </h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 id="home-quick" className="fl-q">
+            {t.home.quickTitle}
+          </h2>
+          {/* A quiet way into the presets gallery; it only opens forms. */}
+          <Link href={path("/presets")} className="tap-link text-sm text-[var(--color-primary)] hover:underline">
+            {t.presets.homeLink}
+          </Link>
+        </div>
         <ul className="home-quick">
           {QUICK_ACTIONS.map((a) => {
             const Icon = QUICK_ICON[a.id];
@@ -262,6 +278,46 @@ export function HomeHub({
         </details>
       )}
     </div>
+  );
+}
+
+/**
+ * The six goals, quiet: each card is a link into the create form (the same
+ * hand-off the composer uses: lib/home runHandoffHref) with a starter topic and
+ * the format's usual length filled in. A card starts nothing and prices nothing;
+ * the form it opens shows the price and asks twice, as when opened by hand.
+ */
+function GoalCards({ slug }: { slug: string }) {
+  const { t, locale } = useI18n();
+  return (
+    <section aria-labelledby="home-goals" className="flex flex-col gap-2">
+      <div className="flex flex-col gap-0.5 px-1">
+        <h2 id="home-goals" className="text-base font-semibold text-[var(--color-fg)]">
+          {t.home.formatsTitle}
+        </h2>
+        <p className="fl-hint">{t.home.formatsHint}</p>
+      </div>
+      <ul className="home-goals">
+        {HOME_FORMATS.map((f) => {
+          const label = t.home.formats[f.id];
+          return (
+            <li key={f.id}>
+              <Link
+                href={runHandoffHref(slug, { topic: label.starter, seconds: lengthSeconds(f.length), language: defaultLanguage(locale) })}
+                className="home-goal press"
+                data-goal={f.id}
+              >
+                <FormatArt id={f.id} className="home-goal-art" />
+                <span className="home-goal-text">
+                  <span className="home-goal-title">{label.title}</span>
+                  <span className="home-goal-who">{label.who}</span>
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

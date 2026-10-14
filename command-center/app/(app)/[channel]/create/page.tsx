@@ -15,6 +15,7 @@ import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
+import { presetPrefill } from "@/lib/presets";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
@@ -65,7 +66,8 @@ export default async function CreatePage({
   const dna = await channelDnaForCreate(scopedChannel);
   // "Use in Studio" from the Models catalog (/create?tool=t2v&model=<id>) also picks
   // that model — shape-checked here; the panel keeps it only if it offers it for the tool.
-  const initial = prefillModel(dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool)), q.model);
+  // The Presets gallery adds a template or a voice (lib/presets): it fills the same form.
+  const initial = prefillModel(presetPrefill(dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool)), q), q.model);
   // Home's composer: topic, length and language for the channel run below.
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
@@ -150,7 +152,7 @@ export default async function CreatePage({
           // sidebar's rows is a client navigation to the same page, and without a
           // new key the panel would keep the tool it already had.
           <GenerateSection
-            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}`}
+            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}`}
             desk={desk}
             orgId={genOrgId}
             models={models}

@@ -2,7 +2,8 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getChannelContext } from "@/lib/channels-server";
-import { channelSlug, isScoped } from "@/lib/channels";
+import { channelSlug, isScoped, orgWide } from "@/lib/channels";
+import { listWaitingStoryboards } from "@/lib/server/storyboards";
 import { getOrgContext } from "@/lib/orgs-server";
 import { heldOnly, uploadedOnly } from "@/lib/heldVideos";
 import { buildHomeChannels, countByChannel, lastVideoByChannel, recentVideos, runnableChannels, type HomeVideo } from "@/lib/home";
@@ -35,7 +36,7 @@ export const revalidate = 0;
  */
 export default async function HomePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { channels, selection } = await getChannelContext();
+  const { channels, selection, scope } = await getChannelContext();
   const org = await getOrgContext();
   const orgId = org.supported && org.current ? org.current.id : null;
 
@@ -45,9 +46,12 @@ export default async function HomePage() {
   let waiting: Map<string, number> | null = new Map();
   // null = not read or failed: the section says nothing rather than "no videos".
   let rows: unknown = null;
+  // Storyboards waiting for approval (0057), the same rows /videos lists. null = the read failed: the
+  // card then counts nothing from them rather than guessing.
+  let boards: Awaited<ReturnType<typeof listWaitingStoryboards>> = null;
   const supabase = ids.length > 0 ? await createClient() : null;
   if (supabase) {
-    const [uploaded, held, newest] = await Promise.all([
+    const [uploaded, held, newest, waitingBoards] = await Promise.all([
       uploadedOnly(supabase.from("videos").select("channel_id,title,topic,published_at").in("channel_id", ids))
         .order("published_at", { ascending: false, nullsFirst: false })
         .limit(200),
@@ -58,7 +62,10 @@ export default async function HomePage() {
         .in("channel_id", ids)
         .order("published_at", { ascending: false, nullsFirst: true })
         .limit(40),
+      // The whole organization, like the held count beside it: Home ignores the channel switcher.
+      listWaitingStoryboards(supabase, orgWide(scope)),
     ]);
+    boards = waitingBoards;
     if (!newest.error) rows = newest.data;
     if (!uploaded.error) lastVideos = lastVideoByChannel(uploaded.data);
     waiting = held.error ? null : countByChannel(held.data);
@@ -112,6 +119,14 @@ export default async function HomePage() {
       currentSlug={makeFor ? channelSlug(makeFor, channels) : scoped ? channelSlug(scoped, channels) : null}
       run={run}
       videos={videos}
+      storyboards={
+        boards === null
+          ? null
+          : boards.flatMap((b) => {
+              const slug = slugById.get(b.channelId);
+              return slug ? [{ channelSlug: slug }] : [];
+            })
+      }
       orgId={orgId}
       allPrivate={connected.length > 0 && connected.every((c) => !c.autoPublish)}
       assistant={{ models, canRun: atLeast(role, "admin"), runConfigured: isRunNowConfigured }}

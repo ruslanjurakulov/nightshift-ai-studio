@@ -284,9 +284,9 @@ describe("the invite shortcut", () => {
 
   it("lands on a card the Credits page draws with that id, clear of the sticky bar", () => {
     const card = readFileSync(path.join(process.cwd(), "components/credits/InviteFriendsCard.tsx"), "utf8");
-    expect(card).toMatch(/<section id="invite" className="[^"]*scroll-mt-24/);
+    expect(card).toMatch(/<section id="invite" className="[^"]*scroll-mt-7/);
     const page = readFileSync(path.join(process.cwd(), "app/(app)/[channel]/credits/page.tsx"), "utf8");
-    expect(page).toMatch(/<section id="invite" className="[^"]*scroll-mt-24/);
+    expect(page).toMatch(/<section id="invite" className="[^"]*scroll-mt-7/);
   });
 
   it("has a label in every language", () => {

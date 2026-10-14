@@ -193,7 +193,7 @@ export function PlanPanel({
   const cards = (matrix?.columns ?? []).filter((col) => !col.isDefault && (col.priceId || col.displayPrice || col.id === currentId));
 
   return (
-    <section id="plans" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby="plan-title">
+    <section id="plans" className="panel flex scroll-mt-7 flex-col gap-5 p-5 sm:p-6" aria-labelledby="plan-title">
       <div className="flex flex-col gap-1.5">
         <h2 id="plan-title" className="t-section">
           {cp.plansTitle}

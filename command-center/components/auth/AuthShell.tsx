@@ -50,9 +50,13 @@ export function AuthShell({
   const credit = `${t.site.samples.captions[photo]}. ${creditLine(photo, t.site.samples.credit)}`;
   return (
     <div className="st nx st-auth">
+      {/* The same first stop as the marketing pages: past the brand, the way back, language and theme, to the form. */}
+      <a href="#main" className="st-skip">
+        {t.landing.nav.skip}
+      </a>
       <aside className="st-auth-aside" aria-label={asideTitle} data-photo={photo} data-clip={clip ?? undefined}>
         {/* A photograph behind the house rules (decorative: darkened under the words, credited below); the flow card on it is the example. */}
-        <SlotImg slot={slot} className="nx-aside-bg" sizes="(min-width: 960px) 900px, 1px" />
+        <SlotImg slot={slot} className="nx-aside-bg" eager sizes="(min-width: 960px) 900px, 1px" />
         {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
         {clip && <ClipPause label={t.site.fx.pause} />}
         <Link href="/" className="st-brand self-start" aria-label={t.brand.name}>
@@ -80,7 +84,7 @@ export function AuthShell({
         </div>
       </aside>
 
-      <main className="st-auth-main">
+      <main id="main" tabIndex={-1} className="st-auth-main focus:outline-none">
         <div className="flex min-h-14 items-center justify-between gap-3">
           <Link href="/" className="st-link text-sm">
             <ArrowLeft aria-hidden />
@@ -94,7 +98,7 @@ export function AuthShell({
 
         {/* On a phone the stage is a band above the form: the same drawing, the brand over it, the brief and the approval playing on it. */}
         <div className="nx-auth-band lg:hidden" data-photo={photo} data-clip={clip ?? undefined}>
-          <SlotImg slot={slot} className="nx-art" sizes="(max-width: 959px) 100vw, 1px" />
+          <SlotImg slot={slot} className="nx-art" eager sizes="(max-width: 959px) 100vw, 1px" />
           {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
           {clip && <ClipPause label={t.site.fx.pause} />}
           <span className="nx-result-credit">{creditLine(photo, t.site.samples.credit)}</span>

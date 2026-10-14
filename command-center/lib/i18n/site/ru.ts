@@ -1,4 +1,5 @@
 import type { SiteDictionary } from "./en";
+import { studioPageRu } from "../studio-page/ru";
 
 /** Публичный сайт: главная, «Решения», вход, 404. Источник — ./en.ts. */
 export const siteRu: SiteDictionary = {
@@ -18,6 +19,8 @@ export const siteRu: SiteDictionary = {
     lead: "Дайте Nightshift тему. Он напишет сценарий, озвучит и смонтирует видео для YouTube, а потом дождётся вашего «да». Цену вы увидите до старта.",
     cta: "Начать бесплатно",
     secondary: "Посмотреть цены",
+    demo: "Попробуйте пример",
+    demoNote: "Показывает только план. Ничего не создаётся.",
     note: "{n} бесплатных кредитов один раз, при регистрации. Без карты.",
   },
   rundown: {
@@ -95,6 +98,10 @@ export const siteRu: SiteDictionary = {
     source: "Из действующего прайс-листа",
     cta: "Начать бесплатно",
     more: "Все цены",
+  },
+  /** The /terms search-result description. The page shows the full summary of the document; this is only the meta text. */
+  legalMeta: {
+    terms: "Правила использования Nightshift: ваш канал и контент, что запрещено, предоплаченные кредиты, оплата и возвраты, наша ответственность.",
   },
   compare: {
     slug: "Вручную или с Nightshift",
@@ -423,6 +430,8 @@ export const siteRu: SiteDictionary = {
     paySlug: "Оплата",
     faqSlug: "Вопросы",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageRu,
   final: {
     title: "Поставьте следующее видео в ночную смену.",
     lead: "Начните бесплатно. Цена — до каждого запуска, одобрение — до каждого эфира.",
@@ -585,5 +594,6 @@ export const siteRu: SiteDictionary = {
     body: "Ссылка могла устареть или содержать опечатку — или ведёт к тому, что этому аккаунту не видно.",
     home: "На главную",
     pricing: "Посмотреть цены",
+    more: "Другие страницы",
   },
 };

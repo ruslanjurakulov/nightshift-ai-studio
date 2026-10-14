@@ -231,6 +231,60 @@ export function countByChannel(rows: unknown): Map<string, number> {
   return out;
 }
 
+// ── what waits for the person's decision ────────────────────────────────────
+
+/** listWaitingStoryboards reads at most this many; a full page may be a lower bound. */
+export const WAITING_STORYBOARDS_READ = 20;
+
+/** Held videos and storyboards waiting for approval, as Home's one "ready" card counts them. */
+export interface HomeReady {
+  total: number;
+  held: number;
+  storyboards: number;
+  /**
+   * The count is a lower bound: the storyboard read hit its page size, or one of the two reads
+   * failed (what it could not read may add to the number, never take from it).
+   */
+  atLeast: boolean;
+  /**
+   * The channel whose /videos the card opens: the one that holds all of it, or — when it spans channels —
+   * the first channel that has something (never the every-channel view, which a customer is redirected out of).
+   */
+  slug: string;
+  /** How many channels the waiting items are spread over; the card says so when it is more than one. */
+  channelCount: number;
+}
+
+/**
+ * One count from the two things that wait for a decision: finished videos held
+ * for approval (per channel, null where that read failed) and storyboards
+ * waiting for approval (null when that read failed). Both are the rows
+ * /videos lists, so the card never counts something the page it links to does
+ * not show. Null when nothing is known to be waiting — an absent card, never a
+ * zero and never a green tick. A failed read adds nothing rather than a guess,
+ * and says so: the number then reads "N+", a lower bound, never an exact count.
+ */
+export function buildReady(input: {
+  channels: Pick<HomeChannel, "slug" | "waiting">[];
+  storyboards: { channelSlug: string }[] | null;
+}): HomeReady | null {
+  const held = input.channels.reduce((n, c) => n + (c.waiting ?? 0), 0);
+  const boards = input.storyboards ?? [];
+  const total = held + boards.length;
+  if (total === 0) return null;
+  // The held read is one query for every channel: its failure leaves every channel's count null.
+  const heldFailed = input.channels.some((c) => c.waiting === null);
+  const slugs = new Set([...input.channels.filter((c) => (c.waiting ?? 0) > 0).map((c) => c.slug), ...boards.map((b) => b.channelSlug)]);
+  return {
+    total,
+    held,
+    storyboards: boards.length,
+    atLeast: boards.length >= WAITING_STORYBOARDS_READ || heldFailed || input.storyboards === null,
+    slug: input.channels.find((c) => slugs.has(c.slug))?.slug ?? boards[0].channelSlug,
+    channelCount: slugs.size,
+  };
+}
+
 /** One video on Home's "your videos" row. */
 export interface HomeVideo {
   id: string;
