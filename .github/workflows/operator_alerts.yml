@@ -1,0 +1,82 @@
+name: Operator Alerts
+
+# Proactive alerts and the daily digest for the operator bot
+# (modules/operator_bot, docs/operator-bot.md): a failed or stuck run, a worker
+# that stopped reporting, a low ElevenLabs balance, a failed deploy or CI run, a
+# new pending approval, a security-relevant audit event. Outbound only — it
+# sends to the admin chat and remembers what it sent in the alert feed
+# (alert_events), so each alert goes out once and an hour never carries more than
+# OPERATOR_ALERT_MAX_PER_HOUR of them.
+#
+# Reads only. It spends nothing, publishes nothing and calls no paid provider.
+# Harmless until the secrets are set: without TELEGRAM_BOT_TOKEN +
+# TELEGRAM_CHAT_ID + SUPABASE_URL + SUPABASE_SERVICE_KEY it logs that it is off
+# and exits 0.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      digest_now:
+        description: "Also send the daily digest right now (to check the setup)"
+        type: boolean
+        default: false
+
+# One pass at a time; a late pass waits for the running one rather than racing it
+# for the same alerts.
+concurrency:
+  group: operator-alerts
+  cancel-in-progress: false
+
+# Least privilege (BR-S-001): the job token may read the repository and read
+# workflow run status (for "last deploy" / CI). It cannot write anything.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install requests
+        run: pip install "requests>=2.33.0"
+
+      - name: Operator alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Read-only run status of this repository (deploy / CI). GITHUB_REPOSITORY
+          # is set by Actions itself.
+          GITHUB_TOKEN: ${{ github.token }}
+          # The existing low-balance threshold, shared with provider_balances.yml.
+          ELEVENLABS_LOW_CREDITS: ${{ vars.ELEVENLABS_LOW_CREDITS }}
+          # Optional, non-sensitive settings (repository variables).
+          OPERATOR_APP_URL: ${{ vars.OPERATOR_APP_URL }}
+          OPERATOR_TZ: ${{ vars.OPERATOR_TZ }}
+          OPERATOR_QUIET_HOURS: ${{ vars.OPERATOR_QUIET_HOURS }}
+          OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
+          OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
+          OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          DIGEST_NOW: ${{ inputs.digest_now }}
+        run: |
+          if [ "$DIGEST_NOW" = "true" ]; then
+            python tools/run_operator_alerts.py --digest-now
+          else
+            python tools/run_operator_alerts.py
+          fi

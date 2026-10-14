@@ -5,6 +5,7 @@ reply back to whoever asked, and advance the offset. No network in these tests
 — the requests session is a fake; the pure routing lives in
 modules/telegram_control.py and is tested there."""
 
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -163,6 +164,106 @@ class ReplayTestCase(_PollBase):
             self.poll(session)
         emit.assert_not_called()
         self.assertIn("Not authorized", self.control.send.call_args.args[1])
+
+
+class OperatorBotThroughPollTestCase(_PollBase):
+    """The poller hands every update to the operator router: buttons, the new
+    views, and the authorization matrix hold on this transport as well."""
+
+    def test_only_message_and_callback_updates_are_requested(self):
+        session = MagicMock()
+        session.get.return_value = _updates_response([])
+        self.poll(session)
+        params = session.get.call_args.kwargs["params"]
+        self.assertEqual(json.loads(params["allowed_updates"]), ["message", "callback_query"])
+
+    def test_a_button_press_is_answered_and_claimed_once(self):
+        self.control.answer_callback = MagicMock(return_value=True)
+        cb = {"update_id": 12, "callback_query": {"id": "c1", "from": {"id": 100}, "data": "c:help",
+                                                  "message": {"chat": {"id": 100}}}}
+        session = MagicMock()
+        session.get.return_value = _updates_response([cb])
+        self.assertEqual(self.poll(session), 13)
+        self.assertEqual(self.poll(session), 13)           # replayed: skipped
+        self.control.answer_callback.assert_called_once()
+        self.assertEqual(self.control.send.call_count, 1)
+
+    def test_a_button_from_another_chat_does_nothing(self):
+        self.control.answer_callback = MagicMock(return_value=True)
+        cb = {"update_id": 13, "callback_query": {"id": "c2", "from": {"id": 100}, "data": "c:help",
+                                                  "message": {"chat": {"id": 555}}}}
+        session = MagicMock()
+        session.get.return_value = _updates_response([cb])
+        self.poll(session)
+        self.control.send.assert_not_called()
+        self.assertEqual(self.control.answer_callback.call_args.args[1], "Not authorized")
+
+    def test_a_new_command_replies_with_html_and_buttons(self):
+        session = MagicMock()
+        session.get.return_value = _updates_response([_msg(14, 100, "/menu")])
+        self.poll(session)
+        self.assertEqual(self.control.send.call_args.kwargs["parse_mode"], "HTML")
+        self.assertIn("inline_keyboard", self.control.send.call_args.kwargs["reply_markup"])
+
+
+class LongPollLoopTestCase(unittest.TestCase):
+    """--duration: keep polling until the deadline, persist the offset, and do not spin on errors."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp = tempfile.TemporaryDirectory()
+        self.patch = patch.object(mod, "_OFFSET_FILE", Path(self.tmp.name) / "offset.json")
+        self.patch.start()
+        self.control = TelegramControl(token="tok", chat_id="100", admin_user_ids="")
+
+    def tearDown(self):
+        self.patch.stop()
+        self.tmp.cleanup()
+
+    def clock(self):
+        t = {"now": 0.0}
+        return t, (lambda: t["now"]), (lambda s: t.__setitem__("now", t["now"] + s))
+
+    def test_a_single_batch_by_default(self):
+        t, mono, sleep = self.clock()
+        session = MagicMock()
+        session.get.return_value = _updates_response([])
+        mod.run(self.control, MagicMock(), _Claims(), duration=0, session=session, sleep=sleep, monotonic=mono)
+        self.assertEqual(session.get.call_count, 1)
+        self.assertEqual(session.get.call_args.kwargs["params"]["timeout"], 0)
+
+    def test_polls_until_the_deadline_with_long_polls_and_saves_the_offset(self):
+        t, mono, sleep = self.clock()
+        bot = MagicMock()
+        batches = iter([[_msg(5, 100, "/help")], [], [_msg(9, 100, "/help")], []])
+
+        def get(url, params=None, timeout=None):
+            t["now"] += 25                       # a long poll that waited
+            return _updates_response(next(batches, []))
+        session = MagicMock()
+        session.get.side_effect = get
+        offset = mod.run(self.control, bot, _Claims(), duration=70, session=session, sleep=sleep, monotonic=mono)
+        self.assertEqual(offset, 10)
+        self.assertEqual(mod._load_offset(), 10)
+        timeouts = [c.kwargs["params"]["timeout"] for c in session.get.call_args_list]
+        self.assertTrue(all(0 <= x <= mod.LONG_POLL_S for x in timeouts))
+        self.assertGreaterEqual(len(timeouts), 3)
+        self.assertEqual(bot.handle_update.call_count, 2)
+
+    def test_an_instant_error_does_not_spin(self):
+        t, mono, sleep = self.clock()
+        session = MagicMock()
+        session.get.side_effect = RuntimeError("network down")
+        calls = []
+        mod.run(self.control, MagicMock(), _Claims(), duration=30, session=session,
+                sleep=lambda s: (calls.append(s), sleep(s)), monotonic=mono)
+        self.assertLess(session.get.call_count, 30)
+        self.assertTrue(calls and all(c >= 1 for c in calls))
+
+    def test_main_is_off_without_a_token(self):
+        with patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}):
+            self.assertEqual(mod.main(["--duration", "5"]), 0)
 
 
 class SendTestCase(unittest.TestCase):

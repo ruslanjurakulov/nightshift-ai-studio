@@ -60,7 +60,6 @@ logging.basicConfig(
 logger = logging.getLogger("run_telegram_control")
 
 from config import HISTORY_DIR
-from modules import event_log as events
 from modules import log_redaction
 from modules.log_redaction import describe_http_error
 from modules.operator_bot import router as operator_router
