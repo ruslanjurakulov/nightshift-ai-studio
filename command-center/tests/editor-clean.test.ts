@@ -26,7 +26,7 @@ import {
   type EditorModel,
 } from "@/lib/editor";
 import { addOverlay } from "@/lib/editorOverlay";
-import { setClipFreeze, trimLimited } from "@/lib/editorMotion";
+import { renderWork, setClipFreeze, setClipSpeed, trimLimited } from "@/lib/editorMotion";
 import {
   CHROMA_COLORS,
   chromaOf,
@@ -211,53 +211,104 @@ describe("sound clean-up", () => {
 });
 
 describe("stabilise", () => {
-  it("is allowed within the document's per-clip range and refused past it, with the numbers", () => {
-    const m = base();
-    const id = m.clips[0].id;
-    const ok = withRange(m, id, STABILIZE_MAX_S);
-    expect(stabilizeCheck(ok, ok.clips[0])).toMatchObject({ ok: true, range: STABILIZE_MAX_S, used: 0 });
-    const on = setClipStabilize(ok, id, true);
-    expect(on.clips[0].stabilize).toBe(true);
+  /** A project with a long plain clip first, so the export has the time for steadying. */
+  const roomy = (range: number): EditorModel => {
+    const m = addClip(base(), VIDEO);
+    return withRange(m, m.clips[1].id, range);
+  };
+  const second = (m: EditorModel) => m.clips[1];
+
+  it("is allowed within the per-clip range and refused past it, with the numbers", () => {
+    const ok = roomy(STABILIZE_MAX_S);
+    expect(stabilizeCheck(ok, second(ok))).toMatchObject({ ok: true, range: STABILIZE_MAX_S, used: 0 });
+    const on = setClipStabilize(ok, second(ok).id, true);
+    expect(second(on).stabilize).toBe(true);
     valid(on);
-    const long = withRange(m, id, STABILIZE_MAX_S + 1);
-    expect(stabilizeCheck(long, long.clips[0])).toMatchObject({ ok: false, reason: "clip_range", range: STABILIZE_MAX_S + 1 });
-    expect(setClipStabilize(long, id, true)).toBe(long);
-    expect(setClipStabilize(on, id, true)).toBe(on);
-    const off = setClipStabilize(on, id, false);
-    expect(off.clips[0].stabilize).toBeUndefined();
+    const long = roomy(STABILIZE_MAX_S + 1);
+    expect(stabilizeCheck(long, second(long))).toMatchObject({ ok: false, reason: "clip_range", range: STABILIZE_MAX_S + 1 });
+    expect(setClipStabilize(long, second(long).id, true)).toBe(long);
+    expect(setClipStabilize(on, second(on).id, true)).toBe(on);
+    const off = setClipStabilize(on, second(on).id, false);
+    expect(second(off).stabilize).toBeUndefined();
     expect(JSON.stringify(toDoc(off))).toBe(JSON.stringify(toDoc(ok)));
   });
 
+  it("is charged in estimated seconds against the export's time allowance: a minute on a minute is refused with the estimate", () => {
+    // the engine's own example: 60 s of 1080p30 on a 60 s timeline takes about 317 s of the 300 s allowed
+    const m = withRange(base(), "c1", 60);
+    const r = stabilizeCheck(m, m.clips[0]);
+    expect(r).toMatchObject({ ok: false, reason: "render_time" });
+    expect(Math.round(r.render.work)).toBe(317);
+    expect(Math.round(r.render.allowed)).toBe(300);
+    expect(r.render.length).toBe(60);
+    expect(setClipStabilize(m, "c1", true)).toBe(m);
+    // the same minute on a longer timeline has the time
+    const longer = addClip(m, VIDEO);
+    expect(stabilizeCheck(longer, longer.clips[0]).ok).toBe(true);
+    // and the validator says the same
+    const forced = { ...m, clips: [{ ...m.clips[0], stabilize: true }] };
+    expect(validateTimeline(toDoc(forced)).join(" ")).toContain("stabilising would take about 317 s");
+  });
+
+  it("a frame's size weighs it: the same range costs more at a bigger frame", () => {
+    const m = roomy(60);
+    const small = { ...m, width: 1280, height: 720 };
+    expect(stabilizeCheck(small, second(small)).render.stabEst).toBeLessThan(stabilizeCheck(m, second(m)).render.stabEst);
+  });
+
   it("the project's total is shared; a frozen frame cannot be steadied", () => {
-    let m = withRange(base(), "c1", STABILIZE_MAX_S);
-    m = setClipStabilize(m, "c1", true);
-    for (let i = 0; i < 2; i += 1) {
-      m = addClip(m, VIDEO);
-      const last = m.clips[m.clips.length - 1];
-      m = withRange(m, last.id, STABILIZE_MAX_S);
-      if (i === 0) m = setClipStabilize(m, last.id, true);
-    }
+    let m = roomy(STABILIZE_MAX_S);
+    m = setClipStabilize(m, second(m).id, true);
+    m = addClip(m, VIDEO);
+    m = withRange(m, m.clips[2].id, STABILIZE_MAX_S);
+    m = setClipStabilize(m, m.clips[2].id, true);
     // two clips use 2 x STABILIZE_MAX_S of STABILIZE_MAX_DOC_S
     expect(STABILIZE_MAX_DOC_S).toBeGreaterThan(2 * STABILIZE_MAX_S);
-    const third = m.clips[2];
-    const r = stabilizeCheck(m, third);
-    const left = STABILIZE_MAX_DOC_S - 2 * STABILIZE_MAX_S;
+    m = addClip(m, VIDEO);
+    const third = m.clips[3];
+    const full = withRange(m, third.id, STABILIZE_MAX_S);
+    const r = stabilizeCheck(full, full.clips[3]);
     expect(r).toMatchObject({ ok: false, reason: "doc_budget", used: 2 * STABILIZE_MAX_S });
+    const left = STABILIZE_MAX_DOC_S - 2 * STABILIZE_MAX_S;
     const shorter = withRange(m, third.id, left);
-    expect(stabilizeCheck(shorter, shorter.clips[2]).ok).toBe(true);
+    expect(stabilizeCheck(shorter, shorter.clips[3]).ok).toBe(true);
     const frozen = setClipFreeze(withRange(base(), "c1", 4), "c1", true);
     expect(stabilizeCheck(frozen, frozen.clips[0])).toMatchObject({ ok: false, reason: "freeze" });
     expect(setClipStabilize(frozen, "c1", true)).toBe(frozen);
   });
 
-  it("trimming a steadied clip stops at the per-clip range and at what the project has left", () => {
-    let m = withRange(base(), "c1", 100);
-    m = setClipStabilize(m, "c1", true);
-    const t = trimLimited(m, "c1", "out", 250, 300);
-    expect(t.clips[0].out_s).toBe(STABILIZE_MAX_S);
+  it("trimming a steadied clip stops at the per-clip range and where the allowance runs out", () => {
+    let m = roomy(100);
+    const id = second(m).id;
+    m = setClipStabilize(m, id, true);
+    expect(second(m).stabilize).toBe(true);
+    const t = trimLimited(m, id, "out", 250, 300);
+    expect(second(t).out_s).toBe(STABILIZE_MAX_S);
     valid(t);
+    // a timeline that is barely long enough: the end stops where the estimate still fits
+    let tight = withRange(addClip(base(), { ...VIDEO, durationS: 100 }), "c1", 1);
+    tight = withRange(tight, tight.clips[1].id, 20);
+    const tid = tight.clips[1].id;
+    tight = setClipStabilize(tight, tid, true);
+    expect(tight.clips[1].stabilize).toBe(true);
+    const grown = trimLimited(tight, tid, "out", 100, 100);
+    expect(renderWork(grown).ok).toBe(true);
+    // 1 s + r s of timeline, 4.29 r s of steadying against 3 x (1 + r) + 120: r stops near 53 s
+    expect(grown.clips[1].out_s).toBeLessThan(60);
+    expect(grown.clips[1].out_s).toBeGreaterThanOrEqual(20);
+    valid(grown);
     // freezing it takes the steadiness off (the document refuses both)
-    const f = setClipFreeze(m, "c1", true);
-    expect(f.clips[0].stabilize).toBeUndefined();
+    const f = setClipFreeze(m, id, true);
+    expect(second(f).stabilize).toBeUndefined();
+  });
+
+  it("changing the speed of a steadied clip so its allowance is gone switches the steadiness off", () => {
+    let m = roomy(100);
+    const id = second(m).id;
+    m = setClipStabilize(m, id, true);
+    // a 4x speed up shortens the timeline by 75 s of this clip: 100 s of steadying no longer fits
+    const faster = setClipSpeed({ ...m, clips: m.clips.map((c, i) => (i === 0 ? { ...c, out_s: 20 } : c)) }, id, 4);
+    expect(faster.clips[1].stabilize).toBeUndefined();
+    valid(faster);
   });
 });

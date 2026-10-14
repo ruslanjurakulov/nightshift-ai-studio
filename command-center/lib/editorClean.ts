@@ -24,7 +24,7 @@ import {
   type SoundClip,
   type VideoClip,
 } from "@/lib/editor";
-import { sourceRange } from "@/lib/editorMotion";
+import { renderWork, sourceRange, type RenderWork } from "@/lib/editorMotion";
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const finite = (v: number, d: number) => (Number.isFinite(v) ? v : d);
@@ -165,24 +165,35 @@ export function stabilizeUsedByOthers(model: EditorModel, exceptId: string): num
 }
 
 export type StabilizeCheck =
-  | { ok: true; range: number; used: number }
+  | { ok: true; range: number; used: number; render: RenderWork }
   | {
       ok: false;
-      reason: "freeze" | "clip_range" | "doc_budget";
+      reason: "freeze" | "clip_range" | "doc_budget" | "render_time";
       range: number;
       used: number;
+      render: RenderWork;
     };
 
-/** Can this clip be stabilised? Not a frozen frame; its source range within
- *  STABILIZE_MAX_S; and the project's stabilised ranges within STABILIZE_MAX_DOC_S. */
+/**
+ * Can this clip be stabilised? (Judged as if it were on: the same answer tells a
+ * clip that is on whether it still fits.) Not a frozen frame; its source range
+ * within STABILIZE_MAX_S; the project's stabilised ranges within STABILIZE_MAX_DOC_S;
+ * and the export's time allowance (`renderWork`: the timeline, the interpolated
+ * frames and the steadying, weighted by frame size, against `renderTimeoutS`).
+ */
 export function stabilizeCheck(model: EditorModel, c: VideoClip): StabilizeCheck {
   const range = sourceRange(c);
   const used = stabilizeUsedByOthers(model, c.id);
-  if (c.freeze) return { ok: false, reason: "freeze", range, used };
-  if (range > STABILIZE_MAX_S + 1e-9) return { ok: false, reason: "clip_range", range, used };
+  const render = renderWork({
+    ...model,
+    clips: model.clips.map((x) => (x.id === c.id ? { ...x, stabilize: true } : x)),
+  });
+  if (c.freeze) return { ok: false, reason: "freeze", range, used, render };
+  if (range > STABILIZE_MAX_S + 1e-9) return { ok: false, reason: "clip_range", range, used, render };
   if (used + range > STABILIZE_MAX_DOC_S + 1e-9)
-    return { ok: false, reason: "doc_budget", range, used };
-  return { ok: true, range, used };
+    return { ok: false, reason: "doc_budget", range, used, render };
+  if (!render.ok) return { ok: false, reason: "render_time", range, used, render };
+  return { ok: true, range, used, render };
 }
 
 export function setClipStabilize(model: EditorModel, id: string, on: boolean): EditorModel {

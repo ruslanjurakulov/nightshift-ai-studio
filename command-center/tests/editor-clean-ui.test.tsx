@@ -29,6 +29,9 @@ import {
   CHROMA_SIMILARITY_DEFAULT,
   CHROMA_SIMILARITY_MAX,
   CHROMA_SIMILARITY_MIN,
+  RENDER_TIMEOUT_BASE_S,
+  RENDER_TIMEOUT_MAX_S,
+  RENDER_TIMEOUT_PER_S,
   STABILIZE_MAX_DOC_S,
   STABILIZE_MAX_S,
   addSound,
@@ -217,6 +220,7 @@ describe("chroma key", () => {
     const s = chroma();
     expect(s.textContent).toContain(ck.hint);
     expect(ck.hint).toMatch(/fringes/);
+    expect(ck.hint).toMatch(/own transparency is kept/);
     expect(ck.hint).toMatch(/exported file is the reference/);
   });
 
@@ -313,7 +317,7 @@ describe("stabilise", () => {
   it("states the cost honestly: slower export, edges cropped, the limits with their numbers, failure not hidden", () => {
     mount(videoDoc());
     const text = clean().textContent ?? "";
-    expect(text).toContain(fmt(cl.stabilizeHint, { clipMax: STABILIZE_MAX_S, docMax: STABILIZE_MAX_DOC_S }));
+    expect(text).toContain(fmt(cl.stabilizeHint, { clipMax: STABILIZE_MAX_S, docMax: STABILIZE_MAX_DOC_S, per: RENDER_TIMEOUT_PER_S, base: RENDER_TIMEOUT_BASE_S, max: RENDER_TIMEOUT_MAX_S, minute: 257 }));
     expect(cl.stabilizeHint).toMatch(/takes longer/);
     expect(cl.stabilizeHint).toMatch(/crops a little of the edges/);
     expect(cl.stabilizeHint).toMatch(/export fails/);
@@ -376,12 +380,29 @@ describe("stabilise", () => {
   });
 
   it("trimming a steadied clip stops at the per-clip range", () => {
-    mount(longDoc(100));
+    const d = longDoc(300);
+    (d.tracks[0].clips as Record<string, unknown>[]).push({ id: "c2", asset_id: L, start_s: 300, in_s: 0, out_s: 100 });
+    mount(d);
+    fireEvent.click(within(screen.getByRole("list", { name: te.clipsTrack })).getAllByRole("button")[1]);
     fireEvent.click(toggle());
+    expect(toggle().checked).toBe(true);
     const out = screen.getByRole("spinbutton", { name: te.trimOut });
     fireEvent.change(out, { target: { value: "300" } });
     fireEvent.keyDown(out, { key: "Enter" });
     expect((screen.getByRole("spinbutton", { name: te.trimOut }) as HTMLInputElement).value).toBe(String(STABILIZE_MAX_S));
+  });
+
+  it("is off, with the estimate and the allowance, when the timeline is too short for the work", () => {
+    // a minute of 1080p30 on a minute-long timeline: about 317 s of the 300 s allowed
+    mount(longDoc(60));
+    expect(toggle().disabled).toBe(true);
+    expect(clean().textContent).toContain(fmt(cl.stabilizeTime, { work: 317, length: 60, allowed: 300 }));
+  });
+
+  it("the hint says what a minute costs at this frame size, from the engine's own constants", () => {
+    mount(videoDoc());
+    expect(cl.stabilizeHint).toContain("{minute}");
+    expect(clean().textContent).toContain("charged about 257 s");
   });
 
   it("is carried by the local draft", () => {

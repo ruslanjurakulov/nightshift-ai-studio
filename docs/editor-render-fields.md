@@ -529,3 +529,12 @@ above 1440p; an overlay can change opacity between two visible values only while
 fewer than `MAX_PARTIAL_OPACITY_MOVES` others do (past that the control offers
 "keep" and "fade to clear"); the speed curve says that sound is in step with the
 picture only at a few points along a long clip.
+
+C3 limits mirrored in the UI after the engine's last changes: stabilise is judged by
+the per-clip and per-project seconds AND by the export's time allowance
+(`stabilizeCheck()` -> `renderWork()`: the timeline's length, interpolated frames and
+`stabilizeSeconds()` against `renderTimeoutS(length)`), so a minute of 1080p30 on a
+minute-long timeline is off, with "about 317 s to render, but 300 s allowed" on the
+screen, and the hint states what a minute costs at the project's frame size; the
+chroma hint says a picture's own transparency is kept and that a video that is
+already transparent should not be keyed.

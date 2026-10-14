@@ -7,8 +7,12 @@ import {
   CHROMA_BLEND_MAX,
   CHROMA_SIMILARITY_MAX,
   CHROMA_SIMILARITY_MIN,
+  RENDER_TIMEOUT_BASE_S,
+  RENDER_TIMEOUT_MAX_S,
+  RENDER_TIMEOUT_PER_S,
   STABILIZE_MAX_DOC_S,
   STABILIZE_MAX_S,
+  stabilizeSeconds,
   type EditorModel,
   type PictureOverlay,
   type SoundClip,
@@ -270,7 +274,13 @@ export function ClipCleanSection({
         ? k.stabilizeFreeze
         : check.reason === "clip_range"
           ? fmt(k.stabilizeClip, { range: tenth(check.range), max: STABILIZE_MAX_S })
-          : fmt(k.stabilizeDoc, { used: tenth(check.used), docMax: STABILIZE_MAX_DOC_S })
+          : check.reason === "render_time"
+            ? fmt(k.stabilizeTime, {
+                work: Math.round(check.render.work),
+                length: Math.round(check.render.length),
+                allowed: Math.round(check.render.allowed),
+              })
+            : fmt(k.stabilizeDoc, { used: tenth(check.used), docMax: STABILIZE_MAX_DOC_S })
       : null;
   return (
     <Disclosure
@@ -286,7 +296,16 @@ export function ClipCleanSection({
         testId="stabilize"
         hint={
           <>
-            {fmt(k.stabilizeHint, { clipMax: STABILIZE_MAX_S, docMax: STABILIZE_MAX_DOC_S })}
+            {fmt(k.stabilizeHint, {
+              clipMax: STABILIZE_MAX_S,
+              docMax: STABILIZE_MAX_DOC_S,
+              per: RENDER_TIMEOUT_PER_S,
+              base: RENDER_TIMEOUT_BASE_S,
+              max: RENDER_TIMEOUT_MAX_S,
+              minute: Math.round(
+                stabilizeSeconds({ in_s: 0, out_s: 60 }, model.fps, model.width, model.height),
+              ),
+            })}
             {clip.stabilize
               ? ` ${fmt(k.stabilizeUsed, { used: tenth(check.used + check.range), docMax: STABILIZE_MAX_DOC_S, range: tenth(check.range) })}`
               : ""}
