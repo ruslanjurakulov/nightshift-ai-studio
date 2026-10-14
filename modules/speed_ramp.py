@@ -22,8 +22,11 @@ from typing import List, Sequence, Tuple
 
 Point = Tuple[float, float]   # (source seconds from the range's start, speed)
 
-#: Below this a piece is "constant speed" (the log form divides by k).
-_FLAT = 1e-6
+#: A piece whose two speeds differ by less than this FRACTION is "constant speed" (the log form
+#: divides by the slope, and a slope too small to print would divide by zero in ffmpeg). Relative,
+#: so 1 -> 1.000002 is not flat by an absolute test that the printed slope cannot follow; the
+#: length error of calling it flat is below this fraction of the piece.
+_FLAT = 1e-7
 #: Audio is cut into this many slices at most, each at least this long.
 SLICES_MAX = 16
 SLICE_MIN_S = 0.5
@@ -34,8 +37,12 @@ def absolute(points: Sequence[Tuple[float, float]], range_s: float) -> List[Poin
     return [(float(a) * float(range_s), float(s)) for a, s in points]
 
 
+def _flat(s0: float, s1: float) -> bool:
+    return abs(s1 - s0) <= _FLAT * min(s0, s1)
+
+
 def _piece_length(t0: float, s0: float, t1: float, s1: float) -> float:
-    if abs(s1 - s0) < _FLAT:
+    if _flat(s0, s1):
         return (t1 - t0) / s0
     return (t1 - t0) / (s1 - s0) * math.log(s1 / s0)
 
@@ -70,24 +77,25 @@ def min_speed(pts: Sequence[Point]) -> float:
 def setpts_expression(pts: Sequence[Point]) -> str:
     """The ``setpts`` expression that maps a frame's source time to its output
     time, ``T(t)`` above, in units of the stream's time base. Every number is a
-    float formatted here (6 decimals); ``t`` is the frame's time in seconds from
-    the first one."""
+    float formatted here (9 decimals, 12 for a slope: a slope of 1e-4 printed with 6 decimals is off
+    by 0.1 %, which drifted the picture 0.3 s from the sound over an hour);
+    ``t`` is the frame's time in seconds from the first one."""
     t = "((PTS-STARTPTS)*TB)"
     pieces: List[Tuple[float, str]] = []
     acc = 0.0
     for a, b in zip(pts, pts[1:]):
         (t0, s0), (t1, s1) = a, b
-        if abs(s1 - s0) < _FLAT:
-            body = f"{acc:.6f}+({t}-{t0:.6f})/{s0:.6f}"
+        if _flat(s0, s1):
+            body = f"{acc:.9f}+({t}-{t0:.9f})/{s0:.9f}"
         else:
             k = (s1 - s0) / (t1 - t0)
-            body = f"{acc:.6f}+log(({s0:.6f}+({k:.6f})*({t}-{t0:.6f}))/{s0:.6f})/({k:.6f})"
+            body = f"{acc:.9f}+log(({s0:.9f}+({k:.12f})*({t}-{t0:.9f}))/{s0:.9f})/({k:.12f})"
         pieces.append((t1, body))
         acc += _piece_length(t0, s0, t1, s1)
     last_t, last_s = pts[-1]
-    expr = f"{acc:.6f}+({t}-{last_t:.6f})/{last_s:.6f}"   # past the range: the last speed goes on
+    expr = f"{acc:.9f}+({t}-{last_t:.9f})/{last_s:.9f}"   # past the range: the last speed goes on
     for t1, body in reversed(pieces):
-        expr = f"if(lt({t},{t1:.6f}),{body},{expr})"
+        expr = f"if(lt({t},{t1:.9f}),{body},{expr})"
     return f"({expr})/TB"
 
 

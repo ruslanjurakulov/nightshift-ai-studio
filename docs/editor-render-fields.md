@@ -330,6 +330,16 @@ like `contain` (the picture alone).
   is therefore on the picture at every slice boundary; inside a slice the speed
   is the average, so a steep ramp on a short clip is stepped, not smooth.
   Everything stays within 0.25 to 4, so nothing is dropped for exceeding atempo.
+* SYNC IS EXACT ONLY AT THE SLICE BOUNDARIES, and there are at most 16 slices
+  (`SLICES_MAX`), so on a long range each slice is longer than half a second and
+  the sound can be off the picture BETWEEN boundaries: the worst measured offsets
+  of a steep ramp were 0.15 s on a 10 s range, 0.44 s on 30 s and 1.7 s on 120 s
+  (it is back to zero at every boundary and at the end, so the clip's length and
+  what follows are not affected). Say so in the product (or keep ramps on clips
+  of a few seconds, where it is under a frame or two); a gentle ramp is much closer.
+* the ramp's expression is printed with 9 decimals (12 for the slope), and two
+  speeds that differ by less than one part in ten million count as the same
+  speed, so a very slight ramp still renders and nothing drifts over an hour.
 * a clip with a curve CANNOT be split (the editor's `canSplit` is false, the
   backend's `split_clip` refuses): remove the curve first. Trimming it changes the
   range, and so the shape in time, the points stay at the same fractions.
@@ -357,6 +367,19 @@ like `contain` (the picture alone).
   Examples at 30 fps, 0.5x: 5 s of source at 1080p, 11.2 s at 720p. The validator
   names the limit; `interpolatedFrames()` in `lib/editor.ts` computes it for a UI
   that wants to disable the switch or warn before saving.
+* the budget is ALSO in ESTIMATED SECONDS and must fit the worker's timeout: each
+  1080p-equivalent frame is charged `INTERP_SECONDS_PER_FRAME` (0.4 s; measured
+  0.39 s on a loaded box, so one clip of 300 is about 117 s), the timeline itself
+  `RENDER_PLAIN_FACTOR` (1) s per second, and the total must be at most the
+  worker's `renderTimeoutS(length)` = `min(5400, 3 x length + 120)` seconds
+  (`RENDER_TIMEOUT_*` in `lib/editor.ts`). So two clips that are each inside the
+  per-clip cap can still be refused on a short timeline ("would take about 255 s
+  to render, but a 20 s timeline is allowed 179 s"): slow less of it or make the
+  timeline longer. A UI can show the estimate with the same constants.
+* NOT OFFERED ABOVE 1440p: a frame of more than 2560 x 1440 pixels (either way
+  up, `INTERP_MAX_PIXELS`) is refused ("interpolate is not offered above
+  1440p"): a 4K render died with "Cannot allocate memory" under the worker's 2 GiB
+  limit. Disable the switch for those projects; plain slow motion is unaffected.
 * the source frames are first taken at the project's frame rate, then
   interpolated: a 24 fps source in a 30 fps project is interpolated from the
   30 fps (duplicated-frame) version, which is smoother than nothing but not

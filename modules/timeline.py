@@ -384,6 +384,27 @@ INTERP_MAX_FPS = 120
 INTERP_MAX_FRAMES = 300
 INTERP_MAX_FRAMES_DOC = 600
 _INTERP_REF_PIXELS = 1920 * 1080
+#: ``interpolate`` is not offered for a frame bigger than 1440p (2560x1440, either way up): the
+#: motion search holds several frames at once and a 4K clip died with "Cannot allocate memory"
+#: under the worker's 2 GiB limit (measured). The count is pixels, so 1440x2560 passes too.
+INTERP_MAX_PIXELS = 2560 * 1440
+#: What a render is allowed to take, as seconds of estimated work, and the worker's wall-clock
+#: budget for it (modules/editor_export.py has the SAME numbers: ``render_timeout_s``). The cost
+#: of ``interpolate`` is an estimate in seconds, not just a frame count: a 1080p-equivalent frame
+#: took 0.39 s (117 s for the 300 a clip may make) on the loaded, shared box; 0.4 is what is
+#: charged. The ordinary render of the timeline is charged ``RENDER_PLAIN_FACTOR`` s per second
+#: of it. The estimate has to fit the timeout, or the render would be killed after the user waited.
+RENDER_TIMEOUT_PER_S = 3.0
+RENDER_TIMEOUT_BASE_S = 120.0
+RENDER_TIMEOUT_MAX_S = 5400.0
+RENDER_PLAIN_FACTOR = 1.0
+INTERP_SECONDS_PER_FRAME = 0.4
+
+
+def render_timeout_s(length_s: float) -> float:
+    """The worker's wall-clock budget for a timeline of ``length_s`` seconds
+    (``editor_export.render_timeout_s`` is this function's twin for any input)."""
+    return min(RENDER_TIMEOUT_MAX_S, RENDER_TIMEOUT_PER_S * max(0.0, length_s) + RENDER_TIMEOUT_BASE_S)
 
 
 def reverse_max_frames(width: int, height: int) -> int:
@@ -687,6 +708,14 @@ def validate(doc: Any) -> List[str]:
         if total_interp > INTERP_MAX_FRAMES_DOC:
             problems.append(f"timeline: interpolated slow motion would make about {total_interp:.0f} frames "
                             f"(1080p equivalent) in all; at most {INTERP_MAX_FRAMES_DOC} per timeline")
+        elif total_interp > 0:
+            length = duration_s(doc)
+            work = RENDER_PLAIN_FACTOR * length + INTERP_SECONDS_PER_FRAME * total_interp
+            allowed = render_timeout_s(length)
+            if work > allowed + 1e-9:
+                problems.append(f"timeline: interpolated slow motion would take about {work:.0f} s to render, "
+                                f"but a {length:.0f} s timeline is allowed {allowed:.0f} s — slow less of it "
+                                f"or make the timeline longer")
 
     captions = doc.get("captions")
     if captions is not None:
@@ -872,6 +901,10 @@ def _validate_interpolate(clip, where, frame, fps, ramp, problems) -> None:
         return
     if not (_is_int(frame[0]) and _is_int(frame[1]) and fps and _in_range(clip.get("in_s"))
             and _in_range(clip.get("out_s"))):
+        return
+    if frame[0] * frame[1] > INTERP_MAX_PIXELS:
+        problems.append(f"{where}: interpolate is not offered above 1440p ({frame[0]}x{frame[1]} is too big: "
+                        f"the render would run out of memory) — lower the timeline's size or leave it out")
         return
     probe = {"in_s": clip["in_s"], "out_s": clip["out_s"], "speed": min(speeds)}
     cost = interpolated_frames(probe, fps, frame[0], frame[1])

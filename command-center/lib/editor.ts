@@ -210,6 +210,21 @@ export const INTERP_MAX_FPS = 120;
 export const INTERP_MAX_FRAMES = 300;
 export const INTERP_MAX_FRAMES_DOC = 600;
 const INTERP_REF_PIXELS = 1920 * 1080;
+/** No interpolation above 1440p (modules/timeline.py INTERP_MAX_PIXELS). */
+export const INTERP_MAX_PIXELS = 2560 * 1440;
+/** The worker's render budget and what a render is charged against it
+ *  (modules/timeline.py RENDER_*, INTERP_SECONDS_PER_FRAME; editor_export has the same). */
+export const RENDER_TIMEOUT_PER_S = 3;
+export const RENDER_TIMEOUT_BASE_S = 120;
+export const RENDER_TIMEOUT_MAX_S = 5400;
+export const RENDER_PLAIN_FACTOR = 1;
+export const INTERP_SECONDS_PER_FRAME = 0.4;
+export function renderTimeoutS(lengthS: number): number {
+  return Math.min(
+    RENDER_TIMEOUT_MAX_S,
+    RENDER_TIMEOUT_PER_S * Math.max(0, lengthS) + RENDER_TIMEOUT_BASE_S,
+  );
+}
 /** A clip's crop rectangle (smallest side) and free angle (modules/timeline.py
  *  CROP_MIN / ANGLE_MAX). */
 export const CROP_MIN = 0.05;
@@ -874,6 +889,15 @@ export function validateTimeline(doc: unknown): string[] {
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
       );
+    else if (interp > 0) {
+      const length = docDuration(doc as unknown as TimelineDoc);
+      const work = RENDER_PLAIN_FACTOR * length + INTERP_SECONDS_PER_FRAME * interp;
+      const allowed = renderTimeoutS(length);
+      if (work > allowed + 1e-9)
+        problems.push(
+          `timeline: interpolated slow motion would take about ${Math.round(work)} s to render, but a ${Math.round(length)} s timeline is allowed ${Math.round(allowed)} s — slow less of it or make the timeline longer`,
+        );
+    }
   }
 
   if (doc.captions !== undefined && doc.captions !== null)
@@ -1175,6 +1199,12 @@ function validateInterpolate(
     !(isInt(frame[0]) && isInt(frame[1]) && fps && isNum(clip.in_s) && isNum(clip.out_s))
   )
     return;
+  if (frame[0] * frame[1] > INTERP_MAX_PIXELS) {
+    problems.push(
+      `${where}: interpolate is not offered above 1440p (${frame[0]}x${frame[1]} is too big: the render would run out of memory) — lower the timeline's size or leave it out`,
+    );
+    return;
+  }
   const cost = interpolatedFrames(
     clip.in_s,
     clip.out_s,
