@@ -119,6 +119,22 @@ vignette with CSS filters/transforms; vintage/cinematic/cool/warm/high-contrast
 are curve looks the preview can only approximate, and grain/sharpen have no
 faithful CSS equivalent. Say so in the product.
 
+Limits that come from memory and disk (measured, the validators refuse them):
+
+* a clip that is CROSS-FADED (either side of a blend) in a frame above 1440p
+  (2560x1440, either way up) takes NO `blur`: a cross-fade on 4K60 already needs
+  about 1.75 of the worker's 2 GiB, and a blur failed it ("Cannot allocate
+  memory") with ffmpeg 7.0.2 at every sigma tried and with 5.1.1 from sigma 30.
+  The other effects (look, sharpen, grain, vignette, turns) passed with both.
+  `LARGE_FRAME_PX` / `XFADE_LARGE_BLUR_MAX` (0) in `lib/editor.ts`; a UI should
+  disable the blur control on such a clip. Single clips and hard cuts are fine.
+* `grain` makes the intermediate video about 13x bigger (42.7 MB/s at 1080p30,
+  73 MB/s at 1080p60). The disk guard charges grainy seconds 12x and falls back
+  to compact intermediates (slower) when the temp disk is short; nothing for the
+  UI to do, but a long grainy export is slower on a nearly full disk.
+* `rotate` is an integer; `90.0` is accepted as `90` (the editor cannot tell them
+  apart after JSON.parse).
+
 Not done here (later items): free-angle rotation and crop (item 8).
 
 ## 4. Moves and two-point keyframes
@@ -147,6 +163,17 @@ Not done here (later items): free-angle rotation and crop (item 8).
 * works on both sides of a cross-fade; the move runs over each clip's WHOLE
   length, not just the part outside the blend.
 * rotate/flip (item 3) happen before the move; effects after.
+* MEMORY LIMIT: the fitted picture is scaled up to `zoom` x the frame on every
+  frame, so a zoom is refused above 2 (`XFADE_LARGE_ZOOM_MAX`) on a CROSS-FADED
+  clip (either side of a blend, either keyframe) in a frame above 1440p
+  (2560x1440, either way up): a cross-faded 4K60 clip failed at a zoom of 3 with
+  ffmpeg 7.0.2 under the worker's 2 GiB limit (up to 2 passed with both 7.0.2 and
+  5.1.1; 5.1.1 alone passed 4). A single clip or a hard cut zooms to 4 at any
+  size (measured at 4K60), and so does any frame up to 1440p. A UI should clamp
+  the zoom control for such a clip. (Cutting the window first and scaling it
+  would avoid the big frame, but ffmpeg's `crop` size cannot change per frame and
+  `zoompan` rounds the window to whole pixels, which jitters; the cap keeps the
+  exact, smooth zoom the preview shows.)
 
 ### Overlay `move.to`: end keyframe of an overlay
 
@@ -160,8 +187,10 @@ Not done here (later items): free-angle rotation and crop (item 8).
 * entrance/exit animations (item 2) add to a move (a slide moves from where the
   move has the overlay).
 * an opacity move to or from 0 is a cheap fade; any other opacity move is
-  rendered per pixel and is slower on a large overlay (still fine for the
-  caps in place: 16 overlays, 4 videos).
+  rendered per pixel (`geq`: 3.6x slower for one video overlay, 13x for four,
+  out of memory at 4K60), so at most TWO overlays per document may move between
+  two visible opacities (`MAX_PARTIAL_OPACITY_MOVES`, `partialOpacityMove()` in
+  `lib/editor.ts`); the validators refuse a third.
 * an overlay whose own `opacity` is 0 is still rendered when its move brings
   the opacity above 0.
 * no preview parity in a browser beyond straight CSS interpolation: say that
@@ -190,6 +219,14 @@ like `contain` (the picture alone).
   the preview with a CSS `filter: blur()` copy of the video behind the picture
   (approximate; say so).
 * Cross-fades: both sides can use `blur`.
+* Pixel shape: a `blur` clip comes out with SQUARE pixels (the chain ends with
+  `setsar=1`; without it the scaler's rounding left e.g. 1697:1711 for a 16:9
+  clip in a portrait frame and a player would stretch it). KNOWN ISSUE, not
+  changed here: the legacy `contain` chain (scale + pad, in use before any of
+  this work) can leave a non-square sample aspect ratio on main too (measured
+  1216:1215); touching it would change every older document's command, so it is
+  left alone and listed for the owner. Chains of the new fields (`blur`, turns,
+  crop, effects that turn) add `setsar=1` themselves.
 
 ## 6. Speed 0.25 to 4, reverse, freeze
 
