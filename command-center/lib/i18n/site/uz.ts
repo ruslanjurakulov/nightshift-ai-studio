@@ -453,6 +453,7 @@ export const siteUz: SiteDictionary = {
     googleAccess: "Google ruxsatlarini boshqarish",
     contact: "Aloqa",
     signIn: "Kirish",
+    cookies: "Cookie va xotira",
     note: "Tun yarmida yaratilgan. Siz aytganda nashr qilinadi.",
   },
   solutions: {
