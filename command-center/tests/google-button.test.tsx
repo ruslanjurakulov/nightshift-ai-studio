@@ -221,3 +221,31 @@ describe("GoogleButton", () => {
     });
   });
 });
+
+describe("GoogleButton with the server's answer (no layout jump)", () => {
+  it("is in the very first render when the server said on, and asks no one", async () => {
+    const { GoogleEnabledProvider } = await import("@/components/auth/google-enabled-context");
+    const { container } = render(
+      <GoogleEnabledProvider enabled>
+        <Button mode="signin" />
+      </GoogleEnabledProvider>,
+    );
+    // Synchronously, before any request could have come back.
+    expect(container.querySelector(".ns-google-btn")).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("is absent from the first render when the server said off, whatever the browser could learn", async () => {
+    const { GoogleEnabledProvider } = await import("@/components/auth/google-enabled-context");
+    const { container } = render(
+      <GoogleEnabledProvider enabled={false}>
+        <Button mode="signup" />
+      </GoogleEnabledProvider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.innerHTML).toBe("");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});

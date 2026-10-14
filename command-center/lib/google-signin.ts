@@ -121,14 +121,20 @@ export function googleEnabledFromSettings(body: unknown): boolean {
   return external?.google === true;
 }
 
-let enabledCache: Promise<boolean> | null = null;
-
-export function isGoogleEnabled(supabaseUrl: string, anonKey: string): Promise<boolean> {
+/** One ask of the settings endpoint; any failure is "no". `init` lets the server add caching and a timeout. */
+export function fetchGoogleEnabled(supabaseUrl: string, anonKey: string, init: RequestInit = {}): Promise<boolean> {
   if (!supabaseUrl || !anonKey) return Promise.resolve(false);
-  enabledCache ??= fetch(`${supabaseUrl.replace(/\/+$/, "")}/auth/v1/settings`, { headers: { apikey: anonKey } })
+  return fetch(`${supabaseUrl.replace(/\/+$/, "")}/auth/v1/settings`, { ...init, headers: { apikey: anonKey } })
     .then((r) => (r.ok ? r.json() : null))
     .then(googleEnabledFromSettings)
     .catch(() => false);
+}
+
+let enabledCache: Promise<boolean> | null = null;
+
+/** The browser's own ask (remembered for the page's life): the fallback when the server did not say. */
+export function isGoogleEnabled(supabaseUrl: string, anonKey: string): Promise<boolean> {
+  enabledCache ??= fetchGoogleEnabled(supabaseUrl, anonKey);
   return enabledCache;
 }
 
