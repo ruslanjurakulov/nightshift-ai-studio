@@ -24,6 +24,8 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   read, and the answer comes back as one text output; for ``captions``
   (0072) it is the one recording, and the answer is one JSON output (the
   words and their times) the worker cleans and stores as a caption track;
+  for the picture ops (0099: expand, relight, erase) it is the one picture
+  edited, and the answer is one picture;
 * an i2v's end frame (0052, ``GenerationRequest.end_file``) goes as
   ``end_image`` only to a model whose registry entry has ``end_frame`` — a
   model that would drop it fails the job before any call instead of
@@ -149,6 +151,8 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         quality=_str(p.get("quality")),
         # t2v / i2v on a model that prices the soundtrack apart (0070).
         audio=_bool(p.get("audio")),
+        # relight (0099): the light, by name; the prompt carries it otherwise.
+        look=_str(p.get("look")) if request.capability == "relight" else None,
     )
 
 

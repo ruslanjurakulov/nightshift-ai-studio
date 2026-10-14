@@ -105,7 +105,7 @@ afterEach(() => {
   document.body.style.overflow = "";
 });
 
-const order = (c: HTMLElement) => Array.from(c.querySelectorAll("[data-asset-kind] button")).map((x) => x.getAttribute("aria-label"));
+const order = (c: HTMLElement) => Array.from(c.querySelectorAll("[data-asset-kind] button:not([data-testid=\"improve-with-ai\"])")).map((x) => x.getAttribute("aria-label"));
 
 describe("the view lives in the address", () => {
   it("starts from the address, so a shared link opens the same view", () => {

@@ -33,6 +33,9 @@ from modules.capabilities.base import (
     CAPTIONS,
     DESCRIBE,
     DUB,
+    ERASE,
+    EXPAND,
+    EXPAND_ASPECTS,
     FILE_INPUT,
     I2V,
     IMAGE_INPUT,
@@ -40,7 +43,10 @@ from modules.capabilities.base import (
     MEDIA_INPUT,
     VIDEO_VARIANT_CAPABILITIES,
     OUTPUT_OF,
+    PICTURE_OPS,
     PROMPT_OPTIONAL,
+    RELIGHT,
+    RELIGHT_LOOKS,
     UPSCALE,
     VIDEO_INPUT,
     VIDEO_UPSCALE,
@@ -227,6 +233,8 @@ class ModelEntry:
     upscale_targets: Tuple[str, ...]
     #: The model can end an i2v clip on a chosen picture (0052).
     end_frame: bool
+    #: The lights a relight is sold for (0099); empty unless it lists relight.
+    relight_looks: Tuple[str, ...]
     #: The longest source a file tool takes, in seconds (limits.max_source_seconds).
     max_source_seconds: Optional[int]
     audio_out: bool
@@ -317,6 +325,15 @@ class ModelEntry:
             out.append(f"{self.id} does not transcribe {request.spoken_language}")
         if cap != CAPTIONS and request.spoken_language is not None:
             out.append(f"a spoken language does not apply to {cap}")
+        # The picture ops (0099) are sold only for the shapes and lights the model was proven for.
+        if cap == EXPAND and not request.aspect_ratio:
+            out.append("expand needs the shape to extend the picture to")
+        if cap in (RELIGHT, ERASE) and request.aspect_ratio:
+            out.append(f"{cap} keeps the picture's own shape: an aspect ratio does not apply")
+        if cap == RELIGHT and request.look is not None and request.look not in self.relight_looks:
+            out.append(f"{self.id} does not relight with the {request.look} look")
+        if cap != RELIGHT and request.look is not None:
+            out.append(f"a look does not apply to {cap}")
         return out
 
     def probe_request(self, *, voice_id: Optional[str] = None,
@@ -346,8 +363,11 @@ class ModelEntry:
         end = (generated_end_image or "<generated end>") if p.get("end_frame") == "generated" else None
         cap = p["capability"]
         # A description takes no words of ours either: the picture is the input.
-        return CapabilityRequest(capability=cap, prompt="" if speech or cap in VIDEO_INPUT or cap == DESCRIBE
-                                 else p["prompt"],
+        # An expand is asked by its shape, and a relight by its look when the
+        # probe names one (the database sends exactly one of look / prompt).
+        wordless = speech or cap in VIDEO_INPUT or cap == DESCRIBE or cap == EXPAND or (cap == RELIGHT and p.get("look"))
+        return CapabilityRequest(capability=cap, prompt="" if wordless else p["prompt"],
+                                 look=p.get("look"),
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), quality=p.get("quality"),
                                  duration_s=p.get("duration_s"),
@@ -372,6 +392,7 @@ def _entry(m: Mapping) -> ModelEntry:
         languages=tuple(m.get("languages") or ()),
         upscale_targets=tuple(m.get("upscale_targets") or ()),
         end_frame=bool(m.get("end_frame")),
+        relight_looks=tuple(m.get("relight_looks") or ()),
         max_source_seconds=m["limits"].get("max_source_seconds"),
         audio_out=bool(m["audio_out"]), is_async=bool(m["async"]),
         api_documented_url=m["api_documented"]["url"], doc_source=m["api_documented"]["source"],
@@ -415,6 +436,21 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if (UPSCALE in caps) != bool(m.get("upscale_factors")):
             # 0046 sells an upscale only at a factor the model lists.
             errors.append(_err(mid, "upscale_factors is required with upscale and only with it"))
+        if (RELIGHT in caps) != bool(m.get("relight_looks")):
+            # 0099 sells a relight by name only in a light the model lists.
+            errors.append(_err(mid, "relight_looks is required with relight and only with it"))
+        if any(k not in RELIGHT_LOOKS for k in (m.get("relight_looks") or ())):
+            errors.append(_err(mid, "relight_looks must be lights the database accepts"))
+        expand_shapes = (m.get("aspect_ratios_by_capability") or {}).get(EXPAND)
+        if (EXPAND in caps) != bool(expand_shapes):
+            # 0099 sells an expand only to a shape the model lists for it.
+            errors.append(_err(mid, "aspect_ratios_by_capability.expand is required with expand and only with it"))
+        if any(a not in EXPAND_ASPECTS for a in (expand_shapes or ())):
+            errors.append(_err(mid, "expand shapes must be shapes the database accepts"))
+        if any(c in PICTURE_OPS for c in caps) and any(c not in PICTURE_OPS for c in caps):
+            errors.append(_err(mid, "a picture-op model lists only picture ops"))
+        if any(c in PICTURE_OPS for c in caps) and m["api_exposure"] != "web_only":
+            errors.append(_err(mid, "picture ops are a web tool until the API documents them: api_exposure must be web_only"))
         if (DUB in caps or CAPTIONS in caps) != bool(m.get("languages")):
             # 0050 sells a dub only into a language the model lists; 0072
             # sells captions only in a spoken language it lists.
