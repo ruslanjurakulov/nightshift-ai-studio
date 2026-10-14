@@ -1,4 +1,4 @@
-"""The customer e-mails (migration 0101): the words, the links, the transport and
+"""The customer e-mails (migration 0103): the words, the links, the transport and
 the worker loop. No mail leaves this process: the transports are fakes or an
 injected session, and the real one is only ever built from environment NAMES."""
 
@@ -373,7 +373,7 @@ class Worker(unittest.TestCase):
         self.assertTrue(made[0].wid.startswith("email-"))
         self.assertEqual(made[0].events, ["start", "stopped"])
 
-    def test_the_store_calls_only_the_0101_functions_with_the_service_key(self):
+    def test_the_store_calls_only_the_0103_functions_with_the_service_key(self):
         calls = []
 
         class R:

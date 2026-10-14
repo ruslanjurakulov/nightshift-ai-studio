@@ -225,7 +225,7 @@ describe("NotificationBell", () => {
   });
 });
 
-describe("a video that is ready (migration 0101)", () => {
+describe("a video that is ready (migration 0103)", () => {
   const VIDEO = "run-0123456789abcdef0123";
   const channels = [channel("night-owl", "Night Owl", "https://yt3.example/owl.jpg"), channel("other", "Other")];
 
@@ -280,7 +280,7 @@ describe("a video that is ready (migration 0101)", () => {
   });
 });
 
-describe("telling the database which language the person uses (0101)", () => {
+describe("telling the database which language the person uses (0103)", () => {
   beforeEach(() => window.localStorage.removeItem(LOCALE_SYNC_KEY));
 
   it("sends the language once, remembers it, and does not repeat it on the next visit", async () => {

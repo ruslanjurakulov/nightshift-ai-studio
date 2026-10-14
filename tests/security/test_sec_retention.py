@@ -1,4 +1,4 @@
-"""Migration 0101: a returning person is told, by bell and by e-mail, about their
+"""Migration 0103: a returning person is told, by bell and by e-mail, about their
 own work only — and can always turn it off.
 
 What would break without these:
@@ -67,19 +67,23 @@ def hold(s, channel, video_id, state="held"):
            [video_id, channel, f"slug-{video_id}", state])
 
 
-def bell(s, uid, kind="video_ready"):
+def bell(s, uid, kind="video_ready", ref=""):
+    """The person's notifications of one kind whose ref starts with `ref` (the committed lab world already holds
+    other tenants' held videos, so a test looks at its own)."""
     return s.rows("select id::text, org_id::text, ref, data from public.notifications "
-                  "where user_id = %s and kind = %s order by created_at, id", [uid, kind])
+                  "where user_id = %s and kind = %s and ref like %s order by created_at, id", [uid, kind, ref + "%"])
 
 
-def claim_ready(s, limit=20, lease=300):
+def claim_ready(s, uid, limit=100, lease=300):
+    """What the worker was handed FOR ONE PERSON. The committed lab world holds other tenants' held videos
+    (other seeds raise their own notifications), which a claim hands over too; the tests look at their own."""
     as_service(s)
     out = s.value("select public.email_claim_ready(%s, %s, %s)", [WORKER, limit, lease])
     as_owner(s)
-    return out
+    return [m for m in out if m["user_id"] == uid]
 
 
-def claim_weekly(s, limit=20):
+def claim_weekly(s, limit=100):
     as_service(s)
     out = s.value("select public.email_claim_weekly(%s, %s, 300)", [WORKER, limit])
     as_owner(s)
@@ -285,8 +289,8 @@ def test_unsubscribe_cannot_switch_anything_on(conn, sc):
 def test_a_held_video_tells_the_orgs_deciders_with_ids_only(conn, sc):
     with as_superuser(conn, commit=False) as s:
         hold(s, sc.alice.channel, "run-ready-1")
-        rows = bell(s, sc.alice.actor.uid)
-        bob = bell(s, sc.bob.actor.uid)
+        rows = bell(s, sc.alice.actor.uid, ref="run-ready-1")
+        bob = bell(s, sc.bob.actor.uid, ref="run-ready-1")
     assert len(rows) == 1 and bob == []
     _id, org, ref, data = rows[0]
     assert org == sc.alice.org and ref == "run-ready-1:held"
@@ -302,27 +306,27 @@ def test_a_viewer_is_not_told_but_an_admin_is(conn, sc):
             s.rows("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, %s) returning 1",
                    [sc.alice.org, who.uid, who.email, role])
         hold(s, sc.alice.channel, "run-ready-2")
-        v, a = bell(s, viewer.uid), bell(s, admin.uid)
+        v, a = bell(s, viewer.uid, ref='run-ready-2'), bell(s, admin.uid, ref='run-ready-2')
     assert v == [] and len(a) == 1
 
 
 def test_only_a_state_that_waits_for_a_person_tells_them(conn, sc):
     with as_superuser(conn, commit=False) as s:
         hold(s, sc.alice.channel, "run-ready-3", "blocked")
-        none_for_blocked = bell(s, sc.alice.actor.uid)
+        none_for_blocked = bell(s, sc.alice.actor.uid, ref="run-ready-3")
         hold(s, sc.alice.channel, "run-ready-3", "awaiting_approval")
         hold(s, sc.alice.channel, "run-ready-3", "awaiting_approval")  # written again, same state
         hold(s, sc.alice.channel, "run-ready-3", "held")
         hold(s, sc.alice.channel, "run-ready-3", "repaired_awaiting_review")
-        states = [r[3]["state"] for r in bell(s, sc.alice.actor.uid)]
+        states = [r[3]["state"] for r in bell(s, sc.alice.actor.uid, ref="run-ready-3")]
         # Promoted to an upload: the earlier notifications stand, nothing new.
         s.rows("update public.videos set publish_state = 'uploaded', published_at = now()::text, privacy = 'private' "
                "where video_id = 'run-ready-3' returning 1")
-        after_upload = len(bell(s, sc.alice.actor.uid))
+        after_upload = len(bell(s, sc.alice.actor.uid, ref="run-ready-3")) + len(bell(s, sc.alice.actor.uid, ref="yt-direct"))
         # A video that was never held and is simply uploaded tells nobody either.
         s.rows("insert into public.videos (video_id, channel_id, slug, publish_state, published_at, privacy) "
                "values ('yt-direct', %s, 's', 'uploaded', now()::text, 'private') returning 1", [sc.alice.channel])
-        direct = len(bell(s, sc.alice.actor.uid))
+        direct = len(bell(s, sc.alice.actor.uid, ref="run-ready-3")) + len(bell(s, sc.alice.actor.uid, ref="yt-direct"))
     assert none_for_blocked == []
     assert states == ["awaiting_approval", "held", "repaired_awaiting_review"]
     assert after_upload == direct == 3
@@ -378,8 +382,8 @@ def test_a_ready_mail_is_claimed_once_with_everything_needed_and_nothing_more(co
         s.rows("update public.channels set name = 'Night Owl', credential_ref = %s::jsonb where channel_id = %s returning 1",
                [json.dumps({"youtube_thumbnail": "https://yt3.example/a.jpg"}), sc.alice.channel])
         hold(s, sc.alice.channel, "run-mail-1")
-        first = claim_ready(s)
-        again = claim_ready(s)
+        first = claim_ready(s, sc.alice.actor.uid)
+        again = claim_ready(s, sc.alice.actor.uid)
         row = ledger(s, sc.alice.actor.uid)
     assert len(first) == 1 and again == []
     m = first[0]
@@ -395,29 +399,29 @@ def test_the_mail_uses_the_language_the_person_chose(conn, sc):
     with as_superuser(conn, commit=False) as s:
         set_prefs(s, sc.alice.actor, locale="ru")
         hold(s, sc.alice.channel, "run-mail-ru")
-        first = claim_ready(s)
+        first = claim_ready(s, sc.alice.actor.uid)
     assert first[0]["locale"] == "ru"
 
 
 def test_sent_is_final_and_a_retry_waits_then_gives_up_after_five(conn, sc):
     with as_superuser(conn, commit=False) as s:
         hold(s, sc.alice.channel, "run-mail-2")
-        assert len(claim_ready(s)) == 1
+        assert len(claim_ready(s, sc.alice.actor.uid)) == 1
         uid = sc.alice.actor.uid
         as_service(s)
         retry = s.value("select public.email_complete(%s, 'video_ready', 'run-mail-2:held', 'retry', 'timeout')", [uid])
         as_owner(s)
-        assert retry is True and claim_ready(s) == [], "a retry waits for its backoff"
+        assert retry is True and claim_ready(s, sc.alice.actor.uid) == [], "a retry waits for its backoff"
         for attempt in range(2, 6):
             s.rows("update public.email_deliveries set claimed_until = now() - interval '1 second' where user_id = %s returning 1", [uid])
-            got = claim_ready(s)
+            got = claim_ready(s, sc.alice.actor.uid)
             assert len(got) == 1, attempt
             as_service(s)
             s.value("select public.email_complete(%s, 'video_ready', 'run-mail-2:held', 'retry', 'timeout')", [uid])
             as_owner(s)
         row = ledger(s, uid)[0]
         s.rows("update public.email_deliveries set claimed_until = now() - interval '1 second' where user_id = %s returning 1", [uid])
-        after_dead = claim_ready(s)
+        after_dead = claim_ready(s, sc.alice.actor.uid)
     assert row[2] == "dead" and row[3] == 5 and row[4] == "timeout"
     assert after_dead == []
 
@@ -425,14 +429,14 @@ def test_sent_is_final_and_a_retry_waits_then_gives_up_after_five(conn, sc):
 def test_a_sent_mail_is_never_claimed_again_even_after_its_lease(conn, sc):
     with as_superuser(conn, commit=False) as s:
         hold(s, sc.alice.channel, "run-mail-3")
-        claim_ready(s)
+        claim_ready(s, sc.alice.actor.uid)
         uid = sc.alice.actor.uid
         as_service(s)
         done = s.value("select public.email_complete(%s, 'video_ready', 'run-mail-3:held', 'sent', null)", [uid])
         twice = s.value("select public.email_complete(%s, 'video_ready', 'run-mail-3:held', 'sent', null)", [uid])
         as_owner(s)
         s.rows("update public.email_deliveries set claimed_until = now() - interval '1 hour' where user_id = %s returning 1", [uid])
-        later = claim_ready(s)
+        later = claim_ready(s, sc.alice.actor.uid)
         row = ledger(s, uid)[0]
     assert done is True and twice is False and later == []
     assert row[2] == "sent"
@@ -443,7 +447,7 @@ def test_unsubscribing_after_the_notification_was_written_is_honoured(conn, sc):
         hold(s, sc.alice.channel, "run-mail-4")
         tok = prefs_row(s, sc.alice.actor.uid)
         set_prefs(s, sc.alice.actor, ready=False)
-        got = claim_ready(s)
+        got = claim_ready(s, sc.alice.actor.uid)
         row = ledger(s, sc.alice.actor.uid)
     assert got == [] and row == [("video_ready", "run-mail-4:held", "skipped", 0, "opted_out")]
     assert tok == []
@@ -453,7 +457,7 @@ def test_an_old_notification_is_not_mailed_so_the_first_run_sends_no_backlog(con
     with as_superuser(conn, commit=False) as s:
         hold(s, sc.alice.channel, "run-mail-5")
         s.rows("update public.notifications set created_at = now() - interval '7 hours' where ref = 'run-mail-5:held' returning 1")
-        got = claim_ready(s)
+        got = claim_ready(s, sc.alice.actor.uid)
     assert got == []
 
 
@@ -461,7 +465,7 @@ def test_an_unconfirmed_address_is_not_mailed(conn, sc):
     with as_superuser(conn, commit=False) as s:
         s.rows("update auth.users set email_confirmed_at = null where id = %s returning 1", [sc.alice.actor.uid])
         hold(s, sc.alice.channel, "run-mail-6")
-        got = claim_ready(s)
+        got = claim_ready(s, sc.alice.actor.uid)
         row = ledger(s, sc.alice.actor.uid)
     assert got == [] and row[0][2] == "skipped" and row[0][4] == "no_address"
 
@@ -471,7 +475,7 @@ def test_an_id_in_a_notification_never_names_another_tenants_channel(conn, sc):
         s.rows("select 1 from (select public.notification_emit(%s, %s, 'video_ready', 'forged:held', %s::jsonb)) q",
                [sc.alice.org, sc.alice.actor.uid,
                 json.dumps({"video_id": "x", "channel_id": sc.bob.channel, "state": "held"})])
-        got = claim_ready(s)
+        got = claim_ready(s, sc.alice.actor.uid)
     assert len(got) == 1 and got[0]["channel"] is None
     assert "Channel B" not in json.dumps(got)
 
@@ -483,7 +487,7 @@ def test_an_export_mail_carries_no_channel_and_other_kinds_are_not_mailed(conn, 
         s.rows("select 1 from (select public.notification_emit(%s, %s, 'credits_low', 'low:x', %s::jsonb)) q",
                [sc.alice.org, sc.alice.actor.uid, json.dumps({"available": 3})])
         # The scenario's own storyboard notification is a decision, not a "ready" mail.
-        got = claim_ready(s)
+        got = claim_ready(s, sc.alice.actor.uid)
     assert [m["kind"] for m in got] == ["editor_export_done"] and got[0]["channel"] is None
 
 
@@ -672,7 +676,7 @@ def test_the_ledger_and_preferences_reject_shapes_the_functions_never_write(conn
         assert not o.ok and o.sqlstate == "23514", o
 
 
-def test_every_function_of_0101_pins_its_search_path(conn):
+def test_every_function_of_0103_pins_its_search_path(conn):
     with as_superuser(conn, commit=False) as s:
         rows = s.rows(
             """

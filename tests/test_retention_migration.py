@@ -1,4 +1,4 @@
-"""supabase/migrations/0101_retention_notify.sql, the text half (the security lab,
+"""supabase/migrations/0103_retention_notify.sql, the text half (the security lab,
 tests/security/test_sec_retention.py, runs it against Postgres 16).
 
 Pins what must not drift: the one replaced function keeps every literal of the
@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SQL = (ROOT / "supabase" / "migrations" / "0101_retention_notify.sql").read_text()
+SQL = (ROOT / "supabase" / "migrations" / "0103_retention_notify.sql").read_text()
 OLD = (ROOT / "supabase" / "migrations" / "0064_notifications.sql").read_text()
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 OLD_CODE = "\n".join(line.split("--", 1)[0] for line in OLD.splitlines())
@@ -31,8 +31,8 @@ def grants(name):
 
 class RetentionMigration(unittest.TestCase):
     def test_the_number_is_unique(self):
-        names = sorted(p.name for p in (ROOT / "supabase" / "migrations").glob("0101_*.sql"))
-        self.assertEqual(names, ["0101_retention_notify.sql"])
+        names = sorted(p.name for p in (ROOT / "supabase" / "migrations").glob("0103_*.sql"))
+        self.assertEqual(names, ["0103_retention_notify.sql"])
 
     def test_it_is_additive(self):
         self.assertNotRegex(CODE, r"\bdrop (table|column|function)\b")

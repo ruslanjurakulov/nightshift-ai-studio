@@ -1,9 +1,9 @@
-"""Security-lab contract for migration 0101 (the retention e-mails and the
+"""Security-lab contract for migration 0103 (the retention e-mails and the
 "video ready" notification).
 
 Wired in at the bottom of sec_expectations.py, like sec_notify_0064:
 
-    import sec_retention_0101; sec_retention_0101.extend(TABLES, FUNCTIONS)
+    import sec_retention_0103; sec_retention_0103.extend(TABLES, FUNCTIONS)
 
 The two tables are closed to every API role (no grant, no policy): they are
 reached only through the functions, so the unsubscribe token never leaves the
@@ -33,3 +33,18 @@ def extend(tables: dict, functions: dict) -> None:
         "email_complete": SERVICE,
         "email_weekly_digest": SERVICE,
     })
+
+
+def seed(conn, sc) -> None:
+    """One row in each closed table, so the isolation tests' insert attacks have
+    something to clone. Dana (a plain member of the operator's organization) is
+    used so Alice's and Bob's own rows stay exactly as the named tests expect:
+    nothing stored, defaults applying. Written as the database owner: no API
+    role can write either table."""
+    from sec_db import as_superuser
+
+    with as_superuser(conn) as s:
+        s.rows("insert into public.email_preferences (user_id, ready_enabled, locale) values (%s, true, 'en') returning 1",
+               [sc.dana.uid])
+        s.rows("insert into public.email_deliveries (user_id, kind, ref, status, error_code, done_at) "
+               "values (%s, 'weekly', 'seed', 'skipped', 'nothing_to_say', now()) returning 1", [sc.dana.uid])

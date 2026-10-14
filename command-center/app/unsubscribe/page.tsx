@@ -16,7 +16,7 @@ type Params = { t?: string | string[]; s?: string | string[]; l?: string | strin
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 /**
- * "Stop these e-mails": where the link in a mail lands (migration 0101). No
+ * "Stop these e-mails": where the link in a mail lands (migration 0103). No
  * sign-in: the long random token in the address is the authority, and a GET
  * changes nothing (mail scanners open links). The button posts to
  * /api/email/unsubscribe, which turns the mail off and comes back here with

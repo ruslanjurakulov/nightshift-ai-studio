@@ -1,5 +1,5 @@
 /**
- * E-mail preferences (migration 0101): the pure half.
+ * E-mail preferences (migration 0103): the pure half.
  *
  * The database holds one row per person: whether "your video is ready" e-mails are
  * on (they are, until the person says no), how often the weekly summary comes

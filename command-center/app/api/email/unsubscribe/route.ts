@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * The one-click unsubscribe behind every e-mail (migration 0101): POST only.
+ * The one-click unsubscribe behind every e-mail (migration 0103): POST only.
  * A GET is refused (405), so a mail scanner that opens every link cannot turn
  * anyone's mail off.
  *

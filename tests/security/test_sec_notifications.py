@@ -38,7 +38,7 @@ import sec_editor_0054
 ALLOWED_DATA_KEYS = {
     "job_id", "capability", "code", "credits_returned", "credits_charged",
     "storyboard_id", "scenes", "export_id", "project_id", "asset_id", "available",
-    # 0101: the channel a storyboard / a waiting video belongs to, and the video's state.
+    # 0103: the channel a storyboard / a waiting video belongs to, and the video's state.
     "channel_id", "video_id", "state",
 }
 
@@ -349,7 +349,7 @@ def test_a_storyboard_tells_only_the_members_who_may_approve_it(conn, sc):
             may = s.value("select %s in (select public.accessible_channel_ids('admin'))", [sc.alice.channel])
             as_owner(s)
         assert len(a) == 1 and b == [], "the org's owner is told once; another org is never told"
-        assert a[0]["kind"] == "storyboard_ready" and a[0]["data"] == {"storyboard_id": sid, "scenes": 3}
+        assert a[0]["kind"] == "storyboard_ready" and a[0]["data"] == {"storyboard_id": sid, "scenes": 3, "channel_id": sc.alice.channel}
         assert "A topic" not in json.dumps(a[0]["data"]), "the storyboard's topic is text a person typed"
         told[role] = (len(c) == 1, may)
     assert told == {"viewer": (False, False), "editor": (False, False), "admin": (True, True), "owner": (True, True)}, \

@@ -48,7 +48,7 @@ export const INVITE_LINK_PATTERN = /^\/i\/[A-Za-z0-9_-]{16,64}$/;
 export const INVITE_NOTICE_PATH = "/invite";
 
 /**
- * "Stop these e-mails" (migration 0101): the page the link in an e-mail opens, and the route its button and a
+ * "Stop these e-mails" (migration 0103): the page the link in an e-mail opens, and the route its button and a
  * mail program's one-click POST go to. Both work signed out — the person clicking is in a mail app, not
  * necessarily signed in — and each is exact. The page changes nothing on a GET; the route accepts POST only, and
  * the long random token in the query is its authority (it can only switch mail off).

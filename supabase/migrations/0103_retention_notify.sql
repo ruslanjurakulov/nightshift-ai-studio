@@ -1,4 +1,4 @@
--- 0101_retention_notify.sql — a reason and a way back for a returning person:
+-- 0103_retention_notify.sql — a reason and a way back for a returning person:
 -- a "your video is ready" notification, a "ready" e-mail and an opt-in weekly
 -- summary, each with the channel it is about.
 --
@@ -88,21 +88,21 @@ do $$
 begin
   if to_regclass('public.notifications') is null
      or to_regprocedure('public.notification_emit_org_role(uuid, text, text, jsonb, text)') is null then
-    raise exception '0101 needs the notifications: apply 0064_notifications.sql first';
+    raise exception '0103 needs the notifications: apply 0064_notifications.sql first';
   end if;
   if to_regclass('public.storyboards') is null then
-    raise exception '0101 needs the storyboards: apply 0057_storyboard_review.sql first';
+    raise exception '0103 needs the storyboards: apply 0057_storyboard_review.sql first';
   end if;
   if not exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'videos' and column_name = 'publish_state') then
-    raise exception '0101 needs the held videos: apply 0016_held_videos.sql first';
+    raise exception '0103 needs the held videos: apply 0016_held_videos.sql first';
   end if;
   if not exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'channels' and column_name = 'org_id') then
-    raise exception '0101 needs the channel owners: apply 0018_organizations.sql first';
+    raise exception '0103 needs the channel owners: apply 0018_organizations.sql first';
   end if;
   if to_regclass('public.credit_accounts') is null or to_regprocedure('public.credits_exempt(uuid)') is null then
-    raise exception '0101 needs the credit accounts: apply 0020_credits.sql first';
+    raise exception '0103 needs the credit accounts: apply 0020_credits.sql first';
   end if;
 end $$;
 
@@ -204,7 +204,7 @@ create table if not exists public.email_preferences (
 );
 
 comment on table public.email_preferences is
-  'Per-person e-mail switches (migration 0101). Reached only through email_prefs_get / email_prefs_set / email_unsubscribe and the worker functions; no API role has a grant on it, so the unsubscribe token never reaches a browser.';
+  'Per-person e-mail switches (migration 0103). Reached only through email_prefs_get / email_prefs_set / email_unsubscribe and the worker functions; no API role has a grant on it, so the unsubscribe token never reaches a browser.';
 
 create table if not exists public.email_deliveries (
   user_id       uuid not null references auth.users (id) on delete cascade,
@@ -224,7 +224,7 @@ create index if not exists email_deliveries_weekly_idx
   on public.email_deliveries (user_id, done_at desc) where kind = 'weekly';
 
 comment on table public.email_deliveries is
-  'One row per e-mail the worker has claimed, sent, skipped or given up on (migration 0101): the idempotency key is (user_id, kind, ref), the same triple as the notification it mirrors. Never holds an address, a body or provider text — only a machine code.';
+  'One row per e-mail the worker has claimed, sent, skipped or given up on (migration 0103): the idempotency key is (user_id, kind, ref), the same triple as the notification it mirrors. Never holds an address, a body or provider text — only a machine code.';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 4. The person's own switches

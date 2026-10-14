@@ -18,7 +18,7 @@ export const NOTIFICATION_KINDS = [
   "storyboard_ready",
   "editor_export_done",
   "credits_low",
-  // Migration 0101: a run finished and now waits for the person to decide.
+  // Migration 0103: a run finished and now waits for the person to decide.
   "video_ready",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -96,8 +96,8 @@ function plainIdField(data: Record<string, unknown>, key: string): string | null
   return typeof v === "string" && PLAIN_ID.test(v) && !v.includes("..") ? v : null;
 }
 
-/** The channel a notification is about, as its data names it (0101 puts it on a waiting storyboard and a ready
- *  video); null for everything that belongs to the workspace as a whole, and for rows written before 0101. */
+/** The channel a notification is about, as its data names it (0103 puts it on a waiting storyboard and a ready
+ *  video); null for everything that belongs to the workspace as a whole, and for rows written before 0103. */
 export function notificationChannelId(data: Record<string, unknown>): string | null {
   return plainIdField(data, "channel_id");
 }
@@ -127,7 +127,7 @@ export interface NotificationView {
   amount: { key: "charged" | "returned" | "available"; n: number } | null;
   /** A section path ("/studio"), to be made channel-aware by the caller. */
   section: string;
-  /** The channel the notification is about (0101), or null: it is about the workspace. When set, `section` belongs
+  /** The channel the notification is about (0103), or null: it is about the workspace. When set, `section` belongs
    *  to that channel and the link must be built for it, not for whichever channel is open. */
   channelId: string | null;
   /** A second action for the row ("make another"), as a section path of the same channel, or null. */

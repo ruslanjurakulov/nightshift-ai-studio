@@ -40,7 +40,7 @@ export default async function SettingsPage() {
   const supabase = user && org.supported && org.current ? await createClient() : null;
   const showInvite = supabase && org.current ? inviteCardShown(org.current, (await readMyInvite(supabase)).state) : false;
   const avatarV = avatarVersionFromMetadata(user?.user_metadata);
-  // The e-mail switches appear only while the e-mail worker is reporting (migration 0101): see readEmailSettings.
+  // The e-mail switches appear only while the e-mail worker is reporting (migration 0103): see readEmailSettings.
   const email = supabase ? await readEmailSettings(supabase) : ({ available: false } as const);
 
   return (

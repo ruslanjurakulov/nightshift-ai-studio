@@ -169,7 +169,7 @@ describe("where a finished captions or describe job leads (nothing of theirs is 
   });
 });
 
-// Migration 0101: a run that finished and waits for the person.
+// Migration 0103: a run that finished and waits for the person.
 describe("video_ready", () => {
   const data = { video_id: "run-0123456789abcdef0123", channel_id: "night-owl", state: "held" };
 
@@ -191,7 +191,7 @@ describe("video_ready", () => {
     }
   });
 
-  it("a storyboard names its channel too, and an older row (before 0101) simply has none", () => {
+  it("a storyboard names its channel too, and an older row (before 0103) simply has none", () => {
     expect(describeNotification(row({ kind: "storyboard_ready", data: { storyboard_id: ID, channel_id: "night-owl" } })).channelId).toBe("night-owl");
     expect(describeNotification(row({ kind: "storyboard_ready", data: { storyboard_id: ID } })).channelId).toBeNull();
   });

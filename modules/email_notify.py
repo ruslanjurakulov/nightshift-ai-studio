@@ -1,7 +1,7 @@
-"""Customer e-mails: "your video is ready" and the weekly summary (migration 0101).
+"""Customer e-mails: "your video is ready" and the weekly summary (migration 0103).
 
 This module is the pure half plus the transports. It never reads the database
-(tools/email_worker.py does, through the 0101 functions) and it never decides
+(tools/email_worker.py does, through the 0103 functions) and it never decides
 WHO gets mail or WHETHER: that is the database's job (preferences, the ledger).
 What it does:
 

@@ -40,6 +40,8 @@ const PUBLIC_BY_DESIGN: Record<string, string> = {
   "v1/[...rest]/route.ts": "the API's own 404 for an unknown path; it answers nothing about anyone",
   "handle-available/route.ts":
     "the sign-up form's username check, asked before an account exists: same-origin POST only, one yes/no/unknown, limited per address and platform-wide in the database (0096)",
+  "email/unsubscribe/route.ts":
+    "the one-click unsubscribe behind every e-mail (0103): POST only, and the person is NOT signed in (a mail program posts to it); the 64-hex token in the query is the authority, matched in the database, and the only thing it can do is switch mail off",
 };
 
 function routeFiles(dir: string): string[] {

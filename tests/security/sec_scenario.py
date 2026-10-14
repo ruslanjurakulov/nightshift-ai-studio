@@ -366,6 +366,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Notifications (0064): tests/security/sec_notify_0064.py — raised by the real triggers.
     import sec_notify_0064
     sec_notify_0064.seed(conn, sc)
+    # The retention e-mails (0103): tests/security/sec_retention_0103.py — one row in each closed table.
+    import sec_retention_0103
+    sec_retention_0103.seed(conn, sc)
     # Invite friends (0092): tests/security/sec_friend_invites_0092.py — one row per table, no credits move.
     import sec_friend_invites_0092
     sec_friend_invites_0092.seed(conn, sc)

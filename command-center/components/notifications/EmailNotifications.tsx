@@ -9,7 +9,7 @@ import { parseEmailPrefs, weeklyFromValue, weeklyValue, type EmailPrefs } from "
  * Settings → E-mail: whether "your video is ready" e-mails come (on until the
  * person turns them off) and how often the weekly summary does (never, until the
  * person picks a rhythm). Every change is one call to email_prefs_set (migration
- * 0101) under the person's own session, and the screen shows what the database
+ * 0103) under the person's own session, and the screen shows what the database
  * answered, not what was asked: a failed save puts the switch back and says so.
  *
  * The page renders this only while the e-mail worker is reporting (a switch for

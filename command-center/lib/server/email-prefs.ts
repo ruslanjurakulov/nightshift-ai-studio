@@ -7,7 +7,7 @@ export type EmailSettings =
 
 /**
  * What the Settings page needs to draw the e-mail switches: shown only when the
- * database has migration 0101 AND the e-mail worker is reporting to it. A
+ * database has migration 0103 AND the e-mail worker is reporting to it. A
  * deployment where nothing sends mail shows no switch (a control for a promise
  * nobody keeps), and a failed read shows none either: the page never guesses a
  * saved value.

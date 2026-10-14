@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """E-mail worker: send the "your video is ready" mails and the weekly summaries
-(migration 0101, modules/email_notify.py).
+(migration 0103, modules/email_notify.py).
 
     python tools/email_worker.py              # loop forever (poll every EMAIL_WORKER_POLL_SECONDS)
     python tools/email_worker.py --once       # one pass, then exit (cron, local runs)
@@ -60,7 +60,7 @@ class StoreError(RuntimeError):
 
 
 class EmailStore:
-    """The 0101 worker functions over PostgREST with the service key."""
+    """The 0103 worker functions over PostgREST with the service key."""
 
     def __init__(self, url: str, service_key: str, *, session: Any = None, timeout: float = 30.0):
         self.url = (url or "").rstrip("/")

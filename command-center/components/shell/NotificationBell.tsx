@@ -112,8 +112,8 @@ export function NotificationBell({ orgId, channels = [] }: { orgId: string | nul
     };
   }, [supabase, orgId, refresh]);
 
-  // The language the person last used, told to the database once per language (migration 0101): the account
-  // stores none, and the e-mails are written in it. A failure (0101 not applied) is silent and tried again
+  // The language the person last used, told to the database once per language (migration 0103): the account
+  // stores none, and the e-mails are written in it. A failure (0103 not applied) is silent and tried again
   // next visit; nothing is shown and nothing here can fail the bell.
   useEffect(() => {
     if (!supabase || !orgId) return;
