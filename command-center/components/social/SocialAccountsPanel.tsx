@@ -155,7 +155,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
 
                 <div className="g2-actions">
                   {actions.connect ? (
-                    <a href={`/api/oauth/${platform}/start`} className="btn-quiet">
+                    <a href={`/api/oauth/${platform}/start?pick=1`} className="btn-quiet">
                       {rows.length ? ts.connectAnother : fmt(ts.connect, { platform: name(platform) })}
                     </a>
                   ) : !configured[platform] ? (

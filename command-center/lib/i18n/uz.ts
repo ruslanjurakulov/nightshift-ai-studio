@@ -1,5 +1,6 @@
 import { improveUz } from "./improve/uz";
 import { libraryUxUz } from "./library-ux/uz";
+import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
@@ -15,6 +16,7 @@ export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
   libraryUx: libraryUxUz,
+  connectPicker: connectPickerUz,
   improveAi: improveUz,
   brand: {
     name: "Nightshift",

@@ -72,6 +72,8 @@ export function socialRedirectUri(platform: SocialPlatform, origin: string): str
 export interface SocialState {
   org: string;
   nonce: string;
+  /** Connect-then-confirm: hold the grant for the confirm screen instead of storing it. */
+  pick?: true;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -82,7 +84,10 @@ export function newNonce(): string {
 }
 
 export function encodeSocialState(value: SocialState): string {
-  return Buffer.from(JSON.stringify({ org: value.org, nonce: value.nonce }), "utf8").toString("base64url");
+  return Buffer.from(
+    JSON.stringify({ org: value.org, nonce: value.nonce, ...(value.pick ? { pick: true } : {}) }),
+    "utf8",
+  ).toString("base64url");
 }
 
 /** The state is a claim, not an authority: the callback re-checks the org role.
@@ -92,7 +97,7 @@ export function decodeSocialState(raw: string | null | undefined): SocialState |
   try {
     const obj = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
     if (obj && typeof obj.org === "string" && typeof obj.nonce === "string" && UUID_RE.test(obj.org) && NONCE_RE.test(obj.nonce)) {
-      return { org: obj.org, nonce: obj.nonce };
+      return obj.pick === true ? { org: obj.org, nonce: obj.nonce, pick: true } : { org: obj.org, nonce: obj.nonce };
     }
   } catch {
     /* fall through */

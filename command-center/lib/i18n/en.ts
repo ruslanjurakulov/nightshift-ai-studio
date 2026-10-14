@@ -1,5 +1,6 @@
 import { improveEn } from "./improve/en";
 import { libraryUxEn } from "./library-ux/en";
+import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
@@ -23,6 +24,7 @@ export const en = {
   site: siteEn,
   presets: presetsEn,
   libraryUx: libraryUxEn,
+  connectPicker: connectPickerEn,
   improveAi: improveEn,
   brand: {
     name: "Nightshift",

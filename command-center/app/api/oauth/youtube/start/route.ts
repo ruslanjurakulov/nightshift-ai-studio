@@ -10,6 +10,8 @@ import {
 } from "@/lib/server/google-oauth";
 import { resolveTokenStore } from "@/lib/server/channel-tokens";
 import { publicOrigin } from "@/lib/server/public-origin";
+import { startYoutubePick } from "@/lib/server/connect-youtube";
+import { PICK_FLAG } from "@/lib/connect-picker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +39,9 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const url = new URL(request.url);
+  // The Add channel screen's one button: connect first, then pick the channel
+  // (lib/server/connect-youtube.ts). No channel exists yet, so no `ref`.
+  if (url.searchParams.get(PICK_FLAG) === "1") return startYoutubePick(request, user.id);
   const ref = (url.searchParams.get("ref") ?? "").trim();
 
   const store = await resolveTokenStore(ref);

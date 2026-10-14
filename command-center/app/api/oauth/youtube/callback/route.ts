@@ -15,6 +15,7 @@ import {
 import { fetchGrantedChannel, resolveTokenStore, storeVaultToken } from "@/lib/server/channel-tokens";
 import { missingScopes, type VaultResult } from "@/lib/channel-tokens";
 import { publicOrigin } from "@/lib/server/public-origin";
+import { finishYoutubePick } from "@/lib/server/connect-youtube";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,8 @@ export async function GET(request: Request) {
 
   const stateRaw = url.searchParams.get("state") ?? "";
   const state = decodeState(stateRaw);
+  // Started from the Add channel screen: no channel yet, the person picks one.
+  if (state?.pick) return finishYoutubePick(request, url, origin, state, user.id);
   const store = state ? await resolveTokenStore(state.ref) : ({ mode: "github" } as const);
 
   if (store.mode === "unavailable") return backToChannels(origin, "unavailable");
