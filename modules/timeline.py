@@ -12,7 +12,9 @@ not a project dependency — tests keep the two in sync)::
 
     { version: 1, width, height, fps,
       tracks: [ { id, kind: "V"|"A"|"T", name?, clips: [...] } ],
-      captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] },
+      captions?: { style?: {...,  preset?: <one of caption_styles.STYLE_IDS>,
+                              highlight_color?: "#RRGGBB"},
+                   cues: [ { id, start_s, end_s, text } ] },
       overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ] }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
@@ -116,6 +118,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from modules import caption_styles
+
 VERSION = 1
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "timeline.schema.json"
 
@@ -171,7 +175,12 @@ TRANSITIONS = ("cut", "dip_to_black", "crossfade")
 #: about what the plain ``fade`` does (measured, tests/test_editor_transitions.py).
 XFADE_STYLES = ("fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight",
                 "slideleft", "slideright", "slideup", "slidedown", "circleopen",
-                "circleclose", "radial", "zoomin")
+                "circleclose", "radial", "zoomin",
+                "wipeup", "wipedown", "smoothleft", "smoothright", "smoothup",
+                "smoothdown", "vertopen", "vertclose", "horzopen", "horzclose",
+                "diagtl", "diagtr", "diagbl", "diagbr", "wipetl",
+                "wipetr", "wipebl", "wipebr", "squeezeh", "squeezev",
+                "pixelize", "hblur", "distance")
 XFADE_DEFAULT_STYLE = "fade"
 #: A cross-fade's length: under 0.2 s it reads as a glitch, not a dissolve;
 #: over 2 s both clips are half-visible for longer than a viewer will wait.
@@ -242,7 +251,10 @@ _T_CLIP_KEYS = (_T_REQUIRED + _TEXT_STYLE_KEYS + _TEXT_LOOK_KEYS
 _TRANSITION_KEYS = ("type", "duration_s")
 _TRANSITION_ALLOWED = _TRANSITION_KEYS + ("style",)
 _CAPTIONS_KEYS = ("style", "cues")
-_CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y",)
+#: ``preset`` is one of caption_styles.STYLE_IDS (an animated style); absent = the
+#: plain caption every older document has. ``highlight_color`` is the second
+#: colour a style may draw (the lit word, the box, the glow).
+_CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y", "preset", "highlight_color")
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
 _OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
 _OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity")
@@ -556,7 +568,8 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
                     problems.append(f"{where}: transition type must be one of {list(TRANSITIONS)}")
                 if "style" in tr:
                     if not (isinstance(tr["style"], str) and tr["style"] in XFADE_STYLES):
-                        problems.append(f"{where} transition: style must be one of {list(XFADE_STYLES)}")
+                        problems.append(f"{where} transition: style must be one of the {len(XFADE_STYLES)} "
+                                        "blend styles in schemas/timeline.schema.json")
                     elif tr.get("type") != "crossfade":
                         problems.append(f"{where} transition: a style is only for a crossfade")
                 if tr.get("type") == "crossfade":
@@ -639,6 +652,11 @@ def _validate_captions(captions, problems, claim) -> None:
     if style is not None and _fields(style, _CAPTION_STYLE_KEYS, (), "captions style", problems):
         _text_style(style, "captions style", problems)
         _num_in(style, "y", 0, 1, "captions style", problems)
+        if "preset" in style and not caption_styles.is_style(style["preset"]):
+            problems.append(f"captions style: preset must be one of {list(caption_styles.STYLE_IDS)}")
+        if "highlight_color" in style and not (isinstance(style["highlight_color"], str)
+                                               and _HEX_RE.fullmatch(style["highlight_color"])):
+            problems.append("captions style: highlight_color must be a #RRGGBB colour")
     cues = captions.get("cues")
     if not isinstance(cues, list):
         problems.append("captions: cues must be a list")
@@ -940,7 +958,13 @@ def normalise(doc: dict) -> dict:
         t["clips"].sort(key=lambda c: (c["start_s"], c["id"]))
         out["tracks"].append(t)
     if doc.get("captions") is not None:
-        style = {**CAPTION_STYLE_DEFAULTS, **(doc["captions"].get("style") or {})}
+        given = doc["captions"].get("style") or {}
+        # A style named by preset supplies the fields the document leaves out
+        # (its own font, size, colours, position); without one this is exactly
+        # the style every older document gets.
+        preset = (caption_styles.defaults_for(given["preset"], doc["width"], doc["height"])
+                  if given.get("preset") else {})
+        style = {**CAPTION_STYLE_DEFAULTS, **preset, **given}
         style["y"] = _ms(style["y"])
         style["outline_width"] = float(style["outline_width"])
         cues = sorted(({"id": c["id"], "start_s": _ms(c["start_s"]), "end_s": _ms(c["end_s"]),

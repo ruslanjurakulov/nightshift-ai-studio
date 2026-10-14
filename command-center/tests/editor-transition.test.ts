@@ -46,6 +46,9 @@ describe("the styles", () => {
     expect([...XFADE_STYLES]).toEqual([
       "fade", "dissolve", "fadeblack", "fadewhite", "wipeleft", "wiperight", "slideleft",
       "slideright", "slideup", "slidedown", "circleopen", "circleclose", "radial", "zoomin",
+      "wipeup", "wipedown", "smoothleft", "smoothright", "smoothup", "smoothdown", "vertopen",
+      "vertclose", "horzopen", "horzclose", "diagtl", "diagtr", "diagbl", "diagbr", "wipetl",
+      "wipetr", "wipebl", "wipebr", "squeezeh", "squeezev", "pixelize", "hblur", "distance",
     ]);
     expect(XFADE_DEFAULT_STYLE).toBe("fade");
     expect(new Set(XFADE_STYLES).size).toBe(XFADE_STYLES.length);

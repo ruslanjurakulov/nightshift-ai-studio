@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Captions as CaptionsIcon, Download, Trash2 } from "lucide-react";
+import { Captions as CaptionsIcon, Download, FileUp, Plus, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatTime, type EditorAsset, type EditorModel } from "@/lib/editor";
@@ -35,6 +35,9 @@ import {
   type CaptionTrack,
   type CaptionTrackSummary,
 } from "@/lib/captions";
+import { IMPORT_MAX_BYTES, addCue, captionsFromImport, parseCaptionFile } from "@/lib/captionCues";
+import { isCaptionStyleId } from "@/lib/captionStyleTable";
+import { CaptionStylesPicker } from "./CaptionStylesPicker";
 import {
   apiErrorMessage,
   asCreativeError,
@@ -193,6 +196,17 @@ function CueRow({
   );
 }
 
+/** A file's text (older browsers have no Blob.text). */
+function readText(file: File): Promise<string> {
+  if (typeof file.text === "function") return file.text();
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result ?? ""));
+    r.onerror = () => reject(r.error);
+    r.readAsText(file);
+  });
+}
+
 function download(name: string, mime: string, body: string): void {
   const url = URL.createObjectURL(new Blob([body], { type: `${mime};charset=utf-8` }));
   const a = document.createElement("a");
@@ -229,6 +243,7 @@ export function CaptionsPanel({
   models,
   pictureEnd,
   onChange,
+  preselect = null,
 }: {
   orgId: string;
   projectTitle: string;
@@ -236,7 +251,10 @@ export function CaptionsPanel({
   assets: Record<string, EditorAsset>;
   models: readonly CaptionModelOption[];
   pictureEnd: number;
-  onChange: (next: EditorModel) => void;
+  /** `group`: the changes of one gesture (a slider drag) are one undo step. */
+  onChange: (next: EditorModel, group?: string) => void;
+  /** "Improve with AI" → Captions on a clip: that clip's recording is the one picked (a new nonce re-picks). */
+  preselect?: { id: string; nonce: number } | null;
 }) {
   const { t, fmt, locale } = useI18n();
   const tc = t.captions;
@@ -244,6 +262,13 @@ export function CaptionsPanel({
 
   const recordings = useMemo(() => recordingsOf(model, assets), [model, assets]);
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const preselectNonce = preselect?.nonce;
+  const preselectId = preselect?.id;
+  useEffect(() => {
+    if (preselectId && recordings.some((r) => r.id === preselectId)) setSourceId(preselectId);
+    // only when the request changes, not whenever the timeline does
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectNonce, preselectId]);
   const picked = recordings.find((r) => r.id === sourceId) ?? recordings.find((r) => recordingProblem(r) === null) ?? recordings[0] ?? null;
   const [language, setLanguage] = useState<CaptionLanguage | "detect">(() => defaultCaptionLanguage(locale));
   const [modelId, setModelId] = useState<string>(models[0]?.id ?? "");
@@ -264,6 +289,8 @@ export function CaptionsPanel({
   const [track, setTrack] = useState<CaptionTrack | null>(null);
   const [loadingTrack, setLoadingTrack] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // What adding or importing a caption by hand answered (those need no transcription).
+  const [cueNotice, setCueNotice] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [shown, setShown] = useState(CUES_SHOWN);
 
@@ -497,7 +524,9 @@ export function CaptionsPanel({
     }
     setArmed(false);
     setShown(CUES_SHOWN);
-    onChange(setCaptions(model, made));
+    // New words under the animated style the person already chose: the style stays.
+    const keep = current && isCaptionStyleId(current.style.preset) ? current.style : made.style;
+    onChange(setCaptions(model, { ...made, style: keep }));
     setNotice(fmt(tc.added, { n: made.cues.length }));
   }
 
@@ -505,6 +534,49 @@ export function CaptionsPanel({
     setPreset(id);
     // An existing set of captions only changes its look: the person's edits to the words stay.
     if (current) onChange(setCaptionStyle(model, styleFor(id, model.width, model.height)));
+  }
+
+  // ── typed and imported captions (free, local) ───────────────────────────────
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  function addTyped() {
+    const next = addCue(model, tc.newCueText, pictureEnd);
+    if (!next) {
+      setCueNotice(tc.addNoRoom);
+      return;
+    }
+    setCueNotice(null);
+    onChange(next);
+  }
+
+  async function importFile(file: File | undefined) {
+    if (fileInput.current) fileInput.current.value = "";
+    if (!file) return;
+    if (file.size > IMPORT_MAX_BYTES) {
+      setCueNotice(tc.importTooBig);
+      return;
+    }
+    let text = "";
+    try {
+      text = await readText(file);
+    } catch {
+      setCueNotice(tc.importFailed);
+      return;
+    }
+    const parsed = parseCaptionFile(text);
+    const made = captionsFromImport(model, parsed, pictureEnd);
+    if (!made) {
+      setCueNotice(parsed.cues.length ? tc.importOutside : tc.importNone);
+      return;
+    }
+    if (cues.length > 0 && !window.confirm(tc.importReplace)) return;
+    setShown(CUES_SHOWN);
+    onChange(setCaptions(model, made));
+    setCueNotice(
+      parsed.cues.length > made.cues.length || parsed.skipped > 0
+        ? fmt(tc.importedSome, { n: made.cues.length, skipped: parsed.skipped + parsed.cues.length - made.cues.length })
+        : fmt(tc.imported, { n: made.cues.length }),
+    );
   }
 
   const downloadLanguage = activeTrack?.language ?? spoken ?? "und";
@@ -529,7 +601,7 @@ export function CaptionsPanel({
   const action = quoteErrorCode ? errorAction(quoteErrorCode) : null;
 
   return (
-    <section aria-labelledby="captions-heading" className="panel flex flex-col gap-3 p-5 sm:p-6">
+    <section aria-labelledby="captions-heading" tabIndex={-1} data-captions-panel="" className="panel flex flex-col gap-3 p-5 sm:p-6 outline-none">
       <div className="flex items-center gap-2">
         <CaptionsIcon className="size-4 text-[var(--color-primary)]" aria-hidden />
         <h2 id="captions-heading" className="m-0 text-[15px] font-semibold">
@@ -755,11 +827,37 @@ export function CaptionsPanel({
         </>
       )}
 
-      {/* the captions the project holds: edit, delete, download */}
+      {/* typed or imported captions need no transcription: always here, free */}
       <div className="flex flex-col gap-2">
         <h3 className="m-0 text-sm font-semibold">{fmt(tc.cuesHeading, { n: cues.length })}</h3>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={addTyped} className={quietBtn + " min-h-11"}>
+            <Plus className="size-3.5" aria-hidden />
+            {tc.addCue}
+          </button>
+          <button type="button" onClick={() => fileInput.current?.click()} className={quietBtn + " min-h-11"}>
+            <FileUp className="size-3.5" aria-hidden />
+            {tc.importFile}
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".srt,.vtt,text/vtt,application/x-subrip,text/plain"
+            aria-label={tc.importFile}
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => void importFile(e.target.files?.[0])}
+          />
+        </div>
+        <p className="m-0 text-xs text-[var(--color-muted)]">{tc.importNote}</p>
+        {cueNotice ? (
+          <p role="status" className="m-0 text-xs text-[var(--color-muted)]">
+            {cueNotice}
+          </p>
+        ) : null}
+        <CaptionStylesPicker model={model} onChange={onChange} />
         {cues.length === 0 ? (
-          <p className="m-0 text-xs text-[var(--color-muted)]">{tc.noCues}</p>
+          <p className="m-0 text-xs text-[var(--color-muted)]">{models.length === 0 ? tc.noCuesManual : tc.noCues}</p>
         ) : (
           <>
             <p className="m-0 text-xs text-[var(--color-muted)]">{tc.burnedNote}</p>
