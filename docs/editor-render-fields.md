@@ -186,3 +186,11 @@ like `contain` (the picture alone).
   the preview with a CSS `filter: blur()` copy of the video behind the picture
   (approximate; say so).
 * Cross-fades: both sides can use `blur`.
+* Pixel shape: a `blur` clip comes out with SQUARE pixels (the chain ends with
+  `setsar=1`; without it the scaler's rounding left e.g. 1697:1711 for a 16:9
+  clip in a portrait frame and a player would stretch it). KNOWN ISSUE, not
+  changed here: the legacy `contain` chain (scale + pad, in use before any of
+  this work) can leave a non-square sample aspect ratio on main too (measured
+  1216:1215); touching it would change every older document's command, so it is
+  left alone and listed for the owner. Chains of the new fields (`blur`, turns,
+  crop, effects that turn) add `setsar=1` themselves.

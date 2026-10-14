@@ -175,10 +175,12 @@ class BlurRenderTestCase(fxt._Real):
         # before setsar=1 the picture came out 23:22 (measured), and a player stretched it
         import subprocess
         for src in (self.portrait_source(), self.split_source()):
-            for fx in ({}, {"rotate": 90}):
-                out = self.export(fxt.vdoc(width=self.W, height=self.H, fit="blur", **fx), {BASE: src})
-                err = subprocess.run([self.ffmpeg, "-hide_banner", "-i", str(out)], capture_output=True, text=True).stderr
-                self.assertEqual(re.search(r"SAR (\d+:\d+)", err).group(1), "1:1", (fx, err))
+            for size in ((self.W, self.H), (180, 320), (270, 480)):      # landscape, portrait, a taller portrait
+                for fx in ({}, {"rotate": 90}):
+                    out = self.export(fxt.vdoc(width=size[0], height=size[1], fit="blur", **fx), {BASE: src})
+                    err = subprocess.run([self.ffmpeg, "-hide_banner", "-i", str(out)], capture_output=True,
+                                         text=True).stderr
+                    self.assertEqual(re.search(r"SAR (\d+:\d+)", err).group(1), "1:1", (size, fx, err))
 
     def test_a_crossfade_between_two_blur_clips_renders_every_frame(self):
         src = self.portrait_source()
