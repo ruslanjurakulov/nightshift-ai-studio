@@ -20,6 +20,7 @@ import {
   type MediaUpload,
   type UploadStatus,
 } from "@/lib/media";
+import { isDismissable } from "@/lib/media-dismiss";
 import { SEARCH_MAX, cleanSearch, type FolderError } from "@/lib/media-folders";
 import { KIND_ICON } from "./kindIcon";
 import { LibrarySkeleton } from "./LibrarySkeleton";
@@ -137,6 +138,7 @@ export function MediaLibrary({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState<string | null>(null);
   const [readFailed, setReadFailed] = useState(Boolean(initial?.error));
   const [view, setView] = useState<LibraryView>(initialView ?? DEFAULT_VIEW);
   const [fileErrors, setFileErrors] = useState<{ failed: number; n: number; list: string[] } | null>(null);
@@ -169,6 +171,7 @@ export function MediaLibrary({
   const menuButton = useRef<HTMLButtonElement>(null);
   const moveButton = useRef<HTMLButtonElement>(null);
   const selectButton = useRef<HTMLButtonElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   /** Where focus goes once the next render is on screen (after a dialog whose opener is gone). */
   const focusNext = useRef<(() => HTMLElement | null) | null>(null);
   /** Only the latest read may land: a slow answer for the last folder must not replace this one's. */
@@ -583,6 +586,50 @@ export function MediaLibrary({
     }
   }
 
+  /**
+   * Dismiss a refused or expired card: one POST, then the card leaves the list
+   * and focus moves to the next card that can also be dismissed (else the one
+   * before it, else the search box), so the keyboard never falls back to the
+   * top of the page. The line in the live region says what happened. Never throws.
+   */
+  async function dismissUpload(u: MediaUpload) {
+    if (dismissing || !isDismissable(u)) return;
+    const at = pending.findIndex((x) => x.id === u.id);
+    const others = [...pending.slice(at + 1), ...pending.slice(0, Math.max(at, 0)).reverse()].filter(
+      (x) => x.id !== u.id && isDismissable(x),
+    );
+    const nextId = others[0]?.id ?? null;
+    setDismissing(u.id);
+    setError(null);
+    setNotice(null);
+    let failure: string | null = null;
+    let gone = false;
+    try {
+      const res = await fetch(`/api/media/uploads/${u.id}/dismiss`, { method: "POST" });
+      if (res.ok) gone = true;
+      else {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        failure = body.error ?? "failed";
+        // Already gone for this person, or not ours any more: the card has no business staying.
+        if (res.status === 404) gone = true;
+      }
+    } catch {
+      failure = "network";
+    }
+    if (gone) {
+      focusNext.current = () =>
+        (nextId ? document.querySelector<HTMLElement>(`[data-dismiss-id="${nextId}"]`) : null) ?? searchInput.current;
+      setData((prev) => (prev ? { ...prev, uploads: prev.uploads.filter((x) => x.id !== u.id) } : prev));
+      if (!failure) setNotice(fmt(tm.dismissed, { name: u.name }));
+    }
+    if (failure) {
+      setError(failure === "network" ? tm.errors.network : errorText(failure));
+      // The card may be out of date (it finished meanwhile): show what is true.
+      void refresh();
+    }
+    setDismissing(null);
+  }
+
   async function removeFromViewer(asset: LibraryAsset) {
     const at = shown.findIndex((a) => a.id === asset.id);
     const neighbour = shown[at + 1] ?? shown[at - 1] ?? null;
@@ -944,6 +991,7 @@ export function MediaLibrary({
                   className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted)]"
                 />
                 <input
+                  ref={searchInput}
                   type="search"
                   value={view.query}
                   onChange={(e) => setView((v) => ({ ...v, query: e.target.value }))}
@@ -1036,7 +1084,14 @@ export function MediaLibrary({
                     </Frame>
                   )}
                   {pending.map((u) => (
-                    <UploadCard key={u.id} upload={u} checkingDown={checkingDown} />
+                    <UploadCard
+                      key={u.id}
+                      upload={u}
+                      checkingDown={checkingDown}
+                      dismissing={dismissing === u.id}
+                      locked={dismissing !== null}
+                      onDismiss={() => void dismissUpload(u)}
+                    />
                   ))}
                   {shown.map((a) => {
                     const Icon = KIND_ICON[a.kind];
@@ -1243,7 +1298,20 @@ export function MediaLibrary({
  * server's check, being checked, refused or expired — said plainly on a card
  * the shape of the tiles it will become.
  */
-function UploadCard({ upload: u, checkingDown }: { upload: MediaUpload; checkingDown: boolean }) {
+function UploadCard({
+  upload: u,
+  checkingDown,
+  dismissing,
+  locked,
+  onDismiss,
+}: {
+  upload: MediaUpload;
+  checkingDown: boolean;
+  dismissing: boolean;
+  /** Another card is being dismissed: one at a time keeps focus and the notice unambiguous. */
+  locked: boolean;
+  onDismiss: () => void;
+}) {
   const { t } = useI18n();
   const tm = t.media;
   const kind = guessUploadKind(u.name);
@@ -1257,9 +1325,25 @@ function UploadCard({ upload: u, checkingDown }: { upload: MediaUpload; checking
       data-upload-status={paused ? "paused" : u.status}
       edge={[formatMediaBytes(u.bytes)]}
       body={
-        <span className="block truncate text-sm" title={u.name}>
-          {u.name}
-        </span>
+        <>
+          <span className="block truncate text-sm" title={u.name}>
+            {u.name}
+          </span>
+          {isDismissable(u) && (
+            // btn-quiet is 44px high on every screen; the visible word is the start of the accessible name.
+            <button
+              type="button"
+              data-dismiss-id={u.id}
+              onClick={onDismiss}
+              // aria-disabled, not disabled: a disabled button drops keyboard focus, and a failed try must leave it where it was.
+              aria-disabled={locked}
+              aria-label={fmt(tm.dismissItem, { name: u.name })}
+              className={`btn-quiet mt-1.5 w-full ${locked ? "opacity-50" : ""}`}
+            >
+              {dismissing ? tm.dismissing : tm.dismiss}
+            </button>
+          )}
+        </>
       }
     >
       <div
