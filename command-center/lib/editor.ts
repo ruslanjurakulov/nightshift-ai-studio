@@ -104,6 +104,9 @@ export const MAX_DOC_BYTES = 262_144;
  *  OVERLAY_W_MIN / OVERLAY_W_MAX): each is one more input of the final pass,
  *  and a video keeps a decoder open for its whole span. */
 export const MAX_OVERLAYS = 16;
+/** Overlays that change opacity between two visible values in a move cost a per-pixel
+ *  filter (modules/timeline.py MAX_PARTIAL_OPACITY_MOVES). */
+export const MAX_PARTIAL_OPACITY_MOVES = 2;
 export const MAX_OVERLAY_VIDEOS = 4;
 export const OVERLAY_W_MIN = 0.05;
 export const OVERLAY_W_MAX = 1;
@@ -191,6 +194,12 @@ export type ClipFilter = (typeof FILTERS)[number];
 export const UNIT_EFFECTS = ["vignette", "sharpen", "grain"] as const;
 /** A Gaussian blur's sigma in output pixels. */
 export const BLUR_MAX = 30;
+/** A cross-faded clip in a frame above 1440p takes no blur (the render would run out of
+ *  memory; modules/timeline.py LARGE_FRAME_PX / XFADE_LARGE_BLUR_MAX). */
+export const LARGE_FRAME_PX = 2560 * 1440;
+export const XFADE_LARGE_BLUR_MAX = 0;
+/** ... and a zoom above this on such a clip (modules/timeline.py XFADE_LARGE_ZOOM_MAX). */
+export const XFADE_LARGE_ZOOM_MAX = 2;
 export const ROTATIONS = [0, 90, 180, 270] as const;
 /** A clip's move: the zoom window's range (modules/timeline.py MOVE_ZOOM_*). */
 export const MOVE_ZOOM_MIN = 1;
@@ -1087,6 +1096,27 @@ function validateTextClip(
     fi + fo > e - s + 1e-9
   )
     problems.push(`${where}: fades are longer than the text is shown`);
+  // An animation on one side and a plain fade on the other: the fade becomes
+  // an animation too, so a long entrance would be cut short by the exit that
+  // starts at end_s - fade_out_s (modules/timeline.py, same words).
+  if (("anim_in" in clip) !== ("anim_out" in clip)) {
+    const animKey = "anim_in" in clip ? "anim_in" : "anim_out";
+    const side = "anim_in" in clip ? "fade_out_s" : "fade_in_s";
+    const mixed = clip[`${animKey}_s`] ?? ANIM_DEFAULT_S;
+    const other = clip[side] ?? 0;
+    if (
+      isNum(s) &&
+      isNum(e) &&
+      isNum(mixed) &&
+      isNum(other) &&
+      e > s &&
+      other > 0 &&
+      mixed + other > ms(e) - ms(s) + 1e-9
+    )
+      problems.push(
+        `${where}: the animation (${mixed} s) and ${side} (${other} s) are longer than the text is shown`,
+      );
+  }
 }
 
 /** Python's `round` (half to even) for the frame check below: the worker rounds
@@ -1134,6 +1164,21 @@ function validateOverlays(
     validateAnims(ov, where, problems, false);
     if ("move" in ov) validateOverlayMove(ov.move, where, problems);
   });
+  const slow = overlays.filter(partialOpacityMove).length;
+  if (slow > MAX_PARTIAL_OPACITY_MOVES)
+    problems.push(
+      `overlays: at most ${MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible values during a move (got ${slow}) — fade to or from 0, or keep the opacity`,
+    );
+}
+
+/** An overlay whose `move.to.opacity` is another visible value than its `opacity`
+ *  (modules/timeline.py `_partial_opacity_move`). */
+export function partialOpacityMove(ov: unknown): boolean {
+  if (!isObj(ov) || !isObj(ov.move)) return false;
+  const to = ov.move.to;
+  const start = ov.opacity ?? 1;
+  const end = isObj(to) ? to.opacity : undefined;
+  return isNum(start) && isNum(end) && start > 0 && end > 0 && start !== end;
 }
 
 function validateCaptions(
@@ -1328,11 +1373,43 @@ function crossfadeProblems(track: TimelineTrack): string[] {
   return problems;
 }
 
+/** Effects a cross-fade on a frame above 1440p cannot afford
+ *  (modules/timeline.py `_large_frame_crossfade_problems`). */
+function largeFrameCrossfadeProblems(doc: TimelineDoc, track: TimelineTrack): string[] {
+  const w = doc.width;
+  const h = doc.height;
+  if (!(isInt(w) && isInt(h) && w * h > LARGE_FRAME_PX)) return [];
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const [prev, clip] of crossfades(track))
+    for (const c of [prev, clip]) {
+      const id = String(c.id);
+      if (!seen.has(id) && isNum(c.blur) && c.blur > XFADE_LARGE_BLUR_MAX) {
+        seen.add(id);
+        problems.push(
+          `track ${track.id} clip ${id}: blur is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory; remove the blur, the cross-fade or lower the frame size`,
+        );
+      }
+      const mv = c.move;
+      const zooms = isObj(mv)
+        ? [mv.from, mv.to].filter(isObj).map((p) => (p as Record<string, unknown>).zoom ?? 1)
+        : [];
+      if (!seen.has(`${id}:zoom`) && zooms.some((z) => isNum(z) && z > XFADE_LARGE_ZOOM_MAX)) {
+        seen.add(`${id}:zoom`);
+        problems.push(
+          `track ${track.id} clip ${id}: a zoom above ${XFADE_LARGE_ZOOM_MAX} is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory; lower the zoom, remove the cross-fade or lower the frame size`,
+        );
+      }
+    }
+  return problems;
+}
+
 function transitionProblems(doc: TimelineDoc): string[] {
   const problems: string[] = [];
   for (const track of doc.tracks) {
     if (track.kind !== "V") continue;
     problems.push(...crossfadeProblems(track));
+    problems.push(...largeFrameCrossfadeProblems(doc, track));
     const clips = [...track.clips].sort(
       (a, b) =>
         ms(Number(a.start_s)) - ms(Number(b.start_s)) ||
