@@ -142,6 +142,18 @@ describe("ConnectPicker: YouTube", () => {
     expect(document.body.textContent).not.toContain("RAW PROVIDER ERROR");
     expect(push).not.toHaveBeenCalled();
   });
+  it("when the channel was created but its connection was not saved, says so, stops offering picks and links to the Channels page", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, result: "created_not_connected", channel_id: "extinctworld" }));
+    render(withI18n(<ConnectPicker view={youtube()} />));
+    fireEvent.click(screen.getAllByRole("button", { name: tc.pick.useChannel })[0]);
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(tc.pick.errors.created_not_connected));
+    for (const b of screen.getAllByRole("button", { name: tc.pick.useChannel })) expect((b as HTMLButtonElement).disabled).toBe(true);
+    // One on the already-connected row, one under the message.
+    const links = screen.getAllByRole("link", { name: tc.pick.openChannels });
+    expect(links).toHaveLength(2);
+    expect(links[1].getAttribute("href")).toBe("/all-channels/channels");
+    expect(push).not.toHaveBeenCalled();
+  });
   it("survives a network failure with a retryable message", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     render(withI18n(<ConnectPicker view={youtube()} />));

@@ -37,6 +37,8 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ConfirmResult | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  // The channel exists but its connection was not saved: nothing more to pick.
+  const [done, setDone] = useState(false);
 
   const addPath = path("/channels/new");
 
@@ -77,7 +79,7 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
       if (result === "created_not_connected") {
         // The channel exists, so a second press must not create another.
         setError(result);
-        router.push(`${path("/channels")}?yt=failed`);
+        setDone(true);
         return;
       }
       setError(result ?? "failed");
@@ -102,7 +104,18 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
     router.push(addPath);
   }
 
-  const errorLine = error ? <p className="g2-fail" role="alert">{tp.errors[error as keyof typeof tp.errors] ?? tp.errors.failed}</p> : null;
+  const errorLine = error ? (
+    <div className="flex flex-col items-start gap-3">
+      <p className="g2-fail" role="alert">
+        {tp.errors[error as keyof typeof tp.errors] ?? tp.errors.failed}
+      </p>
+      {done && (
+        <Link href={path("/channels")} className="btn-primary">
+          {tp.openChannels}
+        </Link>
+      )}
+    </div>
+  ) : null;
   const actions = (platform: "youtube" | "instagram" | "tiktok", again: string) => (
     <div className="g2-actions">
       <a href={`/api/oauth/${platform}/start?${PICK_FLAG}=1`} className="btn-quiet">
@@ -131,7 +144,7 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
               c={c}
               locale={locale}
               busy={busy}
-              disabled={busy !== null}
+              disabled={busy !== null || done}
               onPick={() => confirm(c.id, { platform: "youtube", channel_id: c.id })}
               managePath={path("/channels")}
             />
@@ -169,7 +182,7 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
         <button
           type="button"
           className="btn-primary g2-pick-btn"
-          disabled={busy !== null}
+          disabled={busy !== null || done}
           onClick={() => confirm(a.externalId, { platform })}
         >
           {busy ? tp.connecting : a.connected ? tp.reconnect : tp.confirm}
