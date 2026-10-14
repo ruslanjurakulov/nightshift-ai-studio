@@ -477,6 +477,17 @@ class RealRenderTestCase(unittest.TestCase):
         self.assertGreater(len(self.ink(img, (255, 255, 255), 25)), 50)
         self.assertEqual(len(self.ink(img, (255, 0, 0), 25)), 0)
 
+    def test_long_captions_stay_inside_the_frame_in_every_style(self):
+        text = "This is a very long caption that must wrap across several lines in the frame"
+        for sid in cs.STYLE_IDS:
+            with self.subTest(sid):
+                pts = self.ink(self.frame(sid, 2.5, text=text, start=1.0, end=4.0))
+                self.assertTrue(pts)
+                self.assertGreaterEqual(min(x for x, _ in pts), 0)
+                self.assertLess(max(x for x, _ in pts), W - 4)
+                self.assertGreaterEqual(min(y for _x, y in pts), 0)
+                self.assertLess(max(y for _x, y in pts), H - 4)
+
     def test_tweaks_reach_the_picture(self):
         red = self.ink(self.frame("outlined", 2.0, text="OUT", highlight_color="#00FF00"), (0, 255, 0), 25)
         self.assertGreater(len(red), 300)

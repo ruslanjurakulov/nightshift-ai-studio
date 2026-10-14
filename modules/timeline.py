@@ -12,7 +12,9 @@ not a project dependency — tests keep the two in sync)::
 
     { version: 1, width, height, fps,
       tracks: [ { id, kind: "V"|"A"|"T", name?, clips: [...] } ],
-      captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] },
+      captions?: { style?: {...,  preset?: <one of caption_styles.STYLE_IDS>,
+                              highlight_color?: "#RRGGBB"},
+                   cues: [ { id, start_s, end_s, text } ] },
       overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ] }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
