@@ -29,6 +29,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from modules import editor_export as ee
 from modules import render_backend
 from modules import render_spec as rs
 from modules import speed_ramp as sr
@@ -89,6 +90,53 @@ class ArithmeticTestCase(unittest.TestCase):
         self.assertIn("/2.000000", sr.setpts_expression(pts))
         self.assertNotIn("log(", sr.setpts_expression(pts))
 
+    def test_a_nearly_flat_ramp_is_not_a_division_by_zero(self):
+        # 1 -> 1.000002 over 10 s: the slope is 2e-7, which the old 6-decimal print made 0.000000 (ffmpeg
+        # divided by it and rendered no frames) while the absolute 1e-6 flat test said "not flat"
+        pts = sr.absolute(((0, 1.0), (1, 1.000002)), 10.0)
+        expr = sr.setpts_expression(pts)
+        self.assertNotIn("(0.000000000000)", expr)
+        self.assertIn("(0.000000200000)", expr)
+        self.assertAlmostEqual(sr.out_length(pts), 10.0, places=4)
+        self.assertAlmostEqual(self.evaluate(expr, 10.0), sr.out_length(pts), places=6)
+        # an identical pair, and one inside the relative threshold, are the constant speed
+        self.assertNotIn("log(", sr.setpts_expression(sr.absolute(((0, 2.0), (1, 2.0)), 4.0)))
+        self.assertNotIn("log(", sr.setpts_expression(sr.absolute(((0, 2.0), (1, 2.0 + 1e-8)), 4.0)))
+
+    def test_the_printed_expression_follows_the_closed_form_over_an_hour(self):
+        # 1 -> 1.5 over 3600 s: the slope 1.4e-4 printed with 6 decimals drifted by about 0.3 s
+        pts = sr.absolute(((0, 1.0), (1, 1.5)), 3600.0)
+        expr = sr.setpts_expression(pts)
+        for frac in (0.1, 0.5, 0.9, 1.0):
+            t = frac * 3600.0
+            self.assertAlmostEqual(self.evaluate(expr, t), sr.out_time(pts, t), delta=1e-6, msg=frac)
+
+    @staticmethod
+    def evaluate(expr, t):
+        """The value of a setpts expression of this module's shape at ``t`` seconds (not units of TB)."""
+        e = expr.replace("((PTS-STARTPTS)*TB)", repr(float(t))).replace(")/TB", ")", 1) if expr.endswith("/TB") \
+            else expr
+        e = e.replace("log(", "math.log(")
+        while "if(" in e:
+            i = e.rfind("if(")
+            depth, j = 0, i
+            for j in range(i, len(e)):
+                depth += (e[j] == "(") - (e[j] == ")")
+                if depth == 0 and j > i + 2:
+                    break
+            parts, cur, d = [], "", 0
+            for ch in e[i + 3:j]:
+                d += (ch == "(") - (ch == ")")
+                if ch == "," and d == 0:
+                    parts.append(cur)
+                    cur = ""
+                else:
+                    cur += ch
+            parts.append(cur)
+            a, b = parts[0][3:-1].split(",")
+            e = f"{e[:i]}(({parts[1]}) if (({a}) < ({b})) else ({parts[2]})){e[j + 1:]}"
+        return eval(e, {"math": math})
+
     def test_audio_slices_put_the_sound_on_the_picture_at_every_boundary(self):
         pts = sr.absolute(((0, 1), (0.5, 4), (1, 0.5)), 4.0)
         n = sr.slice_count(4.0)
@@ -107,9 +155,11 @@ class ArithmeticTestCase(unittest.TestCase):
         t = "((PTS-STARTPTS)*TB)"
         self.assertEqual(
             sr.setpts_expression(pts),
-            f"(if(lt({t},2.000000),0.000000+log((1.000000+(1.500000)*({t}-0.000000))/1.000000)/(1.500000),"
-            f"if(lt({t},4.000000),0.924196+log((4.000000+(-1.750000)*({t}-2.000000))/4.000000)/(-1.750000),"
-            f"2.112449+({t}-4.000000)/0.500000)))/TB")
+            f"(if(lt({t},2.000000000),0.000000000+log((1.000000000+(1.500000000000)*({t}-0.000000000))"
+            f"/1.000000000)/(1.500000000000),"
+            f"if(lt({t},4.000000000),0.924196241+log((4.000000000+(-1.750000000000)*({t}-2.000000000))"
+            f"/4.000000000)/(-1.750000000000),"
+            f"2.112448550+({t}-4.000000000)/0.500000000)))/TB")
 
 
 class DocumentTestCase(unittest.TestCase):
@@ -198,7 +248,39 @@ class DocumentTestCase(unittest.TestCase):
         got = tl.validate(doc)
         self.assertTrue(any("720 frames" in p and "at most 600" in p for p in got), got)
         doc["tracks"][0]["clips"].pop()
-        self.assertEqual(tl.validate(doc), [])
+        # 480 frames x 0.4 s = 192 s of interpolation + 16 s of timeline against 3 * 16 + 120 = 168 s
+        got = tl.validate(doc)
+        self.assertTrue(any("take about 208 s" in p and "allowed 168 s" in p for p in got), got)
+
+    def test_the_estimate_in_seconds_has_to_fit_the_workers_timeout(self):
+        # one capped 1080p clip (measured 117 s): 294 frames x 0.4 = 118 s + 9.8 s <= 3 * 9.8 + 120 = 149 s
+        self.assertEqual(problems_of(speed=0.5, interpolate=True, out_s=4.9, width=1920, height=1080), [])
+        # two of them: 235 s + 19.6 s of timeline against 179 s: refused although each is inside its cap
+        def two(gap):
+            doc = vdoc(width=1920, height=1080, out_s=4.9, speed=0.5, interpolate=True)
+            doc["tracks"][0]["clips"].append({"id": "d1", "asset_id": BASE, "start_s": 9.8 + gap, "in_s": 0,
+                                              "out_s": 4.9, "speed": 0.5, "interpolate": True})
+            return tl.validate(doc)
+        got = two(0.0)
+        self.assertTrue(any("to render" in p and "is allowed 179 s" in p for p in got), got)
+        # the same two clips with 100 s of timeline between them have the time (355 s of work, 479 s allowed)
+        self.assertEqual(two(100.0), [])
+        # a short timeline is not given more than the formula says, a long one is held at the 5400 s ceiling
+        self.assertEqual(tl.render_timeout_s(10), 150.0)
+        self.assertEqual(tl.render_timeout_s(5000), 5400.0)
+        self.assertEqual((tl.RENDER_TIMEOUT_PER_S, tl.RENDER_TIMEOUT_BASE_S, tl.RENDER_TIMEOUT_MAX_S),
+                         (ee.RENDER_TIMEOUT_PER_S, ee.RENDER_TIMEOUT_BASE_S, ee.RENDER_TIMEOUT_MAX_S))
+        for n in (0, 1, 10, 100, 1800, 5000):
+            self.assertEqual(tl.render_timeout_s(n), ee.render_timeout_s(n))
+
+    def test_interpolation_is_refused_above_1440p_by_pixels(self):
+        for w, h in ((2560, 1440), (1440, 2560), (1920, 1080), (1080, 1920)):
+            self.assertEqual(problems_of(speed=0.5, interpolate=True, out_s=1, width=w, height=h), [], (w, h))
+        for w, h in ((3840, 2160), (2160, 3840), (2560, 1442), (4096, 2160)):
+            got = problems_of(speed=0.5, interpolate=True, out_s=1, width=w, height=h)
+            self.assertTrue(any("not offered above 1440p" in p for p in got), (w, h, got))
+        # the plain slow motion of 4K is still fine
+        self.assertEqual(problems_of(speed=0.5, out_s=1, width=3840, height=2160), [])
 
     def test_schema_and_constants(self):
         schema = json.loads(tl.SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -214,6 +296,11 @@ class DocumentTestCase(unittest.TestCase):
         for name in ("RAMP_MIN_POINTS", "RAMP_MAX_POINTS", "RAMP_MIN_GAP", "INTERP_MAX_FPS", "INTERP_MAX_FRAMES",
                      "INTERP_MAX_FRAMES_DOC"):
             self.assertEqual(float(re.search(rf"export const {name} = ([\d.]+);", ts).group(1)), getattr(tl, name), name)
+        for name in ("RENDER_TIMEOUT_PER_S", "RENDER_TIMEOUT_BASE_S", "RENDER_TIMEOUT_MAX_S", "RENDER_PLAIN_FACTOR",
+                     "INTERP_SECONDS_PER_FRAME"):
+            self.assertEqual(float(re.search(rf"export const {name} = ([\d.]+);", ts).group(1)), getattr(tl, name), name)
+        self.assertIn("export const INTERP_MAX_PIXELS = 2560 * 1440;", ts)
+        self.assertEqual(tl.INTERP_MAX_PIXELS, 2560 * 1440)
         self.assertEqual(rs.interp_fps(0.5, 30), 60)
         self.assertEqual(rs.interp_fps(0.25, 60), 120)
         self.assertEqual(rs.interp_fps(0.3, 30), 100)
@@ -273,7 +360,7 @@ class CommandTestCase(unittest.TestCase):
     def test_the_picture_is_retimed_by_one_expression_before_the_fit(self):
         c = self.cmd(self.seg())
         vf = c[c.index("-vf") + 1]
-        self.assertTrue(vf.startswith("setpts='(if(lt(((PTS-STARTPTS)*TB),2.000000),"), vf)
+        self.assertTrue(vf.startswith("setpts='(if(lt(((PTS-STARTPTS)*TB),2.000000000),"), vf)
         self.assertRegex(vf, r"\)/TB',scale=1280:720:force_original_aspect_ratio=decrease,pad=")
         self.assertEqual(c[c.index("-stream_loop") + 1], "-1")
         self.assertEqual(c[c.index("-frames:v") + 1], "63")
@@ -433,6 +520,54 @@ class InterpolateRenderTestCase(_Real):
         self.assertGreater(stalls(self.plain), 60)
         self.assertLess(stalls(self.smooth), stalls(self.plain) // 2)
         self.assertGreater(self.smooth[-1] - self.smooth[0], 30)
+
+
+class ExportLengthTestCase(unittest.TestCase):
+    """The database knows only ``speed``, so a curve can make a clip longer than the export limit
+    without the row saying so: the worker measures the real length and refuses, never rendering."""
+
+    def test_a_curve_longer_than_the_export_limit_is_refused_as_too_long_before_any_render(self):
+        import tempfile
+        from unittest import mock
+        from modules import media_library as ml
+        ids = ("11111111-1111-4111-8111-111111111111", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+               "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        v1, org, project, export = ids
+        # 1000 s of source from 0.5x to 0.6x lasts 1000 / 0.1 * ln(1.2) = 1823 s, over the 1800 s limit
+        curve = [{"at": 0, "speed": 0.5}, {"at": 1, "speed": 0.6}]
+        doc = {"version": 1, "width": 1280, "height": 720, "fps": 30, "tracks": [{"id": "v1", "kind": "V", "clips": [
+            {"id": "c1", "asset_id": v1, "start_s": 0, "in_s": 0, "out_s": 1000, "speed_curve": curve}]}]}
+        self.assertEqual(tl.validate(doc), [])
+        self.assertGreater(tl.duration_s(tl.normalise(doc)), ee.EXPORT_MAX_S)
+
+        class Store:
+            def __init__(s):
+                s.finished = []
+
+            def export_assets(s, eid):
+                return [{"id": v1, "kind": "video", "mime": "video/mp4", "duration_s": 2000, "variants": []}]
+
+            def export_heartbeat(s, *a):
+                return True
+
+            def finish_export(s, eid, worker, asset_id, reason):
+                s.finished.append((eid, worker, asset_id, reason))
+                return "failed"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            f = ml.asset_file(root, v1, "original")
+            f.parent.mkdir(parents=True)
+            f.write_bytes(b"x")
+            store, render = Store(), mock.Mock()
+            # the row claims 4 s (what the database computed from `speed`, which a curve replaces)
+            row = {"id": export, "org_id": org, "project_id": project, "rev": 1, "duration_s": 4, "doc": doc}
+            status = ee.run_export(row, store=store, media_root=root, worker_id="w1",
+                                   tools=ml.Tools("ffprobe", "ffmpeg"), render=render,
+                                   has_audio=lambda p, m: False, heartbeat_s=0.01)
+        self.assertEqual(status, "failed")
+        self.assertEqual(store.finished, [(export, "w1", None, "too_long")])
+        render.assert_not_called()
 
 
 if __name__ == "__main__":

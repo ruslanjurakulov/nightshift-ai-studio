@@ -394,6 +394,50 @@ INTERP_MAX_FPS = 120
 INTERP_MAX_FRAMES = 300
 INTERP_MAX_FRAMES_DOC = 600
 _INTERP_REF_PIXELS = 1920 * 1080
+#: ``interpolate`` is not offered for a frame bigger than 1440p (2560x1440, either way up): the
+#: motion search holds several frames at once and a 4K clip died with "Cannot allocate memory"
+#: under the worker's 2 GiB limit (measured). The count is pixels, so 1440x2560 passes too.
+INTERP_MAX_PIXELS = 2560 * 1440
+#: What a render is allowed to take, as seconds of estimated work, and the worker's wall-clock
+#: budget for it (modules/editor_export.py has the SAME numbers: ``render_timeout_s``). The cost
+#: of ``interpolate`` is an estimate in seconds, not just a frame count: a 1080p-equivalent frame
+#: took 0.39 s (117 s for the 300 a clip may make) on the loaded, shared box; 0.4 is what is
+#: charged. The ordinary render of the timeline is charged ``RENDER_PLAIN_FACTOR`` s per second
+#: of it. The estimate has to fit the timeout, or the render would be killed after the user waited.
+RENDER_TIMEOUT_PER_S = 3.0
+RENDER_TIMEOUT_BASE_S = 120.0
+RENDER_TIMEOUT_MAX_S = 5400.0
+RENDER_PLAIN_FACTOR = 1.0
+INTERP_SECONDS_PER_FRAME = 0.4
+
+
+def render_timeout_s(length_s: float) -> float:
+    """The worker's wall-clock budget for a timeline of ``length_s`` seconds
+    (``editor_export.render_timeout_s`` is this function's twin for any input)."""
+    return min(RENDER_TIMEOUT_MAX_S, RENDER_TIMEOUT_PER_S * max(0.0, length_s) + RENDER_TIMEOUT_BASE_S)
+
+
+def reverse_max_frames(width: int, height: int) -> int:
+    """The most frames a reversed range may hold in memory at this frame size."""
+    return int(REVERSE_MAX_BYTES // (width * height * REVERSE_BYTES_PER_PIXEL))
+
+
+def _range_frames(range_s: float, fps: int) -> int:
+    """Frames a source range of ``range_s`` seconds decodes (``ceil``, with the float
+    noise of ``0.1 * 30`` removed so a range that is a whole number of frames is not one more)."""
+    return math.ceil(round(range_s * fps, 6))
+
+
+def reverse_max_seconds(width: int, height: int, fps: int) -> float:
+    """The longest source range a clip may play reversed at this frame size and rate,
+    in seconds: a WHOLE number of frames (what ``validate`` allows exactly, so a range
+    of this length passes and one more millisecond past its last frame does not),
+    rounded down to a millisecond. The Command Center's ``reverseMaxSeconds`` is its twin."""
+    cap = reverse_max_frames(width, height)
+    limit = math.floor(cap / fps * 1000 + 1e-9) / 1000
+    while limit > 0 and _range_frames(limit, fps) > cap:
+        limit = round(limit - 0.001, 3)
+    return limit
 
 #: Stabilisation costs a second decode of the clip (render_spec.STABILIZE_* are the same).
 STABILIZE_MAX_S = 120.0
@@ -678,6 +722,14 @@ def validate(doc: Any) -> List[str]:
         if total_interp > INTERP_MAX_FRAMES_DOC:
             problems.append(f"timeline: interpolated slow motion would make about {total_interp:.0f} frames "
                             f"(1080p equivalent) in all; at most {INTERP_MAX_FRAMES_DOC} per timeline")
+        elif total_interp > 0:
+            length = duration_s(doc)
+            work = RENDER_PLAIN_FACTOR * length + INTERP_SECONDS_PER_FRAME * total_interp
+            allowed = render_timeout_s(length)
+            if work > allowed + 1e-9:
+                problems.append(f"timeline: interpolated slow motion would take about {work:.0f} s to render, "
+                                f"but a {length:.0f} s timeline is allowed {allowed:.0f} s — slow less of it "
+                                f"or make the timeline longer")
 
     stab_s = sum(_ms(c["out_s"]) - _ms(c["in_s"]) for t in counted if t.get("kind") == KIND_V
                  for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True
@@ -790,11 +842,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
         elif (clip.get("reverse") is True and fps and _is_int(frame[0]) and _is_int(frame[1])
-              and math.ceil((_ms(outs) - _ms(ins)) * fps) * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL
-              > REVERSE_MAX_BYTES):
+              and _range_frames(_ms(outs) - _ms(ins), fps) > reverse_max_frames(frame[0], frame[1])):
             problems.append(f"{where}: reverse holds every frame of the range in memory — at "
                             f"{frame[0]}x{frame[1]} and {fps} fps at most "
-                            f"{_ms(REVERSE_MAX_BYTES / (fps * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL))} s")
+                            f"{reverse_max_seconds(frame[0], frame[1], fps)} s")
         elif (_is_num(clip.get("fade_in_s", 0)) and _is_num(clip.get("fade_out_s", 0))
               and clip.get("fade_in_s", 0) + clip.get("fade_out_s", 0) > length + 1e-9):
             problems.append(f"{where}: fade_in_s + fade_out_s is longer than the clip ({length:.3f} s)")
@@ -880,6 +931,10 @@ def _validate_interpolate(clip, where, frame, fps, ramp, problems) -> None:
         return
     if not (_is_int(frame[0]) and _is_int(frame[1]) and fps and _in_range(clip.get("in_s"))
             and _in_range(clip.get("out_s"))):
+        return
+    if frame[0] * frame[1] > INTERP_MAX_PIXELS:
+        problems.append(f"{where}: interpolate is not offered above 1440p ({frame[0]}x{frame[1]} is too big: "
+                        f"the render would run out of memory) — lower the timeline's size or leave it out")
         return
     probe = {"in_s": clip["in_s"], "out_s": clip["out_s"], "speed": min(speeds)}
     cost = interpolated_frames(probe, fps, frame[0], frame[1])
@@ -1527,7 +1582,8 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
     The timeline's length and every other clip are unchanged; for a video,
     a split on the frame grid plays the same source frames as before. Both
     halves keep the clip's speed and sound: ``at_s`` is timeline time, so the
-    source cut is ``in_s + (at_s - start_s) * speed``."""
+    source cut is ``in_s + (at_s - start_s) * speed`` — and ``out_s - (at_s -
+    start_s) * speed`` for a reversed clip, which plays its range from the end."""
     out = copy.deepcopy(doc)
     for track in out.get("tracks") or []:
         for i, clip in enumerate(track.get("clips") or []):
@@ -1542,7 +1598,10 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
             if not start < at < end:
                 raise TimelineError([f"split point {at} s is not inside clip {clip_id!r} "
                                      f"({start}-{end} s)"])
-            cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
+            if clip.get("reverse"):
+                cut = _ms(_ms(clip["out_s"]) - (at - start) * clip_speed(clip))
+            else:
+                cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
             if not _ms(clip["in_s"]) < cut < _ms(clip["out_s"]):
                 raise TimelineError([f"split point {at} s is too close to an end of clip {clip_id!r}"])
             second = copy.deepcopy(clip)

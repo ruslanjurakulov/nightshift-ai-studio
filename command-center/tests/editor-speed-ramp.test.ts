@@ -26,6 +26,7 @@ import {
   toModel,
   validateTimeline,
   type TimelineDoc,
+  renderTimeoutS,
 } from "@/lib/editor";
 import {
   rampAbsolute,
@@ -150,6 +151,27 @@ describe("interpolated slow motion", () => {
       d.tracks[0].clips.push({ id: `d${i}`, asset_id: A, start_s: 8 * i, in_s: 0, out_s: 4, speed: 0.5, interpolate: true });
     expect(validateTimeline(d).join(";")).toContain("at most 600 per timeline");
     d.tracks[0].clips.pop();
-    expect(validateTimeline(d)).toEqual([]);
+    // 480 frames x 0.4 s = 192 s + 16 s of timeline against 3 x 16 + 120 = 168 s (modules/timeline.py, same words)
+    expect(validateTimeline(d).join(";")).toMatch(/take about 208 s to render, but a 16 s timeline is allowed 168 s/);
+  });
+  it("must fit the worker's timeout in estimated seconds", () => {
+    const hd = { width: 1920, height: 1080 };
+    expect(v({ speed: 0.5, interpolate: true, out_s: 4.9 }, hd)).toBe("");   // 118 s + 9.8 s of 149 s
+    const two = (gap: number) => {
+      const d = doc({ speed: 0.5, interpolate: true, out_s: 4.9 }, hd);
+      d.tracks[0].clips.push({ id: "d1", asset_id: A, start_s: 9.8 + gap, in_s: 0, out_s: 4.9, speed: 0.5, interpolate: true });
+      return validateTimeline(d);
+    };
+    expect(two(0).join(";")).toMatch(/to render, but a 20 s timeline is allowed 179 s/);
+    expect(two(100)).toEqual([]);
+    expect(renderTimeoutS(10)).toBe(150);
+    expect(renderTimeoutS(5000)).toBe(5400);
+  });
+  it("is not offered above 1440p, by pixels", () => {
+    for (const [width, height] of [[2560, 1440], [1440, 2560], [1920, 1080]])
+      expect(v({ speed: 0.5, interpolate: true, out_s: 1 }, { width, height })).toBe("");
+    for (const [width, height] of [[3840, 2160], [2160, 3840], [2560, 1442]])
+      expect(v({ speed: 0.5, interpolate: true, out_s: 1 }, { width, height })).toContain("not offered above 1440p");
+    expect(v({ speed: 0.5, out_s: 1 }, { width: 3840, height: 2160 })).toBe("");
   });
 });
