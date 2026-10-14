@@ -68,7 +68,16 @@ class FakeSync:
         self.reads.append((table, dict(params or {})))
         if table in self.fail:
             raise SupabaseReadError(table, 500, "")
-        return [dict(r) for r in self.tables.get(table, [])]
+        rows = [dict(r) for r in self.tables.get(table, [])]
+        if table == "alert_events":      # the one table whose equality/prefix filters the store relies on
+            for key, cond in (params or {}).items():
+                if isinstance(cond, str) and cond.startswith("eq."):
+                    rows = [r for r in rows if str(r.get(key)) == cond[3:]]
+                elif isinstance(cond, str) and cond.startswith("gte."):
+                    rows = [r for r in rows if str(r.get(key, "")) >= cond[4:]]
+                elif isinstance(cond, str) and cond.startswith("like.") and cond.endswith("*"):
+                    rows = [r for r in rows if str(r.get(key, "")).startswith(cond[5:-1])]
+        return rows
 
     def upsert(self, table, rows, on_conflict=None, ignore_duplicates=False):
         self.upserts.append((table, rows))

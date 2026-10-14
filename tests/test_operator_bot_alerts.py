@@ -400,6 +400,14 @@ class SupabaseStoreTestCase(unittest.TestCase):
         self.assertEqual(params["kind"], "like.operator.*")
         self.assertIn("gte.", params["at"])
 
+    def test_the_baseline_marker_is_remembered_beyond_the_lookback_window(self):
+        old = ts(60 * 24 * 10)                      # ten days ago: outside the 48 hour read
+        sync = FakeSync({"alert_events": [{"at": old, "kind": "operator.alert", "title": "baseline",
+                                           "body": "baseline", "delivered": False}]})
+        state = SupabaseAlertStore(sync).load(NOW)
+        self.assertTrue(state.armed)
+        self.assertFalse(SupabaseAlertStore(FakeSync({"alert_events": []})).load(NOW).armed)
+
     def test_unreadable_or_unconfigured_memory_is_none(self):
         self.assertIsNone(SupabaseAlertStore(FakeSync({}, fail={"alert_events"})).load(NOW))
         off = FakeSync({})

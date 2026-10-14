@@ -46,6 +46,10 @@ class AlertState:
     #: alert kind (or "all") -> mute end, only those still in the future
     mutes: dict = field(default_factory=dict)
     digest_dates: set = field(default_factory=set)
+    #: True when the baseline marker exists at ANY age: the 48-hour window above
+    #: would otherwise forget it, and a quiet system would "start for the first
+    #: time" again every two days.
+    baseline_seen: bool = False
 
     def last_seen(self, key: str) -> Optional[datetime]:
         times = [a[0] for a in self.alerts if a[1] == key]
@@ -60,7 +64,7 @@ class AlertState:
     @property
     def armed(self) -> bool:
         """True once the first run has left its baseline marker."""
-        return any(a[1] == "baseline" for a in self.alerts)
+        return self.baseline_seen or any(a[1] == "baseline" for a in self.alerts)
 
 
 class AlertStore(Protocol):
@@ -72,9 +76,9 @@ class AlertStore(Protocol):
     def record_digest(self, date: str) -> bool: ...
 
 
-def replay(rows: list, now: datetime) -> AlertState:
+def replay(rows: list, now: datetime, baseline_seen: bool = False) -> AlertState:
     """Build the state from alert_events rows (any order)."""
-    state = AlertState()
+    state = AlertState(baseline_seen=baseline_seen)
     mutes: dict = {}
     for row in sorted(rows, key=lambda r: str(r.get("at") or "")):
         kind = str(row.get("kind") or "")
@@ -115,13 +119,16 @@ class SupabaseAlertStore:
                 "kind": f"like.{KIND_PREFIX}*", "at": f"gte.{iso(now - LOOKBACK)}",
                 "order": "at.desc", "limit": "2000",
             })
+            marker = self.sync.select_strict("alert_events", {
+                "select": "at", "kind": "eq.operator.alert", "title": "eq.baseline", "limit": "1",
+            })
         except SupabaseReadError as e:
             logger.warning("operator alert state unreadable (%s)", e.detail)
             return None
         except Exception as e:
             logger.warning("operator alert state unreadable (%s)", type(e).__name__)
             return None
-        return replay(rows, now)
+        return replay(rows, now, baseline_seen=bool(marker))
 
     def _write(self, kind: str, title: str, body: str = "", severity: str = "info",
                channel_id: Optional[str] = None, delivered: bool = False) -> bool:

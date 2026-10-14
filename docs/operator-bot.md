@@ -173,8 +173,10 @@ reachable over HTTPS:
    -p 127.0.0.1:8089:8089 nightshift-worker:latest python tools/operator_bot_server.py
    serve --host 0.0.0.0 --port 8089`
 4. Put an HTTPS reverse proxy in front that forwards exactly `POST
-   /telegram/operator` to `127.0.0.1:8089` (Caddy: `handle /telegram/operator {
-   reverse_proxy 127.0.0.1:8089 }` in a site block that has a certificate).
+   /telegram/operator` to that port (Caddy on the host: `handle /telegram/operator {
+   reverse_proxy 127.0.0.1:8089 }` in a site block that has a certificate; a proxy
+   inside Docker must instead be pointed at the container, e.g. on a shared network).
+   Telegram only accepts HTTPS on ports 443, 80, 88 and 8443.
 5. Register it: `python tools/operator_bot_server.py set-webhook --url
    https://<your host>/telegram/operator` (the secret is read from the environment,
    never from the command line). `... info` shows whether it is set and how many
