@@ -413,6 +413,8 @@ def _animated_events(i: int, o, x: int, y: int, w: int, h: int) -> List[str]:
     if a_out:
         add(t_out, e, _anim_phase(a_out, int(round(d_out * 1000)), x, y, dx, dy, False), text)
     return events
+
+
 # ── animated caption styles ─────────────────────────────────────────────────
 #
 # A timeline caption with ``caption_style`` (modules/caption_styles.py) is

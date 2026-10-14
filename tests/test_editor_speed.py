@@ -137,6 +137,17 @@ class DocumentTestCase(unittest.TestCase):
         self.assertIn("export const REVERSE_BYTES_PER_PIXEL = 1.5;", ts)
         self.assertEqual(tl.REVERSE_BYTES_PER_PIXEL, 1.5)
 
+    def test_the_reverse_limit_is_a_whole_number_of_frames_and_the_validator_agrees(self):
+        self.assertEqual(tl.reverse_max_frames(1920, 1080), 172)
+        self.assertEqual(tl.reverse_max_seconds(1920, 1080, 30), 5.733)     # not 5.753 (173 frames)
+        for w, h, fps in ((1920, 1080, 30), (1280, 720, 30), (1920, 1080, 25), (1080, 1920, 60), (640, 360, 24),
+                          (3840, 2160, 30), (320, 180, 30)):
+            limit = tl.reverse_max_seconds(w, h, fps)
+            self.assertEqual(problems_of(width=w, height=h, fps=fps, out_s=limit, reverse=True), [], (w, h, fps, limit))
+            over = round(limit + 1 / fps, 3)
+            got = problems_of(width=w, height=h, fps=fps, out_s=over, reverse=True)
+            self.assertTrue(any("reverse holds every frame" in p and f"{limit} s" in p for p in got), (w, h, fps, got))
+
     def test_a_split_keeps_the_picture_continuous(self):
         # reversed: 4 s of source at 2x lasts 2 s; cut after 1 s of the timeline = 2 s of source
         out = tl.split_clip(vdoc(in_s=1, out_s=5, reverse=True, speed=2), "c1", 1.0, "c2")
@@ -154,6 +165,34 @@ class DocumentTestCase(unittest.TestCase):
         out = tl.split_clip(vdoc(in_s=1, out_s=5, speed=2), "c1", 1.0, "c2")
         a, b = out["tracks"][0]["clips"]
         self.assertEqual((a["in_s"], a["out_s"], b["in_s"], b["out_s"]), (1, 3, 3, 5))
+
+    def test_a_reversed_clip_is_cut_off_the_middle_too(self):
+        # 0..10 reversed plays 10 -> 0. Cut 3 s into the timeline: the first part plays source 10 -> 7
+        # (range 7..10), the second 7 -> 0 (range 0..7). The old in_s + 3 cut at 3 and played 3..10 twice.
+        out = tl.split_clip(vdoc(in_s=0, out_s=10, reverse=True), "c1", 3.0, "c2")
+        a, b = out["tracks"][0]["clips"]
+        self.assertEqual((a["in_s"], a["out_s"], b["in_s"], b["out_s"]), (7, 10, 0, 7))
+        self.assertEqual((a["start_s"], b["start_s"]), (0, 3.0))
+        self.assertEqual(tl.validate(out), [])           # no overlap, nothing out of range
+        self.assertEqual(tl.duration_s(out), tl.duration_s(vdoc(in_s=0, out_s=10, reverse=True)))
+        # the same with a speed: 4 s of source at 2x, cut 0.5 s in = 1 s of source off the end
+        out = tl.split_clip(vdoc(in_s=1, out_s=5, reverse=True, speed=2), "c1", 0.5, "c2")
+        a, b = out["tracks"][0]["clips"]
+        self.assertEqual((a["in_s"], a["out_s"], b["in_s"], b["out_s"]), (4, 5, 1, 4))
+        self.assertEqual(tl.validate(out), [])
+        # a cut at the end is refused
+        with self.assertRaises(tl.TimelineError):
+            tl.split_clip(vdoc(in_s=0, out_s=10, reverse=True), "c1", 10.0, "c2")
+
+    def test_the_halves_of_a_reversed_split_play_the_same_frames(self):
+        # frame k of the whole clip (timeline time t) is source out_s - t*speed; the halves agree
+        whole = vdoc(in_s=0, out_s=10, reverse=True)
+        out = tl.split_clip(whole, "c1", 3.0, "c2")
+        a, b = out["tracks"][0]["clips"]
+        for t in (0.0, 1.0, 2.5):
+            self.assertAlmostEqual(a["out_s"] - (t - a["start_s"]), 10 - t)
+        for t in (3.0, 5.0, 9.5):
+            self.assertAlmostEqual(b["out_s"] - (t - b["start_s"]), 10 - t)
 
 
 class TempoTestCase(unittest.TestCase):
@@ -256,7 +295,7 @@ class CommandTestCase(unittest.TestCase):
                          effects=rs.ClipEffects(rotate=90, filter="mono"))
         vf = self.cmd(seg)[self.cmd(seg).index("-vf") + 1]
         self.assertTrue(vf.startswith("transpose=1,scale="))
-        self.assertRegex(vf, r"hue=s=0.000,pad=.*,fps=30,reverse,setpts=.*,fps=30,scale=w=.*crop=.*,fade=t=in")
+        self.assertRegex(vf, r"hue=s=0.000,pad=.*,fps=30,reverse,setpts=.*,fps=30,setsar=1,scale=w=.*crop=.*,fade=t=in")
 
     def test_a_reversed_or_frozen_piece_of_a_crossfade_is_cut_from_the_whole_clip(self):
         doc = {"version": 1, "width": 640, "height": 360, "fps": 30, "tracks": [{"id": "v1", "kind": "V", "clips": [

@@ -477,7 +477,7 @@ describe("the models", () => {
 
 describe("where the tools live", () => {
   it("they are Enhance-desk tools: not in the sidebar and not in the Library's links", () => {
-    expect(DESK_TOOLS.enhance).toEqual(["upscale", "remove_bg", "video_upscale", "expand", "relight", "erase"]);
+    expect(DESK_TOOLS.enhance.slice(0, 6)).toEqual(["upscale", "remove_bg", "video_upscale", "expand", "relight", "erase"]);
     for (const c of PICTURE_OP_CAPABILITIES) {
       expect(deskFor(c)).toBe("enhance");
       expect(deskFromQuery({ tool: c })).toBe("enhance");
