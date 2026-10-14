@@ -35,6 +35,7 @@ export const improveEn = {
   offerAdded: "Added to the project. Save to keep it.",
   offerMissing: "This file is not among the library files the editor can take (a picture, video or sound).",
   offerFailed: "It could not be added: the project is full.",
+  offerNoDuration: "It cannot be added yet: this file has no length the editor can read.",
   unnamed: "this file",
 };
 

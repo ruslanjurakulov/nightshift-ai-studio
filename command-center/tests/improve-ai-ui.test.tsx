@@ -310,6 +310,26 @@ const LOGO: EditorAsset = {
   viewUrl: "/api/media/file/p/view?sig=1",
   thumbUrl: null,
 };
+const CLIP2: EditorAsset = {
+  id: "77777777-7777-4777-8777-777777777777",
+  kind: "video",
+  name: "second.mp4",
+  durationS: 6,
+  width: 1920,
+  height: 1080,
+  viewUrl: "/api/media/file/c2/proxy?sig=1",
+  thumbUrl: null,
+};
+const NOLEN: EditorAsset = {
+  id: "88888888-8888-4888-8888-888888888888",
+  kind: "video",
+  name: "unmeasured.mp4",
+  durationS: null,
+  width: 1920,
+  height: 1080,
+  viewUrl: "/api/media/file/c3/proxy?sig=1",
+  thumbUrl: null,
+};
 const RESULT: EditorAsset = {
   id: NEWFILE,
   kind: "image",
@@ -394,6 +414,45 @@ describe("the editor", () => {
     expect(within(screen.getByTestId("offer-add")).getByRole("status").textContent).toBe(tx.offerMissing);
   });
 
+  it("moves focus to the status line after Add", async () => {
+    editor({ offerAssetId: NEWFILE });
+    fireEvent.click(within(screen.getByTestId("offer-add")).getByRole("button", { name: tx.offerAdd }));
+    const status = within(screen.getByTestId("offer-add")).getByRole("status");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+  });
+
+  it("a reload with ?add= for a file the project already has offers nothing, so it cannot be added twice", () => {
+    editor({ offerAssetId: CLIP.id });
+    expect(screen.queryByTestId("offer-add")).toBeNull();
+    cleanup();
+    editor({ offerAssetId: CLIP.id.toUpperCase() });
+    expect(screen.queryByTestId("offer-add")).toBeNull();
+  });
+
+  it("a video with no known length says that, not 'the project is full', and adds nothing", () => {
+    editor({ offerAssetId: NOLEN.id, videos: [CLIP, NOLEN] });
+    fireEvent.click(within(screen.getByTestId("offer-add")).getByRole("button", { name: tx.offerAdd }));
+    expect(within(screen.getByTestId("offer-add")).getByRole("alert").textContent).toBe(tx.offerNoDuration);
+    expect(screen.queryByText(tx.offerFailed)).toBeNull();
+    expect(screen.queryByText(en.editor.unsaved)).toBeNull();
+  });
+
+  it("Captions on a second clip preselects that clip's recording in the Captions panel", () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    editor({
+      offerAssetId: CLIP2.id,
+      videos: [CLIP, CLIP2],
+      aiTools: null,
+      captionModels: [{ id: "m1", displayName: "Speech", languages: ["en"] }],
+    });
+    const source = () => screen.getByLabelText(en.captions.sourceLabel) as HTMLSelectElement;
+    expect(source().value).toBe(CLIP.id);
+    fireEvent.click(within(screen.getByTestId("offer-add")).getByRole("button", { name: tx.offerAdd }));
+    // The added clip is the selected one: Captions from its menu pick its recording.
+    fireEvent.click(rows(openMenu())[1]!);
+    expect(source().value).toBe(CLIP2.id);
+  });
+
   it("opens on the Captions panel when asked", async () => {
     const scroll = vi.fn();
     HTMLElement.prototype.scrollIntoView = scroll;
@@ -446,5 +505,6 @@ describe("Russian and Uzbek", () => {
     expect(within(dialog).getAllByText(d.improveAi.unavailable)).toHaveLength(4);
     expect(within(dialog).getByText(d.improveAi.tools.video_upscale.label)).toBeTruthy();
     expect(within(dialog).getByText(d.improveAi.tools.captions.label)).toBeTruthy();
+    expect(d.improveAi.offerNoDuration.trim().length).toBeGreaterThan(0);
   });
 });

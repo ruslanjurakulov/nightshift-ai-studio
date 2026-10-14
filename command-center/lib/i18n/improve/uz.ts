@@ -30,5 +30,6 @@ export const improveUz: ImproveDictionary = {
   offerAdded: "Loyihaga qoʻshildi. Saqlab qoʻying.",
   offerMissing: "Bu fayl muharrir qabul qiladigan kutubxona fayllari (rasm, video yoki tovush) orasida yoʻq.",
   offerFailed: "Qoʻshib boʻlmadi: loyiha toʻla.",
+  offerNoDuration: "Hozircha qoʻshib boʻlmaydi: bu faylning muharrir oʻqiy oladigan davomiyligi yoʻq.",
   unnamed: "bu fayl",
 };

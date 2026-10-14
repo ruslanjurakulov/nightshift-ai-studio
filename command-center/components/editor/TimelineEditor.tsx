@@ -723,12 +723,25 @@ export function TimelineEditor({
   }
 
   // ── "Add to project": a finished AI result, offered once, added only on the press ──
-  const [offer, setOffer] = useState<"open" | "added" | "failed" | "closed">("open");
+  const [offer, setOffer] = useState<"open" | "added" | "failed" | "noDuration" | "closed">("open");
+  const offerStatus = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (offer === "added") offerStatus.current?.focus();
+  }, [offer]);
   const offered = offerAssetId
     ? [...videos, ...imageFiles, ...soundFiles].find((a) => a.id.toLowerCase() === offerAssetId.toLowerCase())
     : undefined;
+  // A reload with ?add= in the address must not offer a file the project already has (it would be added twice).
+  const inModel =
+    !!offerAssetId &&
+    [...model.clips, ...model.sounds, ...overlays].some((x) => x.asset_id.toLowerCase() === offerAssetId.toLowerCase());
   function onOfferAdd() {
     if (!offered) return;
+    // Without a length a video or sound cannot be placed: say that, not "full".
+    if (offered.kind !== "image" && !(offered.durationS && offered.durationS > 0)) {
+      setOffer("noDuration");
+      return;
+    }
     let next: EditorModel | null = null;
     let pick: Selection = null;
     if (offered.kind === "audio") {
@@ -755,13 +768,15 @@ export function TimelineEditor({
   }
 
   // "Improve with AI" → Captions: the Captions panel is lower on the page.
-  function goCaptions() {
+  const [captionsFor, setCaptionsFor] = useState<{ id: string; nonce: number } | null>(null);
+  function goCaptions(assetId?: string) {
+    if (assetId) setCaptionsFor((c) => ({ id: assetId, nonce: (c?.nonce ?? 0) + 1 }));
     const el = document.querySelector<HTMLElement>("[data-captions-panel]");
     el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     el?.focus({ preventScroll: true });
   }
   useEffect(() => {
-    if (focusPanel === "captions") setTimeout(goCaptions, 0);
+    if (focusPanel === "captions") setTimeout(() => goCaptions(), 0);
     // once, when the editor opens on that panel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -778,7 +793,7 @@ export function TimelineEditor({
         name={a.name}
         available={aiTools}
         project={projectId}
-        onCaptions={withCaptions ? goCaptions : undefined}
+        onCaptions={withCaptions ? () => goCaptions(assetId) : undefined}
         className={quietBtn}
       />
     );
@@ -859,14 +874,14 @@ export function TimelineEditor({
 
   return (
     <div className="flex flex-col gap-4" data-editor-root="">
-      {offerAssetId && offer !== "closed" ? (
+      {offerAssetId && offer !== "closed" && (offer === "added" || !inModel) ? (
         <section
           aria-label={fmt(t.improveAi.offerTitle, { name: offered?.name ?? t.improveAi.unnamed })}
           className="panel flex flex-col gap-2 p-4 sm:p-5"
           data-testid="offer-add"
         >
           {offer === "added" ? (
-            <p role="status" className="m-0 text-sm text-[var(--color-fg)]">
+            <p ref={offerStatus} tabIndex={-1} role="status" className="m-0 text-sm text-[var(--color-fg)] outline-none">
               {t.improveAi.offerAdded}
             </p>
           ) : !offered ? (
@@ -879,9 +894,9 @@ export function TimelineEditor({
                 {fmt(t.improveAi.offerTitle, { name: offered.name ?? t.improveAi.unnamed })}
               </h2>
               <p className="m-0 text-xs text-[var(--color-muted)]">{t.improveAi.offerBody}</p>
-              {offer === "failed" ? (
+              {offer === "failed" || offer === "noDuration" ? (
                 <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
-                  {t.improveAi.offerFailed}
+                  {offer === "noDuration" ? t.improveAi.offerNoDuration : t.improveAi.offerFailed}
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
@@ -1563,6 +1578,7 @@ export function TimelineEditor({
         models={captionModels}
         pictureEnd={picture}
         onChange={apply}
+        preselect={captionsFor}
       />
 
       {/* earlier exports (the latest one is the status panel above) */}
