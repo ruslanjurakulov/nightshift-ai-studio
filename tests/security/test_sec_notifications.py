@@ -38,6 +38,8 @@ import sec_editor_0054
 ALLOWED_DATA_KEYS = {
     "job_id", "capability", "code", "credits_returned", "credits_charged",
     "storyboard_id", "scenes", "export_id", "project_id", "asset_id", "available",
+    # 0101: the channel a storyboard / a waiting video belongs to, and the video's state.
+    "channel_id", "video_id", "state",
 }
 
 
