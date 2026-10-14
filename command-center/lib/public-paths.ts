@@ -47,6 +47,18 @@ export const INVITE_LINK_PATTERN = /^\/i\/[A-Za-z0-9_-]{16,64}$/;
  *  (`?s=invalid`) or when the visitor already has an account (`?s=existing`). */
 export const INVITE_NOTICE_PATH = "/invite";
 
+/**
+ * The public /studio page ("What you can make and edit", app/studio/page.tsx).
+ *
+ * "studio" is also a section of the app (lib/channels.ts SECTIONS), and an old
+ * `/studio` link, signed in, is sent on to `/<channel>/studio`. That keeps
+ * working: the page is public for a signed-OUT visitor only, exactly like "/"
+ * (see gateDecision), and a signed-in request falls through to the section
+ * redirect. So it is in PUBLIC_PATHS and the sitemap but NOT in
+ * ALWAYS_PUBLIC_PATHS, which pass for everyone.
+ */
+export const STUDIO_PAGE_PATH = "/studio";
+
 /** Always public: the crawler files (app/robots.ts, app/sitemap.ts). */
 export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"] as const;
 
@@ -164,7 +176,7 @@ export const ALWAYS_PUBLIC_PATHS = [
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
  *  sign-in flow, the machine-readable spec or the crawler files. */
-export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "/mcp", "/privacy", "/terms"] as const;
+export const SITEMAP_PATHS = ["/", STUDIO_PAGE_PATH, "/pricing", ...SOLUTION_PATHS, "/docs/api", "/mcp", "/privacy", "/terms"] as const;
 
 /** Create an account. Like /login, only for someone signed out: a signed-in
  *  user asking for it is sent on to their app. */
@@ -198,6 +210,7 @@ export const WELCOME_PATH = "/welcome";
  *  user asking for `/` is sent on to their Command Center as before. */
 export const PUBLIC_PATHS = [
   "/",
+  STUDIO_PAGE_PATH,
   ...ALWAYS_PUBLIC_PATHS,
   SIGNUP_PATH,
   FORGOT_PASSWORD_PATH,
@@ -332,6 +345,8 @@ export function gateDecision(pathname: string, signedIn: boolean, search: string
   // that authenticates nothing and says one boolean (see HANDLE_CHECK_PATH).
   if (isHandleCheckPath(pathname)) return "pass";
   if (isAlwaysPublicPath(pathname)) return "pass";
+  // /studio: the marketing page signed out; signed in it is the old section link and goes on (middleware channelRedirect).
+  if (normalize(pathname) === STUDIO_PAGE_PATH) return signedIn ? "app" : "pass";
   // Either way: a confirmation link opened in a browser that still holds an
   // older session must be able to replace it.
   if (isAuthCallbackPath(pathname)) return "pass";

@@ -17,13 +17,18 @@ How a timeline maps onto the spec:
 * **Speed** — a V clip's ``speed`` becomes the segment's (``setpts``): its
   slot on the frame grid is already the sped-up length, and the source range
   ``in_s``..``out_s`` fills it.
+* **Colour** — a V clip's ``grade`` (brightness / contrast / saturation) becomes
+  the segment's fields and the backend's ffmpeg ``eq``, on video and stills,
+  on a cross-fade's two sides alike; a clip without it adds no filter at all.
 * **Cross-fade** — two V clips that overlap by a ``crossfade`` transition
   become: the first clip's own part, ONE segment of the overlap that holds
   both pictures (``Segment.xfade``; the backend blends them with ffmpeg
   ``xfade``), then the second clip's own part. Each piece is rendered over
   its whole clip and cut (``clip_s`` / ``offset_s``), so fades and a still's
   slow zoom carry on across the cut. The concatenation is still exactly the
-  timeline's frames. When both clips play their own sound, the two sounds
+  timeline's frames. The blend is the incoming clip's ``transition.style``
+  (``Segment.xfade_style``, an ffmpeg ``xfade`` transition from a closed list;
+  absent = the plain ``fade``, the segment every older document gets). When both clips play their own sound, the two sounds
   are joined with ``acrossfade`` (``AudioTrack.crossfade_s``); when only one
   does, it fades in or out across the overlap.
 * **Sound** — a V clip with ``audio: true`` whose source has a sound track
@@ -39,6 +44,15 @@ How a timeline maps onto the spec:
   Speech that is not there (a silent source) ducks nothing, and a clip no
   speech can touch gets no envelope at all, so its argv is the one it had
   before ducking existed.
+* **Overlays** — each of the document's ``overlays`` (a picture or a video over
+  the picture) becomes a ``PictureOverlay`` on the frame grid, cut at the end
+  of the picture; the backend lays them over the composited picture, under the
+  text, with ffmpeg ``overlay`` (``render_spec.picture_overlay_filters``). One
+  that starts after the picture ends, or whose opacity is 0, renders nothing
+  and is left out, so the command is the one the document without it gets.
+* **Text looks** — a T clip's ``shadow``, ``box_color`` and ``box_opacity`` become
+  the overlay's ASS style (a drop shadow; an opaque or translucent box instead of
+  the outline); a text without them is written as it always was.
 * **Text** — T clips in track order, then the captions on top, become text
   overlays burnt from one ASS file.
 
@@ -58,6 +72,7 @@ from modules.render_spec import (
     KIND_IMAGE,
     KIND_VIDEO,
     AudioTrack,
+    PictureOverlay,
     RenderSpec,
     Segment,
     TextOverlay,
@@ -80,6 +95,13 @@ def _crossfade_frames(clips: List[dict], fps: int) -> dict:
             if n >= 1:
                 out[i] = n
     return out
+
+
+def _grade(clip: dict) -> dict:
+    """The clip's colour as Segment fields ({} without it: the segment is then
+    exactly what it was before colour existed; normalise() has already dropped
+    a neutral grade)."""
+    return dict(clip["grade"]) if "grade" in clip else {}
 
 
 def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
@@ -114,6 +136,7 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 clip_s=full / fps if full else 0.0,
                 offset_s=offset / fps,
                 seed=seed,
+                **_grade(clip),
             )
 
         for i, clip in enumerate(clips):
@@ -149,8 +172,12 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 nxt = clips[i + 1]
                 n_full = _frame(tl.clip_end_s(nxt), fps) - _frame(nxt["start_s"], fps)
                 incoming = piece(nxt, tail, full=n_full, seed=f"clip:{nxt['id']}")
-                segments.append(replace(piece(clip, tail, full=full, offset=full - tail, seed=seed),
-                                        xfade=incoming))
+                outgoing = piece(clip, tail, full=full, offset=full - tail, seed=seed)
+                style = tl.crossfade_style(nxt)    # the incoming clip's transition
+                if style == tl.XFADE_DEFAULT_STYLE:
+                    segments.append(replace(outgoing, xfade=incoming))   # the segment it always was
+                else:
+                    segments.append(replace(outgoing, xfade=incoming, xfade_style=style))
             cursor = end
     if cursor < total_frames:
         black(total_frames - cursor)
@@ -223,6 +250,18 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
     return tracks
 
 
+def _text_looks(c: dict) -> dict:
+    """A text's looks as TextOverlay fields ({} without any: the overlay is then
+    exactly what it was before they existed; normalise() has dropped a zero shadow)."""
+    out = {}
+    if "shadow" in c:
+        out["shadow"] = c["shadow"]
+    if "box_color" in c:
+        out["box_color"] = c["box_color"]
+        out["box_opacity"] = c["box_opacity"]
+    return out
+
+
 def _text(doc: dict) -> List[TextOverlay]:
     overlays: List[TextOverlay] = []
     for track in doc["tracks"]:
@@ -234,6 +273,7 @@ def _text(doc: dict) -> List[TextOverlay]:
                 size=c["size"], color=c["color"], outline_color=c["outline_color"],
                 outline_width=c["outline_width"], bold=c["bold"], x=c["x"], y=c["y"],
                 anchor=c["anchor"], fade_in_s=c["fade_in_s"], fade_out_s=c["fade_out_s"],
+                **_text_looks(c),
             ))
     captions = doc.get("captions")
     if captions:
@@ -248,6 +288,24 @@ def _text(doc: dict) -> List[TextOverlay]:
                 anchor="bottom",
             ))
     return overlays
+
+
+def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay]:
+    fps = doc["fps"]
+    out: List[PictureOverlay] = []
+    for ov in doc.get("overlays") or []:
+        first = _frame(ov["start_s"], fps)
+        last = min(_frame(ov["end_s"], fps), total_frames)
+        if last <= first or ov["opacity"] <= 0:
+            continue   # nothing of it is shown
+        asset = assets[ov["asset_id"]]
+        out.append(PictureOverlay(
+            path=asset.path,
+            kind=KIND_VIDEO if asset.kind == tl.ASSET_VIDEO else KIND_IMAGE,
+            start_s=first / fps, end_s=last / fps,
+            x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"],
+        ))
+    return out
 
 
 def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
@@ -270,6 +328,7 @@ def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
         frame_exact=True,
         audio_tracks=_sound(norm, assets),
         overlays=_text(norm),
+        picture_overlays=_pictures(norm, assets, total_frames),
     )
 
 

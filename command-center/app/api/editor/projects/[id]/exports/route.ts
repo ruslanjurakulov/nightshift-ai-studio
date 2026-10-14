@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
-import { readJsonBody } from "@/lib/server/media-folders";
+import { editorRateLimited, readSmallBody } from "@/lib/server/editor-guard";
+import { EDITOR_EXPORT_RATE } from "@/lib/server/web-rate";
 import { parseMediaId } from "@/lib/media";
 import { mapEditorError } from "@/lib/editor";
 
@@ -26,7 +27,11 @@ export async function POST(
   const { id: raw } = await params;
   const id = parseMediaId(raw);
   if (!id) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const body = await readJsonBody(request);
+  const limited = await editorRateLimited(user.id, EDITOR_EXPORT_RATE);
+  if (limited) return limited;
+  const read = await readSmallBody(request);
+  if ("refusal" in read) return read.refusal;
+  const body = read.body;
   const rev =
     body && typeof body === "object" && !Array.isArray(body)
       ? (body as { rev?: unknown }).rev

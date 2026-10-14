@@ -111,6 +111,11 @@ def ass_colour(value, default: str = "&H00FFFFFF") -> str:
     return f"&H00{b:02X}{g:02X}{r:02X}"
 
 
+def _with_alpha(colour: str, alpha: int) -> str:
+    """``&H00BBGGRR`` with its alpha byte replaced (ASS alpha: 00 opaque, FF clear)."""
+    return "&H" + f"{max(0, min(255, int(alpha))):02X}" + colour[4:]
+
+
 def _inline_colour(value, default: str) -> str:
     # Override tags take &HBBGGRR& (no alpha byte).
     return "&H" + ass_colour(value, default)[4:] + "&"
@@ -244,6 +249,9 @@ def build_ass(word_specs: Iterable[dict], *, width: int, height: int,
 # Every overlay is placed with \pos, so libass never moves a line to avoid
 # another one — the picture is exactly what the timeline says.
 
+#: A text box's padding around the text, as a fraction of the font size.
+BOX_PADDING = 0.25
+
 #: Anchor name → ASS \an (numpad) alignment.
 ANCHOR_AN = {
     "bottom-left": 1, "bottom": 2, "bottom-right": 3,
@@ -283,9 +291,22 @@ def build_overlay_ass(overlays: Sequence, *, width: int, height: int) -> str:
         primary = ass_colour(o.color, "&H00FFFFFF")
         outline = ass_colour(o.outline_color, "&H00000000")
         family = escape_text(o.font).replace(",", " ")
+        # Looks (the defaults write the style line this always wrote). A box is
+        # libass BorderStyle 3: the OUTLINE colour fills a rectangle behind the
+        # text and Outline is its padding, so the box replaces the outline.
+        # The drop shadow is drawn in BackColour (a 60 % black), offset on both axes.
+        back, border, width, shadow = "&H00000000", 1, f"{float(o.outline_width):g}", "0"
+        shadow_px = float(getattr(o, "shadow", 0.0) or 0.0)
+        if shadow_px > 0:
+            back, shadow = "&H66000000", f"{shadow_px:g}"
+        box_color = getattr(o, "box_color", None)
+        if box_color is not None:
+            opacity = float(getattr(o, "box_opacity", 0.7))
+            outline = _with_alpha(ass_colour(box_color, "&H00000000"), round((1 - opacity) * 255))
+            border, width = 3, str(max(2, int(round(int(o.size) * BOX_PADDING))))
         lines.append(
-            f"Style: O{i},{family},{int(o.size)},{primary},{primary},{outline},&H00000000,"
-            f"{-1 if o.bold else 0},0,0,0,100,100,0,0,1,{float(o.outline_width):g},0,"
+            f"Style: O{i},{family},{int(o.size)},{primary},{primary},{outline},{back},"
+            f"{-1 if o.bold else 0},0,0,0,100,100,0,0,{border},{width},{shadow},"
             f"{ANCHOR_AN.get(o.anchor, 5)},{margin},{margin},0,1")
     lines += ["", "[Events]",
               "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]

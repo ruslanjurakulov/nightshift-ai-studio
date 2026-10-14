@@ -22,6 +22,13 @@
  * no provider) and ends as a file in the library.
  */
 
+import {
+  GRADE_KEYS,
+  GRADE_RANGES,
+  isNeutralGrade,
+  type ClipGrade,
+} from "@/lib/editorGrade";
+
 // ── limits (modules/timeline.py, render_spec.py and 0054 hold the same) ─────
 
 export const TIMELINE_VERSION = 1;
@@ -92,9 +99,43 @@ export const MAX_EDITOR_TEXTS = 24;
  *  can play at once), and 1 + 24 + 6 tracks stays under the 32 allowed. */
 export const MAX_EDITOR_SOUNDS = 6;
 export const MAX_DOC_BYTES = 262_144;
+/** Picture overlays (modules/timeline.py MAX_OVERLAYS / MAX_OVERLAY_VIDEOS /
+ *  OVERLAY_W_MIN / OVERLAY_W_MAX): each is one more input of the final pass,
+ *  and a video keeps a decoder open for its whole span. */
+export const MAX_OVERLAYS = 16;
+export const MAX_OVERLAY_VIDEOS = 4;
+export const OVERLAY_W_MIN = 0.05;
+export const OVERLAY_W_MAX = 1;
 
 const FITS = ["contain", "cover"] as const;
 const TRANSITIONS = ["cut", "dip_to_black", "crossfade"] as const;
+/** The ffmpeg `xfade` transitions a cross-fade may use, in the order the
+ *  picker lists them (modules/timeline.py XFADE_STYLES; a test pins them). The
+ *  name goes into a filter graph, so the list is closed. `fade` is the plain
+ *  blend every older document has; it is never stored (the document without a
+ *  style is the same cross-fade). */
+export const XFADE_STYLES = [
+  "fade",
+  "dissolve",
+  "fadeblack",
+  "fadewhite",
+  "wipeleft",
+  "wiperight",
+  "slideleft",
+  "slideright",
+  "slideup",
+  "slidedown",
+  "circleopen",
+  "circleclose",
+  "radial",
+  "zoomin",
+] as const;
+export type XfadeStyle = (typeof XFADE_STYLES)[number];
+export const XFADE_DEFAULT_STYLE: XfadeStyle = "fade";
+/** A text's drop shadow, in output pixels (modules/timeline.py SHADOW_MAX). */
+export const SHADOW_MAX = 20;
+/** A text box's opacity when its colour is set without one. */
+export const BOX_OPACITY_DEFAULT = 0.7;
 export const ANCHORS = [
   "top-left",
   "top",
@@ -119,7 +160,7 @@ const UUID_RE =
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const DOC_REQUIRED = ["version", "width", "height", "fps", "tracks"];
-const DOC_KEYS = [...DOC_REQUIRED, "captions"];
+const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays"];
 const TRACK_REQUIRED = ["id", "kind", "clips"];
 const TRACK_KEYS = [...TRACK_REQUIRED, "name"];
 const A_TRACK_KEYS = [...TRACK_KEYS, "role", "duck"];
@@ -134,6 +175,7 @@ const V_CLIP_KEYS = [
   "transition",
   "speed",
   "audio",
+  "grade",
 ];
 const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
 const T_REQUIRED = ["id", "start_s", "end_s", "text"];
@@ -145,9 +187,12 @@ const TEXT_STYLE_KEYS = [
   "outline_width",
   "bold",
 ];
+/** Looks only a text clip has; the captions' style stays as it is. */
+const TEXT_LOOK_KEYS = ["shadow", "box_color", "box_opacity"];
 const T_CLIP_KEYS = [
   ...T_REQUIRED,
   ...TEXT_STYLE_KEYS,
+  ...TEXT_LOOK_KEYS,
   "x",
   "y",
   "anchor",
@@ -155,8 +200,11 @@ const T_CLIP_KEYS = [
   "fade_out_s",
 ];
 const TRANSITION_KEYS = ["type", "duration_s"];
+const TRANSITION_ALLOWED = [...TRANSITION_KEYS, "style"];
 const CAPTION_STYLE_KEYS = [...TEXT_STYLE_KEYS, "y"];
 const CUE_KEYS = ["id", "start_s", "end_s", "text"];
+const OVERLAY_REQUIRED = ["id", "asset_id", "start_s", "end_s"];
+const OVERLAY_KEYS = [...OVERLAY_REQUIRED, "x", "y", "w", "opacity"];
 
 // ── document types ──────────────────────────────────────────────────────────
 
@@ -165,6 +213,8 @@ export type Anchor = (typeof ANCHORS)[number];
 export interface Transition {
   type: (typeof TRANSITIONS)[number];
   duration_s: number;
+  /** How a cross-fade blends the two pictures; none = the plain `fade`. */
+  style?: XfadeStyle;
 }
 
 export interface VideoClip {
@@ -176,6 +226,8 @@ export interface VideoClip {
   speed: number;
   audio: boolean;
   fit?: "contain" | "cover";
+  /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorGrade.ts. */
+  grade?: ClipGrade;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -222,6 +274,14 @@ export interface TextClip {
   anchor: Anchor;
   bold?: boolean;
   color?: string;
+  font?: (typeof FONTS)[number];
+  outline_color?: string;
+  outline_width?: number;
+  /** A soft black drop shadow, in output pixels (0 / none = no shadow). */
+  shadow?: number;
+  /** A box behind the text (instead of its outline); `box_opacity` needs it. */
+  box_color?: string;
+  box_opacity?: number;
 }
 
 export interface TimelineTrack {
@@ -233,6 +293,24 @@ export interface TimelineTrack {
   clips: Record<string, unknown>[];
 }
 
+/** A picture or video laid over the picture (modules/timeline.py `overlays`):
+ *  (x, y) is its CENTRE and w its width, as fractions of the frame; its height
+ *  follows the file's own aspect ratio. Drawn in list order, later on top. */
+export interface PictureOverlay {
+  id: string;
+  asset_id: string;
+  start_s: number;
+  end_s: number;
+  x: number;
+  y: number;
+  w: number;
+  opacity: number;
+}
+
+/** What an overlay's optional fields mean when absent (modules/timeline.py
+ *  OVERLAY_DEFAULTS). */
+export const OVERLAY_DEFAULTS = { x: 0.5, y: 0.5, w: 0.3, opacity: 1 } as const;
+
 export interface TimelineDoc {
   version: 1;
   width: number;
@@ -240,6 +318,7 @@ export interface TimelineDoc {
   fps: number;
   tracks: TimelineTrack[];
   captions?: unknown;
+  overlays?: unknown[];
 }
 
 /** What the editor works on: the picture laid end to end, text on top, and
@@ -251,6 +330,8 @@ export interface EditorModel {
   clips: VideoClip[];
   texts: TextClip[];
   sounds: SoundClip[];
+  /** Pictures / videos over the picture; none = the field is absent. */
+  overlays?: PictureOverlay[];
   /** Tracks this editor does not edit, kept verbatim. */
   keep: TimelineTrack[];
   captions?: unknown;
@@ -493,14 +574,15 @@ export function validateTimeline(doc: unknown): string[] {
   if (doc.captions !== undefined && doc.captions !== null)
     validateCaptions(doc.captions, problems, claim);
   else if (doc.captions === null) problems.push("captions must be an object");
+  if ("overlays" in doc) validateOverlays(doc.overlays, fps, problems, claim);
 
   if (problems.length) return problems;
   const d = doc as unknown as TimelineDoc;
-  const found = overlaps(d);
-  for (const ov of found.slice(0, 20))
+  const found = overlaps(d, MAX_REPORTED_OVERLAPS + 1);
+  for (const ov of found.slice(0, MAX_REPORTED_OVERLAPS))
     problems.push(`track ${ov[0]}: clips ${ov[1]} and ${ov[2]} overlap`);
-  if (found.length > 20)
-    problems.push(`... and ${found.length - 20} more overlaps`);
+  if (found.length > MAX_REPORTED_OVERLAPS)
+    problems.push("... and more overlaps");
   problems.push(...transitionProblems(d));
   const total = docDuration(d);
   if (total <= 0) problems.push("timeline: nothing to render");
@@ -586,12 +668,31 @@ function validateMediaClip(
   if (kind === "V") {
     if ("fit" in clip && !(FITS as readonly unknown[]).includes(clip.fit))
       problems.push(`${where}: fit must be contain or cover`);
+    if (
+      "grade" in clip &&
+      fields(
+        clip.grade,
+        [...GRADE_KEYS],
+        [...GRADE_KEYS],
+        `${where} grade`,
+        problems,
+      )
+    )
+      for (const k of GRADE_KEYS)
+        numIn(
+          clip.grade,
+          k,
+          GRADE_RANGES[k].min,
+          GRADE_RANGES[k].max,
+          `${where} grade`,
+          problems,
+        );
     if ("transition" in clip) {
       const tr = clip.transition;
       if (
         fields(
           tr,
-          TRANSITION_KEYS,
+          TRANSITION_ALLOWED,
           TRANSITION_KEYS,
           `${where} transition`,
           problems,
@@ -601,6 +702,14 @@ function validateMediaClip(
           problems.push(
             `${where}: transition type must be cut, dip_to_black or crossfade`,
           );
+        if ("style" in tr) {
+          if (!(XFADE_STYLES as readonly unknown[]).includes(tr.style))
+            problems.push(`${where} transition: style is not known`);
+          else if (tr.type !== "crossfade")
+            problems.push(
+              `${where} transition: a style is only for a crossfade`,
+            );
+        }
         if (tr.type === "crossfade")
           numIn(
             tr,
@@ -646,6 +755,15 @@ function validateTextClip(
   textStyle(clip, where, problems);
   numIn(clip, "x", 0, 1, where, problems);
   numIn(clip, "y", 0, 1, where, problems);
+  numIn(clip, "shadow", 0, SHADOW_MAX, where, problems);
+  if (
+    "box_color" in clip &&
+    !(typeof clip.box_color === "string" && HEX_RE.test(clip.box_color))
+  )
+    problems.push(`${where}: box_color must be a #RRGGBB colour`);
+  numIn(clip, "box_opacity", 0, 1, where, problems);
+  if ("box_opacity" in clip && !("box_color" in clip))
+    problems.push(`${where}: box_opacity needs a box_color`);
   if (
     "anchor" in clip &&
     !(ANCHORS as readonly unknown[]).includes(clip.anchor)
@@ -665,6 +783,51 @@ function validateTextClip(
     fi + fo > e - s + 1e-9
   )
     problems.push(`${where}: fades are longer than the text is shown`);
+}
+
+/** Python's `round` (half to even) for the frame check below: the worker rounds
+ *  with it, so a time exactly between two frames must land the same way. */
+function pyRound(x: number): number {
+  const f = Math.floor(x);
+  const d = x - f;
+  if (d < 0.5) return f;
+  if (d > 0.5) return f + 1;
+  return f % 2 === 0 ? f : f + 1;
+}
+
+/** The twin of modules/timeline.py `_validate_overlays`. */
+function validateOverlays(
+  overlays: unknown,
+  fps: number | null,
+  problems: string[],
+  claim: (i: unknown, w: string) => void,
+) {
+  if (!Array.isArray(overlays)) {
+    problems.push("overlays must be a list");
+    return;
+  }
+  if (overlays.length > MAX_OVERLAYS) {
+    problems.push(`overlays: at most ${MAX_OVERLAYS}`);
+    return;
+  }
+  overlays.forEach((ov, i) => {
+    if (!fields(ov, OVERLAY_KEYS, OVERLAY_REQUIRED, `overlays[${i}]`, problems))
+      return;
+    const where = `overlay ${String(ov.id)}`;
+    claim(ov.id, where);
+    if (!(typeof ov.asset_id === "string" && UUID_RE.test(ov.asset_id)))
+      problems.push(`${where}: asset_id must be a uuid`);
+    numIn(ov, "start_s", 0, MAX_DURATION_S, where, problems);
+    numIn(ov, "end_s", 0, MAX_DURATION_S, where, problems);
+    if (isNum(ov.start_s) && isNum(ov.end_s)) {
+      if (ms(ov.end_s) <= ms(ov.start_s))
+        problems.push(`${where}: end_s must be greater than start_s`);
+      else if (fps && pyRound(ms(ov.end_s) * fps) - pyRound(ms(ov.start_s) * fps) < 1)
+        problems.push(`${where}: shorter than one frame`);
+    }
+    for (const k of ["x", "y", "opacity"]) numIn(ov, k, 0, 1, where, problems);
+    numIn(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems);
+  });
 }
 
 function validateCaptions(
@@ -770,23 +933,39 @@ function crossfades(
   return out;
 }
 
-function overlaps(doc: TimelineDoc): [string, string, string][] {
+/**
+ * Validation reports the first MAX_REPORTED_OVERLAPS pairs and then only that
+ * there are more, so the search stops one past that: a document of 5000
+ * captions on one span has 12.5 million pairs, and collecting them all froze
+ * the process (modules/timeline.py `overlaps` keeps the same limit).
+ */
+const MAX_REPORTED_OVERLAPS = 20;
+
+function overlaps(
+  doc: TimelineDoc,
+  limit = Infinity,
+): [string, string, string][] {
   const blended = new Set<string>();
+  // Ids are checked ([A-Za-z0-9_-]) before this runs, so NUL cannot occur in one.
+  const key = (lane: string, a: string, b: string) => `${lane}\0${a}\0${b}`;
   for (const t of doc.tracks)
     if (t.kind === "V")
       for (const [p, c] of crossfades(t)) {
-        blended.add(JSON.stringify([t.id, String(p.id), String(c.id)]));
-        blended.add(JSON.stringify([t.id, String(c.id), String(p.id)]));
+        blended.add(key(t.id, String(p.id), String(c.id)));
+        blended.add(key(t.id, String(c.id), String(p.id)));
       }
   const found: [string, string, string][] = [];
   for (const [lane, items] of spans(doc)) {
-    items.forEach(([, e1, id1], i) => {
-      for (const [s2, , id2] of items.slice(i + 1)) {
+    for (let i = 0; i < items.length; i += 1) {
+      const [, e1, id1] = items[i];
+      for (let j = i + 1; j < items.length; j += 1) {
+        const [s2, , id2] = items[j];
         if (s2 >= e1) break;
-        if (blended.has(JSON.stringify([lane, id1, id2]))) continue;
+        if (blended.size && blended.has(key(lane, id1, id2))) continue;
         found.push([lane, id1, id2]);
+        if (found.length >= limit) return found;
       }
-    });
+    }
   }
   return found;
 }
@@ -882,6 +1061,24 @@ function nextStart(prevEnd: number): number {
   return Math.ceil(prevEnd * 1000 - 1e-6) / 1000;
 }
 
+/** The style of a clip's cross-fade as a spread (nothing for the plain one). */
+function styleOf(c: Record<string, unknown> | VideoClip): { style?: XfadeStyle } {
+  const tr = (c as Record<string, unknown>).transition;
+  if (
+    !isObj(tr) ||
+    tr.type !== "crossfade" ||
+    !(XFADE_STYLES as readonly unknown[]).includes(tr.style) ||
+    tr.style === XFADE_DEFAULT_STYLE
+  )
+    return {};
+  return { style: tr.style as XfadeStyle };
+}
+
+/** The style of the cross-fade into a clip (`fade` when it has none). */
+export function crossfadeStyleOf(c: Record<string, unknown> | VideoClip): XfadeStyle {
+  return styleOf(c).style ?? XFADE_DEFAULT_STYLE;
+}
+
 /** A clip without its transition (a key set to undefined would still be a
  *  field the validator sees). */
 function withoutTransition(c: VideoClip): VideoClip {
@@ -914,7 +1111,10 @@ export function layout(clips: VideoClip[]): VideoClip[] {
     }
     let base: VideoClip = c;
     if (x > 0)
-      base = { ...c, transition: { type: "crossfade", duration_s: x } };
+      base = {
+        ...c,
+        transition: { type: "crossfade", duration_s: x, ...styleOf(c) },
+      };
     else if (c.transition?.type === "crossfade") base = withoutTransition(c);
     const start = i === 0 ? 0 : x > 0 ? ms(prevEnd - x) : nextStart(prevEnd);
     const placed = { ...base, start_s: start };
@@ -968,10 +1168,38 @@ export function setCrossfade(
     clips: layout(
       model.clips.map((c) =>
         c.id === id
-          ? { ...c, transition: { type: "crossfade", duration_s: d } }
+          ? {
+              ...c,
+              transition: { type: "crossfade", duration_s: d, ...styleOf(c) },
+            }
           : c,
       ),
     ),
+  };
+}
+
+/** Change the style of the cross-fade into clip `id` (the plain `fade` removes
+ *  the field: the document is then the one it was before styles existed).
+ *  Unchanged when the clip has no cross-fade, or already has that style. */
+export function setCrossfadeStyle(
+  model: EditorModel,
+  id: string,
+  style: XfadeStyle,
+): EditorModel {
+  const i = model.clips.findIndex((c) => c.id === id);
+  if (i < 0 || !(XFADE_STYLES as readonly string[]).includes(style)) return model;
+  const tr = model.clips[i].transition;
+  if (tr?.type !== "crossfade") return model;
+  const current = styleOf(model.clips[i]).style ?? XFADE_DEFAULT_STYLE;
+  if (current === style) return model;
+  const next: Transition = {
+    type: "crossfade",
+    duration_s: tr.duration_s,
+    ...(style === XFADE_DEFAULT_STYLE ? {} : { style }),
+  };
+  return {
+    ...model,
+    clips: model.clips.map((c) => (c.id === id ? { ...c, transition: next } : c)),
   };
 }
 
@@ -988,6 +1216,18 @@ const DEFAULT_TEXT: Omit<TextClip, "id" | "start_s" | "end_s" | "text"> = {
   bold: true,
 };
 
+/** A document's `grade` as the model keeps it: the three numbers, or nothing
+ *  for none, an unusable value or "no change" (the same clip without it). */
+function gradeFieldOf(v: unknown): { grade: ClipGrade } | object {
+  if (!isObj(v) || !GRADE_KEYS.every((k) => isNum(v[k]))) return {};
+  const grade = {
+    brightness: v.brightness,
+    contrast: v.contrast,
+    saturation: v.saturation,
+  } as ClipGrade;
+  return isNeutralGrade(grade) ? {} : { grade };
+}
+
 function transitionOf(v: unknown): { transition: Transition } | object {
   if (
     !isObj(v) ||
@@ -999,6 +1239,7 @@ function transitionOf(v: unknown): { transition: Transition } | object {
     transition: {
       type: v.type as Transition["type"],
       duration_s: v.duration_s,
+      ...(v.type === "crossfade" ? styleOf({ transition: v }) : {}),
     },
   };
 }
@@ -1012,6 +1253,35 @@ function duckOf(v: unknown): Duck | null {
     attack_s: isNum(v.attack_s) ? v.attack_s : DUCK_DEFAULT.attack_s,
     release_s: isNum(v.release_s) ? v.release_s : DUCK_DEFAULT.release_s,
   };
+}
+
+/** A document's overlays as the model holds them (defaults filled in); an
+ *  entry that is not an object with a usable id, asset and span is left out. */
+function overlaysOf(v: unknown): PictureOverlay[] {
+  if (!Array.isArray(v)) return [];
+  const out: PictureOverlay[] = [];
+  for (const o of v) {
+    if (
+      !isObj(o) ||
+      typeof o.id !== "string" ||
+      typeof o.asset_id !== "string" ||
+      !isNum(o.start_s) ||
+      !isNum(o.end_s)
+    )
+      continue;
+    const num = (x: unknown, d: number) => (isNum(x) ? x : d);
+    out.push({
+      id: o.id,
+      asset_id: o.asset_id,
+      start_s: o.start_s,
+      end_s: o.end_s,
+      x: num(o.x, OVERLAY_DEFAULTS.x),
+      y: num(o.y, OVERLAY_DEFAULTS.y),
+      w: num(o.w, OVERLAY_DEFAULTS.w),
+      opacity: num(o.opacity, OVERLAY_DEFAULTS.opacity),
+    });
+  }
+  return out;
 }
 
 export function toModel(doc: TimelineDoc): EditorModel {
@@ -1028,6 +1298,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(c.fit === "cover" || c.fit === "contain"
         ? { fit: c.fit as "cover" | "contain" }
         : {}),
+      ...gradeFieldOf(c.grade),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
         ? { fade_in_s: c.fade_in_s }
@@ -1072,6 +1343,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
         text: String(c.text ?? ""),
       })),
     );
+  const overlays = overlaysOf(doc.overlays);
   return {
     width: doc.width,
     height: doc.height,
@@ -1079,6 +1351,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
     clips,
     texts,
     sounds,
+    ...(overlays.length ? { overlays } : {}),
     keep: doc.tracks.filter((t) => t !== v && t.kind !== "T" && t.kind !== "A"),
     ...(doc.captions !== undefined ? { captions: doc.captions } : {}),
   };
@@ -1108,6 +1381,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
     ...tracks.flatMap((t) => [t.id, ...t.clips.map((c) => String(c.id))]),
     ...model.sounds.map((x) => x.id),
     ...model.texts.map((t) => t.id),
+    ...(model.overlays ?? []).map((o) => o.id),
   ]);
   let a = 1;
   const soundTracks: TimelineTrack[] = [];
@@ -1168,26 +1442,49 @@ export function toDoc(model: EditorModel): TimelineDoc {
     fps: model.fps,
     tracks,
     ...(model.captions !== undefined ? { captions: model.captions } : {}),
+    ...(model.overlays?.length
+      ? {
+          overlays: model.overlays.map((o) => ({
+            id: o.id,
+            asset_id: o.asset_id,
+            start_s: ms(o.start_s),
+            end_s: ms(o.end_s),
+            x: ms(o.x),
+            y: ms(o.y),
+            w: ms(o.w),
+            opacity: ms(o.opacity),
+          })),
+        }
+      : {}),
   };
 }
 
-/** The model's length in seconds (picture and text). */
+/** The model's length in seconds (picture and text; overlays never lengthen it). */
 export function modelDuration(model: EditorModel): number {
   return docDuration(toDoc(model));
 }
 
 /** A new id for a clip or a text: letters and digits, never one the model uses. */
-export function freshId(model: EditorModel, prefix: "c" | "x" | "m"): string {
+export function freshId(
+  model: EditorModel,
+  prefix: "c" | "x" | "m" | "o",
+): string {
   // Track ids share the namespace too (v1, a1, t1, t2… are tracks).
   const used = new Set([
     "v1",
     ...model.clips.map((c) => c.id),
     ...model.texts.map((t) => t.id),
     ...model.sounds.map((x) => x.id),
+    ...(model.overlays ?? []).map((o) => o.id),
     ...model.keep.flatMap((t) => [t.id, ...t.clips.map((c) => String(c.id))]),
   ]);
   for (
-    let n = model.clips.length + model.texts.length + model.sounds.length + 1;
+    let n =
+      model.clips.length +
+      model.texts.length +
+      model.sounds.length +
+      (model.overlays?.length ?? 0) +
+      1;
     ;
     n += 1
   ) {
@@ -1811,8 +2108,15 @@ export const EDITOR_PROJECT_COLUMNS =
   "id, org_id, title, rev, doc, created_at, updated_at";
 export const EDITOR_PROJECT_LIST_COLUMNS = "id, title, rev, updated_at";
 
+/**
+ * Rows as the database sends them (snake_case, the server's read) AND as the
+ * project route sends them on (already camelCase, what the page's poll reads):
+ * the page used to read only the first shape, so a polled export lost its file,
+ * its length and its times.
+ */
 export function coerceExports(rows: unknown): EditorExport[] {
   if (!Array.isArray(rows)) return [];
+  const str = (a: unknown, b: unknown) => (typeof a === "string" ? a : typeof b === "string" ? b : null);
   const out: EditorExport[] = [];
   for (const r of rows) {
     if (!isObj(r) || typeof r.id !== "string") continue;
@@ -1826,16 +2130,16 @@ export function coerceExports(rows: unknown): EditorExport[] {
         : (EXPORT_REASONS as readonly unknown[]).includes(r.reason)
           ? (r.reason as ExportReason)
           : "other";
-    const dur = Number(r.duration_s);
+    const dur = Number(r.duration_s ?? r.durationS);
     out.push({
       id: r.id,
       rev: Number(r.rev) || 0,
       status,
       reason,
       durationS: Number.isFinite(dur) && dur > 0 ? dur : null,
-      assetId: typeof r.asset_id === "string" ? r.asset_id : null,
-      createdAt: typeof r.created_at === "string" ? r.created_at : null,
-      finishedAt: typeof r.finished_at === "string" ? r.finished_at : null,
+      assetId: str(r.asset_id, r.assetId),
+      createdAt: str(r.created_at, r.createdAt),
+      finishedAt: str(r.finished_at, r.finishedAt),
     });
   }
   return out;
@@ -1946,6 +2250,9 @@ export function docAssetIds(doc: TimelineDoc): string[] {
   for (const t of doc.tracks)
     for (const c of t.clips)
       if (typeof c.asset_id === "string") ids.add(c.asset_id.toLowerCase());
+  for (const o of doc.overlays ?? [])
+    if (isObj(o) && typeof o.asset_id === "string")
+      ids.add(o.asset_id.toLowerCase());
   return [...ids].sort();
 }
 
@@ -1984,6 +2291,20 @@ export function docAssetProblems(
         );
     }
   }
+  // Overlays: a picture or a video (modules/timeline.py OVERLAY_ASSET_KINDS),
+  // at most MAX_OVERLAY_VIDEOS of them videos.
+  let videos = 0;
+  for (const o of doc.overlays ?? []) {
+    if (!isObj(o)) continue;
+    const kind = known.get(String(o.asset_id).toLowerCase());
+    if (kind === "video") videos += 1;
+    if (kind !== undefined && kind !== "video" && kind !== "image")
+      problems.push(
+        `overlay ${String(o.id)}: an overlay takes video or image, not ${kind}`,
+      );
+  }
+  if (videos > MAX_OVERLAY_VIDEOS)
+    problems.push(`timeline: at most ${MAX_OVERLAY_VIDEOS} video overlays`);
   return problems;
 }
 

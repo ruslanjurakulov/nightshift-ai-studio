@@ -664,6 +664,15 @@ h1 { letter-spacing: -0.02em; }
   margin-inline: auto;
   width: 100%;
 }
+/* The signed-in customer page keeps its end above the bottom tab bar. This is
+   here, not a pb-24 utility on <main>: this rule is unlayered, so it beats
+   Tailwind's layered utilities and a pb-* on the same element never applied
+   (the last ~65px of every phone page sat under the bar). The bar is shown
+   below lg only. */
+@media (max-width: 1023.98px) {
+  /* 7.5rem: the tab bar (~4.75rem with the button above it) plus the 44px back-to-top button, so the end of a page is never under it. */
+  .pad-page-tabbar { padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); }
+}
 /* The bar's own contents follow the same measure, so the wordmark and the
    controls stay in line with the page under them instead of hugging the edges. */
 .bar-measure {
@@ -782,6 +791,8 @@ option {
 }
 .scroll-top:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .scroll-top[data-hidden="true"] { opacity: 0; transform: translateY(8px); pointer-events: none; }
+/* Reached by keyboard while "hidden" (it is still in the tab order): show it. */
+.scroll-top[data-hidden="true"]:focus-visible { opacity: 1; transform: none; pointer-events: auto; outline: 3px solid var(--ns-focus); outline-offset: 2px; }
 /* Where the phone's tab bar is shown (the bar is ~65px with the raised Studio key),
    the button rides above it instead of covering the right-most tab. While the
    composer's Generate dock is pinned above the bar (about 108px tall, 60px up),
@@ -790,6 +801,8 @@ option {
   .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
   .app-shell:has(.studio-dock:not([data-at-top="true"])) .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 11rem); }
 }
+/* A fixed bottom action bar (the library's selection bar) owns that strip: the button steps away rather than sit on its actions. */
+.app-shell:has([data-bottom-bar]) .scroll-top { visibility: hidden; }
 
 /* A bar nav link carries the same sweep as every other control: the fill rises
    from the bottom edge on hover and the press scales in. The page you are on
@@ -2032,6 +2045,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-lamp-row[data-tone="ok"] .ns-lamp-label { color: var(--color-ok); }
 .ns-lamp-row[data-tone="fail"] .ns-lamp-label { color: var(--color-fail); }
 .ns-lamp-row[data-tone="warn"] .ns-lamp-label { color: var(--color-warn); }
+/* A phone: a long lamp word (the "Started ... updates by itself" line) wraps
+   inside its card instead of running off the screen. The lamp keeps its size
+   (flex-shrink: 0 above) and the text node alone shrinks. Wider screens keep
+   the one-line label. */
+@media (max-width: 639px) {
+  .ns-lamp-row { max-width: 100%; }
+  .ns-lamp-row > .ns-lamp-label { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+}
 @media (prefers-reduced-motion: no-preference) {
   .ns-lamp[data-live="true"] { animation: ns-lamp-breathe 1.6s var(--ns-ease) infinite; }
 }
@@ -2326,12 +2347,12 @@ html:has(.lp-root) { scroll-behavior: smooth; }
    in amber the way film stock prints its frame numbers. */
 .ns-tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 160px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--tile-min, 160px), 100%), 1fr));
   gap: var(--tile-gap, 12px);
 }
 .ns-sheet {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 160px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--tile-min, 160px), 100%), 1fr));
   gap: 3px;
   padding: 3px;
   border-radius: var(--ns-r-frame);
@@ -2437,6 +2458,56 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   background-repeat: repeat-x;
   background-position: 0 100%, 0 100%;
   border-bottom: 1px solid var(--tick);
+}
+
+/* A clip's trim handle (TimelineStrip). With a mouse it is a 12px bar whose
+   grab area reaches 16px past each side. On a phone or a touch screen it is a
+   44px-wide box inside the clip's edge (half the clip at most, so a short clip
+   keeps both handles; zoom in to widen it) with the 12px bar drawn at the edge. */
+/* The text and sound lanes of the timeline strip: 28px chips on a 30px step with
+   a mouse, 44px chips on a 46px step under a finger (same condition as the trim
+   handles below). */
+/* The shell's sticky top bar covers the top of every viewport it is drawn in: a control reached by keyboard is scrolled to
+   BELOW it (--ns-shell-h is the bar's measured height, set by ShellOffsets; 4rem until then). Declared before the editor's
+   rule below so the editor's taller offset (bar + pinned preview) still wins where the preview is pinned. */
+html:has(.app-shell) { scroll-padding-top: calc(var(--ns-shell-h, 4rem) + 0.5rem); }
+/* The editor pins its preview under the top bar below lg (useStickyOffsets
+   publishes both heights): a control scrolled to or focused by keyboard is
+   brought into view BELOW the pinned picture, not under it. */
+@media (max-width: 1023.98px) and (min-height: 32.01rem) {
+  html:has([data-editor-preview-pin]) {
+    scroll-padding-top: calc(var(--ns-header-h, 4rem) + var(--ns-sticky-h, 0px) + 0.5rem);
+  }
+}
+/* Below lg the fixed bottom tab bar covers the end of the viewport: a control reached by Tab is scrolled to above it. */
+@media (max-width: 1023.98px) {
+  html { scroll-padding-bottom: 5rem; }
+}
+.ns-lanes-root { --ns-lane-h: 28px; --ns-lane-step: 30px; }
+@media (pointer: coarse), (max-width: 40rem) {
+  .ns-lanes-root { --ns-lane-h: 44px; --ns-lane-step: 46px; }
+}
+/* With a mouse the handle is a 12px bar. Its box is 24px (WCAG 2.2 target size; the
+   bar is drawn by ::before, flush with the clip's edge, and the grip is centred in it),
+   and ::after reaches 16px further out on each side as the pointer's hit area. */
+.ns-trim-handle { width: 24px; background-color: transparent; }
+.ns-trim-handle::before { content: ""; position: absolute; top: 0; bottom: 0; z-index: -1; width: 12px; background: var(--color-primary); border-radius: inherit; }
+.ns-trim-handle[data-edge="in"] { padding-right: 12px; }
+.ns-trim-handle[data-edge="in"]::before { left: 0; }
+.ns-trim-handle[data-edge="out"] { padding-left: 12px; }
+.ns-trim-handle[data-edge="out"]::before { right: 0; }
+.ns-trim-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: -16px; right: -16px; }
+/* Keyboard focus hugs the 12px bar, as it did when the box itself was 12px. */
+@media (pointer: fine) and (min-width: 40.01rem) {
+  .ns-trim-handle:focus-visible { outline: none; box-shadow: none; }
+  .ns-trim-handle:focus-visible::before { outline: 3px solid var(--ns-focus); outline-offset: 2px; box-shadow: 0 0 0 2px var(--color-fg); }
+}
+@media (pointer: coarse), (max-width: 40rem) {
+  .ns-trim-handle { width: 44px; max-width: 36%; }
+  .ns-trim-handle::before { content: none; }
+  .ns-trim-handle::after { content: none; }
+  .ns-trim-handle[data-edge="in"] { justify-content: flex-start; padding-left: 5px; padding-right: 0; background-image: linear-gradient(to right, var(--color-primary) 12px, transparent 12px); }
+  .ns-trim-handle[data-edge="out"] { justify-content: flex-end; padding-right: 5px; padding-left: 0; background-image: linear-gradient(to left, var(--color-primary) 12px, transparent 12px); }
 }
 
 /* The record dot on the Generate key: making something is a REC press, not a

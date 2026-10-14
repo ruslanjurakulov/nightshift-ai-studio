@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/x/library",
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock("@/lib/i18n/server", async () => {
   const { en } = await import("../lib/i18n/en");

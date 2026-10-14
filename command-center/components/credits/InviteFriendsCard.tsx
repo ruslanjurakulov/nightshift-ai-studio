@@ -97,7 +97,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
   const progress = fmt(c.progress, { joined: state.joined, required: state.required });
 
   return (
-    <section id="invite" className="panel flex scroll-mt-24 flex-col gap-4 p-5 sm:p-6" aria-labelledby="invite-title" data-invite-card>
+    <section id="invite" className="panel flex scroll-mt-7 flex-col gap-4 p-5 sm:p-6" aria-labelledby="invite-title" data-invite-card>
       <div className="flex flex-col gap-1">
         <h2 id="invite-title" className="t-section">
           {c.title}

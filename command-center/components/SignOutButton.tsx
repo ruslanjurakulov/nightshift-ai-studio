@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
+import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export function SignOutButton() {
       if (supabase) await supabase.auth.signOut();
     } finally {
       clearAllCreateAttempts();
+      clearAllEditorDrafts();
     }
     router.push("/login");
     router.refresh();

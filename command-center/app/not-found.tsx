@@ -44,6 +44,18 @@ export default async function NotFound() {
               {n.pricing}
             </Link>
           </div>
+          {/* Somewhere to go from a dead end: the pages a visitor most often wanted, with the header's own words. */}
+          <nav aria-label={n.more} className="st-hero-actions" style={{ marginTop: 8 }}>
+            <Link href="/studio" className="st-link">
+              {t.site.nav.studio}
+            </Link>
+            <Link href="/solutions" className="st-link">
+              {t.site.nav.solutions}
+            </Link>
+            <Link href="/login" className="st-link">
+              {t.site.nav.signIn}
+            </Link>
+          </nav>
         </div>
         <div className="st-slate-screen" aria-hidden>
           <div className="st-bars">

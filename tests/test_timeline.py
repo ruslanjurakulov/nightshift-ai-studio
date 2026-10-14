@@ -309,7 +309,7 @@ class SchemaTwinTestCase(unittest.TestCase):
         self.assertEqual(s["properties"]["fps"]["enum"], list(tl.FPS_VALUES))
         for name, keys in (("video_clip", tl._V_CLIP_KEYS), ("audio_clip", tl._A_CLIP_KEYS),
                            ("text_clip", tl._T_CLIP_KEYS), ("cue", tl._CUE_KEYS),
-                           ("transition", tl._TRANSITION_KEYS)):
+                           ("transition", tl._TRANSITION_ALLOWED)):
             self.assertEqual(set(defs[name]["properties"]), set(keys), name)
         for name, keys in (("video_track", tl._TRACK_KEYS), ("audio_track", tl._A_TRACK_KEYS),
                            ("text_track", tl._TRACK_KEYS)):
@@ -335,6 +335,12 @@ class SchemaTwinTestCase(unittest.TestCase):
         self.assertEqual(defs["text_clip"]["properties"]["anchor"]["enum"], list(tl.ANCHORS))
         self.assertEqual(defs["text_clip"]["properties"]["font"]["enum"], list(tl.FONTS))
         self.assertEqual(defs["asset_id"]["pattern"], tl._UUID_RE.pattern)
+        self.assertEqual(set(defs["grade"]["properties"]), set(tl._GRADE_KEYS))
+        self.assertEqual(tuple(defs["grade"]["required"]), tl._GRADE_KEYS)
+        for key, (lo, hi) in tl.GRADE_RANGES.items():
+            prop = defs["grade"]["properties"][key]
+            self.assertEqual((prop["minimum"], prop["maximum"], prop["default"]),
+                             (lo, hi, tl.GRADE_NEUTRAL[key]), key)
 
     def test_documents_agree_with_json_schema_when_available(self):
         try:
