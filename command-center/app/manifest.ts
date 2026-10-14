@@ -15,10 +15,16 @@ import type { MetadataRoute } from "next";
  * the splash, because a manifest has one value and Nightshift is a night product;
  * once the page runs, the per-scheme `theme-color` metas of app/layout.tsx win
  * (light #f3f3f1, dark #131210). The icons come from tools/brand/build_rasters.mjs.
+ *
+ * `lang` and `dir` stay en / ltr: the manifest holds only the brand name (no customer copy), is fetched once per
+ * install and is the same for every visitor, so there is nothing to translate and no direction to mirror. The page
+ * itself follows the visitor's language (app/layout.tsx), and will its direction when right-to-left languages land.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
+    lang: "en",
+    dir: "ltr",
     name: "Nightshift",
     short_name: "Nightshift",
     start_url: "/",

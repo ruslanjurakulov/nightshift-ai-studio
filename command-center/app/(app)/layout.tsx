@@ -19,6 +19,7 @@ import {
 } from "@/lib/channels";
 import { NavigationProvider } from "@/components/navigation/NavigationProvider";
 import { ScrollToTop } from "@/components/navigation/ScrollToTop";
+import { InstallHint } from "@/components/shell/InstallHint";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isOperator } from "@/lib/auth/org-roles";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
@@ -181,6 +182,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             )}
             <CommandPalette scope={scope} operator={operator} />
             <ScrollToTop dock={!operator} />
+            <InstallHint />
           </div>
         </SidebarProvider>
         </ShellProvider>
