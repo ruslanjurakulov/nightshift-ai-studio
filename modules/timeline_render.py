@@ -20,6 +20,10 @@ How a timeline maps onto the spec:
 * **Colour** — a V clip's ``grade`` (brightness / contrast / saturation) becomes
   the segment's fields and the backend's ffmpeg ``eq``, on video and stills,
   on a cross-fade's two sides alike; a clip without it adds no filter at all.
+* **Effects** — a V clip's ``filter``, ``vignette``, ``blur``, ``sharpen``, ``grain``,
+  ``flip_*`` and ``rotate`` become the segment's ``ClipEffects``; the backend
+  turns the geometric ones into a prefix of the clip's chain and the rest into
+  filters after the colour grade. A clip without them has ``effects=None``.
 * **Cross-fade** — two V clips that overlap by a ``crossfade`` transition
   become: the first clip's own part, ONE segment of the overlap that holds
   both pictures (``Segment.xfade``; the backend blends them with ffmpeg
@@ -76,6 +80,7 @@ from modules.render_spec import (
     KIND_IMAGE,
     KIND_VIDEO,
     AudioTrack,
+    ClipEffects,
     PictureOverlay,
     RenderSpec,
     Segment,
@@ -106,6 +111,14 @@ def _grade(clip: dict) -> dict:
     exactly what it was before colour existed; normalise() has already dropped
     a neutral grade)."""
     return dict(clip["grade"]) if "grade" in clip else {}
+
+
+def _effects(clip: dict) -> dict:
+    """The clip's effects as a Segment field ({} without any: the segment is then
+    exactly what it was before effects existed; normalise() has dropped every
+    value that means "off")."""
+    given = {k: clip[k] for k in tl._EFFECT_KEYS if k in clip}
+    return {"effects": ClipEffects(**given)} if given else {}
 
 
 def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
@@ -141,6 +154,7 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 offset_s=offset / fps,
                 seed=seed,
                 **_grade(clip),
+                **_effects(clip),
             )
 
         for i, clip in enumerate(clips):

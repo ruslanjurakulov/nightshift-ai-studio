@@ -243,6 +243,73 @@
         "grade": {
           "$ref": "#/$defs/grade",
           "description": "Per-clip colour grade (ffmpeg eq). Absent = no change, and the clip renders exactly as it did before colour existed."
+        },
+        "filter": {
+          "enum": [
+            "mono",
+            "sepia",
+            "vintage",
+            "cinematic",
+            "cool",
+            "warm",
+            "high-contrast"
+          ],
+          "description": "A colour look applied to the fitted picture (after grade, before the bars of a contain fit)."
+        },
+        "filter_strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1,
+          "description": "How far toward the look; needs filter. 0 drops the look."
+        },
+        "vignette": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0,
+          "description": "Darkened edges; 0 = off."
+        },
+        "blur": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30.0,
+          "default": 0,
+          "description": "Gaussian blur sigma in output pixels; 0 = off."
+        },
+        "sharpen": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0,
+          "description": "Unsharp mask; 0 = off."
+        },
+        "grain": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0,
+          "description": "Film grain (fixed seed, so a render repeats); 0 = off."
+        },
+        "flip_h": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mirror left-right (after rotate, on the source)."
+        },
+        "flip_v": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mirror top-bottom (after rotate, on the source)."
+        },
+        "rotate": {
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ],
+          "default": 0,
+          "description": "Degrees clockwise, on the source before it is fitted."
         }
       }
     },

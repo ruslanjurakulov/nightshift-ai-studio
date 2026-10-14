@@ -21,6 +21,7 @@ note for text looks).
 |---|--------|--------|-------|
 | 1 | `claude/render-xfade-more` | `transition.style` (23 more names) | PR open |
 | 2 | `claude/render-anim-inout` | text and overlay `anim_in`, `anim_out`, `anim_in_s`, `anim_out_s` | PR open (stacked on 1) |
+| 3 | `claude/render-effects` | V clip `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h`, `flip_v`, `rotate` | PR open (stacked on 2) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -81,3 +82,35 @@ product that the export shows the motion.
 Model round trip: `toModel`/`toDoc` keep all four fields on texts (they are
 spread) and on overlays (`PictureOverlay` in `lib/editor.ts` gained the same
 four optional fields).
+
+## 3. Clip effects (V clips; stills too)
+
+All optional, on a V clip. "Off" values are dropped on save by the backend's
+`normalise` (and by `toModel`), so the model should treat missing as off.
+
+| field | values | default | meaning |
+|-------|--------|---------|---------|
+| `filter` | `mono`, `sepia`, `vintage`, `cinematic`, `cool`, `warm`, `high-contrast` | none | a named colour look |
+| `filter_strength` | 0 – 1 | 1 | how far toward the look; refused without `filter`; 0 drops the look |
+| `vignette` | 0 – 1 | 0 | darkened edges |
+| `blur` | 0 – 30 | 0 | Gaussian sigma in OUTPUT pixels (so it looks the same at any export size only relative to the frame, not to the clip) |
+| `sharpen` | 0 – 1 | 0 | unsharp mask |
+| `grain` | 0 – 1 | 0 | film grain, fixed seed (the same document is the same video) |
+| `flip_h` | true/false | false | mirror left-right |
+| `flip_v` | true/false | false | mirror top-bottom |
+| `rotate` | 0, 90, 180, 270 | 0 | degrees CLOCKWISE |
+
+Order of operations (the UI preview should follow it when it can):
+turn (`rotate`) then mirror, both on the SOURCE before it is fitted (a 90 degree
+turn of a landscape clip is fitted as a portrait picture, so a `contain` fit
+gets side bars); then the fit; then `grade`; then the look; then blur, sharpen,
+grain, vignette; then the bars of a `contain` fit are added (bars stay black).
+With a cross-fade, each side carries its own clip's effects. Speed, fades and
+the cross-fade itself are unchanged.
+
+Preview vs export: a browser can approximate mono, sepia, blur, flip, rotate,
+vignette with CSS filters/transforms; vintage/cinematic/cool/warm/high-contrast
+are curve looks the preview can only approximate, and grain/sharpen have no
+faithful CSS equivalent. Say so in the product.
+
+Not done here (later items): free-angle rotation and crop (item 8).

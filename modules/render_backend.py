@@ -30,6 +30,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import logging
+import math
 import os
 import subprocess
 import tempfile
@@ -126,17 +127,105 @@ def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
 
 
 def grade_filter(seg: Segment) -> str:
-    """The ffmpeg ``eq`` filter for a segment's colour grade ('' when it has
-    none — then NO filter is added and the command is the one it always was).
-    ``format=yuv420p`` first: eq works on the Y/U/V planes (brightness and
-    contrast on the luma, saturation on the chroma); a still read as RGB would
-    otherwise reach it as GBR planes and be graded per channel. The three
-    numbers come from validated floats and are formatted here, never pasted
-    from a document."""
-    if not seg.graded:
+    """The ffmpeg ``eq`` filter for a segment's colour grade, followed by its
+    colour and texture effects ('' when it has neither — then NO filter is
+    added and the command is the one it always was). ``format=yuv420p`` first:
+    eq works on the Y/U/V planes (brightness and contrast on the luma,
+    saturation on the chroma); a still read as RGB would otherwise reach it as
+    GBR planes and be graded per channel. The numbers come from validated
+    floats and are formatted here, never pasted from a document."""
+    parts: List[str] = []
+    if seg.graded:
+        parts.append(f"format=yuv420p,eq=brightness={seg.brightness:.3f}"
+                     f":contrast={seg.contrast:.3f}:saturation={seg.saturation:.3f}")
+    if seg.effects is not None and seg.effects.active:
+        parts.extend(effect_filters(seg.effects))
+    return ",".join(parts)
+
+
+# ── clip effects ────────────────────────────────────────────────────────────
+#
+# A named colour look is a set of control points per channel (``curves``), moved
+# from "no change" toward the look by the strength; mono and sepia are a hue /
+# channel-mix filter moved the same way. Control points are x/y pairs in 0..1.
+
+VIGNETTE_MAX_ANGLE = 0.7
+_FILTER_CURVES = {
+    # lifted blacks, a warm cast, highlights a little dull
+    "vintage": {"r": ((0.0, 0.08), (0.5, 0.53), (1.0, 0.96)),
+                "g": ((0.0, 0.05), (0.5, 0.48), (1.0, 0.90)),
+                "b": ((0.0, 0.12), (0.5, 0.44), (1.0, 0.76))},
+    # teal in the shadows, orange in the highlights
+    "cinematic": {"r": ((0.0, 0.0), (0.3, 0.22), (0.7, 0.78), (1.0, 1.0)),
+                  "g": ((0.0, 0.02), (0.5, 0.5), (1.0, 0.97)),
+                  "b": ((0.0, 0.06), (0.3, 0.36), (0.7, 0.62), (1.0, 0.9))},
+    "cool": {"r": ((0.0, 0.0), (1.0, 0.88)), "b": ((0.0, 0.06), (1.0, 1.0))},
+    "warm": {"r": ((0.0, 0.04), (1.0, 1.0)), "b": ((0.0, 0.0), (1.0, 0.86))},
+    "high-contrast": {"all": ((0.0, 0.0), (0.25, 0.15), (0.75, 0.87), (1.0, 1.0))},
+}
+#: The classic sepia matrix (rows r, g, b of the output over r, g, b of the input).
+_SEPIA = ((0.393, 0.769, 0.189), (0.349, 0.686, 0.168), (0.272, 0.534, 0.131))
+
+
+def _lerp(a: float, b: float, k: float) -> float:
+    return a + (b - a) * k
+
+
+def _curve(points, k: float) -> str:
+    return " ".join(f"{x:.3f}/{_lerp(x, y, k):.3f}" for x, y in points)
+
+
+def colour_filter(name: str, k: float) -> str:
+    """The filter chain of a named look at strength ``k`` (0..1)."""
+    if name == "mono":
+        return f"hue=s={1.0 - k:.3f}"
+    if name == "sepia":
+        ident = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+        keys = ("rr", "rg", "rb", "gr", "gg", "gb", "br", "bg", "bb")
+        vals = [_lerp(ident[i][j], _SEPIA[i][j], k) for i in range(3) for j in range(3)]
+        return "colorchannelmixer=" + ":".join(f"{n}={v:.3f}" for n, v in zip(keys, vals)) + ",format=yuv420p"
+    curves = _FILTER_CURVES.get(name)
+    if curves is None:
+        raise ValueError(f"unknown filter {name!r}")
+    args = ":".join(f"{ch if ch != 'all' else 'master'}='{_curve(pts, k)}'" for ch, pts in curves.items())
+    return f"curves={args},format=yuv420p"
+
+
+def effect_filters(fx) -> List[str]:
+    """The colour and texture filters of a clip's effects, in the order they run
+    (look, blur, sharpen, grain, vignette). The geometric ones are
+    :func:`geometry_filter`. Only listed names and formatted numbers are written."""
+    out: List[str] = []
+    if fx.filter is not None and fx.filter_strength > 0:
+        out.append(colour_filter(fx.filter, fx.filter_strength))
+    if fx.blur > 0:
+        out.append(f"gblur=sigma={fx.blur:.2f}")
+    if fx.sharpen > 0:
+        out.append(f"unsharp=5:5:{1.5 * fx.sharpen:.2f}:5:5:0")
+    if fx.grain > 0:
+        # A fixed seed: random grain would make the same document a different video each time.
+        out.append(f"noise=alls={int(round(30 * fx.grain))}:allf=t:all_seed=1234")
+    if fx.vignette > 0:
+        # A SMALLER lens angle is a weaker vignette (0 = none; measured, tests pin it):
+        # 0.7 rad takes a mid-grey frame's corners to about a third of their level.
+        out.append(f"vignette=angle={VIGNETTE_MAX_ANGLE * fx.vignette:.4f}")
+    return out
+
+
+def geometry_filter(seg: Segment) -> str:
+    """``transpose / hflip / vflip,`` for a clip's turn and mirror ('' without
+    them, so the chain is the one it was). It runs on the SOURCE, before the
+    fit, so a quarter turn is fitted as the portrait picture it has become.
+    Turn first, then mirror."""
+    fx = seg.effects
+    if fx is None or not fx.geometric:
         return ""
-    return (f"format=yuv420p,eq=brightness={seg.brightness:.3f}"
-            f":contrast={seg.contrast:.3f}:saturation={seg.saturation:.3f}")
+    steps = {90: ["transpose=1"], 180: ["hflip", "vflip"], 270: ["transpose=2"]}.get(fx.rotate, [])
+    if fx.flip_h:
+        steps.append("hflip")
+    if fx.flip_v:
+        steps.append("vflip")
+    return ",".join(steps) + ","
 
 
 def _then(grade: str) -> str:
@@ -253,13 +342,13 @@ def _piece_trim(seg: Segment, fps: int) -> str:
 def _static_image_cmd(ffmpeg: str, path: str, dur: str, width: int, height: int,
                       fps: int, common: List[str], out_path: Path, *,
                       length: Optional[List[str]] = None, extra_vf: str = "",
-                      fill: bool = False, grade: str = "") -> List[str]:
+                      fill: bool = False, grade: str = "", pre: str = "") -> List[str]:
     """The still held without a move. ``fill`` crops the middle to cover the
     frame (a timeline's stills, as the Ken Burns move that this stands in for
     does); the default letter/pillar-boxes it, as the pipeline always has."""
     fit = _scale_crop if fill else _scale_pad
     return [ffmpeg, "-y", "-loop", "1", "-i", path, *(length or ["-t", dur]),
-            "-vf", fit(width, height, fps, grade) + extra_vf, *common, str(out_path)]
+            "-vf", pre + fit(width, height, fps, grade) + extra_vf, *common, str(out_path)]
 
 
 def segment_commands(
@@ -321,11 +410,12 @@ def _segment_commands(
         # Same length as the static hold: the frame count is the one the
         # old path produced, only the pixels move.
         grade = grade_filter(seg)
-        vf = ken_burns_filter(style, width, height, fps,
-                              float(full) if frame_exact else float(dur) * fps) + _then(grade) + fades
+        pre = geometry_filter(seg)     # turn / mirror the picture before it is scaled and moved
+        vf = pre + ken_burns_filter(style, width, height, fps,
+                                    float(full) if frame_exact else float(dur) * fps) + _then(grade) + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
                                  length=length if frame_exact else None, extra_vf=fades,
-                                 fill=frame_exact, grade=grade)
+                                 fill=frame_exact, grade=grade, pre=pre)
         return [[ffmpeg, "-y", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     # KIND_VIDEO. -stream_loop -1: a source shorter than its slot is looped (as
     # the MoviePy compositor does with vc.loop) instead of yielding a short
@@ -335,7 +425,8 @@ def _segment_commands(
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
-             "-vf", speed_filter(seg.speed) + fit(width, height, fps, grade_filter(seg)) + fades,
+             "-vf", (speed_filter(seg.speed) + geometry_filter(seg)
+                     + fit(width, height, fps, grade_filter(seg)) + fades),
              *common,
              str(out_path)]]
 
@@ -354,14 +445,14 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     if seg.kind == KIND_IMAGE:
         if hold:
             # A timeline's still fills the frame in the move, so it does held too.
-            return ["-loop", "1", "-i", seg.path], _scale_crop(width, height, fps, grade) + tail
+            return ["-loop", "1", "-i", seg.path], geometry_filter(seg) + _scale_crop(width, height, fps, grade) + tail
         return (["-i", seg.path],
-                ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
+                geometry_filter(seg) + ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
                 + _then(grade) + tail)
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            speed_filter(seg.speed) + fit(width, height, fps, grade) + tail)
+            speed_filter(seg.speed) + geometry_filter(seg) + fit(width, height, fps, grade) + tail)
 
 
 def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,

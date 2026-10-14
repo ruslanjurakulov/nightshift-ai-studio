@@ -175,6 +175,34 @@ export const ANIM_MAX_S = 2;
 export const ANIM_DEFAULT_S = 0.4;
 /** Texts that may write themselves letter by letter in one document. */
 export const MAX_TYPEWRITER_TEXTS = 20;
+/** Clip effects (modules/timeline.py FILTERS / UNIT_EFFECTS / BLUR_MAX /
+ *  ROTATIONS; a test pins them). */
+export const FILTERS = [
+  "mono",
+  "sepia",
+  "vintage",
+  "cinematic",
+  "cool",
+  "warm",
+  "high-contrast",
+] as const;
+export type ClipFilter = (typeof FILTERS)[number];
+export const UNIT_EFFECTS = ["vignette", "sharpen", "grain"] as const;
+/** A Gaussian blur's sigma in output pixels. */
+export const BLUR_MAX = 30;
+export const ROTATIONS = [0, 90, 180, 270] as const;
+export type Rotation = (typeof ROTATIONS)[number];
+const EFFECT_KEYS = [
+  "filter",
+  "filter_strength",
+  "vignette",
+  "blur",
+  "sharpen",
+  "grain",
+  "flip_h",
+  "flip_v",
+  "rotate",
+];
 /** A text's drop shadow, in output pixels (modules/timeline.py SHADOW_MAX). */
 export const SHADOW_MAX = 20;
 /** A text box's opacity when its colour is set without one. */
@@ -219,6 +247,7 @@ const V_CLIP_KEYS = [
   "speed",
   "audio",
   "grade",
+  ...EFFECT_KEYS,
 ];
 const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
 const T_REQUIRED = ["id", "start_s", "end_s", "text"];
@@ -283,6 +312,20 @@ export interface VideoClip {
   fit?: "contain" | "cover";
   /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorGrade.ts. */
   grade?: ClipGrade;
+  /** Effects (modules/timeline.py): all optional, absent = off. A turn and
+   *  mirror act on the source before it is fitted; the rest on the picture. */
+  filter?: ClipFilter;
+  /** 0-1; 1 when absent. Needs a `filter`. */
+  filter_strength?: number;
+  vignette?: number;
+  /** Gaussian sigma in output pixels, 0-BLUR_MAX. */
+  blur?: number;
+  sharpen?: number;
+  grain?: number;
+  flip_h?: boolean;
+  flip_v?: boolean;
+  /** Degrees clockwise: 0, 90, 180 or 270. */
+  rotate?: Rotation;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -764,6 +807,7 @@ function validateMediaClip(
           `${where} grade`,
           problems,
         );
+    validateEffects(clip, where, problems);
     if ("transition" in clip) {
       const tr = clip.transition;
       if (
@@ -802,6 +846,32 @@ function validateMediaClip(
   } else {
     numIn(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems);
   }
+}
+
+/** The twin of modules/timeline.py `_validate_effects`. */
+function validateEffects(
+  clip: Record<string, unknown>,
+  where: string,
+  problems: string[],
+) {
+  if (
+    "filter" in clip &&
+    !(typeof clip.filter === "string" && (FILTERS as readonly string[]).includes(clip.filter))
+  )
+    problems.push(`${where}: filter is not available`);
+  numIn(clip, "filter_strength", 0, 1, where, problems);
+  if ("filter_strength" in clip && !("filter" in clip))
+    problems.push(`${where}: filter_strength needs a filter`);
+  for (const k of UNIT_EFFECTS) numIn(clip, k, 0, 1, where, problems);
+  numIn(clip, "blur", 0, BLUR_MAX, where, problems);
+  for (const k of ["flip_h", "flip_v"])
+    if (k in clip && typeof clip[k] !== "boolean")
+      problems.push(`${where}: ${k} must be true or false`);
+  if (
+    "rotate" in clip &&
+    !(isInt(clip.rotate) && (ROTATIONS as readonly number[]).includes(clip.rotate))
+  )
+    problems.push(`${where}: rotate must be 0, 90, 180 or 270`);
 }
 
 function validateTimedText(
@@ -1346,6 +1416,23 @@ function gradeFieldOf(v: unknown): { grade: ClipGrade } | object {
   return isNeutralGrade(grade) ? {} : { grade };
 }
 
+/** A document clip's effect fields as the model holds them: only the ones
+ *  that are usable and not "off" (the validator has the strict rules). */
+function effectsOf(c: Record<string, unknown>): Partial<VideoClip> {
+  const out: Record<string, unknown> = {};
+  if (typeof c.filter === "string" && (FILTERS as readonly string[]).includes(c.filter)) {
+    out.filter = c.filter;
+    if (isNum(c.filter_strength) && c.filter_strength !== 1)
+      out.filter_strength = c.filter_strength;
+  }
+  for (const k of [...UNIT_EFFECTS, "blur"])
+    if (isNum(c[k]) && c[k] !== 0) out[k] = c[k];
+  for (const k of ["flip_h", "flip_v"]) if (c[k] === true) out[k] = true;
+  if (isInt(c.rotate) && (ROTATIONS as readonly number[]).includes(c.rotate) && c.rotate !== 0)
+    out.rotate = c.rotate;
+  return out as Partial<VideoClip>;
+}
+
 function transitionOf(v: unknown): { transition: Transition } | object {
   if (
     !isObj(v) ||
@@ -1427,6 +1514,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
         ? { fit: c.fit as "cover" | "contain" }
         : {}),
       ...gradeFieldOf(c.grade),
+      ...effectsOf(c),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
         ? { fade_in_s: c.fade_in_s }

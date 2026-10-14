@@ -19,7 +19,9 @@ not a project dependency — tests keep the two in sync)::
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
                              style?: <one of XFADE_STYLES, crossfade only> },
               speed?: 0.5..2, audio?: bool,
-              grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 } }
+              grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
+              filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
+              flip_h?, flip_v?, rotate? }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
@@ -97,6 +99,18 @@ Rules this module keeps:
   ``grade`` is dropped by ``normalise`` for the same reason. It applies to
   the picture only (bars of a ``contain`` fit and fades to black stay black)
   and to stills as well as video.
+* **Effects are named, closed and clamped.** A V clip may carry ``filter`` (one
+  of ``FILTERS``: a colour look) with ``filter_strength`` (0-1, 1 when absent,
+  needs a ``filter``), ``vignette`` / ``sharpen`` / ``grain`` (0-1), ``blur`` (a
+  Gaussian sigma in output pixels, 0-``BLUR_MAX``), ``flip_h`` / ``flip_v``
+  (mirror) and ``rotate`` (0, 90, 180 or 270 degrees clockwise). Rotation and
+  mirroring happen on the source before it is fitted to the frame (so a 90-degree
+  turn of a landscape clip is fitted as a portrait picture); the colour and
+  texture effects run on the fitted picture, after ``grade`` and before the
+  bars of a ``contain`` fit are added (bars stay black). They apply to stills
+  as well as video, on both sides of a cross-fade. Every value that means "off"
+  (no ``filter``, 0, ``false``, 0 degrees) is dropped by ``normalise``, and a
+  clip without effects renders the command it always did.
 * **Overlays are a layer above the picture, not a second picture lane.**
   ``overlays`` is a top-level list (so "one V track" stays true): each one is
   a picture or a video (``asset_id``) shown from ``start_s`` to ``end_s`` over
@@ -237,6 +251,15 @@ ANIM_POP_FROM = 0.6
 #: the subtitle file (and libass) small however long the document is.
 MAX_TYPEWRITER_TEXTS = 20
 
+#: Clip effects (render_spec.FILTERS / EFFECT_* are the same; a test pins them).
+#: The name picks the filter written, so it is never free text.
+FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
+UNIT_EFFECTS = ("vignette", "sharpen", "grain")      # 0..1, 0 = off
+BLUR_MAX = 30.0                                       # Gaussian sigma, output pixels
+ROTATIONS = (0, 90, 180, 270)
+_EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
+                "flip_h", "flip_v", "rotate")
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -263,7 +286,7 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade")
+                                  "grade") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -588,6 +611,7 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
                                        f"{where} grade", problems):
             for k, (lo, hi) in GRADE_RANGES.items():
                 _num_in(clip["grade"], k, lo, hi, f"{where} grade", problems)
+        _validate_effects(clip, where, problems)
         if "transition" in clip:
             tr = clip["transition"]
             if _fields(tr, _TRANSITION_ALLOWED, _TRANSITION_KEYS, f"{where} transition", problems):
@@ -605,6 +629,23 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
                     _num_in(tr, "duration_s", 0, 10.0, f"{where} transition", problems)
     else:
         _num_in(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems)
+
+
+def _validate_effects(clip, where, problems) -> None:
+    """The effect fields of a V clip (see the module docstring)."""
+    if "filter" in clip and not (isinstance(clip["filter"], str) and clip["filter"] in FILTERS):
+        problems.append(f"{where}: filter must be one of {list(FILTERS)}")
+    _num_in(clip, "filter_strength", 0, 1, where, problems)
+    if "filter_strength" in clip and "filter" not in clip:
+        problems.append(f"{where}: filter_strength needs a filter")
+    for k in UNIT_EFFECTS:
+        _num_in(clip, k, 0, 1, where, problems)
+    _num_in(clip, "blur", 0, BLUR_MAX, where, problems)
+    for k in ("flip_h", "flip_v"):
+        if k in clip and not isinstance(clip[k], bool):
+            problems.append(f"{where}: {k} must be true or false")
+    if "rotate" in clip and not (_is_int(clip["rotate"]) and clip["rotate"] in ROTATIONS):
+        problems.append(f"{where}: rotate must be one of {list(ROTATIONS)}")
 
 
 def _validate_timed_text(obj, where, problems) -> None:
@@ -998,6 +1039,7 @@ def normalise(doc: dict) -> dict:
                         c["grade"] = {k: _ms(c["grade"][k]) for k in GRADE_RANGES}
                         if c["grade"] == GRADE_NEUTRAL:
                             del c["grade"]   # no change: the clip is the one it was without it
+                    _normalise_effects(c)
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
             t["clips"].append(c)
@@ -1023,6 +1065,28 @@ def normalise(doc: dict) -> dict:
             _normalise_anims(o)
             out["overlays"].append(o)
     return out
+
+
+def _normalise_effects(c: dict) -> None:
+    """Round the effect numbers and drop every one that means "off", so a clip
+    that says "no effect" is the clip that never mentioned one."""
+    for k in (*UNIT_EFFECTS, "blur", "filter_strength"):
+        if k in c:
+            c[k] = _ms(c[k])
+    for k in (*UNIT_EFFECTS, "blur"):
+        if c.get(k) == 0:
+            del c[k]
+    if "filter" in c:
+        if c.get("filter_strength", 1.0) == 0:
+            del c["filter"]
+            c.pop("filter_strength", None)
+        elif c.get("filter_strength") == 1.0:
+            del c["filter_strength"]
+    for k in ("flip_h", "flip_v"):
+        if c.get(k) is False:
+            del c[k]
+    if c.get("rotate") == 0:
+        del c["rotate"]
 
 
 def _normalise_anims(item: dict) -> None:

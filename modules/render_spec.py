@@ -221,6 +221,12 @@ ANIM_MIN_S, ANIM_MAX_S, ANIM_DEFAULT_S = 0.1, 2.0, 0.4
 ANIM_SLIDE = 0.15
 ANIM_POP_FROM = 0.6
 
+#: Clip effects (modules/timeline.py holds the same lists and numbers; a test pins
+#: them). Only a name on FILTERS and formatted numbers reach a filter graph.
+FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
+BLUR_MAX = 30.0
+ROTATIONS = (0, 90, 180, 270)
+
 #: Text overlay anchors: which point of the text box sits at (x, y). The ASS
 #: \an numpad code for each is in ass_captions.ANCHOR_AN.
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
@@ -289,6 +295,71 @@ def _anim_problems(name: str, o, allowed_in: Sequence[str], span: Tuple[float, f
 
 
 @dataclass(frozen=True)
+class ClipEffects:
+    """A clip's look beyond the colour grade (see modules/timeline.py): a named
+    colour ``filter`` at ``filter_strength``, ``vignette`` / ``sharpen`` /
+    ``grain`` (0-1), ``blur`` (a sigma in output pixels), mirror and a turn in
+    quarter steps. Every default is "off"; a segment without effects has
+    ``effects=None`` and renders the command it always did."""
+    filter: Optional[str] = None
+    filter_strength: float = 1.0
+    vignette: float = 0.0
+    blur: float = 0.0
+    sharpen: float = 0.0
+    grain: float = 0.0
+    flip_h: bool = False
+    flip_v: bool = False
+    rotate: int = 0
+
+    @property
+    def active(self) -> bool:
+        return self != ClipEffects()
+
+    @property
+    def geometric(self) -> bool:
+        return bool(self.flip_h or self.flip_v or self.rotate)
+
+    def to_dict(self) -> dict:
+        d: dict = {}
+        base = ClipEffects()
+        for key in ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
+                    "flip_h", "flip_v", "rotate"):
+            _put_if(d, key, getattr(self, key), getattr(base, key))
+        return d
+
+    @staticmethod
+    def from_dict(d: dict) -> "ClipEffects":
+        base = ClipEffects()
+        return ClipEffects(
+            filter=(str(d["filter"]) if d.get("filter") is not None else None),
+            filter_strength=float(d["filter_strength"] if d.get("filter_strength") is not None
+                                  else base.filter_strength),
+            vignette=float(d.get("vignette") or 0.0), blur=float(d.get("blur") or 0.0),
+            sharpen=float(d.get("sharpen") or 0.0), grain=float(d.get("grain") or 0.0),
+            flip_h=bool(d.get("flip_h", False)), flip_v=bool(d.get("flip_v", False)),
+            rotate=int(d.get("rotate") or 0),
+        )
+
+
+def _effects_problems(name: str, fx: ClipEffects) -> List[str]:
+    problems: List[str] = []
+    if fx.filter is not None and fx.filter not in FILTERS:
+        problems.append(f"{name} has unknown filter {fx.filter!r}")
+    for key in ("filter_strength", "vignette", "sharpen", "grain"):
+        v = getattr(fx, key)
+        if not (_finite(v) and 0 <= v <= 1):
+            problems.append(f"{name} {key} must be from 0 to 1 (got {v})")
+    if not (_finite(fx.blur) and 0 <= fx.blur <= BLUR_MAX):
+        problems.append(f"{name} blur must be from 0 to {BLUR_MAX:g} (got {fx.blur})")
+    for key in ("flip_h", "flip_v"):
+        if not isinstance(getattr(fx, key), bool):
+            problems.append(f"{name} {key} must be true or false")
+    if not (isinstance(fx.rotate, int) and not isinstance(fx.rotate, bool) and fx.rotate in ROTATIONS):
+        problems.append(f"{name} rotate must be one of {list(ROTATIONS)}")
+    return problems
+
+
+@dataclass(frozen=True)
 class Segment:
     """One timeline segment. `path` is a pre-normalised clip/image file, or None
     for a solid-colour placeholder. `duration` is the seconds it occupies.
@@ -326,6 +397,8 @@ class Segment:
     brightness: float = 0.0
     contrast: float = 1.0
     saturation: float = 1.0
+    #: Filters, vignette, blur, mirror, turn (None = none).
+    effects: Optional[ClipEffects] = None
 
     @property
     def graded(self) -> bool:
@@ -345,6 +418,8 @@ class Segment:
         _put_if(d, "brightness", self.brightness, 0.0)
         _put_if(d, "contrast", self.contrast, 1.0)
         _put_if(d, "saturation", self.saturation, 1.0)
+        if self.effects is not None:
+            d["effects"] = self.effects.to_dict()
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -368,6 +443,7 @@ class Segment:
             brightness=float(d.get("brightness") or 0.0),
             contrast=float(1.0 if d.get("contrast") is None else d["contrast"]),
             saturation=float(1.0 if d.get("saturation") is None else d["saturation"]),
+            effects=(ClipEffects.from_dict(d["effects"]) if isinstance(d.get("effects"), dict) else None),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -657,6 +733,8 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
     if not _speed_ok(seg.speed):
         problems.append(f"{name} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g} "
                         f"(got {seg.speed})")
+    if seg.effects is not None:
+        problems.extend(_effects_problems(name, seg.effects))
     if seg.xfade_style not in XFADE_STYLES:
         problems.append(f"{name} has unknown cross-fade style {seg.xfade_style!r}")
     elif seg.xfade_style != XFADE_DEFAULT_STYLE and seg.xfade is None:
