@@ -122,6 +122,8 @@ import { useEditorDraft } from "./useEditorDraft";
 import { SoundPreview } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
+import { CaptionPreview } from "./CaptionPreview";
+import { isCaptionStyleId, perWordCueIds } from "@/lib/captionStyleTable";
 import {
   fitOf,
   previewFrameStyle,
@@ -1139,6 +1141,19 @@ export function TimelineEditor({
             ) : null}
             {cuesAt(model, playhead).map((c) => {
               const st = captionsOf(model)?.style;
+              // An animated style has its own approximate preview; a plain caption keeps the one it always had.
+              if (st && isCaptionStyleId(st.preset)) {
+                return (
+                  <CaptionPreview
+                    key={c.id}
+                    cue={c}
+                    style={st}
+                    playhead={playhead}
+                    frameWidth={model.width}
+                    perWord={perWordCueIds(captionsOf(model)?.cues ?? []).has(c.id)}
+                  />
+                );
+              }
               return st ? (
                 <span
                   key={c.id}
@@ -1177,6 +1192,9 @@ export function TimelineEditor({
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
             {overlays.length ? ` ${te.overlay.previewNote}` : ""}
+            {isCaptionStyleId(captionsOf(model)?.style.preset)
+              ? ` ${t.captions.animated.previewNote}`
+              : ""}
           </p>
           {/* The header panel's note about free export and nothing being published, here below the picture on a phone so the controls above start higher. */}
           <p className="m-0 text-center text-xs text-[var(--color-muted)] sm:hidden">

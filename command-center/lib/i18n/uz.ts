@@ -5,6 +5,7 @@ import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
 import { looksUz } from "./editor-looks/uz";
+import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
@@ -4541,6 +4542,21 @@ export const uz: Dictionary = {
     downloadSrt: ".srt yuklab olish",
     downloadVtt: ".vtt yuklab olish",
     defaultFile: "subtitrlar",
+    /** Animatsiyali uslublar: ./caption-styles/uz.ts. */
+    animated: captionStylesUz,
+    addCue: "Subtitr qoʻshish",
+    importFile: ".srt yoki .vtt yuklash",
+    importNote: "Subtitrlarni oʻzingiz yozing yoki ular bilan fayl yuklang. Ikkalasi ham bepul, nutqni matnga aylantirish shart emas.",
+    newCueText: "Yangi subtitr",
+    addNoRoom: "Yana bitta subtitr uchun joy yoʻq: tasvir juda erta tugaydi.",
+    importTooBig: "Fayl juda katta (1 MB dan ortiq).",
+    importFailed: "Faylni oʻqib boʻlmadi.",
+    importOutside: "Bu fayldagi barcha subtitrlar tasvir tugaganidan keyin keladi, shuning uchun hech biri qoʻshilmadi.",
+    importNone: "Bu faylda subtitrlar topilmadi. .srt yoki .vtt fayl kerak.",
+    importReplace: "Bu siz koʻrayotgan subtitrlarni, tahrirlaringiz bilan birga, almashtiradi. Davom etilsinmi?",
+    imported: "{n} ta subtitr yuklandi. Saqlab qolish uchun loyihani saqlang.",
+    importedSome: "{n} ta subtitr yuklandi; {skipped} tasini ishlatib boʻlmadi. Saqlab qolish uchun loyihani saqlang.",
+    noCuesManual: "Hozircha subtitr yoʻq. Bittasini qoʻshing yoki .srt yoki .vtt fayl yuklang.",
   },
   workflows: {
     title: "Ssenariylar",
