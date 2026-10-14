@@ -171,7 +171,6 @@ export const uz: LegalTexts = {
             },
           },
           "Uchinchi tomonlar. Narxlar sahifasi toʻlov provayderimiz Paddle’dan narxlarni koʻrib chiqish skriptini yuklaydi, shunda narxlar sizning valyutangizda koʻrinadi. Skript va u yoki Paddle’ning kontent tarmogʻi oʻrnatadigan har qanday cookie (masalan, botlardan himoya cookieʼsi) Paddle’ga tegishli; [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) bilan tanishing. Toʻlov Paddle’ning oʻz oynasida amalga oshadi. YouTube akkauntingizni ulaganingizda siz Google’ga yoʻnaltirilasiz. Boshqa uchinchi tomon skriptlarini yuklamaymiz.",
-          "Sahifa statistikasi. Qaysi ochiq sahifalar oʻqilishini bilish uchun biz koʻrishlarni oʻz serverlarimizda oʻzimiz sanaymiz: har bir ochiq sahifa va har bir kun uchun — nechta koʻrish, qaysi saytdan kelingan (faqat uning nomi), telefon oʻlchamidagi yoki kattaroq ekranda va qaysi tilda. Bunda cookie ham, mahalliy xotira ham ishlatilmaydi, IP manzil, user agent va hech qanday identifikator saqlanmaydi, shuning uchun statistikani siz yoki boshqa tashriflaringiz bilan bogʻlab boʻlmaydi. Brauzeringiz Do Not Track yoki Global Privacy Control yuborsa, hech narsa sanalmaydi. Hech qanday maʼlumot analitika provayderiga ketmaydi.",
           "Cookie va mahalliy xotirani brauzer sozlamalarida istalgan vaqtda oʻchirishingiz mumkin. Shunda Xizmat tilingizni, mavzuingizni va koʻrinish tanlovingizni unutadi, siz esa tizimdan chiqasiz.",
         ],
       },

@@ -178,7 +178,6 @@ export const en: LegalTexts = {
             },
           },
           "Third parties. The Pricing page loads a price-preview script from Paddle, our payment provider, so that prices show in your currency. The script and any cookie it or Paddle’s content network sets (for example a bot-protection cookie) are Paddle’s; see the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy). Checkout runs in Paddle’s own window. When you connect your YouTube account you are sent to Google. We load no other third-party scripts.",
-          "Page statistics. To see which public pages are read, we count page views ourselves, on our own servers: for each public page and each day, how many views, from which referring website (its name only), on a phone-sized or a larger screen, and in which language. This uses no cookie and no local storage, and stores no IP address, user agent or identifier, so it cannot be tied to you or to your other visits. If your browser sends Do Not Track or Global Privacy Control, nothing is counted. No data goes to an analytics provider.",
           "You can delete cookies and local storage in your browser’s settings at any time. The Service then forgets your language, theme and view choices, and you are signed out.",
         ],
       },

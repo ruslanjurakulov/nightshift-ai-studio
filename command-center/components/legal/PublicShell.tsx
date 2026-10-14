@@ -7,7 +7,6 @@ import { PublicFooter } from "@/components/legal/PublicFooter";
 import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { SiteEffects } from "@/components/site/SiteEffects";
-import { PageViewBeacon } from "@/components/site/PageViewBeacon";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
 import { devFor } from "@/lib/i18n/dev";
 import "@/components/site/site.css";
@@ -107,7 +106,6 @@ export function PublicShell({
       </main>
       <PublicFooter t={t} />
       <SiteEffects />
-      <PageViewBeacon />
     </div>
   );
 }
