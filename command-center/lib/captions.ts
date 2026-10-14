@@ -478,6 +478,123 @@ export function removeCue(model: EditorModel, id: string): EditorModel {
   return setCaptions(model, { style: cur.style, cues: cur.cues.filter((c) => c.id !== id) });
 }
 
+/** The shortest a person-added or split cue is. */
+const MIN_EDIT_CUE_S = 0.2;
+
+/** An id no cue of the model uses: the document's cue prefix and the next free number. */
+function nextCueId(model: Pick<EditorModel, "clips" | "texts" | "sounds" | "keep">, cues: readonly Cue[]): string {
+  const prefix = captionIdPrefix(model);
+  let n = 0;
+  for (const c of cues) {
+    const m = c.id.startsWith(prefix) ? /^\d+$/.exec(c.id.slice(prefix.length)) : null;
+    if (m) n = Math.max(n, Number(m[0]));
+  }
+  let id = `${prefix}${n + 1}`;
+  const taken = new Set(cues.map((c) => c.id));
+  while (taken.has(id)) id = `${prefix}${++n + 1}`;
+  return id;
+}
+
+/**
+ * A new, empty caption right after cue `afterId` (or after the last one, or at
+ * the start when there are none): up to two seconds long, never into the next
+ * cue and never past the picture. Unchanged when there is no room for it. The
+ * empty text is flagged by cueWarnings until the person writes something.
+ */
+export function addCueAfter(model: EditorModel, afterId: string | null, pictureEnd: number): EditorModel {
+  const cur = captionsOf(model);
+  const cues = cur?.cues ?? [];
+  const at = afterId === null ? cues.length - 1 : cues.findIndex((c) => c.id === afterId);
+  if (afterId !== null && at < 0) return model;
+  const start = at >= 0 ? cues[at].end_s : 0;
+  const hi = Math.min(at + 1 < cues.length ? cues[at + 1].start_s : Infinity, pictureEnd);
+  const end = Math.min(start + 2, hi);
+  if (!(end - start >= MIN_EDIT_CUE_S) || cues.length >= MAX_CUES) return model;
+  const next = cues.slice();
+  next.splice(at + 1, 0, { id: nextCueId(model, cues), start_s: ms(start), end_s: ms(end), text: "" });
+  return setCaptions(model, { style: cur?.style ?? styleFor(DEFAULT_PRESET, model.width, model.height), cues: next });
+}
+
+/** Joins a cue with the one after it (its words, then the next one's; from the first start to the second end). */
+export function mergeWithNext(model: EditorModel, id: string): EditorModel {
+  const cur = captionsOf(model);
+  if (!cur) return model;
+  const i = cur.cues.findIndex((c) => c.id === id);
+  if (i < 0 || i + 1 >= cur.cues.length) return model;
+  const a = cur.cues[i];
+  const b = cur.cues[i + 1];
+  const text = [a.text.trim(), b.text.trim()].filter(Boolean).join(" ");
+  if (text.length > MAX_TEXT) return model;
+  const next = cur.cues.slice();
+  next.splice(i, 2, { ...a, text, end_s: b.end_s });
+  return setCaptions(model, { style: cur.style, cues: next });
+}
+
+/**
+ * Cuts a cue in two at the word boundary nearest its middle (by letters), the
+ * time split in the same proportion. Unchanged when it has fewer than two
+ * words or either half would be shorter than a fifth of a second.
+ */
+export function splitCue(model: EditorModel, id: string): EditorModel {
+  const cur = captionsOf(model);
+  if (!cur || cur.cues.length >= MAX_CUES) return model;
+  const i = cur.cues.findIndex((c) => c.id === id);
+  if (i < 0) return model;
+  const c = cur.cues[i];
+  const words = c.text.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return model;
+  const total = words.reduce((n, w) => n + w.length, 0);
+  let cut = 1;
+  let head = words[0].length;
+  let best = Infinity;
+  for (let k = 1, run = 0; k < words.length; k++) {
+    run += words[k - 1].length;
+    const gap = Math.abs(run - total / 2);
+    if (gap < best) {
+      best = gap;
+      cut = k;
+      head = run;
+    }
+  }
+  const mid = ms(c.start_s + ((c.end_s - c.start_s) * head) / total);
+  if (mid - c.start_s < MIN_EDIT_CUE_S || c.end_s - mid < MIN_EDIT_CUE_S) return model;
+  const first: Cue = { ...c, text: words.slice(0, cut).join(" "), end_s: mid };
+  const second: Cue = { id: nextCueId(model, cur.cues), start_s: mid, end_s: c.end_s, text: words.slice(cut).join(" ") };
+  const next = cur.cues.slice();
+  next.splice(i, 1, first, second);
+  return setCaptions(model, { style: cur.style, cues: next });
+}
+
+/**
+ * Replaces every occurrence of a word or phrase in the cues' text (plain text,
+ * not a pattern; letter case ignored) — the fix for a name the transcript
+ * heard wrongly many times. A cue whose result would be longer than a caption
+ * may be is left as it was and counted in `skipped`. `changed` counts the cues that changed.
+ */
+export function replaceInCues(
+  model: EditorModel,
+  find: string,
+  replacement: string,
+): { model: EditorModel; changed: number; skipped: number } {
+  const cur = captionsOf(model);
+  const needle = find.trim();
+  if (!cur || !needle) return { model, changed: 0, skipped: 0 };
+  const re = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
+  let changed = 0;
+  let skipped = 0;
+  const cues = cur.cues.map((c) => {
+    const text = c.text.replace(re, () => replacement);
+    if (text === c.text) return c;
+    if (text.length > MAX_TEXT) {
+      skipped += 1;
+      return c;
+    }
+    changed += 1;
+    return { ...c, text };
+  });
+  return changed ? { model: setCaptions(model, { style: cur.style, cues }), changed, skipped } : { model, changed: 0, skipped };
+}
+
 /** The cues on screen at `t`. */
 export function cuesAt(model: Pick<EditorModel, "captions">, t: number): Cue[] {
   return (captionsOf(model)?.cues ?? []).filter((c) => t >= c.start_s && t < c.end_s);

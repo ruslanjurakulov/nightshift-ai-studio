@@ -80,7 +80,7 @@ WRAPPERS = ("data", "result", "job", "resp", "response")
 _SAFE_ID = re.compile(r"(?!.*\.\.)[A-Za-z0-9_./:-]{1,256}")
 _PATH = re.compile(r"^/[A-Za-z0-9._~/{}-]{0,200}$")
 _TYPES = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm", ".mkv": "video/x-matroska"}
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
 
 
 def unwrap(payload) -> dict:

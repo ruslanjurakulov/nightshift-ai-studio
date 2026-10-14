@@ -512,7 +512,8 @@ begin
   end if;
   if p_capability in ('expand', 'relight', 'erase') and p_params ? 'prompt' then
     -- Short, one line of plain text: it is a few words about the picture, not a brief.
-    if (p_params ->> 'prompt') ~ '[[:cntrl:]]' then
+    -- Control characters and the Unicode line / paragraph separators (U+2028, U+2029) and NEL (U+0085).
+    if (p_params ->> 'prompt') ~ ('[[:cntrl:]' || chr(133) || chr(8232) || chr(8233) || ']') then
       return format('prompt must be plain text on one line for %s', p_capability);
     end if;
     if p_capability = 'erase' and char_length(p_params ->> 'prompt') > 200 then

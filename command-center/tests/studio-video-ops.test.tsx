@@ -287,6 +287,7 @@ describe("the route's shape check", () => {
     expect(bad("video_edit", { prompt: "  " })).toBe("invalid_params");
     expect(bad("video_edit", { prompt: "x".repeat(501) })).toBe("invalid_params");
     expect(bad("video_edit", { prompt: "a\nb" })).toBe("invalid_params");
+    expect(bad("video_edit", { prompt: "a\u2028b" })).toBe("invalid_params");
     expect(bad("video_edit", { prompt: "x", aspect_ratio: "16:9" })).toBe("invalid_params");
     expect(bad("video_edit", { prompt: "x", negative_prompt: "y" })).toBe("invalid_params");
     expect(bad("video_edit", { prompt: "x", resolution: "1080p" })).toBe("invalid_params");

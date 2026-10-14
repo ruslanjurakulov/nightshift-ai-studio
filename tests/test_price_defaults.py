@@ -73,6 +73,7 @@ UNPRICED_ON_PURPOSE = {
     "model_generic_video_edit_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_generic_video_reframe_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_generic_video_remove_bg_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
+    "model_assemblyai_universal_2_second": "registry: no price read, not sold (terms not reviewed)",
     "usd": "pricing a ledger unit changes run settlement (metered vs hold): owner policy",
     "gemini_input_tokens": "ledger unit: owner policy",
     "gemini_output_tokens": "ledger unit: owner policy",

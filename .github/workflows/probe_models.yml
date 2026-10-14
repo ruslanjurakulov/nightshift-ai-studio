@@ -80,6 +80,12 @@ jobs:
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
           WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          # The video ops' generic provider (0100): all four unset = the probe is skipped, nothing is called.
+          VIDEO_OPS_API_KEY: ${{ secrets.VIDEO_OPS_API_KEY }}
+          VIDEO_OPS_BASE_URL: ${{ vars.VIDEO_OPS_BASE_URL }}
+          VIDEO_OPS_SUBMIT_PATH: ${{ vars.VIDEO_OPS_SUBMIT_PATH }}
+          VIDEO_OPS_QUERY_PATH: ${{ vars.VIDEO_OPS_QUERY_PATH }}
+          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
           # The voice for the speech probes; without it they are skipped.
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
         run: |

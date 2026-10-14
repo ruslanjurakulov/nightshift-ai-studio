@@ -520,7 +520,8 @@ begin
   if p_capability = 'video_edit' then
     -- 0100: what to change, as a short line of plain text (prompt itself is
     -- required above, as for every capability that is asked by words).
-    if (p_params ->> 'prompt') ~ '[[:cntrl:]]' then
+    -- Control characters, the Unicode line / paragraph separators and NEL (as 0099's picture ops).
+    if (p_params ->> 'prompt') ~ ('[[:cntrl:]' || chr(133) || chr(8232) || chr(8233) || ']') then
       return 'prompt must be plain text on one line for video_edit';
     end if;
     if char_length(p_params ->> 'prompt') > 500 then

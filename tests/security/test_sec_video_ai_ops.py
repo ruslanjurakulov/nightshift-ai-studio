@@ -239,6 +239,8 @@ def test_changing_the_shapes_needs_a_new_probe(db):
     ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": 4}, "prompt is required"),
     ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": "a" * 501}, "longer than 500"),
     ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": "one\ntwo"}, "plain text"),
+    ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": "one\u2028two"}, "plain text"),
+    ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": "one\u2029two"}, "plain text"),
     ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": "x", "aspect_ratio": "16:9"}, "aspect_ratio does not apply"),
     ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": "x", "negative_prompt": "y"}, "does not apply"),
     ("video_edit", "vops", {"source_asset_id": "SRC", "prompt": "x", "resolution": "1080p"}, "does not apply"),

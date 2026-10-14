@@ -263,6 +263,7 @@ class Adapter(Tmp):
         cases = [
             ("video_edit", dict(), "words for what to change"),
             ("video_edit", dict(prompt="x" * 501), "at most 500"),
+            ("video_edit", dict(prompt="\u2028 \u2029"), "words for what to change"),
             ("video_edit", dict(prompt="x", aspect_ratio="1:1"), "keeps the video's own shape"),
             ("video_reframe", dict(), "needs one of the shapes"),
             ("video_reframe", dict(aspect_ratio="21:9"), "needs one of the shapes"),
