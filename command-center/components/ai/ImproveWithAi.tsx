@@ -7,6 +7,7 @@ import { LibraryDialog } from "@/components/media/LibraryDialog";
 import { SendDialog } from "@/components/editor/SendToEditor";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
+import { isUuid } from "@/lib/creative/operations";
 import { improveAvailable, improveHref, improveTools, isStudioTool, type ImproveKind, type ImproveTool } from "@/lib/creative/improve";
 
 /**
@@ -74,7 +75,8 @@ export function ImproveWithAi({
   };
 
   const tools = improveTools(kind);
-  if (tools.length === 0) return null;
+  // A file id that is not an id has nothing the Studio could open: no button rather than a dead end.
+  if (tools.length === 0 || !isUuid(assetId)) return null;
 
   // Captions need somewhere to be made: the editor (here) or a way into it (from the library).
   const captionsWay: "here" | "send" | null = onCaptions ? "here" : orgId && kind === "video" ? "send" : null;
