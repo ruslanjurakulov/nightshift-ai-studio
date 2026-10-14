@@ -38,6 +38,11 @@
 --   the review copy of the video that a live link names.
 --
 -- WHAT THE POLICY IS NOT
+--   * not a way to SIGN or LIST: a SELECT policy is also what Storage evaluates for sign, list and info, and a
+--     signed URL outlives a revoke (and a CDN keeps what it served). So the policy is limited to the two READ
+--     operations by storage.allow_any_operation(...). If that helper does not exist (older Storage) the policy is
+--     not created at all and the feature fails closed with a NOTICE; if Storage ever renames the operations the
+--     links stop playing and nothing is served;
 --   * not a read of the bucket: without the header, or with a token that is
 --     unknown, expired, revoked, or whose video's review copy was pruned, the
 --     policy returns false and anon sees no row (read, list, sign — all the same
@@ -50,7 +55,9 @@
 --   * not a stored secret: the header carries the TOKEN and the function hashes
 --     it, so the stored hashes cannot be turned into access if the table leaks.
 --   Anyone holding a live token can read that one file straight from the Storage
---   API with the (public) anon key, not only through the Command Center. That is
+--   API with the (public) anon key, not only through the Command Center. The token is in the URL path, so it
+--   appears in access logs (Vercel / Caddy) like any capability URL. A link stays live after its maker leaves
+--   the organization; any admin can revoke it. That is
 --   what the token is: the capability to watch this preview, until it expires or
 --   is revoked. It is not the master file, not the download, not any other video.
 --
@@ -343,13 +350,31 @@ end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 5. The storage policy (anon, SELECT, one object)
+-- 5. The storage policy (anon, SELECT, one object, reading only)
 -- ───────────────────────────────────────────────────────────────────────────
 
 drop policy if exists previews_review_link_read on storage.objects;
-create policy previews_review_link_read on storage.objects
-  for select to anon
-  using (public.review_link_allows(bucket_id, name));
+do $$
+begin
+  if to_regprocedure('storage.allow_any_operation(text[])') is null then
+    -- FAIL CLOSED: without Storage's operation helper the policy could not be limited to READING, and a SELECT
+    -- policy also serves sign / list / info. So it is not created and review links do not play.
+    raise notice '0101: storage.allow_any_operation(text[]) is missing (older Storage). The anon policy previews_review_link_read was NOT created: review links will not play (nothing leaks). Upgrade Storage, then re-run section 5.';
+  else
+    -- Only these two operations: the authenticated read of the object and its info. NOT object.sign (a signed URL
+    -- outlives a revoke and a CDN keeps what it served), NOT object.list, NOT any other. Storage normalises
+    -- the optional "storage." prefix, so the legacy and current names both match. A name Storage does not use
+    -- matches nothing: the link stops playing, nothing is served (fail closed).
+    execute $p$
+      create policy previews_review_link_read on storage.objects
+        for select to anon
+        using (
+          public.review_link_allows(bucket_id, name)
+          and storage.allow_any_operation(array['object.get_authenticated', 'object.get_authenticated_info'])
+        )
+    $p$;
+  end if;
+end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 6. Grants

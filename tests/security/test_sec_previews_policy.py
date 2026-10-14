@@ -518,3 +518,15 @@ def test_the_lab_has_the_migration_applied_so_the_scoped_rule_is_the_only_previe
     assert (MIGRATIONS / MIGRATION).exists()
     with as_superuser(conn, commit=False) as s:
         assert s.value("select count(*) from pg_policies where schemaname = 'storage' and policyname = %s", [DRIFT]) == 0
+
+
+def test_the_review_link_policy_is_anon_select_only_and_limited_to_the_read_operations(conn):
+    """0101's one anon policy on storage.objects: a SELECT policy also serves sign, list and info, so it must carry the
+    operation limit. Pinned exactly (a loosened or `... or true` form fails here); the behaviour is attacked in
+    test_sec_review_links.py."""
+    with as_superuser(conn, commit=False) as s:
+        rows = s.rows("select policyname, cmd, roles::text, permissive, qual, with_check from pg_policies "
+                      "where schemaname = 'storage' and tablename = 'objects' and roles::text like '%anon%'")
+    assert rows == [("previews_review_link_read", "SELECT", "{anon}", "PERMISSIVE",
+                     "(review_link_allows(bucket_id, name) AND storage.allow_any_operation("
+                     "ARRAY['object.get_authenticated'::text, 'object.get_authenticated_info'::text]))", None)]

@@ -46,13 +46,19 @@ from sec_review_links_0101 import TOKEN_A, TOKEN_B, token_hash
 
 UNKNOWN = "c3" * 32
 
+# The exact policy expression as Postgres deparses it. Exact on purpose: "... or true" must not pass.
+POLICY_EXPR = ("(review_link_allows(bucket_id, name) AND storage.allow_any_operation("
+               "ARRAY['object.get_authenticated'::text, 'object.get_authenticated_info'::text]))")
+
 
 def headers(token):
     return json.dumps({"host": "x.supabase.co", "x-review-token": token, "accept": "*/*"})
 
 
-def with_header(s, token):
+def with_header(s, token, operation="storage.object.get_authenticated"):
+    """The request as Storage presents it to the database: the headers and the operation it is running."""
     s.conn.execute("select set_config('request.headers', %s, true)", [headers(token)])
+    s.conn.execute("select set_config('storage.operation', %s, true)", [operation])
 
 
 def seen_by_anon(conn, token, bucket="previews"):
@@ -357,7 +363,7 @@ def test_the_only_anon_policy_on_storage_is_the_one_read_for_review_links(conn, 
     rows = owner_sql(conn, "select policyname, cmd, permissive, qual, with_check from pg_policies "
                            "where schemaname = 'storage' and tablename = 'objects' and (roles::text like '%anon%' or roles::text like '%public%')")
     assert [r[:3] for r in rows] == [("previews_review_link_read", "SELECT", "PERMISSIVE")]
-    assert rows[0][3] == "public.review_link_allows(bucket_id, name)" or "review_link_allows(bucket_id, name)" in rows[0][3]
+    assert rows[0][3] == POLICY_EXPR, rows[0][3]
     assert rows[0][4] is None
 
 
@@ -394,3 +400,52 @@ def test_deleting_the_video_deletes_its_links(conn, sc):
         s.rows("delete from public.videos where video_id = %s returning 1", [sc.alice.video])
         assert s.value("select count(*) from public.review_links where video_id = %s", [sc.alice.video]) == 0
         assert s.value("select count(*) from public.review_links where video_id = %s", [sc.bob.video]) == 1
+
+
+# ── reading only: sign, list and every other operation are refused ─────────
+
+READ_OPERATIONS = ["storage.object.get_authenticated", "object.get_authenticated", "object.get_authenticated_info",
+                   "storage.object.get_authenticated_info"]
+OTHER_OPERATIONS = ["storage.object.sign", "object.sign", "storage.object.list", "object.list", "storage.object.get_public",
+                    "storage.object.info_authenticated", "object.head_authenticated_info", "storage.object.upload",
+                    "storage.object.copy", "bucket.get", "object", "", "OBJECT.GET_AUTHENTICATED"]
+
+
+def anon_names(conn, operation):
+    with acting(conn, ANON) as s:
+        with_header(s, TOKEN_A, operation)
+        return [r[0] for r in s.rows("select name from storage.objects where bucket_id = 'previews'")]
+
+
+@pytest.mark.parametrize("operation", READ_OPERATIONS)
+def test_the_two_read_operations_serve_the_one_object(conn, sc, operation):
+    assert anon_names(conn, operation) == [f"{sc.alice.channel}/slug-a.mp4"]
+
+
+@pytest.mark.parametrize("operation", OTHER_OPERATIONS)
+def test_sign_list_and_every_other_operation_are_refused_even_with_a_live_token(conn, sc, operation):
+    """A signed URL outlives a revoke and a CDN keeps what it served, so signing is never allowed."""
+    assert anon_names(conn, operation) == []
+
+
+def test_no_operation_at_all_is_refused(conn, sc):
+    with acting(conn, ANON) as s:
+        s.conn.execute("select set_config('request.headers', %s, true)", [headers(TOKEN_A)])
+        assert s.rows("select name from storage.objects where bucket_id = 'previews'") == []
+
+
+def test_an_older_storage_without_the_operation_helper_fails_closed_and_says_so(conn, sc):
+    """No helper, no policy: the feature stops, nothing leaks, and the migration says why."""
+    from sec_db import MIGRATIONS
+    sql = (MIGRATIONS / "0101_review_links.sql").read_text(encoding="utf-8")
+    notices = []
+    with as_superuser(conn, commit=False) as s:
+        conn.add_notice_handler(lambda d: notices.append(d.message_primary))
+        s.conn.execute("drop policy previews_review_link_read on storage.objects")
+        s.conn.execute("drop function storage.allow_any_operation(text[])")
+        s.conn.execute(sql)
+        assert s.value("select count(*) from pg_policies where schemaname = 'storage' and policyname = 'previews_review_link_read'") == 0
+        s.conn.execute("set local role anon")
+        with_header(s, TOKEN_A)
+        assert s.rows("select name from storage.objects where bucket_id = 'previews'") == []
+    assert any("allow_any_operation" in n and "NOT created" in n for n in notices), notices

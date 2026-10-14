@@ -81,11 +81,21 @@ create or replace function storage.foldername(name text) returns text[]
 language sql immutable as $$
   select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1]
 $$;
+-- Storage's operation helper (migration 0058 of Storage): true when the operation the Storage API is running
+-- (it sets storage.operation per request) is one of `expected`; the optional "storage." prefix is ignored.
+create or replace function storage.allow_any_operation(expected_operations text[]) returns boolean
+language sql stable as $$
+  select coalesce(
+    regexp_replace(current_setting('storage.operation', true), '^storage\.', '') in (
+      select regexp_replace(e, '^storage\.', '') from unnest(expected_operations) e),
+    false)
+$$;
 alter table storage.objects enable row level security;
 grant usage on schema storage to anon, authenticated, service_role;
 grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
 grant select on storage.buckets to anon, authenticated, service_role;
 grant execute on function storage.foldername(text) to anon, authenticated, service_role;
+grant execute on function storage.allow_any_operation(text[]) to anon, authenticated, service_role;
 
 -- ── vault (plaintext stand-in) ──────────────────────────────────────────────
 create schema if not exists vault;
