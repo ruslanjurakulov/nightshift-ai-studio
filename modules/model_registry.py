@@ -571,7 +571,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                                       generated_speech="probe_speech.mp3",
                                       generated_end_image="https://probe.invalid/end.png",
                                       generated_video="probe_video.mp4")
-            # A placeholder vendor model is how a gated, operator-configured entry ships (the
+            # A placeholder vendor model is how a gated entry with no vendor assigned ships (the
             # adapter refuses it at run time); it is not a fault of the probe request.
             problems = [p for p in cls(env={}).problems(req, entry)
                         if "https URL" not in p and "placeholder vendor model" not in p]

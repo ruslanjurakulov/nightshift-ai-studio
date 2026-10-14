@@ -421,7 +421,7 @@ class Seam(Tmp):
         req = cw.GenerationRequest(job_id=JOB, org_id=ORG, capability="video_edit", model=e.id,
                                    params={"source_asset_id": SRC, "prompt": "x", "duration_s": 1}, quantity=13.0)
         u = ra.usage(req, 1)
-        self.assertEqual((u.provider, u.unit, u.quantity), ("operator", "second", 13.0))
+        self.assertEqual((u.provider, u.unit, u.quantity), ("unassigned-video-vendor", "second", 13.0))
 
     def video(self):
         p = self.root / "source.mp4"

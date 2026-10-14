@@ -1873,10 +1873,10 @@
     },
     {
       "id": "generic-video-edit",
-      "display_name": "Video edit (operator-configured provider)",
-      "provider": "operator",
+      "display_name": "Video edit (provider not assigned)",
+      "provider": "unassigned-video-vendor",
       "adapter": "video.generic_ops",
-      "vendor_model": "operator-configured",
+      "vendor_model": "unassigned-placeholder",
       "capabilities": [
         "video_edit"
       ],
@@ -1928,10 +1928,10 @@
     },
     {
       "id": "generic-video-reframe",
-      "display_name": "Video reframe (operator-configured provider)",
-      "provider": "operator",
+      "display_name": "Video reframe (provider not assigned)",
+      "provider": "unassigned-video-vendor",
       "adapter": "video.generic_ops",
-      "vendor_model": "operator-configured",
+      "vendor_model": "unassigned-placeholder",
       "capabilities": [
         "video_reframe"
       ],
@@ -1999,10 +1999,10 @@
     },
     {
       "id": "generic-video-remove-bg",
-      "display_name": "Video background removal (operator-configured provider)",
-      "provider": "operator",
+      "display_name": "Video background removal (provider not assigned)",
+      "provider": "unassigned-video-vendor",
       "adapter": "video.generic_ops",
-      "vendor_model": "operator-configured",
+      "vendor_model": "unassigned-placeholder",
       "capabilities": [
         "video_remove_bg"
       ],

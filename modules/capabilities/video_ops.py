@@ -62,7 +62,7 @@ from modules.capabilities.base import (
 )
 
 #: The registry entry's vendor_model until the operator names the real one.
-PLACEHOLDER_MODEL = "operator-configured"
+PLACEHOLDER_MODEL = "unassigned-placeholder"
 #: What the generic dialect calls each op in the request.
 OPERATIONS = {VIDEO_EDIT: "edit", VIDEO_REFRAME: "reframe", VIDEO_REMOVE_BG: "remove_background"}
 #: The longest few words a video edit takes (migration 0100's limit).
