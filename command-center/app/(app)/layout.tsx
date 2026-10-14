@@ -21,6 +21,7 @@ import { NavigationProvider } from "@/components/navigation/NavigationProvider";
 import { ScrollToTop } from "@/components/navigation/ScrollToTop";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isOperator } from "@/lib/auth/org-roles";
+import { avatarVersionFromMetadata } from "@/lib/avatar";
 import { readCreditAccount } from "@/lib/server/credits";
 import { planValue, readBillingSummary } from "@/lib/server/plans";
 import { accountPlan, type AccountPlan } from "@/lib/account";
@@ -31,6 +32,9 @@ import { SIDEBAR_COOKIE, isSidebarCollapsed } from "@/lib/sidebar-pref";
 import { AppProviders } from "@/components/AppProviders";
 import { getLocale } from "@/lib/i18n/server";
 import { MotionProvider } from "@/components/motion/MotionProvider";
+import { FlashNotice } from "@/components/account/FlashNotice";
+import { SkipLink } from "@/components/shell/SkipLink";
+import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import "./app-redesign.css";
 import "./app-pages-1.css";
 
@@ -88,6 +92,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (to) redirect(to);
   }
   const email = user?.email ?? null;
+  // The photo's cache-buster, from the user the layout already read (no extra request). Untrusted: lib/avatar.ts.
+  const avatarV = avatarVersionFromMetadata(user?.user_metadata);
   // The customer sidebar's width is a per-browser preference (a cookie mirrored from localStorage), read here so the
   // first frame is already the right width.
   const sidebarCollapsed = isSidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
@@ -131,6 +137,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       credits={credits}
       scope={scope}
       email={email}
+      avatarV={avatarV}
       operator={operator}
       plan={plan}
     />
@@ -138,6 +145,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppProviders locale={await getLocale()}>
+      <FlashNotice />
       {/* The motion kit's engine for the signed-in app (docs/design/MOTION.md):
           here rather than in the root layout, so the public pages do not carry
           Motion's core until a page of theirs animates with it. */}
@@ -145,14 +153,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <NavigationProvider channelNames={channelNames}>
         <ShellProvider operator={operator}>
         <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
-          <div className="app-shell atmos relative flex min-h-dvh flex-col">
+          <div className="app-shell atmos relative flex min-h-svh flex-col">
+            {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}
+            <SkipLink />
+            <ShellOffsets />
             <NeuralBackdrop dim />
             {operator ? (
-              <div className="relative z-10 flex min-h-dvh flex-col">
+              <div className="relative z-10 flex min-h-svh flex-col">
                 {header}
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                   <SideNav operator />
-                  <main className="pad-page min-w-0 flex-1">{children}</main>
+                  <main id="main" tabIndex={-1} className="pad-page min-w-0 flex-1 focus:outline-none">{children}</main>
                 </div>
               </div>
             ) : (
@@ -160,16 +171,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // height on the left, the top bar and the page to its right. On a
               // phone the sidebar gives way to the bottom tab bar, and the page
               // keeps its end above it.
-              <div className="relative z-10 flex min-h-dvh">
-                <SideNav email={email} plan={plan} />
+              <div className="relative z-10 flex min-h-svh">
+                <SideNav email={email} avatarV={avatarV} plan={plan} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   {header}
-                  <main className="pad-page min-w-0 flex-1 pb-24 lg:pb-10">{children}</main>
+                  <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}</main>
                 </div>
               </div>
             )}
             <CommandPalette scope={scope} operator={operator} />
-            <ScrollToTop />
+            <ScrollToTop dock={!operator} />
           </div>
         </SidebarProvider>
         </ShellProvider>

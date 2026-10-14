@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Pause,
   Play,
+  Layers,
   Plus,
   Redo2,
   Scissors,
@@ -38,6 +39,8 @@ import {
   MAX_EDITOR_CLIPS,
   MAX_EDITOR_SOUNDS,
   MAX_EDITOR_TEXTS,
+  MAX_OVERLAYS,
+  MAX_OVERLAY_VIDEOS,
   MAX_TEXT,
   SOUND_FADE_MAX_S,
   DUCK_ATTACK_MAX_S,
@@ -64,7 +67,9 @@ import {
   canSplit,
   clamp,
   clipAt,
+  clipEnd,
   crossfadeOf,
+  crossfadeStyleOf,
   exportActive,
   fitSoundToPicture,
   formatTime,
@@ -78,6 +83,7 @@ import {
   removeText,
   setClipAudio,
   setCrossfade,
+  setCrossfadeStyle,
   setSpeed,
   soundLength,
   soundWarnings,
@@ -99,6 +105,7 @@ import {
   type TextClip,
   type TextPosition,
   type TimelineDoc,
+  type XfadeStyle,
 } from "@/lib/editor";
 import {
   deleteProject,
@@ -107,12 +114,69 @@ import {
   saveProject,
 } from "./editorApi";
 import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
+import { DraftBanner } from "./DraftBanner";
+import { useEditorDraft } from "./useEditorDraft";
 import { SoundPreview } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
+import {
+  fitOf,
+  previewFrameStyle,
+  previewObjectFit,
+  setClipFit,
+  setFrame,
+  type Fit,
+} from "@/lib/editorFrame";
+import { FitPicker, FramePicker } from "./FrameFitControls";
+import {
+  addOverlay,
+  canAddOverlay,
+  moveOverlay,
+  nudgeOverlay,
+  overlayWarnings,
+  overlaysAt,
+  overlaysOf,
+  removeOverlay,
+  resetOverlay,
+  updateOverlay,
+} from "@/lib/editorOverlay";
+import { OverlayInspector, OverlayLayer, OverlayPicker } from "./OverlayPanel";
+import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
+import { TransitionStylePicker } from "./TransitionStylePicker";
+import { TextLookPicker } from "./TextLookPicker";
+import { applyTextLook } from "@/lib/editorTextLook";
+import { previewBoxStyle, previewTextStyle } from "@/lib/editorTextLookPreview";
+import {
+  gradeOf,
+  previewGradeStyle,
+  resetClipGrade,
+  setClipGrade,
+  type ClipGrade,
+} from "@/lib/editorGrade";
+
+import { ExportStatusPanel } from "./ExportStatusPanel";
+import { useExportPoll } from "./useExportPoll";
+
+import { TimelineViewBar } from "./TimelineViewBar";
+import { useTimelineView } from "./useTimelineView";
+import { useEditorShortcuts } from "./useEditorShortcuts";
+import { usePlayheadScrub } from "./usePlayheadScrub";
+import { useStickyOffsets } from "./useStickyOffsets";
+import { formatDayTime } from "@/lib/date-format";
+
+/** The first time at which clip `id` is the one the preview shows: its start,
+ *  or the end of the clip before it when a cross-fade overlaps the two. */
+function firstFrameOf(model: EditorModel, id: string): number {
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  if (i < 0) return 0;
+  const starts = [clips[i].start_s, ...(i > 0 ? [clipEnd(clips[i - 1])] : [])];
+  return (
+    starts.find((t) => clipAt(model, t)?.clip.id === id) ?? clips[i].start_s
+  );
+}
 
 const HISTORY = 100;
-const POLL_MS = 4000;
 
 const fieldClass =
   "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
@@ -143,7 +207,12 @@ function textBoxStyle(x: TextClip, width: number): CSSProperties {
     fontSize: `${(x.size / width) * 100}cqw`,
     fontWeight: x.bold === false ? 400 : 700,
     color: x.color ?? TEXT_COLOR,
-    textShadow: `0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 3px ${TEXT_OUTLINE_COLOR}`,
+    // Outline, shadow and box of a text look; a text without any keeps the outline it had.
+    ...previewTextStyle(
+      x,
+      width,
+      `0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 2px ${TEXT_OUTLINE_COLOR}, 0 0 3px ${TEXT_OUTLINE_COLOR}`,
+    ),
   };
 }
 
@@ -167,8 +236,10 @@ export function TimelineEditor({
   assets: initialAssets,
   videos,
   soundFiles = [],
+  imageFiles = [],
   orgId = "",
   captionModels = [],
+  userId = "",
 }: {
   projectId: string;
   title: string;
@@ -179,10 +250,14 @@ export function TimelineEditor({
   videos: readonly EditorAsset[];
   /** The library's audio files, for music and sound effects. */
   soundFiles?: readonly EditorAsset[];
+  /** The library's pictures, for overlays (the videos above serve for those). */
+  imageFiles?: readonly EditorAsset[];
   /** The project's organization: auto-captions are priced and run in it (0072). */
   orgId?: string;
   /** The transcription models the member may be sold (empty: auto-captions are not offered). */
   captionModels?: readonly CaptionModelOption[];
+  /** The signed-in member: a local draft is kept per member (none without it). */
+  userId?: string;
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -210,6 +285,11 @@ export function TimelineEditor({
   const [assets, setAssets] = useState(initialAssets);
   const [adding, setAdding] = useState(false);
   const [addingSound, setAddingSound] = useState(false);
+  const [addingOverlay, setAddingOverlay] = useState(false);
+  // Where focus goes once the render that follows an overlay add / delete is there
+  // (the picker unmounts, the inspector goes): never back to <body>.
+  const overlayFocus = useRef<"frame" | "add" | null>(null);
+  const addOverlayButton = useRef<HTMLButtonElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dragBase = useRef<EditorModel | null>(null);
 
@@ -222,13 +302,48 @@ export function TimelineEditor({
   const warnings = textWarnings(model);
   const soundWarns = soundWarnings(model);
   const speech = useMemo(() => speechSpans(model), [model]);
+  const overlays = overlaysOf(model);
+  const overlayWarns = overlayWarnings(model);
+  const isVideoAsset = (id: string) => assets[id]?.kind === "video";
 
-  // ── history ────────────────────────────────────────────────────────────────
-  const apply = useCallback(
-    (next: EditorModel) => {
-      if (next === model) return;
+  // ── local draft: kept on this device, offered back on the next open ────────
+  const draft = useEditorDraft({
+    userId,
+    projectId,
+    initialRev,
+    rev,
+    dirty,
+    currentJson: current,
+    title,
+    saved,
+    savedTitle,
+    resolveAsset: (id) =>
+      assets[id] ??
+      [...videos, ...soundFiles, ...imageFiles].find(
+        (a) => a.id.toLowerCase() === id.toLowerCase(),
+      ),
+    onRestore: (d, found) => {
+      setAssets((x) => ({ ...found, ...x }));
+      // What was on screen (edits made while the offer was open) stays one Undo away.
       setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
       setFuture([]);
+      setModel(toModel(d.doc));
+      setTitle(d.title.slice(0, 120));
+      setError(null);
+    },
+  });
+
+  // ── history ────────────────────────────────────────────────────────────────
+  // `group`: the changes of one gesture (a slider drag) are ONE undo step.
+  const gesture = useRef<string | null>(null);
+  const apply = useCallback(
+    (next: EditorModel, group?: string) => {
+      if (next === model) return;
+      if (!group || gesture.current !== group) {
+        setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
+        setFuture([]);
+      }
+      gesture.current = group ?? null;
       setModel(next);
       setError(null);
     },
@@ -236,16 +351,50 @@ export function TimelineEditor({
   );
   const undo = useCallback(() => {
     if (!past.length) return;
+    gesture.current = null;
     setFuture([model, ...future]);
     setModel(past[past.length - 1]);
     setPast(past.slice(0, -1));
   }, [model, past, future]);
   const redo = useCallback(() => {
     if (!future.length) return;
+    gesture.current = null;
     setPast([...past, model]);
     setModel(future[0]);
     setFuture(future.slice(1));
   }, [model, past, future]);
+
+  useEffect(() => {
+    const where = overlayFocus.current;
+    if (!where) return;
+    overlayFocus.current = null;
+    const target =
+      where === "add"
+        ? addOverlayButton.current
+        : (document.querySelector<HTMLElement>("[data-overlay-frame]") ??
+          document.querySelector<HTMLElement>("[data-overlay-heading]"));
+    target?.focus();
+  }, [model, selected]);
+
+  // A run of small changes to one control (a slider, the arrow keys) is ONE undo step.
+  const burst = useRef<{ key: string; at: number; out: EditorModel } | null>(
+    null,
+  );
+  const applyBurst = useCallback(
+    (next: EditorModel, key: string) => {
+      if (next === model) return;
+      const now = Date.now();
+      const b = burst.current;
+      burst.current = { key, at: now, out: next };
+      if (b && b.key === key && b.out === model && now - b.at < 1000) {
+        setModel(next);
+        setError(null);
+        return;
+      }
+      apply(next);
+    },
+    [model, apply],
+  );
 
   // A selection whose clip or text is gone (undo, delete) is no selection.
   useEffect(() => {
@@ -266,6 +415,11 @@ export function TimelineEditor({
       !model.sounds.some((x) => x.id === selected.id)
     )
       setSelected(null);
+    if (
+      selected?.kind === "overlay" &&
+      !overlaysOf(model).some((x) => x.id === selected.id)
+    )
+      setSelected(null);
   }, [model, selected]);
 
   useEffect(() => {
@@ -274,10 +428,19 @@ export function TimelineEditor({
 
   // ── preview ────────────────────────────────────────────────────────────────
   const video = useRef<HTMLVideoElement>(null);
+  const pinned = useRef<HTMLDivElement>(null);
+  useStickyOffsets(pinned);
   const at = clipAt(model, Math.min(playhead, Math.max(0, picture - 0.001)));
   const src = at ? (assets[at.clip.asset_id]?.viewUrl ?? null) : null;
   // A picture sent from the Library or Studio is a still: it is drawn, not played.
   const still = at ? assets[at.clip.asset_id]?.kind === "image" : false;
+  // The preview follows the playhead: a change to a clip that is not on screen
+  // would show nothing, so the playhead goes to the first frame of that clip.
+  const showClip = (id: string) => {
+    if (at?.clip.id === id) return;
+    setPlaying(false);
+    setPlayhead(firstFrameOf(model, id));
+  };
   const shownClip = useRef<string | null>(null);
   const refreshed = useRef(false);
 
@@ -352,6 +515,11 @@ export function TimelineEditor({
     setPlaying((p) => !p);
   };
 
+  // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
+  const view = useTimelineView({ total, playhead });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; } });
+  const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
+
   async function refreshLinks() {
     const out = await fetchProject(projectId);
     if (out.ok) {
@@ -360,26 +528,31 @@ export function TimelineEditor({
     }
   }
 
-  // ── exports: poll while one is on its way ─────────────────────────────────
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(async () => {
-      const out = await fetchProject(projectId);
-      if (out.ok) {
-        setExports(out.value.exports);
-        setAssets((a) => ({ ...a, ...out.value.assets }));
-      }
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [active, projectId]);
+  // ── exports: poll (with backoff) while one is on its way ──────────────────
+  const poll = useExportPoll({
+    projectId,
+    active,
+    onSnapshot: (s) => {
+      setExports(s.exports);
+      setAssets((a) => ({ ...a, ...s.assets }));
+    },
+  });
 
   // ── keyboard: undo / redo / save / play ───────────────────────────────────
+  const saveRef = useRef<() => Promise<void>>(undefined);
+  saveRef.current = save;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void save();
+        // A text box / number field commits on blur: blur it (and put focus back) so the typed value is in the model, then save the next render's model.
+        const f = document.activeElement;
+        if ((f instanceof HTMLInputElement || f instanceof HTMLTextAreaElement) && f.closest("[data-editor-root]")) {
+          f.blur();
+          f.focus();
+          setTimeout(() => void saveRef.current?.(), 0);
+        } else void save();
         return;
       }
       if (typing(e.target)) return;
@@ -436,15 +609,15 @@ export function TimelineEditor({
     setSavedTitle(title.trim());
   }
 
-  async function startExport() {
-    if (dirty || active || starting) return;
+  async function startExport(): Promise<EditorError | null> {
+    if (dirty || active || starting) return null;
     setStarting(true);
     setError(null);
     const out = await requestExport(projectId, rev);
     setStarting(false);
     if (!out.ok) {
       setError(out.error);
-      return;
+      return out.error;
     }
     setExports((e) => [
       {
@@ -459,6 +632,7 @@ export function TimelineEditor({
       },
       ...e,
     ]);
+    return null;
   }
 
   async function onDelete() {
@@ -485,8 +659,17 @@ export function TimelineEditor({
     selected?.kind === "sound"
       ? (model.sounds.find((x) => x.id === selected.id) ?? null)
       : null;
+  const overlay =
+    selected?.kind === "overlay"
+      ? (overlays.find((x) => x.id === selected.id) ?? null)
+      : null;
   const srcLen = (c: { asset_id: string }) =>
     assets[c.asset_id]?.durationS ?? null;
+  /** Only a video has a length an overlay must fit in. */
+  const overlaySrc = (c: { asset_id: string }) =>
+    isVideoAsset(c.asset_id) ? srcLen(c) : null;
+  const overlayNumber = (id: string) =>
+    Math.max(0, overlays.findIndex((x) => x.id === id)) + 1;
 
   function onTrim(
     id: string,
@@ -545,6 +728,21 @@ export function TimelineEditor({
     setAddingSound(false);
   }
 
+  function onAddOverlay(a: EditorAsset) {
+    const out = addOverlay(
+      model,
+      a,
+      playhead < picture ? playhead : 0,
+      isVideoAsset,
+    );
+    if (!out) return;
+    setAssets((x) => ({ ...x, [a.id]: a }));
+    apply(out.model);
+    setSelected({ kind: "overlay", id: out.id });
+    setAddingOverlay(false);
+    overlayFocus.current = "frame";
+  }
+
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
   const shownTexts = textsAt(model, playhead);
   const errorText =
@@ -559,73 +757,106 @@ export function TimelineEditor({
     const d = new Date(iso);
     return Number.isNaN(d.getTime())
       ? ""
-      : d.toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
+      : formatDayTime(d, locale);
   };
 
+  // Words first; the mark (filled = unsaved, hollow = saved) is a second cue, never the only one.
+  const saveState = (
+    <div className="flex min-w-0 flex-col items-end gap-0.5 text-xs">
+      <span
+        className={`inline-flex items-center gap-1.5 ${dirty && !saving ? "font-medium text-[var(--color-warn)]" : "text-[var(--color-muted)]"}`}
+        aria-live="polite"
+      >
+        <span
+          aria-hidden
+          className={`inline-block size-2 shrink-0 rounded-full border border-current ${dirty && !saving ? "bg-current" : ""}`}
+        />
+        {saving ? te.saving : dirty ? te.unsaved : te.saved}
+      </span>
+      {dirty && draft.kept ? (
+        <span
+          className={`text-xs ${draft.kept === "kept" ? "text-[var(--color-muted)]" : "font-medium text-[var(--color-warn)]"}`}
+        >
+          {draft.kept === "kept" ? te.draftKept : te.draftOff}
+        </span>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-editor-root="">
       {/* header: name, history, save, export */}
       <div className="panel flex flex-col gap-3 p-4 sm:p-5 sm:p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        {/* One grid, placed per breakpoint. From sm up the back link and the saved
+            state share the top row, then the name's label and field. On a phone the
+            back link is dropped (the breadcrumb's arrow and the Editor tab already
+            lead back) and the saved state sits at the end of the name's label. The
+            saved state is ONE element (one polite live region), only moved. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 gap-y-1 [grid-template-areas:'label_status''input_input'] sm:items-center sm:[grid-template-areas:'back_status''label_label''input_input']">
           <Link
             href={path("/editor")}
-            className="text-sm text-[var(--color-primary)] underline-offset-4 hover:underline"
+            className="hidden text-sm text-[var(--color-primary)] underline-offset-4 [grid-area:back] hover:underline sm:inline sm:[@media(pointer:coarse)]:flex sm:[@media(pointer:coarse)]:min-h-11 sm:[@media(pointer:coarse)]:items-center"
           >
             ← {te.back}
           </Link>
-          <span
-            className="ml-auto text-xs text-[var(--color-muted)]"
-            aria-live="polite"
+          <div className="[grid-area:status]">{saveState}</div>
+          <label
+            htmlFor={`${ids}-title`}
+            className="text-xs text-[var(--color-muted)] [grid-area:label] sm:mt-2 sm:self-end"
           >
-            {saving ? te.saving : dirty ? te.unsaved : te.saved}
-          </span>
-        </div>
-        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
-          {te.projectTitle}
+            {te.projectTitle}
+          </label>
           <input
+            id={`${ids}-title`}
             value={title}
             maxLength={120}
             onChange={(e) => setTitle(e.target.value)}
-            className={fieldClass}
+            className={`${fieldClass} [grid-area:input]`}
           />
-        </label>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={undo}
-            disabled={!past.length}
-            className={quietBtn}
-          >
-            <Undo2 className="size-3.5" aria-hidden />
-            {te.undo}
-          </button>
-          <button
-            type="button"
-            onClick={redo}
-            disabled={!future.length}
-            className={quietBtn}
-          >
-            <Redo2 className="size-3.5" aria-hidden />
-            {te.redo}
-          </button>
-          <span className="flex-1" />
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={!dirty || saving}
-            className="btn-quiet text-sm"
-          >
-            {saving ? te.saving : te.save}
-          </button>
-          <button
-            type="button"
-            onClick={() => void startExport()}
-            disabled={Boolean(exportBlocked) || starting}
-            aria-describedby={exportBlocked ? `${ids}-export-why` : undefined}
-            className="btn-primary text-sm"
-          >
-            {starting ? te.exporting : te.export}
-          </button>
+          {/* Undo and Redo: a 50/50 pair on a phone (their labels are long in Russian and Uzbek), as Save and Export are below. */}
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!past.length}
+              className={quietBtn}
+            >
+              <Undo2 className="size-3.5" aria-hidden />
+              {te.undo}
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!future.length}
+              className={quietBtn}
+            >
+              <Redo2 className="size-3.5" aria-hidden />
+              {te.redo}
+            </button>
+          </div>
+          <span className="hidden flex-1 sm:block" />
+          {/* Save and Export: one row on a phone (Save as wide as its word, Export takes the rest), so both are on the first screen. */}
+          <div className="grid w-full grid-cols-[auto_minmax(0,1fr)] gap-2 sm:flex sm:w-auto">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={!dirty || saving}
+              className="btn-quiet text-sm"
+            >
+              {saving ? te.saving : te.save}
+            </button>
+            <button
+              type="button"
+              onClick={() => void startExport()}
+              disabled={Boolean(exportBlocked) || starting}
+              aria-describedby={exportBlocked ? `${ids}-export-why` : undefined}
+              className="btn-primary text-sm"
+            >
+              {starting ? te.exporting : te.export}
+            </button>
+          </div>
         </div>
         {exportBlocked ? (
           <p
@@ -635,7 +866,7 @@ export function TimelineEditor({
             {exportBlocked}
           </p>
         ) : null}
-        <p className="m-0 text-xs text-[var(--color-muted)]">
+        <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">
           {te.freeNote} {te.publishNote}
         </p>
         {errorText ? (
@@ -657,24 +888,55 @@ export function TimelineEditor({
         ) : null}
       </div>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="flex min-w-0 flex-col gap-3">
-          {/* preview */}
+      {exports[0] ? (
+        <ExportStatusPanel
+          latest={exports[0]}
+          assets={assets}
+          currentRev={rev}
+          dirty={dirty}
+          busy={starting || active}
+          failing={poll.failing}
+          halt={poll.halt}
+          checking={poll.checking}
+          onRetry={startExport}
+          onCheckNow={poll.checkNow}
+          quietRetry={draft.resume.kind === "restore"}
+        />
+      ) : null}
+
+      <DraftBanner
+        resume={draft.resume}
+        onRestore={draft.restore}
+        onDiscard={draft.discard}
+      />
+
+      {/* Below lg this is one column, so the left column dissolves (`contents`)
+          and the preview becomes a child of the flex column that also holds the
+          inspector: a pinned child stays pinned all the way down the inspector,
+          where the colour sliders are. From lg the two columns sit side by side. */}
+      <div className="flex min-w-0 flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-4">
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-3">
+          {/* preview: pinned under the top bar below lg, capped to 30dvh (the box keeps its ratio, see previewFrameStyle) */}
+          <div
+            ref={pinned}
+            className="sticky top-[var(--ns-header-h,4rem)] z-10 bg-[var(--color-bg)] pb-2 pt-1 [--ns-preview-cap:30dvh] lg:static lg:bg-transparent lg:p-0 lg:[--ns-preview-cap:60vh] [@media(max-height:32rem)]:static [@media(max-height:32rem)]:bg-transparent [@media(max-height:32rem)]:p-0 [@media(max-height:32rem)]:[--ns-preview-cap:60vh]"
+            data-editor-preview-pin=""
+          >
           <div
             className="relative mx-auto w-full overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-black"
-            style={{
-              aspectRatio: `${model.width} / ${model.height}`,
-              maxHeight: "60vh",
-              maxWidth: `calc(60vh * ${model.width / model.height})`,
-              containerType: "inline-size",
-            }}
+            style={previewFrameStyle(model)}
           >
+            <GradeFilterDefs clip={at?.clip} still={still} />
             {src && still ? (
               // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
               <img
                 src={src}
                 alt=""
-                className="size-full object-contain"
+                className="size-full"
+                style={{
+                  objectFit: previewObjectFit(at?.clip, true),
+                  ...previewGradeStyle(at?.clip),
+                }}
                 onError={() => {
                   if (!refreshed.current) {
                     refreshed.current = true;
@@ -688,7 +950,11 @@ export function TimelineEditor({
                 src={src}
                 playsInline
                 preload="auto"
-                className="size-full object-contain"
+                className="size-full"
+                style={{
+                  objectFit: previewObjectFit(at?.clip, false),
+                  ...previewGradeStyle(at?.clip),
+                }}
                 onLoadedMetadata={() => {
                   const v = video.current;
                   if (v && at) {
@@ -707,10 +973,37 @@ export function TimelineEditor({
                 }}
               />
             ) : (
-              <p className="absolute inset-0 m-0 flex items-center justify-center p-4 text-center text-xs text-[var(--color-muted)]">
+              <p className="absolute inset-0 m-0 flex items-center justify-center p-4 text-center text-xs text-[var(--ns-on-film)]">
                 {te.noPreview}
               </p>
             )}
+            {overlays.length ? (
+              <OverlayLayer
+                  overlays={overlaysAt(model, playhead)}
+                  assets={assets}
+                  selectedId={overlay?.id ?? null}
+                  numberOf={overlayNumber}
+                  playhead={playhead}
+                  playing={playing}
+                  onNudge={(id, dx, dy, big) =>
+                    applyBurst(
+                      nudgeOverlay(model, id, dx, dy, big ? 0.05 : 0.01),
+                      `${id}:nudge`,
+                    )
+                  }
+                  onDrag={(id, x, y) => {
+                    if (!dragBase.current) dragBase.current = model;
+                    setModel(updateOverlay(model, id, { x, y }));
+                  }}
+                  onDragEnd={onTrimEnd}
+                  onLinkError={() => {
+                    if (!refreshed.current) {
+                      refreshed.current = true;
+                      void refreshLinks();
+                    }
+                  }}
+              />
+            ) : null}
             {cuesAt(model, playhead).map((c) => {
               const st = captionsOf(model)?.style;
               return st ? (
@@ -738,14 +1031,29 @@ export function TimelineEditor({
                 className="pointer-events-none absolute whitespace-pre-wrap text-center leading-tight"
                 style={textBoxStyle(x, model.width)}
               >
-                {x.text}
+                {x.box_color ? (
+                  <span style={previewBoxStyle(x, model.width)}>{x.text}</span>
+                ) : (
+                  x.text
+                )}
               </span>
             ))}
+          </div>
           </div>
           <p className="m-0 text-center text-xs text-[var(--color-muted)]">
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
+            {overlays.length ? ` ${te.overlay.previewNote}` : ""}
           </p>
+          {/* The header panel's note about free export and nothing being published, here below the picture on a phone so the controls above start higher. */}
+          <p className="m-0 text-center text-xs text-[var(--color-muted)] sm:hidden">
+            {te.freeNote} {te.publishNote}
+          </p>
+          <FramePicker
+            width={model.width}
+            height={model.height}
+            onChange={(id) => apply(setFrame(model, id))}
+          />
           <SoundPreview
             sounds={model.sounds}
             assets={assets}
@@ -755,7 +1063,7 @@ export function TimelineEditor({
           />
 
           {/* transport */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <button
               type="button"
               onClick={togglePlay}
@@ -774,28 +1082,28 @@ export function TimelineEditor({
               max={Math.max(total, 0.001)}
               step={1 / model.fps}
               value={Math.min(playhead, total)}
-              onChange={(e) => {
-                setPlaying(false);
-                setPlayhead(Number(e.target.value));
-              }}
+              {...scrub}
               aria-label={te.playhead}
               aria-valuetext={fmt(te.timeOf, {
                 now: formatTime(playhead),
                 total: formatTime(total),
               })}
-              className="min-w-0 flex-1 accent-[var(--color-primary)]"
+              className="h-11 min-w-[9rem] flex-1 accent-[var(--color-primary)]"
             />
             {/* The master-control readout: frame-accurate timecode at the project's rate; the spoken form keeps tenths. */}
-            <span className="shrink-0 text-xs text-[var(--color-muted)]">
+            <span className="shrink-0 basis-full text-right text-xs text-[var(--color-muted)] sm:basis-auto">
               <Timecode value={playhead} format="frames" fps={model.fps} label={formatTime(playhead)} /> /{" "}
               <Timecode value={total} format="frames" fps={model.fps} label={formatTime(total)} />
             </span>
           </div>
 
+          <TimelineViewBar view={view} />
           <TimelineStrip
+            view={view}
             clips={clips}
             texts={model.texts}
             sounds={model.sounds}
+            overlays={overlays}
             total={total}
             fps={model.fps}
             playhead={playhead}
@@ -829,6 +1137,20 @@ export function TimelineEditor({
             </button>
             <button
               type="button"
+              ref={addOverlayButton}
+              onClick={() => setAddingOverlay((a) => !a)}
+              aria-expanded={addingOverlay}
+              disabled={!canAddOverlay(model)}
+              aria-describedby={
+                canAddOverlay(model) ? undefined : `${ids}-overlay-full`
+              }
+              className={quietBtn}
+            >
+              <Layers className="size-3.5" aria-hidden />
+              {te.overlay.add}
+            </button>
+            <button
+              type="button"
               onClick={onAddText}
               disabled={model.texts.length >= MAX_EDITOR_TEXTS}
               className={quietBtn}
@@ -837,6 +1159,28 @@ export function TimelineEditor({
               {te.addText}
             </button>
           </div>
+          {!canAddOverlay(model) ? (
+            <p
+              id={`${ids}-overlay-full`}
+              className="m-0 text-xs text-[var(--color-muted)]"
+            >
+              {fmt(te.overlay.full, { max: MAX_OVERLAYS })}
+            </p>
+          ) : !canAddOverlay(model, "video", isVideoAsset) ? (
+            <p className="m-0 text-xs text-[var(--color-muted)]">
+              {fmt(te.overlay.videosFull, { max: MAX_OVERLAY_VIDEOS })}
+            </p>
+          ) : null}
+          {addingOverlay ? (
+            <OverlayPicker
+              images={imageFiles}
+              videos={
+                canAddOverlay(model, "video", isVideoAsset) ? videos : []
+              }
+              onPick={onAddOverlay}
+              onClose={() => setAddingOverlay(false)}
+            />
+          ) : null}
           {model.sounds.length >= MAX_EDITOR_SOUNDS ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.maxSounds, { max: MAX_EDITOR_SOUNDS })}
@@ -960,10 +1304,50 @@ export function TimelineEditor({
                 ? te.textLabel
                 : sound
                   ? te.soundHeading
-                  : te.timeline
+                  : overlay
+                    ? fmt(te.overlay.heading, {
+                        n: overlayNumber(overlay.id),
+                      })
+                    : te.timeline
           }
         >
-          {sound ? (
+          {overlay ? (
+            <OverlayInspector
+              key={overlay.id}
+              n={overlayNumber(overlay.id)}
+              total={overlays.length}
+              overlay={overlay}
+              name={assets[overlay.asset_id]?.name ?? te.overlay.untitled}
+              kind={assets[overlay.asset_id]?.kind ?? "image"}
+              warning={overlayWarns[overlay.id] ?? null}
+              onChange={(patch, key) => {
+                const next = updateOverlay(
+                  model,
+                  overlay.id,
+                  patch,
+                  overlaySrc(overlay),
+                );
+                if (key) applyBurst(next, key);
+                else apply(next);
+              }}
+              onReset={() => apply(resetOverlay(model, overlay.id))}
+              onToPlayhead={() =>
+                apply(
+                  updateOverlay(
+                    model,
+                    overlay.id,
+                    { start_s: playhead },
+                    overlaySrc(overlay),
+                  ),
+                )
+              }
+              onLayer={(by) => apply(moveOverlay(model, overlay.id, by))}
+              onDelete={() => {
+                overlayFocus.current = "add";
+                apply(removeOverlay(model, overlay.id));
+              }}
+            />
+          ) : sound ? (
             <SoundInspector
               key={sound.id}
               sound={sound}
@@ -1004,11 +1388,27 @@ export function TimelineEditor({
                 apply(trimClip(model, clip.id, "out", v, srcLen(clip)))
               }
               onSpeed={(s) => apply(setSpeed(model, clip.id, s))}
+              fit={fitOf(clip)}
+              still={assets[clip.asset_id]?.kind === "image"}
+              onFit={(f) => apply(setClipFit(model, clip.id, f))}
+              grade={gradeOf(clip)}
+              onGrade={(patch, group) => {
+                apply(setClipGrade(model, clip.id, patch), group);
+                showClip(clip.id);
+              }}
+              onGradeReset={() => {
+                apply(resetClipGrade(model, clip.id));
+                showClip(clip.id);
+              }}
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
               audioLocked={!clip.audio && audioFull}
               crossfade={crossfadeOf(clip)}
               maxCrossfade={maxCrossfade(model, clip.id)}
               onCrossfade={(d) => apply(setCrossfade(model, clip.id, d))}
+              crossfadeStyle={crossfadeStyleOf(clip)}
+              onCrossfadeStyle={(s) =>
+                apply(setCrossfadeStyle(model, clip.id, s))
+              }
               onSplit={onSplit}
               onMove={(by) => apply(moveClip(model, clip.id, by))}
               onDelete={() => apply(removeClip(model, clip.id))}
@@ -1019,6 +1419,7 @@ export function TimelineEditor({
               text={text}
               warning={warnings[text.id] ?? null}
               onChange={(patch) => apply(updateText(model, text.id, patch))}
+              onLook={(look) => apply(applyTextLook(model, text.id, look))}
               onDelete={() => apply(removeText(model, text.id))}
             />
           ) : (
@@ -1040,24 +1441,17 @@ export function TimelineEditor({
         onChange={apply}
       />
 
-      {/* exports */}
-      <section
-        aria-labelledby={`${ids}-exports`}
-        className="panel flex flex-col gap-2 p-5 sm:p-6"
-      >
-        <h2 id={`${ids}-exports`} className="m-0 text-[15px] font-semibold">
-          {te.exports}
-        </h2>
-        {exports.length === 0 ? (
-          <p className="m-0 text-sm text-[var(--color-muted)]">
-            {te.noExports}
-          </p>
-        ) : (
-          <ul
-            className="m-0 flex list-none flex-col gap-2 p-0"
-            aria-live="polite"
-          >
-            {exports.map((x) => {
+      {/* earlier exports (the latest one is the status panel above) */}
+      {exports.length > 1 ? (
+        <section
+          aria-labelledby={`${ids}-exports`}
+          className="panel flex flex-col gap-2 p-5 sm:p-6"
+        >
+          <h2 id={`${ids}-exports`} className="m-0 text-[15px] font-semibold">
+            {te.exports}
+          </h2>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {exports.slice(1).map((x) => {
               const out = x.assetId ? assets[x.assetId] : undefined;
               const tone =
                 x.status === "done"
@@ -1081,7 +1475,10 @@ export function TimelineEditor({
                         <Timecode value={x.durationS} format="duration" />
                       </>
                     ) : null}
-                    {x.createdAt ? ` · ${when(x.createdAt)}` : ""}
+                    {x.createdAt ? (
+                      // The server and the browser format a UZ date differently.
+                      <span suppressHydrationWarning>{` · ${when(x.createdAt)}`}</span>
+                    ) : null}
                   </span>
                   {x.status === "failed" ? (
                     <span className="w-full text-xs text-[var(--color-fail)]">
@@ -1095,14 +1492,14 @@ export function TimelineEditor({
                           href={out.viewUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-[var(--color-primary)] underline-offset-4 hover:underline"
+                          className="inline-flex min-h-11 items-center text-[var(--color-primary)] underline-offset-4 hover:underline"
                         >
                           {te.watch}
                         </a>
                       ) : null}
                       <Link
                         href={path("/library")}
-                        className="text-[var(--color-primary)] underline-offset-4 hover:underline"
+                        className="inline-flex min-h-11 items-center text-[var(--color-primary)] underline-offset-4 hover:underline"
                       >
                         {te.viewInLibrary}
                       </Link>
@@ -1112,8 +1509,9 @@ export function TimelineEditor({
               );
             })}
           </ul>
-        )}
-      </section>
+
+        </section>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         {confirmDelete ? (
@@ -1207,11 +1605,19 @@ function ClipInspector({
   onIn,
   onOut,
   onSpeed,
+  fit,
+  still,
+  onFit,
+  grade,
+  onGrade,
+  onGradeReset,
   onAudio,
   audioLocked,
   crossfade,
   maxCrossfade: maxX,
   onCrossfade,
+  crossfadeStyle,
+  onCrossfadeStyle,
   onSplit,
   onMove,
   onDelete,
@@ -1232,6 +1638,13 @@ function ClipInspector({
   onIn: (v: number) => void;
   onOut: (v: number) => void;
   onSpeed: (s: number) => void;
+  fit: Fit;
+  /** A picture always fills the frame in the export: no fit to choose. */
+  still: boolean;
+  onFit: (fit: Fit) => void;
+  grade: ClipGrade;
+  onGrade: (patch: Partial<ClipGrade>, group: string) => void;
+  onGradeReset: () => void;
   onAudio: (a: boolean) => void;
   audioLocked: boolean;
   /** The cross-fade into this clip in seconds (0 = a cut). */
@@ -1239,6 +1652,9 @@ function ClipInspector({
   /** The longest it can be (0 = this clip cannot have one). */
   maxCrossfade: number;
   onCrossfade: (seconds: number) => void;
+  /** How the previous clip blends into this one (`fade` = the plain blend). */
+  crossfadeStyle: XfadeStyle;
+  onCrossfadeStyle: (style: XfadeStyle) => void;
   onSplit: () => void;
   onMove: (by: -1 | 1) => void;
   onDelete: () => void;
@@ -1294,7 +1710,13 @@ function ClipInspector({
           ))}
         </div>
       </fieldset>
-      <label className="flex items-center gap-2 text-sm">
+      <FitPicker fit={fit} still={still} onChange={onFit} />
+      <ClipGradePanel
+        grade={grade}
+        onChange={onGrade}
+        onReset={onGradeReset}
+      />
+      <label className="tap-row flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={clip.audio}
@@ -1349,6 +1771,12 @@ function ClipInspector({
             max={maxX}
             step={0.1}
             onCommit={onCrossfade}
+          />
+        ) : null}
+        {crossfade > 0 && maxX ? (
+          <TransitionStylePicker
+            value={crossfadeStyle}
+            onChange={onCrossfadeStyle}
           />
         ) : null}
         <p id={`${id}-xf`} className="m-0 text-xs text-[var(--color-muted)]">
@@ -1421,11 +1849,13 @@ function TextInspector({
   text,
   warning,
   onChange,
+  onLook,
   onDelete,
 }: {
   text: TextClip;
   warning: "empty" | "past_end" | null;
   onChange: (patch: Partial<Omit<TextClip, "id">>) => void;
+  onLook: (lookId: string) => void;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -1477,6 +1907,7 @@ function TextInspector({
           onCommit={(v) => onChange({ end_s: v })}
         />
       </div>
+      <TextLookPicker text={text} onPick={onLook} />
       <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
         {te.textSize} · {text.size}
         <input
@@ -1673,7 +2104,7 @@ function SoundInspector({
       </fieldset>
       {sound.role !== "speech" ? (
         <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-xs">
+          <label className="tap-row flex items-center gap-2 text-xs">
             <input
               type="checkbox"
               checked={Boolean(sound.duck)}

@@ -186,7 +186,7 @@ export function BuyCredits({
         : fmt(cp.packTermsMonths, { months: packValidMonths });
 
   return (
-    <section id="topups" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby="topups-title">
+    <section id="topups" className="panel flex scroll-mt-7 flex-col gap-5 p-5 sm:p-6" aria-labelledby="topups-title">
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="topups-title" className="t-section">

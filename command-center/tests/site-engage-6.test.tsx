@@ -336,7 +336,7 @@ describe("review fixes (PR #405)", () => {
     expect(site).not.toMatch(/\.st-footer-cols \{ grid-template-columns: repeat\(3/);
     expect(site).toMatch(/\.st-footer h2 \{[^}]*font-size: 14px/);
     expect(site).toMatch(/\.st-footer nav a \{[^}]*font-size: 15px/);
-    // The legal group, with the longest names, takes the whole row on a phone.
-    expect(site).toMatch(/max-width: 899px\) \{ \.st-footer-cols > :last-child \{ grid-column: 1 \/ -1; \}/);
+    // The legal group, with the longest names, takes the whole row below the six-column footer (1024px).
+    expect(site).toMatch(/max-width: 1023px\) \{ \.st-footer-cols > :last-child \{ grid-column: 1 \/ -1; \}/);
   });
 });

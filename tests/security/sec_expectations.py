@@ -504,3 +504,8 @@ sec_extra_credits_0094.extend(TABLES, FUNCTIONS)
 import sec_friend_invites_0092  # noqa: E402
 
 sec_friend_invites_0092.extend(TABLES, FUNCTIONS)
+
+# Migration 0096 (the unique @username): tests/security/sec_user_handles_0096.py
+import sec_user_handles_0096  # noqa: E402
+
+sec_user_handles_0096.extend(TABLES, FUNCTIONS)

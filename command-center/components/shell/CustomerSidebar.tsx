@@ -12,7 +12,7 @@ import { runPrefillFromQuery } from "@/lib/home";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import type { AccountPlan } from "@/lib/account";
 import { aside as MAside, nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
@@ -45,7 +45,15 @@ function useSection(): string {
  * Presentation only: every destination is a customer section, and the layout
  * and RLS decide what anyone may open.
  */
-export function CustomerSidebar({ email, plan }: { email: string | null; plan: AccountPlan | null }) {
+export function CustomerSidebar({
+  email,
+  avatarV = null,
+  plan,
+}: {
+  email: string | null;
+  avatarV?: number | null;
+  plan: AccountPlan | null;
+}) {
   const { t } = useI18n();
   const path = useChannelPath();
   const { collapsed, toggle } = useSidebar();
@@ -81,9 +89,9 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
           </div>
         )}
         <div className="shell-sidebar-head">
-          <Link href={path(home.href)} className="ns-wordmark inline-flex items-center gap-2" aria-label={collapsed ? t.brand.name : undefined}>
-            <BrandMark size={34} />
-            <span className={collapsed ? "sr-only" : undefined}>{t.brand.name}</span>
+          {/* The rail keeps the bare N; the full lockup comes back with the labels. */}
+          <Link href={path(home.href)} className="inline-flex min-h-11 min-w-11 items-center text-[var(--color-fg)]" aria-label={t.brand.name}>
+            <Wordmark height={collapsed ? 32 : 31} mark={collapsed} />
           </Link>
           {/* The panel toggle: a square with a divider, as the panel icon of a chat app. Collapses the rail to its icons. */}
           <button
@@ -110,7 +118,7 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
         <div className="flex shrink-0 flex-col gap-0.5 border-t border-[var(--shell-border)] px-3 pb-3 pt-2">
           <FooterRows items={footer} collapsed={collapsed} />
           <div className="pt-2">
-            <AccountMenu email={email} variant="card" plan={plan} />
+            <AccountMenu email={email} avatarV={avatarV} variant="card" plan={plan} />
           </div>
         </div>
       </MAside>

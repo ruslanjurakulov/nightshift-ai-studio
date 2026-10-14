@@ -205,6 +205,7 @@ describe("the real static files stay public", () => {
     "/favicon.ico",
     "/icon.png",
     "/apple-icon.png",
+    "/icon.svg",
     "/og.png",
     `/api/media/uploads/${ID}`,
   ];
@@ -259,16 +260,27 @@ describe("BR-L-102: a route handler has no RSC form", () => {
 describe("BR-L-132: a public page has no .rsc form either", () => {
   it("every public page's .rsc form redirects to the page, before routing", async () => {
     const { default: nextConfig, PUBLIC_PAGE_PATHS } = await import("../next.config");
-    const { SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH, INVITE_NOTICE_PATH } = await import("@/lib/public-paths");
+    const { SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH, INVITE_NOTICE_PATH } = await import("@/lib/public-paths");
     const { DEV_PAGE_PATHS } = await import("@/lib/dev-pages");
     // The literal list in next.config.ts is exactly the public pages, plus the
     // two flag-gated developer pages (which are in no sitemap while off).
-    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, ...DEV_PAGE_PATHS, LOGIN_PATH, SIGNUP_PATH, INVITE_NOTICE_PATH].sort());
+    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, ...DEV_PAGE_PATHS, LOGIN_PATH, SIGNUP_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH, INVITE_NOTICE_PATH].sort());
     const redirects = (await nextConfig.redirects?.()) ?? [];
     for (const path of PUBLIC_PAGE_PATHS) {
       const source = path === "/" ? "/index.rsc" : `${path}.rsc`;
       expect(redirects).toContainEqual({ source, destination: path, permanent: false });
     }
     expect(redirects).toContainEqual({ source: "/.rsc", destination: "/", permanent: false });
+  });
+});
+
+describe("iOS home-screen icon", () => {
+  it("the default apple-touch-icon probes redirect to the public apple-icon.png, before routing", async () => {
+    const { default: nextConfig } = await import("../next.config");
+    const redirects = (await nextConfig.redirects?.()) ?? [];
+    for (const source of ["/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"]) {
+      expect(redirects).toContainEqual({ source, destination: "/apple-icon.png", permanent: false });
+    }
+    expect(runs("/apple-icon.png")).toBe(false);
   });
 });

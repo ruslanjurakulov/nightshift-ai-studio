@@ -1,6 +1,4 @@
-// @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import path from "node:path";
 
@@ -13,18 +11,8 @@ import path from "node:path";
  * invite function the database no longer allows.
  */
 
-vi.mock("next/navigation", () => ({
-  usePathname: () => "/chronos/organization",
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-}));
-vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
-
-import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
-import { WorkspaceNameForm } from "@/components/org/WorkspaceNameForm";
 import { CUSTOMER_NAV_KEYS, CUSTOMER_SECTIONS, isOperatorOnlySection, sectionAllowed } from "@/lib/navigation";
-
-afterEach(cleanup);
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -93,31 +81,22 @@ describe("customer copy names no role and no invitation", () => {
 });
 
 describe("Settings", () => {
-  it("is the workspace name, with no role card, invitation form or members table", () => {
-    for (const locale of ["en", "ru", "uz"] as const) {
-      const org = { id: "o1", name: "My Studio", slug: "my-studio", role: "owner", is_default: false } as never;
-      const { container, unmount } = render(
-        <I18nProvider locale={locale}>
-          <WorkspaceNameForm org={org} />
-        </I18nProvider>,
-      );
-      const text = container.textContent ?? "";
-      expect(text).not.toMatch(ROLE_WORDS[locale]);
-      expect(container.querySelector('input[type="email"]')).toBeNull();
-      expect(container.querySelector("select")).toBeNull();
-      expect(container.querySelector("table")).toBeNull();
-      expect((container.querySelector("input") as HTMLInputElement).value).toBe("My Studio");
-      unmount();
-    }
-  });
+  const page = () => readFileSync(path.join(ROOT, "app/(app)/[channel]/organization/page.tsx"), "utf8");
 
-  it("the page is built from the name form and a Developers entry, not a team board", () => {
-    const page = readFileSync(path.join(ROOT, "app/(app)/[channel]/organization/page.tsx"), "utf8");
-    expect(page).toContain("WorkspaceNameForm");
-    expect(page).toContain('path("/developers")');
-    expect(page).not.toMatch(/OrgMembersBoard|PendingInvites|MembersBoard/);
+  it("is Account and security and a Developers entry, not a team board", () => {
+    const src = page();
+    expect(src).toContain("AccountSecurity");
+    expect(src).toContain('path("/developers")');
+    expect(src).not.toMatch(/OrgMembersBoard|PendingInvites|MembersBoard/);
     expect(existsSync(path.join(ROOT, "components/org/OrgMembersBoard.tsx"))).toBe(false);
     expect(existsSync(path.join(ROOT, "components/org/PendingInvites.tsx"))).toBe(false);
+  });
+
+  it("offers no way to rename the workspace or to create another one", () => {
+    const src = page();
+    expect(src).not.toMatch(/CreateOrganizationForm|WorkspaceNameForm|\/api\/org\/create/);
+    expect(existsSync(path.join(ROOT, "components/org/CreateOrganizationForm.tsx"))).toBe(false);
+    expect(existsSync(path.join(ROOT, "components/org/WorkspaceNameForm.tsx"))).toBe(false);
   });
 
   it("Developers is its own entry, not a tab under Settings", () => {

@@ -9,6 +9,8 @@ import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { safeLoginReturn } from "@/lib/safe-redirect";
+import { applyPendingHandle, type HandleClient } from "@/lib/handles";
+import { FORGOT_PASSWORD_PATH } from "@/lib/public-paths";
 import { classifySignInError, isCallbackError, type CallbackError, type SignInOutcome } from "@/lib/signup";
 
 export default function LoginPage() {
@@ -50,6 +52,9 @@ export default function LoginPage() {
       setError(messages[classifySignInError(error)]);
       return;
     }
+    // A username chosen at sign-up whose account was confirmed in another
+    // browser has not been applied yet: do it now (quiet; never blocks sign-in).
+    await applyPendingHandle(supabase as unknown as HandleClient);
     // A connection request from an AI app sent this person here: back to it
     // (only that exact page is honoured), otherwise the app as always.
     router.push(safeLoginReturn(new URLSearchParams(window.location.search).get("next"), "/command-center"));
@@ -84,6 +89,9 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <Link href={FORGOT_PASSWORD_PATH} className="st-link self-start text-[15px]">
+            {t.signup.forgotLink}
+          </Link>
           {linkError && !error && (
             <AuthAlert tone="warn">{linkError === "link_expired" ? t.signup.linkExpired : t.signup.linkInvalid}</AuthAlert>
           )}

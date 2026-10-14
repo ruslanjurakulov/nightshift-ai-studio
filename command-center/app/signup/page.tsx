@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -10,7 +10,10 @@ import { fmt } from "@/lib/i18n/core";
 import { AuthAlert, AuthField, AuthNotice, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { useInvited } from "@/components/auth/InvitedContext";
 import { GoogleButton } from "@/components/auth/GoogleButton";
-import { AUTH_CALLBACK_PATH, WELCOME_PATH } from "@/lib/public-paths";
+import { AUTH_CALLBACK_PATH, HANDLE_CHECK_PATH, WELCOME_PATH } from "@/lib/public-paths";
+import { HandleInput } from "@/components/account/HandleInput";
+import { useHandleCheck } from "@/components/account/useHandleCheck";
+import { HANDLE_META_KEY, applyPendingHandle, handleAllowsSubmit, type HandleClient } from "@/lib/handles";
 import {
   PASSWORD_MAX,
   PASSWORD_MIN,
@@ -20,6 +23,22 @@ import {
   type SignupFieldError,
   type SignupOutcome,
 } from "@/lib/signup";
+
+/** The visitor's availability check: our own route, one yes/no/unknown. Anything odd is "unknown". */
+async function askHandleAvailable(handle: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(HANDLE_CHECK_PATH, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ handle }),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { available?: unknown };
+    return typeof body.available === "boolean" ? body.available : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Self-serve sign-up. The account is created by Supabase Auth with the anon
@@ -33,6 +52,8 @@ export default function SignupPage() {
   const { t } = usePublicI18n();
   const invited = useInvited();
   const [email, setEmail] = useState("");
+  const [handleInput, setHandleInput] = useState("");
+  const { status: handleStatus, handle } = useHandleCheck(handleInput, useCallback(askHandleAvailable, []));
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [consent, setConsent] = useState(false);
@@ -42,6 +63,7 @@ export default function SignupPage() {
 
   const messages: Record<SignupFieldError | Exclude<SignupOutcome, "check_email" | "signed_in">, string> = {
     email_invalid: t.signup.errEmail,
+    handle_invalid: t.signup.errHandle,
     password_short: fmt(t.signup.errPasswordShort, { n: PASSWORD_MIN }),
     password_long: t.signup.errPasswordLong,
     password_mismatch: t.signup.errMismatch,
@@ -55,8 +77,10 @@ export default function SignupPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
-    const invalid = validateSignup({ email, password, confirm, consent });
+    // A name still being checked is waited for (the button is disabled meanwhile), not refused.
+    if (busy || handleStatus.kind === "checking") return;
+    // The username is required; "could not check" may go on (the database decides when it is saved).
+    const invalid = validateSignup({ email, password, confirm, consent, handleOk: handleAllowsSubmit(handleStatus) });
     if (invalid) {
       setProblem(invalid);
       return;
@@ -72,6 +96,8 @@ export default function SignupPage() {
         email: address,
         password,
         options: {
+          // Kept on the new account until its first session can set it (lib/handles.ts applyPendingHandle).
+          data: { [HANDLE_META_KEY]: handle },
           emailRedirectTo: `${window.location.origin}${AUTH_CALLBACK_PATH}?next=${encodeURIComponent(WELCOME_PATH)}`,
         },
       });
@@ -82,6 +108,7 @@ export default function SignupPage() {
         // friend's invite is otherwise recorded. The database still refuses an
         // account whose e-mail it has not confirmed.
         if (invited) await fetch("/api/invite/join", { method: "POST" }).catch(() => undefined);
+        await applyPendingHandle(supabase as unknown as HandleClient);
         router.push(WELCOME_PATH);
         router.refresh();
         return;
@@ -152,6 +179,19 @@ export default function SignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
+          <HandleInput
+            variant="public"
+            label={t.signup.handleLabel}
+            value={handleInput}
+            onChange={(v) => {
+              setHandleInput(v);
+              if (problem === "handle_invalid") setProblem(null);
+            }}
+            status={handleStatus}
+            handle={handle}
+            strings={t.signup}
+            required
+          />
           <AuthField
             label={t.signup.password}
             type="password"
@@ -213,7 +253,7 @@ export default function SignupPage() {
               )}
             </AuthAlert>
           )}
-          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured}>
+          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured || handleStatus.kind === "checking"}>
             {busy ? t.signup.submitting : t.signup.submit}
           </AuthSubmit>
         </fieldset>

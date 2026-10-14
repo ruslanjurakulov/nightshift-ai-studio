@@ -238,6 +238,22 @@ export async function reserveRunCredits(
   if (estimate.credits === null)
     return { ok: false, status: 409, body: { error: "credit_estimate_unavailable", gap: estimate.gap } };
 
+  // A replay is answered before the price is compared. reserve_credits() itself answers a reference it already
+  // holds (23505) before it looks at the balance, but the price check below runs first, so a retry of a step whose
+  // answer was lost, with the price gone up since, would be told "price_changed" although its hold exists. Look
+  // the reference up first (the caller's own session: RLS shows an organization's members its own reservations,
+  // and the organization is named here too). A read that fails or finds nothing changes nothing: the flow below
+  // is exactly what it was, and reserve_credits() still has the last word.
+  if (opts.creditRef) {
+    const { data: held, error: heldErr } = await supabase
+      .from("credit_reservations")
+      .select("job_id")
+      .eq("job_id", opts.creditRef)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (!heldErr && held) return { ok: false, status: 409, body: { error: "run_already_started" } };
+  }
+
   // The person confirmed a price; a run that now costs more is asked again, never held.
   if (typeof opts.maxCredits === "number" && estimate.credits > opts.maxCredits)
     return { ok: false, status: 409, body: { error: "price_changed", credits: estimate.credits } };

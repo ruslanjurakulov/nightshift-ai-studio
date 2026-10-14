@@ -75,6 +75,8 @@
   }
 }
 html:has(.st) { scroll-padding-top: 80px; }
+/* From 1024px the bar can be two lines tall (the links wrap, see .st-nav). */
+@media (min-width: 1024px) { html:has(.st-header-row) { scroll-padding-top: 112px; } }
 @media (prefers-reduced-motion: no-preference) {
   html:has(.st) { scroll-behavior: smooth; }
 }
@@ -224,7 +226,7 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-key:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
 .st-key svg { width: 18px; height: 18px; flex-shrink: 0; }
 .st-key[data-size="sm"] { min-height: 44px; padding: 0 16px; font-size: 16px; }
-/* A phone's header holds the wordmark, the one button and the menu on one line
+/* A phone's header holds the wordmark and the one button on one line
    even when the button's words are long (Russian: "Начать бесплатно" at 360px);
    the lockup itself steps down below 380px (further down in this file). */
 @media (max-width: 420px) {
@@ -273,39 +275,57 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 }
 .st-skip:focus { top: 10px; }
 .st-header {
-  position: sticky;
-  top: 0;
   z-index: 40;
   background: var(--ns-ground);
   border-bottom: 1px solid var(--ns-rule);
 }
+/* From 1024px the bar is one row (two lines when a language's links need them) and sticks. Below it the page has no menu:
+   row one is the wordmark and Start free, row two (or three, when the links wrap) is the links, language, theme and Sign in,
+   all visible; that is up to about 200px, too much to keep on a phone's screen, so it scrolls away with the page. */
+@media (min-width: 1024px) { .st-header { position: sticky; top: 0; } }
 .st-header-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  height: 64px;
+  min-height: 64px;
 }
+@media (min-width: 1024px) { .st-header-row { flex-wrap: nowrap; } }
+/* The wordmark: the bare N and the lettering (components/site/Wordmark.tsx), drawn in the text
+   colour. --wm-h is the N's height; the lettering is 0.49 of it. The link keeps a 44px tap target. */
 .st-brand {
+  --wm-h: 36px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   min-height: 44px;
-  font-family: "Nightshift Wordmark", var(--font-sans);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--ns-text);
 }
-/* The tile makes the lockup 25px wider than the old mark. Below 400px it is set a size
-   down (wordmark 19px, tile 28px, gap 8px): in Russian the header's call to action and
-   menu button otherwise run past the viewport at 380px (3px) and sit 7px from the edge
-   at 390px. Below 380px the header's own gaps and the call to action's padding give up a
-   little more so all three controls stay inside the 16px gutter at 360px. */
+/* The first row is the bar's height whether or not a second row follows. */
+.st-header-row > .st-brand { min-height: 64px; }
+/* The lockup is wider than the old tile and condensed text, so on a phone it takes what the
+   header leaves it. The limit is Russian's call to action ("Начать бесплатно"), which sets the
+   room beside the lockup: --wm-h is the width left over divided by the
+   lockup's 5.91 aspect, in a few ranges because the call to action's size and the header's gaps
+   step at 420, 400, 380 and 360px. From 485px wide the full 36px fits in every language. From
+   1024 to 1279px the nav and tools leave the lockup its old 148px (25px high). */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .st-brand { --wm-h: 25px; }
+}
+@media (max-width: 484px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 222px) / 5.91), 36px); }
+}
+@media (max-width: 420px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 204px) / 5.91), 36px); }
+}
 @media (max-width: 399px) {
-  .st-brand { font-size: 19px; gap: 8px; }
-  .st-brand svg { width: 28px; height: auto; }
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 196px) / 5.91), 36px); }
+}
+@media (max-width: 379px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 192px) / 5.91), 36px); }
+}
+@media (max-width: 359px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 190px) / 5.91), 36px); }
 }
 @media (max-width: 379px) {
   .st-header-row { gap: 8px; }
@@ -320,21 +340,39 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 /* The narrowest phones still in use (340px and below): the lockup and the controls give up a little more. */
 @media (max-width: 359px) {
   .st-header-row { gap: 6px; }
-  .st-brand { font-size: 17px; gap: 6px; }
-  .st-brand svg { width: 24px; }
   .st-header-tools { gap: 4px; }
   .st-header-tools .st-key[data-size="sm"] { padding: 0 8px; }
 }
-.st-nav { display: none; align-items: center; gap: 4px; }
-@media (min-width: 1024px) { .st-nav { display: flex; } }
+.st-header-row { row-gap: 0; }
+/* Under the wordmark and Start free: the links, then language, theme and Sign in. The links never wrap inside and never push
+   Start free or Sign in off the page: the nav is the one part that gives way, and its links take another line. Nothing names a
+   width or a language, so any label length wraps instead of overflowing. */
+.st-header-sub {
+  order: 2;
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 12px;
+  padding-bottom: 8px;
+}
+.st-nav { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; min-width: 0; gap: 0 2px; margin-inline: -8px; }
+@media (min-width: 1024px) {
+  /* The bar: the wordmark, the links (shrinkable and wrapping), then language, theme, Sign in and Start free, in one row. */
+  .st-header-sub { display: contents; }
+  .st-nav { justify-content: center; margin-inline: 0; padding-block: 4px; }
+}
 .st-nav a {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   min-height: 44px;
   min-width: 44px;
-  padding: 0 12px;
+  padding: 0 8px;
   border-radius: var(--ns-r-key);
   font-family: var(--font-display);
   font-size: 15px;
@@ -353,10 +391,18 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   border-radius: 999px;
   background: var(--ns-amber);
 }
-.st-header-tools { display: flex; align-items: center; gap: 8px; }
-.st-header-desk { display: none; align-items: center; gap: 8px; }
-@media (min-width: 1024px) { .st-header-desk { display: flex; } }
+.st-header-tools { order: 1; display: flex; align-items: center; gap: 8px; min-height: 64px; }
+.st-header-desk { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* Below 1024px the language list opens to the right of its button (it sits at the left of this group, and a list that opens to the left would leave the page). */
+@media (max-width: 1023px) { .st-header-desk ul[role="listbox"] { right: auto; left: 0; } }
+@media (min-width: 1024px) { .st-header-tools { order: 0; } .st-header-desk { margin-left: 0; } }
+/* From 1280px the wordmark is 36px and the view switch joins the bar; Russian's bar is 40px too wide for that, so its lockup is 30px. */
+@media (min-width: 1280px) {
+  html[lang="ru"] .st-brand { --wm-h: 30px; }
+}
 .st-signin {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -368,48 +414,6 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 }
 .st-signin:hover { background: var(--ns-hover); }
 
-.st-menu-btn {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--ns-r-key);
-  border: 1px solid var(--ns-rule-strong);
-  color: var(--ns-text);
-  background: transparent;
-}
-.st-menu-btn:hover { background: var(--ns-hover); }
-.st-menu {
-  position: absolute;
-  inset-inline: 12px;
-  top: calc(100% + 8px);
-  z-index: 50;
-  padding: 8px;
-  border-radius: var(--ns-r-panel);
-  border: 1px solid var(--ns-rule-strong);
-  background: var(--ns-console);
-  box-shadow: var(--ns-lift);
-}
-.st-menu a {
-  display: flex;
-  align-items: center;
-  min-height: 52px;
-  padding: 0 14px;
-  border-radius: var(--ns-r-key);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-}
-.st-menu a:hover { background: var(--ns-hover); }
-.st-menu-scrim {
-  position: fixed;
-  inset: 64px 0 0;
-  z-index: 45;
-  background: var(--ns-scrim);
-}
-.st-menu a[aria-current="page"] { background: var(--ns-select); }
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 .st-hero {
@@ -1106,6 +1110,8 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 
 /* ── Footer ──────────────────────────────────────────────────────────── */
 .st-footer { border-top: 1px solid color-mix(in srgb, var(--ns-rule) 40%, var(--ns-rule-strong)); background: var(--ns-ground); }
+/* The footer's first column is about 200px wide at 1440: its lockup is a size down from the header's. */
+.st-footer .st-brand { --wm-h: 30px; }
 .st-footer-grid {
   display: grid;
   gap: 28px;
@@ -1113,12 +1119,15 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 @media (min-width: 900px) {
   .st-footer-grid { padding-block: 56px; }
+}
+/* Six columns need 1024px: at 900 the Russian "Политика конфиденциальности" ran 13px past the page. */
+@media (min-width: 1024px) {
   .st-footer-grid { grid-template-columns: minmax(0, 1.2fr) repeat(5, minmax(0, 1fr)); gap: 24px; }
 }
 .st-footer-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }
 /* The fifth group (the legal documents) has the longest names ("конфиденциальности"): on a phone it takes the whole row so none of them breaks mid-phrase. */
-@media (max-width: 899px) { .st-footer-cols > :last-child { grid-column: 1 / -1; } }
-@media (min-width: 900px) { .st-footer-cols { display: contents; } }
+@media (max-width: 1023px) { .st-footer-cols > :last-child { grid-column: 1 / -1; } }
+@media (min-width: 1024px) { .st-footer-cols { display: contents; } }
 .st-footer h2 {
   margin-bottom: 8px;
   font-family: var(--font-display);
@@ -1159,6 +1168,10 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 /* ── Sign-in shell ───────────────────────────────────────────────────── */
 .st-auth {
   display: grid;
+  /* One column that may shrink below its content: with an implicit `auto` track the
+     form's inputs (about 262px wide as built) set the page's minimum width, so a
+     320px phone scrolled sideways. The two-column rule below replaces it. */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100dvh;
 }
 @media (min-width: 960px) {

@@ -93,17 +93,16 @@ describe("the type tokens", () => {
 describe("no robot styling anywhere in the stylesheets", () => {
   it.each(CSS_FILES)("%s: no capitals, no weight outside 400/500/600, no size below 13px", (file) => {
     const css = read(file).replace(/\/\*[\s\S]*?\*\//g, "");
-    // Only the wordmark (the logotype's own capitals, 700) is exempt.
-    const stripped = css.replace(/\.(?:ns-wordmark|st-brand)\s*\{[^}]*\}/g, "");
+    const stripped = css;
     expect(stripped).not.toMatch(/text-transform:\s*uppercase/);
     expect([...stripped.matchAll(/font-weight:\s*(\d+)/g)].map((m) => Number(m[1])).filter((w) => ![400, 500, 600].includes(w))).toEqual([]);
     expect([...stripped.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1])).filter((n) => n < 13)).toEqual([]);
     expect([...stripped.matchAll(/letter-spacing:\s*(\d*\.?\d+)(?:em|px)/g)].map((m) => Number(m[1])).filter((n) => n > 0)).toEqual([]);
   });
 
-  it("the wordmark keeps its own logotype", () => {
-    expect(block(globals, ".ns-wordmark {")).toContain('"Nightshift Wordmark"');
-    expect(block(read("components/site/site.css"), ".st-brand {\n  display")).toContain('"Nightshift Wordmark"');
+  it("the wordmark is a drawing: no logotype font is declared or named anywhere", () => {
+    for (const file of [...CSS_FILES, "app/fonts.css"]) expect(read(file), file).not.toContain("Nightshift Wordmark");
+    expect(globals).not.toContain(".ns-wordmark");
   });
 });
 

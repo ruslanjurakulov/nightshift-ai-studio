@@ -1,3 +1,5 @@
+import { studioPageEn } from "../studio-page/en";
+
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
  * out of the big dictionaries so the marketing pages can change without
@@ -25,6 +27,8 @@ export const siteEn = {
     lead: "Give Nightshift a topic. It writes, voices and edits a YouTube video, then waits for your OK. You see the price before anything starts.",
     cta: "Start free",
     secondary: "See pricing",
+    demo: "Try an example",
+    demoNote: "Shows a plan only. Nothing is created.",
     note: "{n} free credits, once, when you sign up. No card.",
   },
   rundown: {
@@ -102,6 +106,10 @@ export const siteEn = {
     source: "From the live price list",
     cta: "Start free",
     more: "See all prices",
+  },
+  /** The /terms search-result description. The page shows the full summary of the document; this is only the meta text. */
+  legalMeta: {
+    terms: "The rules for using Nightshift: your channel and content, what is not allowed, prepaid credits, payments and refunds, and our liability.",
   },
   compare: {
     slug: "By hand or with Nightshift",
@@ -433,6 +441,8 @@ export const siteEn = {
     paySlug: "Payments",
     faqSlug: "Questions",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and approve every video before it airs.",
@@ -607,6 +617,7 @@ export const siteEn = {
     body: "The link may be old or mistyped, or it points to something this account cannot see.",
     home: "Back to the homepage",
     pricing: "See pricing",
+    more: "Other pages",
   },
 };
 

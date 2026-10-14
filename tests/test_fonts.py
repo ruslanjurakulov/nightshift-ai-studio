@@ -44,9 +44,10 @@ class FontFiles(unittest.TestCase):
         self.assertLess(latin, 150_000)
         self.assertLess(latin + cyr, 150_000)  # Russian preloads both
 
-    def test_no_second_webfont_but_the_wordmark(self):
+    def test_no_second_webfont(self):
+        # the wordmark is a vector drawing (components/site/Wordmark.tsx), not a font
         families = set(re.findall(r'font-family: "([^"]+)"', CSS))
-        self.assertEqual(families, {"Onest", "Onest Fallback", "Nightshift Wordmark"})
+        self.assertEqual(families, {"Onest", "Onest Fallback"})
 
     def test_licences_are_shipped(self):
         for name in ("OFL-Onest.txt", "OFL-SofiaSans.txt"):

@@ -174,7 +174,7 @@ export const devEn = {
       description: "Connect Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes and more to Nightshift, then make videos by asking your assistant.",
     },
     signinOff: {
-      description: "Connect Claude Code, OpenClaw, Cursor, Hermes and more to Nightshift with an API key, then make videos by asking your assistant. Sign-in for Claude and ChatGPT is coming soon.",
+      description: "Connect Claude Code, OpenClaw, Cursor, Hermes and more to Nightshift with an API key, then ask your assistant for videos. Claude and ChatGPT sign-in is coming.",
       paidLine: "API keys work today with any assistant that can send a header. Claude and ChatGPT will connect with a sign-in, which is coming soon.",
       paidTitle: "API balance",
       paidBody: "API keys and the REST API are paid from a prepaid API balance. Connecting with a sign-in, which will be part of every paid plan, is coming soon.",

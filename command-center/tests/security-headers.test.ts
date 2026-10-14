@@ -51,6 +51,14 @@ describe("security headers (BR-S-007)", () => {
     expect(h["x-content-type-options"]).toBe("nosniff");
   });
 
+  it.each(["/forgot-password", "/reset-password"])("%s is never cached and sends no Referer, and is still never framed", async (path) => {
+    const h = await headersFor(path);
+    expect(h["referrer-policy"]).toBe("no-referrer");
+    expect(h["cache-control"]).toBe("no-store");
+    expect(h["x-frame-options"]).toBe("DENY");
+    expect(h["x-content-type-options"]).toBe("nosniff");
+  });
+
   it("never sets a key the media file route sets more strictly itself", async () => {
     // The route answers with `default-src 'none'; sandbox` and no-referrer. A
     // config header for the same key could replace them, so none is sent.

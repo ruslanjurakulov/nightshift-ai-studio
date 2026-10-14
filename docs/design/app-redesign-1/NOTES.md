@@ -19,7 +19,7 @@ edge numbers and the focus ring. Media is shown as numbered frames, not icon-til
 | Credits | the balance (a large figure, the meter, where credits come from, the one filled "Get more credits" key) | plans, invite and activity are ruled sections; every pack and plan key is the same PriceButton outlined (`tone="quiet"`), Copy and Create link are quiet. Checked on a build that offers packs and plans (fake test-mode checkout settings, not committed): exactly one filled key |
 | Library | the drop zone when empty (media itself was already contact-sheet frames) | storage is a ruled strip; its Upload key goes quiet while the empty desk holds the primary |
 | Videos list | none needed: the list is the page | stats are one ruled strip; each row starts with a small frame (a Short is upright); filters are chips |
-| Settings | the workspace name | Developers and "another organization" are ruled; fields are 44px with 16px text |
+| Settings | Account and security (the workspace name and "another organization" cards were removed in the settings cleanup) | Developers is ruled; fields are 44px with 16px text |
 
 ## Shell and primitives
 

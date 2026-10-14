@@ -1,4 +1,5 @@
 import type { SiteDictionary } from "./en";
+import { studioPageUz } from "../studio-page/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -18,6 +19,8 @@ export const siteUz: SiteDictionary = {
     lead: "Nightshift’ga mavzu bering. U YouTube uchun video yozadi, ovozlaydi va montaj qiladi, soʻng roziligingizni kutadi. Narxni boshlashdan oldin koʻrasiz.",
     cta: "Bepul boshlash",
     secondary: "Narxlarni koʻrish",
+    demo: "Namunani sinab koʻring",
+    demoNote: "Faqat rejani koʻrsatadi. Hech narsa yaratilmaydi.",
     note: "Roʻyxatdan oʻtishda bir marta {n} bepul kredit. Karta kerak emas.",
   },
   rundown: {
@@ -95,6 +98,10 @@ export const siteUz: SiteDictionary = {
     source: "Amaldagi narxlar roʻyxatidan",
     cta: "Bepul boshlash",
     more: "Barcha narxlar",
+  },
+  /** The /terms search-result description. The page shows the full summary of the document; this is only the meta text. */
+  legalMeta: {
+    terms: "Nightshift’dan foydalanish qoidalari: kanal va kontent, taqiqlanganlar, oldindan toʻlangan kreditlar, toʻlov va qaytarish, javobgarlik chegaralari.",
   },
   compare: {
     slug: "Qoʻlda yoki Nightshift bilan",
@@ -423,6 +430,8 @@ export const siteUz: SiteDictionary = {
     paySlug: "Toʻlovlar",
     faqSlug: "Savollar",
   },
+  /** The public /studio page (lib/i18n/studio-page). */
+  studioPage: studioPageUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir videoni efirdan oldin tasdiqlaysiz.",
@@ -597,5 +606,6 @@ export const siteUz: SiteDictionary = {
     body: "Havola eskirgan yoki xato yozilgan boʻlishi mumkin — yoki bu hisob koʻra olmaydigan narsaga olib boradi.",
     home: "Bosh sahifaga",
     pricing: "Narxlarni koʻrish",
+    more: "Boshqa sahifalar",
   },
 };

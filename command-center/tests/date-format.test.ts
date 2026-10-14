@@ -4,7 +4,7 @@
  * entry that drifts from CLDR is caught here, and a language the runtime has no data for is not read from it.
  */
 import { describe, expect, it } from "vitest";
-import { formatAhead, formatDay } from "@/lib/date-format";
+import { formatAhead, formatDay, formatDayTime } from "@/lib/date-format";
 
 const D = (m: number, day = 5) => new Date(Date.UTC(2026, m, day, 12));
 
@@ -43,5 +43,16 @@ describe("formatAhead", () => {
     expect(formatAhead(3, "day", "de")).toBeNull();
     expect(formatAhead(0, "day", "en")).toBeNull();
     expect(formatAhead(1.5, "day", "en")).toBeNull();
+  });
+});
+
+describe("formatDayTime", () => {
+  it("writes Uzbek as day-month, year and a 24-hour time (never the ISO form Chromium falls back to)", () => {
+    expect(formatDayTime(new Date(2026, 9, 13, 20, 18), "uz")).toBe("13-okt, 2026, 20:18");
+    expect(formatDayTime(new Date(2026, 9, 3, 7, 5), "uz-Latn")).toBe("3-okt, 2026, 07:05");
+  });
+  it("leaves English, Russian and other languages to Intl's short date and time", () => {
+    const d = new Date(2026, 9, 13, 20, 18);
+    for (const l of ["en", "ru", "de"]) expect(formatDayTime(d, l)).toBe(d.toLocaleString(l, { dateStyle: "short", timeStyle: "short" }));
   });
 });

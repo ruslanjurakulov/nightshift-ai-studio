@@ -33,6 +33,7 @@ export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/docs/api/op
  *  path that answers the public 404 itself. */
 export const PUBLIC_PAGE_PATHS = [
   "/",
+  "/studio",
   "/pricing",
   "/solutions",
   "/solutions/youtube-channels",
@@ -46,6 +47,9 @@ export const PUBLIC_PAGE_PATHS = [
   "/terms",
   "/login",
   "/signup",
+  // Password recovery (lib/public-paths.ts): the request page and the page a reset link ends on.
+  "/forgot-password",
+  "/reset-password",
   // Where an invite link lands when it cannot be used (lib/public-paths.ts).
   "/invite",
 ] as const;
@@ -128,6 +132,15 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "no-store" },
         ],
       },
+      // Password recovery: the request page and the reset page are never cached
+      // and send no Referer (the reset page is reached from an e-mailed link).
+      {
+        source: "/:page(forgot-password|reset-password)",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
       // Last, so its stricter Referrer-Policy wins over the rule above.
       {
         source: "/auth/:path*",
@@ -163,6 +176,11 @@ const nextConfig: NextConfig = {
         permanent: false,
       })),
       { source: "/.rsc", destination: "/", permanent: false },
+      // iOS asks for these two names when a page names no apple-touch-icon (or before it has read the head); without
+      // a redirect the catch-all answers with an HTML 404 and the home-screen tile falls back to a letter. app/layout.tsx
+      // links the real file; this covers the probe. A redirect runs before the middleware, and /apple-icon.png is public.
+      { source: "/apple-touch-icon.png", destination: "/apple-icon.png", permanent: false },
+      { source: "/apple-touch-icon-precomposed.png", destination: "/apple-icon.png", permanent: false },
     ];
   },
 };

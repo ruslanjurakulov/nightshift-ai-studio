@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, ExternalLink, Trash2, X } from "lucide-react";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { useI18n } from "@/lib/i18n/context";
+import { useDayTime } from "@/components/usage/useDay";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { SOURCE_CAPABILITIES } from "@/lib/creative/operations";
@@ -60,7 +61,8 @@ export function MediaViewer({
   /** The organization the files belong to: when given, a video, picture or sound can be sent to the editor. */
   orgId?: string;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const dayTime = useDayTime();
   const path = useChannelPath();
   const tm = t.media;
   const tv = tm.viewer;
@@ -126,7 +128,6 @@ export function MediaViewer({
     if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
   }
 
-  const dateFmt = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
   const facts: [string, string][] = [
     [tv.type, tm.kinds[asset.kind]],
     [tv.format, formatLabel(asset.mime)],
@@ -134,7 +135,7 @@ export function MediaViewer({
     [tv.dimensions, asset.width && asset.height ? `${asset.width} × ${asset.height}` : ""],
     [tv.duration, formatDuration(asset.durationS)],
     [tv.source, tm.sources[asset.source]],
-    [tv.added, asset.createdAt ? dateFmt.format(new Date(asset.createdAt)) : ""],
+    [tv.added, asset.createdAt ? dayTime(asset.createdAt) : ""],
     [tv.folder, folderName ? (folderName(asset.folderId) ?? "") : ""],
   ];
   const picture = asset.kind === "image" ? (asset.viewUrl ?? asset.thumbUrl) : null;

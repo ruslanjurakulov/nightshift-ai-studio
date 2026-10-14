@@ -47,7 +47,7 @@
 }
 /* ── Frame: header, footer, shared scale ─────────────────────────────── */
 .nx .st-header { border-bottom-color: transparent; }
-.nx .st-header-row { height: 68px; }
+.nx .st-header-row, .nx .st-header-row > .st-brand, .nx .st-header-tools { min-height: 68px; }
 .nx .st-nav a { font-weight: 500; }
 .nx .st-key { border-radius: 14px; }
 .nx .st-footer { border-top: 1px solid var(--ns-rule); }
@@ -112,6 +112,10 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
   box-shadow: 0 0 0 1px var(--st-lit-edge), inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 28px -12px var(--st-lit-glow);
 }
 .nx-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+/* On a narrow phone a long label ("Сделать это по-настоящему") takes two lines rather than push the page sideways. */
+@media (max-width: 399px) {
+  .nx-btn { max-width: 100%; padding-block: 8px; white-space: normal; text-align: center; }
+}
 .nx-btn:active { transform: translateY(1px); }
 .nx-btn:disabled, .nx-btn[aria-disabled="true"] { background: var(--st-lit-bg); transform: none; }
 /* Focus: the amber outline (the global ring, ringed with --ns-focus) sits outside a gap in the page's colour. */
@@ -347,7 +351,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   background-image: radial-gradient(80% 50% at 50% -10%, rgba(255, 169, 64, 0.2), transparent 70%);
   color: var(--nx-stage-text);
 }
-.nx .st-auth-aside .st-brand { color: var(--nx-stage-text); }
+.nx .st-auth-aside .st-brand { color: var(--nx-stage-text); --ns-fold: #000; }
 .nx .st-auth-aside .st-h2 { font-size: clamp(32px, 3.4vw, 46px); max-width: 14ch; }
 .nx .st-auth-aside .st-ledger { border-top-color: var(--nx-stage-edge); }
 .nx .st-auth-aside .st-ledger li { border-bottom-color: var(--nx-stage-edge); font-size: 17px; }
@@ -760,7 +764,7 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
 .nx-auth-band { position: relative; height: 188px; margin-bottom: 14px; overflow: hidden; border-radius: 22px; background: var(--ns-key); }
 .nx-auth-band .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .nx-auth-band::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(16, 15, 13, 0.6) 0%, rgba(16, 15, 13, 0.82) 100%); }
-.nx-auth-band .st-brand { position: absolute; z-index: 1; left: 16px; bottom: 14px; color: #f4f0e9; }
+.nx-auth-band .st-brand { position: absolute; z-index: 1; left: 16px; bottom: 14px; color: #f4f0e9; --ns-fold: #000; }
 .nx-auth-band .nx-result-badge { z-index: 1; left: auto; right: 12px; }
 .nx-try-card { border-radius: 14px; }
 
@@ -1015,7 +1019,16 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   html[data-motion="paused"] .nx-chat .nx-dot, html[data-motion="paused"] .nx-chat .nx-chat-key { animation: none !important; }
 }
 .nx-typed { display: inline; }
-/* A phone's first screen: the headline, the button and the whole of the chat card's picture. The pricing link is in the menu and in the price block. */
+/* "Try an example": a quiet text entry under the two hero actions that scrolls to the plan demo (#try). Its own line from 640 px; on a phone it sits under the button. */
+.nx-sample { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 44px; padding: 4px; text-align: center; color: var(--ns-text); }
+.nx-sample-label { font-size: 16px; font-weight: 600; text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 6px; text-decoration-thickness: 1px; }
+.nx-sample:hover .nx-sample-label { color: var(--st-act-ink); text-decoration-color: currentColor; }
+.nx-sample-note { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
+@media (min-width: 640px) {
+  .nx-hero-copy .nx-actions { flex-wrap: wrap; }
+  .nx-hero-copy .nx-sample { flex-basis: 100%; align-items: flex-start; padding-inline: 0; text-align: left; }
+}
+/* A phone's first screen: the headline, the button and the whole of the chat card's picture. The pricing link is in the header's links and in the price block. */
 @media (max-width: 639px) {
   .nx-hero-copy .nx-actions .nx-link { display: none; }
   .nx-hero-copy .nx-actions { margin-top: 18px; }
@@ -1027,9 +1040,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 /* Edge fades say there is more: the right one until the end, the left one once scrolled. A chevron in the right fade is the hint to swipe; it goes with the first scroll. */
 @media (prefers-reduced-motion: no-preference) {
 }
-/* One Start free at a time: the sticky bar is for phones and tablets, and while it shows the header's button steps aside (hidden, not removed: removing it moved the header's tools and counted as a layout shift every time the bar came and went). */
+/* One Start free at a time: the sticky bar is for phones and tablets, where the header is not sticky. */
 @media (min-width: 1024px) { .nx-bar { display: none; } }
-@media (max-width: 1023px) { html[data-bar="on"] .st-header-tools > .st-key { visibility: hidden; } }
 /* The plan cards fill their rows: each card's lines spread over its height, and the picture card's picture takes what is left. */
 @media (min-width: 860px) {
   .nx-try-card { display: flex; flex-direction: column; }
@@ -1225,6 +1237,10 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   .nx-hero-top .nx-h1 { color: #fff; text-shadow: 0 1px 24px rgba(0, 0, 0, 0.35); }
   .nx-hero-top .nx-h1-b { color: #b3acff; }
   .nx-hero-top .nx-link { color: #fff; }
+  .nx-hero-top .nx-sample { color: #fff; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55); }
+  .nx-hero-top .nx-sample-label { text-decoration-color: rgba(255, 255, 255, 0.55); }
+  .nx-hero-top .nx-sample:hover .nx-sample-label { color: #fff; text-decoration-color: #fff; }
+  .nx-hero-top .nx-sample-note { color: rgba(255, 255, 255, 0.86); }
   .nx-hero .nx-chat .nx-result-art { display: none; }
   .nx-hero-visual { margin-top: 20px; }
 }

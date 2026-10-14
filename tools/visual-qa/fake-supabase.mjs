@@ -34,7 +34,13 @@
  * jobs), `videos` (a channel with videos made and one waiting for approval),
  * `running` (a clip being made right now), `low` (a few credits left),
  * `extraoff` (extra credits switched off), `unpriced` (no price is set: the
- * estimate and the clip price are unknown, never 0). `FAKE_MODELS=1` is not
+ * estimate and the clip price are unknown, never 0). The Settings → Account and
+ * security section (migration 0096) has three: `acct` (no @username yet),
+ * `acct_handle` (has @ana.k, free to change) and `acct_cool` (changed 10 days
+ * ago: the next change date is shown). The username check answers true for
+ * every well-formed name except a few made-up held ones (see TAKEN_HANDLES),
+ * from handle_available (signed in) and handle_available_public (the sign-up
+ * form, through the app's own route). `FAKE_MODELS=1` is not
  * needed: every state but `new` offers two made-up clip models so the clip
  * desk has a price to show.
  */
@@ -67,17 +73,22 @@ const CHANNEL = {
   agent_config: { target_duration_seconds: 120 },
 };
 
+/** The signed-in user; with `avatarV` the profile photo's version marker is in the metadata (the layout reads it from /auth/v1/user). */
+function userFor(avatarV) {
+  return avatarV ? { ...USER, user_metadata: { avatar_v: avatarV } } : USER;
+}
+
 function b64url(s) {
   return Buffer.from(s, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /** The @supabase/ssr session cookie for a fake signed-in session against `url`. */
-export function sessionCookie(url = FAKE_URL_DEFAULT, state = "") {
+export function sessionCookie(url = FAKE_URL_DEFAULT, state = "", avatarV = 0) {
   const host = new URL(url).hostname.split(".")[0];
   const exp = Math.floor(Date.now() / 1000) + 24 * 3600;
-  const claims = { sub: USER.id, exp, role: "authenticated", aud: "authenticated", ...(state ? { qa: state } : {}) };
+  const claims = { sub: USER.id, exp, role: "authenticated", aud: "authenticated", ...(state ? { qa: state } : {}), ...(avatarV ? { av: avatarV } : {}) };
   const jwt = [b64url(JSON.stringify({ alg: "none", typ: "JWT" })), b64url(JSON.stringify(claims)), "unsigned"].join(".");
-  const session = { access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: exp, refresh_token: "visual-qa", user: USER };
+  const session = { access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: exp, refresh_token: "visual-qa", user: userFor(avatarV) };
   return { name: `sb-${host}-auth-token`, value: "base64-" + b64url(JSON.stringify(session)) };
 }
 
@@ -104,6 +115,10 @@ const STATES = {
   low: { plan: "creator", granted: 2000, spent: 1980, held: 0, extra: 0, bonus: 0, on: true },
   extraoff: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 0, on: false },
   unpriced: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 100, on: true },
+  // Settings → Account and security (0096): the account of `videos`, with or without an @username.
+  acct: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
+  acct_handle: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
+  acct_cool: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
 };
 const PLANS = {
   free: { id: "free", name: "Free", monthly_credits: 0, is_default: true, sort_order: 0, slots: 1, priority: 0, api: false },
@@ -112,14 +127,17 @@ const PLANS = {
 };
 const switchState = new Map(); // state -> switch pressed in this process
 
-function stateOf(req) {
+function claimsOf(req) {
   const m = /^Bearer\s+[^.]+\.([^.]+)\./.exec(String(req.headers.authorization || ""));
-  if (!m) return "";
+  if (!m) return {};
   try {
-    return JSON.parse(Buffer.from(m[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")).qa || "";
+    return JSON.parse(Buffer.from(m[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) || {};
   } catch {
-    return "";
+    return {};
   }
+}
+function stateOf(req) {
+  return claimsOf(req).qa || "";
 }
 
 function accountFor(state) {
@@ -183,7 +201,15 @@ function creditAccountFor(state) {
 const ADMIN = process.env.FAKE_ADMIN === "1";
 
 // ── what each app-screen state has made ────────────────────────────────────
-const APP_STATES = new Set(["new", "videos", "running", "low", "extraoff", "unpriced"]);
+const APP_STATES = new Set(["new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool"]);
+// Made-up held @usernames: the check says "taken" for these and "free" for anything else well formed.
+const TAKEN_HANDLES = new Set(["taken.name", "maria.k", "alice.lab", "night.owl"]);
+const handleRow = (state) =>
+  state === "acct_handle"
+    ? [{ handle: "ana.k", created_at: iso(-90 * DAY), changed_at: iso(-90 * DAY) }]
+    : state === "acct_cool"
+      ? [{ handle: "ana.k", created_at: iso(-90 * DAY), changed_at: iso(-10 * DAY) }]
+      : [];
 const MODELS = [
   { id: "qa-clip-fast", display_name: "Quick clip", capabilities: ["t2v", "i2v", "t2i"], availability: "ga", verified_at: "2026-09-01T00:00:00Z" },
   { id: "qa-clip-best", display_name: "Best clip", capabilities: ["t2v", "i2v"], availability: "ga", verified_at: "2026-09-01T00:00:00Z" },
@@ -308,7 +334,7 @@ export function startFakeSupabase(port = 54399) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://x");
     if (req.method === "OPTIONS") return send(res, 204);
-    if (url.pathname === "/auth/v1/user") return send(res, 200, USER);
+    if (url.pathname === "/auth/v1/user") return send(res, 200, userFor(claimsOf(req).av));
     if (url.pathname.startsWith("/auth/v1/")) return send(res, 200, {});
     const state = stateOf(req);
     const rpc = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z_0-9]+)/);
@@ -339,6 +365,20 @@ export function startFakeSupabase(port = 54399) {
           return send(res, 200, { credits: 40 });
         }
       }
+      if (rpc[1] === "handle_available" || rpc[1] === "handle_available_public") {
+        let body = "";
+        req.on("data", (c) => (body += c));
+        req.on("end", () => {
+          let name = "";
+          try {
+            name = String(JSON.parse(body).p_handle ?? "");
+          } catch {
+            // an unreadable body asks about nothing
+          }
+          send(res, 200, !TAKEN_HANDLES.has(name));
+        });
+        return;
+      }
       if (rpc[1] in RPC) return send(res, 200, RPC[rpc[1]]);
       return send(res, 403, { code: "42501", message: "visual-qa fake: not available" });
     }
@@ -355,6 +395,7 @@ export function startFakeSupabase(port = 54399) {
           rows = state === "new" ? [] : VIDEOS.filter((v) => (held ? !v.published_at && !v.privacy : uploaded ? v.published_at || v.privacy : true));
         }
         if (table[1] === "creative_jobs") rows = JOBS(state);
+        if (table[1] === "user_handles") rows = handleRow(state);
         if (table[1] === "model_registry") rows = state === "new" ? [] : MODELS;
       }
       const single = String(req.headers.accept || "").includes("vnd.pgrst.object");

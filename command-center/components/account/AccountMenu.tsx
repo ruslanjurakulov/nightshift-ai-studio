@@ -2,25 +2,24 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Activity, CircleCheck, Coins, Gift, LogOut, Settings, UserRound, X } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { Activity, Coins, Gift, LogOut, Settings, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
-import {
-  coerceAccountSummary,
-  planName,
-  type AccountPlan,
-  type AccountSummary,
-  type ConnectedAccount,
-  type Platform,
-} from "@/lib/account";
+import { planName, type AccountPlan } from "@/lib/account";
+import { Avatar } from "@/components/account/Avatar";
+import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSignOut } from "@/components/account/AccountParts";
 
 /**
- * The account button in the header and the panel it opens: who is signed in,
+ * The account panel and the button that opens it: the sidebar's user card
+ * (customers, from `lg`) and the operator's round avatar in the top bar. A
+ * customer's phone has no button: its bottom bar's last tab is Settings, whose
+ * Account section (AccountSection) shows the same facts and controls.
+ *
+ * The panel: who is signed in,
  * their plan and credits, the publishing accounts connected to the workspace,
  * and the ways out (buy credits, settings, sign out).
  *
@@ -34,10 +33,13 @@ import {
  */
 export function AccountMenu({
   email,
+  avatarV = null,
   variant = "button",
   plan = null,
 }: {
   email: string | null;
+  /** The photo's version (avatar_v) from the layout, or null for none: the initial is drawn then. */
+  avatarV?: number | null;
   /** "card": the customer sidebar's user card (initial, email, plan), opening
    *  upward from the foot of the sidebar. "button": the round avatar in the bar. */
   variant?: "button" | "card";
@@ -46,10 +48,7 @@ export function AccountMenu({
 }) {
   const { t, locale, setLocale } = useI18n();
   const path = useChannelPath();
-  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [data, setData] = useState<AccountSummary | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -61,27 +60,7 @@ export function AccountMenu({
   }, []);
 
   // Fresh numbers on every open: a purchase or a finished run changes them.
-  useEffect(() => {
-    if (!open) return;
-    let live = true;
-    setState("loading");
-    fetch("/api/account", { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(String(res.status));
-        const summary = coerceAccountSummary(await res.json());
-        if (!summary) throw new Error("malformed");
-        if (live) {
-          setData(summary);
-          setState("ready");
-        }
-      })
-      .catch(() => {
-        if (live) setState("failed");
-      });
-    return () => {
-      live = false;
-    };
-  }, [open]);
+  const { data, state } = useAccountSummary(open);
 
   // Focus into the panel on open; Escape, outside clicks and Tab wrapping.
   useEffect(() => {
@@ -131,15 +110,9 @@ export function AccountMenu({
     };
   }, [open, close]);
 
-  async function signOut() {
-    const supabase = createClient();
-    if (supabase) await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
+  const signOut = useSignOut();
 
   const shownEmail = data?.email ?? email;
-  const initial = shownEmail ? shownEmail.trim().charAt(0).toUpperCase() : null;
   const dash = t.common.dash;
   const credits = data?.credits ?? null;
   // The operator's own organization is never charged, so it has no credit
@@ -167,12 +140,7 @@ export function AccountMenu({
           data-shell-usercard=""
           className="flex w-full items-center gap-2.5 rounded-[12px] border border-[var(--shell-border)] bg-[var(--color-panel)] p-2 text-left transition-colors hover:bg-[var(--color-hover)] aria-expanded:bg-[var(--color-hover)]"
         >
-          <span
-            aria-hidden
-            className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--color-accent-soft)] text-sm font-semibold text-[var(--color-primary)]"
-          >
-            {initial ?? <UserRound className="size-4" />}
-          </span>
+          <Avatar email={shownEmail} version={avatarV} size={32} />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-xs font-medium text-[var(--color-fg)]">{shownEmail ?? dash}</span>
             {cardPlan && <span className="truncate text-xs text-[var(--color-muted)]">{cardPlan}</span>}
@@ -190,13 +158,7 @@ export function AccountMenu({
         title={shownEmail ?? undefined}
         className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center p-0"
       >
-        {initial ? (
-          <span aria-hidden className="text-sm font-medium text-[var(--color-primary)]">
-            {initial}
-          </span>
-        ) : (
-          <UserRound aria-hidden className="size-4" />
-        )}
+        <Avatar email={shownEmail} version={avatarV} size={32} />
       </button>
       )}
 
@@ -211,12 +173,7 @@ export function AccountMenu({
           className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : "right-0 top-full mt-3 max-h-[calc(100dvh-110px)]"} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
         >
           <header className="flex items-start gap-3">
-            <span
-              aria-hidden
-              className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[15px] font-medium text-[var(--color-primary)]"
-            >
-              {initial ?? <UserRound className="size-4" />}
-            </span>
+            <Avatar email={shownEmail} version={avatarV} size={40} ring />
             <div className="min-w-0 flex-1">
               <h2 id={titleId} className="text-xs text-[var(--color-muted)]">
                 {t.account.title}
@@ -280,24 +237,7 @@ export function AccountMenu({
 
           <section aria-label={t.account.accounts} className="flex flex-col gap-1.5">
             <h3 className="text-xs text-[var(--color-muted)]">{t.account.accounts}</h3>
-            <ul className="flex flex-col gap-1">
-              {rows(state === "ready" ? (data?.accounts ?? []) : null).map((row) =>
-                row.kind === "account" ? (
-                  <AccountRow key={`${row.account.platform}:${row.account.id}`} account={row.account} />
-                ) : (
-                  <PlaceholderRow
-                    key={`p:${row.platform}`}
-                    platform={row.platform}
-                    connectable={
-                      row.platform === "youtube" ||
-                      (state === "ready" && Boolean(data?.connectable[row.platform]))
-                    }
-                    status={state === "ready" ? "ready" : state === "failed" ? "failed" : "loading"}
-                    onNavigate={() => close(false)}
-                  />
-                ),
-              )}
-            </ul>
+            <ConnectedAccountsList data={data} state={state} onNavigate={() => close(false)} />
           </section>
 
           {/* Language and theme live here on a phone; the header bar has room for
@@ -319,6 +259,7 @@ export function AccountMenu({
               ))}
             </div>
             <ThemeToggle showLabel />
+            <ViewModeToggle showLabel />
           </div>
 
           <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">
@@ -349,43 +290,6 @@ export function AccountMenu({
   );
 }
 
-type Dict = ReturnType<typeof useI18n>["t"];
-
-function planLabel(plan: AccountPlan, t: Dict): string {
-  switch (plan.kind) {
-    case "plan":
-      return plan.name;
-    case "exempt":
-      return t.account.planExempt;
-    default:
-      return t.common.dash;
-  }
-}
-
-/** "Renews 1 Nov" / "Ends 1 Nov" / "Payment failed" under the plan name; null for Free. */
-function planDetail(plan: AccountPlan, t: Dict, locale: string): string | null {
-  if (plan.kind !== "plan" || !plan.status) return null;
-  if (plan.status === "past_due") return t.plans.status.past_due;
-  if (!plan.periodEnd) return t.plans.status[plan.status];
-  const date = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(plan.periodEnd));
-  return plan.status === "canceled" || plan.cancelAtPeriodEnd ? fmt(t.plans.endsOn, { date }) : fmt(t.plans.renews, { date });
-}
-
-const PLATFORMS: Platform[] = ["youtube", "instagram", "tiktok"];
-
-type Row = { kind: "account"; account: ConnectedAccount } | { kind: "placeholder"; platform: Platform };
-
-/** Real rows first, in platform order; a platform with none gets one placeholder. */
-function rows(accounts: ConnectedAccount[] | null): Row[] {
-  const out: Row[] = [];
-  for (const platform of PLATFORMS) {
-    const mine = (accounts ?? []).filter((a) => a.platform === platform);
-    if (mine.length === 0) out.push({ kind: "placeholder", platform });
-    else for (const account of mine) out.push({ kind: "account", account });
-  }
-  return out;
-}
-
 function Stat({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
   return (
     <div
@@ -394,108 +298,5 @@ function Stat({ label, wide, children }: { label: string; wide?: boolean; childr
       <dt className="text-xs text-[var(--color-muted)]">{label}</dt>
       <dd className="mt-0.5 text-[15px] font-medium text-[var(--color-fg)]">{children}</dd>
     </div>
-  );
-}
-
-function PlatformGlyph({ platform }: { platform: Platform }) {
-  // Plain marks, not brand logos: a rounded tile with the platform's initial.
-  const letter = platform === "youtube" ? "YT" : platform === "instagram" ? "IG" : "TT";
-  return (
-    <span
-      aria-hidden
-      className="tnum flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] text-xs text-[var(--color-muted)]"
-    >
-      {letter}
-    </span>
-  );
-}
-
-const PLATFORM_NAME: Record<Platform, string> = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok" };
-
-function AccountRow({ account }: { account: ConnectedAccount }) {
-  const { t } = useI18n();
-  return (
-    <li className="flex items-center gap-3 rounded-xl px-2 py-1.5">
-      {account.avatarUrl ? (
-        // A public avatar from the platform; not proxied through next/image.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={account.avatarUrl}
-          alt=""
-          width={32}
-          height={32}
-          referrerPolicy="no-referrer"
-          className="size-8 shrink-0 rounded-full border border-[var(--color-border)] object-cover"
-        />
-      ) : (
-        <PlatformGlyph platform={account.platform} />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-[var(--color-fg)]">{account.name}</p>
-        <p className="text-xs text-[var(--color-muted)]">{PLATFORM_NAME[account.platform]}</p>
-      </div>
-      {account.connected ? (
-        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--color-ok)]">
-          <CircleCheck aria-hidden className="size-4" />
-          {t.account.connected}
-        </span>
-      ) : (
-        <span className="shrink-0 text-xs text-[var(--color-muted)]">{t.account.notConnected}</span>
-      )}
-    </li>
-  );
-}
-
-function PlaceholderRow({
-  platform,
-  connectable,
-  status,
-  onNavigate,
-}: {
-  platform: Platform;
-  /** Instagram / TikTok: the deployment has the platform's app keys (0028). */
-  connectable: boolean;
-  /** Before the data arrives, or when it failed, nothing is claimed about YouTube. */
-  status: "loading" | "failed" | "ready";
-  onNavigate: () => void;
-}) {
-  const { t } = useI18n();
-  const path = useChannelPath();
-  const youtube = platform === "youtube";
-  return (
-    <li className="flex items-center gap-3 rounded-xl px-2 py-1.5">
-      <PlatformGlyph platform={platform} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-[var(--color-fg)]">{PLATFORM_NAME[platform]}</p>
-        <p className="text-xs text-[var(--color-muted)]">
-          {!youtube
-            ? connectable
-              ? t.account.notConnected
-              : t.account.comingSoon
-            : status === "ready"
-              ? t.account.noYoutube
-              : status === "loading"
-                ? t.account.loading
-                : t.common.dash}
-        </p>
-      </div>
-      {youtube || connectable ? (
-        status === "ready" && (
-          <Link href={path("/channels")} onClick={onNavigate} className="btn-sky is-quiet pill shrink-0 px-3 py-1 text-xs">
-            {t.account.connect}
-          </Link>
-        )
-      ) : (
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title={t.account.comingSoon}
-          className="btn-sky is-quiet pill shrink-0 px-3 py-1 text-xs opacity-50"
-        >
-          {t.account.connect}
-        </button>
-      )}
-    </li>
   );
 }

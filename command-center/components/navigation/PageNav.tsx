@@ -19,6 +19,7 @@ function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => 
       if (crumb.parent === "channels" && crumb.segment === "new") return t.channels.add;
       // A section the sidebar does not list names itself by its URL; anything
       // below a section (a video's id) is a detail page, and an id is not a name.
+      if (crumb.parent === null && crumb.segment === "presets") return t.presets.title;
       return crumb.parent === null ? crumb.segment.replace(/-/g, " ") : t.navigation.details;
   }
 }
@@ -70,7 +71,7 @@ export function PageNav() {
                 ) : (
                   <Link
                     href={crumb.href}
-                    className="max-w-[12rem] truncate rounded py-3 transition-colors max-sm:min-w-10 sm:py-0 pointer-coarse:min-w-10 pointer-coarse:py-3 hover:text-[var(--color-fg)]"
+                    className="max-w-[12rem] truncate rounded py-[0.8125rem] transition-colors max-sm:min-w-11 sm:py-0 pointer-coarse:min-w-11 pointer-coarse:py-[0.8125rem] hover:text-[var(--color-fg)]"
                   >
                     {label}
                   </Link>

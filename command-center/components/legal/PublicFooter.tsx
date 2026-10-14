@@ -2,9 +2,10 @@ import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { LEGAL } from "@/lib/legal";
 import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { devFor } from "@/lib/i18n/dev";
 import { devPagesEnabled } from "@/lib/dev-pages";
+import { ViewModeControl } from "@/components/view-mode/ViewModeToggle";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
@@ -33,7 +34,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
       title: f.product,
       links: [
         { href: "/#how", label: f.how },
-        { href: "/#studio", label: f.studio },
+        { href: "/studio", label: f.studio },
         { href: "/pricing", label: f.pricing },
         { href: "/#faq", label: f.faq },
       ],
@@ -78,9 +79,8 @@ export function PublicFooter({ t }: { t: Dictionary }) {
     <footer className="st-footer">
       <div className="st-wrap st-footer-grid">
         <div className="flex flex-col gap-3">
-          <Link href="/" className="st-brand self-start">
-            <BrandMark />
-            {t.brand.name}
+          <Link href="/" className="st-brand self-start" aria-label={t.brand.name}>
+            <Wordmark />
           </Link>
           <p className="st-small max-w-[30ch]">{f.note}</p>
           {LEGAL.contactEmail && (
@@ -131,6 +131,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         <div className="st-footer-base">
           <span>{LEGAL.legalName ? `© ${LEGAL.legalName}` : t.brand.name}</span>
           <span>{t.legal.tagline}</span>
+          <ViewModeControl variant="link" labels={t.common} />
         </div>
       </div>
     </footer>

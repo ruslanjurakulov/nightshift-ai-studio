@@ -23,6 +23,13 @@ import { authorizeReturnPath } from "@/lib/oauth/authorize";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
+import {
+  FRAME_SRC_HEADER,
+  VIEW_COOKIE,
+  frameSrcFor,
+  framedBySelf,
+  parseViewChoice,
+} from "@/lib/view-mode";
 
 /** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
 const NOT_FOUND_PATH = "/_not-found";
@@ -72,6 +79,36 @@ function channelRedirect(request: NextRequest): URL | null {
  * (`default-src 'none'; sandbox`), and a second policy is not needed there.
  */
 export async function middleware(request: NextRequest) {
+  // The Mobile / Desktop view (lib/view-mode.ts). The header the layout reads to draw the phone frame is ours
+  // alone: whatever a client sent under that name is dropped before anything is decided.
+  request.headers.delete(FRAME_SRC_HEADER);
+  const fetchDest = request.headers.get("sec-fetch-dest");
+  const pathname = request.nextUrl.pathname;
+  const frameSrc = frameSrcFor({
+    choice: parseViewChoice(request.cookies.get(VIEW_COOKIE)?.value),
+    fetchDest,
+    pathname,
+    search: request.nextUrl.search,
+  });
+  if (frameSrc) request.headers.set(FRAME_SRC_HEADER, frameSrc);
+  const byself = framedBySelf({ fetchDest, fetchSite: request.headers.get("sec-fetch-site"), pathname });
+
+  const response = await respond(request, { frameSelf: frameSrc !== null, framedBySelf: byself });
+
+  if (byself) {
+    // Our own page, framing itself: the one case the static DENY (next.config.ts) is lifted. A page on another
+    // site sends Sec-Fetch-Site: cross-site and keeps DENY; so does everything the browser did not mark as a frame.
+    response.headers.set("X-Frame-Options", "SAMEORIGIN");
+    // The enforcing mode carries frame-ancestors in its full policy (buildCsp); in any other mode only the
+    // config's `frame-ancestors 'none'` is enforced, so it is replaced by the same directive with 'self'.
+    if (cspHeaderName(cspMode(process.env.CSP_MODE)) !== "Content-Security-Policy") {
+      response.headers.set("Content-Security-Policy", "frame-ancestors 'self'");
+    }
+  }
+  return response;
+}
+
+async function respond(request: NextRequest, frame: { frameSelf: boolean; framedBySelf: boolean }) {
   if (request.nextUrl.pathname.startsWith(SIGNED_MEDIA_PREFIX)) return gate(request);
   const header = cspHeaderName(cspMode(process.env.CSP_MODE));
   if (!header) return gate(request);
@@ -81,6 +118,8 @@ export async function middleware(request: NextRequest) {
     supabaseUrl: SUPABASE_URL,
     dev: process.env.NODE_ENV === "development",
     reportUri: report,
+    frameSelf: frame.frameSelf,
+    framedBySelf: frame.framedBySelf,
   });
   request.headers.set(header, policy);
   const response = await gate(request);
@@ -169,7 +208,7 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // Only /login, /signup, the auth callback and the public pages (landing,
   // Privacy, Terms, Pricing) are reachable signed out; see lib/public-paths.ts
   // for why the match is exact.
-  const decision = gateDecision(request.nextUrl.pathname, Boolean(user));
+  const decision = gateDecision(request.nextUrl.pathname, Boolean(user), request.nextUrl.search);
   // A signed-out visitor who mistyped a URL (/blog, /about) gets the 404, not a
   // sign-in form for a page that was never there. The rewrite serves only the
   // root not-found page: no layout of the app runs, nothing is read.

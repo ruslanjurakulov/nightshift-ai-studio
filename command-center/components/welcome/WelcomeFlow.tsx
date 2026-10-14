@@ -9,7 +9,7 @@ import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE, channelPath } from "@/lib/channels";
 import { ORG_NAME_MAX, validateOrgName } from "@/lib/orgs";
 import { SignOutButton } from "@/components/SignOutButton";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { newChannelHref, WELCOME_NICHE_MAX, WELCOME_LANGUAGE_MAX } from "@/lib/welcome";
 
@@ -23,7 +23,7 @@ const inputClass = "ns-field min-w-0";
 
 function rememberAllChannels() {
   // The org switch already happened server-side (/api/org/create sets the org
-  // cookie); this is the channel memory, the same thing CreateOrganizationForm sets.
+  // cookie); this is the channel memory a new workspace starts with.
   document.cookie = `${CHANNEL_COOKIE}=${ALL_CHANNELS_SLUG}; path=/; max-age=31536000; samesite=lax`;
 }
 
@@ -264,9 +264,9 @@ function Frame({ steps, index, children }: { steps: string[]; index: number; chi
   return (
     <div className="g5-welcome-in">
       <div className="g5-welcome-bar">
-        <div className="ns-wordmark inline-flex items-center gap-2">
-          <BrandMark size={32} />
-          {t.brand.name}
+        <div className="inline-flex items-center text-[var(--color-fg)] [--wm-h:30px] max-[359px]:[--wm-h:22px]">
+          <Wordmark />
+          <span className="sr-only">{t.brand.name}</span>
         </div>
         <div className="flex items-center gap-2">
           <LanguageSelector />
