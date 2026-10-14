@@ -117,7 +117,12 @@ class DocumentTestCase(unittest.TestCase):
             self.assertTrue(any("longer than the text is shown" in p for p in got), got)
         self.assertEqual(tl.validate(text_doc(anim_in="pop", anim_in_s=1.0, fade_out_s=1.0)), [])
         self.assertEqual(tl.validate(text_doc(anim_in="pop", anim_in_s=1.5, fade_out_s=0.5)), [])
-        # a missing duration is the default
+        # a missing duration is the default (0.4 s) on BOTH sides: shown 1.5 s, an exit without its duration
+        # beside a 1.5 s fade-in is refused by every validator and by the spec
+        got = tl.validate(text_doc(end_s=2.5, anim_out="slide-left", fade_in_s=1.5))
+        self.assertTrue(any("longer than the text is shown" in p for p in got), got)
+        self.assertTrue(tl.validate(text_doc(end_s=2.5, anim_in="pop", fade_out_s=1.5)))
+        self.assertEqual(tl.validate(text_doc(end_s=2.5, anim_out="slide-left", fade_in_s=1.0)), [])
         self.assertEqual(tl.validate(text_doc(anim_in="pop", fade_out_s=1.0)), [])
         self.assertTrue(tl.validate(text_doc(end_s=2.3, anim_in="pop", fade_out_s=1.0)))
         base = spec_of(text_doc())
