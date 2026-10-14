@@ -630,6 +630,64 @@
       }
     },
     {
+      "id": "assemblyai-universal-2",
+      "display_name": "AssemblyAI Universal-2",
+      "provider": "assemblyai",
+      "adapter": "audio.async_transcribe",
+      "vendor_model": "universal-2",
+      "capabilities": [
+        "captions"
+      ],
+      "output": "text",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "languages": [
+        "ru",
+        "en"
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://www.assemblyai.com/docs/api-reference/transcripts/submit",
+        "checked_at": "2026-10-14",
+        "source": "vendor_docs_search",
+        "evidence": "API reference: POST /v2/upload (raw bytes, authorization header) -> upload_url; POST /v2/transcript {audio_url, speech_models, language_code | language_detection}; GET /v2/transcript/{id} status queued|processing|completed|error, words[{text,start,end}]",
+        "note": "Russian and English are in the top accuracy groups; Uzbek is listed in the lowest (fair) tier, so it is not offered for this model. Word times are milliseconds (read from the examples, not stated)"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per hour of audio; no per-second figure was read from the pricing page, so none is claimed"
+      },
+      "credit_unit": "model_assemblyai_universal_2_second",
+      "entitlement": null,
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "The vendor's terms for offering transcription to end users have not been reviewed yet; the owner reviews them before this model is switched on"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 2,
+        "max_source_seconds": 1800
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "captions",
+        "prompt": "Hello from Nightshift.",
+        "input_audio": "speech"
+      }
+    },
+    {
       "id": "flux-2-pro",
       "display_name": "FLUX.2 Pro",
       "provider": "bfl",
