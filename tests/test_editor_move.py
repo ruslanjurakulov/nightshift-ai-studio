@@ -100,6 +100,30 @@ class DocumentTestCase(unittest.TestCase):
         n = tl.normalise(odoc(move={"to": {"x": 0.80001, "opacity": 0}}))["overlays"][0]
         self.assertEqual(n["move"], {"to": {"x": 0.8, "opacity": 0.0}})
 
+    def test_a_big_zoom_is_not_offered_on_a_crossfade_in_a_frame_above_1440p(self):
+        # the picture is scaled up to zoom x the frame per frame: a cross-faded 4K60 clip failed at zoom 3
+        def xfade(width, height, **fx):
+            doc = vdoc(width=width, height=height, fps=60)
+            doc["tracks"][0]["clips"].append({"id": "c2", "asset_id": BASE, "start_s": 1.5, "in_s": 0, "out_s": 2,
+                                              "transition": {"type": "crossfade", "duration_s": 0.5}, **fx})
+            return doc
+        self.assertEqual(tl.XFADE_LARGE_ZOOM_MAX, 2.0)
+        self.assertEqual(tl.validate(xfade(3840, 2160, move=mv(1, 0.5, 0.5, 2))), [])
+        got = tl.validate(xfade(3840, 2160, move=mv(1, 0.5, 0.5, 2.5)))
+        self.assertTrue(any("zoom above 2" in p and "cross-faded" in p for p in got), got)
+        got = tl.validate(xfade(2160, 3840, move=mv(3, 0.5, 0.5, 1)))              # the FROM end counts too
+        self.assertTrue(any("zoom above 2" in p for p in got), got)
+        # the earlier clip of the blend counts, 1440p is not "above", and a single clip may zoom to 4
+        doc = xfade(3840, 2160)
+        doc["tracks"][0]["clips"][0]["move"] = mv(1, 0.5, 0.5, 4)
+        self.assertTrue(any("zoom above 2" in p for p in tl.validate(doc)))
+        self.assertEqual(tl.validate(xfade(2560, 1440, move=mv(1, 0.5, 0.5, 4))), [])
+        self.assertEqual(tl.validate(vdoc(width=3840, height=2160, fps=60, move=mv(1, 0.5, 0.5, 4))), [])
+        # a pan at zoom 1 and a blur-free blend of a zoom to 2 are what passed the real render
+        self.assertEqual(tl.validate(xfade(3840, 2160, move=mv(1, 0.3, 0.5, 1, 0.7, 0.5))), [])
+        # blur and a zoom together are the combination ffmpeg 5.1.1 failed too: blur alone is refused already
+        self.assertTrue(any("blur is not offered" in p for p in tl.validate(xfade(3840, 2160, blur=5, move=mv(1, 0.5, 0.5, 2)))))
+
     def test_only_a_few_overlays_may_ramp_between_two_visible_opacities(self):
         # geq rewrites the alpha plane per pixel (3.6x slower for one video overlay, 13x for four)
         def doc_with(n, opacity=1.0, to=0.5):
@@ -138,6 +162,8 @@ class DocumentTestCase(unittest.TestCase):
         ts = EDITOR_TS.read_text(encoding="utf-8")
         self.assertEqual(float(re.search(r"export const MOVE_ZOOM_MIN = ([\d.]+);", ts).group(1)), tl.MOVE_ZOOM_MIN)
         self.assertEqual(float(re.search(r"export const MOVE_ZOOM_MAX = ([\d.]+);", ts).group(1)), tl.MOVE_ZOOM_MAX)
+        for name in ("XFADE_LARGE_ZOOM_MAX", "MAX_PARTIAL_OPACITY_MOVES"):
+            self.assertEqual(float(re.search(rf"export const {name} = ([\d.]+);", ts).group(1)), getattr(tl, name), name)
 
 
 class SpecTestCase(unittest.TestCase):

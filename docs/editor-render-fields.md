@@ -158,6 +158,17 @@ Not done here (later items): free-angle rotation and crop (item 8).
 * works on both sides of a cross-fade; the move runs over each clip's WHOLE
   length, not just the part outside the blend.
 * rotate/flip (item 3) happen before the move; effects after.
+* MEMORY LIMIT: the fitted picture is scaled up to `zoom` x the frame on every
+  frame, so a zoom is refused above 2 (`XFADE_LARGE_ZOOM_MAX`) on a CROSS-FADED
+  clip (either side of a blend, either keyframe) in a frame above 1440p
+  (2560x1440, either way up): a cross-faded 4K60 clip failed at a zoom of 3 with
+  ffmpeg 7.0.2 under the worker's 2 GiB limit (up to 2 passed with both 7.0.2 and
+  5.1.1; 5.1.1 alone passed 4). A single clip or a hard cut zooms to 4 at any
+  size (measured at 4K60), and so does any frame up to 1440p. A UI should clamp
+  the zoom control for such a clip. (Cutting the window first and scaling it
+  would avoid the big frame, but ffmpeg's `crop` size cannot change per frame and
+  `zoompan` rounds the window to whole pixels, which jitters; the cap keeps the
+  exact, smooth zoom the preview shows.)
 
 ### Overlay `move.to`: end keyframe of an overlay
 
@@ -171,8 +182,10 @@ Not done here (later items): free-angle rotation and crop (item 8).
 * entrance/exit animations (item 2) add to a move (a slide moves from where the
   move has the overlay).
 * an opacity move to or from 0 is a cheap fade; any other opacity move is
-  rendered per pixel and is slower on a large overlay (still fine for the
-  caps in place: 16 overlays, 4 videos).
+  rendered per pixel (`geq`: 3.6x slower for one video overlay, 13x for four,
+  out of memory at 4K60), so at most TWO overlays per document may move between
+  two visible opacities (`MAX_PARTIAL_OPACITY_MOVES`, `partialOpacityMove()` in
+  `lib/editor.ts`); the validators refuse a third.
 * an overlay whose own `opacity` is 0 is still rendered when its move brings
   the opacity above 0.
 * no preview parity in a browser beyond straight CSS interpolation: say that

@@ -198,6 +198,8 @@ export const BLUR_MAX = 30;
  *  memory; modules/timeline.py LARGE_FRAME_PX / XFADE_LARGE_BLUR_MAX). */
 export const LARGE_FRAME_PX = 2560 * 1440;
 export const XFADE_LARGE_BLUR_MAX = 0;
+/** ... and a zoom above this on such a clip (modules/timeline.py XFADE_LARGE_ZOOM_MAX). */
+export const XFADE_LARGE_ZOOM_MAX = 2;
 export const ROTATIONS = [0, 90, 180, 270] as const;
 /** A clip's move: the zoom window's range (modules/timeline.py MOVE_ZOOM_*). */
 export const MOVE_ZOOM_MIN = 1;
@@ -1330,6 +1332,16 @@ function largeFrameCrossfadeProblems(doc: TimelineDoc, track: TimelineTrack): st
         seen.add(id);
         problems.push(
           `track ${track.id} clip ${id}: blur is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory; remove the blur, the cross-fade or lower the frame size`,
+        );
+      }
+      const mv = c.move;
+      const zooms = isObj(mv)
+        ? [mv.from, mv.to].filter(isObj).map((p) => (p as Record<string, unknown>).zoom ?? 1)
+        : [];
+      if (!seen.has(`${id}:zoom`) && zooms.some((z) => isNum(z) && z > XFADE_LARGE_ZOOM_MAX)) {
+        seen.add(`${id}:zoom`);
+        problems.push(
+          `track ${track.id} clip ${id}: a zoom above ${XFADE_LARGE_ZOOM_MAX} is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory; lower the zoom, remove the cross-fade or lower the frame size`,
         );
       }
     }

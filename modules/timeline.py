@@ -288,6 +288,10 @@ BLUR_MAX = 30.0                                       # Gaussian sigma, output p
 #: grain, vignette, turns) passed with both builds. render_backend.LARGE_OUTPUT_PX is the same 2560x1440.
 LARGE_FRAME_PX = 2560 * 1440
 XFADE_LARGE_BLUR_MAX = 0.0
+#: The same for a move that zooms: the fitted picture is scaled up to ``zoom`` x the frame every frame, and
+#: on a cross-faded 4K60 clip a zoom of 3 failed it with ffmpeg 7.0.2 (up to 2 passed with both builds; 4
+#: passed with 5.1.1 alone, and any zoom passes on a single clip).
+XFADE_LARGE_ZOOM_MAX = 2.0
 ROTATIONS = (0, 90, 180, 270)
 _EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
                 "flip_h", "flip_v", "rotate")
@@ -1095,6 +1099,14 @@ def _large_frame_crossfade_problems(doc: dict, track: dict) -> List[str]:
                 problems.append(f"{_where(track, c)}: blur is not offered on a cross-faded clip in a frame above "
                                 f"1440p ({w}x{h}) — the render would run out of memory; remove the blur, the "
                                 f"cross-fade or lower the frame size")
+            move = c.get("move")
+            zooms = [p.get("zoom", 1.0) for p in (move.get("from"), move.get("to")) if isinstance(p, dict)] \
+                if isinstance(move, dict) else []
+            if cid + ":zoom" not in seen and any(_is_num(z) and z > XFADE_LARGE_ZOOM_MAX for z in zooms):
+                seen.add(cid + ":zoom")
+                problems.append(f"{_where(track, c)}: a zoom above {XFADE_LARGE_ZOOM_MAX:g} is not offered on a "
+                                f"cross-faded clip in a frame above 1440p ({w}x{h}) — the render would run out "
+                                f"of memory; lower the zoom, remove the cross-fade or lower the frame size")
     return problems
 
 
