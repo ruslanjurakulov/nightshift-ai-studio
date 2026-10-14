@@ -299,6 +299,19 @@ describe("the inspector", () => {
     expect(shapeEl().textContent).toBe(ts.labels.subscribe);
   });
 
+  it("characters the export cannot draw are left out and said, politely; braces and a backslash are shown as the export draws them", () => {
+    mount();
+    add("pill");
+    const box = screen.getByLabelText(ts.text) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "Hi 😀 日本" } });
+    expect(shapeEl().textContent).toBe("Hi");
+    const note = screen.getByText(ts.textDropped);
+    expect(note.getAttribute("role")).toBe("status");
+    fireEvent.change(box, { target: { value: "{x} \\ y" } });
+    expect(screen.queryByText(ts.textDropped)).toBeNull();
+    expect(shapeEl().textContent).toBe("(x) / y"); // what the export draws
+  });
+
   it("the shape's kind can be changed in place and keeps the span and colour", () => {
     mount();
     add("circle");
@@ -510,6 +523,37 @@ describe("limits, said where they apply", () => {
     expect((screen.getByRole("button", { name: te.overlay.add }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getAllByText(fmt(ts.layersFull, { max: MAX_OVERLAYS })).length).toBe(2);
     for (const el of screen.getAllByText(fmt(ts.layersFull, { max: MAX_OVERLAYS }))) expect(el.getAttribute("role")).toBe("status");
+  });
+
+  it("a shape the export cannot afford is refused with the numbers, as a status, and the project is as it was", () => {
+    let m = toModel(newDocForAsset(VIDEO)!);
+    m = { ...m, width: 3840, height: 2160 };
+    for (let i = 0; i < 2; i += 1) {
+      const o = addShape(m, "circle", 0)!;
+      m = { ...o.model, shapes: o.model.shapes!.map((s) => ({ ...s, w: 0.2 })) };
+    }
+    expect(validateTimeline(toDoc(m))).toEqual([]);
+    mount(toDoc(m));
+    const before = document.querySelectorAll("[data-shape]").length;
+    fireEvent.click(screen.getByRole("button", { name: ts.add }));
+    const picker = screen.getByTestId("shape-picker");
+    fireEvent.click(within(picker).getByRole("button", { name: ts.addConfirm }));
+    const why = screen.getByTestId("shape-refused");
+    expect(why.getAttribute("role")).toBe("status");
+    expect(why.textContent).toMatch(/MB needed, \d+ MB available/);
+    expect(screen.getByText(te.saved)).toBeTruthy();
+    expect(document.querySelectorAll("[data-shape]").length).toBe(before);
+  });
+
+  it("says how much of the export's budget the shapes use once it is a lot", () => {
+    let m = toModel(newDocForAsset(VIDEO)!);
+    m = { ...m, width: 3840, height: 2160 };
+    const o = addShape(m, "circle", 0)!;
+    mount(toDoc({ ...o.model, shapes: o.model.shapes!.map((s) => ({ ...s, w: 0.2 })) }));
+    fireEvent.click(document.querySelector<HTMLElement>("[data-testid=shape-item]") ? screen.getByRole("list", { name: ts.track }).querySelector("button")! : document.body);
+    const note = screen.getByTestId("shape-budget");
+    expect(note.getAttribute("role")).toBe("status");
+    expect(note.textContent).toMatch(/\d+% of what the export can draw/);
   });
 
   it("warns, as a status, when a shape would not show", () => {

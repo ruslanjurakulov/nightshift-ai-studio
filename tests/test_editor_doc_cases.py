@@ -214,6 +214,7 @@ class DocCasesTestCase(unittest.TestCase):
 
     def test_the_shape_cases_fail_for_the_reason_their_name_gives(self):
         cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        new_msg = "text can only use Latin and Cyrillic letters, digits and common punctuation"
         needles = {
             "shapes that is not a list": "shapes must be a list",
             "shapes that is null": "shapes must be a list",
@@ -266,10 +267,24 @@ class DocCasesTestCase(unittest.TestCase):
             "pill with blank text": "text must be non-empty text of at most 24 characters",
             "pill text of 25 characters": "text must be non-empty text of at most 24 characters",
             "pill text of 25 emoji": "text must be non-empty text of at most 24 characters",
-            "pill text with a line break": "control or invisible formatting characters",
-            "pill text with a control character": "control or invisible formatting characters",
-            "pill text with a zero-width joiner": "control or invisible formatting characters",
-            "pill text with a line separator": "control or invisible formatting characters",
+            "pill text of 24 emoji": new_msg,
+            "pill text with an emoji": new_msg,
+            "pill text in Japanese": new_msg,
+            "pill text in Arabic": new_msg,
+            "pill text in Greek": new_msg,
+            "pill text with a Hangul filler": new_msg,
+            "pill text with a soft hyphen": new_msg,
+            "pill text with a no-break space": new_msg,
+            "pill text with an arrow": new_msg,
+            "pill text with a combining accent": new_msg,
+            "shapes too big for the export's memory at 1080p": "(memory)",
+            "shapes too big for the export's memory in 4K": "(memory)",
+            "too many small shapes in 4K": "(memory)",
+            "shapes that take too long to render on a long timeline": "(render time)",
+            "pill text with a line break": "text can only use Latin and Cyrillic letters, digits and common punctuation",
+            "pill text with a control character": "text can only use Latin and Cyrillic letters, digits and common punctuation",
+            "pill text with a zero-width joiner": "text can only use Latin and Cyrillic letters, digits and common punctuation",
+            "pill text with a line separator": "text can only use Latin and Cyrillic letters, digits and common punctuation",
             "pill text as a number": "text must be non-empty text",
             "progress bar with a position": "x does not apply to a progress",
             "progress bar with a width": "w does not apply to a progress",
@@ -291,14 +306,12 @@ class DocCasesTestCase(unittest.TestCase):
             "shape with a bad id": "id must be 1-64 letters",
             "overlays and shapes past the layer limit": "overlays and shapes together: at most 16 (got 17)",
             "shape id used by an overlay": "id 'o1' is already used",
-            "overlays and shapes past the large-frame layer limit": "at most 5 in a frame above 1440p (got 6)",
-            "shapes in a tall large frame past the layer limit": "at most 5 in a frame above 1440p (got 6)",
         }
         for name, needle in needles.items():
             with self.subTest(name):
                 problems = verdict(cases[name])
                 self.assertTrue(any(needle in p for p in problems), problems)
-        valid = [n for n, c in cases.items() if c["valid"] and n.startswith(("shape", "pill text", "twelve shapes", "an empty shapes", "many overlays in a large"))]
+        valid = [n for n, c in cases.items() if c["valid"] and n.startswith(("shape", "pill text", "twelve shapes", "an empty shapes", "the same shapes", "a few small shapes", "many small shapes", "a full-width line"))]
         self.assertGreater(len(valid), 20)
         for name in valid:
             with self.subTest(name):

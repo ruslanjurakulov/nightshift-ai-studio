@@ -33,7 +33,6 @@ import {
   ASPECT_MAX,
   ASPECT_MIN,
   KIND_FIELDS,
-  LARGE_FRAME_LAYERS_MAX,
   MAX_SHAPES,
   PROGRESS_ANIMS,
   PROGRESS_EDGES,
@@ -53,8 +52,13 @@ import {
   SHAPE_DEFAULTS,
   THICK_DEFAULTS,
   isShapeKind,
+  memoryBudgetBytes,
+  memoryEstimateBytes,
   shapeTextProblem,
+  shapeWorkSeconds,
   type ArrowDir,
+  type CostShape,
+  type WorkShape,
   type ProgressEdge,
   type ShapeLayer,
   type ShapeMoveTo,
@@ -820,6 +824,34 @@ function textStyle(
     problems.push(`${where}: bold must be true or false`);
 }
 
+/** The render-time estimates, in seconds, of interpolated slow motion (and its 1080p-equivalent frames) and of
+ *  stabilising, over the document's V tracks (modules/timeline.py `_interp_stab_estimates`). */
+function interpStabEstimates(
+  counted: readonly (Record<string, unknown> & { clips: unknown[] })[],
+  fps: number,
+  width: number,
+  height: number,
+): { interp: number; interpEst: number; stabEst: number } {
+  let interp = 0;
+  let stabEst = 0;
+  for (const t of counted)
+    if (t.kind === "V")
+      for (const c of t.clips) {
+        if (!isObj(c)) continue;
+        if (c.interpolate === true && isNum(c.in_s) && isNum(c.out_s)) {
+          const pts = usableCurve(c.speed_curve);
+          const slowest = pts
+            ? Math.min(...pts.map((p) => p.speed))
+            : isNum(c.speed) && c.speed > 0
+              ? c.speed
+              : 1;
+          interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, width, height);
+        }
+        if (c.stabilize === true) stabEst += stabilizeSeconds(c, fps, width, height);
+      }
+  return { interp, interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0, stabEst };
+}
+
 /**
  * Every reason `doc` is not a renderable timeline, as readable strings.
  * Empty = valid. The same rules as modules/timeline.py `validate`, which the
@@ -955,30 +987,11 @@ export function validateTimeline(doc: unknown): string[] {
       `timeline: at most ${STABILIZE_MAX_DOC_S} s of video can be stabilised in all (got ${Math.round(stabS)} s)`,
     );
   if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
-    let interp = 0;
-    for (const t of counted)
-      if (t.kind === "V")
-        for (const c of t.clips)
-          if (isObj(c) && c.interpolate === true && isNum(c.in_s) && isNum(c.out_s)) {
-            const pts = usableCurve(c.speed_curve);
-            const slowest = pts
-              ? Math.min(...pts.map((p) => p.speed))
-              : isNum(c.speed) && c.speed > 0
-                ? c.speed
-                : 1;
-            interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, doc.width, doc.height);
-          }
+    const { interp, interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
     if (interp > INTERP_MAX_FRAMES_DOC)
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
       );
-    let stabEst = 0;
-    for (const t of counted)
-      if (t.kind === "V")
-        for (const c of t.clips)
-          if (isObj(c) && c.stabilize === true)
-            stabEst += stabilizeSeconds(c, fps, doc.width, doc.height);
-    const interpEst = interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0;
     if (interpEst + stabEst > 0) {
       const length = docDuration(doc as unknown as TimelineDoc);
       const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst;
@@ -1008,23 +1021,38 @@ export function validateTimeline(doc: unknown): string[] {
   else if (doc.captions === null) problems.push("captions must be an object");
   if ("overlays" in doc) validateOverlays(doc.overlays, fps, problems, claim);
   if ("shapes" in doc) {
+    const before = problems.length;
     validateShapes(doc.shapes, fps, problems, claim);
+    if (
+      problems.length === before &&
+      Array.isArray(doc.shapes) &&
+      doc.shapes.length > 0 &&
+      isInt(doc.width) &&
+      isInt(doc.height)
+    ) {
+      const need = memoryEstimateBytes(doc.shapes as CostShape[], { width: doc.width, height: doc.height });
+      const budget = memoryBudgetBytes();
+      if (need > budget)
+        problems.push(
+          `shapes: drawing them in a ${doc.width}x${doc.height} frame would need about ${Math.round(need / 1048576)} MB to render, but ${Math.round(budget / 1048576)} MB is the most the export has — make the shapes smaller or fewer, or the frame smaller (memory)`,
+        );
+      else if (fps && !problems.length) {
+        const length = docDuration(doc as unknown as TimelineDoc);
+        const shapeEst = shapeWorkSeconds(doc.shapes as WorkShape[], fps, { width: doc.width, height: doc.height }, length);
+        const { interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
+        const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + shapeEst;
+        const allowed = renderTimeoutS(length);
+        if (shapeEst > 0 && work > allowed + 1e-9)
+          problems.push(
+            `timeline: the shapes would take about ${Math.round(shapeEst)} s to render (about ${Math.round(work)} s with everything else), but a ${Math.round(length)} s timeline is allowed ${Math.round(allowed)} s — use fewer or smaller shapes, or make the timeline longer (render time)`,
+          );
+      }
+    }
     const layers =
       (Array.isArray(doc.overlays) ? doc.overlays.length : 0) +
       (Array.isArray(doc.shapes) ? doc.shapes.length : 0);
     if (layers > MAX_OVERLAYS)
       problems.push(`overlays and shapes together: at most ${MAX_OVERLAYS} (got ${layers})`);
-    else if (
-      Array.isArray(doc.shapes) &&
-      doc.shapes.length > 0 &&
-      layers > LARGE_FRAME_LAYERS_MAX &&
-      isInt(doc.width) &&
-      isInt(doc.height) &&
-      doc.width * doc.height > LARGE_FRAME_PX
-    )
-      problems.push(
-        `overlays and shapes together: at most ${LARGE_FRAME_LAYERS_MAX} in a frame above 1440p (got ${layers}) — the export would run out of memory`,
-      );
   }
 
   if (problems.length) return problems;
@@ -2293,7 +2321,9 @@ function shapeToDoc(s: ShapeLayer): Record<string, unknown> {
     ...(s.kind === "progress" ? { edge: s.edge ?? EDGE_DEFAULT } : {}),
     ...(s.anim_in ? { anim_in: s.anim_in, anim_in_s: ms(s.anim_in_s ?? ANIM_DEFAULT_S) } : {}),
     ...(s.anim_out ? { anim_out: s.anim_out, anim_out_s: ms(s.anim_out_s ?? ANIM_DEFAULT_S) } : {}),
-    ...(takes("move") && s.move ? { move: s.move } : {}),
+    ...(takes("move") && s.move
+      ? { move: { to: Object.fromEntries(Object.entries(s.move.to).map(([k, v]) => [k, ms(v as number)])) } }
+      : {}),
   };
 }
 

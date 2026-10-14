@@ -15,7 +15,6 @@ import {
   MAX_OVERLAYS,
   MIN_CLIP_S,
   HEX_RE,
-  LARGE_FRAME_PX,
   clamp,
   fitAnims,
   freshId,
@@ -24,6 +23,7 @@ import {
   type EditorModel,
 } from "@/lib/editor";
 import { withAnim, withAnimSeconds, type AnimSide } from "@/lib/editorFx";
+import { renderWork } from "@/lib/editorMotion";
 import {
   ARROW_DIRS,
   ASPECT_DEFAULT,
@@ -46,7 +46,8 @@ import {
   THICK_MIN,
   cleanShapeText,
   isShapeKind,
-  layerLimit,
+  memoryBudgetBytes,
+  memoryEstimateBytes,
   shapeTextProblem,
   type ShapeKind,
   type ShapeLayer,
@@ -78,16 +79,68 @@ export function layerCount(model: EditorModel): number {
   return (model.overlays?.length ?? 0) + shapesOf(model).length;
 }
 
-/** The most layers the project may carry once it has `shapes` shapes (fewer above 1440p). */
-export function layersAllowed(model: EditorModel, shapes: number): number {
-  return layerLimit(model, shapes, MAX_OVERLAYS, LARGE_FRAME_PX);
+/** Can one more shape be added? At most MAX_SHAPES, with the picture overlays at most MAX_OVERLAYS layers. */
+export function canAddShape(model: EditorModel): boolean {
+  return shapesOf(model).length < MAX_SHAPES && layerCount(model) < MAX_OVERLAYS;
 }
 
-/** Can one more shape be added? At most MAX_SHAPES, and with the picture overlays at most MAX_OVERLAYS
- *  (above 1440p a document with shapes takes fewer, see LARGE_FRAME_LAYERS_MAX). */
-export function canAddShape(model: EditorModel): boolean {
-  const n = shapesOf(model).length;
-  return n < MAX_SHAPES && layerCount(model) < layersAllowed(model, n + 1);
+// ── what the export can afford (memory and time; lib/editorShapes.ts has the measurements) ──
+
+export interface ShapeBudget {
+  /** Estimated address space the final pass needs, and the most it may. */
+  memory: number;
+  memoryMax: number;
+  /** Estimated render seconds (everything), and the most the worker allows this timeline. */
+  work: number;
+  workMax: number;
+  ok: boolean;
+}
+
+export function shapeBudget(model: EditorModel): ShapeBudget {
+  const memory = memoryEstimateBytes(shapesOf(model), model);
+  const memoryMax = memoryBudgetBytes();
+  const r = renderWork(model);
+  return { memory, memoryMax, work: r.work, workMax: r.allowed, ok: memory <= memoryMax && r.ok };
+}
+
+/** Why the shapes do not fit the export, or null when they do. */
+export function shapeBudgetProblem(model: EditorModel): "memory" | "time" | null {
+  const b = shapeBudget(model);
+  if (b.memory > b.memoryMax) return "memory";
+  return renderWork(model).ok ? null : "time";
+}
+
+/** The model with shape `id` made narrower, step by step, until the shapes fit (its end of a move too); the
+ *  model it was given when it already fits; null when even the narrowest does not. */
+function narrowToFit(model: EditorModel, id: string): EditorModel | null {
+  let m = model;
+  for (let i = 0; i < 60; i += 1) {
+    if (shapeBudgetProblem(m) === null) return m;
+    const s = shapeById(m, id);
+    if (!s || s.w === undefined) return null;
+    const to = s.move?.to.w;
+    if (s.w <= SHAPE_W_MIN + 1e-9 && (to === undefined || to <= SHAPE_W_MIN + 1e-9)) return null;
+    const next: ShapeLayer = {
+      ...s,
+      w: round3(Math.max(SHAPE_W_MIN, s.w * 0.9)),
+      ...(s.move && to !== undefined
+        ? { move: { to: { ...s.move.to, w: round3(Math.max(SHAPE_W_MIN, to * 0.9)) } } }
+        : {}),
+    };
+    m = { ...m, shapes: shapesOf(m).map((x) => (x.id === id ? next : x)) };
+  }
+  return null;
+}
+
+/** After an edit to shape `id`: the edited model if it fits the export, else that shape narrowed until it does, else
+ *  null (refused). An edit that does not make things dearer than they were is always allowed (a project that was
+ *  already over is not stuck: it can only get cheaper). */
+function keepAffordable(before: EditorModel, after: EditorModel, id: string): EditorModel | null {
+  if (shapeBudgetProblem(after) === null) return after;
+  const a = shapeBudget(before);
+  const b = shapeBudget(after);
+  if (b.memory <= a.memory && b.work <= a.work + 1e-9) return after;
+  return narrowToFit(after, id);
 }
 
 /** The kind's own starting look: a ring and a frame are outlines, the rest solid; a label sits low,
@@ -152,10 +205,22 @@ export function addShape(
   }
   const label = kind === "pill" ? cleanShapeText(text) || "…" : "";
   const id = freshId(model, "h");
-  return {
-    model: { ...model, shapes: [...shapesOf(model), base(kind, id, start, end, label)] },
-    id,
-  };
+  const added = { ...model, shapes: [...shapesOf(model), base(kind, id, start, end, label)] };
+  const fitted = keepAffordable(model, added, id);
+  return fitted ? { model: fitted, id } : null;
+}
+
+/** Why `addShape` would say no: the count, the layers, or what the export can afford. */
+export function shapeAddCheck(
+  model: EditorModel,
+  kind: ShapeKind,
+  at = 0,
+): "ok" | "count" | "memory" | "time" {
+  if (!canAddShape(model)) return "count";
+  if (addShape(model, kind, at, "…")) return "ok";
+  // the narrowest the new shape can be still does not fit: say which budget it is
+  const probe = { ...model, shapes: [...shapesOf(model), { ...base(kind, "probe", 0, 1, "…"), ...(KIND_FIELDS[kind].includes("w") ? { w: SHAPE_W_MIN } : {}) }] };
+  return shapeBudgetProblem(probe) ?? "memory";
 }
 
 /** The shape with every field brought to what its kind takes and into range (the document would
@@ -235,7 +300,8 @@ export function updateShape(
     merged.end_s = ms(finite(merged.start_s, at.start_s) + shapeLength(at));
   const next = settle(merged, at);
   if (JSON.stringify(next) === JSON.stringify(at)) return model;
-  return { ...model, shapes: list.map((s) => (s.id === id ? next : s)) };
+  const after = { ...model, shapes: list.map((s) => (s.id === id ? next : s)) };
+  return keepAffordable(model, after, id) ?? model;
 }
 
 /** Another kind in the same place in time: the span, colour and opacity are kept, the new kind's
@@ -259,7 +325,8 @@ export function setShapeKind(
   };
   // settle() leaves out an entrance or exit the new kind cannot have (a bar: only a fade).
   const settled = settle(carried, fresh);
-  return { ...model, shapes: list.map((s) => (s.id === id ? settled : s)) };
+  const after = { ...model, shapes: list.map((s) => (s.id === id ? settled : s)) };
+  return keepAffordable(model, after, id) ?? model;
 }
 
 /** Position, size and opacity back to the kind's own look; the span and colour stay. */
@@ -410,6 +477,16 @@ export function clearShapeMove(model: EditorModel, id: string): EditorModel {
 
 /** Set where one value ends; a value equal to the shape's own is dropped, with nothing left the move goes. */
 export function setShapeEnd(
+  model: EditorModel,
+  id: string,
+  key: ShapeMoveKey,
+  value: number,
+): EditorModel {
+  const after = setShapeEndRaw(model, id, key, value);
+  return after === model ? model : (keepAffordable(model, after, id) ?? model);
+}
+
+function setShapeEndRaw(
   model: EditorModel,
   id: string,
   key: ShapeMoveKey,

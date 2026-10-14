@@ -1,0 +1,6525 @@
+{
+"_comment": "Which pill texts the worker's drawing accepts (modules/shape_art.py text_problem): the Python verdict for each. command-center/tests/editor-shapes.test.ts must agree on every one. Regenerate only from modules/shape_art.py.",
+"cases": [
+{
+"text": "a\u001fb",
+"ok": false
+},
+{
+"text": "a b",
+"ok": true
+},
+{
+"text": "aOb",
+"ok": true
+},
+{
+"text": "a~b",
+"ok": true
+},
+{
+"text": "a\u007fb",
+"ok": false
+},
+{
+"text": "a\u00a0b",
+"ok": false
+},
+{
+"text": "a\u00a1b",
+"ok": true
+},
+{
+"text": "a\u00a6b",
+"ok": true
+},
+{
+"text": "a\u00acb",
+"ok": true
+},
+{
+"text": "a\u00adb",
+"ok": false
+},
+{
+"text": "a\u00aeb",
+"ok": true
+},
+{
+"text": "a\u00d6b",
+"ok": true
+},
+{
+"text": "a\u00ffb",
+"ok": true
+},
+{
+"text": "a\u0100b",
+"ok": true
+},
+{
+"text": "a\u01a7b",
+"ok": true
+},
+{
+"text": "a\u024fb",
+"ok": true
+},
+{
+"text": "a\u0250b",
+"ok": false
+},
+{
+"text": "a\u02bab",
+"ok": false
+},
+{
+"text": "a\u02bbb",
+"ok": true
+},
+{
+"text": "a\u02bcb",
+"ok": true
+},
+{
+"text": "a\u02bdb",
+"ok": false
+},
+{
+"text": "a\u03ffb",
+"ok": false
+},
+{
+"text": "a\u0400b",
+"ok": true
+},
+{
+"text": "a\u0492b",
+"ok": true
+},
+{
+"text": "a\u0525b",
+"ok": true
+},
+{
+"text": "a\u0526b",
+"ok": false
+},
+{
+"text": "a\u200fb",
+"ok": false
+},
+{
+"text": "a\u2010b",
+"ok": true
+},
+{
+"text": "a\u2012b",
+"ok": true
+},
+{
+"text": "a\u2015b",
+"ok": true
+},
+{
+"text": "a\u2016b",
+"ok": false
+},
+{
+"text": "a\u2017b",
+"ok": false
+},
+{
+"text": "a\u2018b",
+"ok": true
+},
+{
+"text": "a\u201bb",
+"ok": true
+},
+{
+"text": "a\u201eb",
+"ok": true
+},
+{
+"text": "a\u201fb",
+"ok": false
+},
+{
+"text": "a\u2021b",
+"ok": false
+},
+{
+"text": "a\u2022b",
+"ok": true
+},
+{
+"text": "a\u2023b",
+"ok": false
+},
+{
+"text": "a\u2025b",
+"ok": false
+},
+{
+"text": "a\u2026b",
+"ok": true
+},
+{
+"text": "a\u2027b",
+"ok": false
+},
+{
+"text": "a\u20abb",
+"ok": false
+},
+{
+"text": "a\u20acb",
+"ok": true
+},
+{
+"text": "a\u20adb",
+"ok": false
+},
+{
+"text": "a\u20b7b",
+"ok": false
+},
+{
+"text": "a\u20b8b",
+"ok": true
+},
+{
+"text": "a\u20b9b",
+"ok": false
+},
+{
+"text": "a\u2115b",
+"ok": false
+},
+{
+"text": "a\u2116b",
+"ok": true
+},
+{
+"text": "a\u2117b",
+"ok": false
+},
+{
+"text": "\u2e8f",
+"ok": false
+},
+{
+"text": "\u22eb",
+"ok": false
+},
+{
+"text": "\u0b30",
+"ok": false
+},
+{
+"text": "\u2b5c",
+"ok": false
+},
+{
+"text": "\u0991",
+"ok": false
+},
+{
+"text": "\u1ed2",
+"ok": false
+},
+{
+"text": "\u25d3",
+"ok": false
+},
+{
+"text": "\u2081",
+"ok": false
+},
+{
+"text": "\u152a",
+"ok": false
+},
+{
+"text": "\u2884",
+"ok": false
+},
+{
+"text": "\u16e8",
+"ok": false
+},
+{
+"text": "\u1472",
+"ok": false
+},
+{
+"text": "\u21ad",
+"ok": false
+},
+{
+"text": "\u16b0",
+"ok": false
+},
+{
+"text": "\u09bf",
+"ok": false
+},
+{
+"text": "\u22e6",
+"ok": false
+},
+{
+"text": "\u1be9",
+"ok": false
+},
+{
+"text": "\u13df",
+"ok": false
+},
+{
+"text": "\u1c58",
+"ok": false
+},
+{
+"text": "\u1bac",
+"ok": false
+},
+{
+"text": "\u114d",
+"ok": false
+},
+{
+"text": "\u0f22",
+"ok": false
+},
+{
+"text": "\u03d6",
+"ok": false
+},
+{
+"text": "\u2cc3",
+"ok": false
+},
+{
+"text": "\u1ca0",
+"ok": false
+},
+{
+"text": "\u2d20",
+"ok": false
+},
+{
+"text": "\u141b",
+"ok": false
+},
+{
+"text": "\u2a4b",
+"ok": false
+},
+{
+"text": "\u2035",
+"ok": false
+},
+{
+"text": "\u2802",
+"ok": false
+},
+{
+"text": "\u255a",
+"ok": false
+},
+{
+"text": "\u2818",
+"ok": false
+},
+{
+"text": "\u19c9",
+"ok": false
+},
+{
+"text": "\u1420",
+"ok": false
+},
+{
+"text": "\u10de",
+"ok": false
+},
+{
+"text": "\u3064",
+"ok": false
+},
+{
+"text": "\u1b01",
+"ok": false
+},
+{
+"text": "\u2465",
+"ok": false
+},
+{
+"text": "\u0cd9",
+"ok": false
+},
+{
+"text": "\u04c2",
+"ok": true
+},
+{
+"text": "\u2cf3",
+"ok": false
+},
+{
+"text": "\u157b",
+"ok": false
+},
+{
+"text": "\u0dcc",
+"ok": false
+},
+{
+"text": "\u0719",
+"ok": false
+},
+{
+"text": "\u186f",
+"ok": false
+},
+{
+"text": "\u0641",
+"ok": false
+},
+{
+"text": "\u00c4",
+"ok": true
+},
+{
+"text": "\u2ea5",
+"ok": false
+},
+{
+"text": "\u0313",
+"ok": false
+},
+{
+"text": "\u17ad",
+"ok": false
+},
+{
+"text": "\u11b9",
+"ok": false
+},
+{
+"text": "\u1914",
+"ok": false
+},
+{
+"text": "\u07b8",
+"ok": false
+},
+{
+"text": "\u1bce",
+"ok": false
+},
+{
+"text": "\u1864",
+"ok": false
+},
+{
+"text": "\u05c0",
+"ok": false
+},
+{
+"text": "\u0879",
+"ok": false
+},
+{
+"text": "\u0926",
+"ok": false
+},
+{
+"text": "\u2ea3",
+"ok": false
+},
+{
+"text": "\u30b1",
+"ok": false
+},
+{
+"text": "\u116f",
+"ok": false
+},
+{
+"text": "\u1732",
+"ok": false
+},
+{
+"text": "\u03a5",
+"ok": false
+},
+{
+"text": "\u17fb",
+"ok": false
+},
+{
+"text": "\u2c3c",
+"ok": false
+},
+{
+"text": "\u0891",
+"ok": false
+},
+{
+"text": "\u03ab",
+"ok": false
+},
+{
+"text": "\u0d0c",
+"ok": false
+},
+{
+"text": "\u0090",
+"ok": false
+},
+{
+"text": "\u12f9",
+"ok": false
+},
+{
+"text": "\u2137",
+"ok": false
+},
+{
+"text": "\u238d",
+"ok": false
+},
+{
+"text": "P",
+"ok": true
+},
+{
+"text": "\u001e",
+"ok": false
+},
+{
+"text": "\u1134",
+"ok": false
+},
+{
+"text": "\u059d",
+"ok": false
+},
+{
+"text": "\u17a5",
+"ok": false
+},
+{
+"text": "\u2288",
+"ok": false
+},
+{
+"text": "\u2deb",
+"ok": false
+},
+{
+"text": "\u2fe6",
+"ok": false
+},
+{
+"text": "\u1f67",
+"ok": false
+},
+{
+"text": "\u2f49",
+"ok": false
+},
+{
+"text": "\u0643",
+"ok": false
+},
+{
+"text": "\u16f3",
+"ok": false
+},
+{
+"text": "k",
+"ok": true
+},
+{
+"text": "\u10ce",
+"ok": false
+},
+{
+"text": "\u0001",
+"ok": false
+},
+{
+"text": "\u0738",
+"ok": false
+},
+{
+"text": "\u24dd",
+"ok": false
+},
+{
+"text": "\u1eaf",
+"ok": false
+},
+{
+"text": "\u2c1f",
+"ok": false
+},
+{
+"text": "\u011d",
+"ok": true
+},
+{
+"text": "\u0dac",
+"ok": false
+},
+{
+"text": "\u00a2",
+"ok": true
+},
+{
+"text": "\u2fa1",
+"ok": false
+},
+{
+"text": "\u0aae",
+"ok": false
+},
+{
+"text": "\u0db9",
+"ok": false
+},
+{
+"text": "\u2376",
+"ok": false
+},
+{
+"text": "\u1437",
+"ok": false
+},
+{
+"text": "\u2c2f",
+"ok": false
+},
+{
+"text": "\u0e83",
+"ok": false
+},
+{
+"text": "\u17e8",
+"ok": false
+},
+{
+"text": "\u121d",
+"ok": false
+},
+{
+"text": "\u0007",
+"ok": false
+},
+{
+"text": "\u0dae",
+"ok": false
+},
+{
+"text": "\u097f",
+"ok": false
+},
+{
+"text": "\u0624",
+"ok": false
+},
+{
+"text": "\u2537",
+"ok": false
+},
+{
+"text": "\u2584",
+"ok": false
+},
+{
+"text": "\u0dad",
+"ok": false
+},
+{
+"text": "\u0f67",
+"ok": false
+},
+{
+"text": "\u0601",
+"ok": false
+},
+{
+"text": "\u2daf",
+"ok": false
+},
+{
+"text": "\u0d9f",
+"ok": false
+},
+{
+"text": "\u174d",
+"ok": false
+},
+{
+"text": "\u2201",
+"ok": false
+},
+{
+"text": "\u10a3",
+"ok": false
+},
+{
+"text": "\u20e9",
+"ok": false
+},
+{
+"text": "\u099b",
+"ok": false
+},
+{
+"text": "\u269c",
+"ok": false
+},
+{
+"text": "\u0df7",
+"ok": false
+},
+{
+"text": "\u0903",
+"ok": false
+},
+{
+"text": "\u0179",
+"ok": true
+},
+{
+"text": "\u016e",
+"ok": true
+},
+{
+"text": "\u1d1a",
+"ok": false
+},
+{
+"text": "\u25a1",
+"ok": false
+},
+{
+"text": "\u212f",
+"ok": false
+},
+{
+"text": "\u1e35",
+"ok": false
+},
+{
+"text": "\u1e10",
+"ok": false
+},
+{
+"text": "\u272e",
+"ok": false
+},
+{
+"text": "\u1d8a",
+"ok": false
+},
+{
+"text": "\u2a98",
+"ok": false
+},
+{
+"text": "\u2cdf",
+"ok": false
+},
+{
+"text": "\u0083",
+"ok": false
+},
+{
+"text": "\u1e25",
+"ok": false
+},
+{
+"text": "\u2eab",
+"ok": false
+},
+{
+"text": "\u1d6e",
+"ok": false
+},
+{
+"text": "\u131c",
+"ok": false
+},
+{
+"text": "\u10f0",
+"ok": false
+},
+{
+"text": "\u0e2a",
+"ok": false
+},
+{
+"text": "\u1260",
+"ok": false
+},
+{
+"text": "\u04e3",
+"ok": true
+},
+{
+"text": "\u1968",
+"ok": false
+},
+{
+"text": "\u1f7f",
+"ok": false
+},
+{
+"text": "\u17b0",
+"ok": false
+},
+{
+"text": "\u25b0",
+"ok": false
+},
+{
+"text": "\u099a",
+"ok": false
+},
+{
+"text": "\u1b3a",
+"ok": false
+},
+{
+"text": "\u1aac",
+"ok": false
+},
+{
+"text": "\u1f97",
+"ok": false
+},
+{
+"text": "\u1246",
+"ok": false
+},
+{
+"text": "\u1f6e",
+"ok": false
+},
+{
+"text": "\u1f4a",
+"ok": false
+},
+{
+"text": "\u1966",
+"ok": false
+},
+{
+"text": "\u2722",
+"ok": false
+},
+{
+"text": "\u0efe",
+"ok": false
+},
+{
+"text": "\u1801",
+"ok": false
+},
+{
+"text": "\u1bc9",
+"ok": false
+},
+{
+"text": "\u13dc",
+"ok": false
+},
+{
+"text": "\u1618",
+"ok": false
+},
+{
+"text": "\u190a",
+"ok": false
+},
+{
+"text": "\u06ca",
+"ok": false
+},
+{
+"text": "\u0e54",
+"ok": false
+},
+{
+"text": "\u1d16",
+"ok": false
+},
+{
+"text": "\u2546",
+"ok": false
+},
+{
+"text": "\u2ac2",
+"ok": false
+},
+{
+"text": "\u28aa",
+"ok": false
+},
+{
+"text": "\u0b0a",
+"ok": false
+},
+{
+"text": "\u0d52",
+"ok": false
+},
+{
+"text": "\u18c7",
+"ok": false
+},
+{
+"text": "\u032e",
+"ok": false
+},
+{
+"text": "\u09d9",
+"ok": false
+},
+{
+"text": "\u168e",
+"ok": false
+},
+{
+"text": "\u1499",
+"ok": false
+},
+{
+"text": "\u11ba",
+"ok": false
+},
+{
+"text": "\u1f44",
+"ok": false
+},
+{
+"text": "\u0f14",
+"ok": false
+},
+{
+"text": "\u2fb9",
+"ok": false
+},
+{
+"text": "\u184a",
+"ok": false
+},
+{
+"text": "\u04af",
+"ok": true
+},
+{
+"text": "\u1567",
+"ok": false
+},
+{
+"text": "\u2358",
+"ok": false
+},
+{
+"text": "\u0790",
+"ok": false
+},
+{
+"text": "\u18ba",
+"ok": false
+},
+{
+"text": "\u2084",
+"ok": false
+},
+{
+"text": "\u034b",
+"ok": false
+},
+{
+"text": "\n",
+"ok": false
+},
+{
+"text": "\u0953",
+"ok": false
+},
+{
+"text": "\u0afe",
+"ok": false
+},
+{
+"text": "\u1ae5",
+"ok": false
+},
+{
+"text": "\u13c0",
+"ok": false
+},
+{
+"text": "\u134b",
+"ok": false
+},
+{
+"text": "\u2e01",
+"ok": false
+},
+{
+"text": "\u0e32",
+"ok": false
+},
+{
+"text": "\u2b37",
+"ok": false
+},
+{
+"text": "\u14a1",
+"ok": false
+},
+{
+"text": "\u1ca4",
+"ok": false
+},
+{
+"text": "\u2d6c",
+"ok": false
+},
+{
+"text": "\u067c",
+"ok": false
+},
+{
+"text": "\u12dc",
+"ok": false
+},
+{
+"text": "\u0f8d",
+"ok": false
+},
+{
+"text": "\u1d8e",
+"ok": false
+},
+{
+"text": "\u17da",
+"ok": false
+},
+{
+"text": "\u0bf6",
+"ok": false
+},
+{
+"text": "\u04b1",
+"ok": true
+},
+{
+"text": "\u2801",
+"ok": false
+},
+{
+"text": "\u2551",
+"ok": false
+},
+{
+"text": "\u23de",
+"ok": false
+},
+{
+"text": "\u0ca7",
+"ok": false
+},
+{
+"text": "\u17d3",
+"ok": false
+},
+{
+"text": "\u073b",
+"ok": false
+},
+{
+"text": "\u21bc",
+"ok": false
+},
+{
+"text": "\u2547",
+"ok": false
+},
+{
+"text": "\u2773",
+"ok": false
+},
+{
+"text": "\u01db",
+"ok": true
+},
+{
+"text": "\u2ac7",
+"ok": false
+},
+{
+"text": "\u0cea",
+"ok": false
+},
+{
+"text": "\u1daf",
+"ok": false
+},
+{
+"text": "\u0f1b",
+"ok": false
+},
+{
+"text": "\u2600",
+"ok": false
+},
+{
+"text": "\u29de",
+"ok": false
+},
+{
+"text": "\u2f79",
+"ok": false
+},
+{
+"text": "\u061f",
+"ok": false
+},
+{
+"text": "\u2d5f",
+"ok": false
+},
+{
+"text": "\u1609",
+"ok": false
+},
+{
+"text": "\u2111",
+"ok": false
+},
+{
+"text": "\u2414",
+"ok": false
+},
+{
+"text": "\u1df0",
+"ok": false
+},
+{
+"text": "\u0b1a",
+"ok": false
+},
+{
+"text": "\u149a",
+"ok": false
+},
+{
+"text": "\u0a2a",
+"ok": false
+},
+{
+"text": "\u285c",
+"ok": false
+},
+{
+"text": "\u1a77",
+"ok": false
+},
+{
+"text": "\u0cdb",
+"ok": false
+},
+{
+"text": "\u27d2",
+"ok": false
+},
+{
+"text": "\u1052",
+"ok": false
+},
+{
+"text": "\u0766",
+"ok": false
+},
+{
+"text": "\u029f",
+"ok": false
+},
+{
+"text": "\u0a11",
+"ok": false
+},
+{
+"text": "\u1bf4",
+"ok": false
+},
+{
+"text": "\u1477",
+"ok": false
+},
+{
+"text": "\u22ac",
+"ok": false
+},
+{
+"text": "\u2e22",
+"ok": false
+},
+{
+"text": "\u0666",
+"ok": false
+},
+{
+"text": "\u1b76",
+"ok": false
+},
+{
+"text": "\u133f",
+"ok": false
+},
+{
+"text": "\u031f",
+"ok": false
+},
+{
+"text": "\u2fbf",
+"ok": false
+},
+{
+"text": "\u0613",
+"ok": false
+},
+{
+"text": "\u2ac1",
+"ok": false
+},
+{
+"text": "\u3041",
+"ok": false
+},
+{
+"text": "\u308c",
+"ok": false
+},
+{
+"text": "\u0a9b",
+"ok": false
+},
+{
+"text": "\u2389",
+"ok": false
+},
+{
+"text": "\u19d2",
+"ok": false
+},
+{
+"text": "\u02ac",
+"ok": false
+},
+{
+"text": "\u07d0",
+"ok": false
+},
+{
+"text": "\u1c36",
+"ok": false
+},
+{
+"text": "\u20ee",
+"ok": false
+},
+{
+"text": "\u1a72",
+"ok": false
+},
+{
+"text": "\u1770",
+"ok": false
+},
+{
+"text": "\u3073",
+"ok": false
+},
+{
+"text": "\u28a8",
+"ok": false
+},
+{
+"text": "\u2b45",
+"ok": false
+},
+{
+"text": "\u0b82",
+"ok": false
+},
+{
+"text": "\u055e",
+"ok": false
+},
+{
+"text": "\u2c55",
+"ok": false
+},
+{
+"text": "\u2078",
+"ok": false
+},
+{
+"text": "\u19c7",
+"ok": false
+},
+{
+"text": "\u1008",
+"ok": false
+},
+{
+"text": "\u1c9d",
+"ok": false
+},
+{
+"text": "\u0ef6",
+"ok": false
+},
+{
+"text": "\u1389",
+"ok": false
+},
+{
+"text": "\u116a",
+"ok": false
+},
+{
+"text": "\u0b08",
+"ok": false
+},
+{
+"text": "\u0eb2",
+"ok": false
+},
+{
+"text": "\u2179",
+"ok": false
+},
+{
+"text": "\u036a",
+"ok": false
+},
+{
+"text": "\u2066",
+"ok": false
+},
+{
+"text": "\u2504",
+"ok": false
+},
+{
+"text": "\u069f",
+"ok": false
+},
+{
+"text": "\u040b",
+"ok": true
+},
+{
+"text": "\u259e",
+"ok": false
+},
+{
+"text": "\u0eb5",
+"ok": false
+},
+{
+"text": "\u27ac",
+"ok": false
+},
+{
+"text": "\u2b88",
+"ok": false
+},
+{
+"text": "\u161d",
+"ok": false
+},
+{
+"text": "\u1659",
+"ok": false
+},
+{
+"text": "\u1e48",
+"ok": false
+},
+{
+"text": "\u19bc",
+"ok": false
+},
+{
+"text": "\u1537",
+"ok": false
+},
+{
+"text": "\u1fed",
+"ok": false
+},
+{
+"text": "\u03b9",
+"ok": false
+},
+{
+"text": "\u2b2f",
+"ok": false
+},
+{
+"text": "\u0355",
+"ok": false
+},
+{
+"text": "\u25e1",
+"ok": false
+},
+{
+"text": "?",
+"ok": true
+},
+{
+"text": "\u27f3",
+"ok": false
+},
+{
+"text": "\u0d69",
+"ok": false
+},
+{
+"text": "\u0baa",
+"ok": false
+},
+{
+"text": "\u2dff",
+"ok": false
+},
+{
+"text": "\u152c",
+"ok": false
+},
+{
+"text": "\u1591",
+"ok": false
+},
+{
+"text": "\u2a22",
+"ok": false
+},
+{
+"text": "\u1b80",
+"ok": false
+},
+{
+"text": "\u2b76",
+"ok": false
+},
+{
+"text": "\u1aa2",
+"ok": false
+},
+{
+"text": "\u21c0",
+"ok": false
+},
+{
+"text": "\u054d",
+"ok": false
+},
+{
+"text": "\u0afd",
+"ok": false
+},
+{
+"text": "\u0f9a",
+"ok": false
+},
+{
+"text": "\u02a9",
+"ok": false
+},
+{
+"text": "\u01c7",
+"ok": true
+},
+{
+"text": "\u1812",
+"ok": false
+},
+{
+"text": "\u2a75",
+"ok": false
+},
+{
+"text": "\u1d29",
+"ok": false
+},
+{
+"text": "\u1c8a",
+"ok": false
+},
+{
+"text": "\u12af",
+"ok": false
+},
+{
+"text": "\u0914",
+"ok": false
+},
+{
+"text": "\u0fe8",
+"ok": false
+},
+{
+"text": "\u214b",
+"ok": false
+},
+{
+"text": "\u1793",
+"ok": false
+},
+{
+"text": "\u0a9f",
+"ok": false
+},
+{
+"text": "\u0cf9",
+"ok": false
+},
+{
+"text": "\u0805",
+"ok": false
+},
+{
+"text": "\u2b7c",
+"ok": false
+},
+{
+"text": "\u2be6",
+"ok": false
+},
+{
+"text": "\u2534",
+"ok": false
+},
+{
+"text": "\u1873",
+"ok": false
+},
+{
+"text": "\u07a5",
+"ok": false
+},
+{
+"text": "\u25fa",
+"ok": false
+},
+{
+"text": "\u0b87",
+"ok": false
+},
+{
+"text": "\u074b",
+"ok": false
+},
+{
+"text": "\u0f7c",
+"ok": false
+},
+{
+"text": "\u0b99",
+"ok": false
+},
+{
+"text": "\u0b3e",
+"ok": false
+},
+{
+"text": "\u0b75",
+"ok": false
+},
+{
+"text": "\u118e",
+"ok": false
+},
+{
+"text": "\u1d4f",
+"ok": false
+},
+{
+"text": "\u0413",
+"ok": true
+},
+{
+"text": "\u039c",
+"ok": false
+},
+{
+"text": "\u1867",
+"ok": false
+},
+{
+"text": "\u2f60",
+"ok": false
+},
+{
+"text": "\u2f81",
+"ok": false
+},
+{
+"text": "\u2fb0",
+"ok": false
+},
+{
+"text": "\u1884",
+"ok": false
+},
+{
+"text": "\u0a03",
+"ok": false
+},
+{
+"text": "\u2531",
+"ok": false
+},
+{
+"text": "\u1fad",
+"ok": false
+},
+{
+"text": "\u05a6",
+"ok": false
+},
+{
+"text": "\u2384",
+"ok": false
+},
+{
+"text": "\u03c8",
+"ok": false
+},
+{
+"text": "\u249c",
+"ok": false
+},
+{
+"text": "\u2b0c",
+"ok": false
+},
+{
+"text": "\u2e00",
+"ok": false
+},
+{
+"text": "\u1785",
+"ok": false
+},
+{
+"text": "\u1c5d",
+"ok": false
+},
+{
+"text": "\u11b4",
+"ok": false
+},
+{
+"text": "\u105f",
+"ok": false
+},
+{
+"text": "\u1523",
+"ok": false
+},
+{
+"text": "\u0af5",
+"ok": false
+},
+{
+"text": "\u246b",
+"ok": false
+},
+{
+"text": "\u1f57",
+"ok": false
+},
+{
+"text": "\u1d46",
+"ok": false
+},
+{
+"text": "\u1699",
+"ok": false
+},
+{
+"text": "\u0228",
+"ok": true
+},
+{
+"text": "\u2848",
+"ok": false
+},
+{
+"text": "\u13ad",
+"ok": false
+},
+{
+"text": "\u1118",
+"ok": false
+},
+{
+"text": "\u2b3b",
+"ok": false
+},
+{
+"text": "\u303f",
+"ok": false
+},
+{
+"text": "\u0315",
+"ok": false
+},
+{
+"text": "\u18a1",
+"ok": false
+},
+{
+"text": "\u2763",
+"ok": false
+},
+{
+"text": "\u02e0",
+"ok": false
+},
+{
+"text": "\u156f",
+"ok": false
+},
+{
+"text": "\u125b",
+"ok": false
+},
+{
+"text": "\u06b1",
+"ok": false
+},
+{
+"text": "p",
+"ok": true
+},
+{
+"text": "\u1f80",
+"ok": false
+},
+{
+"text": "\u306e",
+"ok": false
+},
+{
+"text": "\u082f",
+"ok": false
+},
+{
+"text": "\u147d",
+"ok": false
+},
+{
+"text": "\u11fc",
+"ok": false
+},
+{
+"text": "\u0553",
+"ok": false
+},
+{
+"text": "\u0128",
+"ok": true
+},
+{
+"text": "\u2e70",
+"ok": false
+},
+{
+"text": "\u281d",
+"ok": false
+},
+{
+"text": "\u1954",
+"ok": false
+},
+{
+"text": "\u1a2f",
+"ok": false
+},
+{
+"text": "\u23a5",
+"ok": false
+},
+{
+"text": "\u0858",
+"ok": false
+},
+{
+"text": "\u139a",
+"ok": false
+},
+{
+"text": "\u2d39",
+"ok": false
+},
+{
+"text": "\u0bd4",
+"ok": false
+},
+{
+"text": "\u253a",
+"ok": false
+},
+{
+"text": "\u0948",
+"ok": false
+},
+{
+"text": "\u1d3a",
+"ok": false
+},
+{
+"text": "\u0b83",
+"ok": false
+},
+{
+"text": "\u0259",
+"ok": false
+},
+{
+"text": "\u2512",
+"ok": false
+},
+{
+"text": "\u010d",
+"ok": true
+},
+{
+"text": "\u30f6",
+"ok": false
+},
+{
+"text": "\u14db",
+"ok": false
+},
+{
+"text": "\u1ba9",
+"ok": false
+},
+{
+"text": "\u1283",
+"ok": false
+},
+{
+"text": "\u1826",
+"ok": false
+},
+{
+"text": "\u0466",
+"ok": true
+},
+{
+"text": "\u0124",
+"ok": true
+},
+{
+"text": "\u1bc5",
+"ok": false
+},
+{
+"text": "\u243f",
+"ok": false
+},
+{
+"text": "\u180b",
+"ok": false
+},
+{
+"text": "\u1797",
+"ok": false
+},
+{
+"text": "\u058c",
+"ok": false
+},
+{
+"text": "\u1ccf",
+"ok": false
+},
+{
+"text": "\u14be",
+"ok": false
+},
+{
+"text": "\u04d7",
+"ok": true
+},
+{
+"text": "\u0758",
+"ok": false
+},
+{
+"text": "\u1582",
+"ok": false
+},
+{
+"text": "\u0813",
+"ok": false
+},
+{
+"text": "\u0cf4",
+"ok": false
+},
+{
+"text": "\u1942",
+"ok": false
+},
+{
+"text": "\u16bc",
+"ok": false
+},
+{
+"text": "\u2f77",
+"ok": false
+},
+{
+"text": "\u0e51",
+"ok": false
+},
+{
+"text": "\u03ce",
+"ok": false
+},
+{
+"text": "\u0483",
+"ok": true
+},
+{
+"text": "\u0cc0",
+"ok": false
+},
+{
+"text": "\u174f",
+"ok": false
+},
+{
+"text": "\u1cc4",
+"ok": false
+},
+{
+"text": "\u0fa8",
+"ok": false
+},
+{
+"text": "\u2bb1",
+"ok": false
+},
+{
+"text": "\u1aae",
+"ok": false
+},
+{
+"text": "\u2ee0",
+"ok": false
+},
+{
+"text": "\u1976",
+"ok": false
+},
+{
+"text": "\u1c3d",
+"ok": false
+},
+{
+"text": "\u1417",
+"ok": false
+},
+{
+"text": "\u05f1",
+"ok": false
+},
+{
+"text": "\u230d",
+"ok": false
+},
+{
+"text": "\u213c",
+"ok": false
+},
+{
+"text": "\u10cd",
+"ok": false
+},
+{
+"text": "Y",
+"ok": true
+},
+{
+"text": "\u0367",
+"ok": false
+},
+{
+"text": "\u2cd1",
+"ok": false
+},
+{
+"text": "\u13dd",
+"ok": false
+},
+{
+"text": "\u094d",
+"ok": false
+},
+{
+"text": "\u0c43",
+"ok": false
+},
+{
+"text": "\u1c50",
+"ok": false
+},
+{
+"text": "\u0d7a",
+"ok": false
+},
+{
+"text": "\u0733",
+"ok": false
+},
+{
+"text": "\u189d",
+"ok": false
+},
+{
+"text": "\u2ae4",
+"ok": false
+},
+{
+"text": "\u304e",
+"ok": false
+},
+{
+"text": "\u177f",
+"ok": false
+},
+{
+"text": "\u2bb2",
+"ok": false
+},
+{
+"text": "\u0b00",
+"ok": false
+},
+{
+"text": "\u0d17",
+"ok": false
+},
+{
+"text": "\u0dd5",
+"ok": false
+},
+{
+"text": "\u2e39",
+"ok": false
+},
+{
+"text": "\u0ce7",
+"ok": false
+},
+{
+"text": "\u1af8",
+"ok": false
+},
+{
+"text": "\u23f3",
+"ok": false
+},
+{
+"text": "\u062e",
+"ok": false
+},
+{
+"text": "\u1930",
+"ok": false
+},
+{
+"text": "\u1b07",
+"ok": false
+},
+{
+"text": "\u07d4",
+"ok": false
+},
+{
+"text": "\u2bfe",
+"ok": false
+},
+{
+"text": "\u1e57",
+"ok": false
+},
+{
+"text": "\u21fa",
+"ok": false
+},
+{
+"text": "\u27d5",
+"ok": false
+},
+{
+"text": "\u3028",
+"ok": false
+},
+{
+"text": "\u257c",
+"ok": false
+},
+{
+"text": "\u0c13",
+"ok": false
+},
+{
+"text": "\u0ac4",
+"ok": false
+},
+{
+"text": "\u1ed7",
+"ok": false
+},
+{
+"text": "\u0847",
+"ok": false
+},
+{
+"text": "\u10d0",
+"ok": false
+},
+{
+"text": "\u0000",
+"ok": false
+},
+{
+"text": "\u24ce",
+"ok": false
+},
+{
+"text": "\u1461",
+"ok": false
+},
+{
+"text": "\u0133",
+"ok": true
+},
+{
+"text": "\u1b77",
+"ok": false
+},
+{
+"text": "\u2cd5",
+"ok": false
+},
+{
+"text": "\u22f9",
+"ok": false
+},
+{
+"text": "\u273e",
+"ok": false
+},
+{
+"text": "\u1131",
+"ok": false
+},
+{
+"text": "\u28ba",
+"ok": false
+},
+{
+"text": "\u07e2",
+"ok": false
+},
+{
+"text": "\u01b0",
+"ok": true
+},
+{
+"text": "\u0212",
+"ok": true
+},
+{
+"text": "\u28cd",
+"ok": false
+},
+{
+"text": "\u0cd3",
+"ok": false
+},
+{
+"text": "\u1d91",
+"ok": false
+},
+{
+"text": "\u205a",
+"ok": false
+},
+{
+"text": "\u0255",
+"ok": false
+},
+{
+"text": "\u114e",
+"ok": false
+},
+{
+"text": "\u110f",
+"ok": false
+},
+{
+"text": "\u073e",
+"ok": false
+},
+{
+"text": "\u20d5",
+"ok": false
+},
+{
+"text": "\u0464",
+"ok": true
+},
+{
+"text": "\u1a6a",
+"ok": false
+},
+{
+"text": "\u064d",
+"ok": false
+},
+{
+"text": "\u28a6",
+"ok": false
+},
+{
+"text": "\u2287",
+"ok": false
+},
+{
+"text": "\u2c5f",
+"ok": false
+},
+{
+"text": "\u0efd",
+"ok": false
+},
+{
+"text": "\u26fc",
+"ok": false
+},
+{
+"text": "\u1b5e",
+"ok": false
+},
+{
+"text": "\u014d",
+"ok": true
+},
+{
+"text": "\u0eb7",
+"ok": false
+},
+{
+"text": "\u0fed",
+"ok": false
+},
+{
+"text": "\u1abc",
+"ok": false
+},
+{
+"text": "\u3087",
+"ok": false
+},
+{
+"text": "\u13f9",
+"ok": false
+},
+{
+"text": "\u15ea",
+"ok": false
+},
+{
+"text": "\u2166",
+"ok": false
+},
+{
+"text": "\u272b",
+"ok": false
+},
+{
+"text": "\u2ae3",
+"ok": false
+},
+{
+"text": "\u2c05",
+"ok": false
+},
+{
+"text": "\u21ce",
+"ok": false
+},
+{
+"text": "\u2d22",
+"ok": false
+},
+{
+"text": "\u2d2a",
+"ok": false
+},
+{
+"text": "\u1500",
+"ok": false
+},
+{
+"text": "\u184f",
+"ok": false
+},
+{
+"text": "\u22a5",
+"ok": false
+},
+{
+"text": "\u109b",
+"ok": false
+},
+{
+"text": "\u2ea7",
+"ok": false
+},
+{
+"text": "\u07b1",
+"ok": false
+},
+{
+"text": "\u300f",
+"ok": false
+},
+{
+"text": "\u2538",
+"ok": false
+},
+{
+"text": "\u2193",
+"ok": false
+},
+{
+"text": "\u2e46",
+"ok": false
+},
+{
+"text": "\u2237",
+"ok": false
+},
+{
+"text": "\u018c",
+"ok": true
+},
+{
+"text": "\u29c6",
+"ok": false
+},
+{
+"text": "\u1f5f",
+"ok": false
+},
+{
+"text": "\u1ea3",
+"ok": false
+},
+{
+"text": "\u0d1a",
+"ok": false
+},
+{
+"text": "\u2535",
+"ok": false
+},
+{
+"text": "\u0cb0",
+"ok": false
+},
+{
+"text": "\u0127",
+"ok": true
+},
+{
+"text": "\u30fd",
+"ok": false
+},
+{
+"text": "\u12fe",
+"ok": false
+},
+{
+"text": "\u1674",
+"ok": false
+},
+{
+"text": "\u2db2",
+"ok": false
+},
+{
+"text": "\u29ba",
+"ok": false
+},
+{
+"text": "\u06d7",
+"ok": false
+},
+{
+"text": "\u0826",
+"ok": false
+},
+{
+"text": "\u1c4b",
+"ok": false
+},
+{
+"text": "\u214a",
+"ok": false
+},
+{
+"text": "\u1085",
+"ok": false
+},
+{
+"text": "\u0d9a",
+"ok": false
+},
+{
+"text": "\u1b18",
+"ok": false
+},
+{
+"text": "\u2065",
+"ok": false
+},
+{
+"text": "\u18b1",
+"ok": false
+},
+{
+"text": "\u2985",
+"ok": false
+},
+{
+"text": "\u0b25",
+"ok": false
+},
+{
+"text": "\u0c30",
+"ok": false
+},
+{
+"text": "\u1d08",
+"ok": false
+},
+{
+"text": "\u2245",
+"ok": false
+},
+{
+"text": "\u1660",
+"ok": false
+},
+{
+"text": "\u10a6",
+"ok": false
+},
+{
+"text": "\u2157",
+"ok": false
+},
+{
+"text": "\u2160",
+"ok": false
+},
+{
+"text": "\u0450",
+"ok": true
+},
+{
+"text": "\u1080",
+"ok": false
+},
+{
+"text": "\u070a",
+"ok": false
+},
+{
+"text": "\u073f",
+"ok": false
+},
+{
+"text": "\u07a6",
+"ok": false
+},
+{
+"text": "\u051a",
+"ok": true
+},
+{
+"text": "\u1ca2",
+"ok": false
+},
+{
+"text": "\u0787",
+"ok": false
+},
+{
+"text": "\u0478",
+"ok": true
+},
+{
+"text": "\u1f61",
+"ok": false
+},
+{
+"text": "\u1cc6",
+"ok": false
+},
+{
+"text": "\u24e3",
+"ok": false
+},
+{
+"text": "\u1c72",
+"ok": false
+},
+{
+"text": "\u0ede",
+"ok": false
+},
+{
+"text": "\u1ff9",
+"ok": false
+},
+{
+"text": "\u13c7",
+"ok": false
+},
+{
+"text": "\u2227",
+"ok": false
+},
+{
+"text": "\u20ce",
+"ok": false
+},
+{
+"text": "\u187c",
+"ok": false
+},
+{
+"text": "\u2c5d",
+"ok": false
+},
+{
+"text": "\u0d95",
+"ok": false
+},
+{
+"text": "\u0da5",
+"ok": false
+},
+{
+"text": "\u1095",
+"ok": false
+},
+{
+"text": "\u2c9e",
+"ok": false
+},
+{
+"text": "\u0611",
+"ok": false
+},
+{
+"text": "\u100c",
+"ok": false
+},
+{
+"text": "\u0bec",
+"ok": false
+},
+{
+"text": "\u0512",
+"ok": true
+},
+{
+"text": "\u00cb",
+"ok": true
+},
+{
+"text": "\u273d",
+"ok": false
+},
+{
+"text": "\u1afd",
+"ok": false
+},
+{
+"text": "\u0ee2",
+"ok": false
+},
+{
+"text": "\u10b6",
+"ok": false
+},
+{
+"text": "\u1d82",
+"ok": false
+},
+{
+"text": "\u17c8",
+"ok": false
+},
+{
+"text": "\u1c86",
+"ok": false
+},
+{
+"text": "\u2dd4",
+"ok": false
+},
+{
+"text": "\u00eb",
+"ok": true
+},
+{
+"text": "\u3018",
+"ok": false
+},
+{
+"text": "\u2f4e",
+"ok": false
+},
+{
+"text": "\u0def",
+"ok": false
+},
+{
+"text": "\u1cd8",
+"ok": false
+},
+{
+"text": "\u04b9",
+"ok": true
+},
+{
+"text": "\u160d",
+"ok": false
+},
+{
+"text": "\u1c68",
+"ok": false
+},
+{
+"text": "\u1e1b",
+"ok": false
+},
+{
+"text": "\u1040",
+"ok": false
+},
+{
+"text": "\u2af3",
+"ok": false
+},
+{
+"text": "\u0c78",
+"ok": false
+},
+{
+"text": "\u255c",
+"ok": false
+},
+{
+"text": "\u22ff",
+"ok": false
+},
+{
+"text": "\u20dd",
+"ok": false
+},
+{
+"text": "\u2c18",
+"ok": false
+},
+{
+"text": "\u17e4",
+"ok": false
+},
+{
+"text": "\u2aad",
+"ok": false
+},
+{
+"text": "\u03d8",
+"ok": false
+},
+{
+"text": "\u25bc",
+"ok": false
+},
+{
+"text": "\u02f9",
+"ok": false
+},
+{
+"text": "\u2c78",
+"ok": false
+},
+{
+"text": "\u090c",
+"ok": false
+},
+{
+"text": "\u2b6c",
+"ok": false
+},
+{
+"text": "\u1fc0",
+"ok": false
+},
+{
+"text": "\u0d55",
+"ok": false
+},
+{
+"text": "\u25ca",
+"ok": false
+},
+{
+"text": "\u2a56",
+"ok": false
+},
+{
+"text": "\u2eb7",
+"ok": false
+},
+{
+"text": "\u0717",
+"ok": false
+},
+{
+"text": "\u2c96",
+"ok": false
+},
+{
+"text": "\u30a3",
+"ok": false
+},
+{
+"text": "\u1f11",
+"ok": false
+},
+{
+"text": "\u14c9",
+"ok": false
+},
+{
+"text": "0",
+"ok": true
+},
+{
+"text": "\u0de5",
+"ok": false
+},
+{
+"text": "\u2663",
+"ok": false
+},
+{
+"text": "\u302e",
+"ok": false
+},
+{
+"text": "\u1491",
+"ok": false
+},
+{
+"text": "\u1078",
+"ok": false
+},
+{
+"text": "\u067d",
+"ok": false
+},
+{
+"text": "\u0d49",
+"ok": false
+},
+{
+"text": "\u169b",
+"ok": false
+},
+{
+"text": "\u14b2",
+"ok": false
+},
+{
+"text": "\u10d8",
+"ok": false
+},
+{
+"text": "\u1ebb",
+"ok": false
+},
+{
+"text": "\u16f8",
+"ok": false
+},
+{
+"text": "\u2256",
+"ok": false
+},
+{
+"text": "\u2e8b",
+"ok": false
+},
+{
+"text": "\u2b47",
+"ok": false
+},
+{
+"text": "\u067b",
+"ok": false
+},
+{
+"text": "\u1816",
+"ok": false
+},
+{
+"text": "\u12f1",
+"ok": false
+},
+{
+"text": "\u1836",
+"ok": false
+},
+{
+"text": "\u1299",
+"ok": false
+},
+{
+"text": "\u29e8",
+"ok": false
+},
+{
+"text": "\u19af",
+"ok": false
+},
+{
+"text": "\u28b8",
+"ok": false
+},
+{
+"text": "\u030f",
+"ok": false
+},
+{
+"text": "\u0873",
+"ok": false
+},
+{
+"text": "\u0aec",
+"ok": false
+},
+{
+"text": "\u1504",
+"ok": false
+},
+{
+"text": "\u0ac6",
+"ok": false
+},
+{
+"text": "\u1b26",
+"ok": false
+},
+{
+"text": "\u11aa",
+"ok": false
+},
+{
+"text": "\u1b32",
+"ok": false
+},
+{
+"text": "\u2391",
+"ok": false
+},
+{
+"text": "\u26d5",
+"ok": false
+},
+{
+"text": "\u07a9",
+"ok": false
+},
+{
+"text": "\u18ff",
+"ok": false
+},
+{
+"text": "\u084c",
+"ok": false
+},
+{
+"text": "\u00fd",
+"ok": true
+},
+{
+"text": "\u06dd",
+"ok": false
+},
+{
+"text": "\u2615",
+"ok": false
+},
+{
+"text": "\u1c1d",
+"ok": false
+},
+{
+"text": "^",
+"ok": true
+},
+{
+"text": "\u30c7",
+"ok": false
+},
+{
+"text": "\u0ccf",
+"ok": false
+},
+{
+"text": "\u11d8",
+"ok": false
+},
+{
+"text": "\u0f17",
+"ok": false
+},
+{
+"text": "\u2e40",
+"ok": false
+},
+{
+"text": "\u0c9d",
+"ok": false
+},
+{
+"text": "\u1e00",
+"ok": false
+},
+{
+"text": "\u02cd",
+"ok": false
+},
+{
+"text": "\u2d88",
+"ok": false
+},
+{
+"text": "\u23ad",
+"ok": false
+},
+{
+"text": "\u1ab0",
+"ok": false
+},
+{
+"text": "\u0f49",
+"ok": false
+},
+{
+"text": "\u0e5b",
+"ok": false
+},
+{
+"text": "\u0013",
+"ok": false
+},
+{
+"text": "\u2896",
+"ok": false
+},
+{
+"text": "\u28ce",
+"ok": false
+},
+{
+"text": "\u2238",
+"ok": false
+},
+{
+"text": "\u2b89",
+"ok": false
+},
+{
+"text": "\u14c0",
+"ok": false
+},
+{
+"text": "\u1709",
+"ok": false
+},
+{
+"text": "\u1da4",
+"ok": false
+},
+{
+"text": "\u0f88",
+"ok": false
+},
+{
+"text": "\u27bb",
+"ok": false
+},
+{
+"text": "\u2096",
+"ok": false
+},
+{
+"text": "\u2ff2",
+"ok": false
+},
+{
+"text": "\u0c1d",
+"ok": false
+},
+{
+"text": "\u0359",
+"ok": false
+},
+{
+"text": "\u02cc",
+"ok": false
+},
+{
+"text": "\u11a1",
+"ok": false
+},
+{
+"text": "\u1b97",
+"ok": false
+},
+{
+"text": "\u1952",
+"ok": false
+},
+{
+"text": "\u1136",
+"ok": false
+},
+{
+"text": "\u2293",
+"ok": false
+},
+{
+"text": "\u1d7a",
+"ok": false
+},
+{
+"text": "\u303d",
+"ok": false
+},
+{
+"text": "\u0ce3",
+"ok": false
+},
+{
+"text": "\u058e",
+"ok": false
+},
+{
+"text": "\u018b",
+"ok": true
+},
+{
+"text": "\u0356",
+"ok": false
+},
+{
+"text": "\u11c3",
+"ok": false
+},
+{
+"text": "C",
+"ok": true
+},
+{
+"text": "\u30bc",
+"ok": false
+},
+{
+"text": "\u1be6",
+"ok": false
+},
+{
+"text": "\u0e38",
+"ok": false
+},
+{
+"text": "\u1207",
+"ok": false
+},
+{
+"text": "\u0c8a",
+"ok": false
+},
+{
+"text": "\u2931",
+"ok": false
+},
+{
+"text": "\u05b5",
+"ok": false
+},
+{
+"text": "\u12aa",
+"ok": false
+},
+{
+"text": "\u1f42",
+"ok": false
+},
+{
+"text": "\u1d86",
+"ok": false
+},
+{
+"text": "\u0493",
+"ok": true
+},
+{
+"text": "\u20e1",
+"ok": false
+},
+{
+"text": "\u05f4",
+"ok": false
+},
+{
+"text": "\u2199",
+"ok": false
+},
+{
+"text": "\u159c",
+"ok": false
+},
+{
+"text": "\u125d",
+"ok": false
+},
+{
+"text": "\u09e5",
+"ok": false
+},
+{
+"text": "\u0c79",
+"ok": false
+},
+{
+"text": "\u007f",
+"ok": false
+},
+{
+"text": "\u12c5",
+"ok": false
+},
+{
+"text": "\u1ce1",
+"ok": false
+},
+{
+"text": "\u1ba6",
+"ok": false
+},
+{
+"text": "\u1774",
+"ok": false
+},
+{
+"text": "W",
+"ok": true
+},
+{
+"text": "\u0a3e",
+"ok": false
+},
+{
+"text": "\u1fc7",
+"ok": false
+},
+{
+"text": "\u144b",
+"ok": false
+},
+{
+"text": "\u2375",
+"ok": false
+},
+{
+"text": "\u1cfe",
+"ok": false
+},
+{
+"text": "\u12a5",
+"ok": false
+},
+{
+"text": "\u063c",
+"ok": false
+},
+{
+"text": "\u1e04",
+"ok": false
+},
+{
+"text": "\u0da8",
+"ok": false
+},
+{
+"text": "\u23ca",
+"ok": false
+},
+{
+"text": "\u07ec",
+"ok": false
+},
+{
+"text": "\u02e6",
+"ok": false
+},
+{
+"text": "\u1cab",
+"ok": false
+},
+{
+"text": "\u24ae",
+"ok": false
+},
+{
+"text": "\u0dfe",
+"ok": false
+},
+{
+"text": "\u02dd",
+"ok": false
+},
+{
+"text": "\u1d70",
+"ok": false
+},
+{
+"text": "\u1168",
+"ok": false
+},
+{
+"text": "\u1782",
+"ok": false
+},
+{
+"text": "\u2b4a",
+"ok": false
+},
+{
+"text": "\u30c4",
+"ok": false
+},
+{
+"text": "\u02c2",
+"ok": false
+},
+{
+"text": "\u26a5",
+"ok": false
+},
+{
+"text": "\u02a7",
+"ok": false
+},
+{
+"text": "\u1a2e",
+"ok": false
+},
+{
+"text": "\u215c",
+"ok": false
+},
+{
+"text": "\u076d",
+"ok": false
+},
+{
+"text": "\u1f9b",
+"ok": false
+},
+{
+"text": "\u1fe1",
+"ok": false
+},
+{
+"text": "\u1e07",
+"ok": false
+},
+{
+"text": "\u0ade",
+"ok": false
+},
+{
+"text": "\u0cb6",
+"ok": false
+},
+{
+"text": "\u15e0",
+"ok": false
+},
+{
+"text": "\u2316",
+"ok": false
+},
+{
+"text": "\u0794",
+"ok": false
+},
+{
+"text": "\u0846",
+"ok": false
+},
+{
+"text": "\u148f",
+"ok": false
+},
+{
+"text": "\u0ba6",
+"ok": false
+},
+{
+"text": "\u0e9e",
+"ok": false
+},
+{
+"text": "\u0f65",
+"ok": false
+},
+{
+"text": "\u070b",
+"ok": false
+},
+{
+"text": "\u24fe",
+"ok": false
+},
+{
+"text": "\u282e",
+"ok": false
+},
+{
+"text": "\u06bd",
+"ok": false
+},
+{
+"text": "\u2ae7",
+"ok": false
+},
+{
+"text": "\u0002",
+"ok": false
+},
+{
+"text": "\u19fa",
+"ok": false
+},
+{
+"text": "\u0eca",
+"ok": false
+},
+{
+"text": "\u2dfd",
+"ok": false
+},
+{
+"text": "\u3067",
+"ok": false
+},
+{
+"text": "\u2c26",
+"ok": false
+},
+{
+"text": "\u0f48",
+"ok": false
+},
+{
+"text": "\u27f6",
+"ok": false
+},
+{
+"text": "\u2a11",
+"ok": false
+},
+{
+"text": "\u0110",
+"ok": true
+},
+{
+"text": "\u09dc",
+"ok": false
+},
+{
+"text": "\u2177",
+"ok": false
+},
+{
+"text": "\u0b81",
+"ok": false
+},
+{
+"text": "\u113a",
+"ok": false
+},
+{
+"text": "\u0cf5",
+"ok": false
+},
+{
+"text": "\u2ffc",
+"ok": false
+},
+{
+"text": "\u0e40",
+"ok": false
+},
+{
+"text": "\u24d8",
+"ok": false
+},
+{
+"text": "\u102a",
+"ok": false
+},
+{
+"text": "\u152b",
+"ok": false
+},
+{
+"text": "\u1f10",
+"ok": false
+},
+{
+"text": "\u23db",
+"ok": false
+},
+{
+"text": "\u2e11",
+"ok": false
+},
+{
+"text": "\u039d",
+"ok": false
+},
+{
+"text": "\u2d2b",
+"ok": false
+},
+{
+"text": "\u0107",
+"ok": true
+},
+{
+"text": "\u1621",
+"ok": false
+},
+{
+"text": "\u101e",
+"ok": false
+},
+{
+"text": "\u02a0",
+"ok": false
+},
+{
+"text": "\u17dd",
+"ok": false
+},
+{
+"text": "\u1959",
+"ok": false
+},
+{
+"text": "\u068e",
+"ok": false
+},
+{
+"text": "\u2cb7",
+"ok": false
+},
+{
+"text": "\u168a",
+"ok": false
+},
+{
+"text": "\u2d76",
+"ok": false
+},
+{
+"text": "\u2407",
+"ok": false
+},
+{
+"text": "\u2e91",
+"ok": false
+},
+{
+"text": "\u18e8",
+"ok": false
+},
+{
+"text": "\u20c4",
+"ok": false
+},
+{
+"text": "\u115c",
+"ok": false
+},
+{
+"text": "\u304b",
+"ok": false
+},
+{
+"text": "\u08e2",
+"ok": false
+},
+{
+"text": "\u30bf",
+"ok": false
+},
+{
+"text": "\u286e",
+"ok": false
+},
+{
+"text": "\u3016",
+"ok": false
+},
+{
+"text": "\u1a96",
+"ok": false
+},
+{
+"text": "\u141c",
+"ok": false
+},
+{
+"text": "\u0f12",
+"ok": false
+},
+{
+"text": "\u1c3e",
+"ok": false
+},
+{
+"text": "\u2076",
+"ok": false
+},
+{
+"text": "\u03b6",
+"ok": false
+},
+{
+"text": "\u1ead",
+"ok": false
+},
+{
+"text": "\u0f9f",
+"ok": false
+},
+{
+"text": "\u094b",
+"ok": false
+},
+{
+"text": "\u27a1",
+"ok": false
+},
+{
+"text": "\u30db",
+"ok": false
+},
+{
+"text": "\u134e",
+"ok": false
+},
+{
+"text": "\u1478",
+"ok": false
+},
+{
+"text": "\u066c",
+"ok": false
+},
+{
+"text": "\u1d8d",
+"ok": false
+},
+{
+"text": "\u1885",
+"ok": false
+},
+{
+"text": "\u19b6",
+"ok": false
+},
+{
+"text": "\u1a7f",
+"ok": false
+},
+{
+"text": "\u078b",
+"ok": false
+},
+{
+"text": "\u08ce",
+"ok": false
+},
+{
+"text": "\u1927",
+"ok": false
+},
+{
+"text": "\u205f",
+"ok": false
+},
+{
+"text": "\u2044",
+"ok": false
+},
+{
+"text": "\u07f1",
+"ok": false
+},
+{
+"text": "\u1ab5",
+"ok": false
+},
+{
+"text": "(",
+"ok": true
+},
+{
+"text": "\u1ae1",
+"ok": false
+},
+{
+"text": "\u2a94",
+"ok": false
+},
+{
+"text": "\u0861",
+"ok": false
+},
+{
+"text": "\u2996",
+"ok": false
+},
+{
+"text": "\u0ee0",
+"ok": false
+},
+{
+"text": "\u131d",
+"ok": false
+},
+{
+"text": "\u306c",
+"ok": false
+},
+{
+"text": "\u2805",
+"ok": false
+},
+{
+"text": "\u29a5",
+"ok": false
+},
+{
+"text": "\u0568",
+"ok": false
+},
+{
+"text": "\u30af",
+"ok": false
+},
+{
+"text": "\u0e41",
+"ok": false
+},
+{
+"text": "\u1798",
+"ok": false
+},
+{
+"text": "\u2785",
+"ok": false
+},
+{
+"text": "\u1f54",
+"ok": false
+},
+{
+"text": "\u126a",
+"ok": false
+},
+{
+"text": "\u0d4c",
+"ok": false
+},
+{
+"text": "\u0311",
+"ok": false
+},
+{
+"text": "\u0feb",
+"ok": false
+},
+{
+"text": "\u114b",
+"ok": false
+},
+{
+"text": "\u0140",
+"ok": true
+},
+{
+"text": "\u25c5",
+"ok": false
+},
+{
+"text": "\u1717",
+"ok": false
+},
+{
+"text": "\u03d3",
+"ok": false
+},
+{
+"text": "\u06d4",
+"ok": false
+},
+{
+"text": "\u1e2e",
+"ok": false
+},
+{
+"text": "\u29b6",
+"ok": false
+},
+{
+"text": "\u2e4c",
+"ok": false
+},
+{
+"text": "\u14e1",
+"ok": false
+},
+{
+"text": "\u0b76",
+"ok": false
+},
+{
+"text": "\u233d",
+"ok": false
+},
+{
+"text": "\u118a",
+"ok": false
+},
+{
+"text": "\u093f",
+"ok": false
+},
+{
+"text": "\u06ef",
+"ok": false
+},
+{
+"text": "\u287b",
+"ok": false
+},
+{
+"text": "\u205e",
+"ok": false
+},
+{
+"text": "\u23cf",
+"ok": false
+},
+{
+"text": "\u1e27",
+"ok": false
+},
+{
+"text": "\u221f",
+"ok": false
+},
+{
+"text": "\u26d7",
+"ok": false
+},
+{
+"text": "\u18ed",
+"ok": false
+},
+{
+"text": "\u2f6d",
+"ok": false
+},
+{
+"text": "\u0634",
+"ok": false
+},
+{
+"text": "\u2491",
+"ok": false
+},
+{
+"text": "\u0572",
+"ok": false
+},
+{
+"text": "\u0dab",
+"ok": false
+},
+{
+"text": "\u1c09",
+"ok": false
+},
+{
+"text": "\u2ee5",
+"ok": false
+},
+{
+"text": "\u13c9",
+"ok": false
+},
+{
+"text": "\u1313",
+"ok": false
+},
+{
+"text": "\u21e3",
+"ok": false
+},
+{
+"text": "\u27d8",
+"ok": false
+},
+{
+"text": "\u10eb",
+"ok": false
+},
+{
+"text": "\u05ab",
+"ok": false
+},
+{
+"text": "\u2f91",
+"ok": false
+},
+{
+"text": "\u2ca9",
+"ok": false
+},
+{
+"text": "\u0b84",
+"ok": false
+},
+{
+"text": "\u1aec",
+"ok": false
+},
+{
+"text": "\u0939",
+"ok": false
+},
+{
+"text": "\u1631",
+"ok": false
+},
+{
+"text": "\u1a3c",
+"ok": false
+},
+{
+"text": "\u293b",
+"ok": false
+},
+{
+"text": "\u0863",
+"ok": false
+},
+{
+"text": "\u0465",
+"ok": true
+},
+{
+"text": "\u08bb",
+"ok": false
+},
+{
+"text": "\u1b2b",
+"ok": false
+},
+{
+"text": "\u2656",
+"ok": false
+},
+{
+"text": "\u13be",
+"ok": false
+},
+{
+"text": "\u22c2",
+"ok": false
+},
+{
+"text": "\u04e1",
+"ok": true
+},
+{
+"text": "\u1b11",
+"ok": false
+},
+{
+"text": "\u124f",
+"ok": false
+},
+{
+"text": "\u0bb0",
+"ok": false
+},
+{
+"text": "\u0732",
+"ok": false
+},
+{
+"text": "\u253b",
+"ok": false
+},
+{
+"text": "\u19de",
+"ok": false
+},
+{
+"text": "\u0c31",
+"ok": false
+},
+{
+"text": "\u22d9",
+"ok": false
+},
+{
+"text": "\u1710",
+"ok": false
+},
+{
+"text": "\u200a",
+"ok": false
+},
+{
+"text": "\u1302",
+"ok": false
+},
+{
+"text": "\u1409",
+"ok": false
+},
+{
+"text": "\u2ba2",
+"ok": false
+},
+{
+"text": "\u2719",
+"ok": false
+},
+{
+"text": "\u2383",
+"ok": false
+},
+{
+"text": "\u2385",
+"ok": false
+},
+{
+"text": "\u08a4",
+"ok": false
+},
+{
+"text": "\u1b96",
+"ok": false
+},
+{
+"text": "\u01f2",
+"ok": true
+},
+{
+"text": "\u093c",
+"ok": false
+},
+{
+"text": "\u11f8",
+"ok": false
+},
+{
+"text": "\u1814",
+"ok": false
+},
+{
+"text": "\u2898",
+"ok": false
+},
+{
+"text": "\u085f",
+"ok": false
+},
+{
+"text": "\u1e8e",
+"ok": false
+},
+{
+"text": "\u282c",
+"ok": false
+},
+{
+"text": "\u1892",
+"ok": false
+},
+{
+"text": "\u21bd",
+"ok": false
+},
+{
+"text": "\u274e",
+"ok": false
+},
+{
+"text": "\u308e",
+"ok": false
+},
+{
+"text": "\u23dd",
+"ok": false
+},
+{
+"text": "\u00ca",
+"ok": true
+},
+{
+"text": "\u104a",
+"ok": false
+},
+{
+"text": "\u0e30",
+"ok": false
+},
+{
+"text": "\u1eb4",
+"ok": false
+},
+{
+"text": "\u19a6",
+"ok": false
+},
+{
+"text": "\u0a0d",
+"ok": false
+},
+{
+"text": "\u10fa",
+"ok": false
+},
+{
+"text": "\u1e63",
+"ok": false
+},
+{
+"text": "\u1338",
+"ok": false
+},
+{
+"text": "\u147c",
+"ok": false
+},
+{
+"text": "\u1147",
+"ok": false
+},
+{
+"text": "\u2955",
+"ok": false
+},
+{
+"text": "\u1bca",
+"ok": false
+},
+{
+"text": "\u1ba3",
+"ok": false
+},
+{
+"text": "\u2276",
+"ok": false
+},
+{
+"text": "\u2b8f",
+"ok": false
+},
+{
+"text": "\u301a",
+"ok": false
+},
+{
+"text": "\u289b",
+"ok": false
+},
+{
+"text": "\u193b",
+"ok": false
+},
+{
+"text": "\u2e0e",
+"ok": false
+},
+{
+"text": "\u0ac3",
+"ok": false
+},
+{
+"text": "\u0eaf",
+"ok": false
+},
+{
+"text": "\u2e67",
+"ok": false
+},
+{
+"text": "\u132a",
+"ok": false
+},
+{
+"text": "\u10d7",
+"ok": false
+},
+{
+"text": "\u0956",
+"ok": false
+},
+{
+"text": "\u0231",
+"ok": true
+},
+{
+"text": "\u2431",
+"ok": false
+},
+{
+"text": "\u2030",
+"ok": false
+},
+{
+"text": "\u0e10",
+"ok": false
+},
+{
+"text": "\u1881",
+"ok": false
+},
+{
+"text": "\u2676",
+"ok": false
+},
+{
+"text": "\u27ba",
+"ok": false
+},
+{
+"text": "\u1c4d",
+"ok": false
+},
+{
+"text": "\u16e4",
+"ok": false
+},
+{
+"text": "\u12ff",
+"ok": false
+},
+{
+"text": "\u2723",
+"ok": false
+},
+{
+"text": "\u115d",
+"ok": false
+},
+{
+"text": "\u1261",
+"ok": false
+},
+{
+"text": "\u0247",
+"ok": true
+},
+{
+"text": "\u066a",
+"ok": false
+},
+{
+"text": "X",
+"ok": true
+},
+{
+"text": "\u2083",
+"ok": false
+},
+{
+"text": "\u0ea6",
+"ok": false
+},
+{
+"text": "\u1d32",
+"ok": false
+},
+{
+"text": "\u0197",
+"ok": true
+},
+{
+"text": "\u190e",
+"ok": false
+},
+{
+"text": "\u03f5",
+"ok": false
+},
+{
+"text": "\u0760",
+"ok": false
+},
+{
+"text": "\u0654",
+"ok": false
+},
+{
+"text": "\u1453",
+"ok": false
+},
+{
+"text": "\u0cec",
+"ok": false
+},
+{
+"text": "\u2c9b",
+"ok": false
+},
+{
+"text": "\u28bc",
+"ok": false
+},
+{
+"text": "\u22b7",
+"ok": false
+},
+{
+"text": "\u1e3c",
+"ok": false
+},
+{
+"text": "\u2a36",
+"ok": false
+},
+{
+"text": "\u15b7",
+"ok": false
+},
+{
+"text": "\u0a5b",
+"ok": false
+},
+{
+"text": "\u20eb",
+"ok": false
+},
+{
+"text": "\u256b",
+"ok": false
+},
+{
+"text": "\u1886",
+"ok": false
+},
+{
+"text": "\u1577",
+"ok": false
+},
+{
+"text": "\u1fc4",
+"ok": false
+},
+{
+"text": "\u2aca",
+"ok": false
+},
+{
+"text": "\u2e96",
+"ok": false
+},
+{
+"text": "\u18fb",
+"ok": false
+},
+{
+"text": "\u057b",
+"ok": false
+},
+{
+"text": "\u21b8",
+"ok": false
+},
+{
+"text": "\u16a1",
+"ok": false
+},
+{
+"text": "\u21ec",
+"ok": false
+},
+{
+"text": "\u3023",
+"ok": false
+},
+{
+"text": "\u1624",
+"ok": false
+},
+{
+"text": "\u2fbc",
+"ok": false
+},
+{
+"text": "\u0f80",
+"ok": false
+},
+{
+"text": "\u05d6",
+"ok": false
+},
+{
+"text": "\u196e",
+"ok": false
+},
+{
+"text": "\u19cc",
+"ok": false
+},
+{
+"text": "\u0284",
+"ok": false
+},
+{
+"text": "\u2332",
+"ok": false
+},
+{
+"text": "\u058f",
+"ok": false
+},
+{
+"text": "\u009f",
+"ok": false
+},
+{
+"text": "\u115b",
+"ok": false
+},
+{
+"text": "\u14b3",
+"ok": false
+},
+{
+"text": "\u00f0",
+"ok": true
+},
+{
+"text": "\u2709",
+"ok": false
+},
+{
+"text": "\u255d",
+"ok": false
+},
+{
+"text": "\u1611",
+"ok": false
+},
+{
+"text": "\u2b9c",
+"ok": false
+},
+{
+"text": "\u0af8",
+"ok": false
+},
+{
+"text": "\u1490",
+"ok": false
+},
+{
+"text": "\u2e06",
+"ok": false
+},
+{
+"text": "\u295d",
+"ok": false
+},
+{
+"text": "\u07bf",
+"ok": false
+},
+{
+"text": "\u05b3",
+"ok": false
+},
+{
+"text": "\u1af6",
+"ok": false
+},
+{
+"text": "\u2de5",
+"ok": false
+},
+{
+"text": "\u2642",
+"ok": false
+},
+{
+"text": "\u1dab",
+"ok": false
+},
+{
+"text": "\u2e16",
+"ok": false
+},
+{
+"text": "\u154b",
+"ok": false
+},
+{
+"text": "\u1645",
+"ok": false
+},
+{
+"text": "\u2b68",
+"ok": false
+},
+{
+"text": "\u28cb",
+"ok": false
+},
+{
+"text": "\u2311",
+"ok": false
+},
+{
+"text": "\u25ae",
+"ok": false
+},
+{
+"text": "\u2ccd",
+"ok": false
+},
+{
+"text": "\u2d08",
+"ok": false
+},
+{
+"text": "\u24cc",
+"ok": false
+},
+{
+"text": "\u18d9",
+"ok": false
+},
+{
+"text": "\u3080",
+"ok": false
+},
+{
+"text": "\u09f1",
+"ok": false
+},
+{
+"text": "\u04e7",
+"ok": true
+},
+{
+"text": "\u1de5",
+"ok": false
+},
+{
+"text": "\u2f4a",
+"ok": false
+},
+{
+"text": "\u16bb",
+"ok": false
+},
+{
+"text": "\u1029",
+"ok": false
+},
+{
+"text": "\u1f9f",
+"ok": false
+},
+{
+"text": "\u308f",
+"ok": false
+},
+{
+"text": "\u2f8b",
+"ok": false
+},
+{
+"text": "\u0099",
+"ok": false
+},
+{
+"text": "\u00ac",
+"ok": true
+},
+{
+"text": "\u10f6",
+"ok": false
+},
+{
+"text": "\u3051",
+"ok": false
+},
+{
+"text": "\u13e5",
+"ok": false
+},
+{
+"text": "\u2e47",
+"ok": false
+},
+{
+"text": "\u1309",
+"ok": false
+},
+{
+"text": "\u1934",
+"ok": false
+},
+{
+"text": "\u09b9",
+"ok": false
+},
+{
+"text": "\u22c9",
+"ok": false
+},
+{
+"text": "\u2e55",
+"ok": false
+},
+{
+"text": "\u1061",
+"ok": false
+},
+{
+"text": "\u2980",
+"ok": false
+},
+{
+"text": "\u278e",
+"ok": false
+},
+{
+"text": "\u2f8a",
+"ok": false
+},
+{
+"text": "\u0b4b",
+"ok": false
+},
+{
+"text": "\u2fea",
+"ok": false
+},
+{
+"text": "\u2b81",
+"ok": false
+},
+{
+"text": "\u256e",
+"ok": false
+},
+{
+"text": "\u0bd2",
+"ok": false
+},
+{
+"text": "\u21bf",
+"ok": false
+},
+{
+"text": "\u0df4",
+"ok": false
+},
+{
+"text": "\u1e7f",
+"ok": false
+},
+{
+"text": "\u2971",
+"ok": false
+},
+{
+"text": "\u0580",
+"ok": false
+},
+{
+"text": "\u25f1",
+"ok": false
+},
+{
+"text": "\u2a93",
+"ok": false
+},
+{
+"text": "\u06c9",
+"ok": false
+},
+{
+"text": "\u2e54",
+"ok": false
+},
+{
+"text": "\u2f8d",
+"ok": false
+},
+{
+"text": "\u288f",
+"ok": false
+},
+{
+"text": "\u0209",
+"ok": true
+},
+{
+"text": "\u145a",
+"ok": false
+},
+{
+"text": "\u0a1f",
+"ok": false
+},
+{
+"text": "\u131b",
+"ok": false
+},
+{
+"text": "\u2d68",
+"ok": false
+},
+{
+"text": "\u1f7d",
+"ok": false
+},
+{
+"text": "\u24cd",
+"ok": false
+},
+{
+"text": "\u0eee",
+"ok": false
+},
+{
+"text": "\u21e8",
+"ok": false
+},
+{
+"text": "\u196a",
+"ok": false
+},
+{
+"text": "\u1f4e",
+"ok": false
+},
+{
+"text": "\u2aa9",
+"ok": false
+},
+{
+"text": "\u0558",
+"ok": false
+},
+{
+"text": "\u07be",
+"ok": false
+},
+{
+"text": "\u05cf",
+"ok": false
+},
+{
+"text": "\u0384",
+"ok": false
+},
+{
+"text": "\u2c08",
+"ok": false
+},
+{
+"text": "\u125c",
+"ok": false
+},
+{
+"text": "\u2cff",
+"ok": false
+},
+{
+"text": "\u2f8f",
+"ok": false
+},
+{
+"text": "\u1e88",
+"ok": false
+},
+{
+"text": "\u06ad",
+"ok": false
+},
+{
+"text": "\u16d9",
+"ok": false
+},
+{
+"text": "\u30e7",
+"ok": false
+},
+{
+"text": "\u0193",
+"ok": true
+},
+{
+"text": "\u00da",
+"ok": true
+},
+{
+"text": "\u2df7",
+"ok": false
+},
+{
+"text": "\u27fe",
+"ok": false
+},
+{
+"text": "\u274f",
+"ok": false
+},
+{
+"text": "\u2572",
+"ok": false
+},
+{
+"text": "\u2a74",
+"ok": false
+},
+{
+"text": "\u1997",
+"ok": false
+},
+{
+"text": "\u0fcf",
+"ok": false
+},
+{
+"text": "\u0ec4",
+"ok": false
+},
+{
+"text": "\u241a",
+"ok": false
+},
+{
+"text": "\u061c",
+"ok": false
+},
+{
+"text": "\u0d1c",
+"ok": false
+},
+{
+"text": "\u01c8",
+"ok": true
+},
+{
+"text": "\u06c4",
+"ok": false
+},
+{
+"text": "\u1ceb",
+"ok": false
+},
+{
+"text": "\u1c5f",
+"ok": false
+},
+{
+"text": "\u0fd6",
+"ok": false
+},
+{
+"text": "\u203f",
+"ok": false
+},
+{
+"text": "\u091d",
+"ok": false
+},
+{
+"text": "\u0869",
+"ok": false
+},
+{
+"text": "\u24bd",
+"ok": false
+},
+{
+"text": "\u1ad9",
+"ok": false
+},
+{
+"text": "\u1dd2",
+"ok": false
+},
+{
+"text": "\u1117",
+"ok": false
+},
+{
+"text": "\u0254",
+"ok": false
+},
+{
+"text": "\u12bb",
+"ok": false
+},
+{
+"text": "\u1d19",
+"ok": false
+},
+{
+"text": "\u05ef",
+"ok": false
+},
+{
+"text": "\u09eb",
+"ok": false
+},
+{
+"text": "\u2f78",
+"ok": false
+},
+{
+"text": "\u1b30",
+"ok": false
+},
+{
+"text": "\u047b",
+"ok": true
+},
+{
+"text": "\u1baf",
+"ok": false
+},
+{
+"text": "\u019e",
+"ok": true
+},
+{
+"text": "\u078f",
+"ok": false
+},
+{
+"text": "\u0014",
+"ok": false
+},
+{
+"text": "\u0986",
+"ok": false
+},
+{
+"text": "\u1f35",
+"ok": false
+},
+{
+"text": "\u1c78",
+"ok": false
+},
+{
+"text": "\u046d",
+"ok": true
+},
+{
+"text": "\u2a70",
+"ok": false
+},
+{
+"text": "\u1ff2",
+"ok": false
+},
+{
+"text": "\u2902",
+"ok": false
+},
+{
+"text": "\u0ba5",
+"ok": false
+},
+{
+"text": "\u1290",
+"ok": false
+},
+{
+"text": "\u12eb",
+"ok": false
+},
+{
+"text": "\u14e0",
+"ok": false
+},
+{
+"text": "\u24c8",
+"ok": false
+},
+{
+"text": "\u0f8e",
+"ok": false
+},
+{
+"text": "\u07ed",
+"ok": false
+},
+{
+"text": "\u19e6",
+"ok": false
+},
+{
+"text": "\u0ec2",
+"ok": false
+},
+{
+"text": "\u1850",
+"ok": false
+},
+{
+"text": "\u08dd",
+"ok": false
+},
+{
+"text": "\u026f",
+"ok": false
+},
+{
+"text": "\u146a",
+"ok": false
+},
+{
+"text": "\u262d",
+"ok": false
+},
+{
+"text": "\u0ac7",
+"ok": false
+},
+{
+"text": "\u12b0",
+"ok": false
+},
+{
+"text": "\u0f16",
+"ok": false
+},
+{
+"text": "\u143a",
+"ok": false
+},
+{
+"text": "\u195f",
+"ok": false
+},
+{
+"text": "\u2d11",
+"ok": false
+},
+{
+"text": "\u07d5",
+"ok": false
+},
+{
+"text": "\u181f",
+"ok": false
+},
+{
+"text": "\u286f",
+"ok": false
+},
+{
+"text": "\u04ea",
+"ok": true
+},
+{
+"text": "\u252f",
+"ok": false
+},
+{
+"text": "\u0abe",
+"ok": false
+},
+{
+"text": "\u12ec",
+"ok": false
+},
+{
+"text": "\u26b3",
+"ok": false
+},
+{
+"text": "\u10ab",
+"ok": false
+},
+{
+"text": "\u0492",
+"ok": true
+},
+{
+"text": "\u1462",
+"ok": false
+},
+{
+"text": "\u07b9",
+"ok": false
+},
+{
+"text": "\u23bb",
+"ok": false
+},
+{
+"text": "\u2c50",
+"ok": false
+},
+{
+"text": "\u0bf7",
+"ok": false
+},
+{
+"text": "\u1de0",
+"ok": false
+},
+{
+"text": "\u16a5",
+"ok": false
+},
+{
+"text": "\u2348",
+"ok": false
+},
+{
+"text": "\u0425",
+"ok": true
+},
+{
+"text": "\u0e08",
+"ok": false
+},
+{
+"text": "\u0d73",
+"ok": false
+},
+{
+"text": "\u152e",
+"ok": false
+},
+{
+"text": "\u1519",
+"ok": false
+},
+{
+"text": "\u2d72",
+"ok": false
+},
+{
+"text": "\u2ef9",
+"ok": false
+},
+{
+"text": "\u215e",
+"ok": false
+},
+{
+"text": "\u12a2",
+"ok": false
+},
+{
+"text": "\u01bf",
+"ok": true
+},
+{
+"text": "\u2d10",
+"ok": false
+},
+{
+"text": "\u091b",
+"ok": false
+},
+{
+"text": "\u1e74",
+"ok": false
+},
+{
+"text": "\u1219",
+"ok": false
+},
+{
+"text": "\u00c8",
+"ok": true
+},
+{
+"text": "\u1071",
+"ok": false
+},
+{
+"text": "\u1544",
+"ok": false
+},
+{
+"text": "\u2adf",
+"ok": false
+},
+{
+"text": "\u0ff5",
+"ok": false
+},
+{
+"text": "\u0c50",
+"ok": false
+},
+{
+"text": "\u0170",
+"ok": true
+},
+{
+"text": "\u2dc6",
+"ok": false
+},
+{
+"text": "\u1a0f",
+"ok": false
+},
+{
+"text": "\u0300",
+"ok": false
+},
+{
+"text": "\u1a3d",
+"ok": false
+},
+{
+"text": "\u0a2b",
+"ok": false
+},
+{
+"text": "\u0827",
+"ok": false
+},
+{
+"text": "\u26f1",
+"ok": false
+},
+{
+"text": "\u123e",
+"ok": false
+},
+{
+"text": "\u0f37",
+"ok": false
+},
+{
+"text": "\u279b",
+"ok": false
+},
+{
+"text": "\u09db",
+"ok": false
+},
+{
+"text": "\u11a6",
+"ok": false
+},
+{
+"text": "\u14ca",
+"ok": false
+},
+{
+"text": "\u1e49",
+"ok": false
+},
+{
+"text": "\u2ad3",
+"ok": false
+},
+{
+"text": "\u0e84",
+"ok": false
+},
+{
+"text": "\u257d",
+"ok": false
+},
+{
+"text": "\u011c",
+"ok": true
+},
+{
+"text": "\u0436",
+"ok": true
+},
+{
+"text": "\u1ec8",
+"ok": false
+},
+{
+"text": "\u175b",
+"ok": false
+},
+{
+"text": "\u065c",
+"ok": false
+},
+{
+"text": "\u0e6f",
+"ok": false
+},
+{
+"text": "\u2305",
+"ok": false
+},
+{
+"text": "\u2da9",
+"ok": false
+},
+{
+"text": "\u158b",
+"ok": false
+},
+{
+"text": "\u2b5a",
+"ok": false
+},
+{
+"text": "\u0ef2",
+"ok": false
+},
+{
+"text": "\u17f5",
+"ok": false
+},
+{
+"text": "\u1cd6",
+"ok": false
+},
+{
+"text": "\u156d",
+"ok": false
+},
+{
+"text": "\u2a32",
+"ok": false
+},
+{
+"text": "\u0718",
+"ok": false
+},
+{
+"text": "\u1e6c",
+"ok": false
+},
+{
+"text": "\u0c58",
+"ok": false
+},
+{
+"text": "\u0cc3",
+"ok": false
+},
+{
+"text": "\u1127",
+"ok": false
+},
+{
+"text": "\u21cf",
+"ok": false
+},
+{
+"text": "\u2d53",
+"ok": false
+},
+{
+"text": "\u1400",
+"ok": false
+},
+{
+"text": "\u22ed",
+"ok": false
+},
+{
+"text": "\u20b2",
+"ok": false
+},
+{
+"text": "\u0b98",
+"ok": false
+},
+{
+"text": "\u209a",
+"ok": false
+},
+{
+"text": "\u0ec8",
+"ok": false
+},
+{
+"text": "\u14f5",
+"ok": false
+},
+{
+"text": "\u2445",
+"ok": false
+},
+{
+"text": "\u0731",
+"ok": false
+},
+{
+"text": "\u1e0f",
+"ok": false
+},
+{
+"text": "\u0af9",
+"ok": false
+},
+{
+"text": "\u0a95",
+"ok": false
+},
+{
+"text": "\u2f22",
+"ok": false
+},
+{
+"text": "\u260d",
+"ok": false
+},
+{
+"text": "\u2bf5",
+"ok": false
+},
+{
+"text": "\u20f9",
+"ok": false
+},
+{
+"text": "\u1e5c",
+"ok": false
+},
+{
+"text": "\u0808",
+"ok": false
+},
+{
+"text": "\u2221",
+"ok": false
+},
+{
+"text": "\u2b85",
+"ok": false
+},
+{
+"text": "\u10dd",
+"ok": false
+},
+{
+"text": "\u0282",
+"ok": false
+},
+{
+"text": "\u1c5e",
+"ok": false
+},
+{
+"text": "\u05c9",
+"ok": false
+},
+{
+"text": "\u2f5d",
+"ok": false
+},
+{
+"text": "\u2fcc",
+"ok": false
+},
+{
+"text": "\u0d81",
+"ok": false
+},
+{
+"text": "\u0ff8",
+"ok": false
+},
+{
+"text": "\u172d",
+"ok": false
+},
+{
+"text": "x\ud83c\ude3a",
+"ok": false
+},
+{
+"text": "x\ud81f\udc8c",
+"ok": false
+},
+{
+"text": "x\ud83d\udf88",
+"ok": false
+},
+{
+"text": "x\ud83c\ude54",
+"ok": false
+},
+{
+"text": "x\ud83d\udd40",
+"ok": false
+},
+{
+"text": "x\ud847\udd2e",
+"ok": false
+},
+{
+"text": "x\ud83d\ude4b",
+"ok": false
+},
+{
+"text": "x\ud83c\udd6a",
+"ok": false
+},
+{
+"text": "x\ud861\udd46",
+"ok": false
+},
+{
+"text": "x\ud83d\udfa8",
+"ok": false
+},
+{
+"text": "x\ud83d\ude06",
+"ok": false
+},
+{
+"text": "x\ud83e\ude8d",
+"ok": false
+},
+{
+"text": "x\ud83d\udc1e",
+"ok": false
+},
+{
+"text": "x\ud83e\udcb2",
+"ok": false
+},
+{
+"text": "x\ud83c\udde8",
+"ok": false
+},
+{
+"text": "x\ud83e\uddec",
+"ok": false
+},
+{
+"text": "x\ud823\udf7f",
+"ok": false
+},
+{
+"text": "x\ud83c\udf5c",
+"ok": false
+},
+{
+"text": "x\ud83d\ude0a",
+"ok": false
+},
+{
+"text": "x\ud849\udd7d",
+"ok": false
+},
+{
+"text": "x\ud81a\udd89",
+"ok": false
+},
+{
+"text": "x\ud83d\udde4",
+"ok": false
+},
+{
+"text": "x\ud842\udec0",
+"ok": false
+},
+{
+"text": "x\ud83e\udc41",
+"ok": false
+},
+{
+"text": "x\ud81f\udc11",
+"ok": false
+},
+{
+"text": "x\ud83d\udd51",
+"ok": false
+},
+{
+"text": "x\ud83c\udc02",
+"ok": false
+},
+{
+"text": "x\ud83c\udf7b",
+"ok": false
+},
+{
+"text": "x\ud83e\udecd",
+"ok": false
+},
+{
+"text": "x\ud823\uddca",
+"ok": false
+},
+{
+"text": "x\ud83d\uddc1",
+"ok": false
+},
+{
+"text": "x\ud83e\udc45",
+"ok": false
+},
+{
+"text": "x\ud804\ude7b",
+"ok": false
+},
+{
+"text": "x\ud800\udfb4",
+"ok": false
+},
+{
+"text": "x\ud811\ude21",
+"ok": false
+},
+{
+"text": "x\ud83c\udc27",
+"ok": false
+},
+{
+"text": "x\ud865\udeae",
+"ok": false
+},
+{
+"text": "x\ud83c\ude10",
+"ok": false
+},
+{
+"text": "x\ud83d\uddbf",
+"ok": false
+},
+{
+"text": "x\uafeb",
+"ok": false
+},
+{
+"text": "x\ud811\udf21",
+"ok": false
+},
+{
+"text": "x\ud824\ude32",
+"ok": false
+},
+{
+"text": "x\ud83d\ude74",
+"ok": false
+},
+{
+"text": "x\ud805\udc20",
+"ok": false
+},
+{
+"text": "x\ud855\udce2",
+"ok": false
+},
+{
+"text": "x\ud83d\udf09",
+"ok": false
+},
+{
+"text": "x\ua2ce",
+"ok": false
+},
+{
+"text": "x\ud83c\udfcf",
+"ok": false
+},
+{
+"text": "x\ud83e\ude79",
+"ok": false
+},
+{
+"text": "x\ud820\udd66",
+"ok": false
+},
+{
+"text": "x\ud832\udf84",
+"ok": false
+},
+{
+"text": "x\ud83c\udd17",
+"ok": false
+},
+{
+"text": "x\ud827\udf7c",
+"ok": false
+},
+{
+"text": "x\ud83e\udc37",
+"ok": false
+},
+{
+"text": "x\ud865\ude78",
+"ok": false
+},
+{
+"text": "x\ud83d\udf12",
+"ok": false
+},
+{
+"text": "x\ud81d\udc34",
+"ok": false
+},
+{
+"text": "x\ud83d\udfb5",
+"ok": false
+},
+{
+"text": "x\ud83d\udcd1",
+"ok": false
+},
+{
+"text": "x\ud822\udc8d",
+"ok": false
+},
+{
+"text": "x\ud844\udf87",
+"ok": false
+},
+{
+"text": "x\ud817\udc9d",
+"ok": false
+},
+{
+"text": "x\ud811\udeaa",
+"ok": false
+},
+{
+"text": "x\ud804\uddaf",
+"ok": false
+},
+{
+"text": "x\ud83c\udf28",
+"ok": false
+},
+{
+"text": "x\ud83d\ude39",
+"ok": false
+},
+{
+"text": "x\ud856\udec3",
+"ok": false
+},
+{
+"text": "x\ud84d\udc0c",
+"ok": false
+},
+{
+"text": "x\uf750",
+"ok": false
+},
+{
+"text": "x\ud83d\uddc5",
+"ok": false
+},
+{
+"text": "x\ud83e\udd75",
+"ok": false
+},
+{
+"text": "x\ud839\udcde",
+"ok": false
+},
+{
+"text": "x\ud83d\udebb",
+"ok": false
+},
+{
+"text": "x\ud83d\udef2",
+"ok": false
+},
+{
+"text": "x\ud818\ude01",
+"ok": false
+},
+{
+"text": "x\ud861\udfc5",
+"ok": false
+},
+{
+"text": "x\ud83c\ude4c",
+"ok": false
+},
+{
+"text": "x\ud83e\udc16",
+"ok": false
+},
+{
+"text": "x\u4ee3",
+"ok": false
+},
+{
+"text": "x\ud829\ude31",
+"ok": false
+},
+{
+"text": "x\ud83c\udc1b",
+"ok": false
+},
+{
+"text": "x\ud83e\udec1",
+"ok": false
+},
+{
+"text": "x\ud83b\udc79",
+"ok": false
+},
+{
+"text": "x\uf3ef",
+"ok": false
+},
+{
+"text": "x\ud86f\udd0e",
+"ok": false
+},
+{
+"text": "x\u48d4",
+"ok": false
+},
+{
+"text": "x\ud83c\udf21",
+"ok": false
+},
+{
+"text": "x\ud822\uddc8",
+"ok": false
+},
+{
+"text": "x\ud83c\udfee",
+"ok": false
+},
+{
+"text": "x\ud83d\udd56",
+"ok": false
+},
+{
+"text": "x\ud85a\ude32",
+"ok": false
+},
+{
+"text": "x\u5479",
+"ok": false
+},
+{
+"text": "x\ud83e\ude83",
+"ok": false
+},
+{
+"text": "x\ud83d\udc22",
+"ok": false
+},
+{
+"text": "x\ud851\udc91",
+"ok": false
+},
+{
+"text": "x\ud801\udf74",
+"ok": false
+},
+{
+"text": "x\ud83d\ude90",
+"ok": false
+},
+{
+"text": "x\ud81c\udd7e",
+"ok": false
+},
+{
+"text": "x\ud877\udd7b",
+"ok": false
+},
+{
+"text": "x\ud83e\ude3a",
+"ok": false
+},
+{
+"text": "x\ud873\udebe",
+"ok": false
+},
+{
+"text": "x\ud83c\ude4b",
+"ok": false
+},
+{
+"text": "x\ud83e\udd84",
+"ok": false
+},
+{
+"text": "x\ud83e\ude25",
+"ok": false
+},
+{
+"text": "x\ud83d\uddf5",
+"ok": false
+},
+{
+"text": "x\ud83d\udd65",
+"ok": false
+},
+{
+"text": "x\ud83c\udeb8",
+"ok": false
+},
+{
+"text": "x\ud873\udd3b",
+"ok": false
+},
+{
+"text": "x\ud83c\udd0c",
+"ok": false
+},
+{
+"text": "x\u7ac3",
+"ok": false
+},
+{
+"text": "x\ud83c\uddf0",
+"ok": false
+},
+{
+"text": "x\ud83c\udffa",
+"ok": false
+},
+{
+"text": "x\ud83d\udf5a",
+"ok": false
+},
+{
+"text": "x\ua4ee",
+"ok": false
+},
+{
+"text": "x\ud83d\udeb9",
+"ok": false
+},
+{
+"text": "x\ud83d\udcbc",
+"ok": false
+},
+{
+"text": "x\ud861\udd57",
+"ok": false
+},
+{
+"text": "x\ud83e\udcf2",
+"ok": false
+},
+{
+"text": "x\ud83c\udcbb",
+"ok": false
+},
+{
+"text": "x\ud83d\udeb4",
+"ok": false
+},
+{
+"text": "x\ud87f\udc2a",
+"ok": false
+},
+{
+"text": "x\ud83d\udda0",
+"ok": false
+},
+{
+"text": "x\ud83e\udc75",
+"ok": false
+},
+{
+"text": "x\u7a0c",
+"ok": false
+},
+{
+"text": "x\ud83d\udd2d",
+"ok": false
+},
+{
+"text": "x\ud833\uddc8",
+"ok": false
+},
+{
+"text": "x\ud83e\udc17",
+"ok": false
+},
+{
+"text": "x\ud83d\udf75",
+"ok": false
+},
+{
+"text": "x\ud83d\udcee",
+"ok": false
+},
+{
+"text": "x\ud87e\uddb5",
+"ok": false
+},
+{
+"text": "x\ud83c\udc68",
+"ok": false
+},
+{
+"text": "x\ud83d\uddb0",
+"ok": false
+},
+{
+"text": "x\ucabf",
+"ok": false
+},
+{
+"text": "x\ufef4",
+"ok": false
+},
+{
+"text": "x\ud81c\ude80",
+"ok": false
+},
+{
+"text": "x\ud83b\udd0d",
+"ok": false
+},
+{
+"text": "x\u4b57",
+"ok": false
+},
+{
+"text": "x\u6329",
+"ok": false
+},
+{
+"text": "x\ud839\uddf1",
+"ok": false
+},
+{
+"text": "x\ubed1",
+"ok": false
+},
+{
+"text": "x\ud83e\udcae",
+"ok": false
+},
+{
+"text": "x\ud83c\udd14",
+"ok": false
+},
+{
+"text": "x\ud83e\udc2e",
+"ok": false
+},
+{
+"text": "x\ud83e\udce8",
+"ok": false
+},
+{
+"text": "x\ud835\udc6c",
+"ok": false
+},
+{
+"text": "x\ud83c\ude78",
+"ok": false
+},
+{
+"text": "x\ud820\uddc4",
+"ok": false
+},
+{
+"text": "x\ud83d\udd1e",
+"ok": false
+},
+{
+"text": "x\ud83e\ude26",
+"ok": false
+},
+{
+"text": "x\ud816\udeac",
+"ok": false
+},
+{
+"text": "x\ub584",
+"ok": false
+},
+{
+"text": "x\ud83c\udc66",
+"ok": false
+},
+{
+"text": "x\ue21b",
+"ok": false
+},
+{
+"text": "x\ud83e\udd9d",
+"ok": false
+},
+{
+"text": "x\ud83d\udd3e",
+"ok": false
+},
+{
+"text": "x\ue4f3",
+"ok": false
+},
+{
+"text": "x\ud83d\ude41",
+"ok": false
+},
+{
+"text": "x\ud828\udea3",
+"ok": false
+},
+{
+"text": "x\ud83e\udef8",
+"ok": false
+},
+{
+"text": "x\ud800\uddff",
+"ok": false
+},
+{
+"text": "x\ud83c\udec4",
+"ok": false
+},
+{
+"text": "x\ud83e\ude5a",
+"ok": false
+},
+{
+"text": "x\ud83d\uddbd",
+"ok": false
+},
+{
+"text": "x\ud83c\udcfb",
+"ok": false
+},
+{
+"text": "x\ud83c\udd87",
+"ok": false
+},
+{
+"text": "x\ud868\ude22",
+"ok": false
+},
+{
+"text": "x\ud83c\uddec",
+"ok": false
+},
+{
+"text": "x\ud804\udeca",
+"ok": false
+},
+{
+"text": "x\ud82c\udfb6",
+"ok": false
+},
+{
+"text": "x\ud84a\udc03",
+"ok": false
+},
+{
+"text": "x\ud83e\udd6e",
+"ok": false
+},
+{
+"text": "x\ud83d\udda4",
+"ok": false
+},
+{
+"text": "x\ud852\udc81",
+"ok": false
+},
+{
+"text": "x\ud83d\uddda",
+"ok": false
+},
+{
+"text": "x\ud83d\ude56",
+"ok": false
+},
+{
+"text": "x\ud83c\udd89",
+"ok": false
+},
+{
+"text": "x\ud83d\udd07",
+"ok": false
+},
+{
+"text": "x\ud805\udf63",
+"ok": false
+},
+{
+"text": "x\u7206",
+"ok": false
+},
+{
+"text": "x\ud83c\udfa7",
+"ok": false
+},
+{
+"text": "x\ud875\uddf9",
+"ok": false
+},
+{
+"text": "x\ud818\ude5b",
+"ok": false
+},
+{
+"text": "x\ud83c\udf27",
+"ok": false
+},
+{
+"text": "x\ud83c\udc8d",
+"ok": false
+},
+{
+"text": "x\ud818\ude2f",
+"ok": false
+},
+{
+"text": "x\ud81d\udef1",
+"ok": false
+},
+{
+"text": "x\ud83d\uddb1",
+"ok": false
+},
+{
+"text": "x\ud83e\udc7d",
+"ok": false
+},
+{
+"text": "x\u883f",
+"ok": false
+},
+{
+"text": "x\u6e50",
+"ok": false
+},
+{
+"text": "x\ud837\udd9d",
+"ok": false
+},
+{
+"text": "x\ud83e\udedb",
+"ok": false
+},
+{
+"text": "x\ud84d\udfde",
+"ok": false
+},
+{
+"text": "x\ud872\udd68",
+"ok": false
+},
+{
+"text": "x\uf820",
+"ok": false
+},
+{
+"text": "x\ud83d\udd98",
+"ok": false
+},
+{
+"text": "x\ud83c\ude42",
+"ok": false
+},
+{
+"text": "x\ud83c\udf55",
+"ok": false
+},
+{
+"text": "x\ud83d\ude6a",
+"ok": false
+},
+{
+"text": "x\ud83c\udc6f",
+"ok": false
+},
+{
+"text": "x\ud83e\ude42",
+"ok": false
+},
+{
+"text": "x\ud83c\udd6f",
+"ok": false
+},
+{
+"text": "x\ud839\udd8c",
+"ok": false
+},
+{
+"text": "x\ud846\ude6e",
+"ok": false
+},
+{
+"text": "x\ud851\udfad",
+"ok": false
+},
+{
+"text": "x\ue485",
+"ok": false
+},
+{
+"text": "x\uea59",
+"ok": false
+},
+{
+"text": "x\ud842\udecb",
+"ok": false
+},
+{
+"text": "x\ud83d\udf90",
+"ok": false
+},
+{
+"text": "x\ud83e\udc7e",
+"ok": false
+},
+{
+"text": "x\ud83c\ude20",
+"ok": false
+},
+{
+"text": "x\ud83c\udf9b",
+"ok": false
+},
+{
+"text": "x\ud83d\udf9e",
+"ok": false
+},
+{
+"text": "x\ud83e\udc30",
+"ok": false
+},
+{
+"text": "x\ud86a\udd7d",
+"ok": false
+},
+{
+"text": "x\ud83c\uddba",
+"ok": false
+},
+{
+"text": "x\ud83e\ude84",
+"ok": false
+},
+{
+"text": "x\ud83e\udc83",
+"ok": false
+},
+{
+"text": "x\ud874\udc86",
+"ok": false
+},
+{
+"text": "x\uabfa",
+"ok": false
+},
+{
+"text": "x\ud83e\ude9a",
+"ok": false
+},
+{
+"text": "x\ud815\udf5d",
+"ok": false
+},
+{
+"text": "x\ud83d\ude8c",
+"ok": false
+},
+{
+"text": "x\ud83e\udc48",
+"ok": false
+},
+{
+"text": "x\ud83d\udc34",
+"ok": false
+},
+{
+"text": "x\u4385",
+"ok": false
+},
+{
+"text": "x\ud83e\udca0",
+"ok": false
+},
+{
+"text": "x\ud87e\udec4",
+"ok": false
+},
+{
+"text": "x\ud873\udd53",
+"ok": false
+},
+{
+"text": "x\ud84b\ude1f",
+"ok": false
+},
+{
+"text": "x\ud83c\udd64",
+"ok": false
+},
+{
+"text": "x\ud84a\udcb8",
+"ok": false
+},
+{
+"text": "x\ud83c\udecd",
+"ok": false
+},
+{
+"text": "x\ud868",
+"ok": false
+},
+{
+"text": "x\ud86a\uddcf",
+"ok": false
+},
+{
+"text": "x\ud83e\udd7d",
+"ok": false
+},
+{
+"text": "x\ud9e0",
+"ok": false
+},
+{
+"text": "x\ud83c\udee6",
+"ok": false
+},
+{
+"text": "x\ud83c\udf81",
+"ok": false
+},
+{
+"text": "x\u4ba2",
+"ok": false
+},
+{
+"text": "x\ud83e\ude7f",
+"ok": false
+},
+{
+"text": "x\ud82d\udf72",
+"ok": false
+},
+{
+"text": "x\u6390",
+"ok": false
+},
+{
+"text": "x\uacc2",
+"ok": false
+},
+{
+"text": "x\ud87c\ude57",
+"ok": false
+},
+{
+"text": "x\ud83e\udd23",
+"ok": false
+},
+{
+"text": "x\ud83d\udc27",
+"ok": false
+},
+{
+"text": "New",
+"ok": true
+},
+{
+"text": "Subscribe",
+"ok": true
+},
+{
+"text": "Link below",
+"ok": true
+},
+{
+"text": "Part 2",
+"ok": true
+},
+{
+"text": "\u041f\u043e\u0434\u043f\u0438\u0441\u0430\u0442\u044c\u0441\u044f",
+"ok": true
+},
+{
+"text": "\u0421\u0441\u044b\u043b\u043a\u0430 \u043d\u0438\u0436\u0435",
+"ok": true
+},
+{
+"text": "\u0427\u0430\u0441\u0442\u044c 2",
+"ok": true
+},
+{
+"text": "Obuna bo\u02bbling",
+"ok": true
+},
+{
+"text": "Yangi",
+"ok": true
+},
+{
+"text": "Havola pastda",
+"ok": true
+},
+{
+"text": "2-qism",
+"ok": true
+},
+{
+"text": "Don\u2019t miss",
+"ok": true
+},
+{
+"text": "\u201cQuote\u201d",
+"ok": true
+},
+{
+"text": "50 \u20ac \u2013 70 \u20b8 \u21165 \u2026",
+"ok": true
+},
+{
+"text": "a\u3164b",
+"ok": false
+},
+{
+"text": "a\tb",
+"ok": false
+},
+{
+"text": "a\nb",
+"ok": false
+},
+{
+"text": "\ud83d\ude00",
+"ok": false
+},
+{
+"text": "\u65e5\u672c\u8a9e",
+"ok": false
+},
+{
+"text": "\u0645\u0631\u062d\u0628\u0627",
+"ok": false
+},
+{
+"text": "\u0393\u03b5\u03b9\u03ac",
+"ok": false
+},
+{
+"text": "",
+"ok": false
+},
+{
+"text": "   ",
+"ok": false
+},
+{
+"text": "abcdefghijklmnopqrstuvwx",
+"ok": true
+},
+{
+"text": "abcdefghijklmnopqrstuvwxy",
+"ok": false
+},
+{
+"text": "{x} \\ y",
+"ok": true
+},
+{
+"text": "a\ud800b",
+"ok": false
+}
+]
+}

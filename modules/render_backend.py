@@ -1091,12 +1091,14 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
     tmp_ctx = tempfile.TemporaryDirectory(dir=workdir) if workdir else tempfile.TemporaryDirectory()
     with tmp_ctx as tmp:
         tmpdir = Path(tmp)
+        # Drawn before any segment is encoded: a shape that cannot be drawn (no font, a Pillow error)
+        # is refused up front, not after the minutes the segments take.
+        if any(o.shape is not None for o in spec.picture_overlays):
+            spec = replace(spec, picture_overlays=draw_shapes(spec, tmpdir))
         normalized = (_normalize_all(ffmpeg, spec, tmpdir, jobs, timings) if deadline is None
                       else _normalize_all(ffmpeg, spec, tmpdir, jobs, timings, deadline))
 
         norm_spec = replace(spec, segments=normalized)
-        if any(o.shape is not None for o in spec.picture_overlays):
-            norm_spec = replace(norm_spec, picture_overlays=draw_shapes(spec, tmpdir))
         concat_path = tmpdir / "concat.txt"
         concat_path.write_text("\n".join(concat_list_lines(norm_spec)) + "\n", encoding="utf-8")
 

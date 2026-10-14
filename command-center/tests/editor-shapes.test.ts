@@ -26,18 +26,33 @@ import {
 } from "@/lib/editor";
 import { addOverlay, canAddOverlay, updateOverlay } from "@/lib/editorOverlay";
 import { settleAll } from "@/lib/editorSettle";
+import { renderWork } from "@/lib/editorMotion";
 import { setFrame } from "@/lib/editorFrame";
 import {
   ARROW_DIRS,
   KIND_FIELDS,
-  LARGE_FRAME_LAYERS_MAX,
   MAX_SHAPES,
+  MEM_FIRST_LAYER_PER_FRAME_PX,
+  MEM_LIMIT_BYTES,
+  MEM_MARGIN_BYTES,
+  MEM_PER_LAYER_BYTES,
+  MEM_PER_PNG_PX,
+  MEM_PLAIN_FIXED_BYTES,
+  MEM_PLAIN_PER_FRAME_PX,
+  PILL_MIN_ASPECT,
   PROGRESS_ANIMS,
   PROGRESS_EDGES,
   SHAPE_KINDS,
   SHAPE_TEXT_MAX,
   THICK_DEFAULTS,
+  WORK_SECONDS_PER_LAYER_FRAME_1080P,
+  WORK_SECONDS_PER_PNG_MP,
+  memoryEstimateBytes,
+  shapeWorkSeconds,
   cleanShapeText,
+  cleanShapeTextReport,
+  escapeShapeText,
+  TEXT_RANGES,
   contrastOn,
   fitPx,
   pillAspectEstimate,
@@ -56,7 +71,6 @@ import {
   canAddShape,
   clearShapeMove,
   layerCount,
-  layersAllowed,
   moveShape,
   nudgeShape,
   removeShape,
@@ -66,6 +80,8 @@ import {
   setShapeEnd,
   setShapeKind,
   shapeAt,
+  shapeAddCheck,
+  shapeBudget,
   shapeById,
   shapeWarnings,
   shapesAt,
@@ -128,7 +144,7 @@ describe("the closed set is the worker's", () => {
 
 describe("the label's text rules agree with the worker's", () => {
   it("what is valid and what is not", () => {
-    for (const ok of ["New", "abcdefghijklmnopqrstuvwx", "😀".repeat(24), "Obuna boʻling", "Подписаться", "{a} \\ b"])
+    for (const ok of ["New", "abcdefghijklmnopqrstuvwx", "Obuna boʻling", "Подписаться", "{a} \\ b", "Łódź № 5€"])
       expect(shapeTextProblem(ok), ok).toBeNull();
     for (const bad of ["", "   ", "abcdefghijklmnopqrstuvwxy", "😀".repeat(25), "a\nb", "a\tb", "a\u0007b", "a‍b", "a b", "a b", 5, null])
       expect(shapeTextProblem(bad), String(bad)).not.toBeNull();
@@ -136,8 +152,25 @@ describe("the label's text rules agree with the worker's", () => {
   it("what a typed field keeps: no control characters, a line break is a space, at most 24 characters", () => {
     expect(cleanShapeText("a\nb")).toBe("a b");
     expect(cleanShapeText("a\u0007b‍c")).toBe("abc");
-    expect(Array.from(cleanShapeText("😀".repeat(40))).length).toBe(SHAPE_TEXT_MAX);
+    expect(Array.from(cleanShapeText("x".repeat(40))).length).toBe(SHAPE_TEXT_MAX);
     expect(shapeTextProblem(cleanShapeText("x".repeat(200)))).toBeNull();
+    expect(cleanShapeText("Hi 😀 日本")).toBe("Hi  ");
+    expect(cleanShapeTextReport("Hi 😀")).toEqual({ text: "Hi ", dropped: true });
+    expect(cleanShapeTextReport("Hi")).toEqual({ text: "Hi", dropped: false });
+  });
+  it("the preview writes the words the export draws (the same clean-up a text overlay's words get)", () => {
+    expect(escapeShapeText("{a}  \\ b")).toBe("(a) / b");
+    expect(escapeShapeText("  two   words ")).toBe("two words");
+  });
+  it("agrees with the worker on 1600 texts (samples/shape_text_cases.json)", () => {
+    const cases = JSON.parse(readFileSync(join(root, "samples", "shape_text_cases.json"), "utf8")).cases as { text: string; ok: boolean }[];
+    expect(cases.length).toBeGreaterThan(1000);
+    for (const c of cases) expect(shapeTextProblem(c.text) === null, JSON.stringify(c.text)).toBe(c.ok);
+  });
+  it("the ranges are the worker's", () => {
+    const body = /^TEXT_RANGES = \(\s*(.*?)\n\)/ms.exec(pySource)![1];
+    const found = [...body.matchAll(/\(0x([0-9A-Fa-f]+), 0x([0-9A-Fa-f]+)\)/g)].map((m) => [parseInt(m[1], 16), parseInt(m[2], 16)]);
+    expect(found).toEqual(TEXT_RANGES.map((r) => [...r]));
   });
 });
 
@@ -253,38 +286,104 @@ describe("adding", () => {
   });
 });
 
-describe("a frame above 1440p takes fewer layers once it has a shape", () => {
-  const big = (): EditorModel => ({ ...base(), width: 3840, height: 2160 });
-  it("the limit is the worker's, and only asked once there is a shape", () => {
-    expect(LARGE_FRAME_LAYERS_MAX).toBe(5);
-    expect(layersAllowed(big(), 0)).toBe(MAX_OVERLAYS);
-    expect(layersAllowed(big(), 1)).toBe(5);
-    expect(layersAllowed(base(), 1)).toBe(MAX_OVERLAYS);
-    expect(layersAllowed({ ...base(), width: 2560, height: 1440 }, 3)).toBe(MAX_OVERLAYS);
-    expect(layersAllowed({ ...base(), width: 1440, height: 2560 }, 3)).toBe(MAX_OVERLAYS);
-    expect(layersAllowed({ ...base(), width: 2160, height: 3840 }, 3)).toBe(5);
+describe("what the shapes cost the export", () => {
+  const budget = JSON.parse(readFileSync(join(root, "samples", "shape_budget.json"), "utf8"));
+  it("memory and render time agree with the worker's estimates on 80 documents (samples/shape_budget.json)", () => {
+    expect(budget.cases.length).toBe(80);
+    for (const c of budget.cases) {
+      const frame = { width: c.frame[0], height: c.frame[1] };
+      expect(memoryEstimateBytes(c.shapes, frame)).toBe(c.memory);
+      expect(Math.abs(shapeWorkSeconds(c.shapes, c.fps, frame, c.length) - c.work)).toBeLessThan(1e-6);
+    }
   });
-  it("the editor stops adding at five, shapes and pictures together, and the document is valid", () => {
-    let m = big();
-    for (let i = 0; i < 3; i += 1) m = add(m, "star").model;
-    for (let i = 0; i < 2; i += 1) m = addOverlay(m, { id: PIC, kind: "image", durationS: null }, 0)!.model;
-    expect(layerCount(m)).toBe(5);
-    expect(canAddShape(m)).toBe(false);
-    expect(canAddOverlay(m)).toBe(false);
-    expect(addShape(m, "star", 0)).toBeNull();
+  it("the budgets' constants are the worker's", () => {
+    const num = (name: string) => Number(new RegExp(`^${name} = ([\\d.]+)`, "m").exec(pySource)![1]);
+    expect(MEM_PLAIN_PER_FRAME_PX).toBe(num("MEM_PLAIN_PER_FRAME_PX"));
+    expect(MEM_PER_PNG_PX).toBe(num("MEM_PER_PNG_PX"));
+    expect(MEM_FIRST_LAYER_PER_FRAME_PX).toBe(num("MEM_FIRST_LAYER_PER_FRAME_PX"));
+    expect(PILL_MIN_ASPECT).toBe(num("PILL_MIN_ASPECT"));
+    expect(WORK_SECONDS_PER_LAYER_FRAME_1080P).toBe(num("WORK_SECONDS_PER_LAYER_FRAME_1080P"));
+    expect(WORK_SECONDS_PER_PNG_MP).toBe(num("WORK_SECONDS_PER_PNG_MP"));
+    const mib = (name: string) => Number(new RegExp(`^${name} = (\\d+) \\* MIB`, "m").exec(pySource)![1]) * 1048576;
+    expect(MEM_LIMIT_BYTES).toBe(mib("MEM_LIMIT_BYTES"));
+    expect(MEM_MARGIN_BYTES).toBe(mib("MEM_MARGIN_BYTES"));
+    expect(MEM_PLAIN_FIXED_BYTES).toBe(mib("MEM_PLAIN_FIXED_BYTES"));
+    expect(MEM_PER_LAYER_BYTES).toBe(mib("MEM_PER_LAYER_BYTES"));
+  });
+  const twelve = (m: EditorModel, w: number) => {
+    let n = m;
+    for (let i = 0; i < 12; i += 1) {
+      const o = add(n, "circle", 0);
+      n = updateShape(o.model, o.id, { w });
+    }
+    return n;
+  };
+  it("a shape stops growing where the export's memory ends, the others are not touched", () => {
+    let m = base();
+    for (let i = 0; i < 11; i += 1) {
+      const o = add(m, "circle", 0);
+      m = updateShape(o.model, o.id, { w: 0.9 });
+    }
+    const last = add(m, "circle", 0);
+    m = updateShape(last.model, last.id, { w: 0.3 });
     valid(m);
-    // a project without shapes keeps its overlays' own limit
-    let n = big();
-    for (let i = 0; i < 8; i += 1) n = addOverlay(n, { id: PIC, kind: "image", durationS: null }, 0)!.model;
-    expect(canAddOverlay(n)).toBe(true);
-    expect(canAddShape(n)).toBe(false); // the first shape would make it nine layers above 1440p
+    const grown = updateShape(m, last.id, { w: 1 });
+    valid(grown);
+    expect(shapeById(grown, last.id)!.w).toBeLessThan(1);
+    expect(shapeById(grown, last.id)!.w).toBeGreaterThan(0.3);
+    expect(shapeById(grown, m.shapes![0].id)!.w).toBe(0.9);
+    expect(shapeBudget(grown).memory).toBeLessThanOrEqual(shapeBudget(grown).memoryMax);
+  });
+  it("adding the twelfth big shape narrows it to fit; when the others leave no room it is refused with the reason", () => {
+    let m = base();
+    for (let i = 0; i < 11; i += 1) {
+      const o = add(m, "circle", 0);
+      m = updateShape(o.model, o.id, { w: 0.9 });
+    }
+    valid(m);
+    const o = addShape(m, "circle", 0);
+    expect(o).not.toBeNull();
+    valid(o!.model);
+    expect(shapeAddCheck(m, "circle", 0)).toBe("ok");
+    // at 4K the plain clip already takes most of the memory
+    const big: EditorModel = { ...base(), width: 3840, height: 2160 };
+    let n = big;
+    let refused = 0;
+    for (let i = 0; i < 6; i += 1) {
+      const a = addShape(n, "circle", 0);
+      if (a) n = a.model;
+      else refused += 1;
+    }
+    expect(refused).toBeGreaterThan(0);
+    expect(shapeAddCheck(n, "circle", 0)).toBe("memory");
     valid(n);
   });
-  it("the validator says so", () => {
-    let m = big();
-    for (let i = 0; i < 6; i += 1) m = { ...m, shapes: [...(m.shapes ?? []), { ...add(base(), "star").model.shapes![0], id: `z${i}` }] };
-    const problems = validateTimeline(toDoc(m));
-    expect(problems.some((p) => p.includes("at most 5 in a frame above 1440p (got 6)"))).toBe(true);
+  it("a long, busy timeline at a high frame rate is charged render time, and refused early", () => {
+    let m: EditorModel = { ...base(), fps: 60, clips: [{ ...base().clips[0], out_s: 600 }] };
+    let said = "";
+    for (let i = 0; i < 12; i += 1) {
+      const o = addShape(m, "circle", 0);
+      if (!o) {
+        said = shapeAddCheck(m, "circle", 0);
+        break;
+      }
+      m = updateShape(o.model, o.id, { w: 0.6, start_s: 0, end_s: 600 });
+    }
+    expect(said).toBe("time");
+    valid(m);
+    expect(renderWork(m).shapeEst).toBeGreaterThan(0);
+  });
+  it("settling after the frame grows: the widest shapes are narrowed, then the last ones removed, and it is valid", () => {
+    const m = twelve(base(), 0.8);
+    valid(m);
+    const big: EditorModel = { ...m, width: 3840, height: 2160 };
+    expect(validateTimeline(toDoc(big)).length).toBeGreaterThan(0);
+    const out = settleAll(big);
+    valid(out.model);
+    expect(out.changes.some((c) => c.kind === "shapeNarrowed" || c.kind === "shapeRemoved")).toBe(true);
+    expect(settleAll(out.model).changes).toEqual([]);
+    // a project that fits is left alone
+    expect(settleAll(m)).toEqual({ model: m, changes: [] });
   });
 });
 
@@ -476,6 +575,12 @@ describe("the round trip through the document", () => {
     }
     expect(Object.keys(shapes[6])).not.toContain("x");
   });
+  it("a move's end values are written to a millisecond-like precision, as the worker keeps them", () => {
+    const o = add(base(), "star", 1);
+    const m = { ...o.model, shapes: [{ ...o.model.shapes![0], move: { to: { x: 0.5333073102668435, w: 0.6666666 } } }] };
+    const written = (toDoc(m).shapes as { move: { to: Record<string, number> } }[])[0].move.to;
+    expect(written).toEqual({ x: 0.533, w: 0.667 });
+  });
   it("toModel(toDoc(m)) is m, and a second pass changes nothing", () => {
     const d = doc();
     const back = toDoc(toModel(d));
@@ -529,7 +634,7 @@ describe("every edit through the editor's own settle step leaves a valid documen
     const log: string[] = [];
     for (let step = 0; step < 400; step += 1) {
       const ids = shapesOf(m).map((s) => s.id);
-      const op = pick(["add", "add", "upd", "upd", "upd", "kind", "anim", "animS", "move", "end", "remove", "reorder", "frame", "overlay", "text", "color"] as const);
+      const op = pick(["add", "add", "upd", "upd", "upd", "kind", "anim", "animS", "move", "end", "remove", "reorder", "frame", "bigframe", "overlay", "text", "color"] as const);
       const id = ids.length ? pick(ids) : "";
       const before = m;
       try {
@@ -574,6 +679,9 @@ describe("every edit through the editor's own settle step leaves a valid documen
             break;
           case "frame":
             m = setFrame(m, pick(["9:16", "16:9", "1:1"] as const));
+            break;
+          case "bigframe":
+            m = rand() < 0.5 ? { ...m, width: 3840, height: 2160 } : { ...m, width: 1920, height: 1080 };
             break;
           case "overlay":
             m = addOverlay(m, { id: PIC, kind: "image", durationS: null }, rand() * 8)?.model ?? m;

@@ -40,7 +40,8 @@ import {
   THICK_MAX,
   THICK_MIN,
   arrowPoints,
-  cleanShapeText,
+  cleanShapeTextReport,
+  escapeShapeText,
   contrastOn,
   kindTakes,
   progressFill,
@@ -187,7 +188,7 @@ function PillBody({
         boxSizing: "border-box",
       }}
     >
-      {s.text}
+      {escapeShapeText(s.text ?? "")}
     </span>
   );
 }
@@ -472,9 +473,16 @@ function LabelField({
   const ts = t.editor.shapes;
   const [draft, setDraft] = useState(value);
   const [empty, setEmpty] = useState(false);
+  const [dropped, setDropped] = useState(false);
+  // The notices belong to what the person just typed: they stay when the value that comes back is the one
+  // this box committed, and go when something else changed it (an undo, a ready label).
+  const committed = useRef<string | null>(null);
   useEffect(() => {
+    if (committed.current === value) return;
+    committed.current = null;
     setDraft(value);
     setEmpty(false);
+    setDropped(false);
   }, [value]);
   const hint = useId();
   return (
@@ -487,14 +495,18 @@ function LabelField({
           autoComplete="off"
           aria-describedby={hint}
           onChange={(e) => {
-            const cleaned = cleanShapeText(e.target.value);
+            const { text: cleaned, dropped: lost } = cleanShapeTextReport(e.target.value);
             setDraft(cleaned);
+            setDropped(lost);
             if (shapeTextProblem(cleaned)) {
               setEmpty(true);
               return;
             }
             setEmpty(false);
-            if (cleaned !== value) onCommit(cleaned);
+            if (cleaned !== value) {
+              committed.current = cleaned;
+              onCommit(cleaned);
+            }
           }}
           className={fieldClass}
         />
@@ -505,6 +517,10 @@ function LabelField({
       {empty ? (
         <p role="status" className="m-0 text-xs text-[var(--color-warn)]">
           {ts.textEmpty}
+        </p>
+      ) : dropped ? (
+        <p role="status" className="m-0 text-xs text-[var(--color-warn)]">
+          {ts.textDropped}
         </p>
       ) : null}
     </div>
@@ -665,6 +681,7 @@ export function ShapeInspector({
   total,
   shape,
   warning,
+  budgetPct,
   onChange,
   onKind,
   onSpan,
@@ -678,6 +695,8 @@ export function ShapeInspector({
   total: number;
   shape: ShapeLayer;
   warning: "past_end" | "cut_end" | "invisible" | null;
+  /** How much of what the export can draw (memory or time, the dearer of the two) the shapes use, in percent. */
+  budgetPct: number;
   /** `burst` names a run of small changes that is one undo step. */
   onChange: (patch: Partial<Omit<ShapeLayer, "id" | "kind">>, burst?: string) => void;
   onKind: (kind: ShapeKind) => void;
@@ -718,6 +737,11 @@ export function ShapeInspector({
       {warning ? (
         <p role="status" className="m-0 text-xs text-[var(--color-warn)]">
           {warning === "past_end" ? ts.pastEnd : warning === "cut_end" ? ts.cutEnd : ts.invisible}
+        </p>
+      ) : null}
+      {budgetPct >= 60 ? (
+        <p role="status" className="m-0 text-xs text-[var(--color-warn)]" data-testid="shape-budget">
+          {fmt(ts.budgetUse, { pct: budgetPct })}
         </p>
       ) : null}
       <ShapeKindTiles value={shape.kind} onChange={onKind} testId="shape-kind-inspector" />

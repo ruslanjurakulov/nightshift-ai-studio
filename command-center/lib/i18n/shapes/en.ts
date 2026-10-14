@@ -48,7 +48,9 @@ export const shapesEn = {
   dirs: { right: "Right", left: "Left", up: "Up", down: "Down" },
   thick: "Thickness (share of the video height)",
   text: "Label text",
-  textHint: "Up to {max} characters. The label is drawn into the shape.",
+  textHint:
+    "Up to {max} characters of Latin or Cyrillic letters, digits and common punctuation. Emoji and other scripts cannot be drawn in the exported video, so they are not accepted.",
+  textDropped: "Characters that cannot be drawn in the exported video (emoji, other scripts) were left out.",
   textEmpty: "A label needs at least one character, so the last text is kept.",
   readyLegend: "Ready labels",
   labels: {
@@ -86,6 +88,15 @@ export const shapesEn = {
   cutEnd: "This shape runs past the end of the video; the rest is cut.",
   invisible: "Opacity is 0, so this shape will not appear.",
   shapesFull: "A project can have at most {max} shapes.",
+  budgetMemory:
+    "That shape does not fit: the export can draw only so much at this frame size (about {need} MB needed, {max} MB available). Make the other shapes smaller or remove one.",
+  budgetTime:
+    "That shape does not fit: the export would take about {work} s, but a {length} s video is allowed {allowed} s. Use fewer or smaller shapes, or make the video longer.",
+  budgetUse:
+    "The shapes use {pct}% of what the export can draw at this frame size. A shape stops growing at the limit.",
+  settledNarrowed: "Shape {n} was made narrower so the export can still draw all the shapes.",
+  settledRemoved:
+    "Shape {n} was removed because the export could not draw all the shapes at this size. Undo brings it back.",
   layersFull:
     "Pictures and shapes together can fill at most {max} layers, so no more can be added.",
 };

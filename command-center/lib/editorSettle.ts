@@ -34,8 +34,12 @@ import {
   reverseLimit,
 } from "@/lib/editorMotion";
 import { stabilizeCheck } from "@/lib/editorClean";
+import { SHAPE_W_MIN } from "@/lib/editorShapes";
+import { shapeBudgetProblem } from "@/lib/editorShapeModel";
 
 export type SettleChange =
+  | { kind: "shapeNarrowed"; shape: number }
+  | { kind: "shapeRemoved"; shape: number }
   | { kind: "reverse"; clip: number; max: number }
   | { kind: "interpolate"; clip: number }
   | { kind: "stabilize"; clip: number }
@@ -53,7 +57,8 @@ function put(model: EditorModel, id: string, c: VideoClip): EditorModel {
 }
 
 export function settleAll(model: EditorModel): { model: EditorModel; changes: SettleChange[] } {
-  const hasLimits = model.clips.some((c) => c.reverse || c.interpolate || c.stabilize);
+  const hasLimits =
+    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize) || Boolean(model.shapes?.length);
   const large = isLargeFrame(model);
   if (!hasLimits && !large) return { model, changes: [] };
   const changes: SettleChange[] = [];
@@ -104,7 +109,9 @@ export function settleAll(model: EditorModel): { model: EditorModel; changes: Se
   }
 
   // 4. what is left must fit the export's time allowance together: the dearest goes first
-  for (let guard = 0; guard < 64 && !renderWork(m).ok; guard += 1) {
+  // (judged without the shapes: they are settled below, and must not cost the clips their smoothing)
+  const withoutShapes = (x: EditorModel) => renderWork({ ...x, shapes: undefined });
+  for (let guard = 0; guard < 64 && !withoutShapes(m).ok; guard += 1) {
     let worst: { id: string; kind: "interpolate" | "stabilize"; cost: number } | null = null;
     for (const c of m.clips) {
       if (c.interpolate) {
@@ -120,6 +127,27 @@ export function settleAll(model: EditorModel): { model: EditorModel; changes: Se
     const x = m.clips.find((k) => k.id === worst!.id)!;
     changes.push({ kind: worst.kind, clip: number(worst.id) });
     m = put(m, worst.id, drop(x, worst.kind));
+  }
+
+  // 5. shapes that no longer fit the export's memory or time (another frame size, a shorter timeline) are made
+  //    narrower, the widest first, and the last ones are removed only when even the narrowest do not fit
+  for (let guard = 0; guard < 400 && shapeBudgetProblem(m) !== null; guard += 1) {
+    const list = m.shapes ?? [];
+    const widest = [...list].filter((s) => (s.w ?? 0) > SHAPE_W_MIN + 1e-9).sort((a, b) => (b.w ?? 0) - (a.w ?? 0))[0];
+    if (widest) {
+      const next = { ...widest, w: Math.max(SHAPE_W_MIN, Math.round(widest.w! * 0.9 * 1000) / 1000) };
+      const to = widest.move?.to.w;
+      if (widest.move && to !== undefined) next.move = { to: { ...widest.move.to, w: Math.min(to, next.w) } };
+      m = { ...m, shapes: list.map((s) => (s.id === widest.id ? next : s)) };
+      if (!changes.some((c) => c.kind === "shapeNarrowed" && c.shape === list.indexOf(widest) + 1))
+        changes.push({ kind: "shapeNarrowed", shape: list.indexOf(widest) + 1 });
+      continue;
+    }
+    if (!list.length) break;
+    const gone = list[list.length - 1];
+    m = list.length > 1 ? { ...m, shapes: list.slice(0, -1) } : (({ shapes: _s, ...rest }) => (void _s, rest))(m);
+    changes.push({ kind: "shapeRemoved", shape: list.length });
+    void gone;
   }
 
   return changes.length ? { model: m, changes } : { model, changes: [] };

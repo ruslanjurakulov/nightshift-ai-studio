@@ -153,16 +153,30 @@ class DocumentTestCase(unittest.TestCase):
     def test_the_label_text_rules(self):
         def pill(text):
             return doc_with([sh(kind="pill", text=text)])
-        for ok in ("New", "abcdefghijklmnopqrstuvwx", "\U0001F600" * 24, "Obuna boʻling",
+        for ok in ("New", "abcdefghijklmnopqrstuvwx", "Obuna boʻling", "\u0141\u00f3d\u017a \u2116 5\u20ac",
                    "Подписаться", "{braces} and \\ slash"):
             with self.subTest(ok=ok):
                 self.assertEqual(problems(pill(ok)), [])
         for bad in ("", "   ", "abcdefghijklmnopqrstuvwxy", "\U0001F600" * 25, "two\nlines", "tab\there",
+                    "\U0001F600", "\U0001F600" * 24, "\u65e5\u672c", "\u0645", "\u0393", "a\u3164b", "a\u00adb", "a\u00a0b",
+                    "\u2192", "e\u0301", "\u2003",
                     "a\u0007b", "a‍b", "a b", "a b", "lone\ud800surrogate", 5, None, ["x"]):
             with self.subTest(bad=bad):
                 self.assertTrue(any("text" in p for p in problems(pill(bad))), bad)
         got = problems(doc_with([sh(kind="pill")]))
         self.assertTrue(any("text is missing" in p for p in got), got)
+
+    def test_the_text_rule_is_shared_with_typescript_by_a_fixture_and_by_its_ranges(self):
+        """samples/shape_text_cases.json holds the verdict of this module for 1600 texts (every range's
+        edges, random code points of every plane, the ready labels); the TypeScript test must agree."""
+        cases = json.loads((ROOT / "samples" / "shape_text_cases.json").read_text(encoding="utf-8"))["cases"]
+        self.assertGreater(len(cases), 1000)
+        for c in cases:
+            self.assertEqual(sa.text_problem(c["text"]) is None, c["ok"], repr(c["text"]))
+        ts = SHAPES_TS.read_text(encoding="utf-8")
+        body = re.search(r"export const TEXT_RANGES[^=]*= \[(.*?)\n\];", ts, re.S).group(1)
+        found = tuple((int(a, 16), int(b, 16)) for a, b in re.findall(r"\[0x([0-9a-f]+), 0x([0-9a-f]+)\]", body))
+        self.assertEqual(found, sa.TEXT_RANGES)
 
     def test_the_progress_bar_takes_only_its_own_fields_and_a_fade(self):
         self.assertEqual(problems(doc_with([sh(kind="progress", anim_in="fade", anim_out="fade")])), [])
@@ -210,24 +224,86 @@ class DocumentTestCase(unittest.TestCase):
         self.assertEqual(sa.MAX_LAYERS, tl.MAX_OVERLAYS, "the layers are the final pass's inputs")
         self.assertEqual(sa.MAX_LAYERS, rs.MAX_PICTURE_OVERLAYS)
 
-    def test_a_frame_above_1440p_takes_fewer_layers_once_it_has_a_shape(self):
-        """Measured on the bundled ffmpeg 7.0.2 under the export's 2 GiB: at 3840x2160 and 60 fps six
-        layers ran out of memory whatever their size (five passed); a frame up to 1440p passed twelve.
-        The guard is only asked of a document that has shapes, so no older document changes."""
-        self.assertEqual(sa.LARGE_FRAME_LAYERS_MAX, 5)
-        pics = lambda n: [{"id": f"o{i}", "asset_id": PIC, "start_s": 0, "end_s": 2} for i in range(n)]
-        shapes = lambda n: [sh(id=f"s{i}") for i in range(n)]
-        for w, h in ((3840, 2160), (2160, 3840), (3000, 2000)):
-            with self.subTest(frame=(w, h)):
-                self.assertEqual(problems(doc_with(shapes(3), overlays=pics(2), width=w, height=h)), [])
-                got = problems(doc_with(shapes(3), overlays=pics(3), width=w, height=h))
-                self.assertTrue(any("at most 5 in a frame above 1440p (got 6)" in p for p in got), got)
-        self.assertEqual(problems(doc_with(shapes(12), overlays=pics(4), width=2560, height=1440)), [],
-                         "1440p itself is not above 1440p")
-        self.assertEqual(problems(doc_with(None, overlays=pics(8), width=3840, height=2160)), [],
-                         "no shapes: the picture overlays are as they were")
-        self.assertEqual(problems(doc_with([], overlays=pics(8), width=3840, height=2160)), [])
-        self.assertEqual(tl.LARGE_FRAME_PX, 2560 * 1440)
+    def test_the_memory_budget_is_the_measured_fit_and_refuses_early_with_a_number(self):
+        """Measured (RLIMIT_AS binary search, ffmpeg 7.0.2, jobs=1, a timeout set, see shape_art.py): a plain
+        1080p60 clip needs 905 MiB, 4K60 1657; every layer adds ~55 and every PNG pixel ~9 bytes. The estimate is
+        that fit rounded up; the budget keeps 150 MiB under the 2 GiB. Points measured to pass or fail:"""
+        from modules import ffmpeg_limits
+        self.assertEqual(sa.MEM_LIMIT_BYTES, ffmpeg_limits.CHILD_MEM_BYTES)
+        circles = lambda n, w: [{"kind": "circle", "w": w}] * n
+        mib = lambda shapes, w, h: sa.memory_estimate_bytes(shapes, w, h) / sa.MIB
+        budget = sa.memory_budget_bytes() / sa.MIB
+        # (frame, shapes) -> measured minimum address space in MiB (the estimate must not be below it)
+        measured = [((1920, 1080), circles(0, 0.3), 905), ((1920, 1080), circles(1, 0.3), 978),
+                    ((1920, 1080), circles(4, 0.3), 1162), ((1920, 1080), circles(12, 0.3), 1566),
+                    ((1920, 1080), circles(4, 0.6), 1181), ((1920, 1080), circles(12, 0.6), 1675),
+                    ((1920, 1080), circles(4, 1.0), 1199), ((1920, 1080), circles(8, 1.0), 1566),
+                    ((1920, 1080), circles(12, 1.0), 1951), ((1080, 1920), circles(4, 1.0), 1181),
+                    ((1080, 1920), circles(8, 0.6), 1364), ((3840, 2160), circles(0, 0.3), 1657),
+                    ((3840, 2160), circles(1, 0.3), 1822), ((3840, 2160), circles(4, 0.3), 1969)]
+        for frame, shapes, need in measured:
+            with self.subTest(frame=frame, n=len(shapes), w=shapes[0]["w"] if shapes else None):
+                self.assertGreaterEqual(mib(shapes, *frame), need, "an estimate below what was measured")
+                self.assertLessEqual(mib(shapes, *frame), need * 1.15 + 60, "an estimate far above what was measured")
+        # the coordinator's failures (exit 187 under the worker's own limit) are refused, the passes are allowed
+        self.assertGreater(mib(circles(2, 1.0), 3840, 2160), budget)        # 4K60, two full-width: failed
+        self.assertGreater(mib(circles(5, 0.5), 3840, 2160), budget)        # 4K60, five at 0.5: failed
+        self.assertGreater(mib(circles(12, 1.0), 1920, 1080), budget)       # 1080p60, twelve at 1.0: failed
+        self.assertGreater(mib(circles(8, 1.0), 2560, 1440), budget)        # 1440p, eight at 1.0: failed
+        self.assertLess(mib(circles(12, 0.6), 1920, 1080), budget)          # 1080p60, twelve at 0.6: passed
+        self.assertLess(mib(circles(12, 0.8), 1920, 1080), budget)          # rendered here in 2 GiB
+        self.assertLess(mib(circles(2, 0.2), 3840, 2160), budget)           # rendered here in 2 GiB
+        got = problems(doc_with([sh(id=f"s{i}", kind="circle", w=1.0) for i in range(12)], width=1920, height=1080))
+        self.assertTrue(any("MB to render" in p and "(memory)" in p for p in got), got)
+        self.assertEqual(problems(doc_with([sh(id=f"s{i}", kind="circle", w=0.6) for i in range(12)], width=1920, height=1080)), [])
+
+    def test_a_pill_is_charged_as_a_box_that_needs_no_font(self):
+        pill = {"kind": "pill", "w": 0.3, "text": "Hi"}
+        box = sa.fit_px(sa.PILL_MIN_ASPECT, 0.3, 1920, 1080)
+        self.assertEqual(sa.layer_png_pixels(pill, 1920, 1080), box[0] * box[1])
+        if have_font():
+            for text in ("i", "iii", "W", "New", "Subscribe"):
+                pw, ph = sa.png_size(sa.ShapeArt("pill", text=text), 0.3, 1920, 1080)
+                self.assertLessEqual(pw * ph, sa.layer_png_pixels(pill, 1920, 1080) * 1.03, text)
+
+    def test_the_render_time_estimate_is_charged_like_interpolation_and_refuses_early(self):
+        """Measured on a quiet box (ffmpeg 7.0.2): 0.6-0.8 ms per layer per output frame, whatever the layer's
+        span; on a loaded one 5.5-5.8 ms (twelve 3 MP layers: +42 s over 20 s at 30 fps, +80 s at 60 fps). The charge
+        is the loaded figure."""
+        twelve = [{"kind": "circle", "w": 0.9, "start_s": 0, "end_s": 20, "opacity": 1.0}] * 12
+        self.assertAlmostEqual(sa.work_seconds(twelve, 30, 1920, 1080, 20), 39.5, delta=1.0)
+        self.assertAlmostEqual(sa.work_seconds(twelve, 60, 1920, 1080, 20), 79.0, delta=2.0)
+        self.assertGreater(sa.work_seconds(twelve, 30, 1920, 1080, 20), 30, "the loaded measurement (+42 s) is covered")
+        short = [dict(s, end_s=2) for s in twelve]
+        self.assertEqual(sa.work_seconds(short, 30, 1920, 1080, 20), sa.work_seconds(twelve, 30, 1920, 1080, 20),
+                         "a layer is a pass over every frame whatever its span")
+        self.assertEqual(sa.work_seconds([dict(twelve[0], opacity=0)], 30, 1920, 1080, 20), 0.0)
+        self.assertEqual(sa.work_seconds([dict(twelve[0], start_s=25)], 30, 1920, 1080, 20), 0.0)
+        long_doc = doc_with([sh(id=f"s{i}", kind="circle", w=0.6, start_s=0, end_s=600) for i in range(12)],
+                            width=1920, height=1080, fps=60, out_s=600)
+        got = problems(long_doc)
+        self.assertTrue(any("the shapes would take about" in p and "(render time)" in p for p in got), got)
+        self.assertEqual(problems(dict(long_doc, fps=30)), [])
+        self.assertEqual(problems(dict(long_doc, shapes=long_doc["shapes"][:4])), [])
+
+    def test_the_budgets_agree_with_typescript_on_80_documents(self):
+        cases = json.loads((ROOT / "samples" / "shape_budget.json").read_text(encoding="utf-8"))["cases"]
+        for c in cases:
+            w, h = c["frame"]
+            self.assertEqual(sa.memory_estimate_bytes(c["shapes"], w, h), c["memory"])
+            self.assertAlmostEqual(sa.work_seconds(c["shapes"], c["fps"], w, h, c["length"]), c["work"], places=9)
+        ts = SHAPES_TS.read_text(encoding="utf-8")
+        for const, value in (("MEM_PLAIN_FIXED_BYTES", sa.MEM_PLAIN_FIXED_BYTES), ("MEM_PER_LAYER_BYTES", sa.MEM_PER_LAYER_BYTES),
+                             ("MEM_LIMIT_BYTES", sa.MEM_LIMIT_BYTES), ("MEM_MARGIN_BYTES", sa.MEM_MARGIN_BYTES)):
+            m = re.search(rf"export const {const} = (\d+) \* MIB;", ts)
+            self.assertEqual(int(m.group(1)) * sa.MIB, value, const)
+        for const, value in (("MEM_PLAIN_PER_FRAME_PX", sa.MEM_PLAIN_PER_FRAME_PX), ("MEM_PER_PNG_PX", sa.MEM_PER_PNG_PX),
+                             ("MEM_FIRST_LAYER_PER_FRAME_PX", sa.MEM_FIRST_LAYER_PER_FRAME_PX),
+                             ("PILL_MIN_ASPECT", sa.PILL_MIN_ASPECT),
+                             ("WORK_SECONDS_PER_LAYER_FRAME_1080P", sa.WORK_SECONDS_PER_LAYER_FRAME_1080P),
+                             ("WORK_SECONDS_PER_PNG_MP", sa.WORK_SECONDS_PER_PNG_MP)):
+            m = re.search(rf"export const {const} = ([\d.]+);", ts)
+            self.assertEqual(float(m.group(1)), value, const)
 
     def test_the_shape_is_strict(self):
         for extra in ({"path": "/etc/passwd"}, {"asset_id": PIC}, {"chroma": {"color": "#00FF00"}},
@@ -332,7 +408,6 @@ class DocumentTestCase(unittest.TestCase):
                           "ASPECT_DEFAULT": sa.ASPECT_DEFAULT, "SHAPE_W_MIN": sa.W_MIN,
                           "SHAPE_W_MAX": sa.W_MAX, "SHAPE_W_DEFAULT": sa.W_DEFAULT})
         self.assertIn(f'export const SHAPE_COLOR_DEFAULT = "{sa.COLOR_DEFAULT}";', ts)
-        self.assertIn(f"export const LARGE_FRAME_LAYERS_MAX = {sa.LARGE_FRAME_LAYERS_MAX};", ts)
         self.assertIn(f'THICK_DEFAULTS = {{ line: {sa.THICK_DEFAULTS["line"]}, progress: {sa.THICK_DEFAULTS["progress"]} }}', ts)
         for kind, fields in sa.KIND_FIELDS.items():
             m = re.search(rf"\b{kind}: \[([^\]]*)\]", ts[ts.index("export const KIND_FIELDS"):])
@@ -628,6 +703,49 @@ class ArtTestCase(unittest.TestCase):
         self.assertEqual(bar.getpixel((pw - 1, ph - 1))[3], 255)
         self.assertEqual((pw, bar.size[0]), (640, 640))
 
+    @unittest.skipUnless(have_font(), "no bold font on this machine (the worker image has fonts-dejavu)")
+    def test_every_character_the_rule_accepts_has_a_glyph_in_the_font(self):
+        """The rule is only honest if the worker's font draws all of it: a missing glyph is an empty box."""
+        font = sa._load_font(40)
+        box = bytes(font.getmask("\uffff"))
+        missing = [hex(c) for lo, hi in sa.TEXT_RANGES for c in range(lo, hi + 1)
+                   if chr(c) != " " and bytes(font.getmask(chr(c))) == box]
+        self.assertEqual(missing, [])
+        with self.assertRaises(sa.ShapeArtError) as cm:
+            sa._require_glyphs(font, "a\u65e5")
+        self.assertIn("U+65E5", str(cm.exception))
+
+    def test_an_outline_up_to_its_maximum_is_drawn_never_a_pillow_error(self):
+        """outline 0.5 (the slider's end) left no room for the hole: Pillow raised "x1 must be >= x0" and the export
+        died with a bare ValueError. Now such a stroke is a solid shape, at every size."""
+        with tempfile.TemporaryDirectory() as d:
+            for kind in ("circle", "rect", "star", "pill"):
+                for outline in (0.49, 0.499, 0.5):
+                    for frame in ((640, 360), (16, 16), (4096, 16), (16, 4096), (1080, 1920), (1920, 1080)):
+                        for w in (0.05, 0.1, 0.3, 0.7, 1.0):
+                            art = sa.ShapeArt.from_dict({"kind": kind, "color": "#FF0000", "outline": outline,
+                                                         "text": "Hi", "aspect": 1.6})
+                            with self.subTest(kind=kind, outline=outline, frame=frame, w=w):
+                                if kind == "pill" and not have_font():
+                                    continue
+                                pw, ph = sa.write_png(art, w, frame[0], frame[1], Path(d) / "x.png")
+                                self.assertGreater(pw * ph, 0)
+        solid, pw, ph = self.alpha(sa.ShapeArt("circle", color="#FF0000", outline=0.5))
+        self.assertEqual(solid.getpixel((pw // 2, ph // 2)), (255, 0, 0, 255), "a half-size stroke is a disc")
+
+    def test_any_pillow_failure_is_a_named_error_not_a_bare_exception(self):
+        from unittest import mock
+        art = sa.ShapeArt("circle")
+        with mock.patch.object(sa, "draw", side_effect=ValueError("x1 must be >= x0")):
+            with tempfile.TemporaryDirectory() as d:
+                with self.assertRaises(sa.ShapeArtError) as cm:
+                    sa.write_png(art, 0.3, 640, 360, Path(d) / "x.png")
+        self.assertIn("circle shape could not be drawn", str(cm.exception))
+        spec = spec_of(doc_with([sh(kind="circle")]))
+        with mock.patch.object(sa, "draw", side_effect=OSError("disk")):
+            with self.assertRaises(render_backend.RenderBackendError):
+                render_backend.draw_shapes(spec, Path(tempfile.gettempdir()))
+
     def test_the_drawing_is_deterministic(self):
         art = sa.ShapeArt("star", color="#FFD60A", outline=0.05)
         with tempfile.TemporaryDirectory() as d:
@@ -693,6 +811,146 @@ class ArtTestCase(unittest.TestCase):
             from PIL import Image
             self.assertEqual(Image.open(out[2].path).size, (1280, 8))
             self.assertEqual(Image.open(out[1].path).mode, "RGBA")
+
+
+# ── a fuzz over single-shape documents ─────────────────────────────────────
+
+def random_shape_doc(rng):
+    """One valid-by-construction shape (every field inside its range, ends of ranges favoured) in a frame
+    from 16x16 to 4096x16 and up to 3840x2160, at any frame rate."""
+    import random as _r  # noqa: F401  (rng is a random.Random)
+    frames = [(16, 16), (4096, 16), (16, 4096), (640, 360), (1280, 720), (1080, 1920), (1920, 1080), (3840, 2160),
+              (2160, 3840), (1080, 1080), (2560, 1440), (30, 20), (4094, 18)]
+    w, h = rng.choice(frames) if rng.random() < 0.7 else (rng.randrange(8, 2048) * 2, rng.randrange(8, 1080) * 2)
+    if w * h > tl.MAX_FRAME_PIXELS:
+        w, h = 1280, 720
+    pick = lambda lo, hi: rng.choice([lo, hi, rng.uniform(lo, hi), rng.uniform(lo, hi)])
+    kind = rng.choice(sa.SHAPE_KINDS)
+    fps = rng.choice(tl.FPS_VALUES)
+    length = rng.choice([0.1, 0.5, 2.0, 4.0])
+    s = {"id": "s1", "kind": kind, "start_s": 0, "end_s": max(0.1, round(rng.uniform(0.1, length), 3))}
+    s["color"] = "#%06X" % rng.randrange(0x1000000)
+    if rng.random() < 0.5:
+        s["opacity"] = round(pick(0.0, 1.0) if rng.random() < 0.8 else 1.0, 3) or 0.5
+    if kind != "progress":
+        s["x"], s["y"], s["w"] = round(pick(0, 1), 3), round(pick(0, 1), 3), round(pick(0.05, 1.0), 3)
+    if kind in ("circle", "rect", "star", "pill") and rng.random() < 0.7:
+        s["outline"] = round(rng.choice([0.5, 0.499, 0.49, 0.25, rng.uniform(0, 0.5)]), 3)
+    if kind == "rect":
+        s["aspect"] = round(pick(0.2, 5.0), 3)
+    if kind == "arrow":
+        s["dir"] = rng.choice(sa.ARROW_DIRS)
+    if kind in ("line", "progress"):
+        s["thick"] = round(pick(0.002, 0.05), 4)
+    if kind == "progress":
+        s["edge"] = rng.choice(sa.PROGRESS_EDGES)
+    if kind == "pill":
+        pool = "abcXYZ019 .,!?-\u0416\u044f\u0141\u02bb\u201c\u20ac{}\\"
+        s["text"] = ("".join(rng.choice(pool) for _ in range(rng.randrange(1, sa.TEXT_MAX + 1))).strip() or "Hi")
+    if kind != "progress" and rng.random() < 0.3:
+        s["move"] = {"to": {"x": round(rng.random(), 3), "w": round(rng.uniform(0.05, 1.0), 3)}}
+    return {"version": 1, "width": w, "height": h, "fps": fps, "tracks": [
+        {"id": "v1", "kind": "V", "clips": [{"id": "c1", "asset_id": BASE, "start_s": 0, "in_s": 0, "out_s": length}]}],
+        "shapes": [s]}
+
+
+class FuzzTestCase(unittest.TestCase):
+    def test_1500_random_single_shape_documents_validate_or_are_refused_early_and_the_valid_ones_draw(self):
+        import random
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        rng = random.Random(20261014)
+        valid = refused = 0
+        with tempfile.TemporaryDirectory() as d:
+            for i in range(1500):
+                doc = random_shape_doc(rng)
+                if doc["shapes"][0]["kind"] == "pill" and not have_font():
+                    continue
+                problems_ = problems(doc)
+                if problems_:
+                    # only the budgets may refuse a document built inside every range, and they say so
+                    self.assertTrue(all(("to render" in p or "memory" in p) for p in problems_), (i, doc["shapes"], problems_))
+                    refused += 1
+                    continue
+                valid += 1
+                spec = spec_of(doc)
+                self.assertEqual(rs.validate(spec), [], (i, doc["shapes"]))
+                out = render_backend.draw_shapes(spec, Path(d))
+                for o in out:
+                    self.assertTrue(Path(o.path).is_file(), (i, doc["shapes"]))
+                rs.build_ffmpeg_command(spec, "/w/concat.txt", "/w/overlays.ass")
+        self.assertGreater(valid, 1000, f"{valid} valid, {refused} refused: the fuzz must mostly exercise valid documents")
+
+    def test_a_sample_of_the_valid_ones_renders_with_the_real_ffmpeg(self):
+        import random
+        exe = _ffmpeg()
+        if not exe:
+            self.skipTest("ffmpeg not available")
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        rng = random.Random(7)
+        done = 0
+        with tempfile.TemporaryDirectory() as d:
+            base_files = {}
+            while done < 24:
+                doc = random_shape_doc(rng)
+                w, h, fps = doc["width"], doc["height"], doc["fps"]
+                s = doc["shapes"][0]
+                if w * h > 1280 * 720 or (s["kind"] == "pill" and not have_font()) or problems(doc):
+                    continue
+                key = (w, h, fps)
+                if key not in base_files:
+                    p = Path(d) / f"b{w}x{h}_{fps}.mp4"
+                    proc = subprocess.run([exe, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                                           f"color=c=0x808080:s={w}x{h}:r={fps}:d=4", "-c:v", "libx264", "-pix_fmt",
+                                           "yuv420p", str(p)], capture_output=True)
+                    self.assertEqual(proc.returncode, 0, proc.stderr.decode()[-300:])
+                    base_files[key] = p
+                length = doc["tracks"][0]["clips"][0]["out_s"]
+                table = {BASE: tl.ResolvedAsset(BASE, "video", str(base_files[key]), 4.0, False)}
+                with self.subTest(shape=s, frame=(w, h, fps)):
+                    out = Path(d) / f"o{done}.mp4"
+                    tr.render(doc, table.get, str(out), ffmpeg=exe, jobs=1, timeout_s=120)
+                    self.assertGreater(out.stat().st_size, 0)
+                done += 1
+
+    def test_the_biggest_document_the_memory_budget_allows_renders_under_the_workers_own_limit(self):
+        """Twelve circles at w 0.8 in 1080p60 (1844 MiB estimated, 1898 allowed): rendered the way the worker
+        does (jobs=1, a timeout, so ffmpeg runs under its 2 GiB address-space limit)."""
+        exe = _ffmpeg()
+        if not exe:
+            self.skipTest("ffmpeg not available")
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d) / "b.mp4"
+            proc = subprocess.run([exe, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                                   "testsrc2=s=1920x1080:r=60:d=3", "-c:v", "libx264", "-preset", "ultrafast",
+                                   "-pix_fmt", "yuv420p", str(base)], capture_output=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr.decode()[-300:])
+            doc = doc_with([sh(id=f"s{i}", kind="circle", w=0.8, start_s=0, end_s=3) for i in range(12)],
+                           width=1920, height=1080, fps=60, out_s=3)
+            self.assertEqual(problems(doc), [])
+            table = {BASE: tl.ResolvedAsset(BASE, "video", str(base), 3.0, False)}
+            out = Path(d) / "o.mp4"
+            tr.render(doc, table.get, str(out), ffmpeg=exe, jobs=1, timeout_s=300)
+            self.assertGreater(out.stat().st_size, 0)
+
+    @unittest.skipUnless(have_font(), "no bold font on this machine")
+    def test_a_missing_font_stops_the_export_before_any_segment_is_encoded(self):
+        from unittest import mock
+        original = sa._FONT_FILES
+        sa._FONT_FILES = ("/nonexistent/none.ttf",)
+        try:
+            spec = spec_of(doc_with([sh(kind="pill", text="Hi")]))
+            with mock.patch.object(render_backend, "_normalize_all", side_effect=AssertionError("segments were encoded")):
+                with self.assertRaises(render_backend.RenderBackendError) as cm:
+                    render_backend.render(spec, ffmpeg="/bin/true")
+            self.assertIn("fonts-dejavu", str(cm.exception))
+        finally:
+            sa._FONT_FILES = original
 
 
 # ── real ffmpeg ─────────────────────────────────────────────────────────────

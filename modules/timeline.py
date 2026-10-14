@@ -247,9 +247,8 @@ Rules this module keeps:
   opacity move, so the per-pixel opacity budget is untouched) work as on a picture overlay; the
   progress bar takes a fade only and no move. Each shape is one more input of the final pass, so
   ``overlays`` and ``shapes`` together are at most ``MAX_OVERLAYS``, and shapes at most
-  ``shape_art.MAX_SHAPES``; in a frame above 1440p a document with shapes takes at most
-  ``shape_art.LARGE_FRAME_LAYERS_MAX`` layers in all (measured: the final pass ran out of memory at 6).
-  The export draws each into a PNG (Pillow) and lays it with the
+  ``shape_art.MAX_SHAPES``; the shapes' memory and time are budgeted
+  (``shape_art.memory_estimate_bytes``, ``shape_work_seconds``). The export draws each into a PNG (Pillow) and lays it with the
   picture-overlay path; a document without ``shapes`` renders the commands it always did.
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
@@ -805,16 +804,29 @@ def validate(doc: Any) -> List[str]:
     if "overlays" in doc:
         _validate_overlays(doc["overlays"], fps, problems, claim)
     if "shapes" in doc:
+        before = len(problems)
         _validate_shapes(doc["shapes"], fps, problems, claim)
+        if (len(problems) == before and isinstance(doc["shapes"], list) and doc["shapes"]
+                and _is_int(w) and _is_int(h)):
+            need, budget = shape_art.memory_estimate_bytes(doc["shapes"], w, h), shape_art.memory_budget_bytes()
+            if need > budget:
+                problems.append(f"shapes: drawing them in a {w}x{h} frame would need about {need / shape_art.MIB:.0f} MB "
+                                f"to render, but {budget / shape_art.MIB:.0f} MB is the most the export has — make the "
+                                "shapes smaller or fewer, or the frame smaller (memory)")
+            elif fps and not problems:
+                length = duration_s(doc)
+                shape_est = shape_art.work_seconds(doc["shapes"], fps, w, h, length)
+                interp_est, stab_est = _interp_stab_estimates(doc, fps, w, h)
+                work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + shape_est
+                allowed = render_timeout_s(length)
+                if shape_est > 0 and work > allowed + 1e-9:
+                    problems.append(f"timeline: the shapes would take about {shape_est:.0f} s to render (about {work:.0f} s "
+                                    f"with everything else), but a {length:.0f} s timeline is allowed {allowed:.0f} s — "
+                                    "use fewer or smaller shapes, or make the timeline longer (render time)")
         layers = (len(doc["overlays"]) if isinstance(doc.get("overlays"), list) else 0) \
             + (len(doc["shapes"]) if isinstance(doc["shapes"], list) else 0)
         if layers > MAX_OVERLAYS:
             problems.append(f"overlays and shapes together: at most {MAX_OVERLAYS} (got {layers})")
-        elif (isinstance(doc["shapes"], list) and doc["shapes"] and layers > shape_art.LARGE_FRAME_LAYERS_MAX
-              and _is_int(doc.get("width")) and _is_int(doc.get("height"))
-              and doc["width"] * doc["height"] > LARGE_FRAME_PX):
-            problems.append(f"overlays and shapes together: at most {shape_art.LARGE_FRAME_LAYERS_MAX} in a frame "
-                            f"above 1440p (got {layers}) — the export would run out of memory")
 
     if problems:
         return problems
@@ -1338,6 +1350,16 @@ def clip_min_speed(clip: dict) -> float:
     if curve:
         return min(p["speed"] for p in curve)
     return clip_speed(clip)
+
+
+def _interp_stab_estimates(doc: dict, fps: int, w: int, h: int) -> Tuple[float, float]:
+    """The render-time estimates (seconds) of interpolated slow motion and stabilising, as ``validate`` charges them."""
+    counted = [t for t in doc.get("tracks") or [] if isinstance(t, dict) and isinstance(t.get("clips"), list)]
+    total = sum(interpolated_frames(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
+                for c in t["clips"] if isinstance(c, dict) and c.get("interpolate") is True)
+    stab = sum(stabilize_seconds(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
+               for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
+    return (INTERP_SECONDS_PER_FRAME * total if total <= INTERP_MAX_FRAMES_DOC else 0.0), stab
 
 
 def stabilize_seconds(clip: dict, fps: int, width: int, height: int) -> float:

@@ -46,7 +46,9 @@ export const shapesUz: typeof shapesEn = {
   dirs: { right: "Oʻngga", left: "Chapga", up: "Yuqoriga", down: "Pastga" },
   thick: "Qalinlik (video balandligining ulushi)",
   text: "Yorliq matni",
-  textHint: "{max} belgigacha. Yorliq shaklning ichiga chiziladi.",
+  textHint:
+    "{max} belgigacha: lotin va kirill harflari, raqamlar va oddiy tinish belgilari. Emoji va boshqa yozuvlarni eksport qilingan videoda chizib boʻlmaydi, shuning uchun qabul qilinmaydi.",
+  textDropped: "Eksport qilingan videoda chizib boʻlmaydigan belgilar (emoji, boshqa yozuvlar) tashlab yuborildi.",
   textEmpty: "Yorliqda kamida bitta belgi boʻlishi kerak, shuning uchun oxirgi matn saqlandi.",
   readyLegend: "Tayyor yorliqlar",
   labels: {
@@ -84,6 +86,15 @@ export const shapesUz: typeof shapesEn = {
   cutEnd: "Bu shakl video oxiridan oshib ketadi; qolgani kesiladi.",
   invisible: "Shaffofmaslik 0, shuning uchun shakl koʻrinmaydi.",
   shapesFull: "Loyihada koʻpi bilan {max} ta shakl boʻlishi mumkin.",
+  budgetMemory:
+    "Bu shakl sigʻmaydi: eksport bu kadr oʻlchamida cheklangan miqdorni chiza oladi (taxminan {need} MB kerak, {max} MB bor). Boshqa shakllarni kichraytiring yoki bittasini oʻchiring.",
+  budgetTime:
+    "Bu shakl sigʻmaydi: eksport taxminan {work} s oladi, {length} s li video uchun esa {allowed} s ajratilgan. Kamroq yoki kichikroq shakllardan foydalaning yoki videoni uzunroq qiling.",
+  budgetUse:
+    "Shakllar eksport shu kadr oʻlchamida chiza oladigan hajmning {pct}% ini ishlatmoqda. Chegarada shakl kattalashmay qoladi.",
+  settledNarrowed: "Eksport barcha shakllarni chiza olishi uchun {n}-shakl torroq qilindi.",
+  settledRemoved:
+    "Bu oʻlchamda eksport barcha shakllarni chiza olmasligi uchun {n}-shakl oʻchirildi. «Bekor qilish» uni qaytaradi.",
   layersFull:
     "Rasmlar va shakllar birgalikda koʻpi bilan {max} qatlam egallaydi, shuning uchun yana qoʻshib boʻlmaydi.",
 };

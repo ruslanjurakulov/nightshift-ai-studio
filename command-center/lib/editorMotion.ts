@@ -16,6 +16,7 @@
  * Every function returns the SAME model when nothing changes (not an undo
  * step) and clamps to the document's own limits, imported from lib/editor.ts.
  */
+import { shapeWorkSeconds } from "@/lib/editorShapes";
 import {
   INTERP_MAX_FRAMES,
   INTERP_MAX_FRAMES_DOC,
@@ -619,6 +620,8 @@ export interface RenderWork {
   length: number;
   interpEst: number;
   stabEst: number;
+  /** What the shape layers add (lib/editorShapes.ts `shapeWorkSeconds`). */
+  shapeEst: number;
   work: number;
   allowed: number;
   ok: boolean;
@@ -638,15 +641,17 @@ export function renderWork(model: EditorModel): RenderWork {
         n + stabilizeSeconds(c as unknown as Record<string, unknown>, model.fps, model.width, model.height),
       0,
     );
-  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst;
+  const shapeEst = shapeWorkSeconds(model.shapes ?? [], model.fps, model, length);
+  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + shapeEst;
   const allowed = renderTimeoutS(length);
   return {
     length,
     interpEst,
     stabEst,
+    shapeEst,
     work,
     allowed,
-    ok: interpEst + stabEst <= 0 || work <= allowed + 1e-9,
+    ok: interpEst + stabEst + shapeEst <= 0 || work <= allowed + 1e-9,
   };
 }
 

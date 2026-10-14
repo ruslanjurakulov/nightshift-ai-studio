@@ -507,15 +507,23 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
   (black or white by luminance, fixed threshold).
 * `thick` (0.002-0.05) is a fraction of the frame HEIGHT: a line's thickness, the bar's height
   (made even, at least 2 px; 0.012 of 720 is 8 px). Defaults: line 0.008, bar 0.012.
-* **`pill` text** is at most 24 characters (code points; `SHAPE_TEXT_MAX`), not blank, with no
-  control, format, line-separator or surrogate characters (Unicode categories Cc, Cf, Zl, Zp, Cs: stable across
-  Unicode versions, so both validators agree). It is typed or one of the editor's ready labels
+* **`pill` text** is at most 24 characters (code points; `SHAPE_TEXT_MAX`), not blank, and only of
+  characters the worker's font really draws: Basic Latin, Latin-1 and Latin Extended letters, the Uzbek
+  apostrophes (U+02BB, U+02BC), Cyrillic (U+0400-U+0525), dashes, quotation marks, bullet, ellipsis, euro,
+  tenge and numero (`TEXT_RANGES`, a closed rule shared by both validators and pinned by
+  `samples/shape_text_cases.json`, 1,600 texts with the worker's verdict). Anything else (emoji, CJK,
+  Arabic, Greek, combining marks, invisible fillers such as U+3164, no-break space, tabs and line
+  breaks) is refused with "text can only use Latin and Cyrillic letters, digits and common
+  punctuation": the font would draw an empty box and the exported label would silently differ from
+  what was typed. The worker also compares every character with the font's empty box while drawing and
+  stops the export with a named message if it ever meets one (another font). The editor's text box leaves
+  such characters out and says so. The text is typed or one of the editor's ready labels
   ("Subscribe", "New", "Link below", "Part 2", in the person's language). It reaches the export as
   PIXELS: the worker cleans it with the same `ass_captions.escape_text` the text overlays' words get
   (braces to parentheses, backslash to slash, white space collapsed), draws it with the bold
-  DejaVu/Liberation font and never writes it into a filter graph or a file name. A missing font is
-  an export error that names the fix (`fonts-dejavu`), never a bitmap fallback. Characters the font
-  does not have (other scripts than Latin and Cyrillic) are drawn as the font's empty box.
+  DejaVu/Liberation font and never writes it into a filter graph or a file name; the preview shows the
+  cleaned words too. A missing font stops the export BEFORE any segment is encoded, with a message that
+  names the fix (`fonts-dejavu`), never a bitmap fallback.
 * **The progress bar** takes only `edge` and `thick` (no `x`, `y`, `w`, no move) and a fade as
   `anim_in` / `anim_out`. It is as wide as the frame and fills from the left across
   `start_s`..`end_s` by the clock: EMPTY on its first frame, FULL on its last. How: a bar-shaped PNG
@@ -532,14 +540,38 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
   (`MAX_OVERLAYS`): each is one more input of the final pass ("overlays and shapes together: at most
   16"). The editor counts both (`layerCount`, `canAddShape`, and `canAddOverlay` now counts shapes
   too). A shape never lengthens the timeline (what runs past the picture is cut).
-* **Above 1440p** (more than 2560x1440 pixels, either way up) a document that has shapes takes at
-  most 5 layers in all (`LARGE_FRAME_LAYERS_MAX`): "overlays and shapes together: at most 5 in a
-  frame above 1440p". Measured with the bundled ffmpeg 7.0.2 under the export's 2 GiB: at 3840x2160
-  and 60 fps six layers ran out of memory (exit 187, "Cannot allocate memory") whatever their size and
-  five passed; at 30 fps six passed and eight failed; a 1440p frame passed twelve; ffmpeg 5.1.1 passed
-  seven at 4K60. The same limit exists for picture overlays alone (not guarded, so an older document
-  is judged as before): the guard is asked only of a document with shapes, and the editor stops adding
-  at it. The editor's own frames are 1080p, so this only meets a project made by another tool.
+* **Memory budget** (`shape_art.memory_estimate_bytes`, `memoryEstimateBytes` in `lib/editorShapes.ts`,
+  refused early by both validators as "shapes: drawing them in a WxH frame would need about N MB to
+  render, but M MB is the most the export has ... (memory)"). Measured with the bundled ffmpeg 7.0.2 under
+  the export's own limit (2 GiB of address space, `jobs=1`, a timeout set: the worker's path) by binary
+  search on the limit, with a circle at each size: a plain clip needs 905 MiB at 1080p60 (923 at 30 fps; a
+  one-second clip less) and 1657 MiB at 4K60; every shape layer adds about 55 MiB whatever its size, every
+  pixel of its PNG about 9 bytes, and the first layer about 13 bytes per pixel of the frame. The estimate
+  is that fit rounded up (it was checked against 14 measured points, never below one and within 15% + 60 MiB
+  of each) and the budget keeps 150 MiB under the 2 GiB. What it decides: 12 circles at `w` 0.6 in 1080p
+  pass (1738 MiB; 1675 measured), at 1.0 they are refused (1981; 1951 measured passed on a quiet box and a
+  reviewer's loaded one failed); in 4K two small shapes pass, a full-width one, and three or more, do not
+  (measured: 2 layers of `w` 1.0 and 5 of 0.5 failed). A shape's PNG is its whole picture at the widest it
+  ever is (a move to a bigger `w` scales down from it) and a PILL is charged as a box of aspect 0.9 (an upper
+  bound that needs no font). It bounds the SHAPES' own cost beyond a plain clip; a clip that also
+  cross-fades or blurs at a large frame (their own limits) is not added up with it. A PNG is not cut to the
+  frame (a 16:9 circle at `w` 1.0 is 1920x1920, taller than the frame): cutting it would change the layout
+  of a shape that moves or pops, so the budget charges the real size instead. Where the budget is met the
+  editor stops: a shape stops growing at the limit, the one being added is narrowed to fit or refused with
+  the numbers (role="status"), the inspector says how much of the budget the shapes use once it is 60% or
+  more, and settling after a frame change narrows the widest shapes (then removes the last, said, undoable).
+* **Render time** is charged like interpolation and stabilising, against the worker's timeout
+  (`render_timeout_s` = min(5400, 3 x length + 120)): per layer, per OUTPUT frame, whatever the layer's span
+  (a layer is an `overlay` pass over every frame; one shown for 10% of a clip cost 90% of the same), 2.5 ms
+  per 1080p-equivalent frame plus 1.0 ms per megapixel of its PNG. Measured on a quiet box (ffmpeg 7.0.2, 1080p
+  30 fps, 10 s, twelve layers of every kind with pop, fade and move): 0.6 / 0.8 ms per layer-frame for 0.3 / 1.3
+  MP PNGs, 0.5 ms at 60 fps; a reviewer's loaded box saw 5.5-5.8 ms (twelve 3 MP layers, 20 s: +42 s at 30 fps,
+  +80 s at 60 fps) and the charge is that loaded figure (the same way `INTERP_SECONDS_PER_FRAME` was set). A
+  document is refused when `length + interpolation + stabilising + shapes` is over the allowance ("the shapes
+  would take about N s to render ... (render time)"), so twelve 0.6-wide layers at 1080p60 pass on 20 s and are
+  refused on 10 minutes, and the same at 30 fps pass. It counts shapes that render something (opacity above 0,
+  starting before the end). In the editor the same sum is `renderWork().shapeEst`, so the notice under the
+  toolbar, adding and growing a shape and settling all use it.
 * **Layering**: shapes are drawn after the pictures (so over them), under the texts and captions;
   list order is the layering among shapes.
 * **Worker**: `modules/timeline_render._shapes` turns each shape into a `PictureOverlay` carrying a
@@ -547,9 +579,9 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
   directory and fills the paths in; the rest is `picture_overlay_filters`. The command of a
   document without shapes is unchanged (the existing digest tests, plus a new one with an empty list,
   an invisible shape and one after the end).
-* **ffmpeg versions**: every pixel test passes with the bundled static 7.0.2 and with 5.1.1. A
-  1080p export of twelve full-frame circles took 6 s (about 3 s of it drawing the PNGs) against 3 s for
-  twelve picture overlays of the same size. The
+* **ffmpeg versions**: every pixel test passes with the bundled static 7.0.2 and with 5.1.1. The memory
+  and time figures above are 7.0.2's (what `resolve_ffmpeg` picks); 5.1.1 needed less memory in the
+  few cases tried (it passed seven 4K60 layers that 7.0.2 could not). The
   only filters used are the overlay path's own (`scale`, `format`, `colorchannelmixer`, `fade`,
   `tpad`, `overlay`) plus the `x` expression above; nothing in it is version-sensitive that was
   seen. Pillow is a worker dependency (requirements.txt, `Pillow>=12.3.0`).
@@ -664,8 +696,11 @@ thickness, edge, the label's text with four ready labels (an empty box keeps the
 says so), a move to an end position and entrance / exit (a bar: a fade only). Limits are said where
 they apply (role="status"): the shapes limit, the shared layers with the pictures, and a shape that
 would not show. Every edit is one undo step (a slider drag or a run of arrow presses is one) and
-goes through the same `settleAll`; shapes add no limit that depends on another item (so settle
-has nothing to do for them), and a 400-step fuzz test checks that no edit leaves a document the validators refuse.
+goes through the same `settleAll`: the export's memory and time budgets depend on the frame size and the
+timeline, so a frame change or a shorter timeline can push shapes over them, and settling then narrows the widest
+shapes and, only if even the narrowest do not fit, removes the last (said in the polite notice; Undo returns
+them). A 400-step fuzz test (edits, frame changes between 1080p and 4K, other overlays) checks that no edit
+leaves a document the validators refuse.
 Preview: the same polygons as SVG (close to exact), the progress bar's fill at the playhead, the
 entrance / exit roughly; the note under the preview says the exported file is the reference, and the
 label's width is an estimate.

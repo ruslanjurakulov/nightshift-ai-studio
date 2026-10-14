@@ -39,9 +39,6 @@ export type ProgressEdge = (typeof PROGRESS_EDGES)[number];
 
 /** Shapes in a document; with the picture overlays they share MAX_OVERLAYS layers. */
 export const MAX_SHAPES = 12;
-/** Above 1440p a document with shapes takes at most this many layers (pictures + shapes) in all: the
- *  export's final pass ran out of memory at 6 at 4K60 (modules/shape_art.py LARGE_FRAME_LAYERS_MAX). */
-export const LARGE_FRAME_LAYERS_MAX = 5;
 /** A pill's label, in characters (code points). */
 export const SHAPE_TEXT_MAX = 24;
 export const SHAPE_COLOR_DEFAULT = "#FFD60A";
@@ -98,17 +95,6 @@ const STAR_WIDTH_R = 2 * Math.sin((72 * Math.PI) / 180);
 const STAR_HEIGHT_R = 1 + Math.cos((36 * Math.PI) / 180);
 const ARROW_SHAFT = 0.36;
 const ARROW_HEAD_AT = 0.52;
-
-/** The most layers (picture overlays + shapes) a frame of this size may carry when the document has
- *  `shapes` shapes: MAX_LAYERS, or LARGE_FRAME_LAYERS_MAX above 1440p once there is a shape. */
-export function layerLimit(
-  frame: { width: number; height: number },
-  shapes: number,
-  maxLayers: number,
-  largePx: number,
-): number {
-  return shapes > 0 && frame.width * frame.height > largePx ? LARGE_FRAME_LAYERS_MAX : maxLayers;
-}
 
 export const isShapeKind = (v: unknown): v is ShapeKind =>
   typeof v === "string" && (SHAPE_KINDS as readonly string[]).includes(v);
@@ -170,26 +156,60 @@ export function kindTakes(kind: ShapeKind, field: string): boolean {
   return SHAPE_COMMON.includes(field) || KIND_FIELDS[kind].includes(field);
 }
 
-/** Why a pill's text cannot be used, or null: non-empty after trimming, at most
- *  SHAPE_TEXT_MAX characters (code points: what the Python twin counts) and no control,
- *  format, line or surrogate characters (Cc, Cf, Zl, Zp, Cs). */
+/** What a pill's text may hold, as inclusive code-point ranges (modules/shape_art.py TEXT_RANGES; a shared
+ *  fixture, samples/shape_text_cases.json, pins both): Basic Latin, Latin-1, Latin Extended-A/B, the two Uzbek
+ *  apostrophes, Cyrillic, dashes, quotes, bullet, ellipsis, euro, tenge and numero. The worker's font draws
+ *  nothing else (an empty box), so nothing else is accepted. */
+export const TEXT_RANGES: readonly (readonly [number, number])[] = [
+  [0x0020, 0x007e],
+  [0x00a1, 0x00ac],
+  [0x00ae, 0x00ff],
+  [0x0100, 0x024f],
+  [0x02bb, 0x02bc],
+  [0x0400, 0x0525],
+  [0x2010, 0x2015],
+  [0x2018, 0x201e],
+  [0x2022, 0x2022],
+  [0x2026, 0x2026],
+  [0x20ac, 0x20ac],
+  [0x20b8, 0x20b8],
+  [0x2116, 0x2116],
+];
+
+export function textCharOk(ch: string): boolean {
+  const cp = ch.codePointAt(0) ?? -1;
+  return TEXT_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi);
+}
+
+/** Why a pill's text cannot be used, or null: non-empty after trimming, at most SHAPE_TEXT_MAX characters
+ *  (code points: what the Python twin counts) and only characters of TEXT_RANGES. */
 export function shapeTextProblem(text: unknown): string | null {
   if (typeof text !== "string" || text.trim() === "")
     return `text must be non-empty text of at most ${SHAPE_TEXT_MAX} characters`;
-  if (Array.from(text).length > SHAPE_TEXT_MAX)
+  const chars = Array.from(text);
+  if (chars.length > SHAPE_TEXT_MAX)
     return `text must be non-empty text of at most ${SHAPE_TEXT_MAX} characters`;
-  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u.test(text))
-    return "text must not contain control or invisible formatting characters";
+  if (!chars.every(textCharOk))
+    return "text can only use Latin and Cyrillic letters, digits and common punctuation";
   return null;
 }
 
-/** The characters a pill's text may hold: control and invisible formatting ones are dropped
- *  (what a typed field offers a person; a pasted line break is not an error, it is a space). */
+/** What a typed field keeps: a line break or tab is a space, a character the font cannot draw is left out
+ *  (`dropped` says so, so the editor can tell the person), at most SHAPE_TEXT_MAX characters. */
+export function cleanShapeTextReport(text: string): { text: string; dropped: boolean } {
+  const spaced = Array.from(text.replace(/[\u2028\u2029\r\n\t]+/g, " "));
+  const kept = spaced.filter(textCharOk);
+  return { text: kept.slice(0, SHAPE_TEXT_MAX).join(""), dropped: kept.length < spaced.length };
+}
+
 export function cleanShapeText(text: string): string {
-  return Array.from(text.replace(/[\p{Zl}\p{Zp}\r\n\t]+/gu, " "))
-    .filter((ch) => !/[\p{Cc}\p{Cf}\p{Cs}]/u.test(ch))
-    .slice(0, SHAPE_TEXT_MAX)
-    .join("");
+  return cleanShapeTextReport(text).text;
+}
+
+/** The words the export actually draws: braces become parentheses, a backslash a slash and runs of white
+ *  space one space (modules/ass_captions.py escape_text, the clean-up every text overlay's words get). */
+export function escapeShapeText(text: string): string {
+  return text.replace(/\\/g, "/").replace(/\{/g, "(").replace(/\}/g, ")").replace(/\s+/g, " ").trim();
 }
 
 // ── geometry (the same arithmetic as modules/shape_art.py; a shared fixture pins them) ──
@@ -221,7 +241,7 @@ export function progressCenterY(
 
 /** The expected width of a pill, over its height, from its character count. */
 export function pillAspectEstimate(text: string): number {
-  const n = Array.from(text.trim()).length;
+  const n = Array.from(escapeShapeText(text)).length;
   return (n * PILL_EM_PER_CHAR + 2 * PILL_PAD_X_EM) / PILL_HEIGHT_EM;
 }
 
@@ -283,6 +303,84 @@ export function shapePx(
     return [even(w * frame.width), progressHeightPx(s.thick ?? THICK_DEFAULTS.line, frame.height)];
   if (s.kind === "pill") return fitPx(pillAspectEstimate(s.text ?? ""), w, frame);
   return fitPx(shapeBaseAspect({ ...s, w }, frame) ?? 1, w, frame);
+}
+
+// ── what a document's shapes cost to render (modules/shape_art.py has the measurements) ─────────
+
+const MIB = 1024 * 1024;
+/** ffmpeg's address space in an editor export, and what is kept free of it (modules/shape_art.py). */
+export const MEM_LIMIT_BYTES = 2048 * MIB;
+export const MEM_MARGIN_BYTES = 150 * MIB;
+export const MEM_PLAIN_FIXED_BYTES = 654 * MIB;
+export const MEM_PLAIN_PER_FRAME_PX = 127;
+export const MEM_PER_LAYER_BYTES = 56 * MIB;
+export const MEM_PER_PNG_PX = 9;
+export const MEM_FIRST_LAYER_PER_FRAME_PX = 13;
+/** A pill's PNG width over height is never below this, so it is charged as a box of this proportion. */
+export const PILL_MIN_ASPECT = 0.9;
+
+/** A shape as the budgets read it (a model's shape or a document's entry). */
+export type CostShape = {
+  kind: string;
+  w?: number;
+  aspect?: number;
+  dir?: string;
+  thick?: number;
+  move?: { to?: { w?: number } };
+};
+
+/** Pixels of the PNG one shape is drawn into, at the widest it ever is (a pill's: an upper bound). */
+export function layerPngPixels(s: CostShape, frame: { width: number; height: number }): number {
+  const wide = Math.max(s.w ?? SHAPE_W_DEFAULT, s.move?.to?.w ?? 0);
+  const [pw, ph] =
+    s.kind === "pill"
+      ? fitPx(PILL_MIN_ASPECT, wide, frame)
+      : shapePx(s as Pick<ShapeLayer, "kind" | "aspect" | "dir" | "thick" | "text">, wide, frame);
+  return pw * ph;
+}
+
+/** About how much address space the final pass needs for a clip of this frame and rate with these shapes. */
+export function memoryEstimateBytes(
+  shapes: readonly CostShape[],
+  frame: { width: number; height: number },
+): number {
+  const px = frame.width * frame.height;
+  const plain = MEM_PLAIN_FIXED_BYTES + MEM_PLAIN_PER_FRAME_PX * px;
+  if (!shapes.length) return Math.trunc(plain);
+  const layers = MEM_PER_LAYER_BYTES * shapes.length + MEM_FIRST_LAYER_PER_FRAME_PX * px;
+  const pngs = MEM_PER_PNG_PX * shapes.reduce((n, s) => n + layerPngPixels(s, frame), 0);
+  return Math.trunc(plain + layers + pngs);
+}
+
+export const memoryBudgetBytes = () => MEM_LIMIT_BYTES - MEM_MARGIN_BYTES;
+
+/** What the shapes add to the render, in estimated seconds (modules/shape_art.py has the measurements): per
+ *  layer per OUTPUT frame, whatever its span, a fixed part that grows with the frame (1080p equivalent) and a
+ *  part that grows with the layer's PNG. */
+export const WORK_SECONDS_PER_LAYER_FRAME_1080P = 0.0025;
+export const WORK_SECONDS_PER_PNG_MP = 0.001;
+const REF_FRAME_PX = 1920 * 1080;
+
+export type WorkShape = CostShape & { start_s: number; opacity?: number };
+
+export function shapeWorkSeconds(
+  shapes: readonly WorkShape[],
+  fps: number,
+  frame: { width: number; height: number },
+  lengthS: number,
+): number {
+  const totalFrames = Math.floor(lengthS * fps + 0.5);
+  if (totalFrames <= 0) return 0;
+  const px = frame.width * frame.height;
+  let seconds = 0;
+  for (const s of shapes) {
+    if (Math.floor(s.start_s * fps + 0.5) >= totalFrames || (s.opacity ?? 1) <= 0) continue;
+    seconds +=
+      totalFrames *
+      ((WORK_SECONDS_PER_LAYER_FRAME_1080P * px) / REF_FRAME_PX +
+        (WORK_SECONDS_PER_PNG_MP * layerPngPixels(s, frame)) / 1e6);
+  }
+  return seconds;
 }
 
 /** Black or white text for a solid colour (Rec. 709 luma, a fixed threshold: modules/shape_art.py). */

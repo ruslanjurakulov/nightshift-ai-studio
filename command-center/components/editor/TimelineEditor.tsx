@@ -151,12 +151,13 @@ import { ShapeInspector, ShapeLayerView, ShapeMoveSection, ShapePicker } from ".
 import {
   addShape,
   canAddShape,
-  layersAllowed,
   moveShape,
   nudgeShape,
   removeShape,
   resetShape,
   setShapeKind,
+  shapeAddCheck,
+  shapeBudget,
   shapeWarnings,
   shapesAt,
   shapesOf,
@@ -340,6 +341,8 @@ export function TimelineEditor({
   const [addingSound, setAddingSound] = useState(false);
   const [addingOverlay, setAddingOverlay] = useState(false);
   const [addingShape, setAddingShape] = useState(false);
+  // Why the last "Add to video" was refused by the export's budgets (said politely, in words).
+  const [shapeRefusal, setShapeRefusal] = useState<"memory" | "time" | null>(null);
   // Where focus goes once the render that follows a shape add / delete is there.
   const shapeFocus = useRef<"frame" | "add" | null>(null);
   const addShapeButton = useRef<HTMLButtonElement>(null);
@@ -931,7 +934,12 @@ export function TimelineEditor({
 
   function onAddShape(kind: ShapeKind, label: string) {
     const out = addShape(model, kind, playhead < picture ? playhead : 0, label);
-    if (!out) return;
+    if (!out) {
+      const why = shapeAddCheck(model, kind, playhead < picture ? playhead : 0);
+      setShapeRefusal(why === "time" ? "time" : "memory");
+      return;
+    }
+    setShapeRefusal(null);
     apply(out.model);
     setSelected({ kind: "shape", id: out.id });
     setAddingShape(false);
@@ -1466,7 +1474,7 @@ export function TimelineEditor({
             >
               {overlays.length >= MAX_OVERLAYS
                 ? fmt(te.overlay.full, { max: MAX_OVERLAYS })
-                : fmt(te.shapes.layersFull, { max: layersAllowed(model, shapes.length) })}
+                : fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })}
             </p>
           ) : !canAddOverlay(model, "video", isVideoAsset) ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">
@@ -1481,11 +1489,25 @@ export function TimelineEditor({
             >
               {shapes.length >= MAX_SHAPES
                 ? fmt(te.shapes.shapesFull, { max: MAX_SHAPES })
-                : fmt(te.shapes.layersFull, { max: layersAllowed(model, shapes.length + 1) })}
+                : fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })}
+            </p>
+          ) : null}
+          {shapeRefusal ? (
+            <p role="status" className="m-0 text-xs text-[var(--color-warn)]" data-testid="shape-refused">
+              {shapeRefusal === "memory"
+                ? fmt(te.shapes.budgetMemory, {
+                    need: Math.round(shapeBudget(model).memory / 1048576),
+                    max: Math.round(shapeBudget(model).memoryMax / 1048576),
+                  })
+                : fmt(te.shapes.budgetTime, {
+                    work: Math.round(shapeBudget(model).work),
+                    length: Math.round(total),
+                    allowed: Math.round(shapeBudget(model).workMax),
+                  })}
             </p>
           ) : null}
           {addingShape ? (
-            <ShapePicker onAdd={onAddShape} onClose={() => setAddingShape(false)} />
+            <ShapePicker onAdd={onAddShape} onClose={() => { setAddingShape(false); setShapeRefusal(null); }} />
           ) : null}
           {addingOverlay ? (
             <OverlayPicker
@@ -1639,6 +1661,13 @@ export function TimelineEditor({
               total={shapes.length}
               shape={shape}
               warning={shapeWarns[shape.id] ?? null}
+              budgetPct={Math.round(
+                100 *
+                  Math.max(
+                    shapeBudget(model).memory / shapeBudget(model).memoryMax,
+                    shapeBudget(model).work / shapeBudget(model).workMax,
+                  ),
+              )}
               onChange={(patch, key) => {
                 const next = updateShape(model, shape.id, patch);
                 if (key) applyBurst(next, key);

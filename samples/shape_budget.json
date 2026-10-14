@@ -1,0 +1,7143 @@
+{
+ "_comment": "What the shapes of a document cost to render: memory_estimate_bytes and work_seconds of modules/shape_art.py, for command-center/lib/editorShapes.ts memoryEstimateBytes / shapeWorkSeconds to agree with (tests/editor-shapes.test.ts). Regenerate only from modules/shape_art.py.",
+ "cases": [
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 50,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 0.691,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.772,
+     "move": {
+      "to": {
+       "w": 0.414
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 2.101,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.941,
+     "thick": 0.0255
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 1.765,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.831,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "circle",
+     "start_s": 0.457,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.857
+    },
+    {
+     "id": "s4",
+     "kind": "line",
+     "start_s": 1.586,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.496,
+     "thick": 0.0213,
+     "move": {
+      "to": {
+       "w": 0.057
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 1.088,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.489
+    },
+    {
+     "id": "s6",
+     "kind": "pill",
+     "start_s": 1.388,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.39,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.925
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "circle",
+     "start_s": 2.243,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.616
+    },
+    {
+     "id": "s8",
+     "kind": "pill",
+     "start_s": 1.981,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.154,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.7
+      }
+     }
+    },
+    {
+     "id": "s9",
+     "kind": "star",
+     "start_s": 0.243,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.65,
+     "move": {
+      "to": {
+       "w": 0.637
+      }
+     }
+    }
+   ],
+   "memory": 1282322524,
+   "work": 0.09744461481481483
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 30,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 0.602,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.658
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 1.212,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.386,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 0.393,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.628,
+     "dir": "down",
+     "move": {
+      "to": {
+       "w": 0.163
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 0.522,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.439,
+     "aspect": 4.636
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 2.312,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.854,
+     "aspect": 0.763
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 2.035,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.061
+    },
+    {
+     "id": "s6",
+     "kind": "rect",
+     "start_s": 0.649,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.37,
+     "aspect": 4.099
+    },
+    {
+     "id": "s7",
+     "kind": "progress",
+     "start_s": 1.113,
+     "end_s": 4,
+     "opacity": 1.0,
+     "thick": 0.0107
+    },
+    {
+     "id": "s8",
+     "kind": "arrow",
+     "start_s": 2.769,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.782,
+     "dir": "left"
+    }
+   ],
+   "memory": 1223636288,
+   "work": 0.051321457777777774
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 0.157,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.414,
+     "thick": 0.023
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.211,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.116,
+     "move": {
+      "to": {
+       "w": 0.701
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "rect",
+     "start_s": 0.394,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.933,
+     "aspect": 1.433
+    },
+    {
+     "id": "s3",
+     "kind": "star",
+     "start_s": 0.484,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.318
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 0.431,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.235,
+     "text": "Hi"
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 0.173,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.71
+    },
+    {
+     "id": "s6",
+     "kind": "circle",
+     "start_s": 0.446,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.8,
+     "move": {
+      "to": {
+       "w": 0.446
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "progress",
+     "start_s": 0.433,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0216
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 0.173,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "thick": 0.0022
+    },
+    {
+     "id": "s9",
+     "kind": "pill",
+     "start_s": 0.266,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.546,
+     "text": "Hi"
+    },
+    {
+     "id": "s10",
+     "kind": "line",
+     "start_s": 0.495,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.936,
+     "thick": 0.0147
+    },
+    {
+     "id": "s11",
+     "kind": "star",
+     "start_s": 0.234,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.24,
+     "move": {
+      "to": {
+       "w": 0.15
+      }
+     }
+    }
+   ],
+   "memory": 2925833448,
+   "work": 1.78583754
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 24,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 250.064,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.972,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.145
+      }
+     }
+    }
+   ],
+   "memory": 927629960,
+   "work": 52.001999999999995
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 50,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 0.987,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.907
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 2.106,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.584,
+     "thick": 0.0363
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 0.821,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.224
+    },
+    {
+     "id": "s3",
+     "kind": "star",
+     "start_s": 1.718,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.682
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 0.719,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.547,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.806
+      }
+     }
+    }
+   ],
+   "memory": 988623792,
+   "work": 0.012005451851851852
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 30,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 0.267,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.604,
+     "thick": 0.0219,
+     "move": {
+      "to": {
+       "w": 0.609
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "arrow",
+     "start_s": 0.199,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.375,
+     "dir": "left"
+    },
+    {
+     "id": "s2",
+     "kind": "rect",
+     "start_s": 0.079,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.105,
+     "aspect": 3.92,
+     "move": {
+      "to": {
+       "w": 0.229
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "star",
+     "start_s": 0.086,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.674,
+     "move": {
+      "to": {
+       "w": 0.923
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "progress",
+     "start_s": 0.28,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "thick": 0.0333
+    },
+    {
+     "id": "s5",
+     "kind": "progress",
+     "start_s": 0.267,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0368
+    },
+    {
+     "id": "s6",
+     "kind": "progress",
+     "start_s": 0.068,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0036
+    },
+    {
+     "id": "s7",
+     "kind": "pill",
+     "start_s": 0.323,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.386,
+     "text": "Hi"
+    },
+    {
+     "id": "s8",
+     "kind": "circle",
+     "start_s": 0.307,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.373,
+     "move": {
+      "to": {
+       "w": 0.375
+      }
+     }
+    },
+    {
+     "id": "s9",
+     "kind": "line",
+     "start_s": 0.218,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.221,
+     "thick": 0.0073
+    }
+   ],
+   "memory": 1577913332,
+   "work": 0.361668
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 25,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 11.636,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0292
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 95.152,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.883,
+     "thick": 0.0097
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 92.885,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.29
+    },
+    {
+     "id": "s3",
+     "kind": "pill",
+     "start_s": 47.583,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.951,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.061
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 97.162,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.326,
+     "aspect": 2.564
+    },
+    {
+     "id": "s5",
+     "kind": "arrow",
+     "start_s": 42.449,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.854,
+     "dir": "up"
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 45.199,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.63,
+     "dir": "left"
+    },
+    {
+     "id": "s7",
+     "kind": "arrow",
+     "start_s": 91.644,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.752,
+     "dir": "down"
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 27.34,
+     "end_s": 121,
+     "opacity": 0.0,
+     "thick": 0.0496
+    },
+    {
+     "id": "s9",
+     "kind": "circle",
+     "start_s": 29.012,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.206
+    },
+    {
+     "id": "s10",
+     "kind": "star",
+     "start_s": 0.518,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.846,
+     "move": {
+      "to": {
+       "w": 0.956
+      }
+     }
+    }
+   ],
+   "memory": 1741436500,
+   "work": 114.50262000000002
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 24,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 15.284,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.053,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 7.917,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.12,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "rect",
+     "start_s": 8.693,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.921,
+     "aspect": 0.637
+    }
+   ],
+   "memory": 1039380960,
+   "work": 0.67666656
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 60,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 102.568,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.631,
+     "thick": 0.0455,
+     "move": {
+      "to": {
+       "w": 0.502
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "circle",
+     "start_s": 20.685,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.209
+    },
+    {
+     "id": "s2",
+     "kind": "progress",
+     "start_s": 60.54,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0133
+    },
+    {
+     "id": "s3",
+     "kind": "pill",
+     "start_s": 27.213,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.426,
+     "text": "Hi"
+    }
+   ],
+   "memory": 2117526680,
+   "work": 149.40521280000002
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 9.914,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.804,
+     "aspect": 0.342,
+     "move": {
+      "to": {
+       "w": 0.109
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "circle",
+     "start_s": 18.504,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.226
+    },
+    {
+     "id": "s2",
+     "kind": "line",
+     "start_s": 5.098,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.236,
+     "thick": 0.0195,
+     "move": {
+      "to": {
+       "w": 0.42
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 6.101,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.238,
+     "thick": 0.0047
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 4.632,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.843,
+     "aspect": 2.022
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 17.797,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.561,
+     "aspect": 3.943,
+     "move": {
+      "to": {
+       "w": 0.217
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "circle",
+     "start_s": 6.871,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.773,
+     "move": {
+      "to": {
+       "w": 0.051
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "arrow",
+     "start_s": 13.15,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.707,
+     "dir": "up"
+    },
+    {
+     "id": "s8",
+     "kind": "pill",
+     "start_s": 17.522,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.361,
+     "text": "Hi"
+    },
+    {
+     "id": "s9",
+     "kind": "arrow",
+     "start_s": 5.465,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.111,
+     "dir": "right",
+     "move": {
+      "to": {
+       "w": 0.36
+      }
+     }
+    }
+   ],
+   "memory": 2747283908,
+   "work": 80.87310959999999
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 30,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 4.862,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.682,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 14.874,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.788,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.067
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 15.291,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.455
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 10.193,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.625,
+     "aspect": 2.766
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 18.323,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.786,
+     "dir": "right"
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 9.075,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.372,
+     "aspect": 3.058
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 11.262,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.869,
+     "dir": "left"
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 13.154,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.069,
+     "thick": 0.0404,
+     "move": {
+      "to": {
+       "w": 0.684
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "arrow",
+     "start_s": 0.254,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.839,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.178
+      }
+     }
+    },
+    {
+     "id": "s9",
+     "kind": "progress",
+     "start_s": 13.814,
+     "end_s": 21,
+     "opacity": 1.0,
+     "thick": 0.0359
+    }
+   ],
+   "memory": 1603167548,
+   "work": 8.422106399999999
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 30,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 1.895,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.306
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 2.547,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.765,
+     "aspect": 3.693,
+     "move": {
+      "to": {
+       "w": 0.625
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 0.752,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.172,
+     "dir": "up"
+    },
+    {
+     "id": "s3",
+     "kind": "circle",
+     "start_s": 2.538,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.837,
+     "move": {
+      "to": {
+       "w": 0.29
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "circle",
+     "start_s": 1.378,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.231
+    },
+    {
+     "id": "s5",
+     "kind": "progress",
+     "start_s": 1.507,
+     "end_s": 4,
+     "opacity": 0.5,
+     "thick": 0.0309
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 0.68,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.792,
+     "dir": "right"
+    }
+   ],
+   "memory": 1402129016,
+   "work": 1.2361755600000002
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 60,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 0.044,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.151,
+     "move": {
+      "to": {
+       "w": 0.876
+      }
+     }
+    }
+   ],
+   "memory": 753673216,
+   "work": 0.0
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 25,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 2.932,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.723,
+     "dir": "left"
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 12.823,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.636,
+     "thick": 0.0175
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 5.955,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.529
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 9.59,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.257,
+     "aspect": 0.827
+    }
+   ],
+   "memory": 1217666216,
+   "work": 5.372916
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 25,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 431.014,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.624
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 310.736,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.07,
+     "thick": 0.0311
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 261.669,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.557
+    },
+    {
+     "id": "s3",
+     "kind": "pill",
+     "start_s": 175.736,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.214,
+     "text": "Hi"
+    },
+    {
+     "id": "s4",
+     "kind": "progress",
+     "start_s": 413.242,
+     "end_s": 601,
+     "opacity": 0.5,
+     "thick": 0.0036
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 254.181,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.088,
+     "aspect": 3.218
+    },
+    {
+     "id": "s6",
+     "kind": "star",
+     "start_s": 520.514,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.404
+    },
+    {
+     "id": "s7",
+     "kind": "star",
+     "start_s": 155.379,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.983
+    },
+    {
+     "id": "s8",
+     "kind": "arrow",
+     "start_s": 157.04,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.923,
+     "dir": "up"
+    },
+    {
+     "id": "s9",
+     "kind": "pill",
+     "start_s": 142.136,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.624,
+     "text": "Hi"
+    }
+   ],
+   "memory": 2825687372,
+   "work": 1966.46268
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 50,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 2.66,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.323,
+     "thick": 0.0357
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 2.836,
+     "end_s": 4,
+     "opacity": 0.5,
+     "thick": 0.0088
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 1.571,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.302
+    }
+   ],
+   "memory": 1026398172,
+   "work": 0.6523575
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 24,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 4.569,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.525
+    }
+   ],
+   "memory": 753673216,
+   "work": 0.03841744592592593
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 25,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 67.383,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.967,
+     "aspect": 4.65
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 64.272,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.111,
+     "thick": 0.0418
+    }
+   ],
+   "memory": 1100245360,
+   "work": 17.244048
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 50,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 2.286,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.654,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.742
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 0.661,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.225,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.868
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "progress",
+     "start_s": 1.648,
+     "end_s": 4,
+     "opacity": 0.5,
+     "thick": 0.042
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 2.311,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.337,
+     "dir": "right"
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 1.18,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.941,
+     "text": "Hi"
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 0.853,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.713,
+     "move": {
+      "to": {
+       "w": 0.925
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "progress",
+     "start_s": 0.989,
+     "end_s": 4,
+     "opacity": 0.5,
+     "thick": 0.0277
+    },
+    {
+     "id": "s7",
+     "kind": "circle",
+     "start_s": 1.999,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.219,
+     "move": {
+      "to": {
+       "w": 0.849
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "star",
+     "start_s": 2.121,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.96
+    },
+    {
+     "id": "s9",
+     "kind": "arrow",
+     "start_s": 1.67,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.717,
+     "dir": "left",
+     "move": {
+      "to": {
+       "w": 0.691
+      }
+     }
+    },
+    {
+     "id": "s10",
+     "kind": "line",
+     "start_s": 2.524,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.552,
+     "thick": 0.0127,
+     "move": {
+      "to": {
+       "w": 0.424
+      }
+     }
+    }
+   ],
+   "memory": 1797255796,
+   "work": 5.495774400000002
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 25,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 3.318,
+     "end_s": 21,
+     "opacity": 1.0,
+     "thick": 0.0283
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 5.553,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.648
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 6.555,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.706,
+     "move": {
+      "to": {
+       "w": 0.429
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 11.749,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.251,
+     "thick": 0.0077
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 15.463,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.362,
+     "aspect": 1.235,
+     "move": {
+      "to": {
+       "w": 0.263
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "line",
+     "start_s": 15.177,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.199,
+     "thick": 0.0137
+    }
+   ],
+   "memory": 1047402116,
+   "work": 0.12376651851851853
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 0.362,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.649,
+     "dir": "down",
+     "move": {
+      "to": {
+       "w": 0.977
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.17,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.958
+    },
+    {
+     "id": "s2",
+     "kind": "line",
+     "start_s": 0.214,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.353,
+     "thick": 0.0374,
+     "move": {
+      "to": {
+       "w": 0.928
+      }
+     }
+    }
+   ],
+   "memory": 2231441508,
+   "work": 0.6428832600000001
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 60,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 2.716,
+     "end_s": 21,
+     "opacity": 0.0,
+     "thick": 0.0496
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 3.666,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.617,
+     "move": {
+      "to": {
+       "w": 0.474
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 15.58,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.082
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 9.09,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.378,
+     "thick": 0.0026
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 16.567,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.17,
+     "aspect": 3.96
+    },
+    {
+     "id": "s5",
+     "kind": "pill",
+     "start_s": 8.593,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.157,
+     "text": "Hi"
+    },
+    {
+     "id": "s6",
+     "kind": "circle",
+     "start_s": 2.677,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.783,
+     "move": {
+      "to": {
+       "w": 0.379
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "arrow",
+     "start_s": 19.164,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.087,
+     "dir": "left"
+    },
+    {
+     "id": "s8",
+     "kind": "circle",
+     "start_s": 4.267,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.225,
+     "move": {
+      "to": {
+       "w": 0.385
+      }
+     }
+    },
+    {
+     "id": "s9",
+     "kind": "rect",
+     "start_s": 6.935,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.282,
+     "aspect": 0.283
+    },
+    {
+     "id": "s10",
+     "kind": "circle",
+     "start_s": 11.634,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.831
+    },
+    {
+     "id": "s11",
+     "kind": "circle",
+     "start_s": 15.968,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.918,
+     "move": {
+      "to": {
+       "w": 0.824
+      }
+     }
+    }
+   ],
+   "memory": 2085128184,
+   "work": 56.592081066666665
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 30,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 1.412,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.798,
+     "thick": 0.025
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.086,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.365
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 2.856,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.705,
+     "dir": "right",
+     "move": {
+      "to": {
+       "w": 0.391
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "pill",
+     "start_s": 1.017,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.962,
+     "text": "Hi"
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 1.17,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.682,
+     "aspect": 4.209
+    },
+    {
+     "id": "s5",
+     "kind": "arrow",
+     "start_s": 0.263,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.118,
+     "dir": "right"
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 1.032,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.978,
+     "dir": "left",
+     "move": {
+      "to": {
+       "w": 0.176
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "rect",
+     "start_s": 2.409,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.209,
+     "aspect": 3.325
+    },
+    {
+     "id": "s8",
+     "kind": "rect",
+     "start_s": 0.572,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.523,
+     "aspect": 4.008,
+     "move": {
+      "to": {
+       "w": 0.725
+      }
+     }
+    },
+    {
+     "id": "s9",
+     "kind": "progress",
+     "start_s": 2.627,
+     "end_s": 4,
+     "opacity": 1.0,
+     "thick": 0.0335
+    },
+    {
+     "id": "s10",
+     "kind": "circle",
+     "start_s": 0.099,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.496,
+     "move": {
+      "to": {
+       "w": 0.323
+      }
+     }
+    },
+    {
+     "id": "s11",
+     "kind": "rect",
+     "start_s": 1.735,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.349,
+     "aspect": 1.348,
+     "move": {
+      "to": {
+       "w": 0.46
+      }
+     }
+    }
+   ],
+   "memory": 1432165800,
+   "work": 0.3442379199999999
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 60,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 0.001,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.351
+    },
+    {
+     "id": "s1",
+     "kind": "circle",
+     "start_s": 0.498,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.254
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 0.227,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.965,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "star",
+     "start_s": 0.471,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.543
+    },
+    {
+     "id": "s4",
+     "kind": "progress",
+     "start_s": 0.17,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "thick": 0.0397
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 0.05,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.216
+    },
+    {
+     "id": "s6",
+     "kind": "rect",
+     "start_s": 0.431,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.064,
+     "aspect": 0.618,
+     "move": {
+      "to": {
+       "w": 0.133
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "arrow",
+     "start_s": 0.034,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.737,
+     "dir": "up"
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 0.186,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "thick": 0.0104
+    }
+   ],
+   "memory": 1533590232,
+   "work": 0.42986808
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 60,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 0.235,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.355,
+     "move": {
+      "to": {
+       "w": 0.215
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 0.33,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.619,
+     "aspect": 3.261
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 0.258,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.761,
+     "dir": "left"
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 0.135,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.758,
+     "dir": "right",
+     "move": {
+      "to": {
+       "w": 0.506
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 0.396,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.242,
+     "dir": "left"
+    },
+    {
+     "id": "s5",
+     "kind": "progress",
+     "start_s": 0.039,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "thick": 0.0059
+    },
+    {
+     "id": "s6",
+     "kind": "circle",
+     "start_s": 0.104,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.693
+    }
+   ],
+   "memory": 1106162944,
+   "work": 0.012351051851851855
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 60,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 19.437,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.173,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 10.745,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.763
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 17.36,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.115,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 3.428,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.889,
+     "dir": "left"
+    },
+    {
+     "id": "s4",
+     "kind": "star",
+     "start_s": 15.209,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.809,
+     "move": {
+      "to": {
+       "w": 0.226
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 17.565,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.119,
+     "aspect": 1.149
+    },
+    {
+     "id": "s6",
+     "kind": "rect",
+     "start_s": 7.225,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.649,
+     "aspect": 2.515
+    },
+    {
+     "id": "s7",
+     "kind": "star",
+     "start_s": 19.134,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.404,
+     "move": {
+      "to": {
+       "w": 0.685
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "rect",
+     "start_s": 4.44,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.745,
+     "aspect": 2.516
+    },
+    {
+     "id": "s9",
+     "kind": "star",
+     "start_s": 5.564,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.486
+    },
+    {
+     "id": "s10",
+     "kind": "circle",
+     "start_s": 4.301,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.764
+    },
+    {
+     "id": "s11",
+     "kind": "rect",
+     "start_s": 0.352,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.064,
+     "aspect": 4.696
+    }
+   ],
+   "memory": 2105172732,
+   "work": 74.98973333333333
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 60,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 0.381,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.56,
+     "move": {
+      "to": {
+       "w": 0.836
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 0.256,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "thick": 0.007
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 0.152,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.788
+    }
+   ],
+   "memory": 1039128168,
+   "work": 0.06659562
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 24,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 347.012,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.282
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 406.457,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.801,
+     "thick": 0.0378
+    }
+   ],
+   "memory": 1324993072,
+   "work": 137.10056960000003
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 25,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 26.636,
+     "end_s": 601,
+     "opacity": 1.0,
+     "thick": 0.0204
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 277.349,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.919,
+     "thick": 0.0366,
+     "move": {
+      "to": {
+       "w": 0.61
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 228.929,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.705,
+     "dir": "left",
+     "move": {
+      "to": {
+       "w": 0.456
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 485.807,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.896,
+     "aspect": 4.176
+    },
+    {
+     "id": "s4",
+     "kind": "circle",
+     "start_s": 139.226,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.116,
+     "move": {
+      "to": {
+       "w": 0.328
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 518.097,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.607
+    },
+    {
+     "id": "s6",
+     "kind": "pill",
+     "start_s": 195.695,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.476,
+     "text": "Hi"
+    },
+    {
+     "id": "s7",
+     "kind": "circle",
+     "start_s": 244.827,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.29
+    }
+   ],
+   "memory": 2486896720,
+   "work": 1110.0906599999998
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 30,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 0.023,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.544,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.339,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.555
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 0.221,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.506,
+     "dir": "left",
+     "move": {
+      "to": {
+       "w": 0.286
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 0.194,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.666,
+     "thick": 0.017
+    },
+    {
+     "id": "s4",
+     "kind": "line",
+     "start_s": 0.329,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.606,
+     "thick": 0.0295
+    },
+    {
+     "id": "s5",
+     "kind": "progress",
+     "start_s": 0.099,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "thick": 0.0455
+    },
+    {
+     "id": "s6",
+     "kind": "line",
+     "start_s": 0.067,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.56,
+     "thick": 0.0114
+    },
+    {
+     "id": "s7",
+     "kind": "circle",
+     "start_s": 0.236,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.401
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 0.338,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0468
+    },
+    {
+     "id": "s9",
+     "kind": "arrow",
+     "start_s": 0.037,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.547,
+     "dir": "up"
+    }
+   ],
+   "memory": 1282478368,
+   "work": 0.006281605925925926
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 50,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 0.236,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.868,
+     "dir": "down"
+    },
+    {
+     "id": "s1",
+     "kind": "circle",
+     "start_s": 0.336,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.591
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 0.017,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.524,
+     "move": {
+      "to": {
+       "w": 0.205
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 0.238,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0247
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 0.226,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.106,
+     "dir": "left"
+    },
+    {
+     "id": "s5",
+     "kind": "progress",
+     "start_s": 0.113,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0327
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 0.129,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.496,
+     "dir": "left"
+    },
+    {
+     "id": "s7",
+     "kind": "pill",
+     "start_s": 0.43,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.141,
+     "text": "Hi"
+    },
+    {
+     "id": "s8",
+     "kind": "line",
+     "start_s": 0.465,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.69,
+     "thick": 0.0129
+    },
+    {
+     "id": "s9",
+     "kind": "rect",
+     "start_s": 0.006,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.46,
+     "aspect": 0.24
+    },
+    {
+     "id": "s10",
+     "kind": "progress",
+     "start_s": 0.422,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "thick": 0.0365
+    },
+    {
+     "id": "s11",
+     "kind": "progress",
+     "start_s": 0.186,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0389
+    }
+   ],
+   "memory": 1588281384,
+   "work": 0.43639819999999996
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 30,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 370.145,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.774
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 211.299,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.361,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "rect",
+     "start_s": 88.929,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.283,
+     "aspect": 0.459,
+     "move": {
+      "to": {
+       "w": 0.13
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 262.213,
+     "end_s": 601,
+     "opacity": 1.0,
+     "thick": 0.0165
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 542.059,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.262,
+     "dir": "left"
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 412.159,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.973,
+     "aspect": 1.443
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 127.892,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.707,
+     "dir": "up"
+    },
+    {
+     "id": "s7",
+     "kind": "pill",
+     "start_s": 351.406,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.87,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.064
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "pill",
+     "start_s": 23.872,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.377,
+     "text": "Hi"
+    },
+    {
+     "id": "s9",
+     "kind": "circle",
+     "start_s": 532.986,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.718,
+     "move": {
+      "to": {
+       "w": 0.524
+      }
+     }
+    },
+    {
+     "id": "s10",
+     "kind": "rect",
+     "start_s": 185.167,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.874,
+     "aspect": 0.204
+    },
+    {
+     "id": "s11",
+     "kind": "rect",
+     "start_s": 236.395,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.335,
+     "aspect": 3.679
+    }
+   ],
+   "memory": 1751622240,
+   "work": 352.589544
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 24,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 11.547,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.223,
+     "aspect": 3.621
+    },
+    {
+     "id": "s1",
+     "kind": "circle",
+     "start_s": 0.965,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.74,
+     "move": {
+      "to": {
+       "w": 0.079
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 8.95,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.233,
+     "move": {
+      "to": {
+       "w": 0.449
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 16.817,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.903,
+     "thick": 0.0132
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 18.987,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.748,
+     "aspect": 0.561
+    },
+    {
+     "id": "s5",
+     "kind": "arrow",
+     "start_s": 18.342,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.223,
+     "dir": "right"
+    },
+    {
+     "id": "s6",
+     "kind": "line",
+     "start_s": 17.85,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.47,
+     "thick": 0.0299,
+     "move": {
+      "to": {
+       "w": 0.432
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "star",
+     "start_s": 6.168,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.784,
+     "move": {
+      "to": {
+       "w": 0.516
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 12.039,
+     "end_s": 21,
+     "opacity": 1.0,
+     "thick": 0.0371
+    },
+    {
+     "id": "s9",
+     "kind": "line",
+     "start_s": 12.808,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.404,
+     "thick": 0.0298
+    }
+   ],
+   "memory": 1634701496,
+   "work": 12.279667200000002
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 30,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 36.063,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.39,
+     "aspect": 1.449,
+     "move": {
+      "to": {
+       "w": 0.333
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 114.713,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.778,
+     "aspect": 4.365
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 21.134,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.987
+    },
+    {
+     "id": "s3",
+     "kind": "circle",
+     "start_s": 6.425,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.605
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 26.104,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.106,
+     "text": "Hi"
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 71.175,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.701
+    },
+    {
+     "id": "s6",
+     "kind": "rect",
+     "start_s": 69.786,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.164,
+     "aspect": 0.779,
+     "move": {
+      "to": {
+       "w": 0.895
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "pill",
+     "start_s": 23.065,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.188,
+     "text": "Hi"
+    },
+    {
+     "id": "s8",
+     "kind": "pill",
+     "start_s": 25.883,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.193,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.771
+      }
+     }
+    }
+   ],
+   "memory": 1223538368,
+   "work": 2.0295879111111113
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 30,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 1.295,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.654,
+     "dir": "down"
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 3.786,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.415,
+     "thick": 0.0445,
+     "move": {
+      "to": {
+       "w": 0.433
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 6.713,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.524,
+     "dir": "right"
+    },
+    {
+     "id": "s3",
+     "kind": "circle",
+     "start_s": 3.694,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.493,
+     "move": {
+      "to": {
+       "w": 0.226
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "star",
+     "start_s": 7.657,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.629
+    }
+   ],
+   "memory": 1316760472,
+   "work": 6.2265912
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 25,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 70.711,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.604,
+     "aspect": 4.947
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 101.574,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.561,
+     "aspect": 0.763
+    },
+    {
+     "id": "s2",
+     "kind": "rect",
+     "start_s": 24.671,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.601,
+     "aspect": 0.451
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 357.498,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.167,
+     "aspect": 3.237
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 257.474,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.844,
+     "dir": "right"
+    },
+    {
+     "id": "s5",
+     "kind": "arrow",
+     "start_s": 526.24,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.999,
+     "dir": "right"
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 239.261,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.357,
+     "dir": "left"
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 306.83,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.879,
+     "thick": 0.0078,
+     "move": {
+      "to": {
+       "w": 0.066
+      }
+     }
+    }
+   ],
+   "memory": 1164912288,
+   "work": 7.393831111111112
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 25,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 13.802,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.474,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 3.628,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.156,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "progress",
+     "start_s": 3.366,
+     "end_s": 21,
+     "opacity": 1.0,
+     "thick": 0.0441
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 17.003,
+     "end_s": 21,
+     "opacity": 0.0,
+     "thick": 0.0111
+    },
+    {
+     "id": "s4",
+     "kind": "line",
+     "start_s": 6.992,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.076,
+     "thick": 0.0165
+    },
+    {
+     "id": "s5",
+     "kind": "star",
+     "start_s": 15.63,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.944
+    },
+    {
+     "id": "s6",
+     "kind": "progress",
+     "start_s": 11.051,
+     "end_s": 21,
+     "opacity": 1.0,
+     "thick": 0.0425
+    },
+    {
+     "id": "s7",
+     "kind": "pill",
+     "start_s": 6.286,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.93,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.337
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "circle",
+     "start_s": 15.306,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.146
+    },
+    {
+     "id": "s9",
+     "kind": "star",
+     "start_s": 14.13,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.699,
+     "move": {
+      "to": {
+       "w": 0.316
+      }
+     }
+    },
+    {
+     "id": "s10",
+     "kind": "line",
+     "start_s": 14.459,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.172,
+     "thick": 0.0094
+    }
+   ],
+   "memory": 1373838304,
+   "work": 1.9370968888888889
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 24,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 109.935,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.425,
+     "thick": 0.0111,
+     "move": {
+      "to": {
+       "w": 0.463
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 62.158,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.282
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 13.083,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.758,
+     "dir": "left"
+    },
+    {
+     "id": "s3",
+     "kind": "pill",
+     "start_s": 73.218,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.068,
+     "text": "Hi"
+    },
+    {
+     "id": "s4",
+     "kind": "progress",
+     "start_s": 36.867,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0075
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 4.115,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.057
+    },
+    {
+     "id": "s6",
+     "kind": "line",
+     "start_s": 24.757,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.23,
+     "thick": 0.0124
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 22.007,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.95,
+     "thick": 0.0361,
+     "move": {
+      "to": {
+       "w": 0.379
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "line",
+     "start_s": 51.811,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.802,
+     "thick": 0.0134,
+     "move": {
+      "to": {
+       "w": 0.911
+      }
+     }
+    }
+   ],
+   "memory": 1247997480,
+   "work": 4.459072
+  },
+  {
+   "frame": [
+    1280,
+    720
+   ],
+   "fps": 24,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 15.627,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.142,
+     "thick": 0.0136,
+     "move": {
+      "to": {
+       "w": 0.662
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "arrow",
+     "start_s": 11.003,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.428,
+     "dir": "right"
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 10.619,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.155
+    },
+    {
+     "id": "s3",
+     "kind": "pill",
+     "start_s": 16.333,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.852,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.403
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "star",
+     "start_s": 2.243,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.362,
+     "move": {
+      "to": {
+       "w": 0.475
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 4.642,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.865,
+     "aspect": 2.312
+    },
+    {
+     "id": "s6",
+     "kind": "rect",
+     "start_s": 16.841,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.176,
+     "aspect": 0.516
+    },
+    {
+     "id": "s7",
+     "kind": "circle",
+     "start_s": 6.47,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.631
+    }
+   ],
+   "memory": 1313040904,
+   "work": 4.998834133333334
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 24,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 10.351,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.061,
+     "move": {
+      "to": {
+       "w": 0.62
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 8.229,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.671,
+     "thick": 0.0246
+    }
+   ],
+   "memory": 836907376,
+   "work": 0.20860501333333334
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 30,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 0.05,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "thick": 0.0405
+    }
+   ],
+   "memory": 908212640,
+   "work": 0.0
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 24,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 36.287,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.721,
+     "dir": "down"
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 50.487,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.227,
+     "aspect": 1.689
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 46.968,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.443
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 52.227,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.841,
+     "aspect": 2.784
+    },
+    {
+     "id": "s4",
+     "kind": "star",
+     "start_s": 22.328,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.191
+    },
+    {
+     "id": "s5",
+     "kind": "line",
+     "start_s": 68.046,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.433,
+     "thick": 0.0403,
+     "move": {
+      "to": {
+       "w": 0.301
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 100.706,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.999,
+     "dir": "up"
+    }
+   ],
+   "memory": 1135665260,
+   "work": 6.614112
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 50,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 0.305,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.252,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 0.066,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.043
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 0.082,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.101,
+     "move": {
+      "to": {
+       "w": 0.224
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 0.48,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.1,
+     "thick": 0.0443
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 0.496,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.331,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.74
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "arrow",
+     "start_s": 0.131,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.235,
+     "dir": "right"
+    },
+    {
+     "id": "s6",
+     "kind": "pill",
+     "start_s": 0.485,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.393,
+     "text": "Hi"
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 0.122,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.078,
+     "thick": 0.0075
+    }
+   ],
+   "memory": 1329037756,
+   "work": 0.2216089
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 50,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 0.412,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.148,
+     "dir": "down"
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 0.338,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "thick": 0.011
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 0.444,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.544,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 0.434,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.969,
+     "thick": 0.0431
+    },
+    {
+     "id": "s4",
+     "kind": "line",
+     "start_s": 0.46,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.59,
+     "thick": 0.0187,
+     "move": {
+      "to": {
+       "w": 0.77
+      }
+     }
+    }
+   ],
+   "memory": 1283268592,
+   "work": 0.21909099999999998
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 85.618,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0074
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 114.666,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.368,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "line",
+     "start_s": 62.801,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.766,
+     "thick": 0.0334
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 18.787,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.669,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.936
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 65.998,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.427,
+     "text": "Hi"
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 60.6,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.321,
+     "aspect": 4.267
+    },
+    {
+     "id": "s6",
+     "kind": "star",
+     "start_s": 65.593,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.614
+    }
+   ],
+   "memory": 2444519060,
+   "work": 326.5970256
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 29.016,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.432
+    },
+    {
+     "id": "s1",
+     "kind": "arrow",
+     "start_s": 457.281,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.269,
+     "dir": "left"
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 515.91,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.896,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 518.967,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.951,
+     "aspect": 1.133,
+     "move": {
+      "to": {
+       "w": 0.837
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "progress",
+     "start_s": 321.669,
+     "end_s": 601,
+     "opacity": 0.0,
+     "thick": 0.0319
+    },
+    {
+     "id": "s5",
+     "kind": "line",
+     "start_s": 93.675,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.814,
+     "thick": 0.0287,
+     "move": {
+      "to": {
+       "w": 0.623
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "star",
+     "start_s": 360.079,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.666
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 262.509,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.163,
+     "thick": 0.0291,
+     "move": {
+      "to": {
+       "w": 0.613
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 86.698,
+     "end_s": 601,
+     "opacity": 0.5,
+     "thick": 0.0468
+    },
+    {
+     "id": "s9",
+     "kind": "circle",
+     "start_s": 13.522,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.731
+    },
+    {
+     "id": "s10",
+     "kind": "pill",
+     "start_s": 521.771,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.976,
+     "text": "Hi"
+    },
+    {
+     "id": "s11",
+     "kind": "pill",
+     "start_s": 532.513,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.631,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.794
+      }
+     }
+    }
+   ],
+   "memory": 3177260544,
+   "work": 2556.756648
+  },
+  {
+   "frame": [
+    4096,
+    16
+   ],
+   "fps": 30,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 8.5,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.108,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.33
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 9.913,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.217,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.813
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 3.64,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.432,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.699
+      }
+     }
+    }
+   ],
+   "memory": 871125248,
+   "work": 0.0956596148148148
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 50,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 0.26,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.55
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 0.434,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.463,
+     "thick": 0.0471,
+     "move": {
+      "to": {
+       "w": 0.189
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "progress",
+     "start_s": 0.265,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "thick": 0.0125
+    }
+   ],
+   "memory": 1156047276,
+   "work": 0.1344689
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 20,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 14.39,
+     "end_s": 21,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.328,
+     "thick": 0.0446
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 9.347,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.084,
+     "move": {
+      "to": {
+       "w": 0.157
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "progress",
+     "start_s": 2.104,
+     "end_s": 21,
+     "opacity": 1.0,
+     "thick": 0.0206
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 18.976,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.436,
+     "dir": "up"
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 11.209,
+     "end_s": 21,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.138,
+     "dir": "left",
+     "move": {
+      "to": {
+       "w": 0.546
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 2.572,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.733
+    },
+    {
+     "id": "s6",
+     "kind": "star",
+     "start_s": 11.157,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.482,
+     "move": {
+      "to": {
+       "w": 0.523
+      }
+     }
+    },
+    {
+     "id": "s7",
+     "kind": "circle",
+     "start_s": 11.436,
+     "end_s": 21,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.589
+    }
+   ],
+   "memory": 2546433844,
+   "work": 46.6317768
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 50,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 90.118,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.33,
+     "thick": 0.0271
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 585.512,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.093,
+     "text": "Hi"
+    }
+   ],
+   "memory": 1093778824,
+   "work": 0.0
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 60,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 0.024,
+     "end_s": 4,
+     "opacity": 1.0,
+     "thick": 0.0417
+    }
+   ],
+   "memory": 1035553280,
+   "work": 0.4652064
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 25,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 78.265,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.11,
+     "move": {
+      "to": {
+       "w": 0.473
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 73.8,
+     "end_s": 121,
+     "opacity": 0.5,
+     "thick": 0.0151
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 92.925,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.421,
+     "move": {
+      "to": {
+       "w": 0.632
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "star",
+     "start_s": 37.474,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.108
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 82.305,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.72,
+     "aspect": 3.205
+    },
+    {
+     "id": "s5",
+     "kind": "pill",
+     "start_s": 16.13,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.566,
+     "text": "Hi"
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 117.517,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.712,
+     "dir": "right"
+    },
+    {
+     "id": "s7",
+     "kind": "rect",
+     "start_s": 111.455,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.503,
+     "aspect": 3.81,
+     "move": {
+      "to": {
+       "w": 0.059
+      }
+     }
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 10.829,
+     "end_s": 121,
+     "opacity": 0.5,
+     "thick": 0.0056
+    },
+    {
+     "id": "s9",
+     "kind": "pill",
+     "start_s": 69.976,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.716,
+     "text": "Hi"
+    }
+   ],
+   "memory": 1910063336,
+   "work": 173.66535733333336
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 30,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 120.878,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.911,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.989
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 379.439,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.867,
+     "thick": 0.003,
+     "move": {
+      "to": {
+       "w": 0.569
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "rect",
+     "start_s": 238.653,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.682,
+     "aspect": 3.338
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 418.319,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.624,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.84
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 306.977,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.691,
+     "dir": "up"
+    },
+    {
+     "id": "s5",
+     "kind": "progress",
+     "start_s": 589.855,
+     "end_s": 601,
+     "opacity": 1.0,
+     "thick": 0.0291
+    },
+    {
+     "id": "s6",
+     "kind": "progress",
+     "start_s": 82.345,
+     "end_s": 601,
+     "opacity": 0.0,
+     "thick": 0.0287
+    },
+    {
+     "id": "s7",
+     "kind": "progress",
+     "start_s": 397.356,
+     "end_s": 601,
+     "opacity": 1.0,
+     "thick": 0.0369
+    },
+    {
+     "id": "s8",
+     "kind": "line",
+     "start_s": 518.279,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.883,
+     "thick": 0.0406,
+     "move": {
+      "to": {
+       "w": 0.366
+      }
+     }
+    },
+    {
+     "id": "s9",
+     "kind": "circle",
+     "start_s": 496.713,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.258
+    },
+    {
+     "id": "s10",
+     "kind": "rect",
+     "start_s": 592.867,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.213,
+     "aspect": 0.658,
+     "move": {
+      "to": {
+       "w": 0.6
+      }
+     }
+    }
+   ],
+   "memory": 1540437844,
+   "work": 251.789976
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 50,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 0.487,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.985,
+     "dir": "right"
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.087,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.07
+    }
+   ],
+   "memory": 1109732260,
+   "work": 0.1700529
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 60,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 2.726,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.274
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 0.604,
+     "end_s": 4,
+     "opacity": 0.0,
+     "thick": 0.0106
+    }
+   ],
+   "memory": 835760740,
+   "work": 0.0
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 24,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 0.087,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "thick": 0.0294
+    },
+    {
+     "id": "s1",
+     "kind": "arrow",
+     "start_s": 0.129,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.631,
+     "dir": "left"
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 0.435,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.166,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "circle",
+     "start_s": 0.232,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.797,
+     "move": {
+      "to": {
+       "w": 0.074
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "line",
+     "start_s": 0.383,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.31,
+     "thick": 0.0237
+    }
+   ],
+   "memory": 1547632504,
+   "work": 0.164005552
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 30,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 11.875,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.781,
+     "move": {
+      "to": {
+       "w": 0.48
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 141.629,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.605,
+     "move": {
+      "to": {
+       "w": 0.766
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 517.99,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.674,
+     "dir": "down"
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 412.69,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.887,
+     "aspect": 2.368
+    },
+    {
+     "id": "s4",
+     "kind": "circle",
+     "start_s": 50.432,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.469
+    }
+   ],
+   "memory": 1297522468,
+   "work": 170.96904
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 24,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 29.148,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.56,
+     "move": {
+      "to": {
+       "w": 0.286
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 64.579,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.961
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 32.225,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.984
+    }
+   ],
+   "memory": 2315752428,
+   "work": 180.03422592
+  },
+  {
+   "frame": [
+    1280,
+    720
+   ],
+   "fps": 50,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 557.196,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.869,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.129
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 599.79,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.138,
+     "aspect": 4.456
+    },
+    {
+     "id": "s2",
+     "kind": "line",
+     "start_s": 511.763,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.378,
+     "thick": 0.0393
+    },
+    {
+     "id": "s3",
+     "kind": "star",
+     "start_s": 188.831,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.319
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 412.257,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.171,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.079
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "pill",
+     "start_s": 434.109,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.906,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.628
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "star",
+     "start_s": 95.803,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.665
+    }
+   ],
+   "memory": 1257650684,
+   "work": 305.85332000000005
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 50,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "star",
+     "start_s": 0.155,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.275,
+     "move": {
+      "to": {
+       "w": 0.908
+      }
+     }
+    }
+   ],
+   "memory": 1309193744,
+   "work": 0.2461355111111111
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 25,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 0.418,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "thick": 0.0117
+    }
+   ],
+   "memory": 776768000,
+   "work": 0.0036443911111111106
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 286.161,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.956
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 368.634,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.505,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 1.816,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.94,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 26.485,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.091,
+     "dir": "down"
+    },
+    {
+     "id": "s4",
+     "kind": "circle",
+     "start_s": 411.334,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.336
+    },
+    {
+     "id": "s5",
+     "kind": "progress",
+     "start_s": 73.298,
+     "end_s": 601,
+     "opacity": 0.5,
+     "thick": 0.0129
+    },
+    {
+     "id": "s6",
+     "kind": "progress",
+     "start_s": 513.891,
+     "end_s": 601,
+     "opacity": 1.0,
+     "thick": 0.0189
+    }
+   ],
+   "memory": 2566573532,
+   "work": 971.5001040000001
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 50,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 75.779,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.393,
+     "aspect": 2.508
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 37.994,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.07,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 98.996,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.709
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 112.763,
+     "end_s": 121,
+     "opacity": 0.0,
+     "thick": 0.0154
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 5.06,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.617,
+     "aspect": 1.719
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 88.283,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.31,
+     "aspect": 3.372,
+     "move": {
+      "to": {
+       "w": 0.162
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "circle",
+     "start_s": 26.687,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.607
+    },
+    {
+     "id": "s7",
+     "kind": "progress",
+     "start_s": 58.544,
+     "end_s": 121,
+     "opacity": 0.0,
+     "thick": 0.0241
+    },
+    {
+     "id": "s8",
+     "kind": "rect",
+     "start_s": 15.204,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.504,
+     "aspect": 0.941
+    }
+   ],
+   "memory": 1251946356,
+   "work": 6.067136
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 60,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "circle",
+     "start_s": 72.071,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.921,
+     "move": {
+      "to": {
+       "w": 0.844
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 63.932,
+     "end_s": 121,
+     "opacity": 0.5,
+     "thick": 0.0339
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 69.067,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.913
+    }
+   ],
+   "memory": 1208613504,
+   "work": 99.1040256
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 50,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 28.829,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.376,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 8.862,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.648,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 71.84,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.739
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 104.9,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0363
+    }
+   ],
+   "memory": 2239786676,
+   "work": 163.058112
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 60,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 0.14,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.705,
+     "thick": 0.0212
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.282,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.631
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 0.258,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.275,
+     "move": {
+      "to": {
+       "w": 0.684
+      }
+     }
+    }
+   ],
+   "memory": 897413412,
+   "work": 0.0
+  },
+  {
+   "frame": [
+    1920,
+    1080
+   ],
+   "fps": 50,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 119.569,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.759,
+     "dir": "right"
+    },
+    {
+     "id": "s1",
+     "kind": "circle",
+     "start_s": 53.158,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.575
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 83.007,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.244,
+     "move": {
+      "to": {
+       "w": 0.149
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "circle",
+     "start_s": 114.88,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.624
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 103.148,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.118,
+     "aspect": 2.657
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 115.341,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.179,
+     "aspect": 1.574
+    },
+    {
+     "id": "s6",
+     "kind": "rect",
+     "start_s": 58.821,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.663,
+     "aspect": 1.415
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 99.645,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.475,
+     "thick": 0.048
+    }
+   ],
+   "memory": 1492784764,
+   "work": 129.446472
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 24,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 168.368,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.189,
+     "dir": "up",
+     "move": {
+      "to": {
+       "w": 0.848
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 493.839,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.784
+    },
+    {
+     "id": "s2",
+     "kind": "progress",
+     "start_s": 529.948,
+     "end_s": 601,
+     "opacity": 1.0,
+     "thick": 0.0483
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 428.571,
+     "end_s": 601,
+     "opacity": 0.5,
+     "thick": 0.0111
+    },
+    {
+     "id": "s4",
+     "kind": "rect",
+     "start_s": 517.892,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.31,
+     "aspect": 0.556
+    },
+    {
+     "id": "s5",
+     "kind": "pill",
+     "start_s": 301.478,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.86,
+     "text": "Hi"
+    },
+    {
+     "id": "s6",
+     "kind": "pill",
+     "start_s": 289.976,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.151,
+     "text": "Hi"
+    },
+    {
+     "id": "s7",
+     "kind": "pill",
+     "start_s": 212.367,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.602,
+     "text": "Hi"
+    }
+   ],
+   "memory": 1355885584,
+   "work": 221.29413119999998
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 30,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 77.758,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0393
+    },
+    {
+     "id": "s1",
+     "kind": "arrow",
+     "start_s": 95.067,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.386,
+     "dir": "right",
+     "move": {
+      "to": {
+       "w": 0.447
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 18.825,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.348,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.08
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 49.245,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.06,
+     "thick": 0.0265
+    },
+    {
+     "id": "s4",
+     "kind": "progress",
+     "start_s": 79.961,
+     "end_s": 121,
+     "opacity": 0.0,
+     "thick": 0.0273
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 37.826,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.664,
+     "aspect": 2.333,
+     "move": {
+      "to": {
+       "w": 0.098
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "progress",
+     "start_s": 112.724,
+     "end_s": 121,
+     "opacity": 0.0,
+     "thick": 0.0088
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 84.827,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.703,
+     "thick": 0.0054
+    },
+    {
+     "id": "s8",
+     "kind": "circle",
+     "start_s": 3.787,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.468
+    }
+   ],
+   "memory": 1385095308,
+   "work": 33.2401248
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 600,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 156.608,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.841,
+     "thick": 0.0479
+    },
+    {
+     "id": "s1",
+     "kind": "line",
+     "start_s": 242.276,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.806,
+     "thick": 0.0066
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 584.541,
+     "end_s": 601,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.297,
+     "move": {
+      "to": {
+       "w": 0.672
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 288.189,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.732,
+     "thick": 0.0125,
+     "move": {
+      "to": {
+       "w": 0.166
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "line",
+     "start_s": 135.368,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.543,
+     "thick": 0.0356
+    },
+    {
+     "id": "s5",
+     "kind": "rect",
+     "start_s": 540.274,
+     "end_s": 601,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.513,
+     "aspect": 2.102
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 267.93,
+     "end_s": 601,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.078,
+     "dir": "left"
+    }
+   ],
+   "memory": 2340370520,
+   "work": 513.00576
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 60,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 0.445,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.255,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "circle",
+     "start_s": 0.463,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.852,
+     "move": {
+      "to": {
+       "w": 0.334
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 0.499,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.18
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 0.296,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.305,
+     "aspect": 0.609
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 0.313,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.16,
+     "text": "Hi"
+    },
+    {
+     "id": "s5",
+     "kind": "arrow",
+     "start_s": 0.335,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.422,
+     "dir": "left",
+     "move": {
+      "to": {
+       "w": 0.342
+      }
+     }
+    }
+   ],
+   "memory": 1074372732,
+   "work": 0.05469842666666666
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 60,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 9.293,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.312,
+     "thick": 0.042,
+     "move": {
+      "to": {
+       "w": 0.608
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "pill",
+     "start_s": 77.248,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.361,
+     "text": "Hi"
+    },
+    {
+     "id": "s2",
+     "kind": "rect",
+     "start_s": 4.795,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.497,
+     "aspect": 2.146,
+     "move": {
+      "to": {
+       "w": 0.614
+      }
+     }
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 13.364,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.556,
+     "aspect": 1.545
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 12.726,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.718,
+     "dir": "down"
+    },
+    {
+     "id": "s5",
+     "kind": "line",
+     "start_s": 90.045,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.833,
+     "thick": 0.008
+    },
+    {
+     "id": "s6",
+     "kind": "line",
+     "start_s": 12.669,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.726,
+     "thick": 0.0334
+    },
+    {
+     "id": "s7",
+     "kind": "star",
+     "start_s": 44.523,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.538
+    },
+    {
+     "id": "s8",
+     "kind": "circle",
+     "start_s": 114.646,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.228
+    },
+    {
+     "id": "s9",
+     "kind": "progress",
+     "start_s": 24.112,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.009
+    },
+    {
+     "id": "s10",
+     "kind": "arrow",
+     "start_s": 71.494,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.799,
+     "dir": "down",
+     "move": {
+      "to": {
+       "w": 0.901
+      }
+     }
+    }
+   ],
+   "memory": 1975359352,
+   "work": 346.6746688
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 25,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "progress",
+     "start_s": 82.821,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0299
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 28.046,
+     "end_s": 121,
+     "opacity": 0.0,
+     "thick": 0.009
+    },
+    {
+     "id": "s2",
+     "kind": "progress",
+     "start_s": 86.153,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0486
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 43.616,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.969,
+     "thick": 0.0498,
+     "move": {
+      "to": {
+       "w": 0.217
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "star",
+     "start_s": 119.622,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.873
+    },
+    {
+     "id": "s5",
+     "kind": "line",
+     "start_s": 71.556,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.466,
+     "thick": 0.0147
+    },
+    {
+     "id": "s6",
+     "kind": "arrow",
+     "start_s": 22.573,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.1,
+     "dir": "up"
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 44.879,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.29,
+     "thick": 0.0466
+    },
+    {
+     "id": "s8",
+     "kind": "circle",
+     "start_s": 11.499,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.293
+    },
+    {
+     "id": "s9",
+     "kind": "rect",
+     "start_s": 106.91,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.269,
+     "aspect": 1.437
+    },
+    {
+     "id": "s10",
+     "kind": "progress",
+     "start_s": 84.573,
+     "end_s": 121,
+     "opacity": 0.5,
+     "thick": 0.0185
+    }
+   ],
+   "memory": 1634839024,
+   "work": 56.441436
+  },
+  {
+   "frame": [
+    640,
+    360
+   ],
+   "fps": 50,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 1.754,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.673,
+     "aspect": 1.596,
+     "move": {
+      "to": {
+       "w": 0.493
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.103,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.585,
+     "move": {
+      "to": {
+       "w": 0.288
+      }
+     }
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 1.443,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.233
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 0.027,
+     "end_s": 4,
+     "opacity": 0.0,
+     "thick": 0.0185
+    },
+    {
+     "id": "s4",
+     "kind": "arrow",
+     "start_s": 1.567,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.4,
+     "dir": "up"
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 0.409,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.209,
+     "move": {
+      "to": {
+       "w": 0.942
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "star",
+     "start_s": 2.745,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.157
+    },
+    {
+     "id": "s7",
+     "kind": "star",
+     "start_s": 1.562,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.439
+    },
+    {
+     "id": "s8",
+     "kind": "line",
+     "start_s": 2.88,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.629,
+     "thick": 0.0076
+    },
+    {
+     "id": "s9",
+     "kind": "line",
+     "start_s": 0.337,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.757,
+     "thick": 0.0304
+    },
+    {
+     "id": "s10",
+     "kind": "circle",
+     "start_s": 1.372,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.299,
+     "move": {
+      "to": {
+       "w": 0.291
+      }
+     }
+    }
+   ],
+   "memory": 1372087840,
+   "work": 0.31343980000000005
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 25,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "pill",
+     "start_s": 67.547,
+     "end_s": 121,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.505,
+     "text": "Hi"
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 14.4,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0125
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 76.783,
+     "end_s": 121,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.931,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "progress",
+     "start_s": 31.197,
+     "end_s": 121,
+     "opacity": 1.0,
+     "thick": 0.0404
+    }
+   ],
+   "memory": 2250970652,
+   "work": 176.368308
+  },
+  {
+   "frame": [
+    1280,
+    720
+   ],
+   "fps": 30,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 1.979,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.628,
+     "thick": 0.0282
+    },
+    {
+     "id": "s1",
+     "kind": "progress",
+     "start_s": 2.102,
+     "end_s": 4,
+     "opacity": 0.5,
+     "thick": 0.0408
+    },
+    {
+     "id": "s2",
+     "kind": "arrow",
+     "start_s": 1.56,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.606,
+     "dir": "down"
+    },
+    {
+     "id": "s3",
+     "kind": "line",
+     "start_s": 2.872,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.248,
+     "thick": 0.0389
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 2.923,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.263,
+     "text": "Hi",
+     "move": {
+      "to": {
+       "w": 0.797
+      }
+     }
+    },
+    {
+     "id": "s5",
+     "kind": "pill",
+     "start_s": 1.079,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.292,
+     "text": "Hi"
+    },
+    {
+     "id": "s6",
+     "kind": "line",
+     "start_s": 1.142,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.354,
+     "thick": 0.0137
+    },
+    {
+     "id": "s7",
+     "kind": "arrow",
+     "start_s": 2.003,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.107,
+     "dir": "up"
+    },
+    {
+     "id": "s8",
+     "kind": "pill",
+     "start_s": 2.089,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.742,
+     "text": "Hi"
+    },
+    {
+     "id": "s9",
+     "kind": "progress",
+     "start_s": 0.855,
+     "end_s": 4,
+     "opacity": 0.5,
+     "thick": 0.0069
+    },
+    {
+     "id": "s10",
+     "kind": "progress",
+     "start_s": 2.708,
+     "end_s": 4,
+     "opacity": 1.0,
+     "thick": 0.0383
+    },
+    {
+     "id": "s11",
+     "kind": "star",
+     "start_s": 1.358,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.806
+    }
+   ],
+   "memory": 1560462168,
+   "work": 1.2241237600000001
+  },
+  {
+   "frame": [
+    2560,
+    1440
+   ],
+   "fps": 60,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "rect",
+     "start_s": 2.106,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.106,
+     "aspect": 0.308,
+     "move": {
+      "to": {
+       "w": 0.642
+      }
+     }
+    },
+    {
+     "id": "s1",
+     "kind": "star",
+     "start_s": 0.796,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.621
+    },
+    {
+     "id": "s2",
+     "kind": "star",
+     "start_s": 1.833,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.683
+    },
+    {
+     "id": "s3",
+     "kind": "rect",
+     "start_s": 0.06,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.51,
+     "aspect": 0.939
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 0.514,
+     "end_s": 4,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.882,
+     "text": "Hi"
+    },
+    {
+     "id": "s5",
+     "kind": "arrow",
+     "start_s": 1.837,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.646,
+     "dir": "down",
+     "move": {
+      "to": {
+       "w": 0.805
+      }
+     }
+    },
+    {
+     "id": "s6",
+     "kind": "progress",
+     "start_s": 2.123,
+     "end_s": 4,
+     "opacity": 1.0,
+     "thick": 0.0436
+    },
+    {
+     "id": "s7",
+     "kind": "line",
+     "start_s": 1.138,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.075,
+     "thick": 0.0066
+    },
+    {
+     "id": "s8",
+     "kind": "progress",
+     "start_s": 2.126,
+     "end_s": 4,
+     "opacity": 1.0,
+     "thick": 0.0441
+    }
+   ],
+   "memory": 1911115320,
+   "work": 8.33861432
+  },
+  {
+   "frame": [
+    3840,
+    2160
+   ],
+   "fps": 30,
+   "length": 3,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 1.781,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.211,
+     "thick": 0.007
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 1.072,
+     "end_s": 4,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.739,
+     "aspect": 1.123
+    },
+    {
+     "id": "s2",
+     "kind": "pill",
+     "start_s": 0.018,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.927,
+     "text": "Hi"
+    },
+    {
+     "id": "s3",
+     "kind": "circle",
+     "start_s": 0.667,
+     "end_s": 4,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.999
+    }
+   ],
+   "memory": 2405671184,
+   "work": 4.3918430399999995
+  },
+  {
+   "frame": [
+    1080,
+    1920
+   ],
+   "fps": 24,
+   "length": 0.5,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "line",
+     "start_s": 0.037,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.825,
+     "thick": 0.0195
+    },
+    {
+     "id": "s1",
+     "kind": "rect",
+     "start_s": 0.44,
+     "end_s": 1.5,
+     "opacity": 0.5,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.25,
+     "aspect": 1.7
+    },
+    {
+     "id": "s2",
+     "kind": "circle",
+     "start_s": 0.171,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.787
+    },
+    {
+     "id": "s3",
+     "kind": "arrow",
+     "start_s": 0.442,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.651,
+     "dir": "left",
+     "move": {
+      "to": {
+       "w": 0.601
+      }
+     }
+    },
+    {
+     "id": "s4",
+     "kind": "pill",
+     "start_s": 0.272,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.872,
+     "text": "Hi"
+    },
+    {
+     "id": "s5",
+     "kind": "circle",
+     "start_s": 0.235,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.923
+    },
+    {
+     "id": "s6",
+     "kind": "line",
+     "start_s": 0.152,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.949,
+     "thick": 0.0246
+    },
+    {
+     "id": "s7",
+     "kind": "progress",
+     "start_s": 0.03,
+     "end_s": 1.5,
+     "opacity": 0.0,
+     "thick": 0.0109
+    },
+    {
+     "id": "s8",
+     "kind": "rect",
+     "start_s": 0.201,
+     "end_s": 1.5,
+     "opacity": 1.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.765,
+     "aspect": 2.79
+    }
+   ],
+   "memory": 1534556040,
+   "work": 0.21068769599999998
+  },
+  {
+   "frame": [
+    1080,
+    1080
+   ],
+   "fps": 30,
+   "length": 120,
+   "shapes": [
+    {
+     "id": "s0",
+     "kind": "arrow",
+     "start_s": 9.724,
+     "end_s": 121,
+     "opacity": 0.0,
+     "x": 0.5,
+     "y": 0.5,
+     "w": 0.676,
+     "dir": "up"
+    }
+   ],
+   "memory": 917377160,
+   "work": 0.0
+  }
+ ]
+}

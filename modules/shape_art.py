@@ -27,7 +27,6 @@ document renders the same video every time.
 from __future__ import annotations
 
 import math
-import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -40,12 +39,6 @@ PROGRESS_EDGES = ("bottom", "top")
 #: picture: render_spec.MAX_PICTURE_OVERLAYS is the same 16 and each layer is an input of the final pass.
 MAX_SHAPES = 12
 MAX_LAYERS = 16
-#: Above 1440p (more than 2560x1440 pixels, either way up) a document with shapes may lay at most this many
-#: layers (picture overlays + shapes) over the picture: each is a filter chain of the final pass, and the
-#: bundled ffmpeg 7.0.2 ran out of the export's 2 GiB (``Cannot allocate memory``, exit 187) at 6 layers at
-#: 3840x2160 and 60 fps whatever their size (5 passed; 6 passed at 30 fps, 8 failed; 1440p60 passed 12;
-#: 5.1.1 passed 7). Not asked of a document without shapes: its picture overlays are as they were.
-LARGE_FRAME_LAYERS_MAX = 5
 #: A pill's label, in characters (code points). Short on purpose: a label, not a caption.
 TEXT_MAX = 24
 #: What a shape draws in when it names no colour, and the most a stroke may take of the
@@ -160,17 +153,34 @@ def _finite(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
+#: What a pill's text may hold, as inclusive code-point ranges: Basic Latin (printable), Latin-1 letters and
+#: signs, Latin Extended-A/B, the two Uzbek apostrophes (U+02BB, U+02BC), Cyrillic (U+0400-U+0525: what
+#: DejaVu Sans Bold draws), dashes, quotation marks, bullet, ellipsis, euro, tenge and numero. Anything else
+#: (emoji, CJK, Arabic, Greek, invisible fillers such as U+3164, line and tab characters) is refused: the
+#: worker's font would draw an empty box and the exported label would silently differ from what was typed.
+#: command-center/lib/editorShapes.ts has the same ranges; samples/shape_text_cases.json pins both.
+TEXT_RANGES = (
+    (0x0020, 0x007E), (0x00A1, 0x00AC), (0x00AE, 0x00FF), (0x0100, 0x024F), (0x02BB, 0x02BC),
+    (0x0400, 0x0525), (0x2010, 0x2015), (0x2018, 0x201E), (0x2022, 0x2022), (0x2026, 0x2026),
+    (0x20AC, 0x20AC), (0x20B8, 0x20B8), (0x2116, 0x2116),
+)
+
+
+def text_char_ok(ch: str) -> bool:
+    cp = ord(ch)
+    return any(lo <= cp <= hi for lo, hi in TEXT_RANGES)
+
+
 def text_problem(text) -> Optional[str]:
     """Why a pill's text cannot be used, or None. Shared by the document validator and the spec's:
     non-empty after trimming, at most ``TEXT_MAX`` characters (code points, which is what the
-    TypeScript twin counts too) and no control, format, line or surrogate characters (Cc, Cf, Zl, Zp,
-    Cs: the categories that are stable across Unicode versions, so both validators agree)."""
+    TypeScript twin counts too) and only characters in ``TEXT_RANGES``."""
     if not isinstance(text, str) or not text.strip():
         return f"text must be non-empty text of at most {TEXT_MAX} characters"
     if len(text) > TEXT_MAX:
         return f"text must be non-empty text of at most {TEXT_MAX} characters"
-    if any(unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp", "Cs") for ch in text):
-        return "text must not contain control or invisible formatting characters"
+    if not all(text_char_ok(ch) for ch in text):
+        return "text can only use Latin and Cyrillic letters, digits and common punctuation"
     return None
 
 
@@ -247,6 +257,90 @@ def fit_px(aspect: float, w: float, frame_w: int, frame_h: int) -> Tuple[int, in
     return _even(pw), _even(ph)
 
 
+# ── what a document's shapes cost to render (budgets, shared with the TypeScript twin) ──────────
+
+#: ffmpeg's address space in an editor export (ffmpeg_limits.CHILD_MEM_BYTES; a test pins it equal). What the
+#: final pass needs is, measured with the bundled ffmpeg 7.0.2 under that limit in the worker's own path
+#: (jobs=1, a timeout set), by binary search on RLIMIT_AS with a circle at each size (tests do not repeat it):
+#:   a plain clip (no shape):    1080p60 905 MiB, 1080p30 923 MiB, 4K60 1657 MiB (the frame rate does not matter
+#:                               once the clip is a few seconds: a one-second clip needs less)
+#:   every shape layer:          + 55 MiB, whatever its size (12 small layers at 1080p60: +661)
+#:   every pixel of its PNG:     + ~9 bytes (12 layers of 1.3 MP: +770; 4 of 3.7 MP: +294; 12 of 3.7 MP: +1046)
+#:   the first layer, per pixel of the frame: ~ +13 bytes (4K60: one 1.3 MP layer +165, four +312)
+#: The estimate below is that fit, rounded up, and the budget keeps MEM_MARGIN under the limit: the
+#: measurement steps were 32 MiB and the same document spread by about 50 MiB between runs and under load.
+#: It bounds the SHAPES' own cost beyond a plain clip; a document that also cross-fades or blurs at a large
+#: frame (their own limits, timeline.py) is not added up with it.
+MIB = 1024 * 1024
+MEM_LIMIT_BYTES = 2048 * MIB
+MEM_MARGIN_BYTES = 150 * MIB
+MEM_PLAIN_FIXED_BYTES = 654 * MIB
+MEM_PLAIN_PER_FRAME_PX = 127
+MEM_PER_LAYER_BYTES = 56 * MIB
+MEM_PER_PNG_PX = 9
+MEM_FIRST_LAYER_PER_FRAME_PX = 13
+#: A pill's PNG width over height is never below this (one narrow letter in its padding: "i" is 0.93), so a
+#: pill is charged as a box this proportion: an upper bound that needs no font, the same in both validators.
+PILL_MIN_ASPECT = 0.9
+
+
+def layer_png_pixels(sh: dict, frame_w: int, frame_h: int) -> int:
+    """Pixels of the PNG one shape of the document is drawn into, at the widest it ever is (a move to a
+    bigger ``w`` scales down from it). A pill's is an upper bound (``PILL_MIN_ASPECT``): no font needed."""
+    wide = max(sh.get("w", W_DEFAULT), ((sh.get("move") or {}).get("to") or {}).get("w", 0))
+    if sh["kind"] == "pill":
+        pw, ph = fit_px(PILL_MIN_ASPECT, wide, frame_w, frame_h)
+        return pw * ph
+    pw, ph = png_size(ShapeArt.from_dict(sh), wide, frame_w, frame_h)
+    return pw * ph
+
+
+def memory_estimate_bytes(shapes: List[dict], frame_w: int, frame_h: int) -> int:
+    """About how much address space the final pass needs for a clip of this frame size with these
+    shapes laid over it (the plain clip's own need included): see the measurements above."""
+    px = frame_w * frame_h
+    plain = MEM_PLAIN_FIXED_BYTES + MEM_PLAIN_PER_FRAME_PX * px
+    if not shapes:
+        return int(plain)
+    layers = MEM_PER_LAYER_BYTES * len(shapes) + MEM_FIRST_LAYER_PER_FRAME_PX * px
+    pngs = MEM_PER_PNG_PX * sum(layer_png_pixels(sh, frame_w, frame_h) for sh in shapes)
+    return int(plain + layers + pngs)
+
+
+def memory_budget_bytes() -> int:
+    return MEM_LIMIT_BYTES - MEM_MARGIN_BYTES
+
+
+#: What the shapes add to the render, in estimated seconds (charged like interpolation and stabilising against
+#: the worker's timeout, timeline.py ``render_timeout_s``). Every layer is an ``overlay`` pass over EVERY output
+#: frame (it only blends inside its span, but the frame still goes through it: a layer shown for 10% of a clip
+#: cost 90% of the same), so the charge is per layer per output frame: a fixed part that grows with the frame
+#: (1080p-equivalent) and a part that grows with the layer's PNG (the entrance's per-frame rescale). Measured on
+#: a quiet box with ffmpeg 7.0.2, 1080p 30 fps, 10 s, 12 layers of every kind with a pop, a fade and a move:
+#: 0.6 / 0.8 ms per layer-frame at 0.3 / 1.3 MP PNGs; 60 fps 0.5 ms; and on a loaded one (a 20 s timeline, 12
+#: layers of 3 MP: +42 s at 30 fps, +80 s at 60) 5.5-5.8 ms. The charge is the loaded figure, as for
+#: interpolation (0.4 s measured 0.39 on a loaded box): 2.5 ms per 1080p frame plus 1.0 ms per MP of PNG.
+WORK_SECONDS_PER_LAYER_FRAME_1080P = 0.0025
+WORK_SECONDS_PER_PNG_MP = 0.001
+_REF_FRAME_PX = 1920 * 1080
+
+
+def work_seconds(shapes: List[dict], fps: int, frame_w: int, frame_h: int, length_s: float) -> float:
+    """Estimated seconds the shape layers add to the render of a ``length_s`` timeline. A shape that renders
+    nothing (opacity 0 with no move to a visible one, or starting after the end) is not charged."""
+    total_frames = math.floor(length_s * fps + 0.5)
+    if total_frames <= 0:
+        return 0.0
+    px = frame_w * frame_h
+    seconds = 0.0
+    for sh in shapes:
+        if math.floor(sh["start_s"] * fps + 0.5) >= total_frames or sh.get("opacity", 1.0) <= 0:
+            continue
+        seconds += total_frames * (WORK_SECONDS_PER_LAYER_FRAME_1080P * px / _REF_FRAME_PX
+                                   + WORK_SECONDS_PER_PNG_MP * layer_png_pixels(sh, frame_w, frame_h) / 1e6)
+    return seconds
+
+
 # ── drawing ─────────────────────────────────────────────────────────────────
 
 def _rgb(color: str) -> Tuple[int, int, int]:
@@ -270,6 +364,15 @@ def _load_font(size: float):
     from PIL import ImageFont
 
     return ImageFont.truetype(_font_path(), max(1, int(round(size))))
+
+
+def _require_glyphs(font, text: str) -> None:
+    """Refuse a label the font cannot draw: a character with no glyph is drawn as the font's empty box
+    (the same picture as a code point that cannot exist), so it is found by comparing with that box."""
+    box = bytes(font.getmask("\uffff"))
+    for ch in text:
+        if ch != " " and bytes(font.getmask(ch)) == box:
+            raise ShapeArtError(f"the label font has no glyph for U+{ord(ch):04X}, so the label cannot be drawn")
 
 
 def pill_aspect(text: str) -> float:
@@ -319,6 +422,10 @@ def _masks(shape: ShapeArt, pw: int, ph: int) -> List[Tuple["object", str]]:
     pill's text)."""
     k, color = shape.kind, shape.color
     stroke = shape.outline * min(pw, ph)
+    # A stroke that leaves no room for a hole (outline near its 0.5 maximum, or a tiny shape) is a solid
+    # shape: the hole's box [stroke, pw-1-stroke] would run backwards and Pillow refuses it.
+    if stroke > 0 and (pw - 1 - stroke < stroke or ph - 1 - stroke < stroke):
+        stroke = 0.0
 
     def ring(paint_outer, paint_inner):
         def paint(d):
@@ -370,6 +477,7 @@ def _masks(shape: ShapeArt, pw: int, ph: int) -> List[Tuple["object", str]]:
                                 radius=max(0.0, radius - stroke), fill=v)
         font_px = ph / PILL_HEIGHT_EM
         font = _load_font(font_px)
+        _require_glyphs(font, text)
         # The label is fitted to the box: if it is wider than the box allows (the box was cut to the
         # overlay filter's limits), the font shrinks with it.
         room = pw - 2 * PILL_PAD_X_EM * font_px
@@ -422,5 +530,10 @@ def _clean(text: str) -> str:
 def write_png(shape: ShapeArt, w: float, frame_w: int, frame_h: int, path: str) -> Tuple[int, int]:
     """Draw ``shape`` for a frame of ``frame_w`` x ``frame_h`` and write it to ``path``; returns its size."""
     pw, ph = png_size(shape, w, frame_w, frame_h)
-    draw(shape, pw, ph).save(str(path), format="PNG", compress_level=3)
+    try:
+        draw(shape, pw, ph).save(str(path), format="PNG", compress_level=3)
+    except ShapeArtError:
+        raise
+    except Exception as e:  # Pillow / the font: any failure is a named one, never a bare ValueError
+        raise ShapeArtError(f"a {shape.kind} shape could not be drawn at {pw}x{ph} px ({type(e).__name__}: {e})") from None
     return pw, ph
