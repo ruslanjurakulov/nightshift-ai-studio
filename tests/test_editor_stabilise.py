@@ -65,6 +65,36 @@ class DocumentTestCase(unittest.TestCase):
                                           "stabilize": True})
         self.assertTrue(any("at most 300 s of video can be stabilised" in p for p in tl.validate(doc)))
 
+    def test_the_cost_is_in_estimated_seconds_that_must_fit_the_workers_timeout(self):
+        # 1080p30: 7 frames per second of 1080p-equivalent frame -> 30 / 7 = 4.29 s of work per second of clip
+        self.assertEqual(tl.STABILIZE_FPS_1080P, 7.0)
+        self.assertAlmostEqual(tl.stabilize_seconds({"in_s": 0, "out_s": 10}, 30, 1920, 1080), 300 / 7)
+        self.assertAlmostEqual(tl.stabilize_seconds({"in_s": 0, "out_s": 60}, 30, 3840, 2160), 1028.57, places=1)
+        self.assertEqual(tl.stabilize_seconds({"in_s": 0, "out_s": "x"}, 30, 1920, 1080), 0.0)
+        hd = dict(width=1920, height=1080)
+        # 20 s at 1080p30: 86 s of stabilising + 20 s of timeline < 3 * 20 + 120 = 180 s
+        self.assertEqual(problems_of(stabilize=True, out_s=20, **hd), [])
+        # 60 s: 257 s + 60 s of timeline against 300 s -> refused, although it is inside the 120 s range cap
+        got = problems_of(stabilize=True, out_s=60, **hd)
+        self.assertTrue(any("stabilising would take about 317 s" in p and "is allowed 300 s" in p
+                            and "stabilise less of it" in p for p in got), got)
+        # the same minute at 720p (0.44 of the pixels): 114 s + 60 s < 300 s
+        self.assertEqual(problems_of(stabilize=True, out_s=60, width=1280, height=720), [])
+        # a 60 s 4K30 clip needs ~1030 s against a 300 s timeout (measured 1.75 fps)
+        got = problems_of(stabilize=True, out_s=60, width=3840, height=2160)
+        self.assertTrue(any("stabilising would take about 1089 s" in p for p in got), got)
+        # a long timeline has more time: 100 s of 1080p30 stabilised inside 600 s of picture
+        doc = fxt.vdoc(width=1920, height=1080, out_s=100, stabilize=True)
+        doc["tracks"][0]["clips"].append({"id": "d1", "asset_id": BASE, "start_s": 100, "in_s": 0, "out_s": 500})
+        self.assertEqual(tl.validate(doc), [])           # 429 + 600 s of work against 1920 s
+        # stabilising and interpolating are charged together
+        doc = fxt.vdoc(width=1920, height=1080, out_s=4.9, speed=0.5, interpolate=True)
+        doc["tracks"][0]["clips"].append({"id": "d1", "asset_id": BASE, "start_s": 9.8, "in_s": 0, "out_s": 20,
+                                          "stabilize": True})
+        got = tl.validate(doc)
+        self.assertTrue(any("interpolated slow motion and stabilising would take" in p
+                            and "slow less of it and stabilise less of it" in p for p in got), got)
+
     def test_normalise_and_resolve(self):
         n = tl.normalise(fxt.vdoc(stabilize=False))["tracks"][0]["clips"][0]
         self.assertNotIn("stabilize", n)
@@ -86,6 +116,8 @@ class DocumentTestCase(unittest.TestCase):
         self.assertEqual(props["stabilize"]["type"], "boolean")
         self.assertEqual(rs.STABILIZE_MAX_S, tl.STABILIZE_MAX_S)
         ts = EDITOR_TS.read_text(encoding="utf-8")
+        self.assertEqual(float(re.search(r"export const STABILIZE_FPS_1080P = ([\d.]+);", ts).group(1)),
+                         tl.STABILIZE_FPS_1080P)
         for name in ("STABILIZE_MAX_S", "STABILIZE_MAX_DOC_S"):
             self.assertEqual(float(re.search(rf"export const {name} = ([\d.]+);", ts).group(1)), getattr(tl, name))
 

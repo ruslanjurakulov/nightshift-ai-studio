@@ -402,6 +402,18 @@ like `contain` (the picture alone).
 * the first pass is a real extra decode of the clip, so the budget: a stabilised
   clip's source range is at most 120 s and a document's stabilised ranges at most
   300 s in all (validators, same numbers: `STABILIZE_MAX_S`, `STABILIZE_MAX_DOC_S`).
+* the budget is ALSO in ESTIMATED SECONDS, weighted by frame size, and must fit
+  the worker's timeout (the same rule as `interpolate`, and they add up). Measured
+  on the shared 4-core box, detect + transform ran at 9.6 frames per second at
+  1080p30 and 1.75 at 4K30; 7 frames per second of 1080p-equivalent frame
+  (`STABILIZE_FPS_1080P`, `stabilizeSeconds()` in `lib/editor.ts`) is charged, so a
+  minute of 1080p30 is about 257 s and a minute of 4K30 about 1030 s, plus the
+  timeline itself, against `min(5400, 3 x length + 120)` s. So 60 s of 1080p
+  stabilised on a 60 s timeline is refused ("stabilising would take about 317 s to
+  render, but a 60 s timeline is allowed 300 s"), and so is 60 s of 4K; stabilise
+  less of it or make the timeline longer. A UI can show the estimate. The
+  `deshake` fallback is for a build without vidstab, not a way to make a slow clip
+  fit.
 * video only; not with `freeze`. It runs on the source frames, right after
   `rotate`/`flip`/`crop` and before speed, fit, effects and `angle`.
 * if the detect pass cannot run, the export FAILS (it is never quietly exported

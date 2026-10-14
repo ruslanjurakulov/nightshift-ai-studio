@@ -442,6 +442,12 @@ def reverse_max_seconds(width: int, height: int, fps: int) -> float:
 #: Stabilisation costs a second decode of the clip (render_spec.STABILIZE_* are the same).
 STABILIZE_MAX_S = 120.0
 STABILIZE_MAX_DOC_S = 300.0
+#: What stabilising is charged in the render's estimate (see ``RENDER_TIMEOUT_*``): the two vidstab passes
+#: plus the transform ran at 9.6 frames per second at 1080p30 and 1.75 at 4K30 (measured, shared 4-core
+#: box), so 7 frames per second of 1080p-equivalent frame (frame area / 1920x1080) is charged: a
+#: minute of 1080p30 is ~257 s, a minute of 4K30 ~1030 s. A clip that cannot finish inside the worker's
+#: timeout is refused up front (the deshake fallback is for a missing vidstab, not for a slow one).
+STABILIZE_FPS_1080P = 7.0
 
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
@@ -722,14 +728,20 @@ def validate(doc: Any) -> List[str]:
         if total_interp > INTERP_MAX_FRAMES_DOC:
             problems.append(f"timeline: interpolated slow motion would make about {total_interp:.0f} frames "
                             f"(1080p equivalent) in all; at most {INTERP_MAX_FRAMES_DOC} per timeline")
-        elif total_interp > 0:
+        stab_est = sum(stabilize_seconds(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
+                       for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
+        interp_est = INTERP_SECONDS_PER_FRAME * total_interp if total_interp <= INTERP_MAX_FRAMES_DOC else 0.0
+        if interp_est + stab_est > 0:
             length = duration_s(doc)
-            work = RENDER_PLAIN_FACTOR * length + INTERP_SECONDS_PER_FRAME * total_interp
+            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est
             allowed = render_timeout_s(length)
             if work > allowed + 1e-9:
-                problems.append(f"timeline: interpolated slow motion would take about {work:.0f} s to render, "
-                                f"but a {length:.0f} s timeline is allowed {allowed:.0f} s — slow less of it "
-                                f"or make the timeline longer")
+                what = " and ".join(n for n, v in (("interpolated slow motion", interp_est),
+                                                   ("stabilising", stab_est)) if v > 0)
+                fix = " and ".join(n for n, v in (("slow less of it", interp_est),
+                                                  ("stabilise less of it", stab_est)) if v > 0)
+                problems.append(f"timeline: {what} would take about {work:.0f} s to render, but a {length:.0f} s "
+                                f"timeline is allowed {allowed:.0f} s — {fix} or make the timeline longer")
 
     stab_s = sum(_ms(c["out_s"]) - _ms(c["in_s"]) for t in counted if t.get("kind") == KIND_V
                  for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True
@@ -1166,6 +1178,15 @@ def clip_min_speed(clip: dict) -> float:
     if curve:
         return min(p["speed"] for p in curve)
     return clip_speed(clip)
+
+
+def stabilize_seconds(clip: dict, fps: int, width: int, height: int) -> float:
+    """The estimated seconds of render work stabilising this clip's range costs (0 when the range
+    is not a usable number): frames x frame area / 1080p, at ``STABILIZE_FPS_1080P``."""
+    if not (_in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))):
+        return 0.0
+    frames = max(0.0, _ms(clip["out_s"]) - _ms(clip["in_s"])) * fps
+    return frames * width * height / _INTERP_REF_PIXELS / STABILIZE_FPS_1080P
 
 
 def interpolated_frames(clip: dict, fps: int, width: int, height: int) -> float:
