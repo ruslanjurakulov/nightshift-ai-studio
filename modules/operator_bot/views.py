@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from modules.operator_bot import analysis
-from modules.operator_bot.config import OperatorConfig, STUCK_HEARTBEAT_MINUTES, WORKER_STALE_SECONDS
+from modules.operator_bot.config import OperatorConfig, STUCK_HEARTBEAT_MINUTES
 from modules.operator_bot.sources import OperatorSources, Section, age_label, parse_ts
 from modules.tg_text import clip, html_escape, safe_id
 
@@ -97,14 +97,19 @@ def github_actions_link(cfg: OperatorConfig, workflow: str = "deploy_web.yml") -
     return f"https://github.com/{cfg.github_repo}/actions/workflows/{workflow}" if cfg.github_repo else None
 
 
+#: The main menu, grouped: one row per group, in this order. The menu text names
+#: the groups; each button runs one read-only command.
+MENU_GROUPS = (
+    ("Live", (("Health", "health"), ("Queue", "queue"), ("Errors", "errors"))),
+    ("Money", (("Balance", "balance"), ("Spend", "spend"))),
+    ("Activity", (("Today", "today"), ("Users", "users"), ("Deploys", "deploys"), ("Approvals", "approvals"))),
+    ("Reports", (("Security", "security"), ("Digest", "digest"), ("Alerts", "alerts"))),
+    ("Original", (("Status", "status"), ("Channels", "channels"), ("Held", "pending"))),
+)
+
+
 def menu_keyboard() -> list:
-    return [
-        [cb("Health", "c:health"), cb("Queue", "c:queue"), cb("Errors", "c:errors")],
-        [cb("Balance", "c:balance"), cb("Spend", "c:spend"), cb("Today", "c:today")],
-        [cb("Users", "c:users"), cb("Deploys", "c:deploys"), cb("Approvals", "c:approvals")],
-        [cb("Security", "c:security"), cb("Digest", "c:digest"), cb("Alerts", "c:alerts")],
-        [cb("Status", "c:status"), cb("Channels", "c:channels"), cb("Held", "c:pending")],
-    ]
+    return [[cb(label, f"c:{name}") for label, name in buttons] for _group, buttons in MENU_GROUPS]
 
 
 def _with_menu(rows: list, extra_links: Optional[list] = None, again: Optional[str] = None) -> list:
@@ -144,9 +149,11 @@ def _usd(value: float) -> str:
 # -- menu / help -----------------------------------------------------------
 
 def view_menu(cfg: OperatorConfig) -> Reply:
+    groups = [f"{html_escape(group)}: {html_escape(', '.join(label.lower() for label, _ in buttons))}"
+              for group, buttons in MENU_GROUPS]
     return Reply(
-        f"{_b('Nightshift operator')}\nTap a button, or type a command. Read-only: nothing here "
-        "publishes, spends or approves.",
+        "\n".join([_b("Nightshift operator"), *groups,
+                   "Tap a button, or type a command. Read-only: nothing here publishes, spends or approves."]),
         menu_keyboard(),
     )
 
@@ -444,6 +451,7 @@ def view_today(ops: OperatorSources) -> Reply:
         lines.append(f"Creative jobs: {_unknown(cj)}")
     su = ops.signups(day)
     lines.append(f"New accounts: {len(su.data)}" if su.ok else f"New accounts: {_unknown(su)}")
+    lines.append("Video counts come from the mirrored event log; a run whose events were not mirrored is not counted.")
     return Reply("\n".join(lines), _with_menu([[cb("Users", "c:users"), cb("Errors", "c:errors")]], again="today"))
 
 

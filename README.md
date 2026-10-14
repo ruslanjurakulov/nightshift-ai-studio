@@ -74,8 +74,15 @@ Standing brief: [`CLAUDE.md`](CLAUDE.md). The short version:
   row that a worker (`tools/queue_worker.py`, `Dockerfile.worker`) claims
   ([`docs/WORKER_VPS.md`](docs/WORKER_VPS.md)).
 - **Other workflows:** intelligence poll, provider balances, pending approvals,
-  Telegram control, model probes, and the CI workflows (`tests`, `frontend`,
-  `security`, `video-engine`).
+  Telegram control, operator alerts, model probes, and the CI workflows (`tests`,
+  `frontend`, `security`, `video-engine`).
+- **Operator bot** (`@NightshiftAiStudio_bot`): the owner's read-only control panel in
+  Telegram. Commands and inline buttons for `/health`, `/queue`, `/errors`,
+  `/balance`, `/spend`, `/today`, `/users`, `/deploys`, `/approvals`, `/digest`;
+  de-duplicated, rate-limited proactive alerts with quiet hours and a daily digest;
+  replies in seconds (long polling, or an optional webhook). It cannot publish,
+  spend, approve, change prices or grant roles. Commands, alerts and the exact
+  go-live steps: [`docs/operator-bot.md`](docs/operator-bot.md).
 
 ## Security
 

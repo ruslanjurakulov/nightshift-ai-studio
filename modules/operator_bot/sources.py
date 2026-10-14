@@ -20,8 +20,8 @@ No call here writes anything, spends anything or reaches a paid provider.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from modules.log_redaction import describe_http_error

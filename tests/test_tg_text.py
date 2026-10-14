@@ -75,7 +75,7 @@ class SanitizeTestCase(unittest.TestCase):
         for secret in (
             "Bearer abcdefghijklmnop12345", jwt, "sk-abcdefghijklmnopqrstuvwxyz",
             "ghp_abcdefghijklmnopqrstuvwxyz0123", "AIzaSyABCDEFGHIJKLMNOPQRSTUV",
-            "A" * 45,
+            "A" * 50,
         ):
             out = tg_text.sanitize_outgoing(f"value {secret} end")
             self.assertNotIn(secret, out, secret)
@@ -87,6 +87,10 @@ class SanitizeTestCase(unittest.TestCase):
 
     def test_ordinary_operator_text_survives(self):
         text = "Render job #123 failed — default (attempt 1/3) · sha abcdef1 · 2h 5m"
+        self.assertEqual(tg_text.sanitize_outgoing(text), text)
+
+    def test_a_commit_hash_and_a_uuid_are_left_alone(self):
+        text = "sha 0123456789abcdef0123456789abcdef01234567 job 123e4567-e89b-12d3-a456-426614174000"
         self.assertEqual(tg_text.sanitize_outgoing(text), text)
 
     def test_none_is_empty(self):

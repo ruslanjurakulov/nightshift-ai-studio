@@ -4,14 +4,13 @@ The things pinned here are the ones that would mislead an owner: an unknown that
 reads as zero, a partial cost that reads as a total, an e-mail or free text that
 reaches the chat, an unescaped value that breaks the HTML."""
 
-import copy
 import re
 import unittest
 
 from modules.operator_bot import views
 from modules.operator_bot.config import OperatorConfig
 from tests.operator_bot_fakes import (
-    FakeHttp, NOW, github_ok, healthy_tables, make_ops, site_ok, ts,
+    FakeHttp, github_ok, healthy_tables, make_ops, site_ok, ts,
 )
 
 

@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 
 from modules.operator_bot.config import OperatorConfig
 from modules.operator_bot.sources import OperatorSources
-from modules.operator_bot.store import MemoryAlertStore
 from modules.supabase_sync import SupabaseReadError
 from modules.telegram_control import TelegramControl
 

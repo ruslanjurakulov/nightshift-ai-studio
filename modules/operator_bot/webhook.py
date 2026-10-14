@@ -33,7 +33,7 @@ import logging
 import threading
 from typing import Mapping, Optional
 
-from modules.operator_bot.router import OperatorBot, classify
+from modules.operator_bot.router import CLAIMED_KINDS, OperatorBot, classify
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class WebhookService:
 
         # The allow-list, before any work that touches data or the database.
         inbound = classify(upd, self.bot.control)
-        if inbound.kind not in ("message", "callback", "forwarded"):
+        if inbound.kind not in CLAIMED_KINDS:
             return _OK
 
         durable = False

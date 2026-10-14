@@ -67,6 +67,10 @@ TOO_OLD_REPLY = "Not requested: this command is more than 6 hours old. Send it a
 FAILED_REPLY = "Could not read that right now."
 SLOW_DOWN = "Slow down — too many commands a minute."
 
+#: Inbound kinds that come from an allow-listed sender and are claimed by
+#: update_id before they are handled (a strangers' update is never claimed).
+CLAIMED_KINDS = ("message", "callback", "forwarded")
+
 _FORWARD_KEYS = ("forward_origin", "forward_from", "forward_from_chat", "forward_date",
                  "forward_sender_name", "forward_signature", "forward_from_message_id")
 _LEGACY_READ = {"status", "channels", "pending"}

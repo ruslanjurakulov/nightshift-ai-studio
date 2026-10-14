@@ -63,7 +63,7 @@ from config import HISTORY_DIR
 from modules import log_redaction
 from modules.log_redaction import describe_http_error
 from modules.operator_bot import router as operator_router
-from modules.operator_bot.router import ACTION_MAX_AGE_S, OperatorBot
+from modules.operator_bot.router import ACTION_MAX_AGE_S, OperatorBot  # noqa: F401 (re-exported)
 from modules.telegram_control import TelegramControl
 
 # Re-exported: the age limit and the two refusal texts now live in the router
@@ -210,13 +210,17 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
         logger.warning("Telegram getUpdates failed (%s)", describe_http_error(e))
         return offset
 
-    ids = []
+    # Only updates from an allow-listed sender are claimed (a database write):
+    # a stranger's update must not cost one, and is answered at most with a
+    # neutral line, which a replay cannot turn into data or an action.
+    to_claim = set()
     for upd in updates:
         try:
-            ids.append(int(upd.get("update_id")))
+            if operator_router.classify(upd, control).kind in operator_router.CLAIMED_KINDS:
+                to_claim.add(int(upd.get("update_id")))
         except (TypeError, ValueError, AttributeError):
             continue
-    claimed = _claim(store if store is not None else _default_store(), ids)
+    claimed = _claim(store if store is not None else _default_store(), sorted(to_claim)) if to_claim else set()
     durable = claimed is not None
 
     bot = bot or OperatorBot(control, deps, clock=lambda: now)
@@ -225,7 +229,7 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
         try:
             update_id = int(upd.get("update_id", 0))
             next_offset = max(next_offset, update_id + 1)
-            if durable and update_id not in claimed:
+            if update_id in to_claim and durable and update_id not in claimed:
                 logger.info("Telegram update %d was already handled — skipped", update_id)
                 continue
             # Authorization, rate limits, edits/forwards/other chats, the legacy

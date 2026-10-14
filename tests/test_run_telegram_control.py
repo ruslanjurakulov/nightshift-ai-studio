@@ -198,6 +198,22 @@ class OperatorBotThroughPollTestCase(_PollBase):
         self.control.send.assert_not_called()
         self.assertEqual(self.control.answer_callback.call_args.args[1], "Not authorized")
 
+    def test_a_strangers_update_is_never_claimed_so_it_costs_no_database_write(self):
+        session = MagicMock()
+        session.get.return_value = _updates_response([
+            _msg(20, 999, "/status"), _msg(21, 100, "/menu"),
+            {"update_id": 22, "channel_post": {"text": "/status", "chat": {"id": 100, "type": "channel"}}}])
+        self.assertEqual(self.poll(session), 23)
+        self.assertEqual(self.claims.seen, {21})            # only the allow-listed sender's update
+
+    def test_a_poll_with_nothing_from_the_admin_never_touches_the_store(self):
+        session = MagicMock()
+        session.get.return_value = _updates_response([_msg(30, 999, "/status")])
+        self.claims.fail = True                             # would be refused if it were asked
+        with patch.object(mod, "_default_store", side_effect=AssertionError("store used")):
+            mod.poll_once(self.control, self.deps, session=session, offset=0, store=None, now=NOW)
+        self.assertIn("Not authorized", self.control.send.call_args.args[1])
+
     def test_a_new_command_replies_with_html_and_buttons(self):
         session = MagicMock()
         session.get.return_value = _updates_response([_msg(14, 100, "/menu")])

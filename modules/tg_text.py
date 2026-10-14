@@ -36,10 +36,11 @@ _MD2_RE = re.compile("([" + re.escape(_MD2_SPECIAL) + "])")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+")
 _BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=\-]{12,}")
 # JWT-shaped (header.payload.signature), Stripe/OpenAI/Slack/GitHub style
-# prefixes, and any unbroken run of 32+ key-alphabet characters.
+# prefixes, and any unbroken run of 48+ key-alphabet characters (long enough that
+# an id or a 40-character commit hash is left alone).
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}")
 _PREFIXED = re.compile(r"\b(?:sk|pk|rk|xox[abprs]|gh[pousr]|AIza)[-_A-Za-z0-9]{16,}")
-_LONG_TOKEN = re.compile(r"\b[A-Za-z0-9_\-]{40,}\b")
+_LONG_TOKEN = re.compile(r"\b[A-Za-z0-9_\-]{48,}\b")
 # Square brackets, not angle brackets: the text may go out with parse_mode=HTML,
 # where an unknown tag such as <hidden> is a 400 "can't parse entities".
 _PLACEHOLDER = "[hidden]"

@@ -4,9 +4,9 @@ memory, no message". A fake Telegram records every send; the alert memory is
 in-process. Nothing touches the network."""
 
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
-from modules.operator_bot import alerts, views
+from modules.operator_bot import alerts
 from modules.operator_bot.config import OperatorConfig
 from modules.operator_bot.store import MemoryAlertStore, SupabaseAlertStore
 from tests.operator_bot_fakes import (

@@ -6,13 +6,12 @@ the alert memory, or an intent. Then the authorized behaviour: replies,
 keyboards, buttons, mute, rate limit, no raw exception text."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from modules.operator_bot import router, views
-from modules.operator_bot.config import OperatorConfig
 from modules.operator_bot.store import MemoryAlertStore
 from tests.operator_bot_fakes import (
-    ADMIN, FakeHttp, FakeTelegram, NOW, github_ok, healthy_tables, make_control, make_ops, site_ok,
+    FakeHttp, FakeTelegram, NOW, github_ok, healthy_tables, make_control, make_ops, site_ok,
     update_callback, update_message,
 )
 
