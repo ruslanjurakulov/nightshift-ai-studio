@@ -228,6 +228,15 @@ def geometry_filter(seg: Segment) -> str:
     return ",".join(steps) + ","
 
 
+def sar_filter(seg: Segment) -> str:
+    """``,setsar=1`` after the fit of a clip that is turned a quarter: the scaler's
+    rounding leaves the picture a pixel shape such as 405:404 (measured), and
+    a player would stretch it. Nothing is added for a clip that is not turned,
+    so every older chain is the one it was."""
+    fx = seg.effects
+    return ",setsar=1" if fx is not None and fx.rotate in (90, 270) else ""
+
+
 def _then(grade: str) -> str:
     """``,<grade>`` for appending to a chain ('' for no grade)."""
     return "," + grade if grade else ""
@@ -438,9 +447,10 @@ def _segment_commands(
         grade = grade_filter(seg)
         pre = geometry_filter(seg)
         mv = move_filter(seg.move, width, height, full)
+        sar = sar_filter(seg)
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
-                                 length=length, extra_vf=fades, fill=True, grade=grade, pre=pre)
-        vf = pre + _scale_crop(width, height, fps, grade) + mv + fades
+                                 length=length, extra_vf=sar + fades, fill=True, grade=grade, pre=pre)
+        vf = pre + _scale_crop(width, height, fps, grade) + sar + mv + fades
         return [[ffmpeg, "-y", "-loop", "1", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     if seg.kind == KIND_IMAGE:
         style = ken_burns_style(seed if seed is not None else seg.path)
@@ -448,10 +458,11 @@ def _segment_commands(
         # old path produced, only the pixels move.
         grade = grade_filter(seg)
         pre = geometry_filter(seg)     # turn / mirror the picture before it is scaled and moved
+        sar = sar_filter(seg)
         vf = pre + ken_burns_filter(style, width, height, fps,
-                                    float(full) if frame_exact else float(dur) * fps) + _then(grade) + fades
+                                    float(full) if frame_exact else float(dur) * fps) + _then(grade) + sar + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
-                                 length=length if frame_exact else None, extra_vf=fades,
+                                 length=length if frame_exact else None, extra_vf=sar + fades,
                                  fill=frame_exact, grade=grade, pre=pre)
         return [[ffmpeg, "-y", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     # KIND_VIDEO. -stream_loop -1: a source shorter than its slot is looped (as
@@ -463,7 +474,7 @@ def _segment_commands(
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
              "-vf", (speed_filter(seg.speed) + geometry_filter(seg)
-                     + fit(width, height, fps, grade_filter(seg))
+                     + fit(width, height, fps, grade_filter(seg)) + sar_filter(seg)
                      + (move_filter(seg.move, width, height, full) if seg.move is not None else "")
                      + fades),
              *common,
@@ -484,18 +495,19 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     mv = move_filter(seg.move, width, height, full) if seg.move is not None else ""
     if seg.kind == KIND_IMAGE and seg.move is not None:
         return (["-loop", "1", "-i", seg.path],
-                geometry_filter(seg) + _scale_crop(width, height, fps, grade) + mv + tail)
+                geometry_filter(seg) + _scale_crop(width, height, fps, grade) + sar_filter(seg) + mv + tail)
     if seg.kind == KIND_IMAGE:
         if hold:
             # A timeline's still fills the frame in the move, so it does held too.
-            return ["-loop", "1", "-i", seg.path], geometry_filter(seg) + _scale_crop(width, height, fps, grade) + tail
+            return (["-loop", "1", "-i", seg.path],
+                    geometry_filter(seg) + _scale_crop(width, height, fps, grade) + sar_filter(seg) + tail)
         return (["-i", seg.path],
                 geometry_filter(seg) + ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
-                + _then(grade) + tail)
+                + _then(grade) + sar_filter(seg) + tail)
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            speed_filter(seg.speed) + geometry_filter(seg) + fit(width, height, fps, grade) + mv + tail)
+            speed_filter(seg.speed) + geometry_filter(seg) + fit(width, height, fps, grade) + sar_filter(seg) + mv + tail)
 
 
 def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,
