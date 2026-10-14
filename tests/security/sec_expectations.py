@@ -509,3 +509,8 @@ sec_friend_invites_0092.extend(TABLES, FUNCTIONS)
 import sec_user_handles_0096  # noqa: E402
 
 sec_user_handles_0096.extend(TABLES, FUNCTIONS)
+
+# Telegram notification channels (0102): tests/security/sec_notify_channels_0102.py
+import sec_notify_channels_0102  # noqa: E402
+
+sec_notify_channels_0102.extend(TABLES, FUNCTIONS)
