@@ -8,6 +8,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { AccountSection } from "@/components/account/AccountSection";
 import { AccountSecurity } from "@/components/account/AccountSecurity";
+import { EmailNotifications } from "@/components/notifications/EmailNotifications";
+import { readEmailSettings } from "@/lib/server/email-prefs";
 import { readOwnHandle } from "@/lib/server/handles";
 import { pendingHandleFrom } from "@/lib/handles";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
@@ -38,6 +40,8 @@ export default async function SettingsPage() {
   const supabase = user && org.supported && org.current ? await createClient() : null;
   const showInvite = supabase && org.current ? inviteCardShown(org.current, (await readMyInvite(supabase)).state) : false;
   const avatarV = avatarVersionFromMetadata(user?.user_metadata);
+  // The e-mail switches appear only while the e-mail worker is reporting (migration 0101): see readEmailSettings.
+  const email = supabase ? await readEmailSettings(supabase) : ({ available: false } as const);
 
   return (
     <div className="rhythm ns-open">
@@ -61,6 +65,7 @@ export default async function SettingsPage() {
               handlesSupported={handles.supported}
             />
           )}
+          {email.available && <EmailNotifications initial={email.prefs} />}
           <div className="panel flex flex-col gap-3 p-5 sm:p-6">
             <h2 className="t-section">{t.org.developersTitle}</h2>
             <p className="text-sm text-[var(--color-muted)]">{t.org.developersHint}</p>

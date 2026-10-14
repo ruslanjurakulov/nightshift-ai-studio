@@ -14,11 +14,15 @@ import {
   INBOX_LIMIT,
   ageParts,
   badgeText,
+  channelIdentity,
   describeNotification,
   parseInbox,
   type InboxRow,
   type NotificationView,
 } from "@/lib/notifications";
+import { channelPath, channelSlug } from "@/lib/channels";
+import { LOCALE_SYNC_KEY, localeSyncNeeded } from "@/lib/email-prefs";
+import type { ChannelRow } from "@/lib/types";
 
 /** The table is not there (PostgREST schema-cache miss, or Postgres's own). */
 function isMissingTable(error: { code?: string } | null): boolean {
@@ -45,7 +49,7 @@ type Load = "loading" | "ready" | "error" | "absent";
  * organization renders nothing, a failed read says so and offers a retry
  * rather than showing an empty inbox as if it were fine.
  */
-export function NotificationBell({ orgId }: { orgId: string | null }) {
+export function NotificationBell({ orgId, channels = [] }: { orgId: string | null; channels?: ChannelRow[] }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
   const [open, setOpen] = useState(false);
@@ -107,6 +111,28 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
       window.removeEventListener("focus", onFocus);
     };
   }, [supabase, orgId, refresh]);
+
+  // The language the person last used, told to the database once per language (migration 0101): the account
+  // stores none, and the e-mails are written in it. A failure (0101 not applied) is silent and tried again
+  // next visit; nothing is shown and nothing here can fail the bell.
+  useEffect(() => {
+    if (!supabase || !orgId) return;
+    let last: string | null = null;
+    try {
+      last = window.localStorage.getItem(LOCALE_SYNC_KEY);
+    } catch {
+      /* storage blocked: sync on every visit instead */
+    }
+    if (!localeSyncNeeded(last, locale)) return;
+    void supabase.rpc("email_prefs_set", { p_ready: null, p_weekly: null, p_locale: locale }).then(({ error }) => {
+      if (error) return;
+      try {
+        window.localStorage.setItem(LOCALE_SYNC_KEY, locale);
+      } catch {
+        /* nothing to remember it in */
+      }
+    });
+  }, [supabase, orgId, locale]);
 
   useEffect(() => {
     if (!open) return;
@@ -248,7 +274,13 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
             <ul tabIndex={0} aria-label={t.notifications.title} className="scroll-focus max-h-[60vh] overflow-y-auto overscroll-contain">
               {views.map((v) => (
                 <li key={v.id} className="border-b border-[var(--color-border)]/60 last:border-0">
-                  <Item view={v} href={path(v.section)} locale={locale} onOpen={() => (v.unread ? void markRead(v.id) : undefined)} onClose={close} />
+                  <Item
+                    view={v}
+                    {...linksFor(v, channels, path)}
+                    locale={locale}
+                    onOpen={() => (v.unread ? void markRead(v.id) : undefined)}
+                    onClose={close}
+                  />
                 </li>
               ))}
             </ul>
@@ -260,15 +292,38 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
   );
 }
 
+/**
+ * Where a notification leads, and which channel it is about. A row that names a channel opens in THAT channel
+ * (the one open in the address bar may be another), and shows its name and avatar; a row about the workspace
+ * opens where the current channel's path says, as before.
+ */
+function linksFor(
+  v: NotificationView,
+  channels: ChannelRow[],
+  path: (section: string) => string,
+): { href: string; anotherHref: string | null; channel: { name: string; avatar: string | null } | null } {
+  const ch = v.channelId ? channels.find((c) => c.channel_id === v.channelId) : undefined;
+  const build = (section: string) => (ch ? channelPath(channelSlug(ch, channels), section) : path(section));
+  return {
+    href: build(v.section),
+    anotherHref: v.another ? build(v.another) : null,
+    channel: channelIdentity(ch),
+  };
+}
+
 function Item({
   view,
   href,
+  anotherHref,
+  channel,
   locale,
   onOpen,
   onClose,
 }: {
   view: NotificationView;
   href: string;
+  anotherHref: string | null;
+  channel: { name: string; avatar: string | null } | null;
   locale: string;
   onOpen: () => void;
   onClose: () => void;
@@ -282,27 +337,67 @@ function Item({
       : fmt({ m: t.notifications.ageM, h: t.notifications.ageH, d: t.notifications.ageD }[age.unit], { n: age.n });
   const amount = view.amount ? fmt(t.notifications[view.amount.key], { n: formatCredits(view.amount.n, locale) }) : null;
   return (
-    <Link
-      href={href}
-      onClick={() => {
-        onOpen();
-        onClose();
-      }}
-      className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-[var(--color-fg)]/5 focus-visible:bg-[var(--color-fg)]/5"
-    >
-      {view.unread ? (
-        <span className="mt-1.5 size-2 shrink-0 rounded-full" style={{ background: "var(--color-primary)" }}>
-          <span className="sr-only">{t.notifications.unread}</span>
+    <div className="hover:bg-[var(--color-fg)]/5 focus-within:bg-[var(--color-fg)]/5">
+      <Link
+        href={href}
+        onClick={() => {
+          onOpen();
+          onClose();
+        }}
+        className="flex items-start gap-2.5 px-3 py-2.5"
+      >
+        {view.unread ? (
+          <span className="mt-1.5 size-2 shrink-0 rounded-full" style={{ background: "var(--color-primary)" }}>
+            <span className="sr-only">{t.notifications.unread}</span>
+          </span>
+        ) : (
+          <span aria-hidden className="mt-1.5 size-2 shrink-0" />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className={`block text-sm text-[var(--color-fg)] ${view.unread ? "font-semibold" : ""}`}>{copy.title}</span>
+          {channel && <ChannelChip name={channel.name} avatar={channel.avatar} label={t.notifications.channelLabel} />}
+          <span className="block text-xs text-[var(--color-muted)]">{copy.body}</span>
+          {amount && <span className="tnum block text-xs text-[var(--color-muted)]">{amount}</span>}
         </span>
-      ) : (
-        <span aria-hidden className="mt-1.5 size-2 shrink-0" />
+        <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">{when}</span>
+      </Link>
+      {anotherHref && (
+        // The two things a returning person wants next to a finished video: look at it, or make the next one.
+        <div className="flex flex-wrap gap-2 px-3 pb-2.5 pl-[26px]">
+          <Link
+            href={href}
+            onClick={() => {
+              onOpen();
+              onClose();
+            }}
+            className="btn-sky pill px-3 py-1 text-xs"
+          >
+            {t.notifications.openAction}
+          </Link>
+          <Link href={anotherHref} onClick={onClose} className="btn-sky is-quiet pill px-3 py-1 text-xs">
+            {t.notifications.makeAnother}
+          </Link>
+        </div>
       )}
-      <span className="min-w-0 flex-1">
-        <span className={`block text-sm text-[var(--color-fg)] ${view.unread ? "font-semibold" : ""}`}>{copy.title}</span>
-        <span className="block text-xs text-[var(--color-muted)]">{copy.body}</span>
-        {amount && <span className="tnum block text-xs text-[var(--color-muted)]">{amount}</span>}
-      </span>
-      <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">{when}</span>
-    </Link>
+    </div>
+  );
+}
+
+/** A channel's avatar (or its first letter) and name: the same identity the e-mails show. */
+function ChannelChip({ name, avatar, label }: { name: string; avatar: string | null; label: string }) {
+  const letter = Array.from(name.trim())[0]?.toLocaleUpperCase() ?? "·";
+  return (
+    <span className="my-0.5 flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-fg)]">
+      {avatar ? (
+        // eslint-disable-next-line @next/next/no-img-element -- the channel's public YouTube avatar
+        <img src={avatar} alt="" width={20} height={20} referrerPolicy="no-referrer" className="size-5 shrink-0 rounded-md object-cover" />
+      ) : (
+        <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-md bg-[var(--color-fg)]/10 text-[10px] font-bold">
+          {letter}
+        </span>
+      )}
+      <span className="sr-only">{label}: </span>
+      <span className="truncate font-medium">{name}</span>
+    </span>
   );
 }

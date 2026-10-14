@@ -48,6 +48,8 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => client }));
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, fmt, type Locale } from "@/lib/i18n";
 import { NotificationBell } from "@/components/shell/NotificationBell";
+import type { ChannelRow } from "@/lib/types";
+import { LOCALE_SYNC_KEY } from "@/lib/email-prefs";
 
 const SB = "11111111-2222-4333-8444-555555555555";
 const now = () => new Date().toISOString();
@@ -61,13 +63,16 @@ const note = (id: string, kind: string, data: Record<string, unknown>, read_at: 
   read_at,
 });
 
-function mount(orgId: string | null = "org-1", locale: Locale = "en") {
+function mount(orgId: string | null = "org-1", locale: Locale = "en", channels: ChannelRow[] = []) {
   return render(
     <I18nProvider locale={locale}>
-      <NotificationBell orgId={orgId} />
+      <NotificationBell orgId={orgId} channels={channels} />
     </I18nProvider>,
   );
 }
+
+const channel = (id: string, name: string, thumb?: string) =>
+  ({ channel_id: id, name, credential_ref: thumb ? { youtube_thumbnail: thumb } : {} }) as unknown as ChannelRow;
 
 beforeEach(() => {
   filters.length = 0;
@@ -217,5 +222,86 @@ describe("NotificationBell", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+});
+
+describe("a video that is ready (migration 0101)", () => {
+  const VIDEO = "run-0123456789abcdef0123";
+  const channels = [channel("night-owl", "Night Owl", "https://yt3.example/owl.jpg"), channel("other", "Other")];
+
+  async function open(rows: unknown[], chans: ChannelRow[] = channels) {
+    count = { count: rows.length, error: null };
+    list = { data: rows, error: null };
+    mount("org-1", "en", chans);
+    fireEvent.click(await screen.findByRole("button", { name: fmt(t.bellUnread, { n: rows.length }) }));
+  }
+
+  it("names its channel with the avatar, and offers Open and Make another in that channel", async () => {
+    await open([note("v1", "video_ready", { video_id: VIDEO, channel_id: "night-owl", state: "held" })]);
+    expect(await screen.findByText(t.videoReady.title)).toBeTruthy();
+    expect(screen.getByText("Night Owl")).toBeTruthy();
+    expect(document.querySelector('img[src="https://yt3.example/owl.jpg"]')).toBeTruthy();
+    const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+    // The channel open in the address bar is "chronos"; the video's own channel wins.
+    expect(hrefs).toContain(`/night-owl/videos/${VIDEO}`);
+    expect(hrefs).toContain("/night-owl/create");
+    expect(screen.getByRole("link", { name: t.openAction })).toBeTruthy();
+    expect(screen.getByRole("link", { name: t.makeAnother })).toBeTruthy();
+  });
+
+  it("falls back to the first letter when the channel has no avatar, and never shows an insecure one", async () => {
+    await open(
+      [note("v1", "video_ready", { video_id: VIDEO, channel_id: "other" })],
+      [channel("other", "Other", "http://insecure.example/a.jpg")],
+    );
+    expect(await screen.findByText("Other")).toBeTruthy();
+    expect(document.querySelector("img")).toBeNull();
+    expect(screen.getByText("O")).toBeTruthy();
+  });
+
+  it("a channel the person cannot see is not named, and the link stays where the bell is", async () => {
+    await open([note("v1", "video_ready", { video_id: VIDEO, channel_id: "gone" })]);
+    expect(await screen.findByText(t.videoReady.title)).toBeTruthy();
+    expect(screen.queryByText("gone")).toBeNull();
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toContain(`/chronos/videos/${VIDEO}`);
+  });
+
+  it("a waiting storyboard opens in its own channel too", async () => {
+    await open([note("s1", "storyboard_ready", { storyboard_id: SB, channel_id: "night-owl" })]);
+    expect(await screen.findByText("Night Owl")).toBeTruthy();
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toContain(`/night-owl/videos/storyboard/${SB}`);
+    expect(screen.queryByRole("link", { name: t.makeAnother })).toBeNull();
+  });
+
+  it("opening a ready video marks it read", async () => {
+    await open([note("v1", "video_ready", { video_id: VIDEO, channel_id: "night-owl" })]);
+    fireEvent.click(await screen.findByRole("link", { name: t.openAction }));
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith("mark_notification_read", { p_id: "v1" }));
+  });
+});
+
+describe("telling the database which language the person uses (0101)", () => {
+  beforeEach(() => window.localStorage.removeItem(LOCALE_SYNC_KEY));
+
+  it("sends the language once, remembers it, and does not repeat it on the next visit", async () => {
+    mount("org-1", "uz");
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith("email_prefs_set", { p_ready: null, p_weekly: null, p_locale: "uz" }));
+    await waitFor(() => expect(window.localStorage.getItem(LOCALE_SYNC_KEY)).toBe("uz"));
+    cleanup();
+    rpc.mockClear();
+    mount("org-1", "uz");
+    await screen.findByRole("button", { name: dictionaries.uz.notifications.bell });
+    expect(rpc).not.toHaveBeenCalledWith("email_prefs_set", expect.anything());
+    cleanup();
+    mount("org-1", "ru");
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith("email_prefs_set", { p_ready: null, p_weekly: null, p_locale: "ru" }));
+  });
+
+  it("changes nothing the person sees when the database has no such function, and tries again next time", async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: "PGRST202", message: "not found" } });
+    mount("org-1", "en");
+    expect(await screen.findByRole("button", { name: t.bell })).toBeTruthy();
+    await waitFor(() => expect(rpc).toHaveBeenCalled());
+    expect(window.localStorage.getItem(LOCALE_SYNC_KEY)).toBeNull();
   });
 });

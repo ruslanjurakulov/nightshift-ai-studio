@@ -110,7 +110,7 @@ export function Header({
             <CreditMenu account={credits} plan={plan} />
             {/* The customer's own, database-backed inbox (migration 0064); the
                 operator's bar below keeps the event-derived feed. */}
-            <NotificationBell orgId={currentOrgId} />
+            <NotificationBell orgId={currentOrgId} channels={channels} />
             <span className="hidden sm:contents">
               <LanguageSelector />
               <ThemeToggle />

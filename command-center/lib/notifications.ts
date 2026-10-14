@@ -18,6 +18,8 @@ export const NOTIFICATION_KINDS = [
   "storyboard_ready",
   "editor_export_done",
   "credits_low",
+  // Migration 0101: a run finished and now waits for the person to decide.
+  "video_ready",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -83,7 +85,40 @@ function idField(data: Record<string, unknown>, key: string): string | null {
   return typeof v === "string" && UUID.test(v) ? v : null;
 }
 
-export type NotificationCopy = "creativeDone" | "creativeFailed" | "storyboardReady" | "exportDone" | "creditsLow";
+export type NotificationCopy = "creativeDone" | "creativeFailed" | "storyboardReady" | "exportDone" | "creditsLow" | "videoReady";
+
+/** A video or channel id as the database writes it (held rows: "run-" + hex; YouTube ids; channel slugs).
+ *  It ends up in a link, so only this alphabet gets through. */
+const PLAIN_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+
+function plainIdField(data: Record<string, unknown>, key: string): string | null {
+  const v = data[key];
+  return typeof v === "string" && PLAIN_ID.test(v) && !v.includes("..") ? v : null;
+}
+
+/** The channel a notification is about, as its data names it (0101 puts it on a waiting storyboard and a ready
+ *  video); null for everything that belongs to the workspace as a whole, and for rows written before 0101. */
+export function notificationChannelId(data: Record<string, unknown>): string | null {
+  return plainIdField(data, "channel_id");
+}
+
+/** What the person sees of a channel next to a notification: its name and its public avatar (https only). */
+export function channelIdentity(
+  channel: { name?: string | null; credential_ref?: { youtube_thumbnail?: string } | null } | null | undefined,
+): { name: string; avatar: string | null } | null {
+  const name = (channel?.name ?? "").trim();
+  if (!name) return null;
+  const raw = channel?.credential_ref?.youtube_thumbnail;
+  let avatar: string | null = null;
+  if (typeof raw === "string" && raw.length <= 500 && !/[\s"'<>]/.test(raw)) {
+    try {
+      avatar = new URL(raw).protocol === "https:" ? raw : null;
+    } catch {
+      avatar = null;
+    }
+  }
+  return { name, avatar };
+}
 
 export interface NotificationView {
   id: string;
@@ -92,6 +127,11 @@ export interface NotificationView {
   amount: { key: "charged" | "returned" | "available"; n: number } | null;
   /** A section path ("/studio"), to be made channel-aware by the caller. */
   section: string;
+  /** The channel the notification is about (0101), or null: it is about the workspace. When set, `section` belongs
+   *  to that channel and the link must be built for it, not for whichever channel is open. */
+  channelId: string | null;
+  /** A second action for the row ("make another"), as a section path of the same channel, or null. */
+  another: string | null;
   createdAt: string;
   unread: boolean;
 }
@@ -112,7 +152,13 @@ function creativeSection(data: Record<string, unknown>, failed: boolean): string
 }
 
 export function describeNotification(row: InboxRow): NotificationView {
-  const base = { id: row.id, createdAt: row.created_at, unread: row.read_at === null };
+  const base = {
+    id: row.id,
+    createdAt: row.created_at,
+    unread: row.read_at === null,
+    channelId: null as string | null,
+    another: null as string | null,
+  };
   switch (row.kind) {
     case "creative_job_completed": {
       const n = numberField(row.data, "credits_charged");
@@ -124,7 +170,24 @@ export function describeNotification(row: InboxRow): NotificationView {
     }
     case "storyboard_ready": {
       const id = idField(row.data, "storyboard_id");
-      return { ...base, copy: "storyboardReady", amount: null, section: id ? `/videos/storyboard/${id}` : "/videos" };
+      return {
+        ...base,
+        channelId: notificationChannelId(row.data),
+        copy: "storyboardReady",
+        amount: null,
+        section: id ? `/videos/storyboard/${id}` : "/videos",
+      };
+    }
+    case "video_ready": {
+      const video = plainIdField(row.data, "video_id");
+      return {
+        ...base,
+        channelId: notificationChannelId(row.data),
+        copy: "videoReady",
+        amount: null,
+        section: video ? `/videos/${video}` : "/videos",
+        another: "/create",
+      };
     }
     case "editor_export_done": {
       const project = idField(row.data, "project_id");
