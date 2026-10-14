@@ -242,6 +242,11 @@ like `contain` (the picture alone).
 * it is applied to the overlay file BEFORE it is scaled; the overlay's
   `opacity`, `move` and `anim_*` then act on what is left. Works on pictures
   (PNG/JPG) too. A video overlay is still silent.
+* a PICTURE that has transparency of its own (a PNG sticker) keeps it: the
+  backend multiplies the key's alpha by the picture's own, so keying only ever
+  removes more. A VIDEO overlay with an alpha channel (a WebM with alpha) does
+  not: the key replaces its alpha, so do not key a video that is already
+  transparent (it is rare; the UI need not special-case it).
 * no despill (green fringes on hair etc. are not corrected).
 
 ### `denoise` and `loudnorm` (boolean, default false) on A clips and on V clips
