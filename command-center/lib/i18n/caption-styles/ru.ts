@@ -29,7 +29,7 @@ export const captionStylesRu: typeof captionStylesEn = {
     neon: "Неоновое свечение",
     typewriter: "Печатная машинка",
     line_slide: "Выезд снизу",
-    clean: "Чистый",
+    clean: "Мягкий свет",
   },
   notes: {
     karaoke: "Каждое слово заполняется цветом выделения, пока его произносят",
@@ -41,6 +41,6 @@ export const captionStylesRu: typeof captionStylesEn = {
     neon: "Мягко светящиеся буквы",
     typewriter: "Буквы появляются одна за другой",
     line_slide: "Каждый субтитр выезжает снизу и проявляется",
-    clean: "Тонкий светлый текст с мягкой тенью",
+    clean: "Лёгкий светлый текст с мягкой тенью",
   },
 };

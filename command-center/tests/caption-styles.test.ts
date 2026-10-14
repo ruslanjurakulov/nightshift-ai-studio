@@ -475,6 +475,17 @@ describe("the words people read", () => {
     }
   });
 
+  it("shares no name with the four transcript looks beside them (they are told apart by name)", () => {
+    for (const [name, d] of Object.entries(dictionaries)) {
+      const mine = [d.captions.animated.plain, d.captions.animated.plainNote]
+        .concat(CAPTION_STYLE_IDS.flatMap((id) => [d.captions.animated.styles[id], d.captions.animated.notes[id]]))
+        .join(" | ");
+      for (const look of Object.values(d.captions.presets)) {
+        expect(mine.includes(look), `${name}: ${look}`).toBe(false);
+      }
+    }
+  });
+
   it("names every style and gives each a note, in every language", () => {
     for (const d of Object.values(dictionaries)) {
       const names = CAPTION_STYLE_IDS.map((id) => d.captions.animated.styles[id]);
