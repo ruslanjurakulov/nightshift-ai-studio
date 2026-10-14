@@ -37,6 +37,8 @@ export interface CreativeResult {
  * migration 0046); voice_change and dub start from a recording there (0050);
  * describe reads a picture there and answers with text (0055); captions
  * transcribe a recording there into a word-timed caption track (0072).
+ * expand, relight and erase (0099) change one library picture and answer one
+ * picture; no model is sold for them until the owner proves and prices one.
  */
 export const CREATIVE_CAPABILITIES = [
   "t2i",
@@ -53,6 +55,9 @@ export const CREATIVE_CAPABILITIES = [
   "video_upscale",
   "describe",
   "captions",
+  "expand",
+  "relight",
+  "erase",
 ] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
 
@@ -63,6 +68,39 @@ export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
  * creative_source_problem), never here: this only checks the id's shape.
  */
 export const SOURCE_CAPABILITIES = ["edit", "i2v", "upscale", "remove_bg", "describe"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * 0099's picture ops: one library picture in, one picture out, priced as one
+ * picture. They are the AI edit tools of the Enhance desk. They start from a
+ * library picture like SOURCE_CAPABILITIES do, but are kept apart from that
+ * list on purpose: the Library's "Use in Studio" links are built from it, and a
+ * tool nobody can buy yet is not offered there.
+ */
+export const PICTURE_OP_CAPABILITIES = ["expand", "relight", "erase"] as const satisfies readonly CreativeCapability[];
+
+/** Every capability whose input is a library picture. */
+export const PICTURE_SOURCE_CAPABILITIES = [...SOURCE_CAPABILITIES, ...PICTURE_OP_CAPABILITIES] as const;
+/**
+ * 0099's explicit allow-list for an expand's `aspect_ratio` (required): the
+ * shape the picture is extended to. The model must list it too
+ * (spec.aspect_ratios_by_capability.expand).
+ */
+export const EXPAND_ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4"] as const;
+export type ExpandAspect = (typeof EXPAND_ASPECTS)[number];
+
+/**
+ * 0099's explicit allow-list for a relight's `look`: the light, by name. A
+ * relight takes EXACTLY ONE of a look or a short prompt. The model must list
+ * the look too (spec.relight_looks).
+ */
+export const RELIGHT_LOOKS = ["soft", "warm", "cool", "golden_hour", "dramatic", "studio"] as const;
+export type RelightLook = (typeof RELIGHT_LOOKS)[number];
+
+/** 0099's longest words for the picture ops: what an expand's new areas show / a relight's light / the object an erase removes. */
+export const PICTURE_OP_PROMPT_MAX = { expand: 300, relight: 300, erase: 200 } as const;
+
+/** One line of plain text: no control characters (0099 refuses them for the picture ops). */
+const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 
 /**
  * 0055's explicit allow-list for a description's `language` (optional; absent
@@ -155,7 +193,7 @@ export const AUDIO_CAPABILITIES = ["t2v", "i2v"] as const satisfies readonly Cre
 /** Upscale factors 0046 accepts; the model must also list the factor (spec.upscale_factors). */
 export const UPSCALE_FACTORS = [2, 4] as const;
 
-/** Keys 0036 / 0046 / 0048 / 0050 / 0052 / 0055 / 0060 / 0070's creative_params_problem accepts; anything else is refused there too. */
+/** Keys 0036 / 0046 / 0048 / 0050 / 0052 / 0055 / 0060 / 0070 / 0099's creative_params_problem accepts; anything else is refused there too. */
 export const PARAM_KEYS = [
   "prompt",
   "negative_prompt",
@@ -173,6 +211,7 @@ export const PARAM_KEYS = [
   "language",
   "quality",
   "audio",
+  "look",
 ] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
@@ -307,6 +346,56 @@ export function mapCreativeError(error: DbError): CreativeResult {
   return fail(502, "failed");
 }
 
+/**
+ * 0099's rules for the three picture ops, the same the database enforces
+ * (creative_params_problem): a request that breaks one never reaches it. null =
+ * nothing wrong (or not a picture op, which must not carry a look).
+ *  - expand: `aspect_ratio` required, one of EXPAND_ASPECTS; words optional (300);
+ *  - relight: EXACTLY ONE of `look` (RELIGHT_LOOKS) or `prompt` (300); no shape;
+ *  - erase: `prompt` required (200): the object; no shape;
+ *  - the words are one line of plain text; a look is relight's alone.
+ */
+export function pictureOpProblem(capability: string, params: Record<string, unknown>): string | null {
+  if (params.look !== undefined && capability !== "relight") return `look does not apply to ${capability}`;
+  if (!(PICTURE_OP_CAPABILITIES as readonly string[]).includes(capability)) return null;
+  const op = capability as (typeof PICTURE_OP_CAPABILITIES)[number];
+  const words = params.prompt;
+  if (words !== undefined) {
+    if (typeof words !== "string" || words.trim() === "") return "prompt is required";
+    if (CONTROL_RE.test(words)) return `prompt must be plain text on one line for ${op}`;
+    if (words.length > PICTURE_OP_PROMPT_MAX[op]) return `prompt is longer than ${PICTURE_OP_PROMPT_MAX[op]} characters for ${op}`;
+  }
+  if (op === "expand") {
+    if (!(EXPAND_ASPECTS as readonly unknown[]).includes(params.aspect_ratio))
+      return `aspect_ratio must be one of ${EXPAND_ASPECTS.join(", ")} for expand`;
+  } else if (params.aspect_ratio !== undefined) {
+    return `aspect_ratio does not apply to ${op}: the result keeps the source's shape`;
+  }
+  if (op === "relight") {
+    if ((params.look !== undefined) === (words !== undefined)) return "relight takes a look or a short prompt: send exactly one of them";
+    if (params.look !== undefined && !(RELIGHT_LOOKS as readonly unknown[]).includes(params.look))
+      return `look must be one of ${RELIGHT_LOOKS.join(", ")}`;
+  }
+  if (op === "erase" && words === undefined) return "prompt is required";
+  for (const k of ["negative_prompt", "resolution", "seed"] as const)
+    if (params[k] !== undefined) return `${k} does not apply to ${op}`;
+  return null;
+}
+
+/**
+ * The capabilities a migration added after the creative jobs: a database that
+ * has not applied it answers `capability_not_supported` for them. That is the
+ * same situation as a missing function — "not enabled on this deployment yet" —
+ * so it reads as `creative_unavailable`, never as a crash or a price.
+ */
+const NEEDS_MIGRATION: readonly string[] = [...PICTURE_OP_CAPABILITIES];
+
+function degraded(capability: string, result: CreativeResult): CreativeResult {
+  return result.body.error === "capability_not_supported" && NEEDS_MIGRATION.includes(capability)
+    ? fail(503, "creative_unavailable")
+    : result;
+}
+
 export interface GenerationInput {
   orgId: string;
   capability: CreativeCapability;
@@ -356,7 +445,7 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
   const recorded = RECORDING_CAPABILITIES.includes(capability);
   const filmed = (VIDEO_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
-  const sourced = recorded || filmed || (SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const sourced = recorded || filmed || (PICTURE_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
   if (sourced && !isUuid(params.source_asset_id))
     return {
       ok: false,
@@ -382,6 +471,8 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${CAPTION_LANGUAGES.join(", ")}` }) };
   if (capability !== "describe" && capability !== "captions" && params.language !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `language does not apply to ${capability}` }) };
+  const bad = pictureOpProblem(capability, params);
+  if (bad) return { ok: false, result: fail(400, "invalid_params", { detail: bad }) };
   if ((recorded || filmed) && params.duration_s !== undefined)
     // The length is the file's own, measured by the database — never sent.
     return { ok: false, result: fail(400, "invalid_params", { detail: `duration_s does not apply to ${capability}` }) };
@@ -456,7 +547,7 @@ export async function quote(db: CreativeDb, input: GenerationInput): Promise<Cre
   // A database without 0075 has no router: automatic choice is not available
   // there yet (the existing sentence), never "generation is off".
   if (error && input.mode !== "exact" && isCreativeMissing(error)) return fail(422, "mode_not_supported");
-  if (error) return mapCreativeError(error);
+  if (error) return degraded(input.capability, mapCreativeError(error));
   const q = obj(data);
   if (!q || typeof q.credits !== "number") return fail(502, "failed");
   return { status: 200, body: { quote: q } };
@@ -478,7 +569,7 @@ export async function createGeneration(db: CreativeDb, input: GenerationInput): 
     p_idempotency_key: input.idempotencyKey,
     p_max_credits: input.maxCredits,
   });
-  if (error) return mapCreativeError(error);
+  if (error) return degraded(input.capability, mapCreativeError(error));
   const out = obj(data);
   const job = obj(out?.job);
   if (!out || !job || !isUuid(job.id)) return fail(502, "failed");

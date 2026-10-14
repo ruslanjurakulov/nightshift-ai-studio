@@ -1,9 +1,11 @@
+import { improveUz } from "./improve/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
 import { looksUz } from "./editor-looks/uz";
+import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
@@ -12,6 +14,7 @@ export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
   libraryUx: libraryUxUz,
+  improveAi: improveUz,
   brand: {
     name: "Nightshift",
     tagline: "Boshqaruv markazi",
@@ -3245,7 +3248,7 @@ export const uz: Dictionary = {
     subtitle: "Tasvirlang, narxni koʻring, yarating. Kreditlar ish davomida band qilinadi va faqat muvaffaqiyatli boʻlsa yechiladi.",
     kindLabel: "Nima yaratiladi",
     toolRowLabel: "Vositalar",
-    kinds: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", sfx: "Tovush", music: "Musiqa", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Fonni olib tashlash", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifatini oshirish", describe: "Tasvirlash", captions: "Subtitrlar" },
+    kinds: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", sfx: "Tovush", music: "Musiqa", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Fonni olib tashlash", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifatini oshirish", describe: "Tasvirlash", captions: "Subtitrlar", expand: "Rasmni kengaytirish", relight: "Yorugʻlikni oʻzgartirish", erase: "Obyektni oʻchirish" },
     promptLabel: "Tasvirlang",
     voiceTextLabel: "Aytiladigan matn",
     promptPh: {
@@ -3260,6 +3263,9 @@ export const uz: Dictionary = {
       dub: "",
       video_upscale: "",
       describe: "",
+      expand: "Ixtiyoriy: yangi chetlarda nima bor — koʻproq osmon, oʻt maydoni",
+      relight: "Yoki yorugʻlikni tasvirlang — chapdan past quyosh, sham nuri",
+      erase: "Nimani olib tashlash kerak — chapdagi qizil mashina",
     },
     toolsLabel: "Rasmdan boshlash",
     optional: "ixtiyoriy",
@@ -3275,6 +3281,16 @@ export const uz: Dictionary = {
     sourceRetry: "Qayta urinish",
     noPreview: "koʻrinish yoʻq",
     keepsShape: "Natija rasmning shaklini saqlaydi.",
+    shapeLabel: "Kengaytirish shakli",
+    lookLabel: "Yorugʻlik",
+    looks: { soft: "Yumshoq", warm: "Iliq", cool: "Sovuq", golden_hour: "Oltin soat", dramatic: "Dramatik", studio: "Studiya" },
+    lookOrWords: "Yoki yorugʻlikni pastda tasvirlang. Yozganingiz tanlangan yorugʻlikning oʻrnini bosadi.",
+    opWords: { expand: "Yangi chetlarda nima bor", relight: "Yorugʻlikni tasvirlang", erase: "Nimani oʻchirish" },
+    expandNote: "Rasm tanlangan shaklga kengaytiriladi, yangi chetlar toʻldiriladi. Natija Kutubxonangizga yangi versiya sifatida saqlanadi. Narx har bir shakl uchun bir xil.",
+    relightNote: "Faqat yorugʻlik va soyalar oʻzgaradi. Yorugʻlikni tanlang yoki tasvirlang. Natija Kutubxonangizga yangi versiya sifatida saqlanadi.",
+    eraseNote: "Bitta obyektni nomlang: u olib tashlanadi, oʻrni toʻldiriladi; chizish shart emas. Natija Kutubxonangizga yangi versiya sifatida saqlanadi.",
+    aiEditNote: "Rasm butunlay qayta chiziladi, shuning uchun oʻzgarishdan tashqaridagi mayda detallar biroz farq qilishi mumkin.",
+    notAvailableYet: "Bu vosita bu oʻrnatmada hali mavjud emas.",
     recordingLabel: "Audio yoki video",
     recordingPick: "Kutubxonangizdan audio yoki video faylni tanlang",
     recordingChange: "Faylni almashtirish",
@@ -3366,7 +3382,7 @@ export const uz: Dictionary = {
     dismiss: "Yopish",
     cancel: "Bekor qilish",
     cancelling: "Bekor qilinmoqda…",
-    tabs: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Qirqish", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifati", describe: "Tasvirlash" },
+    tabs: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Qirqish", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifati", describe: "Tasvirlash", expand: "Kengaytirish", relight: "Yorugʻlik", erase: "Oʻchirish" },
     modelChange: "Oʻzgartirish",
     modelChangeLabel: "Modelni oʻzgartirish",
     blocked: {
@@ -3378,6 +3394,9 @@ export const uz: Dictionary = {
       need_language: "Narxni koʻrish uchun tilni tanlang.",
       need_video: "Narxni koʻrish uchun video tanlang.",
       need_target: "Bu video uchun hozir oʻlcham taklif qilib boʻlmaydi.",
+      need_shape: "Narxni koʻrish uchun shaklni tanlang.",
+      need_look: "Narxni koʻrish uchun yorugʻlikni tanlang yoki tasvirlang.",
+      need_object: "Narxni koʻrish uchun olib tashlanadigan narsani yozing.",
     },
     holdNote: "Kreditlar ish davomida band qilinadi va faqat muvaffaqiyatli boʻlsa yechiladi.",
     sheetTitle: "Model tanlash",
@@ -4261,6 +4280,9 @@ export const uz: Dictionary = {
       dub: "Dublyaj",
       describe: "Tavsiflash",
       video_upscale: "Videoni kattalashtirish",
+      expand: "Rasmni kengaytirish",
+      relight: "Yorugʻlikni oʻzgartirish",
+      erase: "Obyektni oʻchirish",
     },
     toolFrom: {
       t2i: "tavsif boʻyicha",
@@ -4274,6 +4296,9 @@ export const uz: Dictionary = {
       dub: "boshqa tilga",
       describe: "rasmdan promptga",
       video_upscale: "tiniqroq va kattaroq",
+      expand: "boshqa shaklga",
+      relight: "boshqa yorugʻlik",
+      erase: "bitta narsani olib tashlash",
     },
     voiceStyles: {
       "pNInz6obpgDQGcFmaJgB": "past, hikoya uchun",
@@ -4538,7 +4563,42 @@ export const uz: Dictionary = {
     downloadNote: "Boshqa pleer va saytlar uchun. Yuqoridagi subtitrlardan, bepul yaratiladi.",
     downloadSrt: ".srt yuklab olish",
     downloadVtt: ".vtt yuklab olish",
+    modelsError: "Avto-subtitrlar mavjudligini hozir tekshirib boʻlmadi. Sahifani yangilab, qayta urining.",
+    splitCue: "Ajratish",
+    mergeCue: "Keyingisi bilan birlashtirish",
+    addCueAfter: "Keyin qoʻshish",
+    noRoomForCue: "Bu yerda yangi subtitr uchun joy yoʻq: keyingisi juda erta boshlanadi yoki video tugaydi.",
+    cannotSplit: "Bu subtitrni ajratib boʻlmaydi: kamida ikki soʻz va ikkala qism uchun yetarli vaqt kerak.",
+    replaceHeading: "Soʻzni hamma joyda tuzatish",
+    replaceNote: "Soʻz yoki iborani barcha subtitrlarda birdan almashtiradi, masalan matn notoʻgʻri eshitgan ism uchun. Bosh va kichik harflar farqlanmaydi.",
+    findLabel: "Topiladigan soʻz yoki ibora",
+    replaceLabel: "Nima bilan almashtirish",
+    replaceAll: "Hamma subtitrlarda almashtirish",
+    replaced: "{n} ta subtitr oʻzgardi. Saqlash uchun loyihani saqlang.",
+    nothingToReplace: "Bu matn hech bir subtitrda topilmadi.",
+    deleteCueN: "{n}-subtitrni oʻchirish ({time} da)",
+    splitCueN: "{n}-subtitrni ajratish ({time} da)",
+    mergeCueN: "{n}-subtitrni keyingisi bilan birlashtirish ({time} da)",
+    addCueAfterN: "{n}-subtitrdan keyin subtitr qoʻshish ({time} da)",
+    cueLimit: "Loyihada subtitrlar soni allaqachon eng koʻp. Avval baʼzilarini birlashtiring yoki oʻchiring.",
+    cannotJoin: "Bu ikki subtitr birga bitta subtitr uchun juda uzun boʻladi.",
+    replaceSkipped: "Natija juda uzun boʻlgani uchun {n} ta subtitr oʻzgartirilmadi.",
     defaultFile: "subtitrlar",
+    /** Animatsiyali uslublar: ./caption-styles/uz.ts. */
+    animated: captionStylesUz,
+    addCue: "Subtitr qoʻshish",
+    importFile: ".srt yoki .vtt yuklash",
+    importNote: "Subtitrlarni oʻzingiz yozing yoki ular bilan fayl yuklang. Ikkalasi ham bepul, nutqni matnga aylantirish shart emas.",
+    newCueText: "Yangi subtitr",
+    addNoRoom: "Yana bitta subtitr uchun joy yoʻq: tasvir juda erta tugaydi.",
+    importTooBig: "Fayl juda katta (1 MB dan ortiq).",
+    importFailed: "Faylni oʻqib boʻlmadi.",
+    importOutside: "Bu fayldagi barcha subtitrlar tasvir tugaganidan keyin keladi, shuning uchun hech biri qoʻshilmadi.",
+    importNone: "Bu faylda subtitrlar topilmadi. .srt yoki .vtt fayl kerak.",
+    importReplace: "Bu siz koʻrayotgan subtitrlarni, tahrirlaringiz bilan birga, almashtiradi. Davom etilsinmi?",
+    imported: "{n} ta subtitr yuklandi. Saqlab qolish uchun loyihani saqlang.",
+    importedSome: "{n} ta subtitr yuklandi; {skipped} tasini ishlatib boʻlmadi. Saqlab qolish uchun loyihani saqlang.",
+    noCuesManual: "Hozircha subtitr yoʻq. Bittasini qoʻshing yoki .srt yoki .vtt fayl yuklang.",
   },
   workflows: {
     title: "Ssenariylar",

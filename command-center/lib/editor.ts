@@ -22,6 +22,7 @@
  * no provider) and ends as a file in the library.
  */
 
+import { CAPTION_STYLE_IDS, isCaptionStyleId } from "@/lib/captionStyleTable";
 import {
   GRADE_KEYS,
   GRADE_RANGES,
@@ -313,7 +314,8 @@ const T_CLIP_KEYS = [
 ];
 const TRANSITION_KEYS = ["type", "duration_s"];
 const TRANSITION_ALLOWED = [...TRANSITION_KEYS, "style"];
-const CAPTION_STYLE_KEYS = [...TEXT_STYLE_KEYS, "y"];
+/** `preset` is one of CAPTION_STYLE_IDS (an animated style); absent = the plain caption. */
+const CAPTION_STYLE_KEYS = [...TEXT_STYLE_KEYS, "y", "preset", "highlight_color"];
 const CUE_KEYS = ["id", "start_s", "end_s", "text"];
 const OVERLAY_REQUIRED = ["id", "asset_id", "start_s", "end_s"];
 const OVERLAY_KEYS = [
@@ -1225,6 +1227,15 @@ function validateCaptions(
   ) {
     textStyle(style, "captions style", problems);
     numIn(style, "y", 0, 1, "captions style", problems);
+    if ("preset" in style && !isCaptionStyleId(style.preset))
+      problems.push(
+        `captions style: preset must be one of ${JSON.stringify(CAPTION_STYLE_IDS)}`,
+      );
+    if (
+      "highlight_color" in style &&
+      !(typeof style.highlight_color === "string" && HEX_RE.test(style.highlight_color))
+    )
+      problems.push("captions style: highlight_color must be a #RRGGBB colour");
   }
   if (!Array.isArray(captions.cues)) {
     problems.push("captions: cues must be a list");
