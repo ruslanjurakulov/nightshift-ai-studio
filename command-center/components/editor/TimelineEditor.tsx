@@ -39,6 +39,7 @@ import {
   GAIN_UI_MAX,
   GAIN_UI_MIN,
   MAX_AUDIO_CLIPS,
+  MAX_DURATION_S,
   MAX_EDITOR_CLIPS,
   MAX_EDITOR_SOUNDS,
   MAX_EDITOR_TEXTS,
@@ -153,6 +154,8 @@ import { OverlayChromaSection, SoundCleanSection } from "./CleanSections";
 import { OverlayAnimSection, TextAnimSection } from "./AnimPicker";
 import { ANIM_REST, animFrame, playsNatively, writtenText, type AnimFrame } from "@/lib/editorFxPreview";
 import { trimLimited } from "@/lib/editorMotion";
+import { settleAll, type SettleChange } from "@/lib/editorSettle";
+import { SettleNotice } from "./SettleNotice";
 import { TransitionStylePicker } from "./TransitionStylePicker";
 import { TextLookPicker } from "./TextLookPicker";
 import { applyTextLook } from "@/lib/editorTextLook";
@@ -369,9 +372,17 @@ export function TimelineEditor({
   // ── history ────────────────────────────────────────────────────────────────
   // `group`: the changes of one gesture (a slider drag) are ONE undo step.
   const gesture = useRef<string | null>(null);
+  // What the last edit had to settle elsewhere (a backwards part shortened, smoothing
+  // switched off ...), said to the person; cleared by the next edit that settles nothing.
+  const [settled, setSettled] = useState<SettleChange[]>([]);
   const apply = useCallback(
-    (next: EditorModel, group?: string) => {
-      if (next === model) return;
+    (raw: EditorModel, group?: string) => {
+      if (raw === model) return;
+      // Any edit can push a clip over a limit that depends on something else (the
+      // frame shape, the timeline's length, a neighbour's cross-fade): settle it.
+      const fixed = settleAll(raw);
+      const next = fixed.model;
+      setSettled(fixed.changes);
       if (!group || gesture.current !== group) {
         setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
         setFuture([]);
@@ -385,6 +396,7 @@ export function TimelineEditor({
   const undo = useCallback(() => {
     if (!past.length) return;
     gesture.current = null;
+    setSettled([]);
     setFuture([model, ...future]);
     setModel(past[past.length - 1]);
     setPast(past.slice(0, -1));
@@ -392,6 +404,7 @@ export function TimelineEditor({
   const redo = useCallback(() => {
     if (!future.length) return;
     gesture.current = null;
+    setSettled([]);
     setPast([...past, model]);
     setModel(future[0]);
     setFuture(future.slice(1));
@@ -1037,6 +1050,7 @@ export function TimelineEditor({
           </p>
         ) : null}
         <RenderBudgetNotice model={model} />
+        <SettleNotice changes={settled} />
         <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">
           {te.freeNote} {te.publishNote}
         </p>
@@ -1901,7 +1915,8 @@ function ClipInspector({
           label={te.trimOut}
           value={clip.out_s}
           min={clip.in_s}
-          max={sourceS ?? undefined}
+          // a frozen clip's end is its hold length, not a place in the file
+          max={clip.freeze ? MAX_DURATION_S : (sourceS ?? undefined)}
           step={0.1}
           onCommit={onOut}
         />

@@ -14,6 +14,7 @@ import {
   CHROMA_SIMILARITY_DEFAULT,
   CHROMA_SIMILARITY_MAX,
   CHROMA_SIMILARITY_MIN,
+  HEX_RE,
   STABILIZE_MAX_DOC_S,
   STABILIZE_MAX_S,
   clamp,
@@ -28,7 +29,6 @@ import { renderWork, sourceRange, type RenderWork } from "@/lib/editorMotion";
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const finite = (v: number, d: number) => (Number.isFinite(v) ? v : d);
-const HEX = /^#[0-9a-fA-F]{6}$/;
 
 // ── chroma key (an overlay's) ───────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ export function setOverlayChroma(
       void _old;
       return rest;
     }
-    if (!HEX.test(chroma.color)) return o;
+    if (!HEX_RE.test(chroma.color)) return o;
     return JSON.stringify(chroma) === JSON.stringify(o.chroma)
       ? o
       : { ...o, chroma };
@@ -89,7 +89,7 @@ export function startChroma(model: EditorModel, id: string): EditorModel {
 
 /** The colour to remove, as #RRGGBB (any case; stored upper case). Refused otherwise. */
 export function setChromaColor(model: EditorModel, id: string, color: string): EditorModel {
-  if (!HEX.test(color)) return model;
+  if (!HEX_RE.test(color)) return model;
   return withOverlay(model, id, (o) => {
     if (!o.chroma) return o;
     const next = color.toUpperCase();

@@ -128,7 +128,7 @@ export function ClipEffectsSection({
       {slider("vignette", e.vignette)}
       {slider("blur", e.blur)}
       {blurMax < BLUR_MAX ? (
-        <p className="m-0 text-xs text-[var(--color-warn)]" data-testid="blur-large">
+        <p role="status" className="m-0 text-xs text-[var(--color-warn)]" data-testid="blur-large">
           {fmt(e.largeBlur, { w: model.width, h: model.height })}
         </p>
       ) : null}
@@ -219,8 +219,12 @@ function AngleBox({
   useEffect(() => setDraft(String(value)), [value]);
   const commit = () => {
     const v = Number(draft.replace(",", "."));
-    if (draft.trim() !== "" && Number.isFinite(v) && v !== value) onCommit(v);
-    else setDraft(String(value));
+    if (draft.trim() !== "" && Number.isFinite(v)) {
+      // what the model will hold (the same clamp and one decimal), so the box never keeps "999"
+      const held = Math.round(Math.min(ANGLE_MAX, Math.max(-ANGLE_MAX, v)) * 10) / 10;
+      setDraft(String(held));
+      if (held !== value) onCommit(v);
+    } else setDraft(String(value));
   };
   return (
     <input
@@ -240,6 +244,10 @@ function AngleBox({
     />
   );
 }
+
+/** The largest slider value on the step's grid that is not past `v` (a slider's end
+ *  off the grid is a value a keyboard can never reach). */
+const onGrid = (v: number) => Math.max(0, Math.floor(v / CROP_STEP + 1e-9) * CROP_STEP);
 
 /** The shapes the crop can be set to, as width / height (the frame's own shape first). */
 const SHAPES = [
@@ -333,8 +341,8 @@ export function ClipCropSection({
         columns="8rem"
         testId="crop-shape"
       />
-      {row("x", c.left, 0, Math.max(0, Math.round((1 - rect.w) * 1000) / 1000))}
-      {row("y", c.top, 0, Math.max(0, Math.round((1 - rect.h) * 1000) / 1000))}
+      {row("x", c.left, 0, onGrid(1 - rect.w))}
+      {row("y", c.top, 0, onGrid(1 - rect.h))}
       {row("w", c.width, CROP_MIN, 1)}
       {row("h", c.height, CROP_MIN, 1)}
       <button

@@ -5,12 +5,17 @@
  * good the result is.
  */
 export const fxEn = {
-  reset: "Reset",
   /** Sentence under a panel whose preview is a rough picture of the export. */
-  approx: "The preview is approximate; the exported file is the reference.",
   percent: "{v}%",
   degrees: "{v}°",
   renderBudget: "Smoother slow motion and steadying would take about {work} s to render, but a {length} s video is allowed {allowed} s. Use less of them or make the video longer.",
+  settled: {
+    reverse: "Clip {n}: its backwards part was shortened to {max} s, the most that fits this frame size.",
+    interpolate: "Clip {n}: smoother slow motion was switched off because it no longer fits (the frame size, the frame budget or the export's time allowance).",
+    stabilize: "Clip {n}: steadying was switched off because it no longer fits (the frame size, its length or the export's time allowance).",
+    blur: "Clip {n}: its blur was removed: a cross-faded clip takes no blur in a frame above 1440p.",
+    zoom: "Clip {n}: its zoom was lowered to {max}×: a cross-faded clip in a frame above 1440p takes no more.",
+  },
   secondsValue: "{v} s",
   anim: {
     title: "Entrance and exit",
@@ -175,7 +180,6 @@ export const fxEn = {
       graphPoint: "{at}% of the way: {speed}×",
       length: "With this curve the clip lasts {len} s; the video part is {range} s.",
       replaces: "A curve replaces the constant speed, backwards play and freeze; turning it on turns those off.",
-      off: "Use a constant speed",
       hint: "{min} to {max} points; the first is at the start and the last at the end. The speed changes smoothly between points, from {smin}× to {smax}×. Sound follows the picture in short slices, so a steep change on a short clip sounds stepped. On a long clip the sound is in step with the picture only at a few points along it, so between them it can be a little off: keep speed curves on clips of a few seconds. A clip with a curve cannot be split.",
     },
     interpolate: {

@@ -7,6 +7,7 @@ import {
   CHROMA_BLEND_MAX,
   CHROMA_SIMILARITY_MAX,
   CHROMA_SIMILARITY_MIN,
+  HEX_RE,
   RENDER_TIMEOUT_BASE_S,
   RENDER_TIMEOUT_MAX_S,
   RENDER_TIMEOUT_PER_S,
@@ -77,10 +78,10 @@ export function OverlayChromaSection({
   useEffect(() => setDraft(key?.color ?? ""), [key?.color]);
   const [picking, setPicking] = useState(false);
   const canPick = typeof window !== "undefined" && Boolean((window as unknown as { EyeDropper?: unknown }).EyeDropper);
-  const badHex = draft.trim() !== "" && !/^#[0-9a-fA-F]{6}$/.test(draft.trim());
+  const badHex = draft.trim() !== "" && !HEX_RE.test(draft.trim());
   const commitHex = () => {
     const v = draft.trim();
-    if (/^#[0-9a-fA-F]{6}$/.test(v)) apply(setChromaColor(model, id, v));
+    if (HEX_RE.test(v)) apply(setChromaColor(model, id, v));
     else if (!badHex) setDraft(key?.color ?? "");
   };
   async function pick() {
@@ -247,6 +248,9 @@ export function SoundCleanSection({
         loudnorm={Boolean(sound.loudnorm)}
         onChange={(key, on) => apply(setSoundClean(model, sound.id, key, on))}
       />
+      <p className={note} data-testid="clean-preview-note">
+        {k.previewNote}
+      </p>
     </Disclosure>
   );
 }
@@ -321,6 +325,9 @@ export function ClipCleanSection({
             onChange={(key, on) => apply(setClipClean(model, clip.id, key, on))}
           />
           {clip.audio ? null : <p className={note}>{k.soundOff}</p>}
+          <p className={note} data-testid="clean-preview-note">
+            {k.previewNote}
+          </p>
         </>
       )}
     </Disclosure>

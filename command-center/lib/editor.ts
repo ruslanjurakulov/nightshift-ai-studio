@@ -323,7 +323,8 @@ export const FONTS = [
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const UUID_RE =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+/** A #RRGGBB colour (the document's, one definition for the validators and the editor's colour controls). */
+export const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const DOC_REQUIRED = ["version", "width", "height", "fps", "tracks"];
 const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays"];

@@ -2,11 +2,16 @@ import type { fxEn } from "./en";
 
 /** Tahrirchidagi effektlar, qirqish, burish va animatsiyalar: `t.editor.fx`. Manba — ./en.ts. */
 export const fxUz: typeof fxEn = {
-  reset: "Asliga qaytarish",
-  approx: "Oldindan koʻrish taxminiy; etalon — eksport qilingan fayl.",
   percent: "{v}%",
   degrees: "{v}°",
   renderBudget: "Ravon sekin harakat va barqarorlash taxminan {work} s render qilishni talab qiladi, {length} s li video uchun esa {allowed} s ajratilgan. Ulardan kamroq foydalaning yoki videoni uzunroq qiling.",
+  settled: {
+    reverse: "{n}-klip: teskari oʻynaydigan qism {max} s gacha qisqartirildi — bu kadr oʻlchamiga sigʻadigan eng koʻp qiymat.",
+    interpolate: "{n}-klip: ravon sekin harakat oʻchirildi, chunki u endi sigʻmaydi (kadr oʻlchami, kadrlar chegarasi yoki eksportga ajratilgan vaqt).",
+    stabilize: "{n}-klip: barqarorlash oʻchirildi, chunki u endi sigʻmaydi (kadr oʻlchami, uzunligi yoki eksportga ajratilgan vaqt).",
+    blur: "{n}-klip: xiralashtirish olib tashlandi: kadr 1440p dan katta boʻlsa, oʻtish bilan ulangan klipda xiralashtirish mavjud emas.",
+    zoom: "{n}-klip: kattalashtirish {max}× gacha kamaytirildi: kadr 1440p dan katta boʻlsa, oʻtish bilan ulangan klipda undan koʻp mumkin emas.",
+  },
   secondsValue: "{v} s",
   anim: {
     title: "Paydo boʻlish va yoʻqolish",
@@ -171,7 +176,6 @@ export const fxUz: typeof fxEn = {
       graphPoint: "yoʻlning {at}% i: {speed}×",
       length: "Bu egri chiziq bilan klip {len} s davom etadi; video qismi {range} s.",
       replaces: "Egri chiziq doimiy tezlikni, teskari oʻynatishni va qotirishni almashtiradi; yoqilganda ular oʻchiriladi.",
-      off: "Doimiy tezlikka qaytish",
       hint: "{min} dan {max} gacha nuqta; birinchisi boshida, oxirgisi oxirida. Nuqtalar orasida tezlik ravon oʻzgaradi, {smin}× dan {smax}× gacha. Ovoz tasvirga qisqa boʻlaklar bilan ergashadi, shuning uchun qisqa klipdagi keskin oʻzgarish pogʻonali eshitiladi. Uzun klipda ovoz tasvir bilan faqat klip boʻylab bir necha nuqtada mos keladi, ular orasida biroz farq qilishi mumkin: tezlik egri chiziqlarini bir necha soniyalik kliplarda saqlang. Egri chiziqli klipni boʻlib boʻlmaydi.",
     },
     interpolate: {

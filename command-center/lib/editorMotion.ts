@@ -50,7 +50,9 @@ import {
   setSpeed,
   splitClip,
   stabilizeSeconds,
+  toDoc,
   trimClip,
+  validateTimeline,
   type ClipMove,
   type EditorModel,
   type MovePoint,
@@ -713,6 +715,17 @@ export function maxRangeFor(model: EditorModel, c: VideoClip): number {
   return max;
 }
 
+/** What the validator says about the limits this module guards (backwards range,
+ *  smoothing frames, steadying seconds, the export's time allowance) for clip `id`
+ *  or the project: the answer is the validator's own, so it cannot disagree. */
+export function budgetProblems(model: EditorModel, id: string): string[] {
+  return validateTimeline(toDoc(model)).filter(
+    (p) =>
+      (p.includes(`clip ${id}:`) && /reverse holds|interpolat|stabilis/.test(p)) ||
+      /^timeline: (interpolated|at most \d+ s of video can be stabilised)|would take about/.test(p),
+  );
+}
+
 /**
  * `trimClip` that also keeps the clip inside the limits of what it is set to
  * do (reverse, interpolation, stabilise): the edge being moved stops where the
@@ -752,6 +765,7 @@ export function trimLimited(
     const x = m.clips.find((k) => k.id === id);
     return Boolean(x && (x.interpolate || x.stabilize));
   };
+  let result = out;
   if (slow(out) && !renderWork(out).ok) {
     const from = edge === "in" ? c.in_s : c.out_s;
     const to = edge === "in" ? out.clips.find((k) => k.id === id)!.in_s : out.clips.find((k) => k.id === id)!.out_s;
@@ -766,8 +780,21 @@ export function trimLimited(
         best = cand;
       } else bad = mid;
     }
-    return best;
+    result = best;
   }
-  return out;
+  // The cap is a number of seconds; the validator counts whole frames of the
+  // range exactly as it is stored (a float difference can tip 300 frames to 301).
+  // So the last word is the validator's own: step the edge in by a millisecond
+  // until it has nothing to say about this clip's limits.
+  for (let i = 0; i < 60 && budgetProblems(result, id).length > 0; i += 1) {
+    const x = result.clips.find((k) => k.id === id);
+    if (!x) break;
+    const v = edge === "in" ? ms(x.in_s + 0.001) : ms(x.out_s - 0.001);
+    const stepped = trimClip(result, id, edge, v, edge === "out" && frozen ? null : sourceS);
+    const y = stepped.clips.find((k) => k.id === id);
+    if (!y || (edge === "in" ? y.in_s === x.in_s : y.out_s === x.out_s)) break;
+    result = stepped;
+  }
+  return result;
 }
 

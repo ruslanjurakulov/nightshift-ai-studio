@@ -290,6 +290,15 @@ describe("clean up a clip's own sound", () => {
     expect(check(clean(), cl.loudnorm).checked).toBe(false);
   });
 
+  it("both say the clean-up is not heard in the preview, a clip's and a music clip's", () => {
+    mount(videoDoc({ audio: true }));
+    expect(within(clean()).getByTestId("clean-preview-note").textContent).toBe(cl.previewNote);
+    cleanup();
+    mount(soundDoc());
+    fireEvent.click(within(screen.getByRole("list", { name: te.soundsTrack })).getAllByRole("button")[0]);
+    expect(within(section(cl.soundTitle)).getByTestId("clean-preview-note").textContent).toBe(cl.previewNote);
+  });
+
   it("with the clip's sound off it says they do nothing yet", () => {
     mount(videoDoc({ audio: false }));
     expect(within(clean()).getByText(cl.soundOff)).toBeTruthy();

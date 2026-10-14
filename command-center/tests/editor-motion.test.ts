@@ -652,3 +652,65 @@ describe("overlays that move between two visible opacities (at most a few)", () 
     expect(updateOverlay(roomy, ids[2], { opacity: 0.9 }).overlays![2].move).toEqual({ to: { opacity: 0.6, x: 0.8 } });
   });
 });
+
+describe("trimming a clip that interpolates always lands inside the budget (the validator's own count)", () => {
+  const LONGV: EditorAsset = { ...VIDEO, durationS: 300 };
+  /** A long plain clip first (so the export has the time), then a slow clip on [in, out]. */
+  const withSlow = (inS: number, outS: number, speed: number): { m: EditorModel; id: string } => {
+    const m = addClip(addClip(base(), LONGV), LONGV);
+    const id = m.clips[2].id;
+    return {
+      id,
+      m: { ...m, clips: m.clips.map((c) => (c.id === id ? { ...c, in_s: inS, out_s: outS, speed, interpolate: true } : c)) },
+    };
+  };
+
+  it("the reported case: 1080p30, 0.5x, from 6.826", () => {
+    const { m, id } = withSlow(6.826, 8, 0.5);
+    valid(m);
+    const t = trimLimited(m, id, "out", 30, 300);
+    valid(t);
+    const x = t.clips.find((c) => c.id === id)!;
+    expect(x.out_s).toBeGreaterThan(11.7);
+    expect(x.out_s).toBeLessThanOrEqual(11.826);
+  });
+
+  it("any start, any speed, either edge: the trimmed document always validates and is not trimmed needlessly far", () => {
+    let checked = 0;
+    for (const speed of [0.25, 0.5, 0.75]) {
+      // the longest range the budget allows at this speed, in seconds
+      const rate = Math.min(120, Math.ceil(30 / speed));
+      const longest = INTERP_MAX_FRAMES / rate;
+      for (let i = 0; i < 90; i += 1) {
+        const start = 6 + i * 0.137 + (i % 7) * 0.0031;
+        const s = Math.round(start * 1000) / 1000;
+        // out edge: a short range grown far past the budget
+        const a = withSlow(s, s + 1, speed);
+        const ta = trimLimited(a.m, a.id, "out", s + 60, 300);
+        expect(validateTimeline(toDoc(ta)), `out ${speed} @${s}`).toEqual([]);
+        const ra = ta.clips.find((c) => c.id === a.id)!;
+        expect(ra.out_s - ra.in_s).toBeGreaterThan(longest - 0.01);
+        // in edge: the same, grown backwards
+        const b = withSlow(s + 60, s + 61, speed);
+        const tb = trimLimited(b.m, b.id, "in", s, 300);
+        expect(validateTimeline(toDoc(tb)), `in ${speed} @${s}`).toEqual([]);
+        const rb = tb.clips.find((c) => c.id === b.id)!;
+        expect(rb.out_s - rb.in_s).toBeGreaterThan(longest - 0.01);
+        checked += 2;
+      }
+    }
+    expect(checked).toBe(540);
+  });
+
+  it("backwards and steadied clips stay valid the same way", () => {
+    for (let i = 0; i < 40; i += 1) {
+      const s = Math.round((6 + i * 0.1913) * 1000) / 1000;
+      const m = addClip(addClip(base(), LONGV), LONGV);
+      const id = m.clips[2].id;
+      const rev = { ...m, clips: m.clips.map((c) => (c.id === id ? { ...c, in_s: s, out_s: s + 1, reverse: true } : c)) };
+      expect(validateTimeline(toDoc(trimLimited(rev, id, "out", s + 40, 300))), `reverse @${s}`).toEqual([]);
+      const stab = { ...m, clips: m.clips.map((c) => (c.id === id ? { ...c, in_s: s, out_s: s + 1, stabilize: true } : c)) };
+      expect(validateTimeline(toDoc(trimLimited(stab, id, "out", s + 200, 300))), `stabilise @${s}`).toEqual([]);
+    }
+  });
+});

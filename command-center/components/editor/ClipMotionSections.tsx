@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import {
@@ -246,7 +246,7 @@ export function ClipMoveSection({
         </>
       ) : null}
       {zoomMax < MOVE_ZOOM_MAX ? (
-        <p className="m-0 text-xs text-[var(--color-warn)]" data-testid="zoom-large">
+        <p role="status" className="m-0 text-xs text-[var(--color-warn)]" data-testid="zoom-large">
           {fmt(m.largeZoom, { max: zoomMax, w: model.width, h: model.height })}
         </p>
       ) : null}
@@ -307,7 +307,7 @@ export function OverlayMoveSection({
                       apply(setOverlayEnd(model, id, "opacity", v === "clear" ? 0 : overlay.opacity))
                     }
                   />
-                  <p className={note}>{fmt(m.cap, { max: MAX_PARTIAL_OPACITY_MOVES })}</p>
+                  <p role="status" className={note}>{fmt(m.cap, { max: MAX_PARTIAL_OPACITY_MOVES })}</p>
                 </div>
               );
             return (
@@ -338,19 +338,28 @@ function SpeedBox({
   value,
   label,
   disabled,
+  describedBy,
+  alwaysCommit = false,
   onCommit,
 }: {
   value: number;
   label: string;
   disabled: boolean;
+  describedBy?: string;
+  /** Commit even when the number is the one shown (a speed curve shows 1: typing 1 replaces it). */
+  alwaysCommit?: boolean;
   onCommit: (v: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
   const commit = () => {
     const v = Number(draft.replace(",", "."));
-    if (draft.trim() !== "" && Number.isFinite(v) && v !== value) onCommit(v);
-    else setDraft(String(value));
+    if (draft.trim() !== "" && Number.isFinite(v)) {
+      // what the model will hold (brought into range), so the box never keeps "99"
+      const held = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(v * 1000) / 1000));
+      setDraft(String(held));
+      if (held !== value || alwaysCommit) onCommit(v);
+    } else setDraft(String(value));
   };
   return (
     <input
@@ -362,6 +371,7 @@ function SpeedBox({
       step={0.05}
       disabled={disabled}
       aria-label={label}
+      aria-describedby={describedBy}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -432,6 +442,8 @@ function CurveEditor({
   const c = fx.speed.curve;
   const id = clip.id;
   const curve = curveOf(clip);
+  // The row being removed takes its button with it: focus goes to "Add a point", never to the page.
+  const addButton = useRef<HTMLButtonElement>(null);
   const edit = (next: EditorModel, group?: string) => {
     apply(next, group);
     showClip(id);
@@ -513,7 +525,10 @@ function CurveEditor({
                     className={quiet}
                     aria-disabled={curve.length <= RAMP_MIN_POINTS || undefined}
                     onClick={() => {
-                      if (curve.length > RAMP_MIN_POINTS) edit(removeCurvePoint(model, id, i));
+                      if (curve.length > RAMP_MIN_POINTS) {
+                        edit(removeCurvePoint(model, id, i));
+                        setTimeout(() => addButton.current?.focus(), 0);
+                      }
                     }}
                   >
                     {fmt(c.remove, { n: i + 1 })}
@@ -524,6 +539,7 @@ function CurveEditor({
           })}
           <button
             type="button"
+            ref={addButton}
             className={quiet}
             aria-disabled={!canAddCurvePoint(clip) || undefined}
             onClick={() => {
@@ -621,9 +637,14 @@ export function ClipSpeedSection({
           value={curve ? 1 : clip.speed}
           label={fmt(s.custom, { min: SPEED_MIN, max: SPEED_MAX })}
           disabled={Boolean(clip.freeze)}
+          describedBy={`${uid}-speed-hint`}
+          alwaysCommit={Boolean(curve)}
           onCommit={(v) => edit(setClipSpeed(model, id, v))}
         />
       </label>
+      <p id={`${uid}-speed-hint`} className={note}>
+        {fmt(s.customHint, { min: SPEED_MIN, max: SPEED_MAX })}
+      </p>
       <Disclosure
         title={s.more}
         active={Boolean(clip.reverse || clip.freeze || curve || clip.interpolate)}
@@ -743,7 +764,7 @@ export function RenderBudgetNotice({ model }: { model: EditorModel }) {
   const r = renderWork(model);
   if (r.ok) return null;
   return (
-    <p className="m-0 text-xs text-[var(--color-warn)]" data-testid="render-budget">
+    <p role="status" className="m-0 text-xs text-[var(--color-warn)]" data-testid="render-budget">
       {fmt(t.editor.fx.renderBudget, {
         work: Math.round(r.work),
         length: Math.round(r.length),

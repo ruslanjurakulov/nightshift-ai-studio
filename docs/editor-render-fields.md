@@ -543,3 +543,15 @@ minute-long timeline is off, with "about 317 s to render, but 300 s allowed" on 
 screen, and the hint states what a minute costs at the project's frame size; the
 chroma hint says a picture's own transparency is kept and that a video that is
 already transparent should not be keyed.
+
+Settling after any edit (`lib/editorSettle.ts`, applied by the editor to every edit):
+some limits depend on something other than the clip a control belongs to, so a
+frame shape, a deleted or shortened clip, a new cross-fade or a speed change can push
+a clip that was fine over one. The policy, the same everywhere: a backwards part is
+shortened to the new whole-frame limit; smoothing and steadying that no longer fit
+(per-clip, per-project or the export's time allowance, dearest first) are switched
+off; a blur on a cross-faded clip in a frame above 1440p is removed and a zoom
+lowered to the cap. The editor says exactly what it changed in a polite live region
+and one Undo returns it; a document that is fine is left alone. Trimming an edge
+re-asks the validator itself (frame counts are taken on the stored float
+difference) and steps in by a millisecond until it is satisfied.
