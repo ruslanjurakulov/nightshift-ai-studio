@@ -2039,12 +2039,18 @@ export function clipAt(
   return null;
 }
 
+/** The source second a split at timeline time `t` cuts at (modules/timeline.py
+ *  split_clip): a reversed clip plays its range from the end. */
+function cutPoint(c: VideoClip, t: number): number {
+  return ms(c.reverse ? c.out_s - (t - c.start_s) * c.speed : c.in_s + (t - c.start_s) * c.speed);
+}
+
 /** Can clip `id` be split at timeline time `t` (both halves at least MIN_CLIP_S of source)? */
 export function canSplit(model: EditorModel, id: string, t: number): boolean {
   if (model.clips.length >= MAX_EDITOR_CLIPS) return false;
   const c = layout(model.clips).find((x) => x.id === id);
   if (!c) return false;
-  const cut = c.in_s + (t - c.start_s) * c.speed;
+  const cut = cutPoint(c, t);
   return (
     t > c.start_s &&
     t < clipEnd(c) &&
@@ -2064,7 +2070,7 @@ export function splitClip(
   const clips = layout(model.clips);
   const i = clips.findIndex((x) => x.id === id);
   const c = clips[i];
-  const cut = ms(c.in_s + (ms(t) - c.start_s) * c.speed);
+  const cut = cutPoint(c, ms(t));
   const newId = freshId(model, "c");
   // modules/timeline.py split_clip: the first half keeps the way in (its
   // transition and fade in), the second the way out (its fade out).

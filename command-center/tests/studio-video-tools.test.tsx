@@ -225,8 +225,8 @@ describe("params (0052's rules)", () => {
     expect([...STUDIO_CAPABILITIES]).toEqual(["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"]);
     // lib/navigation mirrors COMPOSER_CAPABILITIES, so the sidebar links it too.
     expect(COMPOSER_CAPABILITIES.at(-1)).toBe("video_upscale");
-    // The Enhance desk's AI picture tools (0099) follow, and are not sidebar rows.
-    expect([...PANEL_CAPABILITIES]).toEqual([...COMPOSER_CAPABILITIES, "expand", "relight", "erase"]);
+    // The Enhance desk's AI picture (0099) and video (0100) tools follow, and are not sidebar rows.
+    expect([...PANEL_CAPABILITIES]).toEqual([...COMPOSER_CAPABILITIES, "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"]);
     // The Library's "Use in Studio" picture links never offer the video tool for a picture.
     expect(SOURCE_CAPABILITIES as readonly string[]).not.toContain("video_upscale");
   });
@@ -264,7 +264,7 @@ describe("pinned to 0052", () => {
   });
 
   it("every capability and param key the code sends is one 0052 accepts (0055's and 0072's own are pinned to theirs)", () => {
-    const later: readonly string[] = ["describe", "language", "captions", "quality", "audio", "expand", "relight", "erase", "look"];
+    const later: readonly string[] = ["describe", "language", "captions", "quality", "audio", "expand", "relight", "erase", "look", "video_edit", "video_reframe", "video_remove_bg"];
     const supported = fn("creative_capability_supported");
     for (const c of CREATIVE_CAPABILITIES) if (!later.includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");

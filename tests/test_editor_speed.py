@@ -155,6 +155,34 @@ class DocumentTestCase(unittest.TestCase):
         a, b = out["tracks"][0]["clips"]
         self.assertEqual((a["in_s"], a["out_s"], b["in_s"], b["out_s"]), (1, 3, 3, 5))
 
+    def test_a_reversed_clip_is_cut_off_the_middle_too(self):
+        # 0..10 reversed plays 10 -> 0. Cut 3 s into the timeline: the first part plays source 10 -> 7
+        # (range 7..10), the second 7 -> 0 (range 0..7). The old in_s + 3 cut at 3 and played 3..10 twice.
+        out = tl.split_clip(vdoc(in_s=0, out_s=10, reverse=True), "c1", 3.0, "c2")
+        a, b = out["tracks"][0]["clips"]
+        self.assertEqual((a["in_s"], a["out_s"], b["in_s"], b["out_s"]), (7, 10, 0, 7))
+        self.assertEqual((a["start_s"], b["start_s"]), (0, 3.0))
+        self.assertEqual(tl.validate(out), [])           # no overlap, nothing out of range
+        self.assertEqual(tl.duration_s(out), tl.duration_s(vdoc(in_s=0, out_s=10, reverse=True)))
+        # the same with a speed: 4 s of source at 2x, cut 0.5 s in = 1 s of source off the end
+        out = tl.split_clip(vdoc(in_s=1, out_s=5, reverse=True, speed=2), "c1", 0.5, "c2")
+        a, b = out["tracks"][0]["clips"]
+        self.assertEqual((a["in_s"], a["out_s"], b["in_s"], b["out_s"]), (4, 5, 1, 4))
+        self.assertEqual(tl.validate(out), [])
+        # a cut at the end is refused
+        with self.assertRaises(tl.TimelineError):
+            tl.split_clip(vdoc(in_s=0, out_s=10, reverse=True), "c1", 10.0, "c2")
+
+    def test_the_halves_of_a_reversed_split_play_the_same_frames(self):
+        # frame k of the whole clip (timeline time t) is source out_s - t*speed; the halves agree
+        whole = vdoc(in_s=0, out_s=10, reverse=True)
+        out = tl.split_clip(whole, "c1", 3.0, "c2")
+        a, b = out["tracks"][0]["clips"]
+        for t in (0.0, 1.0, 2.5):
+            self.assertAlmostEqual(a["out_s"] - (t - a["start_s"]), 10 - t)
+        for t in (3.0, 5.0, 9.5):
+            self.assertAlmostEqual(b["out_s"] - (t - b["start_s"]), 10 - t)
+
 
 class TempoTestCase(unittest.TestCase):
     def test_one_stage_inside_half_to_double_and_the_old_string_is_kept(self):
@@ -256,7 +284,7 @@ class CommandTestCase(unittest.TestCase):
                          effects=rs.ClipEffects(rotate=90, filter="mono"))
         vf = self.cmd(seg)[self.cmd(seg).index("-vf") + 1]
         self.assertTrue(vf.startswith("transpose=1,scale="))
-        self.assertRegex(vf, r"hue=s=0.000,pad=.*,fps=30,reverse,setpts=.*,fps=30,scale=w=.*crop=.*,fade=t=in")
+        self.assertRegex(vf, r"hue=s=0.000,pad=.*,fps=30,reverse,setpts=.*,fps=30,setsar=1,scale=w=.*crop=.*,fade=t=in")
 
     def test_a_reversed_or_frozen_piece_of_a_crossfade_is_cut_from_the_whole_clip(self):
         doc = {"version": 1, "width": 640, "height": 360, "fps": 30, "tracks": [{"id": "v1", "kind": "V", "clips": [
