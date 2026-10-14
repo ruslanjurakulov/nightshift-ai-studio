@@ -272,7 +272,7 @@ class SharedDefinitionsTestCase(unittest.TestCase):
     def test_fits_are_the_documents(self):
         ts = FRAME_TS.read_text(encoding="utf-8")
         self.assertIn('export type Fit = "contain" | "cover";', ts)
-        self.assertEqual(tuple(tl.FITS), ("contain", "cover"))
+        self.assertEqual(tuple(tl.FITS), ("contain", "cover", "blur"))   # the picker still offers the first two
 
     def test_a_cover_clip_and_each_preset_validate(self):
         for preset in tl.PRESETS:

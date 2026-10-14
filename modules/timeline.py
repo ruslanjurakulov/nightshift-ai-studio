@@ -101,6 +101,14 @@ Rules this module keeps:
   ``grade`` is dropped by ``normalise`` for the same reason. It applies to
   the picture only (bars of a ``contain`` fit and fades to black stay black)
   and to stills as well as video.
+* **A fit is ``contain`` (bars), ``cover`` (crop) or ``blur``.** ``blur`` shows the
+  whole picture like ``contain`` and, instead of black bars, fills the frame
+  behind it with the same picture scaled to cover it and blurred
+  (``render_backend._scale_blur``). It only matters when the picture's aspect
+  differs from the frame's; where they match it is the picture alone. A fit is
+  for video clips: a still is always drawn filling the frame (its slow zoom
+  starts from a cover-scaled picture). Colour grade and effects act on the
+  composed frame, background included.
 * **Effects are named, closed and clamped.** A V clip may carry ``filter`` (one
   of ``FILTERS``: a colour look) with ``filter_strength`` (0-1, 1 when absent,
   needs a ``filter``), ``vignette`` / ``sharpen`` / ``grain`` (0-1), ``blur`` (a
@@ -199,7 +207,7 @@ MAX_TEXT = 500
 MAX_ID = 64
 MAX_DOC_BYTES = 2_000_000
 
-FITS = ("contain", "cover")
+FITS = ("contain", "cover", "blur")
 #: A clip's colour grade (ffmpeg ``eq`` brightness / contrast / saturation, each
 #: at its own range; render_spec.GRADE_* are the same numbers, a test pins them).
 #: Wider than that the picture is a flat colour: brightness +-1 is white / black,

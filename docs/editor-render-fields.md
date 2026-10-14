@@ -23,6 +23,7 @@ note for text looks).
 | 2 | `claude/render-anim-inout` | text and overlay `anim_in`, `anim_out`, `anim_in_s`, `anim_out_s` | PR open (stacked on 1) |
 | 3 | `claude/render-effects` | V clip `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h`, `flip_v`, `rotate` | PR open (stacked on 2) |
 | 4 | `claude/render-keyframes` | V clip `move` (Ken Burns zoom/pan); overlay `move.to` (x, y, w, opacity) | PR open (stacked on 3) |
+| 5 | `claude/render-blur-fit` | V clip `fit: "blur"` | PR open (stacked on 4) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -161,3 +162,27 @@ Not done here (later items): free-angle rotation and crop (item 8).
   the opacity above 0.
 * no preview parity in a browser beyond straight CSS interpolation: say that
   the export is the truth.
+
+## 5. Blurred-background fit (`fit: "blur"`)
+
+`fit` on a V clip is now `contain` (default, bars), `cover` (fill and crop) or
+`blur`: the whole picture, centred like `contain`, over a blurred and enlarged
+copy of itself, so a portrait clip in a landscape frame (or the other way) has
+no black bars. Where the picture already has the frame's shape, `blur` looks
+like `contain` (the picture alone).
+
+* The background is the picture scaled to cover the frame, shrunk to 1/8,
+  blurred (a fixed, strong blur; not adjustable) and enlarged again. No
+  darkening.
+* Grade (`grade`) and effects (item 3) act on the composed frame, background
+  included.
+* A fit is for VIDEO clips. Stills are always drawn filling the frame (their
+  slow zoom starts from a cover-scaled picture), exactly as before; `fit` has
+  no effect on them, so don't offer it for photos.
+* The editor's `Fit` type in `lib/editorFrame.ts` and `fitOf()` still know only
+  contain/cover: `fitOf` reports a `blur` clip as `contain` and the current
+  picker cannot select `blur`; `toModel` keeps the value, so opening and saving a
+  document with `blur` does not lose it. Track C: add the third option, and draw
+  the preview with a CSS `filter: blur()` copy of the video behind the picture
+  (approximate; say so).
+* Cross-fades: both sides can use `blur`.

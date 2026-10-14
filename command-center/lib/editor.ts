@@ -107,7 +107,7 @@ export const MAX_OVERLAY_VIDEOS = 4;
 export const OVERLAY_W_MIN = 0.05;
 export const OVERLAY_W_MAX = 1;
 
-const FITS = ["contain", "cover"] as const;
+const FITS = ["contain", "cover", "blur"] as const;
 const TRANSITIONS = ["cut", "dip_to_black", "crossfade"] as const;
 /** The ffmpeg `xfade` transitions a cross-fade may use, in the order the
  *  picker lists them (modules/timeline.py XFADE_STYLES; a test pins them). The
@@ -334,7 +334,8 @@ export interface VideoClip {
   out_s: number;
   speed: number;
   audio: boolean;
-  fit?: "contain" | "cover";
+  /** blur = the whole picture over a blurred copy of itself (no bars). */
+  fit?: "contain" | "cover" | "blur";
   /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorGrade.ts. */
   grade?: ClipGrade;
   /** Effects (modules/timeline.py): all optional, absent = off. A turn and
@@ -817,7 +818,7 @@ function validateMediaClip(
   }
   if (kind === "V") {
     if ("fit" in clip && !(FITS as readonly unknown[]).includes(clip.fit))
-      problems.push(`${where}: fit must be contain or cover`);
+      problems.push(`${where}: fit must be contain, cover or blur`);
     if (
       "grade" in clip &&
       fields(
@@ -1571,8 +1572,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
       out_s: Number(c.out_s),
       speed: isNum(c.speed) ? c.speed : 1,
       audio: c.audio === true,
-      ...(c.fit === "cover" || c.fit === "contain"
-        ? { fit: c.fit as "cover" | "contain" }
+      ...(c.fit === "cover" || c.fit === "contain" || c.fit === "blur"
+        ? { fit: c.fit as "cover" | "contain" | "blur" }
         : {}),
       ...gradeFieldOf(c.grade),
       ...effectsOf(c),

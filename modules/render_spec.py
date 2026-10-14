@@ -177,7 +177,8 @@ _KINDS = (KIND_VIDEO, KIND_IMAGE, KIND_COLOR)
 
 FIT_CONTAIN = "contain"   # letter/pillar-box inside the frame (the original behaviour)
 FIT_COVER = "cover"       # fill the frame, cropping the overflow
-FITS = (FIT_CONTAIN, FIT_COVER)
+FIT_BLUR = "blur"         # the whole picture over a blurred, enlarged copy of itself
+FITS = (FIT_CONTAIN, FIT_COVER, FIT_BLUR)
 
 #: A segment's colour grade, ffmpeg ``eq`` (brightness added to the luma, contrast
 #: around mid-grey, saturation on the chroma); the neutral triple is "no change".

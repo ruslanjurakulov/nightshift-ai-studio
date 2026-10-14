@@ -212,10 +212,11 @@
         "fit": {
           "enum": [
             "contain",
-            "cover"
+            "cover",
+            "blur"
           ],
           "default": "contain",
-          "description": "contain = letter/pillar-box, cover = fill and crop."
+          "description": "contain = letter/pillar-box, cover = fill and crop. blur = the whole picture over a blurred, enlarged copy of itself instead of black bars (video clips only)."
         },
         "fade_in_s": {
           "$ref": "#/$defs/seconds",

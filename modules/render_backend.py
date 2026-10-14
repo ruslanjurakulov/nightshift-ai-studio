@@ -41,6 +41,7 @@ from typing import Callable, List, Optional, Sequence
 
 from modules import ass_captions, ffmpeg_limits
 from modules.render_spec import (
+    FIT_BLUR,
     FIT_COVER,
     KIND_COLOR,
     KIND_IMAGE,
@@ -344,6 +345,41 @@ def _scale_crop(width: int, height: int, fps: int, grade: str = "") -> str:
             f"crop={width}:{height},fps={fps}" + _then(grade))
 
 
+#: How small the blurred background is made before it is blurred and enlarged
+#: again: a heavy blur of a one-eighth picture costs almost nothing and looks the
+#: same as a heavy blur of the full one.
+BLUR_FIT_SHRINK = 8
+BLUR_FIT_SIGMA = 3
+
+
+def _scale_blur(width: int, height: int, fps: int, grade: str = "", tag: str = "") -> str:
+    """The whole picture, centred (as ``contain``), over a blurred copy of itself
+    that fills the frame (a timeline clip's ``fit: blur``): no black bars. The
+    background is the picture scaled to cover the frame, shrunk, blurred and
+    enlarged; the colour ``grade`` and effects run on the composed frame, so
+    the background is graded with the picture. One simple filter graph, so
+    it goes wherever the other fits' chains go. ``tag`` makes the pad labels
+    unique when two of these share one graph (the two sides of a cross-fade)."""
+    sw = max(2, width // BLUR_FIT_SHRINK // 2 * 2)
+    sh = max(2, height // BLUR_FIT_SHRINK // 2 * 2)
+    bg, fg, bb, fs = f"bg{tag}", f"fg{tag}", f"bb{tag}", f"fs{tag}"
+    return (f"split=2[{bg}][{fg}];"
+            f"[{bg}]scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},"
+            f"gblur=sigma={BLUR_FIT_SIGMA},scale={width}:{height}:flags=bicubic[{bb}];"
+            f"[{fg}]scale={width}:{height}:force_original_aspect_ratio=decrease[{fs}];"
+            f"[{bb}][{fs}]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,format=yuv420p,fps={fps}"
+            + _then(grade))
+
+
+def _fit_for(seg: Segment):
+    """The chain builder of a segment's fit."""
+    if seg.fit == FIT_COVER:
+        return _scale_crop
+    if seg.fit == FIT_BLUR:
+        return _scale_blur
+    return _scale_pad
+
+
 def _fade_filters(seg: Segment, length_s: float) -> str:
     """``,fade=...`` for a segment's fades from/to black ('' when it has none,
     so a pipeline segment's filter is unchanged). ``length_s`` is the clip's
@@ -460,7 +496,7 @@ def _segment_commands(
     # -i is an input seek, frame-accurate when transcoding, and the output's
     # timestamps start at 0 — so the fades above are relative to the cut.
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
-    fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
+    fit = _fit_for(seg)
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
              "-vf", (speed_filter(seg.speed) + geometry_filter(seg)
                      + fit(width, height, fps, grade_filter(seg))
@@ -471,7 +507,7 @@ def _segment_commands(
 
 
 def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
-                hold: bool) -> tuple:
+                hold: bool, tag: str = "") -> tuple:
     """(input args, filter chain) for one side of a cross-fade: the clip's
     usual normalisation over the whole clip, cut to this piece, and pinned
     to one frame rate, time base and pixel format — xfade refuses two inputs
@@ -493,9 +529,11 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
                 geometry_filter(seg) + ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
                 + _then(grade) + tail)
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
-    fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
+    fit = _fit_for(seg)
+    framed = (_scale_blur(width, height, fps, grade, tag) if fit is _scale_blur
+              else fit(width, height, fps, grade))
     return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            speed_filter(seg.speed) + geometry_filter(seg) + fit(width, height, fps, grade) + mv + tail)
+            speed_filter(seg.speed) + geometry_filter(seg) + framed + mv + tail)
 
 
 def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,
@@ -521,8 +559,8 @@ def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, heigh
     common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
 
     def cmd(hold: bool) -> List[str]:
-        ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold)
-        ib, cb = _xfade_side(x, width, height, fps, seed_b, hold)
+        ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold, "a")
+        ib, cb = _xfade_side(x, width, height, fps, seed_b, hold, "b")
         graph = (f"[0:v]{ca}[xa];[1:v]{cb}[xb];"
                  f"[xa][xb]xfade=transition={style}:duration={frames / fps:.6f}:offset=0[xv]")
         return [ffmpeg, "-y", *ia, *ib, "-filter_complex", graph, "-map", "[xv]",
