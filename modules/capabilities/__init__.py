@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from typing import Dict, Mapping, Optional, Type
 
-from modules.capabilities import audio, image, transcribe, video
+from modules.capabilities import audio, image, image_ops, transcribe, video
 from modules.capabilities.base import HttpAdapter
 
 #: adapter key → class. The registry's "adapter" values must all resolve here
 #: (tests/test_model_registry.py pins that).
 ADAPTERS: Dict[str, Type[HttpAdapter]] = {
-    cls.key: cls for cls in (*image.ADAPTERS, *video.ADAPTERS, *audio.ADAPTERS, *transcribe.ADAPTERS)
+    cls.key: cls
+    for cls in (*image.ADAPTERS, *image_ops.ADAPTERS, *video.ADAPTERS, *audio.ADAPTERS, *transcribe.ADAPTERS)
 }
 
 

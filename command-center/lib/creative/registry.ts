@@ -1,7 +1,16 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { isMissingFunction } from "@/lib/orgs";
-import { UPSCALE_TARGETS, isImageQuality, type ImageQuality, type UpscaleTarget } from "@/lib/creative/operations";
+import {
+  EXPAND_ASPECTS,
+  RELIGHT_LOOKS,
+  UPSCALE_TARGETS,
+  isImageQuality,
+  type ExpandAspect,
+  type ImageQuality,
+  type RelightLook,
+  type UpscaleTarget,
+} from "@/lib/creative/operations";
 
 /**
  * The models a signed-in user may be offered, read under their own session
@@ -15,7 +24,24 @@ import { UPSCALE_TARGETS, isImageQuality, type ImageQuality, type UpscaleTarget 
  * shown with a guessed price (CLAUDE.md #5).
  */
 
-export const CAPABILITIES = ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions"] as const;
+export const CAPABILITIES = [
+  "t2i",
+  "edit",
+  "t2v",
+  "i2v",
+  "tts",
+  "sfx",
+  "upscale",
+  "remove_bg",
+  "voice_change",
+  "dub",
+  "video_upscale",
+  "describe",
+  "captions",
+  "expand",
+  "relight",
+  "erase",
+] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export type Surface = "web" | "api" | "mcp";
 
@@ -49,6 +75,10 @@ export interface PublicSpec {
   durationsS: number[];
   /** Upscale factors the model is sold for (0046); empty unless it can upscale. */
   upscaleFactors: number[];
+  /** Shapes the model extends a picture to (0099); empty unless it can expand. */
+  expandAspects: ExpandAspect[];
+  /** Lights the model relights with by name (0099); empty unless it can relight. */
+  relightLooks: RelightLook[];
   /** Languages the model dubs into (0050); empty unless it can dub. */
   languages: string[];
   /** Sizes the model upscales a video to (0052); empty unless it can. */
@@ -139,6 +169,8 @@ function coerceSpec(v: unknown): PublicSpec | null {
     upscaleFactors: Array.isArray(v.upscale_factors)
       ? v.upscale_factors.filter((f): f is number => f === 2 || f === 4)
       : [],
+    expandAspects: EXPAND_ASPECTS.filter((a) => byCap.expand?.includes(a)),
+    relightLooks: RELIGHT_LOOKS.filter((l) => strings(v.relight_looks).includes(l)),
     languages: strings(v.languages).filter((l) => /^[a-z]{2,3}$/.test(l)),
     upscaleTargets: strings(v.upscale_targets).filter((x): x is UpscaleTarget => (UPSCALE_TARGETS as readonly string[]).includes(x)),
     endFrame: v.end_frame === true,
