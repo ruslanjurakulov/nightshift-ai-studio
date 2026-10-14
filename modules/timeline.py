@@ -230,6 +230,10 @@ MAX_TOTAL_CLIPS = 5000
 #: them). Each is one more input and filter chain in the final pass; a video
 #: keeps a decoder open for its whole span.
 MAX_OVERLAYS = 16
+#: An overlay whose opacity goes from one visible value to another during a move rewrites its alpha
+#: plane per pixel and frame (``geq``): measured 3.6x slower for one video overlay, 13x for four, and
+#: out of memory at 4K60. A move to or from nothing is a cheap fade and is not counted.
+MAX_PARTIAL_OPACITY_MOVES = 2
 MAX_OVERLAY_VIDEOS = 4
 OVERLAY_W_MIN, OVERLAY_W_MAX = 0.05, 1.0
 MAX_TEXT = 500
@@ -310,6 +314,18 @@ MAX_TYPEWRITER_TEXTS = 20
 FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
 UNIT_EFFECTS = ("vignette", "sharpen", "grain")      # 0..1, 0 = off
 BLUR_MAX = 30.0                                       # Gaussian sigma, output pixels
+#: A cross-fade renders its two clips in one ffmpeg run, and above 1440p that run already needs ~1.75 of
+#: the worker's 2 GiB address space (4K60, measured with ffmpeg 5.1.1 and 7.0.2). A Gaussian blur on top
+#: failed it ("Cannot allocate memory", exit 187): with 7.0.2 at every sigma tried (5, 10, 15, 20, 30), with
+#: 5.1.1 from sigma 30 (up to 20 passed) and, with 5.1.1, a blur of 5 or more together with a zoom to 2
+#: or more. So a cross-faded clip in such a frame takes no blur at all. The other effects (look, sharpen,
+#: grain, vignette, turns) passed with both builds. render_backend.LARGE_OUTPUT_PX is the same 2560x1440.
+LARGE_FRAME_PX = 2560 * 1440
+XFADE_LARGE_BLUR_MAX = 0.0
+#: The same for a move that zooms: the fitted picture is scaled up to ``zoom`` x the frame every frame, and
+#: on a cross-faded 4K60 clip a zoom of 3 failed it with ffmpeg 7.0.2 (up to 2 passed with both builds; 4
+#: passed with 5.1.1 alone, and any zoom passes on a single clip).
+XFADE_LARGE_ZOOM_MAX = 2.0
 ROTATIONS = (0, 90, 180, 270)
 _EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
                 "flip_h", "flip_v", "rotate")
@@ -793,7 +809,10 @@ def _validate_effects(clip, where, problems) -> None:
     for k in ("flip_h", "flip_v"):
         if k in clip and not isinstance(clip[k], bool):
             problems.append(f"{where}: {k} must be true or false")
-    if "rotate" in clip and not (_is_int(clip["rotate"]) and clip["rotate"] in ROTATIONS):
+    # 90.0 is accepted as 90: the TypeScript twin cannot tell them apart after JSON.parse, so the two
+    # validators agree by both taking the whole number (normalise writes it as an int).
+    if "rotate" in clip and not (_is_num(clip["rotate"]) and clip["rotate"] == int(clip["rotate"])
+                                 and int(clip["rotate"]) in ROTATIONS):
         problems.append(f"{where}: rotate must be one of {list(ROTATIONS)}")
 
 
@@ -851,6 +870,17 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
     fi, fo = clip.get("fade_in_s", 0), clip.get("fade_out_s", 0)
     if all(_is_num(v) for v in (s, e, fi, fo)) and e > s and fi + fo > (e - s) + 1e-9:
         problems.append(f"{where}: fade_in_s + fade_out_s is longer than the text is shown")
+    # An animation on one side and a plain fade on the other: the fade becomes an animation too, so a
+    # long entrance would be cut short by the exit that starts at end_s - fade_out_s.
+    if ("anim_in" in clip) != ("anim_out" in clip):
+        mixed = [clip.get("anim_in_s", ANIM_DEFAULT_S) if k == "anim_in" else clip.get(k + "_s", 0)
+                 for k in ("anim_in", "anim_out") if k in clip]
+        side = "fade_out_s" if "anim_in" in clip else "fade_in_s"
+        other = clip.get(side, 0)
+        if (all(_is_num(v) for v in (s, e, other, *mixed)) and e > s and other > 0
+                and sum(mixed) + other > _ms(e) - _ms(s) + 1e-9):
+            problems.append(f"{where}: the animation ({sum(mixed):g} s) and {side} ({other:g} s) "
+                            f"are longer than the text is shown")
 
 
 def _validate_chroma(chroma, where, problems) -> None:
@@ -897,6 +927,20 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
             _validate_overlay_move(ov["move"], where, problems)
         if "chroma" in ov:
             _validate_chroma(ov["chroma"], where, problems)
+    slow = sum(1 for ov in overlays if _partial_opacity_move(ov))
+    if slow > MAX_PARTIAL_OPACITY_MOVES:
+        problems.append(f"overlays: at most {MAX_PARTIAL_OPACITY_MOVES} may change opacity between two visible "
+                        f"values during a move (got {slow}) — fade to or from 0, or keep the opacity")
+
+
+def _partial_opacity_move(ov) -> bool:
+    """True for an overlay whose ``move.to.opacity`` is a different visible value from its ``opacity``."""
+    if not isinstance(ov, dict) or not isinstance(ov.get("move"), dict):
+        return False
+    to = ov["move"].get("to")
+    start = ov.get("opacity", 1.0)
+    end = to.get("opacity") if isinstance(to, dict) else None
+    return _is_num(start) and _is_num(end) and start > 0 and end > 0 and start != end
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -1139,12 +1183,39 @@ def _crossfade_problems(track: dict) -> List[str]:
     return problems
 
 
+def _large_frame_crossfade_problems(doc: dict, track: dict) -> List[str]:
+    """Effects a cross-fade on a frame above 1440p cannot afford (see ``LARGE_FRAME_PX``)."""
+    w, h = doc.get("width"), doc.get("height")
+    if not (_is_int(w) and _is_int(h) and w * h > LARGE_FRAME_PX):
+        return []
+    problems, seen = [], set()
+    for prev, clip, _d in crossfades(track):
+        for c in (prev, clip):
+            cid = str(c["id"])
+            blur = c.get("blur")
+            if cid not in seen and _is_num(blur) and blur > XFADE_LARGE_BLUR_MAX:
+                seen.add(cid)
+                problems.append(f"{_where(track, c)}: blur is not offered on a cross-faded clip in a frame above "
+                                f"1440p ({w}x{h}) — the render would run out of memory; remove the blur, the "
+                                f"cross-fade or lower the frame size")
+            move = c.get("move")
+            zooms = [p.get("zoom", 1.0) for p in (move.get("from"), move.get("to")) if isinstance(p, dict)] \
+                if isinstance(move, dict) else []
+            if cid + ":zoom" not in seen and any(_is_num(z) and z > XFADE_LARGE_ZOOM_MAX for z in zooms):
+                seen.add(cid + ":zoom")
+                problems.append(f"{_where(track, c)}: a zoom above {XFADE_LARGE_ZOOM_MAX:g} is not offered on a "
+                                f"cross-faded clip in a frame above 1440p ({w}x{h}) — the render would run out "
+                                f"of memory; lower the zoom, remove the cross-fade or lower the frame size")
+    return problems
+
+
 def _transition_problems(doc: dict) -> List[str]:
     problems = []
     for track in doc.get("tracks") or []:
         if track.get("kind") != KIND_V:
             continue
         problems.extend(_crossfade_problems(track))
+        problems.extend(_large_frame_crossfade_problems(doc, track))
         fades = effective_fades(track)
         for clip in track.get("clips") or []:
             fi, fo = fades[str(clip["id"])]
@@ -1276,6 +1347,8 @@ def _normalise_effects(c: dict) -> None:
     for k in ("flip_h", "flip_v"):
         if c.get(k) is False:
             del c[k]
+    if "rotate" in c:
+        c["rotate"] = int(c["rotate"])
     if c.get("rotate") == 0:
         del c["rotate"]
 
