@@ -37,6 +37,7 @@ import {
   type EffectKey,
 } from "@/lib/editorFx";
 import { Disclosure, RadioChips, SliderRow, ToggleRow } from "./FxControls";
+import { ClipMoveSection } from "./ClipMotionSections";
 
 /**
  * The selected clip's look and effects, and its crop and tilt, as two native
@@ -377,12 +378,15 @@ export function ClipFxSections({
   model,
   clip,
   source,
+  still,
   apply,
   showClip,
 }: {
   model: EditorModel;
   clip: VideoClip;
   source: Pick<EditorAsset, "width" | "height"> | null;
+  /** A photo: some moves differ (it has an automatic slow zoom). */
+  still: boolean;
   apply: Apply;
   showClip: (id: string) => void;
 }) {
@@ -393,6 +397,13 @@ export function ClipFxSections({
         model={model}
         clip={clip}
         source={source}
+        apply={apply}
+        showClip={showClip}
+      />
+      <ClipMoveSection
+        model={model}
+        clip={clip}
+        still={still}
         apply={apply}
         showClip={showClip}
       />

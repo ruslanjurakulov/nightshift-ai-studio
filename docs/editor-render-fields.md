@@ -393,9 +393,26 @@ project keeps exactly its document.
 | text and overlay `anim_in/out(_s)` | "Entrance and exit" (`AnimPicker`), in the text and overlay inspectors | C1 |
 | `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h/v`, `rotate` | "Look and effects" (`ClipEffectsSection`) | C1 |
 | `crop`, `angle` | "Crop and tilt" (`ClipCropSection`) | C1 |
+| clip `move` | "Zoom and pan" (`ClipMoveSection`): presets, start and end windows, a map | C2 |
+| overlay `move.to` | "Move to an end position" (`OverlayMoveSection`) | C2 |
+| clip `fit: "blur"` | third key of "Picture in the frame" (`FitPicker`); `fitOf()` reports it | C2 |
+| clip `speed` 0.25-4, `reverse`, `freeze` | "Speed" keys + number box, "Direction, freeze and slow motion" (`ClipSpeedSection`), "Freeze the frame at the playhead" | C2 |
+| clip `speed_curve`, `interpolate` | "Speed curve" (point rows and a plot), "Smoother slow motion" with its budget | C2 |
 
 Preview: look (curve tables as an SVG filter, pinned to
 `samples/clip_look_curves.json`), blur, vignette, turn, mirror, crop, free angle
 and the entrance / exit at the playhead are drawn approximately; sharpen and film
 grain are not drawn. The note under the preview says the exported file is the
 reference.
+
+C2 guard rails, as the UI enforces them (each says why on the screen): backwards
+play is off for a part longer than the memory cap (`reverseLimit`, whole frames,
+so a range it allows always validates; trimming a backwards clip stops there); a
+frozen clip has speed 1, no sound and none of backwards, curve, interpolation or
+stabilise; a speed curve replaces speed, backwards and freeze, and such a clip
+cannot be split (the reason is shown) and gets no auto-captions (nor does a
+backwards one); smoother slow motion is off with the numbers when the part is not
+slow, is backwards or frozen, or would pass the per-clip / per-project frame
+budget (`interpolateCheck`, the longest part that fits is shown), and trimming a
+clip that uses it stops at the budget. A reversed, frozen or ramped clip is
+stepped through frame by frame in the preview (no sound).

@@ -22,11 +22,14 @@ import type { CSSProperties } from "react";
 import {
   ANIM_DEFAULT_S,
   BLUR_MAX,
+  clamp,
   type ClipCrop,
   type ClipFilter,
+  type ClipMove,
   type VideoClip,
 } from "@/lib/editor";
 import { GRADE_FILTER_ID, gradeOf, isNeutralGrade } from "@/lib/editorGrade";
+import { centreRange, windowOf } from "@/lib/editorMotion";
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const pct = (v: number) => `${round3(v * 100)}%`;
@@ -165,7 +168,7 @@ export function vignetteStyle(strength: number): CSSProperties {
 
 /** The fields of a clip that move or cut the picture. */
 export type GeometryClip = Partial<
-  Pick<VideoClip, "rotate" | "flip_h" | "flip_v" | "crop" | "angle" | "fit">
+  Pick<VideoClip, "rotate" | "flip_h" | "flip_v" | "crop" | "angle" | "fit" | "move">
 >;
 
 const cropOfClip = (c: GeometryClip): { x: number; y: number; w: number; h: number } => ({
@@ -176,13 +179,19 @@ const cropOfClip = (c: GeometryClip): { x: number; y: number; w: number; h: numb
   ...(c.crop as ClipCrop | undefined),
 });
 
-/** Does the picture need the nested stage (a turn, mirror, crop or free angle)?
- *  Without one the preview draws the plain element it always did. */
-export function needsStage(c: GeometryClip | null | undefined): boolean {
+/** Does the picture need the nested stage (a turn, mirror, crop, free angle,
+ *  move or blurred-background fit)? Without one the preview draws the plain
+ *  element it always did. A picture has no blurred background (it always fills). */
+export function needsStage(
+  c: GeometryClip | null | undefined,
+  still = false,
+): boolean {
   if (!c) return false;
   const k = cropOfClip(c);
   return Boolean(
-    c.rotate ||
+    c.move ||
+      (c.fit === "blur" && !still) ||
+      c.rotate ||
       c.flip_h ||
       c.flip_v ||
       c.angle ||
@@ -193,17 +202,26 @@ export function needsStage(c: GeometryClip | null | undefined): boolean {
   );
 }
 
-export interface Stage {
-  /** Frame-sized (bars / fill) or the visible picture's box (fit); the free
-   *  angle turns it, the filter and the vignette are drawn on it. */
-  fit: CSSProperties;
-  /** The cropped picture (clips what is outside the crop). */
+/** One picture chain: the cropped box, the whole turned picture inside it, the
+ *  media inside that. */
+export interface Chain {
   crop: CSSProperties;
-  /** The whole turned picture, placed so the crop window shows. */
   turned: CSSProperties;
-  /** The media element, turned and mirrored inside `turned`. */
   media: CSSProperties;
 }
+
+export interface Stage extends Chain {
+  /** Frame-sized (bars / fill / blurred background) or the visible picture's
+   *  box (fit with bars); the free angle turns it. */
+  fit: CSSProperties;
+  /** Only with `fit: blur`: the same picture filling the frame, blurred, behind. */
+  backdrop?: Chain & { blur: CSSProperties };
+}
+
+/** The blurred background's strength: the export shrinks the picture to 1/8
+ *  and blurs it with sigma 3 (modules/render_backend.py BLUR_FIT_SHRINK and
+ *  BLUR_FIT_SIGMA), i.e. about 24 px at full size. */
+export const BACKDROP_SIGMA_PX = 8 * 3;
 
 /**
  * The stage for a clip in a frame of the given size. `source` is the file's
@@ -211,8 +229,9 @@ export interface Stage {
  * shape); `still` pictures are always drawn filling the frame, like the export.
  *
  * Order, as in the export: turn (quarter turns) and mirror the source, crop the
- * turned picture, fit the cropped part into the frame (bars / fill), then turn
- * the fitted picture by the free angle about the frame's centre.
+ * turned picture, fit the cropped part into the frame (bars / fill / over a
+ * blurred copy), then turn the fitted picture by the free angle about the
+ * frame's centre. A move (zoom and pan) acts on all of this, see `moveStyle`.
  */
 export function stageLayout(
   c: GeometryClip,
@@ -228,44 +247,26 @@ export function stageLayout(
   const turned = sw > 0 && sh > 0 ? (quarter ? sh / sw : sw / sh) : F;
   const k = cropOfClip(c);
   const cropped = turned * (k.w / k.h);
+  const blur = c.fit === "blur" && !still;
   const fill = still || c.fit === "cover";
   // Box of the cropped picture inside the frame, as shares of the frame.
-  let bw: number;
-  let bh: number;
-  if (fill === (cropped >= F)) {
-    // fill with a wide picture, or contain with a tall one: the height is the frame's
-    bh = 1;
-    bw = cropped / F;
-  } else {
-    bw = 1;
-    bh = F / cropped;
-  }
+  const box = (filling: boolean) =>
+    filling === (cropped >= F)
+      ? // fill with a wide picture, or contain with a tall one: the height is the frame's
+        { w: cropped / F, h: 1 }
+      : { w: 1, h: F / cropped };
   const angle = c.angle ?? 0;
   const spin = angle ? ` rotate(${angle}deg)` : "";
   const center = "translate(-50%, -50%)";
-  // `fit` is the visible region: the frame itself when filling, the picture's box with bars.
-  const visible = fill ? { w: 1, h: 1 } : { w: bw, h: bh };
-  const fitStyle: CSSProperties = {
+  const placed = (b: { w: number; h: number }): CSSProperties => ({
     position: "absolute",
     left: "50%",
     top: "50%",
-    width: pct(visible.w),
-    height: pct(visible.h),
-    transform: `${center}${spin}`,
+    width: pct(b.w),
+    height: pct(b.h),
+    transform: center,
     overflow: "hidden",
-  };
-  // Inside `fit`, the cropped picture: as big as the box, or bigger when filling.
-  const cropStyle: CSSProperties = fill
-    ? {
-        position: "absolute",
-        left: "50%",
-        top: "50%",
-        width: pct(bw),
-        height: pct(bh),
-        transform: center,
-        overflow: "hidden",
-      }
-    : { position: "absolute", inset: 0, overflow: "hidden" };
+  });
   // The whole turned picture, shifted so the crop window lands on the box.
   const turnedStyle: CSSProperties = {
     position: "absolute",
@@ -287,7 +288,89 @@ export function stageLayout(
     objectFit: "contain",
     maxWidth: "none",
   };
-  return { fit: fitStyle, crop: cropStyle, turned: turnedStyle, media: mediaStyle };
+  const bars = box(false);
+  const filling = box(true);
+  // `fit` is the visible region: the frame itself when filling or over a
+  // blurred background, the picture's box when there are bars.
+  const frameSized = fill || blur;
+  const fitStyle: CSSProperties = {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: pct(frameSized ? 1 : bars.w),
+    height: pct(frameSized ? 1 : bars.h),
+    transform: `${center}${spin}`,
+    overflow: "hidden",
+  };
+  // Inside `fit`, the cropped picture: as big as the box, bigger when filling,
+  // the contained picture centred over the backdrop with a blurred fit.
+  const cropStyle: CSSProperties = blur
+    ? placed(bars)
+    : fill
+      ? placed(filling)
+      : { position: "absolute", inset: 0, overflow: "hidden" };
+  const out: Stage = {
+    fit: fitStyle,
+    crop: cropStyle,
+    turned: turnedStyle,
+    media: mediaStyle,
+  };
+  if (blur) {
+    const sigma = (BACKDROP_SIGMA_PX / frame.width) * 100;
+    out.backdrop = {
+      // a little bigger than the frame, so the blur's soft edge falls outside it
+      crop: { ...placed(filling), transform: `${center} scale(1.12)` },
+      turned: turnedStyle,
+      media: mediaStyle,
+      blur: { filter: `blur(${round3(sigma)}cqw)` },
+    };
+  }
+  return out;
+}
+
+// ── a zoom and pan over the clip ────────────────────────────────────────────
+
+/** The window of a move at a point `progress` (0 to 1) of the clip's length:
+ *  a straight line between the two ends, its centre held where the window
+ *  stays inside the picture (what the export does). */
+export function moveWindowAt(
+  move: ClipMove,
+  progress: number,
+): { zoom: number; x: number; y: number } {
+  const a = windowOf(move.from);
+  const b = windowOf(move.to);
+  const p = clamp(Number.isFinite(progress) ? progress : 0, 0, 1);
+  const zoom = a.zoom + (b.zoom - a.zoom) * p;
+  const r = centreRange(zoom);
+  return {
+    zoom,
+    x: clamp(a.x + (b.x - a.x) * p, r.min, r.max),
+    y: clamp(a.y + (b.y - a.y) * p, r.min, r.max),
+  };
+}
+
+/** The transform that shows the window of a move on a frame-sized layer. */
+export function moveStyle(
+  move: ClipMove | undefined,
+  progress: number,
+): CSSProperties {
+  if (!move) return {};
+  const w = moveWindowAt(move, progress);
+  const left = w.x - 0.5 / w.zoom;
+  const top = w.y - 0.5 / w.zoom;
+  return {
+    transformOrigin: "0 0",
+    transform: `translate(${pct(-left * w.zoom)}, ${pct(-top * w.zoom)}) scale(${round3(w.zoom)})`,
+  };
+}
+
+/** Can the browser's own video element play this clip as it is (forward, at a
+ *  constant speed)? A reversed, frozen or ramped clip is stepped by the editor
+ *  instead: the preview seeks to the right frame as the playhead moves. */
+export function playsNatively(
+  c: Pick<VideoClip, "reverse" | "freeze" | "speed_curve"> | null | undefined,
+): boolean {
+  return !c || !(c.reverse || c.freeze || c.speed_curve);
 }
 
 // ── entrance / exit animation at a moment ───────────────────────────────────

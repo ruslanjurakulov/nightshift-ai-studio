@@ -24,7 +24,9 @@ export const FRAME_PRESETS = [
 
 export type FramePresetId = (typeof FRAME_PRESETS)[number]["id"];
 
-export type Fit = "contain" | "cover";
+/** contain = bars, cover = fill and crop, blur = the whole picture over a
+ *  blurred, enlarged copy of itself (no bars). */
+export type Fit = "contain" | "cover" | "blur";
 
 /** The preset a frame is exactly, or null for any other size (a document from
  *  another tool may hold one; the picker then shows none selected). */
@@ -50,7 +52,7 @@ export function setFrame(model: EditorModel, id: FramePresetId): EditorModel {
 
 /** A clip's fit; no `fit` field means contain, as in the document. */
 export function fitOf(clip: Pick<VideoClip, "fit">): Fit {
-  return clip.fit === "cover" ? "cover" : "contain";
+  return clip.fit === "cover" || clip.fit === "blur" ? clip.fit : "contain";
 }
 
 /** The model with one clip's fit changed. Contain REMOVES the field (it is the
@@ -69,13 +71,13 @@ export function setClipFit(
       if (c.id !== id) return c;
       const { fit: _old, ...rest } = c;
       void _old;
-      return fit === "cover" ? { ...rest, fit } : rest;
+      return fit === "contain" ? rest : { ...rest, fit };
     }),
   };
 }
 
 /** The CSS `object-fit` of the preview for the clip on screen. A video follows
- *  its `fit`. A still is always drawn filling the frame by the export (its slow
+ *  its `fit` (the blurred-background copy behind it is the stage's, ClipPicture). A still is always drawn filling the frame by the export (its slow
  *  zoom-and-pan starts from a cover-scaled picture, render_backend
  *  `ken_burns_filter`; the held-picture fallback crops to fill too,
  *  `_static_image_cmd(fill=True)`), so the preview fills too; its fit field has
@@ -83,9 +85,10 @@ export function setClipFit(
 export function previewObjectFit(
   clip: Pick<VideoClip, "fit"> | null | undefined,
   still: boolean,
-): Fit {
+): "contain" | "cover" {
   if (still) return "cover";
-  return clip ? fitOf(clip) : "contain";
+  // A blurred-background fit draws the whole picture (as contain) over its blurred copy.
+  return clip && fitOf(clip) === "cover" ? "cover" : "contain";
 }
 
 /** The CSS variable that holds the preview's height cap. The editor sets it

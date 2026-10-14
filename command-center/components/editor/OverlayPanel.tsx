@@ -21,6 +21,7 @@ import {
   type OverlayKey,
 } from "@/lib/editorOverlay";
 import { animFrame } from "@/lib/editorFxPreview";
+import { overlayAt } from "@/lib/editorMotion";
 
 /**
  * Picture overlays in the editor: the layer drawn in the preview, the picker
@@ -196,7 +197,9 @@ export function OverlayLayer({
 
   return (
     <div ref={root} className="pointer-events-none absolute inset-0 z-0">
-      {overlays.map((o) => {
+      {overlays.map((start) => {
+        // With an end keyframe the picture is where the straight line between the two has it now.
+        const o = { ...start, ...overlayAt(start, playhead) };
         const a = assets[o.asset_id];
         const src = a?.viewUrl ?? a?.thumbUrl ?? null;
         // The entrance / exit at the playhead (a rough picture; the export is the reference).

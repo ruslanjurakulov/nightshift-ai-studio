@@ -54,8 +54,8 @@ export const MAX_CUES = 5000;
 export const MAX_TEXT = 500;
 export const SPEED_MIN = 0.25;
 export const SPEED_MAX = 4;
-/** The speeds the editor offers (any value in 0.25–4 is valid in a document). */
-export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+/** The speeds the editor's keys offer, from the document's slowest to its fastest (any value between is valid; the number box takes it). */
+export const SPEEDS = [SPEED_MIN, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, SPEED_MAX] as const;
 export const SIZE_MIN = 8;
 export const SIZE_MAX = 512;
 /** The text sizes the editor's slider offers, in output pixels. */
@@ -641,8 +641,14 @@ export function clipLength(c: VideoClip): number {
 /** The source time shown at timeline time `t` in clip `c` (a speed curve is
  *  inverted numerically). */
 export function sourceTimeAt(c: VideoClip, t: number): number {
+  // A frozen clip shows the frame at in_s throughout; a reversed one walks the
+  // range from its end back to its start.
+  if (c.freeze) return ms(c.in_s);
   const curve = usableCurve(c.speed_curve);
-  if (!curve) return ms(c.in_s + (t - c.start_s) * c.speed);
+  if (!curve) {
+    const run = clamp((t - c.start_s) * c.speed, 0, c.out_s - c.in_s);
+    return ms(c.reverse ? c.out_s - run : c.in_s + run);
+  }
   const range = ms(c.out_s) - ms(c.in_s);
   return ms(c.in_s + rampSourceAt(rampAbsolute(curve, range), t - c.start_s));
 }
@@ -2500,6 +2506,8 @@ export function setClipAudio(
   audio: boolean,
 ): EditorModel {
   if (audio && audioInputs(model) >= MAX_AUDIO_CLIPS) return model;
+  // A frozen frame has no sound (the document refuses both).
+  if (audio && model.clips.find((c) => c.id === id)?.freeze) return model;
   return {
     ...model,
     clips: model.clips.map((c) => (c.id === id ? { ...c, audio } : c)),

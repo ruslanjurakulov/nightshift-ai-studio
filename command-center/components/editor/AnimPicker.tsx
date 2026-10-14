@@ -102,7 +102,7 @@ export function AnimPicker({
       {side("in")}
       {side("out")}
       {blocked ? (
-        <p role="status" className="m-0 text-xs text-[var(--color-warn)]">
+        <p className="m-0 text-xs text-[var(--color-warn)]">
           {fmt(a.noRoom, { shown: shownFor(item) })}
         </p>
       ) : null}

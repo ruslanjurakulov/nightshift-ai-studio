@@ -379,7 +379,7 @@ describe("the Crop and tilt section", () => {
     fireEvent.pointerDown(a);
     setSlider(a, 10);
     setSlider(a, 25);
-    expect(pictureEl().parentElement!.parentElement!.parentElement!.style.transform).toContain("rotate(25deg)");
+    expect((document.querySelector("[data-testid=clip-stage]") as HTMLElement).style.transform).toContain("rotate(25deg)");
     undo();
     expect(Number(slider(section(fxe.crop.title), fxe.crop.angle).value)).toBe(0);
     setSlider(slider(section(fxe.crop.title), fxe.crop.angle), 30);

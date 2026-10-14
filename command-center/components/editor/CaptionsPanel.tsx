@@ -77,6 +77,8 @@ interface Recording {
   kind: "video" | "audio" | "image";
   /** Some clip of the timeline plays this recording's sound. */
   heard: boolean;
+  /** A clip plays it with a speed curve or backwards: words cannot be laid on such a clip. */
+  curved: boolean;
 }
 
 /** The recordings the timeline uses: videos (heard only when a clip's sound is on) and sounds. */
@@ -94,6 +96,7 @@ export function recordingsOf(model: EditorModel, assets: Record<string, EditorAs
       durationS: a?.durationS ?? null,
       kind: a?.kind ?? "video",
       heard: playedClips(model, id).length > 0,
+      curved: model.clips.some((c) => c.asset_id === id && Boolean(c.speed_curve || c.reverse)),
     });
   }
   return out;
@@ -337,7 +340,9 @@ export function CaptionsPanel({
   // A language the picked model was not proven for is not offered: back to "detect it".
   const spoken: CaptionLanguage | null = language !== "detect" && chosen?.languages.includes(language) ? language : null;
   const problem = picked ? recordingProblem(picked) : "unknown";
-  const canQuote = Boolean(picked && chosen && problem === null && orgId);
+  // Caption times use a clip's constant forward speed: not offered on a curve or backwards.
+  const curved = Boolean(picked?.curved);
+  const canQuote = Boolean(picked && chosen && problem === null && orgId && !curved);
   const paramsKey = picked ? JSON.stringify(captionParams(picked.id, spoken)) : "";
 
   // ── the price (asked of the database; nothing is held) ──────────────────────
@@ -516,7 +521,7 @@ export function CaptionsPanel({
 
   // ── the priced press: the only thing here that spends ────────────────────────
   async function start() {
-    if (quote.status !== "ready" || submitting || !chosen || !picked || problem !== null) return;
+    if (quote.status !== "ready" || submitting || !chosen || !picked || problem !== null || curved) return;
     setSubmitting(true);
     setErrorCode(null);
     setNotice(null);
@@ -556,6 +561,10 @@ export function CaptionsPanel({
 
   function put() {
     if (!activeTrack || !picked) return;
+    if (curved) {
+      setNotice(t.editor.fx.speed.captionsOff);
+      return;
+    }
     const made = captionsFromTrack(model, activeTrack, picked.id, preset, pictureEnd);
     if (!made) {
       setNotice(tc.nothingHeard);
@@ -741,6 +750,11 @@ export function CaptionsPanel({
 
           {picked && !picked.heard && picked.kind === "video" ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">{tc.muted}</p>
+          ) : null}
+          {curved ? (
+            <p data-testid="captions-curved" className="m-0 text-xs text-[var(--color-warn)]">
+              {t.editor.fx.speed.captionsOff}
+            </p>
           ) : null}
           {problem === "too_long" ? <p role="alert" className="m-0 text-xs text-[var(--color-fail)]">{tc.tooLong}</p> : null}
           {problem === "unknown" || problem === "not_recording" ? (

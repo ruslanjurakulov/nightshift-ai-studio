@@ -86,6 +86,7 @@ export function FitPicker({
   const options: { value: Fit; label: string }[] = [
     { value: "contain", label: te.fitContain },
     { value: "cover", label: te.fitCover },
+    { value: "blur", label: te.fitBlur },
   ];
   return (
     <fieldset

@@ -25,7 +25,10 @@ import {
   curveTable,
   hasLook,
   lookSpec,
+  moveStyle,
+  moveWindowAt,
   needsStage,
+  playsNatively,
   previewFilterStyle,
   sepiaValues,
   stageLayout,
@@ -276,5 +279,68 @@ describe("the entrance and exit at a moment", () => {
   it("the default length is used when none is stored", () => {
     const a = animFrame({ start_s: 0, end_s: 4, anim_in: "fade" }, 0.2);
     expect(a.opacity).toBeCloseTo(0.5);
+  });
+});
+
+describe("zoom and pan, blurred fit and playback in the preview", () => {
+  const wide = { width: 1920, height: 1080 };
+  const src = { width: 1920, height: 1080 };
+
+  it("a move or a blurred fit needs the stage (a photo has no blurred fit)", () => {
+    expect(needsStage({ move: { from: { zoom: 1 }, to: { zoom: 2 } } })).toBe(true);
+    expect(needsStage({ fit: "blur" })).toBe(true);
+    expect(needsStage({ fit: "blur" }, true)).toBe(false);
+    expect(needsStage({ fit: "cover" })).toBe(false);
+  });
+
+  it("the blurred fit draws the picture whole over a frame-filling blurred copy", () => {
+    const s = stageLayout({ fit: "blur" }, { width: 1080, height: 1920 }, src, false);
+    // the frame is the visible region; the picture is the contained box in the middle
+    expect(s.fit.width).toBe("100%");
+    expect(s.fit.height).toBe("100%");
+    expect(s.crop.width).toBe("100%");
+    expect(s.crop.height).toBe("31.641%");
+    // the backdrop fills the frame, is a little bigger and is blurred by a share of the frame's width
+    expect(s.backdrop).toBeTruthy();
+    expect(s.backdrop!.crop.height).toBe("100%");
+    expect(s.backdrop!.crop.transform).toContain("scale(1.12)");
+    expect(s.backdrop!.blur.filter).toBe("blur(2.222cqw)");
+    // a clip with another fit has no backdrop
+    expect(stageLayout({ fit: "cover" }, wide, src, false).backdrop).toBeUndefined();
+    expect(stageLayout({ fit: "blur" }, wide, src, true).backdrop).toBeUndefined();
+  });
+
+  it("a move is a straight line between its windows, centre held inside the picture", () => {
+    const m = { from: { zoom: 1, x: 0.5, y: 0.5 }, to: { zoom: 2, x: 0.25, y: 0.5 } };
+    expect(moveWindowAt(m, 0)).toEqual({ zoom: 1, x: 0.5, y: 0.5 });
+    expect(moveWindowAt(m, 1)).toEqual({ zoom: 2, x: 0.25, y: 0.5 });
+    const mid = moveWindowAt(m, 0.5);
+    expect(mid.zoom).toBeCloseTo(1.5);
+    expect(mid.x).toBeCloseTo(0.375);
+    // at 2x the window cannot be centred nearer than 0.25 to an edge
+    expect(moveWindowAt({ from: m.from, to: { zoom: 2, x: 0, y: 1 } }, 1)).toEqual({ zoom: 2, x: 0.25, y: 0.75 });
+    // out-of-range progress is the nearest end; missing numbers are the document's defaults
+    expect(moveWindowAt(m, 9).zoom).toBe(2);
+    expect(moveWindowAt(m, Number.NaN).zoom).toBe(1);
+    expect(moveWindowAt({ from: {}, to: {} }, 0.5)).toEqual({ zoom: 1, x: 0.5, y: 0.5 });
+  });
+
+  it("the move's transform maps the window's corner to the frame's corner", () => {
+    expect(moveStyle(undefined, 0.5)).toEqual({});
+    // zoom 2 on the left half: window left = 0 -> no shift, scale 2
+    const left = moveStyle({ from: { zoom: 2, x: 0, y: 0 }, to: { zoom: 2, x: 0, y: 0 } }, 0);
+    expect(left.transform).toBe("translate(0%, 0%) scale(2)");
+    expect(left.transformOrigin).toBe("0 0");
+    // zoom 2 centred: the window starts at 0.25 of the frame, so the picture shifts left by 0.5 of the frame
+    const mid = moveStyle({ from: { zoom: 2 }, to: { zoom: 2 } }, 0);
+    expect(mid.transform).toBe("translate(-50%, -50%) scale(2)");
+  });
+
+  it("only forward, constant-speed clips play in the video element itself", () => {
+    expect(playsNatively({})).toBe(true);
+    expect(playsNatively(null)).toBe(true);
+    expect(playsNatively({ reverse: true })).toBe(false);
+    expect(playsNatively({ freeze: true })).toBe(false);
+    expect(playsNatively({ speed_curve: [{ at: 0, speed: 1 }, { at: 1, speed: 2 }] })).toBe(false);
   });
 });
