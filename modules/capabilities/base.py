@@ -60,12 +60,18 @@ EXPAND = "expand"      # image → the same image extended to CapabilityRequest.
 RELIGHT = "relight"    # image → the same image in another light (CapabilityRequest.look, or the prompt)
 ERASE = "erase"        # image → the same image without the object the prompt names (no mask)
 PICTURE_OPS = (EXPAND, RELIGHT, ERASE)
+#: The video ops (0100): one library video in, one video out.
+VIDEO_EDIT = "video_edit"            # video + what to change (the prompt) → the changed video
+VIDEO_REFRAME = "video_reframe"      # video → the same video in another shape (CapabilityRequest.aspect_ratio), uncropped
+VIDEO_REMOVE_BG = "video_remove_bg"  # video → the same video without its background
+VIDEO_OPS = (VIDEO_EDIT, VIDEO_REFRAME, VIDEO_REMOVE_BG)
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
-                CAPTIONS, *PICTURE_OPS)
+                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS)
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
              VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text",
-             EXPAND: "image", RELIGHT: "image", ERASE: "image"}
+             EXPAND: "image", RELIGHT: "image", ERASE: "image",
+             VIDEO_EDIT: "video", VIDEO_REFRAME: "video", VIDEO_REMOVE_BG: "video"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
 IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE, *PICTURE_OPS})
 #: The lights a relight can be asked for by name (0099's allow-list; a model
@@ -94,7 +100,7 @@ VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS})
 #: Capabilities whose input is a video file (0052) — also carried in
 #: CapabilityRequest.input_media, never as a picture, never with speech rules.
-VIDEO_INPUT = frozenset({VIDEO_UPSCALE})
+VIDEO_INPUT = frozenset({VIDEO_UPSCALE, *VIDEO_OPS})
 #: Everything that starts from a media file rather than a picture.
 FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: Capabilities where the prompt is optional (i2v, upscale) or absent
@@ -102,7 +108,7 @@ FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: describe sends no prompt of the person's: the adapter writes the request.
 #: expand and relight (0099) are asked by a shape / a look: their words are optional.
 PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS,
-                             EXPAND, RELIGHT})
+                             EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"

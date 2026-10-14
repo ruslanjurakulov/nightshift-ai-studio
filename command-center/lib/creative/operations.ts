@@ -58,6 +58,9 @@ export const CREATIVE_CAPABILITIES = [
   "expand",
   "relight",
   "erase",
+  "video_edit",
+  "video_reframe",
+  "video_remove_bg",
 ] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
 
@@ -140,6 +143,19 @@ export type CaptionLanguage = (typeof CAPTION_LANGUAGES)[number];
  * so is the quantity (the video's seconds), never this code or the browser.
  */
 export const VIDEO_SOURCE_CAPABILITIES = ["video_upscale"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * 0100's video ops: one library video in, one video out, priced by the video's
+ * own measured seconds. Like the picture ops they are the Enhance desk's AI
+ * edit tools and are kept out of VIDEO_SOURCE_CAPABILITIES (the upscale's list).
+ */
+export const VIDEO_OP_CAPABILITIES = ["video_edit", "video_reframe", "video_remove_bg"] as const satisfies readonly CreativeCapability[];
+
+/** Every capability whose input is a library video. */
+export const VIDEO_FILE_CAPABILITIES = [...VIDEO_SOURCE_CAPABILITIES, ...VIDEO_OP_CAPABILITIES] as const;
+
+/** 0100's longest words for a video edit: what to change, one line of plain text. */
+export const MAX_VIDEO_EDIT_WORDS = 500;
 
 /**
  * 0052's explicit allow-list for a video upscale's `target_resolution` (the
@@ -388,12 +404,42 @@ export function pictureOpProblem(capability: string, params: Record<string, unkn
  * same situation as a missing function — "not enabled on this deployment yet" —
  * so it reads as `creative_unavailable`, never as a crash or a price.
  */
-const NEEDS_MIGRATION: readonly string[] = [...PICTURE_OP_CAPABILITIES];
+const NEEDS_MIGRATION: readonly string[] = [...PICTURE_OP_CAPABILITIES, ...VIDEO_OP_CAPABILITIES];
 
 function degraded(capability: string, result: CreativeResult): CreativeResult {
   return result.body.error === "capability_not_supported" && NEEDS_MIGRATION.includes(capability)
     ? fail(503, "creative_unavailable")
     : result;
+}
+
+/**
+ * 0100's rules for the three video ops, the same the database enforces:
+ *  - video_edit: `prompt` required, one line of plain text, 500 characters;
+ *  - video_reframe: `aspect_ratio` required, one of EXPAND_ASPECTS; no words;
+ *  - video_remove_bg: nothing but the video; no words, no shape;
+ *  - none of them takes a length (the database measures the video), a size, a
+ *    negative prompt or a seed. null = nothing wrong (or not a video op).
+ */
+export function videoOpProblem(capability: string, params: Record<string, unknown>): string | null {
+  if (!(VIDEO_OP_CAPABILITIES as readonly string[]).includes(capability)) return null;
+  const op = capability as (typeof VIDEO_OP_CAPABILITIES)[number];
+  const words = params.prompt;
+  if (op === "video_edit") {
+    if (typeof words !== "string" || words.trim() === "") return "prompt is required";
+    if (CONTROL_RE.test(words)) return "prompt must be plain text on one line for video_edit";
+    if (words.length > MAX_VIDEO_EDIT_WORDS) return `prompt is longer than ${MAX_VIDEO_EDIT_WORDS} characters for video_edit`;
+  } else if (words !== undefined) {
+    return `prompt does not apply to ${op}`;
+  }
+  if (op === "video_reframe") {
+    if (!(EXPAND_ASPECTS as readonly unknown[]).includes(params.aspect_ratio))
+      return `aspect_ratio must be one of ${EXPAND_ASPECTS.join(", ")} for video_reframe`;
+  } else if (params.aspect_ratio !== undefined) {
+    return `aspect_ratio does not apply to ${op}: the result keeps the source's shape`;
+  }
+  for (const k of ["negative_prompt", "resolution", "seed"] as const)
+    if (params[k] !== undefined) return `${k} does not apply to ${op}`;
+  return null;
 }
 
 export interface GenerationInput {
@@ -444,7 +490,7 @@ export function parseGenerationInput(
   if (JSON.stringify(params).length > MAX_PARAMS_BYTES)
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
   const recorded = RECORDING_CAPABILITIES.includes(capability);
-  const filmed = (VIDEO_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const filmed = (VIDEO_FILE_CAPABILITIES as readonly string[]).includes(capability);
   const sourced = recorded || filmed || (PICTURE_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
   if (sourced && !isUuid(params.source_asset_id))
     return {
@@ -471,14 +517,14 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${CAPTION_LANGUAGES.join(", ")}` }) };
   if (capability !== "describe" && capability !== "captions" && params.language !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `language does not apply to ${capability}` }) };
-  const bad = pictureOpProblem(capability, params);
+  const bad = pictureOpProblem(capability, params) ?? videoOpProblem(capability, params);
   if (bad) return { ok: false, result: fail(400, "invalid_params", { detail: bad }) };
   if ((recorded || filmed) && params.duration_s !== undefined)
     // The length is the file's own, measured by the database — never sent.
     return { ok: false, result: fail(400, "invalid_params", { detail: `duration_s does not apply to ${capability}` }) };
-  if (filmed && !(UPSCALE_TARGETS as readonly unknown[]).includes(params.target_resolution))
+  if (capability === "video_upscale" && !(UPSCALE_TARGETS as readonly unknown[]).includes(params.target_resolution))
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_resolution must be one of ${UPSCALE_TARGETS.join(", ")}` }) };
-  if (!filmed && params.target_resolution !== undefined)
+  if (capability !== "video_upscale" && params.target_resolution !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_resolution does not apply to ${capability}` }) };
   if (params.end_asset_id !== undefined) {
     if (capability !== "i2v")

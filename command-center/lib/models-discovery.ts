@@ -21,7 +21,7 @@ import { MODEL_ID_RE } from "@/lib/models-admin";
 
 // ── tasks ───────────────────────────────────────────────────────────────────
 
-/** The registry's capabilities (0099's model_registry_capabilities_check). */
+/** The registry's capabilities (0100's model_registry_capabilities_check). */
 export const REGISTRY_CAPABILITIES = [
   "t2i",
   "edit",
@@ -39,6 +39,9 @@ export const REGISTRY_CAPABILITIES = [
   "expand",
   "relight",
   "erase",
+  "video_edit",
+  "video_reframe",
+  "video_remove_bg",
 ] as const;
 export type RegistryCapability = (typeof REGISTRY_CAPABILITIES)[number];
 
@@ -65,6 +68,8 @@ export const TASKS = [
   { id: "dub", caps: ["dub"] },
   { id: "describe", caps: ["describe"] },
   { id: "captions", caps: ["captions"] },
+  // The video ops (0100): change a video by words, change its shape, take its background out.
+  { id: "video_edit", caps: ["video_edit", "video_reframe", "video_remove_bg"] },
 ] as const satisfies readonly { id: string; caps: readonly RegistryCapability[] }[];
 export type TaskId = (typeof TASKS)[number]["id"];
 
@@ -110,6 +115,9 @@ const CAP_INPUTS: Record<RegistryCapability, readonly InputKind[]> = {
   expand: ["image", "text"],
   relight: ["image", "text"],
   erase: ["image", "text"],
+  video_edit: ["video", "text"],
+  video_reframe: ["video"],
+  video_remove_bg: ["video"],
 };
 
 /**
@@ -174,6 +182,9 @@ const SOURCE_LIMITS: Partial<Record<RegistryCapability, { seconds?: number; mb?:
   expand: { mb: 15 },
   relight: { mb: 15 },
   erase: { mb: 15 },
+  video_edit: { mb: 25 },
+  video_reframe: { mb: 25 },
+  video_remove_bg: { mb: 25 },
 };
 
 export type SourceKind = "picture" | "video" | "recording";
@@ -203,7 +214,7 @@ export function sourceRule(cap: RegistryCapability, modelMaxSeconds: number | nu
   ) {
     kind = "picture";
     mimes = PICTURE_MIME;
-  } else if (cap === "video_upscale") {
+  } else if (cap === "video_upscale" || cap === "video_edit" || cap === "video_reframe" || cap === "video_remove_bg") {
     kind = "video";
     mimes = VIDEO_MIME;
   } else if (cap === "voice_change") {
