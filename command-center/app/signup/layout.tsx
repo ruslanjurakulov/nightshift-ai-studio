@@ -1,3 +1,4 @@
+import { GoogleEnabled } from "@/components/auth/GoogleEnabled";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { getDictionary } from "@/lib/i18n/server";
@@ -32,5 +33,9 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function SignupLayout({ children }: { children: React.ReactNode }) {
   const invited = normalizeInviteToken((await cookies()).get(INVITE_COOKIE)?.value) !== null;
-  return <InvitedProvider invited={invited}>{children}</InvitedProvider>;
+  return (
+    <InvitedProvider invited={invited}>
+      <GoogleEnabled>{children}</GoogleEnabled>
+    </InvitedProvider>
+  );
 }

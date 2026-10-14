@@ -2,7 +2,7 @@
 
 The full Uzbek guide is `docs/GOOGLE_SIGNIN.md`. This is the checklist.
 
-The button on `/login` and `/signup` hides itself until Supabase reports the Google provider as enabled (`GET <project>/auth/v1/settings`, `external.google === true`). No env variable and no deploy is needed to turn it on.
+The button on `/login` and `/signup` hides itself until Supabase reports the Google provider as enabled (`GET <project>/auth/v1/settings`, `external.google === true`). The server asks while rendering the page and caches the answer for up to a minute, so the button is there from the first paint (no layout jump) and appears within about a minute of enabling the provider. No env variable and no deploy is needed.
 
 Values that come from the code:
 
@@ -18,7 +18,7 @@ Values that come from the code:
 4. Supabase Dashboard, Authentication, Sign In / Providers, Google: enable, paste Client ID and Client secret (the secret goes nowhere else: not chat, git or `.env`), Skip nonce checks off, Save.
 5. Supabase, Authentication, URL Configuration: Site URL `https://nightshift-ai.studio`; Redirect URLs `https://nightshift-ai.studio/auth/callback` and `https://nightshift-ai.studio/**`.
 6. Supabase, Sign In / Providers, Email: Confirm email ON, Secure email change ON, Secure password change ON, Allow new users to sign up ON; Allow manual linking OFF.
-7. Test: new Google account from `/signup` (lands on `/welcome`, 100 credits after creating the workspace); sign out and back in from `/login`; an existing email+password account with the same Gmail address signs in as the same account; Cancel on Google's screen shows a calm message on `/login`; forgot password still works; the pre-account takeover test in `docs/GOOGLE_SIGNIN.md` section 3, item 5 (must pass before you leave Google on).
+7. Test (first: the button must appear on `/login` within a minute or two; it also stays hidden if the settings request fails, e.g. the server cannot reach Supabase or the browser console shows a CORS error, so always confirm it appears. With sign-ups disabled, new Google users end on `/login?error=google_failed`): new Google account from `/signup` (lands on `/welcome`, 100 credits after creating the workspace); sign out and back in from `/login`; an existing email+password account with the same Gmail address signs in as the same account; Cancel on Google's screen shows a calm message on `/login`; forgot password still works; the pre-account takeover test in `docs/GOOGLE_SIGNIN.md` section 3, item 5 (must pass before you leave Google on).
 8. Rollback: Supabase, Providers, Google, switch off. The button disappears on its own; email sign-in is untouched.
 
 Known limit: an account created only with Google has no password; to set one use `/forgot-password`.

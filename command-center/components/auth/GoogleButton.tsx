@@ -8,6 +8,7 @@ import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert } from "@/components/auth/AuthShell";
 import { GOOGLE_PROVIDER, googleRedirectTo, isGoogleEnabled, isGoogleError, type GoogleError } from "@/lib/google-signin";
 import { DEFAULT_AFTER_AUTH } from "@/lib/safe-redirect";
+import { useGoogleEnabledFromServer } from "@/components/auth/google-enabled-context";
 import "@/components/auth/google-button.css";
 
 /** Google's multi-colour "G", from Google's sign-in branding assets, unaltered. */
@@ -46,7 +47,8 @@ function GoogleG() {
  * from the closed set in lib/google-signin.ts, never from the URL's text.
  *
  * The button is rendered only when Supabase reports the Google provider as
- * enabled (isGoogleEnabled); until the owner switches it on, the page is the
+ * enabled (the server asks while rendering /login and /signup, see
+ * components/auth/GoogleEnabled.tsx; isGoogleEnabled is the browser fallback); until the owner switches it on, the page is the
  * plain email form. A failure that comes back in the URL is still explained.
  *
  * On /signup the line under the button carries the same consent the form's
@@ -57,18 +59,22 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
   const g = t.site.auth.google;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<GoogleError | null>(null);
-  // Shown only once Supabase says the Google provider is on (lib/google-signin.ts).
-  const [enabled, setEnabled] = useState(false);
+  // The server's answer is there from the first paint (no layout jump). Without
+  // one (a page that is not wrapped by <GoogleEnabled>) the browser asks Supabase itself.
+  const fromServer = useGoogleEnabledFromServer();
+  const [asked, setAsked] = useState(false);
+  const enabled = fromServer ?? asked;
 
   useEffect(() => {
+    if (fromServer !== undefined) return;
     let live = true;
     void isGoogleEnabled(SUPABASE_URL, SUPABASE_ANON_KEY).then((on) => {
-      if (live) setEnabled(on);
+      if (live) setAsked(on);
     });
     return () => {
       live = false;
     };
-  }, []);
+  }, [fromServer]);
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("error");
