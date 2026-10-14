@@ -183,3 +183,18 @@ def text_on(hex_colour: str) -> str:
 def type_steps(n_chars: int) -> int:
     """How many reveal steps a typewriter uses for ``n_chars`` characters."""
     return max(1, min(MAX_TYPE_STEPS, int(n_chars)))
+
+
+def type_schedule(n_atoms: int, duration_ms: int) -> List[Tuple[int, int]]:
+    """``[(first_atom, at_ms)]``: the typewriter reveals atoms (a letter, a
+    space or a line break) in runs, the run starting at ``first_atom`` showing
+    up ``at_ms`` into the cue. It types for 70 % of the cue, at most 60 ms a
+    letter, and never faster than a step a millisecond. Integer maths, so the
+    export and the preview reveal the same letters at the same moments."""
+    n = max(0, int(n_atoms))
+    if n == 0:
+        return []
+    steps = type_steps(n)
+    per = -(-n // steps)
+    window = max(steps, min(int(int(duration_ms) * 7 // 10), 60 * n))
+    return [(first, window * (first // per) // steps) for first in range(0, n, per)]

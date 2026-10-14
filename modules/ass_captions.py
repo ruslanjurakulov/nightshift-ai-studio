@@ -468,13 +468,11 @@ def _typewriter(lines: List[List[str]], dur_ms: int) -> str:
         if n:
             atoms.append("\\N")
         atoms.extend(list(" ".join(words)))
-    steps = caption_styles.type_steps(len(atoms))
-    per = -(-len(atoms) // steps)
-    window = max(steps, min(int(dur_ms * 0.7), 60 * len(atoms)))
+    schedule = caption_styles.type_schedule(len(atoms), dur_ms)
     parts = []
-    for g in range(0, len(atoms), per):
-        at = window * (g // per) // steps
-        parts.append("{\\alpha&HFF&\\t(%d,%d,\\alpha&H00&)}" % (at, at + 1) + "".join(atoms[g:g + per]))
+    for n, (first, at) in enumerate(schedule):
+        last = schedule[n + 1][0] if n + 1 < len(schedule) else len(atoms)
+        parts.append("{\\alpha&HFF&\\t(%d,%d,\\alpha&H00&)}" % (at, at + 1) + "".join(atoms[first:last]))
     return "".join(parts)
 
 

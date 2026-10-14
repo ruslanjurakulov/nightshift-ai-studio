@@ -129,6 +129,10 @@ export interface CaptionStyle {
   bold: boolean;
   /** Where the caption's bottom edge sits, as a share of the frame's height. */
   y: number;
+  /** An animated style (lib/captionStyleTable.ts); absent = the plain caption. */
+  preset?: string;
+  /** The second colour an animated style draws (the lit word, the box, the glow). */
+  highlight_color?: string;
 }
 
 export interface Captions {
@@ -218,6 +222,8 @@ export function styleFor(id: CaptionPresetId, width: number, height: number): Ca
 /** The preset a style came from, when it is exactly one of them for this frame; else null (a hand-made look). */
 export function presetMatching(style: unknown, width: number, height: number): CaptionPresetId | null {
   if (!isObj(style)) return null;
+  // An animated style is its own look, never one of these four.
+  if (style.preset !== undefined) return null;
   for (const p of CAPTION_PRESETS) {
     const s = styleFor(p.id, width, height);
     if ((Object.keys(s) as (keyof CaptionStyle)[]).every((k) => style[k] === s[k])) return p.id;

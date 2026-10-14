@@ -4,6 +4,7 @@ import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
 import { overlayRu } from "./overlay/ru";
 import { looksRu } from "./editor-looks/ru";
+import { captionStylesRu } from "./caption-styles/ru";
 import { editorExportRu } from "./editor-export/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
@@ -4534,6 +4535,21 @@ export const ru: Dictionary = {
     downloadSrt: "Скачать .srt",
     downloadVtt: "Скачать .vtt",
     defaultFile: "subtitry",
+    /** Анимированные стили: ./caption-styles/ru.ts. */
+    animated: captionStylesRu,
+    addCue: "Добавить субтитр",
+    importFile: "Загрузить .srt или .vtt",
+    importNote: "Напишите субтитры сами или загрузите файл с ними. Оба способа бесплатны, расшифровка речи не нужна.",
+    newCueText: "Новый субтитр",
+    addNoRoom: "Для ещё одного субтитра нет места: картинка слишком скоро заканчивается.",
+    importTooBig: "Файл слишком большой (больше 1 МБ).",
+    importFailed: "Не удалось прочитать файл.",
+    importOutside: "Все субтитры в этом файле идут после конца картинки, поэтому ни один не добавлен.",
+    importNone: "В этом файле субтитры не найдены. Нужен файл .srt или .vtt.",
+    importReplace: "Это заменит субтитры, которые вы видите, вместе с вашими правками. Продолжить?",
+    imported: "Загружено субтитров: {n}. Сохраните проект, чтобы они остались.",
+    importedSome: "Загружено субтитров: {n}; не удалось использовать: {skipped}. Сохраните проект, чтобы они остались.",
+    noCuesManual: "Субтитров пока нет. Добавьте один или загрузите файл .srt или .vtt.",
   },
   workflows: {
     title: "Сценарии",

@@ -144,6 +144,21 @@ class TableTestCase(unittest.TestCase):
             self.assertEqual([list(s) for s in cs.word_spans_ms(case["words"], case["duration_ms"])],
                              case["spans"], case)
 
+    def test_the_typewriter_schedule_follows_the_shared_cases(self):
+        for case in SAMPLE["type_schedule"]:
+            self.assertEqual([list(x) for x in cs.type_schedule(case["atoms"], case["duration_ms"])],
+                             case["schedule"], case)
+
+    def test_the_typewriter_schedule_reveals_everything_in_order_inside_the_cue(self):
+        for n in (1, 7, 40, 41, 500):
+            for ms in (100, 2000, 60000):
+                sched = cs.type_schedule(n, ms)
+                self.assertEqual(sched[0], (0, 0))
+                self.assertLessEqual(len(sched), cs.MAX_TYPE_STEPS)
+                self.assertEqual([a for a, _ in sched], sorted(a for a, _ in sched))
+                self.assertEqual([t for _, t in sched], sorted(t for _, t in sched))
+                self.assertLess(sched[-1][1], ms)
+
     def test_word_spans_cover_the_cue_without_gap_or_overlap(self):
         for words in (["a"], ["a", "bb", "ccc"], ["x"] * 79, ["Привет", "мир", "и", "всем"]):
             for ms in (0, 10, 333, 2500, 99999):
