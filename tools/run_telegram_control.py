@@ -26,18 +26,29 @@ Off unless configured: with no ``TELEGRAM_BOT_TOKEN`` / ``TELEGRAM_CHAT_ID`` it
 logs that it is disabled and exits 0, so a scheduled job is harmless until the
 operator sets the secrets. Always exits 0 — a poll that finds nothing is normal.
 
+Updates are handled by modules/operator_bot (the same router the webhook
+server uses): the read-only views, inline-keyboard buttons, mute, and the
+legacy action intents. This file is only the transport.
+
 Usage:
-  python tools/run_telegram_control.py            # one polling batch
+  python tools/run_telegram_control.py                  # one polling batch
+  python tools/run_telegram_control.py --duration 270   # keep long-polling for
+                                                        # ~4.5 minutes: replies
+                                                        # arrive within a second
 Configuration (env): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (the admin chat),
 TELEGRAM_ADMIN_USER_IDS (who may command; see modules/telegram_control.py),
-SUPABASE_URL + SUPABASE_SERVICE_KEY (the durable update claims).
+SUPABASE_URL + SUPABASE_SERVICE_KEY (the durable update claims and the data the
+views read); the optional OPERATOR_* settings are in docs/operator-bot.md.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -52,16 +63,19 @@ from config import HISTORY_DIR
 from modules import event_log as events
 from modules import log_redaction
 from modules.log_redaction import describe_http_error
-from modules.telegram_control import TelegramControl, route_command
+from modules.operator_bot import router as operator_router
+from modules.operator_bot.router import ACTION_MAX_AGE_S, OperatorBot
+from modules.telegram_control import TelegramControl
 
-#: An action request older than this is not acted on: a schedule that slipped
-#: by hours, or a replayed batch, must not publish something the admin asked
-#: for yesterday.
-ACTION_MAX_AGE_S = 6 * 3600
+# Re-exported: the age limit and the two refusal texts now live in the router
+# (they are enforced there, for poll and webhook alike).
+_NOT_DURABLE_REPLY = operator_router.NOT_DURABLE_REPLY
+_TOO_OLD_REPLY = operator_router.TOO_OLD_REPLY
 
-_NOT_DURABLE_REPLY = ("Not requested: this command could not be recorded durably, so a repeat "
-                      "delivery could run it twice. Try again later.")
-_TOO_OLD_REPLY = "Not requested: this command is more than 6 hours old. Send it again if you still want it."
+#: Only these update types are ever asked for; everything else is never sent.
+ALLOWED_UPDATES = ["message", "callback_query"]
+#: One Telegram long poll lasts at most this long (seconds).
+LONG_POLL_S = 25
 
 _API_BASE = "https://api.telegram.org"
 _OFFSET_FILE = HISTORY_DIR / "telegram_offset.json"
@@ -173,12 +187,11 @@ def _default_store():
 
 
 def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, timeout: int = 0,
-              store=None, now=None) -> int:
-    """Fetch one batch of updates, claim them durably, route each new message,
-    send its reply, and emit an event per action intent. Returns the offset to
-    use next (max update_id + 1). Never raises — a bad batch returns the offset
-    unchanged."""
-    import time
+              store=None, now=None, bot=None) -> int:
+    """Fetch one batch of updates, claim them durably, hand each new one to the
+    operator router (reply, buttons, and an event per action intent). Returns
+    the offset to use next (max update_id + 1). Never raises — a bad batch
+    returns the offset unchanged."""
     import requests
     session = session or requests
     now = time.time() if now is None else now
@@ -188,7 +201,8 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
 
     try:
         resp = session.get(f"{_API_BASE}/bot{token}/getUpdates",
-                           params={"offset": offset, "timeout": timeout}, timeout=timeout + 15)
+                           params={"offset": offset, "timeout": timeout,
+                                   "allowed_updates": json.dumps(ALLOWED_UPDATES)}, timeout=timeout + 15)
         resp.raise_for_status()
         updates = (resp.json() or {}).get("result", []) or []
     except Exception as e:
@@ -206,6 +220,7 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
     claimed = _claim(store if store is not None else _default_store(), ids)
     durable = claimed is not None
 
+    bot = bot or OperatorBot(control, deps, clock=lambda: now)
     next_offset = offset
     for upd in updates:
         try:
@@ -214,34 +229,58 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
             if durable and update_id not in claimed:
                 logger.info("Telegram update %d was already handled — skipped", update_id)
                 continue
-            # Only new messages: an edit of an old command is not a new command.
-            message = upd.get("message") or {}
-            text = message.get("text") or ""
-            chat_id = (message.get("chat") or {}).get("id")
-            user_id = (message.get("from") or {}).get("id")
-            if not text or chat_id is None:
-                continue
-            result = route_command(text, chat_id, control, deps, user_id=user_id)
-            if result.intent:
-                sent_at = message.get("date")
-                if not durable:
-                    control.send(chat_id, _NOT_DURABLE_REPLY)
-                    continue
-                if not isinstance(sent_at, (int, float)) or now - sent_at > ACTION_MAX_AGE_S:
-                    control.send(chat_id, _TOO_OLD_REPLY)
-                    continue
-            control.send(chat_id, result.reply)
-            if result.intent:
-                events.emit(events.TELEGRAM_COMMAND, agent="telegram_control",
-                            status=events.STATUS_COMPLETED, metadata=result.intent)
-                logger.info("Telegram intent recorded: %s", result.intent)
+            # Authorization, rate limits, edits/forwards/other chats, the legacy
+            # intent age check and the event emit all live in the router.
+            bot.handle_update(upd, durable=durable)
         except Exception as e:
-            logger.warning("Failed to process a Telegram update (%s: %s)", type(e).__name__, e)
+            logger.warning("Failed to process a Telegram update (%s)", type(e).__name__)
             continue
     return next_offset
 
 
-def main() -> int:
+def build_bot(control: TelegramControl, deps=None):
+    """The router with its real data sources (needs Supabase for most views)."""
+    from modules.operator_bot.config import OperatorConfig
+    from modules.operator_bot.sources import OperatorSources, default_http_get
+    from modules.operator_bot.store import SupabaseAlertStore
+    from modules.supabase_sync import SupabaseSync
+
+    cfg = OperatorConfig.from_env()
+    sync = SupabaseSync()
+    ops = OperatorSources(sync, default_http_get, cfg, github_token=os.getenv("GITHUB_TOKEN", ""))
+    return OperatorBot(control, deps or StoreDeps(), ops, SupabaseAlertStore(sync), cfg), sync
+
+
+def run(control: TelegramControl, bot, store, *, duration: float = 0, session=None, sleep=time.sleep,
+        monotonic=time.monotonic) -> int:
+    """Poll for ``duration`` seconds (0 = one batch, as before). Each long poll
+    returns the moment a message arrives, so a reply goes out within a second
+    or two; between polls the offset is persisted. Returns the final offset."""
+    offset = _load_offset()
+    start_offset = offset
+    deadline = monotonic() + duration
+    while True:
+        t0 = monotonic()
+        remaining = deadline - t0
+        timeout = 0 if duration <= 0 else int(max(0, min(LONG_POLL_S, remaining)))
+        new_offset = poll_once(control, None, session=session, offset=offset, timeout=timeout,
+                               store=store, bot=bot)
+        if new_offset != offset:
+            _save_offset(new_offset)
+            offset = new_offset
+        if duration <= 0 or monotonic() >= deadline:
+            break
+        if monotonic() - t0 < 1.0:      # an error returned at once: do not spin
+            sleep(2)
+    logger.info("Telegram poll done (offset %d → %d)", start_offset, offset)
+    return offset
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--duration", type=float, default=0,
+                        help="seconds to keep long-polling (0 = a single batch)")
+    args = parser.parse_args(argv)
     # This job's log is uploaded as an artifact: scrub any token-bearing URL
     # a library message might still carry.
     log_redaction.install()
@@ -250,11 +289,8 @@ def main() -> int:
         logger.info("Telegram control panel not configured (set TELEGRAM_BOT_TOKEN + "
                     "TELEGRAM_CHAT_ID) — nothing to poll")
         return 0
-    offset = _load_offset()
-    new_offset = poll_once(control, StoreDeps(), offset=offset)
-    if new_offset != offset:
-        _save_offset(new_offset)
-    logger.info("Telegram poll done (offset %d → %d)", offset, new_offset)
+    bot, sync = build_bot(control)
+    run(control, bot, sync, duration=max(0.0, min(args.duration, 3600.0)))
     return 0
 
 

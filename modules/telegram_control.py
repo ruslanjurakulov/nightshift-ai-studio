@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
 from modules.log_redaction import describe_http_error
+from modules.tg_text import SPLIT_AT, sanitize_outgoing, split_message
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,10 @@ class TelegramControl:
     TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set. `notify` never raises."""
 
     def __init__(self, token: Optional[str] = None, chat_id: Optional[str] = None,
-                 admin_user_ids: Optional[str] = None):
+                 admin_user_ids: Optional[str] = None, session=None):
+        # `session` is anything with requests' `post` (a fake in tests); None
+        # means the real `requests` module, imported lazily.
+        self._session = session
         self._token = (token if token is not None else os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
         self._chat_id = (chat_id if chat_id is not None else os.getenv("TELEGRAM_CHAT_ID", "")).strip()
         raw_ids = admin_user_ids if admin_user_ids is not None else os.getenv("TELEGRAM_ADMIN_USER_IDS", "")
@@ -63,6 +67,11 @@ class TelegramControl:
     @property
     def enabled(self) -> bool:
         return bool(self._token and self._chat_id)
+
+    @property
+    def chat_id(self) -> str:
+        """The admin chat id (what alerts and the digest are sent to)."""
+        return self._chat_id
 
     def authorized(self, chat_id, user_id=None) -> bool:
         """True only for an allow-listed sender (`user_id`, Telegram's
@@ -86,28 +95,57 @@ class TelegramControl:
             return False
         return self.send(self._chat_id, text)
 
-    def send(self, chat_id, text: str) -> bool:
+    def send(self, chat_id, text: str, *, parse_mode: Optional[str] = None,
+             reply_markup: Optional[dict] = None) -> bool:
         """Send `text` to a specific chat (a command reply goes back to whoever
-        asked, not only the admin chat). Returns True on success. No token or no
-        chat_id → skipped; any error is swallowed. Never raises."""
+        asked, not only the admin chat). Returns True when every part was
+        accepted. No token or no chat_id → skipped; any error is swallowed.
+        Never raises.
+
+        Every outgoing text is scrubbed (modules/tg_text.sanitize_outgoing:
+        URL-borne credentials, e-mail addresses, key-shaped strings) and split
+        under Telegram's 4096-character limit on line boundaries. A keyboard,
+        when given, rides on the LAST part."""
         if not self._token or not str(chat_id).strip():
             return False
-        try:
-            import requests
+        parts = split_message(sanitize_outgoing(text), SPLIT_AT)
+        if not parts:
+            return False
+        ok = True
+        for i, part in enumerate(parts):
+            payload = {"chat_id": str(chat_id), "text": part, "disable_web_page_preview": True}
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+            if reply_markup and i == len(parts) - 1:
+                payload["reply_markup"] = reply_markup
+            ok = self._call("sendMessage", payload) and ok
+        return ok
 
-            resp = requests.post(
-                f"{_API_BASE}/bot{self._token}/sendMessage",
-                json={"chat_id": str(chat_id), "text": text, "disable_web_page_preview": True},
-                timeout=10,
-            )
+    def answer_callback(self, callback_query_id, text: str = "") -> bool:
+        """Stop the spinner on a tapped button. `text` is shown as a small toast
+        (kept neutral and short). Never raises."""
+        if not self._token or not str(callback_query_id or "").strip():
+            return False
+        payload = {"callback_query_id": str(callback_query_id)}
+        if text:
+            payload["text"] = sanitize_outgoing(text)[:180]
+        return self._call("answerCallbackQuery", payload)
+
+    def _call(self, method: str, payload: dict) -> bool:
+        try:
+            session = self._session
+            if session is None:
+                import requests as session
+
+            resp = session.post(f"{_API_BASE}/bot{self._token}/{method}", json=payload, timeout=10)
             if resp.status_code != 200:
-                logger.warning("Telegram sendMessage returned %d", resp.status_code)
+                logger.warning("Telegram %s returned %d", method, resp.status_code)
                 return False
             return True
         except Exception as e:  # network, import, anything — swallow
             # The type and the HTTP status only: a requests exception's text
             # carries the request URL, and the bot token is part of that URL.
-            logger.warning("Telegram send failed (%s)", describe_http_error(e))
+            logger.warning("Telegram %s failed (%s)", method, describe_http_error(e))
             return False
 
 
