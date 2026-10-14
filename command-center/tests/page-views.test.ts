@@ -152,6 +152,45 @@ describe("POST /api/pv", () => {
     expect(recorded).toEqual([GOOD]);
   });
 
+  it("never forwards a path that is not a public marketing page (a 404 on a secret-looking URL stays here)", async () => {
+    for (const path of ["/not-a-page", "/chronos/videos", "/docs/skills", "/docs/cli", "/login", "/signup", "/reset-password", "/i/abcdefghijklmnopqrstuvwxyz", "/api/v1/models", "/x"]) {
+      expect((await post({ ...GOOD, path })).status).toBe(204);
+    }
+    expect(recorded).toEqual([]);
+    // and the listed ones still go through, with or without a trailing slash
+    await post({ ...GOOD, path: "/solutions/developers/" });
+    expect(recorded).toEqual([{ ...GOOD, path: "/solutions/developers" }]);
+  });
+
+  it("reads at most a couple of KB of body even when no Content-Length is sent", async () => {
+    const pad = "x".repeat(4000);
+    const big = new Request("https://nightshift.example/api/pv", {
+      method: "POST",
+      body: JSON.stringify({ ...GOOD, pad }),
+      headers: { origin: "https://nightshift.example", "user-agent": CHROME },
+    });
+    expect(big.headers.get("content-length")).toBeNull();
+    expect((await POST(big)).status).toBe(204);
+    expect(recorded).toEqual([]);
+    // a streamed body that never ends is cut off, not read to the end
+    let sent = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        sent += 1024;
+        c.enqueue(new TextEncoder().encode("x".repeat(1024)));
+      },
+    });
+    const streamed = new Request("https://nightshift.example/api/pv", {
+      method: "POST",
+      body: endless,
+      duplex: "half",
+      headers: { origin: "https://nightshift.example", "user-agent": CHROME },
+    } as RequestInit);
+    expect((await POST(streamed)).status).toBe(204);
+    expect(sent).toBeLessThan(64 * 1024);
+    expect(recorded).toEqual([]);
+  });
+
   it("stops counting past its per-minute ceiling", async () => {
     for (let i = 0; i < PAGE_VIEW_ROUTE_LIMIT.max + 20; i++) await post(GOOD);
     expect(recorded).toHaveLength(PAGE_VIEW_ROUTE_LIMIT.max);

@@ -139,6 +139,19 @@ Known limits, by design: a caller with the public key can inflate the count of a
 public page (capped at 600 a minute, never data); reloads count as views; there
 is no "unique visitors" figure, because that would need an identifier.
 
+More known limits (from the security review; documented, not engineered away):
+past the 600 a minute ceiling every direct call to the function still bumps the
+one counter row, so a flood costs the database one tiny write per call; the
+per-process 300 a minute limit in the route can, under a flood, starve real
+counts; and someone with the public key can fill a day's 3000 rows within a few
+minutes, after which that day's later real referring sites are counted under
+`other` (page, device and language totals stay right). None of these exposes
+data. Only the route's closed list leaves the server: a 404 on any other URL
+sends nothing to the database. `/docs/cli` and `/docs/skills` (flag-gated pages)
+are deliberately **not** counted, because the SQL and TypeScript lists must stay
+identical (`tests/page-views.test.ts` compares them) and those two are not
+always public.
+
 ## hreflang (item 14)
 
 **Off, and correctly so.** The language is the visitor's `chronos_locale` cookie,
