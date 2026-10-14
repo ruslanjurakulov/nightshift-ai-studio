@@ -107,11 +107,7 @@ export function glyphStyle(style: XfadeStyle): CSSProperties {
       return { background: `linear-gradient(${OLD}, ${OLD}) center / 40% 100% no-repeat, ${NEW}` };
     case "pixelize":
       return {
-        backgroundColor: OLD,
-        backgroundImage: `linear-gradient(${NEW} 0 0), linear-gradient(${NEW} 0 0)`,
-        backgroundSize: "6px 6px, 6px 6px",
-        backgroundPosition: "0 0, 6px 6px",
-        backgroundRepeat: "repeat",
+        background: `repeating-conic-gradient(${NEW} 0 25%, ${OLD} 0 50%) 0 0 / 8px 8px`,
       };
     case "hblur":
       return { background: `linear-gradient(90deg, ${OLD}, ${NEW} 25%, ${OLD} 50%, ${NEW} 75%, ${OLD})` };
