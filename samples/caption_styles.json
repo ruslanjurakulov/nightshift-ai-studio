@@ -1,0 +1,369 @@
+{
+ "_comment": "The animated caption styles the editor offers (command-center/lib/captionStyles.ts CAPTION_STYLES) and what the export draws (modules/caption_styles.py STYLES, written as libass tags by modules/ass_captions.py). tests/test_caption_styles.py and command-center/tests/caption-styles.test.ts pin both copies to this file, and tests/test_caption_styles.py renders every style with the real export (ffmpeg + libass) when it is present. size_frac is the text height as a share of the frame's SHORT side; x/y/anchor are where the style's anchor sits; 'uses' are the tweaks the editor shows for it. word_spans are the rule both the export and the preview use to spread a cue's time over its words (weight = letters + 1, integer maths): the cue's words, its length in ms, and the [start, end] ms of each word.",
+ "size_min": 24,
+ "size_max": 200,
+ "max_styled_words": 80,
+ "max_type_steps": 40,
+ "styles": [
+  {
+   "id": "karaoke",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.062,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 4,
+   "x": 0.5,
+   "y": 0.78,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "highlight_color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "pop_in",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.078,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 5,
+   "x": 0.5,
+   "y": 0.74,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "boxed",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.058,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 0,
+   "x": 0.5,
+   "y": 0.8,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "highlight_color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "big_centre",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.12,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 8,
+   "x": 0.5,
+   "y": 0.5,
+   "anchor": "center",
+   "uses": [
+    "color",
+    "highlight_color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "lower_third",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.048,
+   "color": "#FFFFFF",
+   "highlight_color": "#1E6BFF",
+   "outline_color": "#000000",
+   "outline_width": 0,
+   "x": 0.06,
+   "y": 0.88,
+   "anchor": "bottom-left",
+   "uses": [
+    "color",
+    "highlight_color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "outlined",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.09,
+   "color": "#FFFFFF",
+   "highlight_color": "#FF3B30",
+   "outline_color": "#000000",
+   "outline_width": 8,
+   "x": 0.5,
+   "y": 0.7,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "highlight_color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "neon",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.075,
+   "color": "#FFFFFF",
+   "highlight_color": "#00E5FF",
+   "outline_color": "#000000",
+   "outline_width": 2,
+   "x": 0.5,
+   "y": 0.72,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "highlight_color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "typewriter",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.058,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 3,
+   "x": 0.5,
+   "y": 0.8,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "line_slide",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.06,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 4,
+   "x": 0.5,
+   "y": 0.85,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "size",
+    "y"
+   ]
+  },
+  {
+   "id": "clean",
+   "font": "Liberation Sans",
+   "bold": false,
+   "size_frac": 0.05,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 0,
+   "x": 0.5,
+   "y": 0.92,
+   "anchor": "bottom",
+   "uses": [
+    "color",
+    "size",
+    "y"
+   ]
+  }
+ ],
+ "word_spans": [
+  {
+   "words": [
+    "Hello",
+    "big",
+    "wide",
+    "world"
+   ],
+   "duration_ms": 2500,
+   "spans": [
+    [
+     0,
+     714
+    ],
+    [
+     714,
+     1190
+    ],
+    [
+     1190,
+     1786
+    ],
+    [
+     1786,
+     2500
+    ]
+   ]
+  },
+  {
+   "words": [
+    "a"
+   ],
+   "duration_ms": 1000,
+   "spans": [
+    [
+     0,
+     1000
+    ]
+   ]
+  },
+  {
+   "words": [
+    "I",
+    "am",
+    "here"
+   ],
+   "duration_ms": 300,
+   "spans": [
+    [
+     0,
+     60
+    ],
+    [
+     60,
+     150
+    ],
+    [
+     150,
+     300
+    ]
+   ]
+  },
+  {
+   "words": [
+    "Привет",
+    "мир"
+   ],
+   "duration_ms": 1800,
+   "spans": [
+    [
+     0,
+     1145
+    ],
+    [
+     1145,
+     1800
+    ]
+   ]
+  },
+  {
+   "words": [
+    "Salom",
+    "dunyo",
+    "bugun"
+   ],
+   "duration_ms": 0,
+   "spans": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "words": [
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven"
+   ],
+   "duration_ms": 4321,
+   "spans": [
+    [
+     0,
+     508
+    ],
+    [
+     508,
+     1017
+    ],
+    [
+     1017,
+     1779
+    ],
+    [
+     1779,
+     2415
+    ],
+    [
+     2415,
+     3050
+    ],
+    [
+     3050,
+     3558
+    ],
+    [
+     3558,
+     4321
+    ]
+   ]
+  }
+ ],
+ "text_on": [
+  {
+   "colour": "#FFD400",
+   "text": "#000000"
+  },
+  {
+   "colour": "#FFFFFF",
+   "text": "#000000"
+  },
+  {
+   "colour": "#000000",
+   "text": "#FFFFFF"
+  },
+  {
+   "colour": "#1E6BFF",
+   "text": "#FFFFFF"
+  },
+  {
+   "colour": "#00E5FF",
+   "text": "#000000"
+  },
+  {
+   "colour": "#FF3B30",
+   "text": "#FFFFFF"
+  },
+  {
+   "colour": "#808080",
+   "text": "#FFFFFF"
+  }
+ ]
+}
