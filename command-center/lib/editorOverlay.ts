@@ -27,6 +27,7 @@ import {
   OVERLAY_W_MAX,
   OVERLAY_W_MIN,
   clamp,
+  fitAnims,
   freshId,
   ms,
   pictureEndOf,
@@ -163,15 +164,12 @@ export function updateOverlay(
   if (sourceS && sourceS > 0)
     next.end_s = ms(Math.min(next.end_s, next.start_s + sourceS));
   for (const k of OVERLAY_KEYS) next[k] = clampKey(k, next[k]);
-  if (
-    next.start_s === at.start_s &&
-    next.end_s === at.end_s &&
-    OVERLAY_KEYS.every((k) => next[k] === at[k])
-  )
-    return model;
+  // A shorter overlay shortens its entrance and exit with it.
+  const fitted = fitAnims(next);
+  if (JSON.stringify(fitted) === JSON.stringify(at)) return model;
   return {
     ...model,
-    overlays: list.map((o) => (o.id === id ? next : o)),
+    overlays: list.map((o) => (o.id === id ? fitted : o)),
   };
 }
 

@@ -2131,6 +2131,47 @@ export function modelDuration(model: EditorModel): number {
   return docDuration(toDoc(model));
 }
 
+/**
+ * Keep an item's entrance and exit inside the time it is shown (the validator
+ * refuses otherwise): when a text or an overlay is shortened, the two lengths
+ * shrink in proportion (never under ANIM_MIN_S); when both cannot fit, the exit
+ * goes and the entrance is kept. The same item back when it already fits.
+ */
+export function fitAnims<
+  T extends {
+    start_s: number;
+    end_s: number;
+    anim_in?: string;
+    anim_out?: string;
+    anim_in_s?: number;
+    anim_out_s?: number;
+  },
+>(item: T): T {
+  const shown = ms(item.end_s - item.start_s);
+  const floor3 = (v: number) => Math.floor(v * 1000 + 1e-6) / 1000;
+  const a = item.anim_in ? (item.anim_in_s ?? ANIM_DEFAULT_S) : 0;
+  const b = item.anim_out ? (item.anim_out_s ?? ANIM_DEFAULT_S) : 0;
+  if (a + b <= shown + 1e-9) return item;
+  const next: T = { ...item };
+  if (a > 0 && b > 0) {
+    const k = shown / (a + b);
+    const na = Math.max(ANIM_MIN_S, floor3(a * k));
+    const nb = Math.max(ANIM_MIN_S, floor3(b * k));
+    if (na + nb <= shown + 1e-9) {
+      next.anim_in_s = na;
+      next.anim_out_s = nb;
+      return next;
+    }
+    delete next.anim_out;
+    delete next.anim_out_s;
+    next.anim_in_s = Math.max(ANIM_MIN_S, Math.min(a, floor3(shown)));
+    return next;
+  }
+  if (a > 0) next.anim_in_s = Math.max(ANIM_MIN_S, Math.min(a, floor3(shown)));
+  else next.anim_out_s = Math.max(ANIM_MIN_S, Math.min(b, floor3(shown)));
+  return next;
+}
+
 /** A new id for a clip or a text: letters and digits, never one the model uses. */
 export function freshId(
   model: EditorModel,
@@ -2535,7 +2576,7 @@ export function updateText(
         next.size = Math.round(clamp(patch.size, TEXT_SIZE_MIN, TEXT_SIZE_MAX));
       next.start_s = ms(Math.max(0, next.start_s));
       next.end_s = ms(Math.max(next.end_s, next.start_s + MIN_CLIP_S));
-      return next;
+      return fitAnims(next);
     }),
   };
 }

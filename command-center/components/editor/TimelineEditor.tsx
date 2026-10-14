@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -127,7 +128,6 @@ import { isCaptionStyleId, perWordCueIds } from "@/lib/captionStyleTable";
 import {
   fitOf,
   previewFrameStyle,
-  previewObjectFit,
   setClipFit,
   setFrame,
   type Fit,
@@ -147,13 +147,16 @@ import {
 } from "@/lib/editorOverlay";
 import { OverlayInspector, OverlayLayer, OverlayPicker } from "./OverlayPanel";
 import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
+import { ClipPicture, LookFilterDefs } from "./ClipPicture";
+import { ClipFxSections } from "./ClipFxSections";
+import { OverlayAnimSection, TextAnimSection } from "./AnimPicker";
+import { ANIM_REST, animFrame, writtenText, type AnimFrame } from "@/lib/editorFxPreview";
 import { TransitionStylePicker } from "./TransitionStylePicker";
 import { TextLookPicker } from "./TextLookPicker";
 import { applyTextLook } from "@/lib/editorTextLook";
 import { previewBoxStyle, previewTextStyle } from "@/lib/editorTextLookPreview";
 import {
   gradeOf,
-  previewGradeStyle,
   resetClipGrade,
   setClipGrade,
   type ClipGrade,
@@ -197,17 +200,28 @@ function typing(target: EventTarget | null): boolean {
   );
 }
 
-function textBoxStyle(x: TextClip, width: number): CSSProperties {
+function textBoxStyle(
+  x: TextClip,
+  frame: { width: number; height: number },
+  anim: AnimFrame = ANIM_REST,
+): CSSProperties {
+  const width = frame.width;
   const ty =
     x.anchor === "top" || x.anchor === "top-left" || x.anchor === "top-right"
       ? "0"
       : x.anchor.startsWith("bottom")
         ? "-100%"
         : "-50%";
+  const moving = anim.dx !== 0 || anim.dy !== 0 || anim.scale !== 1;
   return {
     left: `${x.x * 100}%`,
     top: `${x.y * 100}%`,
-    transform: `translate(-50%, ${ty})`,
+    // An entrance / exit moves the text from its anchor (cqw: a share of the frame's width).
+    transform: moving
+      ? `translate(${anim.dx * 100}cqw, ${(anim.dy * 100 * frame.height) / frame.width}cqw) scale(${anim.scale}) translate(-50%, ${ty})`
+      : `translate(-50%, ${ty})`,
+    transformOrigin: moving ? "0 0" : undefined,
+    opacity: anim.opacity === 1 ? undefined : anim.opacity,
     // Output pixels → a share of the frame's width, so the preview scales like the export.
     fontSize: `${(x.size / width) * 100}cqw`,
     fontWeight: x.bold === false ? 400 : 700,
@@ -1065,34 +1079,15 @@ export function TimelineEditor({
             style={previewFrameStyle(model)}
           >
             <GradeFilterDefs clip={at?.clip} still={still} />
-            {src && still ? (
-              // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
-              <img
+            <LookFilterDefs clip={at?.clip} />
+            {src ? (
+              <ClipPicture
+                clip={at?.clip}
+                still={still}
                 src={src}
-                alt=""
-                className="size-full"
-                style={{
-                  objectFit: previewObjectFit(at?.clip, true),
-                  ...previewGradeStyle(at?.clip),
-                }}
-                onError={() => {
-                  if (!refreshed.current) {
-                    refreshed.current = true;
-                    void refreshLinks();
-                  }
-                }}
-              />
-            ) : src ? (
-              <video
-                ref={video}
-                src={src}
-                playsInline
-                preload="auto"
-                className="size-full"
-                style={{
-                  objectFit: previewObjectFit(at?.clip, false),
-                  ...previewGradeStyle(at?.clip),
-                }}
+                frame={model}
+                source={at ? (assets[at.clip.asset_id] ?? null) : null}
+                videoRef={video}
                 onLoadedMetadata={() => {
                   const v = video.current;
                   if (v && at) {
@@ -1123,6 +1118,7 @@ export function TimelineEditor({
                   numberOf={overlayNumber}
                   playhead={playhead}
                   playing={playing}
+                  frame={model}
                   onNudge={(id, dx, dy, big) =>
                     applyBurst(
                       nudgeOverlay(model, id, dx, dy, big ? 0.05 : 0.01),
@@ -1176,19 +1172,34 @@ export function TimelineEditor({
                 </span>
               ) : null;
             })}
-            {shownTexts.map((x) => (
-              <span
-                key={x.id}
-                className="pointer-events-none absolute whitespace-pre-wrap text-center leading-tight"
-                style={textBoxStyle(x, model.width)}
-              >
-                {x.box_color ? (
-                  <span style={previewBoxStyle(x, model.width)}>{x.text}</span>
-                ) : (
+            {shownTexts.map((x) => {
+              const f = animFrame(x, playhead);
+              // A typewriter keeps the final position: the unwritten rest is there, unseen.
+              const body =
+                f.written === null ? (
                   x.text
-                )}
-              </span>
-            ))}
+                ) : (
+                  <>
+                    {writtenText(x.text, f.written)}
+                    <span style={{ visibility: "hidden" }}>
+                      {x.text.slice(writtenText(x.text, f.written).length)}
+                    </span>
+                  </>
+                );
+              return (
+                <span
+                  key={x.id}
+                  className="pointer-events-none absolute whitespace-pre-wrap text-center leading-tight"
+                  style={textBoxStyle(x, model, f)}
+                >
+                  {x.box_color ? (
+                    <span style={previewBoxStyle(x, model.width)}>{body}</span>
+                  ) : (
+                    body
+                  )}
+                </span>
+              );
+            })}
           </div>
           </div>
           <p className="m-0 text-center text-xs text-[var(--color-muted)]">
@@ -1497,6 +1508,9 @@ export function TimelineEditor({
                 )
               }
               onLayer={(by) => apply(moveOverlay(model, overlay.id, by))}
+              extra={
+                <OverlayAnimSection model={model} overlay={overlay} apply={apply} />
+              }
               onDelete={() => {
                 overlayFocus.current = "add";
                 apply(removeOverlay(model, overlay.id));
@@ -1558,6 +1572,15 @@ export function TimelineEditor({
                 apply(resetClipGrade(model, clip.id));
                 showClip(clip.id);
               }}
+              fx={
+                <ClipFxSections
+                  model={model}
+                  clip={clip}
+                  source={assets[clip.asset_id] ?? null}
+                  apply={apply}
+                  showClip={showClip}
+                />
+              }
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
               audioLocked={!clip.audio && audioFull}
               crossfade={crossfadeOf(clip)}
@@ -1580,6 +1603,7 @@ export function TimelineEditor({
               warning={warnings[text.id] ?? null}
               onChange={(patch) => apply(updateText(model, text.id, patch))}
               onLook={(look) => apply(applyTextLook(model, text.id, look))}
+              anim={<TextAnimSection model={model} text={text} apply={apply} />}
               onDelete={() => apply(removeText(model, text.id))}
             />
           ) : (
@@ -1773,6 +1797,7 @@ function ClipInspector({
   grade,
   onGrade,
   onGradeReset,
+  fx,
   onAudio,
   audioLocked,
   crossfade,
@@ -1807,6 +1832,8 @@ function ClipInspector({
   grade: ClipGrade;
   onGrade: (patch: Partial<ClipGrade>, group: string) => void;
   onGradeReset: () => void;
+  /** The look, effects, crop and tilt sections (ClipFxSections). */
+  fx?: ReactNode;
   onAudio: (a: boolean) => void;
   audioLocked: boolean;
   /** The cross-fade into this clip in seconds (0 = a cut). */
@@ -1878,6 +1905,7 @@ function ClipInspector({
         onChange={onGrade}
         onReset={onGradeReset}
       />
+      {fx}
       <label className="tap-row flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -2012,12 +2040,15 @@ function TextInspector({
   warning,
   onChange,
   onLook,
+  anim,
   onDelete,
 }: {
   text: TextClip;
   warning: "empty" | "past_end" | null;
   onChange: (patch: Partial<Omit<TextClip, "id">>) => void;
   onLook: (lookId: string) => void;
+  /** The entrance / exit section (TextAnimSection). */
+  anim?: ReactNode;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -2107,6 +2138,7 @@ function TextInspector({
           ))}
         </div>
       </fieldset>
+      {anim}
       <button
         type="button"
         onClick={onDelete}

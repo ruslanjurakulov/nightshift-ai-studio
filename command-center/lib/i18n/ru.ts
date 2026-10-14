@@ -5,6 +5,7 @@ import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
 import { overlayRu } from "./overlay/ru";
 import { looksRu } from "./editor-looks/ru";
+import { fxRu } from "./editor-fx/ru";
 import { captionStylesRu } from "./caption-styles/ru";
 import { editorExportRu } from "./editor-export/ru";
 
@@ -4779,6 +4780,7 @@ export const ru: Dictionary = {
     overlay: overlayRu,
     /** Cross-fade styles and text looks: ./editor-looks/ru.ts. */
     looks: looksRu,
+    fx: fxRu,
     title: "Редактор",
     subtitle: "Обрезайте, делите, ускоряйте и замедляйте видео и добавляйте на них текст.",
     notEnabled: "Редактор ещё не включён в этом развёртывании (миграция 0054 не применена).",
@@ -4830,7 +4832,7 @@ export const ru: Dictionary = {
     fit: "Картинка в кадре",
     fitContain: "Вписать (полосы)",
     fitCover: "Заполнить (обрезка)",
-    fitHint: "«Вписать» показывает картинку целиком и добавляет полосы, если формы не совпадают. «Заполнить» обрезает края, полос нет. Обрезается только центр; сдвинуть область нельзя.",
+    fitHint: "«Вписать» показывает картинку целиком и добавляет полосы, если формы не совпадают. «Заполнить» обрезает края, полос нет. Остаётся центр; чтобы выбрать другую часть, используйте «Обрезка и наклон» ниже.",
     fitStill: "Фото всегда заполняет кадр и медленно приближается, поэтому настройки нет.",
     grade: "Цвет",
     gradeBrightness: "Яркость",

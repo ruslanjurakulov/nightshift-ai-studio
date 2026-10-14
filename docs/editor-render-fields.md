@@ -379,3 +379,23 @@ like `contain` (the picture alone).
 * if the detect pass cannot run, the export FAILS (it is never quietly exported
   unsteadied).
 * an automatic zoom crops a little of the edges: say so in the product.
+
+## Editor controls (track C)
+
+Where a person finds each field in the editor. The controls read their limits
+from `lib/editor.ts`, clamp in the browser and leave the final word to the
+validators; every change is one undo step (a slider drag too), is carried by the
+local draft and by Save, and an "off" value removes the field so an untouched
+project keeps exactly its document.
+
+| Field(s) | Control | PR |
+|----------|---------|----|
+| text and overlay `anim_in/out(_s)` | "Entrance and exit" (`AnimPicker`), in the text and overlay inspectors | C1 |
+| `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h/v`, `rotate` | "Look and effects" (`ClipEffectsSection`) | C1 |
+| `crop`, `angle` | "Crop and tilt" (`ClipCropSection`) | C1 |
+
+Preview: look (curve tables as an SVG filter, pinned to
+`samples/clip_look_curves.json`), blur, vignette, turn, mirror, crop, free angle
+and the entrance / exit at the playhead are drawn approximately; sharpen and film
+grain are not drawn. The note under the preview says the exported file is the
+reference.

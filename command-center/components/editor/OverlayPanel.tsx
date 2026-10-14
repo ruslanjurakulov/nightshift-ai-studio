@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import { ArrowDown, ArrowUp, RotateCcw, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -19,6 +20,7 @@ import {
   overlayLength,
   type OverlayKey,
 } from "@/lib/editorOverlay";
+import { animFrame } from "@/lib/editorFxPreview";
 
 /**
  * Picture overlays in the editor: the layer drawn in the preview, the picker
@@ -119,7 +121,10 @@ export function OverlayLayer({
   onDrag,
   onDragEnd,
   onLinkError,
+  frame,
 }: {
+  /** The frame's size, for the entrance / exit offsets (a share of its height). */
+  frame?: { width: number; height: number };
   /** Those on screen at the playhead, bottom layer first. */
   overlays: readonly PictureOverlay[];
   assets: Record<string, EditorAsset>;
@@ -194,8 +199,17 @@ export function OverlayLayer({
       {overlays.map((o) => {
         const a = assets[o.asset_id];
         const src = a?.viewUrl ?? a?.thumbUrl ?? null;
+        // The entrance / exit at the playhead (a rough picture; the export is the reference).
+        const f = animFrame(o, playhead);
+        const moving = f.dx !== 0 || f.dy !== 0 || f.scale !== 1;
         const style = {
           ...overlayBoxStyle(o),
+          ...(moving
+            ? {
+                transform: `translate(${f.dx * 100}cqw, ${(f.dy * 100 * (frame ? frame.height / frame.width : 1))}cqw) translate(-50%, -50%) scale(${f.scale})`,
+              }
+            : {}),
+          ...(f.opacity !== 1 ? { opacity: f.opacity } : {}),
           pointerEvents: "none" as const,
           ...(a?.width && a?.height
             ? { aspectRatio: `${a.width} / ${a.height}` }
@@ -459,6 +473,7 @@ export function OverlayInspector({
   onReset,
   onToPlayhead,
   onLayer,
+  extra,
   onDelete,
 }: {
   n: number;
@@ -475,6 +490,8 @@ export function OverlayInspector({
   onReset: () => void;
   onToPlayhead: () => void;
   onLayer: (by: -1 | 1) => void;
+  /** More sections of this overlay (entrance / exit, move, chroma key), under the basics. */
+  extra?: ReactNode;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -543,6 +560,7 @@ export function OverlayInspector({
       {kind === "video" ? (
         <p className="m-0 text-xs text-[var(--color-muted)]">{to.videoNote}</p>
       ) : null}
+      {extra}
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap gap-2">
           <button
