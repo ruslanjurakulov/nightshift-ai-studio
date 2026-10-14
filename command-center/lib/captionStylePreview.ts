@@ -62,6 +62,8 @@ export interface PreviewInput {
   t: number;
   /** The frame's width in output pixels (the unit of `size`). */
   frameWidth: number;
+  /** False when the export writes this cue without lit words (perWordCueIds); default true. */
+  perWord?: boolean;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -95,7 +97,7 @@ export function previewStyledCaption(inp: PreviewInput): StyledPreview | null {
   const w = inp.frameWidth;
   const lines = cueLines(inp.text);
   const words = lines.flat();
-  const styled = words.length <= MAX_STYLED_WORDS;
+  const styled = (inp.perWord ?? true) && words.length > 0 && words.length <= MAX_STYLED_WORDS;
   const spans = wordSpansMs(words, durMs);
   const outline = ring(st.outline_color, st.outline_width, w).join(", ");
 

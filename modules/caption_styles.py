@@ -22,6 +22,7 @@ command-center/tests/caption-styles.test.ts pin both copies to that file.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
@@ -40,7 +41,12 @@ SIZE_MIN, SIZE_MAX = 24, 200
 
 #: A cue that has more words than this is not lit word by word: one tag block
 #: per word is cheap for a sentence and a megabyte for a pasted page.
-MAX_STYLED_WORDS = 80
+MAX_STYLED_WORDS = 40
+#: Words lit one by one in a whole document, counted over its cues in order. A
+#: lit word costs ~300 bytes of tags and a one-letter word ~2 bytes of document,
+#: so without a total the largest document could ask libass to read >100 MB.
+#: A cue past the budget is written plain (its style's box or colour, no lit word).
+WORD_BUDGET = 6000
 #: A typewriter reveals a cue in at most this many steps.
 MAX_TYPE_STEPS = 40
 
@@ -95,7 +101,9 @@ def is_style(value) -> bool:
 def size_for(style_id: str, width: int, height: int) -> int:
     """The style's own text size for a frame: a whole number inside the range a person may pick."""
     s = STYLES[style_id]
-    return int(min(SIZE_MAX, max(SIZE_MIN, round(min(width, height) * s.size_frac))))
+    # Half up (JavaScript's Math.round), not Python's half-to-even: the editor
+    # writes the same size the export would fill in.
+    return int(min(SIZE_MAX, max(SIZE_MIN, math.floor(min(width, height) * s.size_frac + 0.5))))
 
 
 def defaults_for(style_id: str, width: int, height: int) -> dict:
@@ -144,6 +152,20 @@ def wrap_lines(lines: List[List[str]], width: int, margin: int, size: int) -> Li
             used += len(w) + (1 if len(row) > 1 else 0)
         if row:
             out.append(row)
+    return out
+
+
+def per_word_flags(counts: List[int]) -> List[bool]:
+    """For each cue (its word count, in document order): is it lit word by word?
+    Not when it has more than MAX_STYLED_WORDS words, nor when the words lit so
+    far plus its own would pass WORD_BUDGET. The preview applies the same rule."""
+    left = WORD_BUDGET
+    out = []
+    for n in counts:
+        ok = 0 < n <= MAX_STYLED_WORDS and n <= left
+        if ok:
+            left -= n
+        out.append(ok)
     return out
 
 

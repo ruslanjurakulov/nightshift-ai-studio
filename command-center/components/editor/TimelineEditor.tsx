@@ -120,7 +120,7 @@ import { SoundPreview } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
 import { CaptionPreview } from "./CaptionPreview";
-import { isCaptionStyleId } from "@/lib/captionStyleTable";
+import { isCaptionStyleId, perWordCueIds } from "@/lib/captionStyleTable";
 import {
   fitOf,
   previewFrameStyle,
@@ -1017,6 +1017,7 @@ export function TimelineEditor({
                     style={st}
                     playhead={playhead}
                     frameWidth={model.width}
+                    perWord={perWordCueIds(captionsOf(model)?.cues ?? []).has(c.id)}
                   />
                 );
               }

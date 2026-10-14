@@ -119,16 +119,34 @@ export function styleDefaults(id: CaptionStyleId, width: number, height: number)
 // ── words and their times (modules/caption_styles.py, same integer maths) ─────
 
 /** A cue lit word by word is spread over at most this many words (the export's cap). */
-export const MAX_STYLED_WORDS = 80;
+export const MAX_STYLED_WORDS = 40;
+/** Words lit one by one in a whole document, in cue order (modules/caption_styles.py WORD_BUDGET). */
+export const WORD_BUDGET = 6000;
 export const MAX_TYPE_STEPS = 40;
 
 export function cueLines(text: string): string[][] {
   const lines: string[][] = [];
   for (const raw of text.split(/\r\n|\r|\n/)) {
-    const words = raw.split(" ").filter((w) => w.length > 0);
+    const words = raw.split(/\s+/).filter((w) => w.length > 0);
     if (words.length) lines.push(words);
   }
   return lines;
+}
+
+/** For each cue (its word count, in document order): is it lit word by word? Same rule as the export. */
+export function perWordFlags(counts: readonly number[]): boolean[] {
+  let left = WORD_BUDGET;
+  return counts.map((n) => {
+    const ok = n > 0 && n <= MAX_STYLED_WORDS && n <= left;
+    if (ok) left -= n;
+    return ok;
+  });
+}
+
+/** The ids of the cues the export lights word by word (the rest are written plain). */
+export function perWordCueIds(cues: readonly { id: string; text: string }[]): Set<string> {
+  const flags = perWordFlags(cues.map((c) => cueLines(c.text).reduce((n, ln) => n + ln.length, 0)));
+  return new Set(cues.filter((_c, i) => flags[i]).map((c) => c.id));
 }
 
 /** `[start, end]` ms per word inside the cue: its share is its length plus one. */

@@ -15,11 +15,14 @@ export function CaptionPreview({
   style,
   playhead,
   frameWidth,
+  perWord,
 }: {
   cue: Cue;
   style: CaptionStyle;
   playhead: number;
   frameWidth: number;
+  /** False when the export writes this caption without lit words. */
+  perWord?: boolean;
 }) {
   const p = previewStyledCaption({
     style: { ...style, font: style.font as keyof typeof FONT_FAMILY },
@@ -28,6 +31,7 @@ export function CaptionPreview({
     endS: cue.end_s,
     t: playhead,
     frameWidth,
+    perWord,
   });
   if (!p) return null;
   return (

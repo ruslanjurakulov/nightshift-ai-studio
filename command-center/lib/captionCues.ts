@@ -20,6 +20,9 @@ import {
   type Cue,
 } from "@/lib/captions";
 
+/** A line of a subtitle file is read up to this many characters (a cue holds MAX_TEXT). */
+const LINE_CAP = 4 * MAX_TEXT;
+
 /** A subtitle file larger than this is refused unread (a long film's captions are well under it). */
 export const IMPORT_MAX_BYTES = 1_000_000;
 /** A typed caption is this long on screen unless the picture ends sooner. */
@@ -38,18 +41,22 @@ const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", nbsp: " "
 
 /** A cue's words from a subtitle file: markup and styling blocks removed, entities decoded, control characters dropped. */
 function cleanText(lines: readonly string[]): string {
-  return lines
+  const joined = lines
     .map((l) =>
-      l
-        .replace(/<[^>]*>/g, "")
-        .replace(/\{[^}]*\}/g, "")
+      // Cut first, by code point: the patterns below are only as cheap as the line is short,
+      // and a file is data from outside (a line of 100 000 "<" must not hang the page).
+      Array.from(l)
+        .slice(0, LINE_CAP)
+        .join("")
+        .replace(/<[^<>]*>/g, "")
+        .replace(/\{[^{}]*\}/g, "")
         .replace(/&(amp|lt|gt|nbsp|quot|apos);/g, (_m, n: string) => ENTITIES[n])
-        .replace(/[\u0000-\u001f\u007f​-‏‪-‮⁠-⁯﻿]/g, "")
+        .replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, "")
         .trim(),
     )
     .filter(Boolean)
-    .join("\n")
-    .slice(0, MAX_TEXT);
+    .join("\n");
+  return Array.from(joined).slice(0, MAX_TEXT).join("");
 }
 
 export interface ParsedCue {
@@ -67,7 +74,7 @@ export interface ParsedCaptions {
 /** SubRip (.srt) or WebVTT (.vtt) text → cues in time order, none overlapping. Never throws. */
 export function parseCaptionFile(raw: string): ParsedCaptions {
   const text = String(raw ?? "")
-    .replace(/^﻿/, "")
+    .replace(/^\ufeff/, "")
     .replace(/\r\n?/g, "\n");
   const found: ParsedCue[] = [];
   let skipped = 0;
@@ -151,6 +158,6 @@ export function addCue(model: EditorModel, text: string, pictureEnd: number): Ed
   const end = ms(Math.min(start + NEW_CUE_S, pictureEnd));
   if (end - start < MIN_NEW_CUE_S) return null;
   const style = cur?.style ?? styleFor(DEFAULT_PRESET, model.width, model.height);
-  const cue: Cue = { id: freshCueId(model, cues), start_s: ms(start), end_s: end, text: text.slice(0, MAX_TEXT) };
+  const cue: Cue = { id: freshCueId(model, cues), start_s: ms(start), end_s: end, text: Array.from(text).slice(0, MAX_TEXT).join("") };
   return setCaptions(model, { style, cues: [...cues, cue] });
 }

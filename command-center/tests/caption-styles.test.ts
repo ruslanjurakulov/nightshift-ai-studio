@@ -23,7 +23,10 @@ import {
   CAPTION_Y_MIN,
   MAX_STYLED_WORDS,
   MAX_TYPE_STEPS,
+  WORD_BUDGET,
   cueLines,
+  perWordCueIds,
+  perWordFlags,
   isCaptionStyleId,
   sizeFor,
   styleDefaults,
@@ -109,6 +112,25 @@ describe("the closed list is the export's list", () => {
     }
     expect(typedAtoms(30, 2000, 2000)).toBe(30);
     expect(typedAtoms(30, 2000, 0)).toBeGreaterThan(0);
+  });
+
+  it("spends the document's word budget in cue order, like the export", () => {
+    expect(WORD_BUDGET).toBe(SAMPLE.word_budget);
+    for (const c of SAMPLE.per_word_flags) expect(perWordFlags(c.counts), JSON.stringify(c).slice(0, 80)).toEqual(c.flags);
+    const cues = Array.from({ length: 160 }, (_, i) => ({ id: `c${i}`, text: Array(40).fill("a").join(" ") }));
+    const ids = perWordCueIds(cues);
+    expect(ids.size).toBe(WORD_BUDGET / 40);
+    expect(ids.has("c0")).toBe(true);
+    expect(ids.has("c159")).toBe(false);
+  });
+
+  it("rounds a size half up, so the editor and the export write the same one", () => {
+    expect(sizeFor("neon", 540, 960)).toBe(41);
+    expect(sizeFor("neon", 1080, 1920)).toBe(81);
+  });
+
+  it("splits words on any whitespace, as the export does", () => {
+    expect(cueLines("a\tb  c")).toEqual([["a", "b", "c"]]);
   });
 
   it("splits a cue into lines of words", () => {
@@ -318,6 +340,30 @@ describe("typed and imported captions", () => {
     expect(parseCaptionFile(spread).skipped).toBe(3);
     expect(many.length).toBeGreaterThan(MAX_CUES);
     expect(IMPORT_MAX_BYTES).toBeLessThanOrEqual(1_000_000);
+  });
+
+  it("a hostile line is cut before it is cleaned: a huge run of < or { finishes at once", () => {
+    for (const ch of ["<", "{", "&", "<a", "{<"]) {
+      const t0 = Date.now();
+      const raw = `1\n00:00:01,000 --> 00:00:02,000\n${ch.repeat(200_000)}\nok\n`;
+      const { cues } = parseCaptionFile(raw);
+      expect(Date.now() - t0, ch).toBeLessThan(1500);
+      expect(cues.length).toBeLessThanOrEqual(1);
+      if (cues[0]) expect(Array.from(cues[0].text).length).toBeLessThanOrEqual(MAX_TEXT);
+    }
+    const t1 = Date.now();
+    parseCaptionFile(`1\n00:00:01,000 --> 00:00:02,000\n${"<".repeat(900_000)}\n`);
+    expect(Date.now() - t1).toBeLessThan(1500);
+  });
+
+  it("never cuts a character in half", () => {
+    const emoji = "\u{1F600}";
+    const { cues } = parseCaptionFile(`1\n00:00:01,000 --> 00:00:02,000\n${emoji.repeat(MAX_TEXT + 5)}\n`);
+    const text = cues[0].text;
+    expect(Array.from(text)).toHaveLength(MAX_TEXT);
+    expect(text).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+    const typed = captionsOf(addCue(withCues(), emoji.repeat(MAX_TEXT + 5), 30)!)!.cues[2].text;
+    expect(Array.from(typed)).toHaveLength(MAX_TEXT);
   });
 
   it("imported captions get fresh ids, are cut at the picture's end and keep the current style", () => {

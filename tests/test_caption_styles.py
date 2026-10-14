@@ -82,7 +82,7 @@ GOLDEN = {
         'Dialogue: 0,0:00:01.00,0:00:03.00,O0,,0,0,0,,{\\pos(270,672)\\fad(60,60)}Go big now',
     ),
     'neon': (
-        'Style: O0,DejaVu Sans,40,&H00FFFFFF,&H00FFFFFF,&H00FFE500,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,22,22,0,1',
+        'Style: O0,DejaVu Sans,41,&H00FFFFFF,&H00FFFFFF,&H00FFE500,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,22,22,0,1',
         'Dialogue: 0,0:00:01.00,0:00:03.00,O0,,0,0,0,,{\\pos(270,691)\\bord5\\blur8\\1c&HFFE500&\\3c&HFFE500&\\1a&H80&\\3a&H30&\\fad(120,120)}Go big now',
         'Dialogue: 0,0:00:01.00,0:00:03.00,O0,,0,0,0,,{\\pos(270,691)\\blur0.6\\fad(120,120)}Go big now',
     ),
@@ -210,6 +210,31 @@ class AssStringTestCase(unittest.TestCase):
         self.assertEqual(line.count(r"\t(") , 5)    # three lights on, two off
         boxed = pinned(ass_of(overlay("boxed", text="a bb ccc", start=0.0, end=3.0)))[1]
         self.assertEqual(boxed.count(r"\t("), 5)
+
+    def test_size_rounds_half_up_like_the_editor(self):
+        # 540 x 0.075 = 40.5: the editor's Math.round gives 41, not half-to-even's 40.
+        self.assertEqual(cs.size_for("neon", 540, 960), 41)
+        self.assertEqual(cs.size_for("neon", 1080, 1920), 81)
+
+    def test_the_word_budget_is_spent_in_cue_order_and_shared_with_the_editor(self):
+        for case in SAMPLE["per_word_flags"]:
+            self.assertEqual(cs.per_word_flags(case["counts"]), case["flags"], case)
+
+    def test_a_document_past_its_word_budget_writes_the_later_cues_plain(self):
+        per = cs.MAX_STYLED_WORDS
+        n = cs.WORD_BUDGET // per + 3
+        text = " ".join(["a"] * per)
+        ass = ass_of(*[overlay("boxed", text=text, start=float(i), end=float(i) + 0.9) for i in range(n)])
+        events = [ln for ln in ass.splitlines() if ln.startswith("Dialogue")]
+        lit = [r"\t(" in ln for ln in events]
+        self.assertEqual(lit, [True] * (cs.WORD_BUDGET // per) + [False] * 3)
+        self.assertLess(len(ass), 2_000_000)
+
+    def test_worst_case_output_stays_small_for_the_largest_document(self):
+        # 5000 cues of one-letter words: the most tags for the fewest document bytes.
+        text = " ".join(["a"] * cs.MAX_STYLED_WORDS)
+        ass = ass_of(*[overlay("boxed", text=text, start=i * 0.01, end=i * 0.01 + 0.01) for i in range(5000)])
+        self.assertLess(len(ass), 12_000_000)
 
     def test_a_pasted_page_is_not_lit_word_by_word(self):
         text = " ".join(["word"] * (cs.MAX_STYLED_WORDS + 1))

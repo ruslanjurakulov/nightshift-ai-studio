@@ -315,9 +315,12 @@ def build_overlay_ass(overlays: Sequence, *, width: int, height: int) -> str:
             f"{ANCHOR_AN.get(o.anchor, 5)},{margin},{margin},0,1")
     lines += ["", "[Events]",
               "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
+    # Which styled cues are lit word by word: a cap per cue and a total per document.
+    flags = iter(caption_styles.per_word_flags(
+        [sum(len(ln) for ln in _cue_lines(o.text)) for o in overlays if getattr(o, "caption_style", None)]))
     for i, o in enumerate(overlays):
         if getattr(o, "caption_style", None):
-            lines.extend(styled_events(i, o, w, h))
+            lines.extend(styled_events(i, o, w, h, next(flags)))
             continue
         x, y = int(round(float(o.x) * w)), int(round(float(o.y) * h))
         tags = f"\\pos({x},{y})"
@@ -419,13 +422,13 @@ def _fad(ms: int, fade_in: int, fade_out: int) -> str:
     return f"\\fad({min(fade_in, half)},{min(fade_out, half)})"
 
 
-def _colour_words(o, lines: List[List[str]], dur_ms: int, *, boxed: bool) -> str:
+def _colour_words(o, lines: List[List[str]], dur_ms: int, *, boxed: bool, lit: bool = True) -> str:
     """One word lit at a time: each word's tag block sets the base look, then
     steps (a 1 ms \\t) to the lit look at the word's start and back at its end.
     libass evaluates a \\t where it stands in the text, so each word carries
     its own window and the blocks cannot leak into one another."""
     words = [w for ln in lines for w in ln]
-    if len(words) > caption_styles.MAX_STYLED_WORDS:
+    if not lit:
         return _plain(lines)
     spans = caption_styles.word_spans_ms(words, dur_ms)
     base = _inline_colour(o.color, "&H00FFFFFF")
@@ -476,9 +479,11 @@ def _typewriter(lines: List[List[str]], dur_ms: int) -> str:
     return "".join(parts)
 
 
-def styled_events(i: int, o, width: int, height: int) -> List[str]:
+def styled_events(i: int, o, width: int, height: int, lit: bool = True) -> List[str]:
     """The ``Dialogue:`` line(s) of a styled caption cue: one, or two for the
-    glow (the soft halo first, the sharp text over it in the same layer)."""
+    glow (the soft halo first, the sharp text over it in the same layer).
+    ``lit`` False writes a word-by-word style's cue without lit words (the
+    document's word budget, caption_styles.per_word_flags, ran out)."""
     sid = o.caption_style
     x, y = int(round(float(o.x) * width)), int(round(float(o.y) * height))
     ms = _cue_ms(o)
@@ -495,9 +500,9 @@ def styled_events(i: int, o, width: int, height: int) -> List[str]:
                 + f"\\t({a},{b},\\fscx100\\fscy100)" + _fad(ms, 70, 100))
         return [head + "{" + tags + "}" + _plain(lines)]
     if sid == "boxed":
-        return [head + "{" + pos + _fad(ms, 80, 80) + "}" + _colour_words(o, lines, ms, boxed=True)]
+        return [head + "{" + pos + _fad(ms, 80, 80) + "}" + _colour_words(o, lines, ms, boxed=True, lit=lit)]
     if sid == "big_centre":
-        return [head + "{" + pos + _fad(ms, 60, 60) + "}" + _colour_words(o, lines, ms, boxed=False)]
+        return [head + "{" + pos + _fad(ms, 60, 60) + "}" + _colour_words(o, lines, ms, boxed=False, lit=lit)]
     if sid == "lower_third":
         move = f"\\move({x - 48},{y},{x},{y},0,{min(240, ms)})"
         return [head + "{" + move + _fad(ms, 150, 120) + "}" + _plain(lines)]
