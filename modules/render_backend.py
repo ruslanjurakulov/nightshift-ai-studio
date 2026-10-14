@@ -245,6 +245,19 @@ def angle_filter(seg: Segment, width: int, height: int) -> str:
     return f",rotate=a={math.radians(seg.angle):.6f}:ow={int(width)}:oh={int(height)}:c=black:bilinear=1"
 
 
+def sar_filter(seg: Segment) -> str:
+    """``,setsar=1`` after the fit of a clip that is turned a quarter or cropped: the
+    scaler's rounding leaves the picture a pixel shape such as 405:404
+    (measured), and a player would stretch it. Nothing is added for a clip that
+    is neither, so every older chain is the one it was."""
+    if seg.fit == FIT_BLUR:
+        return ""  # the blur chain squares its own pixels
+    fx = seg.effects
+    c = seg.crop
+    cropped = c is not None and (c.x, c.y, c.w, c.h) != (0.0, 0.0, 1.0, 1.0)
+    return ",setsar=1" if cropped or (fx is not None and fx.rotate in (90, 270)) else ""
+
+
 def _then(grade: str) -> str:
     """``,<grade>`` for appending to a chain ('' for no grade)."""
     return "," + grade if grade else ""
@@ -383,7 +396,7 @@ def _scale_blur(width: int, height: int, fps: int, grade: str = "", tag: str = "
             f"[{bg}]scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},"
             f"gblur=sigma={BLUR_FIT_SIGMA},scale={width}:{height}:flags=bicubic[{bb}];"
             f"[{fg}]scale={width}:{height}:force_original_aspect_ratio=decrease[{fs}];"
-            f"[{bb}][{fs}]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,format=yuv420p,fps={fps}"
+            f"[{bb}][{fs}]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,format=yuv420p,fps={fps},setsar=1"
             + _then(grade))
 
 
@@ -490,7 +503,7 @@ def _segment_commands(
         grade = grade_filter(seg)
         pre = geometry_filter(seg)
         mv = move_filter(seg.move, width, height, full)
-        ang = angle_filter(seg, width, height)
+        ang = sar_filter(seg) + angle_filter(seg, width, height)
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
                                  length=length, extra_vf=ang + fades, fill=True, grade=grade, pre=pre)
         vf = pre + _scale_crop(width, height, fps, grade) + ang + mv + fades
@@ -501,7 +514,7 @@ def _segment_commands(
         # old path produced, only the pixels move.
         grade = grade_filter(seg)
         pre = geometry_filter(seg)     # turn / mirror the picture before it is scaled and moved
-        ang = angle_filter(seg, width, height)
+        ang = sar_filter(seg) + angle_filter(seg, width, height)
         vf = pre + ken_burns_filter(style, width, height, fps,
                                     float(full) if frame_exact else float(dur) * fps) + _then(grade) + ang + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
@@ -539,14 +552,15 @@ def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
     framed = (_scale_blur(width, height, fps, grade, tag) if fit is _scale_blur
               else fit(width, height, fps, grade)) + angle_filter(seg, width, height)
     geo = geometry_filter(seg)
+    sar = sar_filter(seg)
     if seg.freeze:
         return ([*seek, "-i", seg.path],
                 f"{geo}trim=end_frame=1,setpts=PTS-STARTPTS,{framed},"
-                f"tpad=stop={max(full - 1, 0)}:stop_mode=clone")
+                f"tpad=stop={max(full - 1, 0)}:stop_mode=clone{sar}")
     if seg.reverse:
         span = full / fps * seg.speed          # seconds of SOURCE the clip plays
         return ([*seek, "-t", f"{span:.3f}", "-i", seg.path],
-                f"{geo}{framed},reverse,setpts=(PTS-STARTPTS)/{float(seg.speed):.3f},fps={fps}")
+                f"{geo}{framed},reverse,setpts=(PTS-STARTPTS)/{float(seg.speed):.3f},fps={fps}{sar}")
     if seg.interpolate:
         # Slow motion made smoother: fit to the output frame, make in-between frames up to a rate
         # where every output frame of the slowest part is a different one, THEN retime and sample.
@@ -554,9 +568,9 @@ def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
         return (["-stream_loop", "-1", *seek, "-i", seg.path],
                 f"{geo}{framed},format=yuv420p,minterpolate=fps={interp_fps(slowest, fps)}"
                 ":mi_mode=mci:mc_mode=aobmc:vsbmc=1,"
-                + retime_filter(seg).rstrip(",") + f",fps={fps}")
+                + retime_filter(seg).rstrip(",") + f",fps={fps}{sar}")
     return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            retime_filter(seg) + geo + framed)
+            retime_filter(seg) + geo + framed + sar)
 
 
 def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
@@ -571,7 +585,7 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
             + f",settb=1/{fps},fps={fps},format=yuv420p")
     grade = grade_filter(seg)
     mv = move_filter(seg.move, width, height, full) if seg.move is not None else ""
-    ang = angle_filter(seg, width, height)
+    ang = sar_filter(seg) + angle_filter(seg, width, height)
     if seg.kind == KIND_IMAGE and seg.move is not None:
         return (["-loop", "1", "-i", seg.path],
                 geometry_filter(seg) + _scale_crop(width, height, fps, grade) + ang + mv + tail)

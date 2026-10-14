@@ -225,10 +225,23 @@ export const CHROMA_BLEND_DEFAULT = 0.1;
  *  (modules/timeline.py REVERSE_MAX_BYTES / REVERSE_BYTES_PER_PIXEL). */
 export const REVERSE_MAX_BYTES = 512 * 1024 * 1024;
 export const REVERSE_BYTES_PER_PIXEL = 1.5;
+/** The most frames a reversed range may hold at this frame size
+ *  (modules/timeline.py `reverse_max_frames`). */
+export function reverseMaxFrames(width: number, height: number): number {
+  return Math.floor(REVERSE_MAX_BYTES / (width * height * REVERSE_BYTES_PER_PIXEL));
+}
+/** Frames a source range decodes (`_range_frames`: ceil, float noise removed). */
+function rangeFrames(rangeS: number, fps: number): number {
+  return Math.ceil(Math.round(rangeS * fps * 1e6) / 1e6);
+}
 /** The longest source range a clip may play reversed at this frame size and
- *  rate, in seconds (rounded down to a millisecond). */
+ *  rate, in seconds: a whole number of frames, rounded down to a millisecond —
+ *  exactly what the validator allows (modules/timeline.py `reverse_max_seconds`). */
 export function reverseMaxSeconds(width: number, height: number, fps: number): number {
-  return Math.floor((REVERSE_MAX_BYTES / (fps * width * height * REVERSE_BYTES_PER_PIXEL)) * 1000) / 1000;
+  const cap = reverseMaxFrames(width, height);
+  let limit = Math.floor((cap / fps) * 1000 + 1e-9) / 1000;
+  while (limit > 0 && rangeFrames(limit, fps) > cap) limit = Math.round((limit - 0.001) * 1000) / 1000;
+  return limit;
 }
 export type Rotation = (typeof ROTATIONS)[number];
 const EFFECT_KEYS = [
@@ -985,8 +998,7 @@ function validateMediaClip(
       fps &&
       isInt(frame[0]) &&
       isInt(frame[1]) &&
-      Math.ceil((ms(outs) - ms(ins)) * fps) * frame[0] * frame[1] * REVERSE_BYTES_PER_PIXEL >
-        REVERSE_MAX_BYTES
+      rangeFrames(ms(outs) - ms(ins), fps) > reverseMaxFrames(frame[0], frame[1])
     )
       problems.push(
         `${where}: reverse holds every frame of the range in memory — at most ${reverseMaxSeconds(frame[0], frame[1], fps)} s at this frame size`,
@@ -2335,6 +2347,12 @@ export function clipAt(
   return null;
 }
 
+/** The source second a split at timeline time `t` cuts at (modules/timeline.py
+ *  split_clip): a reversed clip plays its range from the end. */
+function cutPoint(c: VideoClip, t: number): number {
+  return ms(c.reverse ? c.out_s - (t - c.start_s) * c.speed : c.in_s + (t - c.start_s) * c.speed);
+}
+
 /** Can clip `id` be split at timeline time `t` (both halves at least MIN_CLIP_S of source)? */
 export function canSplit(model: EditorModel, id: string, t: number): boolean {
   if (model.clips.length >= MAX_EDITOR_CLIPS) return false;
@@ -2343,7 +2361,7 @@ export function canSplit(model: EditorModel, id: string, t: number): boolean {
   // A clip with a speed curve is not split (the part left of the cut would
   // need its own curve): remove the curve first, as the backend asks.
   if (c.speed_curve) return false;
-  const cut = c.in_s + (t - c.start_s) * c.speed;
+  const cut = cutPoint(c, t);
   return (
     t > c.start_s &&
     t < clipEnd(c) &&
@@ -2363,7 +2381,7 @@ export function splitClip(
   const clips = layout(model.clips);
   const i = clips.findIndex((x) => x.id === id);
   const c = clips[i];
-  const cut = ms(c.in_s + (ms(t) - c.start_s) * c.speed);
+  const cut = cutPoint(c, ms(t));
   const newId = freshId(model, "c");
   // modules/timeline.py split_clip: the first half keeps the way in (its
   // transition and fade in), the second the way out (its fade out).
