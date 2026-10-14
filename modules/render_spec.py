@@ -227,6 +227,9 @@ FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contra
 BLUR_MAX = 30.0
 ROTATIONS = (0, 90, 180, 270)
 
+#: A clip's move: zoom window range (modules/timeline.py holds the same numbers).
+MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
+
 #: Text overlay anchors: which point of the text box sits at (x, y). The ASS
 #: \an numpad code for each is in ass_captions.ANCHOR_AN.
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
@@ -341,6 +344,51 @@ class ClipEffects:
         )
 
 
+@dataclass(frozen=True)
+class ClipMove:
+    """Two keyframes of a window onto the fitted picture: ``zoom`` (1 = all of
+    it) and the window's centre (fractions of the picture), from the clip's
+    first frame to its last, linear in frames. Equal points = no motion."""
+    from_zoom: float = 1.0
+    from_x: float = 0.5
+    from_y: float = 0.5
+    to_zoom: float = 1.0
+    to_x: float = 0.5
+    to_y: float = 0.5
+
+    @property
+    def still(self) -> bool:
+        """True when the window never moves; at zoom 1 centred it is the whole picture."""
+        return (self.from_zoom, self.from_x, self.from_y) == (self.to_zoom, self.to_x, self.to_y)
+
+    @property
+    def neutral(self) -> bool:
+        return self.still and self.from_zoom == 1.0
+
+    def to_dict(self) -> dict:
+        return {"from": {"zoom": self.from_zoom, "x": self.from_x, "y": self.from_y},
+                "to": {"zoom": self.to_zoom, "x": self.to_x, "y": self.to_y}}
+
+    @staticmethod
+    def from_dict(d: dict) -> "ClipMove":
+        def pt(key):
+            p = d.get(key) or {}
+            return (float(p.get("zoom", 1.0)), float(p.get("x", 0.5)), float(p.get("y", 0.5)))
+        a, b = pt("from"), pt("to")
+        return ClipMove(*a, *b)
+
+
+def _move_problems(name: str, mv: ClipMove) -> List[str]:
+    problems: List[str] = []
+    for label, zoom, x, y in (("from", mv.from_zoom, mv.from_x, mv.from_y),
+                              ("to", mv.to_zoom, mv.to_x, mv.to_y)):
+        if not (_finite(zoom) and MOVE_ZOOM_MIN <= zoom <= MOVE_ZOOM_MAX):
+            problems.append(f"{name} move {label} zoom must be from {MOVE_ZOOM_MIN:g} to {MOVE_ZOOM_MAX:g}")
+        if not (_finite(x) and _finite(y) and 0 <= x <= 1 and 0 <= y <= 1):
+            problems.append(f"{name} move {label} centre must be fractions of the picture (0..1)")
+    return problems
+
+
 def _effects_problems(name: str, fx: ClipEffects) -> List[str]:
     problems: List[str] = []
     if fx.filter is not None and fx.filter not in FILTERS:
@@ -399,6 +447,9 @@ class Segment:
     saturation: float = 1.0
     #: Filters, vignette, blur, mirror, turn (None = none).
     effects: Optional[ClipEffects] = None
+    #: A Ken Burns style move over the fitted picture (None = none; a still
+    #: then keeps its automatic slow zoom).
+    move: Optional[ClipMove] = None
 
     @property
     def graded(self) -> bool:
@@ -420,6 +471,8 @@ class Segment:
         _put_if(d, "saturation", self.saturation, 1.0)
         if self.effects is not None:
             d["effects"] = self.effects.to_dict()
+        if self.move is not None:
+            d["move"] = self.move.to_dict()
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -444,6 +497,7 @@ class Segment:
             contrast=float(1.0 if d.get("contrast") is None else d["contrast"]),
             saturation=float(1.0 if d.get("saturation") is None else d["saturation"]),
             effects=(ClipEffects.from_dict(d["effects"]) if isinstance(d.get("effects"), dict) else None),
+            move=(ClipMove.from_dict(d["move"]) if isinstance(d.get("move"), dict) else None),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -611,12 +665,25 @@ class PictureOverlay:
     anim_out: Optional[str] = None
     anim_in_s: float = ANIM_DEFAULT_S
     anim_out_s: float = ANIM_DEFAULT_S
+    #: End keyframe: where the centre, width and opacity are at ``end_s`` (None =
+    #: unchanged). Linear from the values above at ``start_s``.
+    to_x: Optional[float] = None
+    to_y: Optional[float] = None
+    to_w: Optional[float] = None
+    to_opacity: Optional[float] = None
+
+    @property
+    def moves(self) -> bool:
+        return any(v is not None for v in (self.to_x, self.to_y, self.to_w, self.to_opacity))
 
     def to_dict(self) -> dict:
         d = {"path": self.path, "kind": self.kind, "start_s": self.start_s,
              "end_s": self.end_s, "x": self.x, "y": self.y, "w": self.w,
              "opacity": self.opacity}
         _anims_to_dict(self, d)
+        for key in ("to_x", "to_y", "to_w", "to_opacity"):
+            if getattr(self, key) is not None:
+                d[key] = getattr(self, key)
         return d
 
     @staticmethod
@@ -629,6 +696,7 @@ class PictureOverlay:
             start_s=num("start_s", 0.0), end_s=num("end_s", 0.0),
             x=num("x", 0.5), y=num("y", 0.5), w=num("w", 0.3), opacity=num("opacity", 1.0),
             **_anims_from_dict(d),
+            **{k: float(d[k]) for k in ("to_x", "to_y", "to_w", "to_opacity") if d.get(k) is not None},
         )
 
 
@@ -735,6 +803,10 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
                         f"(got {seg.speed})")
     if seg.effects is not None:
         problems.extend(_effects_problems(name, seg.effects))
+    if seg.move is not None:
+        problems.extend(_move_problems(name, seg.move))
+        if not frame_exact:
+            problems.append(f"{name} has a move, which needs frame_exact")
     if seg.xfade_style not in XFADE_STYLES:
         problems.append(f"{name} has unknown cross-fade style {seg.xfade_style!r}")
     elif seg.xfade_style != XFADE_DEFAULT_STYLE and seg.xfade is None:
@@ -810,6 +882,11 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
         if not 0 <= o.opacity <= 1:
             problems.append(f"{name} opacity must be from 0 to 1")
         problems.extend(_anim_problems(name, o, ANIM_OUT, (o.start_s, o.end_s)))
+        for key, lo, hi in (("to_x", 0, 1), ("to_y", 0, 1), ("to_opacity", 0, 1),
+                            ("to_w", PICTURE_W_MIN, PICTURE_W_MAX)):
+            v = getattr(o, key)
+            if v is not None and not (_finite(v) and lo <= v <= hi):
+                problems.append(f"{name} {key} must be from {lo:g} to {hi:g}")
     return problems
 
 
@@ -1087,6 +1164,27 @@ def _overlay_anim_filters(o: PictureOverlay, t_start: float, t_end: float,
     move_x = move_y = ""
     scale_terms: List[str] = []
     dist_x, dist_y = ANIM_SLIDE * spec.width, ANIM_SLIDE * spec.height
+    # The end keyframe: linear over the whole span (``span`` is 0..1 at ``t``).
+    span_s = max(t_end - t_start, 1e-3)
+    span = f"clip((t-{t_start:.3f})/{span_s:.3f},0,1)"
+    if o.to_x is not None and o.to_x != o.x:
+        move_x += f"+({(o.to_x - o.x) * spec.width:.3f})*{span}"
+    if o.to_y is not None and o.to_y != o.y:
+        move_y += f"+({(o.to_y - o.y) * spec.height:.3f})*{span}"
+    if o.to_w is not None and o.to_w != o.w:
+        scale_terms.append(f"(({o.w:.4f}+({o.to_w - o.w:.4f})*{span})/{max(o.w, o.to_w):.4f})")
+    if o.to_opacity is not None and o.to_opacity != o.opacity:
+        # A move to or from nothing is a fade (cheap); anything else rewrites the
+        # alpha plane per pixel with the time (geq): exact, but slow on a big overlay.
+        if o.opacity <= 0:
+            filters += f",fade=t=in:st={t_start:.3f}:d={span_s:.3f}:alpha=1"
+        elif o.to_opacity <= 0:
+            filters += f",fade=t=out:st={t_start:.3f}:d={span_s:.3f}:alpha=1"
+        else:
+            top = max(o.opacity, o.to_opacity)
+            m0, m1 = o.opacity / top, o.to_opacity / top
+            filters += (",geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*("
+                        f"{m0:.4f}+({m1 - m0:.4f})*clip((T-{t_start:.3f})/{span_s:.3f},0,1))'")
     for key, entering in (("anim_in", True), ("anim_out", False)):
         kind = getattr(o, key)
         if kind is None:
@@ -1146,17 +1244,20 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
     for k, o in enumerate(spec.picture_overlays):
         first = _frame_of(o.start_s, fps)
         last = _frame_of(o.end_s, fps)          # the first frame it is NOT shown on
-        box_w = max(2, int(round(o.w * spec.width)) // 2 * 2)
+        # The widest the picture ever is: a move to a bigger width scales DOWN from it.
+        wide = max(o.w, o.to_w) if o.to_w is not None else o.w
+        op_static = max(o.opacity, o.to_opacity) if o.to_opacity is not None else o.opacity
+        box_w = max(2, int(round(wide * spec.width)) // 2 * 2)
         fit = (f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease"
                ":force_divisible_by=2:flags=bicubic")
         yuva = f"scale={matrix}flags=bicubic,format=yuva420p"
         # An opaque video stays in its own YUV: no round trip through RGB.
-        if o.kind == KIND_VIDEO and o.opacity >= 1.0:
+        if o.kind == KIND_VIDEO and op_static >= 1.0:
             colour = f"{fit},format=yuva420p"
-        elif o.opacity >= 1.0:
+        elif op_static >= 1.0:
             colour = f"{fit},format=rgba,{yuva}"
         else:
-            colour = f"{fit},format=rgba,colorchannelmixer=aa={o.opacity:.3f},{yuva}"
+            colour = f"{fit},format=rgba,colorchannelmixer=aa={op_static:.3f},{yuva}"
         if o.kind == KIND_VIDEO:
             chain = f"setpts=PTS-STARTPTS,fps={fps},{colour}"
         else:
@@ -1164,7 +1265,7 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
                      f"tpad=stop={last - first - 1}:stop_mode=clone")
         chain += f",setpts=PTS+{first}/({fps}*TB)"
         move_x = move_y = ""
-        if o.anim_in is not None or o.anim_out is not None:
+        if o.anim_in is not None or o.anim_out is not None or o.moves:
             extra, move_x, move_y = _overlay_anim_filters(o, first / fps, last / fps, spec)
             chain += extra
         parts.append(f"[{first_input + k}:v]{chain}[p{k}]")

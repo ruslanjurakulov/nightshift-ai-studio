@@ -310,6 +310,23 @@
           ],
           "default": 0,
           "description": "Degrees clockwise, on the source before it is fitted."
+        },
+        "move": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to"
+          ],
+          "description": "Ken Burns style move: the window goes linearly from `from` on the clip's first frame to `to` on its last. A still with a move has this instead of its automatic slow zoom.",
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/move_point"
+            },
+            "to": {
+              "$ref": "#/$defs/move_point"
+            }
+          }
         }
       }
     },
@@ -808,6 +825,68 @@
           "maximum": 2.0,
           "default": 0.4,
           "description": "Length of the exit; needs anim_out. In + out never exceed the time the item is shown."
+        },
+        "move": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "to"
+          ],
+          "description": "Two-keyframe move: the overlay's own x, y, w and opacity at start_s go linearly to these at end_s. A move to or from opacity 0 is a cheap fade; any other opacity change is slower to render.",
+          "properties": {
+            "to": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "w": {
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 1.0
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "move_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A window onto the fitted picture: zoom (1 = all of it) and its centre as fractions of the picture. Missing keys take 1 / 0.5 / 0.5; the centre is held where the window stays inside.",
+      "properties": {
+        "zoom": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 4.0,
+          "default": 1.0
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
         }
       }
     }

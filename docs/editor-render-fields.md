@@ -22,6 +22,7 @@ note for text looks).
 | 1 | `claude/render-xfade-more` | `transition.style` (23 more names) | PR open |
 | 2 | `claude/render-anim-inout` | text and overlay `anim_in`, `anim_out`, `anim_in_s`, `anim_out_s` | PR open (stacked on 1) |
 | 3 | `claude/render-effects` | V clip `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h`, `flip_v`, `rotate` | PR open (stacked on 2) |
+| 4 | `claude/render-keyframes` | V clip `move` (Ken Burns zoom/pan); overlay `move.to` (x, y, w, opacity) | PR open (stacked on 3) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -114,3 +115,49 @@ are curve looks the preview can only approximate, and grain/sharpen have no
 faithful CSS equivalent. Say so in the product.
 
 Not done here (later items): free-angle rotation and crop (item 8).
+
+## 4. Moves and two-point keyframes
+
+### Clip `move` (video and stills): a zoom/pan window over the fitted picture
+
+```json
+"move": { "from": {"zoom": 1, "x": 0.5, "y": 0.5}, "to": {"zoom": 2, "x": 0.25, "y": 0.5} }
+```
+
+* both `from` and `to` are required; inside each, `zoom` (1 to 4; 1 = the whole
+  picture, 2 = a window half as wide and tall), `x` and `y` (0 to 1, the
+  window's CENTRE as a fraction of the picture) are optional (defaults 1, 0.5,
+  0.5).
+* the window goes in a straight line (linear in frames) from `from` on the
+  clip's first frame to `to` on its last. If the window would leave the
+  picture, its centre is held at the nearest place where it stays inside
+  (so `zoom: 2, x: 0` still shows the left half, never black).
+* the picture is the FITTED one: with `contain` the bars are part of what zooms.
+* a still WITHOUT `move` keeps its automatic slow zoom; a still WITH `move` has
+  this move instead; a still with `from` equal to `to` is held completely
+  still. A video whose two points are equal and at zoom 1 is unchanged.
+* splitting a clip carries the move across the cut (the first half ends where
+  the second begins); the editor's `splitClip` and the backend's `split_clip`
+  both do this.
+* works on both sides of a cross-fade; the move runs over each clip's WHOLE
+  length, not just the part outside the blend.
+* rotate/flip (item 3) happen before the move; effects after.
+
+### Overlay `move.to`: end keyframe of an overlay
+
+```json
+"move": { "to": {"x": 0.8, "y": 0.2, "w": 0.4, "opacity": 0.4} }
+```
+
+* `to` needs at least one of `x`, `y` (0-1, centre), `w` (0.05-1, width as a
+  fraction of the frame), `opacity` (0-1). The start values are the overlay's
+  own `x`, `y`, `w`, `opacity`; the values go linearly over `start_s`..`end_s`.
+* entrance/exit animations (item 2) add to a move (a slide moves from where the
+  move has the overlay).
+* an opacity move to or from 0 is a cheap fade; any other opacity move is
+  rendered per pixel and is slower on a large overlay (still fine for the
+  caps in place: 16 overlays, 4 videos).
+* an overlay whose own `opacity` is 0 is still rendered when its move brings
+  the opacity above 0.
+* no preview parity in a browser beyond straight CSS interpolation: say that
+  the export is the truth.

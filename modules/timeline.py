@@ -21,7 +21,8 @@ not a project dependency — tests keep the two in sync)::
               speed?: 0.5..2, audio?: bool,
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
               filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
-              flip_h?, flip_v?, rotate? }
+              flip_h?, flip_v?, rotate?,
+              move?: { from: {zoom?, x?, y?}, to: {zoom?, x?, y?} } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
@@ -29,7 +30,8 @@ not a project dependency — tests keep the two in sync)::
               anchor?, fade_in_s?, fade_out_s?,
               anim_in?, anim_out?, anim_in_s?, anim_out_s? }
     overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
-               opacity?: 0..1, anim_in?, anim_out?, anim_in_s?, anim_out_s? }
+               opacity?: 0..1, anim_in?, anim_out?, anim_in_s?, anim_out_s?,
+               move?: { to: {x?, y?, w?, opacity?} } }
                (a picture or video over the picture; see below)
 
 Rules this module keeps:
@@ -111,6 +113,20 @@ Rules this module keeps:
   as well as video, on both sides of a cross-fade. Every value that means "off"
   (no ``filter``, 0, ``false``, 0 degrees) is dropped by ``normalise``, and a
   clip without effects renders the command it always did.
+* **A move is two keyframes, linear between them.** A V clip's ``move`` has a
+  ``from`` and a ``to`` point, each a window onto the FITTED picture: ``zoom``
+  (``MOVE_ZOOM_MIN``-``MOVE_ZOOM_MAX``, 1 = the whole picture, 2 = the middle
+  quarter) and the window's centre ``x`` / ``y`` (0-1; defaults 1 / 0.5 / 0.5).
+  The centre is held where the window stays inside the picture. The window
+  travels from ``from`` on the clip's first frame to ``to`` on its last, in
+  steps of whole frames. A still with a ``move`` has THAT move instead of the
+  automatic slow zoom it otherwise gets (a ``move`` whose two points are equal
+  is a still that does not move at all); a video clip with an unmoving move is
+  unchanged. An overlay's ``move: {to: {...}}`` moves its centre (``x``,
+  ``y``), width (``w``) and ``opacity`` from the overlay's own values to the
+  given ones over its ``start_s``..``end_s``; an entrance / exit animation adds
+  to it. Animated opacity is the one part that costs real time (a per-pixel
+  expression on the overlay), except a move to or from 0, which is a fade.
 * **Overlays are a layer above the picture, not a second picture lane.**
   ``overlays`` is a top-level list (so "one V track" stays true): each one is
   a picture or a video (``asset_id``) shown from ``start_s`` to ``end_s`` over
@@ -260,6 +276,13 @@ ROTATIONS = (0, 90, 180, 270)
 _EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
                 "flip_h", "flip_v", "rotate")
 
+#: A clip's move (render_spec.MOVE_* are the same; a test pins them).
+MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
+MOVE_POINT_DEFAULTS = {"zoom": 1.0, "x": 0.5, "y": 0.5}
+_MOVE_POINT_KEYS = tuple(MOVE_POINT_DEFAULTS)
+#: What an overlay's ``move.to`` may change.
+_OVERLAY_MOVE_KEYS = ("x", "y", "w", "opacity")
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -286,7 +309,7 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade") + _EFFECT_KEYS
+                                  "grade", "move") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -302,7 +325,7 @@ _CAPTIONS_KEYS = ("style", "cues")
 _CAPTION_STYLE_KEYS = _TEXT_STYLE_KEYS + ("y",)
 _CUE_KEYS = ("id", "start_s", "end_s", "text")
 _OVERLAY_REQUIRED = ("id", "asset_id", "start_s", "end_s")
-_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity") + _ANIM_KEYS
+_OVERLAY_KEYS = _OVERLAY_REQUIRED + ("x", "y", "w", "opacity") + _ANIM_KEYS + ("move",)
 
 #: Defaults normalise() fills in (and the schema documents).
 TEXT_DEFAULTS = {"font": "DejaVu Sans", "size": 64, "color": "#FFFFFF",
@@ -612,6 +635,8 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
             for k, (lo, hi) in GRADE_RANGES.items():
                 _num_in(clip["grade"], k, lo, hi, f"{where} grade", problems)
         _validate_effects(clip, where, problems)
+        if "move" in clip:
+            _validate_clip_move(clip["move"], where, problems)
         if "transition" in clip:
             tr = clip["transition"]
             if _fields(tr, _TRANSITION_ALLOWED, _TRANSITION_KEYS, f"{where} transition", problems):
@@ -629,6 +654,36 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
                     _num_in(tr, "duration_s", 0, 10.0, f"{where} transition", problems)
     else:
         _num_in(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems)
+
+
+def _validate_move_point(point, where, problems) -> None:
+    if not _fields(point, _MOVE_POINT_KEYS, (), where, problems):
+        return
+    _num_in(point, "zoom", MOVE_ZOOM_MIN, MOVE_ZOOM_MAX, where, problems)
+    for k in ("x", "y"):
+        _num_in(point, k, 0, 1, where, problems)
+
+
+def _validate_clip_move(move, where, problems) -> None:
+    if not _fields(move, ("from", "to"), ("from", "to"), f"{where} move", problems):
+        return
+    for k in ("from", "to"):
+        if k in move:
+            _validate_move_point(move[k], f"{where} move {k}", problems)
+
+
+def _validate_overlay_move(move, where, problems) -> None:
+    if not _fields(move, ("to",), ("to",), f"{where} move", problems) or "to" not in move:
+        return
+    to = move["to"]
+    twhere = f"{where} move to"
+    if not _fields(to, _OVERLAY_MOVE_KEYS, (), twhere, problems):
+        return
+    if not to:
+        problems.append(f"{twhere}: give at least one of {list(_OVERLAY_MOVE_KEYS)}")
+    for k in ("x", "y", "opacity"):
+        _num_in(to, k, 0, 1, twhere, problems)
+    _num_in(to, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, twhere, problems)
 
 
 def _validate_effects(clip, where, problems) -> None:
@@ -734,6 +789,8 @@ def _validate_overlays(overlays, fps, problems, claim) -> None:
             _num_in(ov, k, 0, 1, where, problems)
         _num_in(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems)
         _validate_anims(ov, where, problems, text=False)
+        if "move" in ov:
+            _validate_overlay_move(ov["move"], where, problems)
 
 
 def _validate_captions(captions, problems, claim) -> None:
@@ -1040,6 +1097,10 @@ def normalise(doc: dict) -> dict:
                         if c["grade"] == GRADE_NEUTRAL:
                             del c["grade"]   # no change: the clip is the one it was without it
                     _normalise_effects(c)
+                    if "move" in c:
+                        c["move"] = {k: {**MOVE_POINT_DEFAULTS, **c["move"][k]} for k in ("from", "to")}
+                        for k in ("from", "to"):
+                            c["move"][k] = {n: _ms(v) for n, v in c["move"][k].items()}
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
             t["clips"].append(c)
@@ -1063,6 +1124,8 @@ def normalise(doc: dict) -> dict:
             for k in ("start_s", "end_s", "x", "y", "w", "opacity"):
                 o[k] = _ms(o[k])
             _normalise_anims(o)
+            if "move" in o:
+                o["move"] = {"to": {k: _ms(v) for k, v in o["move"]["to"].items()}}
             out["overlays"].append(o)
     return out
 
@@ -1155,6 +1218,15 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
             if not _ms(clip["in_s"]) < cut < _ms(clip["out_s"]):
                 raise TimelineError([f"split point {at} s is too close to an end of clip {clip_id!r}"])
             second = copy.deepcopy(clip)
+            if "move" in clip:
+                # The move goes on across the cut: the first half ends where the second
+                # begins, at the window the whole move had reached.
+                frac = (at - start) / (end - start)
+                a = {**MOVE_POINT_DEFAULTS, **clip["move"]["from"]}
+                b = {**MOVE_POINT_DEFAULTS, **clip["move"]["to"]}
+                mid = {k: _ms(a[k] + (b[k] - a[k]) * frac) for k in MOVE_POINT_DEFAULTS}
+                clip["move"] = {"from": clip["move"]["from"], "to": mid}
+                second["move"] = {"from": dict(mid), "to": second["move"]["to"]}
             second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
             second.pop("transition", None)
             clip.update(out_s=cut, fade_out_s=0.0)

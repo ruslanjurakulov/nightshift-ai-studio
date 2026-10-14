@@ -24,6 +24,9 @@ How a timeline maps onto the spec:
   ``flip_*`` and ``rotate`` become the segment's ``ClipEffects``; the backend
   turns the geometric ones into a prefix of the clip's chain and the rest into
   filters after the colour grade. A clip without them has ``effects=None``.
+* **Move** — a V clip's ``move`` becomes ``Segment.move`` (a still then has it
+  instead of its automatic zoom); an overlay's ``move.to`` becomes the
+  ``PictureOverlay.to_*`` end values. Both are linear over the clip / the span.
 * **Cross-fade** — two V clips that overlap by a ``crossfade`` transition
   become: the first clip's own part, ONE segment of the overlap that holds
   both pictures (``Segment.xfade``; the backend blends them with ffmpeg
@@ -81,6 +84,7 @@ from modules.render_spec import (
     KIND_VIDEO,
     AudioTrack,
     ClipEffects,
+    ClipMove,
     PictureOverlay,
     RenderSpec,
     Segment,
@@ -121,6 +125,15 @@ def _effects(clip: dict) -> dict:
     return {"effects": ClipEffects(**given)} if given else {}
 
 
+def _move(clip: dict) -> dict:
+    """The clip's move as a Segment field ({} without one)."""
+    mv = clip.get("move")
+    if mv is None:
+        return {}
+    a, b = mv["from"], mv["to"]
+    return {"move": ClipMove(a["zoom"], a["x"], a["y"], b["zoom"], b["x"], b["y"])}
+
+
 def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
     fps = doc["fps"]
     segments: List[Segment] = []
@@ -155,6 +168,7 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 seed=seed,
                 **_grade(clip),
                 **_effects(clip),
+                **_move(clip),
             )
 
         for i, clip in enumerate(clips):
@@ -325,7 +339,8 @@ def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay
     for ov in doc.get("overlays") or []:
         first = _frame(ov["start_s"], fps)
         last = min(_frame(ov["end_s"], fps), total_frames)
-        if last <= first or ov["opacity"] <= 0:
+        end_opacity = (ov.get("move") or {}).get("to", {}).get("opacity", ov["opacity"])
+        if last <= first or (ov["opacity"] <= 0 and end_opacity <= 0):
             continue   # nothing of it is shown
         asset = assets[ov["asset_id"]]
         out.append(PictureOverlay(
@@ -333,6 +348,7 @@ def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay
             kind=KIND_VIDEO if asset.kind == tl.ASSET_VIDEO else KIND_IMAGE,
             start_s=first / fps, end_s=last / fps,
             x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"], **_anims(ov),
+            **{f"to_{k}": v for k, v in (ov.get("move") or {}).get("to", {}).items()},
         ))
     return out
 

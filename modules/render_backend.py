@@ -310,6 +310,32 @@ def ken_burns_filter(style: str, width: int, height: int, fps: int, frames: floa
             f"scale={w}:{h}:flags=lanczos")
 
 
+def move_filter(mv, width: int, height: int, frames: int) -> str:
+    """``,scale...,crop...`` that moves a window over the FITTED picture ('' for
+    a move that does not move at zoom 1). The window is ``frame / zoom`` at a
+    centre given as fractions of the picture; both go linearly from the first
+    keyframe on frame 0 to the second on the clip's last frame (``frames`` long,
+    so the progress is ``n / (frames - 1)``). The picture is scaled up to
+    ``zoom`` times the frame each frame (``eval=frame``, exact sizes, so the zoom
+    is smooth) and the window cut out of it; the centre is held where the window
+    stays inside the picture. Every number is formatted from a validated float."""
+    if mv.neutral:
+        return ""
+    last = max(int(frames) - 1, 1)
+    p = f"min(1,n/{last})"
+
+    def lerp(a: float, b: float) -> str:
+        return f"{a:.4f}" if a == b else f"({a:.4f}+({b - a:.4f})*{p})"
+    z = lerp(mv.from_zoom, mv.to_zoom)
+    cx, cy = lerp(mv.from_x, mv.to_x), lerp(mv.from_y, mv.to_y)
+    w, h = int(width), int(height)
+    # A window that only pans is cut from one fixed-size picture: scaled once.
+    eval_mode = "init" if mv.from_zoom == mv.to_zoom else "frame"
+    return (f",scale=w='trunc({w}*{z}/2)*2':h='trunc({h}*{z}/2)*2':eval={eval_mode}:flags=bicubic"
+            f",crop={w}:{h}:x='clip({cx},0.5/{z},1-0.5/{z})*iw-ow/2'"
+            f":y='clip({cy},0.5/{z},1-0.5/{z})*ih-oh/2'")
+
+
 def _scale_crop(width: int, height: int, fps: int, grade: str = "") -> str:
     """Fill width×height, cropping the overflow (a timeline clip's
     ``fit: cover`` — e.g. 16:9 footage in a 9:16 frame without bars). A colour
@@ -405,6 +431,17 @@ def _segment_commands(
                      *length, *common, str(out_path)]]
         return [[ffmpeg, "-y", "-f", "lavfi", "-i",
                  f"color=c=black:s={width}x{height}:r={fps}:d={dur}", *common, str(out_path)]]
+    if seg.kind == KIND_IMAGE and seg.move is not None:
+        # The document's own move replaces the automatic slow zoom: the still is
+        # filled to the frame, then the window travels. The plain hold is the
+        # fallback, as for the automatic move.
+        grade = grade_filter(seg)
+        pre = geometry_filter(seg)
+        mv = move_filter(seg.move, width, height, full)
+        hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
+                                 length=length, extra_vf=fades, fill=True, grade=grade, pre=pre)
+        vf = pre + _scale_crop(width, height, fps, grade) + mv + fades
+        return [[ffmpeg, "-y", "-loop", "1", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
     if seg.kind == KIND_IMAGE:
         style = ken_burns_style(seed if seed is not None else seg.path)
         # Same length as the static hold: the frame count is the one the
@@ -426,7 +463,9 @@ def _segment_commands(
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
              "-vf", (speed_filter(seg.speed) + geometry_filter(seg)
-                     + fit(width, height, fps, grade_filter(seg)) + fades),
+                     + fit(width, height, fps, grade_filter(seg))
+                     + (move_filter(seg.move, width, height, full) if seg.move is not None else "")
+                     + fades),
              *common,
              str(out_path)]]
 
@@ -442,6 +481,10 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     tail = (_fade_filters(seg, full / fps) + _piece_trim(seg, fps)
             + f",settb=1/{fps},fps={fps},format=yuv420p")
     grade = grade_filter(seg)
+    mv = move_filter(seg.move, width, height, full) if seg.move is not None else ""
+    if seg.kind == KIND_IMAGE and seg.move is not None:
+        return (["-loop", "1", "-i", seg.path],
+                geometry_filter(seg) + _scale_crop(width, height, fps, grade) + mv + tail)
     if seg.kind == KIND_IMAGE:
         if hold:
             # A timeline's still fills the frame in the move, so it does held too.
@@ -452,7 +495,7 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            speed_filter(seg.speed) + geometry_filter(seg) + fit(width, height, fps, grade) + tail)
+            speed_filter(seg.speed) + geometry_filter(seg) + fit(width, height, fps, grade) + mv + tail)
 
 
 def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,

@@ -191,6 +191,10 @@ export const UNIT_EFFECTS = ["vignette", "sharpen", "grain"] as const;
 /** A Gaussian blur's sigma in output pixels. */
 export const BLUR_MAX = 30;
 export const ROTATIONS = [0, 90, 180, 270] as const;
+/** A clip's move: the zoom window's range (modules/timeline.py MOVE_ZOOM_*). */
+export const MOVE_ZOOM_MIN = 1;
+export const MOVE_ZOOM_MAX = 4;
+export const MOVE_POINT_DEFAULTS = { zoom: 1, x: 0.5, y: 0.5 } as const;
 export type Rotation = (typeof ROTATIONS)[number];
 const EFFECT_KEYS = [
   "filter",
@@ -247,6 +251,7 @@ const V_CLIP_KEYS = [
   "speed",
   "audio",
   "grade",
+  "move",
   ...EFFECT_KEYS,
 ];
 const A_CLIP_KEYS = [...MEDIA_REQUIRED, "gain_db", "fade_in_s", "fade_out_s"];
@@ -288,6 +293,7 @@ const OVERLAY_KEYS = [
   "anim_out",
   "anim_in_s",
   "anim_out_s",
+  "move",
 ];
 
 // ── document types ──────────────────────────────────────────────────────────
@@ -299,6 +305,25 @@ export interface Transition {
   duration_s: number;
   /** How a cross-fade blends the two pictures; none = the plain `fade`. */
   style?: XfadeStyle;
+}
+
+/** A window onto the fitted picture: zoom 1-4 (1 = all of it) and its centre
+ *  as fractions of the picture. Missing keys take MOVE_POINT_DEFAULTS. */
+export interface MovePoint {
+  zoom?: number;
+  x?: number;
+  y?: number;
+}
+export interface ClipMove {
+  from: MovePoint;
+  to: MovePoint;
+}
+/** An overlay's end keyframe: the overlay's own values go linearly to these. */
+export interface OverlayMoveTo {
+  x?: number;
+  y?: number;
+  w?: number;
+  opacity?: number;
 }
 
 export interface VideoClip {
@@ -326,6 +351,9 @@ export interface VideoClip {
   flip_v?: boolean;
   /** Degrees clockwise: 0, 90, 180 or 270. */
   rotate?: Rotation;
+  /** Ken Burns style move over the fitted picture (a still with one has it
+   *  instead of the automatic slow zoom). */
+  move?: ClipMove;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -414,6 +442,8 @@ export interface PictureOverlay {
   anim_out?: AnimOut;
   anim_in_s?: number;
   anim_out_s?: number;
+  /** Two-keyframe move to the given values over start_s..end_s. */
+  move?: { to: OverlayMoveTo };
 }
 
 /** What an overlay's optional fields mean when absent (modules/timeline.py
@@ -808,6 +838,7 @@ function validateMediaClip(
           problems,
         );
     validateEffects(clip, where, problems);
+    if ("move" in clip) validateClipMove(clip.move, where, problems);
     if ("transition" in clip) {
       const tr = clip.transition;
       if (
@@ -846,6 +877,34 @@ function validateMediaClip(
   } else {
     numIn(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems);
   }
+}
+
+/** The twin of modules/timeline.py `_validate_clip_move`. */
+function validateClipMove(move: unknown, where: string, problems: string[]) {
+  if (!fields(move, ["from", "to"], ["from", "to"], `${where} move`, problems))
+    return;
+  for (const k of ["from", "to"] as const) {
+    if (!(k in move)) continue;
+    const pw = `${where} move ${k}`;
+    const point = move[k];
+    if (!fields(point, ["zoom", "x", "y"], [], pw, problems)) continue;
+    numIn(point, "zoom", MOVE_ZOOM_MIN, MOVE_ZOOM_MAX, pw, problems);
+    numIn(point, "x", 0, 1, pw, problems);
+    numIn(point, "y", 0, 1, pw, problems);
+  }
+}
+
+/** The twin of modules/timeline.py `_validate_overlay_move`. */
+function validateOverlayMove(move: unknown, where: string, problems: string[]) {
+  if (!fields(move, ["to"], ["to"], `${where} move`, problems) || !("to" in move))
+    return;
+  const to = move.to;
+  const tw = `${where} move to`;
+  if (!fields(to, ["x", "y", "w", "opacity"], [], tw, problems)) return;
+  if (Object.keys(to).length === 0)
+    problems.push(`${tw}: give at least one of x, y, w, opacity`);
+  for (const k of ["x", "y", "opacity"]) numIn(to, k, 0, 1, tw, problems);
+  numIn(to, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, tw, problems);
 }
 
 /** The twin of modules/timeline.py `_validate_effects`. */
@@ -1015,6 +1074,7 @@ function validateOverlays(
     for (const k of ["x", "y", "opacity"]) numIn(ov, k, 0, 1, where, problems);
     numIn(ov, "w", OVERLAY_W_MIN, OVERLAY_W_MAX, where, problems);
     validateAnims(ov, where, problems, false);
+    if ("move" in ov) validateOverlayMove(ov.move, where, problems);
   });
 }
 
@@ -1494,6 +1554,7 @@ function overlaysOf(v: unknown): PictureOverlay[] {
       opacity: num(o.opacity, OVERLAY_DEFAULTS.opacity),
       ...anim("anim_in"),
       ...anim("anim_out"),
+      ...(isObj(o.move) ? { move: o.move as unknown as { to: OverlayMoveTo } } : {}),
     });
   }
   return out;
@@ -1515,6 +1576,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
         : {}),
       ...gradeFieldOf(c.grade),
       ...effectsOf(c),
+      ...(isObj(c.move) ? { move: c.move as unknown as ClipMove } : {}),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
         ? { fade_in_s: c.fade_in_s }
@@ -1671,6 +1733,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
             opacity: ms(o.opacity),
             ...(o.anim_in ? { anim_in: o.anim_in, anim_in_s: ms(o.anim_in_s ?? ANIM_DEFAULT_S) } : {}),
             ...(o.anim_out ? { anim_out: o.anim_out, anim_out_s: ms(o.anim_out_s ?? ANIM_DEFAULT_S) } : {}),
+            ...(o.move ? { move: o.move } : {}),
           })),
         }
       : {}),
@@ -1954,6 +2017,19 @@ export function splitClip(
   delete second.fade_in_s;
   if (second.audio && audioInputs(model) >= MAX_AUDIO_CLIPS)
     second.audio = false;
+  if (c.move) {
+    // The move goes on across the cut: the first half ends where the second
+    // begins, at the window the whole move had reached at the cut.
+    const f = (ms(t) - c.start_s) / clipLength(c);
+    const at = (k: keyof typeof MOVE_POINT_DEFAULTS) => {
+      const a = c.move!.from[k] ?? MOVE_POINT_DEFAULTS[k];
+      const b = c.move!.to[k] ?? MOVE_POINT_DEFAULTS[k];
+      return ms(a + (b - a) * f);
+    };
+    const mid = { zoom: at("zoom"), x: at("x"), y: at("y") };
+    first.move = { from: c.move.from, to: mid };
+    second.move = { from: mid, to: c.move.to };
+  }
   const next = [...clips.slice(0, i), first, second, ...clips.slice(i + 1)];
   return { model: { ...model, clips: layout(next) }, newId };
 }
