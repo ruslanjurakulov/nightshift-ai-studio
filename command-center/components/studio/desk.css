@@ -161,6 +161,8 @@
 .desk-shape[data-shape="16:9"] { width: 16px; height: 9px; }
 .desk-shape[data-shape="9:16"] { width: 8px; height: 14px; }
 .desk-shape[data-shape="1:1"] { width: 11px; height: 11px; }
+.desk-shape[data-shape="4:3"] { width: 14px; height: 10.5px; }
+.desk-shape[data-shape="3:4"] { width: 10px; height: 13.5px; }
 
 /* Video's frames: the start and the end side by side, like two cue cards. */
 .desk-frames { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; border: 1px solid var(--ns-rule); border-radius: var(--ns-r-key); background: var(--ns-key); }

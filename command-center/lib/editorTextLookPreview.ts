@@ -27,7 +27,7 @@ export const BOX_PADDING_EM = 0.25;
 const DEFAULT_OUTLINE_COLOR = "#000000";
 const DEFAULT_OUTLINE_WIDTH = 3;
 
-const FONT_FAMILY: Record<NonNullable<TextClip["font"]>, string> = {
+export const FONT_FAMILY: Record<NonNullable<TextClip["font"]>, string> = {
   "DejaVu Sans": '"DejaVu Sans", Verdana, sans-serif',
   "DejaVu Serif": '"DejaVu Serif", Georgia, serif',
   "Liberation Sans": '"Liberation Sans", Arial, Helvetica, sans-serif',
@@ -52,11 +52,11 @@ export function rgba(hex: string, opacity: number): string {
   return `rgba(${n(1)}, ${n(3)}, ${n(5)}, ${a})`;
 }
 
-const cqw = (px: number, frameWidth: number) =>
+export const cqw = (px: number, frameWidth: number) =>
   `${Math.round((px / frameWidth) * 100 * 1000) / 1000}cqw`;
 
 /** A ring of hard text-shadows of radius `r` (output pixels). */
-function ring(color: string, r: number, frameWidth: number): string[] {
+export function ring(color: string, r: number, frameWidth: number): string[] {
   if (!(r > 0)) return [];
   const out: string[] = [];
   const steps = Math.min(16, Math.max(8, Math.round(r * 2)));

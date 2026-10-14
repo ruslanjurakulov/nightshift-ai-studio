@@ -8,6 +8,8 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { loadSellableModels } from "@/lib/creative/registry";
+import { loadAiToolAvailability } from "@/lib/server/ai-tools";
+import { parseIdParam } from "@/lib/creative/improve";
 import {
   loadEditorImages,
   loadEditorProject,
@@ -24,8 +26,11 @@ export const revalidate = 0;
  */
 export default async function EditorProjectPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** `add`: a finished AI result to offer ("Add to project"); `focus=captions`: open on the Captions panel. */
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { id } = await params;
@@ -48,19 +53,27 @@ export default async function EditorProjectPage({
   if (project.state === "not_found") notFound();
   if (project.state === "not_available") return note(t.editor.notEnabled);
   if (project.state !== "ok") return note(t.editor.readFailed);
-  const [videos, sounds, images, sellable] = await Promise.all([
+  const [videos, sounds, images, sellable, aiTools] = await Promise.all([
     loadEditorVideos(project.value.orgId),
     loadEditorSounds(project.value.orgId),
     loadEditorImages(project.value.orgId),
     // Auto-captions (0072): only a model the database would sell (verified,
     // priced, no open terms gate) is offered; none = the panel says so.
     loadSellableModels("captions"),
+    // "Improve with AI" on a clip or picture: which tools are sold here (the Studio prices them).
+    loadAiToolAvailability(),
   ]);
+  const q = (await searchParams) ?? {};
+  const focus = Array.isArray(q.focus) ? q.focus[0] : q.focus;
   const captionModels = sellable.models.map((m) => ({
     id: m.id,
     displayName: m.displayName,
     languages: m.spec.languages,
   }));
+  // "not set up" (no priced, proven model) is a different message from "the
+  // database has no captions yet" and from "could not be read just now".
+  const captionModelsStatus =
+    sellable.status === "ok" ? "ok" : sellable.status === "not_enabled" ? "not_enabled" : "error";
   const p = project.value;
   // Keys the local draft: a draft is only ever offered to the member who wrote it.
   const user = await getUser();
@@ -80,7 +93,11 @@ export default async function EditorProjectPage({
         imageFiles={images.state === "ok" ? images.value : []}
         orgId={p.orgId}
         captionModels={captionModels}
+        captionModelsStatus={captionModelsStatus}
         userId={user?.id ?? ""}
+        aiTools={aiTools}
+        offerAssetId={parseIdParam(q.add)}
+        focusPanel={focus === "captions" ? "captions" : null}
       />
     </div>
   );
