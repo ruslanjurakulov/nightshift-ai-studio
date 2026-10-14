@@ -675,7 +675,27 @@
               "minimum": 0,
               "maximum": 1,
               "default": 0.9,
-              "description": "Fraction of the frame height where the bottom of the caption sits."
+              "description": "Fraction of the frame height where the style's anchor sits (the bottom of a bottom-anchored caption)."
+            },
+            "preset": {
+              "enum": [
+                "karaoke",
+                "pop_in",
+                "boxed",
+                "big_centre",
+                "lower_third",
+                "outlined",
+                "neon",
+                "typewriter",
+                "line_slide",
+                "clean"
+              ],
+              "description": "A ready-made animated caption style from this closed list; the export draws it with libass tags (modules/caption_styles.py, modules/ass_captions.py). Absent = the plain caption every older document has. A style supplies the font, size, colours and position the document leaves out."
+            },
+            "highlight_color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "description": "The second colour an animated style draws: the lit word, the box, the glow or the outline. Ignored without a preset."
             }
           }
         },

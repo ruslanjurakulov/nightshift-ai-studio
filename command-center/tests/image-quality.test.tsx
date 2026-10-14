@@ -393,7 +393,8 @@ describe("pinned to 0060", () => {
 
   it("every param key the code sends is one 0060 accepts (0070's own is pinned to 0070)", () => {
     const params = fn("creative_params_problem");
-    for (const k of PARAM_KEYS) if (k !== "audio") expect(params, k).toContain(`'${k}'`);
+    // look is 0099's own (tests/studio-picture-ops.test.tsx).
+    for (const k of PARAM_KEYS) if (k !== "audio" && k !== "look") expect(params, k).toContain(`'${k}'`);
   });
 
   it("the default tier is medium on both sides, and a tier is priced by its own row", () => {

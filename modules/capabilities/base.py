@@ -55,13 +55,25 @@ DUB = "dub"          # speech (audio / video) → the dubbed speech in a target 
 VIDEO_UPSCALE = "video_upscale"
 DESCRIBE = "describe"  # image → text: a generation prompt for that picture (0055)
 CAPTIONS = "captions"  # speech (audio / video) → the words with their times, for subtitles (0072)
+#: The picture ops (0099): one library picture in, one picture out.
+EXPAND = "expand"      # image → the same image extended to CapabilityRequest.aspect_ratio
+RELIGHT = "relight"    # image → the same image in another light (CapabilityRequest.look, or the prompt)
+ERASE = "erase"        # image → the same image without the object the prompt names (no mask)
+PICTURE_OPS = (EXPAND, RELIGHT, ERASE)
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
-                CAPTIONS)
+                CAPTIONS, *PICTURE_OPS)
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
-             VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text"}
+             VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text",
+             EXPAND: "image", RELIGHT: "image", ERASE: "image"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
-IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE})
+IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE, *PICTURE_OPS})
+#: The lights a relight can be asked for by name (0099's allow-list; a model
+#: lists the ones it was proven for in ``relight_looks``).
+RELIGHT_LOOKS = ("soft", "warm", "cool", "golden_hour", "dramatic", "studio")
+#: The shapes an expand can extend a picture to (0099's allow-list; a model
+#: lists the ones it was proven for in ``aspect_ratios_by_capability.expand``).
+EXPAND_ASPECTS = ("16:9", "9:16", "1:1", "4:3", "3:4")
 #: Capabilities whose output is text kept on the job row, never a file in the
 #: library (0055's CHECK refuses assets on such a job).
 TEXT_OUTPUT = frozenset({DESCRIBE, CAPTIONS})
@@ -88,7 +100,9 @@ FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: Capabilities where the prompt is optional (i2v, upscale) or absent
 #: (remove_bg, the voice tools and the video upscale: the file is the whole input).
 #: describe sends no prompt of the person's: the adapter writes the request.
-PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS})
+#: expand and relight (0099) are asked by a shape / a look: their words are optional.
+PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS,
+                             EXPAND, RELIGHT})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -269,6 +283,9 @@ class CapabilityRequest:
     #: The language spoken in the recording (``captions`` only, 0072): one of
     #: the entry's ``languages``; None = the provider detects it.
     spoken_language: Optional[str] = None
+    #: The light a ``relight`` is asked for by name (0099): one of RELIGHT_LOOKS,
+    #: which the entry's ``relight_looks`` must list. None = the prompt names it.
+    look: Optional[str] = None
 
 
 @dataclass

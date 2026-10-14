@@ -14,6 +14,7 @@ import { loadStudioModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
+import { parseIdParam } from "@/lib/creative/improve";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
@@ -164,6 +165,8 @@ export default async function CreatePage({
             // The platform operator has no phone tab bar to dock Generate above.
             bottomBar={!operator}
             plans={plans}
+            // From an editor project ("Improve with AI"): a finished result can be added back to it.
+            project={parseIdParam(q.project)}
           />
         ) : (
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>
