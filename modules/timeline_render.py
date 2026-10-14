@@ -24,6 +24,11 @@ How a timeline maps onto the spec:
   ``flip_*`` and ``rotate`` become the segment's ``ClipEffects``; the backend
   turns the geometric ones into a prefix of the clip's chain and the rest into
   filters after the colour grade. A clip without them has ``effects=None``.
+* **Speed ramp** — a V clip's ``speed_curve`` becomes ``Segment.curve`` (its points
+  and the source range), ``interpolate`` the segment's flag; the clip's sound is
+  the track's ``tempos``, one per equal slice of the range
+  (``modules/speed_ramp.py``), so the sound is on the picture at every slice
+  boundary.
 * **Crop and angle** — a V clip's ``crop`` rectangle and free ``angle`` become the
   segment's ``ClipCrop`` and ``angle``; the backend takes the crop after the turn
   and mirror and before the fit, and turns the fitted picture by the angle.
@@ -80,6 +85,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import List, Optional, Union
 
+from modules import speed_ramp
 from modules import timeline as tl
 from modules.render_spec import (
     KIND_COLOR,
@@ -89,6 +95,7 @@ from modules.render_spec import (
     ClipCrop,
     ClipEffects,
     ClipMove,
+    SpeedCurve,
     PictureOverlay,
     RenderSpec,
     Segment,
@@ -139,6 +146,17 @@ def _crop_angle(clip: dict) -> dict:
     return out
 
 
+def _ramp(clip: dict, asset_kind: str) -> dict:
+    """The clip's speed curve and interpolation as Segment fields ({} without them)."""
+    out = {}
+    if clip.get("speed_curve") and asset_kind == tl.ASSET_VIDEO:
+        out["curve"] = SpeedCurve(tuple((p["at"], p["speed"]) for p in clip["speed_curve"]),
+                                  round(clip["out_s"] - clip["in_s"], 3))
+    if clip.get("interpolate") and asset_kind == tl.ASSET_VIDEO:
+        out["interpolate"] = True
+    return out
+
+
 def _move(clip: dict) -> dict:
     """The clip's move as a Segment field ({} without one)."""
     mv = clip.get("move")
@@ -186,6 +204,7 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 **_effects(clip),
                 **_move(clip),
                 **_crop_angle(clip),
+                **_ramp(clip, asset.kind),
             )
 
         for i, clip in enumerate(clips):
@@ -233,6 +252,15 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
     return segments
 
 
+def _tempos(clip: dict) -> dict:
+    """A speed ramp's sound: the slice tempos that keep it on the picture ({} without a ramp)."""
+    pts = tl.clip_ramp_points(clip)
+    if pts is None:
+        return {}
+    n = speed_ramp.slice_count(pts[-1][0])
+    return {"tempos": tuple(round(t, 6) for t in speed_ramp.slice_tempos(pts, pts[-1][0], n))}
+
+
 def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
     tracks: List[AudioTrack] = []
     for track in doc["tracks"]:
@@ -264,6 +292,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 speed=clip["speed"],
                 reverse=bool(clip.get("reverse")),
                 denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
+                **_tempos(clip),
                 fade_in_s=d_in if d_in > 0 and not joined else 0.0,
                 fade_out_s=d_out if d_out > 0 and not sounding(i + 1) else 0.0,
                 crossfade_s=d_in if joined else 0.0,

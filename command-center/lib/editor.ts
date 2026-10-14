@@ -23,6 +23,11 @@
  */
 
 import {
+  rampAbsolute,
+  rampOutLength,
+  rampSourceAt,
+} from "@/lib/editorSpeedRamp";
+import {
   GRADE_KEYS,
   GRADE_RANGES,
   isNeutralGrade,
@@ -195,6 +200,15 @@ export const ROTATIONS = [0, 90, 180, 270] as const;
 export const MOVE_ZOOM_MIN = 1;
 export const MOVE_ZOOM_MAX = 4;
 export const MOVE_POINT_DEFAULTS = { zoom: 1, x: 0.5, y: 0.5 } as const;
+/** A clip's speed curve (modules/timeline.py RAMP_* / INTERP_*): 2 to 6 points,
+ *  and the budget of motion-interpolated frames (1080p equivalent). */
+export const RAMP_MIN_POINTS = 2;
+export const RAMP_MAX_POINTS = 6;
+export const RAMP_MIN_GAP = 0.01;
+export const INTERP_MAX_FPS = 120;
+export const INTERP_MAX_FRAMES = 300;
+export const INTERP_MAX_FRAMES_DOC = 600;
+const INTERP_REF_PIXELS = 1920 * 1080;
 /** A clip's crop rectangle (smallest side) and free angle (modules/timeline.py
  *  CROP_MIN / ANGLE_MAX). */
 export const CROP_MIN = 0.05;
@@ -278,6 +292,8 @@ const V_CLIP_KEYS = [
   "loudnorm",
   "crop",
   "angle",
+  "speed_curve",
+  "interpolate",
   ...EFFECT_KEYS,
 ];
 const A_CLIP_KEYS = [
@@ -360,6 +376,12 @@ export interface OverlayMoveTo {
   opacity?: number;
 }
 
+/** One point of a speed curve: `at` is a fraction of the source range. */
+export interface SpeedPoint {
+  at: number;
+  speed: number;
+}
+
 /** A rectangle of the source picture as fractions of it (after rotate/flip,
  *  before the fit); missing keys take CROP_DEFAULTS. */
 export interface ClipCrop {
@@ -412,6 +434,11 @@ export interface VideoClip {
   crop?: ClipCrop;
   /** Degrees clockwise (-180..180) the fitted picture is turned in the frame. */
   angle?: number;
+  /** A speed ramp instead of `speed` (which is then 1): 2-6 points, linear
+   *  between them; the first at 0 and the last at 1 of the source range. */
+  speed_curve?: SpeedPoint[];
+  /** Smoother slow motion by interpolation (slow to render; budgeted). */
+  interpolate?: boolean;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -575,15 +602,40 @@ export function clipEnd(
 ): number {
   const r = c as Record<string, unknown>;
   if ("end_s" in r) return ms(Number(r.end_s));
-  return ms(
-    ms(Number(r.start_s)) +
-      (ms(Number(r.out_s)) - ms(Number(r.in_s))) / speedOf(r),
-  );
+  return ms(ms(Number(r.start_s)) + mediaLength(r));
+}
+
+/** How long a media clip lasts on the timeline (modules/timeline.py
+ *  `clip_length_s`): its source range at its speed, or at its speed curve. */
+function mediaLength(r: Record<string, unknown>): number {
+  const range = ms(Number(r.out_s)) - ms(Number(r.in_s));
+  const curve = usableCurve(r.speed_curve);
+  if (curve) return ms(rampOutLength(rampAbsolute(curve, range)));
+  return ms(range / speedOf(r));
+}
+
+/** A speed curve that can be worked with (the validator has the strict rules). */
+function usableCurve(v: unknown): SpeedPoint[] | null {
+  if (!Array.isArray(v) || v.length < RAMP_MIN_POINTS) return null;
+  return v.every(
+    (p) => isObj(p) && isNum(p.at) && isNum(p.speed) && p.speed > 0,
+  )
+    ? (v as SpeedPoint[])
+    : null;
 }
 
 /** How long a video clip lasts on the timeline. */
 export function clipLength(c: VideoClip): number {
-  return ms((ms(c.out_s) - ms(c.in_s)) / c.speed);
+  return mediaLength(c as unknown as Record<string, unknown>);
+}
+
+/** The source time shown at timeline time `t` in clip `c` (a speed curve is
+ *  inverted numerically). */
+export function sourceTimeAt(c: VideoClip, t: number): number {
+  const curve = usableCurve(c.speed_curve);
+  if (!curve) return ms(c.in_s + (t - c.start_s) * c.speed);
+  const range = ms(c.out_s) - ms(c.in_s);
+  return ms(c.in_s + rampSourceAt(rampAbsolute(curve, range), t - c.start_s));
 }
 
 // ── validation: the twin of modules/timeline.py validate() ──────────────────
@@ -789,6 +841,25 @@ export function validateTimeline(doc: unknown): string[] {
     problems.push(
       `timeline: at most ${MAX_TYPEWRITER_TEXTS} typewriter texts (got ${nType})`,
     );
+  if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
+    let interp = 0;
+    for (const t of counted)
+      if (t.kind === "V")
+        for (const c of t.clips)
+          if (isObj(c) && c.interpolate === true && isNum(c.in_s) && isNum(c.out_s)) {
+            const pts = usableCurve(c.speed_curve);
+            const slowest = pts
+              ? Math.min(...pts.map((p) => p.speed))
+              : isNum(c.speed) && c.speed > 0
+                ? c.speed
+                : 1;
+            interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, doc.width, doc.height);
+          }
+    if (interp > INTERP_MAX_FRAMES_DOC)
+      problems.push(
+        `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
+      );
+  }
 
   if (doc.captions !== undefined && doc.captions !== null)
     validateCaptions(doc.captions, problems, claim);
@@ -872,6 +943,11 @@ function validateMediaClip(
   }
   if (kind === "V" && "audio" in clip && typeof clip.audio !== "boolean")
     problems.push(`${where}: audio must be true or false`);
+  let curve: SpeedPoint[] | null = null;
+  if (kind === "V" && "speed_curve" in clip)
+    curve = validateSpeedCurve(clip, where, problems);
+  if (kind === "V" && "interpolate" in clip && typeof clip.interpolate !== "boolean")
+    problems.push(`${where}: interpolate must be true or false`);
   for (const k of ["denoise", "loudnorm"])
     if (k in clip && typeof clip[k] !== "boolean")
       problems.push(`${where}: ${k} must be true or false`);
@@ -888,10 +964,13 @@ function validateMediaClip(
         problems.push(`${where}: a frozen clip has no sound`);
     }
   }
+  if (curve) speed = null; // the length comes from the curve below
   const ins = clip.in_s;
   const outs = clip.out_s;
-  if (isNum(ins) && isNum(outs) && speed) {
-    const length = ms((ms(outs) - ms(ins)) / speed);
+  if (isNum(ins) && isNum(outs) && (speed || curve)) {
+    const length = curve
+      ? ms(rampOutLength(rampAbsolute(curve, ms(outs) - ms(ins))))
+      : ms((ms(outs) - ms(ins)) / (speed as number));
     const fi = clip.fade_in_s ?? 0;
     const fo = clip.fade_out_s ?? 0;
     if (ms(outs) - ms(ins) <= 0)
@@ -913,6 +992,8 @@ function validateMediaClip(
     else if (isNum(fi) && isNum(fo) && fi + fo > length + 1e-9)
       problems.push(`${where}: fade_in_s + fade_out_s is longer than the clip`);
   }
+  if (kind === "V" && clip.interpolate === true)
+    validateInterpolate(clip, where, frame, fps, curve, problems);
   if (kind === "V") {
     if ("fit" in clip && !(FITS as readonly unknown[]).includes(clip.fit))
       problems.push(`${where}: fit must be contain, cover or blur`);
@@ -977,6 +1058,121 @@ function validateMediaClip(
   } else {
     numIn(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems);
   }
+}
+
+/** The twin of modules/timeline.py `_validate_speed_curve`: the curve's points
+ *  when it is well-formed, else null. */
+function validateSpeedCurve(
+  clip: Record<string, unknown>,
+  where: string,
+  problems: string[],
+): SpeedPoint[] | null {
+  const cw = `${where} speed_curve`;
+  const curve = clip.speed_curve;
+  if (
+    !Array.isArray(curve) ||
+    curve.length < RAMP_MIN_POINTS ||
+    curve.length > RAMP_MAX_POINTS
+  ) {
+    problems.push(
+      `${cw}: must be a list of ${RAMP_MIN_POINTS} to ${RAMP_MAX_POINTS} points`,
+    );
+    return null;
+  }
+  let ok = true;
+  const pts: SpeedPoint[] = [];
+  curve.forEach((p, i) => {
+    const pw = `${cw} point ${i}`;
+    if (!fields(p, ["at", "speed"], ["at", "speed"], pw, problems)) {
+      ok = false;
+      return;
+    }
+    numIn(p, "at", 0, 1, pw, problems);
+    numIn(p, "speed", SPEED_MIN, SPEED_MAX, pw, problems);
+    if (
+      !(
+        isNum(p.at) &&
+        p.at >= 0 &&
+        p.at <= 1 &&
+        isNum(p.speed) &&
+        p.speed >= SPEED_MIN &&
+        p.speed <= SPEED_MAX
+      )
+    ) {
+      ok = false;
+      return;
+    }
+    pts.push({ at: p.at, speed: p.speed });
+  });
+  if (!ok) return null;
+  if (pts[0].at !== 0 || pts[pts.length - 1].at !== 1) {
+    problems.push(`${cw}: the first point must be at 0 and the last at 1`);
+    return null;
+  }
+  if (pts.some((p, i) => i > 0 && p.at - pts[i - 1].at < RAMP_MIN_GAP - 1e-12)) {
+    problems.push(`${cw}: points must be at least ${RAMP_MIN_GAP} apart, in order`);
+    return null;
+  }
+  if (isNum(clip.speed ?? 1) && (clip.speed ?? 1) !== 1)
+    problems.push(`${where}: a speed curve replaces speed (leave speed out or 1)`);
+  for (const k of ["reverse", "freeze"])
+    if (clip[k] === true)
+      problems.push(`${where}: a speed curve cannot be combined with ${k}`);
+  return pts;
+}
+
+/** The 1080p-equivalent frames `interpolate` has to make for a clip
+ *  (modules/timeline.py `interpolated_frames`). */
+export function interpolatedFrames(
+  inS: number,
+  outS: number,
+  minSpeed: number,
+  fps: number,
+  width: number,
+  height: number,
+): number {
+  const rate = Math.min(INTERP_MAX_FPS, Math.ceil(fps / minSpeed));
+  const frames = Math.ceil((ms(outS) - ms(inS)) * rate);
+  return (frames * width * height) / INTERP_REF_PIXELS;
+}
+
+function validateInterpolate(
+  clip: Record<string, unknown>,
+  where: string,
+  frame: [unknown, unknown],
+  fps: number | null,
+  curve: SpeedPoint[] | null,
+  problems: string[],
+) {
+  if (clip.reverse === true || clip.freeze === true) {
+    problems.push(
+      `${where}: interpolate is for forward slow motion (not with reverse or freeze)`,
+    );
+    return;
+  }
+  const speeds: unknown[] = curve ? curve.map((p) => p.speed) : [clip.speed ?? 1];
+  if (!speeds.every(isNum) || Math.min(...(speeds as number[])) >= 1) {
+    problems.push(
+      `${where}: interpolate is for slow motion (some part must play below speed 1)`,
+    );
+    return;
+  }
+  if (
+    !(isInt(frame[0]) && isInt(frame[1]) && fps && isNum(clip.in_s) && isNum(clip.out_s))
+  )
+    return;
+  const cost = interpolatedFrames(
+    clip.in_s,
+    clip.out_s,
+    Math.min(...(speeds as number[])),
+    fps,
+    frame[0],
+    frame[1],
+  );
+  if (cost > INTERP_MAX_FRAMES)
+    problems.push(
+      `${where}: interpolating this range would make about ${Math.round(cost)} frames (1080p equivalent); at most ${INTERP_MAX_FRAMES} per clip — shorten the range`,
+    );
 }
 
 /** The twin of modules/timeline.py `_validate_crop`. */
@@ -1715,6 +1911,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(c.loudnorm === true ? { loudnorm: true } : {}),
       ...(isObj(c.crop) ? { crop: c.crop as ClipCrop } : {}),
       ...(isNum(c.angle) && c.angle !== 0 ? { angle: c.angle } : {}),
+      ...(usableCurve(c.speed_curve) ? { speed_curve: c.speed_curve as SpeedPoint[] } : {}),
+      ...(c.interpolate === true ? { interpolate: true } : {}),
       ...(isObj(c.move) ? { move: c.move as unknown as ClipMove } : {}),
       ...transitionOf(c.transition),
       ...(isNum(c.fade_in_s) && c.fade_in_s > 0
@@ -2120,7 +2318,7 @@ export function clipAt(
       return {
         clip: c,
         index: i,
-        sourceS: ms(c.in_s + (t - c.start_s) * c.speed),
+        sourceS: sourceTimeAt(c, t),
       };
   }
   return null;
@@ -2131,6 +2329,9 @@ export function canSplit(model: EditorModel, id: string, t: number): boolean {
   if (model.clips.length >= MAX_EDITOR_CLIPS) return false;
   const c = layout(model.clips).find((x) => x.id === id);
   if (!c) return false;
+  // A clip with a speed curve is not split (the part left of the cut would
+  // need its own curve): remove the curve first, as the backend asks.
+  if (c.speed_curve) return false;
   const cut = c.in_s + (t - c.start_s) * c.speed;
   return (
     t > c.start_s &&
@@ -2197,7 +2398,13 @@ export function setSpeed(
   return {
     ...model,
     clips: layout(
-      model.clips.map((c) => (c.id === id ? { ...c, speed: s } : c)),
+      model.clips.map((c) => {
+        if (c.id !== id) return c;
+        // One constant speed replaces a curve (a document has either).
+        const { speed_curve: _curve, ...rest } = c;
+        void _curve;
+        return { ...rest, speed: s };
+      }),
     ),
   };
 }

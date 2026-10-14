@@ -90,7 +90,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
-from modules import ffmpeg_limits
+from modules import ffmpeg_limits, speed_ramp
 
 #: The ONE quality encode of a render (the final pass). These are libx264's own
 #: defaults — what this backend always encoded with implicitly — spelled out so
@@ -227,6 +227,11 @@ ANIM_POP_FROM = 0.6
 FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
 BLUR_MAX = 30.0
 ROTATIONS = (0, 90, 180, 270)
+
+#: A speed curve / interpolated slow motion (modules/timeline.py holds the same
+#: numbers; a test pins them).
+RAMP_MIN_POINTS, RAMP_MAX_POINTS = 2, 6
+INTERP_MAX_FPS = 120
 
 #: A clip's crop rectangle / free angle (modules/timeline.py holds the same numbers).
 CROP_MIN = 0.05
@@ -416,6 +421,45 @@ def _effects_problems(name: str, fx: ClipEffects) -> List[str]:
 
 
 @dataclass(frozen=True)
+class SpeedCurve:
+    """A clip's speed ramp (modules/speed_ramp.py): ``points`` are ``(at, speed)``
+    with ``at`` a fraction 0-1 of the source range, which is ``range_s`` long."""
+    points: Tuple[Tuple[float, float], ...]
+    range_s: float
+
+    def absolute(self) -> List[Tuple[float, float]]:
+        return speed_ramp.absolute(self.points, self.range_s)
+
+    def to_dict(self) -> dict:
+        return {"points": [[a, s] for a, s in self.points], "range_s": self.range_s}
+
+    @staticmethod
+    def from_dict(d: dict) -> "SpeedCurve":
+        return SpeedCurve(tuple((float(a), float(s)) for a, s in (d.get("points") or [])),
+                          float(d.get("range_s") or 0.0))
+
+
+def _curve_problems(name: str, c: SpeedCurve) -> List[str]:
+    pts = c.points
+    if not (RAMP_MIN_POINTS <= len(pts) <= RAMP_MAX_POINTS):
+        return [f"{name} speed curve needs {RAMP_MIN_POINTS} to {RAMP_MAX_POINTS} points"]
+    if not all(len(p) == 2 and all(_finite(v) for v in p) for p in pts) or not (_finite(c.range_s) and c.range_s > 0):
+        return [f"{name} speed curve has a non-finite number"]
+    problems: List[str] = []
+    if pts[0][0] != 0 or pts[-1][0] != 1 or any(b[0] <= a[0] for a, b in zip(pts, pts[1:])):
+        problems.append(f"{name} speed curve must run from 0 to 1 in increasing order")
+    if not all(SPEED_MIN <= s <= SPEED_MAX for _a, s in pts):
+        problems.append(f"{name} speed curve speeds must be from {SPEED_MIN:g} to {SPEED_MAX:g}")
+    return problems
+
+
+def interp_fps(min_speed: float, fps: int) -> int:
+    """The frame rate slow motion is interpolated up to: enough that every output
+    frame of the slowest part is a distinct source-rate frame, at most INTERP_MAX_FPS."""
+    return int(min(INTERP_MAX_FPS, math.ceil(int(fps) / float(min_speed))))
+
+
+@dataclass(frozen=True)
 class ClipCrop:
     """A rectangle of the source picture kept before the fit, as fractions of it
     (taken after the turn and mirror). The whole picture is ``(0, 0, 1, 1)``."""
@@ -498,6 +542,10 @@ class Segment:
     #: picture by this many degrees clockwise about its centre (0 = no turn).
     crop: Optional[ClipCrop] = None
     angle: float = 0.0
+    #: A speed ramp instead of one ``speed`` (``speed`` is then 1) and smoother
+    #: slow motion by motion-compensated interpolation (only below speed 1).
+    curve: Optional[SpeedCurve] = None
+    interpolate: bool = False
 
     @property
     def graded(self) -> bool:
@@ -526,6 +574,9 @@ class Segment:
         if self.crop is not None:
             d["crop"] = self.crop.to_dict()
         _put_if(d, "angle", self.angle, 0.0)
+        if self.curve is not None:
+            d["curve"] = self.curve.to_dict()
+        _put_if(d, "interpolate", self.interpolate, False)
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -554,6 +605,8 @@ class Segment:
             reverse=bool(d.get("reverse", False)), freeze=bool(d.get("freeze", False)),
             crop=(ClipCrop.from_dict(d["crop"]) if isinstance(d.get("crop"), dict) else None),
             angle=float(d.get("angle") or 0.0),
+            curve=(SpeedCurve.from_dict(d["curve"]) if isinstance(d.get("curve"), dict) else None),
+            interpolate=bool(d.get("interpolate", False)),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -594,10 +647,15 @@ class AudioTrack:
     #: normalisation (see audio_track_filter).
     denoise: bool = False
     loudnorm: bool = False
+    #: A speed ramp's sound: the trimmed source is cut into ``len(tempos)`` equal
+    #: slices, slice ``j`` played at ``tempos[j]`` (``speed`` is then 1).
+    tempos: Tuple[float, ...] = ()
 
     @property
     def output_s(self) -> float:
         """How long the track sounds in the output."""
+        if self.tempos:
+            return sum((self.duration_s / len(self.tempos)) / t for t in self.tempos)
         return self.duration_s / self.speed if self.speed else self.duration_s
 
     def to_dict(self) -> dict:
@@ -609,6 +667,8 @@ class AudioTrack:
         _put_if(d, "reverse", self.reverse, False)
         _put_if(d, "denoise", self.denoise, False)
         _put_if(d, "loudnorm", self.loudnorm, False)
+        if self.tempos:
+            d["tempos"] = list(self.tempos)
         if self.duck_spans:
             d["duck_db"] = self.duck_db
             d["duck_attack_s"] = self.duck_attack_s
@@ -634,6 +694,7 @@ class AudioTrack:
             duck_spans=tuple((float(a), float(b)) for a, b in (d.get("duck_spans") or [])),
             reverse=bool(d.get("reverse", False)),
             denoise=bool(d.get("denoise", False)), loudnorm=bool(d.get("loudnorm", False)),
+            tempos=tuple(float(t) for t in (d.get("tempos") or [])),
         )
 
 
@@ -883,6 +944,18 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
                         f"(got {seg.speed})")
     if seg.effects is not None:
         problems.extend(_effects_problems(name, seg.effects))
+    if seg.curve is not None:
+        problems.extend(_curve_problems(name, seg.curve))
+        if seg.speed != 1.0:
+            problems.append(f"{name} has a speed curve and a speed")
+        if seg.reverse or seg.freeze:
+            problems.append(f"{name} has a speed curve with reverse or freeze")
+        if seg.kind != KIND_VIDEO:
+            problems.append(f"{name} speed curve is for video, not a {seg.kind}")
+    if seg.interpolate:
+        slowest = seg.speed if seg.curve is None else min((s for _a, s in seg.curve.points), default=1.0)
+        if seg.kind != KIND_VIDEO or seg.reverse or seg.freeze or not slowest < 1.0:
+            problems.append(f"{name} interpolate is for forward slow motion of a video")
     if seg.crop is not None:
         problems.extend(_crop_problems(name, seg.crop))
     if not (_finite(seg.angle) and -ANGLE_MAX <= seg.angle <= ANGLE_MAX):
@@ -1032,6 +1105,11 @@ def validate(spec: RenderSpec) -> List[str]:
             problems.append(f"audio track {i} has a negative start, in point or fade")
         if not _speed_ok(t.speed):
             problems.append(f"audio track {i} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g}")
+            continue
+        if t.tempos and (len(t.tempos) > speed_ramp.SLICES_MAX or t.speed != 1.0
+                         or not all(_finite(x) and SPEED_MIN <= x <= SPEED_MAX for x in t.tempos)):
+            problems.append(f"audio track {i} has bad speed-ramp tempos (at most {speed_ramp.SLICES_MAX}, "
+                            f"each from {SPEED_MIN:g} to {SPEED_MAX:g}, with speed 1)")
             continue
         if t.fade_in_s + t.fade_out_s > t.output_s + 1e-9:
             problems.append(f"audio track {i} fades are longer than the track")
@@ -1189,6 +1267,20 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
         chain += ["areverse", "asetpts=PTS-STARTPTS"]
     if track.speed != 1.0:
         chain.append(tempo_chain(track.speed))
+    ramp = ""
+    if track.tempos:
+        # A speed ramp's sound: asplit the trimmed source into equal slices, each at its own
+        # tempo, and join them. The slices are labelled from this track's label (unique).
+        n = len(track.tempos)
+        step = track.duration_s / n
+        chain.append(f"asplit={n}" + "".join(f"[{label}i{j}]" for j in range(n)))
+        parts = [",".join(chain)]
+        for j, tempo in enumerate(track.tempos):
+            parts.append(f"[{label}i{j}]atrim=start={_t(j * step)}:duration={_t(step)},"
+                         f"asetpts=PTS-STARTPTS,{tempo_chain(tempo)}[{label}o{j}]")
+        ramp = (f"[{input_index}:a]" + ";".join(parts) + ";"
+                + "".join(f"[{label}o{j}]" for j in range(n)) + f"concat=n={n}:v=0:a=1")
+        chain = []
     if track.denoise:
         chain.append(DENOISE_FILTER)
     if track.loudnorm:
@@ -1205,6 +1297,8 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
     delay_ms = int(round(track.start_s * 1000))
     if delay and delay_ms > 0:
         chain.append(f"adelay=delays={delay_ms}:all=1")
+    if ramp:
+        return ramp + "," + ",".join(chain) + f"[{label}]"
     return f"[{input_index}:a]" + ",".join(chain) + f"[{label}]"
 
 

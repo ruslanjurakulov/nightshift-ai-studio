@@ -39,7 +39,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
-from modules import ass_captions, ffmpeg_limits
+from modules import ass_captions, ffmpeg_limits, speed_ramp
 from modules.render_spec import (
     FIT_BLUR,
     FIT_COVER,
@@ -52,6 +52,7 @@ from modules.render_spec import (
     build_ffmpeg_command,
     cap_inputs,
     concat_list_lines,
+    interp_fps,
     segment_frames,
     validate,
 )
@@ -546,8 +547,16 @@ def _video_source(seg: Segment, width: int, height: int, fps: int, full: int,
         span = full / fps * seg.speed          # seconds of SOURCE the clip plays
         return ([*seek, "-t", f"{span:.3f}", "-i", seg.path],
                 f"{geo}{framed},reverse,setpts=(PTS-STARTPTS)/{float(seg.speed):.3f},fps={fps}")
+    if seg.interpolate:
+        # Slow motion made smoother: fit to the output frame, make in-between frames up to a rate
+        # where every output frame of the slowest part is a different one, THEN retime and sample.
+        slowest = seg.speed if seg.curve is None else min(s for _a, s in seg.curve.points)
+        return (["-stream_loop", "-1", *seek, "-i", seg.path],
+                f"{geo}{framed},format=yuv420p,minterpolate=fps={interp_fps(slowest, fps)}"
+                ":mi_mode=mci:mc_mode=aobmc:vsbmc=1,"
+                + retime_filter(seg).rstrip(",") + f",fps={fps}")
     return (["-stream_loop", "-1", *seek, "-i", seg.path],
-            speed_filter(seg.speed) + geo + framed)
+            retime_filter(seg) + geo + framed)
 
 
 def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
@@ -611,6 +620,14 @@ def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, heigh
     if KIND_IMAGE in (seg.kind, x.kind):
         return [cmd(False), cmd(True)]
     return [cmd(False)]
+
+
+def retime_filter(seg: Segment) -> str:
+    """``setpts=...,`` that retimes a video segment: its speed curve when it has
+    one (one expression, modules/speed_ramp.py), else its constant speed ('' at 1)."""
+    if seg.curve is not None:
+        return f"setpts='{speed_ramp.setpts_expression(seg.curve.absolute())}',"
+    return speed_filter(seg.speed)
 
 
 def speed_filter(speed: float) -> str:

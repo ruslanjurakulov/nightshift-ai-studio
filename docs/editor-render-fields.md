@@ -27,6 +27,7 @@ note for text looks).
 | 6 | `claude/render-speed` | V clip `speed` 0.25-4 (pitch kept), `reverse`, `freeze` | PR open (stacked on 5) |
 | 7 | `claude/render-chroma-audio` | overlay `chroma`; `denoise`, `loudnorm` on A clips and V clips | PR open (stacked on 6) |
 | 8 | `claude/render-crop` | V clip `crop` rectangle, free `angle` | PR open (stacked on 7) |
+| 9 | `claude/render-speed-ramp` | V clip `speed_curve` (2-6 points), `interpolate` | PR open (stacked on 8) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -298,3 +299,60 @@ like `contain` (the picture alone).
   `move` zooms into the turned frame.
 * a 45 degree turn of a picture that fills the frame leaves black corners; the
   UI may suggest a zoom (`move` or a `cover` fit of a crop) to hide them.
+
+## 9. Speed ramps (`speed_curve`) and interpolated slow motion (`interpolate`)
+
+### `speed_curve` (V clips, video only)
+
+```json
+"speed_curve": [ {"at": 0, "speed": 1}, {"at": 0.5, "speed": 4}, {"at": 1, "speed": 0.5} ]
+```
+
+* 2 to 6 points. `at` is a fraction (0 to 1) of the SOURCE range `in_s`..`out_s`;
+  the first point must be at 0 and the last at 1, in increasing order and at
+  least 0.01 apart. `speed` 0.25 to 4. Between two points the speed changes
+  linearly (a smooth ramp, not steps); a flat pair is a constant stretch.
+* it REPLACES `speed`: leave `speed` out (or 1). Not with `reverse` or `freeze`.
+  Setting a constant speed in the editor (`setSpeed`) drops the curve.
+* the clip lasts the integral of 1/speed over its range, e.g. the example above
+  on a 4 s range lasts 2.112 s. Use `clipLength(clip)` / `clipEnd(clip)` from
+  `lib/editor.ts` (they know curves); `rampOutTime` / `rampSourceAt` in
+  `lib/editorSpeedRamp.ts` convert between source time and timeline time (for a
+  preview scrubber, a speed graph, a time-remap display).
+* SOUND FOLLOWS (it is not muted): with `audio: true` the clip's range is cut into
+  equal slices (about one per half second, 2 to 16), each played at the tempo that
+  makes it last exactly as long as the picture does there, pitch kept. The sound
+  is therefore on the picture at every slice boundary; inside a slice the speed
+  is the average, so a steep ramp on a short clip is stepped, not smooth.
+  Everything stays within 0.25 to 4, so nothing is dropped for exceeding atempo.
+* a clip with a curve CANNOT be split (the editor's `canSplit` is false, the
+  backend's `split_clip` refuses): remove the curve first. Trimming it changes the
+  range, and so the shape in time, the points stay at the same fractions.
+* known approximations in OTHER helpers: `wordsOnTimeline` (captions import) and
+  the trim-snap helper still use the scalar `speed` (1 for a curve clip), so
+  imported caption times on a curved clip are off; do not offer auto-captions on
+  such a clip until they learn about curves.
+* DATABASE: `editor_doc_duration` (migration 0054) computes a clip's length from
+  `speed` only, so the 30-minute check at request time does not see a curve. The
+  worker recomputes the real length (`tl.duration_s`) and refuses an export longer
+  than `EXPORT_MAX_S` (1800 s) itself (modules/editor_export.py), so a curve
+  cannot get a longer render through; the answer to the user comes from the
+  worker instead of from the request. NO migration is written here.
+
+### `interpolate` (boolean, V clips)
+
+* smoother slow motion: ffmpeg motion-compensated interpolation makes the
+  in-between frames before the clip is retimed. Only valid when the clip plays
+  below speed 1 somewhere (a constant `speed` under 1, or a curve with a point
+  under 1); not with `reverse`/`freeze`.
+* it is SLOW (about 3 frames per second at 1080p on a busy 4-core machine), so
+  the budget is hard: the frames it has to make (the range at the interpolated
+  rate `min(120, ceil(fps / slowest speed))`) times the frame size, counted as
+  1080p-equivalent frames, must be at most 300 per clip and 600 per document.
+  Examples at 30 fps, 0.5x: 5 s of source at 1080p, 11.2 s at 720p. The validator
+  names the limit; `interpolatedFrames()` in `lib/editor.ts` computes it for a UI
+  that wants to disable the switch or warn before saving.
+* the source frames are first taken at the project's frame rate, then
+  interpolated: a 24 fps source in a 30 fps project is interpolated from the
+  30 fps (duplicated-frame) version, which is smoother than nothing but not
+  ideal; a source at the project's rate is best.

@@ -386,6 +386,37 @@
           "maximum": 180.0,
           "default": 0,
           "description": "Degrees clockwise: turns the FITTED picture about its centre inside the frame; what leaves the frame is cut, what is uncovered is black. 0 = none."
+        },
+        "speed_curve": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "description": "A speed ramp instead of speed: points {at, speed}, at = fraction of the source range (first 0, last 1, at least 0.01 apart, increasing), speed 0.25-4 moving linearly between points. Not with speed other than 1, reverse or freeze. The clip lasts the integral of 1/speed; its sound follows in slices.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "at",
+              "speed"
+            ],
+            "properties": {
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "speed": {
+                "type": "number",
+                "minimum": 0.25,
+                "maximum": 4.0
+              }
+            }
+          }
+        },
+        "interpolate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Smoother slow motion by motion-compensated interpolation (slow to render, bounded: INTERP_MAX_FRAMES per clip, INTERP_MAX_FRAMES_DOC per document). Only for a clip that plays below speed 1 somewhere; not with reverse or freeze."
         }
       }
     },

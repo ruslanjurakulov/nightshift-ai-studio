@@ -21,6 +21,7 @@ not a project dependency — tests keep the two in sync)::
               speed?: 0.25..4, audio?: bool, reverse?: bool, freeze?: bool,
               denoise?: bool, loudnorm?: bool,
               crop?: {x?, y?, w?, h?}, angle?: -180..180,
+              speed_curve?: [ {at: 0..1, speed: 0.25..4}, ... 2-6 points ], interpolate?: bool,
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
               filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
               flip_h?, flip_v?, rotate?,
@@ -147,6 +148,27 @@ Rules this module keeps:
   given ones over its ``start_s``..``end_s``; an entrance / exit animation adds
   to it. Animated opacity is the one part that costs real time (a per-pixel
   expression on the overlay), except a move to or from 0, which is a fade.
+* **A speed curve is a few points, linear between them.** ``speed_curve`` (2 to
+  ``RAMP_MAX_POINTS`` points ``{at, speed}``) replaces ``speed`` (which must then
+  be absent or 1): ``at`` is a fraction of the source range ``in_s``..``out_s``
+  (the first point at 0, the last at 1, each at least ``RAMP_MIN_GAP`` after the
+  one before), ``speed`` is 0.25-4 and moves linearly between points, so a ramp
+  is smooth. The clip lasts the integral of ``1 / speed`` over its range
+  (``modules/speed_ramp.py``, one closed form shared by every validator and the
+  render), and its own sound follows: the range is cut into equal slices
+  (about one per half second, 2 to 16), each played at the tempo that makes it last
+  exactly as long as the picture does there, pitch kept (so the sound is on
+  the picture at every slice boundary; the speed inside a slice is its average).
+  A curve cannot be combined with ``reverse`` or ``freeze``, and splitting a
+  clip with a curve is refused (remove the curve first). ``interpolate: true``
+  makes slow motion smoother with ffmpeg's motion-compensated interpolation
+  (``minterpolate``): only for a clip that goes below speed 1 at some point, not
+  with reverse / freeze, and bounded in cost: the frames it has to make (the
+  range at the interpolated rate, ``ceil(fps / slowest speed)`` capped at
+  ``INTERP_MAX_FPS``) weighted by frame size must stay inside
+  ``INTERP_MAX_FRAMES`` per clip and ``INTERP_MAX_FRAMES_DOC`` per document
+  (1080p-equivalent frames; it is slow, about 3 frames a second at 1080p on a busy
+  machine). The source frames are first taken at the project's frame rate.
 * **Crop and a free angle.** A V clip's ``crop: {x, y, w, h}`` keeps a rectangle of
   the SOURCE picture, as fractions of it (``x``/``y`` the top-left corner 0-1,
   ``w``/``h`` its size ``CROP_MIN``-1; defaults 0, 0, 1, 1; the rectangle must
@@ -205,6 +227,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+from modules import speed_ramp
 
 VERSION = 1
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "timeline.schema.json"
@@ -348,6 +372,17 @@ CROP_DEFAULTS = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
 ANGLE_MAX = 180.0
 _CROP_KEYS = tuple(CROP_DEFAULTS)
 
+#: A speed curve (modules/speed_ramp.py has the arithmetic; render_spec.RAMP_* are
+#: the same numbers, a test pins them).
+RAMP_MIN_POINTS, RAMP_MAX_POINTS = 2, 6
+RAMP_MIN_GAP = 0.01
+#: Interpolated slow motion: the dense frame rate, and the budget of
+#: 1080p-equivalent frames it may make for one clip and for a whole document.
+INTERP_MAX_FPS = 120
+INTERP_MAX_FRAMES = 300
+INTERP_MAX_FRAMES_DOC = 600
+_INTERP_REF_PIXELS = 1920 * 1080
+
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
@@ -374,7 +409,8 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle") + _EFFECT_KEYS
+                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle", "speed_curve",
+                                  "interpolate") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -617,6 +653,13 @@ def validate(doc: Any) -> List[str]:
     if n_type > MAX_TYPEWRITER_TEXTS:
         problems.append(f"timeline: at most {MAX_TYPEWRITER_TEXTS} typewriter texts (got {n_type})")
 
+    if not problems and _is_int(w) and _is_int(h) and fps:
+        total_interp = sum(interpolated_frames(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
+                           for c in t["clips"] if isinstance(c, dict) and c.get("interpolate") is True)
+        if total_interp > INTERP_MAX_FRAMES_DOC:
+            problems.append(f"timeline: interpolated slow motion would make about {total_interp:.0f} frames "
+                            f"(1080p equivalent) in all; at most {INTERP_MAX_FRAMES_DOC} per timeline")
+
     captions = doc.get("captions")
     if captions is not None:
         _validate_captions(captions, problems, claim)
@@ -678,6 +721,11 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         speed = clip["speed"] if (_is_num(clip["speed"]) and SPEED_MIN <= clip["speed"] <= SPEED_MAX) else None
     if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
         problems.append(f"{where}: audio must be true or false")
+    ramp = None
+    if kind == KIND_V and "speed_curve" in clip:
+        ramp = _validate_speed_curve(clip, where, problems)
+    if kind == KIND_V and "interpolate" in clip and not isinstance(clip["interpolate"], bool):
+        problems.append(f"{where}: interpolate must be true or false")
     for k in ("denoise", "loudnorm"):
         if k in clip and not isinstance(clip[k], bool):
             problems.append(f"{where}: {k} must be true or false")
@@ -692,13 +740,16 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
                 problems.append(f"{where}: a frozen clip has no speed (it holds one frame)")
             if clip.get("audio") is True:
                 problems.append(f"{where}: a frozen clip has no sound")
+    if kind == KIND_V and ramp is not None:
+        speed = None    # the length comes from the curve (below), not from one speed
     ins, outs = clip.get("in_s"), clip.get("out_s")
     # Range first, derived maths after: an out_s of 1e308 is already reported above, and
     # `round(length * fps)` of it is an OverflowError, not a problem (a crash that left an
     # export stuck rendering).
-    if _in_range(ins) and _in_range(outs) and speed:
+    if _in_range(ins) and _in_range(outs) and (speed or ramp is not None):
         # How long the clip lasts ON THE TIMELINE: the source range at its speed.
-        length = _ms((_ms(outs) - _ms(ins)) / speed)
+        length = (_ms(speed_ramp.out_length(speed_ramp.absolute(ramp, _ms(outs) - _ms(ins))))
+                  if ramp is not None else _ms((_ms(outs) - _ms(ins)) / speed))
         if _ms(outs) - _ms(ins) <= 0:
             problems.append(f"{where}: out_s ({outs}) must be greater than in_s ({ins})")
         elif fps and round(length * fps) < 1:
@@ -712,6 +763,8 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         elif (_is_num(clip.get("fade_in_s", 0)) and _is_num(clip.get("fade_out_s", 0))
               and clip.get("fade_in_s", 0) + clip.get("fade_out_s", 0) > length + 1e-9):
             problems.append(f"{where}: fade_in_s + fade_out_s is longer than the clip ({length:.3f} s)")
+    if kind == KIND_V and clip.get("interpolate") is True:
+        _validate_interpolate(clip, where, frame, fps, ramp, problems)
     if kind == KIND_V:
         if "fit" in clip and clip["fit"] not in FITS:
             problems.append(f"{where}: fit must be one of {list(FITS)}")
@@ -742,6 +795,62 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
                     _num_in(tr, "duration_s", 0, 10.0, f"{where} transition", problems)
     else:
         _num_in(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems)
+
+
+def _validate_speed_curve(clip, where, problems):
+    """The ``speed_curve`` field. Returns its ``[(at, speed)]`` points when it is
+    well-formed (so the length can be worked out), else None."""
+    cw = f"{where} speed_curve"
+    curve = clip["speed_curve"]
+    if not isinstance(curve, list) or not RAMP_MIN_POINTS <= len(curve) <= RAMP_MAX_POINTS:
+        problems.append(f"{cw}: must be a list of {RAMP_MIN_POINTS} to {RAMP_MAX_POINTS} points")
+        return None
+    ok = True
+    pts = []
+    for i, p in enumerate(curve):
+        pw = f"{cw} point {i}"
+        if not _fields(p, ("at", "speed"), ("at", "speed"), pw, problems):
+            ok = False
+            continue
+        _num_in(p, "at", 0, 1, pw, problems)
+        _num_in(p, "speed", SPEED_MIN, SPEED_MAX, pw, problems)
+        if not (_is_num(p.get("at")) and 0 <= p["at"] <= 1 and _is_num(p.get("speed"))
+                and SPEED_MIN <= p["speed"] <= SPEED_MAX):
+            ok = False
+            continue
+        pts.append((p["at"], p["speed"]))
+    if not ok:
+        return None
+    if pts[0][0] != 0 or pts[-1][0] != 1:
+        problems.append(f"{cw}: the first point must be at 0 and the last at 1")
+        return None
+    if any(b[0] - a[0] < RAMP_MIN_GAP - 1e-12 for a, b in zip(pts, pts[1:])):
+        problems.append(f"{cw}: points must be at least {RAMP_MIN_GAP:g} apart, in order")
+        return None
+    if _is_num(clip.get("speed", 1.0)) and clip.get("speed", 1.0) != 1.0:
+        problems.append(f"{where}: a speed curve replaces speed (leave speed out or 1)")
+    for k in ("reverse", "freeze"):
+        if clip.get(k) is True:
+            problems.append(f"{where}: a speed curve cannot be combined with {k}")
+    return pts
+
+
+def _validate_interpolate(clip, where, frame, fps, ramp, problems) -> None:
+    if clip.get("reverse") is True or clip.get("freeze") is True:
+        problems.append(f"{where}: interpolate is for forward slow motion (not with reverse or freeze)")
+        return
+    speeds = [s for _a, s in ramp] if ramp is not None else [clip.get("speed", 1.0)]
+    if not all(_is_num(v) for v in speeds) or min(speeds) >= 1.0:
+        problems.append(f"{where}: interpolate is for slow motion (some part must play below speed 1)")
+        return
+    if not (_is_int(frame[0]) and _is_int(frame[1]) and fps and _in_range(clip.get("in_s"))
+            and _in_range(clip.get("out_s"))):
+        return
+    probe = {"in_s": clip["in_s"], "out_s": clip["out_s"], "speed": min(speeds)}
+    cost = interpolated_frames(probe, fps, frame[0], frame[1])
+    if cost > INTERP_MAX_FRAMES:
+        problems.append(f"{where}: interpolating this range would make about {cost:.0f} frames (1080p "
+                        f"equivalent); at most {INTERP_MAX_FRAMES} per clip — shorten the range")
 
 
 def _validate_crop(crop, where, problems) -> None:
@@ -938,12 +1047,45 @@ def clip_speed(clip: dict) -> float:
     return float(v) if _is_num(v) and v > 0 else 1.0
 
 
+def clip_ramp_points(clip: dict) -> Optional[List[Tuple[float, float]]]:
+    """A clip's speed curve as ``(source seconds, speed)`` points, or None."""
+    curve = clip.get("speed_curve")
+    if not curve:
+        return None
+    return speed_ramp.absolute([(p["at"], p["speed"]) for p in curve],
+                               _ms(clip["out_s"]) - _ms(clip["in_s"]))
+
+
+def clip_length_s(clip: dict) -> float:
+    """How long a media clip lasts on the timeline: its source range at its speed,
+    or at its speed curve."""
+    pts = clip_ramp_points(clip)
+    if pts is not None:
+        return _ms(speed_ramp.out_length(pts))
+    return _ms((_ms(clip["out_s"]) - _ms(clip["in_s"])) / clip_speed(clip))
+
+
+def clip_min_speed(clip: dict) -> float:
+    """The slowest the clip ever plays."""
+    curve = clip.get("speed_curve")
+    if curve:
+        return min(p["speed"] for p in curve)
+    return clip_speed(clip)
+
+
+def interpolated_frames(clip: dict, fps: int, width: int, height: int) -> float:
+    """The 1080p-equivalent frames ``interpolate`` has to make for this clip."""
+    rate = min(INTERP_MAX_FPS, math.ceil(fps / clip_min_speed(clip)))
+    frames = math.ceil((_ms(clip["out_s"]) - _ms(clip["in_s"])) * rate)
+    return frames * width * height / _INTERP_REF_PIXELS
+
+
 def clip_end_s(clip: dict) -> float:
     """Where a clip ends on the timeline, in seconds (ms-rounded): a text's
     ``end_s``, or a media clip's start plus its source range at its speed."""
     if "end_s" in clip:
         return _ms(clip["end_s"])
-    return _ms(_ms(clip["start_s"]) + (_ms(clip["out_s"]) - _ms(clip["in_s"])) / clip_speed(clip))
+    return _ms(_ms(clip["start_s"]) + clip_length_s(clip))
 
 
 def _spans(doc: dict):
@@ -1214,6 +1356,10 @@ def normalise(doc: dict) -> dict:
                     for k in ("reverse", "freeze", "denoise", "loudnorm"):
                         if c.get(k) is False:
                             del c[k]
+                    if "speed_curve" in c:
+                        c["speed_curve"] = [{"at": _ms(p["at"]), "speed": _ms(p["speed"])} for p in c["speed_curve"]]
+                    if c.get("interpolate") is False:
+                        del c["interpolate"]
                     if "crop" in c:
                         c["crop"] = {k: _ms({**CROP_DEFAULTS, **c["crop"]}[k]) for k in CROP_DEFAULTS}
                         if c["crop"] == CROP_DEFAULTS:
@@ -1342,6 +1488,8 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
                 continue
             if track.get("kind") == KIND_T:
                 raise TimelineError([f"clip {clip_id!r} is text — change its times instead"])
+            if clip.get("speed_curve"):
+                raise TimelineError([f"clip {clip_id!r} has a speed curve — remove it before splitting"])
             start, end = _ms(clip["start_s"]), clip_end_s(clip)
             at = _ms(at_s)
             if not start < at < end:
