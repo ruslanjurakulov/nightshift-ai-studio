@@ -21,7 +21,7 @@ import { MODEL_ID_RE } from "@/lib/models-admin";
 
 // ── tasks ───────────────────────────────────────────────────────────────────
 
-/** The registry's capabilities (0072's model_registry_capabilities_check). */
+/** The registry's capabilities (0099's model_registry_capabilities_check). */
 export const REGISTRY_CAPABILITIES = [
   "t2i",
   "edit",
@@ -36,6 +36,9 @@ export const REGISTRY_CAPABILITIES = [
   "video_upscale",
   "describe",
   "captions",
+  "expand",
+  "relight",
+  "erase",
 ] as const;
 export type RegistryCapability = (typeof REGISTRY_CAPABILITIES)[number];
 
@@ -51,7 +54,8 @@ export function isRegistryCapability(v: unknown): v is RegistryCapability {
  */
 export const TASKS = [
   { id: "image", caps: ["t2i"] },
-  { id: "edit", caps: ["edit"] },
+  // The picture ops (0099) are changes to a picture too: they share the task.
+  { id: "edit", caps: ["edit", "expand", "relight", "erase"] },
   { id: "video_text", caps: ["t2v"] },
   { id: "video_image", caps: ["i2v"] },
   { id: "voice", caps: ["tts", "voice_change"] },
@@ -103,6 +107,9 @@ const CAP_INPUTS: Record<RegistryCapability, readonly InputKind[]> = {
   video_upscale: ["video"],
   describe: ["image"],
   captions: ["audio", "video"],
+  expand: ["image", "text"],
+  relight: ["image", "text"],
+  erase: ["image", "text"],
 };
 
 /**
@@ -164,6 +171,9 @@ const SOURCE_LIMITS: Partial<Record<RegistryCapability, { seconds?: number; mb?:
   captions: { seconds: 1800, mb: 512 },
   video_upscale: { mb: 200 },
   describe: { mb: 15 },
+  expand: { mb: 15 },
+  relight: { mb: 15 },
+  erase: { mb: 15 },
 };
 
 export type SourceKind = "picture" | "video" | "recording";
@@ -181,7 +191,16 @@ export interface SourceRule {
 export function sourceRule(cap: RegistryCapability, modelMaxSeconds: number | null = null): SourceRule | null {
   let kind: SourceKind;
   let mimes: readonly string[];
-  if (cap === "edit" || cap === "i2v" || cap === "upscale" || cap === "remove_bg" || cap === "describe") {
+  if (
+    cap === "edit" ||
+    cap === "i2v" ||
+    cap === "upscale" ||
+    cap === "remove_bg" ||
+    cap === "describe" ||
+    cap === "expand" ||
+    cap === "relight" ||
+    cap === "erase"
+  ) {
     kind = "picture";
     mimes = PICTURE_MIME;
   } else if (cap === "video_upscale") {

@@ -145,7 +145,7 @@ describe("chips, search, sort", () => {
 
   it("search by name and sort oldest first", () => {
     const { container } = render(withI18n(<MediaLibrary orgId={ORG} initial={lib([a, b, c])} />));
-    const names = () => Array.from(container.querySelectorAll("[data-asset-kind] button")).map((x) => x.getAttribute("aria-label"));
+    const names = () => Array.from(container.querySelectorAll("[data-asset-kind] button:not([data-testid=\"improve-with-ai\"])")).map((x) => x.getAttribute("aria-label"));
     expect(names()).toEqual(["Open intro.mp4", "Open voice.mp3", "Open beach.png"]);
 
     fireEvent.change(screen.getByRole("combobox", { name: tm.sort }), { target: { value: "oldest" } });

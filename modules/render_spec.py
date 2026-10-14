@@ -74,6 +74,10 @@ against the argv captured from the code before this extension):
     A sidechain compressor was not used: it lowers by a ratio of whatever the
     speech level happens to be, so "12 dB" would mean something different on
     every clip, and a track's gain would change what it does.
+  * ``TextOverlay.caption_style`` / ``highlight_color`` - a caption cue in one
+    of the ten ready-made animated styles (modules/caption_styles.py); the ASS
+    file gets the style's own tags for it, from a closed list and clamped
+    numbers. Absent = the plain overlay, byte for byte.
   * ``RenderSpec.picture_overlays`` — a picture or a video laid over the
     composited picture for a span of frames (picture-in-picture, a sticker, a
     logo): placed by its centre, sized by its width, with an opacity. They
@@ -90,7 +94,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
-from modules import ffmpeg_limits
+from modules import caption_styles, ffmpeg_limits
 
 #: The ONE quality encode of a render (the final pass). These are libx264's own
 #: defaults — what this backend always encoded with implicitly — spelled out so
@@ -548,6 +552,11 @@ class TextOverlay:
     anim_out: Optional[str] = None
     anim_in_s: float = ANIM_DEFAULT_S
     anim_out_s: float = ANIM_DEFAULT_S
+    #: An animated caption style (modules/caption_styles.py STYLE_IDS) and its
+    #: highlight colour: ass_captions writes such a cue with the style's own
+    #: tags instead of the plain overlay. None = the plain overlay it always was.
+    caption_style: Optional[str] = None
+    highlight_color: Optional[str] = None
 
     def to_dict(self) -> dict:
         d = {"start_s": self.start_s, "end_s": self.end_s, "text": self.text,
@@ -560,6 +569,8 @@ class TextOverlay:
             d["box_color"] = self.box_color
             d["box_opacity"] = self.box_opacity
         _anims_to_dict(self, d)
+        _put_if(d, "caption_style", self.caption_style, None)
+        _put_if(d, "highlight_color", self.highlight_color, None)
         return d
 
     @staticmethod
@@ -586,6 +597,9 @@ class TextOverlay:
             box_opacity=float(d["box_opacity"] if d.get("box_opacity") is not None
                               else BOX_OPACITY_DEFAULT),
             **_anims_from_dict(d),
+            caption_style=(str(d["caption_style"]) if d.get("caption_style") is not None else None),
+            highlight_color=(str(d["highlight_color"]) if d.get("highlight_color") is not None
+                             else None),
         )
 
 
@@ -887,6 +901,11 @@ def validate(spec: RenderSpec) -> List[str]:
         for anim, fade in (("anim_in", "fade_in_s"), ("anim_out", "fade_out_s")):
             if getattr(o, anim) is not None and _finite(getattr(o, fade)) and getattr(o, fade) > 0:
                 problems.append(f"overlay {i} has {anim} and {fade}: use one of them")
+        if o.caption_style is not None and not caption_styles.is_style(o.caption_style):
+            problems.append(f"overlay {i} caption_style must be one of {list(caption_styles.STYLE_IDS)}")
+        if o.highlight_color is not None and not (isinstance(o.highlight_color, str)
+                                                  and _HEX.fullmatch(o.highlight_color)):
+            problems.append(f"overlay {i} highlight_color must be a #RRGGBB colour")
     problems.extend(_picture_overlay_problems(spec))
     return problems
 

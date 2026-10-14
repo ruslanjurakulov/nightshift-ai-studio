@@ -289,6 +289,17 @@ def _anims(c: dict) -> dict:
             out[key] = c[key]
             out[key + "_s"] = c[key + "_s"]
     return out
+def _caption_style(st: dict) -> dict:
+    """An animated style's TextOverlay fields ({} without one: the cue is then
+    the plain overlay it always was). The style also owns where its anchor sits
+    (a lower third hugs the left edge, a big centre sits mid-frame), the
+    document's ``y`` being the height the person set on it."""
+    preset = st.get("preset")
+    if not preset:
+        return {}
+    d = tl.caption_styles.STYLES[preset]
+    return {"caption_style": preset, "x": d.x, "anchor": d.anchor,
+            "highlight_color": st.get("highlight_color", d.highlight_color)}
 
 
 def _text(doc: dict) -> List[TextOverlay]:
@@ -313,8 +324,8 @@ def _text(doc: dict) -> List[TextOverlay]:
             overlays.append(TextOverlay(
                 start_s=cue["start_s"], end_s=cue["end_s"], text=cue["text"], font=st["font"],
                 size=st["size"], color=st["color"], outline_color=st["outline_color"],
-                outline_width=st["outline_width"], bold=st["bold"], x=0.5, y=st["y"],
-                anchor="bottom",
+                outline_width=st["outline_width"], bold=st["bold"], y=st["y"],
+                **{"x": 0.5, "anchor": "bottom", **_caption_style(st)},
             ))
     return overlays
 
