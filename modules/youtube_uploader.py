@@ -119,23 +119,32 @@ TIMESTAMP_LINE = re.compile(r"^\s*(?:[-*\u2022]\s*)?\d{1,2}:\d{2}(?::\d{2})?\b")
 CAPTION_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
 
 
-def caption_language(channel: Optional[ChannelContext]) -> Optional[str]:
-    """The BCP-47 code to label this channel's caption track with, or None.
+def content_language(channel: Optional[ChannelContext]) -> Optional[str]:
+    """The BCP-47 code YouTube should be told this video is in, or None.
 
-    A caption track carries a language that YouTube shows to viewers and
-    machine-translates from. Guessing "en" for a channel narrating in Uzbek
-    would put an English label on Uzbek words — the caption equivalent of
-    narrating in the wrong voice — so an unrecognised language yields None and
-    no track is uploaded.
+    One helper for both places that label a language — the video's
+    `snippet.defaultLanguage` and the caption track — so they cannot disagree.
+    The source is the channel's `agent.language`, which a per-run `--language`
+    already overrides (main.py), falling back to config.SCRIPT_LANGUAGE.
+
+    A label is shown to viewers and drives YouTube's auto-translation, so a
+    wrong one is worse than none: this once hard-coded "en" and tagged Russian
+    and Uzbek videos as English. A language this module cannot name yields None,
+    and the caller omits the field (metadata) or skips the track (captions).
+    A code ("ru", "pt-BR") is accepted only when its primary subtag is one the
+    closed CAPTION_LANGUAGES table knows, so a typo cannot reach videos.insert.
     """
     agent = getattr(channel, "agent", None) if channel is not None else None
     language = (getattr(agent, "language", None) or SCRIPT_LANGUAGE or "").strip()
     if not language:
         return None
-    # Already a code ("en", "en-US", "pt-BR") — take it as given.
     if re.fullmatch(r"[a-z]{2}(-[A-Za-z0-9]{2,8})?", language):
-        return language
+        return language if language.split("-")[0] in CAPTION_LANGUAGES.values() else None
     return CAPTION_LANGUAGES.get(language.lower())
+
+
+#: The caption track is labelled by the same helper as the video metadata.
+caption_language = content_language
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -600,13 +609,18 @@ class YouTubeUploader:
                 "description": description,
                 "tags": tags,
                 "categoryId": YOUTUBE_CATEGORY_ID,
-                "defaultLanguage": "en",
             },
             "status": {
                 "privacyStatus": privacy,
                 "selfDeclaredMadeForKids": False,
             },
         }
+
+        # Labelled from the channel's real language, never a constant; an
+        # unknown language sends no field rather than a wrong one.
+        language = content_language(self.channel)
+        if language:
+            body["snippet"]["defaultLanguage"] = language
 
         # Target specific channel if configured (Brand Account)
         if self.target_channel_id:
@@ -683,7 +697,7 @@ class YouTubeUploader:
             logger.info("%sNo subtitles to upload (%s)", self._label, path.name)
             return False
 
-        language = caption_language(self.channel)
+        language = content_language(self.channel)
         if language is None:
             logger.warning(
                 "%sSubtitles not uploaded: this channel's language is not one this "
