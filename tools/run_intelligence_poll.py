@@ -48,6 +48,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("intelligence_poll")
 
+#: Longest comment text kept for demand clustering: the topic limit of a run request (modules/run_request.py).
+DEMAND_TEXT_CHARS = 300
+
 # logs/intelligence_poll.log is uploaded as an artifact. A googleapiclient
 # error quotes its request URI, and the Data API key rides in it as ?key=.
 from modules import log_redaction  # noqa: E402
@@ -57,6 +60,7 @@ log_redaction.install()
 from modules.audience_demand import AudienceDemandEngine
 from modules.comment_fetcher import CommentFetcher
 from modules.comment_intelligence import classify_comments
+from modules.comment_replies import clean_text
 from modules import event_log as events
 from modules.content_planner import ContentPlanner
 from modules.channels import DEFAULT_CHANNEL_ID, ChannelRegistry
@@ -121,14 +125,19 @@ def poll_comments_for_recent_videos(store: StateStore, limit: int = 10, channel=
                     video_id, len(flagged),
                 )
             text_by_id = {c["id"]: c["text"] for c in comments}
+            # A viewer's comment becomes a demand signal, then a ranked topic, then a queued topic
+            # that is interpolated into the script prompt. A comment the classifier flagged as an
+            # injection attempt, or never classified, is not a verdict to build a topic on (the
+            # comment inbox refuses both too), and the text that does pass is cleaned and bounded.
             all_records.extend(
                 {
                     "comment_id": c.comment_id,
                     "sentiment": c.sentiment,
                     "category": c.category,
-                    "text": text_by_id.get(c.comment_id, ""),
+                    "text": clean_text(text_by_id.get(c.comment_id, ""), DEMAND_TEXT_CHARS),
                 }
                 for c in classified
+                if not c.flagged_injection_attempt and getattr(c, "classified", True)
             )
             logger.info("Video %s: %d comment(s) classified", video_id, len(classified))
         except Exception as e:
