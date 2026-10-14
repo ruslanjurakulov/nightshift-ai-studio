@@ -3944,6 +3944,7 @@ export const uz: Dictionary = {
       network: "Ulanish uzildi yoki juda sekin boʻldi. Yuklash 5 daqiqa ichida tugashi kerak.",
       folder_not_found: "Bu jild endi yoʻq. Yuklash uchun “Barcha fayllar”ni oching yoki boshqa jildni tanlang.",
       folder_forbidden: "Jildga yuklashga ruxsatingiz yoʻq. Yuklash uchun “Barcha fayllar”ni oching.",
+      not_dismissable: "Bu yuklash hali davom etmoqda, uni olib tashlab boʻlmaydi.",
       failed: "Nimadir xato ketdi. Qaytadan urinib koʻring.",
     },
     kinds: { image: "Rasm", video: "Video", audio: "Audio", caption: "Subtitrlar" },
@@ -3972,6 +3973,10 @@ export const uz: Dictionary = {
     deleteSelected: "Oʻchirish ({n})",
     deleteSelectedConfirm: "{n} ta fayl oʻchirilsinmi? Ular mediatekadan darhol yoʻqoladi; server fayllarni oʻchirgach, joy boʻshaydi.",
     bulkPartial: "{n} tadan {failed} tasini oʻchirib boʻlmadi.",
+    dismiss: "Olib tashlash",
+    dismissItem: "{name} ni olib tashlash",
+    dismissing: "Olib tashlanmoqda…",
+    dismissed: "“{name}” roʻyxatingizdan olib tashlandi.",
     viewer: {
       close: "Yopish",
       prev: "Oldingi",

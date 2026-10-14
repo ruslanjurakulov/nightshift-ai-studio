@@ -292,6 +292,7 @@ export type MediaError =
   | "not_available"
   | "folder_not_found"
   | "folder_forbidden"
+  | "not_dismissable"
   | "failed";
 
 /** A refusal from 0038's functions -> a word and an HTTP status. */
