@@ -15,6 +15,7 @@ import {
 import { Timecode } from "@/components/ui/Timecode";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { formatDuration } from "@/lib/media";
+import { useDayTime } from "@/components/usage/useDay";
 import { createProject } from "./editorApi";
 
 export interface ProjectRow {
@@ -37,7 +38,7 @@ export function EditorHome({
   projects: readonly ProjectRow[];
   videos: readonly EditorAsset[] | null;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const te = t.editor;
   const path = useChannelPath();
   const router = useRouter();
@@ -47,13 +48,7 @@ export function EditorHome({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<EditorError | null>(null);
 
-  const when = (iso: string | null) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime())
-      ? "—"
-      : d.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
-  };
+  const when = useDayTime();
 
   async function onCreate() {
     const name = parseTitle(title);

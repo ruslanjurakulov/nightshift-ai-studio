@@ -112,7 +112,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
   const suggestions = [...SPECIAL_UNITS, ...LEDGER_UNITS];
 
   return (
-    <div id="credit-prices" className="panel flex scroll-mt-24 flex-col gap-3 p-5 sm:p-6">
+    <div id="credit-prices" className="panel flex scroll-mt-7 flex-col gap-3 p-5 sm:p-6">
       <h2 className="t-section">{t.credits.pricesTitle}</h2>
       <p className="text-xs leading-relaxed text-[var(--color-muted)]">{t.credits.pricesHint}</p>
 
@@ -240,7 +240,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
       )}
 
       {canEdit ? (
-        <div ref={formRef} className="flex flex-wrap items-end gap-3 scroll-mt-24">
+        <div ref={formRef} className="flex flex-wrap items-end gap-3 scroll-mt-7">
           {/* Visible labels: once a field holds a value its placeholder is gone, and a phone shows no hint of which field is which. */}
           <label className="flex w-full flex-col gap-1 sm:w-56">
             <span className={fieldLabel}>{t.credits.colUnit}</span>

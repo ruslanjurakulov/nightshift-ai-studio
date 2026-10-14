@@ -107,7 +107,7 @@ export function GenerateSection({
     const deskHas = (c: (typeof tools)[number]) => tools.includes(c);
     return (
       <div className="desk-layout" data-desk={desk} style={dock}>
-        <div ref={top} className="desk-layout-composer scroll-mt-24" data-testid="gen-composer">
+        <div ref={top} className="desk-layout-composer scroll-mt-7" data-testid="gen-composer">
           {panel}
         </div>
         <div className="desk-layout-canvas flex min-w-0 flex-col gap-6" data-testid="gen-canvas">
@@ -138,7 +138,7 @@ export function GenerateSection({
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]" style={dock}>
       <div
         ref={top}
-        className="scroll-mt-24 lg:sticky lg:top-[96px] lg:max-h-[calc(100dvh-112px)] lg:overflow-y-auto lg:rounded-[var(--ns-r-sheet)]"
+        className="scroll-mt-7 lg:sticky lg:top-[96px] lg:max-h-[calc(100dvh-112px)] lg:overflow-y-auto lg:rounded-[var(--ns-r-sheet)]"
         data-testid="gen-composer"
       >
         {panel}

@@ -73,3 +73,17 @@ export function formatAhead(value: number, unit: Unit, locale: string | undefine
   if (unit === "day" && value === 1) return "ertaga";
   return `${value} ${unit === "day" ? "kundan" : unit === "hour" ? "soatdan" : "daqiqadan"} keyin`;
 }
+
+/**
+ * A day and a time for display ("2026-10-13 20:18" is what Intl gives Uzbek): the three app languages by the same table as
+ * formatDay, plus the time as 24-hour HH:MM; another language: the runtime's Intl short date and time. Viewer's own zone;
+ * `timeZone: "UTC"` is what a first render on the server (no zone) must print, see useDayTime.
+ */
+export function formatDayTime(d: Date, locale: string | undefined, timeZone?: "UTC"): string {
+  const l = lang(locale);
+  const utc = timeZone === "UTC";
+  if (l !== "uz") return d.toLocaleString(locale, { dateStyle: "short", timeStyle: "short", ...(utc ? { timeZone: "UTC" } : {}) });
+  const hh = String(utc ? d.getUTCHours() : d.getHours()).padStart(2, "0");
+  const mm = String(utc ? d.getUTCMinutes() : d.getMinutes()).padStart(2, "0");
+  return `${formatDay(d, locale, timeZone)}, ${hh}:${mm}`;
+}
