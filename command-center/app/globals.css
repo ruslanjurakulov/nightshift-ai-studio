@@ -898,6 +898,9 @@ option {
   --tool-expand: var(--ns-key);
   --tool-relight: var(--ns-key);
   --tool-erase: var(--ns-key);
+  --tool-video_edit: var(--ns-key);
+  --tool-video_reframe: var(--ns-key);
+  --tool-video_remove_bg: var(--ns-key);
 }
 
 .shell-sidebar {

@@ -13,6 +13,7 @@ import {
   REVERSE_MAX_BYTES,
   SPEED_MAX,
   SPEED_MIN,
+  canSplit,
   reverseMaxSeconds,
   setSpeed,
   splitClip,
@@ -91,6 +92,18 @@ describe("reverse and freeze", () => {
     // played backwards, the first half on the timeline is the LATER part of the range
     expect(cut.clips.map((c) => [c.in_s, c.out_s])).toEqual([[2, 4], [0, 2]]);
     expect(setSpeed(m, "c1", 2).clips[0].reverse).toBe(true);
+    // not the middle: a 0..10 clip played backwards, cut 3 s in, is 7..10 then 0..7
+    const long = toModel(doc({ reverse: true, in_s: 0, out_s: 10 }));
+    expect(canSplit(long, "c1", 3)).toBe(true);
+    const off = splitClip(long, "c1", 3)!.model;
+    expect(off.clips.map((c) => [c.in_s, c.out_s])).toEqual([[7, 10], [0, 7]]);
+    expect(off.clips.map((c) => c.start_s)).toEqual([0, 3]);
+    expect(validateTimeline(toDoc(off))).toEqual([]);
+    const fast = splitClip(toModel(doc({ reverse: true, in_s: 1, out_s: 5, speed: 2 })), "c1", 0.5)!.model;
+    expect(fast.clips.map((c) => [c.in_s, c.out_s])).toEqual([[4, 5], [1, 4]]);
+    // too close to the end it plays from: refused
+    expect(canSplit(long, "c1", 9.99)).toBe(false);
+    expect(canSplit(long, "c1", 0.01)).toBe(false);
     expect(JSON.stringify(toDoc(toModel(doc({ reverse: false, freeze: false }))))).not.toMatch(/reverse|freeze/);
     expect(toModel(doc({ freeze: true })).clips[0].freeze).toBe(true);
     const frozen = splitClip(toModel(doc({ freeze: true, in_s: 1, out_s: 4 })), "c1", 1)!.model;

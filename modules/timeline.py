@@ -1307,7 +1307,8 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
     The timeline's length and every other clip are unchanged; for a video,
     a split on the frame grid plays the same source frames as before. Both
     halves keep the clip's speed and sound: ``at_s`` is timeline time, so the
-    source cut is ``in_s + (at_s - start_s) * speed``."""
+    source cut is ``in_s + (at_s - start_s) * speed`` — and ``out_s - (at_s -
+    start_s) * speed`` for a reversed clip, which plays its range from the end."""
     out = copy.deepcopy(doc)
     for track in out.get("tracks") or []:
         for i, clip in enumerate(track.get("clips") or []):
@@ -1320,7 +1321,10 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
             if not start < at < end:
                 raise TimelineError([f"split point {at} s is not inside clip {clip_id!r} "
                                      f"({start}-{end} s)"])
-            cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
+            if clip.get("reverse"):
+                cut = _ms(_ms(clip["out_s"]) - (at - start) * clip_speed(clip))
+            else:
+                cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
             if not _ms(clip["in_s"]) < cut < _ms(clip["out_s"]):
                 raise TimelineError([f"split point {at} s is too close to an end of clip {clip_id!r}"])
             second = copy.deepcopy(clip)

@@ -48,7 +48,11 @@ from modules.capabilities.base import (
     RELIGHT,
     RELIGHT_LOOKS,
     UPSCALE,
+    VIDEO_EDIT,
     VIDEO_INPUT,
+    VIDEO_OPS,
+    VIDEO_REFRAME,
+    VIDEO_REMOVE_BG,
     VIDEO_UPSCALE,
     CapabilityRequest,
 )
@@ -326,10 +330,13 @@ class ModelEntry:
         if cap != CAPTIONS and request.spoken_language is not None:
             out.append(f"a spoken language does not apply to {cap}")
         # The picture ops (0099) are sold only for the shapes and lights the model was proven for.
-        if cap == EXPAND and not request.aspect_ratio:
-            out.append("expand needs the shape to extend the picture to")
+        if cap in (EXPAND, VIDEO_REFRAME) and not request.aspect_ratio:
+            out.append(f"{cap} needs the shape to change the {'video' if cap == VIDEO_REFRAME else 'picture'} to")
         if cap in (RELIGHT, ERASE) and request.aspect_ratio:
             out.append(f"{cap} keeps the picture's own shape: an aspect ratio does not apply")
+        # The video ops (0100): the edit is asked by its words; the others keep or name the shape.
+        if cap in (VIDEO_EDIT, VIDEO_REMOVE_BG) and request.aspect_ratio:
+            out.append(f"{cap} keeps the video's own shape: an aspect ratio does not apply")
         if cap == RELIGHT and request.look is not None and request.look not in self.relight_looks:
             out.append(f"{self.id} does not relight with the {request.look} look")
         if cap != RELIGHT and request.look is not None:
@@ -365,7 +372,8 @@ class ModelEntry:
         # A description takes no words of ours either: the picture is the input.
         # An expand is asked by its shape, and a relight by its look when the
         # probe names one (the database sends exactly one of look / prompt).
-        wordless = speech or cap in VIDEO_INPUT or cap == DESCRIBE or cap == EXPAND or (cap == RELIGHT and p.get("look"))
+        wordless = (speech or (cap in VIDEO_INPUT and cap != VIDEO_EDIT) or cap == DESCRIBE or cap == EXPAND
+                    or (cap == RELIGHT and p.get("look")))
         return CapabilityRequest(capability=cap, prompt="" if wordless else p["prompt"],
                                  look=p.get("look"),
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
@@ -462,6 +470,17 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # 0052 prices the source's seconds: a model without a documented
             # longest input would be sold a length the vendor refuses.
             errors.append(_err(mid, "video_upscale needs limits.max_source_seconds"))
+        if any(c in VIDEO_OPS for c in caps) and not m["limits"].get("max_source_seconds"):
+            # 0100 prices the source's seconds the same way.
+            errors.append(_err(mid, "a video op needs limits.max_source_seconds"))
+        reframe_shapes = (m.get("aspect_ratios_by_capability") or {}).get(VIDEO_REFRAME)
+        if (VIDEO_REFRAME in caps) != bool(reframe_shapes):
+            # 0100 sells a reframe only to a shape the model lists for it.
+            errors.append(_err(mid, "aspect_ratios_by_capability.video_reframe is required with video_reframe and only with it"))
+        if any(a not in EXPAND_ASPECTS for a in (reframe_shapes or ())):
+            errors.append(_err(mid, "reframe shapes must be shapes the database accepts"))
+        if any(c in VIDEO_OPS for c in caps) and m["api_exposure"] != "web_only":
+            errors.append(_err(mid, "video ops are a web tool until the API documents them: api_exposure must be web_only"))
         if CAPTIONS in caps and m["api_exposure"] != "web_only":
             # The transcript is read from caption_tracks by a signed-in member's
             # session only (0072): an API key that bought captions could never
@@ -552,7 +571,10 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                                       generated_speech="probe_speech.mp3",
                                       generated_end_image="https://probe.invalid/end.png",
                                       generated_video="probe_video.mp4")
-            problems = [p for p in cls(env={}).problems(req, entry) if "https URL" not in p]
+            # A placeholder vendor model is how a gated entry with no vendor assigned ships (the
+            # adapter refuses it at run time); it is not a fault of the probe request.
+            problems = [p for p in cls(env={}).problems(req, entry)
+                        if "https URL" not in p and "placeholder vendor model" not in p]
             if problems:
                 errors.append(_err(mid, "probe request is not servable: " + "; ".join(problems)))
     return errors
