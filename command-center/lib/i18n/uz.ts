@@ -1,3 +1,4 @@
+import { improveUz } from "./improve/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
@@ -13,6 +14,7 @@ export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
   libraryUx: libraryUxUz,
+  improveAi: improveUz,
   brand: {
     name: "Nightshift",
     tagline: "Boshqaruv markazi",
