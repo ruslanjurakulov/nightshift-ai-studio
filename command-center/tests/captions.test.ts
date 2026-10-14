@@ -21,7 +21,7 @@ import {
   MAX_CUE_S,
   MIN_CUE_S,
   PAUSE_S,
-  addCue,
+  addCueAfter,
   buildSrt,
   buildVtt,
   captionFileName,
@@ -665,7 +665,7 @@ describe("fixing mistakes in the captions (free, local)", () => {
   const idsOf = (m: EditorModel) => captionsOf(m)!.cues.map((c) => c.id);
 
   it("adds an empty caption after a cue, inside the gap, and flags it until it has words", () => {
-    const m = addCue(withCues(), "cap1", 60);
+    const m = addCueAfter(withCues(), "cap1", 60);
     const out = captionsOf(m)!.cues;
     expect(out).toHaveLength(3);
     expect(out[1]).toMatchObject({ start_s: 3, end_s: 3.5, text: "" });
@@ -674,19 +674,27 @@ describe("fixing mistakes in the captions (free, local)", () => {
   });
 
   it("adds after the last cue up to two seconds, never past the picture, and into an empty list too", () => {
-    expect(captionsOf(addCue(withCues(), null, 60))!.cues[2]).toMatchObject({ start_s: 5, end_s: 7 });
-    expect(captionsOf(addCue(withCues(), null, 5.5))!.cues[2]).toMatchObject({ start_s: 5, end_s: 5.5 });
-    expect(captionsOf(addCue(model(), null, 60))!.cues).toEqual([expect.objectContaining({ start_s: 0, end_s: 2, text: "" })]);
+    expect(captionsOf(addCueAfter(withCues(), null, 60))!.cues[2]).toMatchObject({ start_s: 5, end_s: 7 });
+    expect(captionsOf(addCueAfter(withCues(), null, 5.5))!.cues[2]).toMatchObject({ start_s: 5, end_s: 5.5 });
+    expect(captionsOf(addCueAfter(model(), null, 60))!.cues).toEqual([expect.objectContaining({ start_s: 0, end_s: 2, text: "" })]);
   });
 
   it("makes no cue where there is no room, or for an unknown cue", () => {
     const m = withCues();
-    expect(addCue(m, "cap1", 3.1)).toBe(m);
-    expect(addCue(m, "nope", 60)).toBe(m);
+    expect(addCueAfter(m, "cap1", 3.1)).toBe(m);
+    expect(addCueAfter(m, "nope", 60)).toBe(m);
+  });
+
+  it("editing the words keeps the animated style the person chose", () => {
+    const style = { ...styleFor("classic", 1080, 1920), preset: "karaoke", highlight_color: "#FFE600" } as never;
+    const m = setCaptions(model(), { style, cues });
+    for (const next of [splitCue(m, "cap1"), mergeWithNext(m, "cap1"), addCueAfter(m, "cap1", 60), replaceInCues(m, "jon", "John").model]) {
+      expect(captionsOf(next)!.style).toMatchObject({ preset: "karaoke", highlight_color: "#FFE600" });
+    }
   });
 
   it("every edit leaves a document the renderer accepts", () => {
-    let m = addCue(withCues(), "cap2", 60);
+    let m = addCueAfter(withCues(), "cap2", 60);
     m = splitCue(m, "cap1");
     m = mergeWithNext(m, "cap2");
     expect(validateTimeline(toDoc(updateCue(m, idsOf(m)[idsOf(m).length - 1], { text: "end" })))).toEqual([]);

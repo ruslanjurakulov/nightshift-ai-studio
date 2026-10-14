@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState, type CSSProperties } from "react";
+import Link from "next/link";
+import { useChannelPath } from "@/lib/channels-client";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
 import { TemplateGallery } from "@/components/studio/TemplateGallery";
@@ -36,6 +38,7 @@ export function GenerateSection({
   bottomBar = true,
   plans = null,
   desk = null,
+  project = null,
 }: {
   /**
    * The desk this section is (lib/creative/desks): its tools only, laid out
@@ -56,6 +59,8 @@ export function GenerateSection({
   bottomBar?: boolean;
   /** What the plan dialog may offer when a generation is refused (lib/upsell.ts); null = no dialog. */
   plans?: UpsellCatalog | null;
+  /** An editor project the person came from ("Improve with AI"): results can be added back to it, and there is a way back. */
+  project?: string | null;
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
@@ -64,6 +69,7 @@ export function GenerateSection({
   const [refreshKey, setRefreshKey] = useState(0);
   const { t, locale } = useI18n();
   const top = useRef<HTMLDivElement>(null);
+  const path = useChannelPath();
 
   const toComposer = () => top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
 
@@ -102,10 +108,21 @@ export function GenerateSection({
     />
   );
 
+  const fromProject = project ? (
+    <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--color-muted)]" data-testid="from-project">
+      <span>{t.improveAi.fromProject}</span>
+      <Link href={path(`/editor/${project}`)} className="tap-link text-[var(--color-primary)] underline">
+        {t.improveAi.backToProject}
+      </Link>
+    </p>
+  ) : null;
+
   if (desk) {
     const tools = DESK_TOOLS[desk];
     const deskHas = (c: (typeof tools)[number]) => tools.includes(c);
     return (
+      <div className="flex flex-col gap-4">
+      {fromProject}
       <div className="desk-layout" data-desk={desk} style={dock}>
         <div ref={top} className="desk-layout-composer scroll-mt-7" data-testid="gen-composer">
           {panel}
@@ -126,15 +143,19 @@ export function GenerateSection({
             onUseAsSource={tools.some((c) => c === "edit" || c === "i2v" || c === "upscale" || c === "remove_bg") ? pickAsSource : undefined}
             onDescribe={deskHas("describe") ? describe : undefined}
             onMakeSimilar={deskHas("t2i") ? fill : undefined}
+            project={project}
           />
           {/* Starting points come after the results: the monitor or the table is what the desk is for. */}
           <TemplateGallery onPick={fill} only={tools} />
         </div>
       </div>
+      </div>
     );
   }
 
   return (
+    <div className="flex flex-col gap-4">
+    {fromProject}
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]" style={dock}>
       <div
         ref={top}
@@ -153,8 +174,10 @@ export function GenerateSection({
           onUseAsSource={pickAsSource}
           onDescribe={describe}
           onMakeSimilar={fill}
+          project={project}
         />
       </div>
+    </div>
     </div>
   );
 }

@@ -1,8 +1,10 @@
+import { improveEn } from "./improve/en";
 import { libraryUxEn } from "./library-ux/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
 import { looksEn } from "./editor-looks/en";
+import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
 
 /**
@@ -20,6 +22,7 @@ export const en = {
   site: siteEn,
   presets: presetsEn,
   libraryUx: libraryUxEn,
+  improveAi: improveEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",
@@ -4553,7 +4556,6 @@ export const en = {
     splitCue: "Split",
     mergeCue: "Join with next",
     addCueAfter: "Add after",
-    addCue: "Add a caption",
     noRoomForCue: "There is no room for a new caption here: the next caption starts too soon or the video ends.",
     cannotSplit: "This caption cannot be split: it needs at least two words and enough time for both parts.",
     replaceHeading: "Fix a word everywhere",
@@ -4571,6 +4573,21 @@ export const en = {
     cannotJoin: "These two captions together would be too long for one caption.",
     replaceSkipped: "{n} captions were left as they were because the result would be too long.",
     defaultFile: "captions",
+    /** Animated styles: ./caption-styles/en.ts. */
+    animated: captionStylesEn,
+    addCue: "Add a caption",
+    importFile: "Import .srt or .vtt",
+    importNote: "Type captions or bring a subtitle file. Both are free; no transcription is needed.",
+    newCueText: "New caption",
+    addNoRoom: "There is no room for another caption: the picture ends too soon.",
+    importTooBig: "That file is too large (over 1 MB).",
+    importFailed: "The file could not be read.",
+    importOutside: "All the captions in this file come after the end of the picture, so none were added.",
+    importNone: "No captions were found in this file. Use a .srt or .vtt file.",
+    importReplace: "This replaces the captions you see, including your edits. Continue?",
+    imported: "{n} captions imported. Save the project to keep them.",
+    importedSome: "{n} captions imported; {skipped} could not be used. Save the project to keep them.",
+    noCuesManual: "No captions yet. Add one, or import a .srt or .vtt file.",
   },
   workflows: {
     title: "Workflows",

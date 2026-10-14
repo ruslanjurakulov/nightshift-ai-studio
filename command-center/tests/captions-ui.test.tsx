@@ -547,12 +547,16 @@ describe("a transcript, then captions on the video (free)", () => {
     expect(screen.getByText(fmt(tc.replaceSkipped, { n: 2 }))).toBeTruthy();
   });
 
-  it("with no captions yet a caption can be added by hand", async () => {
+  it("with no captions yet, ONE 'Add a caption' button adds a typed caption, beside the per-caption controls", async () => {
     routes.push(noTracks, noJobs, quoteOk(1));
     render(<Host />);
+    expect(screen.getAllByRole("button", { name: tc.addCue })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: tc.addCue }));
-    expect(captionsOf(seen!)!.cues).toEqual([expect.objectContaining({ start_s: 0, end_s: 2, text: "" })]);
-    expect(screen.getByText(tc.cueEmpty)).toBeTruthy();
+    expect(captionsOf(seen!)!.cues).toEqual([expect.objectContaining({ start_s: 0, end_s: 2, text: tc.newCueText })]);
+    // Then a row has the editing controls, and its own "add after" is a different, named button.
+    expect(screen.getAllByRole("button", { name: tc.addCue })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: labelRe(tc.addCueAfterN) })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: labelRe(tc.splitCueN) })).toBeTruthy();
   });
 
   it("a recording none of whose sound is heard has nothing to caption, and says so", async () => {

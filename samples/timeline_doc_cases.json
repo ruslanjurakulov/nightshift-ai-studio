@@ -9848,6 +9848,649 @@
      }
     ]
    }
+  },
+  {
+   "name": "caption style karaoke",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "karaoke",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style pop_in",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "pop_in",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style boxed",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "boxed",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style big_centre",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "big_centre",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style lower_third",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "lower_third",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style outlined",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "outlined",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style neon",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "neon",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style typewriter",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "typewriter",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style line_slide",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "line_slide",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style clean",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "clean",
+      "highlight_color": "#00E5FF",
+      "color": "#FFFFFF",
+      "size": 64,
+      "y": 0.5
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style preset alone",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "karaoke"
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style unknown preset",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "spin"
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style preset not text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": 7
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style preset null",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": null
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style preset is case sensitive",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "Karaoke"
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style highlight not a colour",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "neon",
+      "highlight_color": "cyan"
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style highlight three digits",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "highlight_color": "#0EF"
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style highlight without a preset",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "highlight_color": "#00E5FF"
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style size too big for a preset",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "neon",
+      "size": 600
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "caption style unknown field next to a preset",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     }
+    ],
+    "captions": {
+     "style": {
+      "preset": "neon",
+      "motion": "spin"
+     },
+     "cues": [
+      {
+       "id": "k1",
+       "start_s": 0,
+       "end_s": 2,
+       "text": "hello there"
+      }
+     ]
+    }
+   }
   }
  ]
 }
