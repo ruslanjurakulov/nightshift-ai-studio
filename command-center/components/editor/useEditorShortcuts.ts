@@ -11,6 +11,7 @@ import {
   type EditorModel,
 } from "@/lib/editor";
 import { removeOverlay } from "@/lib/editorOverlay";
+import { removeShape } from "@/lib/editorShapeModel";
 import { focusKind, resolveShortcut } from "@/lib/editor-shortcuts";
 import { nudgePlayhead } from "@/lib/editor-timeline-view";
 import type { Selection } from "./TimelineStrip";
@@ -33,6 +34,8 @@ export function useEditorShortcuts(p: {
   apply: (next: EditorModel) => void;
   /** Called after Delete removed an overlay: its frame is gone, so focus belongs on "Add overlay", not <body>. */
   onOverlayRemoved?: () => void;
+  /** Called after Delete removed a shape: focus belongs on "Add shape", not <body>. */
+  onShapeRemoved?: () => void;
   view: TimelineView;
 }) {
   const ref = useRef(p);
@@ -84,9 +87,12 @@ export function useEditorShortcuts(p: {
                 ? removeText(s.model, sel.id)
                 : sel.kind === "overlay"
                   ? removeOverlay(s.model, sel.id)
-                  : removeSound(s.model, sel.id);
+                  : sel.kind === "shape"
+                    ? removeShape(s.model, sel.id)
+                    : removeSound(s.model, sel.id);
           if (next === s.model) return;
           if (sel.kind === "overlay") s.onOverlayRemoved?.();
+          if (sel.kind === "shape") s.onShapeRemoved?.();
           s.apply(next);
           break;
         }

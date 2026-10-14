@@ -97,7 +97,9 @@ export function canAddOverlay(
   isVideoAsset?: (assetId: string) => boolean,
 ): boolean {
   const list = overlaysOf(model);
-  if (kind === "audio" || list.length >= MAX_OVERLAYS) return false;
+  // Drawn shapes take layers of the same final pass (modules/timeline.py: together at most MAX_OVERLAYS).
+  if (kind === "audio" || list.length + (model.shapes?.length ?? 0) >= MAX_OVERLAYS)
+    return false;
   if (kind !== "video" || !isVideoAsset) return true;
   return (
     list.filter((o) => isVideoAsset(o.asset_id)).length < MAX_OVERLAY_VIDEOS

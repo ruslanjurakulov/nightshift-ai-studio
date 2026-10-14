@@ -397,7 +397,7 @@ export function OverlayPicker({
 
 // ── the inspector ───────────────────────────────────────────────────────────
 
-function SecondsField({
+export function SecondsField({
   label,
   value,
   min,

@@ -4,6 +4,7 @@ import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
+import { shapesUz } from "./shapes/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
@@ -4793,6 +4794,8 @@ export const uz: Dictionary = {
   editor: {
     /** Picture overlays: ./overlay/uz.ts. */
     overlay: overlayUz,
+    /** Shapes and stickers: ./shapes/uz.ts. */
+    shapes: shapesUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
     looks: looksUz,
     fx: fxUz,

@@ -136,7 +136,7 @@ export function canTypewriter(model: EditorModel, textId: string): boolean {
  *  left. A new animation starts at the default length, shortened to fit.
  *  On a text, an animation REPLACES that side's plain fade (a fade IS an
  *  animation; the document refuses both). */
-function withAnim<T extends Animated & { fade_in_s?: number; fade_out_s?: number }>(
+export function withAnim<T extends Animated & { fade_in_s?: number; fade_out_s?: number }>(
   item: T,
   side: AnimSide,
   anim: string | null,
@@ -165,7 +165,7 @@ function withAnim<T extends Animated & { fade_in_s?: number; fade_out_s?: number
   return next;
 }
 
-function withAnimSeconds<T extends Animated>(
+export function withAnimSeconds<T extends Animated>(
   item: T,
   side: AnimSide,
   seconds: number,

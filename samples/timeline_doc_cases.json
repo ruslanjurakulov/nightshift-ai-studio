@@ -14202,6 +14202,3815 @@
      }
     ]
    }
+  },
+  {
+   "name": "shape arrow with every field",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "color": "#FF3B30",
+      "opacity": 0.8,
+      "x": 0.2,
+      "y": 0.3,
+      "w": 0.25,
+      "dir": "up",
+      "anim_in": "slide-left",
+      "anim_in_s": 0.5,
+      "anim_out": "fade",
+      "anim_out_s": 0.5,
+      "move": {
+       "to": {
+        "x": 0.7,
+        "y": 0.6,
+        "w": 0.4
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape with only the required fields",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape circle ring",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "outline": 0.1,
+      "color": "#FFFFFF"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape circle solid",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "color": "#0A84FF"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape rectangle with an aspect and an outline",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "rect",
+      "start_s": 1,
+      "end_s": 3,
+      "aspect": 2.5,
+      "outline": 0.05
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape star outlined",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "star",
+      "start_s": 1,
+      "end_s": 3,
+      "outline": 0.08
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape pill with text",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "Subscribe"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape pill outlined",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "Part 2",
+      "outline": 0.1,
+      "color": "#FFFFFF"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape line with a thickness",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "line",
+      "start_s": 1,
+      "end_s": 3,
+      "thick": 0.01,
+      "w": 0.5,
+      "y": 0.9
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape progress bar at the top",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 0,
+      "end_s": 4,
+      "edge": "top",
+      "thick": 0.02
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape progress bar with a fade",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_in": "fade",
+      "anim_out": "fade",
+      "anim_in_s": 0.3,
+      "anim_out_s": 0.3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape of every kind",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s2",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s3",
+      "kind": "rect",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s4",
+      "kind": "star",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s5",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "New"
+     },
+     {
+      "id": "s6",
+      "kind": "line",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s7",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shapes at the low ends of every range",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "rect",
+      "start_s": 0,
+      "end_s": 0.034,
+      "x": 0,
+      "y": 0,
+      "w": 0.05,
+      "opacity": 0,
+      "outline": 0,
+      "aspect": 0.2,
+      "color": "#000000"
+     },
+     {
+      "id": "s2",
+      "kind": "line",
+      "start_s": 1,
+      "end_s": 3,
+      "thick": 0.002
+     }
+    ]
+   }
+  },
+  {
+   "name": "shapes at the high ends of every range",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "rect",
+      "start_s": 0,
+      "end_s": 4,
+      "x": 1,
+      "y": 1,
+      "w": 1,
+      "opacity": 1,
+      "outline": 0.5,
+      "aspect": 5,
+      "color": "#ffffff"
+     },
+     {
+      "id": "s2",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "thick": 0.05
+     }
+    ]
+   }
+  },
+  {
+   "name": "twelve shapes",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s0",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s2",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s3",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s4",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s5",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s6",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s7",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s8",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s9",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s10",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s11",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty shapes list",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": []
+   }
+  },
+  {
+   "name": "shapes beside overlays at the layer limit",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o0",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     },
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     },
+     {
+      "id": "o2",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     },
+     {
+      "id": "o3",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s0",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s2",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s3",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s4",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s5",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s6",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s7",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s8",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s9",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s10",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s11",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape running past the end of the picture",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 3,
+      "end_s": 9
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape move to x only",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "move": {
+       "to": {
+        "x": 0.9
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text of exactly 24 characters",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "abcdefghijklmnopqrstuvwx"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text of 24 emoji",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text in Cyrillic with an apostrophe",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "Obuna bo\u02bbling \u041f\u043e\u0434\u043f\u0438\u0441"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape colour in lower case",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "color": "#ff3b30"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape animations that fill the span exactly",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_in": "pop",
+      "anim_in_s": 1,
+      "anim_out": "slide-down",
+      "anim_out_s": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shapes that is not a list",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": "x"
+   }
+  },
+  {
+   "name": "shapes that is null",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": null
+   }
+  },
+  {
+   "name": "thirteen shapes",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s0",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s2",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s3",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s4",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s5",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s6",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s7",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s8",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s9",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s10",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s11",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s12",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape that is not an object",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     "x"
+    ]
+   }
+  },
+  {
+   "name": "shape of an unknown kind",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "triangle",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape without a kind",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape kind as a number",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": 3,
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape kind with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow\n",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape kind in capitals",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "Arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape with a path field",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "path": "/etc/passwd"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape with an asset id",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "asset_id": "11111111-1111-4111-8111-111111111111"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape with a chroma field",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "chroma": {
+       "color": "#00FF00"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape ending before it starts",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 4,
+      "end_s": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape of zero length",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 2,
+      "end_s": 2
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape shorter than one frame",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 1.01
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape starting below zero",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": -1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape time as text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": "1",
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape x below 0",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "x": -0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape x above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "x": 1.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape y below 0",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "y": -0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape y above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "y": 1.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape width below 0.05",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "w": 0.04
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape width above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "w": 1.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape opacity below 0",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "opacity": -0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape opacity above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "opacity": 1.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape x as boolean",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "x": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape colour that is not a colour",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "color": "red"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape colour with three digits",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "color": "#fff"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape colour with a trailing newline",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "color": "#FF3B30\n"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape colour as a number",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "color": 255
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape outline above 0.5",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "outline": 0.6
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape outline below 0",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "outline": -0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape outline as text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "outline": "0.1"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape aspect below 0.2",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "rect",
+      "start_s": 1,
+      "end_s": 3,
+      "aspect": 0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape aspect above 5",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "rect",
+      "start_s": 1,
+      "end_s": 3,
+      "aspect": 6
+     }
+    ]
+   }
+  },
+  {
+   "name": "aspect on a circle",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "aspect": 2
+     }
+    ]
+   }
+  },
+  {
+   "name": "outline on an arrow",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "outline": 0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "outline on a line",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "line",
+      "start_s": 1,
+      "end_s": 3,
+      "outline": 0.1
+     }
+    ]
+   }
+  },
+  {
+   "name": "arrow direction that is unknown",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "dir": "diagonal"
+     }
+    ]
+   }
+  },
+  {
+   "name": "direction on a circle",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "dir": "up"
+     }
+    ]
+   }
+  },
+  {
+   "name": "thickness below the least",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "line",
+      "start_s": 1,
+      "end_s": 3,
+      "thick": 0.001
+     }
+    ]
+   }
+  },
+  {
+   "name": "thickness above the most",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "thick": 0.06
+     }
+    ]
+   }
+  },
+  {
+   "name": "thickness on a rectangle",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "rect",
+      "start_s": 1,
+      "end_s": 3,
+      "thick": 0.01
+     }
+    ]
+   }
+  },
+  {
+   "name": "progress edge that is unknown",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "edge": "left"
+     }
+    ]
+   }
+  },
+  {
+   "name": "edge on an arrow",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "edge": "top"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text on a circle",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "circle",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "hi"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill without text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill with empty text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": ""
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill with blank text",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "   "
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text of 25 characters",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "abcdefghijklmnopqrstuvwxy"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text of 25 emoji",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text with a line break",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "two\nlines"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text with a control character",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "a\u0007b"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text with a zero-width joiner",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "a\u200db"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text with a line separator",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": "a\u2028b"
+     }
+    ]
+   }
+  },
+  {
+   "name": "pill text as a number",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "pill",
+      "start_s": 1,
+      "end_s": 3,
+      "text": 5
+     }
+    ]
+   }
+  },
+  {
+   "name": "progress bar with a position",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "x": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "name": "progress bar with a width",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "w": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "name": "progress bar with a move",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "move": {
+       "to": {
+        "x": 0.5
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "progress bar with a slide entrance",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_in": "slide-up"
+     }
+    ]
+   }
+  },
+  {
+   "name": "progress bar with a pop exit",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "progress",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_out": "pop"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape with a typewriter entrance",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_in": "typewriter"
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape animation length without its animation",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_in_s": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape animation shorter than the least",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_in": "fade",
+      "anim_in_s": 0.05
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape animations longer than the span",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "anim_in": "fade",
+      "anim_in_s": 1.5,
+      "anim_out": "fade",
+      "anim_out_s": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape move to an opacity",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "move": {
+       "to": {
+        "opacity": 0.5
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape move to nothing",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "move": {
+       "to": {}
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape move to x above 1",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "move": {
+       "to": {
+        "x": 1.5
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape move to a width below 0.05",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "move": {
+       "to": {
+        "w": 0.01
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape move without a target",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "move": {}
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape move that is not an object",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3,
+      "move": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape id used by a clip",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "c1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "two shapes with one id",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape with a bad id",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "shapes": [
+     {
+      "id": "a b",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "overlays and shapes past the layer limit",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o0",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     },
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     },
+     {
+      "id": "o2",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     },
+     {
+      "id": "o3",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     },
+     {
+      "id": "o4",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     }
+    ],
+    "shapes": [
+     {
+      "id": "s0",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s2",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s3",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s4",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s5",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s6",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s7",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s8",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s9",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s10",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     },
+     {
+      "id": "s11",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
+  },
+  {
+   "name": "shape id used by an overlay",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4
+       }
+      ]
+     }
+    ],
+    "overlays": [
+     {
+      "id": "o1",
+      "asset_id": "33333333-3333-4333-8333-333333333333",
+      "start_s": 0,
+      "end_s": 2
+     }
+    ],
+    "shapes": [
+     {
+      "id": "o1",
+      "kind": "arrow",
+      "start_s": 1,
+      "end_s": 3
+     }
+    ]
+   }
   }
  ]
 }
