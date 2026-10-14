@@ -576,6 +576,10 @@ INTERMEDIATE_X264: tuple = ("-preset", "ultrafast", "-crf", "12")
 #: (6.2 MB/s measured on grainy footage, with headroom) and scaled by pixel
 #: count for other sizes. Less free space than that → the old compact settings.
 INTERMEDIATE_MB_PER_S_1080P = 8.0
+#: A segment with film grain is ~13x bigger (measured, crf 12 ultrafast: 42.7 MB/s at 1080p30 and
+#: 73 MB/s at 1080p60 with ``noise alls=15``; ~15x at alls=30, because noise cannot be predicted),
+#: so its seconds are charged this many times over in the disk guard.
+GRAIN_DISK_FACTOR = 12.0
 #: The segment encode the backend ran before (libx264 defaults). The
 #: sequential fallback uses it, so a fallback is exactly the old path.
 LEGACY_X264: tuple = ()
@@ -723,7 +727,9 @@ def intermediate_x264(spec: RenderSpec, tmpdir: Path, *,
     dir has room for it, else the old compact settings (slower, never a
     full-disk failure halfway through a long render). Never raises."""
     try:
-        need = (spec.total_duration * INTERMEDIATE_MB_PER_S_1080P
+        grain_s = sum(float(seg.duration) for seg in spec.segments
+                      if getattr(seg, "effects", None) is not None and seg.effects.grain > 0)
+        need = ((spec.total_duration + (GRAIN_DISK_FACTOR - 1) * grain_s) * INTERMEDIATE_MB_PER_S_1080P
                 * (spec.width * spec.height) / (1920 * 1080))
         free = (free_mb or _free_mb)(Path(tmpdir))
     except Exception:

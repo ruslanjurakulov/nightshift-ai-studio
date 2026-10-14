@@ -99,7 +99,7 @@ class DocumentTestCase(unittest.TestCase):
                 self.assertTrue(any(f"{k} must be true or false" in p for p in problems_of(**{k: bad})), bad)
         for ok in (0, 90, 180, 270):
             self.assertEqual(problems_of(rotate=ok), [])
-        for bad in (45, 91, -90, 360, 90.5, 90.0, True, "90", None, [90]):
+        for bad in (45, 91, -90, 360, 90.5, True, "90", None, [90]):
             with self.subTest(repr(bad)):
                 self.assertTrue(any("rotate must be one of" in p for p in problems_of(rotate=bad)), bad)
 
@@ -110,6 +110,15 @@ class DocumentTestCase(unittest.TestCase):
              "out_s": 1, "blur": 3}]})
         self.assertTrue(any("blur is not a known field" in p for p in tl.validate(doc)))
         self.assertTrue(any("not a known field" in p for p in problems_of(sepia=1)))
+
+    def test_a_whole_float_is_the_integer_in_both_validators(self):
+        # JSON.parse gives the TypeScript validator 90 for both 90 and 90.0, so Python takes 90.0 as 90 too
+        for ok in (90.0, 180.0, 270.0, 0.0):
+            self.assertEqual(problems_of(rotate=ok), [], ok)
+        n = tl.normalise(vdoc(rotate=90.0))["tracks"][0]["clips"][0]
+        self.assertEqual(n["rotate"], 90)
+        self.assertIsInstance(n["rotate"], int)
+        self.assertNotIn("rotate", tl.normalise(vdoc(rotate=0.0))["tracks"][0]["clips"][0])
 
     def test_normalise_drops_every_off_value_and_keeps_the_rest(self):
         off = tl.normalise(vdoc(filter="mono", filter_strength=0, vignette=0, blur=0, sharpen=0, grain=0,
@@ -296,6 +305,41 @@ class CommandTestCase(unittest.TestCase):
         self.assertTrue(rs.validate(rs.RenderSpec("/o.mp4", 1280, 720, 30, segments=[bad], frame_exact=True)))
         with self.assertRaises(ValueError):
             vf_of(bad)
+
+
+class DiskGuardTestCase(unittest.TestCase):
+    """Grain makes a segment ~13x bigger than the guard's 8 MB/s assumes (measured: 42.7 MB/s at 1080p30,
+    73 MB/s at 1080p60 with noise alls=15), so the guard has to charge for it."""
+
+    def spec(self, grain=0.0, seconds=60, w=1920, h=1080):
+        fx = rs.ClipEffects(grain=grain) if grain else None
+        seg = rs.Segment(float(seconds), "/m/a.mp4", effects=fx)
+        return rs.RenderSpec("/o.mp4", w, h, 30, segments=[seg], frame_exact=True)
+
+    def test_a_grainy_minute_needs_twelve_times_the_room(self):
+        free = lambda p: 2000.0      # a plain minute needs 480 MB; a grainy one 5760 MB
+        self.assertEqual(render_backend.intermediate_x264(self.spec(), Path("/tmp"), free_mb=free),
+                         render_backend.INTERMEDIATE_X264)
+        with self.assertLogs("modules.render_backend", "WARNING") as logs:
+            got = render_backend.intermediate_x264(self.spec(grain=0.5), Path("/tmp"), free_mb=free)
+        self.assertEqual(got, render_backend.LEGACY_X264)
+        self.assertIn("5760 MB", logs.output[0])
+
+    def test_only_the_grainy_seconds_are_charged(self):
+        spec = self.spec(grain=0.5, seconds=10)
+        spec.segments.append(rs.Segment(50.0, "/m/b.mp4"))
+        # 10 s x 12 + 50 s = 170 s x 8 MB = 1360 MB
+        self.assertEqual(render_backend.intermediate_x264(spec, Path("/tmp"), free_mb=lambda p: 1400.0),
+                         render_backend.INTERMEDIATE_X264)
+        with self.assertLogs("modules.render_backend", "WARNING"):
+            self.assertEqual(render_backend.intermediate_x264(spec, Path("/tmp"), free_mb=lambda p: 1300.0),
+                             render_backend.LEGACY_X264)
+
+    def test_a_render_without_grain_is_charged_as_before(self):
+        self.assertEqual(render_backend.GRAIN_DISK_FACTOR, 12.0)
+        self.assertEqual(render_backend.intermediate_x264(self.spec(seconds=195), Path("/tmp"),
+                                                          free_mb=lambda p: 1600.0),
+                         render_backend.INTERMEDIATE_X264)         # 195 s x 8 MB = 1560 MB
 
 
 class NeutralTestCase(unittest.TestCase):

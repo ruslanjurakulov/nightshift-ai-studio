@@ -651,7 +651,10 @@ def _validate_effects(clip, where, problems) -> None:
     for k in ("flip_h", "flip_v"):
         if k in clip and not isinstance(clip[k], bool):
             problems.append(f"{where}: {k} must be true or false")
-    if "rotate" in clip and not (_is_int(clip["rotate"]) and clip["rotate"] in ROTATIONS):
+    # 90.0 is accepted as 90: the TypeScript twin cannot tell them apart after JSON.parse, so the two
+    # validators agree by both taking the whole number (normalise writes it as an int).
+    if "rotate" in clip and not (_is_num(clip["rotate"]) and clip["rotate"] == int(clip["rotate"])
+                                 and int(clip["rotate"]) in ROTATIONS):
         problems.append(f"{where}: rotate must be one of {list(ROTATIONS)}")
 
 
@@ -1114,6 +1117,8 @@ def _normalise_effects(c: dict) -> None:
     for k in ("flip_h", "flip_v"):
         if c.get(k) is False:
             del c[k]
+    if "rotate" in c:
+        c["rotate"] = int(c["rotate"])
     if c.get("rotate") == 0:
         del c["rotate"]
 
