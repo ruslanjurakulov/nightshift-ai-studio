@@ -429,7 +429,7 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
   // The disclosure must name every cookie and storage key the code uses; a new one that is not listed fails here.
   const NAMES = [
     "chronos_locale", "ns_view", "chronos_channel", "nightshift_org", "ns_sidebar", "ns_auth_pending", "ns_recovery", "ns_invite",
-    "yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "chronos_theme",
+    "yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "ns_connect_pending", "chronos_theme",
   ];
 
   it.each(LOCALES)("%s: the Cookies section lists every cookie and the theme key the code sets", (locale) => {
