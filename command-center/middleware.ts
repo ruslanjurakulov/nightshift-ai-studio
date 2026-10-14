@@ -275,6 +275,6 @@ export const config = {
   // gated, never the other way round. The public site's icon.svg and its
   // self-hosted font files (FONT_FILES in next.config.ts) are named the same way.
   matcher: [
-    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|fonts/onest-latin-v1\\.woff2$|fonts/onest-latin-ext-v1\\.woff2$|fonts/onest-cyrillic-v1\\.woff2$|fonts/onest-cyrillic-ext-v1\\.woff2$|api/media/uploads/[^/]+$).*)",
+    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|manifest\\.webmanifest$|pwa-192\\.png$|pwa-512\\.png$|pwa-maskable-192\\.png$|pwa-maskable-512\\.png$|fonts/onest-latin-v1\\.woff2$|fonts/onest-latin-ext-v1\\.woff2$|fonts/onest-cyrillic-v1\\.woff2$|fonts/onest-cyrillic-ext-v1\\.woff2$|api/media/uploads/[^/]+$).*)",
   ],
 };
