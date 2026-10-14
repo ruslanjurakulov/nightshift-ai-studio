@@ -132,6 +132,20 @@ describe("the stream", () => {
     expect((await get()).status).toBe(503);
   });
 
+  it("refuses a path with a dot or empty segment instead of building a URL from it", async () => {
+    for (const bad of ["chan-a/../vid.mp4", "./vid.mp4", "chan-a//vid.mp4", "/vid.mp4", "chan-a/."]) {
+      h.fetch.mockClear();
+      h.rpc.mockResolvedValue({ data: bad, error: null });
+      expect((await get()).status, bad).toBe(404);
+      expect(h.fetch).not.toHaveBeenCalled();
+    }
+  });
+
+  it("asks Storage with a GET even for a HEAD (the policy serves only the read operations)", async () => {
+    await stream.HEAD(new Request(`${ORIGIN}/r/${TOKEN}/video`, { method: "HEAD" }), ctx(TOKEN));
+    expect((h.fetch.mock.calls[0] as [string, RequestInit])[1].method).toBe("GET");
+  });
+
   it("encodes the object path and never builds a URL from the visitor's input", async () => {
     h.rpc.mockResolvedValue({ data: "chan a/vid#1?.mp4", error: null });
     await get();

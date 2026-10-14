@@ -93,10 +93,15 @@ export async function fetchReviewPreview(
   const { path, failed } = await reviewObjectPath(token);
   if (failed) return { kind: "unavailable" };
   if (!path) return { kind: "gone" };
-  const url = `${SUPABASE_URL}/storage/v1/object/authenticated/previews/${path.split("/").map(encodeURIComponent).join("/")}`;
+  // The path comes from the database, but a dot segment or an empty one would let a URL climb or double a slash: refuse it.
+  const segments = path.split("/");
+  if (segments.some((seg) => seg === "" || seg === "." || seg === "..")) return { kind: "gone" };
+  const url = `${SUPABASE_URL}/storage/v1/object/authenticated/previews/${segments.map(encodeURIComponent).join("/")}`;
   try {
     const res = await fetch(url, {
-      method: head ? "HEAD" : "GET",
+      // Always GET: the storage policy serves only the authenticated read (not a HEAD's "info" operation). A HEAD is
+      // answered by dropping the body below.
+      method: "GET",
       headers: {
         apikey: SUPABASE_ANON_KEY,
         authorization: `Bearer ${SUPABASE_ANON_KEY}`,
@@ -108,6 +113,7 @@ export async function fetchReviewPreview(
     });
     // A storage refusal (the policy said no, the file was pruned) is the same "gone" as a dead link.
     if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 404) return { kind: "gone" };
+    if (head) void res.body?.cancel().catch(() => undefined);
     if (res.status === 416) return { kind: "ok", response: res };
     if (res.status !== 200 && res.status !== 206) return { kind: "unavailable" };
     return { kind: "ok", response: res };
