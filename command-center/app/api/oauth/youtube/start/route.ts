@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   // The Add channel screen's one button: connect first, then pick the channel
   // (lib/server/connect-youtube.ts). No channel exists yet, so no `ref`.
-  if (url.searchParams.get(PICK_FLAG) === "1") return startYoutubePick(request, user.id);
+  if (url.searchParams.get(PICK_FLAG) === "1") return startYoutubePick(request);
   const ref = (url.searchParams.get("ref") ?? "").trim();
 
   const store = await resolveTokenStore(ref);

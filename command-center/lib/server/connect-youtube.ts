@@ -110,7 +110,7 @@ function redirectBack(origin: string, word: ConnectWord, clearNonce = true): Nex
   return res;
 }
 
-export async function startYoutubePick(request: Request, userId: string): Promise<NextResponse> {
+export async function startYoutubePick(request: Request): Promise<NextResponse> {
   const url = new URL(request.url);
   const origin = publicOrigin(request);
   const access = await youtubePickAccess();

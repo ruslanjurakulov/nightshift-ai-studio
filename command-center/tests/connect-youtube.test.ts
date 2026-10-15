@@ -124,7 +124,7 @@ beforeEach(() => {
 
 describe("start", () => {
   it("sends the browser to Google's chooser with a nonce cookie and the pick flag in the state", async () => {
-    const res = await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1&niche=Ancient+history`), "u1");
+    const res = await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1&niche=Ancient+history`));
     const to = loc(res);
     expect(to.host).toBe("accounts.google.com");
     expect(to.searchParams.get("prompt")).toBe("select_account consent");
@@ -137,12 +137,12 @@ describe("start", () => {
   });
   it("changes no held state: a GET start leaves a waiting sign-in alone (a link cannot cancel it)", async () => {
     const { handle } = await connected();
-    await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`), "u1");
+    await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`));
     expect(pending.readPending(handle, { userId: "u1", orgId: ORG })).not.toBeNull();
   });
   it("refuses before the consent screen: a non-admin of a customer organization", async () => {
     s.orgRole = { ok: false, status: 403, error: "forbidden" };
-    const res = await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`), "u1");
+    const res = await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`));
     expect(loc(res).host).toBe("nightshift-ai.studio");
     expect(loc(res).searchParams.get("connect")).toBe("forbidden");
     expect(cookies(res)).not.toMatch(/yt_oauth_nonce=[^;]/);
@@ -150,19 +150,19 @@ describe("start", () => {
   it("refuses before the consent screen: the operator's organization needs a platform admin", async () => {
     s.org = { supported: true, orgs: [], current: { id: OPERATOR_ORG, name: "Op", slug: "op", role: "admin", is_default: true } };
     s.platformAdmin = false;
-    const res = await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`), "u1");
+    const res = await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`));
     expect(loc(res).searchParams.get("connect")).toBe("forbidden");
   });
   it("says so instead of starting when nowhere to save the connection exists", async () => {
     s.tokenStatusAvailable = false;
-    expect(loc(await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`), "u1")).searchParams.get("connect")).toBe("token_store");
+    expect(loc(await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`))).searchParams.get("connect")).toBe("token_store");
     s.org = { supported: true, orgs: [], current: { id: OPERATOR_ORG, name: "Op", slug: "op", role: "admin", is_default: true } };
     s.githubConfigured = false;
-    expect(loc(await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`), "u1")).searchParams.get("connect")).toBe("token_store");
+    expect(loc(await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`))).searchParams.get("connect")).toBe("token_store");
   });
   it("refuses a workspace it cannot read, rather than guessing the weaker gate", async () => {
     s.org = { supported: false, unavailable: true, orgs: [], current: null };
-    expect(loc(await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`), "u1")).searchParams.get("connect")).toBe("unavailable");
+    expect(loc(await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`))).searchParams.get("connect")).toBe("unavailable");
   });
 });
 
