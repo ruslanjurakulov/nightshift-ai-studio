@@ -31,6 +31,7 @@ Everything below also exists as a button in the main menu (`/menu`, `/start`).
 | `/security` | recent security-relevant audit events (action and target id; no actor) |
 | `/digest` | the daily summary, now |
 | `/alerts` | quiet hours, digest hour, hourly limit, what is muted, the last alerts sent |
+| `/language [en\|ru\|uz]` | show or change the language the bot speaks (see Language) |
 | `/status` `/channels` `/pending` | the original commands, unchanged |
 | `/mute [kind\|all]` `/unmute [kind\|all]` | silence alerts for 24 hours (the one safe write: it changes nothing but what you are told) |
 | `/publish <id>` `/pause <id>` `/resume <id>` | requests only, through the original intent path; the publish gate still decides |
@@ -40,6 +41,71 @@ Where the app has the page, a message carries an **Open** button straight to it
 (`/{channel}/approvals`, `/errors`, `/jobs`, `/billing`, `/margin`, `/audit`,
 `/integrations`, the GitHub deploy page). Without `OPERATOR_APP_URL` there are no
 links: a link is never guessed.
+
+## Language
+
+The whole bot speaks one language at a time: **English** (the default), **Русский**
+or **Oʻzbekcha** (Latin script). Every command reply, the menu and its buttons, the
+button toasts, refusals and errors, the mute confirmations, the quiet-hours and
+digest settings text, the proactive alerts and the daily digest follow it. An
+unknown language code means English.
+
+**Switch:** send `/language` (it shows the current language and three buttons, each
+named in its own language: English, Русский, Oʻzbekcha) or `/language ru` /
+`/language uz` / `/language en`. The same three buttons sit at the bottom of the
+menu and of `/help`. Telegram's own button strings are not touched.
+
+**Where it is kept:** one row of the existing alert feed, `kind = operator.language`,
+`title = <code>`, written with `channel_id` NULL, read only from `channel_id IS NULL`
+rows. (Anyone who can see a channel can insert alert rows carrying that channel's
+`channel_id` and any kind, so a forged language row, like a forged mute, is ignored
+because it is channel-bound. A row with a NULL channel can only be written by a
+platform admin or the service key; should such a row ever come from an org member
+anyway, the most it can do is change the bot's language, which is cosmetic: the
+read keeps only titles that are a supported language code, ignores rows dated in
+the future, and the owner's next `/language` is newer than any of them.) No migration. Until the owner
+chooses, `OPERATOR_LANGUAGE` (`en`, `ru` or `uz`; a repository variable) is the
+default, then English. A stranger is always answered in that default, never in the
+owner's stored choice, and the language is read only after the sender has been
+authorized.
+
+The language changes only words. Authorization, the intents, the publish gate, the
+alert keys (so a language change never re-sends an alert), callback data, ids,
+codes, event names, ages (`3m`, `2h 5m`), numbers (`1,234`) and dates (ISO) are the
+same in every language.
+
+| Command | English | Русский | Oʻzbekcha |
+|---|---|---|---|
+| `/health` | Health | Здоровье | Salomatlik |
+| `/queue` | Queue | Очередь | Navbat |
+| `/errors` | Errors | Ошибки | Xatolar |
+| `/balance` | Balance | Баланс | Balans |
+| `/spend` | Spend | Расходы | Xarajatlar |
+| `/today` | Today | Сегодня | Bugun |
+| `/users` | Users | Пользователи | Foydalanuvchilar |
+| `/deploys` | Deploys | Деплои | Deploylar |
+| `/approvals` | Approvals | Согласования | Tasdiqlar |
+| `/security` | Security | Безопасность | Xavfsizlik |
+| `/digest` | Digest | Сводка | Xulosa |
+| `/alerts` | Alerts | Оповещения | Ogohlantirishlar |
+| `/status` | Status | Статус | Holat |
+| `/channels` | Channels | Каналы | Kanallar |
+| `/pending` | Held | Удержанные | Ushlanganlar |
+
+(The command names you type are the same in every language; the table is what the
+menu button and the message heading say.)
+
+**Not covered by the setting:** the two texts the pipeline itself pushes to the chat
+without the bot running (the per-event notifications and the six-hourly "runs
+pending human approval" nudge from `check_pending_approvals`) are written by jobs
+that have no database access, so they stay English.
+
+**Adding a language** is data only: copy `modules/operator_bot/copy_data/en.py` to
+`<code>.py`, translate the values, and add the code to the one constant
+`LANGUAGES` in `modules/operator_bot/i18n.py`. `tests/test_operator_bot_language.py`
+then insists on the same keys and the same `{placeholders}` as English, that
+nothing exceeds 4096 characters, that dynamic text is escaped and scrubbed like
+English, and (for Uzbek) the site's apostrophe spelling.
 
 ### What is real and what is unknown
 
@@ -159,7 +225,8 @@ Nothing here is applied until this PR is merged (scheduled workflows run from
 2. **Optional repository variables** (Settings > Secrets and variables > Actions >
    Variables): `OPERATOR_APP_URL` (e.g. `https://nightshift-ai.studio`, for the Open
    buttons and the site check), `OPERATOR_TZ` (e.g. `Asia/Tashkent`),
-   `OPERATOR_QUIET_HOURS` (e.g. `23-7`), `OPERATOR_DIGEST_HOUR` (e.g. `9`),
+   `OPERATOR_LANGUAGE` (`en`, `ru` or `uz`), `OPERATOR_QUIET_HOURS` (e.g. `23-7`),
+   `OPERATOR_DIGEST_HOUR` (e.g. `9`),
    `OPERATOR_STUCK_MINUTES`, `OPERATOR_ALERT_MAX_PER_HOUR`, and the existing
    `ELEVENLABS_LOW_CREDITS`.
 3. **Merge the PR.** Then, once: Actions > *Operator Alerts* > Run workflow, tick
@@ -223,6 +290,7 @@ comparison and gets an empty 200.
 | Authorization, legacy commands, intents | `modules/telegram_control.py` |
 | Update router (poll and webhook share it) | `modules/operator_bot/router.py` |
 | Messages and keyboards | `modules/operator_bot/views.py` |
+| Words, per language (data only) | `modules/operator_bot/i18n.py`, `copy_data/{en,ru,uz}.py` |
 | What is read, and how it is read | `modules/operator_bot/sources.py`, `analysis.py` |
 | Alerts, digest, mute | `modules/operator_bot/alerts.py`, `store.py` |
 | Webhook handler | `modules/operator_bot/webhook.py`, `tools/operator_bot_server.py` |

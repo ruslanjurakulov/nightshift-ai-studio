@@ -26,17 +26,14 @@ from typing import Optional
 
 from modules.operator_bot import analysis
 from modules.operator_bot.config import OperatorConfig, STUCK_HEARTBEAT_MINUTES
+from modules.operator_bot.i18n import DEFAULT_LANGUAGE, LANGUAGES, Raw, has, t
 from modules.operator_bot.sources import OperatorSources, Section, age_label, parse_ts
 from modules.tg_text import clip, html_escape, safe_id
 
 # Alert kinds (short, because callback_data is limited to 64 bytes) and where
-# each one points.
+# each one points. The kind ids are stable identifiers (they travel in callback
+# data and in /mute); what the owner reads for each comes from the copy table.
 ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit")
-KIND_LABEL = {
-    "run": "failed runs", "stuck": "stuck jobs", "balance": "low balances",
-    "deploy": "deploy / CI", "worker": "worker heartbeat", "approval": "approvals",
-    "audit": "security events",
-}
 KIND_COMMAND = {
     "run": "errors", "stuck": "queue", "balance": "balance", "deploy": "deploys",
     "worker": "health", "approval": "approvals", "audit": "security",
@@ -46,21 +43,11 @@ KIND_PAGE = {
     "approval": "approvals", "audit": "audit",
 }
 
-#: command name (and callback target) -> one-line description, in menu order.
-COMMANDS = (
-    ("health", "site, workers, last deploy"),
-    ("queue", "running and stuck jobs"),
-    ("errors", "failures in the last 24 hours"),
-    ("balance", "provider balances"),
-    ("spend", "provider cost, today and 7 days"),
-    ("today", "videos made, published, held"),
-    ("users", "new sign-ups (counts only)"),
-    ("deploys", "last deploys and CI"),
-    ("approvals", "waiting for a person"),
-    ("security", "recent security-relevant events"),
-    ("digest", "the daily summary, now"),
-    ("alerts", "alert settings and mutes"),
-)
+#: The read-only commands, in menu order. What each one is described as comes
+#: from the copy table (``cmddesc.<name>``).
+COMMANDS = tuple((name, f"cmddesc.{name}") for name in (
+    "health", "queue", "errors", "balance", "spend", "today", "users", "deploys",
+    "approvals", "security", "digest", "alerts"))
 READ_COMMANDS = tuple(name for name, _ in COMMANDS)
 
 
@@ -74,6 +61,54 @@ class Reply:
         return {"inline_keyboard": self.keyboard} if self.keyboard else None
 
 
+# -- text helpers ----------------------------------------------------------
+
+def b(text) -> Raw:
+    return Raw(f"<b>{html_escape(text)}</b>")
+
+
+def code(text) -> Raw:
+    return Raw(f"<code>{html_escape(text)}</code>")
+
+
+_NOTE_KEYS = {"not configured": "note.not_configured", "not set up yet": "note.not_set_up",
+              "unavailable": "note.unavailable"}
+
+
+def unknown(lang: str, sec: Section) -> Raw:
+    """``unknown (<why>)`` in the owner's language: a source that could not answer."""
+    why = t(lang, _NOTE_KEYS.get(sec.note or "unavailable", "note.unavailable"))
+    return Raw(t(lang, "unknown", why=Raw(why)))
+
+
+def status_word(lang: str, value) -> Raw:
+    """A job / worker / run status in the owner's language when the table knows
+    it; otherwise the raw value, made safe to print."""
+    key = f"st.{safe_id(value, 32)}"
+    return Raw(t(lang, key) if has(lang, key) else html_escape(safe_id(value, 32) or "?"))
+
+
+def ago(lang: str, since: Optional[datetime], now: datetime) -> Raw:
+    return Raw(t(lang, "ago", age=age_label(since, now)))
+
+
+def cut(lang: str, sec: Section) -> Raw:
+    """A suffix for a line built from a read that hit its row limit."""
+    return Raw(t(lang, "cut", n=sec.cap) if getattr(sec, "cap", 0) else "")
+
+
+def num(lang: str, value, digits: int = 0) -> str:
+    """Neutral number format (thousands comma, dot decimal) in every language."""
+    try:
+        return f"{float(value):,.{digits}f}"
+    except (TypeError, ValueError):
+        return t(lang, "unknown_word")
+
+
+def usd(value: float) -> str:
+    return f"${value:,.2f}" if abs(value) >= 0.01 or value == 0 else f"${value:,.4f}"
+
+
 # -- buttons ---------------------------------------------------------------
 
 def cb(text: str, data: str) -> dict:
@@ -83,6 +118,11 @@ def cb(text: str, data: str) -> dict:
 
 def url_button(text: str, url: Optional[str]) -> Optional[dict]:
     return {"text": text, "url": url} if url else None
+
+
+def open_button(lang: str, page: str, url: Optional[str]) -> Optional[dict]:
+    """The deep-link button for a page (``btn.open_<page>``)."""
+    return url_button(t(lang, f"btn.open_{page}"), url)
 
 
 _CHANNEL = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -102,132 +142,116 @@ def github_actions_link(cfg: OperatorConfig, workflow: str = "deploy_web.yml") -
 
 
 #: The main menu, grouped: one row per group, in this order. The menu text names
-#: the groups; each button runs one read-only command.
+#: the groups; each button runs one read-only command. Labels: ``cmd.<name>``;
+#: group names: ``grp.<group>``.
 MENU_GROUPS = (
-    ("Live", (("Health", "health"), ("Queue", "queue"), ("Errors", "errors"))),
-    ("Money", (("Balance", "balance"), ("Spend", "spend"))),
-    ("Activity", (("Today", "today"), ("Users", "users"), ("Deploys", "deploys"), ("Approvals", "approvals"))),
-    ("Reports", (("Security", "security"), ("Digest", "digest"), ("Alerts", "alerts"))),
-    ("Original", (("Status", "status"), ("Channels", "channels"), ("Held", "pending"))),
+    ("live", ("health", "queue", "errors")),
+    ("money", ("balance", "spend")),
+    ("activity", ("today", "users", "deploys", "approvals")),
+    ("reports", ("security", "digest", "alerts")),
+    ("original", ("status", "channels", "pending")),
 )
 
 
-def menu_keyboard() -> list:
-    return [[cb(label, f"c:{name}") for label, name in buttons] for _group, buttons in MENU_GROUPS]
+def menu_keyboard(lang: str = DEFAULT_LANGUAGE) -> list:
+    rows = [[cb(t(lang, f"cmd.{name}"), f"c:{name}") for name in names] for _g, names in MENU_GROUPS]
+    rows.append(language_row())
+    return rows
 
 
-def _with_menu(rows: list, extra_links: Optional[list] = None, again: Optional[str] = None) -> list:
+def language_row() -> list:
+    """One button per language, each labelled in its own language."""
+    return [cb(t(code_, "lang.name"), f"l:{code_}") for code_ in LANGUAGES]
+
+
+def _with_menu(lang: str, rows: list, extra_links: Optional[list] = None, again: Optional[str] = None) -> list:
     """Buttons for one view: its own rows, deep links, then Refresh (run the
     same command again) and Menu."""
     out = [r for r in rows if r]
-    links = [b for b in (extra_links or []) if b]
+    links = [x for x in (extra_links or []) if x]
     if links:
         out.append(links)
-    out.append(([cb("Refresh", f"c:{again}")] if again else []) + [cb("Menu", "c:menu")])
+    out.append(([cb(t(lang, "btn.refresh"), f"c:{again}")] if again else []) + [cb(t(lang, "btn.menu"), "c:menu")])
     return out
 
 
-def _b(text) -> str:
-    return f"<b>{html_escape(text)}</b>"
-
-
-def _c(text) -> str:
-    return f"<code>{html_escape(text)}</code>"
-
-
-def _unknown(sec: Section) -> str:
-    return f"unknown ({html_escape(sec.note or 'unavailable')})"
-
-
-def _cut(sec: Section) -> str:
-    """A suffix for a line built from a read that hit its row limit."""
-    return f" (list cut at {sec.cap} rows: a floor, not the whole)" if getattr(sec, "cap", 0) else ""
-
-
-def _n(value, digits: int = 0) -> str:
-    try:
-        return f"{float(value):,.{digits}f}"
-    except (TypeError, ValueError):
-        return "unknown"
-
-
-def _usd(value: float) -> str:
-    return f"${value:,.2f}" if abs(value) >= 0.01 or value == 0 else f"${value:,.4f}"
+def _nav(lang: str, *names: str) -> list:
+    """A row of buttons that run other commands (labelled ``cmd.<name>``)."""
+    return [cb(t(lang, f"cmd.{n}"), f"c:{n}") for n in names]
 
 
 # -- menu / help -----------------------------------------------------------
 
-def view_menu(cfg: OperatorConfig) -> Reply:
-    groups = [f"{html_escape(group)}: {html_escape(', '.join(label.lower() for label, _ in buttons))}"
-              for group, buttons in MENU_GROUPS]
-    return Reply(
-        "\n".join([_b("Nightshift operator"), *groups,
-                   "Tap a button, or type a command. Read-only: nothing here publishes, spends or approves."]),
-        menu_keyboard(),
-    )
+def view_menu(cfg: OperatorConfig, lang: str = DEFAULT_LANGUAGE) -> Reply:
+    groups = [t(lang, "menu.group", group=t(lang, f"grp.{g}"),
+                items=", ".join(t(lang, f"cmd.{n}").lower() for n in names))
+              for g, names in MENU_GROUPS]
+    return Reply("\n".join([t(lang, "menu.title"), *groups, t(lang, "menu.hint")]), menu_keyboard(lang))
 
 
-def view_help() -> Reply:
-    lines = [_b("Nightshift operator — commands"), "Read-only:"]
-    lines += [f"/{name} — {html_escape(desc)}" for name, desc in COMMANDS]
-    lines += [
-        "/status — video count",
-        "/channels — channels and autonomy",
-        "/pending — videos held for review",
-        "/menu — buttons",
-        "Safe:",
-        "/mute [kind|all] — silence alerts for 24 hours",
-        "/unmute [kind|all]",
-        "Requests (still pass the publish gate, nothing runs from here):",
-        "/publish &lt;video_id&gt;, /pause &lt;channel_id&gt;, /resume &lt;channel_id&gt;",
-        f"Alert kinds: {html_escape(', '.join(ALERT_KINDS))}",
-    ]
-    return Reply("\n".join(lines), [[cb("Menu", "c:menu")]])
+def view_help(lang: str = DEFAULT_LANGUAGE) -> Reply:
+    lines = [t(lang, "help.title"), t(lang, "help.readonly")]
+    lines += [f"/{name} — {t(lang, key)}" for name, key in COMMANDS]
+    lines += [t(lang, k) for k in (
+        "help.status", "help.channels", "help.pending", "help.menu", "help.language", "help.safe",
+        "help.mute", "help.unmute", "help.requests", "help.request_cmds")]
+    lines.append(t(lang, "help.kinds", kinds=", ".join(ALERT_KINDS)))
+    return Reply("\n".join(lines), [language_row(), [cb(t(lang, "btn.menu"), "c:menu")]])
+
+
+def view_language(cfg: OperatorConfig, lang: str = DEFAULT_LANGUAGE, changed: bool = False) -> Reply:
+    lines = []
+    if changed:
+        lines.append(t(lang, "language.set", name=t(lang, "lang.name")))
+    lines.append(t(lang, "language.current", name=t(lang, "lang.name")))
+    lines.append(t(lang, "language.choose"))
+    return Reply("\n".join(lines), [language_row(), [cb(t(lang, "btn.menu"), "c:menu")]])
 
 
 # -- /health ---------------------------------------------------------------
 
-def view_health(ops: OperatorSources) -> Reply:
+def view_health(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
-    lines = [_b("Health")]
+    lines = [t(lang, "health.title")]
 
     site = ops.site()
     if not site.ok:
-        lines.append(f"Site: {_unknown(site)}")
+        lines.append(t(lang, "health.site_unknown", why=unknown(lang, site)))
     else:
         bad = [r for r in site.data if r["status"] is None or not (200 <= r["status"] < 400)]
         if bad:
-            lines.append("Site: <b>DOWN</b> — " + html_escape(", ".join(
-                f"{r['path']} {r['status'] if r['status'] else 'no answer'}" for r in bad)))
+            lines.append(t(lang, "health.site_down", pages=", ".join(
+                f"{r['path']} {r['status'] if r['status'] else t(lang, 'health.no_answer')}" for r in bad)))
         else:
-            lines.append(f"Site: OK ({len(site.data)}/{len(site.data)} pages answer)")
+            lines.append(t(lang, "health.site_ok", n=len(site.data)))
 
     workers = ops.workers()
     if not workers.ok:
-        lines.append(f"Workers: {_unknown(workers)}")
+        lines.append(t(lang, "health.workers_unknown", why=unknown(lang, workers)))
     else:
         rows = analysis.classify_workers(workers.data, now)
         if not rows:
-            lines.append("Workers: none has ever reported (worker off, or migration 0045 not applied)")
+            lines.append(t(lang, "health.workers_none"))
         for w in rows[:8]:
-            tag = "STALE" if w["stale"] else str(w.get("state") or "?")
-            beat = "?" if w["age_s"] is None else age_label(now - timedelta(seconds=w["age_s"]), now)
+            tag = status_word(lang, "stale") if w["stale"] else status_word(lang, w.get("state") or "?")
+            beat = ago(lang, None if w["age_s"] is None else now - timedelta(seconds=w["age_s"]), now)
             extra = ""
             if w.get("state") == "failed" and w.get("detail"):
                 extra = " — " + clip(w["detail"], 100)
-            lines.append(f"• {_c(safe_id(w.get('worker_id')))} {html_escape(w.get('kind') or '?')}: "
-                         f"<b>{html_escape(tag)}</b>, reported {html_escape(beat)} ago{html_escape(extra)}")
+            lines.append(t(lang, "health.worker_line", id=code(safe_id(w.get("worker_id"))),
+                           kind=w.get("kind") or "?", tag=Raw(f"<b>{tag}</b>"),
+                           beat=beat, extra=extra))
 
     dep = ops.deploys()
     if not dep.ok:
-        lines.append(f"Deploys / CI: {_unknown(dep)}")
+        lines.append(t(lang, "health.deploys_unknown", why=unknown(lang, dep)))
     else:
-        lines.extend(_deploy_summary_lines(dep.data, now))
+        lines.extend(_deploy_summary_lines(lang, dep.data, now))
 
-    lines.append("Disk: not reported (the workers send state and heartbeat only)")
+    lines.append(t(lang, "health.disk"))
     kb = _with_menu(
-        [[cb("Queue", "c:queue"), cb("Deploys", "c:deploys")]],
-        [url_button("Open integrations", app_link(cfg, "integrations"))],
+        lang, [_nav(lang, "queue", "deploys")],
+        [open_button(lang, "integrations", app_link(cfg, "integrations"))],
         again="health",
     )
     return Reply("\n".join(lines), kb)
@@ -239,122 +263,125 @@ def _run_word(run: dict) -> str:
     return str(run.get("conclusion") or "unknown")
 
 
-def _deploy_summary_lines(data: list, now: datetime) -> list[str]:
+def _deploy_summary_lines(lang: str, data: list, now: datetime) -> list[str]:
     lines = []
     for wf in data:
-        label = wf["label"]
+        label = t(lang, f"wf.{wf['label']}") if has(lang, f"wf.{wf['label']}") else wf["label"].capitalize()
         if not wf.get("ok"):
-            lines.append(f"{html_escape(label.capitalize())}: unknown (GitHub did not answer)")
+            lines.append(t(lang, "deploys.unknown", label=label))
             continue
         run = analysis.latest_run(wf["runs"])
         if run is None:
-            lines.append(f"{html_escape(label.capitalize())}: no finished run yet")
+            lines.append(t(lang, "deploys.none", label=label))
             continue
         word = _run_word(run)
-        mark = "<b>FAILED</b>" if word in ("failure", "timed_out", "startup_failure") else html_escape(word)
-        lines.append(f"{html_escape(label.capitalize())}: {mark} {_c(safe_id(run.get('sha'), 7))}, "
-                     f"{html_escape(age_label(parse_ts(run.get('at')), now))} ago")
+        mark = Raw(t(lang, "deploys.failed_mark")) if word in ("failure", "timed_out", "startup_failure") \
+            else status_word(lang, word)
+        lines.append(t(lang, "deploys.line", label=label, mark=mark, sha=code(safe_id(run.get("sha"), 7)),
+                       when=ago(lang, parse_ts(run.get("at")), now)))
     return lines
 
 
 # -- /queue ----------------------------------------------------------------
 
-def _job_line(r: dict, now: datetime, name: str, stuck_ids: set) -> str:
+def _job_line(lang: str, r: dict, now: datetime, name: str, stuck_ids: set) -> str:
     started = parse_ts(r.get("started_at")) or parse_ts(r.get("created_at"))
     beat = parse_ts(r.get("heartbeat_at"))
-    bits = [f"{name} {_c(safe_id(r.get('id'), 12))}"]
+    bits = [t(lang, f"queue.{name}", id=code(safe_id(r.get("id"), 12)))]
     if r.get("channel_id"):
         bits.append(html_escape(safe_id(r.get("channel_id"))))
     if r.get("capability"):
         bits.append(html_escape(safe_id(r.get("capability"), 32)))
-    bits.append(f"{html_escape(r.get('status') or '?')} {html_escape(age_label(started, now))}")
+    bits.append(f"{status_word(lang, r.get('status') or '?')} {html_escape(age_label(started, now))}")
     if beat is not None and r.get("status") != "queued":
-        bits.append(f"beat {html_escape(age_label(beat, now))} ago")
+        bits.append(t(lang, "queue.beat", when=ago(lang, beat, now)))
     if r.get("id") in stuck_ids:
-        bits.append("<b>STUCK</b>")
+        bits.append(t(lang, "queue.stuck_mark"))
     return "• " + " · ".join(bits)
 
 
-def view_queue(ops: OperatorSources) -> Reply:
+def view_queue(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
     since = now - timedelta(hours=1)
-    lines = [_b("Queue")]
+    lines = [t(lang, "queue.title")]
 
     rj = ops.render_jobs(since)
     if not rj.ok:
-        lines.append(f"Render jobs: {_unknown(rj)}")
+        lines.append(t(lang, "queue.render_unknown", why=unknown(lang, rj)))
     else:
         c = analysis.classify_render_jobs(rj.data, now, cfg)
         stuck_ids = {r["id"] for r in c["stuck"]}
-        lines.append(f"Render jobs: {len(c['running'])} running, {len(c['queued'])} queued, "
-                     f"{len(c['stuck'])} stuck{html_escape(_cut(rj))}")
+        lines.append(t(lang, "queue.render", running=len(c["running"]), queued=len(c["queued"]),
+                       stuck=len(c["stuck"]), cut=cut(lang, rj)))
         for r in (c["running"] + c["queued"])[:8]:
-            lines.append(_job_line(r, now, "run", stuck_ids))
+            lines.append(_job_line(lang, r, now, "run", stuck_ids))
 
     cj = ops.creative_jobs(since)
     if not cj.ok:
-        lines.append(f"Creative jobs: {_unknown(cj)}")
+        lines.append(t(lang, "queue.creative_unknown", why=unknown(lang, cj)))
     else:
         c = analysis.classify_creative_jobs(cj.data, now, cfg)
         stuck_ids = {r["id"] for r in c["stuck"]}
-        lines.append(f"Creative jobs: {len(c['running'])} running, {len(c['queued'])} queued, "
-                     f"{len(c['stuck'])} stuck{html_escape(_cut(cj))}")
+        lines.append(t(lang, "queue.creative", running=len(c["running"]), queued=len(c["queued"]),
+                       stuck=len(c["stuck"]), cut=cut(lang, cj)))
         for r in (c["running"] + c["queued"])[:8]:
-            lines.append(_job_line(r, now, "job", stuck_ids))
-    lines.append(f"Stuck = no heartbeat for {STUCK_HEARTBEAT_MINUTES} min, or queued over {cfg.stuck_minutes} min.")
+            lines.append(_job_line(lang, r, now, "job", stuck_ids))
+    lines.append(t(lang, "queue.legend", beat=STUCK_HEARTBEAT_MINUTES, wait=cfg.stuck_minutes))
     return Reply("\n".join(lines), _with_menu(
-        [[cb("Errors", "c:errors"), cb("Health", "c:health")]],
-        [url_button("Open jobs", app_link(cfg, "jobs"))], again="queue"))
+        lang, [_nav(lang, "errors", "health")],
+        [open_button(lang, "jobs", app_link(cfg, "jobs"))], again="queue"))
 
 
 # -- /errors ---------------------------------------------------------------
 
-def _grouped(counter, limit: int = 6) -> str:
+def _grouped(lang: str, counter, limit: int = 6) -> str:
     items = counter.most_common(limit)
     text = ", ".join(f"{safe_id(k, 40)} ×{v}" for k, v in items)
     more = len(counter) - len(items)
-    return text + (f", +{more} more" if more > 0 else "")
+    return text + (t(lang, "errors.more", n=more) if more > 0 else "")
 
 
-def view_errors(ops: OperatorSources) -> Reply:
+def view_errors(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
     since = now - timedelta(hours=24)
-    lines = [_b("Errors — last 24 hours")]
+    lines = [t(lang, "errors.title")]
 
     rj = ops.render_jobs(since)
     if not rj.ok:
-        lines.append(f"Render jobs: {_unknown(rj)}")
+        lines.append(t(lang, "errors.render_unknown", why=unknown(lang, rj)))
     else:
         failed = analysis.classify_render_jobs(rj.data, now, cfg)["failed"]
         failed = [r for r in failed if (parse_ts(r.get("finished_at")) or now) >= since]
         if not failed:
-            lines.append("Render jobs: none failed")
+            lines.append(t(lang, "errors.render_none"))
         else:
-            lines.append(f"Render jobs: {len(failed)} failed — {html_escape(_grouped(analysis.count_by(failed, 'channel_id')))}{html_escape(_cut(rj))}")
-            lines.append("ids: " + html_escape(", ".join(f"#{safe_id(r['id'], 12)}" for r in failed[:8])))
+            lines.append(t(lang, "errors.render", n=len(failed),
+                           groups=_grouped(lang, analysis.count_by(failed, "channel_id")), cut=cut(lang, rj)))
+            lines.append(t(lang, "errors.ids", ids=", ".join(f"#{safe_id(r['id'], 12)}" for r in failed[:8])))
 
     cj = ops.creative_jobs(since)
     if not cj.ok:
-        lines.append(f"Creative jobs: {_unknown(cj)}")
+        lines.append(t(lang, "errors.creative_unknown", why=unknown(lang, cj)))
     else:
         failed = analysis.classify_creative_jobs(cj.data, now, cfg)["failed"]
         failed = [r for r in failed if (parse_ts(r.get("finished_at")) or now) >= since]
         if not failed:
-            lines.append("Creative jobs: none failed")
+            lines.append(t(lang, "errors.creative_none"))
         else:
-            lines.append(f"Creative jobs: {len(failed)} failed — {html_escape(_grouped(analysis.count_by(failed, 'error_code')))}{html_escape(_cut(cj))}")
+            lines.append(t(lang, "errors.creative", n=len(failed),
+                           groups=_grouped(lang, analysis.count_by(failed, "error_code")), cut=cut(lang, cj)))
 
     ev = ops.events(since, ("render.failed", "upload.failed", "short.failed", "repair.failed"))
     if not ev.ok:
-        lines.append(f"Pipeline events: {_unknown(ev)}")
+        lines.append(t(lang, "errors.events_unknown", why=unknown(lang, ev)))
     else:
         counts = analysis.event_counts(ev.data)
-        lines.append("Pipeline events: " + (html_escape(", ".join(f"{k} ×{v}" for k, v in sorted(counts.items())))
-                                            if counts else "none failed") + html_escape(_cut(ev)))
-    lines.append("No error text is shown here, only ids and codes. The Errors page has the detail.")
+        what = ", ".join(f"{k} ×{v}" for k, v in sorted(counts.items())) if counts else t(lang, "errors.events_none")
+        lines.append(t(lang, "errors.events", what=what, cut=cut(lang, ev)))
+    lines.append(t(lang, "errors.footer"))
     return Reply("\n".join(lines), _with_menu(
-        [[cb("Queue", "c:queue"), cb("Health", "c:health")]],
-        [url_button("Open errors", app_link(cfg, "errors"))], again="errors"))
+        lang, [_nav(lang, "queue", "health")],
+        [open_button(lang, "errors", app_link(cfg, "errors"))], again="errors"))
 
 
 # -- /balance, /spend ------------------------------------------------------
@@ -364,112 +391,113 @@ def _low_threshold() -> float:
     return provider_balance.low_credit_threshold()
 
 
-def view_balance(ops: OperatorSources, low: Optional[float] = None) -> Reply:
+def view_balance(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE, low: Optional[float] = None) -> Reply:
     now, cfg = ops.now(), ops.cfg
     low = _low_threshold() if low is None else low
-    lines = [_b("Provider balances")]
+    lines = [t(lang, "balance.title")]
     sec = ops.balances()
     if not sec.ok:
-        lines.append(f"Balances: {_unknown(sec)}")
+        lines.append(t(lang, "balance.unknown", why=unknown(lang, sec)))
     else:
         rows = analysis.balance_flags(sec.data, low)
         if not rows:
-            lines.append("No balance snapshot yet (the Provider Balances workflow records them every 6 hours).")
+            lines.append(t(lang, "balance.none"))
         for r in sorted(rows, key=lambda x: str(x.get("provider"))):
             rem, tot = r["remaining_n"], analysis._num(r.get("total"))
-            of = f" of {_n(tot)}" if tot is not None else ""
-            tier = f" ({html_escape(clip(r.get('tier'), 24))})" if r.get("tier") else ""
-            flag = f" — <b>LOW</b> (threshold {_n(low)})" if r["low"] else ""
-            checked = age_label(parse_ts(r.get("checked_at")), now)
-            lines.append(f"• {html_escape(safe_id(r.get('provider'), 24))} {html_escape(safe_id(r.get('metric'), 24))}: "
-                         f"{'unknown' if rem is None else _n(rem)}{html_escape(of)} {html_escape(safe_id(r.get('unit'), 12))}"
-                         f"{tier}{flag} · checked {html_escape(checked)} ago")
-        lines.append("Only providers with a balance API appear here; the others are on the Billing page.")
+            lines.append(t(
+                lang, "balance.line", provider=safe_id(r.get("provider"), 24), metric=safe_id(r.get("metric"), 24),
+                remaining=t(lang, "unknown_word") if rem is None else num(lang, rem),
+                of=t(lang, "balance.of", total=num(lang, tot)) if tot is not None else "",
+                unit=safe_id(r.get("unit"), 12),
+                tier=f" ({clip(r.get('tier'), 24)})" if r.get("tier") else "",
+                flag=Raw(t(lang, "balance.low_flag", threshold=num(lang, low))) if r["low"] else "",
+                checked=ago(lang, parse_ts(r.get("checked_at")), now)))
+        lines.append(t(lang, "balance.footer"))
     return Reply("\n".join(lines), _with_menu(
-        [[cb("Spend", "c:spend")]], [url_button("Open billing", app_link(cfg, "billing"))], again="balance"))
+        lang, [_nav(lang, "spend")], [open_button(lang, "billing", app_link(cfg, "billing"))], again="balance"))
 
 
-def _cost_line(label: str, sec: Section, since: datetime) -> str:
+def _cost_line(lang: str, label: str, sec: Section, since: datetime) -> str:
     if not sec.ok:
-        return f"{label}: {_unknown(sec)}"
+        return t(lang, "cost.unknown_src", label=label, why=unknown(lang, sec))
     rows = [r for r in sec.data if (parse_ts(r.get("recorded_at")) or since) >= since]
     s = analysis.summarize_costs(rows)
     if s["rows"] == 0:
-        return f"{label}: no cost rows"
-    capped = " (list cut at 5,000 rows)" if len(sec.data) >= 5000 else ""
+        return t(lang, "cost.none", label=label)
+    capped = Raw(t(lang, "cost.cut")) if len(sec.data) >= 5000 else ""
     if s["usd"] is None:
-        return f"{label}: unknown — {s['unpriced']} cost row(s), none priced{capped}"
+        return t(lang, "cost.all_unpriced", label=label, n=s["unpriced"], cut=capped)
     if s["complete"]:
-        return f"{label}: {_usd(s['usd'])} ({s['priced']} priced rows){capped}"
-    return f"{label}: at least {_usd(s['usd'])} — {s['unpriced']} row(s) unpriced, so not a total{capped}"
+        return t(lang, "cost.complete", label=label, usd=usd(s["usd"]), n=s["priced"], cut=capped)
+    return t(lang, "cost.partial", label=label, usd=usd(s["usd"]), n=s["unpriced"], cut=capped)
 
 
-def view_spend(ops: OperatorSources) -> Reply:
+def view_spend(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
     day = now.astimezone(cfg.tz).replace(hour=0, minute=0, second=0, microsecond=0)
     week = now - timedelta(days=7)
-    lines = [_b("Spend — provider cost")]
+    lines = [t(lang, "spend.title")]
     costs = ops.creative_costs(week)
-    lines.append(html_escape(_cost_line("Today", costs, day)))
-    lines.append(html_escape(_cost_line("7 days", costs, week)))
+    lines.append(_cost_line(lang, t(lang, "spend.today"), costs, day))
+    lines.append(_cost_line(lang, t(lang, "spend.days7"), costs, week))
     cap = ops.credits_captured(week)
     if cap.ok:
         today_rows = [r for r in cap.data if (parse_ts(r.get("finished_at")) or week) >= day]
-        lines.append(f"Credits captured (completed creative jobs): today {_n(analysis.sum_credits(today_rows))}, "
-                     f"7 days {_n(analysis.sum_credits(cap.data))}{html_escape(_cut(cap))}")
+        lines.append(t(lang, "spend.credits", today=num(lang, analysis.sum_credits(today_rows)),
+                       week=num(lang, analysis.sum_credits(cap.data)), cut=cut(lang, cap)))
     else:
-        lines.append(f"Credits captured: {_unknown(cap)}")
-    lines.append("Revenue in USD is not computed here: it needs the operator session "
-                 "(the Margin report is platform-admin only). Open it below.")
-    lines.append("Costs are the recorded estimates of creative jobs; pipeline-run costs live in the cost ledger.")
+        lines.append(t(lang, "spend.credits_unknown", why=unknown(lang, cap)))
+    lines.append(t(lang, "spend.revenue"))
+    lines.append(t(lang, "spend.footer"))
     return Reply("\n".join(lines), _with_menu(
-        [[cb("Balance", "c:balance")]], [url_button("Open margin", app_link(cfg, "margin"))], again="spend"))
+        lang, [_nav(lang, "balance")], [open_button(lang, "margin", app_link(cfg, "margin"))], again="spend"))
 
 
 # -- /today, /users --------------------------------------------------------
 
-def view_today(ops: OperatorSources) -> Reply:
+def view_today(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
     day = now.astimezone(cfg.tz).replace(hour=0, minute=0, second=0, microsecond=0)
-    lines = [f"<b>Today — since 00:00 {html_escape(str(day.tzinfo))}</b>"]
+    lines = [t(lang, "today.title", tz=str(day.tzinfo))]
     ev = ops.events(day, ("render.completed", "video.published", "publish.held", "publish.blocked",
                           "render.failed", "upload.failed"))
     if not ev.ok:
-        lines.append(f"Videos: {_unknown(ev)}")
+        lines.append(t(lang, "today.videos_unknown", why=unknown(lang, ev)))
     else:
         c = analysis.event_counts(ev.data)
-        lines.append(f"Videos made {c.get('render.completed', 0)} · published {c.get('video.published', 0)} · "
-                     f"held {c.get('publish.held', 0)} · blocked by the gate {c.get('publish.blocked', 0)} · "
-                     f"failed {c.get('render.failed', 0) + c.get('upload.failed', 0)}{html_escape(_cut(ev))}")
+        lines.append(t(lang, "today.videos", made=c.get("render.completed", 0), published=c.get("video.published", 0),
+                       held=c.get("publish.held", 0), blocked=c.get("publish.blocked", 0),
+                       failed=c.get("render.failed", 0) + c.get("upload.failed", 0), cut=cut(lang, ev)))
     rj = ops.render_jobs(day)
     if rj.ok:
         c = analysis.classify_render_jobs(rj.data, now, cfg)
         done = [r for r in c["succeeded"] if (parse_ts(r.get("finished_at")) or day) >= day]
         bad = [r for r in c["failed"] if (parse_ts(r.get("finished_at")) or day) >= day]
-        lines.append(f"Render jobs: {len(done)} succeeded, {len(bad)} failed, {len(c['running'])} running, "
-                     f"{len(c['queued'])} queued{html_escape(_cut(rj))}")
+        lines.append(t(lang, "today.render", ok=len(done), failed=len(bad), running=len(c["running"]),
+                       queued=len(c["queued"]), cut=cut(lang, rj)))
     else:
-        lines.append(f"Render jobs: {_unknown(rj)}")
+        lines.append(t(lang, "queue.render_unknown", why=unknown(lang, rj)))
     cj = ops.creative_jobs(day)
     if cj.ok:
         c = analysis.classify_creative_jobs(cj.data, now, cfg)
         done = [r for r in c["completed"] if (parse_ts(r.get("finished_at")) or day) >= day]
         bad = [r for r in c["failed"] if (parse_ts(r.get("finished_at")) or day) >= day]
-        lines.append(f"Creative jobs: {len(done)} completed, {len(bad)} failed{html_escape(_cut(cj))}")
+        lines.append(t(lang, "today.creative", ok=len(done), failed=len(bad), cut=cut(lang, cj)))
     else:
-        lines.append(f"Creative jobs: {_unknown(cj)}")
+        lines.append(t(lang, "queue.creative_unknown", why=unknown(lang, cj)))
     su = ops.signups(day)
-    lines.append(f"New accounts: {len(su.data)}{html_escape(_cut(su))}" if su.ok else f"New accounts: {_unknown(su)}")
-    lines.append("Video counts come from the mirrored event log; a run whose events were not mirrored is not counted.")
-    return Reply("\n".join(lines), _with_menu([[cb("Users", "c:users"), cb("Errors", "c:errors")]], again="today"))
+    lines.append(t(lang, "today.accounts", n=len(su.data), cut=cut(lang, su)) if su.ok
+                 else t(lang, "today.accounts_unknown", why=unknown(lang, su)))
+    lines.append(t(lang, "today.footer"))
+    return Reply("\n".join(lines), _with_menu(lang, [_nav(lang, "users", "errors")], again="today"))
 
 
-def view_users(ops: OperatorSources) -> Reply:
+def view_users(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
-    lines = [_b("New accounts")]
+    lines = [t(lang, "users.title")]
     sec = ops.signups(now - timedelta(days=30))
     if not sec.ok:
-        lines.append(f"Sign-ups: {_unknown(sec)}")
+        lines.append(t(lang, "users.unknown", why=unknown(lang, sec)))
     else:
         stamps = [parse_ts(r.get("created_at")) for r in sec.data]
         stamps = [s for s in stamps if s]
@@ -477,172 +505,181 @@ def view_users(ops: OperatorSources) -> Reply:
         def since(delta):
             return sum(1 for s in stamps if s >= now - delta)
 
-        capped = " (list cut at 5,000)" if len(sec.data) >= 5000 else ""
-        lines.append(f"Last 24 hours: {since(timedelta(hours=24))}")
-        lines.append(f"Last 7 days: {since(timedelta(days=7))}")
-        lines.append(f"Last 30 days: {len(stamps)}{capped}")
-        lines.append("Counted as organizations created (one per sign-up). Counts only: no names, no e-mails.")
-    return Reply("\n".join(lines), _with_menu([[cb("Today", "c:today")]], again="users"))
+        capped = Raw(t(lang, "users.cut")) if len(sec.data) >= 5000 else ""
+        lines.append(t(lang, "users.h24", n=since(timedelta(hours=24))))
+        lines.append(t(lang, "users.d7", n=since(timedelta(days=7))))
+        lines.append(t(lang, "users.d30", n=len(stamps), cut=capped))
+        lines.append(t(lang, "users.footer"))
+    return Reply("\n".join(lines), _with_menu(lang, [_nav(lang, "today")], again="users"))
 
 
 # -- /deploys, /approvals, /security ---------------------------------------
 
-def view_deploys(ops: OperatorSources) -> Reply:
+def view_deploys(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
-    lines = [_b("Deploys and CI (main)")]
+    lines = [t(lang, "deploys.title")]
     dep = ops.deploys()
     if not dep.ok:
-        lines.append(f"GitHub: {_unknown(dep)}")
+        lines.append(t(lang, "deploys.github_unknown", why=unknown(lang, dep)))
     else:
         for wf in dep.data:
+            label = t(lang, f"wf.{wf['label']}") if has(lang, f"wf.{wf['label']}") else wf["label"].capitalize()
             if not wf.get("ok"):
-                lines.append(f"{html_escape(wf['label'].capitalize())}: unknown (GitHub did not answer)")
+                lines.append(t(lang, "deploys.unknown", label=label))
                 continue
-            lines.append(_b(wf["label"].capitalize()))
+            lines.append(b(label))
             for r in wf["runs"]:
-                lines.append(f"• {_c(safe_id(r.get('sha'), 7))} {html_escape(_run_word(r))} · "
-                             f"{html_escape(age_label(parse_ts(r.get('at')), now))} ago")
+                lines.append(t(lang, "deploys.run", sha=code(safe_id(r.get("sha"), 7)),
+                               word=status_word(lang, _run_word(r)), when=ago(lang, parse_ts(r.get("at")), now)))
     return Reply("\n".join(lines), _with_menu(
-        [[cb("Health", "c:health")]], [url_button("Open deploys", github_actions_link(cfg))], again="deploys"))
+        lang, [_nav(lang, "health")], [open_button(lang, "deploys", github_actions_link(cfg))], again="deploys"))
 
 
-def view_approvals(ops: OperatorSources, held: Optional[list] = None) -> Reply:
+def view_approvals(ops: OperatorSources, held: Optional[list] = None, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
-    lines = [_b("Waiting for a person")]
+    lines = [t(lang, "approvals.title")]
     pa = ops.publish_approvals()
     if not pa.ok:
-        lines.append(f"Publish approvals: {_unknown(pa)}")
+        lines.append(t(lang, "approvals.pa_unknown", why=unknown(lang, pa)))
     elif not pa.data:
-        lines.append("Publish approvals: none pending")
+        lines.append(t(lang, "approvals.pa_none"))
     else:
-        lines.append(f"Publish approvals: {len(pa.data)} pending")
+        lines.append(t(lang, "approvals.pa", n=len(pa.data)))
         for r in pa.data[:8]:
-            lines.append(f"• {html_escape(safe_id(r.get('channel_id')))} · "
-                         f"{html_escape(age_label(parse_ts(r.get('requested_at')), now))} waiting")
+            lines.append(t(lang, "approvals.pa_line", channel=safe_id(r.get("channel_id")),
+                           waiting=age_label(parse_ts(r.get("requested_at")), now)))
     runs = ops.runs_awaiting_approval()
     if not runs.ok:
-        lines.append(f"Runs at human approval: {_unknown(runs)}")
+        lines.append(t(lang, "approvals.runs_unknown", why=unknown(lang, runs)))
     elif not runs.data:
-        lines.append("Runs at human approval: none")
+        lines.append(t(lang, "approvals.runs_none"))
     else:
-        lines.append(f"Runs at human approval: {len(runs.data)}")
+        lines.append(t(lang, "approvals.runs", n=len(runs.data)))
         for r in runs.data[:8]:
-            lines.append(f"• {_c(safe_id(r.get('run_id'), 40))} · "
-                         f"{html_escape(age_label(parse_ts(r.get('updated_at')), now))}")
+            lines.append(t(lang, "approvals.run_line", id=code(safe_id(r.get("run_id"), 40)),
+                           age=age_label(parse_ts(r.get("updated_at")), now)))
     if held is not None:
-        lines.append(f"Held for review (auto-publish off): {len(held)}")
-    lines.append("Deciding happens in the app. Nothing here approves or publishes.")
+        lines.append(t(lang, "approvals.held", n=len(held)))
+    lines.append(t(lang, "approvals.footer"))
     return Reply("\n".join(lines), _with_menu(
-        [[cb("Held", "c:pending")]], [url_button("Open approvals", app_link(cfg, "approvals"))], again="approvals"))
+        lang, [_nav(lang, "pending")], [open_button(lang, "approvals", app_link(cfg, "approvals"))], again="approvals"))
 
 
-def view_security(ops: OperatorSources) -> Reply:
+def view_security(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     now, cfg = ops.now(), ops.cfg
-    lines = [_b("Security-relevant events — 24 hours")]
+    lines = [t(lang, "security.title")]
     sec = ops.audit(now - timedelta(hours=24))
     if not sec.ok:
-        lines.append(f"Audit log: {_unknown(sec)}")
+        lines.append(t(lang, "security.unknown", why=unknown(lang, sec)))
     elif not sec.data:
-        lines.append("None.")
+        lines.append(t(lang, "security.none"))
     else:
         for r in sec.data[:12]:
-            tgt = f" → {html_escape(safe_id(r.get('target'), 40))}" if r.get("target") else ""
-            lines.append(f"• {_c(safe_id(r.get('action'), 40))}{tgt} · "
-                         f"{html_escape(age_label(parse_ts(r.get('at')), now))} ago")
+            tgt = f" → {safe_id(r.get('target'), 40)}" if r.get("target") else ""
+            lines.append(t(lang, "security.line", action=code(safe_id(r.get("action"), 40)), target=tgt,
+                           when=ago(lang, parse_ts(r.get("at")), now)))
         if len(sec.data) > 12:
-            lines.append(f"+{len(sec.data) - 12} more")
+            lines.append(t(lang, "security.more", n=len(sec.data) - 12))
         if sec.cap:
-            lines.append(html_escape(_cut(sec).strip()))
-    lines.append("Actors are not shown (no e-mails). The Audit page names them.")
-    return Reply("\n".join(lines), _with_menu([], [url_button("Open audit", app_link(cfg, "audit"))], again="security"))
+            lines.append(cut(lang, sec).strip())
+    lines.append(t(lang, "security.footer"))
+    return Reply("\n".join(lines), _with_menu(
+        lang, [], [open_button(lang, "audit", app_link(cfg, "audit"))], again="security"))
 
 
 # -- /digest ---------------------------------------------------------------
 
-def view_digest(ops: OperatorSources, held: Optional[list] = None) -> Reply:
+def view_digest(ops: OperatorSources, held: Optional[list] = None, lang: str = DEFAULT_LANGUAGE) -> Reply:
     """The daily summary: one line per area, each the headline of its command."""
     now, cfg = ops.now(), ops.cfg
     day = now.astimezone(cfg.tz).replace(hour=0, minute=0, second=0, microsecond=0)
     since24 = now - timedelta(hours=24)
-    lines = [f"<b>Daily digest — {html_escape(cfg.local_date(now))}</b>"]
+    lines = [t(lang, "digest.title", date=cfg.local_date(now))]
 
     site = ops.site()
     if site.ok:
         bad = [r for r in site.data if r["status"] is None or not (200 <= r["status"] < 400)]
-        lines.append("Site: " + ("<b>DOWN</b> " + html_escape(", ".join(r["path"] for r in bad)) if bad else "OK"))
+        lines.append(t(lang, "digest.site_down", pages=", ".join(r["path"] for r in bad)) if bad
+                     else t(lang, "digest.site_ok"))
     else:
-        lines.append(f"Site: {_unknown(site)}")
+        lines.append(t(lang, "digest.site_unknown", why=unknown(lang, site)))
 
     workers = ops.workers()
     if workers.ok:
         ws = analysis.classify_workers(workers.data, now)
         stale = [w for w in ws if w["stale"] or w.get("state") == "failed"]
-        lines.append(f"Workers: {len(ws)} reporting" + (f", <b>{len(stale)} need attention</b>" if stale else ", all fine"))
+        lines.append(t(lang, "digest.workers_attention", n=len(ws), bad=len(stale)) if stale
+                     else t(lang, "digest.workers_fine", n=len(ws)))
     else:
-        lines.append(f"Workers: {_unknown(workers)}")
+        lines.append(t(lang, "digest.workers_unknown", why=unknown(lang, workers)))
 
     rj, cj = ops.render_jobs(since24), ops.creative_jobs(since24)
+
+    def fin(rs):
+        return [r for r in rs if (parse_ts(r.get("finished_at")) or since24) >= since24]
+
     if rj.ok:
         c = analysis.classify_render_jobs(rj.data, now, cfg)
-        fin = lambda rs: [r for r in rs if (parse_ts(r.get("finished_at")) or since24) >= since24]
-        lines.append(f"Render jobs (24h): {len(fin(c['succeeded']))} ok, {len(fin(c['failed']))} failed, "
-                     f"{len(c['stuck'])} stuck now{html_escape(_cut(rj))}")
+        lines.append(t(lang, "digest.render", ok=len(fin(c["succeeded"])), failed=len(fin(c["failed"])),
+                       stuck=len(c["stuck"]), cut=cut(lang, rj)))
     else:
-        lines.append(f"Render jobs: {_unknown(rj)}")
+        lines.append(t(lang, "queue.render_unknown", why=unknown(lang, rj)))
     if cj.ok:
         c = analysis.classify_creative_jobs(cj.data, now, cfg)
-        fin = lambda rs: [r for r in rs if (parse_ts(r.get("finished_at")) or since24) >= since24]
-        lines.append(f"Creative jobs (24h): {len(fin(c['completed']))} completed, {len(fin(c['failed']))} failed{html_escape(_cut(cj))}")
+        lines.append(t(lang, "digest.creative", ok=len(fin(c["completed"])), failed=len(fin(c["failed"])),
+                       cut=cut(lang, cj)))
     else:
-        lines.append(f"Creative jobs: {_unknown(cj)}")
+        lines.append(t(lang, "queue.creative_unknown", why=unknown(lang, cj)))
 
     ev = ops.events(day, ("render.completed", "video.published", "publish.held"))
     if ev.ok:
         c = analysis.event_counts(ev.data)
-        lines.append(f"Videos today: made {c.get('render.completed', 0)}, published {c.get('video.published', 0)}, "
-                     f"held {c.get('publish.held', 0)}")
+        lines.append(t(lang, "digest.videos", made=c.get("render.completed", 0),
+                       published=c.get("video.published", 0), held=c.get("publish.held", 0)))
     su = ops.signups(since24)
-    lines.append(f"New accounts (24h): {len(su.data)}" if su.ok else f"New accounts: {_unknown(su)}")
+    lines.append(t(lang, "digest.accounts", n=len(su.data)) if su.ok
+                 else t(lang, "today.accounts_unknown", why=unknown(lang, su)))
 
     bal = ops.balances()
     if bal.ok:
         flagged = [r for r in analysis.balance_flags(bal.data, _low_threshold()) if r["low"]]
-        lines.append("Balances: " + (f"<b>LOW</b> — {html_escape(', '.join(safe_id(r['provider']) for r in flagged))}"
-                                     if flagged else "none low"))
+        lines.append(t(lang, "digest.balances_low", who=", ".join(safe_id(r["provider"]) for r in flagged)) if flagged
+                     else t(lang, "digest.balances_ok"))
     else:
-        lines.append(f"Balances: {_unknown(bal)}")
+        lines.append(t(lang, "digest.balances_unknown", why=unknown(lang, bal)))
 
     costs = ops.creative_costs(since24)
-    lines.append(html_escape(_cost_line("Provider cost (24h)", costs, since24)))
+    lines.append(_cost_line(lang, t(lang, "digest.cost"), costs, since24))
 
     pa, runs = ops.publish_approvals(), ops.runs_awaiting_approval()
     waiting = (len(pa.data) if pa.ok else 0) + (len(runs.data) if runs.ok else 0)
-    lines.append(f"Waiting for a person: {waiting}" + ("" if pa.ok and runs.ok else " (some sources unknown)"))
+    lines.append(t(lang, "digest.waiting", n=waiting,
+                   partial=Raw(t(lang, "digest.partial")) if not (pa.ok and runs.ok) else ""))
     if held is not None:
-        lines.append(f"Held for review: {len(held)}")
+        lines.append(t(lang, "digest.held", n=len(held)))
 
     dep = ops.deploys()
     if dep.ok:
-        lines.extend(_deploy_summary_lines(dep.data, now))
+        lines.extend(_deploy_summary_lines(lang, dep.data, now))
     return Reply("\n".join(lines), _with_menu(
-        [[cb("Health", "c:health"), cb("Errors", "c:errors")]],
-        [url_button("Open dashboard", app_link(cfg, "home"))], again="digest"))
+        lang, [_nav(lang, "health", "errors")],
+        [open_button(lang, "dashboard", app_link(cfg, "home"))], again="digest"))
 
 
 # -- /alerts ---------------------------------------------------------------
 
-def view_alerts(cfg: OperatorConfig, state, now: datetime) -> Reply:
+def view_alerts(cfg: OperatorConfig, state, now: datetime, lang: str = DEFAULT_LANGUAGE) -> Reply:
     """Alert settings and mutes. ``state`` is an AlertState, or None when the
     alert memory could not be read."""
-    lines = [_b("Alerts")]
+    lines = [t(lang, "alerts.title")]
     q = cfg.quiet_hours
-    lines.append("Quiet hours: " + (f"{q[0]:02d}:00–{q[1]:02d}:00 {html_escape(str(cfg.tz))}, critical alerts still go"
-                                    if q else "off"))
-    lines.append("Daily digest: " + (f"{cfg.digest_hour:02d}:00 {html_escape(str(cfg.tz))}"
-                                     if cfg.digest_hour is not None else "off"))
-    lines.append(f"Limit: {cfg.max_alerts_per_hour} non-critical alerts an hour")
+    lines.append(t(lang, "alerts.quiet", start=f"{q[0]:02d}", end=f"{q[1]:02d}", tz=str(cfg.tz)) if q
+                 else t(lang, "alerts.quiet_off"))
+    lines.append(t(lang, "alerts.digest", hour=f"{cfg.digest_hour:02d}", tz=str(cfg.tz))
+                 if cfg.digest_hour is not None else t(lang, "alerts.digest_off"))
+    lines.append(t(lang, "alerts.limit", n=cfg.max_alerts_per_hour))
     if state is None:
-        lines.append("Alert memory: unavailable — no alert is sent until it is readable")
+        lines.append(t(lang, "alerts.memory_unavailable"))
     else:
         if state.mutes:
             for kind, until in sorted(state.mutes.items()):
@@ -650,13 +687,21 @@ def view_alerts(cfg: OperatorConfig, state, now: datetime) -> Reply:
                     local = until.astimezone(cfg.tz).strftime("%H:%M")
                 except (OverflowError, ValueError):
                     local = "?"
-                lines.append(f"Muted: {html_escape(kind)} until {local} {html_escape(str(cfg.tz))}")
+                lines.append(t(lang, "alerts.muted", kind=kind_label(lang, kind), until=local, tz=str(cfg.tz)))
         else:
-            lines.append("Muted: nothing")
+            lines.append(t(lang, "alerts.muted_none"))
         recent = [a for a in sorted(state.alerts, key=lambda a: a[0], reverse=True) if a[3]][:5]
         if recent:
-            lines.append("Last sent:")
-            lines += [f"• {_c(safe_id(a[1], 40))} · {html_escape(age_label(a[0], now))} ago" for a in recent]
-    rows = [[cb(f"Mute {k}", f"a:mute:{k}") for k in ALERT_KINDS[i:i + 3]] for i in range(0, len(ALERT_KINDS), 3)]
-    rows.append([cb("Mute all 24h", "a:mute:all"), cb("Unmute all", "a:unmute:all")])
-    return Reply("\n".join(lines), _with_menu(rows, again="alerts"))
+            lines.append(t(lang, "alerts.last_sent"))
+            lines += [t(lang, "alerts.last_line", key=code(safe_id(a[1], 40)), when=ago(lang, a[0], now))
+                      for a in recent]
+    rows = [[cb(t(lang, "btn.mute_kind", kind=kind_label(lang, k)), f"a:mute:{k}") for k in ALERT_KINDS[i:i + 2]]
+            for i in range(0, len(ALERT_KINDS), 2)]
+    rows.append([cb(t(lang, "btn.mute_all"), "a:mute:all"), cb(t(lang, "btn.unmute_all"), "a:unmute:all")])
+    return Reply("\n".join(lines), _with_menu(lang, rows, again="alerts"))
+
+
+def kind_label(lang: str, kind: str) -> str:
+    """What an alert kind (or ``all``) is called in the owner's language."""
+    key = f"kind.{safe_id(kind, 16)}"
+    return t(lang, key) if has(lang, key) else safe_id(kind, 16)

@@ -37,10 +37,11 @@ from typing import Callable, Optional
 
 from modules.operator_bot import analysis
 from modules.operator_bot.config import OperatorConfig
-from modules.operator_bot.sources import OperatorSources, parse_ts
+from modules.operator_bot.i18n import DEFAULT_LANGUAGE, t
+from modules.operator_bot.sources import OperatorSources, age_label, parse_ts
 from modules.operator_bot.store import AlertState, AlertStore, MUTE_FOR
 from modules.operator_bot import views
-from modules.tg_text import html_escape, safe_id
+from modules.tg_text import safe_id
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +79,10 @@ class Alert:
 
 # -- detection -------------------------------------------------------------
 
-def detect(ops: OperatorSources, low_credits: Optional[float] = None) -> list[Alert]:
-    """Every alert that applies right now. A source that cannot answer yields
-    nothing: an unreadable table is not an incident, and `/health` says so."""
+def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str = DEFAULT_LANGUAGE) -> list[Alert]:
+    """Every alert that applies right now, worded in ``lang``. A source that
+    cannot answer yields nothing: an unreadable table is not an incident, and
+    `/health` says so. The dedupe keys never depend on the language."""
     now, cfg = ops.now(), ops.cfg
     if low_credits is None:
         from modules import provider_balance
@@ -96,14 +98,15 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None) -> list[Al
                 continue
             ch = safe_id(r.get("channel_id"))
             out.append(Alert("run", f"run:{safe_id(r.get('id'), 20)}", "warn",
-                             f"Render job #{html_escape(safe_id(r.get('id'), 20))} failed — {html_escape(ch)}"
-                             f" (attempt {html_escape(r.get('attempts'))}/{html_escape(r.get('max_attempts'))})",
+                             t(lang, "alert.render_failed", id=safe_id(r.get("id"), 20), channel=ch,
+                               attempt=r.get("attempts"), max=r.get("max_attempts")),
                              ch or None))
         for r in c["stuck"]:
             ch = safe_id(r.get("channel_id"))
             out.append(Alert("stuck", f"stuck:{safe_id(r.get('id'), 20)}", "warn",
-                             f"Render job #{html_escape(safe_id(r.get('id'), 20))} is stuck "
-                             f"({html_escape(r.get('status'))}, {html_escape(views.age_label(parse_ts(r.get('created_at')), now))}) — {html_escape(ch)}",
+                             t(lang, "alert.render_stuck", id=safe_id(r.get("id"), 20),
+                               status=views.status_word(lang, r.get("status")),
+                               age=age_label(parse_ts(r.get("created_at")), now), channel=ch),
                              ch or None, STUCK_COOLDOWN))
 
     cj = ops.creative_jobs(now - timedelta(hours=1))
@@ -113,12 +116,13 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None) -> list[Al
         for code, n in analysis.count_by(recent, "error_code").items():
             if n >= CREATIVE_BURST:
                 out.append(Alert("run", f"creative:{safe_id(code, 40)}", "warn",
-                                 f"{n} creative jobs failed in the last hour — {html_escape(safe_id(code, 40))}",
+                                 t(lang, "alert.creative_burst", n=n, code=safe_id(code, 40)),
                                  None, CREATIVE_COOLDOWN))
         for r in c["stuck"]:
             out.append(Alert("stuck", f"stuck:job:{safe_id(r.get('id'), 40)}", "warn",
-                             f"Creative job {html_escape(safe_id(r.get('id'), 8))} is stuck "
-                             f"({html_escape(r.get('status'))}, {html_escape(views.age_label(parse_ts(r.get('created_at')), now))})",
+                             t(lang, "alert.creative_stuck", id=safe_id(r.get("id"), 8),
+                               status=views.status_word(lang, r.get("status")),
+                               age=age_label(parse_ts(r.get("created_at")), now)),
                              None, STUCK_COOLDOWN))
 
     bal = ops.balances()
@@ -126,8 +130,9 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None) -> list[Al
         for r in analysis.balance_flags(bal.data, low_credits):
             if r["low"]:
                 out.append(Alert("balance", f"balance:{safe_id(r.get('provider'), 24)}", "warn",
-                                 f"{html_escape(safe_id(r.get('provider'), 24))} {html_escape(safe_id(r.get('metric'), 24))} low: "
-                                 f"{views._n(r['remaining_n'])} left (threshold {views._n(low_credits)})",
+                                 t(lang, "alert.balance_low", provider=safe_id(r.get("provider"), 24),
+                                   metric=safe_id(r.get("metric"), 24), left=views.num(lang, r["remaining_n"]),
+                                   threshold=views.num(lang, low_credits)),
                                  None, BALANCE_COOLDOWN))
 
     dep = ops.deploys()
@@ -140,8 +145,8 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None) -> list[Al
                 label = wf["label"]
                 out.append(Alert("deploy", f"{'deploy' if label == 'deploy' else 'ci:' + label}:{safe_id(run.get('id'), 20)}",
                                  "warn",
-                                 f"{html_escape('Deploy' if label == 'deploy' else 'CI ' + label)} failed on main — "
-                                 f"{html_escape(safe_id(run.get('sha'), 7))}"))
+                                 t(lang, "alert.deploy_failed" if label == "deploy" else "alert.ci_failed",
+                                   workflow=label, sha=safe_id(run.get("sha"), 7))))
 
     ws = ops.workers()
     if ws.ok:
@@ -153,12 +158,12 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None) -> list[Al
             if w["stale"] and w.get("kind") not in fresh_kinds and age is not None \
                     and timedelta(seconds=age) <= WORKER_LOST_MAX_AGE:
                 out.append(Alert("worker", f"worker:{wid}", "critical",
-                                 f"Worker {html_escape(wid)} ({html_escape(w.get('kind'))}) lost its heartbeat — "
-                                 f"last report {html_escape(views.age_label(now - timedelta(seconds=age), now))} ago",
+                                 t(lang, "alert.worker_lost", id=wid, kind=w.get("kind"),
+                                   age=age_label(now - timedelta(seconds=age), now)),
                                  None, WORKER_COOLDOWN))
             elif w.get("state") == "failed" and age is not None and age <= 3600:
                 out.append(Alert("worker", f"worker:{wid}:failed", "critical",
-                                 f"Worker {html_escape(wid)} ({html_escape(w.get('kind'))}) reported FAILED",
+                                 t(lang, "alert.worker_failed", id=wid, kind=w.get("kind")),
                                  None, WORKER_COOLDOWN))
 
     pa = ops.publish_approvals()
@@ -166,40 +171,39 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None) -> list[Al
         for r in pa.data:
             ch = safe_id(r.get("channel_id"))
             out.append(Alert("approval", f"approval:{safe_id(r.get('id'), 40)}", "info",
-                             f"New publish approval waiting — {html_escape(ch)}", ch or None))
+                             t(lang, "alert.approval", channel=ch), ch or None))
 
     au = ops.audit(since)
     if au.ok:
         for r in au.data:
-            tgt = f" → {html_escape(safe_id(r.get('target'), 40))}" if r.get("target") else ""
+            tgt = f" → {safe_id(r.get('target'), 40)}" if r.get("target") else ""
             out.append(Alert("audit", f"audit:{safe_id(r.get('id'), 40)}", "critical",
-                             f"Security event {html_escape(safe_id(r.get('action'), 40))}{tgt}",
+                             t(lang, "alert.security", action=safe_id(r.get("action"), 40), target=tgt),
                              safe_id(r.get("channel_id")) or None))
     return out
 
 
 # -- composition -----------------------------------------------------------
 
-def compose(kind: str, alerts: list[Alert], cfg: OperatorConfig, held_back: int = 0) -> views.Reply:
+def compose(kind: str, alerts: list[Alert], cfg: OperatorConfig, held_back: int = 0,
+            lang: str = DEFAULT_LANGUAGE) -> views.Reply:
     """One message for the alerts of one kind: a severity-led header, one line
     each, and buttons — Open (deep link), Mute 24h, Details."""
     top = min(alerts, key=lambda a: SEVERITY_ORDER.get(a.severity, 9)).severity
-    tag = {"critical": "CRITICAL", "warn": "WARN"}.get(top, "INFO")
-    label = views.KIND_LABEL.get(kind, kind)
-    lines = [f"<b>{tag} — {html_escape(label)}</b>"]
+    lines = [t(lang, "alert.header", sev=t(lang, f"sev.{top}"), label=views.kind_label(lang, kind))]
     lines += [f"• {a.line}" for a in alerts[:10]]
     if len(alerts) > 10:
-        lines.append(f"+{len(alerts) - 10} more")
+        lines.append(t(lang, "alert.more", n=len(alerts) - 10))
     if held_back:
-        lines.append(f"{held_back} further alert(s) held back by the hourly limit.")
+        lines.append(t(lang, "alert.held_back", n=held_back))
     channels = {a.channel_id for a in alerts if a.channel_id}
     channel = channels.pop() if len(channels) == 1 else None
     page = views.KIND_PAGE.get(kind)
-    open_btn = (views.url_button("Open", views.app_link(cfg, page, channel)) if page
-                else views.url_button("Open", views.github_actions_link(cfg)))
-    row = [b for b in (open_btn,) if b] + [
-        views.cb("Mute 24h", f"a:mute:{kind}"),
-        views.cb("Details", f"d:{kind}"),
+    open_btn = (views.url_button(t(lang, "btn.open"), views.app_link(cfg, page, channel)) if page
+                else views.url_button(t(lang, "btn.open"), views.github_actions_link(cfg)))
+    row = [x for x in (open_btn,) if x] + [
+        views.cb(t(lang, "btn.mute24"), f"a:mute:{kind}"),
+        views.cb(t(lang, "btn.details"), f"d:{kind}"),
     ]
     return views.Reply("\n".join(lines), [row])
 
@@ -239,11 +243,12 @@ class AlertEngine:
             return rep
 
         self.ops.reset()
-        found = detect(self.ops, self.low_credits)
+        lang = self._language()
+        found = detect(self.ops, self.low_credits, lang)
         rep.detected = len(found)
 
         if not state.armed:
-            return self._baseline(found, rep)
+            return self._baseline(found, rep, lang)
 
         quiet = self.cfg.in_quiet_hours(now)
         fresh = []
@@ -283,7 +288,7 @@ class AlertEngine:
         for a in chosen:
             by_kind.setdefault(a.kind, []).append(a)
         for i, (kind, items) in enumerate(by_kind.items()):
-            reply = compose(kind, items, self.cfg, held_back=held if i == 0 else 0)
+            reply = compose(kind, items, self.cfg, held_back=held if i == 0 else 0, lang=lang)
             if self.control.send(self.control.chat_id, reply.text, parse_mode=reply.parse_mode,
                                  reply_markup=reply.markup()):
                 rep.sent += len(items)
@@ -292,8 +297,15 @@ class AlertEngine:
             else:
                 rep.send_failed += len(items)
 
-        self._maybe_digest(state, now, quiet, rep)
+        self._maybe_digest(state, now, quiet, rep, lang)
         return rep
+
+    def _language(self) -> str:
+        """The owner's chosen language, else the configured default."""
+        try:
+            return self.store.load_language() or self.cfg.language
+        except Exception:
+            return self.cfg.language
 
     def _deduped(self, a: Alert, state: AlertState, now: datetime) -> bool:
         seen = state.last_seen(a.key)
@@ -301,15 +313,13 @@ class AlertEngine:
             return False
         return a.cooldown_min <= 0 or now - seen < timedelta(minutes=a.cooldown_min)
 
-    def _baseline(self, found: list[Alert], rep: TickReport) -> TickReport:
+    def _baseline(self, found: list[Alert], rep: TickReport, lang: str = DEFAULT_LANGUAGE) -> TickReport:
         """First run: announce once, then mark what exists as seen."""
         rep.baseline = True
         ok = self.control.send(
             self.control.chat_id,
-            "<b>Operator alerts are on</b>\n"
-            f"{len(found)} existing item(s) were marked as seen: you will hear about new ones only.\n"
-            "Each alert has Open, Mute 24h and Details buttons.",
-            parse_mode="HTML", reply_markup={"inline_keyboard": [[views.cb("Menu", "c:menu")]]})
+            t(lang, "alert.armed", n=len(found)),
+            parse_mode="HTML", reply_markup={"inline_keyboard": [[views.cb(t(lang, "btn.menu"), "c:menu")]]})
         # Nothing is recorded unless the announcement went out: the marker row
         # is what makes the next pass "armed", and a failed send must be retried
         # rather than silently skipped.
@@ -321,7 +331,8 @@ class AlertEngine:
             rep.send_failed += 1
         return rep
 
-    def _maybe_digest(self, state: AlertState, now: datetime, quiet: bool, rep: TickReport) -> None:
+    def _maybe_digest(self, state: AlertState, now: datetime, quiet: bool, rep: TickReport,
+                      lang: str = DEFAULT_LANGUAGE) -> None:
         h = self.cfg.digest_hour
         if h is None or quiet:
             return
@@ -330,14 +341,15 @@ class AlertEngine:
         # a digest hour inside the quiet window goes out when the window ends.
         if local_hour < h or date in state.digest_dates:
             return
-        reply = send_digest_reply(self.ops, self.held_fn)
+        reply = send_digest_reply(self.ops, self.held_fn, lang)
         if self.control.send(self.control.chat_id, reply.text, parse_mode=reply.parse_mode,
                              reply_markup=reply.markup()):
             self.store.record_digest(date)
             rep.digest_sent = True
 
 
-def send_digest_reply(ops: OperatorSources, held_fn: Optional[Callable[[], list]] = None) -> views.Reply:
+def send_digest_reply(ops: OperatorSources, held_fn: Optional[Callable[[], list]] = None,
+                      lang: str = DEFAULT_LANGUAGE) -> views.Reply:
     ops.reset()
     held = None
     if held_fn is not None:
@@ -345,7 +357,7 @@ def send_digest_reply(ops: OperatorSources, held_fn: Optional[Callable[[], list]
             held = held_fn()
         except Exception:
             held = None
-    return views.view_digest(ops, held)
+    return views.view_digest(ops, held, lang)
 
 
 # -- mute (the one safe write the bot does) --------------------------------

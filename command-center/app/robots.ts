@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default function robots(): MetadataRoute.Robots {
   const origin = runtimeSiteOrigin();
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/r/"] }],
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/r/", "/unsubscribe"] }],
     ...(origin ? { sitemap: `${origin}/sitemap.xml`, host: origin } : {}),
   };
 }

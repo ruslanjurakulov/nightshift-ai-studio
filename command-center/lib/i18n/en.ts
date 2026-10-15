@@ -1,4 +1,5 @@
 import { improveEn } from "./improve/en";
+import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
@@ -128,7 +129,7 @@ export const en = {
     close: "Close",
     loading: "Loading…",
     empty: "You're all caught up.",
-    emptyHint: "Finished generations, storyboards waiting for you, exports and low credits show up here.",
+    emptyHint: "Finished videos and generations, storyboards waiting for you, exports and low credits show up here.",
     unread: "Unread",
     markAll: "Mark all as read",
     markRead: "Mark as read",
@@ -144,6 +145,10 @@ export const en = {
     storyboardReady: { title: "A storyboard is ready for review", body: "Nothing is rendered or charged until you approve it." },
     exportDone: { title: "Your export is ready", body: "The video is in your library." },
     creditsLow: { title: "Credits are running low", body: "You can add more on the credits page." },
+    videoReady: { title: "Your video is ready", body: "Take a look and decide what happens next." },
+    channelLabel: "Channel",
+    openAction: "Open",
+    makeAnother: "Make another",
     charged: "Credits used: {n}",
     returned: "Credits returned to your balance: {n}",
     available: "Credits available: {n}",
@@ -940,6 +945,9 @@ export const en = {
       priceTitle: "What it costs",
       holdNote: "Credits are held while the video is made. If it fails, they come back.",
       watchTitle: "Your video",
+      notifyHint: "You can leave this page. The bell at the top tells you when your video is ready.",
+      seeVideos: "See my videos",
+      makeAnother: "Make another",
       started: "Started. Your video is being made. This page updates by itself.",
       status: {
         queued: "Waiting for its turn",
@@ -2839,6 +2847,35 @@ export const en = {
       remove_failed: "The photo could not be removed. Try again.",
     },
   },
+  emailNotifications: {
+    title: "E-mail",
+    sub: "Get a message when something is ready, so you don't have to keep checking.",
+    readyLabel: "E-mail me when a video is ready",
+    readyHint: "One e-mail per finished video, naming the channel it is for. It only tells you; nothing is published, made or charged because of it.",
+    on: "On",
+    off: "Off",
+    saving: "Saving…",
+    saved: "Saved.",
+    saveFailed: "Couldn't save that. Try again.",
+    weeklyLabel: "Weekly summary",
+    weeklyOff: "Off",
+    weeklyEvery7: "Every week",
+    weeklyEvery14: "Every two weeks",
+    weeklyHint: "What was made, what is waiting for your decision and the credits you have left. It is off unless you choose it, and every e-mail has a link that turns it off.",
+  },
+  unsubscribe: {
+    title: "Stop these e-mails?",
+    confirmReady: "You will no longer get an e-mail when a video is ready.",
+    confirmWeekly: "You will no longer get the weekly summary.",
+    confirmAll: "You will no longer get any of these e-mails.",
+    button: "Stop e-mails",
+    doneTitle: "Done",
+    doneBody: "You will not get these e-mails any more. You can change this any time in Settings after you sign in.",
+    invalidTitle: "This link does not work",
+    invalidBody: "It may be incomplete or out of date. Sign in and open Settings to change your e-mails.",
+    openApp: "Open Nightshift",
+  },
+  notifyChannels: notifyChannelsEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",

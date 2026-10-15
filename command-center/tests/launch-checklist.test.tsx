@@ -95,6 +95,8 @@ const FORM_PAGES: { path: string; module: string }[] = [
 const NOINDEX_PUBLIC: { route: string; disallow: string; page: string; headerSource: string }[] = [
   // Private review links (migration 0101): the token in the path is the authorization.
   { route: "/r/[token]", disallow: "/r/", page: "app/r/[token]/page.tsx", headerSource: "/r/:token" },
+  // The unsubscribe page an e-mail links to (migration 0103): the token in the address is the authority.
+  { route: "/unsubscribe", disallow: "/unsubscribe", page: "app/unsubscribe/page.tsx", headerSource: "/unsubscribe" },
 ];
 
 type Meta = {
