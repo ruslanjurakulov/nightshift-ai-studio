@@ -98,11 +98,18 @@ class AlertStore(Protocol):
     def record_language(self, code: str) -> bool: ...
 
 
-def pick_language(rows: list) -> Optional[str]:
+#: How far ahead of "now" a row's timestamp may be before it is ignored. The
+#: owner's own rows are stamped by the database, so a future one is not hers.
+CLOCK_SKEW = timedelta(minutes=5)
+
+
+def pick_language(rows: list, now: Optional[datetime] = None) -> Optional[str]:
     """The newest language the owner chose, from ``operator.language`` rows, or
     None. Like every other row the bot trusts, one that carries a channel is not
-    the bot's (anyone who can see a channel can insert such a row) and a code
-    outside LANGUAGES is ignored."""
+    the bot's (anyone who can see a channel can insert such a row), a code
+    outside LANGUAGES is ignored, and so is a row dated in the future: it would
+    otherwise be the "newest" for ever and pin the language."""
+    now = now or datetime.now(timezone.utc)
     best = None
     for row in rows:
         if row.get("kind", "operator.language") != "operator.language":
@@ -111,6 +118,8 @@ def pick_language(rows: list) -> Optional[str]:
             continue
         code = str(row.get("title") or "").strip()
         at = parse_ts(row.get("at"))
+        if at is not None and at > now + CLOCK_SKEW:
+            continue
         if code in LANGUAGES and at is not None and (best is None or at >= best[0]):
             best = (at, code)
     return best[1] if best else None
@@ -150,8 +159,9 @@ def replay(rows: list, now: datetime, baseline_seen: bool = False) -> AlertState
 class SupabaseAlertStore:
     """The durable store, on the service-key client the pipeline already uses."""
 
-    def __init__(self, sync):
+    def __init__(self, sync, now_fn=None):
         self.sync = sync
+        self._now = now_fn or (lambda: datetime.now(timezone.utc))
 
     @property
     def durable(self) -> bool:
@@ -197,14 +207,19 @@ class SupabaseAlertStore:
         if not self.durable:
             return None
         try:
+            # Only rows whose title is a language we speak, so junk rows with a
+            # NULL channel cannot crowd the real choice out of the page; a few
+            # more than one are read because the newest may be a future-dated row
+            # that pick_language ignores.
             rows = self.sync.select_strict("alert_events", {
                 "select": "at,kind,title,channel_id", "kind": "eq.operator.language",
-                "channel_id": "is.null", "order": "at.desc", "limit": "5",
+                "title": f"in.({','.join(LANGUAGES)})",
+                "channel_id": "is.null", "order": "at.desc", "limit": "50",
             })
         except Exception as e:
             logger.warning("operator language unreadable (%s)", type(e).__name__)
             return None
-        return pick_language(rows)
+        return pick_language(rows, self._now())
 
     def record_language(self, code) -> bool:
         return code in LANGUAGES and self._write("operator.language", code)
@@ -268,7 +283,7 @@ class MemoryAlertStore:
         return self._add("operator.digest", date)
 
     def load_language(self):
-        return None if self.fail_load else pick_language(self.rows)
+        return None if self.fail_load else pick_language(self.rows, self._now())
 
     def record_language(self, code) -> bool:
         return code in LANGUAGES and self._add("operator.language", code)

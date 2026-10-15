@@ -582,6 +582,35 @@ class ForgedLanguageRowsTestCase(unittest.TestCase):
         eng = alerts.AlertEngine(ops, SupabaseAlertStore(sync), make_control(tg), cfg, low_credits=15000)
         self.assertEqual(eng._language(), "en")
 
+    def test_junk_null_channel_rows_cannot_crowd_out_the_real_choice(self):
+        junk = [{"at": ts(i), "kind": "operator.language", "title": f"junk-{i}", "channel_id": None}
+                for i in range(1, 200)]
+        real = {"at": ts(60 * 24 * 30), "kind": "operator.language", "title": "uz", "channel_id": None}
+        sync = FakeSync({"alert_events": junk + [real]})
+        self.assertEqual(SupabaseAlertStore(sync, lambda: NOW).load_language(), "uz")
+        params = sync.reads[0][1]
+        self.assertEqual(params["title"], "in.(" + ",".join(LANGUAGES) + ")")      # filtered at the database
+        self.assertGreater(int(params["limit"]), 5)
+
+    def test_a_future_dated_row_cannot_pin_the_language(self):
+        rows = [{"at": ts(500), "kind": "operator.language", "title": "ru", "channel_id": None},
+                {"at": ts(-60 * 24 * 365), "kind": "operator.language", "title": "uz", "channel_id": None},
+                {"at": "9999-12-31T23:59:59Z", "kind": "operator.language", "title": "uz", "channel_id": None}]
+        self.assertEqual(pick_language(rows, NOW), "ru")
+        sync = FakeSync({"alert_events": rows})
+        self.assertEqual(SupabaseAlertStore(sync, lambda: NOW).load_language(), "ru")
+        # the owner's next choice (stamped now) is newer than anything the clamp let through
+        rows.append({"at": ts(0), "kind": "operator.language", "title": "en", "channel_id": None})
+        self.assertEqual(pick_language(rows, NOW), "en")
+        # a little clock skew is tolerated
+        self.assertEqual(pick_language([{"at": ts(-2), "kind": "operator.language", "title": "uz"}], NOW), "uz")
+        self.assertIsNone(pick_language([{"at": ts(-10), "kind": "operator.language", "title": "uz"}], NOW))
+
+    def test_the_docs_say_what_the_guarantee_covers(self):
+        docs = (ROOT / "docs" / "operator-bot.md").read_text(encoding="utf-8")
+        self.assertIn("channel-bound", docs)
+        self.assertIn("cosmetic", docs)
+
     def test_the_owners_row_is_read_at_any_age(self):
         old = {"at": ts(60 * 24 * 90), "kind": "operator.language", "title": "uz", "channel_id": None}
         self.assertEqual(SupabaseAlertStore(FakeSync({"alert_events": [old]})).load_language(), "uz")

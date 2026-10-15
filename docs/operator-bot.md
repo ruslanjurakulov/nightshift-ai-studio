@@ -57,8 +57,13 @@ menu and of `/help`. Telegram's own button strings are not touched.
 
 **Where it is kept:** one row of the existing alert feed, `kind = operator.language`,
 `title = <code>`, written with `channel_id` NULL, read only from `channel_id IS NULL`
-rows. (A tenant can insert alert rows with their own `channel_id` and any kind, so
-a forged language row is ignored, as are forged mutes.) No migration. Until the owner
+rows. (Anyone who can see a channel can insert alert rows carrying that channel's
+`channel_id` and any kind, so a forged language row, like a forged mute, is ignored
+because it is channel-bound. A row with a NULL channel can only be written by a
+platform admin or the service key; should such a row ever come from an org member
+anyway, the most it can do is change the bot's language, which is cosmetic: the
+read keeps only titles that are a supported language code, ignores rows dated in
+the future, and the owner's next `/language` is newer than any of them.) No migration. Until the owner
 chooses, `OPERATOR_LANGUAGE` (`en`, `ru` or `uz`; a repository variable) is the
 default, then English. A stranger is always answered in that default, never in the
 owner's stored choice, and the language is read only after the sender has been
