@@ -90,6 +90,12 @@ ENCODE_THREADS = 4
 #: with the defaults, so ordinary outputs keep them.
 LARGE_OUTPUT_PX = 2560 * 1440
 LARGE_ENCODE_THREADS = 2
+#: Stack size of every thread of an ffmpeg child, and of its main one: glibc gives a new thread RLIMIT_STACK
+#: bytes of address space, so a host's `ulimit -s` (8 MiB on the usual Linux, 16 MiB on GitHub's runners,
+#: unlimited = 2 MiB in a container) was a footprint under the address-space limit that the host chose: the
+#: same document needed 1808 MiB at 8 MiB, 2094 at 16 and 1484 at 2. The child is started with exactly this
+#: (never above its hard limit), so what an export needs does not depend on the host.
+CHILD_STACK_BYTES = 8 * 1024 ** 2
 #: Added to the child's environment (see the module docstring).
 CHILD_ENV: Dict[str, str] = {"MALLOC_ARENA_MAX": "2"}
 #: What libavcodec logs, at ``-loglevel error``, when it decodes no picture
@@ -110,7 +116,11 @@ _SET_LIMIT_AND_EXEC = (
     "s,h=resource.getrlimit(resource.RLIMIT_AS)\n"
     "n=n if h==resource.RLIM_INFINITY else min(n,h)\n"
     "resource.setrlimit(resource.RLIMIT_AS,(n,n))\n"
-    "os.execvp(sys.argv[2],sys.argv[2:])\n"
+    "k=int(sys.argv[2])\n"
+    "s,h=resource.getrlimit(resource.RLIMIT_STACK)\n"
+    "k=k if h==resource.RLIM_INFINITY else min(k,h)\n"
+    "resource.setrlimit(resource.RLIMIT_STACK,(k,h))\n"
+    "os.execvp(sys.argv[3],sys.argv[3:])\n"
 )
 
 
@@ -122,7 +132,7 @@ def limited_argv(argv: Sequence[str], mem_bytes: Optional[int] = None) -> List[s
     n = CHILD_MEM_BYTES if mem_bytes is None else mem_bytes
     if int(n) <= 0:  # -1 would be RLIM_INFINITY: never run unlimited
         raise ValueError("the address-space limit must be positive")
-    return [sys.executable, "-I", "-S", "-c", _SET_LIMIT_AND_EXEC, str(int(n)), *argv]
+    return [sys.executable, "-I", "-S", "-c", _SET_LIMIT_AND_EXEC, str(int(n)), str(int(CHILD_STACK_BYTES)), *argv]
 
 
 def child_env() -> Dict[str, str]:
@@ -278,6 +288,6 @@ def run(argv: Sequence[str], *, timeout_s: float, heartbeat: Optional[Callable[[
                    watch.tail.decode("utf-8", "replace"), child.maxrss_kb * 1024)
 
 
-__all__ = ["CHILD_ENV", "CHILD_MEM_BYTES", "DECODE_THREADS", "ENCODE_THREADS", "FILTER_THREADS", "Outcome",
+__all__ = ["CHILD_STACK_BYTES", "CHILD_ENV", "CHILD_MEM_BYTES", "DECODE_THREADS", "ENCODE_THREADS", "FILTER_THREADS", "Outcome",
            "REFUSAL_MARKERS", "child_env", "decode_thread_options", "encode_thread_options", "limited_argv", "run",
            "thread_options"]

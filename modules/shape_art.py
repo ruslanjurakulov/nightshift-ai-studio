@@ -322,20 +322,27 @@ def picture_pixels(ov, frame_w: int, frame_h: int) -> int:
     return int(round(min(max(wide, 0.0), 1.0) * frame_w)) * frame_h
 
 
-def memory_estimate_bytes(shapes: List[dict], frame_w: int, frame_h: int, pictures: Sequence = ()) -> int:
-    """About how much address space the final pass needs for a clip of this frame size with these shapes and
-    picture overlays laid over it (the clip's own need included): see the measurements above. The pictures
-    count as layers; with no layer it is the plain clip's need."""
+def memory_estimate_for_pixels(frame_w: int, frame_h: int, layer_pixels: Sequence[int]) -> int:
+    """The estimate for a frame and layers whose PNG / picture pixels are known (``layer_pixels``, one per
+    layer): the fit above. ``memory_estimate_bytes`` derives them from a document; the export, which has the
+    files, calls this with their real sizes (``render_backend.check_layers_fit``)."""
     px = frame_w * frame_h
     if px > MEM_LARGE_FRAME_PX:
         base = MEM_LARGE_FIXED_BYTES + MEM_LARGE_PER_FRAME_PX * px
     else:
         base = MEM_FIXED_BYTES + MEM_PER_FRAME_PX * px
+    return int(base + MEM_PER_LAYER_BYTES * len(layer_pixels) + MEM_PER_PNG_PX * sum(layer_pixels))
+
+
+def memory_estimate_bytes(shapes: List[dict], frame_w: int, frame_h: int, pictures: Sequence = ()) -> int:
+    """About how much address space the final pass needs for a clip of this frame size with these shapes and
+    picture overlays laid over it (the clip's own need included): see the measurements above. The pictures
+    count as layers; with no layer it is the plain clip's need. A picture is charged its box (the document does
+    not know its file); the export charges the file's own pixels too, if more."""
     pics = [p for p in pictures if isinstance(p, dict)] if isinstance(pictures, (list, tuple)) else []
-    layers = MEM_PER_LAYER_BYTES * (len(shapes) + len(pics))
-    pngs = MEM_PER_PNG_PX * (sum(layer_png_pixels(sh, frame_w, frame_h) for sh in shapes)
-                             + sum(picture_pixels(p, frame_w, frame_h) for p in pics))
-    return int(base + layers + pngs)
+    return memory_estimate_for_pixels(
+        frame_w, frame_h,
+        [layer_png_pixels(sh, frame_w, frame_h) for sh in shapes] + [picture_pixels(p, frame_w, frame_h) for p in pics])
 
 
 def memory_budget_bytes() -> int:

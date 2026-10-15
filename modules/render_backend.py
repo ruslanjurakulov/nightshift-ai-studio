@@ -1053,6 +1053,41 @@ def draw_shapes(spec: RenderSpec, workdir: Path) -> list:
     return out
 
 
+def _file_pixels(path: str) -> int:
+    """Pixels of a picture file (its header only), 0 when it cannot be read as one."""
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            return int(im.size[0]) * int(im.size[1])
+    except Exception:   # not a picture, a bomb, missing: the decoder's own limits and errors come first
+        return 0
+
+
+def check_layers_fit(spec: RenderSpec) -> None:
+    """With drawn shapes in the spec (their PNGs written), refuse an export whose layers would not fit the
+    final pass's memory, with the numbers, before any segment is encoded. The validators judge a document
+    without its files (a picture is charged its box); here the files are known: a picture is charged its box or
+    its own pixels, whichever is more (four 16 MP photos shrunk to a corner need ~80 MiB each, not their box's
+    ~30), a shape its PNG. A video overlay is charged its box."""
+    if not any(o.shape is not None for o in spec.picture_overlays):
+        return
+    pixels = []
+    for o in spec.picture_overlays:
+        if o.shape is not None:
+            pixels.append(_file_pixels(o.path))
+            continue
+        wide = max(o.w, o.to_w) if o.to_w is not None else o.w
+        box = shape_art.picture_pixels({"w": wide}, spec.width, spec.height)
+        pixels.append(max(box, _file_pixels(o.path)) if o.kind != KIND_VIDEO else box)
+    need = shape_art.memory_estimate_for_pixels(spec.width, spec.height, pixels)
+    budget = shape_art.memory_budget_bytes()
+    if need > budget:
+        raise RenderBackendError(
+            f"the shapes and pictures would need about {need / shape_art.MIB:.0f} MB to render in a "
+            f"{spec.width}x{spec.height} frame, but {budget / shape_art.MIB:.0f} MB is the most the export has — "
+            "use smaller pictures (their own pixels count), or fewer or smaller shapes (memory)")
+
+
 def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
            jobs: Optional[int] = None, timings: Optional[RenderTimings] = None,
            timeout_s: Optional[float] = None) -> str:
@@ -1095,6 +1130,7 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
         # is refused up front, not after the minutes the segments take.
         if any(o.shape is not None for o in spec.picture_overlays):
             spec = replace(spec, picture_overlays=draw_shapes(spec, tmpdir))
+            check_layers_fit(spec)
         normalized = (_normalize_all(ffmpeg, spec, tmpdir, jobs, timings) if deadline is None
                       else _normalize_all(ffmpeg, spec, tmpdir, jobs, timings, deadline))
 

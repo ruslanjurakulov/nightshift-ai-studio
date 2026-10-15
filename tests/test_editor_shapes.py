@@ -28,6 +28,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -302,6 +303,45 @@ class DocumentTestCase(unittest.TestCase):
         # with no shapes a document is not budgeted: the pictures alone are what they always were
         self.assertEqual(problems(doc_with(None, overlays=pics(8), width=2560, height=1440, fps=60, out_s=4)), [])
 
+    def test_the_export_charges_a_picture_its_own_pixels_when_they_are_more_than_its_box(self):
+        """The validators judge a document without its files (a picture is its box); the export has the files:
+        four 16 MP photos shrunk to a corner need ~80 MiB each under the limit (measured), not their box's ~30, so
+        a document that was accepted on its boxes is refused with the numbers, before any segment is encoded."""
+        import dataclasses
+        from PIL import Image
+        circles = [sh(id=f"s{i}", kind="circle", w=0.6, start_s=0, end_s=3) for i in range(12)]
+        pics = [{"id": f"o{i}", "asset_id": PIC, "start_s": 0, "end_s": 3, "w": 0.3} for i in range(4)]
+        doc = doc_with(circles, overlays=pics, width=1920, height=1080, fps=60, out_s=3)
+        self.assertEqual(problems(doc), [], "on their boxes the pictures fit")
+        with tempfile.TemporaryDirectory() as d:
+            photo, small = Path(d) / "photo.png", Path(d) / "small.png"
+            Image.new("RGB", (4608, 3456), (10, 20, 30)).save(photo)
+            Image.new("RGB", (640, 360), (10, 20, 30)).save(small)
+            for path, fits in ((photo, False), (small, True)):
+                with self.subTest(path.name):
+                    files = {BASE: tl.ResolvedAsset(BASE, "video", str(Path(d) / "b.mp4"), 20.0, False),
+                             PIC: tl.ResolvedAsset(PIC, "image", str(path), None, None)}
+                    spec = tr.to_render_spec(doc, files.get, str(Path(d) / "o.mp4"))
+                    spec = dataclasses.replace(spec, picture_overlays=render_backend.draw_shapes(spec, Path(d)))
+                    if fits:
+                        render_backend.check_layers_fit(spec)
+                    else:
+                        with self.assertRaises(render_backend.RenderBackendError) as cm:
+                            render_backend.check_layers_fit(spec)
+                        self.assertIn("their own pixels count", str(cm.exception))
+                        self.assertIn("(memory)", str(cm.exception))
+            # and render() runs the check before anything is encoded
+            files = {BASE: tl.ResolvedAsset(BASE, "video", str(Path(d) / "b.mp4"), 20.0, False),
+                     PIC: tl.ResolvedAsset(PIC, "image", str(photo), None, None)}
+            spec = tr.to_render_spec(doc, files.get, str(Path(d) / "o.mp4"))
+            from unittest import mock
+            with mock.patch.object(render_backend, "_normalize_all", side_effect=AssertionError("segments were encoded")):
+                with self.assertRaises(render_backend.RenderBackendError) as cm:
+                    render_backend.render(spec, ffmpeg="/bin/true", workdir=d)
+            self.assertIn("(memory)", str(cm.exception))
+        # without shapes nothing is checked (a document without shapes keeps its behaviour)
+        render_backend.check_layers_fit(tr.to_render_spec(doc_with(None, overlays=pics), table().get, "x.mp4"))
+
     def test_a_pill_is_charged_as_a_box_that_needs_no_font(self):
         pill = {"kind": "pill", "w": 0.3, "text": "Hi"}
         box = sa.fit_px(sa.PILL_MIN_ASPECT, 0.3, 1920, 1080)
@@ -553,6 +593,32 @@ class SpecTestCase(unittest.TestCase):
         self.assertTrue(refused(shape=art(kind="progress", thick=0.01), anim_in="pop"))
         self.assertTrue(refused(path="", shape=None), "no path and no shape")
         self.assertEqual(refused(shape=art(kind="arrow")), [])
+
+
+class ChildStackTestCase(unittest.TestCase):
+    """A host's `ulimit -s` is a thread's stack size, i.e. address space under the 2 GiB limit: 8 MiB here, 16 on
+    GitHub's runners (the same 8 shapes + 8 pictures document needed 2094 MiB there and 1808 MiB at 8), unlimited
+    in some containers. The child starts with exactly ffmpeg_limits.CHILD_STACK_BYTES."""
+
+    def stack_seen_by_child(self, parent_soft):
+        import resource
+        from modules import ffmpeg_limits
+        code = "import resource;print(resource.getrlimit(resource.RLIMIT_STACK)[0])"
+
+        def pre():
+            resource.setrlimit(resource.RLIMIT_STACK, (parent_soft, resource.RLIM_INFINITY))
+        out = subprocess.run(ffmpeg_limits.limited_argv([sys.executable, "-c", code]), capture_output=True,
+                             text=True, preexec_fn=pre)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return int(out.stdout)
+
+    def test_the_child_has_the_same_stack_whatever_the_hosts_limit(self):
+        import resource
+        from modules import ffmpeg_limits
+        self.assertEqual(ffmpeg_limits.CHILD_STACK_BYTES, 8 * 1024 * 1024)
+        for soft in (2 * 1024 ** 2, 8 * 1024 ** 2, 16 * 1024 ** 2, 64 * 1024 ** 2, resource.RLIM_INFINITY):
+            with self.subTest(parent=soft):
+                self.assertEqual(self.stack_seen_by_child(soft), ffmpeg_limits.CHILD_STACK_BYTES)
 
 
 # ── the argv ────────────────────────────────────────────────────────────────
@@ -1001,7 +1067,7 @@ class FuzzTestCase(unittest.TestCase):
                     self.assertGreater(out.stat().st_size, 0)
                 done += 1
 
-    def render_under_the_workers_limit(self, exe, frame, fps, shapes, pictures=0, picture_w=1.0, out_s=None):
+    def render_under_the_workers_limit(self, exe, frame, fps, shapes, pictures=0, picture_w=1.0, out_s=None, picture_px=None):
         """One document rendered the way the worker renders (jobs=1, a timeout: ffmpeg under its 2 GiB of
         address space, ffmpeg_limits.CHILD_MEM_BYTES). Fails with the ffmpeg version in the message."""
         from PIL import Image
@@ -1017,7 +1083,7 @@ class FuzzTestCase(unittest.TestCase):
             overlays = None
             if pictures:
                 png = Path(d) / "p.png"
-                Image.new("RGBA", frame, (255, 200, 0, 200)).save(png)
+                Image.new("RGBA", picture_px or frame, (255, 200, 0, 200)).save(png)
                 table[PIC] = tl.ResolvedAsset(PIC, "image", str(png), None, None)
                 overlays = [{"id": f"o{i}", "asset_id": PIC, "start_s": 0, "end_s": out_s, "w": picture_w,
                              "anim_in": "pop", "move": {"to": {"x": 0.4}}} for i in range(pictures)]
@@ -1055,6 +1121,16 @@ class FuzzTestCase(unittest.TestCase):
                 shapes = [dict(s, start_s=0, end_s=3) for s in c["shapes"]]
                 self.render_under_the_workers_limit(exe, tuple(c["frame"]), c["fps"], shapes,
                                                     pictures=len(c.get("overlays", [])))
+
+    def test_big_photos_shrunk_to_a_corner_render_under_the_limit_when_the_export_accepts_them(self):
+        """Four 16 MP photos at w 0.3 and four shapes (1325 MiB measured; 4 photos and 12 shapes were the
+        reviewer's failure): charged by their own pixels (check_layers_fit) the export accepts them, and they fit."""
+        exe = _ffmpeg()
+        if not exe:
+            self.skipTest("ffmpeg not available")
+        shapes = [sh(id=f"s{i}", kind="circle", w=0.3, start_s=0, end_s=3) for i in range(4)]
+        self.render_under_the_workers_limit(exe, (1920, 1080), 60, shapes, pictures=4, picture_w=0.3,
+                                            picture_px=(4608, 3456))
 
     def test_the_biggest_accepted_documents_of_a_grid_render_under_the_workers_own_limit(self):
         """For each frame and each mix of shapes and full-width pictures: the widest shapes the validator accepts
