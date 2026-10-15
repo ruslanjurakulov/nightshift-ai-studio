@@ -77,18 +77,40 @@
 --   organization, credits_available is null — never 0 standing in for unknown.
 --   No price appears anywhere here.
 --
+-- CATCH-UP OF 0064'S LATER EDITS (section 0)
+--   Commit 001a2971 edited 0064_notifications.sql IN PLACE after 0064 had already
+--   been applied to the live database, so the live database never received three
+--   of its deltas: (a) notification_emit_org_role() did not exist, (b)
+--   notify_storyboard_ready() still told EVERY member of the organization instead
+--   of its admins and owners, (c) notify_credits_low()'s dedupe key lacked the
+--   organization id. An applied migration is never re-run, and this one's guard
+--   (which names notification_emit_org_role) failed on live. Section 0 therefore
+--   installs those deltas itself, with `create or replace`, byte-for-byte what
+--   0064 holds on main today: on a database that already has them it changes
+--   nothing; on one that was built from the older 0064 it brings it level.
+--   notify_storyboard_ready() is NOT installed twice: section 2 below is its one
+--   final definition (0064's current body plus the channel id).
+--   Rule from here on: never edit an applied migration; add a forward one
+--   (docs/MIGRATIONS.md).
+--
 -- Nothing here spends, renders, publishes or changes a price, and no existing
--- function other than notify_storyboard_ready is replaced. Additive and
+-- function other than notify_storyboard_ready (section 2) and the two 0064
+-- functions section 0 re-installs unchanged is replaced. Additive and
 -- idempotent: guarded creates, drop-then-create constraints and triggers.
 --
--- REQUIRES 0064 (notifications), 0045 (worker_status, optional: without it the switches stay hidden), 0016 (videos.publish_state), 0018 (organizations,
+-- REQUIRES 0064 (notifications, notification_emit), 0007 (app_role_rank), 0045 (worker_status, optional: without it the switches stay hidden), 0016 (videos.publish_state), 0018 (organizations,
 -- channels.org_id), 0020 (credits), 0057 (storyboards).
 
 do $$
 begin
+  -- Only what 0064 provided from its FIRST-applied form. notification_emit_org_role
+  -- is created by section 0 below, so it is deliberately not required here.
   if to_regclass('public.notifications') is null
-     or to_regprocedure('public.notification_emit_org_role(uuid, text, text, jsonb, text)') is null then
+     or to_regprocedure('public.notification_emit(uuid, uuid, text, text, jsonb)') is null then
     raise exception '0103 needs the notifications: apply 0064_notifications.sql first';
+  end if;
+  if to_regprocedure('public.app_role_rank(text)') is null then
+    raise exception '0103 needs the roles: apply 0007_rbac.sql first';
   end if;
   if to_regclass('public.storyboards') is null then
     raise exception '0103 needs the storyboards: apply 0057_storyboard_review.sql first';
@@ -105,6 +127,64 @@ begin
     raise exception '0103 needs the credit accounts: apply 0020_credits.sql first';
   end if;
 end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 0. Catch-up of 0064's later edits (see the header). Copied verbatim from
+--    0064_notifications.sql; notify_storyboard_ready is replaced once, in 2.
+-- ───────────────────────────────────────────────────────────────────────────
+
+-- Tell the members of the organization whose role is at least p_min_role
+-- (viewer < editor < admin < owner, public.app_role_rank): the people who can
+-- act on the event. Same recipient rules as notification_emit.
+create or replace function public.notification_emit_org_role(
+  p_org uuid, p_kind text, p_ref text, p_data jsonb, p_min_role text
+) returns integer
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  m record;
+  n integer := 0;
+begin
+  if p_org is null or p_min_role is null or p_min_role not in ('viewer', 'editor', 'admin', 'owner') then
+    return 0;
+  end if;
+  for m in select distinct user_id from public.org_members
+            where org_id = p_org and user_id is not null
+              and public.app_role_rank(role) >= public.app_role_rank(p_min_role) loop
+    if public.notification_emit(p_org, m.user_id, p_kind, p_ref, p_data) then
+      n := n + 1;
+    end if;
+  end loop;
+  return n;
+end
+$$;
+
+-- Available credits crossed below the line. Crossing, not "is below": a
+-- balance that stays low does not nag, and an account that was never above the
+-- line (a new one) is not told it is poor.
+create or replace function public.notify_credits_low() returns trigger
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  line   numeric := public.notification_low_credits_threshold();
+  was    numeric := old.balance - old.reserved;
+  now_   numeric := new.balance - new.reserved;
+begin
+  begin
+    if was >= line and now_ < line and not public.credits_exempt(new.org_id) then
+      perform public.notification_emit_org(new.org_id, 'credits_low',
+        -- The organization is part of the key: the unique index is per person, and
+        -- a person in two organizations must be told about each (51 characters).
+        'low:' || new.org_id::text || ':' || to_char(now() at time zone 'utc', 'YYYY-MM-DD'),
+        jsonb_build_object('available', now_));
+    end if;
+  exception when others then
+    raise warning 'notify_credits_low: % (%)', sqlerrm, sqlstate;
+  end;
+  return new;
+end
+$$;
+
+revoke all on function public.notification_emit_org_role(uuid, text, text, jsonb, text) from public, anon, authenticated, service_role;
+revoke all on function public.notify_credits_low() from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 1. A new kind

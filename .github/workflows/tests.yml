@@ -34,6 +34,9 @@ jobs:
         with:
           # Never pushes: keeps the job token out of .git/config (BR-S-001).
           persist-credentials: false
+          # Full history: tests/test_migration_prerequisites.py reads each migration
+          # as it was first merged (a shallow clone would only make it vacuous).
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
