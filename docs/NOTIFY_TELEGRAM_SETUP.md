@@ -66,15 +66,57 @@ it, `/stop` pauses, `/resume` resumes.
   name, amount or provider text. "Your credits were returned" appears only when
   the notification itself carries `credits_returned`.
 
-## Languages
+## Languages (migration 0105)
 
-The language of a chat is a bare language code (two or three letters) stored when
-the chat is linked (the language is only a browser cookie today, not on the
-account), and changeable in Settings. The sender and the bot look words up by that
-code (`COPY` in `modules/notify_telegram.py`, `BOT_COPY` in
-`_shared/telegram-notify.ts`) and fall back to English for a code, or a key, that
-has no words. Adding a language is adding a key to those two tables and to
-`lib/i18n/notify-channels/`; the database accepts any code.
+Both customer channels, the Telegram bot and the e-mails, run in a language the
+person chooses: every bot reply and button, the link-flow messages, confirmations,
+errors, the notification messages, the e-mail subject and body, the unsubscribe
+link and the page it opens. Supported now: `en` (default and fallback), `ru`, `uz`
+(Latin). **The Russian and Uzbek wording is a machine draft**: have a native
+speaker read `ru.json` and `uz.json` before launch.
+
+**One source of words.** `supabase/functions/_shared/notify-i18n/` holds
+`registry.json` (the list of codes, the default, each language's own name) and one
+flat `<code>.json` per language, with the key families `meta.*`, `bot.*` (the
+webhook), `push.*` (the sender) and `mail.*` (the e-mails). The Edge Function
+(`_shared/notify-i18n.ts`) and the Python side (`modules/notify_i18n.py`, used by
+`modules/notify_telegram.py` and `modules/email_notify.py`) read the same files, so
+there is nothing to keep in step. A code the registry does not list is English, and
+a language key missing from a file falls back to English per key.
+
+**Adding a language** is: a `<code>.json` with exactly English's keys and
+placeholders, a line in `registry.json`, one import line in `notify-i18n.ts`, the
+code in the one-line allow-list `notify_language_ok()` (a new migration with
+`create or replace function`; no table or constraint changes), and the app's own
+list `LOCALES` in `command-center/lib/i18n/core.ts` with its dictionaries.
+`tests/test_notify_i18n.py` and `command-center/tests/notify-i18n.test.ts` fail
+until every place agrees, until the files have the same keys and placeholders, if
+a Telegram message could pass 4096 characters, and if any code branches on a
+particular language (`if lang == "ru"` and its cousins).
+
+**Telegram.** The language is per chat: `notification_channels.locale`, set from the
+language the person was using when they pressed Connect, changeable in Settings
+(per chat) or in the chat itself with `/language` (inline buttons, one per
+registered language, each in its own name). The change moves the chat's still
+waiting messages to the new language too. A linked chat is always answered in its
+own language, an unlinked one in Telegram's `language_code` when the bot has words
+for it, else English. `/language` only ever changes the channel linked to the chat
+that sent it.
+
+**E-mail.** `email_preferences.locale`. Until the person picks one in Settings, the
+Notifications page (E-mail language) it is the language the app reports it is
+shown in; once picked, that report no longer changes it (`locale_chosen`). The
+unsubscribe link carries the language the mail was written in, and the page uses
+it, else the visitor's own.
+
+**Not localized (by design).** Anything sent without a database row to read a
+language from stays English: pipeline pushes and operator alerts (the operator bot
+has its own languages), and the notification titles inside the app's bell, which
+follow the browser's language as before.
+
+The language is validated against the allow-list in the database (`notify_language_ok`,
+checked by every locale column and every function that takes a language), in the
+API routes and in the bot, and is never put into a path, a URL or HTML unchecked.
 
 ## Going live: the owner's steps
 

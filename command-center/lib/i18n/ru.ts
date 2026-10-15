@@ -1,6 +1,7 @@
 import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { libraryUxRu } from "./library-ux/ru";
+import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
@@ -18,6 +19,7 @@ export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
   libraryUx: libraryUxRu,
+  connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   reviewPage: reviewPageRu,
   improveAi: improveRu,
@@ -2850,6 +2852,8 @@ export const ru: Dictionary = {
     weeklyEvery7: "Каждую неделю",
     weeklyEvery14: "Раз в две недели",
     weeklyHint: "Что сделано, что ждёт вашего решения и сколько кредитов осталось. Она выключена, пока вы сами её не включите, а в каждом письме есть ссылка, которая её отключает.",
+    languageLabel: "Язык писем",
+    languageHint: "Все письма пишутся на этом языке, как и ссылка для отключения и страница, которую она открывает. Пока вы не выбрали язык, используется язык приложения.",
   },
   unsubscribe: {
     title: "Отключить эти письма?",

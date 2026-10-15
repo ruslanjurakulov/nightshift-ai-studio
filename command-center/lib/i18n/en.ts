@@ -1,6 +1,7 @@
 import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
+import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
@@ -26,6 +27,7 @@ export const en = {
   site: siteEn,
   presets: presetsEn,
   libraryUx: libraryUxEn,
+  connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
   reviewPage: reviewPageEn,
   improveAi: improveEn,
@@ -2862,6 +2864,8 @@ export const en = {
     weeklyEvery7: "Every week",
     weeklyEvery14: "Every two weeks",
     weeklyHint: "What was made, what is waiting for your decision and the credits you have left. It is off unless you choose it, and every e-mail has a link that turns it off.",
+    languageLabel: "E-mail language",
+    languageHint: "Every e-mail is written in this language, and so is its stop link and the page it opens. Until you choose, it follows the language you use in the app.",
   },
   unsubscribe: {
     title: "Stop these e-mails?",

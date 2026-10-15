@@ -1,5 +1,7 @@
+import { isLocale } from "@/lib/i18n/core";
+
 /**
- * E-mail preferences (migration 0103): the pure half.
+ * E-mail preferences (migration 0103, language 0105): the pure half.
  *
  * The database holds one row per person: whether "your video is ready" e-mails are
  * on (they are, until the person says no), how often the weekly summary comes
@@ -7,9 +9,12 @@
  * The browser reads and writes them only through email_prefs_get / email_prefs_set;
  * the unsubscribe token never reaches it.
  *
- * Languages here are codes, not a list of three: the app tells the database the
- * language the person last used and the mail renderer picks a template by code,
- * English when it has none. Nothing in this file branches on a particular language.
+ * The mail language is one of the registered languages (the app's own list, kept
+ * the same as supabase/functions/_shared/notify-i18n/registry.json by
+ * tests/notify-i18n.test.ts). Until the person picks one in Settings it is the
+ * language the app last told the database it was shown in; once picked
+ * (`localeChosen`), that report no longer changes it. Nothing in this file
+ * branches on a particular language.
  */
 
 /** The values email_prefs_set takes for the weekly summary: 0 = off, else days between summaries. */
@@ -21,8 +26,10 @@ export interface EmailPrefs {
   ready: boolean;
   /** Days between weekly summaries; null = the summary is off. */
   weeklyEveryDays: 7 | 14 | null;
-  /** The language code the mails are written in. */
+  /** The language the mails are written in (a registered language). */
   locale: string;
+  /** True once the person has picked it in Settings; the app's own report no longer changes it. */
+  localeChosen: boolean;
   /** False when the person has never saved a choice: these are the defaults. */
   stored: boolean;
 }
@@ -37,7 +44,8 @@ export function parseEmailPrefs(raw: unknown): EmailPrefs | null {
   return {
     ready: o.ready,
     weeklyEveryDays: w,
-    locale: typeof o.locale === "string" && /^[a-z]{2,3}$/.test(o.locale) ? o.locale : "en",
+    locale: isLocale(typeof o.locale === "string" ? o.locale : null) ? (o.locale as string) : "en",
+    localeChosen: o.locale_chosen === true,
     stored: o.stored === true,
   };
 }
@@ -59,7 +67,7 @@ export function weeklyFromValue(v: string): WeeklyChoice | null {
 export const LOCALE_SYNC_KEY = "ns_email_locale";
 
 export function localeSyncNeeded(last: string | null, current: string): boolean {
-  return /^[a-z]{2,3}$/.test(current) && last !== current;
+  return isLocale(current) && last !== current;
 }
 
 /** The three unsubscribe scopes the public link and route accept. */

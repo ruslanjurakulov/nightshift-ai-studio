@@ -1,6 +1,7 @@
 import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
+import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
@@ -18,6 +19,7 @@ export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
   libraryUx: libraryUxUz,
+  connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,
   reviewPage: reviewPageUz,
   improveAi: improveUz,
@@ -2850,6 +2852,8 @@ export const uz: Dictionary = {
     weeklyEvery7: "Har hafta",
     weeklyEvery14: "Ikki haftada bir",
     weeklyHint: "Nima yaratilgani, qaroringizni nima kutayotgani va qancha kredit qolgani. Oʻzingiz tanlamaguningizcha oʻchirilgan, har bir xatda uni oʻchiradigan havola bor.",
+    languageLabel: "Xatlar tili",
+    languageHint: "Barcha xatlar shu tilda yoziladi, oʻchirish havolasi va u ochadigan sahifa ham. Til tanlamaguningizcha ilovadagi til ishlatiladi.",
   },
   unsubscribe: {
     title: "Bu xatlar toʻxtatilsinmi?",

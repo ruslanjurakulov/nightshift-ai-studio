@@ -157,7 +157,7 @@ def test_the_token_is_not_a_column_anyone_can_select(conn, sc):
             assert not out.ok and out.sqlstate == "42501", (who.name, out)
         as_user(s, sc.alice.actor)
         mine = s.value("select public.email_prefs_get()")
-    assert set(mine) == {"ready", "weekly_every_days", "locale", "stored"}, mine
+    assert set(mine) == {"ready", "weekly_every_days", "locale", "locale_chosen", "stored"}, mine
     assert not any(TOKEN.match(str(v)) for v in mine.values())
 
 
@@ -170,7 +170,7 @@ def test_the_defaults_are_ready_mail_on_and_weekly_off_and_nothing_is_stored_by_
         got = s.value("select public.email_prefs_get()")
         as_owner(s)
         assert prefs_row(s, carol.uid) == [], "reading the defaults must not create a row"
-    assert got == {"ready": True, "weekly_every_days": None, "locale": "en", "stored": False}
+    assert got == {"ready": True, "weekly_every_days": None, "locale": "en", "locale_chosen": False, "stored": False}
 
 
 def test_each_person_sets_only_their_own_switches(conn, sc):

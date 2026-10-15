@@ -13,15 +13,15 @@ let client: unknown = null;
 vi.mock("@/lib/supabase/client", () => ({ createClient: () => client }));
 
 import { I18nProvider } from "@/lib/i18n/context";
-import { dictionaries, type Locale } from "@/lib/i18n";
+import { dictionaries, LOCALES, type Locale } from "@/lib/i18n";
 import { EmailNotifications } from "@/components/notifications/EmailNotifications";
 import type { EmailPrefs } from "@/lib/email-prefs";
 
 const saved = (over: Record<string, unknown>) => ({
-  data: { ready: true, weekly_every_days: null, locale: "en", stored: true, ...over },
+  data: { ready: true, weekly_every_days: null, locale: "en", locale_chosen: false, stored: true, ...over },
   error: null,
 });
-const initial: EmailPrefs = { ready: true, weeklyEveryDays: null, locale: "en", stored: false };
+const initial: EmailPrefs = { ready: true, weeklyEveryDays: null, locale: "en", localeChosen: false, stored: false };
 
 function mount(locale: Locale = "en", prefs: EmailPrefs = initial) {
   return render(
@@ -89,5 +89,33 @@ describe("Settings → E-mail", () => {
     expect(rpc).toHaveBeenCalledTimes(1);
     release(saved({ ready: false }));
     await waitFor(() => expect(sw.getAttribute("aria-checked")).toBe("false"));
+  });
+  it("offers exactly the app's languages, each in its own name, with the current one selected", () => {
+    mount("ru", { ...initial, locale: "uz", localeChosen: true });
+    const select = screen.getByLabelText(dictionaries.ru.emailNotifications.languageLabel) as HTMLSelectElement;
+    expect(select.value).toBe("uz");
+    expect(Array.from(select.options).map((o) => [o.value, o.text])).toEqual(LOCALES.map((l) => [l.code, l.label]));
+    expect(screen.getByText(dictionaries.ru.emailNotifications.languageHint)).toBeTruthy();
+  });
+
+  it("choosing a language is one call that carries only the language, and shows what the database answered", async () => {
+    rpc.mockResolvedValue(saved({ locale: "uz", locale_chosen: true }));
+    mount("en");
+    const select = screen.getByLabelText(e.languageLabel) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "uz" } });
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith("email_prefs_set_language", { p_locale: "uz" }));
+    expect(rpc).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(select.value).toBe("uz"));
+  });
+
+  it("never sends a language the app does not have, and a failed save leaves the old one", async () => {
+    mount("en");
+    const select = screen.getByLabelText(e.languageLabel) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "de" } });
+    expect(rpc).not.toHaveBeenCalled();
+    rpc.mockResolvedValue({ data: null, error: { message: "boom" } });
+    fireEvent.change(select, { target: { value: "ru" } });
+    expect(await screen.findByText(e.saveFailed)).toBeTruthy();
+    expect(select.value).toBe("en");
   });
 });

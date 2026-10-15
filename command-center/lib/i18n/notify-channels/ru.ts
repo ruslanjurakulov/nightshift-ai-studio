@@ -27,6 +27,7 @@ export const notifyChannelsRu: NotifyChannelsDictionary = {
   lastDelivered: "Последнее сообщение доставлено: {when}",
   neverDelivered: "Пока не доставлено ни одного сообщения.",
   language: "Язык сообщений",
+  languageHint: "Ответы и кнопки бота и все сообщения используют этот язык. Его можно сменить и в чате командой /language.",
   sendTest: "Отправить тестовое сообщение",
   testQueued: "Тестовое сообщение уже в пути.",
   pause: "Пауза",

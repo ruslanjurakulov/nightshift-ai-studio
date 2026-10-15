@@ -205,6 +205,7 @@ export function NotificationChannels({
                   ))}
                 </select>
               </label>
+              <p className="g5-note">{n.languageHint}</p>
               <div className="g5-actions">
                 <button type="button" className="btn-quiet px-5 text-sm" disabled={busy !== null || c.status !== "active"} onClick={() => void act(c.id, "test")}>
                   {n.sendTest}

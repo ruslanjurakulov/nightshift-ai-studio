@@ -73,6 +73,15 @@ describe("POST /api/email/unsubscribe", () => {
     expect(rpc).toHaveBeenCalledWith("email_unsubscribe", { p_token: TOKEN, p_scope: "ready" });
   });
 
+  it("passes back a registered language and drops every other well-formed code (the page then uses the visitor's)", async () => {
+    for (const l of ["en", "ru", "uz"]) {
+      expect(new URL((await post(`t=${TOKEN}&s=ready&l=${l}`)).headers.get("location")!).searchParams.get("l")).toBe(l);
+    }
+    for (const l of ["de", "RU", "ru-RU", "rus", "r", "..%2Fru", "ru%0d%0aSet-Cookie:x"]) {
+      expect(new URL((await post(`t=${TOKEN}&s=ready&l=${l}`)).headers.get("location")!).searchParams.has("l"), l).toBe(false);
+    }
+  });
+
   it("ignores a language that is not a code", async () => {
     const res = await post(`t=${TOKEN}&s=ready&l=%3Cscript%3E`);
     expect(new URL(res.headers.get("location")!).searchParams.has("l")).toBe(false);

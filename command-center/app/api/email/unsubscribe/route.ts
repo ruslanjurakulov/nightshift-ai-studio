@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { isUnsubscribeScope, isUnsubscribeToken } from "@/lib/email-prefs";
+import { isLocale } from "@/lib/i18n/core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,7 +58,9 @@ export async function POST(request: Request) {
   const url = new URL(request.url);
   const token = url.searchParams.get("t");
   const scope = url.searchParams.get("s");
-  const language = /^[a-z]{2,3}$/.test(url.searchParams.get("l") ?? "") ? url.searchParams.get("l")! : "";
+  // Only a registered language is passed back to the page; anything else is dropped (the page then uses the visitor's own).
+  const asked = url.searchParams.get("l");
+  const language = isLocale(asked) ? asked : "";
   const oneClick = (await readSmallBody(request)).includes("List-Unsubscribe=One-Click");
 
   let ok = false;

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  BOT_COPY,
   MAX_BODY,
   StoreError,
   bareLanguage,
@@ -13,6 +12,7 @@ import {
   secretMatches,
   type NotifyStore,
 } from "../../supabase/functions/_shared/telegram-notify";
+import { BUNDLES, NOTIFY_LANGUAGES } from "../../supabase/functions/_shared/notify-i18n";
 
 // The customer bot's webhook (supabase/functions/_shared/telegram-notify.ts)
 // is runtime-neutral, so it is tested here with fakes. No Telegram call is made.
@@ -23,8 +23,12 @@ const CHAT = 424242;
 
 type Call = [string, ...unknown[]];
 
+/** The bot's words, read straight from the shared data files. */
+const w = (lang: string, key: string) => BUNDLES[lang][`bot.${key}`];
+
 function fakeStore(over: Partial<{ peek: { code: string; locale?: string | null; handle?: string | null };
-  consume: { code: string; locale?: string | null }; mark: string | null; fresh: boolean }> = {}) {
+  consume: { code: string; locale?: string | null }; mark: string | null; fresh: boolean;
+  language: string | null; languageAfter: string | null }> = {}) {
   const calls: Call[] = [];
   const seen = new Set<number>();
   const store: NotifyStore = {
@@ -45,6 +49,11 @@ function fakeStore(over: Partial<{ peek: { code: string; locale?: string | null;
     async mark(chat, action) {
       calls.push(["mark", chat, action]);
       return over.mark === undefined ? "en" : over.mark;
+    },
+    async language(chat, set) {
+      calls.push(["language", chat, set]);
+      if (set !== null) return over.languageAfter === undefined ? set : over.languageAfter;
+      return over.language === undefined ? null : over.language;
     },
   };
   return { store, calls };
@@ -183,21 +192,21 @@ describe("linking", () => {
     expect(calls.map((c) => c[0])).toEqual(["claim", "peek"]);
     expect(r.body).toMatchObject({ method: "sendMessage", chat_id: CHAT });
     expect(r.body.text).toContain("@ana.k");
-    expect(r.body.text).toBe(BOT_COPY.uz.confirmAs.replace("{handle}", "@ana.k"));
+    expect(r.body.text).toBe(w("uz", "confirmAs").replace("{handle}", "@ana.k"));
     expect(JSON.stringify(r.body.reply_markup)).toContain(`y:${TOKEN}`);
     expect(JSON.stringify(r.body.reply_markup)).toContain(`n:${TOKEN}`);
   });
   it("shows no account detail when the person has no @username, and never an email", async () => {
     const { store } = fakeStore({ peek: { code: "ok", locale: "en", handle: null } });
     const r = await hit(message(`/start ${TOKEN}`), store);
-    expect(r.body.text).toBe(BOT_COPY.en.confirm);
+    expect(r.body.text).toBe(w("en", "confirm"));
     expect(JSON.stringify(r.body)).not.toMatch(/@\w+\.\w+/);
   });
   it("tells the person when the link is expired, used or invalid, and links nothing", async () => {
     for (const code of ["expired", "used", "invalid", "whatever"]) {
       const { store, calls } = fakeStore({ peek: { code, locale: "en" } });
       const r = await hit(message(`/start ${TOKEN}`), store);
-      expect(r.body.text).toBe(BOT_COPY.en[code === "whatever" ? "invalid" : code]);
+      expect(r.body.text).toBe(w("en", code === "whatever" ? "invalid" : code));
       expect(calls.some((c) => c[0] === "consume")).toBe(false);
     }
   });
@@ -205,20 +214,20 @@ describe("linking", () => {
     const { store, calls } = fakeStore({ consume: { code: "ok", locale: "ru" } });
     const r = await hit(callback(`y:${TOKEN}`), store);
     expect(calls.find((c) => c[0] === "consume")).toEqual(["consume", TOKEN, String(CHAT), "Ana", "private", String(CHAT)]);
-    expect(r.body).toEqual({ method: "editMessageText", chat_id: CHAT, message_id: 9, text: BOT_COPY.ru.connected });
+    expect(r.body).toEqual({ method: "editMessageText", chat_id: CHAT, message_id: 9, text: w("ru", "connected") });
   });
   it("No consumes nothing", async () => {
     const { store, calls } = fakeStore();
     const r = await hit(callback(`n:${TOKEN}`), store);
     expect(calls.some((c) => c[0] === "consume")).toBe(false);
-    expect(r.body.text).toBe(BOT_COPY.ru.cancelled);
+    expect(r.body.text).toBe(w("ru", "cancelled"));
   });
   it("says why a Yes did not connect", async () => {
     for (const [code, key] of [["expired", "expired"], ["used", "used"], ["already_linked", "alreadyLinked"], ["limit", "limit"],
       ["not_private", "notPrivate"], ["invalid", "invalid"], ["???", "invalid"]]) {
       const { store } = fakeStore({ consume: { code, locale: "en" } });
       const r = await hit(callback(`y:${TOKEN}`), store);
-      expect(r.body.text).toBe(BOT_COPY.en[key]);
+      expect(r.body.text).toBe(w("en", key));
     }
   });
   it("a repeated update id does nothing the second time", async () => {
@@ -234,14 +243,20 @@ describe("linking", () => {
     store.peek = async () => { throw new StoreError("notification_link_peek", 500); };
     const r = await hit(message(`/start ${TOKEN}`), store);
     expect(r.status).toBe(200);
-    expect(r.body.text).toBe(BOT_COPY.ru.failed);
+    expect(r.body.text).toBe(w("ru", "failed"));
     expect(JSON.stringify(r.body)).not.toMatch(/500|notification_link/);
   });
   it("bare /start and /help point to Settings; they link nothing", async () => {
     const { store, calls } = fakeStore();
     const r = await hit(message("/start"), store);
-    expect(r.body.text).toBe(BOT_COPY.ru.help);
-    expect(calls.map((c) => c[0])).toEqual(["claim"]);
+    expect(r.body.text).toBe(w("ru", "help"));
+    expect(calls.map((c) => c[0])).toEqual(["claim", "language"]);
+  });
+  it("/help and a bare /start answer a linked chat in ITS language, not Telegram's", async () => {
+    for (const text of ["/help", "/start"]) {
+      const { store } = fakeStore({ language: "uz" });
+      expect((await hit(message(text), store)).body.text).toBe(w("uz", "help"));
+    }
   });
 });
 
@@ -250,15 +265,15 @@ describe("the chat's own signals", () => {
     const a = fakeStore({ mark: "uz" });
     const stop = await hit(message("/stop"), a.store);
     expect(a.calls[1]).toEqual(["mark", String(CHAT), "paused"]);
-    expect(stop.body.text).toBe(BOT_COPY.uz.paused);
+    expect(stop.body.text).toBe(w("uz", "paused"));
     const b = fakeStore({ mark: "en" });
     const res = await hit(message("/resume", {}, 8), b.store);
     expect(b.calls[1]).toEqual(["mark", String(CHAT), "resume"]);
-    expect(res.body.text).toBe(BOT_COPY.en.resumed);
+    expect(res.body.text).toBe(w("en", "resumed"));
   });
   it("/stop in a chat that is not connected says so", async () => {
     const { store } = fakeStore({ mark: null });
-    expect((await hit(message("/stop"), store)).body.text).toBe(BOT_COPY.ru.notConnected);
+    expect((await hit(message("/stop"), store)).body.text).toBe(w("ru", "notConnected"));
   });
   it("blocking the bot marks the channel blocked and sends no reply", async () => {
     const { store, calls } = fakeStore();
@@ -270,15 +285,95 @@ describe("the chat's own signals", () => {
 
 describe("language", () => {
   it("falls back to English for a language or a key that has no words, never throws", () => {
-    for (const lang of ["ar", "ur", null, undefined, "", "../x", "RU"]) expect(botWords(lang, "paused")).toBe(BOT_COPY.en.paused);
-    expect(botWords("ru", "paused")).toBe(BOT_COPY.ru.paused);
+    for (const lang of ["ar", "ur", null, undefined, "", "../x", "RU2"]) expect(botWords(lang, "paused")).toBe(w("en", "paused"));
+    expect(botWords("ru", "paused")).toBe(w("ru", "paused"));
+    expect(botWords("RU", "paused")).toBe(w("ru", "paused"));
   });
   it("has every key in every language, and no brand or role words", () => {
-    const keys = Object.keys(BOT_COPY.en).sort();
+    const keys = Object.keys(BUNDLES.en).filter((k) => k.startsWith("bot.")).sort();
     const banned = /openai|google|runway|kling|veo|sora|elevenlabs|replicate|fal\.ai|minimax|\b(owner|editor|viewer|admin)\b|владелец|редактор|наблюдатель|администратор|egasi|muharrir|kuzatuvchi/i;
-    for (const [lang, table] of Object.entries(BOT_COPY)) {
-      expect(Object.keys(table).sort(), lang).toEqual(keys);
-      for (const text of Object.values(table)) expect(text).not.toMatch(banned);
+    for (const [lang, table] of Object.entries(BUNDLES)) {
+      expect(Object.keys(table).filter((k) => k.startsWith("bot.")).sort(), lang).toEqual(keys);
+      for (const [k, text] of Object.entries(table)) if (k.startsWith("bot.")) expect(text).not.toMatch(banned);
+    }
+  });
+
+  it("/language of a linked chat offers one button per registered language, in each one's own name, the current ticked", async () => {
+    const { store, calls } = fakeStore({ language: "uz" });
+    const r = await hit(message("/language"), store);
+    expect(calls).toContainEqual(["language", String(CHAT), null]);
+    expect(r.body).toMatchObject({ method: "sendMessage", chat_id: CHAT, text: w("uz", "languagePrompt") });
+    const buttons = (r.body.reply_markup as { inline_keyboard: { text: string; callback_data: string }[][] }).inline_keyboard.flat();
+    expect(buttons.map((b) => b.callback_data)).toEqual(NOTIFY_LANGUAGES.map((l) => `l:${l.code}`));
+    expect(buttons.map((b) => b.text.replace(/^✓ /, ""))).toEqual(NOTIFY_LANGUAGES.map((l) => l.native));
+    expect(buttons.filter((b) => b.text.startsWith("✓ ")).map((b) => b.callback_data)).toEqual(["l:uz"]);
+    expect(calls.some((c) => c[0] === "language" && c[2] !== null)).toBe(false);
+  });
+  it("/language in a chat that is not connected says so, in Telegram's language, and offers nothing", async () => {
+    const { store } = fakeStore({ language: null });
+    const r = await hit(message("/language"), store);
+    expect(r.body).toEqual({ method: "sendMessage", chat_id: CHAT, text: w("ru", "notConnected") });
+  });
+  it("a language button changes THIS chat's channel only and confirms in the new language", async () => {
+    const { store, calls } = fakeStore({ language: "en" });
+    const r = await hit(callback("l:uz"), store);
+    expect(calls.filter((c) => c[0] === "language")).toEqual([["language", String(CHAT), "uz"]]);
+    const native = NOTIFY_LANGUAGES.find((l) => l.code === "uz")!.native;
+    expect(r.body).toEqual({ method: "editMessageText", chat_id: CHAT, message_id: 9, text: w("uz", "languageSet").replace("{language}", native) });
+  });
+  it("a button for a chat with no channel edits the message to 'not connected' and changes nothing", async () => {
+    const { store } = fakeStore({ languageAfter: null });
+    const r = await hit(callback("l:en"), store);
+    expect(r.body).toMatchObject({ method: "editMessageText", text: w("ru", "notConnected") });
+  });
+  it("only a language the registry lists is ever passed on; anything else is ignored", async () => {
+    for (const data of ["l:xx", "l:RU", "l:ru ", "l:../x", "l:", "l:ru:uz", "l:rus1", "L:ru", "l:__proto__", "l:constructor"]) {
+      const { store, calls } = fakeStore({ language: "en" });
+      expect(parseUpdate(callback(data))).toBeNull();
+      expect((await hit(callback(data), store)).body).toEqual({});
+      expect(calls.some((c) => c[0] === "language")).toBe(false);
+    }
+    expect(parseUpdate(callback("l:ru"))).toMatchObject({ kind: "language", code: "ru", messageId: 9 });
+  });
+  it("a language button from a group, or from someone who is not the chat's person, is ignored", async () => {
+    expect(parseUpdate(callback("l:ru", { from: from({ id: 7 }) }))).toBeNull();
+    expect(parseUpdate(callback("l:ru", { message: { message_id: 9, chat: { id: CHAT, type: "group" } } }))).toBeNull();
+    expect(parseUpdate(callback("l:ru", { from: from({ is_bot: true }) }))).toBeNull();
+  });
+  it("a repeated language update does nothing the second time", async () => {
+    const { store, calls } = fakeStore({ language: "en" });
+    const u = callback("l:ru");
+    await hit(u, store);
+    expect(await hit(u, store)).toEqual({ status: 200, body: {} });
+    expect(calls.filter((c) => c[0] === "language")).toHaveLength(1);
+  });
+  it("a store failure while changing the language is a gentle retry sentence, never a detail", async () => {
+    const { store } = fakeStore();
+    store.language = async () => { throw new StoreError("notification_channel_set_locale_by_chat", 500); };
+    const r = await hit(callback("l:uz"), store);
+    expect(r.body.text).toBe(w("ru", "failed"));
+    expect(JSON.stringify(r.body)).not.toMatch(/500|notification_channel/);
+  });
+  it("the REST store asks the one service function, with the chat id and the code as arguments", async () => {
+    const seen: { url: string; body: unknown }[] = [];
+    const store = createRestStore({
+      url: "https://x.supabase.test",
+      serviceKey: "svc",
+      fetch: (async (url: string, init: RequestInit) => {
+        seen.push({ url, body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify("uz"), { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    expect(await store.language("42", "uz")).toBe("uz");
+    expect(await store.language("42", null)).toBe("uz");
+    expect(seen.map((x) => x.url)).toEqual(Array(2).fill("https://x.supabase.test/rest/v1/rpc/notification_channel_set_locale_by_chat"));
+    expect(seen.map((x) => x.body)).toEqual([{ p_external_id: "42", p_locale: "uz" }, { p_external_id: "42", p_locale: null }]);
+  });
+  it("a chat's name or handle never changes the wording around it, in any language", async () => {
+    for (const lang of Object.keys(BUNDLES)) {
+      const { store } = fakeStore({ peek: { code: "ok", locale: lang, handle: "a$&b" } });
+      const r = await hit(message(`/start ${TOKEN}`), store);
+      expect(r.body.text).toContain("@a$&b");
     }
   });
 });

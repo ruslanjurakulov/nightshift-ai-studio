@@ -10,6 +10,9 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    // The Edge Functions under ../supabase import each other with explicit .ts extensions (Deno requires them);
+    // the tests import those files, so the type-checker must accept the same spelling. noEmit is on.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,

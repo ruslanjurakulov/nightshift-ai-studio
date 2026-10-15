@@ -463,7 +463,7 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
   // The disclosure must name every cookie and storage key the code uses; a new one that is not listed fails here.
   const NAMES = [
     "chronos_locale", "ns_view", "chronos_channel", "nightshift_org", "ns_sidebar", "ns_auth_pending", "ns_recovery", "ns_invite",
-    "yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "chronos_theme",
+    "__Host-yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "__Host-ns_connect_pending", "chronos_theme",
   ];
 
   it.each(LOCALES)("%s: the Cookies section lists every cookie and the theme key the code sets, and the page statistics", (locale) => {
@@ -480,7 +480,7 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
     for (const dir of ["lib", "app"]) {
       for (const f of walk(join(ROOT, dir)).filter((f) => /\.tsx?$/.test(f))) {
         const src = readFileSync(f, "utf8");
-        for (const m of src.matchAll(/\b(?:[A-Z]+_)*COOKIE\s*=\s*"([a-z_]+)"/g)) found.add(m[1]);
+        for (const m of src.matchAll(/\b(?:[A-Z]+_)*COOKIE\s*=\s*"((?:__Host-)?[a-z_]+)"/g)) found.add(m[1]);
         for (const m of src.matchAll(/(?:instagram|tiktok):\s*"([a-z]{2}_oauth_nonce)"/g)) found.add(m[1]);
         const theme = src.match(/THEME_KEY\s*=\s*"([a-z_]+)"/);
         if (theme) found.add(theme[1]);

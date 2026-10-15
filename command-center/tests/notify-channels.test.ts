@@ -98,8 +98,9 @@ describe("what the page reads", () => {
     expect(parseChannels([row({ id: "x" }), row({ kind: "email" }), row({ status: "weird" }), null, 5, row()])).toHaveLength(1);
     expect(parseChannels("nope")).toEqual([]);
   });
-  it("keeps the language as a bare code and falls back to English", () => {
-    expect(parseChannels([row({ locale: "ar" })])[0].locale).toBe("ar");
+  it("keeps a registered language and falls back to English for any other", () => {
+    expect(parseChannels([row({ locale: "uz" })])[0].locale).toBe("uz");
+    expect(parseChannels([row({ locale: "ar" })])[0].locale).toBe("en");
     expect(parseChannels([row({ locale: "<script>" })])[0].locale).toBe("en");
   });
   it("never carries a chat id, even if one is in the row", () => {

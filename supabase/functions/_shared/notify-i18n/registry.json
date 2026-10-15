@@ -1,0 +1,17 @@
+{
+  "default": "en",
+  "languages": [
+    {
+      "code": "en",
+      "native": "English"
+    },
+    {
+      "code": "ru",
+      "native": "Русский"
+    },
+    {
+      "code": "uz",
+      "native": "Oʻzbekcha"
+    }
+  ]
+}

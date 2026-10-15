@@ -6,8 +6,9 @@ WHO gets mail or WHETHER: that is the database's job (preferences, the ledger).
 What it does:
 
 * render a mail from one item the database handed over, in the language it is
-  GIVEN (an argument, never a global; the words are modules/email_copy.py, keyed
-  by language code, English for a code it has no block for);
+  GIVEN (an argument, never a global; the words are the ``mail.*`` and ``meta.*``
+  keys of the shared data files read by modules/notify_i18n.py, one file per
+  language, English for a code the registry does not list);
 * build the links: the video or library, "make another", the signed-out
   unsubscribe link and the one-click header, all absolute under the app's own
   origin;
@@ -42,13 +43,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import quote, urlencode, urlsplit
 
-from modules.email_copy import COPY, copy_for
+from modules import notify_i18n
 
 logger = logging.getLogger(__name__)
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 _TOKEN = re.compile(r"^[0-9a-f]{64}$")
-_CODE = re.compile(r"^[a-z]{2,3}$")
 
 
 # ── messages ────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ def unsubscribe_links(origin: str, token: str, scope: str, language: str) -> Dic
     program POSTs to for one-click unsubscribe (RFC 8058)."""
     if not _TOKEN.match(token or "") or scope not in ("ready", "weekly"):
         raise ValueError("bad unsubscribe link input")
-    lang = language if _CODE.match(language or "") else "en"
+    lang = notify_i18n.resolve(language)
     page = f"{origin}/unsubscribe?" + urlencode({"t": token, "s": scope, "l": lang})
     post = f"{origin}/api/email/unsubscribe?" + urlencode({"t": token, "s": scope})
     return {"page": page, "post": post}
@@ -220,13 +220,13 @@ def render_ready(item: Mapping[str, Any], *, language: str, origin: str) -> Mess
     origin = safe_origin(origin) or ""
     if not origin:
         raise ValueError("an absolute app origin is required to build links")
-    c = copy_for(language)
-    code = language if language in COPY else "en"
+    code = notify_i18n.resolve(language)
+    c = notify_i18n.section(code, "mail", "meta")
     video = item.get("kind") == "video_ready"
     channel = item.get("channel") if isinstance(item.get("channel"), dict) else None
     channel_name = clean_line(channel.get("name"), 60) if channel else ""
     if video:
-        subject = c["subject_video"].format(channel=channel_name) if channel_name else c["subject_video_plain"]
+        subject = notify_i18n.fill(c["subject_video"], channel=channel_name) if channel_name else c["subject_video_plain"]
         title, body = c["title_video"], c["body_video"]
     else:
         subject, title, body = c["subject_export"], c["title_export"], c["body_export"]
@@ -266,8 +266,8 @@ def render_weekly(item: Mapping[str, Any], *, language: str, origin: str) -> Mes
     origin = safe_origin(origin) or ""
     if not origin:
         raise ValueError("an absolute app origin is required to build links")
-    c = copy_for(language)
-    code = language if language in COPY else "en"
+    code = notify_i18n.resolve(language)
+    c = notify_i18n.section(code, "mail", "meta")
     d = item.get("digest") if isinstance(item.get("digest"), dict) else {}
     decimal = c.get("decimal", ".")
     days = count_text(d.get("days")) or "7"
@@ -278,10 +278,10 @@ def render_weekly(item: Mapping[str, Any], *, language: str, origin: str) -> Mes
                           ("waiting_storyboards", "waiting_storyboards")):
         n = count_text(d.get(key))
         if n is not None and int(n) > 0:
-            lines.append(c[copy_key].format(n=n))
+            lines.append(notify_i18n.fill(c[copy_key], n=n))
     credits = number_text(d.get("credits_available"), decimal)
     if credits is not None:
-        lines.append(c["credits_left"].format(n=credits))
+        lines.append(notify_i18n.fill(c["credits_left"], n=credits))
 
     channels_html: List[str] = []
     channels_text: List[str] = []
@@ -294,7 +294,7 @@ def render_weekly(item: Mapping[str, Any], *, language: str, origin: str) -> Mes
         name = clean_line(ch.get("name"), 60)
         if not name:
             continue
-        line = c["channel_line"].format(channel=name, made=made, waiting=waiting)
+        line = notify_i18n.fill(c["channel_line"], channel=name, made=made, waiting=waiting)
         channels_html.append(f'{block.replace("margin:0 0 18px 0;", "margin:0 0 6px 0;")}'
                              f'<p style="font-size:14px;margin:0 0 14px 0;">{html.escape(line)}</p>')
         channels_text.append(line)
@@ -303,7 +303,7 @@ def render_weekly(item: Mapping[str, Any], *, language: str, origin: str) -> Mes
     new_url = origin + "/create"
     links = unsubscribe_links(origin, str(item.get("token") or ""), "weekly", code)
     manage_url = origin + "/organization"
-    title = c["title_weekly"].format(days=days)
+    title = notify_i18n.fill(c["title_weekly"], days=days)
     list_html = "".join(f'<li style="margin:0 0 6px 0;">{html.escape(x)}</li>' for x in lines)
     inner = (
         f'<h1 style="font-size:22px;line-height:1.25;margin:0 0 10px 0;">{html.escape(title)}</h1>'

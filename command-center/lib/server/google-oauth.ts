@@ -20,6 +20,11 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID ?? "";
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? "";
 export const isGoogleOAuthConfigured = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
+/** The CSRF nonce cookie of the YouTube connect (both the per-channel and the
+ *  pick flow). `__Host-` makes the browser refuse it unless it is Secure, has
+ *  Path=/ and no Domain, so a sibling subdomain cannot plant or overwrite it. */
+export const YT_NONCE_COOKIE = "__Host-yt_oauth_nonce";
+
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
@@ -38,16 +43,32 @@ export function redirectUri(origin: string): string {
   return `${origin.replace(/\/+$/, "")}/api/oauth/youtube/callback`;
 }
 
-/** Base64url encode/decode for the `state` blob (channel ref + CSRF nonce). */
-export function encodeState(value: { ref: string; nonce: string }): string {
+/** What rides in the `state` blob: the channel ref and CSRF nonce, and, for the
+ *  connect-then-pick flow (no channel exists yet), `pick` plus the answers the
+ *  person gave on /welcome. The state is a claim, never an authority. */
+export interface GoogleState {
+  ref: string;
+  nonce: string;
+  pick?: true;
+  niche?: string;
+  language?: string;
+}
+
+/** Base64url encode/decode for the `state` blob. */
+export function encodeState(value: GoogleState): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
-export function decodeState(raw: string): { ref: string; nonce: string } | null {
+export function decodeState(raw: string): GoogleState | null {
+  if (raw.length > 1024) return null;
   try {
     const obj = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
     if (obj && typeof obj.ref === "string" && typeof obj.nonce === "string") {
-      return { ref: obj.ref, nonce: obj.nonce };
+      const out: GoogleState = { ref: obj.ref, nonce: obj.nonce };
+      if (obj.pick === true) out.pick = true;
+      if (typeof obj.niche === "string") out.niche = obj.niche.slice(0, 200);
+      if (typeof obj.language === "string") out.language = obj.language.slice(0, 40);
+      return out;
     }
   } catch {
     /* fall through */
@@ -57,15 +78,18 @@ export function decodeState(raw: string): { ref: string; nonce: string } | null 
 
 /** The consent-screen URL. `access_type=offline` + `prompt=consent` are what
  *  make Google mint a refresh token every time — without them a re-connect can
- *  come back with no refresh token and the bot could not renew access. */
-export function buildAuthUrl(opts: { origin: string; state: string }): string {
+ *  come back with no refresh token and the bot could not renew access. In the
+ *  pick flow `select_account` is added so Google shows its account chooser
+ *  (and, for a Brand Account, the channel chooser) instead of silently reusing
+ *  whichever account is signed in. */
+export function buildAuthUrl(opts: { origin: string; state: string; chooser?: boolean }): string {
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri(opts.origin),
     response_type: "code",
     scope: YOUTUBE_OAUTH_SCOPES.join(" "),
     access_type: "offline",
-    prompt: "consent",
+    prompt: opts.chooser ? "select_account consent" : "consent",
     include_granted_scopes: "true",
     state: opts.state,
   });
