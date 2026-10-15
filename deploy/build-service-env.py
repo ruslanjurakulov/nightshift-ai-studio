@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Append one small worker's own env to the deploy payload (.github/workflows/deploy_web.yml).
+
+    python3 deploy/build-service-env.py <notify|email> <payload file>
+
+Runs on the GitHub runner, only while that worker's switch is `on`
+(NIGHTSHIFT_NOTIFY_WORKER, NIGHTSHIFT_EMAIL_WORKER). Reads, from its own
+environment, ``NOTIFYENV_<KEY>`` / ``EMAILENV_<KEY>`` for every key in
+deploy/.env.notify.example / deploy/.env.email.example, which the workflow maps
+from the repository secret or variable of the same name. Nothing else: no
+``toJSON(secrets)`` (GitHub holds such a run for manual approval), and nothing
+of the pipeline worker's or the dashboard's environment.
+
+Appends a marker line (``NIGHTSHIFT_NOTIFY_ENV=on`` / ``NIGHTSHIFT_EMAIL_ENV=on``)
+and then one ``KEY=value`` line per key; deploy/remote-deploy.sh splits the
+payload at the marker and writes that section to /opt/nightshift/.env.notify /
+.env.email (600), checked against the same example file at the deployed commit.
+
+Every key of these two files is required: a worker that is switched on with a
+name empty would only log that it is OFF. Errors name the key and the fix, never
+a value: this output is a public Actions log.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Dict, List, Mapping, Tuple
+
+HERE = Path(__file__).resolve().parent
+
+# service -> (marker line, example file, environment prefix, where the switch lives)
+SERVICES: Dict[str, Tuple[str, str, str, str]] = {
+    "notify": ("NIGHTSHIFT_NOTIFY_ENV=on", ".env.notify.example", "NOTIFYENV_", "NIGHTSHIFT_NOTIFY_WORKER"),
+    "email": ("NIGHTSHIFT_EMAIL_ENV=on", ".env.email.example", "EMAILENV_", "NIGHTSHIFT_EMAIL_WORKER"),
+}
+ORIGIN_KEYS = ("NOTIFY_APP_ORIGIN", "APP_ORIGIN")
+ORIGIN = re.compile(r"^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$")
+
+
+def example_keys(text: str) -> List[str]:
+    return re.findall(r"^([A-Z][A-Z0-9_]*)=", text, re.M)
+
+
+def clean(key: str, raw: str) -> Tuple[str, List[str]]:
+    """The value as it goes into the env file, and what is wrong with it."""
+    value = raw.replace("\r", "").strip()
+    errors: List[str] = []
+    if not value:
+        errors.append(f"{key} is required and empty (repository secret or variable {key})")
+        return value, errors
+    if "\n" in value:
+        errors.append(f"{key} contains a line break; re-paste it on one line")
+    if "$" in value:
+        errors.append(f'{key} contains "$", which compose would interpolate; change the value')
+    if value[0] in "\"'`" or " #" in value:
+        errors.append(f"{key} starts with a quote or contains ' #', which compose would read as syntax; change the value")
+    if key in ORIGIN_KEYS and not ORIGIN.match(value):
+        errors.append(f"{key} must be https://<host> with no path (a link a person will tap is built on it)")
+    return value, errors
+
+
+def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: str) -> Tuple[List[str], List[str]]:
+    lines: List[str] = []
+    errors: List[str] = []
+    keys = example_keys(example_text)
+    if not keys:
+        return [], [f"no keys found in deploy/{example_name}"]
+    for key in keys:
+        if prefix + key not in env:
+            errors.append(f"{key} is in deploy/{example_name} but not mapped in deploy_web.yml")
+            continue
+        value, problems = clean(key, env[prefix + key])
+        errors.extend(problems)
+        lines.append(f"{key}={value}")
+    return lines, errors
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) != 3 or argv[1] not in SERVICES:
+        print(f"usage: build-service-env.py <{'|'.join(SERVICES)}> <payload file>", file=sys.stderr)
+        return 2
+    marker, example_name, prefix, switch = SERVICES[argv[1]]
+    lines, errors = build(os.environ, (HERE / example_name).read_text(encoding="utf-8"), prefix, example_name)
+    if errors:
+        for e in errors:
+            print(f"::error::{e}")
+        print(f"Fix these in GitHub -> Settings -> Secrets and variables -> Actions, or set {switch} to anything but `on`, then re-run.")
+        return 1
+    with open(argv[2], "a", encoding="utf-8") as fh:
+        fh.write(marker + "\n")
+        for line in lines:
+            fh.write(line + "\n")
+    print(f"{argv[1]} worker env built: {len(lines)} keys.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

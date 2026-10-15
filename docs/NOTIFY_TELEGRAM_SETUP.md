@@ -139,38 +139,107 @@ Nothing below is a secret in the repository. Values go only where named.
      --data-urlencode 'allowed_updates=["message","callback_query","my_chat_member"]'
    ```
    Check with `getWebhookInfo` (same bot token): `url` set, no `last_error_message`.
-6. **Sender, before the switch.** An empty username keeps the panel hidden, so
-   nobody can link a chat that nothing would send to. Write the notify worker's own
-   env file, `/opt/nightshift/.env.notify` (mode 600), with exactly four names:
+6. **Sender, before the switch.** The deploy does this for you; see "Going live
+   without a computer" below. It writes the notify worker's own env file,
+   `/opt/nightshift/.env.notify` (mode 600), with exactly four names:
    `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `TELEGRAM_CUSTOMER_BOT_TOKEN` and
-   `NOTIFY_APP_ORIGIN=https://<the app>`. It is deliberately not the pipeline
-   worker's file, so this container never holds the provider keys. Then
-   `docker compose --profile notify up -d notify-worker`. If Telegram ever refuses the
-   token (revoked, mistyped) the worker logs an ALARM line, sends and drops nothing,
-   and tries again every five minutes.
-7. **Web app, last.** Set `TELEGRAM_CUSTOMER_BOT_USERNAME=reply_NightshiftAiStudio_bot`
-   in the web container's environment (server-only, read at request time; no
-   rebuild). This is the go-live switch: the example files leave it empty on purpose,
-   and until it is set the Notifications panel is hidden.
+   `NOTIFY_APP_ORIGIN=https://<the app>`, and starts `notify-worker`. It is
+   deliberately not the pipeline worker's file, so this container never holds the
+   provider keys. If Telegram ever refuses the token (revoked, mistyped) the
+   worker logs an ALARM line, sends and drops nothing, and tries again every five
+   minutes. By hand on the server it would be
+   `docker compose --profile notify up -d notify-worker`.
+7. **Web app, last.** The deploy sets `TELEGRAM_CUSTOMER_BOT_USERNAME` in the web
+   container's environment from the GitHub variable of that name (server-only,
+   read at request time; no rebuild). This is the go-live switch: it is empty
+   until you set the variable, and until then the Notifications panel is hidden,
+   so nobody can link a chat that nothing would send to.
 8. **Try it** with your own account: connect, press Start, press Yes, "Send a test
    message". Block the bot and watch the chip turn to Blocked; unblock; `/stop`.
 9. **Privacy text.** Done in this change: `lib/legal-docs` (en/ru/uz) has a data line and a
    sub-processor row for Telegram customer notifications. Have it reviewed before go-live.
 
-### Deploy wiring that is not in this PR
+### Going live without a computer (the deploy does steps 6 and 7)
 
-The deploy workflow builds `.env.web` and `.env.worker` from allow-lists
-(`deploy/.env.web.example`, `deploy/.env.worker.example`), and a test requires every
-key there to be mapped in `.github/workflows/deploy_web.yml`. This change may not
-edit workflows, so it does **not** add the names to those example files. To deploy
-through the pipeline, add in one commit: the keys `TELEGRAM_CUSTOMER_BOT_USERNAME`
-(web) to `.env.web.example` with its `WEBENV_` mapping in the workflow, and a step that
-writes `/opt/nightshift/.env.notify` (the notify worker's own four names; the token a
-secret) and starts `notify-worker` behind a switch (like `NIGHTSHIFT_CREATIVE_WORKER`).
-Until then steps 6 and 7 are done by hand on the server. (`deploy/docker-compose.yml` already
-passes `TELEGRAM_CUSTOMER_BOT_USERNAME` through to the web container, which a test
-requires of every variable the app reads; with the pipeline's env file regenerated on
-each deploy, the value must come from the allow-list above.)
+`.github/workflows/deploy_web.yml` (the existing "Deploy web" workflow, same
+triggers and permissions) now does the server side of steps 6 and 7 on every
+deploy. You only create GitHub settings; nobody needs a shell on the server.
+
+What a deploy does:
+
+* **`NIGHTSHIFT_NOTIFY_WORKER` is `on`:** after the web app is healthy it writes
+  `/opt/nightshift/.env.notify` (mode 600, four names, nothing else) and runs
+  `docker compose --profile notify up -d --build --no-deps notify-worker`. The log
+  ends with a line like `notify-worker after 20s: state=running exit=0
+  restarts=0 oom=false` (numbers only, never log text). It is independent of
+  `NIGHTSHIFT_WORKER`: the pipeline worker does not have to be on, and does not
+  receive the bot token. A missing secret fails the deploy with the name of the
+  missing key (`::error::TELEGRAM_CUSTOMER_BOT_TOKEN is required and empty ...`).
+* **`NIGHTSHIFT_NOTIFY_WORKER` is anything else, or not set (the default):** no
+  env file is written, `notify-worker` is stopped and removed, and
+  `/opt/nightshift/.env.notify` is deleted if it exists. The rest of the deploy is
+  exactly what it was.
+* **`TELEGRAM_CUSTOMER_BOT_USERNAME`** is mapped into the web env like every other
+  key of `deploy/.env.web.example` (a test requires every key there to be mapped
+  in the workflow). Empty or not set: the panel stays hidden.
+
+The env file is built from named GitHub settings only (`deploy/build-service-env.py`,
+`deploy/.env.notify.example` is the allow-list the server checks it against); the
+pipeline provider keys are not in that step at all, and the bot token is not in
+`.env.web` or `.env.worker`.
+
+**The names to create** in GitHub, Settings, Secrets and variables, Actions
+(repository level):
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Secret | `TELEGRAM_CUSTOMER_BOT_TOKEN` | the token from @BotFather (new) |
+| Secret | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | already there (the bot and the pipeline worker use them); add them if you never did |
+| Variable | `NIGHTSHIFT_NOTIFY_WORKER` | `on` (the switch; anything else or unset = off) |
+| Variable | `NOTIFY_APP_ORIGIN` | optional, `https://<the app>` with no path; empty = `https://<DOMAIN>` (the `DOMAIN` variable, else `new.nightshift-ai.studio`) |
+| Variable | `TELEGRAM_CUSTOMER_BOT_USERNAME` | `reply_NightshiftAiStudio_bot`, no `@` (the go-live switch; **last**) |
+
+**The order:**
+
+1. Merge this change and let the "Deploy web" run finish green (the server's
+   deploy script has to be the new one before the switch exists).
+2. Secret `TELEGRAM_CUSTOMER_BOT_TOKEN`; variable `NOTIFY_APP_ORIGIN` if the app is
+   not served on `DOMAIN`; then variable `NIGHTSHIFT_NOTIFY_WORKER` = `on`.
+3. Actions, **Deploy web**, **Run workflow**. In the log look for
+   `notify-worker after 20s: state=running ... restarts=0`. Check
+   `getWebhookInfo` (step 5) too. Nothing is visible to customers yet.
+4. **Last:** variable `TELEGRAM_CUSTOMER_BOT_USERNAME`, then **Run workflow** again.
+   The Notifications panel appears in Settings. Step 8 is your own test.
+
+To take it down: delete the username variable (or empty it) and run the workflow
+(the panel is hidden again), then set `NIGHTSHIFT_NOTIFY_WORKER` to anything but
+`on` and run it again (the sender and its file are removed).
+
+### Customer e-mails (migration 0103): wired the same way
+
+`tools/email_worker.py` (Resend) is a separate process with its own environment
+names, so it has its own service, `email-worker` (profile `email`), its own env
+file `/opt/nightshift/.env.email` (mode 600, five names: `SUPABASE_URL`,
+`SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `NIGHTSHIFT_EMAIL_FROM`, `APP_ORIGIN`)
+and its own switch. Not the pipeline worker's file, not the notify worker's: it
+never holds the provider keys or the Telegram token, and they never hold the mail
+key. The transport is fixed to `resend` in `deploy/docker-compose.yml`, so a deploy
+cannot start it on the `fake` one. Default off, behaving exactly like the notify
+worker above:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Secret | `RESEND_API_KEY` | the Resend key (the operator alert mail uses the same name) |
+| Secret | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | as above |
+| Variable | `NIGHTSHIFT_EMAIL_FROM` | the sender, e.g. `Nightshift <hello@your-domain>`, a domain verified in Resend |
+| Variable | `NOTIFY_APP_ORIGIN` | optional, as above (the e-mail worker reads it as `APP_ORIGIN`) |
+| Variable | `NIGHTSHIFT_EMAIL_WORKER` | `on` (the switch) |
+
+There is no separate go-live variable: the worker reports to `worker_status` and
+the e-mail switches in Settings are shown only while it does
+(`email_worker_online()`), so starting the worker is what makes e-mail visible.
+Apply migration 0103 first, then set the secret and the two variables, then
+`NIGHTSHIFT_EMAIL_WORKER` = `on` last, and run **Deploy web**.
 
 ## Running it locally with no Telegram
 

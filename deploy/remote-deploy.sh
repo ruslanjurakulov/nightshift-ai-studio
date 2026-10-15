@@ -16,6 +16,13 @@
 #   KEY=value                     variable NIGHTSHIFT_WORKER), then one line
 #   ...                           per key in deploy/.env.worker.example plus
 #                                 any CHRONOS_YT_TOKEN_<REF>
+#   NIGHTSHIFT_NOTIFY_ENV=on      optional, own section for the customer Telegram
+#   KEY=value                     sender (variable NIGHTSHIFT_NOTIFY_WORKER): one
+#   ...                           line per key in deploy/.env.notify.example
+#   NIGHTSHIFT_EMAIL_ENV=on       optional, own section for the customer e-mail
+#   KEY=value                     sender (variable NIGHTSHIFT_EMAIL_WORKER): one
+#   ...                           line per key in deploy/.env.email.example
+#   (sections may come in any order after the web lines; each marker once)
 #
 # What it does, and refuses:
 #   1. reads at most 64 KiB, checks the SHA line;
@@ -27,7 +34,9 @@
 #   4. writes /opt/nightshift/.env.web atomically, mode 600 (the previous copy
 #      is kept as .env.web.prev, also 600); the worker section, checked the
 #      same way against .env.worker.example, goes to /opt/nightshift/.env.worker
-#      (600) — without one, that file is deleted;
+#      (600) — without one, that file is deleted. The notify and e-mail
+#      sections are checked the same way and go to /opt/nightshift/.env.notify
+#      and .env.email (600), each its own file, never the worker's;
 #   5. checks out exactly that commit on the local `main` branch, runs
 #      `docker compose up -d --build --remove-orphans web caddy`, and waits for
 #      `web` to report healthy;
@@ -37,7 +46,8 @@
 #      creative worker follows the worker-section line
 #      NIGHTSHIFT_CREATIVE_WORKER=on (the repository variable of that name):
 #      started or recreated when it says `on` and the worker is on, stopped
-#      and removed otherwise;
+#      and removed otherwise. The notify-worker and email-worker follow their
+#      own sections the same way, independent of the pipeline worker;
 #   7. last, loads deploy/Caddyfile into the running Caddy without a restart
 #      (a bind-mounted file that changes does not make compose recreate it),
 #      but ONLY the exact file whose sha256 is pinned below
@@ -56,6 +66,8 @@
 #   NIGHTSHIFT_APP_DIR        git checkout             (/opt/nightshift/app)
 #   NIGHTSHIFT_ENV_FILE       env file compose reads   (/opt/nightshift/.env.web)
 #   NIGHTSHIFT_WORKER_ENV_FILE the worker's env file   (/opt/nightshift/.env.worker)
+#   NIGHTSHIFT_NOTIFY_ENV_FILE the notify worker's     (/opt/nightshift/.env.notify)
+#   NIGHTSHIFT_EMAIL_ENV_FILE  the e-mail worker's     (/opt/nightshift/.env.email)
 #   NIGHTSHIFT_LOCK_FILE      one deploy at a time     (/opt/nightshift/.deploy.lock)
 #   NIGHTSHIFT_DOCKER         docker binary            (docker)
 #   NIGHTSHIFT_HEALTH_TIMEOUT seconds to wait for web  (420)
@@ -81,6 +93,8 @@ export LC_ALL=C
 APP_DIR="${NIGHTSHIFT_APP_DIR:-/opt/nightshift/app}"
 ENV_FILE="${NIGHTSHIFT_ENV_FILE:-/opt/nightshift/.env.web}"
 WORKER_ENV_FILE="${NIGHTSHIFT_WORKER_ENV_FILE:-/opt/nightshift/.env.worker}"
+NOTIFY_ENV_FILE="${NIGHTSHIFT_NOTIFY_ENV_FILE:-/opt/nightshift/.env.notify}"
+EMAIL_ENV_FILE="${NIGHTSHIFT_EMAIL_ENV_FILE:-/opt/nightshift/.env.email}"
 LOCK_FILE="${NIGHTSHIFT_LOCK_FILE:-/opt/nightshift/.deploy.lock}"
 DOCKER="${NIGHTSHIFT_DOCKER:-docker}"
 HEALTH_TIMEOUT="${NIGHTSHIFT_HEALTH_TIMEOUT:-420}"
@@ -96,10 +110,16 @@ CADDY_RETRY_SLEEP="${NIGHTSHIFT_CADDY_RETRY_SLEEP:-2}"
 MAX_INPUT_BYTES=262144
 SHA_KEY=NIGHTSHIFT_DEPLOY_SHA
 WORKER_MARKER=NIGHTSHIFT_WORKER_ENV=on
+NOTIFY_MARKER=NIGHTSHIFT_NOTIFY_ENV=on
+EMAIL_MARKER=NIGHTSHIFT_EMAIL_ENV=on
 # The per-channel YouTube tokens: the one family of worker keys that is not
 # listed in .env.worker.example, because each channel brings its own name.
 WORKER_TOKEN_KEY='^CHRONOS_YT_TOKEN_[A-Z0-9_]+$'
 WORKER_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY)
+# Every key of the two small workers' files is required: switched on with one
+# empty, they would only log that they are OFF.
+NOTIFY_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY TELEGRAM_CUSTOMER_BOT_TOKEN NOTIFY_APP_ORIGIN)
+EMAIL_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY RESEND_API_KEY NIGHTSHIFT_EMAIL_FROM APP_ORIGIN)
 # Mirrors the ${VAR:?} guards in docker-compose.yml: without these the stack
 # either refuses to start or builds a dashboard that reads "NOT CONFIGURED".
 REQUIRED_KEYS=(DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -155,11 +175,13 @@ web_diagnostics() {
 compose() {
   # WEB_ENV_FILE keeps the web container's env_file pointed at the same file
   # the interpolation reads, including under a test override; WORKER_ENV_FILE
-  # does the same for the worker's. The worker profile is always active so
-  # that compose knows the worker service (and --remove-orphans never mistakes
-  # it for an orphan); services are named on every `up`.
-  WEB_ENV_FILE="$ENV_FILE" WORKER_ENV_FILE="$WORKER_ENV_FILE" "$DOCKER" compose \
-    --profile worker --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
+  # does the same for the worker's, NOTIFY_ENV_FILE and EMAIL_ENV_FILE for the
+  # notify and e-mail workers'. The worker, notify and email profiles are always
+  # active so that compose knows those services (and --remove-orphans never
+  # mistakes them for orphans); services are named on every `up`.
+  WEB_ENV_FILE="$ENV_FILE" WORKER_ENV_FILE="$WORKER_ENV_FILE" \
+    NOTIFY_ENV_FILE="$NOTIFY_ENV_FILE" EMAIL_ENV_FILE="$EMAIL_ENV_FILE" "$DOCKER" compose \
+    --profile worker --profile notify --profile email --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
 }
 
 # Checks the lines of one section against the KEY= lines of an example file.
@@ -511,6 +533,31 @@ caddy_apply() {
   log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
 }
 
+# One of the small customer senders (notify-worker, email-worker), switched by
+# the presence of its section in the payload. Prints a state line as numbers
+# only, and the names of known phrases found in its log, never the log text.
+#   start_sender <service> <on|off> <env file> <GitHub variable> <words>
+start_sender() {
+  local svc="$1" state="$2" file="$3" var="$4" words="$5" cid sender_log
+  if [[ "$state" == on ]]; then
+    log "docker compose up -d --build --no-deps $svc"
+    compose up -d --build --no-deps "$svc" \
+      || die "$words did not start; on the server: dc logs --tail 100 $svc"
+    compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' "$svc" || true
+    if [[ "$WORKER_SETTLE_SECONDS" -gt 0 ]]; then sleep "$WORKER_SETTLE_SECONDS"; fi
+    cid="$(compose ps -q "$svc" 2>/dev/null || true)"
+    if [[ -n "$cid" ]]; then
+      "$DOCKER" inspect -f "$svc after ${WORKER_SETTLE_SECONDS}s: state={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}" "$cid" || true
+    fi
+    sender_log="$(compose logs --no-color --tail 200 "$svc" 2>&1 || true)"
+    echo "$svc log hints: $(hint_words "$sender_log" || true)"
+  else
+    compose rm --stop --force "$svc" >/dev/null 2>&1 || true
+    rm -f "$file" "${file}.prev"
+    log "$svc is off (GitHub variable $var is not 'on')"
+  fi
+}
+
 main() {
   umask 077
 
@@ -551,21 +598,36 @@ main() {
   # ── 3. Validate the env against the examples AT THAT COMMIT ────────────────
   # Read from git, not the working tree: a key added in the commit being
   # deployed is known before it is checked out.
-  local -a web_lines=() worker_lines=()
-  local worker=off line
+  # The payload is the web lines, then up to three sections, each opened by its
+  # marker line (once; a repeated marker is an unknown key and refused below).
+  local -a web_lines=() worker_lines=() notify_lines=() email_lines=()
+  local worker=off notify=off email=off line cur=web
   for line in "${lines[@]}"; do
     if [[ "$worker" == off && "$line" == "$WORKER_MARKER" ]]; then
-      worker=on
+      worker=on cur=worker
       continue
     fi
-    if [[ "$worker" == on ]]; then worker_lines+=("$line"); else web_lines+=("$line"); fi
+    if [[ "$notify" == off && "$line" == "$NOTIFY_MARKER" ]]; then
+      notify=on cur=notify
+      continue
+    fi
+    if [[ "$email" == off && "$line" == "$EMAIL_MARKER" ]]; then
+      email=on cur=email
+      continue
+    fi
+    case "$cur" in
+      worker) worker_lines+=("$line") ;;
+      notify) notify_lines+=("$line") ;;
+      email) email_lines+=("$line") ;;
+      *) web_lines+=("$line") ;;
+    esac
   done
 
   local example
   example="$(git show "${sha}:deploy/.env.web.example")" \
     || die "deploy/.env.web.example is missing at $sha"
   local -a problems=()
-  local nkeys=0 web_keys=0 worker_keys=0
+  local nkeys=0 web_keys=0 worker_keys=0 notify_keys=0 email_keys=0
   local label="deploy/.env.web.example" section=web
   check_section "$example" "" "${REQUIRED_KEYS[*]}" "${web_lines[@]}"
   web_keys=$nkeys
@@ -575,6 +637,20 @@ main() {
     label="deploy/.env.worker.example" section=worker nkeys=0
     check_section "$example" "$WORKER_TOKEN_KEY" "${WORKER_REQUIRED_KEYS[*]}" "${worker_lines[@]}"
     worker_keys=$nkeys
+  fi
+  if [[ "$notify" == on ]]; then
+    example="$(git show "${sha}:deploy/.env.notify.example" 2>/dev/null)" \
+      || die "a notify env was sent, but deploy/.env.notify.example is missing at $sha"
+    label="deploy/.env.notify.example" section=notify nkeys=0
+    check_section "$example" "" "${NOTIFY_REQUIRED_KEYS[*]}" "${notify_lines[@]}"
+    notify_keys=$nkeys
+  fi
+  if [[ "$email" == on ]]; then
+    example="$(git show "${sha}:deploy/.env.email.example" 2>/dev/null)" \
+      || die "an e-mail env was sent, but deploy/.env.email.example is missing at $sha"
+    label="deploy/.env.email.example" section=email nkeys=0
+    check_section "$example" "" "${EMAIL_REQUIRED_KEYS[*]}" "${email_lines[@]}"
+    email_keys=$nkeys
   fi
   # The creative worker's switch is one of the worker keys (the repository
   # variable NIGHTSHIFT_CREATIVE_WORKER): exactly `on` starts it, anything
@@ -597,6 +673,14 @@ main() {
   if [[ "$worker" == on ]]; then
     write_env "$WORKER_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${worker_lines[@]}"
     log "wrote $WORKER_ENV_FILE ($worker_keys keys, mode 600)"
+  fi
+  if [[ "$notify" == on ]]; then
+    write_env "$NOTIFY_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${notify_lines[@]}"
+    log "wrote $NOTIFY_ENV_FILE ($notify_keys keys, mode 600)"
+  fi
+  if [[ "$email" == on ]]; then
+    write_env "$EMAIL_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${email_lines[@]}"
+    log "wrote $EMAIL_ENV_FILE ($email_keys keys, mode 600)"
   fi
 
   # ── 5. Check out exactly that commit ───────────────────────────────────────
@@ -712,6 +796,14 @@ main() {
     log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on'); creative-worker is off with it"
   fi
 
+  # ── 8b. The customer notification senders ─────────────────────────────────
+  # Each follows its own section, whether or not the pipeline worker is on:
+  # present = started, or moved onto the image just built; absent = stopped,
+  # removed, and its env file (with the token or the mail key) deleted.
+  # A start that fails fails the deploy, like the workers above.
+  start_sender notify-worker "$notify" "$NOTIFY_ENV_FILE" NIGHTSHIFT_NOTIFY_WORKER "the notify worker"
+  start_sender email-worker "$email" "$EMAIL_ENV_FILE" NIGHTSHIFT_EMAIL_WORKER "the e-mail worker"
+
   # ── 9. Caddy ───────────────────────────────────────────────────────────────
   # Last, so a proxy problem never holds back the worker; it still fails the
   # deploy (non-zero) so it is seen.
@@ -725,7 +817,7 @@ main() {
   # a disk. Only dangling images: nothing a container still uses.
   "$DOCKER" image prune -f >/dev/null 2>&1 || true
 
-  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative"
+  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email"
 }
 
 main "$@"

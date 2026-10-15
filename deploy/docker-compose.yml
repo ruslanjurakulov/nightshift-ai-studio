@@ -275,14 +275,17 @@ services:
 
   # Sends the queued notifications (migration 0102) to customers' linked
   # Telegram chats: tools/notify_worker.py. Its own profile, `notify`, which
-  # nothing activates by itself: it starts only when the owner runs
+  # nothing activates by itself. deploy/remote-deploy.sh starts it on every
+  # deploy while the GitHub variable NIGHTSHIFT_NOTIFY_WORKER is `on`, and
+  # removes it (and its env file) otherwise; by hand it is
   #   docker compose --profile notify up -d notify-worker
-  # after creating the CUSTOMER bot and setting its env (docs/NOTIFY_TELEGRAM_SETUP.md).
-  # It has its OWN env file (/opt/nightshift/.env.notify, mode 600, written by hand)
-  # with exactly four names: SUPABASE_URL, SUPABASE_SERVICE_KEY,
-  # TELEGRAM_CUSTOMER_BOT_TOKEN and NOTIFY_APP_ORIGIN. It never sees the pipeline
-  # worker's provider keys, and with the token or the origin missing it says so and
-  # claims nothing. It never reads the operator bot's TELEGRAM_BOT_TOKEN.
+  # after creating the CUSTOMER bot (docs/NOTIFY_TELEGRAM_SETUP.md).
+  # It has its OWN env file (/opt/nightshift/.env.notify, mode 600, written by
+  # the deploy from GitHub) with exactly four names: SUPABASE_URL,
+  # SUPABASE_SERVICE_KEY, TELEGRAM_CUSTOMER_BOT_TOKEN and NOTIFY_APP_ORIGIN
+  # (deploy/.env.notify.example). It never sees the pipeline worker's provider
+  # keys, and with the token or the origin missing it says so and claims
+  # nothing. It never reads the operator bot's TELEGRAM_BOT_TOKEN.
   notify-worker:
     profiles: ["notify"]
     build:
@@ -297,6 +300,45 @@ services:
         required: false
     environment:
       NIGHTSHIFT_WORKER_ID: nightshift-notify-01
+      HOME: /tmp
+    stop_grace_period: 20s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 256m
+    logging: *default-logging
+
+  # Sends the customers' "your video is ready" and weekly e-mails (migration
+  # 0103): tools/email_worker.py, through Resend. Its own profile, `email`,
+  # started by deploy/remote-deploy.sh on every deploy while the GitHub variable
+  # NIGHTSHIFT_EMAIL_WORKER is `on`, removed (with its env file) otherwise.
+  # Its OWN env file (/opt/nightshift/.env.email, mode 600) holds exactly five
+  # names: SUPABASE_URL, SUPABASE_SERVICE_KEY, RESEND_API_KEY,
+  # NIGHTSHIFT_EMAIL_FROM and APP_ORIGIN (deploy/.env.email.example); none of
+  # the pipeline provider keys or the Telegram token. The transport is fixed
+  # here so a deploy can never start it on the `fake` one (which writes mails to
+  # a folder and sends nothing). It reports to worker_status as `email-...`;
+  # the e-mail switches in Settings are shown only while it does.
+  email-worker:
+    profiles: ["email"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/email_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${EMAIL_ENV_FILE:-/opt/nightshift/.env.email}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-01
+      NIGHTSHIFT_EMAIL_TRANSPORT: resend
       HOME: /tmp
     stop_grace_period: 20s
     tmpfs:
