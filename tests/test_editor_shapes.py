@@ -43,6 +43,12 @@ SHAPES_TS = ROOT / "command-center" / "lib" / "editorShapes.ts"
 EDITOR_TS = ROOT / "command-center" / "lib" / "editor.ts"
 FIXTURE = ROOT / "samples" / "shape_layout.json"
 
+#: CI runs the compact versions of the heavy sweeps below (a few minutes less on a 4-core runner, which has a
+#: 10-minute budget for the whole suite); NIGHTSHIFT_SLOW_TESTS=1 runs them exhaustively, before a big merge:
+#:     NIGHTSHIFT_SLOW_TESTS=1 python -m pytest tests/test_editor_shapes.py
+#: Every compact test still fails if the claim it guards is broken (the exhaustive ones only look at more cases).
+SLOW = os.environ.get("NIGHTSHIFT_SLOW_TESTS") == "1"
+
 BASE = "11111111-1111-4111-8111-111111111111"
 PIC = "33333333-3333-4333-8333-333333333333"
 
@@ -796,9 +802,9 @@ class ArtTestCase(unittest.TestCase):
         died with a bare ValueError. Now such a stroke is a solid shape, at every size."""
         with tempfile.TemporaryDirectory() as d:
             for kind in ("circle", "rect", "star", "pill"):
-                for outline in (0.49, 0.499, 0.5):
+                for outline in ((0.49, 0.499, 0.5) if SLOW else (0.499, 0.5)):
                     for frame in ((640, 360), (16, 16), (4096, 16), (16, 4096), (1080, 1920), (1920, 1080)):
-                        for w in (0.05, 0.1, 0.3, 0.7, 1.0):
+                        for w in ((0.05, 0.1, 0.3, 0.7, 1.0) if SLOW else (0.05, 0.3, 1.0)):
                             art = sa.ShapeArt.from_dict({"kind": kind, "color": "#FF0000", "outline": outline,
                                                          "text": "Hi", "aspect": 1.6})
                             with self.subTest(kind=kind, outline=outline, frame=frame, w=w):
@@ -931,7 +937,8 @@ def random_shape_doc(rng):
 
 
 class FuzzTestCase(unittest.TestCase):
-    def test_1500_random_single_shape_documents_validate_or_are_refused_early_and_the_valid_ones_draw(self):
+    def test_random_single_shape_documents_validate_or_are_refused_early_and_the_valid_ones_draw(self):
+        """1500 documents with NIGHTSHIFT_SLOW_TESTS=1, 150 otherwise (the same seed: the first 150 of the 1500)."""
         import random
         try:
             import PIL  # noqa: F401
@@ -940,7 +947,7 @@ class FuzzTestCase(unittest.TestCase):
         rng = random.Random(20261014)
         valid = refused = 0
         with tempfile.TemporaryDirectory() as d:
-            for i in range(1500):
+            for i in range(1500 if SLOW else 150):
                 doc = random_shape_doc(rng)
                 if doc["shapes"][0]["kind"] == "pill" and not have_font():
                     continue
@@ -957,7 +964,7 @@ class FuzzTestCase(unittest.TestCase):
                 for o in out:
                     self.assertTrue(Path(o.path).is_file(), (i, doc["shapes"]))
                 rs.build_ffmpeg_command(spec, "/w/concat.txt", "/w/overlays.ass")
-        self.assertGreater(valid, 1000, f"{valid} valid, {refused} refused: the fuzz must mostly exercise valid documents")
+        self.assertGreater(valid, 1000 if SLOW else 100, f"{valid} valid, {refused} refused: the fuzz must mostly exercise valid documents")
 
     def test_a_sample_of_the_valid_ones_renders_with_the_real_ffmpeg(self):
         import random
@@ -972,7 +979,7 @@ class FuzzTestCase(unittest.TestCase):
         done = 0
         with tempfile.TemporaryDirectory() as d:
             base_files = {}
-            while done < 24:
+            while done < (24 if SLOW else 8):
                 doc = random_shape_doc(rng)
                 w, h, fps = doc["width"], doc["height"], doc["fps"]
                 s = doc["shapes"][0]
@@ -994,11 +1001,12 @@ class FuzzTestCase(unittest.TestCase):
                     self.assertGreater(out.stat().st_size, 0)
                 done += 1
 
-    def render_under_the_workers_limit(self, exe, frame, fps, shapes, pictures=0, picture_w=1.0, out_s=3):
+    def render_under_the_workers_limit(self, exe, frame, fps, shapes, pictures=0, picture_w=1.0, out_s=None):
         """One document rendered the way the worker renders (jobs=1, a timeout: ffmpeg under its 2 GiB of
         address space, ffmpeg_limits.CHILD_MEM_BYTES). Fails with the ffmpeg version in the message."""
         from PIL import Image
         w, h = frame
+        out_s = out_s or (3 if SLOW else 2)   # the need is reached within the first frames: 2 s is enough
         with tempfile.TemporaryDirectory() as d:
             base = Path(d) / "b.mp4"
             proc = subprocess.run([exe, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
@@ -1034,6 +1042,14 @@ class FuzzTestCase(unittest.TestCase):
         cases = json.loads((ROOT / "samples" / "shape_budget.json").read_text(encoding="utf-8"))["cases"]
         named = [c for c in cases if c.get("accepted") and "name" in c]
         self.assertGreaterEqual(len(named), 8)
+        if not SLOW:
+            # the hardest ones: the CI runner's own document, the largest frame, the most layers
+            # and pixels of pictures (the 4K regime is the grid's); the rest with NIGHTSHIFT_SLOW_TESTS=1
+            hardest = ["CI: 1080p60, 12 circles at 0.8", "reviewer: portrait 1440p, 12 circles",
+                       "reviewer: 1080p60, 8 pictures + 8 shapes"]
+            byname = {c["name"]: c for c in named}
+            self.assertTrue(set(hardest) <= set(byname), "the compact list names a case the fixture lost")
+            named = [byname[n] for n in hardest]
         for c in named:
             with self.subTest(c["name"]):
                 shapes = [dict(s, start_s=0, end_s=3) for s in c["shapes"]]
@@ -1050,6 +1066,8 @@ class FuzzTestCase(unittest.TestCase):
         mixes = {(1920, 1080): [(12, 0), (12, 2), (8, 4)], (1080, 1920): [(12, 0), (12, 2)],
                  (2560, 1440): [(12, 0), (12, 2), (8, 4)], (1440, 2560): [(12, 0), (12, 2), (8, 4)],
                  (3840, 2160): [(12, 0), (3, 0)]}
+        if not SLOW:   # the 4K regime, which the named test does not render; the whole grid with NIGHTSHIFT_SLOW_TESTS=1
+            mixes = {(3840, 2160): [(3, 0)]}
         rendered = 0
         for frame, frame_mixes in mixes.items():
             for n, pics in frame_mixes:
@@ -1068,7 +1086,7 @@ class FuzzTestCase(unittest.TestCase):
                 with self.subTest(frame=frame, shapes=n, pictures=pics, w=widest[0]["w"]):
                     self.render_under_the_workers_limit(exe, frame, 60, widest, pictures=pics)
                     rendered += 1
-        self.assertGreaterEqual(rendered, 10)
+        self.assertGreaterEqual(rendered, 10 if SLOW else 1)
 
     @unittest.skipUnless(have_font(), "no bold font on this machine")
     def test_a_missing_font_stops_the_export_before_any_segment_is_encoded(self):

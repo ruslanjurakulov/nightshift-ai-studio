@@ -583,6 +583,14 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
   the numbers (role="status"), a picture is narrowed or not added when the shapes leave it no room (it says
   so), the inspector says how much of the budget the shapes use once it is 60% or
   more, and settling after a frame change narrows the widest shapes (then removes the last, said, undoable).
+* **Tests and their cost.** The pure budget, filter-string and fixture tests are fast and always run. The
+  real-ffmpeg claims run in a compact form in CI (about 40 s of the file's 90 s on two loaded cores): the CI
+  runner's own document, the largest portrait frame, the most layers (8 shapes + 8 full pictures) and a 4K
+  document, each rendered under the worker's 2 GiB limit; they fail with exit 187 if the threads are not pinned
+  (checked by switching the pinning off). `NIGHTSHIFT_SLOW_TESTS=1 python -m pytest tests/test_editor_shapes.py`
+  runs the exhaustive versions (all 9 named documents, the 5-frame grid of widest accepted documents, 1500
+  random documents instead of 150, the full outline sweep, 24 sampled renders instead of 8): run it before a
+  big merge. Nothing is skipped silently: only "no ffmpeg runs at all" skips a real-ffmpeg test.
 * **Render time** is charged like interpolation and stabilising, against the worker's timeout
   (`render_timeout_s` = min(5400, 3 x length + 120)): per layer, per OUTPUT frame, whatever the layer's span
   (a layer is an `overlay` pass over every frame; one shown for 10% of a clip cost 90% of the same), 2.5 ms
