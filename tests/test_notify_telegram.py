@@ -221,7 +221,7 @@ class Worker(unittest.TestCase):
     def run_batch(self, rows, *answers):
         q, s = FakeQueue(rows), FakeSession(*answers)
         lim = nt.SendLimiter(clock=lambda: 0.0, sleep=lambda d: None)
-        counts = nw.process_batch(q, nt.TelegramClient(TOKEN, "http://fake.test", s), lim, ORIGIN, "w1")
+        counts, self.pause = nw.process_batch(q, nt.TelegramClient(TOKEN, "http://fake.test", s), lim, ORIGIN, "w1")
         return q, s, counts
 
     def test_each_row_is_sent_once_in_its_own_language_and_settled(self):
@@ -229,6 +229,23 @@ class Worker(unittest.TestCase):
         self.assertEqual([c[1]["text"] for c in s.calls], ["Ваше видео готово.", "Your credits are running low."])
         self.assertEqual([r.outcome for _, r in q.done], ["sent", "sent"])
         self.assertEqual(counts, {"sent": 2})
+
+    def test_a_refused_token_pauses_the_whole_worker_and_hands_back_the_rest_unsent(self):
+        with self.assertLogs("notify_worker", level="ERROR") as logs:
+            q, s, counts = self.run_batch([row(1, chat="1"), row(2, chat="2"), row(3, chat="3")], Resp(401, {}))
+        self.assertEqual(len(s.calls), 1, "one question to Telegram, not one per message")
+        self.assertEqual([(r.outcome, r.error_code, r.retry_after) for _, r in q.done], [("retry", "not_configured", 300)] * 3)
+        self.assertEqual(self.pause, 300)
+        self.assertIn("ALARM", logs.output[0])
+        self.assertNotIn(TOKEN, logs.output[0])
+
+    def test_a_rate_limit_pauses_everything_for_its_retry_after_not_just_that_chat(self):
+        q, s, counts = self.run_batch([row(1, chat="1"), row(2, chat="2")], Resp(429, {"parameters": {"retry_after": 9}}))
+        self.assertEqual(len(s.calls), 1)
+        self.assertEqual([(r.error_code, r.retry_after) for _, r in q.done], [("rate_limited", 9), ("rate_limited", 9)])
+        self.assertEqual(self.pause, 9)
+        q, s, counts = self.run_batch([row(1)], Resp(429, {"parameters": {"retry_after": 3000}}))
+        self.assertEqual(self.pause, nw.MAX_RATE_PAUSE_SECONDS)
 
     def test_a_blocked_chat_is_reported_blocked_and_the_next_still_goes(self):
         q, s, _ = self.run_batch([row(1, chat="1"), row(2, chat="2")], Resp(403, {"description": "bot was blocked"}))

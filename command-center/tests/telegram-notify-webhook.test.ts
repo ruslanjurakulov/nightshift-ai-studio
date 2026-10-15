@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   BOT_COPY,
+  MAX_BODY,
   StoreError,
   bareLanguage,
   botWords,
   createRestStore,
   handleTelegramWebhook,
   parseUpdate,
+  readBoundedText,
   secretIsUsable,
   secretMatches,
   type NotifyStore,
@@ -59,7 +61,7 @@ async function hit(update: unknown, store: NotifyStore, over: Partial<{ method: 
     {
       method: over.method ?? "POST",
       contentType: over.contentType === undefined ? "application/json" : over.contentType,
-      rawBody: over.rawBody ?? JSON.stringify(update),
+      rawBody: "rawBody" in over ? (over.rawBody as string) : JSON.stringify(update),
       secretHeader: over.secretHeader === undefined ? SECRET : over.secretHeader,
     },
     { secret: over.secret ?? SECRET, store },
@@ -100,7 +102,8 @@ describe("the secret header", () => {
     expect((await hit({}, store, { method: "GET" })).status).toBe(405);
     expect((await hit({}, store, { contentType: "text/plain" })).status).toBe(415);
     expect((await hit({}, store, { contentType: null })).status).toBe(415);
-    expect((await hit({}, store, { rawBody: "x".repeat(40_000) })).status).toBe(413);
+    expect((await hit({}, store, { rawBody: "x".repeat(MAX_BODY + 1) })).status).toBe(413);
+    expect((await hit({}, store, { rawBody: null as unknown as string })).status).toBe(413);
     expect(calls).toEqual([]);
   });
   it("answers 200 and does nothing for a body that is not JSON", async () => {
@@ -300,5 +303,30 @@ describe("the REST store", () => {
     await expect(store.claimUpdate(1)).rejects.toThrow(StoreError);
     await expect(store.claimUpdate(1)).rejects.toThrow(/notify_telegram_update_claim failed \(HTTP 503\)/);
     await expect(store.claimUpdate(1)).rejects.not.toThrow(/secret/);
+  });
+});
+
+describe("reading the body without trusting Content-Length", () => {
+  const streamOf = (chunks: string[], pulled?: { n: number }) =>
+    new ReadableStream<Uint8Array>({
+      pull(c) {
+        const next = chunks.shift();
+        if (pulled) pulled.n += 1;
+        if (next === undefined) c.close();
+        else c.enqueue(new TextEncoder().encode(next));
+      },
+    });
+  it("returns small bodies whole, including multi-byte text split across chunks", async () => {
+    expect(await readBoundedText(streamOf(['{"a":', '"ё"}']))).toBe('{"a":"ё"}');
+    expect(await readBoundedText(null)).toBe("");
+  });
+  it("stops reading the moment the limit is passed and says so", async () => {
+    const pulled = { n: 0 };
+    const chunks = Array.from({ length: 1000 }, () => "x".repeat(1024));
+    expect(await readBoundedText(streamOf(chunks, pulled), 4096)).toBeNull();
+    expect(pulled.n).toBeLessThan(10);
+  });
+  it("keeps the cap to a few KB", () => {
+    expect(MAX_BODY).toBeLessThanOrEqual(8 * 1024);
   });
 });

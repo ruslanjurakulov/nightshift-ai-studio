@@ -24,7 +24,8 @@ export type Lang = string;
 
 const SECRET_RE = /^[A-Za-z0-9_-]{24,256}$/;
 const TOKEN_RE = /^[0-9a-f]{56}$/;
-export const MAX_BODY = 32 * 1024;
+// A real update is well under 2 KB (a command, a callback or a member change). 8 KB is generous.
+export const MAX_BODY = 8 * 1024;
 
 export const BOT_COPY: Record<string, Record<string, string>> = {
   en: {
@@ -249,10 +250,37 @@ export function createRestStore(cfg: { url: string; serviceKey: string; fetch?: 
 
 // ── the handler ─────────────────────────────────────────────────────────────
 
+/** The body as text, read piece by piece and abandoned the moment it passes `limit` bytes
+ *  (a client may omit or lie about Content-Length). null = over the limit. */
+export async function readBoundedText(stream: ReadableStream<Uint8Array> | null, limit: number = MAX_BODY): Promise<string | null> {
+  if (!stream) return "";
+  const reader = stream.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 export interface WebhookRequest {
   method: string;
   contentType: string | null;
-  rawBody: string;
+  /** The body, or null when it was over the limit and was not read to the end. */
+  rawBody: string | null;
   secretHeader: string | null;
 }
 export interface WebhookResponse { status: number; body: Record<string, unknown> }
@@ -269,7 +297,7 @@ export async function handleTelegramWebhook(
   if (req.method !== "POST") return { status: 405, body: { error: "method_not_allowed" } };
   if (!(await secretMatches(req.secretHeader, deps.secret as string))) return { status: 401, body: { error: "unauthorized" } };
   if (!/^application\/json\b/i.test(req.contentType ?? "")) return { status: 415, body: { error: "unsupported_media_type" } };
-  if (req.rawBody.length > MAX_BODY) return { status: 413, body: { error: "too_large" } };
+  if (req.rawBody === null || req.rawBody.length > MAX_BODY) return { status: 413, body: { error: "too_large" } };
 
   let raw: unknown;
   try {

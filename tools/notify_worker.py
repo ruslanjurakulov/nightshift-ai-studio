@@ -8,7 +8,7 @@ to the customer's linked Telegram chat.
 THE CUSTOMER BOT ONLY. This is not the operator bot (modules/telegram_control.py,
 TELEGRAM_BOT_TOKEN): its token is never read here. Environment, by name:
 
-    SUPABASE_URL, SUPABASE_SERVICE_KEY   the worker's env file, as the other workers
+    SUPABASE_URL, SUPABASE_SERVICE_KEY   the notify worker's own env file (.env.notify)
     TELEGRAM_CUSTOMER_BOT_TOKEN          the customer bot's token (BotFather)
     NOTIFY_APP_ORIGIN                    https://<the app>, the link back in a message
     NOTIFY_TELEGRAM_API_BASE             optional; a local fake (tools/fake_telegram.py)
@@ -34,7 +34,7 @@ import socket
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
@@ -92,19 +92,42 @@ class OutboxQueue:
             "p_provider_message_id": result.message_id}))
 
 
+# How long the whole worker stops when Telegram refuses the bot token: a revoked or mistyped token
+# is not any message's fault, so nothing is failed or dropped, and the owner is told loudly.
+TOKEN_REFUSED_PAUSE_SECONDS = 300
+# The longest the whole worker waits on one rate-limit answer (Telegram's limit is per bot, not per chat).
+MAX_RATE_PAUSE_SECONDS = 60
+
+
 def process_batch(queue: Any, client: nt.TelegramClient, limiter: nt.SendLimiter, app_origin: str,
-                  worker_id: str, limit: int = BATCH) -> Dict[str, int]:
-    """Claim one batch, send each message, settle each. Returns counts by outcome."""
+                  worker_id: str, limit: int = BATCH) -> Tuple[Dict[str, int], float]:
+    """Claim one batch, send each message, settle each. Returns (counts by outcome, seconds the
+    whole worker should wait before claiming again).
+
+    A refused token (401/404) or a rate limit stops the batch at once: the rest of what was
+    claimed is handed back unsent and without using an attempt, instead of asking Telegram
+    once per message and getting the same answer."""
     counts: Dict[str, int] = {}
+    pause = 0.0
     for row in queue.claim(worker_id, limit):
         chat = str(row.get("external_id") or "")
         data = row.get("data") if isinstance(row.get("data"), dict) else {}
         payload = nt.build_message(app_origin, chat, str(row.get("event_kind")), data, row.get("locale"))
-        if payload is None or not chat:
+        if pause > 0:
+            result = nt.SendResult("retry", "not_configured" if pause >= TOKEN_REFUSED_PAUSE_SECONDS else "rate_limited",
+                                   retry_after=int(pause))
+        elif payload is None or not chat:
             result = nt.SendResult("dead", "bad_request")
         else:
             limiter.wait(chat)
             result = client.send_message(payload)
+            if result.error_code == "not_configured":
+                pause = float(TOKEN_REFUSED_PAUSE_SECONDS)
+                result = nt.SendResult("retry", "not_configured", retry_after=TOKEN_REFUSED_PAUSE_SECONDS)
+                logger.error("ALARM: Telegram refused the customer bot token (revoked or mistyped). Nothing is sent "
+                             "and nothing is dropped; fix TELEGRAM_CUSTOMER_BOT_TOKEN. Retrying in %ss.", TOKEN_REFUSED_PAUSE_SECONDS)
+            elif result.error_code == "rate_limited":
+                pause = float(min(result.retry_after or 30, MAX_RATE_PAUSE_SECONDS))
         try:
             queue.complete(row["id"], worker_id, result)
         except QueueUnavailable as e:
@@ -113,7 +136,7 @@ def process_batch(queue: Any, client: nt.TelegramClient, limiter: nt.SendLimiter
             logger.warning("could not settle a message (%s)", e)
         key = result.error_code or result.outcome
         counts[key] = counts.get(key, 0) + 1
-    return counts
+    return counts, pause
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -128,7 +151,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not url or not key:
-        logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in the worker's env file.")
+        logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in the notify worker's env file (.env.notify).")
         return 2
     token = os.environ.get("TELEGRAM_CUSTOMER_BOT_TOKEN", "").strip()
     origin = nt.valid_app_origin(os.environ.get("NOTIFY_APP_ORIGIN"))
@@ -138,7 +161,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if not token or not origin:
         logger.warning("customer notifications are OFF: set TELEGRAM_CUSTOMER_BOT_TOKEN and NOTIFY_APP_ORIGIN "
-                       "(https://...) in the worker's env file. Nothing is claimed.")
+                       "(https://...) in the notify worker's env file. Nothing is claimed.")
         if args.once:
             return 0
         stop.wait()
@@ -151,15 +174,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     limiter = nt.SendLimiter()
     while not stop.is_set():
         try:
-            counts = process_batch(queue, client, limiter, origin, args.worker_id)
+            counts, pause = process_batch(queue, client, limiter, origin, args.worker_id)
         except QueueUnavailable as e:
             logger.warning("outbox unavailable (%s)", e)
-            counts = {}
+            counts, pause = {}, 0.0
         if counts:
             logger.info("settled %s", ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
         if args.once:
             return 0
-        if not counts:
+        if pause > 0:
+            stop.wait(pause)
+        elif not counts:
             stop.wait(IDLE_SECONDS)
     return 0
 

@@ -16,7 +16,14 @@
 //                                      provided by Supabase to every Edge Function
 // The bot token is NOT needed here: replies go back in the webhook response.
 
-import { MAX_BODY, createRestStore, handleTelegramWebhook } from "../_shared/telegram-notify.ts";
+import {
+  MAX_BODY,
+  createRestStore,
+  handleTelegramWebhook,
+  readBoundedText,
+  secretIsUsable,
+  secretMatches,
+} from "../_shared/telegram-notify.ts";
 
 const env = (name: string) => Deno.env.get(name) ?? undefined;
 const supabaseUrl = env("SUPABASE_URL") ?? "";
@@ -29,18 +36,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error("telegram-notify-webhook: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing");
     return Response.json({ error: "not_configured" }, { status: 503 });
   }
-  // A body this big is never a Telegram update: refuse before reading it.
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) {
-    return Response.json({ error: "too_large" }, { status: 413 });
+  const secretHeader = req.headers.get("x-telegram-bot-api-secret-token");
+  // Nobody but Telegram gets the body read: the secret is checked first, and the
+  // body is then read as a bounded stream (Content-Length may be absent or false).
+  // The handler checks the secret again; this is only about not reading for strangers.
+  if (req.method === "POST" && secretIsUsable(secret) && (await secretMatches(secretHeader, secret as string))) {
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) {
+      return Response.json({ error: "too_large" }, { status: 413 });
+    }
+    const rawBody = await readBoundedText(req.body);
+    const res = await handleTelegramWebhook(
+      { method: req.method, contentType: req.headers.get("content-type"), rawBody, secretHeader },
+      { secret, store },
+    );
+    return Response.json(res.body, { status: res.status });
   }
-  const rawBody = await req.text();
+  // Wrong or missing secret, wrong method, or not configured: the handler's own answer, body never read.
   const res = await handleTelegramWebhook(
-    {
-      method: req.method,
-      contentType: req.headers.get("content-type"),
-      rawBody,
-      secretHeader: req.headers.get("x-telegram-bot-api-secret-token"),
-    },
+    { method: req.method, contentType: req.headers.get("content-type"), rawBody: "", secretHeader },
     { secret, store },
   );
   return Response.json(res.body, { status: res.status });

@@ -97,18 +97,23 @@ Nothing below is a secret in the repository. Values go only where named.
      --data-urlencode 'allowed_updates=["message","callback_query","my_chat_member"]'
    ```
    Check with `getWebhookInfo` (same bot token): `url` set, no `last_error_message`.
-6. **Web app.** Set `TELEGRAM_CUSTOMER_BOT_USERNAME=reply_NightshiftAiStudio_bot`
+6. **Sender, before the switch.** An empty username keeps the panel hidden, so
+   nobody can link a chat that nothing would send to. Write the notify worker's own
+   env file, `/opt/nightshift/.env.notify` (mode 600), with exactly four names:
+   `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `TELEGRAM_CUSTOMER_BOT_TOKEN` and
+   `NOTIFY_APP_ORIGIN=https://<the app>`. It is deliberately not the pipeline
+   worker's file, so this container never holds the provider keys. Then
+   `docker compose --profile notify up -d notify-worker`. If Telegram ever refuses the
+   token (revoked, mistyped) the worker logs an ALARM line, sends and drops nothing,
+   and tries again every five minutes.
+7. **Web app, last.** Set `TELEGRAM_CUSTOMER_BOT_USERNAME=reply_NightshiftAiStudio_bot`
    in the web container's environment (server-only, read at request time; no
-   rebuild). Until it is set the Notifications panel is hidden.
-7. **Sender.** In the worker's env file (`/opt/nightshift/.env.worker`) set
-   `TELEGRAM_CUSTOMER_BOT_TOKEN` and `NOTIFY_APP_ORIGIN=https://<the app>`
-   (next to the existing `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`), then
-   `docker compose --profile worker --profile notify up -d notify-worker`.
+   rebuild). This is the go-live switch: the example files leave it empty on purpose,
+   and until it is set the Notifications panel is hidden.
 8. **Try it** with your own account: connect, press Start, press Yes, "Send a test
    message". Block the bot and watch the chip turn to Blocked; unblock; `/stop`.
-9. **Privacy text.** The legal sub-processor row for Telegram currently says
-   notifications go to the operator only (`lib/legal-docs/en.ts`, ru, uz): update it
-   for customer messages (a sentence, a link; kept about the person: the Telegram chat id and first name).
+9. **Privacy text.** Done in this change: `lib/legal-docs` (en/ru/uz) has a data line and a
+   sub-processor row for Telegram customer notifications. Have it reviewed before go-live.
 
 ### Deploy wiring that is not in this PR
 
@@ -117,9 +122,9 @@ The deploy workflow builds `.env.web` and `.env.worker` from allow-lists
 key there to be mapped in `.github/workflows/deploy_web.yml`. This change may not
 edit workflows, so it does **not** add the names to those example files. To deploy
 through the pipeline, add in one commit: the keys `TELEGRAM_CUSTOMER_BOT_USERNAME`
-(web) and `TELEGRAM_CUSTOMER_BOT_TOKEN`, `NOTIFY_APP_ORIGIN` (worker, the token a
-secret) to the examples, their `WEBENV_` / `WORKERENV_` mappings to the workflow,
-and a switch (like `NIGHTSHIFT_CREATIVE_WORKER`) that starts `notify-worker`.
+(web) to `.env.web.example` with its `WEBENV_` mapping in the workflow, and a step that
+writes `/opt/nightshift/.env.notify` (the notify worker's own four names; the token a
+secret) and starts `notify-worker` behind a switch (like `NIGHTSHIFT_CREATIVE_WORKER`).
 Until then steps 6 and 7 are done by hand on the server. (`deploy/docker-compose.yml` already
 passes `TELEGRAM_CUSTOMER_BOT_USERNAME` through to the web container, which a test
 requires of every variable the app reads; with the pipeline's env file regenerated on

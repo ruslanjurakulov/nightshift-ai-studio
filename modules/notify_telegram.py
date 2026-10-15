@@ -258,7 +258,7 @@ def classify_response(status: int, body: Dict[str, Any]) -> SendResult:
         ra = params.get("retry_after") if isinstance(params, dict) else None
         return SendResult("retry", "rate_limited", retry_after=ra if isinstance(ra, int) and 0 <= ra <= 3600 else 30)
     if status in (401, 404):
-        # Token wrong or revoked: nothing here is the message's fault.
+        # Token wrong or revoked: nothing here is the message's fault. The worker pauses and raises an alarm.
         return SendResult("retry", "not_configured")
     if status >= 500:
         return SendResult("retry", "http_5xx")
