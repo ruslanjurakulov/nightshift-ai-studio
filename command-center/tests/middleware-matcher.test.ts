@@ -90,6 +90,7 @@ const HOSTILE = [
   "/og.pngx",
   "/robots.txt/providers",
   "/sitemap.xml/providers",
+  "/llms.txt/providers",
   // The gate's own public-path test was a prefix for /login (lib/public-paths.ts).
   "/loginx/providers",
   "/login/providers",
@@ -247,13 +248,13 @@ describe("the real static files stay public", () => {
 });
 
 describe("BR-L-102: a route handler has no RSC form", () => {
-  it("/robots.txt.rsc, /sitemap.xml.rsc and the OpenAPI .rsc are sent to the file before routing", async () => {
+  it("/robots.txt.rsc, /sitemap.xml.rsc, /llms.txt.rsc and the OpenAPI .rsc are sent to the file before routing", async () => {
     const { default: nextConfig, ROUTE_HANDLER_FILES } = await import("../next.config");
     const redirects = (await nextConfig.redirects?.()) ?? [];
     for (const path of ROUTE_HANDLER_FILES) {
       expect(redirects).toContainEqual({ source: `${path}.rsc`, destination: path, permanent: false });
     }
-    expect([...ROUTE_HANDLER_FILES].sort()).toEqual(["/docs/api/openapi.json", "/robots.txt", "/sitemap.xml"]);
+    expect([...ROUTE_HANDLER_FILES].sort()).toEqual(["/docs/api/openapi.json", "/llms.txt", "/robots.txt", "/sitemap.xml"]);
   });
 });
 

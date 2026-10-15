@@ -30,6 +30,9 @@ export const NOTIFY_CHANNEL_RATE: RateRule = { bucket: "notify.channel", max: 60
 /** Profile photo changes (upload or remove) per person: a few real edits, not a loop. */
 export const AVATAR_WRITE_RATE: RateRule = { bucket: "avatar.write", max: 20, windowSeconds: 3600 };
 
+/** New private review links (migration 0101) per person: a handful of real shares an hour, not a loop. */
+export const REVIEW_LINK_CREATE_RATE: RateRule = { bucket: "review_link.create", max: 30, windowSeconds: 3600 };
+
 /**
  * The editor's writes, per person. They protect the database and the worker
  * from a loop, not a person from their own pace: the editor saves when the

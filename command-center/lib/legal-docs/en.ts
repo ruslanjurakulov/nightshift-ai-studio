@@ -160,7 +160,25 @@ export const en: LegalTexts = {
         id: "cookies",
         heading: "9. Cookies and local storage",
         body: [
-          "We use only what the Service needs to work: sign-in session cookies (Supabase), a cookie remembering your language, a cookie remembering the channel you last viewed, the 10-minute cookie used while connecting YouTube, and your theme choice in your browser’s local storage. We use no advertising or analytics cookies.",
+          "Nightshift uses only what it needs to work. We set no advertising, tracking or analytics cookies, we use no third-party analytics, and we show no cookie banner: everything below is strictly necessary for something you asked for (signing in, a choice you saved, or protecting a sign-in or a connection while it is in progress).",
+          {
+            table: {
+              head: ["Item", "What it is for", "How long"],
+              rows: [
+                ["Sign-in session cookies (set by our sign-in service, Supabase)", "Keep you signed in, and keep your account’s data private to you.", "Until you sign out or the session expires; refreshed while you use the Service"],
+                ["`chronos_locale`", "Remembers the language you chose.", "1 year"],
+                ["`ns_view`", "Remembers whether you chose the Mobile or the Desktop view.", "1 year"],
+                ["`chronos_channel`, `nightshift_org`, `ns_sidebar` (signed in)", "Remember which channel and organization you last viewed and how wide the side menu is.", "1 year"],
+                ["`ns_auth_pending`, `ns_recovery`, `ns_invite`", "Finish an emailed sign-in link, a password reset or an invitation you opened. Only the pages that need them can read them.", "10 minutes, 15 minutes and 24 hours"],
+                ["`yt_oauth_nonce`, `ig_oauth_nonce`, `tt_oauth_nonce`, `tt_oauth_pkce` (while you connect an account)", "Protect the connection of your YouTube (or other) account against cross-site request forgery while you are on the consent screen.", "10 minutes"],
+                ["Local storage: `chronos_theme`", "Remembers light or dark.", "Until you clear it"],
+                ["Local storage: unfinished editor drafts, side-menu and dashboard layout choices, notification read markers, an unfinished assistant plan, dismissed jobs", "Keep your screen preferences and your work in progress on your device. They are not sent to us. Editor drafts are cleared when you sign out.", "Until you clear them (a draft nobody comes back to is removed automatically)"],
+                ["Session storage (this browser tab only)", "Remembers the pages you came through in this tab, an unfinished create form, a one-time notice and whether you paused the animations.", "Until you close the tab"],
+              ],
+            },
+          },
+          "Third parties. The Pricing page loads a price-preview script from Paddle, our payment provider, so that prices show in your currency. The script and any cookie it or Paddle’s content network sets (for example a bot-protection cookie) are Paddle’s; see the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy). Checkout runs in Paddle’s own window. When you connect your YouTube account you are sent to Google. We load no other third-party scripts.",
+          "You can delete cookies and local storage in your browser’s settings at any time. The Service then forgets your language, theme and view choices, and you are signed out.",
         ],
       },
       {

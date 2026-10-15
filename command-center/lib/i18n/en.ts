@@ -8,6 +8,7 @@ import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
+import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -24,6 +25,8 @@ export const en = {
   site: siteEn,
   presets: presetsEn,
   libraryUx: libraryUxEn,
+  reviewLink: reviewLinkEn,
+  reviewPage: reviewPageEn,
   improveAi: improveEn,
   brand: {
     name: "Nightshift",
@@ -85,6 +88,15 @@ export const en = {
     alerts: "Alerts",
     audit: "Audit Trail",
     developers: "Developers",
+  },
+  // The "Add to Home Screen" tip for a signed-in phone (components/shell/InstallHint.tsx).
+  installHint: {
+    title: "Add Nightshift to your home screen",
+    android: "Open your channels in one tap, like an app.",
+    ios: "Tap the Share button, then choose Add to Home Screen.",
+    add: "Add",
+    notNow: "Not now",
+    gotIt: "Got it",
   },
   navigation: {
     back: "Go back",
@@ -693,7 +705,7 @@ export const en = {
     discardConfirm: "Discard this storyboard? Nothing will be rendered and nothing is charged.",
     discardYes: "Discard storyboard",
     discardNo: "Keep it",
-    priceNote: "One price for the whole render — narration, footage and the final video. It is held when you approve, and you are charged only for what the render uses, never more.",
+    priceNote: "One price for the whole render — narration, footage and the final video. It is held when you approve and charged when the render finishes: what the render used, never more than the held price. If that can't be measured exactly, the held price is charged.",
     includedNote: "Renders for this channel are not charged in credits.",
     publishNote: "Approving starts the render only. The video stays private and still goes through review and approval before anyone sees it.",
     planNote: "Planning this storyboard was not charged.",
@@ -3013,7 +3025,7 @@ export const en = {
     readFailedRun: "Credits could not be read just now, so this run was not started and nothing was put on hold. Retry in a moment.",
     estimateReadFailed: "This run's cost could not be read just now, so no estimate is shown. Nothing was changed.",
     availableUnknown: "available: unknown",
-    heldNote: "Its credit hold returns to the balance automatically within 3 hours.",
+    heldNote: "Its credit hold returns to the balance automatically in about 3 hours.",
     openCredits: "Open credits →",
   },
   invite: {
@@ -3680,7 +3692,7 @@ export const en = {
       title: "Before you buy anything.",
       items: [
         { id: "cancel", q: "Can I cancel my plan?", a: "Yes, any time, in Manage subscription on the Credits page. The plan stays active until the end of the period you paid for and does not renew after it. Top-up packs are one-time payments and never renew." },
-        { id: "refund", q: "Can I get a refund?", a: "Payments are handled by Paddle, which processes refund requests under its Buyer Terms and applicable law. When a purchase is refunded, the credits it added are removed as far as they are still unused. Credits held for a failed run always come back on their own." },
+        { id: "refund", q: "Can I get a refund?", a: "Payments are handled by Paddle, which processes refund requests under its Buyer Terms and applicable law. When a purchase is refunded, the credits it added are removed as far as they are still unused. Credits held for a failed run come back on their own." },
         { id: "unused", q: "What happens to unused credits?", a: "Plan credits are valid for the billing period they arrive in and do not roll over. Top-up credits are spent after plan credits and follow the expiry shown on the Pricing page." },
         { id: "card", q: "Do I need a card to sign up?", a: "No. You create an account with your email and get the welcome credits once. You pay only when you choose a plan or a credit pack." },
         { id: "control", q: "Can it publish something without me?", a: "Only if you let it. Uploads are private by default and every video passes a publish check first. Auto-publish is off unless you turn it on for a channel; until then, going public is your button." },
