@@ -31,6 +31,7 @@ export const notifyChannelsEn = {
   lastDelivered: "Last message delivered: {when}",
   neverDelivered: "No message delivered yet.",
   language: "Message language",
+  languageHint: "The bot's replies and buttons and every message use this language. You can also change it in the chat with /language.",
   sendTest: "Send a test message",
   testQueued: "A test message is on its way.",
   pause: "Pause",

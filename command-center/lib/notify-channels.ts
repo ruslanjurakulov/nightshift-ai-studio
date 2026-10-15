@@ -3,8 +3,10 @@
  *
  * What the Settings panel knows about a person's linked Telegram chats and which
  * of the five notification events go there. The chat id never reaches the
- * browser (the column is not readable through the API); a message language is a
- * bare language code, so a new language needs no change here.
+ * browser (the column is not readable through the API). A message language is one
+ * of the languages the app and the notification registry share
+ * (supabase/functions/_shared/notify-i18n/registry.json; tests/notify-i18n.test.ts
+ * keeps the two lists the same), never any other code.
  *
  * Two rules from CLAUDE.md apply: an unknown is never a number (a delivery that
  * was never recorded reads "unknown", not "now"), and a row this build does not
@@ -12,6 +14,7 @@
  */
 
 import { NOTIFICATION_KINDS, type NotificationKind } from "@/lib/notifications";
+import { isLocale } from "@/lib/i18n/core";
 
 export const CHANNEL_STATUSES = ["active", "paused", "blocked"] as const;
 export type ChannelStatus = (typeof CHANNEL_STATUSES)[number];
@@ -24,7 +27,7 @@ export interface ChannelRow {
   id: string;
   kind: "telegram";
   label: string | null;
-  /** A bare language code ("en", "ru", …): the language its messages are in. */
+  /** One of the registered languages: the language its messages are in. */
   locale: string;
   status: ChannelStatus;
   verified_at: string | null;
@@ -39,10 +42,10 @@ export interface PreferenceRow {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LANG = /^[a-z]{2,3}$/;
 
+/** A language the notifications can be sent in: on the allow-list, exactly as written. */
 export function isLanguageCode(v: unknown): v is string {
-  return typeof v === "string" && LANG.test(v);
+  return typeof v === "string" && isLocale(v);
 }
 
 export function isChannelEvent(v: unknown): v is ChannelEvent {

@@ -16,6 +16,7 @@ describe("parseEmailPrefs", () => {
       ready: true,
       weeklyEveryDays: null,
       locale: "ru",
+      localeChosen: false,
       stored: true,
     });
     expect(parseEmailPrefs({ ready: false, weekly_every_days: 14, locale: "uz", stored: false })).toMatchObject({ ready: false, weeklyEveryDays: 14, stored: false });
@@ -24,8 +25,8 @@ describe("parseEmailPrefs", () => {
     }
   });
 
-  it("a language is a code, not one of three: an odd value falls back to English instead of failing", () => {
-    expect(parseEmailPrefs({ ready: true, weekly_every_days: null, locale: "ar" })?.locale).toBe("ar");
+  it("a language outside the registered list falls back to English instead of failing", () => {
+    expect(parseEmailPrefs({ ready: true, weekly_every_days: null, locale: "ar" })?.locale).toBe("en");
     expect(parseEmailPrefs({ ready: true, weekly_every_days: null, locale: "EN_us" })?.locale).toBe("en");
     expect(parseEmailPrefs({ ready: true, weekly_every_days: null })?.locale).toBe("en");
   });

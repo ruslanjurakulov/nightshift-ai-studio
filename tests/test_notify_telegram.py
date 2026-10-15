@@ -8,12 +8,14 @@ from pathlib import Path
 import re
 import threading
 import unittest
+from unittest import mock
 from http.server import HTTPServer
 from io import StringIO
 
 import requests
 
 from modules import log_redaction
+from modules import notify_i18n as i18n
 from modules import notify_telegram as nt
 from tools import fake_telegram
 from tools import notify_worker as nw
@@ -53,32 +55,29 @@ class FakeSession:
 
 class Words(unittest.TestCase):
     def test_every_kind_has_words_in_every_language_and_no_brand_or_role_word(self):
-        keys = set(nt.COPY["en"])
-        self.assertTrue(set(nt.KINDS) <= keys)
-        for lang, table in nt.COPY.items():
-            self.assertEqual(set(table), keys, f"{lang} is missing or has extra keys")
-            for key, text in table.items():
-                self.assertFalse(BANNED.search(text), (lang, key))
-                self.assertLessEqual(len(text), 200)
+        keys = {k for k in i18n.BUNDLES["en"] if k.startswith("push.")}
+        self.assertTrue({"push." + k for k in nt.KINDS} <= keys)
+        for lang, table in i18n.BUNDLES.items():
+            own = {k for k in table if k.startswith("push.")}
+            self.assertEqual(own, keys, f"{lang} is missing or has extra keys")
+            for key in own:
+                self.assertFalse(BANNED.search(table[key]), (lang, key))
+                self.assertLessEqual(len(table[key]), 200)
 
     def test_an_unknown_language_falls_back_to_english_never_to_a_branch(self):
-        for lang in ("ar", "ur", None, "", "EN", "xx-yy", 5, "../../etc"):
+        for lang in ("ar", "ur", None, "", "xx-yy", 5, "../../etc", "en ", "e"):
             self.assertEqual(nt.words(lang, "credits_low"), "Your credits are running low.")
         self.assertEqual(nt.words("ru", "credits_low"), "Кредиты заканчиваются.")
         self.assertEqual(nt.words("uz", "editor_export_done"), "Eksport tayyor.")
-        saved = nt.COPY.pop("uz")
-        try:
+        bundles = {k: v for k, v in i18n.BUNDLES.items() if k != "uz"}
+        with mock.patch.object(i18n, "BUNDLES", bundles):
             self.assertEqual(nt.words("uz", "editor_export_done"), "Your export is ready.")
-        finally:
-            nt.COPY["uz"] = saved
 
     def test_a_language_with_missing_keys_falls_back_per_key(self):
-        nt.COPY["xx"] = {"credits_low": "XX low"}
-        try:
+        bundles = dict(i18n.BUNDLES, xx={"push.credits_low": "XX low"})
+        with mock.patch.object(i18n, "BUNDLES", bundles):
             self.assertEqual(nt.words("xx", "credits_low"), "XX low")
-            self.assertEqual(nt.words("xx", "test"), nt.COPY["en"]["test"])
-        finally:
-            del nt.COPY["xx"]
+            self.assertEqual(nt.words("xx", "test"), i18n.BUNDLES["en"]["push.test"])
 
     def test_failed_says_credits_were_returned_only_when_the_notification_says_so(self):
         self.assertIn("credits were returned", nt.sentence("creative_job_failed", {"credits_returned": 6}, "en"))

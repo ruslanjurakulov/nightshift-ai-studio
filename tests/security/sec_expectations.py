@@ -528,3 +528,8 @@ sec_page_views_0104.extend(TABLES, FUNCTIONS)
 import sec_review_links_0101  # noqa: E402
 
 sec_review_links_0101.extend(TABLES, FUNCTIONS)
+
+# Migration 0105 (a chosen language for the customer notifications): tests/security/sec_notify_language_0105.py
+import sec_notify_language_0105  # noqa: E402
+
+sec_notify_language_0105.extend(TABLES, FUNCTIONS)

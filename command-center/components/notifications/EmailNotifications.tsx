@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { isLocale, LOCALES } from "@/lib/i18n/core";
 import { parseEmailPrefs, weeklyFromValue, weeklyValue, type EmailPrefs } from "@/lib/email-prefs";
 
 /**
@@ -23,21 +24,26 @@ export function EmailNotifications({ initial }: { initial: EmailPrefs }) {
   const readyHintId = useId();
   const weeklyId = useId();
   const weeklyHintId = useId();
+  const languageId = useId();
+  const languageHintId = useId();
   const [prefs, setPrefs] = useState<EmailPrefs>(initial);
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<"idle" | "saved" | "failed">("idle");
 
-  async function save(change: { ready?: boolean; weekly?: number }) {
+  async function save(change: { ready?: boolean; weekly?: number; language?: string }) {
     const supabase = createClient();
     if (!supabase || busy) return;
     setBusy(true);
     setState("idle");
-    // The language goes with every save: it is the one the person is reading this page in.
-    const { data, error } = await supabase.rpc("email_prefs_set", {
-      p_ready: change.ready ?? null,
-      p_weekly: change.weekly ?? null,
-      p_locale: locale,
-    });
+    // A language picked here is the person's own choice (migration 0105) and stays. Any other save also reports
+    // the language this page is read in, which the database uses only until a choice has been made.
+    const { data, error } = change.language
+      ? await supabase.rpc("email_prefs_set_language", { p_locale: change.language })
+      : await supabase.rpc("email_prefs_set", {
+          p_ready: change.ready ?? null,
+          p_weekly: change.weekly ?? null,
+          p_locale: locale,
+        });
     setBusy(false);
     const saved = error ? null : parseEmailPrefs(data);
     if (!saved) {
@@ -104,6 +110,31 @@ export function EmailNotifications({ initial }: { initial: EmailPrefs }) {
         </select>
         <p id={weeklyHintId} className="text-sm leading-relaxed text-[var(--color-muted)]">
           {e.weeklyHint}
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-[var(--ns-rule)] pt-5">
+        <label htmlFor={languageId} className="text-[15px] font-medium leading-snug">
+          {e.languageLabel}
+        </label>
+        <select
+          id={languageId}
+          aria-describedby={languageHintId}
+          value={isLocale(prefs.locale) ? prefs.locale : "en"}
+          disabled={busy}
+          onChange={(ev) => {
+            if (isLocale(ev.target.value)) void save({ language: ev.target.value });
+          }}
+          className="ns-field w-full max-w-xs"
+        >
+          {LOCALES.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+        <p id={languageHintId} className="text-sm leading-relaxed text-[var(--color-muted)]">
+          {e.languageHint}
         </p>
       </div>
 
