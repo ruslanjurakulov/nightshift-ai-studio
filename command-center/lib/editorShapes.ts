@@ -311,7 +311,7 @@ const MIB = 1024 * 1024;
 /** ffmpeg's address space in an editor export, and what is kept free of it (modules/shape_art.py). */
 export const MEM_LIMIT_BYTES = 2048 * MIB;
 export const MEM_MARGIN_BYTES = 150 * MIB;
-export const MEM_FIXED_BYTES = 460 * MIB;
+export const MEM_FIXED_BYTES = 520 * MIB;
 export const MEM_PER_FRAME_PX = 275;
 /** A frame above this many pixels is encoded with fewer threads (ffmpeg_limits.LARGE_OUTPUT_PX): its own pair. */
 export const MEM_LARGE_FRAME_PX = 2560 * 1440;

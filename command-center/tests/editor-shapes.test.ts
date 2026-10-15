@@ -334,7 +334,7 @@ describe("what the shapes cost the export", () => {
     let m = at1440();
     for (let i = 0; i < 11; i += 1) {
       const o = add(m, "circle", 0);
-      m = updateShape(o.model, o.id, { w: 0.5 });
+      m = updateShape(o.model, o.id, { w: 0.4 });
     }
     const last = add(m, "circle", 0);
     m = updateShape(last.model, last.id, { w: 0.3 });
@@ -343,14 +343,14 @@ describe("what the shapes cost the export", () => {
     valid(grown);
     expect(shapeById(grown, last.id)!.w).toBeLessThan(1);
     expect(shapeById(grown, last.id)!.w).toBeGreaterThan(0.3);
-    expect(shapeById(grown, m.shapes![0].id)!.w).toBe(0.5);
+    expect(shapeById(grown, m.shapes![0].id)!.w).toBe(0.4);
     expect(shapeBudget(grown).memory).toBeLessThanOrEqual(shapeBudget(grown).memoryMax);
   });
   it("a picture overlay is a layer of the budget: it counts, and its width stops where the memory ends", () => {
     let m = at1440();
     for (let i = 0; i < 8; i += 1) {
       const o = add(m, "circle", 0);
-      m = updateShape(o.model, o.id, { w: 0.5 });
+      m = updateShape(o.model, o.id, { w: 0.4 });
     }
     valid(m);
     const without = shapeBudget(m).memory;
@@ -384,7 +384,7 @@ describe("what the shapes cost the export", () => {
     let m = at1440();
     for (let i = 0; i < 8; i += 1) {
       const o = add(m, "circle", 0);
-      m = updateShape(o.model, o.id, { w: 0.5 });
+      m = updateShape(o.model, o.id, { w: 0.4 });
     }
     const overlays = Array.from({ length: 8 }, (_, i) => ({
       id: `o${i + 1}`,
@@ -407,7 +407,7 @@ describe("what the shapes cost the export", () => {
     let m = at1440();
     for (let i = 0; i < 11; i += 1) {
       const o = add(m, "circle", 0);
-      m = updateShape(o.model, o.id, { w: 0.45 });
+      m = updateShape(o.model, o.id, { w: 0.35 });
     }
     valid(m);
     const o = addShape(m, "circle", 0);

@@ -274,13 +274,14 @@ def fit_px(aspect: float, w: float, frame_w: int, frame_h: int) -> Tuple[int, in
 #:     A picture overlay is a layer like a shape (its box is its PNG), shapes or not: 4 and 8 full-frame
 #:     pictures alone need 1250 and 1556 MiB at 1080p. The fit's largest miss was 98 MiB (the binary search's
 #:     step is 32-48).
-#: The constants below are that fit rounded UP by about 100 MiB (never below one of the measured points), and
+#: The constants below are that fit rounded UP by about 100 MiB (never below one of the measured points) plus 60 MiB
+#: of fixed cost for the heap's spread (one document measured 1683-1834 MiB in 11 runs on GitHub's runner), and
 #: the budget keeps MEM_MARGIN under the limit besides. A document that also cross-fades or blurs at a large
 #: frame (their own limits, timeline.py) is not added up with it.
 MIB = 1024 * 1024
 MEM_LIMIT_BYTES = 2048 * MIB
 MEM_MARGIN_BYTES = 150 * MIB
-MEM_FIXED_BYTES = 460 * MIB
+MEM_FIXED_BYTES = 520 * MIB
 MEM_PER_FRAME_PX = 275
 #: A frame above this many pixels (ffmpeg_limits.LARGE_OUTPUT_PX: a test pins it equal) is encoded with fewer
 #: threads, so it has its own pair.

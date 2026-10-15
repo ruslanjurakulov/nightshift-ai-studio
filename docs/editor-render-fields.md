@@ -561,8 +561,8 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
     footprint under the limit that the host chose: the 8 shapes + 8 full pictures document at 1080p60 has a
     VmPeak of 1808 MiB at 8, 2094 at 16 (the runner: 2041-2102, so right at the 2 GiB limit and exit 187 in the
     full suite) and 1484 at 2. `ffmpeg_limits.limited_argv` now starts every child with exactly
-    `CHILD_STACK_BYTES` (8 MiB, never above its hard limit): the same document measures 1745 MiB at a parent
-    stack of 16 MiB, 64 MiB or unlimited. (The fit below was made at 8 MiB.) A test starts the child under five
+    `CHILD_STACK_BYTES` (8 MiB, never above its hard limit): the same document measures 1745 MiB here at a parent
+    stack of 16 MiB, 64 MiB or unlimited, and 1683-1834 MiB on the runner (was 2041-2102). (The fit below was made at 8 MiB.) A test starts the child under five
     parent limits and reads what it sees.
   * **Source pixels.** The validators judge a document without its files, so a picture is charged its box; the
     export (`render_backend.check_layers_fit`, before any segment is encoded) charges a picture its box or its
@@ -575,7 +575,7 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
     its box, as wide as it ever is (a move to a bigger `w` counts) and as tall as the frame, because the
     document does not know the picture's own size. A picture whose own pixels are many times its box (a big photo
     shrunk to a corner) is therefore not covered; it stays held to the decoder's cap as before. The constants
-    are that fit rounded UP by about 100 MiB (never below any of the 25 points the test lists), and the budget keeps 150
+    are that fit rounded UP by about 100 MiB (never below any of the 25 points the test lists) plus 60 MiB of fixed cost, because the heap's spread is real (one document measured 1683-1834 MiB in 11 runs on the GitHub runner, 1737-1766 here), and the budget keeps 150
     MiB under the 2 GiB besides: every document the budget accepts had been measured at 1776 MiB or less.
   * **What it decides** (1080p60 unless said): twelve circles at `w` 0.8, with 1, 2 or 4 full pictures at 0.85,
     eight shapes with eight full pictures, and 1440x2560 with twelve circles at 0.6 or twelve mixed kinds at

@@ -531,7 +531,7 @@ describe("limits, said where they apply", () => {
     m = { ...m, width: 2560, height: 1440 };
     for (let i = 0; i < 8; i += 1) {
       const o = addShape(m, "circle", 0)!;
-      m = { ...o.model, shapes: o.model.shapes!.map((s) => ({ ...s, w: 0.5 })) };
+      m = { ...o.model, shapes: o.model.shapes!.map((s) => ({ ...s, w: 0.4 })) };
     }
     const overlays: NonNullable<typeof m.overlays> = [];
     while (canAddOverlay({ ...m, overlays })) {
