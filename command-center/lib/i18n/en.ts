@@ -2861,6 +2861,8 @@ export const en = {
     weeklyEvery7: "Every week",
     weeklyEvery14: "Every two weeks",
     weeklyHint: "What was made, what is waiting for your decision and the credits you have left. It is off unless you choose it, and every e-mail has a link that turns it off.",
+    languageLabel: "E-mail language",
+    languageHint: "Every e-mail is written in this language, and so is its stop link and the page it opens. Until you choose, it follows the language you use in the app.",
   },
   unsubscribe: {
     title: "Stop these e-mails?",

@@ -27,6 +27,7 @@ export const notifyChannelsUz: NotifyChannelsDictionary = {
   lastDelivered: "Oxirgi xabar yetkazildi: {when}",
   neverDelivered: "Hali birorta xabar yetkazilmagan.",
   language: "Xabarlar tili",
+  languageHint: "Botning javoblari va tugmalari hamda barcha xabarlar shu tilda. Tilni chatda /language buyrugʻi bilan ham oʻzgartirish mumkin.",
   sendTest: "Sinov xabarini yuborish",
   testQueued: "Sinov xabari yoʻlda.",
   pause: "Toʻxtatish",

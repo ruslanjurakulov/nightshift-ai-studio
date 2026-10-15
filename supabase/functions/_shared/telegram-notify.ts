@@ -11,7 +11,9 @@
 //      anything but bytes; a wrong or missing one is 401 and nothing else happens;
 //   2. only three update shapes are accepted (a private-chat text message, a
 //      callback from a private chat, a my_chat_member of a private chat); any
-//      other shape is ignored with 200;
+//      other shape is ignored with 200. A language is accepted only when the
+//      registry (_shared/notify-i18n/registry.json) lists it, in a command or in
+//      a callback, and it only ever changes the language of THIS chat's own channel;
 //   3. an update id is handled once (notify_telegram_updates);
 //   4. a chat id from the body is stored ONLY together with a one-time token
 //      that matched, from a private chat whose id is the sender's own id, and
@@ -20,6 +22,8 @@
 // The function never holds the bot token: it answers by replying to the webhook
 // request itself (Telegram executes the method named in the response).
 
+import { NOTIFY_LANGUAGES, fill, isNotifyLanguage, nativeName, notifyText } from "./notify-i18n.ts";
+
 export type Lang = string;
 
 const SECRET_RE = /^[A-Za-z0-9_-]{24,256}$/;
@@ -27,71 +31,12 @@ const TOKEN_RE = /^[0-9a-f]{56}$/;
 // A real update is well under 2 KB (a command, a callback or a member change). 8 KB is generous.
 export const MAX_BODY = 8 * 1024;
 
-export const BOT_COPY: Record<string, Record<string, string>> = {
-  en: {
-    help: "I send short updates about your Nightshift work. To connect this chat, open Settings in the app and press Connect Telegram.",
-    confirm: "Connect this chat to your Nightshift account?",
-    confirmAs: "Connect this chat to your Nightshift account {handle}?",
-    yes: "Yes, connect",
-    no: "No",
-    connected: "Connected. You will get updates here. Send /stop to pause.",
-    cancelled: "Cancelled. Nothing was connected.",
-    expired: "This link has expired. Open Settings in the app and press Connect Telegram again.",
-    invalid: "This link is not valid. Open Settings in the app and press Connect Telegram.",
-    used: "This link was already used. Open Settings in the app to see your connections.",
-    alreadyLinked: "This chat is already connected to an account. Disconnect it in Settings first.",
-    limit: "You have reached the number of chats you can connect. Disconnect one in Settings first.",
-    notPrivate: "Connect from a private chat with me.",
-    paused: "Paused. Send /resume to get updates again.",
-    resumed: "Updates are back on.",
-    notConnected: "This chat is not connected. Open Settings in the app to connect it.",
-    failed: "Something went wrong. Please press Start again.",
-  },
-  ru: {
-    help: "Я присылаю короткие уведомления о вашей работе в Nightshift. Чтобы подключить этот чат, откройте Настройки в приложении и нажмите «Подключить Telegram».",
-    confirm: "Подключить этот чат к вашему аккаунту Nightshift?",
-    confirmAs: "Подключить этот чат к вашему аккаунту Nightshift {handle}?",
-    yes: "Да, подключить",
-    no: "Нет",
-    connected: "Подключено. Уведомления будут приходить сюда. /stop — пауза.",
-    cancelled: "Отменено. Ничего не подключено.",
-    expired: "Срок ссылки истёк. Откройте Настройки в приложении и снова нажмите «Подключить Telegram».",
-    invalid: "Ссылка недействительна. Откройте Настройки в приложении и нажмите «Подключить Telegram».",
-    used: "Эта ссылка уже использована. Подключения можно посмотреть в Настройках.",
-    alreadyLinked: "Этот чат уже подключён к аккаунту. Сначала отключите его в Настройках.",
-    limit: "Достигнуто число чатов, которые можно подключить. Сначала отключите один в Настройках.",
-    notPrivate: "Подключайте из личного чата со мной.",
-    paused: "Пауза. Отправьте /resume, чтобы снова получать уведомления.",
-    resumed: "Уведомления снова включены.",
-    notConnected: "Этот чат не подключён. Откройте Настройки в приложении, чтобы подключить его.",
-    failed: "Что-то пошло не так. Нажмите Start ещё раз.",
-  },
-  uz: {
-    help: "Men Nightshift’dagi ishingiz haqida qisqa xabarlar yuboraman. Bu chatni ulash uchun ilovada Sozlamalarni oching va «Telegramni ulash» tugmasini bosing.",
-    confirm: "Bu chat Nightshift hisobingizga ulansinmi?",
-    confirmAs: "Bu chat Nightshift hisobingizga {handle} ulansinmi?",
-    yes: "Ha, ulansin",
-    no: "Yoʻq",
-    connected: "Ulandi. Xabarlar shu yerga keladi. Toʻxtatish: /stop.",
-    cancelled: "Bekor qilindi. Hech narsa ulanmadi.",
-    expired: "Havola muddati tugagan. Ilovada Sozlamalarni oching va «Telegramni ulash» tugmasini qayta bosing.",
-    invalid: "Havola yaroqsiz. Ilovada Sozlamalarni oching va «Telegramni ulash» tugmasini bosing.",
-    used: "Bu havola allaqachon ishlatilgan. Ulanishlarni Sozlamalarda koʻring.",
-    alreadyLinked: "Bu chat allaqachon boshqa hisobga ulangan. Avval uni Sozlamalarda uzing.",
-    limit: "Ulash mumkin boʻlgan chatlar soniga yetdingiz. Avval bittasini Sozlamalarda uzing.",
-    notPrivate: "Men bilan shaxsiy chatdan ulang.",
-    paused: "Toʻxtatildi. Qayta yoqish uchun /resume yuboring.",
-    resumed: "Xabarlar qayta yoqildi.",
-    notConnected: "Bu chat ulanmagan. Ulash uchun ilovada Sozlamalarni oching.",
-    failed: "Xatolik yuz berdi. Start tugmasini qayta bosing.",
-  },
-};
-
-/** The words for `key` in `lang` (a bare language code), English when that
- *  language has none: adding a language is adding a key to BOT_COPY. */
+/** The bot's words for `key` in `lang` (a language code; a code the registry
+ *  does not list reads as English): the `bot.*` keys of _shared/notify-i18n/<code>.json,
+ *  the same files the notify worker and the e-mails read. Adding a language is
+ *  adding a data file, never a branch here. */
 export function botWords(lang: Lang | null | undefined, key: string): string {
-  const code = typeof lang === "string" && /^[a-z]{2,3}$/.test(lang) ? lang : "en";
-  return BOT_COPY[code]?.[key] ?? BOT_COPY.en[key];
+  return notifyText(lang, `bot.${key}`);
 }
 
 /** Telegram's language_code ("ru", "pt-br", …) as a bare lower-case code. */
@@ -124,7 +69,8 @@ export function secretIsUsable(secret: string | undefined): boolean {
 
 export type Parsed =
   | { kind: "start"; updateId: number; chat: string; from: string; lang: string | null; name: string | null; token: string | null }
-  | { kind: "command"; updateId: number; chat: string; lang: string | null; command: "stop" | "resume" | "help" }
+  | { kind: "command"; updateId: number; chat: string; lang: string | null; command: "stop" | "resume" | "help" | "language" }
+  | { kind: "language"; updateId: number; chat: string; lang: string | null; code: string; messageId: number }
   | { kind: "confirm"; updateId: number; chat: string; from: string; lang: string | null; name: string | null;
       token: string; yes: boolean; messageId: number }
   | { kind: "member"; updateId: number; chat: string; status: "blocked" | "unblocked" };
@@ -150,7 +96,7 @@ export function parseUpdate(raw: unknown): Parsed | null {
     const from = person(m.from);
     if (!from || !isObj(m.chat) || m.chat.type !== "private" || !isId(m.chat.id) || String(m.chat.id) !== from.id) return null;
     if (typeof m.text !== "string" || m.text.length > 512) return null;
-    const cmd = /^\/(start|stop|resume|help)(?:@[A-Za-z0-9_]{3,64})?(?:[ \t]+(\S{1,128}))?[ \t]*$/i.exec(m.text.trim());
+    const cmd = /^\/(start|stop|resume|help|language)(?:@[A-Za-z0-9_]{3,64})?(?:[ \t]+(\S{1,128}))?[ \t]*$/i.exec(m.text.trim());
     if (!cmd) return null;
     const name = cmd[1].toLowerCase();
     if (name === "start") {
@@ -160,7 +106,7 @@ export function parseUpdate(raw: unknown): Parsed | null {
       }
       return { kind: "start", updateId, chat: from.id, from: from.id, lang: from.lang, name: from.name, token: arg };
     }
-    return { kind: "command", updateId, chat: from.id, lang: from.lang, command: name as "stop" | "resume" | "help" };
+    return { kind: "command", updateId, chat: from.id, lang: from.lang, command: name as "stop" | "resume" | "help" | "language" };
   }
 
   if (isObj(raw.callback_query)) {
@@ -170,9 +116,16 @@ export function parseUpdate(raw: unknown): Parsed | null {
     const chat = q.message.chat;
     if (chat.type !== "private" || !isId(chat.id) || String(chat.id) !== from.id || !isId(q.message.message_id)) return null;
     const d = /^([yn]):([0-9a-f]{56})$/.exec(q.data);
-    if (!d) return null;
-    return { kind: "confirm", updateId, chat: from.id, from: from.id, lang: from.lang, name: from.name,
-             token: d[2], yes: d[1] === "y", messageId: q.message.message_id as number };
+    if (d) {
+      return { kind: "confirm", updateId, chat: from.id, from: from.id, lang: from.lang, name: from.name,
+               token: d[2], yes: d[1] === "y", messageId: q.message.message_id as number };
+    }
+    // "l:<code>": a language button. Only a code the registry lists is a language.
+    const l = /^l:([a-z]{2,3})$/.exec(q.data);
+    if (l && isNotifyLanguage(l[1])) {
+      return { kind: "language", updateId, chat: from.id, lang: from.lang, code: l[1], messageId: q.message.message_id as number };
+    }
+    return null;
   }
 
   if (isObj(raw.my_chat_member)) {
@@ -196,6 +149,9 @@ export interface NotifyStore {
   peek(token: string): Promise<PeekResult>;
   consume(token: string, chat: string, label: string | null, chatType: string, fromId: string): Promise<ConsumeResult>;
   mark(chat: string, action: "blocked" | "paused" | "resume" | "unblocked"): Promise<string | null>;
+  /** The language of the channel linked to this chat. With `set`, changes it first (to a language the
+   *  database lists) and answers the new one. null: no channel is linked to this chat (or `set` was refused). */
+  language(chat: string, set: string | null): Promise<string | null>;
 }
 
 /** A store failure: the function and the HTTP status, never a body or a key. */
@@ -245,6 +201,10 @@ export function createRestStore(cfg: { url: string; serviceKey: string; fetch?: 
       const v = await rpc("notification_channel_mark", { p_external_id: chat, p_action: action });
       return typeof v === "string" ? v : null;
     },
+    async language(chat, set) {
+      const v = await rpc("notification_channel_set_locale_by_chat", { p_external_id: chat, p_locale: set });
+      return typeof v === "string" ? v : null;
+    },
   };
 }
 
@@ -285,6 +245,17 @@ export interface WebhookRequest {
 }
 export interface WebhookResponse { status: number; body: Record<string, unknown> }
 
+/** One button per registered language, each in the language's own name, the current one ticked. */
+function languageKeyboard(current: string) {
+  const buttons = NOTIFY_LANGUAGES.map((l) => ({
+    text: `${l.code === current ? "✓ " : ""}${l.native}`,
+    callback_data: `l:${l.code}`,
+  }));
+  const rows: (typeof buttons)[] = [];
+  for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
+  return { inline_keyboard: rows };
+}
+
 const say = (chat: string, text: string, extra: Record<string, unknown> = {}) =>
   ({ method: "sendMessage", chat_id: Number(chat), text, ...extra });
 const ack: WebhookResponse = { status: 200, body: {} };
@@ -319,13 +290,32 @@ export async function handleTelegramWebhook(
         return ack;
       }
       case "command": {
-        if (u.command === "help") return { status: 200, body: say(u.chat, botWords(lang, "help")) };
+        if (u.command === "help") {
+          // A linked chat is answered in its own language, an unknown one in Telegram's.
+          lang = (await store.language(u.chat, null)) ?? lang;
+          return { status: 200, body: say(u.chat, botWords(lang, "help")) };
+        }
+        if (u.command === "language") {
+          const current = await store.language(u.chat, null);
+          if (current === null) return { status: 200, body: say(u.chat, botWords(lang, "notConnected")) };
+          return { status: 200, body: say(u.chat, botWords(current, "languagePrompt"), { reply_markup: languageKeyboard(current) }) };
+        }
         const stored = await store.mark(u.chat, u.command === "stop" ? "paused" : "resume");
         if (stored === null) return { status: 200, body: say(u.chat, botWords(lang, "notConnected")) };
         return { status: 200, body: say(u.chat, botWords(stored, u.command === "stop" ? "paused" : "resumed")) };
       }
+      case "language": {
+        const now = await store.language(u.chat, u.code);
+        const text = now === null
+          ? botWords(lang, "notConnected")
+          : fill(botWords(now, "languageSet"), { language: nativeName(now) });
+        return { status: 200, body: { method: "editMessageText", chat_id: Number(u.chat), message_id: u.messageId, text } };
+      }
       case "start": {
-        if (u.token === null || u.token === "") return { status: 200, body: say(u.chat, botWords(lang, "help")) };
+        if (u.token === null || u.token === "") {
+          lang = (await store.language(u.chat, null)) ?? lang;
+          return { status: 200, body: say(u.chat, botWords(lang, "help")) };
+        }
         const p = await store.peek(u.token);
         lang = p.locale ?? lang;
         if (p.code !== "ok") {
@@ -333,7 +323,7 @@ export async function handleTelegramWebhook(
           return { status: 200, body: say(u.chat, botWords(lang, key)) };
         }
         const text = p.handle
-          ? botWords(lang, "confirmAs").replace("{handle}", `@${p.handle}`)
+          ? fill(botWords(lang, "confirmAs"), { handle: `@${p.handle}` })
           : botWords(lang, "confirm");
         return { status: 200, body: say(u.chat, text, { reply_markup: { inline_keyboard: [[
           { text: botWords(lang, "yes"), callback_data: `y:${u.token}` },

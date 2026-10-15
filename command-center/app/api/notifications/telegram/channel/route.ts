@@ -2,7 +2,6 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { customerBotUsername } from "@/lib/server/notify-channels";
 import { guardNotifyWrite, notifyFail, notifyOk, readSmallJson, rpcFailure } from "@/lib/server/notify-route";
 import { CHANNEL_ACTIONS, isLanguageCode, type ChannelAction } from "@/lib/notify-channels";
-import { isLocale } from "@/lib/i18n/core";
 import { NOTIFY_CHANNEL_RATE } from "@/lib/server/web-rate";
 
 export const runtime = "nodejs";
@@ -45,7 +44,7 @@ export async function POST(request: Request) {
       break;
     case "locale": {
       const locale = body.locale;
-      if (typeof locale !== "string" || !isLanguageCode(locale) || !isLocale(locale)) return notifyFail("bad_request", 400);
+      if (!isLanguageCode(locale)) return notifyFail("bad_request", 400);
       result = await supabase.rpc("notification_channel_set_locale", { p_id: id, p_locale: locale });
       break;
     }

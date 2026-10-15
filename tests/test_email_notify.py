@@ -6,10 +6,11 @@ import json
 import re
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from modules import email_notify as mail
-from modules.email_copy import COPY, DEFAULT_LANGUAGE, copy_for
+from modules import notify_i18n as i18n
 from tools import email_worker as worker
 
 ORIGIN = "https://app.example.test"
@@ -44,13 +45,20 @@ def weekly_item(**kw):
     return item
 
 
+def mail_copy(code):
+    return i18n.section(code, "mail", "meta")
+
+
+COPY = {code: mail_copy(code) for code in i18n.LANGUAGES}
+
+
 class Copy(unittest.TestCase):
     def test_every_language_has_exactly_the_english_keys_and_placeholders(self):
-        en = COPY[DEFAULT_LANGUAGE]
+        en = COPY[i18n.DEFAULT_LANGUAGE]
         for code, block in COPY.items():
             self.assertEqual(set(block), set(en), f"{code}: keys differ from English")
             for key, line in block.items():
-                self.assertEqual(set(re.findall(r"\{(\w+)\}", line)), set(re.findall(r"\{(\w+)\}", en[key])), f"{code}.{key}")
+                self.assertEqual(i18n.placeholders(line), i18n.placeholders(en[key]), f"{code}.{key}")
                 self.assertTrue(line.strip(), f"{code}.{key} is empty")
 
     def test_language_codes_are_codes_and_direction_is_data(self):
@@ -74,10 +82,9 @@ class Copy(unittest.TestCase):
                 self.assertIsNone(PRICE.search(line), f"{code}.{key}")
 
     def test_an_unknown_language_is_written_in_english(self):
-        self.assertIs(copy_for("xx"), COPY["en"])
-        self.assertIs(copy_for(None), COPY["en"])
-        self.assertIs(copy_for(""), COPY["en"])
-        self.assertIs(copy_for("RU"), COPY["ru"])
+        for odd in ("xx", None, "", "../x", "en_US", 5):
+            self.assertEqual(mail_copy(i18n.resolve(odd)), COPY["en"])
+        self.assertEqual(i18n.resolve("RU"), "ru")
 
 
 class RenderReady(unittest.TestCase):
@@ -105,11 +112,9 @@ class RenderReady(unittest.TestCase):
         self.assertIn("l=en", fallback.text)
 
     def test_a_direction_in_the_copy_reaches_the_html_root(self):
-        COPY["zz"] = dict(COPY["en"], dir="rtl")
-        try:
+        bundles = dict(i18n.BUNDLES, zz=dict(i18n.BUNDLES["en"], **{"meta.dir": "rtl"}))
+        with mock.patch.object(i18n, "BUNDLES", bundles):
             m = mail.render_ready(ready_item(), language="zz", origin=ORIGIN)
-        finally:
-            del COPY["zz"]
         self.assertIn('<html lang="zz" dir="rtl">', m.html)
 
     def test_one_click_unsubscribe_headers_point_at_the_post_route(self):

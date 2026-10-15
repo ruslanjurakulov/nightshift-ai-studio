@@ -11,10 +11,13 @@ Three rules shape this file.
   provider text: the words are chosen from the notification KIND, and the link
   from ids that are checked to be uuids. What a person typed never travels
   through here.
-* The language is an ARGUMENT. ``COPY`` is keyed by language code and every
-  lookup falls back to English, so adding a language is adding a key, never a
-  branch. The code comes from the chat's stored language (set when the chat was
-  linked: the language is only a browser cookie today, not on the account).
+* The language is an ARGUMENT. The words are the ``push.*`` keys of the shared
+  data files (modules/notify_i18n.py, one file per language, the same files the
+  bot's webhook reads), looked up by a code that is checked against the registry
+  and English when it is not listed, so adding a language is adding a data file,
+  never a branch. The code comes from the chat's stored language (chosen in
+  Settings or with /language in the bot; set when the chat was linked from the
+  language the person was using).
 * No real Telegram call is made unless ``NOTIFY_TELEGRAM_API_BASE`` is unset in
   a deployed worker. Tests and local runs point it at ``tools/fake_telegram.py``;
   the client takes the base URL as an argument and the default lives only in
@@ -29,59 +32,21 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlsplit
 
-DEFAULT_LANGUAGE = "en"
-REAL_API_BASE = "https://api.telegram.org"
+from modules import notify_i18n
 
-# kind -> sentence. A kind with no words in a language uses the English ones.
-COPY: Dict[str, Dict[str, str]] = {
-    "en": {
-        "creative_job_completed": "Your video is ready.",
-        "creative_job_failed": "A generation did not finish.",
-        "creative_job_failed_refunded": "A generation did not finish. Your credits were returned.",
-        "storyboard_ready": "A storyboard is waiting for your decision. Nothing is charged until you approve.",
-        "editor_export_done": "Your export is ready.",
-        "credits_low": "Your credits are running low.",
-        "video_ready": "Your video is ready. Take a look and decide what happens next.",
-        "test": "This is a test message from Nightshift.",
-        "open": "Open",
-    },
-    "ru": {
-        "creative_job_completed": "Ваше видео готово.",
-        "creative_job_failed": "Генерация не завершилась.",
-        "creative_job_failed_refunded": "Генерация не завершилась. Кредиты возвращены.",
-        "storyboard_ready": "Раскадровка ждёт вашего решения. Списаний не будет, пока вы не подтвердите.",
-        "editor_export_done": "Экспорт готов.",
-        "credits_low": "Кредиты заканчиваются.",
-        "video_ready": "Ваше видео готово. Посмотрите и решите, что дальше.",
-        "test": "Это тестовое сообщение от Nightshift.",
-        "open": "Открыть",
-    },
-    "uz": {
-        "creative_job_completed": "Videongiz tayyor.",
-        "creative_job_failed": "Generatsiya yakunlanmadi.",
-        "creative_job_failed_refunded": "Generatsiya yakunlanmadi. Kreditlar qaytarildi.",
-        "storyboard_ready": "Storyboard qaroringizni kutmoqda. Tasdiqlamaguncha pul yechilmaydi.",
-        "editor_export_done": "Eksport tayyor.",
-        "credits_low": "Kreditlaringiz tugab bormoqda.",
-        "video_ready": "Videongiz tayyor. Koʻrib chiqing va keyingi qadamni hal qiling.",
-        "test": "Bu Nightshift’dan sinov xabari.",
-        "open": "Ochish",
-    },
-}
+REAL_API_BASE = "https://api.telegram.org"
 
 KINDS = ("creative_job_completed", "creative_job_failed", "storyboard_ready", "editor_export_done", "credits_low",
          "video_ready")
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
-_LANG = re.compile(r"^[a-z]{2,3}$")
 _PLAIN_ID = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
 def words(lang: Optional[str], key: str) -> str:
     """The sentence for ``key`` in ``lang``, in English when that language has
-    no words for it (or is not a language code at all)."""
-    code = lang if isinstance(lang, str) and _LANG.match(lang) else DEFAULT_LANGUAGE
-    return COPY.get(code, {}).get(key) or COPY[DEFAULT_LANGUAGE][key]
+    no words for it (or is not a language the registry lists)."""
+    return notify_i18n.text(lang, "push." + key)
 
 
 def _uuid_field(data: Dict[str, Any], key: str) -> Optional[str]:
