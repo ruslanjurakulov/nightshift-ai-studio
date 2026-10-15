@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import timezone, tzinfo
 from typing import Mapping, Optional
 
+from modules.operator_bot.i18n import DEFAULT_LANGUAGE, normalize_language
+
 try:  # zoneinfo is stdlib on 3.9+, but the tz database may be missing.
     from zoneinfo import ZoneInfo
 except Exception:  # pragma: no cover
@@ -96,6 +98,9 @@ class OperatorConfig:
     stuck_minutes: int = DEFAULT_STUCK_MINUTES
     max_alerts_per_hour: int = DEFAULT_MAX_ALERTS_PER_HOUR
     github_repo: str = ""
+    #: The language the bot speaks until the owner picks one with /language
+    #: (OPERATOR_LANGUAGE; an unknown code falls back to the default).
+    language: str = DEFAULT_LANGUAGE
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "OperatorConfig":
@@ -109,6 +114,7 @@ class OperatorConfig:
             digest_hour=_int(digest, -1, 0, 23) if str(digest).strip() else None,
             stuck_minutes=_int(env.get("OPERATOR_STUCK_MINUTES"), DEFAULT_STUCK_MINUTES, 5, 24 * 60),
             max_alerts_per_hour=_int(env.get("OPERATOR_ALERT_MAX_PER_HOUR"), DEFAULT_MAX_ALERTS_PER_HOUR, 1, 60),
+            language=normalize_language(env.get("OPERATOR_LANGUAGE")),
             github_repo=repo if re.fullmatch(r"[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+", repo) else "",
         )
 

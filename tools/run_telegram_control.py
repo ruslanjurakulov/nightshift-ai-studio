@@ -63,6 +63,7 @@ from config import HISTORY_DIR
 from modules import log_redaction
 from modules.log_redaction import describe_http_error
 from modules.operator_bot import router as operator_router
+from modules.operator_bot.i18n import tp
 from modules.operator_bot.router import ACTION_MAX_AGE_S, OperatorBot  # noqa: F401 (re-exported)
 from modules.telegram_control import TelegramControl
 
@@ -98,16 +99,18 @@ class StoreDeps:
     Every method is defensive: a read failure yields an empty/short answer, so a
     query never throws (route_command also guards, this is belt-and-braces)."""
 
-    def status_summary(self) -> str:
+    #: route_command passes `lang=` to a deps object that says it can use it.
+    localized = True
+
+    def status_summary(self, lang: str = "en") -> str:
         try:
             from modules.state_store import StateStore
             with StateStore() as store:
                 videos = store.list_videos(limit=100000)
-            total = len(videos)
-            return f"Nightshift: {total} video(s) in the library."
+            return tp(lang, "status.summary", n=len(videos))
         except Exception as e:
             logger.warning("status_summary failed (%s: %s)", type(e).__name__, e)
-            return "Status unavailable right now."
+            return tp(lang, "status.unavailable")
 
     def list_channels(self) -> list[dict]:
         try:

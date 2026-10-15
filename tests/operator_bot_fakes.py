@@ -75,6 +75,9 @@ class FakeSync:
             for key, cond in (params or {}).items():
                 if isinstance(cond, str) and cond.startswith("eq."):
                     rows = [r for r in rows if str(r.get(key)) == cond[3:]]
+                elif isinstance(cond, str) and cond.startswith("in.(") and cond.endswith(")"):
+                    allowed = cond[4:-1].split(",")
+                    rows = [r for r in rows if str(r.get(key)) in allowed]
                 elif cond == "is.null":
                     rows = [r for r in rows if r.get(key) in (None, "")]
                 elif isinstance(cond, str) and cond.startswith("gte."):

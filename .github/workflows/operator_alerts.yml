@@ -68,6 +68,7 @@ jobs:
           ELEVENLABS_LOW_CREDITS: ${{ vars.ELEVENLABS_LOW_CREDITS }}
           # Optional, non-sensitive settings (repository variables).
           OPERATOR_APP_URL: ${{ vars.OPERATOR_APP_URL }}
+          OPERATOR_LANGUAGE: ${{ vars.OPERATOR_LANGUAGE }}
           OPERATOR_TZ: ${{ vars.OPERATOR_TZ }}
           OPERATOR_QUIET_HOURS: ${{ vars.OPERATOR_QUIET_HOURS }}
           OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
