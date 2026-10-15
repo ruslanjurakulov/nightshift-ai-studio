@@ -1,4 +1,5 @@
 import { improveUz } from "./improve/uz";
+import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
@@ -8,6 +9,7 @@ import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
+import { reviewLinkUz, reviewPageUz } from "./review-link/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
@@ -15,6 +17,8 @@ export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
   libraryUx: libraryUxUz,
+  reviewLink: reviewLinkUz,
+  reviewPage: reviewPageUz,
   improveAi: improveUz,
   brand: {
     name: "Nightshift",
@@ -76,6 +80,14 @@ export const uz: Dictionary = {
     alerts: "Ogohlantirishlar",
     audit: "Audit jurnali",
     developers: "Dasturchilar",
+  },
+  installHint: {
+    title: "Nightshift’ni bosh ekranga qoʻshing",
+    android: "Kanallaringizni bir bosishda, ilova kabi oching.",
+    ios: "«Ulashish» tugmasini bosing, soʻng «Bosh ekranga qoʻshish»ni tanlang.",
+    add: "Qoʻshish",
+    notNow: "Hozir emas",
+    gotIt: "Tushunarli",
   },
   navigation: {
     back: "Orqaga",
@@ -686,7 +698,7 @@ export const uz: Dictionary = {
     discardConfirm: "Bu raskadrovkani rad etasizmi? Hech narsa render qilinmaydi va hech narsa yechilmaydi.",
     discardYes: "Raskadrovkani rad etish",
     discardNo: "Qoldirish",
-    priceNote: "Butun render uchun bitta narx — ovoz, videolavhalar va yakuniy video. Tasdiqlaganingizda band qilinadi va faqat render haqiqatda ishlatgani yechiladi, hech qachon koʻp emas.",
+    priceNote: "Butun render uchun bitta narx — ovoz, videolavhalar va yakuniy video. Tasdiqlaganingizda band qilinadi va render tugaganda yechiladi: haqiqiy sarf boʻyicha, band qilingan narxdan oshmagan holda. Sarfni aniq oʻlchab boʻlmasa, band qilingan narxning oʻzi yechiladi.",
     includedNote: "Bu kanal renderlari uchun kredit yechilmaydi.",
     publishNote: "Tasdiqlash faqat renderni boshlaydi. Video yopiq qoladi va eʼlon qilinishidan oldin baribir tekshiruv va tasdiqdan oʻtadi.",
     planNote: "Bu raskadrovkani tayyorlash uchun hech narsa yechilmadi.",
@@ -2850,6 +2862,7 @@ export const uz: Dictionary = {
     invalidBody: "U toʻliq emas yoki eskirgan boʻlishi mumkin. Tizimga kiring va xatlarni oʻzgartirish uchun sozlamalarni oching.",
     openApp: "Nightshiftʼni ochish",
   },
+  notifyChannels: notifyChannelsUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",
@@ -3035,7 +3048,7 @@ export const uz: Dictionary = {
     readFailedRun: "Kreditlar maʼlumotini hozir oʻqib boʻlmadi, shuning uchun ishga tushirish boshlanmadi va hech narsa band qilinmadi. Birozdan keyin qayta urinib koʻring.",
     estimateReadFailed: "Bu ishga tushirish narxi maʼlumotini hozir oʻqib boʻlmadi, shuning uchun baho koʻrsatilmaydi. Hech narsa oʻzgarmadi.",
     availableUnknown: "mavjud: nomaʼlum",
-    heldNote: "Band qilingan kreditlar 3 soat ichida avtomatik ravishda balansga qaytadi.",
+    heldNote: "Band qilingan kreditlar taxminan 3 soatdan keyin avtomatik ravishda balansga qaytadi.",
     openCredits: "Kreditlarni ochish →",
   },
   invite: {
@@ -3702,7 +3715,7 @@ export const uz: Dictionary = {
       title: "Biror narsa sotib olishdan oldin.",
       items: [
         { id: "cancel", q: "Tarifni bekor qilsa boʻladimi?", a: "Ha, istalgan vaqtda — Kreditlar sahifasidagi «Obunani boshqarish» orqali. Tarif toʻlangan davr oxirigacha amal qiladi va undan keyin yangilanmaydi. Toʻldirish paketlari bir martalik toʻlov, yangilanmaydi." },
-        { id: "refund", q: "Pulni qaytarib olsa boʻladimi?", a: "Toʻlovlar bilan Paddle shugʻullanadi: qaytarish soʻrovlarini u oʻzining xaridorlar shartlari va amaldagi qonunchilik asosida koʻrib chiqadi. Xarid qaytarilsa, u qoʻshgan kreditlar hali sarflanmagan qismida olib qoʻyiladi. Muvaffaqiyatsiz ish uchun band qilingan kreditlar esa doim oʻzi qaytadi." },
+        { id: "refund", q: "Pulni qaytarib olsa boʻladimi?", a: "Toʻlovlar bilan Paddle shugʻullanadi: qaytarish soʻrovlarini u oʻzining xaridorlar shartlari va amaldagi qonunchilik asosida koʻrib chiqadi. Xarid qaytarilsa, u qoʻshgan kreditlar hali sarflanmagan qismida olib qoʻyiladi. Muvaffaqiyatsiz ish uchun band qilingan kreditlar esa oʻzi qaytadi." },
         { id: "unused", q: "Ishlatilmagan kreditlar nima boʻladi?", a: "Tarif kreditlari kelgan hisob-kitob davri davomida amal qiladi va keyingisiga oʻtmaydi. Toʻldirish kreditlari tarif kreditlaridan keyin sarflanadi va Narxlar sahifasida koʻrsatilgan muddatda tugaydi." },
         { id: "card", q: "Roʻyxatdan oʻtish uchun karta kerakmi?", a: "Yoʻq. Akkaunt email orqali ochiladi va xush kelibsiz kreditlari bir marta beriladi. Faqat tarif yoki kredit paketini tanlaganingizda toʻlaysiz." },
         { id: "control", q: "U mensiz biror narsani nashr qila oladimi?", a: "Faqat siz ruxsat bersangiz. Yuklamalar sukut boʻyicha yopiq va har bir video avval nashr tekshiruvidan oʻtadi. Avto-nashr kanal uchun siz yoqmaguningizcha oʻchiq; shu paytgacha ommaviy qilish — sizning tugmangiz." },

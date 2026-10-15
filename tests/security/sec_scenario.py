@@ -375,6 +375,13 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The unique @username (0096): tests/security/sec_user_handles_0096.py — Alice has one, Bob has none.
     import sec_user_handles_0096
     sec_user_handles_0096.seed(conn, sc)
+    # Telegram notification channels (0102): tests/security/sec_notify_channels_0102.py — Alice and Bob each have a chat.
+    import sec_notify_channels_0102
+    sec_notify_channels_0102.seed(conn, sc)
+
+    # First-party page counts (0104): tests/security/sec_page_views_0104.py — one daily total.
+    import sec_page_views_0104
+    sec_page_views_0104.seed(conn, sc)
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
@@ -397,6 +404,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     with as_superuser(conn) as s:
         s.rows("insert into public.org_members (org_id, email, role) values (%s, %s, 'viewer') returning 1",
                [sc.alice.org, sc.invitee.email])
+
+    # Private review links (0101): tests/security/sec_review_links_0101.py — a review copy and a live link per tenant.
+    import sec_review_links_0101
+    sec_review_links_0101.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

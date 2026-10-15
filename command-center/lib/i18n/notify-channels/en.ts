@@ -1,0 +1,67 @@
+/**
+ * Settings → Notifications: Telegram (components/notifications/NotificationChannels.tsx).
+ * English is the source: ru.ts and uz.ts are typed `NotifyChannelsDictionary`,
+ * so they must carry exactly these keys. "Telegram" is the name of the channel
+ * the person links, not a provider of anything we make.
+ */
+export const notifyChannelsEn = {
+  title: "Notifications",
+  sub: "Get a short message in Telegram when something needs you. A message holds one sentence and a link back here: never your titles, prompts or files.",
+  telegram: "Telegram",
+  connect: "Connect Telegram",
+  connectAnother: "Connect another chat",
+  opening: "Opening…",
+  consent: "By connecting, you agree that we send short alerts to this Telegram chat. You can disconnect at any time.",
+  waitingTitle: "Waiting for you in Telegram",
+  waitingBody: "Press Start in the chat that opened, then confirm. The link works once and for 10 minutes.",
+  openTelegram: "Open Telegram",
+  newTab: "(opens in a new tab)",
+  cancel: "Cancel",
+  expired: "The link has expired. Connect again to get a new one.",
+  connectedNow: "Telegram is connected.",
+  connectedAs: "Connected: {name}",
+  connected: "Connected",
+  status: {
+    active: "Active",
+    paused: "Paused",
+    blocked: "Blocked",
+  },
+  blockedHelp: "The bot was blocked in Telegram, so nothing is sent. Unblock it there, or disconnect and connect again.",
+  pausedHelp: "Messages are paused. Resume to get them again.",
+  lastDelivered: "Last message delivered: {when}",
+  neverDelivered: "No message delivered yet.",
+  language: "Message language",
+  sendTest: "Send a test message",
+  testQueued: "A test message is on its way.",
+  pause: "Pause",
+  resume: "Resume",
+  disconnect: "Disconnect",
+  disconnectAsk: "Disconnect this chat? You stop getting messages there.",
+  disconnectYes: "Disconnect",
+  keep: "Keep it",
+  eventsTitle: "Send me a message when",
+  events: {
+    creative_job_completed: "A video is ready",
+    creative_job_failed: "A generation did not finish",
+    storyboard_ready: "A storyboard needs your decision",
+    editor_export_done: "An export is ready",
+    credits_low: "Credits are running low",
+    video_ready: "A finished video is waiting for your review",
+  },
+  eventsNeedChat: "Connect a chat to choose what you get.",
+  errors: {
+    unauthorized: "Sign in again to continue.",
+    forbidden: "That did not work. Reload the page and try again.",
+    bad_request: "That did not work. Reload the page and try again.",
+    not_configured: "Telegram notifications are not available yet.",
+    rate_limited: "Too many tries. Please wait a while and try again.",
+    limit: "You have reached the number of chats you can connect. Disconnect one first.",
+    not_found: "That chat is no longer connected. Reload the page.",
+    not_active: "Resume messages first.",
+    failed: "Something went wrong. Please try again.",
+  },
+  loadError: "Could not check your connections just now.",
+  retry: "Try again",
+};
+
+export type NotifyChannelsDictionary = typeof notifyChannelsEn;

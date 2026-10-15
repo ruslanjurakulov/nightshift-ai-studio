@@ -13,6 +13,8 @@ import { readEmailSettings } from "@/lib/server/email-prefs";
 import { readOwnHandle } from "@/lib/server/handles";
 import { pendingHandleFrom } from "@/lib/handles";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
+import { NotificationChannels } from "@/components/notifications/NotificationChannels";
+import { customerBotUsername, readChannels } from "@/lib/server/notify-channels";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,6 +44,9 @@ export default async function SettingsPage() {
   const avatarV = avatarVersionFromMetadata(user?.user_metadata);
   // The e-mail switches appear only while the e-mail worker is reporting (migration 0103): see readEmailSettings.
   const email = supabase ? await readEmailSettings(supabase) : ({ available: false } as const);
+  // Telegram notifications stay hidden until the customer bot is configured (its public username is set)
+  // and migration 0102 is applied.
+  const notify = user && org.supported && org.current && customerBotUsername() ? await readChannels() : null;
 
   return (
     <div className="rhythm ns-open">
@@ -66,6 +71,9 @@ export default async function SettingsPage() {
             />
           )}
           {email.available && <EmailNotifications initial={email.prefs} />}
+          {notify?.supported && (
+            <NotificationChannels initialChannels={notify.channels} initialPreferences={notify.preferences} />
+          )}
           <div className="panel flex flex-col gap-3 p-5 sm:p-6">
             <h2 className="t-section">{t.org.developersTitle}</h2>
             <p className="text-sm text-[var(--color-muted)]">{t.org.developersHint}</p>
