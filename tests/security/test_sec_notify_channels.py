@@ -567,3 +567,39 @@ def test_a_real_generation_that_finishes_reaches_the_outbox_through_the_0064_tri
         job_b = new_job(s, sc.bob, sc.bob.actor.uid)
         set_status(s, job_b, "completed", charged_credits=6)
         assert s.value("select count(*) from public.notification_outbox where user_id = %s", [sc.bob.actor.uid]) == 0
+
+
+def test_a_person_who_left_the_organization_is_not_sent_what_was_queued_for_it(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        u = new_user(s, sc)
+        link(s, u, "9100080")
+        emit(s, u, sc.alice.org)
+        emit(s, u, sc.alice.org)
+        assert s.rows("select org_id::text from public.notification_outbox where user_id = %s limit 1", [u.uid])[0][0] == sc.alice.org
+        s.rows("delete from public.org_members where org_id = %s and user_id = %s returning 1", [sc.alice.org, u.uid])
+        assert [r for r in claim(s, "w1") if r[2] == "9100080"] == []
+        rows = outbox(s, u)
+        assert {r[2] for r in rows} == {"skipped"} and {r[6] for r in rows} == {"not_member"}
+
+
+def test_a_test_message_has_no_organization_and_is_not_held_back_by_membership(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        u = new_user(s, sc)
+        link(s, u, "9100081")
+        assert value(s, u, "notification_test_send", [channel_of(s, "9100081")[0]]) == "ok"
+        s.rows("delete from public.org_members where user_id = %s returning 1", [u.uid])
+        assert len([r for r in claim(s, "w1") if r[2] == "9100081"]) == 1
+
+
+def test_a_refused_bot_token_waits_without_using_attempts_or_ending_the_queue(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        u = new_user(s, sc)
+        link(s, u, "9100082")
+        emit(s, u, sc.alice.org)
+        for _ in range(9):
+            mid = [r for r in claim(s, "w1") if r[2] == "9100082"][0][0]
+            assert value(s, SERVICE, "complete_notification_outbox", [mid, "w1", "retry", "not_configured", 300, None]) is True
+            row = s.rows("select status, attempts, extract(epoch from next_attempt_at - now()) from public.notification_outbox where id = %s", [mid])[0]
+            assert row[0] == "pending" and row[1] == 0 and 299 <= row[2] <= 306
+            s.rows("update public.notification_outbox set next_attempt_at = now() where id = %s returning 1", [mid])
+        assert channel_of(s, "9100082")[2] == "active"

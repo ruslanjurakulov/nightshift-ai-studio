@@ -119,6 +119,15 @@ class NotificationChannelsMigration(unittest.TestCase):
         self.assertIn("status = 'blocked'", done)
         self.assertIn("least(30 * power(2,", done)
 
+    def test_a_person_who_left_the_organization_is_skipped_at_claim(self):
+        claim = body("claim_notification_outbox")
+        self.assertIn("public.org_members m where m.org_id = o.org_id and m.user_id = o.user_id", claim)
+        self.assertIn("'not_member'", claim)
+        self.assertIn("new.org_id", body("notification_fanout"))
+
+    def test_a_refused_bot_token_does_not_use_up_attempts(self):
+        self.assertIn("v_code in ('rate_limited', 'not_configured')", body("complete_notification_outbox"))
+
     def test_language_is_a_code_not_a_fixed_triple(self):
         self.assertNotIn("('en', 'ru', 'uz')", CODE)
         self.assertEqual(CODE.count("'^[a-z]{2,3}$'"), 5)

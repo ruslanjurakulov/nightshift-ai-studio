@@ -172,6 +172,9 @@ comment on table public.notification_preferences is
 create table if not exists public.notification_outbox (
   id                  uuid primary key default gen_random_uuid(),
   notification_id     uuid references public.notifications (id) on delete set null,
+  -- The organization the notification was about: a message is only sent while the
+  -- person is still a member of it (checked again at claim time). Null for a test message.
+  org_id              uuid,
   user_id             uuid not null references auth.users (id) on delete cascade,
   channel_id          uuid not null references public.notification_channels (id) on delete cascade,
   channel_kind        text not null,
@@ -201,7 +204,7 @@ create table if not exists public.notification_outbox (
   constraint notification_outbox_error_check
     check (last_error_code is null or last_error_code in (
       'blocked', 'rate_limited', 'http_5xx', 'network', 'bad_request', 'unconfirmed',
-      'expired', 'channel_inactive', 'capped', 'not_configured')),
+      'expired', 'channel_inactive', 'capped', 'not_configured', 'not_member')),
   constraint notification_outbox_key_check check (char_length(idempotency_key) between 1 and 120)
 );
 create unique index if not exists notification_outbox_idempotency_key
@@ -228,7 +231,7 @@ comment on table public.notify_telegram_updates is
 
 create or replace function public.notification_pref_event_ok(p text) returns boolean
   language sql immutable set search_path = public, pg_temp as $$
-  -- video_ready: the kind migration 0101_retention_notify adds. Listing it here is harmless
+  -- video_ready: the kind migration 0103_retention_notify adds. Listing it here is harmless
   -- before that migration (nothing writes the kind) and makes the two work together after it.
   select p = any (array['creative_job_completed', 'creative_job_failed', 'storyboard_ready',
                         'editor_export_done', 'credits_low', 'video_ready'])
@@ -267,10 +270,10 @@ begin
          where o.channel_id = ch.id and o.event_kind <> 'test' and o.status <> 'skipped'
            and o.created_at > now() - interval '1 hour';
         insert into public.notification_outbox
-          (notification_id, user_id, channel_id, channel_kind, event_kind, ref, data, locale,
+          (notification_id, org_id, user_id, channel_id, channel_kind, event_kind, ref, data, locale,
            idempotency_key, status, last_error_code)
         values
-          (new.id, new.user_id, ch.id, ch.kind, new.kind, new.ref, new.data, ch.locale,
+          (new.id, new.org_id, new.user_id, ch.id, ch.kind, new.kind, new.ref, new.data, ch.locale,
            new.id::text || ':' || ch.id::text,
            case when recent >= 30 then 'skipped' else 'pending' end,
            case when recent >= 30 then 'capped' end)
@@ -295,7 +298,7 @@ create trigger notifications_fanout
 
 -- Start linking. {"ok": true, "token": "<56 hex>", "expires_at": ...} or
 -- {"ok": false, "code": "rate_limited" | "limit" | "bad_request"}. The token
--- is 224+ bits from the server's CSPRNG (gen_random_uuid), shown once.
+-- is about 212 bits from the server's CSPRNG (gen_random_uuid), shown once.
 create or replace function public.notification_link_start(p_kind text, p_locale text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -608,7 +611,7 @@ $$;
 
 -- Hand out due messages under a lease. Housekeeping first: old rows go, rows
 -- waiting more than 24 h are not sent, rows for a channel that is no longer
--- active are skipped, and a claim whose lease ran out is NOT sent again (the
+-- active or a person who left the organization are skipped, and a claim whose lease ran out is NOT sent again (the
 -- worker may have sent it just before dying): it ends as 'unconfirmed'.
 create or replace function public.claim_notification_outbox(
   p_worker text, p_limit integer default 10, p_lease_seconds integer default 60
@@ -636,6 +639,12 @@ begin
      set status = 'skipped', last_error_code = 'channel_inactive'
    where o.status = 'pending'
      and exists (select 1 from public.notification_channels c where c.id = o.channel_id and c.status <> 'active');
+  -- A person who left the organization is not told about it, queued or not (0064 checks
+  -- membership when it writes the notification; this checks again when the message would go).
+  update public.notification_outbox o
+     set status = 'skipped', last_error_code = 'not_member'
+   where o.status = 'pending' and o.org_id is not null
+     and not exists (select 1 from public.org_members m where m.org_id = o.org_id and m.user_id = o.user_id);
 
   return query
   with due as (
@@ -706,8 +715,10 @@ begin
      where channel_id = o.channel_id and status = 'pending';
   elsif p_outcome = 'retry' then
     v_att := o.attempts;
-    if v_code = 'rate_limited' then
-      -- Telegram asked us to wait; that is not a failure of this message.
+    if v_code in ('rate_limited', 'not_configured') then
+      -- Telegram asked us to wait, or the bot's token is not accepted (the worker pauses
+      -- and raises an alarm): neither is a failure of this message, so no attempt is used up.
+      -- Nothing older than 24 h is sent either way.
       v_att := greatest(o.attempts - 1, 0);
       update public.notification_outbox set attempts = v_att where id = o.id;
     end if;
