@@ -1,6 +1,7 @@
 import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { libraryUxRu } from "./library-ux/ru";
+import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
@@ -17,6 +18,7 @@ export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
   libraryUx: libraryUxRu,
+  connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   reviewPage: reviewPageRu,
   improveAi: improveRu,
