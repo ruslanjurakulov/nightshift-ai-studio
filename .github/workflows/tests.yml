@@ -23,7 +23,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # A hang detector, not a budget. The suite takes 5-8 min on the runner
+    # (max 7.9 over the last 28 green runs) and runs at 10.1-10.3 min were
+    # cancelled by the old 10-minute limit; 25 leaves ~3x headroom.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
