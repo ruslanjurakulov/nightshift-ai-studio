@@ -65,6 +65,14 @@ describe("POST /api/email/unsubscribe", () => {
     expect((await post(`t=${TOKEN}&s=ready`, "List-Unsubscribe=One-Click")).status).toBe(400);
   });
 
+  it("reads only a small body: an oversized one is never taken for a one-click post", async () => {
+    const big = "x".repeat(5000) + "List-Unsubscribe=One-Click";
+    const res = await post(`t=${TOKEN}&s=ready`, big);
+    expect(res.status).toBe(303);
+    // The mail was still switched off: the query carries the authority, the body only picks the reply.
+    expect(rpc).toHaveBeenCalledWith("email_unsubscribe", { p_token: TOKEN, p_scope: "ready" });
+  });
+
   it("ignores a language that is not a code", async () => {
     const res = await post(`t=${TOKEN}&s=ready&l=%3Cscript%3E`);
     expect(new URL(res.headers.get("location")!).searchParams.has("l")).toBe(false);

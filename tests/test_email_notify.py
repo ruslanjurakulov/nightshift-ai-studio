@@ -148,6 +148,16 @@ class RenderReady(unittest.TestCase):
             with self.assertRaises(ValueError):
                 mail.render_ready(ready_item(), language="en", origin=origin)
 
+    def test_links_are_https_except_on_the_machines_own_address(self):
+        self.assertEqual(mail.safe_origin("https://app.example.test/x?y=1"), "https://app.example.test")
+        self.assertEqual(mail.safe_origin("http://localhost:3000"), "http://localhost:3000")
+        self.assertEqual(mail.safe_origin("http://127.0.0.1:3000"), "http://127.0.0.1:3000")
+        for bad in ("http://app.example.test", "http://localhost.evil.test", "ftp://localhost", "", None):
+            self.assertIsNone(mail.safe_origin(bad), bad)
+        with self.assertRaises(ValueError):
+            mail.render_ready(ready_item(), language="en", origin="http://app.example.test")
+        self.assertIsNone(mail.transport_from_env({"NIGHTSHIFT_EMAIL_TRANSPORT": "fake", "APP_ORIGIN": "http://app.example.test"}))
+
     def test_a_malformed_token_is_refused(self):
         with self.assertRaises(ValueError):
             mail.render_ready(ready_item(token="short"), language="en", origin=ORIGIN)

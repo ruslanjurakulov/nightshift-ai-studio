@@ -82,12 +82,16 @@ def clean_line(value: Any, limit: int = 80) -> str:
 
 
 def safe_origin(origin: Optional[str]) -> Optional[str]:
-    """The app origin, or None when it is not an http(s) origin."""
+    """The app origin, or None when it is not https (or http on localhost)."""
     try:
         parts = urlsplit((origin or "").strip())
     except ValueError:
         return None
-    if parts.scheme not in ("https", "http") or not parts.netloc:
+    if not parts.netloc:
+        return None
+    # https everywhere a mail can be read; plain http only for a machine's own address (local runs).
+    local = (parts.hostname or "") in ("localhost", "127.0.0.1", "::1")
+    if parts.scheme != "https" and not (parts.scheme == "http" and local):
         return None
     return f"{parts.scheme}://{parts.netloc}"
 

@@ -28,17 +28,37 @@ function noStore<T extends Response>(res: T): T {
   return res;
 }
 
+/** The one-click body is a short fixed line; read at most this much, whatever the sender claims to send. */
+const BODY_LIMIT = 1024;
+
+async function readSmallBody(request: Request): Promise<string> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > BODY_LIMIT) return "";
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total <= BODY_LIMIT) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+    await reader.cancel().catch(() => undefined);
+  } catch {
+    return "";
+  }
+  if (total > BODY_LIMIT) return "";
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
 export async function POST(request: Request) {
   const url = new URL(request.url);
   const token = url.searchParams.get("t");
   const scope = url.searchParams.get("s");
   const language = /^[a-z]{2,3}$/.test(url.searchParams.get("l") ?? "") ? url.searchParams.get("l")! : "";
-  let oneClick = false;
-  try {
-    oneClick = (await request.text()).includes("List-Unsubscribe=One-Click");
-  } catch {
-    oneClick = false;
-  }
+  const oneClick = (await readSmallBody(request)).includes("List-Unsubscribe=One-Click");
 
   let ok = false;
   if (isUnsubscribeToken(token) && isUnsubscribeScope(scope)) {
