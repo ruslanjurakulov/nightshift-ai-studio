@@ -453,6 +453,38 @@ def test_unsubscribing_after_the_notification_was_written_is_honoured(conn, sc):
     assert tok == []
 
 
+def test_someone_removed_from_the_org_after_the_hold_is_not_mailed_its_channel(conn, sc):
+    admin = user("adam", f"adam-{uuid.uuid4().hex[:6]}@r.test")
+    with as_superuser(conn, commit=False) as s:
+        s.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning 1", [admin.uid, admin.email])
+        s.rows("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'admin') returning 1",
+               [sc.alice.org, admin.uid, admin.email])
+        hold(s, sc.alice.channel, "run-gone-1")
+        assert bell(s, admin.uid, ref="run-gone-1"), "control: the admin was told while a member"
+        s.rows("delete from public.org_members where org_id = %s and user_id = %s returning 1", [sc.alice.org, admin.uid])
+        got = claim_ready(s, admin.uid)
+        row = ledger(s, admin.uid)
+    assert got == [] and row == [("video_ready", "run-gone-1:held", "skipped", 0, "not_member")]
+
+
+def test_claims_that_used_their_attempts_are_closed_and_do_not_starve_newer_mail(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        uid = sc.alice.actor.uid
+        # 120 older notifications whose claims are spent: five attempts, lease over.
+        for i in range(120):
+            s.rows("select 1 from (select public.notification_emit(%s, %s, 'editor_export_done', %s, '{}'::jsonb)) q",
+                   [sc.alice.org, uid, f"stuck-{i}"])
+            s.rows("update public.notifications set created_at = now() - interval '1 hour' where ref = %s returning 1", [f"stuck-{i}"])
+            s.rows("insert into public.email_deliveries (user_id, kind, ref, status, attempts, claimed_by, claimed_until) "
+                   "values (%s, 'editor_export_done', %s, 'claimed', 5, 'w', now() - interval '1 minute') returning 1", [uid, f"stuck-{i}"])
+        hold(s, sc.alice.channel, "run-fresh-1")
+        got = claim_ready(s, uid, limit=5)
+        dead = s.value("select count(*) from public.email_deliveries where user_id = %s and status = 'dead' and error_code = 'gave_up'", [uid])
+        again = claim_ready(s, uid, limit=5)
+    assert [m["ref"] for m in got] == ["run-fresh-1:held"], "newer mail was crowded out"
+    assert dead == 120 and again == []
+
+
 def test_an_old_notification_is_not_mailed_so_the_first_run_sends_no_backlog(conn, sc):
     with as_superuser(conn, commit=False) as s:
         hold(s, sc.alice.channel, "run-mail-5")

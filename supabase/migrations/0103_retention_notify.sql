@@ -435,6 +435,11 @@ begin
   p_limit := greatest(1, least(coalesce(p_limit, 20), 100));
   p_lease_seconds := greatest(30, least(coalesce(p_lease_seconds, 300), 3600));
   delete from public.email_deliveries where created_at < now() - interval '60 days';
+  -- A claim that used its five attempts and whose lease ran out is over: say so, so
+  -- it can neither be tried again nor crowd newer mail out of the candidate list below.
+  update public.email_deliveries
+     set status = 'dead', done_at = now(), claimed_until = null, error_code = coalesce(error_code, 'gave_up')
+   where status = 'claimed' and attempts >= 5 and claimed_until <= now();
 
   for n in
     select x.id, x.user_id, x.org_id, x.kind, x.ref, x.data, x.created_at
@@ -443,7 +448,7 @@ begin
        and x.created_at > now() - interval '6 hours'
        and not exists (select 1 from public.email_deliveries d
                         where d.user_id = x.user_id and d.kind = x.kind and d.ref = x.ref
-                          and (d.status <> 'claimed' or d.claimed_until > now()))
+                          and (d.status <> 'claimed' or d.claimed_until > now() or d.attempts >= 5))
      order by x.created_at, x.id
      limit p_limit * 4
   loop
@@ -453,6 +458,15 @@ begin
     if not found or addr is null or addr = '' or confirmed is null then
       insert into public.email_deliveries (user_id, kind, ref, status, error_code, done_at)
       values (n.user_id, n.kind, n.ref, 'skipped', 'no_address', now())
+      on conflict (user_id, kind, ref) do nothing;
+      continue;
+    end if;
+
+    -- Still a member of the organization the notification is about? A person removed
+    -- after the video went on hold is not mailed its channel's name and picture.
+    if not exists (select 1 from public.org_members m where m.user_id = n.user_id and m.org_id = n.org_id) then
+      insert into public.email_deliveries (user_id, kind, ref, status, error_code, done_at)
+      values (n.user_id, n.kind, n.ref, 'skipped', 'not_member', now())
       on conflict (user_id, kind, ref) do nothing;
       continue;
     end if;
@@ -525,6 +539,9 @@ begin
   end if;
   p_limit := greatest(1, least(coalesce(p_limit, 20), 100));
   p_lease_seconds := greatest(30, least(coalesce(p_lease_seconds, 300), 3600));
+  update public.email_deliveries
+     set status = 'dead', done_at = now(), claimed_until = null, error_code = coalesce(error_code, 'gave_up')
+   where status = 'claimed' and attempts >= 5 and claimed_until <= now();
 
   for p in
     select * from public.email_preferences where weekly_every_days is not null order by weekly_since, user_id
