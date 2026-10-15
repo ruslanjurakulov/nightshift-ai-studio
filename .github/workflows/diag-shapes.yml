@@ -18,3 +18,4 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt
       - run: python3 diag_shapes.py
+      - run: python3 -m unittest tests.test_editor_shapes -v 2>&1 | tail -40
