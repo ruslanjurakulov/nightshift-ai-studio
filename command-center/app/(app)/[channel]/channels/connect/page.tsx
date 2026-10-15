@@ -11,7 +11,7 @@ import { PENDING_COOKIE, readPending } from "@/lib/server/connect-pending";
 import { linkedYoutubeChannels } from "@/lib/server/connect-youtube";
 import { fetchSocialAccounts } from "@/lib/server/social-accounts";
 import { accountLabel } from "@/lib/social-accounts";
-import type { PickView } from "@/lib/connect-picker";
+import { safeImageUrl, type PickView } from "@/lib/connect-picker";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,7 +43,7 @@ export default async function ConnectPickPage() {
       view = {
         platform: "youtube",
         expiresAt: held.expiresAt,
-        candidates: grant.candidates.map((c) => ({ ...c, linkedTo: linked?.get(c.id) ?? null })),
+        candidates: grant.candidates.map((c, i) => ({ ...c, linkedTo: linked?.get(c.id) ?? null, selectable: i === 0 })),
       };
     } else {
       const { rows } = await fetchSocialAccounts(orgId);
@@ -55,7 +55,7 @@ export default async function ConnectPickPage() {
           externalId: p.externalId,
           name: accountLabel({ display_name: p.displayName, username: p.username, external_id: p.externalId }),
           username: p.username,
-          avatarUrl: p.avatarUrl,
+          avatarUrl: safeImageUrl(p.avatarUrl),
           connected: rows.some((r) => r.platform === grant.platform && r.external_id === p.externalId && r.status !== "revoked"),
         },
       };

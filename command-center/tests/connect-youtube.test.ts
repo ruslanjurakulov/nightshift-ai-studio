@@ -72,7 +72,7 @@ const { encodeState, decodeState } = await import("../lib/server/google-oauth");
 
 const ORIGIN = "https://nightshift-ai.studio";
 const state = (over: Record<string, unknown> = {}) => encodeState({ ref: "", nonce: NONCE, pick: true, ...over } as never);
-const cb = (q: Record<string, string>, cookie = `yt_oauth_nonce=${NONCE}`) => {
+const cb = (q: Record<string, string>, cookie = `__Host-yt_oauth_nonce=${NONCE}`) => {
   const u = new URL(`${ORIGIN}/api/oauth/youtube/callback`);
   for (const [k, v] of Object.entries(q)) u.searchParams.set(k, v);
   return new Request(u, { headers: cookie ? { cookie } : {} });
@@ -131,8 +131,14 @@ describe("start", () => {
     expect(to.searchParams.get("scope")).toBe(SCOPES);
     const st = decodeState(to.searchParams.get("state") ?? "");
     expect(st).toMatchObject({ ref: "", pick: true, niche: "Ancient history" });
-    expect(cookies(res)).toMatch(/yt_oauth_nonce=[^;]+;.*HttpOnly/is);
+    expect(cookies(res)).toMatch(/__Host-yt_oauth_nonce=[^;]+;.*HttpOnly/is);
+    expect(cookies(res)).toMatch(/__Host-yt_oauth_nonce=[^;]+;(?=.*Path=\/)(?=.*Secure)(?!.*Domain=)/is);
     expect(st?.nonce).toBe(/yt_oauth_nonce=([^;]+)/.exec(cookies(res))?.[1]);
+  });
+  it("changes no held state: a GET start leaves a waiting sign-in alone (a link cannot cancel it)", async () => {
+    const { handle } = await connected();
+    await yt.startYoutubePick(new Request(`${ORIGIN}/api/oauth/youtube/start?pick=1`), "u1");
+    expect(pending.readPending(handle, { userId: "u1", orgId: ORG })).not.toBeNull();
   });
   it("refuses before the consent screen: a non-admin of a customer organization", async () => {
     s.orgRole = { ok: false, status: 403, error: "forbidden" };
@@ -167,6 +173,7 @@ describe("callback", () => {
     expect(loc(res).search).toBe("");
     expect(handle).toMatch(/^[A-Za-z0-9_-]{43}$/);
     // Nothing secret reaches the browser: not the URL, not any cookie value.
+    expect(cookies(res)).toMatch(/__Host-ns_connect_pending=[^;]+;(?=.*Path=\/)(?=.*Secure)(?!.*Domain=)/is);
     const everything = `${res.headers.get("location")}\n${cookies(res)}`;
     expect(everything).not.toMatch(/ACCESS|REFRESH|client-secret/);
     expect(cookies(res)).toMatch(/ns_connect_pending=[^;]+;.*HttpOnly/is);
@@ -174,7 +181,7 @@ describe("callback", () => {
     expect(read?.grant.platform === "youtube" && read.grant.candidates.map((c) => c.id)).toEqual([YT, YT2]);
   });
   it("refuses a missing or wrong nonce cookie (CSRF) and holds nothing", async () => {
-    for (const cookie of ["", "yt_oauth_nonce=other-nonce-value-1234"]) {
+    for (const cookie of ["", "__Host-yt_oauth_nonce=other-nonce-value-1234"]) {
       fakeGoogle();
       const req = cb({ code: "c", state: state() }, cookie);
       const res = await yt.finishYoutubePick(req, new URL(req.url), ORIGIN, decodeState(state())!, "u1");
@@ -248,6 +255,13 @@ describe("confirm (a customer organization: the token goes to the vault)", () =>
     }
     expect(s.rpcs.filter((r) => r.name === "create_channel" || r.name === "store_channel_token")).toEqual([]);
     // The record survives a wrong id: the right one still works.
+    expect((await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT })).result).toBe("connected");
+  });
+  it("multi-channel guard: only the identity's first channel can take the token; another listed one is refused and nothing is created", async () => {
+    const { handle } = await connected(channelsBody({ id: YT }, { id: YT2, snippet: { title: "Second" } }));
+    s.rpcs = [];
+    expect((await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT2 })).result).toBe("other_channel");
+    expect(s.rpcs.filter((r) => r.name === "create_channel" || r.name === "store_channel_token")).toEqual([]);
     expect((await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT })).result).toBe("connected");
   });
   it("refuses another user holding the handle, a missing handle, and an organization switch", async () => {

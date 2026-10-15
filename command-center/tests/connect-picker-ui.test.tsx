@@ -41,9 +41,9 @@ const youtube = (over: Partial<Extract<PickView, { platform: "youtube" }>> = {})
   platform: "youtube",
   expiresAt: Date.now() + 60_000,
   candidates: [
-    { id: "UCaaaaaaaaaaaaaaaaaaaaaa", title: "Extinct World", handle: "@extinctworld", thumbnail: "https://yt3.ggpht.com/a.jpg", subscribers: "1200", videos: "48", linkedTo: null },
-    { id: "UCbbbbbbbbbbbbbbbbbbbbbb", title: "Quiet Channel", handle: null, thumbnail: null, subscribers: null, videos: null, linkedTo: null },
-    { id: "UCcccccccccccccccccccccc", title: "Already Here", handle: "@here", thumbnail: null, subscribers: "5", videos: "1", linkedTo: { channelId: "already-here", name: "Already Here" } },
+    { id: "UCaaaaaaaaaaaaaaaaaaaaaa", title: "Extinct World", handle: "@extinctworld", thumbnail: "https://yt3.ggpht.com/a.jpg", subscribers: "1200", videos: "48", linkedTo: null, selectable: true },
+    { id: "UCbbbbbbbbbbbbbbbbbbbbbb", title: "Quiet Channel", handle: null, thumbnail: null, subscribers: null, videos: null, linkedTo: null, selectable: true },
+    { id: "UCcccccccccccccccccccccc", title: "Already Here", handle: "@here", thumbnail: null, subscribers: "5", videos: "1", linkedTo: { channelId: "already-here", name: "Already Here" }, selectable: true },
   ],
   ...over,
 });
@@ -141,6 +141,15 @@ describe("ConnectPicker: YouTube", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(tc.pick.errors.forbidden));
     expect(document.body.textContent).not.toContain("RAW PROVIDER ERROR");
     expect(push).not.toHaveBeenCalled();
+  });
+  it("offers no button for a channel the token will not act as, and says what to do", () => {
+    const view = youtube();
+    if (view.platform === "youtube") view.candidates[1].selectable = false;
+    render(withI18n(<ConnectPicker view={view} />));
+    const row = screen.getByText("Quiet Channel", { selector: "div" }).closest("li") as HTMLElement;
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(row.textContent).toContain(tc.pick.notSelectable);
+    expect(screen.getAllByRole("button", { name: tc.pick.useChannel })).toHaveLength(1);
   });
   it("when the channel was created but its connection was not saved, says so, stops offering picks and links to the Channels page", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, result: "created_not_connected", channel_id: "extinctworld" }));

@@ -69,6 +69,7 @@ export const CONFIRM_RESULTS = [
   "not_configured",
   "unavailable",
   "id_taken",
+  "other_channel",
   "busy",
   "failed",
 ] as const;
@@ -90,6 +91,8 @@ export interface YoutubeCandidate {
 export interface YoutubeCandidateView extends YoutubeCandidate {
   /** The Nightshift channel already linked to it, if any. */
   linkedTo: { channelId: string; name: string } | null;
+  /** False for a channel the token will not act as (see the multi-channel guard). */
+  selectable: boolean;
 }
 
 /** An Instagram / TikTok account the authorisation acts for. */
@@ -177,10 +180,13 @@ export function pickedChannelSlug(c: Pick<YoutubeCandidate, "id" | "title" | "ha
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
   const fromId = `channel-${ascii(c.id).slice(0, 12)}`.replace(/-+$/, "");
-  const base = ascii((c.handle ?? "").replace(/^@/, "")) || ascii(c.title) || fromId;
   const suffix = attempt > 1 ? `-${attempt}` : "";
-  const slug = (base.slice(0, 39 - suffix.length).replace(/-+$/, "") || fromId) + suffix;
-  return isValidChannelId(slug) ? slug : attempt > 1 ? null : pickedChannelSlug(c, 2);
+  const fit = (base: string) => base.slice(0, 39 - suffix.length).replace(/-+$/, "") + suffix;
+  // A reserved word ("atelier") or a too-short name falls back to the YouTube id.
+  for (const base of [ascii((c.handle ?? "").replace(/^@/, "")), ascii(c.title), fromId]) {
+    if (base && isValidChannelId(fit(base))) return fit(base);
+  }
+  return null;
 }
 
 /** "1 234" style count, or null for an unknown (the caller prints its own word). */
@@ -191,6 +197,6 @@ export function formatCount(v: string | null, locale: string): string | null {
 }
 
 /** What a candidate row may offer. Presentation only: the server re-checks. */
-export function candidateAction(c: Pick<YoutubeCandidateView, "linkedTo">): "pick" | "connected" {
-  return c.linkedTo ? "connected" : "pick";
+export function candidateAction(c: Pick<YoutubeCandidateView, "linkedTo" | "selectable">): "pick" | "connected" | "other" {
+  return c.linkedTo ? "connected" : c.selectable ? "pick" : "other";
 }

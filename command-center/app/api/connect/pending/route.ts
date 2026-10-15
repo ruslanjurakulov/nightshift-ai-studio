@@ -24,6 +24,7 @@ const STATUS: Record<ConfirmResult, number> = {
   not_configured: 503,
   unavailable: 503,
   id_taken: 409,
+  other_channel: 409,
   busy: 409,
   failed: 502,
 };
@@ -33,7 +34,7 @@ const TERMINAL: ReadonlySet<ConfirmResult> = new Set(["connected", "created_not_
 
 function answer(result: ConfirmResult, extra: Record<string, unknown> = {}) {
   const res = NextResponse.json({ ok: result === "connected" || result === "created_not_connected", result, ...extra }, { status: STATUS[result] });
-  if (TERMINAL.has(result)) res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0 });
+  if (TERMINAL.has(result)) res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0, secure: true });
   return res;
 }
 
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
   if (body.action === "cancel") {
     dropUserPending(user.id);
     const res = NextResponse.json({ ok: true });
-    res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0 });
+    res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0, secure: true });
     return res;
   }
   if (body.action !== "confirm") return NextResponse.json({ error: "bad_request" }, { status: 400 });

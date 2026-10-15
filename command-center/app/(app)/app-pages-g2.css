@@ -413,6 +413,7 @@ select.ns-field { padding-right: 36px; }
   .g2-pick-row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .g2-pick-row .g2-pick-btn { grid-column: auto; width: auto; }
 }
+@media (min-width: 40rem) { .g2-pick-row p.g2-pick-btn { max-width: 24ch; } }
 .g2-manual { margin-top: 8px; }
 .g2-manual > .g2-note { margin: 8px 0 16px; }
 .g2-manual-summary { display: list-item; line-height: 44px; min-height: 44px; cursor: pointer; color: var(--color-muted); font-size: 0.9375rem; }

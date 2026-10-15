@@ -233,6 +233,8 @@ function CandidateRow({
         <Link href={managePath} className="btn-quiet g2-pick-btn">
           {tp.openChannels}
         </Link>
+      ) : state === "other" ? (
+        <p className="g2-note g2-pick-btn">{tp.notSelectable}</p>
       ) : (
         <button type="button" className="btn-primary g2-pick-btn" disabled={disabled} onClick={onPick}>
           {busy === c.id ? tp.connecting : tp.useChannel}

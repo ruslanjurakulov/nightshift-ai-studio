@@ -1,4 +1,5 @@
 import { improveUz } from "./improve/uz";
+import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
@@ -9,6 +10,7 @@ import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
+import { reviewLinkUz, reviewPageUz } from "./review-link/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
@@ -17,6 +19,8 @@ export const uz: Dictionary = {
   presets: presetsUz,
   libraryUx: libraryUxUz,
   connectPicker: connectPickerUz,
+  reviewLink: reviewLinkUz,
+  reviewPage: reviewPageUz,
   improveAi: improveUz,
   brand: {
     name: "Nightshift",
@@ -117,7 +121,7 @@ export const uz: Dictionary = {
     close: "Yopish",
     loading: "Yuklanmoqda…",
     empty: "Hammasi oʻqilgan.",
-    emptyHint: "Bu yerda tayyor generatsiyalar, sizni kutayotgan raskadrovkalar, eksportlar va kreditlar kamayib qolgani haqidagi xabarlar chiqadi.",
+    emptyHint: "Bu yerda tayyor videolar va generatsiyalar, sizni kutayotgan raskadrovkalar, eksportlar va kreditlar kamayib qolgani haqidagi xabarlar chiqadi.",
     unread: "Oʻqilmagan",
     markAll: "Hammasini oʻqilgan deb belgilash",
     markRead: "Oʻqilgan deb belgilash",
@@ -133,6 +137,10 @@ export const uz: Dictionary = {
     storyboardReady: { title: "Raskadrovka tekshiruvga tayyor", body: "Siz tasdiqlamaguningizcha hech narsa render qilinmaydi va pul yechilmaydi." },
     exportDone: { title: "Eksportingiz tayyor", body: "Video kutubxonangizda." },
     creditsLow: { title: "Kreditlar kamayib qoldi", body: "Kreditlar sahifasida toʻldirishingiz mumkin." },
+    videoReady: { title: "Videongiz tayyor", body: "Koʻrib chiqing va keyingi qadamni oʻzingiz hal qiling." },
+    channelLabel: "Kanal",
+    openAction: "Ochish",
+    makeAnother: "Yana bittasini yaratish",
     charged: "Sarflangan kreditlar: {n}",
     returned: "Balansga qaytarilgan kreditlar: {n}",
     available: "Mavjud kreditlar: {n}",
@@ -692,7 +700,7 @@ export const uz: Dictionary = {
     discardConfirm: "Bu raskadrovkani rad etasizmi? Hech narsa render qilinmaydi va hech narsa yechilmaydi.",
     discardYes: "Raskadrovkani rad etish",
     discardNo: "Qoldirish",
-    priceNote: "Butun render uchun bitta narx — ovoz, videolavhalar va yakuniy video. Tasdiqlaganingizda band qilinadi va faqat render haqiqatda ishlatgani yechiladi, hech qachon koʻp emas.",
+    priceNote: "Butun render uchun bitta narx — ovoz, videolavhalar va yakuniy video. Tasdiqlaganingizda band qilinadi va render tugaganda yechiladi: haqiqiy sarf boʻyicha, band qilingan narxdan oshmagan holda. Sarfni aniq oʻlchab boʻlmasa, band qilingan narxning oʻzi yechiladi.",
     includedNote: "Bu kanal renderlari uchun kredit yechilmaydi.",
     publishNote: "Tasdiqlash faqat renderni boshlaydi. Video yopiq qoladi va eʼlon qilinishidan oldin baribir tekshiruv va tasdiqdan oʻtadi.",
     planNote: "Bu raskadrovkani tayyorlash uchun hech narsa yechilmadi.",
@@ -927,6 +935,9 @@ export const uz: Dictionary = {
       priceTitle: "Narxi qancha",
       holdNote: "Video tayyorlanguncha kreditlar band qilinadi. Chiqmasa, qaytariladi.",
       watchTitle: "Videongiz",
+      notifyHint: "Bu sahifani yopishingiz mumkin. Videongiz tayyor boʻlganda tepadagi qoʻngʻiroqcha xabar beradi.",
+      seeVideos: "Videolarim",
+      makeAnother: "Yana bittasini yaratish",
       started: "Boshlandi. Videongiz tayyorlanmoqda. Sahifa oʻzi yangilanadi.",
       status: {
         queued: "Navbatini kutmoqda",
@@ -2825,6 +2836,35 @@ export const uz: Dictionary = {
       remove_failed: "Rasm oʻchirilmadi. Qayta urinib koʻring.",
     },
   },
+  emailNotifications: {
+    title: "Xatlar",
+    sub: "Biror narsa tayyor boʻlganda xat oling, oʻzingiz tekshirib turishingiz shart emas.",
+    readyLabel: "Video tayyor boʻlganda menga xat yuborilsin",
+    readyHint: "Har bir tayyor video uchun bitta xat, u qaysi kanalga tegishli ekani bilan. Xat faqat xabar beradi: uning sababli hech narsa eʼlon qilinmaydi, yaratilmaydi va pul yechilmaydi.",
+    on: "Yoqilgan",
+    off: "Oʻchirilgan",
+    saving: "Saqlanmoqda…",
+    saved: "Saqlandi.",
+    saveFailed: "Saqlab boʻlmadi. Qayta urinib koʻring.",
+    weeklyLabel: "Haftalik xulosa",
+    weeklyOff: "Oʻchirilgan",
+    weeklyEvery7: "Har hafta",
+    weeklyEvery14: "Ikki haftada bir",
+    weeklyHint: "Nima yaratilgani, qaroringizni nima kutayotgani va qancha kredit qolgani. Oʻzingiz tanlamaguningizcha oʻchirilgan, har bir xatda uni oʻchiradigan havola bor.",
+  },
+  unsubscribe: {
+    title: "Bu xatlar toʻxtatilsinmi?",
+    confirmReady: "Video tayyor boʻlganda endi xat kelmaydi.",
+    confirmWeekly: "Haftalik xulosa endi kelmaydi.",
+    confirmAll: "Bu xatlar endi kelmaydi.",
+    button: "Xatlarni toʻxtatish",
+    doneTitle: "Tayyor",
+    doneBody: "Bu xatlar endi kelmaydi. Tizimga kirganingizdan keyin buni istalgan vaqt sozlamalarda oʻzgartirishingiz mumkin.",
+    invalidTitle: "Bu havola ishlamaydi",
+    invalidBody: "U toʻliq emas yoki eskirgan boʻlishi mumkin. Tizimga kiring va xatlarni oʻzgartirish uchun sozlamalarni oching.",
+    openApp: "Nightshiftʼni ochish",
+  },
+  notifyChannels: notifyChannelsUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",
@@ -3010,7 +3050,7 @@ export const uz: Dictionary = {
     readFailedRun: "Kreditlar maʼlumotini hozir oʻqib boʻlmadi, shuning uchun ishga tushirish boshlanmadi va hech narsa band qilinmadi. Birozdan keyin qayta urinib koʻring.",
     estimateReadFailed: "Bu ishga tushirish narxi maʼlumotini hozir oʻqib boʻlmadi, shuning uchun baho koʻrsatilmaydi. Hech narsa oʻzgarmadi.",
     availableUnknown: "mavjud: nomaʼlum",
-    heldNote: "Band qilingan kreditlar 3 soat ichida avtomatik ravishda balansga qaytadi.",
+    heldNote: "Band qilingan kreditlar taxminan 3 soatdan keyin avtomatik ravishda balansga qaytadi.",
     openCredits: "Kreditlarni ochish →",
   },
   invite: {
@@ -3677,7 +3717,7 @@ export const uz: Dictionary = {
       title: "Biror narsa sotib olishdan oldin.",
       items: [
         { id: "cancel", q: "Tarifni bekor qilsa boʻladimi?", a: "Ha, istalgan vaqtda — Kreditlar sahifasidagi «Obunani boshqarish» orqali. Tarif toʻlangan davr oxirigacha amal qiladi va undan keyin yangilanmaydi. Toʻldirish paketlari bir martalik toʻlov, yangilanmaydi." },
-        { id: "refund", q: "Pulni qaytarib olsa boʻladimi?", a: "Toʻlovlar bilan Paddle shugʻullanadi: qaytarish soʻrovlarini u oʻzining xaridorlar shartlari va amaldagi qonunchilik asosida koʻrib chiqadi. Xarid qaytarilsa, u qoʻshgan kreditlar hali sarflanmagan qismida olib qoʻyiladi. Muvaffaqiyatsiz ish uchun band qilingan kreditlar esa doim oʻzi qaytadi." },
+        { id: "refund", q: "Pulni qaytarib olsa boʻladimi?", a: "Toʻlovlar bilan Paddle shugʻullanadi: qaytarish soʻrovlarini u oʻzining xaridorlar shartlari va amaldagi qonunchilik asosida koʻrib chiqadi. Xarid qaytarilsa, u qoʻshgan kreditlar hali sarflanmagan qismida olib qoʻyiladi. Muvaffaqiyatsiz ish uchun band qilingan kreditlar esa oʻzi qaytadi." },
         { id: "unused", q: "Ishlatilmagan kreditlar nima boʻladi?", a: "Tarif kreditlari kelgan hisob-kitob davri davomida amal qiladi va keyingisiga oʻtmaydi. Toʻldirish kreditlari tarif kreditlaridan keyin sarflanadi va Narxlar sahifasida koʻrsatilgan muddatda tugaydi." },
         { id: "card", q: "Roʻyxatdan oʻtish uchun karta kerakmi?", a: "Yoʻq. Akkaunt email orqali ochiladi va xush kelibsiz kreditlari bir marta beriladi. Faqat tarif yoki kredit paketini tanlaganingizda toʻlaysiz." },
         { id: "control", q: "U mensiz biror narsani nashr qila oladimi?", a: "Faqat siz ruxsat bersangiz. Yuklamalar sukut boʻyicha yopiq va har bir video avval nashr tekshiruvidan oʻtadi. Avto-nashr kanal uchun siz yoqmaguningizcha oʻchiq; shu paytgacha ommaviy qilish — sizning tugmangiz." },

@@ -6,6 +6,7 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import {
   buildAuthUrl,
   encodeState,
+  YT_NONCE_COOKIE,
   isGoogleOAuthConfigured,
 } from "@/lib/server/google-oauth";
 import { resolveTokenStore } from "@/lib/server/channel-tokens";
@@ -16,7 +17,7 @@ import { PICK_FLAG } from "@/lib/connect-picker";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const NONCE_COOKIE = "yt_oauth_nonce";
+const NONCE_COOKIE = YT_NONCE_COOKIE;
 
 /**
  * Begin the YouTube connect flow: set a CSRF nonce cookie and send the browser

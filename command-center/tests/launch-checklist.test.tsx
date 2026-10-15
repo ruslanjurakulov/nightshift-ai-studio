@@ -12,7 +12,8 @@ import { renderToStaticMarkup } from "react-dom/server";
  * canonical / share card / single h1, the custom 404, alt text on every image,
  * the icon and share-image files, internal links, the cookie disclosure, and the
  * absence of any third-party tracker. Items a machine cannot judge (page speed
- * on real hardware, a lawyer's reading of the policy, whether a speed figure is good enough) are listed as owner items in the document.
+ * on real hardware, a lawyer's reading of the policy, whether the analytics
+ * read-out is used) are listed as owner items in the document.
  *
  * Extends, does not repeat: tests/crawler.test.ts (the public gate of the three
  * crawler files), tests/public-404.test.ts (the 404 with no backend) and
@@ -85,6 +86,19 @@ const FORM_PAGES: { path: string; module: string }[] = [
   { path: "/forgot-password", module: "@/app/forgot-password/layout" },
 ];
 
+/**
+ * Public, deliberately NOT indexed: reachable without an account, but the address is the secret or the page is not
+ * content. A page here is not in the sitemap or llms.txt, is Disallowed in robots.txt, and says noindex itself (the page's
+ * metadata and the X-Robots-Tag next.config.ts sends). A new public-but-unindexed page must be added here consciously:
+ * robots.txt's expectation below is derived from this list.
+ */
+const NOINDEX_PUBLIC: { route: string; disallow: string; page: string; headerSource: string }[] = [
+  // Private review links (migration 0101): the token in the path is the authorization.
+  { route: "/r/[token]", disallow: "/r/", page: "app/r/[token]/page.tsx", headerSource: "/r/:token" },
+  // The unsubscribe page an e-mail links to (migration 0103): the token in the address is the authority.
+  { route: "/unsubscribe", disallow: "/unsubscribe", page: "app/unsubscribe/page.tsx", headerSource: "/unsubscribe" },
+];
+
 type Meta = {
   title?: string | { absolute?: string };
   description?: string;
@@ -120,10 +134,10 @@ function walk(dir: string, out: string[] = []): string[] {
 // ── 13 robots.txt ───────────────────────────────────────────────────────────
 
 describe("13 robots.txt", () => {
-  it("allows the site, keeps crawlers off /api/ and names the sitemap on the site's own origin", () => {
+  it("allows the site, keeps crawlers off /api/ and the public-but-unindexed pages, and names the sitemap on the site's own origin", () => {
     vi.stubEnv("APP_ORIGIN", ORIGIN);
     expect(robots()).toEqual({
-      rules: [{ userAgent: "*", allow: "/", disallow: ["/api/"] }],
+      rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", ...NOINDEX_PUBLIC.map((p) => p.disallow)] }],
       sitemap: `${ORIGIN}/sitemap.xml`,
       host: ORIGIN,
     });
@@ -136,6 +150,22 @@ describe("13 robots.txt", () => {
       for (const d of rule.disallow) expect(path.startsWith(d)).toBe(false);
     }
     expect(JSON.stringify(robots())).not.toMatch(/atelier|welcome|oauth|auth/);
+  });
+
+  it("every public-but-unindexed page is Disallowed, says noindex in its metadata and in an X-Robots-Tag header, and is in neither the sitemap nor llms.txt", async () => {
+    vi.stubEnv("APP_ORIGIN", ORIGIN);
+    const rule = (robots().rules as { disallow: string[] }[])[0];
+    const nextConfig = (await import("../next.config")).default;
+    const headerRules = (await nextConfig.headers?.()) ?? [];
+    const llms = new Set(llmsEntries(true).map((e) => e.path));
+    for (const p of NOINDEX_PUBLIC) {
+      expect(rule.disallow, p.route).toContain(p.disallow);
+      expect(readFileSync(join(ROOT, p.page), "utf8"), p.route).toMatch(/robots: \{ index: false/);
+      const hdr = headerRules.find((r) => r.source === p.headerSource);
+      expect(hdr?.headers, p.route).toContainEqual({ key: "X-Robots-Tag", value: "noindex, nofollow" });
+      const listed = [...SITEMAP_PATHS, ...sitemap().map((e) => new URL(e.url).pathname), ...llms];
+      expect(listed.some((l) => l.startsWith(p.disallow)), p.route).toBe(false);
+    }
   });
 });
 
@@ -165,18 +195,22 @@ describe("12 sitemap.xml", () => {
     for (const e of sitemap()) expect(e).not.toHaveProperty("lastModified");
   });
 
-  it("misses no public page: every page route in app/ is in the sitemap or on the short list of form pages", () => {
+  it("misses no public page: every page route in app/ is in the sitemap, on the short list of form pages or of public-but-unindexed pages", () => {
     // app/(app), app/(concepts) and the non-page route groups are private, flag-gated or machine endpoints.
     const SKIP = ["(app)", "(concepts)", "api", "auth", "oauth", "welcome", "i", "reset-password", "invite", "docs/cli", "docs/skills"];
+    const unindexed = new Set(NOINDEX_PUBLIC.map((p) => p.route));
     const found = walk(join(ROOT, "app"))
       .filter((f) => /\/page\.tsx$/.test(f))
       .map((f) => relative(join(ROOT, "app"), f).replace(/\/?page\.tsx$/, ""))
       .filter((r) => !SKIP.some((s) => r === s || r.startsWith(s + "/")))
       .flatMap((r) => (r === "solutions/[slug]" ? SOLUTION_PATHS.slice(1) : ["/" + r]))
+      .filter((r) => !unindexed.has(r))
       .map((r) => (r === "/" || r === "" ? "/" : r));
     const listed = new Set<string>(SITEMAP_PATHS);
     const forms = new Set(FORM_PAGES.map((p) => p.path));
-    for (const route of found) expect(listed.has(route) || forms.has(route), `${route} is public but neither in the sitemap nor a form page`).toBe(true);
+    for (const route of found) expect(listed.has(route) || forms.has(route), `${route} is public but neither in the sitemap, a form page nor in NOINDEX_PUBLIC`).toBe(true);
+    // A page on the unindexed list has a page file (the list cannot go stale).
+    for (const p of NOINDEX_PUBLIC) expect(statSync(join(ROOT, p.page)).isFile(), p.page).toBe(true);
     // And the other way round: a listed page has a page file.
     for (const p of SITEMAP_PATHS) expect(found, p).toContain(p);
   });
@@ -429,15 +463,15 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
   // The disclosure must name every cookie and storage key the code uses; a new one that is not listed fails here.
   const NAMES = [
     "chronos_locale", "ns_view", "chronos_channel", "nightshift_org", "ns_sidebar", "ns_auth_pending", "ns_recovery", "ns_invite",
-    "yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "ns_connect_pending", "chronos_theme",
+    "__Host-yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "__Host-ns_connect_pending", "chronos_theme",
   ];
 
-  it.each(LOCALES)("%s: the Cookies section lists every cookie and the theme key the code sets", (locale) => {
+  it.each(LOCALES)("%s: the Cookies section lists every cookie and the theme key the code sets, and the page statistics", (locale) => {
     const section = LEGAL_TEXTS[locale].privacy.sections.find((s) => s.id === "cookies")!;
     const text = section.body.flatMap(textOf).join("\n");
     for (const n of NAMES) expect(text, n).toContain(`\`${n}\``);
-    // Nothing here counts visitors, so the policy must not say it does (page counts are a separate change).
-    expect(text).not.toMatch(/Do Not Track|page statistics|Статистика страниц|Sahifa statistikasi/i);
+    expect(text).toContain("Do Not Track");
+    expect(text).toContain("Global Privacy Control");
     expect(text).toContain("Paddle");
   });
 
@@ -446,7 +480,7 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
     for (const dir of ["lib", "app"]) {
       for (const f of walk(join(ROOT, dir)).filter((f) => /\.tsx?$/.test(f))) {
         const src = readFileSync(f, "utf8");
-        for (const m of src.matchAll(/\b(?:[A-Z]+_)*COOKIE\s*=\s*"([a-z_]+)"/g)) found.add(m[1]);
+        for (const m of src.matchAll(/\b(?:[A-Z]+_)*COOKIE\s*=\s*"((?:__Host-)?[a-z_]+)"/g)) found.add(m[1]);
         for (const m of src.matchAll(/(?:instagram|tiktok):\s*"([a-z]{2}_oauth_nonce)"/g)) found.add(m[1]);
         const theme = src.match(/THEME_KEY\s*=\s*"([a-z_]+)"/);
         if (theme) found.add(theme[1]);

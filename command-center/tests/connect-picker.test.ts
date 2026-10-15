@@ -95,8 +95,9 @@ describe("words, paths and counts", () => {
     expect(formatCount("abc", "en")).toBeNull();
   });
   it("offers 'connected' for a channel already linked, 'pick' otherwise", () => {
-    expect(candidateAction({ linkedTo: null })).toBe("pick");
-    expect(candidateAction({ linkedTo: { channelId: "x", name: "X" } })).toBe("connected");
+    expect(candidateAction({ linkedTo: null, selectable: true })).toBe("pick");
+    expect(candidateAction({ linkedTo: { channelId: "x", name: "X" }, selectable: true })).toBe("connected");
+    expect(candidateAction({ linkedTo: null, selectable: false })).toBe("other");
   });
 });
 

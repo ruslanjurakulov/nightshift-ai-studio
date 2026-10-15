@@ -20,6 +20,11 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID ?? "";
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? "";
 export const isGoogleOAuthConfigured = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
+/** The CSRF nonce cookie of the YouTube connect (both the per-channel and the
+ *  pick flow). `__Host-` makes the browser refuse it unless it is Secure, has
+ *  Path=/ and no Domain, so a sibling subdomain cannot plant or overwrite it. */
+export const YT_NONCE_COOKIE = "__Host-yt_oauth_nonce";
+
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 

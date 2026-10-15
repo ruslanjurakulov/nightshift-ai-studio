@@ -133,7 +133,7 @@ function callbackReq(ref: string, opts: { nonce?: string; cookie?: string; error
   const params = new URLSearchParams({ code: "one-time-code", state: encodeState({ ref, nonce }) });
   if (opts.error) params.set("error", opts.error);
   return new Request(`https://app.test/api/oauth/youtube/callback?${params}`, {
-    headers: { cookie: `yt_oauth_nonce=${opts.cookie ?? nonce}` },
+    headers: { cookie: `__Host-yt_oauth_nonce=${opts.cookie ?? nonce}` },
   });
 }
 
@@ -169,7 +169,7 @@ describe("start — who may begin the consent", () => {
     const res = await start.GET(startReq("ch-a"));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("accounts.google.com");
-    expect(res.headers.get("set-cookie")).toContain("yt_oauth_nonce=");
+    expect(res.headers.get("set-cookie")).toContain("__Host-yt_oauth_nonce=");
     expect(res.headers.get("set-cookie")).toMatch(/HttpOnly/i);
   });
 
@@ -238,7 +238,7 @@ describe("callback — customer channel into Vault", () => {
     );
     expect(visible).not.toContain(REFRESH);
     expect(visible).not.toContain(ACCESS);
-    expect(res.headers.get("set-cookie")).toContain("yt_oauth_nonce=;");
+    expect(res.headers.get("set-cookie")).toContain("__Host-yt_oauth_nonce=;");
   });
 
   it("drops scopes Google adds from earlier grants, which 0022 would refuse", async () => {

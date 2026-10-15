@@ -1,4 +1,5 @@
 import { improveEn } from "./improve/en";
+import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
@@ -8,6 +9,7 @@ import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
+import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -25,6 +27,8 @@ export const en = {
   presets: presetsEn,
   libraryUx: libraryUxEn,
   connectPicker: connectPickerEn,
+  reviewLink: reviewLinkEn,
+  reviewPage: reviewPageEn,
   improveAi: improveEn,
   brand: {
     name: "Nightshift",
@@ -126,7 +130,7 @@ export const en = {
     close: "Close",
     loading: "Loading…",
     empty: "You're all caught up.",
-    emptyHint: "Finished generations, storyboards waiting for you, exports and low credits show up here.",
+    emptyHint: "Finished videos and generations, storyboards waiting for you, exports and low credits show up here.",
     unread: "Unread",
     markAll: "Mark all as read",
     markRead: "Mark as read",
@@ -142,6 +146,10 @@ export const en = {
     storyboardReady: { title: "A storyboard is ready for review", body: "Nothing is rendered or charged until you approve it." },
     exportDone: { title: "Your export is ready", body: "The video is in your library." },
     creditsLow: { title: "Credits are running low", body: "You can add more on the credits page." },
+    videoReady: { title: "Your video is ready", body: "Take a look and decide what happens next." },
+    channelLabel: "Channel",
+    openAction: "Open",
+    makeAnother: "Make another",
     charged: "Credits used: {n}",
     returned: "Credits returned to your balance: {n}",
     available: "Credits available: {n}",
@@ -703,7 +711,7 @@ export const en = {
     discardConfirm: "Discard this storyboard? Nothing will be rendered and nothing is charged.",
     discardYes: "Discard storyboard",
     discardNo: "Keep it",
-    priceNote: "One price for the whole render — narration, footage and the final video. It is held when you approve, and you are charged only for what the render uses, never more.",
+    priceNote: "One price for the whole render — narration, footage and the final video. It is held when you approve and charged when the render finishes: what the render used, never more than the held price. If that can't be measured exactly, the held price is charged.",
     includedNote: "Renders for this channel are not charged in credits.",
     publishNote: "Approving starts the render only. The video stays private and still goes through review and approval before anyone sees it.",
     planNote: "Planning this storyboard was not charged.",
@@ -938,6 +946,9 @@ export const en = {
       priceTitle: "What it costs",
       holdNote: "Credits are held while the video is made. If it fails, they come back.",
       watchTitle: "Your video",
+      notifyHint: "You can leave this page. The bell at the top tells you when your video is ready.",
+      seeVideos: "See my videos",
+      makeAnother: "Make another",
       started: "Started. Your video is being made. This page updates by itself.",
       status: {
         queued: "Waiting for its turn",
@@ -2837,6 +2848,35 @@ export const en = {
       remove_failed: "The photo could not be removed. Try again.",
     },
   },
+  emailNotifications: {
+    title: "E-mail",
+    sub: "Get a message when something is ready, so you don't have to keep checking.",
+    readyLabel: "E-mail me when a video is ready",
+    readyHint: "One e-mail per finished video, naming the channel it is for. It only tells you; nothing is published, made or charged because of it.",
+    on: "On",
+    off: "Off",
+    saving: "Saving…",
+    saved: "Saved.",
+    saveFailed: "Couldn't save that. Try again.",
+    weeklyLabel: "Weekly summary",
+    weeklyOff: "Off",
+    weeklyEvery7: "Every week",
+    weeklyEvery14: "Every two weeks",
+    weeklyHint: "What was made, what is waiting for your decision and the credits you have left. It is off unless you choose it, and every e-mail has a link that turns it off.",
+  },
+  unsubscribe: {
+    title: "Stop these e-mails?",
+    confirmReady: "You will no longer get an e-mail when a video is ready.",
+    confirmWeekly: "You will no longer get the weekly summary.",
+    confirmAll: "You will no longer get any of these e-mails.",
+    button: "Stop e-mails",
+    doneTitle: "Done",
+    doneBody: "You will not get these e-mails any more. You can change this any time in Settings after you sign in.",
+    invalidTitle: "This link does not work",
+    invalidBody: "It may be incomplete or out of date. Sign in and open Settings to change your e-mails.",
+    openApp: "Open Nightshift",
+  },
+  notifyChannels: notifyChannelsEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",
@@ -3022,7 +3062,7 @@ export const en = {
     readFailedRun: "Credits could not be read just now, so this run was not started and nothing was put on hold. Retry in a moment.",
     estimateReadFailed: "This run's cost could not be read just now, so no estimate is shown. Nothing was changed.",
     availableUnknown: "available: unknown",
-    heldNote: "Its credit hold returns to the balance automatically within 3 hours.",
+    heldNote: "Its credit hold returns to the balance automatically in about 3 hours.",
     openCredits: "Open credits →",
   },
   invite: {
@@ -3689,7 +3729,7 @@ export const en = {
       title: "Before you buy anything.",
       items: [
         { id: "cancel", q: "Can I cancel my plan?", a: "Yes, any time, in Manage subscription on the Credits page. The plan stays active until the end of the period you paid for and does not renew after it. Top-up packs are one-time payments and never renew." },
-        { id: "refund", q: "Can I get a refund?", a: "Payments are handled by Paddle, which processes refund requests under its Buyer Terms and applicable law. When a purchase is refunded, the credits it added are removed as far as they are still unused. Credits held for a failed run always come back on their own." },
+        { id: "refund", q: "Can I get a refund?", a: "Payments are handled by Paddle, which processes refund requests under its Buyer Terms and applicable law. When a purchase is refunded, the credits it added are removed as far as they are still unused. Credits held for a failed run come back on their own." },
         { id: "unused", q: "What happens to unused credits?", a: "Plan credits are valid for the billing period they arrive in and do not roll over. Top-up credits are spent after plan credits and follow the expiry shown on the Pricing page." },
         { id: "card", q: "Do I need a card to sign up?", a: "No. You create an account with your email and get the welcome credits once. You pay only when you choose a plan or a credit pack." },
         { id: "control", q: "Can it publish something without me?", a: "Only if you let it. Uploads are private by default and every video passes a publish check first. Auto-publish is off unless you turn it on for a channel; until then, going public is your button." },

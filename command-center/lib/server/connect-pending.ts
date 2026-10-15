@@ -39,7 +39,7 @@ import type { YoutubeCandidate } from "@/lib/connect-picker";
  * candidates, never the grant.
  */
 
-export const PENDING_COOKIE = "ns_connect_pending";
+export const PENDING_COOKIE = "__Host-ns_connect_pending";
 export const PENDING_TTL_MS = 10 * 60 * 1000;
 const MAX_RECORDS = 200;
 const HANDLE_RE = /^[A-Za-z0-9_-]{43}$/;

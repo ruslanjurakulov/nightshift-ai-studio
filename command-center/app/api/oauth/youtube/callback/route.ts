@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/server/audit";
 import { fetchPublicKey, putSecret } from "@/lib/server/github-secrets";
 import {
   YOUTUBE_OAUTH_SCOPES,
+  YT_NONCE_COOKIE,
   buildTokenJson,
   decodeState,
   exchangeCode,
@@ -20,13 +21,13 @@ import { finishYoutubePick } from "@/lib/server/connect-youtube";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const NONCE_COOKIE = "yt_oauth_nonce";
+const NONCE_COOKIE = YT_NONCE_COOKIE;
 
 /** Where to send the browser back to, with a status the Providers board reads. */
 function back(origin: string, ref: string, status: string) {
   const slug = ref && ref.trim() ? ref.trim() : "default";
   const res = NextResponse.redirect(`${origin}/${slug}/providers?yt=${status}`);
-  res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0 });
+  res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0, secure: true });
   return res;
 }
 
@@ -34,7 +35,7 @@ function back(origin: string, ref: string, status: string) {
  *  every channel of the organization — so it needs no channel slug. */
 function backToChannels(origin: string, status: VaultResult) {
   const res = NextResponse.redirect(`${origin}/all-channels/channels?yt=${status}`);
-  res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0 });
+  res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0, secure: true });
   return res;
 }
 

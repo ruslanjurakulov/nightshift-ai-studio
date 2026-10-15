@@ -54,7 +54,8 @@ describe("POST /api/connect/pending", () => {
     const res = await post({ action: "confirm", platform: "youtube", channel_id: "UC1234567890abcdefghijkl", token: "x", org: "y" });
     expect(await res.json()).toEqual({ ok: true, result: "connected", channel_id: "extinctworld" });
     expect(s.yt).toEqual([{ userId: "u1", handle: "HANDLE", youtubeChannelId: "UC1234567890abcdefghijkl" }]);
-    expect(res.headers.getSetCookie().join("\n")).toMatch(/ns_connect_pending=;/); // spent
+    // Spent. A __Host- cookie is only cleared by a Secure Set-Cookie, so the clear carries Secure.
+    expect(res.headers.getSetCookie().join("\n")).toMatch(/__Host-ns_connect_pending=;(?=.*Secure)/is);
   });
   it("rejects a malformed id, an unknown action or platform, and a body that is not JSON", async () => {
     expect((await post({ action: "confirm", platform: "youtube", channel_id: "../x" })).status).toBe(400);

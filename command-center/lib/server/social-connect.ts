@@ -33,12 +33,11 @@ import {
   PENDING_COOKIE,
   claimPending,
   createPending,
-  dropUserPending,
   finishPending,
   pendingCookieOptions,
   releasePending,
 } from "@/lib/server/connect-pending";
-import { CONNECT_PICK_PATH, PICK_FLAG, connectBackPath, type ConfirmResult } from "@/lib/connect-picker";
+import { CONNECT_PICK_PATH, PICK_FLAG, connectBackPath, safeImageUrl, type ConfirmResult } from "@/lib/connect-picker";
 import {
   missingSocialScopes,
   socialReturnPath,
@@ -96,9 +95,6 @@ export async function startSocialConnect(request: Request, platform: SocialPlatf
   const org = await editableOrg();
   if (!org.ok) return back(origin, platform, org.result, pick);
   if (!isSocialConfigured(platform)) return back(origin, platform, "not_configured", pick);
-
-  // A fresh start drops whatever this person had waiting: its token goes with it.
-  if (pick) dropUserPending(user.id);
 
   const nonce = newNonce();
   const state = encodeSocialState({ org: org.orgId, nonce, ...(pick ? { pick: true as const } : {}) });
@@ -171,7 +167,7 @@ export async function finishSocialConnect(request: Request, platform: SocialPlat
               accessExpiresIn: grant.expiresIn,
               refreshExpiresIn: null,
               scopes: grant.scopes.filter((s) => (INSTAGRAM_SCOPES as readonly string[]).includes(s)),
-              profile,
+              profile: { ...profile, avatarUrl: safeImageUrl(profile.avatarUrl) },
             },
           });
           result = "connected"; // placeholder: nothing is stored until the person confirms
@@ -205,7 +201,7 @@ export async function finishSocialConnect(request: Request, platform: SocialPlat
               accessExpiresIn: grant.expiresIn,
               refreshExpiresIn: grant.refreshExpiresIn,
               scopes: grant.scopes.filter((s) => (TIKTOK_SCOPES as readonly string[]).includes(s)),
-              profile,
+              profile: { ...profile, avatarUrl: safeImageUrl(profile.avatarUrl) },
             },
           });
           result = "connected"; // placeholder: nothing is stored until the person confirms

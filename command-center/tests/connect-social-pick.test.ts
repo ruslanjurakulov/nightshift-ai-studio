@@ -104,6 +104,15 @@ describe("callback (pick flow): hold, do not store", () => {
     const held = pending.readPending(handleOf(res), { userId: "u1", orgId: ORG });
     expect(held?.grant.platform === platform && held.grant.profile.externalId).toBe(externalId);
   });
+  it("never keeps an avatar that is not an https picture", async () => {
+    const f = fakeTiktok();
+    f.mockReset();
+    f.mockResolvedValueOnce(Response.json({ access_token: "a", refresh_token: "r", expires_in: 1, refresh_expires_in: 1, open_id: "o", scope: "user.info.basic,video.publish" }));
+    f.mockResolvedValueOnce(Response.json({ data: { user: { open_id: "o", display_name: "B", avatar_url: "javascript:alert(1)" } } }));
+    const res = await finishSocialConnect(cb("tiktok", `tt_oauth_nonce=${NONCE}; tt_oauth_pkce=V`), "tiktok");
+    const held = pending.readPending(handleOf(res), { userId: "u1", orgId: ORG });
+    expect(held?.grant.platform === "tiktok" && held.grant.profile.avatarUrl).toBeNull();
+  });
   it("still refuses a bad nonce and returns to the Add channel screen", async () => {
     const res = await finishSocialConnect(cb("tiktok", `tt_oauth_nonce=${"m".repeat(32)}; tt_oauth_pkce=V`), "tiktok");
     expect(loc(res).pathname).toBe("/all-channels/channels/new");

@@ -27,10 +27,13 @@ pick screen says so and offers "Use another Google account", which runs the
 consent again with Google's account chooser. `managedByMe=true` is not usable:
 it needs a YouTube content-owner partner relationship.
 
-One authorisation is attached to **one** channel only. A token uploads as the
-channel it was granted for, so attaching one token to several list entries
-would aim videos at the wrong channel. To add a second channel, run the
-consent again.
+One authorisation is attached to **one** channel only (the multi-channel
+guard). A token uploads as the channel it was granted for, and the per-channel
+connect verifies against the identity's first channel (`maxResults=1`), so when
+`channels.list` returns several, only the first is selectable; the others are
+listed greyed out with "sign in again and choose it on Google's screen", and the
+server refuses them (`other_channel`) whatever the page sends. To add a second
+channel, run the consent again.
 
 ## What it does, step by step
 
@@ -39,11 +42,14 @@ consent again.
    administrators; the operator's own workspace: a platform administrator; Instagram and TikTok:
    anyone who may edit the workspace), and unless the server can save the result
    (OAuth app configured, token store available). Sets the CSRF nonce cookie as
-   before. YouTube adds Google's account chooser.
+   before (the YouTube one is `__Host-yt_oauth_nonce`: Secure, Path=/, no
+   Domain, so a sibling subdomain cannot plant it). YouTube adds Google's account
+   chooser. The start is a plain GET and changes no held state.
 2. **Callback**: the nonce is checked, the code exchanged, the scopes checked,
    and for YouTube `channels.list` is read. The result is **held on the server**
    (`lib/server/connect-pending.ts`) and the browser is sent to
-   `/all-channels/channels/connect` with an opaque handle in an httpOnly cookie.
+   `/all-channels/channels/connect` with an opaque handle in the httpOnly `__Host-ns_connect_pending` cookie.
+   Avatars are kept only if they are https pictures.
 3. **Pick screen**: server-rendered from the held list. It receives names,
    avatars and counts; never a token, never the handle.
 4. **Confirm** (`POST /api/connect/pending`): the browser sends only which

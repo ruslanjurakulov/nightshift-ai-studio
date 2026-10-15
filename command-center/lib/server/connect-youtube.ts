@@ -7,8 +7,10 @@ import { requireRole } from "@/lib/auth/roles";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { publicOrigin } from "@/lib/server/public-origin";
+import { nonceMatches } from "@/lib/server/social-oauth";
 import {
   YOUTUBE_OAUTH_SCOPES,
+  YT_NONCE_COOKIE,
   buildAuthUrl,
   buildTokenJson,
   encodeState,
@@ -23,7 +25,6 @@ import {
   PENDING_COOKIE,
   claimPending,
   createPending,
-  dropUserPending,
   finishPending,
   pendingCookieOptions,
   releasePending,
@@ -63,7 +64,7 @@ import {
  * at the wrong one.
  */
 
-const NONCE_COOKIE = "yt_oauth_nonce";
+const NONCE_COOKIE = YT_NONCE_COOKIE;
 
 export type PickAccess =
   | { ok: true; store: "vault" | "github"; orgId: string }
@@ -105,7 +106,7 @@ async function startRefusal(access: Extract<PickAccess, { ok: true }>): Promise<
 
 function redirectBack(origin: string, word: ConnectWord, clearNonce = true): NextResponse {
   const res = NextResponse.redirect(`${origin}${connectBackPath("youtube", word)}`);
-  if (clearNonce) res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0 });
+  if (clearNonce) res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0, secure: true });
   return res;
 }
 
@@ -117,9 +118,8 @@ export async function startYoutubePick(request: Request, userId: string): Promis
   const refusal = await startRefusal(access);
   if (refusal) return redirectBack(origin, refusal, false);
 
-  // A fresh start drops whatever this person had waiting: its token goes with it.
-  dropUserPending(userId);
-
+  // No state is changed by this GET: a held sign-in is replaced when the next
+  // callback holds a new one (one per person), and it expires by itself.
   const nonce = randomUUID();
   const prefill = readChannelPrefill(Object.fromEntries(url.searchParams));
   const state: GoogleState = { ref: "", nonce, pick: true };
@@ -182,7 +182,7 @@ export async function finishYoutubePick(
 
   const code = url.searchParams.get("code") ?? "";
   const cookieNonce = readNonce(request);
-  if (!code || code.length > 2048 || !cookieNonce || cookieNonce !== state.nonce) return redirectBack(origin, "bad_state");
+  if (!code || code.length > 2048 || !nonceMatches(cookieNonce, state.nonce)) return redirectBack(origin, "bad_state");
 
   let tokens;
   let candidates: YoutubeCandidate[] | null;
@@ -212,7 +212,7 @@ export async function finishYoutubePick(
   };
   const handle = createPending({ userId, orgId: access.orgId, grant });
   const res = NextResponse.redirect(`${origin}${CONNECT_PICK_PATH}`);
-  res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0 });
+  res.cookies.set(NONCE_COOKIE, "", { path: "/", maxAge: 0, secure: true });
   res.cookies.set(PENDING_COOKIE, handle, pendingCookieOptions);
   return res;
 }
@@ -336,6 +336,16 @@ export async function confirmYoutubePick(opts: {
     if (!candidate) {
       releasePending(handle);
       return { result: "not_in_list" };
+    }
+    // The multi-channel guard. channels.list?mine=true can return several
+    // channels, but the token acts as ONE of them: the identity's first, which
+    // is also the one the per-channel connect verifies against
+    // (fetchGrantedChannel reads maxResults=1). Attaching the token to any
+    // other entry would aim that channel's uploads at the wrong account, so
+    // only the first is selectable; the person signs in again to pick another.
+    if (candidate.id !== grant.candidates[0]?.id) {
+      releasePending(handle);
+      return { result: "other_channel" };
     }
 
     const linked = await linkedYoutubeChannels(access.orgId);
