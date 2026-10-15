@@ -12,6 +12,7 @@ keeps its state there as rows with ``kind`` starting ``operator.``:
   operator.mute     title = alert kind or ``all``, body = the ISO time it lasts until
   operator.unmute   title = alert kind or ``all``
   operator.digest   title = the local date the daily digest went out
+  operator.language title = the language code the owner picked with /language
 
 Why this and not a migration: merging a migration to main applies it to the live
 database automatically. Reusing the feed means this feature adds no SQL at all.
@@ -39,6 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Protocol
 
+from modules.operator_bot.i18n import LANGUAGES
 from modules.operator_bot.sources import iso, parse_ts
 
 logger = logging.getLogger(__name__)
@@ -92,6 +94,26 @@ class AlertStore(Protocol):
     def record_mute(self, kind: str, until: datetime) -> bool: ...
     def record_unmute(self, kind: str) -> bool: ...
     def record_digest(self, date: str) -> bool: ...
+    def load_language(self) -> Optional[str]: ...
+    def record_language(self, code: str) -> bool: ...
+
+
+def pick_language(rows: list) -> Optional[str]:
+    """The newest language the owner chose, from ``operator.language`` rows, or
+    None. Like every other row the bot trusts, one that carries a channel is not
+    the bot's (anyone who can see a channel can insert such a row) and a code
+    outside LANGUAGES is ignored."""
+    best = None
+    for row in rows:
+        if row.get("kind", "operator.language") != "operator.language":
+            continue
+        if row.get("channel_id") not in (None, ""):
+            continue
+        code = str(row.get("title") or "").strip()
+        at = parse_ts(row.get("at"))
+        if code in LANGUAGES and at is not None and (best is None or at >= best[0]):
+            best = (at, code)
+    return best[1] if best else None
 
 
 def replay(rows: list, now: datetime, baseline_seen: bool = False) -> AlertState:
@@ -169,6 +191,24 @@ class SupabaseAlertStore:
             return None
         return replay(rows, now, baseline_seen=bool(marker))
 
+    def load_language(self) -> Optional[str]:
+        """The chosen language (the newest channel-less row, at any age), or None
+        when none was chosen or the read fails — the caller then uses the default."""
+        if not self.durable:
+            return None
+        try:
+            rows = self.sync.select_strict("alert_events", {
+                "select": "at,kind,title,channel_id", "kind": "eq.operator.language",
+                "channel_id": "is.null", "order": "at.desc", "limit": "5",
+            })
+        except Exception as e:
+            logger.warning("operator language unreadable (%s)", type(e).__name__)
+            return None
+        return pick_language(rows)
+
+    def record_language(self, code) -> bool:
+        return code in LANGUAGES and self._write("operator.language", code)
+
     def _write(self, kind: str, title: str, body: str = "", severity: str = "info",
                delivered: bool = False) -> bool:
         if not self.durable:
@@ -226,3 +266,9 @@ class MemoryAlertStore:
 
     def record_digest(self, date) -> bool:
         return self._add("operator.digest", date)
+
+    def load_language(self):
+        return None if self.fail_load else pick_language(self.rows)
+
+    def record_language(self, code) -> bool:
+        return code in LANGUAGES and self._add("operator.language", code)
