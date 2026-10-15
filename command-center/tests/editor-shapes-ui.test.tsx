@@ -31,6 +31,7 @@ import {
 } from "@/lib/editor";
 import { MAX_SHAPES, SHAPE_KINDS } from "@/lib/editorShapes";
 import { addShape } from "@/lib/editorShapeModel";
+import { canAddOverlay } from "@/lib/editorOverlay";
 
 const te = en.editor;
 const ts = en.editor.shapes;
@@ -525,10 +526,31 @@ describe("limits, said where they apply", () => {
     for (const el of screen.getAllByText(fmt(ts.layersFull, { max: MAX_OVERLAYS }))) expect(el.getAttribute("role")).toBe("status");
   });
 
+  it("pictures that the shapes leave no memory for are not added, and a status says it is the memory", () => {
+    let m = toModel(newDocForAsset(VIDEO)!);
+    m = { ...m, width: 2560, height: 1440 };
+    for (let i = 0; i < 8; i += 1) {
+      const o = addShape(m, "circle", 0)!;
+      m = { ...o.model, shapes: o.model.shapes!.map((s) => ({ ...s, w: 0.5 })) };
+    }
+    const overlays: NonNullable<typeof m.overlays> = [];
+    while (canAddOverlay({ ...m, overlays })) {
+      overlays.push({ id: `o${overlays.length + 1}`, asset_id: P, start_s: 0, end_s: 2, x: 0.5, y: 0.5, w: 0.3, opacity: 1 });
+    }
+    m = { ...m, overlays };
+    expect(overlays.length).toBeGreaterThan(0);
+    expect(overlays.length + 8).toBeLessThan(MAX_OVERLAYS);
+    expect(validateTimeline(toDoc(m))).toEqual([]);
+    mount(toDoc(m));
+    expect((screen.getByRole("button", { name: te.overlay.add }) as HTMLButtonElement).disabled).toBe(true);
+    const why = screen.getByText(ts.pictureMemory);
+    expect(why.getAttribute("role")).toBe("status");
+  });
+
   it("a shape the export cannot afford is refused with the numbers, as a status, and the project is as it was", () => {
     let m = toModel(newDocForAsset(VIDEO)!);
     m = { ...m, width: 3840, height: 2160 };
-    for (let i = 0; i < 2; i += 1) {
+    for (let i = 0; i < 3; i += 1) {
       const o = addShape(m, "circle", 0)!;
       m = { ...o.model, shapes: o.model.shapes!.map((s) => ({ ...s, w: 0.2 })) };
     }
