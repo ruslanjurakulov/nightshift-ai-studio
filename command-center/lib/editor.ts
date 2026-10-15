@@ -29,6 +29,42 @@ import {
   rampSourceAt,
 } from "@/lib/editorSpeedRamp";
 import {
+  ARROW_DIRS,
+  ASPECT_MAX,
+  ASPECT_MIN,
+  KIND_FIELDS,
+  MAX_SHAPES,
+  PROGRESS_ANIMS,
+  PROGRESS_EDGES,
+  SHAPE_COMMON,
+  SHAPE_KINDS,
+  SHAPE_MOVE_KEYS,
+  SHAPE_OUTLINE_MAX,
+  SHAPE_REQUIRED,
+  SHAPE_W_MAX,
+  SHAPE_W_MIN,
+  THICK_MAX,
+  THICK_MIN,
+  ASPECT_DEFAULT,
+  DIR_DEFAULT,
+  EDGE_DEFAULT,
+  SHAPE_COLOR_DEFAULT,
+  SHAPE_DEFAULTS,
+  THICK_DEFAULTS,
+  isShapeKind,
+  memoryBudgetBytes,
+  memoryEstimateBytes,
+  type CostPicture,
+  shapeTextProblem,
+  shapeWorkSeconds,
+  type ArrowDir,
+  type CostShape,
+  type WorkShape,
+  type ProgressEdge,
+  type ShapeLayer,
+  type ShapeMoveTo,
+} from "@/lib/editorShapes";
+import {
   GRADE_KEYS,
   GRADE_RANGES,
   isNeutralGrade,
@@ -327,7 +363,7 @@ const UUID_RE =
 export const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const DOC_REQUIRED = ["version", "width", "height", "fps", "tracks"];
-const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays"];
+const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays", "shapes"];
 const TRACK_REQUIRED = ["id", "kind", "clips"];
 const TRACK_KEYS = [...TRACK_REQUIRED, "name"];
 const A_TRACK_KEYS = [...TRACK_KEYS, "role", "duck"];
@@ -616,6 +652,8 @@ export interface TimelineDoc {
   tracks: TimelineTrack[];
   captions?: unknown;
   overlays?: unknown[];
+  /** Drawn stickers (modules/timeline.py `shapes`; lib/editorShapes.ts). */
+  shapes?: unknown[];
 }
 
 /** What the editor works on: the picture laid end to end, text on top, and
@@ -629,6 +667,8 @@ export interface EditorModel {
   sounds: SoundClip[];
   /** Pictures / videos over the picture; none = the field is absent. */
   overlays?: PictureOverlay[];
+  /** Drawn stickers over the picture (arrow, ring, star, label, line, progress bar); none = the field is absent. */
+  shapes?: ShapeLayer[];
   /** Tracks this editor does not edit, kept verbatim. */
   keep: TimelineTrack[];
   captions?: unknown;
@@ -785,6 +825,34 @@ function textStyle(
     problems.push(`${where}: bold must be true or false`);
 }
 
+/** The render-time estimates, in seconds, of interpolated slow motion (and its 1080p-equivalent frames) and of
+ *  stabilising, over the document's V tracks (modules/timeline.py `_interp_stab_estimates`). */
+function interpStabEstimates(
+  counted: readonly (Record<string, unknown> & { clips: unknown[] })[],
+  fps: number,
+  width: number,
+  height: number,
+): { interp: number; interpEst: number; stabEst: number } {
+  let interp = 0;
+  let stabEst = 0;
+  for (const t of counted)
+    if (t.kind === "V")
+      for (const c of t.clips) {
+        if (!isObj(c)) continue;
+        if (c.interpolate === true && isNum(c.in_s) && isNum(c.out_s)) {
+          const pts = usableCurve(c.speed_curve);
+          const slowest = pts
+            ? Math.min(...pts.map((p) => p.speed))
+            : isNum(c.speed) && c.speed > 0
+              ? c.speed
+              : 1;
+          interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, width, height);
+        }
+        if (c.stabilize === true) stabEst += stabilizeSeconds(c, fps, width, height);
+      }
+  return { interp, interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0, stabEst };
+}
+
 /**
  * Every reason `doc` is not a renderable timeline, as readable strings.
  * Empty = valid. The same rules as modules/timeline.py `validate`, which the
@@ -920,30 +988,11 @@ export function validateTimeline(doc: unknown): string[] {
       `timeline: at most ${STABILIZE_MAX_DOC_S} s of video can be stabilised in all (got ${Math.round(stabS)} s)`,
     );
   if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
-    let interp = 0;
-    for (const t of counted)
-      if (t.kind === "V")
-        for (const c of t.clips)
-          if (isObj(c) && c.interpolate === true && isNum(c.in_s) && isNum(c.out_s)) {
-            const pts = usableCurve(c.speed_curve);
-            const slowest = pts
-              ? Math.min(...pts.map((p) => p.speed))
-              : isNum(c.speed) && c.speed > 0
-                ? c.speed
-                : 1;
-            interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, doc.width, doc.height);
-          }
+    const { interp, interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
     if (interp > INTERP_MAX_FRAMES_DOC)
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
       );
-    let stabEst = 0;
-    for (const t of counted)
-      if (t.kind === "V")
-        for (const c of t.clips)
-          if (isObj(c) && c.stabilize === true)
-            stabEst += stabilizeSeconds(c, fps, doc.width, doc.height);
-    const interpEst = interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0;
     if (interpEst + stabEst > 0) {
       const length = docDuration(doc as unknown as TimelineDoc);
       const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst;
@@ -972,6 +1021,41 @@ export function validateTimeline(doc: unknown): string[] {
     validateCaptions(doc.captions, problems, claim);
   else if (doc.captions === null) problems.push("captions must be an object");
   if ("overlays" in doc) validateOverlays(doc.overlays, fps, problems, claim);
+  if ("shapes" in doc) {
+    const before = problems.length;
+    validateShapes(doc.shapes, fps, problems, claim);
+    if (
+      problems.length === before &&
+      Array.isArray(doc.shapes) &&
+      doc.shapes.length > 0 &&
+      isInt(doc.width) &&
+      isInt(doc.height)
+    ) {
+      const pics = Array.isArray(doc.overlays) ? (doc.overlays as CostPicture[]) : [];
+      const need = memoryEstimateBytes(doc.shapes as CostShape[], { width: doc.width, height: doc.height }, pics);
+      const budget = memoryBudgetBytes();
+      if (need > budget)
+        problems.push(
+          `shapes: drawing them in a ${doc.width}x${doc.height} frame would need about ${Math.round(need / 1048576)} MB to render${pics.length ? " with the picture overlays" : ""}, but ${Math.round(budget / 1048576)} MB is the most the export has — make the shapes${pics.length ? " or pictures" : ""} smaller or fewer, or the frame smaller (memory)`,
+        );
+      else if (fps && !problems.length) {
+        const length = docDuration(doc as unknown as TimelineDoc);
+        const shapeEst = shapeWorkSeconds(doc.shapes as WorkShape[], fps, { width: doc.width, height: doc.height }, length);
+        const { interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
+        const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + shapeEst;
+        const allowed = renderTimeoutS(length);
+        if (shapeEst > 0 && work > allowed + 1e-9)
+          problems.push(
+            `timeline: the shapes would take about ${Math.round(shapeEst)} s to render (about ${Math.round(work)} s with everything else), but a ${Math.round(length)} s timeline is allowed ${Math.round(allowed)} s — use fewer or smaller shapes, or make the timeline longer (render time)`,
+          );
+      }
+    }
+    const layers =
+      (Array.isArray(doc.overlays) ? doc.overlays.length : 0) +
+      (Array.isArray(doc.shapes) ? doc.shapes.length : 0);
+    if (layers > MAX_OVERLAYS)
+      problems.push(`overlays and shapes together: at most ${MAX_OVERLAYS} (got ${layers})`);
+  }
 
   if (problems.length) return problems;
   const d = doc as unknown as TimelineDoc;
@@ -1561,6 +1645,84 @@ function validateOverlays(
     );
 }
 
+/** The twin of modules/timeline.py `_validate_shapes`. */
+function validateShapes(
+  shapes: unknown,
+  fps: number | null,
+  problems: string[],
+  claim: (i: unknown, w: string) => void,
+) {
+  if (!Array.isArray(shapes)) {
+    problems.push("shapes must be a list");
+    return;
+  }
+  if (shapes.length > MAX_SHAPES) {
+    problems.push(`shapes: at most ${MAX_SHAPES}`);
+    return;
+  }
+  const keys = [...new Set([...SHAPE_COMMON, ...Object.values(KIND_FIELDS).flat()])];
+  shapes.forEach((sh, i) => {
+    if (!fields(sh, keys, SHAPE_REQUIRED, `shapes[${i}]`, problems)) return;
+    const where = `shape ${String(sh.id)}`;
+    claim(sh.id, where);
+    const kind = sh.kind;
+    if (!isShapeKind(kind)) {
+      problems.push(`${where}: kind must be one of ${JSON.stringify(SHAPE_KINDS)}`);
+      return;
+    }
+    for (const k of Object.keys(sh))
+      if (!SHAPE_COMMON.includes(k) && !KIND_FIELDS[kind].includes(k))
+        problems.push(`${where}: ${k} does not apply to a ${kind}`);
+    numIn(sh, "start_s", 0, MAX_DURATION_S, where, problems);
+    numIn(sh, "end_s", 0, MAX_DURATION_S, where, problems);
+    if (isNum(sh.start_s) && isNum(sh.end_s)) {
+      if (ms(sh.end_s) <= ms(sh.start_s))
+        problems.push(`${where}: end_s must be greater than start_s`);
+      else if (fps && pyRound(ms(sh.end_s) * fps) - pyRound(ms(sh.start_s) * fps) < 1)
+        problems.push(`${where}: shorter than one frame`);
+    }
+    if ("color" in sh && !(typeof sh.color === "string" && HEX_RE.test(sh.color)))
+      problems.push(`${where}: color must be a #RRGGBB colour`);
+    numIn(sh, "opacity", 0, 1, where, problems);
+    for (const k of ["x", "y"]) numIn(sh, k, 0, 1, where, problems);
+    numIn(sh, "w", SHAPE_W_MIN, SHAPE_W_MAX, where, problems);
+    numIn(sh, "outline", 0, SHAPE_OUTLINE_MAX, where, problems);
+    numIn(sh, "aspect", ASPECT_MIN, ASPECT_MAX, where, problems);
+    numIn(sh, "thick", THICK_MIN, THICK_MAX, where, problems);
+    if ("dir" in sh && !(ARROW_DIRS as readonly unknown[]).includes(sh.dir))
+      problems.push(`${where}: dir must be one of ${JSON.stringify(ARROW_DIRS)}`);
+    if ("edge" in sh && !(PROGRESS_EDGES as readonly unknown[]).includes(sh.edge))
+      problems.push(`${where}: edge must be one of ${JSON.stringify(PROGRESS_EDGES)}`);
+    if (kind === "pill") {
+      if (!("text" in sh)) problems.push(`${where}: text is missing`);
+      else {
+        const p = shapeTextProblem(sh.text);
+        if (p) problems.push(`${where}: ${p}`);
+      }
+    }
+    validateAnims(sh, where, problems, false);
+    if (kind === "progress")
+      for (const key of ["anim_in", "anim_out"])
+        if (key in sh && !(PROGRESS_ANIMS as readonly unknown[]).includes(sh[key]))
+          problems.push(
+            `${where}: a progress bar takes only ${JSON.stringify(PROGRESS_ANIMS)} as ${key}`,
+          );
+    if ("move" in sh) validateShapeMove(sh.move, where, problems);
+  });
+}
+
+function validateShapeMove(move: unknown, where: string, problems: string[]) {
+  if (!fields(move, ["to"], ["to"], `${where} move`, problems) || !("to" in move))
+    return;
+  const to = move.to;
+  const tw = `${where} move to`;
+  if (!fields(to, [...SHAPE_MOVE_KEYS], [], tw, problems)) return;
+  if (Object.keys(to).length === 0)
+    problems.push(`${tw}: give at least one of x, y, w`);
+  for (const k of ["x", "y"]) numIn(to, k, 0, 1, tw, problems);
+  numIn(to, "w", SHAPE_W_MIN, SHAPE_W_MAX, tw, problems);
+}
+
 /** An overlay whose `move.to.opacity` is another visible value than its `opacity`
  *  (modules/timeline.py `_partial_opacity_move`). */
 export function partialOpacityMove(ov: unknown): boolean {
@@ -2095,6 +2257,78 @@ function overlaysOf(v: unknown): PictureOverlay[] {
   return out;
 }
 
+/** A document's shapes as the model holds them (the defaults of the kind filled in); an
+ *  entry that is not an object with a usable id, kind and span is left out. */
+function shapesOf(v: unknown): ShapeLayer[] {
+  if (!Array.isArray(v)) return [];
+  const out: ShapeLayer[] = [];
+  for (const o of v) {
+    if (
+      !isObj(o) ||
+      typeof o.id !== "string" ||
+      !isShapeKind(o.kind) ||
+      !isNum(o.start_s) ||
+      !isNum(o.end_s)
+    )
+      continue;
+    const kind = o.kind;
+    const num = (x: unknown, d: number) => (isNum(x) ? x : d);
+    const takes = (f: string) => KIND_FIELDS[kind].includes(f);
+    const anim = (key: "anim_in" | "anim_out") =>
+      typeof o[key] === "string" && (ANIM_OUT as readonly string[]).includes(o[key] as string)
+        ? { [key]: o[key] as AnimOut, [`${key}_s`]: num(o[`${key}_s`], ANIM_DEFAULT_S) }
+        : {};
+    out.push({
+      id: o.id,
+      kind,
+      start_s: o.start_s,
+      end_s: o.end_s,
+      color: typeof o.color === "string" && HEX_RE.test(o.color) ? o.color.toUpperCase() : SHAPE_COLOR_DEFAULT,
+      opacity: num(o.opacity, SHAPE_DEFAULTS.opacity),
+      ...(takes("x") ? { x: num(o.x, SHAPE_DEFAULTS.x), y: num(o.y, SHAPE_DEFAULTS.y), w: num(o.w, SHAPE_DEFAULTS.w) } : {}),
+      ...(takes("outline") && isNum(o.outline) && o.outline > 0 ? { outline: o.outline } : {}),
+      ...(kind === "rect" ? { aspect: num(o.aspect, ASPECT_DEFAULT) } : {}),
+      ...(kind === "arrow" ? { dir: (ARROW_DIRS as readonly unknown[]).includes(o.dir) ? (o.dir as ArrowDir) : DIR_DEFAULT } : {}),
+      ...(kind === "line" || kind === "progress" ? { thick: num(o.thick, THICK_DEFAULTS[kind]) } : {}),
+      ...(kind === "pill" ? { text: typeof o.text === "string" ? o.text : "" } : {}),
+      ...(kind === "progress"
+        ? { edge: (PROGRESS_EDGES as readonly unknown[]).includes(o.edge) ? (o.edge as ProgressEdge) : EDGE_DEFAULT }
+        : {}),
+      ...anim("anim_in"),
+      ...anim("anim_out"),
+      ...(takes("move") && isObj(o.move) && isObj(o.move.to) ? { move: o.move as unknown as { to: ShapeMoveTo } } : {}),
+    });
+  }
+  return out;
+}
+
+/** A shape as the document writes it: only the fields its kind takes, rounded as the worker keeps them. */
+function shapeToDoc(s: ShapeLayer): Record<string, unknown> {
+  const takes = (f: string) => KIND_FIELDS[s.kind].includes(f);
+  return {
+    id: s.id,
+    kind: s.kind,
+    start_s: ms(s.start_s),
+    end_s: ms(s.end_s),
+    color: s.color,
+    opacity: ms(s.opacity),
+    ...(takes("x") ? { x: ms(s.x ?? SHAPE_DEFAULTS.x), y: ms(s.y ?? SHAPE_DEFAULTS.y), w: ms(s.w ?? SHAPE_DEFAULTS.w) } : {}),
+    ...(takes("outline") && s.outline ? { outline: ms(s.outline) } : {}),
+    ...(s.kind === "rect" ? { aspect: ms(s.aspect ?? ASPECT_DEFAULT) } : {}),
+    ...(s.kind === "arrow" ? { dir: s.dir ?? DIR_DEFAULT } : {}),
+    ...(s.kind === "line" || s.kind === "progress"
+      ? { thick: Math.round((s.thick ?? THICK_DEFAULTS[s.kind]) * 10000) / 10000 }
+      : {}),
+    ...(s.kind === "pill" ? { text: s.text ?? "" } : {}),
+    ...(s.kind === "progress" ? { edge: s.edge ?? EDGE_DEFAULT } : {}),
+    ...(s.anim_in ? { anim_in: s.anim_in, anim_in_s: ms(s.anim_in_s ?? ANIM_DEFAULT_S) } : {}),
+    ...(s.anim_out ? { anim_out: s.anim_out, anim_out_s: ms(s.anim_out_s ?? ANIM_DEFAULT_S) } : {}),
+    ...(takes("move") && s.move
+      ? { move: { to: Object.fromEntries(Object.entries(s.move.to).map(([k, v]) => [k, ms(v as number)])) } }
+      : {}),
+  };
+}
+
 export function toModel(doc: TimelineDoc): EditorModel {
   const v = doc.tracks.find((t) => t.kind === "V");
   const clips: VideoClip[] = (v?.clips ?? [])
@@ -2168,6 +2402,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
       })),
     );
   const overlays = overlaysOf(doc.overlays);
+  const shapes = shapesOf(doc.shapes);
   return {
     width: doc.width,
     height: doc.height,
@@ -2176,6 +2411,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
     texts,
     sounds,
     ...(overlays.length ? { overlays } : {}),
+    ...(shapes.length ? { shapes } : {}),
     keep: doc.tracks.filter((t) => t !== v && t.kind !== "T" && t.kind !== "A"),
     ...(doc.captions !== undefined ? { captions: doc.captions } : {}),
   };
@@ -2206,6 +2442,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
     ...model.sounds.map((x) => x.id),
     ...model.texts.map((t) => t.id),
     ...(model.overlays ?? []).map((o) => o.id),
+    ...(model.shapes ?? []).map((o) => o.id),
   ]);
   let a = 1;
   const soundTracks: TimelineTrack[] = [];
@@ -2286,6 +2523,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
           })),
         }
       : {}),
+    ...(model.shapes?.length ? { shapes: model.shapes.map(shapeToDoc) } : {}),
   };
 }
 
@@ -2362,7 +2600,7 @@ export function fitAnims<
 /** A new id for a clip or a text: letters and digits, never one the model uses. */
 export function freshId(
   model: EditorModel,
-  prefix: "c" | "x" | "m" | "o",
+  prefix: "c" | "x" | "m" | "o" | "h",
 ): string {
   // Track ids share the namespace too (v1, a1, t1, t2… are tracks).
   const used = new Set([
@@ -2371,6 +2609,7 @@ export function freshId(
     ...model.texts.map((t) => t.id),
     ...model.sounds.map((x) => x.id),
     ...(model.overlays ?? []).map((o) => o.id),
+    ...(model.shapes ?? []).map((o) => o.id),
     ...model.keep.flatMap((t) => [t.id, ...t.clips.map((c) => String(c.id))]),
   ]);
   for (
@@ -2379,6 +2618,7 @@ export function freshId(
       model.texts.length +
       model.sounds.length +
       (model.overlays?.length ?? 0) +
+      (model.shapes?.length ?? 0) +
       1;
     ;
     n += 1

@@ -7,6 +7,7 @@ import { SoundWave } from "./SoundWave";
 import { Timecode } from "@/components/ui/Timecode";
 import { snapTargets, snapTrimValue } from "@/lib/editor-timeline-view";
 import type { TimelineView } from "./useTimelineView";
+import type { ShapeLayer } from "@/lib/editorShapes";
 import {
   clipEnd,
   clipLength,
@@ -21,7 +22,7 @@ import {
 } from "@/lib/editor";
 
 export type Selection = {
-  kind: "clip" | "text" | "sound" | "overlay";
+  kind: "clip" | "text" | "sound" | "overlay" | "shape";
   id: string;
 } | null;
 
@@ -89,6 +90,7 @@ export function TimelineStrip({
   texts,
   sounds,
   overlays = [],
+  shapes = [],
   total,
   fps,
   playhead,
@@ -103,6 +105,8 @@ export function TimelineStrip({
   texts: readonly TextClip[];
   /** Pictures / videos over the picture, in layer order. */
   overlays?: readonly PictureOverlay[];
+  /** Drawn shapes over the picture, in layer order. */
+  shapes?: readonly ShapeLayer[];
   sounds: readonly SoundClip[];
   total: number;
   fps: number;
@@ -144,6 +148,8 @@ export function TimelineStrip({
   const laneCount = Math.max(1, ...[...lanes.values()].map((l) => l + 1));
   const oLanes = textLanes(overlays);
   const oLaneCount = Math.max(1, ...[...oLanes.values()].map((l) => l + 1));
+  const hLanes = textLanes(shapes);
+  const hLaneCount = Math.max(1, ...[...hLanes.values()].map((l) => l + 1));
   const sLanes = textLanes(sounds.map(soundSpan));
   const sLaneCount = Math.max(1, ...[...sLanes.values()].map((l) => l + 1));
   const frame = 1 / fps;
@@ -392,6 +398,50 @@ export function TimelineStrip({
                     }`}
                   >
                     {name}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {shapes.length ? (
+          <div
+            className="relative w-full"
+            style={{ height: `calc(var(--ns-lane-step) * ${hLaneCount})` }}
+            aria-label={te.shapes.track}
+            role="list"
+          >
+            {shapes.map((h, i) => {
+              const on = selected?.kind === "shape" && selected.id === h.id;
+              const kind = te.shapes.kinds[h.kind];
+              return (
+                <div
+                  key={h.id}
+                  role="listitem"
+                  className="absolute h-[var(--ns-lane-h)]"
+                  style={{
+                    left: pct(h.start_s),
+                    width: pct(h.end_s - h.start_s),
+                    top: `calc(var(--ns-lane-step) * ${hLanes.get(h.id) ?? 0})`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelect({ kind: "shape", id: h.id })}
+                    aria-pressed={on}
+                    aria-label={fmt(te.shapes.clipLabel, {
+                      n: i + 1,
+                      kind,
+                      from: formatTime(h.start_s),
+                      to: formatTime(h.end_s),
+                    })}
+                    className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
+                      on
+                        ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
+                        : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
+                    }`}
+                  >
+                    {h.kind === "pill" && h.text ? h.text : kind}
                   </button>
                 </div>
               );

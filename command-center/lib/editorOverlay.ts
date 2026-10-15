@@ -19,6 +19,7 @@
  * tolerance is the honest gap.
  */
 import type { CSSProperties } from "react";
+import { memoryBudgetBytes, memoryEstimateBytes, type CostPicture } from "@/lib/editorShapes";
 import {
   MAX_OVERLAYS,
   MAX_OVERLAY_VIDEOS,
@@ -87,6 +88,14 @@ export function overlayLength(o: Pick<PictureOverlay, "start_s" | "end_s">) {
   return ms(ms(o.end_s) - ms(o.start_s));
 }
 
+/** Do the drawn shapes and these picture overlays fit the export's memory together? (They are charged as layers
+ *  of the same final pass, lib/editorShapes.ts; with no shapes the pictures are not budgeted.) */
+export function picturesFitShapes(model: EditorModel, pictures: readonly CostPicture[]): boolean {
+  const shapes = model.shapes ?? [];
+  if (!shapes.length) return true;
+  return memoryEstimateBytes(shapes, model, pictures) <= memoryBudgetBytes();
+}
+
 /** Can one more overlay of this kind be added? Videos are fewer than pictures
  *  (each keeps a decoder open for its whole span): `isVideoAsset` says which
  *  of the model's overlays are videos (the model holds ids, not kinds); without
@@ -97,7 +106,9 @@ export function canAddOverlay(
   isVideoAsset?: (assetId: string) => boolean,
 ): boolean {
   const list = overlaysOf(model);
-  if (kind === "audio" || list.length >= MAX_OVERLAYS) return false;
+  // Drawn shapes take layers of the same final pass (modules/timeline.py: together at most MAX_OVERLAYS).
+  if (kind === "audio" || list.length + (model.shapes?.length ?? 0) >= MAX_OVERLAYS) return false;
+  if (!picturesFitShapes(model, [...list, { w: OVERLAY_DEFAULTS.w }])) return false;
   if (kind !== "video" || !isVideoAsset) return true;
   return (
     list.filter((o) => isVideoAsset(o.asset_id)).length < MAX_OVERLAY_VIDEOS
@@ -181,6 +192,24 @@ export function updateOverlay(
     const { move: _m, ...rest } = fitted;
     void _m;
     fitted = Object.keys(to).length ? { ...rest, move: { to } } : rest;
+  }
+  // With drawn shapes in the document the pictures share their memory budget: a wider picture that no longer
+  // fits is narrowed until it does (its end of a move too); one that cannot fit is refused.
+  if (model.shapes?.length && !picturesFitShapes(model, list.map((o) => (o.id === id ? fitted : o)))) {
+    const had = memoryEstimateBytes(model.shapes, model, list);
+    for (let i = 0; i < 60; i += 1) {
+      const now = memoryEstimateBytes(model.shapes, model, list.map((o) => (o.id === id ? fitted : o)));
+      if (now <= memoryBudgetBytes() || now <= had) break;
+      const to = fitted.move?.to.w;
+      if (fitted.w <= OVERLAY_W_MIN + 1e-9 && (to === undefined || to <= OVERLAY_W_MIN + 1e-9)) return model;
+      fitted = {
+        ...fitted,
+        w: Math.max(OVERLAY_W_MIN, Math.round(fitted.w * 0.9 * 1000) / 1000),
+        ...(fitted.move && to !== undefined
+          ? { move: { to: { ...fitted.move.to, w: Math.max(OVERLAY_W_MIN, Math.round(to * 0.9 * 1000) / 1000) } } }
+          : {}),
+      };
+    }
   }
   if (JSON.stringify(fitted) === JSON.stringify(at)) return model;
   return {

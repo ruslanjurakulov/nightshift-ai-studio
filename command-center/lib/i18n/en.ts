@@ -5,6 +5,7 @@ import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
+import { shapesEn } from "./shapes/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
@@ -4857,6 +4858,8 @@ export const en = {
   editor: {
     /** Picture overlays: ./overlay/en.ts. */
     overlay: overlayEn,
+    /** Shapes and stickers: ./shapes/en.ts. */
+    shapes: shapesEn,
     /** Cross-fade styles and text looks: ./editor-looks/en.ts. */
     looks: looksEn,
     fx: fxEn,

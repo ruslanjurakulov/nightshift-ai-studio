@@ -94,7 +94,8 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
-from modules import caption_styles, ffmpeg_limits, speed_ramp
+from modules import caption_styles, ffmpeg_limits, shape_art, speed_ramp
+from modules.shape_art import ShapeArt
 
 #: The ONE quality encode of a render (the final pass). These are libx264's own
 #: defaults — what this backend always encoded with implicitly — spelled out so
@@ -149,7 +150,7 @@ INPUT_PROTOCOLS = ("-protocol_whitelist", "file")
 
 
 def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = (),
-               out_pixels: Optional[int] = None) -> List[str]:
+               out_pixels: Optional[int] = None, single_thread_inputs: Sequence[str] = ()) -> List[str]:
     """``cmd`` as an editor export runs it: before every ``-i``, the
     protocol whitelist (``INPUT_PROTOCOLS``), the decoder's frame cap
     (``-max_pixels``: the video cap for an input in ``video_inputs``, the
@@ -163,13 +164,20 @@ def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = (),
     commands are capped: the pipeline's own renders keep their byte-pinned
     argv (tests/test_render_spec_legacy.py)."""
     videos = set(video_inputs)
-    out: List[str] = [cmd[0], *ffmpeg_limits.thread_options()]
+    single = set(single_thread_inputs)
+    # A command with drawn shapes has one input and one filter chain per layer, and what ffmpeg starts per
+    # layer grows with the machine's cores (a decoder and a filter thread pool for each; each thread is a
+    # stack of address space under the limit: 62 threads at twelve shapes on four cores, 13 pinned, 400 MiB
+    # of the 2 GiB). So its layers' inputs (the drawn shapes and the pictures: nothing to run in parallel in
+    # a looped still) and its filter graph use one thread each, and what it needs no longer depends on the
+    # machine. A command without shapes keeps exactly the thread options it has always had.
+    out: List[str] = [cmd[0], *ffmpeg_limits.thread_options(1 if single else None)]
     for i, tok in enumerate(cmd[1:-1], start=1):
         if tok == "-i":
             src = cmd[i + 1]
             cap = DECODE_VIDEO_MAX_PIXELS if src in videos else DECODE_MAX_PIXELS
-            out += ["-max_pixels", str(decoder_max_pixels(cap)), *ffmpeg_limits.decode_thread_options(),
-                    *INPUT_PROTOCOLS]
+            out += ["-max_pixels", str(decoder_max_pixels(cap)),
+                    *ffmpeg_limits.decode_thread_options(1 if src in single else None), *INPUT_PROTOCOLS]
         out.append(tok)
     # The encoder's threads, right before the output (the last argument).
     return out + [*ffmpeg_limits.encode_thread_options(out_pixels=out_pixels), cmd[-1]]
@@ -831,6 +839,14 @@ class PictureOverlay:
     chroma_color: Optional[str] = None
     chroma_similarity: float = CHROMA_SIMILARITY_DEFAULT
     chroma_blend: float = CHROMA_BLEND_DEFAULT
+    #: A drawn sticker (modules/shape_art.py) instead of a library file: ``path`` is empty until the
+    #: backend draws it into a PNG in its work directory (``render_backend.render``), then it is a
+    #: plain picture overlay. A progress bar also fills from the left across its span.
+    shape: Optional[ShapeArt] = None
+
+    @property
+    def progress(self) -> bool:
+        return self.shape is not None and self.shape.is_progress
 
     @property
     def moves(self) -> bool:
@@ -848,6 +864,8 @@ class PictureOverlay:
             d["chroma_color"] = self.chroma_color
             d["chroma_similarity"] = self.chroma_similarity
             d["chroma_blend"] = self.chroma_blend
+        if self.shape is not None:
+            d["shape"] = self.shape.to_dict()
         return d
 
     @staticmethod
@@ -865,6 +883,7 @@ class PictureOverlay:
                 "chroma_similarity": float(d.get("chroma_similarity", CHROMA_SIMILARITY_DEFAULT)),
                 "chroma_blend": float(d.get("chroma_blend", CHROMA_BLEND_DEFAULT))}
                if d.get("chroma_color") is not None else {}),
+            **({"shape": ShapeArt.from_dict(d["shape"])} if isinstance(d.get("shape"), dict) else {}),
         )
 
 
@@ -1058,7 +1077,11 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
         name = f"picture overlay {i}"
         if o.kind not in PICTURE_KINDS:
             problems.append(f"{name} must be an image or a video (got {o.kind!r})")
-        if not isinstance(o.path, str) or not o.path:
+        if o.shape is not None:
+            problems.extend(f"{name}: {p}" for p in shape_art.problems(o.shape))
+            if o.kind != KIND_IMAGE:
+                problems.append(f"{name}: a shape is drawn as an image")
+        elif not isinstance(o.path, str) or not o.path:
             problems.append(f"{name} has no path")
         nums = (o.start_s, o.end_s, o.x, o.y, o.w, o.opacity)
         if not all(_finite(v) for v in nums):
@@ -1076,6 +1099,12 @@ def _picture_overlay_problems(spec: RenderSpec) -> List[str]:
         if not 0 <= o.opacity <= 1:
             problems.append(f"{name} opacity must be from 0 to 1")
         problems.extend(_anim_problems(name, o, ANIM_OUT, (o.start_s, o.end_s)))
+        if o.progress:
+            if o.moves or o.chroma_color is not None:
+                problems.append(f"{name}: a progress bar does not move or take a chroma key")
+            for key in ("anim_in", "anim_out"):
+                if getattr(o, key) is not None and getattr(o, key) not in shape_art.PROGRESS_ANIMS:
+                    problems.append(f"{name}: a progress bar takes only {list(shape_art.PROGRESS_ANIMS)} as {key}")
         if o.chroma_color is not None:
             if not (isinstance(o.chroma_color, str) and _HEX.fullmatch(o.chroma_color)):
                 problems.append(f"{name} chroma colour must be a #RRGGBB colour")
@@ -1560,7 +1589,15 @@ def picture_overlay_filters(spec: RenderSpec, first_input: int, source: str
         parts.append(f"{src}{chain}[p{k}]")
         lo, hi = (first - 0.5) / fps, (last - 0.5) / fps
         out = f"[pv{k}]"
-        parts.append(f"{source}[p{k}]overlay=x='round({o.x * spec.width:.3f}{move_x}-w/2)'"
+        x_expr = f"round({o.x * spec.width:.3f}{move_x}-w/2)"
+        if o.progress:
+            # The bar is as wide as the frame and slides in from the left: at p of its span the
+            # visible part is p of the width (overlay x = W * (p - 1)). drawbox cannot animate its
+            # width on older ffmpeg builds; x of overlay is evaluated for every frame on all of them.
+            # Empty on the first frame, full on the last (the span's last frame is last - 1).
+            length_s = max(last - first - 1, 1) / fps
+            x_expr = f"round(W*(clip((t-{first / fps:.6f})/{length_s:.6f},0,1)-1))"
+        parts.append(f"{source}[p{k}]overlay=x='{x_expr}'"
                      f":y='round({o.y * spec.height:.3f}{move_y}-h/2)'"
                      f":enable='between(t,{lo:.6f},{hi:.6f})':eof_action=pass{out}")
         source = out
@@ -1630,5 +1667,7 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     # frame is skipped, as it always was. A video overlay is held to the video
     # decoder cap, a picture to the still one.
     return cap_inputs(cmd, out_pixels=spec.width * spec.height,
-                      video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO])
+                      video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO],
+                      single_thread_inputs=[o.path for o in spec.picture_overlays]
+                      if any(o.shape is not None for o in spec.picture_overlays) else ())
 

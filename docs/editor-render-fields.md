@@ -29,6 +29,7 @@ note for text looks).
 | 8 | `claude/render-crop` | V clip `crop` rectangle, free `angle` | PR open (stacked on 7) |
 | 9 | `claude/render-speed-ramp` | V clip `speed_curve` (2-6 points), `interpolate` | PR open (stacked on 8) |
 | 10 | `claude/render-stabilise` | V clip `stabilize` | PR open (stacked on 9) |
+| 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | PR open (on main) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -462,6 +463,178 @@ like `contain` (the picture alone).
   unsteadied).
 * an automatic zoom crops a little of the edges: say so in the product.
 
+## 11. Shapes, stickers and a progress bar (`shapes`)
+
+A drawn sticker is a document entry, not a library file: a top-level `shapes` list beside `overlays`.
+Free (ffmpeg and Pillow only; no provider, no art from anywhere, no migration: a shape has no
+`asset_id`, so `editor_doc_problem` passes it, and no field of a shape may ever be named
+`asset_id`). Absent or empty = today's document and the same commands.
+
+```json
+"shapes": [
+  { "id": "h1", "kind": "arrow", "start_s": 1, "end_s": 4, "x": 0.2, "y": 0.3, "w": 0.2,
+    "dir": "up", "color": "#FF3B30", "opacity": 0.9, "anim_in": "slide-left", "anim_in_s": 0.4 },
+  { "id": "h2", "kind": "pill", "start_s": 0, "end_s": 5, "y": 0.82, "w": 0.32, "text": "Subscribe" },
+  { "id": "h3", "kind": "progress", "start_s": 0, "end_s": 12, "edge": "bottom", "thick": 0.012 }
+]
+```
+
+`kind` is one of `arrow`, `circle`, `rect`, `star`, `pill`, `line`, `progress` (closed list,
+`SHAPE_KINDS` in `lib/editorShapes.ts` / `modules/shape_art.py`; a test pins them). Every shape has
+`id`, `kind`, `start_s`, `end_s` (required) and `color` (`#RRGGBB`, the shared hex pattern; default
+`#FFD60A`), `opacity` (0-1, default 1), `anim_in` / `anim_out` / `anim_in_s` / `anim_out_s` (the
+overlay's lists and rules: no typewriter, in + out inside the time shown). The rest depends on the
+kind, and the validators refuse a field the kind does not take ("`outline` does not apply to a arrow"):
+
+| kind | fields | what it draws |
+|------|--------|---------------|
+| `arrow` | `x` `y` `w` `dir` (`right`/`left`/`up`/`down`, default right) `move` | a block arrow, 2:1 (1:2 up or down) |
+| `circle` | `x` `y` `w` `outline` `move` | a disc, or a ring with `outline` |
+| `rect` | `x` `y` `w` `outline` `aspect` (width / height 0.2-5, default 1.6) `move` | a rectangle, solid or a frame |
+| `star` | `x` `y` `w` `outline` `move` | a five-point star, solid or outlined |
+| `pill` | `x` `y` `w` `outline` `text` (required) `move` | a rounded label with words |
+| `line` | `x` `y` `w` `thick` `move` | an underline with round ends |
+| `progress` | `edge` (`bottom`/`top`, default bottom) `thick` | a bar as wide as the frame |
+
+* **Position and size are the picture overlay's model**: (`x`, `y`) is the CENTRE and `w` (0.05-1) the
+  width, as fractions of the frame; the height follows the kind. The export draws the shape at that
+  size into a PNG (so it is sharp) and lays it with the overlay path: opacity is the same cheap
+  channel multiply, `anim_*` are the same filters, `move` is the same linear move. A shape's
+  height is cut to the overlay filter's box (twice the frame's height): a full-width UP arrow in a
+  16:9 frame is therefore smaller than `w` asks.
+* `outline` (0-0.5 of the shape's shorter side; 0 or absent = solid). On a `pill`, an outline draws
+  the box as a border and the text takes `color`; a solid pill takes a contrasting text colour
+  (black or white by luminance, fixed threshold).
+* `thick` (0.002-0.05) is a fraction of the frame HEIGHT: a line's thickness, the bar's height
+  (made even, at least 2 px; 0.012 of 720 is 8 px). Defaults: line 0.008, bar 0.012.
+* **`pill` text** is at most 24 characters (code points; `SHAPE_TEXT_MAX`), not blank, and only of
+  characters the worker's font really draws: Basic Latin, Latin-1 and Latin Extended letters, the Uzbek
+  apostrophes (U+02BB, U+02BC), Cyrillic (U+0400-U+0525), dashes, quotation marks, bullet, ellipsis, euro,
+  tenge and numero (`TEXT_RANGES`, a closed rule shared by both validators and pinned by
+  `samples/shape_text_cases.json`, 1,600 texts with the worker's verdict). Anything else (emoji, CJK,
+  Arabic, Greek, combining marks, invisible fillers such as U+3164, no-break space, tabs and line
+  breaks) is refused with "text can only use Latin and Cyrillic letters, digits and common
+  punctuation": the font would draw an empty box and the exported label would silently differ from
+  what was typed. The worker also compares every character with the font's empty box while drawing and
+  stops the export with a named message if it ever meets one (another font). The editor's text box leaves
+  such characters out and says so. The text is typed or one of the editor's ready labels
+  ("Subscribe", "New", "Link below", "Part 2", in the person's language). It reaches the export as
+  PIXELS: the worker cleans it with the same `ass_captions.escape_text` the text overlays' words get
+  (braces to parentheses, backslash to slash, white space collapsed), draws it with the bold
+  DejaVu/Liberation font and never writes it into a filter graph or a file name; the preview shows the
+  cleaned words too. A missing font stops the export BEFORE any segment is encoded, with a message that
+  names the fix (`fonts-dejavu`), never a bitmap fallback.
+* **The progress bar** takes only `edge` and `thick` (no `x`, `y`, `w`, no move) and a fade as
+  `anim_in` / `anim_out`. It is as wide as the frame and fills from the left across
+  `start_s`..`end_s` by the clock: EMPTY on its first frame, FULL on its last. How: a bar-shaped PNG
+  the width of the frame is laid with `overlay=x='round(W*(clip((t-t0)/d,0,1)-1))'`, so the part
+  inside the frame is `t / length` of its width. (`drawbox` cannot animate its width on the ffmpeg
+  builds the worker may have; `x` of `overlay` is evaluated per frame on all of them.) Measured at
+  30, 24 and 60 fps. If the picture ends before `end_s`, the bar is cut where the picture ends and
+  never gets full: the editor warns ("runs past the end") and offers "Fill the whole video" and "Fill the
+  clip at the playhead".
+* **`move.to`** takes `x`, `y`, `w` only. There is no opacity move on a shape (fade it with
+  `anim_in` / `anim_out`), so shapes never use the per-pixel `geq` opacity path and the
+  `MAX_PARTIAL_OPACITY_MOVES` (2) budget of section 4 is untouched: it counts overlays only.
+* **Limits**: at most 12 shapes (`MAX_SHAPES`), and `overlays` + `shapes` together at most 16
+  (`MAX_OVERLAYS`): each is one more input of the final pass ("overlays and shapes together: at most
+  16"). The editor counts both (`layerCount`, `canAddShape`, and `canAddOverlay` now counts shapes
+  too). A shape never lengthens the timeline (what runs past the picture is cut).
+* **Memory budget** (`shape_art.memory_estimate_bytes`, `memoryEstimateBytes` in `lib/editorShapes.ts`,
+  refused early by both validators as "shapes: drawing them in a WxH frame would need about N MB to
+  render [with the picture overlays], but M MB is the most the export has ... (memory)"). It is charged
+  to a document WITH shapes; one without is budgeted by nothing new. Measured with the bundled ffmpeg
+  7.0.2 under the export's own limit (2 GiB of address space, `jobs=1`, a timeout set: the worker's path)
+  by binary search on the limit, about 80 documents of circles in five frame sizes,
+  with and without full-frame pictures.
+  * **Why the layers' threads are pinned.** Left automatic, what ffmpeg starts per layer grows with the
+    machine's cores: a decoder with frame threads and a filter thread pool for every PNG (62 threads at twelve
+    shapes on four cores, 13 pinned), each thread a stack of address space under the limit. The same twelve
+    circles at `w` 0.8 in 1080p60 needed 1767 MiB on four cores and 1346 on one, so a fit on one machine was
+    the CI runner's exit 187 (a libx264 malloc) on another. A command with shapes therefore runs the filter
+    graph (`-filter_threads`, `-filter_complex_threads`) and the decoder of every picture and shape input
+    (`-threads`) on ONE thread (`render_spec.cap_inputs(single_thread_inputs=...)`); the clips' input and the
+    encoder keep theirs. The same document needs 1351 MiB on one core, 1378 on two and 1351 on four (unpinned: 1346 on one, 1767 on four). A
+    document without shapes keeps exactly the options it has always had (a test compares them).
+  * **The stack is pinned too.** glibc gives a new thread RLIMIT_STACK bytes of address space, so the host's
+    `ulimit -s` (8 MiB on usual Linux, 16 MiB on GitHub's runners, unlimited = 2 MiB in some containers) was a
+    footprint under the limit that the host chose: the 8 shapes + 8 full pictures document at 1080p60 has a
+    VmPeak of 1808 MiB at 8, 2094 at 16 (the runner: 2041-2102, so right at the 2 GiB limit and exit 187 in the
+    full suite) and 1484 at 2. `ffmpeg_limits.limited_argv` now starts every child with exactly
+    `CHILD_STACK_BYTES` (8 MiB, never above its hard limit): the same document measures 1745 MiB here at a parent
+    stack of 16 MiB, 64 MiB or unlimited, and 1683-1834 MiB on the runner (was 2041-2102). (The fit below was made at 8 MiB.) A test starts the child under five
+    parent limits and reads what it sees.
+  * **Source pixels.** The validators judge a document without its files, so a picture is charged its box; the
+    export (`render_backend.check_layers_fit`, before any segment is encoded) charges a picture its box or its
+    own pixels, whichever is more, and refuses with the numbers ("use smaller pictures (their own pixels
+    count)"): four 16 MP photos shrunk to w 0.3 need about 80 MiB each (1325 MiB with four shapes), their box's
+    charge is 30. A video overlay is charged its box.
+  * **The fit** (pinned): up to 2560x1440 about 354 MiB + 273 bytes per pixel of the frame, above it (the encoder
+    has 2 threads and a lookahead of 20, `ffmpeg_limits.LARGE_OUTPUT_PX`) about 24 MiB + 200 bytes per pixel; plus
+    21 MiB per layer and 9 bytes per pixel of its PNG. A PICTURE OVERLAY is a layer like a shape: it is charged
+    its box, as wide as it ever is (a move to a bigger `w` counts) and as tall as the frame, because the
+    document does not know the picture's own size. A picture whose own pixels are many times its box (a big photo
+    shrunk to a corner) is therefore not covered; it stays held to the decoder's cap as before. The constants
+    are that fit rounded UP by about 100 MiB (never below any of the 25 points the test lists) plus 60 MiB of fixed cost, because the heap's spread is real (one document measured 1683-1834 MiB in 11 runs on the GitHub runner, 1737-1766 here), and the budget keeps 150
+    MiB under the 2 GiB besides: every document the budget accepts had been measured at 1776 MiB or less.
+  * **What it decides** (1080p60 unless said): twelve circles at `w` 0.8, with 1, 2 or 4 full pictures at 0.85,
+    eight shapes with eight full pictures, and 1440x2560 with twelve circles at 0.6 or twelve mixed kinds at
+    0.75 all pass and are rendered under the limit by `tests/test_editor_shapes.py` (what the reviewer and the CI
+    runner had seen fail before the threads were pinned); 1440p with twelve circles at 1.0, eight shapes at 0.8
+    with four full pictures, and eight at 1.0 with eight full pictures are refused. A sampled test finds, for five
+    frames and a few mixes, the widest shapes the validator accepts and renders each under the limit.
+  * **Above 1440p** (3840x2160, 2160x3840): the plain clip alone needs about 1650-1700 MiB, so only a few small
+    shapes pass (three circles at `w` 0.2 do, four do not, twelve at 0.3 need 2068). That over-refusal is
+    deliberate and safe: the studio offers 1080-based presets, so a 4K frame comes from a saved document or the
+    API.
+  A shape's PNG is its whole picture at the widest it ever is (a move to a bigger `w` scales down from it) and a
+  PILL is charged as a box of aspect 0.9 (an upper bound that needs no font). A clip that also
+  cross-fades or blurs at a large frame (their own limits) is not added up with it. A PNG is not cut to the
+  frame (a 16:9 circle at `w` 1.0 is 1920x1920, taller than the frame): cutting it would change the layout
+  of a shape that moves or pops, so the budget charges the real size instead. Where the budget is met the
+  editor stops: a shape stops growing at the limit, the one being added is narrowed to fit or refused with
+  the numbers (role="status"), a picture is narrowed or not added when the shapes leave it no room (it says
+  so), the inspector says how much of the budget the shapes use once it is 60% or
+  more, and settling after a frame change narrows the widest shapes (then removes the last, said, undoable).
+* **Tests and their cost.** The pure budget, filter-string and fixture tests are fast and always run. The
+  real-ffmpeg claims run in a compact form in CI (about 40 s of the file's 90 s on two loaded cores): the CI
+  runner's own document, the largest portrait frame, the most layers (8 shapes + 8 full pictures) and a 4K
+  document, each rendered under the worker's 2 GiB limit; they fail with exit 187 if the threads are not pinned
+  (checked by switching the pinning off). `NIGHTSHIFT_SLOW_TESTS=1 python -m pytest tests/test_editor_shapes.py`
+  runs the exhaustive versions (all 9 named documents, the 5-frame grid of widest accepted documents, 1500
+  random documents instead of 150, the full outline sweep, 24 sampled renders instead of 8): run it before a
+  big merge. Nothing is skipped silently: only "no ffmpeg runs at all" skips a real-ffmpeg test.
+* **Render time** is charged like interpolation and stabilising, against the worker's timeout
+  (`render_timeout_s` = min(5400, 3 x length + 120)): per layer, per OUTPUT frame, whatever the layer's span
+  (a layer is an `overlay` pass over every frame; one shown for 10% of a clip cost 90% of the same), 2.5 ms
+  per 1080p-equivalent frame plus 1.0 ms per megapixel of its PNG. Measured on a quiet box (ffmpeg 7.0.2, 1080p
+  30 fps, 10 s, twelve layers of every kind with pop, fade and move): 0.6 / 0.8 ms per layer-frame for 0.3 / 1.3
+  MP PNGs, 0.5 ms at 60 fps; a reviewer's loaded box saw 5.5-5.8 ms (twelve 3 MP layers, 20 s: +42 s at 30 fps,
+  +80 s at 60 fps) and the charge is that loaded figure (the same way `INTERP_SECONDS_PER_FRAME` was set). A
+  document is refused when `length + interpolation + stabilising + shapes` is over the allowance ("the shapes
+  would take about N s to render ... (render time)"), so twelve 0.6-wide layers at 1080p60 pass on 20 s and are
+  refused on 10 minutes, and the same at 30 fps pass. It counts shapes that render something (opacity above 0,
+  starting before the end). In the editor the same sum is `renderWork().shapeEst`, so the notice under the
+  toolbar, adding and growing a shape and settling all use it.
+* **Layering**: shapes are drawn after the pictures (so over them), under the texts and captions;
+  list order is the layering among shapes.
+* **Worker**: `modules/timeline_render._shapes` turns each shape into a `PictureOverlay` carrying a
+  `ShapeArt` (path empty); `render_backend.draw_shapes` writes the PNGs into the render's temp
+  directory and fills the paths in; the rest is `picture_overlay_filters`. The command of a
+  document without shapes is unchanged (the existing digest tests, plus a new one with an empty list,
+  an invisible shape and one after the end).
+* **ffmpeg versions**: every pixel test passes with the bundled static 7.0.2 and with 5.1.1. The memory
+  and time figures above are 7.0.2's (what `resolve_ffmpeg` picks); 5.1.1 needed less memory in the
+  few cases tried (it passed seven 4K60 layers that 7.0.2 could not). The
+  only filters used are the overlay path's own (`scale`, `format`, `colorchannelmixer`, `fade`,
+  `tpad`, `overlay`) plus the `x` expression above; nothing in it is version-sensitive that was
+  seen. Pillow is a worker dependency (requirements.txt, `Pillow>=12.3.0`).
+* **Known approximations** (not bugs): the pill's text is anti-aliased and a pill's width comes from
+  the font's real metrics, which the browser cannot know (the preview estimates it from the character
+  count, within about 15% for ordinary words); a star's outline is drawn inset by a fixed factor;
+  at frame sizes where a canvas would pass 24 million pixels while drawing, anti-aliasing is
+  reduced (a full-width circle in a 4K frame has plain edges).
+
 ## Editor controls (track C)
 
 Where a person finds each field in the editor. The controls read their limits
@@ -483,6 +656,7 @@ project keeps exactly its document.
 | `denoise`, `loudnorm` | "Steady picture and clean sound" on a clip (`ClipCleanSection`), "Clean up sound" on a music / sound clip | C3 |
 | clip `stabilize` | toggle in "Steady picture and clean sound", with the cost, the limits and the project's use | C3 |
 | clip `speed_curve`, `interpolate` | "Speed curve" (point rows and a plot), "Smoother slow motion" with its budget | C2 |
+| `shapes` | "Add shape" beside Add overlay and Add text: a picker of seven tiles (radio group, 44 px) and an inspector per kind (`ShapePanel.tsx`) | E |
 
 Preview: look (curve tables as an SVG filter, pinned to
 `samples/clip_look_curves.json`), blur, vignette, turn, mirror, crop, free angle
@@ -555,3 +729,22 @@ lowered to the cap. The editor says exactly what it changed in a polite live reg
 and one Undo returns it; a document that is fine is left alone. Trimming an edge
 re-asks the validator itself (frame counts are taken on the stored float
 difference) and steps in by a millisecond until it is satisfied.
+
+Shapes (track E): the entry is "Add shape"; the picker is a radio group of visual tiles (arrow, circle,
+rectangle, star, label, line, progress bar) with an "Add to video" button, and the inspector's "Shape"
+group changes the kind in place (span, colour and opacity are kept; the new kind's own look starts
+fresh). Per kind: ready colours and a colour box and a typed code (a bad code is said, in a polite
+status, and not taken), start / end and "Start at the playhead", position / size / opacity sliders and
+the arrow keys on the selected frame in the preview (drag too), outline, width-to-height, direction,
+thickness, edge, the label's text with four ready labels (an empty box keeps the last words and
+says so), a move to an end position and entrance / exit (a bar: a fade only). Limits are said where
+they apply (role="status"): the shapes limit, the shared layers with the pictures, and a shape that
+would not show. Every edit is one undo step (a slider drag or a run of arrow presses is one) and
+goes through the same `settleAll`: the export's memory and time budgets depend on the frame size and the
+timeline, so a frame change or a shorter timeline can push shapes over them, and settling then narrows the widest
+shapes and, only if even the narrowest do not fit, removes the last (said in the polite notice; Undo returns
+them). A 400-step fuzz test (edits, frame changes between 1080p and 4K, other overlays) checks that no edit
+leaves a document the validators refuse.
+Preview: the same polygons as SVG (close to exact), the progress bar's fill at the playhead, the
+entrance / exit roughly; the note under the preview says the exported file is the reference, and the
+label's width is an estimate.

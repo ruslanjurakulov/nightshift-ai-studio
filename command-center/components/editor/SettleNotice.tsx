@@ -13,9 +13,14 @@ import type { SettleChange } from "@/lib/editorSettle";
 export function SettleNotice({ changes }: { changes: readonly SettleChange[] }) {
   const { t } = useI18n();
   const s = t.editor.fx.settled;
+  const sh = t.editor.shapes;
   if (!changes.length) return null;
   const line = (c: SettleChange) => {
     switch (c.kind) {
+      case "shapeNarrowed":
+        return fmt(sh.settledNarrowed, { n: c.shape });
+      case "shapeRemoved":
+        return fmt(sh.settledRemoved, { n: c.shape });
       case "reverse":
         return fmt(s.reverse, { n: c.clip, max: Math.floor(c.max * 10) / 10 });
       case "interpolate":

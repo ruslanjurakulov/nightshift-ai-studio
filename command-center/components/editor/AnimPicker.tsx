@@ -24,6 +24,11 @@ import {
   type AnimSide,
 } from "@/lib/editorFx";
 import { POP_FROM, SLIDE_SHARE } from "@/lib/editorFxPreview";
+import {
+  setShapeAnim,
+  setShapeAnimSeconds,
+} from "@/lib/editorShapeModel";
+import { PROGRESS_ANIMS, type ShapeLayer } from "@/lib/editorShapes";
 import { Disclosure, RadioChips, SliderRow } from "./FxControls";
 
 /**
@@ -34,7 +39,7 @@ import { Disclosure, RadioChips, SliderRow } from "./FxControls";
  * text's plain fade gives way to the animation on that side.
  */
 
-type Item = TextClip | PictureOverlay;
+type Item = TextClip | PictureOverlay | ShapeLayer;
 
 export function AnimPicker({
   item,
@@ -42,9 +47,12 @@ export function AnimPicker({
   typewriterOk,
   onAnim,
   onSeconds,
+  only,
 }: {
   item: Item;
   text: boolean;
+  /** Offer only these animations (a progress bar can only fade). */
+  only?: readonly string[];
   /** False when the project already has the most typewriter texts and this one is not among them. */
   typewriterOk: boolean;
   onAnim: (side: AnimSide, anim: string | null) => void;
@@ -64,7 +72,9 @@ export function AnimPicker({
     const blockedHere = animBlocked(item, s);
     const options = [
       { value: "none", label: a.none },
-      ...animChoices(text, s).map((name) => ({
+      ...animChoices(text, s)
+        .filter((name) => !only || only.includes(name))
+        .map((name) => ({
         value: name,
         label: a.names[name as keyof typeof a.names],
         disabled:
@@ -166,6 +176,30 @@ export function OverlayAnimSection({
       onAnim={(side, anim) => apply(setOverlayAnim(model, overlay.id, side, anim))}
       onSeconds={(side, s, group) =>
         apply(setOverlayAnimSeconds(model, overlay.id, side, s), group)
+      }
+    />
+  );
+}
+
+/** A shape's entrance / exit: the same two groups; a progress bar can only fade. */
+export function ShapeAnimSection({
+  model,
+  shape,
+  apply,
+}: {
+  model: EditorModel;
+  shape: ShapeLayer;
+  apply: (next: EditorModel, group?: string) => void;
+}) {
+  return (
+    <AnimPicker
+      item={shape}
+      text={false}
+      typewriterOk
+      only={shape.kind === "progress" ? PROGRESS_ANIMS : undefined}
+      onAnim={(side, anim) => apply(setShapeAnim(model, shape.id, side, anim))}
+      onSeconds={(side, s, group) =>
+        apply(setShapeAnimSeconds(model, shape.id, side, s), group)
       }
     />
   );

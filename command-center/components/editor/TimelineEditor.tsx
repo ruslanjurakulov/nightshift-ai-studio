@@ -21,6 +21,7 @@ import {
   Plus,
   Redo2,
   Scissors,
+  Shapes,
   Music,
   Trash2,
   Type,
@@ -146,12 +147,29 @@ import {
   updateOverlay,
 } from "@/lib/editorOverlay";
 import { OverlayInspector, OverlayLayer, OverlayPicker } from "./OverlayPanel";
+import { ShapeInspector, ShapeLayerView, ShapeMoveSection, ShapePicker } from "./ShapePanel";
+import {
+  addShape,
+  canAddShape,
+  moveShape,
+  nudgeShape,
+  removeShape,
+  resetShape,
+  setShapeKind,
+  shapeAddCheck,
+  shapeBudget,
+  shapeWarnings,
+  shapesAt,
+  shapesOf,
+  updateShape,
+} from "@/lib/editorShapeModel";
+import { MAX_SHAPES, type ShapeKind } from "@/lib/editorShapes";
 import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
 import { ClipPicture, LookFilterDefs } from "./ClipPicture";
 import { ClipFxSections } from "./ClipFxSections";
 import { ClipSpeedSection, OverlayMoveSection, RenderBudgetNotice } from "./ClipMotionSections";
 import { OverlayChromaSection, SoundCleanSection } from "./CleanSections";
-import { OverlayAnimSection, TextAnimSection } from "./AnimPicker";
+import { OverlayAnimSection, ShapeAnimSection, TextAnimSection } from "./AnimPicker";
 import { ANIM_REST, animFrame, playsNatively, writtenText, type AnimFrame } from "@/lib/editorFxPreview";
 import { trimLimited } from "@/lib/editorMotion";
 import { settleAll, type SettleChange } from "@/lib/editorSettle";
@@ -322,6 +340,12 @@ export function TimelineEditor({
   const [adding, setAdding] = useState(false);
   const [addingSound, setAddingSound] = useState(false);
   const [addingOverlay, setAddingOverlay] = useState(false);
+  const [addingShape, setAddingShape] = useState(false);
+  // Why the last "Add to video" was refused by the export's budgets (said politely, in words).
+  const [shapeRefusal, setShapeRefusal] = useState<"memory" | "time" | null>(null);
+  // Where focus goes once the render that follows a shape add / delete is there.
+  const shapeFocus = useRef<"frame" | "add" | null>(null);
+  const addShapeButton = useRef<HTMLButtonElement>(null);
   // Where focus goes once the render that follows an overlay add / delete is there
   // (the picker unmounts, the inspector goes): never back to <body>.
   const overlayFocus = useRef<"frame" | "add" | null>(null);
@@ -340,6 +364,8 @@ export function TimelineEditor({
   const speech = useMemo(() => speechSpans(model), [model]);
   const overlays = overlaysOf(model);
   const overlayWarns = overlayWarnings(model);
+  const shapes = shapesOf(model);
+  const shapeWarns = shapeWarnings(model);
   const isVideoAsset = (id: string) => assets[id]?.kind === "video";
 
   // ── local draft: kept on this device, offered back on the next open ────────
@@ -422,6 +448,18 @@ export function TimelineEditor({
     target?.focus();
   }, [model, selected]);
 
+  useEffect(() => {
+    const where = shapeFocus.current;
+    if (!where) return;
+    shapeFocus.current = null;
+    const target =
+      where === "add"
+        ? addShapeButton.current
+        : (document.querySelector<HTMLElement>("[data-shape-frame]") ??
+          document.querySelector<HTMLElement>("[data-shape-heading]"));
+    target?.focus();
+  }, [model, selected]);
+
   // A run of small changes to one control (a slider, the arrow keys) is ONE undo step.
   const burst = useRef<{ key: string; at: number; out: EditorModel } | null>(
     null,
@@ -464,6 +502,11 @@ export function TimelineEditor({
     if (
       selected?.kind === "overlay" &&
       !overlaysOf(model).some((x) => x.id === selected.id)
+    )
+      setSelected(null);
+    if (
+      selected?.kind === "shape" &&
+      !shapesOf(model).some((x) => x.id === selected.id)
     )
       setSelected(null);
   }, [model, selected]);
@@ -579,7 +622,7 @@ export function TimelineEditor({
 
   // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
   const view = useTimelineView({ total, playhead });
-  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; } });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; } });
   const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
 
   async function refreshLinks() {
@@ -726,6 +769,12 @@ export function TimelineEditor({
     selected?.kind === "overlay"
       ? (overlays.find((x) => x.id === selected.id) ?? null)
       : null;
+  const shape =
+    selected?.kind === "shape"
+      ? (shapes.find((x) => x.id === selected.id) ?? null)
+      : null;
+  const shapeNumber = (id: string) =>
+    Math.max(0, shapes.findIndex((x) => x.id === id)) + 1;
   const srcLen = (c: { asset_id: string }) =>
     assets[c.asset_id]?.durationS ?? null;
   /** Only a video has a length an overlay must fit in. */
@@ -881,6 +930,29 @@ export function TimelineEditor({
     setSelected({ kind: "overlay", id: out.id });
     setAddingOverlay(false);
     overlayFocus.current = "frame";
+  }
+
+  function onAddShape(kind: ShapeKind, label: string) {
+    const out = addShape(model, kind, playhead < picture ? playhead : 0, label);
+    if (!out) {
+      const why = shapeAddCheck(model, kind, playhead < picture ? playhead : 0);
+      setShapeRefusal(why === "time" ? "time" : "memory");
+      return;
+    }
+    setShapeRefusal(null);
+    apply(out.model);
+    setSelected({ kind: "shape", id: out.id });
+    setAddingShape(false);
+    shapeFocus.current = "frame";
+  }
+
+  /** The bar's span: the whole video, or the clip under the playhead. */
+  function onShapeSpan(which: "video" | "clip") {
+    if (!shape) return;
+    const c = which === "clip" ? clipAt(model, Math.min(playhead, Math.max(0, picture - 0.001)))?.clip : undefined;
+    const start = c ? c.start_s : 0;
+    const end = c ? clipEnd(c) : picture;
+    if (end > start) apply(updateShape(model, shape.id, { start_s: start, end_s: end }));
   }
 
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
@@ -1173,6 +1245,24 @@ export function TimelineEditor({
                   }}
               />
             ) : null}
+            {shapes.length ? (
+              <ShapeLayerView
+                shapes={shapesAt(model, playhead)}
+                selectedId={shape?.id ?? null}
+                numberOf={shapeNumber}
+                playhead={playhead}
+                frame={model}
+                fps={model.fps}
+                onNudge={(id, dx, dy, big) =>
+                  applyBurst(nudgeShape(model, id, dx, dy, big ? 0.05 : 0.01), `${id}:nudge`)
+                }
+                onDrag={(id, x, y) => {
+                  if (!dragBase.current) dragBase.current = model;
+                  setModel(updateShape(model, id, { x, y }));
+                }}
+                onDragEnd={onTrimEnd}
+              />
+            ) : null}
             {cuesAt(model, playhead).map((c) => {
               const st = captionsOf(model)?.style;
               // An animated style has its own approximate preview; a plain caption keeps the one it always had.
@@ -1241,6 +1331,7 @@ export function TimelineEditor({
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
             {overlays.length ? ` ${te.overlay.previewNote}` : ""}
+            {shapes.length ? ` ${te.shapes.previewNote}` : ""}
             {at && !playsNatively(at.clip) ? ` ${te.fx.speed.previewNote}` : ""}
             {isCaptionStyleId(captionsOf(model)?.style.preset)
               ? ` ${t.captions.animated.previewNote}`
@@ -1305,6 +1396,7 @@ export function TimelineEditor({
             texts={model.texts}
             sounds={model.sounds}
             overlays={overlays}
+            shapes={shapes}
             total={total}
             fps={model.fps}
             playhead={playhead}
@@ -1352,6 +1444,20 @@ export function TimelineEditor({
             </button>
             <button
               type="button"
+              ref={addShapeButton}
+              onClick={() => setAddingShape((a) => !a)}
+              aria-expanded={addingShape}
+              disabled={!canAddShape(model)}
+              aria-describedby={
+                canAddShape(model) ? undefined : `${ids}-shape-full`
+              }
+              className={quietBtn}
+            >
+              <Shapes className="size-3.5" aria-hidden />
+              {te.shapes.add}
+            </button>
+            <button
+              type="button"
               onClick={onAddText}
               disabled={model.texts.length >= MAX_EDITOR_TEXTS}
               className={quietBtn}
@@ -1363,14 +1469,47 @@ export function TimelineEditor({
           {!canAddOverlay(model) ? (
             <p
               id={`${ids}-overlay-full`}
+              role="status"
               className="m-0 text-xs text-[var(--color-muted)]"
             >
-              {fmt(te.overlay.full, { max: MAX_OVERLAYS })}
+              {overlays.length >= MAX_OVERLAYS
+                ? fmt(te.overlay.full, { max: MAX_OVERLAYS })
+                : overlays.length + shapes.length >= MAX_OVERLAYS
+                  ? fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })
+                  : te.shapes.pictureMemory}
             </p>
           ) : !canAddOverlay(model, "video", isVideoAsset) ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.overlay.videosFull, { max: MAX_OVERLAY_VIDEOS })}
             </p>
+          ) : null}
+          {!canAddShape(model) ? (
+            <p
+              id={`${ids}-shape-full`}
+              role="status"
+              className="m-0 text-xs text-[var(--color-muted)]"
+            >
+              {shapes.length >= MAX_SHAPES
+                ? fmt(te.shapes.shapesFull, { max: MAX_SHAPES })
+                : fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })}
+            </p>
+          ) : null}
+          {shapeRefusal ? (
+            <p role="status" className="m-0 text-xs text-[var(--color-warn)]" data-testid="shape-refused">
+              {shapeRefusal === "memory"
+                ? fmt(te.shapes.budgetMemory, {
+                    need: Math.round(shapeBudget(model).memory / 1048576),
+                    max: Math.round(shapeBudget(model).memoryMax / 1048576),
+                  })
+                : fmt(te.shapes.budgetTime, {
+                    work: Math.round(shapeBudget(model).work),
+                    length: Math.round(total),
+                    allowed: Math.round(shapeBudget(model).workMax),
+                  })}
+            </p>
+          ) : null}
+          {addingShape ? (
+            <ShapePicker onAdd={onAddShape} onClose={() => { setAddingShape(false); setShapeRefusal(null); }} />
           ) : null}
           {addingOverlay ? (
             <OverlayPicker
@@ -1509,10 +1648,52 @@ export function TimelineEditor({
                     ? fmt(te.overlay.heading, {
                         n: overlayNumber(overlay.id),
                       })
-                    : te.timeline
+                    : shape
+                      ? fmt(te.shapes.heading, {
+                          n: shapeNumber(shape.id),
+                          kind: te.shapes.kinds[shape.kind],
+                        })
+                      : te.timeline
           }
         >
-          {overlay ? (
+          {shape ? (
+            <ShapeInspector
+              key={shape.id}
+              n={shapeNumber(shape.id)}
+              total={shapes.length}
+              shape={shape}
+              warning={shapeWarns[shape.id] ?? null}
+              budgetPct={Math.round(
+                100 *
+                  Math.max(
+                    shapeBudget(model).memory / shapeBudget(model).memoryMax,
+                    shapeBudget(model).work / shapeBudget(model).workMax,
+                  ),
+              )}
+              onChange={(patch, key) => {
+                const next = updateShape(model, shape.id, patch);
+                if (key) applyBurst(next, key);
+                else apply(next);
+              }}
+              onKind={(k) => apply(setShapeKind(model, shape.id, k, te.shapes.labels.subscribe))}
+              onSpan={onShapeSpan}
+              onReset={() => apply(resetShape(model, shape.id))}
+              onToPlayhead={() =>
+                apply(updateShape(model, shape.id, { start_s: playhead }))
+              }
+              onLayer={(by) => apply(moveShape(model, shape.id, by))}
+              extra={
+                <>
+                  <ShapeMoveSection model={model} shape={shape} apply={apply} />
+                  <ShapeAnimSection model={model} shape={shape} apply={apply} />
+                </>
+              }
+              onDelete={() => {
+                shapeFocus.current = "add";
+                apply(removeShape(model, shape.id));
+              }}
+            />
+          ) : overlay ? (
             <>
             <OverlayInspector
               key={overlay.id}

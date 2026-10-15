@@ -58,6 +58,14 @@
       "items": {
         "$ref": "#/$defs/overlay"
       }
+    },
+    "shapes": {
+      "type": "array",
+      "maxItems": 12,
+      "description": "Drawn stickers over the composited picture: an arrow, a circle or ring, a rectangle, a star, a pill label, a line or a progress bar. Drawn after the overlays (so on top of the pictures), under the texts. At most 12, and overlays and shapes together at most 16 (checked in modules/timeline.py). Absent or empty = none, and the render is the one a document without the field gets.",
+      "items": {
+        "$ref": "#/$defs/shape"
+      }
     }
   },
   "$defs": {
@@ -1040,6 +1048,185 @@
           "minimum": 0,
           "maximum": 1,
           "default": 0.5
+        }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "start_s",
+        "end_s"
+      ],
+      "description": "A drawn sticker from start_s to end_s. The fields each kind takes: arrow: x y w dir; circle: x y w outline; rect: x y w outline aspect; star: x y w outline; pill: x y w outline text (required); line: x y w thick; progress: edge thick (frame-wide, fills from the left across start_s..end_s). Everything else (id, kind, start_s, end_s, color, opacity, anim_*, move where listed) is common. end_s > start_s and at least one frame are checked in modules/timeline.py.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "arrow",
+            "circle",
+            "rect",
+            "star",
+            "pill",
+            "line",
+            "progress"
+          ],
+          "description": "Which shape. The fields each kind takes are listed in the description; a field that does not apply to the kind is refused."
+        },
+        "start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#FFD60A",
+          "description": "The shape's colour (a pill's text takes a contrasting one unless the pill is outlined, then the colour too)."
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "0 = invisible (renders nothing), 1 = opaque."
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.5,
+          "description": "Centre, as a fraction of the frame width."
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.5,
+          "description": "Centre, as a fraction of the frame height."
+        },
+        "w": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 1.0,
+          "default": 0.3,
+          "description": "Width, as a fraction of the frame width; the height follows the kind."
+        },
+        "outline": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 0.5,
+          "description": "Stroke as a fraction of the shorter side; 0 or absent = solid. Circle, rect, star and pill."
+        },
+        "aspect": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 5.0,
+          "default": 1.6,
+          "description": "Width / height. Rect only."
+        },
+        "dir": {
+          "enum": [
+            "right",
+            "left",
+            "up",
+            "down"
+          ],
+          "default": "right",
+          "description": "Where the arrow points. Arrow only."
+        },
+        "thick": {
+          "type": "number",
+          "minimum": 0.002,
+          "maximum": 0.05,
+          "description": "Thickness as a fraction of the frame HEIGHT (defaults: line 0.008, progress 0.012). Line and progress only."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "The label: at most 24 characters, not blank, no control or invisible formatting characters (checked in modules/timeline.py). Pill only; required there. Rasterised into the shape, never written into a filter graph."
+        },
+        "edge": {
+          "enum": [
+            "bottom",
+            "top"
+          ],
+          "default": "bottom",
+          "description": "Which edge of the frame the bar sits on. Progress only."
+        },
+        "anim_in": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Entrance animation; a progress bar takes only fade."
+        },
+        "anim_out": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "pop"
+          ],
+          "description": "Exit animation; a progress bar takes only fade."
+        },
+        "anim_in_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the entrance; needs anim_in."
+        },
+        "anim_out_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "default": 0.4,
+          "description": "Length of the exit; needs anim_out. In + out never exceed the time the item is shown."
+        },
+        "move": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "to"
+          ],
+          "description": "Two-keyframe move: the shape's own x, y and w at start_s go linearly to these at end_s. No opacity here (fade with anim_in / anim_out). Not on a progress bar.",
+          "properties": {
+            "to": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "w": {
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 1.0
+                }
+              }
+            }
+          }
         }
       }
     }
