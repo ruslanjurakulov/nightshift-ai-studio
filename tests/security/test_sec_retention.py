@@ -550,6 +550,9 @@ def test_two_workers_claiming_at_once_get_a_mail_only_once(conn, sc):
         c2.close()
         with as_superuser(conn, commit=True) as s:
             s.rows("delete from public.email_deliveries where ref = %s returning 1", [f"{ref}:held"])
+            # The Telegram channel's fan-out (0102) may have queued a message for the same notification.
+            if s.value("select to_regclass('public.notification_outbox') is not null"):
+                s.rows("delete from public.notification_outbox where ref = %s returning 1", [f"{ref}:held"])
             s.rows("delete from public.notifications where ref = %s returning 1", [f"{ref}:held"])
             s.rows("delete from public.videos where video_id = %s returning 1", [ref])
     assert len(results["one"]) == 1 and results["two"] == [], results
