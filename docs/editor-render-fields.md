@@ -542,23 +542,46 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
   too). A shape never lengthens the timeline (what runs past the picture is cut).
 * **Memory budget** (`shape_art.memory_estimate_bytes`, `memoryEstimateBytes` in `lib/editorShapes.ts`,
   refused early by both validators as "shapes: drawing them in a WxH frame would need about N MB to
-  render, but M MB is the most the export has ... (memory)"). Measured with the bundled ffmpeg 7.0.2 under
-  the export's own limit (2 GiB of address space, `jobs=1`, a timeout set: the worker's path) by binary
-  search on the limit, with a circle at each size: a plain clip needs 905 MiB at 1080p60 (923 at 30 fps; a
-  one-second clip less) and 1657 MiB at 4K60; every shape layer adds about 55 MiB whatever its size, every
-  pixel of its PNG about 9 bytes, and the first layer about 13 bytes per pixel of the frame. The estimate
-  is that fit rounded up (it was checked against 14 measured points, never below one and within 15% + 60 MiB
-  of each) and the budget keeps 150 MiB under the 2 GiB. What it decides: 12 circles at `w` 0.6 in 1080p
-  pass (1738 MiB; 1675 measured), at 1.0 they are refused (1981; 1951 measured passed on a quiet box and a
-  reviewer's loaded one failed); in 4K two small shapes pass, a full-width one, and three or more, do not
-  (measured: 2 layers of `w` 1.0 and 5 of 0.5 failed). A shape's PNG is its whole picture at the widest it
-  ever is (a move to a bigger `w` scales down from it) and a PILL is charged as a box of aspect 0.9 (an upper
-  bound that needs no font). It bounds the SHAPES' own cost beyond a plain clip; a clip that also
+  render [with the picture overlays], but M MB is the most the export has ... (memory)"). It is charged
+  to a document WITH shapes; one without is budgeted by nothing new. Measured with the bundled ffmpeg
+  7.0.2 under the export's own limit (2 GiB of address space, `jobs=1`, a timeout set: the worker's path)
+  by binary search on the limit, about 80 documents of circles in five frame sizes,
+  with and without full-frame pictures.
+  * **Why the layers' threads are pinned.** Left automatic, what ffmpeg starts per layer grows with the
+    machine's cores: a decoder with frame threads and a filter thread pool for every PNG (62 threads at twelve
+    shapes on four cores, 13 pinned), each thread a stack of address space under the limit. The same twelve
+    circles at `w` 0.8 in 1080p60 needed 1767 MiB on four cores and 1346 on one, so a fit on one machine was
+    the CI runner's exit 187 (a libx264 malloc) on another. A command with shapes therefore runs the filter
+    graph (`-filter_threads`, `-filter_complex_threads`) and the decoder of every picture and shape input
+    (`-threads`) on ONE thread (`render_spec.cap_inputs(single_thread_inputs=...)`); the clips' input and the
+    encoder keep theirs. The same document needs 1351 MiB on one core, 1378 on two and 1351 on four. A
+    document without shapes keeps exactly the options it has always had (a test compares them).
+  * **The fit** (pinned): up to 2560x1440 about 354 MiB + 273 bytes per pixel of the frame, above it (the encoder
+    has 2 threads and a lookahead of 20, `ffmpeg_limits.LARGE_OUTPUT_PX`) about 24 MiB + 200 bytes per pixel; plus
+    21 MiB per layer and 9 bytes per pixel of its PNG. A PICTURE OVERLAY is a layer like a shape: it is charged
+    its box, as wide as it ever is (a move to a bigger `w` counts) and as tall as the frame, because the
+    document does not know the picture's own size. A picture whose own pixels are many times its box (a big photo
+    shrunk to a corner) is therefore not covered; it stays held to the decoder's cap as before. The constants
+    are that fit rounded UP by about 100 MiB (never below any of the 25 points the test lists), and the budget keeps 150
+    MiB under the 2 GiB besides: every document the budget accepts had been measured at 1776 MiB or less.
+  * **What it decides** (1080p60 unless said): twelve circles at `w` 0.8, with 1, 2 or 4 full pictures at 0.85,
+    eight shapes with eight full pictures, and 1440x2560 with twelve circles at 0.6 or twelve mixed kinds at
+    0.75 all pass and are rendered under the limit by `tests/test_editor_shapes.py` (what the reviewer and the CI
+    runner had seen fail before the threads were pinned); 1440p with twelve circles at 1.0, eight shapes at 0.8
+    with four full pictures, and eight at 1.0 with eight full pictures are refused. A sampled test finds, for five
+    frames and a few mixes, the widest shapes the validator accepts and renders each under the limit.
+  * **Above 1440p** (3840x2160, 2160x3840): the plain clip alone needs about 1650-1700 MiB, so only a few small
+    shapes pass (three circles at `w` 0.2 do, four do not, twelve at 0.3 need 2068). That over-refusal is
+    deliberate and safe: the studio offers 1080-based presets, so a 4K frame comes from a saved document or the
+    API.
+  A shape's PNG is its whole picture at the widest it ever is (a move to a bigger `w` scales down from it) and a
+  PILL is charged as a box of aspect 0.9 (an upper bound that needs no font). A clip that also
   cross-fades or blurs at a large frame (their own limits) is not added up with it. A PNG is not cut to the
   frame (a 16:9 circle at `w` 1.0 is 1920x1920, taller than the frame): cutting it would change the layout
   of a shape that moves or pops, so the budget charges the real size instead. Where the budget is met the
   editor stops: a shape stops growing at the limit, the one being added is narrowed to fit or refused with
-  the numbers (role="status"), the inspector says how much of the budget the shapes use once it is 60% or
+  the numbers (role="status"), a picture is narrowed or not added when the shapes leave it no room (it says
+  so), the inspector says how much of the budget the shapes use once it is 60% or
   more, and settling after a frame change narrows the widest shapes (then removes the last, said, undoable).
 * **Render time** is charged like interpolation and stabilising, against the worker's timeout
   (`render_timeout_s` = min(5400, 3 x length + 120)): per layer, per OUTPUT frame, whatever the layer's span

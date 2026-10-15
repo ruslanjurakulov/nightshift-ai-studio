@@ -150,7 +150,7 @@ INPUT_PROTOCOLS = ("-protocol_whitelist", "file")
 
 
 def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = (),
-               out_pixels: Optional[int] = None) -> List[str]:
+               out_pixels: Optional[int] = None, single_thread_inputs: Sequence[str] = ()) -> List[str]:
     """``cmd`` as an editor export runs it: before every ``-i``, the
     protocol whitelist (``INPUT_PROTOCOLS``), the decoder's frame cap
     (``-max_pixels``: the video cap for an input in ``video_inputs``, the
@@ -164,13 +164,20 @@ def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = (),
     commands are capped: the pipeline's own renders keep their byte-pinned
     argv (tests/test_render_spec_legacy.py)."""
     videos = set(video_inputs)
-    out: List[str] = [cmd[0], *ffmpeg_limits.thread_options()]
+    single = set(single_thread_inputs)
+    # A command with drawn shapes has one input and one filter chain per layer, and what ffmpeg starts per
+    # layer grows with the machine's cores (a decoder and a filter thread pool for each; each thread is a
+    # stack of address space under the limit: 62 threads at twelve shapes on four cores, 13 pinned, 400 MiB
+    # of the 2 GiB). So its layers' inputs (the drawn shapes and the pictures: nothing to run in parallel in
+    # a looped still) and its filter graph use one thread each, and what it needs no longer depends on the
+    # machine. A command without shapes keeps exactly the thread options it has always had.
+    out: List[str] = [cmd[0], *ffmpeg_limits.thread_options(1 if single else None)]
     for i, tok in enumerate(cmd[1:-1], start=1):
         if tok == "-i":
             src = cmd[i + 1]
             cap = DECODE_VIDEO_MAX_PIXELS if src in videos else DECODE_MAX_PIXELS
-            out += ["-max_pixels", str(decoder_max_pixels(cap)), *ffmpeg_limits.decode_thread_options(),
-                    *INPUT_PROTOCOLS]
+            out += ["-max_pixels", str(decoder_max_pixels(cap)),
+                    *ffmpeg_limits.decode_thread_options(1 if src in single else None), *INPUT_PROTOCOLS]
         out.append(tok)
     # The encoder's threads, right before the output (the last argument).
     return out + [*ffmpeg_limits.encode_thread_options(out_pixels=out_pixels), cmd[-1]]
@@ -1660,5 +1667,7 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     # frame is skipped, as it always was. A video overlay is held to the video
     # decoder cap, a picture to the still one.
     return cap_inputs(cmd, out_pixels=spec.width * spec.height,
-                      video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO])
+                      video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO],
+                      single_thread_inputs=[o.path for o in spec.picture_overlays]
+                      if any(o.shape is not None for o in spec.picture_overlays) else ())
 

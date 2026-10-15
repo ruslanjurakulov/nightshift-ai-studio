@@ -97,6 +97,8 @@ export const shapesEn = {
   settledNarrowed: "Shape {n} was made narrower so the export can still draw all the shapes.",
   settledRemoved:
     "Shape {n} was removed because the export could not draw all the shapes at this size. Undo brings it back.",
+  pictureMemory:
+    "No more pictures fit: together with the shapes the export would run out of memory at this frame size. Make a shape or a picture smaller, or remove one.",
   layersFull:
     "Pictures and shapes together can fill at most {max} layers, so no more can be added.",
 };

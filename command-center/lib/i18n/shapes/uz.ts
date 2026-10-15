@@ -95,6 +95,8 @@ export const shapesUz: typeof shapesEn = {
   settledNarrowed: "Eksport barcha shakllarni chiza olishi uchun {n}-shakl torroq qilindi.",
   settledRemoved:
     "Bu oʻlchamda eksport barcha shakllarni chiza olmasligi uchun {n}-shakl oʻchirildi. «Bekor qilish» uni qaytaradi.",
+  pictureMemory:
+    "Boshqa rasm sigʻmaydi: shakllar bilan birga eksportga bu kadr oʻlchamida xotira yetmaydi. Shakl yoki rasmni kichraytiring yoki bittasini oʻchiring.",
   layersFull:
     "Rasmlar va shakllar birgalikda koʻpi bilan {max} qatlam egallaydi, shuning uchun yana qoʻshib boʻlmaydi.",
 };

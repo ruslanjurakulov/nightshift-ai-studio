@@ -25,6 +25,7 @@ command-center/tests/editor-shapes*.test.ts); a pill's width is estimated there.
 """
 
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -225,37 +226,75 @@ class DocumentTestCase(unittest.TestCase):
         self.assertEqual(sa.MAX_LAYERS, rs.MAX_PICTURE_OVERLAYS)
 
     def test_the_memory_budget_is_the_measured_fit_and_refuses_early_with_a_number(self):
-        """Measured (RLIMIT_AS binary search, ffmpeg 7.0.2, jobs=1, a timeout set, see shape_art.py): a plain
-        1080p60 clip needs 905 MiB, 4K60 1657; every layer adds ~55 and every PNG pixel ~9 bytes. The estimate is
-        that fit rounded up; the budget keeps 150 MiB under the 2 GiB. Points measured to pass or fail:"""
+        """Measured (RLIMIT_AS binary search, ffmpeg 7.0.2, jobs=1, a timeout set, the layers' threads pinned,
+        see shape_art.py): the estimate is that fit rounded up by about 100 MiB, so never below a measured point;
+        the budget keeps 150 MiB under the 2 GiB besides. Points measured (minimum MiB the export needed):"""
         from modules import ffmpeg_limits
         self.assertEqual(sa.MEM_LIMIT_BYTES, ffmpeg_limits.CHILD_MEM_BYTES)
-        circles = lambda n, w: [{"kind": "circle", "w": w}] * n
-        mib = lambda shapes, w, h: sa.memory_estimate_bytes(shapes, w, h) / sa.MIB
+        self.assertEqual(sa.MEM_LARGE_FRAME_PX, ffmpeg_limits.LARGE_OUTPUT_PX)
+        self.assertEqual(sa.PICTURE_W_DEFAULT, tl.OVERLAY_DEFAULTS["w"])
         budget = sa.memory_budget_bytes() / sa.MIB
-        # (frame, shapes) -> measured minimum address space in MiB (the estimate must not be below it)
-        measured = [((1920, 1080), circles(0, 0.3), 905), ((1920, 1080), circles(1, 0.3), 978),
-                    ((1920, 1080), circles(4, 0.3), 1162), ((1920, 1080), circles(12, 0.3), 1566),
-                    ((1920, 1080), circles(4, 0.6), 1181), ((1920, 1080), circles(12, 0.6), 1675),
-                    ((1920, 1080), circles(4, 1.0), 1199), ((1920, 1080), circles(8, 1.0), 1566),
-                    ((1920, 1080), circles(12, 1.0), 1951), ((1080, 1920), circles(4, 1.0), 1181),
-                    ((1080, 1920), circles(8, 0.6), 1364), ((3840, 2160), circles(0, 0.3), 1657),
-                    ((3840, 2160), circles(1, 0.3), 1822), ((3840, 2160), circles(4, 0.3), 1969)]
-        for frame, shapes, need in measured:
-            with self.subTest(frame=frame, n=len(shapes), w=shapes[0]["w"] if shapes else None):
-                self.assertGreaterEqual(mib(shapes, *frame), need, "an estimate below what was measured")
-                self.assertLessEqual(mib(shapes, *frame), need * 1.15 + 60, "an estimate far above what was measured")
-        # the coordinator's failures (exit 187 under the worker's own limit) are refused, the passes are allowed
-        self.assertGreater(mib(circles(2, 1.0), 3840, 2160), budget)        # 4K60, two full-width: failed
-        self.assertGreater(mib(circles(5, 0.5), 3840, 2160), budget)        # 4K60, five at 0.5: failed
-        self.assertGreater(mib(circles(12, 1.0), 1920, 1080), budget)       # 1080p60, twelve at 1.0: failed
-        self.assertGreater(mib(circles(8, 1.0), 2560, 1440), budget)        # 1440p, eight at 1.0: failed
-        self.assertLess(mib(circles(12, 0.6), 1920, 1080), budget)          # 1080p60, twelve at 0.6: passed
-        self.assertLess(mib(circles(12, 0.8), 1920, 1080), budget)          # rendered here in 2 GiB
-        self.assertLess(mib(circles(2, 0.2), 3840, 2160), budget)           # rendered here in 2 GiB
-        got = problems(doc_with([sh(id=f"s{i}", kind="circle", w=1.0) for i in range(12)], width=1920, height=1080))
+
+        def mib(frame, n, w, pics=0, kind="circle", pic_w=1.0):
+            return sa.memory_estimate_bytes([{"kind": kind, "w": w}] * n, *frame, [{"w": pic_w}] * pics) / sa.MIB
+
+        # (frame, shapes, pictures, measured)
+        measured = [((1920, 1080), 12, 0.6, 0, 1337), ((1920, 1080), 12, 0.8, 0, 1378), ((1920, 1080), 12, 1.0, 0, 1563),
+                    ((1920, 1080), 6, 0.6, 2, 1206), ((1920, 1080), 12, 0.85, 1, 1431), ((1920, 1080), 12, 1.0, 4, 1723),
+                    ((1920, 1080), 8, 1.0, 8, 1643), ((1080, 1920), 12, 0.6, 0, 1206), ((1080, 1920), 12, 0.85, 1, 1293),
+                    ((2560, 1440), 3, 1.0, 0, 1512), ((2560, 1440), 6, 1.0, 0, 1775), ((2560, 1440), 12, 0.6, 0, 1862),
+                    ((2560, 1440), 12, 0.3, 0, 1600), ((2560, 1440), 8, 0.6, 4, 1856), ((2560, 1440), 6, 0.6, 2, 1643),
+                    ((1440, 2560), 12, 0.6, 0, 1687), ((1440, 2560), 12, 0.75, 0, 1696), ((1440, 2560), 12, 1.0, 0, 1803),
+                    ((1440, 2560), 8, 0.6, 4, 1723), ((1440, 2560), 12, 0.6, 4, 1818), ((3840, 2160), 1, 0.2, 0, 1776),
+                    ((3840, 2160), 3, 0.2, 0, 1776), ((3840, 2160), 6, 0.3, 0, 1856), ((3840, 2160), 12, 0.3, 0, 2068),
+                    ((2160, 3840), 12, 0.3, 0, 1935)]
+        for frame, n, w, pics, need in measured:
+            with self.subTest(frame=frame, n=n, w=w, pictures=pics):
+                est = mib(frame, n, w, pics)
+                self.assertGreaterEqual(est, need, "an estimate below what was measured")
+                self.assertLessEqual(est, need * 1.2 + 120, "an estimate far above what was measured")
+        # the documents the budget accepts all fit the limit with room to spare in what was measured
+        self.assertLessEqual(max(need for frame, n, w, pics, need in measured
+                                 if mib(frame, n, w, pics) <= budget), 1900)
+        # refused early: past the budget (several of them rendered in 2 GiB here, the estimate is not a prophecy)
+        self.assertGreater(mib((2560, 1440), 12, 1.0), budget)               # measured 2228: failed
+        self.assertGreater(mib((3840, 2160), 12, 0.3), budget)               # 2068: failed
+        self.assertGreater(mib((2560, 1440), 8, 1.0, 8), budget)             # more than the box has
+        self.assertGreater(mib((2560, 1440), 8, 0.8, 4), budget)             # the reviewer's 1440p overlay mix: refused
+        # accepted: every document the reviewer and CI found failing without the pinned threads (rendered, under
+        # the worker's own limit, by FuzzTestCase below)
+        for args in (((1440, 2560), 12, 0.6), ((1440, 2560), 12, 0.75, 0, "rect"), ((1440, 2560), 12, 0.75, 0, "star"),
+                     ((1920, 1080), 12, 0.8), ((1920, 1080), 12, 0.85, 1), ((1920, 1080), 12, 0.85, 2),
+                     ((1920, 1080), 12, 0.85, 4), ((1920, 1080), 8, 1.0, 8)):
+            with self.subTest(accepted=args):
+                self.assertLess(mib(*args), budget)
+        got = problems(doc_with([sh(id=f"s{i}", kind="circle", w=1.0) for i in range(12)], width=2560, height=1440))
         self.assertTrue(any("MB to render" in p and "(memory)" in p for p in got), got)
         self.assertEqual(problems(doc_with([sh(id=f"s{i}", kind="circle", w=0.6) for i in range(12)], width=1920, height=1080)), [])
+
+    def test_picture_overlays_are_charged_as_layers_in_the_budget(self):
+        """A picture overlay is one more input of the final pass: its box (as wide as it ever is, as tall as the
+        frame: the document does not know the picture's own size) and a layer's fixed cost, shapes or not."""
+        frame = (1920, 1080)
+        one = lambda *pics: sa.memory_estimate_bytes([{"kind": "circle", "w": 0.5}], *frame, list(pics))
+        none = one()
+        full = one({"w": 1.0}) - none
+        self.assertEqual(full, sa.MEM_PER_LAYER_BYTES + sa.MEM_PER_PNG_PX * 1920 * 1080)
+        self.assertEqual(sa.picture_pixels({}, *frame), round(0.3 * 1920) * 1080, "the default width")
+        self.assertEqual(sa.picture_pixels({"w": 0.2, "move": {"to": {"w": 0.9}}}, *frame), round(0.9 * 1920) * 1080,
+                         "at the widest it ever is")
+        self.assertEqual(sa.picture_pixels("x", *frame), sa.picture_pixels({}, *frame), "never raises on a bad entry")
+        # a narrower picture costs less; a dict-less entry is not a picture
+        self.assertLess(one({"w": 0.2}) - none, full)
+        self.assertEqual(sa.memory_estimate_bytes([{"kind": "circle", "w": 0.5}], *frame, ["x", None, 3]), none)
+        # both validators count them: eight shapes at 1.0 pass in 1080p alone, 16 full pictures with twelve do not
+        pics = lambda n: [{"id": f"o{i}", "asset_id": PIC, "start_s": 0, "end_s": 2, "w": 1.0} for i in range(n)]
+        circles = lambda n, w: [sh(id=f"s{i}", kind="circle", w=w, start_s=0, end_s=2) for i in range(n)]
+        self.assertEqual(problems(doc_with(circles(8, 1.0), overlays=pics(8), width=1920, height=1080, fps=60, out_s=4)), [])
+        got = problems(doc_with(circles(8, 1.0), overlays=pics(8), width=2560, height=1440, fps=60, out_s=4))
+        self.assertTrue(any("with the picture overlays" in p and "(memory)" in p for p in got), got)
+        # with no shapes a document is not budgeted: the pictures alone are what they always were
+        self.assertEqual(problems(doc_with(None, overlays=pics(8), width=2560, height=1440, fps=60, out_s=4)), [])
 
     def test_a_pill_is_charged_as_a_box_that_needs_no_font(self):
         pill = {"kind": "pill", "w": 0.3, "text": "Hi"}
@@ -290,20 +329,26 @@ class DocumentTestCase(unittest.TestCase):
         cases = json.loads((ROOT / "samples" / "shape_budget.json").read_text(encoding="utf-8"))["cases"]
         for c in cases:
             w, h = c["frame"]
-            self.assertEqual(sa.memory_estimate_bytes(c["shapes"], w, h), c["memory"])
+            self.assertEqual(sa.memory_estimate_bytes(c["shapes"], w, h, c.get("overlays", [])), c["memory"])
             self.assertAlmostEqual(sa.work_seconds(c["shapes"], c["fps"], w, h, c["length"]), c["work"], places=9)
+            if "accepted" in c:
+                self.assertEqual(c["memory"] <= sa.memory_budget_bytes(), c["accepted"], c["name"])
+                self.assertEqual(c["budget"], sa.memory_budget_bytes())
         ts = SHAPES_TS.read_text(encoding="utf-8")
-        for const, value in (("MEM_PLAIN_FIXED_BYTES", sa.MEM_PLAIN_FIXED_BYTES), ("MEM_PER_LAYER_BYTES", sa.MEM_PER_LAYER_BYTES),
+        for const, value in (("MEM_FIXED_BYTES", sa.MEM_FIXED_BYTES), ("MEM_PER_LAYER_BYTES", sa.MEM_PER_LAYER_BYTES),
+                             ("MEM_LARGE_FIXED_BYTES", sa.MEM_LARGE_FIXED_BYTES),
                              ("MEM_LIMIT_BYTES", sa.MEM_LIMIT_BYTES), ("MEM_MARGIN_BYTES", sa.MEM_MARGIN_BYTES)):
             m = re.search(rf"export const {const} = (\d+) \* MIB;", ts)
             self.assertEqual(int(m.group(1)) * sa.MIB, value, const)
-        for const, value in (("MEM_PLAIN_PER_FRAME_PX", sa.MEM_PLAIN_PER_FRAME_PX), ("MEM_PER_PNG_PX", sa.MEM_PER_PNG_PX),
-                             ("MEM_FIRST_LAYER_PER_FRAME_PX", sa.MEM_FIRST_LAYER_PER_FRAME_PX),
+        for const, value in (("MEM_PER_FRAME_PX", sa.MEM_PER_FRAME_PX), ("MEM_PER_PNG_PX", sa.MEM_PER_PNG_PX),
+                             ("MEM_LARGE_PER_FRAME_PX", sa.MEM_LARGE_PER_FRAME_PX), ("PICTURE_W_DEFAULT", sa.PICTURE_W_DEFAULT),
                              ("PILL_MIN_ASPECT", sa.PILL_MIN_ASPECT),
                              ("WORK_SECONDS_PER_LAYER_FRAME_1080P", sa.WORK_SECONDS_PER_LAYER_FRAME_1080P),
                              ("WORK_SECONDS_PER_PNG_MP", sa.WORK_SECONDS_PER_PNG_MP)):
             m = re.search(rf"export const {const} = ([\d.]+);", ts)
             self.assertEqual(float(m.group(1)), value, const)
+        m = re.search(r"export const MEM_LARGE_FRAME_PX = (\d+) \* (\d+);", ts)
+        self.assertEqual(int(m.group(1)) * int(m.group(2)), sa.MEM_LARGE_FRAME_PX)
 
     def test_the_shape_is_strict(self):
         for extra in ({"path": "/etc/passwd"}, {"asset_id": PIC}, {"chroma": {"color": "#00FF00"}},
@@ -520,6 +565,37 @@ class CommandTestCase(unittest.TestCase):
     @staticmethod
     def graph(cmd):
         return cmd[cmd.index("-filter_complex") + 1]
+
+    @staticmethod
+    def decode_threads(cmd):
+        """For each input, the value of the -threads option right before it."""
+        out = []
+        for i, tok in enumerate(cmd):
+            if tok == "-i":
+                j = max(k for k in range(i) if cmd[k] == "-threads")
+                out.append(cmd[j + 1])
+        return out
+
+    def test_a_command_with_shapes_pins_the_threads_of_every_layer_and_one_without_keeps_its_own(self):
+        """What ffmpeg starts per layer grows with the machine's cores (a decoder and a filter pool for each:
+        62 threads at twelve shapes on four cores, about 400 MiB of stacks under the 2 GiB limit, which is what
+        failed on the CI runner), so with shapes the layers' inputs and the graph run on one thread each and what
+        the export needs no longer depends on the machine. A document without shapes keeps exactly the options it
+        has always had."""
+        from modules import ffmpeg_limits as fl
+        pic = [{"id": "o1", "asset_id": PIC, "start_s": 0, "end_s": 2}]
+        plain = self.final(None, overlays=pic)
+        shaped = self.final([sh(kind="circle")], overlays=pic)
+        self.assertEqual(plain[plain.index("-filter_threads") + 1], str(fl.FILTER_THREADS))
+        self.assertEqual(plain[plain.index("-filter_complex_threads") + 1], str(fl.FILTER_THREADS))
+        self.assertEqual(self.decode_threads(plain), [str(fl.DECODE_THREADS)] * 2)
+        self.assertEqual(shaped[shaped.index("-filter_threads") + 1], "1")
+        self.assertEqual(shaped[shaped.index("-filter_complex_threads") + 1], "1")
+        # the clips' concatenation keeps its decoder threads; the picture and the shape take one each
+        self.assertEqual(self.decode_threads(shaped), [str(fl.DECODE_THREADS), "1", "1"])
+        # the encoder's options are the frame size's, the same either way
+        self.assertEqual(plain[-4:], shaped[-4:])
+        self.assertEqual(self.final(None)[1:5], plain[1:5], "a picture alone does not change them")
 
     def test_a_circle_is_the_picture_overlay_chain_and_nothing_else(self):
         graph = self.graph(self.final([sh(kind="circle", x=0.25, y=0.75, w=0.2)]))
@@ -744,7 +820,7 @@ class ArtTestCase(unittest.TestCase):
         spec = spec_of(doc_with([sh(kind="circle")]))
         with mock.patch.object(sa, "draw", side_effect=OSError("disk")):
             with self.assertRaises(render_backend.RenderBackendError):
-                render_backend.draw_shapes(spec, Path(tempfile.gettempdir()))
+                render_backend.draw_shapes(spec, Path(self.enterContext(tempfile.TemporaryDirectory())))
 
     def test_the_drawing_is_deterministic(self):
         art = sa.ShapeArt("star", color="#FFD60A", outline=0.05)
@@ -797,7 +873,7 @@ class ArtTestCase(unittest.TestCase):
             self.assertIn("fonts-dejavu", str(cm.exception))
             spec = spec_of(doc_with([sh(kind="pill", text="Hi")]))
             with self.assertRaises(render_backend.RenderBackendError):
-                render_backend.draw_shapes(spec, Path(tempfile.gettempdir()))
+                render_backend.draw_shapes(spec, Path(self.enterContext(tempfile.TemporaryDirectory())))
         finally:
             sa._FONT_FILES = original
 
@@ -918,25 +994,81 @@ class FuzzTestCase(unittest.TestCase):
                     self.assertGreater(out.stat().st_size, 0)
                 done += 1
 
-    def test_the_biggest_document_the_memory_budget_allows_renders_under_the_workers_own_limit(self):
-        """Twelve circles at w 0.8 in 1080p60 (1844 MiB estimated, 1898 allowed): rendered the way the worker
-        does (jobs=1, a timeout, so ffmpeg runs under its 2 GiB address-space limit)."""
-        exe = _ffmpeg()
-        if not exe:
-            self.skipTest("ffmpeg not available")
+    def render_under_the_workers_limit(self, exe, frame, fps, shapes, pictures=0, picture_w=1.0, out_s=3):
+        """One document rendered the way the worker renders (jobs=1, a timeout: ffmpeg under its 2 GiB of
+        address space, ffmpeg_limits.CHILD_MEM_BYTES). Fails with the ffmpeg version in the message."""
+        from PIL import Image
+        w, h = frame
         with tempfile.TemporaryDirectory() as d:
             base = Path(d) / "b.mp4"
             proc = subprocess.run([exe, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
-                                   "testsrc2=s=1920x1080:r=60:d=3", "-c:v", "libx264", "-preset", "ultrafast",
-                                   "-pix_fmt", "yuv420p", str(base)], capture_output=True)
+                                   f"color=c=0x336699:s={w}x{h}:r={fps}:d={out_s}", "-c:v", "libx264", "-preset",
+                                   "ultrafast", "-pix_fmt", "yuv420p", str(base)], capture_output=True)
             self.assertEqual(proc.returncode, 0, proc.stderr.decode()[-300:])
-            doc = doc_with([sh(id=f"s{i}", kind="circle", w=0.8, start_s=0, end_s=3) for i in range(12)],
-                           width=1920, height=1080, fps=60, out_s=3)
-            self.assertEqual(problems(doc), [])
-            table = {BASE: tl.ResolvedAsset(BASE, "video", str(base), 3.0, False)}
+            table = {BASE: tl.ResolvedAsset(BASE, "video", str(base), float(out_s), False)}
+            overlays = None
+            if pictures:
+                png = Path(d) / "p.png"
+                Image.new("RGBA", frame, (255, 200, 0, 200)).save(png)
+                table[PIC] = tl.ResolvedAsset(PIC, "image", str(png), None, None)
+                overlays = [{"id": f"o{i}", "asset_id": PIC, "start_s": 0, "end_s": out_s, "w": picture_w,
+                             "anim_in": "pop", "move": {"to": {"x": 0.4}}} for i in range(pictures)]
+            doc = doc_with(shapes, width=w, height=h, fps=fps, out_s=out_s, overlays=overlays)
+            self.assertEqual(problems(doc), [], "the document must be one the budget accepts")
             out = Path(d) / "o.mp4"
-            tr.render(doc, table.get, str(out), ffmpeg=exe, jobs=1, timeout_s=300)
+            try:
+                tr.render(doc, table.get, str(out), ffmpeg=exe, jobs=1, timeout_s=300)
+            except Exception as e:   # the version in the message: the CI runner's ffmpeg is the one that matters
+                version = subprocess.run([exe, "-version"], capture_output=True, text=True).stdout.splitlines()[0]
+                self.fail(f"{frame} {fps} fps, {len(shapes)} shapes + {pictures} pictures failed under the limit "
+                          f"({version}; {os.cpu_count()} cpus): {str(e)[-300:]}")
             self.assertGreater(out.stat().st_size, 0)
+
+    def test_the_documents_the_review_and_the_ci_runner_found_failing_render_under_the_workers_own_limit(self):
+        """Twelve circles at w 0.8 in 1080p60 (the CI runner: exit 187, a libx264 malloc, with an estimate of 1844
+        MiB then), and each document of samples/shape_budget.json the budget accepts by name: with the layers'
+        threads pinned (render_spec.cap_inputs) what the export needs no longer depends on the machine's cores."""
+        exe = _ffmpeg()
+        if not exe:
+            self.skipTest("ffmpeg not available")
+        cases = json.loads((ROOT / "samples" / "shape_budget.json").read_text(encoding="utf-8"))["cases"]
+        named = [c for c in cases if c.get("accepted") and "name" in c]
+        self.assertGreaterEqual(len(named), 8)
+        for c in named:
+            with self.subTest(c["name"]):
+                shapes = [dict(s, start_s=0, end_s=3) for s in c["shapes"]]
+                self.render_under_the_workers_limit(exe, tuple(c["frame"]), c["fps"], shapes,
+                                                    pictures=len(c.get("overlays", [])))
+
+    def test_the_biggest_accepted_documents_of_a_grid_render_under_the_workers_own_limit(self):
+        """For each frame and each mix of shapes and full-width pictures: the widest shapes the validator accepts
+        (found by the validator itself, a step of 0.05 down from 1), rendered in the worker's own limit. This is
+        what catches an optimistic estimate: whatever the budget lets through must fit."""
+        exe = _ffmpeg()
+        if not exe:
+            self.skipTest("ffmpeg not available")
+        mixes = {(1920, 1080): [(12, 0), (12, 2), (8, 4)], (1080, 1920): [(12, 0), (12, 2)],
+                 (2560, 1440): [(12, 0), (12, 2), (8, 4)], (1440, 2560): [(12, 0), (12, 2), (8, 4)],
+                 (3840, 2160): [(12, 0), (3, 0)]}
+        rendered = 0
+        for frame, frame_mixes in mixes.items():
+            for n, pics in frame_mixes:
+                widest = None
+                for k in range(20, 0, -1):
+                    w = round(k * 0.05, 2)
+                    shapes = [sh(id=f"s{i}", kind=("circle", "rect", "star", "arrow")[i % 4], w=w, start_s=0, end_s=3)
+                              for i in range(n)]
+                    overlays = [{"id": f"o{i}", "asset_id": PIC, "start_s": 0, "end_s": 3, "w": 1.0} for i in range(pics)]
+                    if not problems(doc_with(shapes, width=frame[0], height=frame[1], fps=60, out_s=3,
+                                             overlays=overlays or None)):
+                        widest = shapes
+                        break
+                if widest is None:
+                    continue   # no width of that many shapes fits this frame: nothing to render
+                with self.subTest(frame=frame, shapes=n, pictures=pics, w=widest[0]["w"]):
+                    self.render_under_the_workers_limit(exe, frame, 60, widest, pictures=pics)
+                    rendered += 1
+        self.assertGreaterEqual(rendered, 10)
 
     @unittest.skipUnless(have_font(), "no bold font on this machine")
     def test_a_missing_font_stops_the_export_before_any_segment_is_encoded(self):
@@ -944,10 +1076,11 @@ class FuzzTestCase(unittest.TestCase):
         original = sa._FONT_FILES
         sa._FONT_FILES = ("/nonexistent/none.ttf",)
         try:
-            spec = spec_of(doc_with([sh(kind="pill", text="Hi")]))
+            out_dir = Path(self.enterContext(tempfile.TemporaryDirectory()))   # an unprivileged CI cannot make /out
+            spec = tr.to_render_spec(doc_with([sh(kind="pill", text="Hi")]), table().get, str(out_dir / "o.mp4"))
             with mock.patch.object(render_backend, "_normalize_all", side_effect=AssertionError("segments were encoded")):
                 with self.assertRaises(render_backend.RenderBackendError) as cm:
-                    render_backend.render(spec, ffmpeg="/bin/true")
+                    render_backend.render(spec, ffmpeg="/bin/true", workdir=str(out_dir))
             self.assertIn("fonts-dejavu", str(cm.exception))
         finally:
             sa._FONT_FILES = original

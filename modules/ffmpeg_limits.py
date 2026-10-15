@@ -131,14 +131,15 @@ def child_env() -> Dict[str, str]:
     return env
 
 
-def thread_options() -> List[str]:
+def thread_options(threads: Optional[int] = None) -> List[str]:
     """Global options: the filter graphs' thread counts."""
-    return ["-filter_threads", str(FILTER_THREADS), "-filter_complex_threads", str(FILTER_THREADS)]
+    n = FILTER_THREADS if threads is None else threads
+    return ["-filter_threads", str(n), "-filter_complex_threads", str(n)]
 
 
-def decode_thread_options() -> List[str]:
+def decode_thread_options(threads: Optional[int] = None) -> List[str]:
     """Input options: the decoder's thread count (before each ``-i``)."""
-    return ["-threads", str(DECODE_THREADS)]
+    return ["-threads", str(DECODE_THREADS if threads is None else threads)]
 
 
 def encode_thread_options(threads: Optional[int] = None, *, out_pixels: Optional[int] = None) -> List[str]:

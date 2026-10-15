@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 #: The closed set (command-center/lib/editorShapes.ts has the same lists; a test pins them).
 SHAPE_KINDS = ("arrow", "circle", "rect", "star", "pill", "line", "progress")
@@ -261,27 +261,39 @@ def fit_px(aspect: float, w: float, frame_w: int, frame_h: int) -> Tuple[int, in
 
 #: ffmpeg's address space in an editor export (ffmpeg_limits.CHILD_MEM_BYTES; a test pins it equal). What the
 #: final pass needs is, measured with the bundled ffmpeg 7.0.2 under that limit in the worker's own path
-#: (jobs=1, a timeout set), by binary search on RLIMIT_AS with a circle at each size (tests do not repeat it):
-#:   a plain clip (no shape):    1080p60 905 MiB, 1080p30 923 MiB, 4K60 1657 MiB (the frame rate does not matter
-#:                               once the clip is a few seconds: a one-second clip needs less)
-#:   every shape layer:          + 55 MiB, whatever its size (12 small layers at 1080p60: +661)
-#:   every pixel of its PNG:     + ~9 bytes (12 layers of 1.3 MP: +770; 4 of 3.7 MP: +294; 12 of 3.7 MP: +1046)
-#:   the first layer, per pixel of the frame: ~ +13 bytes (4K60: one 1.3 MP layer +165, four +312)
-#: The estimate below is that fit, rounded up, and the budget keeps MEM_MARGIN under the limit: the
-#: measurement steps were 32 MiB and the same document spread by about 50 MiB between runs and under load.
-#: It bounds the SHAPES' own cost beyond a plain clip; a document that also cross-fades or blurs at a large
+#: (jobs=1, a timeout set), by binary search on RLIMIT_AS (about 80 documents of the kinds below, then rendered by the
+#: tests at the edge of what the budget accepts):
+#:   * a document WITH shapes runs its layers' inputs and its filter graph on one thread each
+#:     (render_spec.cap_inputs): left automatic, what ffmpeg starts per layer grows with the machine's cores
+#:     (62 threads at twelve shapes on four cores, 13 pinned: about 400 MiB of stacks), and the same document
+#:     needed 1767 MiB on four cores, 1346 on one, 1359 pinned: the CI runner's failure (exit 187, a malloc
+#:     in libx264) at 1844 MiB estimated. Pinned, the need no longer depends on the machine.
+#:   * a frame up to 2560x1440 (the encoder's 4 threads, ffmpeg_limits.LARGE_OUTPUT_PX):
+#:         ~ 354 MiB + 273 B per pixel of the frame + 21 MiB per layer + 9 B per pixel of the layers' PNGs
+#:     a frame above it (2 encoder threads, lookahead 20): ~ 24 MiB + 210 B per pixel + the same per layer.
+#:     A picture overlay is a layer like a shape (its box is its PNG), shapes or not: 4 and 8 full-frame
+#:     pictures alone need 1250 and 1556 MiB at 1080p. The fit's largest miss was 98 MiB (the binary search's
+#:     step is 32-48).
+#: The constants below are that fit rounded UP by about 100 MiB (never below one of the measured points), and
+#: the budget keeps MEM_MARGIN under the limit besides. A document that also cross-fades or blurs at a large
 #: frame (their own limits, timeline.py) is not added up with it.
 MIB = 1024 * 1024
 MEM_LIMIT_BYTES = 2048 * MIB
 MEM_MARGIN_BYTES = 150 * MIB
-MEM_PLAIN_FIXED_BYTES = 654 * MIB
-MEM_PLAIN_PER_FRAME_PX = 127
-MEM_PER_LAYER_BYTES = 56 * MIB
+MEM_FIXED_BYTES = 460 * MIB
+MEM_PER_FRAME_PX = 275
+#: A frame above this many pixels (ffmpeg_limits.LARGE_OUTPUT_PX: a test pins it equal) is encoded with fewer
+#: threads, so it has its own pair.
+MEM_LARGE_FRAME_PX = 2560 * 1440
+MEM_LARGE_FIXED_BYTES = 130 * MIB
+MEM_LARGE_PER_FRAME_PX = 210
+MEM_PER_LAYER_BYTES = 24 * MIB
 MEM_PER_PNG_PX = 9
-MEM_FIRST_LAYER_PER_FRAME_PX = 13
 #: A pill's PNG width over height is never below this (one narrow letter in its padding: "i" is 0.93), so a
 #: pill is charged as a box this proportion: an upper bound that needs no font, the same in both validators.
 PILL_MIN_ASPECT = 0.9
+#: A picture overlay's width when it gives none (timeline.OVERLAY_DEFAULTS; a test pins it equal).
+PICTURE_W_DEFAULT = 0.3
 
 
 def layer_png_pixels(sh: dict, frame_w: int, frame_h: int) -> int:
@@ -295,16 +307,35 @@ def layer_png_pixels(sh: dict, frame_w: int, frame_h: int) -> int:
     return pw * ph
 
 
-def memory_estimate_bytes(shapes: List[dict], frame_w: int, frame_h: int) -> int:
-    """About how much address space the final pass needs for a clip of this frame size with these
-    shapes laid over it (the plain clip's own need included): see the measurements above."""
+def _num(v, default: float) -> float:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else default
+
+
+def picture_pixels(ov, frame_w: int, frame_h: int) -> int:
+    """Pixels one picture overlay is charged: its box at the widest it ever is, as tall as the frame (the
+    document does not know the picture's own size: a picture whose own pixels are many times its box, a photo
+    shrunk to a corner, is not covered, it is held to the decoder's cap, render_spec.DECODE_MAX_PIXELS)."""
+    ov = ov if isinstance(ov, dict) else {}
+    move = ov.get("move") if isinstance(ov.get("move"), dict) else {}
+    to = move.get("to") if isinstance(move.get("to"), dict) else {}
+    wide = max(_num(ov.get("w"), PICTURE_W_DEFAULT), _num(to.get("w"), 0.0))
+    return int(round(min(max(wide, 0.0), 1.0) * frame_w)) * frame_h
+
+
+def memory_estimate_bytes(shapes: List[dict], frame_w: int, frame_h: int, pictures: Sequence = ()) -> int:
+    """About how much address space the final pass needs for a clip of this frame size with these shapes and
+    picture overlays laid over it (the clip's own need included): see the measurements above. The pictures
+    count as layers; with no layer it is the plain clip's need."""
     px = frame_w * frame_h
-    plain = MEM_PLAIN_FIXED_BYTES + MEM_PLAIN_PER_FRAME_PX * px
-    if not shapes:
-        return int(plain)
-    layers = MEM_PER_LAYER_BYTES * len(shapes) + MEM_FIRST_LAYER_PER_FRAME_PX * px
-    pngs = MEM_PER_PNG_PX * sum(layer_png_pixels(sh, frame_w, frame_h) for sh in shapes)
-    return int(plain + layers + pngs)
+    if px > MEM_LARGE_FRAME_PX:
+        base = MEM_LARGE_FIXED_BYTES + MEM_LARGE_PER_FRAME_PX * px
+    else:
+        base = MEM_FIXED_BYTES + MEM_PER_FRAME_PX * px
+    pics = [p for p in pictures if isinstance(p, dict)] if isinstance(pictures, (list, tuple)) else []
+    layers = MEM_PER_LAYER_BYTES * (len(shapes) + len(pics))
+    pngs = MEM_PER_PNG_PX * (sum(layer_png_pixels(sh, frame_w, frame_h) for sh in shapes)
+                             + sum(picture_pixels(p, frame_w, frame_h) for p in pics))
+    return int(base + layers + pngs)
 
 
 def memory_budget_bytes() -> int:

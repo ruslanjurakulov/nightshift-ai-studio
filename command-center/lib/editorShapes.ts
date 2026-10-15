@@ -311,11 +311,14 @@ const MIB = 1024 * 1024;
 /** ffmpeg's address space in an editor export, and what is kept free of it (modules/shape_art.py). */
 export const MEM_LIMIT_BYTES = 2048 * MIB;
 export const MEM_MARGIN_BYTES = 150 * MIB;
-export const MEM_PLAIN_FIXED_BYTES = 654 * MIB;
-export const MEM_PLAIN_PER_FRAME_PX = 127;
-export const MEM_PER_LAYER_BYTES = 56 * MIB;
+export const MEM_FIXED_BYTES = 460 * MIB;
+export const MEM_PER_FRAME_PX = 275;
+/** A frame above this many pixels is encoded with fewer threads (ffmpeg_limits.LARGE_OUTPUT_PX): its own pair. */
+export const MEM_LARGE_FRAME_PX = 2560 * 1440;
+export const MEM_LARGE_FIXED_BYTES = 130 * MIB;
+export const MEM_LARGE_PER_FRAME_PX = 210;
+export const MEM_PER_LAYER_BYTES = 24 * MIB;
 export const MEM_PER_PNG_PX = 9;
-export const MEM_FIRST_LAYER_PER_FRAME_PX = 13;
 /** A pill's PNG width over height is never below this, so it is charged as a box of this proportion. */
 export const PILL_MIN_ASPECT = 0.9;
 
@@ -339,17 +342,42 @@ export function layerPngPixels(s: CostShape, frame: { width: number; height: num
   return pw * ph;
 }
 
-/** About how much address space the final pass needs for a clip of this frame and rate with these shapes. */
+/** A picture overlay as the budgets read it (a model's overlay or a document's entry). */
+export type CostPicture = { w?: number; move?: { to?: { w?: number } } };
+
+/** A picture overlay's width when it gives none (OVERLAY_DEFAULTS.w of lib/editor.ts). */
+export const PICTURE_W_DEFAULT = 0.3;
+
+const finiteOr = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+
+/** Pixels one picture overlay is charged: its box at the widest it ever is, as tall as the frame (the document
+ *  does not know the picture's own size; modules/shape_art.py says what that leaves out). */
+export function picturePixels(p: CostPicture | null | undefined, frame: { width: number; height: number }): number {
+  const o = p && typeof p === "object" ? p : {};
+  const to = o.move && typeof o.move === "object" && o.move.to && typeof o.move.to === "object" ? o.move.to : {};
+  const wide = Math.max(finiteOr(o.w, PICTURE_W_DEFAULT), finiteOr(to.w, 0));
+  return pyRound(Math.min(Math.max(wide, 0), 1) * frame.width) * frame.height;
+}
+
+/** About how much address space the final pass needs for a clip of this frame and rate with these shapes and
+ *  picture overlays over it (the pictures count as layers; with no shapes: the plain clip's need). */
 export function memoryEstimateBytes(
   shapes: readonly CostShape[],
   frame: { width: number; height: number },
+  pictures: readonly (CostPicture | null)[] = [],
 ): number {
   const px = frame.width * frame.height;
-  const plain = MEM_PLAIN_FIXED_BYTES + MEM_PLAIN_PER_FRAME_PX * px;
-  if (!shapes.length) return Math.trunc(plain);
-  const layers = MEM_PER_LAYER_BYTES * shapes.length + MEM_FIRST_LAYER_PER_FRAME_PX * px;
-  const pngs = MEM_PER_PNG_PX * shapes.reduce((n, s) => n + layerPngPixels(s, frame), 0);
-  return Math.trunc(plain + layers + pngs);
+  const base =
+    px > MEM_LARGE_FRAME_PX
+      ? MEM_LARGE_FIXED_BYTES + MEM_LARGE_PER_FRAME_PX * px
+      : MEM_FIXED_BYTES + MEM_PER_FRAME_PX * px;
+  const pics = pictures.filter((p) => p !== null && typeof p === "object" && !Array.isArray(p));
+  const layers = MEM_PER_LAYER_BYTES * (shapes.length + pics.length);
+  const pngs =
+    MEM_PER_PNG_PX *
+    (shapes.reduce((n, s) => n + layerPngPixels(s, frame), 0) +
+      pics.reduce((n, p) => n + picturePixels(p, frame), 0));
+  return Math.trunc(base + layers + pngs);
 }
 
 export const memoryBudgetBytes = () => MEM_LIMIT_BYTES - MEM_MARGIN_BYTES;

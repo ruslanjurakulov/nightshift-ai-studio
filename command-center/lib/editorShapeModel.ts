@@ -97,7 +97,7 @@ export interface ShapeBudget {
 }
 
 export function shapeBudget(model: EditorModel): ShapeBudget {
-  const memory = memoryEstimateBytes(shapesOf(model), model);
+  const memory = memoryEstimateBytes(shapesOf(model), model, model.overlays ?? []);
   const memoryMax = memoryBudgetBytes();
   const r = renderWork(model);
   return { memory, memoryMax, work: r.work, workMax: r.allowed, ok: memory <= memoryMax && r.ok };

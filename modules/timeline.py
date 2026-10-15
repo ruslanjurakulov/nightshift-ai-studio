@@ -808,11 +808,14 @@ def validate(doc: Any) -> List[str]:
         _validate_shapes(doc["shapes"], fps, problems, claim)
         if (len(problems) == before and isinstance(doc["shapes"], list) and doc["shapes"]
                 and _is_int(w) and _is_int(h)):
-            need, budget = shape_art.memory_estimate_bytes(doc["shapes"], w, h), shape_art.memory_budget_bytes()
+            pics = doc["overlays"] if isinstance(doc.get("overlays"), list) else []
+            need = shape_art.memory_estimate_bytes(doc["shapes"], w, h, pics)
+            budget = shape_art.memory_budget_bytes()
             if need > budget:
                 problems.append(f"shapes: drawing them in a {w}x{h} frame would need about {need / shape_art.MIB:.0f} MB "
-                                f"to render, but {budget / shape_art.MIB:.0f} MB is the most the export has — make the "
-                                "shapes smaller or fewer, or the frame smaller (memory)")
+                                f"to render{' with the picture overlays' if pics else ''}, but {budget / shape_art.MIB:.0f} MB is the "
+                                f"most the export has — make the shapes{' or pictures' if pics else ''} smaller or fewer, "
+                                "or the frame smaller (memory)")
             elif fps and not problems:
                 length = duration_s(doc)
                 shape_est = shape_art.work_seconds(doc["shapes"], fps, w, h, length)

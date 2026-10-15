@@ -32,13 +32,16 @@ import {
   ARROW_DIRS,
   KIND_FIELDS,
   MAX_SHAPES,
-  MEM_FIRST_LAYER_PER_FRAME_PX,
+  MEM_LARGE_FIXED_BYTES,
+  MEM_LARGE_FRAME_PX,
+  MEM_LARGE_PER_FRAME_PX,
+  MEM_FIXED_BYTES,
+  MEM_PER_FRAME_PX,
+  PICTURE_W_DEFAULT,
   MEM_LIMIT_BYTES,
   MEM_MARGIN_BYTES,
   MEM_PER_LAYER_BYTES,
   MEM_PER_PNG_PX,
-  MEM_PLAIN_FIXED_BYTES,
-  MEM_PLAIN_PER_FRAME_PX,
   PILL_MIN_ASPECT,
   PROGRESS_ANIMS,
   PROGRESS_EDGES,
@@ -47,6 +50,7 @@ import {
   THICK_DEFAULTS,
   WORK_SECONDS_PER_LAYER_FRAME_1080P,
   WORK_SECONDS_PER_PNG_MP,
+  memoryBudgetBytes,
   memoryEstimateBytes,
   shapeWorkSeconds,
   cleanShapeText,
@@ -288,26 +292,33 @@ describe("adding", () => {
 
 describe("what the shapes cost the export", () => {
   const budget = JSON.parse(readFileSync(join(root, "samples", "shape_budget.json"), "utf8"));
-  it("memory and render time agree with the worker's estimates on 80 documents (samples/shape_budget.json)", () => {
-    expect(budget.cases.length).toBe(80);
+  it("memory and render time agree with the worker's estimates on 92 documents (samples/shape_budget.json)", () => {
+    expect(budget.cases.length).toBe(92);
     for (const c of budget.cases) {
       const frame = { width: c.frame[0], height: c.frame[1] };
-      expect(memoryEstimateBytes(c.shapes, frame)).toBe(c.memory);
+      expect(memoryEstimateBytes(c.shapes, frame, c.overlays ?? [])).toBe(c.memory);
+      if ("accepted" in c) {
+        expect(c.memory <= memoryBudgetBytes()).toBe(c.accepted);
+        expect(c.budget).toBe(memoryBudgetBytes());
+      }
       expect(Math.abs(shapeWorkSeconds(c.shapes, c.fps, frame, c.length) - c.work)).toBeLessThan(1e-6);
     }
   });
   it("the budgets' constants are the worker's", () => {
     const num = (name: string) => Number(new RegExp(`^${name} = ([\\d.]+)`, "m").exec(pySource)![1]);
-    expect(MEM_PLAIN_PER_FRAME_PX).toBe(num("MEM_PLAIN_PER_FRAME_PX"));
+    expect(MEM_PER_FRAME_PX).toBe(num("MEM_PER_FRAME_PX"));
+    expect(MEM_LARGE_PER_FRAME_PX).toBe(num("MEM_LARGE_PER_FRAME_PX"));
+    expect(PICTURE_W_DEFAULT).toBe(num("PICTURE_W_DEFAULT"));
+    expect(MEM_LARGE_FRAME_PX).toBe(2560 * 1440);
     expect(MEM_PER_PNG_PX).toBe(num("MEM_PER_PNG_PX"));
-    expect(MEM_FIRST_LAYER_PER_FRAME_PX).toBe(num("MEM_FIRST_LAYER_PER_FRAME_PX"));
     expect(PILL_MIN_ASPECT).toBe(num("PILL_MIN_ASPECT"));
     expect(WORK_SECONDS_PER_LAYER_FRAME_1080P).toBe(num("WORK_SECONDS_PER_LAYER_FRAME_1080P"));
     expect(WORK_SECONDS_PER_PNG_MP).toBe(num("WORK_SECONDS_PER_PNG_MP"));
     const mib = (name: string) => Number(new RegExp(`^${name} = (\\d+) \\* MIB`, "m").exec(pySource)![1]) * 1048576;
     expect(MEM_LIMIT_BYTES).toBe(mib("MEM_LIMIT_BYTES"));
     expect(MEM_MARGIN_BYTES).toBe(mib("MEM_MARGIN_BYTES"));
-    expect(MEM_PLAIN_FIXED_BYTES).toBe(mib("MEM_PLAIN_FIXED_BYTES"));
+    expect(MEM_FIXED_BYTES).toBe(mib("MEM_FIXED_BYTES"));
+    expect(MEM_LARGE_FIXED_BYTES).toBe(mib("MEM_LARGE_FIXED_BYTES"));
     expect(MEM_PER_LAYER_BYTES).toBe(mib("MEM_PER_LAYER_BYTES"));
   });
   const twelve = (m: EditorModel, w: number) => {
@@ -318,11 +329,12 @@ describe("what the shapes cost the export", () => {
     }
     return n;
   };
+  const at1440 = (): EditorModel => ({ ...base(), width: 2560, height: 1440 });
   it("a shape stops growing where the export's memory ends, the others are not touched", () => {
-    let m = base();
+    let m = at1440();
     for (let i = 0; i < 11; i += 1) {
       const o = add(m, "circle", 0);
-      m = updateShape(o.model, o.id, { w: 0.9 });
+      m = updateShape(o.model, o.id, { w: 0.5 });
     }
     const last = add(m, "circle", 0);
     m = updateShape(last.model, last.id, { w: 0.3 });
@@ -331,14 +343,71 @@ describe("what the shapes cost the export", () => {
     valid(grown);
     expect(shapeById(grown, last.id)!.w).toBeLessThan(1);
     expect(shapeById(grown, last.id)!.w).toBeGreaterThan(0.3);
-    expect(shapeById(grown, m.shapes![0].id)!.w).toBe(0.9);
+    expect(shapeById(grown, m.shapes![0].id)!.w).toBe(0.5);
     expect(shapeBudget(grown).memory).toBeLessThanOrEqual(shapeBudget(grown).memoryMax);
   });
+  it("a picture overlay is a layer of the budget: it counts, and its width stops where the memory ends", () => {
+    let m = at1440();
+    for (let i = 0; i < 8; i += 1) {
+      const o = add(m, "circle", 0);
+      m = updateShape(o.model, o.id, { w: 0.5 });
+    }
+    valid(m);
+    const without = shapeBudget(m).memory;
+    const withPic = addOverlay(m, { id: PIC, kind: "image", durationS: null }, 0)!;
+    valid(withPic.model);
+    expect(shapeBudget(withPic.model).memory).toBeGreaterThan(without);
+    const wide = updateOverlay(withPic.model, withPic.id, { w: 1 });
+    valid(wide);
+    expect(wide.overlays![0].w).toBeGreaterThan(0.3);
+    expect(shapeBudget(wide).memory).toBeLessThanOrEqual(shapeBudget(wide).memoryMax);
+    // pictures fill what the shapes left: past it no more can be added, and the reason is the memory
+    let n = withPic.model;
+    let refused = false;
+    for (let i = 0; i < 10 && !refused; i += 1) {
+      const a = addOverlay(n, { id: PIC, kind: "image", durationS: null }, 0);
+      if (a) n = a.model;
+      else refused = true;
+    }
+    expect(refused).toBe(true);
+    expect(layerCount(n)).toBeLessThan(MAX_OVERLAYS);
+    valid(n);
+    // with no shapes the pictures are not budgeted: the same frame takes them up to the limit
+    let p = at1440();
+    for (let i = 0; i < MAX_OVERLAYS; i += 1) {
+      const a = addOverlay(p, { id: PIC, kind: "image", durationS: null }, 0);
+      if (a) p = a.model;
+    }
+    expect(p.overlays!.length).toBe(MAX_OVERLAYS);
+  });
+  it("settling narrows the shapes when the pictures leave them no room, and it is valid", () => {
+    let m = at1440();
+    for (let i = 0; i < 8; i += 1) {
+      const o = add(m, "circle", 0);
+      m = updateShape(o.model, o.id, { w: 0.5 });
+    }
+    const overlays = Array.from({ length: 8 }, (_, i) => ({
+      id: `o${i + 1}`,
+      asset_id: PIC,
+      start_s: 0,
+      end_s: 2,
+      x: 0.5,
+      y: 0.5,
+      w: 1,
+      opacity: 1,
+    }));
+    const crowded: EditorModel = { ...m, overlays };
+    expect(validateTimeline(toDoc(crowded)).length).toBeGreaterThan(0);
+    const out = settleAll(crowded);
+    valid(out.model);
+    expect(out.changes.some((c) => c.kind === "shapeNarrowed" || c.kind === "shapeRemoved")).toBe(true);
+    expect(out.model.overlays).toEqual(overlays);
+  });
   it("adding the twelfth big shape narrows it to fit; when the others leave no room it is refused with the reason", () => {
-    let m = base();
+    let m = at1440();
     for (let i = 0; i < 11; i += 1) {
       const o = add(m, "circle", 0);
-      m = updateShape(o.model, o.id, { w: 0.9 });
+      m = updateShape(o.model, o.id, { w: 0.45 });
     }
     valid(m);
     const o = addShape(m, "circle", 0);

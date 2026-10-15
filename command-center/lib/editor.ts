@@ -54,6 +54,7 @@ import {
   isShapeKind,
   memoryBudgetBytes,
   memoryEstimateBytes,
+  type CostPicture,
   shapeTextProblem,
   shapeWorkSeconds,
   type ArrowDir,
@@ -1030,11 +1031,12 @@ export function validateTimeline(doc: unknown): string[] {
       isInt(doc.width) &&
       isInt(doc.height)
     ) {
-      const need = memoryEstimateBytes(doc.shapes as CostShape[], { width: doc.width, height: doc.height });
+      const pics = Array.isArray(doc.overlays) ? (doc.overlays as CostPicture[]) : [];
+      const need = memoryEstimateBytes(doc.shapes as CostShape[], { width: doc.width, height: doc.height }, pics);
       const budget = memoryBudgetBytes();
       if (need > budget)
         problems.push(
-          `shapes: drawing them in a ${doc.width}x${doc.height} frame would need about ${Math.round(need / 1048576)} MB to render, but ${Math.round(budget / 1048576)} MB is the most the export has — make the shapes smaller or fewer, or the frame smaller (memory)`,
+          `shapes: drawing them in a ${doc.width}x${doc.height} frame would need about ${Math.round(need / 1048576)} MB to render${pics.length ? " with the picture overlays" : ""}, but ${Math.round(budget / 1048576)} MB is the most the export has — make the shapes${pics.length ? " or pictures" : ""} smaller or fewer, or the frame smaller (memory)`,
         );
       else if (fps && !problems.length) {
         const length = docDuration(doc as unknown as TimelineDoc);

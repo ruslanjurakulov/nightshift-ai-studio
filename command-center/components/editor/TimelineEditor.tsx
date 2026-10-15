@@ -1474,7 +1474,9 @@ export function TimelineEditor({
             >
               {overlays.length >= MAX_OVERLAYS
                 ? fmt(te.overlay.full, { max: MAX_OVERLAYS })
-                : fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })}
+                : overlays.length + shapes.length >= MAX_OVERLAYS
+                  ? fmt(te.shapes.layersFull, { max: MAX_OVERLAYS })
+                  : te.shapes.pictureMemory}
             </p>
           ) : !canAddOverlay(model, "video", isVideoAsset) ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">
