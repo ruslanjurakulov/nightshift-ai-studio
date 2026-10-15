@@ -43,6 +43,18 @@ export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json", "/
  */
 export const INVITE_LINK_PATTERN = /^\/i\/[A-Za-z0-9_-]{16,64}$/;
 
+/**
+ * Private review links (migration 0101). `/r/<token>` is a page and
+ * `/r/<token>/video` the stream behind it; each works signed out, because the
+ * token in the path IS the authorization (checked by the database on every
+ * request, never by a session). Anchored and closed like the invite pattern:
+ * one segment of letters, digits, `_` and `-`, 16 to 128 long, optionally
+ * followed by exactly `/video`. A wrong-shaped token still passes the gate and
+ * gets the same "not available" as a dead one. `/r`, `/r/`, `/r/x/y`, a dot or
+ * an encoded slash is gated like any other app URL.
+ */
+export const REVIEW_LINK_PATTERN = /^\/r\/[A-Za-z0-9_-]{16,128}(\/video)?$/;
+
 /** Public: the plain page an invite link lands on when it cannot be used
  *  (`?s=invalid`) or when the visitor already has an account (`?s=existing`). */
 export const INVITE_NOTICE_PATH = "/invite";
@@ -59,8 +71,8 @@ export const INVITE_NOTICE_PATH = "/invite";
  */
 export const STUDIO_PAGE_PATH = "/studio";
 
-/** Always public: the crawler files (app/robots.ts, app/sitemap.ts). */
-export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"] as const;
+/** Always public: the crawler files (app/robots.ts, app/sitemap.ts, app/llms.txt/route.ts). */
+export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml", "/llms.txt"] as const;
 
 /** Always public: what the product does, by who it is for (lib/solutions.ts).
  *  Listed one by one — the index and each page — never as a prefix. */
@@ -74,6 +86,13 @@ export const SOLUTION_PATHS = [SOLUTIONS_PATH, ...SOLUTION_IDS.map(solutionHref)
  * paths under it — /api/v10 or /api/v1x are not the API and stay gated.
  */
 export const PUBLIC_API_PREFIX = "/api/v1";
+
+/**
+ * The public site's page count (app/api/pv, lib/page-views.ts, migration 0104): the page posts four short strings,
+ * the route answers 204 whatever happened. It reads no cookie and no session, so the cookie gate must neither
+ * redirect it nor spend a Supabase round trip on a session the visitor does not have. Exactly this path.
+ */
+export const PAGE_VIEW_PATH = "/api/pv";
 
 /** The MCP endpoint (Streamable HTTP): the same bearer keys, exactly this path. */
 export const MCP_PATH = "/api/mcp";
@@ -95,6 +114,7 @@ export function isOAuthPublicPath(pathname: string): boolean {
 
 export function isPublicApiPath(pathname: string): boolean {
   return (
+    pathname === PAGE_VIEW_PATH ||
     pathname === PUBLIC_API_PREFIX ||
     pathname.startsWith(PUBLIC_API_PREFIX + "/") ||
     pathname === MCP_PATH ||
@@ -244,6 +264,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   // Invite links (/i/<token>) and their notice page (/invite).
   "i",
   "invite",
+  // Private review links (/r/<token>, migration 0101).
+  "r",
   // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
   "fonts",
   // The design concept prototypes (lib/concepts.ts): the whole /atelier path is
@@ -260,6 +282,10 @@ function normalize(pathname: string): string {
 
 export function isInviteLinkPath(pathname: string): boolean {
   return INVITE_LINK_PATTERN.test(normalize(pathname));
+}
+
+export function isReviewLinkPath(pathname: string): boolean {
+  return REVIEW_LINK_PATTERN.test(normalize(pathname));
 }
 
 export function isLegalPath(pathname: string): boolean {
@@ -333,6 +359,8 @@ export function gateDecision(pathname: string, signedIn: boolean, search: string
   // The route itself decides: signed out it starts the sign-up, signed in it
   // explains that an invite is for new accounts.
   if (isInviteLinkPath(pathname)) return "pass";
+  // A review link's page and stream: the token in the path is the authorization (lib/server/review-link.ts).
+  if (isReviewLinkPath(pathname)) return "pass";
   // /reset-password sends a signed-in person without a recovery session to
   // /forgot-password?s=needs_link (and a failed reset link may arrive signed in):
   // that notice page must open for them rather than bounce home.

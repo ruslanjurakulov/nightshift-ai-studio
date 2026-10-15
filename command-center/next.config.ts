@@ -23,7 +23,7 @@ export const SECURITY_HEADERS = [
 ];
 
 /** The public paths that are route handlers (files), not pages. */
-export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/docs/api/openapi.json"] as const;
+export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/llms.txt", "/docs/api/openapi.json"] as const;
 
 /** The public PAGES (lib/public-paths.ts SITEMAP_PATHS, the two flag-gated
  *  developer pages of lib/dev-pages.ts, sign-in and sign-up;
@@ -130,6 +130,16 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+      // A review link's page (migration 0101): the address is the secret, so it is never cached, never leaves a
+      // Referer, and is not indexed (also noindex in the page and Disallow in robots.txt).
+      {
+        source: "/r/:token",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
       },
       // Password recovery: the request page and the reset page are never cached

@@ -71,6 +71,8 @@ export function PublicFooter({ t }: { t: Dictionary }) {
       links: [
         { href: "/privacy", label: t.legal.privacy },
         { href: "/terms", label: t.legal.terms },
+        // The "Cookies and local storage" section of the Privacy Policy (id "cookies"): what the site stores, and that nothing is a tracker.
+        { href: "/privacy#cookies", label: f.cookies },
       ],
     },
   ];

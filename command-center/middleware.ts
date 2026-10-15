@@ -15,6 +15,7 @@ import {
   gateDecision,
   isPublicApiPath,
   isPublicFontPath,
+  isReviewLinkPath,
   isSignedMediaPath,
   isUnknownDocsPath,
   isUnknownSolutionPath,
@@ -183,6 +184,9 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
   // A signed media link carries its own authorization (lib/server/media.ts).
   if (isSignedMediaPath(request.nextUrl.pathname)) return NextResponse.next();
+  // A review link carries its own authorization too (its token, checked by the database): no session to
+  // refresh, and none to spend a round trip on for every range a phone asks for.
+  if (isReviewLinkPath(request.nextUrl.pathname)) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
 
@@ -275,6 +279,6 @@ export const config = {
   // gated, never the other way round. The public site's icon.svg and its
   // self-hosted font files (FONT_FILES in next.config.ts) are named the same way.
   matcher: [
-    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|fonts/onest-latin-v1\\.woff2$|fonts/onest-latin-ext-v1\\.woff2$|fonts/onest-cyrillic-v1\\.woff2$|fonts/onest-cyrillic-ext-v1\\.woff2$|api/media/uploads/[^/]+$).*)",
+    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|manifest\\.webmanifest$|pwa-192\\.png$|pwa-512\\.png$|pwa-maskable-192\\.png$|pwa-maskable-512\\.png$|fonts/onest-latin-v1\\.woff2$|fonts/onest-latin-ext-v1\\.woff2$|fonts/onest-cyrillic-v1\\.woff2$|fonts/onest-cyrillic-ext-v1\\.woff2$|api/media/uploads/[^/]+$).*)",
   ],
 };
