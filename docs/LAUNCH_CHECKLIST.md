@@ -41,8 +41,8 @@ Status: **ok** = already true, now pinned; **done** = built in this change;
 | 9 | Accessibility | axe finds no serious or critical issue on any public page at 320 and 1280 px in every language | measured (below), 0 violations of any impact | ok |
 | 10 | Analytics | First-party, cookieless, privacy-preserving page counts; no third party | `page-views.test.ts`, migration 0104 tests, security lab | **done** (see "Analytics"). **Owner:** read-out is a SQL query |
 | 11 | Meta title and description | Per page, per language: unique title (70 characters or fewer), description of 40 to 160 characters | launch test, every public page x every language | ok |
-| 12 | sitemap.xml | Lists every public indexable page exactly once, on the site's own origin; nothing private. A public page that is deliberately not indexed (today `/r/<token>`, the private review link) is not listed here but on `NOINDEX_PUBLIC` in the launch test | launch test (also reads the `app/` tree: a new public page that is neither listed nor on `NOINDEX_PUBLIC` fails) | ok. `lastmod` is omitted (no build date reaches the server; we do not invent one) |
-| 13 | robots.txt | Allow `/`, disallow `/api/` and every `NOINDEX_PUBLIC` page (today `/r/`), name the sitemap. For each such page the test also requires noindex in its metadata and an `X-Robots-Tag` header, and its absence from the sitemap and llms.txt; a new public-but-unindexed page must be added to that list consciously | launch test (exact), `crawler.test.ts` | ok |
+| 12 | sitemap.xml | Lists every public indexable page exactly once, on the site's own origin; nothing private. A public page that is deliberately not indexed (today `/r/<token>`, the private review link, and `/unsubscribe`, the page an e-mail's unsubscribe link opens) is not listed here but on `NOINDEX_PUBLIC` in the launch test | launch test (also reads the `app/` tree: a new public page that is neither listed nor on `NOINDEX_PUBLIC` fails) | ok. `lastmod` is omitted (no build date reaches the server; we do not invent one) |
+| 13 | robots.txt | Allow `/`, disallow `/api/` and every `NOINDEX_PUBLIC` page (today `/r/` and `/unsubscribe`), name the sitemap. For each such page the test also requires noindex in its metadata and an `X-Robots-Tag` header, and its absence from the sitemap and llms.txt; a new public-but-unindexed page must be added to that list consciously | launch test (exact), `crawler.test.ts` | ok |
 | 14 | Canonical URLs | Every public page's canonical is itself. **hreflang is deliberately off** | launch test | ok (see "hreflang") |
 | 15 | Image alt text | No `<img>` without `alt` in a public page | launch test, on the rendered HTML of every page and language, and on the source | ok (live: 0 of 13 home images without alt) |
 | 16 | FAQ | The home page answers questions and says so to search engines (FAQPage JSON-LD, same text) | launch test | ok |
@@ -63,7 +63,7 @@ What a scan of the code found (every cookie constant, every `localStorage` and
   `ns_invite` (10 min / 15 min / 24 h, one purpose each), and the connect-flow
   nonces `yt_oauth_nonce`, `ig_oauth_nonce`, `tt_oauth_nonce`, `tt_oauth_pkce`
   (10 min).
-- **Local storage:** `chronos_theme`, the editor's on-device drafts
+- **Local storage:** `chronos_theme`, `ns_email_locale` (the language last reported to the server for e-mails), the editor's on-device drafts
   (`ns.editor.draft.v1…`, cleared at sign-out), screen preferences. **Session
   storage (per tab):** navigation stack, unfinished create form, one-time notice,
   paused-animation choice.

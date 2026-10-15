@@ -8,6 +8,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { AccountSection } from "@/components/account/AccountSection";
 import { AccountSecurity } from "@/components/account/AccountSecurity";
+import { EmailNotifications } from "@/components/notifications/EmailNotifications";
+import { readEmailSettings } from "@/lib/server/email-prefs";
 import { readOwnHandle } from "@/lib/server/handles";
 import { pendingHandleFrom } from "@/lib/handles";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
@@ -40,6 +42,8 @@ export default async function SettingsPage() {
   const supabase = user && org.supported && org.current ? await createClient() : null;
   const showInvite = supabase && org.current ? inviteCardShown(org.current, (await readMyInvite(supabase)).state) : false;
   const avatarV = avatarVersionFromMetadata(user?.user_metadata);
+  // The e-mail switches appear only while the e-mail worker is reporting (migration 0103): see readEmailSettings.
+  const email = supabase ? await readEmailSettings(supabase) : ({ available: false } as const);
   // Telegram notifications stay hidden until the customer bot is configured (its public username is set)
   // and migration 0102 is applied.
   const notify = user && org.supported && org.current && customerBotUsername() ? await readChannels() : null;
@@ -66,6 +70,7 @@ export default async function SettingsPage() {
               handlesSupported={handles.supported}
             />
           )}
+          {email.available && <EmailNotifications initial={email.prefs} />}
           {notify?.supported && (
             <NotificationChannels initialChannels={notify.channels} initialPreferences={notify.preferences} />
           )}

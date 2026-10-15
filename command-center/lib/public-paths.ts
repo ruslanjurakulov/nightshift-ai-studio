@@ -60,6 +60,15 @@ export const REVIEW_LINK_PATTERN = /^\/r\/[A-Za-z0-9_-]{16,128}(\/video)?$/;
 export const INVITE_NOTICE_PATH = "/invite";
 
 /**
+ * "Stop these e-mails" (migration 0103): the page the link in an e-mail opens, and the route its button and a
+ * mail program's one-click POST go to. Both work signed out — the person clicking is in a mail app, not
+ * necessarily signed in — and each is exact. The page changes nothing on a GET; the route accepts POST only, and
+ * the long random token in the query is its authority (it can only switch mail off).
+ */
+export const UNSUBSCRIBE_PATH = "/unsubscribe";
+export const UNSUBSCRIBE_API_PATH = "/api/email/unsubscribe";
+
+/**
  * The public /studio page ("What you can make and edit", app/studio/page.tsx).
  *
  * "studio" is also a section of the app (lib/channels.ts SECTIONS), and an old
@@ -192,6 +201,7 @@ export const ALWAYS_PUBLIC_PATHS = [
   ...SOLUTION_PATHS,
   ...CRAWLER_PATHS,
   INVITE_NOTICE_PATH,
+  UNSUBSCRIBE_PATH,
 ] as const;
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
@@ -264,6 +274,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   // Invite links (/i/<token>) and their notice page (/invite).
   "i",
   "invite",
+  // The page the unsubscribe link in an e-mail opens (/unsubscribe).
+  "unsubscribe",
   // Private review links (/r/<token>, migration 0101).
   "r",
   // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
@@ -359,6 +371,8 @@ export function gateDecision(pathname: string, signedIn: boolean, search: string
   // The route itself decides: signed out it starts the sign-up, signed in it
   // explains that an invite is for new accounts.
   if (isInviteLinkPath(pathname)) return "pass";
+  // The e-mail unsubscribe route: signed out is the normal case, and it authenticates by its token (POST only).
+  if (normalize(pathname) === UNSUBSCRIBE_API_PATH) return "pass";
   // A review link's page and stream: the token in the path is the authorization (lib/server/review-link.ts).
   if (isReviewLinkPath(pathname)) return "pass";
   // /reset-password sends a signed-in person without a recovery session to
