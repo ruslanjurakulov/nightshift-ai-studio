@@ -19,6 +19,9 @@ OLD_CODE = "\n".join(line.split("--", 1)[0] for line in OLD.splitlines())
 DEFINER = ("notify_video_ready", "notify_storyboard_ready", "email_prefs_get", "email_prefs_set", "email_unsubscribe",
            "email_weekly_digest", "email_claim_ready", "email_claim_weekly", "email_complete", "email_worker_online")
 
+# Section 0: 0064's later edits, re-installed so the file applies on a database built from the older 0064.
+CATCHUP = ("notification_emit_org_role", "notify_credits_low")
+
 
 def function_body(code, name):
     return code.split(f"function public.{name}(", 1)[1].split("$$", 2)[1]
@@ -40,7 +43,7 @@ class RetentionMigration(unittest.TestCase):
         self.assertIn("create table if not exists public.email_preferences", CODE)
         self.assertIn("create table if not exists public.email_deliveries", CODE)
         created = sorted(re.findall(r"create or replace function public\.(\w+)\(", CODE))
-        self.assertEqual(created, sorted(DEFINER))
+        self.assertEqual(created, sorted(DEFINER + CATCHUP))
         self.assertIn("drop trigger if exists videos_notify_ready on public.videos;", CODE)
 
     def test_the_replaced_storyboard_function_keeps_every_literal_of_0064_and_adds_only_the_channel(self):
@@ -53,6 +56,23 @@ class RetentionMigration(unittest.TestCase):
         head = lambda c: c.split("function public.notify_storyboard_ready(", 1)[1].split("$$", 1)[0]
         self.assertEqual(head(OLD_CODE), head(CODE))
 
+    def test_the_catch_up_installs_0064s_current_functions_verbatim_before_anything_uses_them(self):
+        """0064 was edited in place after it was applied live (001a2971), so 0103 must carry those deltas."""
+        norm = lambda t: re.sub(r"\s+", " ", t).strip()
+        for name in CATCHUP:
+            self.assertEqual(norm(function_body(CODE, name)), norm(function_body(OLD_CODE, name)), name)
+            head = lambda c: norm(c.split(f"function public.{name}(", 1)[1].split("$$", 1)[0])
+            self.assertEqual(head(CODE), head(OLD_CODE), name)
+            self.assertRegex(CODE, rf"revoke all on function public\.{name}\([^)]*\) from public, anon, authenticated, service_role;")
+            self.assertEqual(grants(name), [], name)
+            self.assertLess(CODE.index(f"function public.{name}("), CODE.index("notifications_kind_check"), name)
+        self.assertEqual(CODE.count("create or replace function public.notify_storyboard_ready("), 1, "one final definition")
+
+    def test_the_guard_asks_only_for_what_0064_first_provided(self):
+        guard = CODE.split("end $$;", 1)[0]
+        self.assertIn("to_regprocedure('public.notification_emit(uuid, uuid, text, text, jsonb)')", guard)
+        self.assertNotIn("notification_emit_org_role", guard)
+
     def test_the_kind_check_keeps_every_earlier_kind(self):
         old_kinds = set(re.findall(r"'(\w+)'", OLD_CODE.split("add constraint notifications_kind_check", 1)[1].split(";", 1)[0]))
         new_kinds = set(re.findall(r"'(\w+)'", CODE.split("add constraint notifications_kind_check", 1)[1].split(";", 1)[0]))
@@ -63,7 +83,7 @@ class RetentionMigration(unittest.TestCase):
         for name in DEFINER:
             head = CODE.split(f"function public.{name}(", 1)[1].split("$$", 1)[0]
             self.assertIn("security definer set search_path = public, pg_temp", head, name)
-        self.assertEqual(len(re.findall(r"security definer", CODE)), len(DEFINER))
+        self.assertEqual(len(re.findall(r"security definer", CODE)), len(DEFINER) + len(CATCHUP))
 
     def test_every_function_is_revoked_from_everyone_then_granted_explicitly(self):
         for name in DEFINER:
