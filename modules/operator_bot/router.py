@@ -46,10 +46,11 @@ from typing import Callable, Optional
 from modules import event_log as events
 from modules.operator_bot import alerts as alerts_mod
 from modules.operator_bot import views
+from modules.operator_bot.i18n import DEFAULT_LANGUAGE, LANGUAGES, normalize_language, t
 from modules.operator_bot.config import OperatorConfig
 from modules.operator_bot.sources import OperatorSources
 from modules.telegram_control import TelegramControl, route_command
-from modules.tg_text import html_escape, safe_id
+from modules.tg_text import safe_id
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +61,13 @@ RATE_MAX = 12
 RATE_WINDOW_S = 60
 STRANGER_REPLY_EVERY_S = 600
 
-NOT_AUTHORIZED = "Not authorized."
-NOT_DURABLE_REPLY = ("Not requested: this command could not be recorded durably, so a repeat "
-                     "delivery could run it twice. Try again later.")
-TOO_OLD_REPLY = "Not requested: this command is more than 6 hours old. Send it again if you still want it."
-FAILED_REPLY = "Could not read that right now."
-SLOW_DOWN = "Slow down — too many commands a minute."
+# The English texts, kept as module constants (tests and callers compare to them).
+# The bot itself says them in the owner's language: t(lang, "err.<name>").
+NOT_AUTHORIZED = t(DEFAULT_LANGUAGE, "err.not_authorized")
+NOT_DURABLE_REPLY = t(DEFAULT_LANGUAGE, "err.not_durable")
+TOO_OLD_REPLY = t(DEFAULT_LANGUAGE, "err.too_old")
+FAILED_REPLY = t(DEFAULT_LANGUAGE, "err.failed")
+SLOW_DOWN = t(DEFAULT_LANGUAGE, "err.slow_down")
 
 #: Inbound kinds that come from an allow-listed sender and are claimed by
 #: update_id before they are handled (a strangers' update is never claimed).
@@ -76,7 +78,7 @@ _FORWARD_KEYS = ("forward_origin", "forward_from", "forward_from_chat", "forward
 _LEGACY_READ = {"status", "channels", "pending"}
 _LEGACY_ACTION = {"publish", "pause", "resume"}
 _CALLBACK = re.compile(
-    r"^(?:c:[a-z]{2,12}|a:(?:mute|unmute):[a-z]{2,12}|d:[a-z]{2,12})$")
+    r"^(?:c:[a-z]{2,12}|a:(?:mute|unmute):[a-z]{2,12}|d:[a-z]{2,12}|l:[a-z]{2}(?:-[a-z]{2,4})?)$")
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,30 @@ class OperatorBot:
         self.limiter = SlidingLimiter(RATE_MAX, RATE_WINDOW_S, clock)
         self.strangers = SlidingLimiter(1, STRANGER_REPLY_EVERY_S, clock)
         self._seen = 0
+        self._lang_cache: Optional[tuple] = None
+
+    # -- language ---------------------------------------------------------
+
+    #: How long a language read from the store is trusted. Setting a language
+    #: refreshes it at once; this only bounds how stale a second process can be.
+    LANG_TTL_S = 60
+
+    def language(self) -> str:
+        """The owner's language: the stored choice, else OPERATOR_LANGUAGE, else
+        English. Called only AFTER the sender has been authorized, so a stranger
+        never causes the store to be read; the one read is the state row."""
+        now = self._clock()
+        if self._lang_cache and now - self._lang_cache[1] < self.LANG_TTL_S:
+            return self._lang_cache[0]
+        code = None
+        if self.store is not None:
+            try:
+                code = self.store.load_language()
+            except Exception:
+                code = None
+        lang = normalize_language(code) if code else self.cfg.language
+        self._lang_cache = (lang, now)
+        return lang
 
     # -- entry point ------------------------------------------------------
 
@@ -190,67 +216,79 @@ class OperatorBot:
                 return
             if inbound.kind == "unauthorized":
                 if self.strangers.allow(("chat", str(inbound.chat_id)))[0]:
-                    self.control.send(inbound.chat_id, NOT_AUTHORIZED)
+                    # A stranger gets the configured default language and no
+                    # database read at all.
+                    self.control.send(inbound.chat_id, t(self.cfg.language, "err.not_authorized"))
                 return
             if inbound.kind == "unauthorized_callback":
-                self.control.answer_callback(inbound.callback_id, "Not authorized")
+                self.control.answer_callback(inbound.callback_id, t(self.cfg.language, "err.not_authorized_toast"))
                 return
+            if inbound.kind == "message" and not self._for_us(inbound.text):
+                return          # addressed to another bot: no reply, and no reading of anything
+            lang = self.language()
             allowed, first = self.limiter.allow(("user", str(inbound.user_id)))
             if not allowed:
                 if first:
                     if inbound.kind == "callback":
-                        self.control.answer_callback(inbound.callback_id, SLOW_DOWN)
+                        self.control.answer_callback(inbound.callback_id, t(lang, "err.slow_down"))
                     else:
-                        self.control.send(inbound.chat_id, SLOW_DOWN)
+                        self.control.send(inbound.chat_id, t(lang, "err.slow_down"))
                 elif inbound.kind == "callback":
                     self.control.answer_callback(inbound.callback_id)
                 return
             if inbound.kind == "forwarded":
-                self.control.send(inbound.chat_id, "Forwarded messages are not accepted. Type the command yourself.")
+                self.control.send(inbound.chat_id, t(lang, "err.forwarded"))
                 return
             if inbound.kind == "callback":
-                self._on_callback(inbound)
+                self._on_callback(inbound, lang)
             else:
-                self._on_message(inbound, durable)
+                self._on_message(inbound, durable, lang)
         except Exception as e:  # last line of defence: log the type, say nothing specific
             logger.warning("Failed to process a Telegram update (%s)", type(e).__name__)
 
     # -- messages ---------------------------------------------------------
 
-    def _on_message(self, inbound: Inbound, durable: bool) -> None:
+    def _for_us(self, text: str) -> bool:
+        """False for `/health@OtherBot`: a command addressed to another bot (or to
+        us when our own name cannot be learned) is not ours to answer."""
+        parts = text.strip().split()
+        if not parts or not parts[0].startswith("/"):
+            return True
+        _cmd, _, addressee = parts[0][1:].lower().partition("@")
+        return not addressee or addressee == (self.control.bot_username() or "")
+
+    def _on_message(self, inbound: Inbound, durable: bool, lang: str) -> None:
         chat_id, text = inbound.chat_id, inbound.text
         parts = text.strip().split()
         if not parts or not parts[0].startswith("/"):
-            self._reply(chat_id, views.Reply("Not a command. Send /help for the list.", parse_mode=None))
+            self._reply(chat_id, views.Reply(t(lang, "err.not_command")))
             return
-        cmd, _, addressee = parts[0][1:].lower().partition("@")
+        cmd, _, _addressee = parts[0][1:].lower().partition("@")
         args = parts[1:]
-        if addressee and addressee != (self.control.bot_username() or ""):
-            return          # addressed to another bot (or to us, but we cannot tell): not ours to answer
 
         if cmd in _LEGACY_ACTION:
-            self._legacy_action(inbound, durable)
+            self._legacy_action(inbound, durable, lang)
             return
         try:
-            self._reply(chat_id, self._view_for(cmd, args, inbound))
+            self._reply(chat_id, self._view_for(cmd, args, inbound, lang))
         except Exception as e:
             logger.warning("operator command %s failed (%s)", cmd[:20], type(e).__name__)
-            self._reply(chat_id, views.Reply(FAILED_REPLY, parse_mode=None))
+            self._reply(chat_id, views.Reply(t(lang, "err.failed")))
 
-    def _legacy_action(self, inbound: Inbound, durable: bool) -> None:
+    def _legacy_action(self, inbound: Inbound, durable: bool, lang: str) -> None:
         """/publish /pause /resume: the existing intent path, byte for byte.
         The result is an INTENT; it is recorded as an event for the gated
         pipeline to pick up. Refused when it cannot be recorded durably or is
         too old."""
         chat_id = inbound.chat_id
-        result = route_command(inbound.text, chat_id, self.control, self.deps, user_id=inbound.user_id)
+        result = route_command(inbound.text, chat_id, self.control, self.deps, user_id=inbound.user_id, lang=lang)
         if result.intent:
             if not durable:
-                self.control.send(chat_id, NOT_DURABLE_REPLY)
+                self.control.send(chat_id, t(lang, "err.not_durable"))
                 return
             sent_at = inbound.date
             if not isinstance(sent_at, (int, float)) or self._clock() - sent_at > ACTION_MAX_AGE_S:
-                self.control.send(chat_id, TOO_OLD_REPLY)
+                self.control.send(chat_id, t(lang, "err.too_old"))
                 return
         self.control.send(chat_id, result.reply)
         if result.intent:
@@ -260,70 +298,96 @@ class OperatorBot:
 
     # -- buttons ----------------------------------------------------------
 
-    def _on_callback(self, inbound: Inbound) -> None:
+    def _on_callback(self, inbound: Inbound, lang: str) -> None:
         data = inbound.data
         if not _CALLBACK.match(data):
-            self.control.answer_callback(inbound.callback_id, "Unknown button")
+            self.control.answer_callback(inbound.callback_id, t(lang, "err.unknown_button"))
             return
         try:
             kind, _, rest = data.partition(":")
             if kind == "c":
                 self.control.answer_callback(inbound.callback_id)
-                self._reply(inbound.chat_id, self._view_for(rest, [], inbound))
+                self._reply(inbound.chat_id, self._view_for(rest, [], inbound, lang))
             elif kind == "d":
                 cmd = views.KIND_COMMAND.get(rest)
                 self.control.answer_callback(inbound.callback_id)
                 if cmd:
-                    self._reply(inbound.chat_id, self._view_for(cmd, [], inbound))
+                    self._reply(inbound.chat_id, self._view_for(cmd, [], inbound, lang))
+            elif kind == "l":
+                if rest not in LANGUAGES:
+                    self.control.answer_callback(inbound.callback_id, t(lang, "err.unknown_button"))
+                    return
+                new = self._set_language(rest)
+                self.control.answer_callback(inbound.callback_id, t(new or lang, "language.toast") if new else
+                                             t(lang, "err.failed_toast"))
+                self._reply(inbound.chat_id, views.view_language(self.cfg, new or lang, changed=bool(new))
+                            if new else views.Reply(t(lang, "language.not_saved")))
             else:  # a:mute:<kind> / a:unmute:<kind>
                 action, _, alert_kind = rest.partition(":")
-                reply = self._mute_reply(action == "mute", alert_kind)
-                self.control.answer_callback(inbound.callback_id, "Muted" if action == "mute" else "Unmuted")
+                reply = self._mute_reply(action == "mute", alert_kind, lang)
+                self.control.answer_callback(inbound.callback_id,
+                                             t(lang, "mute.toast" if action == "mute" else "unmute.toast"))
                 self._reply(inbound.chat_id, reply)
         except Exception as e:
             logger.warning("operator button failed (%s)", type(e).__name__)
-            self.control.answer_callback(inbound.callback_id, "Could not do that right now")
+            self.control.answer_callback(inbound.callback_id, t(lang, "err.failed_toast"))
+
+    def _set_language(self, code: str) -> Optional[str]:
+        """Remember the owner's language: ONE channel-less ``operator.language``
+        row, nothing else. Returns the code, or None when it could not be saved."""
+        if code not in LANGUAGES or self.store is None or not self.store.record_language(code):
+            return None
+        self._lang_cache = (code, self._clock())
+        return code
 
     # -- views ------------------------------------------------------------
 
     def _now(self) -> datetime:
         return self.ops.now() if self.ops is not None else datetime.now(timezone.utc)
 
-    def _view_for(self, cmd: str, args: list, inbound: Inbound) -> views.Reply:
-        if cmd in ("start", "menu"):
-            return views.view_menu(self.cfg)
+    def _view_for(self, cmd: str, args: list, inbound: Inbound, lang: str) -> views.Reply:
+        if cmd in ("start", "menu", "refresh"):
+            return views.view_menu(self.cfg, lang)
         if cmd == "help":
-            return views.view_help()
-        if cmd == "refresh":
-            return views.view_menu(self.cfg)
+            return views.view_help(lang)
+        if cmd == "language":
+            if not args:
+                return views.view_language(self.cfg, lang)
+            code = args[0].lower().replace("_", "-").split("-")[0]
+            if code not in LANGUAGES:       # never "fall back" silently: an unknown code is said so
+                return views.Reply(t(lang, "language.unknown", codes=", ".join(LANGUAGES)),
+                                   [views.language_row()])
+            new = self._set_language(code)
+            return views.view_language(self.cfg, new, changed=True) if new else views.Reply(t(lang, "language.not_saved"))
         if cmd in ("mute", "unmute"):
             if not args:
-                return views.Reply(f"Usage: /{cmd} &lt;kind|all&gt; — kinds: {', '.join(views.ALERT_KINDS)}", [[views.cb("Alerts", "c:alerts")]])
-            return self._mute_reply(cmd == "mute", args[0].lower())
+                return views.Reply(t(lang, "mute.usage", cmd=cmd, kinds=", ".join(views.ALERT_KINDS)),
+                                   [[views.cb(t(lang, "cmd.alerts"), "c:alerts")]])
+            return self._mute_reply(cmd == "mute", args[0].lower(), lang)
         if cmd in _LEGACY_READ:
-            return self._legacy_read(cmd, inbound)
+            return self._legacy_read(cmd, inbound, lang)
         if cmd == "alerts":
             state = self.store.load(self._now()) if self.store is not None else None
-            return views.view_alerts(self.cfg, state, self._now())
+            return views.view_alerts(self.cfg, state, self._now(), lang)
         if cmd in views.READ_COMMANDS:
             if self.ops is None:
-                return views.Reply("No data source available.", parse_mode=None)
+                return views.Reply(t(lang, "err.no_data"))
             self.ops.reset()
             held = self._held()
             return {
-                "health": lambda: views.view_health(self.ops),
-                "queue": lambda: views.view_queue(self.ops),
-                "errors": lambda: views.view_errors(self.ops),
-                "balance": lambda: views.view_balance(self.ops),
-                "spend": lambda: views.view_spend(self.ops),
-                "today": lambda: views.view_today(self.ops),
-                "users": lambda: views.view_users(self.ops),
-                "deploys": lambda: views.view_deploys(self.ops),
-                "approvals": lambda: views.view_approvals(self.ops, held),
-                "security": lambda: views.view_security(self.ops),
-                "digest": lambda: alerts_mod.send_digest_reply(self.ops, self._held),
+                "health": lambda: views.view_health(self.ops, lang),
+                "queue": lambda: views.view_queue(self.ops, lang),
+                "errors": lambda: views.view_errors(self.ops, lang),
+                "balance": lambda: views.view_balance(self.ops, lang),
+                "spend": lambda: views.view_spend(self.ops, lang),
+                "today": lambda: views.view_today(self.ops, lang),
+                "users": lambda: views.view_users(self.ops, lang),
+                "deploys": lambda: views.view_deploys(self.ops, lang),
+                "approvals": lambda: views.view_approvals(self.ops, held, lang),
+                "security": lambda: views.view_security(self.ops, lang),
+                "digest": lambda: alerts_mod.send_digest_reply(self.ops, self._held, lang),
             }[cmd]()
-        return views.Reply(f"Unknown command /{safe_id(cmd, 24)}. Send /help.", parse_mode=None)
+        return views.Reply(t(lang, "err.unknown_command", cmd=safe_id(cmd, 24)))
 
     def _held(self) -> Optional[list]:
         if self.deps is None:
@@ -333,27 +397,31 @@ class OperatorBot:
         except Exception:
             return None
 
-    def _legacy_read(self, cmd: str, inbound: Inbound) -> views.Reply:
+    def _legacy_read(self, cmd: str, inbound: Inbound, lang: str) -> views.Reply:
         # route_command authorizes again (sender in the admin chat) — the same
         # check, on the same ids, as the legacy path.
-        result = route_command(f"/{cmd}", inbound.chat_id, self.control, self.deps, user_id=inbound.user_id)
-        return views.Reply(result.reply, [[views.cb("Menu", "c:menu")]], parse_mode=None)
+        result = route_command(f"/{cmd}", inbound.chat_id, self.control, self.deps,
+                               user_id=inbound.user_id, lang=lang)
+        return views.Reply(result.reply, [[views.cb(t(lang, "btn.menu"), "c:menu")]], parse_mode=None)
 
-    def _mute_reply(self, do_mute: bool, kind: str) -> views.Reply:
+    def _mute_reply(self, do_mute: bool, kind: str, lang: str) -> views.Reply:
         if self.store is None:
-            return views.Reply("Alerts are not set up (no alert memory).", parse_mode=None)
+            return views.Reply(t(lang, "mute.not_set_up"))
         now = self._now()
+        label = views.kind_label(lang, kind)
+        alerts_btn = views.cb(t(lang, "cmd.alerts"), "c:alerts")
         if do_mute:
             until = alerts_mod.mute(self.store, kind, now)
             if until is None:
-                return views.Reply(f"Could not mute that. Kinds: all, {', '.join(views.ALERT_KINDS)}.", parse_mode=None)
+                return views.Reply(t(lang, "mute.failed", kinds="all, " + ", ".join(views.ALERT_KINDS)))
             local = until.astimezone(self.cfg.tz).strftime("%H:%M")
-            note = " Critical alerts still come through; mute a single kind to silence it." if kind == "all" else ""
-            return views.Reply(f"Muted <b>{html_escape(kind)}</b> alerts until {local} {html_escape(str(self.cfg.tz))}.{note}",
-                               [[views.cb("Unmute", f"a:unmute:{kind}"), views.cb("Alerts", "c:alerts")]])
+            note = views.Raw(t(lang, "mute.all_note")) if kind == "all" else ""
+            return views.Reply(t(lang, "mute.done", kind=views.b(label),
+                                 until=local, tz=str(self.cfg.tz), note=note),
+                               [[views.cb(t(lang, "btn.unmute"), f"a:unmute:{kind}"), alerts_btn]])
         ok = alerts_mod.unmute(self.store, kind)
-        return views.Reply(f"Unmuted <b>{html_escape(kind)}</b>." if ok else "Could not unmute that.",
-                           [[views.cb("Alerts", "c:alerts")]])
+        return views.Reply(t(lang, "unmute.done", kind=views.b(label)) if ok
+                           else t(lang, "unmute.failed"), [[alerts_btn]])
 
     # -- sending ----------------------------------------------------------
 

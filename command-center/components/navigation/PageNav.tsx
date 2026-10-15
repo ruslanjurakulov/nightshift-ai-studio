@@ -17,6 +17,7 @@ function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => 
       return t.nav[crumb.key];
     case "detail":
       if (crumb.parent === "channels" && crumb.segment === "new") return t.channels.add;
+      if (crumb.parent === "channels" && crumb.segment === "connect") return t.connectPicker.crumb;
       // A section the sidebar does not list names itself by its URL; anything
       // below a section (a video's id) is a detail page, and an id is not a name.
       if (crumb.parent === null && crumb.segment === "presets") return t.presets.title;

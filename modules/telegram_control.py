@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from typing import Optional, Protocol
 
 from modules.log_redaction import describe_http_error
+from modules.operator_bot.i18n import DEFAULT_LANGUAGE, tp
 from modules.tg_text import SPLIT_AT, sanitize_outgoing, split_message
 
 logger = logging.getLogger(__name__)
@@ -240,95 +241,88 @@ class CommandResult:
     authorized: bool = True
 
 
-_HELP = (
-    "Nightshift control panel\n"
-    "/status — system status\n"
-    "/channels — list channels\n"
-    "/pending — videos held for review\n"
-    "/publish <video_id> — publish a held video (still runs the gate)\n"
-    "/pause <channel_id> — pause a channel\n"
-    "/resume <channel_id> — resume a channel\n"
-    "/help — this message"
-)
-
 # Commands that ask for an action rather than a read. They are parsed and
 # authorized, then returned as an intent for the pipeline to run under the gate.
 _ACTION_COMMANDS = {"publish", "pause", "resume"}
 
 
 def route_command(text: str, chat_id, control: TelegramControl, deps: Optional[ControlDeps] = None,
-                  user_id=None) -> CommandResult:
+                  user_id=None, lang: str = DEFAULT_LANGUAGE) -> CommandResult:
     """Parse one Telegram message into a reply and, for actions, an intent.
 
     Read-only queries are answered from `deps`. Queries and actions are refused
     unless the sender (`user_id`, the message's `from.id`) is allow-listed and
     writes in the admin chat, and even then actions are returned as an INTENT,
     never executed here — so a command can never bypass the publish gate or flip
-    a channel's autonomy from inside this module."""
+    a channel's autonomy from inside this module.
+
+    ``lang`` only changes the words of the reply (modules/operator_bot/i18n.py);
+    authorization and the intent are the same in every language."""
     parts = (text or "").strip().split()
     if not parts or not parts[0].startswith("/"):
-        return CommandResult(reply="Not a command. Send /help for the list.")
+        return CommandResult(reply=tp(lang, "err.not_command"))
     cmd = parts[0][1:].lower().split("@")[0]  # strip a /cmd@botname suffix
     args = parts[1:]
 
     if cmd == "help":
-        return CommandResult(reply=_HELP)
+        return CommandResult(reply=tp(lang, "legacy.help"))
 
     # Read-only queries — safe for the admin chat; still gated to the admin so
     # the panel doesn't leak channel state to arbitrary chats.
     if cmd in ("status", "channels", "pending"):
         if not control.authorized(chat_id, user_id):
-            return CommandResult(reply="Not authorized.", authorized=False)
+            return CommandResult(reply=tp(lang, "err.not_authorized"), authorized=False)
         if deps is None:
-            return CommandResult(reply="No data source available.")
+            return CommandResult(reply=tp(lang, "err.no_data"))
         try:
             if cmd == "status":
-                return CommandResult(reply=deps.status_summary() or "No status available.")
+                # A data source that can speak the owner's language says so with
+                # `localized`; the original ones take no argument.
+                summary = deps.status_summary(lang=lang) if getattr(deps, "localized", False) \
+                    else deps.status_summary()
+                return CommandResult(reply=summary or tp(lang, "legacy.no_status"))
             if cmd == "channels":
                 rows = deps.list_channels() or []
-                return CommandResult(reply=_format_channels(rows))
+                return CommandResult(reply=_format_channels(rows, lang))
             if cmd == "pending":
                 rows = deps.pending_review() or []
-                return CommandResult(reply=_format_pending(rows))
+                return CommandResult(reply=_format_pending(rows, lang))
         except Exception as e:
-            logger.warning("Telegram query %s failed (%s: %s)", cmd, type(e).__name__, e)
-            return CommandResult(reply="Could not read that right now.")
+            logger.warning("Telegram query %s failed (%s)", cmd, type(e).__name__)
+            return CommandResult(reply=tp(lang, "err.failed"))
 
     if cmd in _ACTION_COMMANDS:
         if not control.authorized(chat_id, user_id):
-            return CommandResult(reply="Not authorized.", authorized=False)
+            return CommandResult(reply=tp(lang, "err.not_authorized"), authorized=False)
         if not args:
-            return CommandResult(reply=f"Usage: /{cmd} <id>")
+            return CommandResult(reply=tp(lang, "legacy.usage", cmd=cmd))
         target = args[0]
         intent = {"action": cmd, "target": target}
-        note = (
-            " The publish gate still decides — this only requests the normal "
-            "upload." if cmd == "publish" else ""
-        )
+        note = tp(lang, "legacy.gate_note") if cmd == "publish" else ""
         return CommandResult(
-            reply=f"Requested: {cmd} {target}.{note}",
+            reply=tp(lang, "legacy.requested", cmd=cmd, target=target, note=note),
             intent=intent,
         )
 
-    return CommandResult(reply=f"Unknown command /{cmd}. Send /help.")
+    return CommandResult(reply=tp(lang, "err.unknown_command", cmd=cmd))
 
 
-def _format_channels(rows: list[dict]) -> str:
+def _format_channels(rows: list[dict], lang: str = DEFAULT_LANGUAGE) -> str:
     if not rows:
-        return "No channels."
-    lines = ["Channels:"]
+        return tp(lang, "channels.none")
+    lines = [tp(lang, "channels.title")]
     for r in rows:
         cid = r.get("channel_id", "?")
         status = r.get("status", "?")
-        auto = "auto" if r.get("auto_publish", True) else "manual"
+        auto = tp(lang, "channels.auto" if r.get("auto_publish", True) else "channels.manual")
         lines.append(f"• {cid} — {status} · {auto}")
     return "\n".join(lines)
 
 
-def _format_pending(rows: list[dict]) -> str:
+def _format_pending(rows: list[dict], lang: str = DEFAULT_LANGUAGE) -> str:
     if not rows:
-        return "Nothing held for review."
-    lines = ["Held for review:"]
+        return tp(lang, "pending.none")
+    lines = [tp(lang, "pending.title")]
     for r in rows:
         vid = r.get("video_id") or r.get("slug") or "?"
         title = r.get("title") or r.get("topic") or ""
