@@ -22,6 +22,13 @@ name: Deploy web
 # Actions secrets (step "Build the worker env"; docs/DEPLOY_AX42.md, g).
 # While NIGHTSHIFT_CREATIVE_WORKER is `on` as well, it also starts the creative
 # worker (creative_jobs, migration 0036); otherwise that one is removed.
+# Two small workers have a switch and an env file each, and neither is the
+# pipeline worker's: while NIGHTSHIFT_NOTIFY_WORKER is `on` the customer
+# Telegram sender (notify-worker, /opt/nightshift/.env.notify, step "Build the
+# notify env"), while NIGHTSHIFT_EMAIL_WORKER is `on` the customer e-mail sender
+# (email-worker, /opt/nightshift/.env.email, step "Build the e-mail env").
+# Anything but `on` removes that container and its file. Both are independent
+# of NIGHTSHIFT_WORKER.
 
 
 on:
@@ -138,6 +145,10 @@ jobs:
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
           WEBENV_DEV_CLI_PAGE: ${{ vars.DEV_CLI_PAGE }}
           WEBENV_MCP_OAUTH_LIVE: ${{ vars.MCP_OAUTH_LIVE }}
+          # Customer Telegram notifications: the bot's PUBLIC username, empty =
+          # the Notifications panel stays hidden. Set it last, after the notify
+          # worker is running (docs/NOTIFY_TELEGRAM_SETUP.md). Never the token.
+          WEBENV_TELEGRAM_CUSTOMER_BOT_USERNAME: ${{ vars.TELEGRAM_CUSTOMER_BOT_USERNAME }}
         run: |
           set -euo pipefail
 
@@ -285,6 +296,38 @@ jobs:
           # accepts it as a key of .env.worker.example at the deployed commit.
           WORKERENV_NIGHTSHIFT_CREATIVE_WORKER: ${{ vars.NIGHTSHIFT_CREATIVE_WORKER }}
         run: python3 deploy/build-worker-env.py "$PAYLOAD"
+
+      # The customer Telegram sender (docs/NOTIFY_TELEGRAM_SETUP.md), only while
+      # the repository variable NIGHTSHIFT_NOTIFY_WORKER is `on`. Its OWN env,
+      # four names, after a marker line; remote-deploy.sh writes it to
+      # /opt/nightshift/.env.notify (600). The pipeline provider keys are not
+      # mapped here, so that container can never hold them. Named secrets only,
+      # as above; deploy/build-service-env.py prints key names, never values.
+      - name: Build the notify env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_NOTIFY_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          NOTIFYENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NOTIFYENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NOTIFYENV_TELEGRAM_CUSTOMER_BOT_TOKEN: ${{ secrets.TELEGRAM_CUSTOMER_BOT_TOKEN }}
+          # The link back in a message. Empty variable = the app's own domain.
+          NOTIFYENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
+        run: python3 deploy/build-service-env.py notify "$PAYLOAD"
+
+      # The customer e-mail sender (migration 0103, tools/email_worker.py), only
+      # while NIGHTSHIFT_EMAIL_WORKER is `on`: its own env, five names, to
+      # /opt/nightshift/.env.email (600). The transport is fixed to `resend` in
+      # docker-compose.yml.
+      - name: Build the e-mail env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_EMAIL_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          EMAILENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          EMAILENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          EMAILENV_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAILENV_NIGHTSHIFT_EMAIL_FROM: ${{ vars.NIGHTSHIFT_EMAIL_FROM }}
+          EMAILENV_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
+        run: python3 deploy/build-service-env.py email "$PAYLOAD"
 
       - name: Deploy over SSH
         if: steps.payload.outputs.run == 'true'

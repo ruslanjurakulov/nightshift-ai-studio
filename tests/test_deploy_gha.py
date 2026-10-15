@@ -37,6 +37,9 @@ REMOTE = ROOT / "deploy" / "remote-deploy.sh"
 WORKER_EXAMPLE = ROOT / "deploy" / ".env.worker.example"
 BUILD_WORKER = ROOT / "deploy" / "build-worker-env.py"
 SETUP = ROOT / "deploy" / "setup-gha-deploy.sh"
+NOTIFY_EXAMPLE = ROOT / "deploy" / ".env.notify.example"
+EMAIL_EXAMPLE = ROOT / "deploy" / ".env.email.example"
+BUILD_SERVICE = ROOT / "deploy" / "build-service-env.py"
 
 REQUIRED = ("DOMAIN", "ACME_EMAIL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY")
 # Anything that grants access. GOOGLE_OAUTH_CLIENT_ID is not a credential on its
@@ -135,7 +138,7 @@ class WorkflowMappingTests(unittest.TestCase):
         # It is a repository secret for the bot, so it is one typo away. Only
         # the worker step may name it, and that goes to the worker's own file.
         for s in steps():
-            if s.get("name") == "Build the worker env":
+            if s.get("name") in ("Build the worker env", "Build the notify env", "Build the e-mail env"):
                 continue
             self.assertNotRegex(yaml.safe_dump(s), r"(secrets|vars)\.\w*SERVICE", s.get("name"))
 
@@ -295,10 +298,12 @@ FAKE_DOCKER = textwrap.dedent(
         esac
         exit 0 ;;
       *" up "*creative-worker) exit "${FAKE_CREATIVE_UP_RC:-0}" ;;
+      *" up "*notify-worker) exit "${FAKE_NOTIFY_UP_RC:-0}" ;;
+      *" up "*email-worker) exit "${FAKE_EMAIL_UP_RC:-0}" ;;
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
       *" ps -q web"|*" ps -aq web") echo cid123 ;;
-      *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker") echo cidw ;;
+      *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker"|*" ps -q notify-worker"|*" ps -q email-worker") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
       logs*) echo "${FAKE_LOG_TEXT:-}" ;;
       *" logs "*) echo "${FAKE_LOG_TEXT:-}" ;;
@@ -368,6 +373,8 @@ class _RemoteDeployFixture(unittest.TestCase):
         self.git(up, "init", "-q", "-b", "main")
         shutil.copy(ENV_EXAMPLE, up / "deploy" / ".env.web.example")
         shutil.copy(WORKER_EXAMPLE, up / "deploy" / ".env.worker.example")
+        shutil.copy(NOTIFY_EXAMPLE, up / "deploy" / ".env.notify.example")
+        shutil.copy(EMAIL_EXAMPLE, up / "deploy" / ".env.email.example")
         (up / "deploy" / "docker-compose.yml").write_text("services: {}\n")
         self.git(up, "add", "-A")
         self.git(up, "commit", "-q", "-m", "A")
@@ -394,6 +401,8 @@ class _RemoteDeployFixture(unittest.TestCase):
         self.docker_log = self.tmp / "docker.log"
         self.env_file = self.tmp / ".env.web"
         self.worker_env_file = self.tmp / ".env.worker"
+        self.notify_env_file = self.tmp / ".env.notify"
+        self.email_env_file = self.tmp / ".env.email"
 
     def payload(self, sha=None, drop=(), **values):
         vals = {k: "" for k in example_keys()}
@@ -416,6 +425,8 @@ class _RemoteDeployFixture(unittest.TestCase):
             NIGHTSHIFT_APP_DIR=str(self.app),
             NIGHTSHIFT_ENV_FILE=str(self.env_file),
             NIGHTSHIFT_WORKER_ENV_FILE=str(self.worker_env_file),
+            NIGHTSHIFT_NOTIFY_ENV_FILE=str(self.notify_env_file),
+            NIGHTSHIFT_EMAIL_ENV_FILE=str(self.email_env_file),
             NIGHTSHIFT_LOCK_FILE=str(self.tmp / ".deploy.lock"),
             NIGHTSHIFT_DOCKER=str(self.tmp / "docker"),
             NIGHTSHIFT_HEALTH_TIMEOUT="10",
@@ -1500,6 +1511,363 @@ class RemoteDeployCreativeWorkerTests(_RemoteDeployFixture):
         proc = self.deploy(self.worker_payload(NIGHTSHIFT_CREATIVE_WORKER="on"), FAKE_CREATIVE_UP_RC="1")
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("the creative worker did not start", proc.stderr)
+
+
+# ── The customer notification senders (Telegram, e-mail) ────────────────────
+
+
+def _example_keys_of(path):
+    return [m.group(1) for m in re.finditer(r"^([A-Z][A-Z0-9_]*)=", path.read_text(), re.M)]
+
+
+def _load_service_builder():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_service_env", BUILD_SERVICE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# step name -> (switch variable, prefix, example, script argument, the pipeline keys it must never carry)
+SENDERS = {
+    "Build the notify env": ("NIGHTSHIFT_NOTIFY_WORKER", "NOTIFYENV_", NOTIFY_EXAMPLE, "notify"),
+    "Build the e-mail env": ("NIGHTSHIFT_EMAIL_WORKER", "EMAILENV_", EMAIL_EXAMPLE, "email"),
+}
+
+
+class SenderWorkflowTests(unittest.TestCase):
+    def test_the_go_live_name_is_a_variable_in_the_web_example_and_mapped(self):
+        self.assertIn("TELEGRAM_CUSTOMER_BOT_USERNAME", example_keys())
+        self.assertEqual(
+            step("payload")["env"]["WEBENV_TELEGRAM_CUSTOMER_BOT_USERNAME"],
+            "${{ vars.TELEGRAM_CUSTOMER_BOT_USERNAME }}",
+        )
+        # Empty in the template: absent = the Notifications panel stays hidden.
+        self.assertRegex(ENV_EXAMPLE.read_text(), r"(?m)^TELEGRAM_CUSTOMER_BOT_USERNAME=$")
+
+    def test_the_bot_token_never_reaches_the_dashboards_or_the_pipeline_workers_env(self):
+        self.assertNotIn("TELEGRAM_CUSTOMER_BOT_TOKEN", ENV_EXAMPLE.read_text())
+        self.assertNotIn("TELEGRAM_CUSTOMER_BOT_TOKEN", WORKER_EXAMPLE.read_text())
+        self.assertNotIn("TELEGRAM_CUSTOMER_BOT_TOKEN", yaml.safe_dump(step(name="Build the worker env")))
+        self.assertNotIn("RESEND_API_KEY", yaml.safe_dump(step(name="Build the worker env")))
+
+    def test_each_step_maps_exactly_its_example_and_only_named_secrets(self):
+        for name, (switch, prefix, example, _arg) in SENDERS.items():
+            with self.subTest(name):
+                s = step(name=name)
+                mapped = {k[len(prefix):]: v for k, v in s["env"].items() if k.startswith(prefix)}
+                self.assertEqual(sorted(mapped), sorted(_example_keys_of(example)))
+                for key, expr in mapped.items():
+                    refs = re.findall(r"(secrets|vars)\.([A-Z][A-Z0-9_]*)", str(expr))
+                    self.assertTrue(refs, key)
+                    for kind, ref in refs:
+                        if kind == "secrets":
+                            self.assertNotRegex(ref, r"^(?!SUPABASE_URL$|SUPABASE_SERVICE_KEY$|TELEGRAM_CUSTOMER_BOT_TOKEN$|RESEND_API_KEY$)")
+                    if CREDENTIAL.search(key):
+                        self.assertTrue(str(expr).startswith("${{ secrets."), key)
+                self.assertEqual(set(s["env"]) - {f"{prefix}{k}" for k in mapped}, {"PAYLOAD"})
+                self.assertNotIn("toJSON", yaml.safe_dump(s))
+
+    def test_runs_only_while_its_switch_is_on_and_default_is_off(self):
+        for name, (switch, _prefix, _example, arg) in SENDERS.items():
+            with self.subTest(name):
+                s = step(name=name)
+                self.assertEqual(
+                    s["if"], f"steps.payload.outputs.run == 'true' && vars.{switch} == 'on'"
+                )
+                self.assertEqual(s["run"].strip(), f'python3 deploy/build-service-env.py {arg} "$PAYLOAD"')
+
+    def test_steps_sit_between_the_web_env_and_ssh(self):
+        names = [s.get("name") for s in steps()]
+        for name in SENDERS:
+            self.assertLess(names.index("Build the server env"), names.index(name))
+            self.assertLess(names.index(name), names.index("Deploy over SSH"))
+
+    def test_the_origin_defaults_to_the_deployment_domain_and_nothing_else_has_a_fallback(self):
+        expr = "${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}"
+        self.assertEqual(step(name="Build the notify env")["env"]["NOTIFYENV_NOTIFY_APP_ORIGIN"], expr)
+        self.assertEqual(step(name="Build the e-mail env")["env"]["EMAILENV_APP_ORIGIN"], expr)
+        for key in ("NOTIFYENV_TELEGRAM_CUSTOMER_BOT_TOKEN", "NOTIFYENV_SUPABASE_SERVICE_KEY"):
+            self.assertNotIn("||", step(name="Build the notify env")["env"][key])
+
+    def test_permissions_and_triggers_are_unchanged(self):
+        wf = workflow()
+        self.assertEqual(wf["permissions"], {"contents": "read"})
+        self.assertNotIn("permissions", wf["jobs"]["deploy"])
+
+    def test_the_examples_name_the_agreed_keys(self):
+        self.assertEqual(
+            _example_keys_of(NOTIFY_EXAMPLE),
+            ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "TELEGRAM_CUSTOMER_BOT_TOKEN", "NOTIFY_APP_ORIGIN"],
+        )
+        self.assertEqual(
+            _example_keys_of(EMAIL_EXAMPLE),
+            ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM", "APP_ORIGIN"],
+        )
+
+    def test_the_compose_services_use_their_own_env_files_and_profiles(self):
+        c = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text())["services"]
+        for svc, profile, var, default in (
+            ("notify-worker", "notify", "NOTIFY_ENV_FILE", "/opt/nightshift/.env.notify"),
+            ("email-worker", "email", "EMAIL_ENV_FILE", "/opt/nightshift/.env.email"),
+        ):
+            self.assertEqual(c[svc]["profiles"], [profile])
+            self.assertEqual(c[svc]["env_file"], [{"path": f"${{{var}:-{default}}}", "required": False}])
+        self.assertEqual(c["email-worker"]["environment"]["NIGHTSHIFT_EMAIL_TRANSPORT"], "resend")
+        for svc in ("web", "worker", "media-worker", "creative-worker"):
+            self.assertNotIn(".env.notify", yaml.safe_dump(c[svc]))
+            self.assertNotIn(".env.email", yaml.safe_dump(c[svc]))
+
+
+class BuildServiceEnvTests(unittest.TestCase):
+    SECRET = "sender-secret-never-printed"
+
+    def setUp(self):
+        self.mod = _load_service_builder()
+
+    def values(self, service, **over):
+        _switch, prefix, example, _arg = next(v for v in SENDERS.values() if v[3] == service)
+        vals = {
+            "SUPABASE_URL": "https://abc.supabase.co",
+            "SUPABASE_SERVICE_KEY": self.SECRET,
+            "TELEGRAM_CUSTOMER_BOT_TOKEN": "123:abc",
+            "NOTIFY_APP_ORIGIN": "https://app.example.com",
+            "RESEND_API_KEY": "re_x",
+            "NIGHTSHIFT_EMAIL_FROM": "Nightshift <hello@example.com>",
+            "APP_ORIGIN": "https://app.example.com",
+        }
+        vals = {k: vals[k] for k in _example_keys_of(example)}
+        vals.update(over)
+        return {f"{prefix}{k}": v for k, v in vals.items() if v is not None}, example
+
+    def build(self, service, **over):
+        env, example = self.values(service, **over)
+        prefix = next(v for v in SENDERS.values() if v[3] == service)[1]
+        return self.mod.build(env, example.read_text(), prefix, example.name)
+
+    def test_one_line_per_key_in_the_examples_order(self):
+        for service, example in (("notify", NOTIFY_EXAMPLE), ("email", EMAIL_EXAMPLE)):
+            lines, errors = self.build(service)
+            self.assertEqual(errors, [])
+            self.assertEqual([l.split("=", 1)[0] for l in lines], _example_keys_of(example))
+
+    def test_every_key_is_required(self):
+        for service, example in (("notify", NOTIFY_EXAMPLE), ("email", EMAIL_EXAMPLE)):
+            for key in _example_keys_of(example):
+                with self.subTest(service=service, key=key):
+                    _, errors = self.build(service, **{key: " "})
+                    self.assertIn(f"{key} is required and empty", "\n".join(errors))
+
+    def test_a_key_the_workflow_forgot_fails(self):
+        _, errors = self.build("notify", TELEGRAM_CUSTOMER_BOT_TOKEN=None)
+        self.assertIn("TELEGRAM_CUSTOMER_BOT_TOKEN is in deploy/.env.notify.example but not mapped", "\n".join(errors))
+
+    def test_problems_are_named_by_key_never_by_value(self):
+        _, errors = self.build("notify", SUPABASE_SERVICE_KEY="a$" + self.SECRET, TELEGRAM_CUSTOMER_BOT_TOKEN="x\n" + self.SECRET)
+        text = "\n".join(errors)
+        self.assertIn("SUPABASE_SERVICE_KEY contains", text)
+        self.assertIn("TELEGRAM_CUSTOMER_BOT_TOKEN contains a line break", text)
+        self.assertNotIn(self.SECRET, text)
+
+    def test_the_origin_must_be_a_bare_https_origin(self):
+        for bad in ("http://app.example.com", "https://app.example.com/path", "app.example.com", "https://a.example.com?x=1", "https://u@a.example.com"):
+            with self.subTest(bad):
+                _, errors = self.build("notify", NOTIFY_APP_ORIGIN=bad)
+                self.assertIn("NOTIFY_APP_ORIGIN must be https://<host>", "\n".join(errors))
+        for good in ("https://app.example.com", "https://app.example.com/", "https://app.example.com:8443"):
+            _, errors = self.build("email", APP_ORIGIN=good)
+            self.assertEqual(errors, [], good)
+
+    def test_the_sender_may_have_spaces_and_angle_brackets(self):
+        lines, errors = self.build("email")
+        self.assertEqual(errors, [])
+        self.assertIn("NIGHTSHIFT_EMAIL_FROM=Nightshift <hello@example.com>", lines)
+        _, errors = self.build("email", NIGHTSHIFT_EMAIL_FROM="Nightshift # <x@y.z>")
+        self.assertIn("NIGHTSHIFT_EMAIL_FROM starts with a quote", "\n".join(errors))
+
+    def test_main_appends_the_marker_and_prints_no_value_and_a_refusal_leaves_the_payload_alone(self):
+        for service, marker in (("notify", "NIGHTSHIFT_NOTIFY_ENV=on"), ("email", "NIGHTSHIFT_EMAIL_ENV=on")):
+            with self.subTest(service):
+                tmp = Path(tempfile.mkdtemp())
+                self.addCleanup(shutil.rmtree, tmp, True)
+                payload = tmp / "payload"
+                payload.write_text("NIGHTSHIFT_DEPLOY_SHA=" + "a" * 40 + "\nDOMAIN=x\n")
+                env, _ = self.values(service)
+                env["PATH"] = os.environ["PATH"]
+                run = lambda: subprocess.run(
+                    [sys.executable, str(BUILD_SERVICE), service, str(payload)], env=env, capture_output=True, text=True, timeout=30
+                )
+                proc = run()
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                lines = payload.read_text().splitlines()
+                self.assertEqual(lines[2], marker)
+                self.assertIn(f"SUPABASE_SERVICE_KEY={self.SECRET}", lines)
+                self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+                before = payload.read_text()
+                env[next(k for k in env if k.endswith("SUPABASE_SERVICE_KEY"))] = ""
+                proc = run()
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertEqual(payload.read_text(), before)
+
+    def test_the_script_takes_a_known_service_only(self):
+        proc = subprocess.run([sys.executable, str(BUILD_SERVICE), "worker", "/nonexistent"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 2)
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
+class RemoteDeploySendersTests(_RemoteDeployFixture):
+    """The notify and e-mail sections of the payload, on the same fixture."""
+
+    def section(self, marker, example, **values):
+        vals = {k: "" for k in _example_keys_of(example)}
+        vals.update(
+            SUPABASE_URL="https://abc.supabase.co",
+            SUPABASE_SERVICE_KEY=self.SECRET,
+            TELEGRAM_CUSTOMER_BOT_TOKEN="123:tok",
+            NOTIFY_APP_ORIGIN="https://app.example.com",
+            RESEND_API_KEY="re_key",
+            NIGHTSHIFT_EMAIL_FROM="Nightshift <hello@example.com>",
+            APP_ORIGIN="https://app.example.com",
+        )
+        vals = {k: vals[k] for k in _example_keys_of(example)}
+        vals.update(values)
+        return "\n".join([marker] + [f"{k}={v}" for k, v in vals.items() if v is not None]) + "\n"
+
+    def notify_section(self, **values):
+        return self.section("NIGHTSHIFT_NOTIFY_ENV=on", NOTIFY_EXAMPLE, **values)
+
+    def email_section(self, **values):
+        return self.section("NIGHTSHIFT_EMAIL_ENV=on", EMAIL_EXAMPLE, **values)
+
+    def up_calls(self, svc):
+        return [c for c in self.docker_calls() if c.endswith(f"up -d --build --no-deps {svc}")]
+
+    def test_the_switch_off_changes_nothing_but_removing_what_is_not_there(self):
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.up_calls("notify-worker") + self.up_calls("email-worker"), [])
+        self.assertFalse(self.notify_env_file.exists())
+        self.assertFalse(self.email_env_file.exists())
+        calls = self.docker_calls()
+        self.assertTrue(any(c.endswith("rm --stop --force notify-worker") for c in calls))
+        self.assertTrue(any(c.endswith("rm --stop --force email-worker") for c in calls))
+        self.assertIn("notify-worker is off", proc.stdout)
+        self.assertIn("notify-worker off; email-worker off", proc.stdout)
+        # Nothing about the web or worker deploy moved.
+        self.assertTrue(any(c.endswith("up -d --build --remove-orphans web caddy") for c in calls))
+
+    def test_notify_on_writes_its_own_600_file_with_exactly_four_names_and_starts_after_web(self):
+        proc = self.deploy(self.payload() + self.notify_section())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(stat.S_IMODE(self.notify_env_file.stat().st_mode), 0o600)
+        text = self.notify_env_file.read_text()
+        names = [l.split("=", 1)[0] for l in text.splitlines() if l and not l.startswith("#")]
+        self.assertEqual(names, ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "TELEGRAM_CUSTOMER_BOT_TOKEN", "NOTIFY_APP_ORIGIN"])
+        self.assertIn("TELEGRAM_CUSTOMER_BOT_TOKEN=123:tok\n", text)
+        # Nobody else's file got it, and the marker is not a value anywhere.
+        for other in (self.env_file, self.worker_env_file, self.email_env_file):
+            self.assertFalse(other.exists() and "TELEGRAM_CUSTOMER_BOT_TOKEN" in other.read_text())
+        self.assertNotIn("NIGHTSHIFT_NOTIFY_ENV", self.env_file.read_text())
+        self.assertNotIn("SUPABASE_SERVICE_KEY", self.env_file.read_text())
+        calls = self.docker_calls()
+        web_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --remove-orphans web caddy")]
+        notify_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --no-deps notify-worker")]
+        self.assertEqual(len(web_up), 1)
+        self.assertEqual(len(notify_up), 1)
+        self.assertLess(web_up[0], notify_up[0])
+        self.assertTrue(all("--profile notify" in c and "--profile email" in c for c in calls if " up " in f" {c} "))
+        self.assertTrue(any(c.startswith("inspect -f notify-worker after 0s:") for c in calls))
+        self.assertIn("notify-worker log hints:", proc.stdout)
+        self.assertIn("notify-worker on; email-worker off", proc.stdout)
+        self.assertEqual(self.up_calls("email-worker"), [])
+        self.assertEqual(self.up_calls("worker"), [], "the pipeline worker must stay off")
+
+    def test_email_on_writes_its_own_600_file_with_exactly_five_names(self):
+        proc = self.deploy(self.payload() + self.email_section())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(stat.S_IMODE(self.email_env_file.stat().st_mode), 0o600)
+        names = [l.split("=", 1)[0] for l in self.email_env_file.read_text().splitlines() if l and not l.startswith("#")]
+        self.assertEqual(names, ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM", "APP_ORIGIN"])
+        self.assertFalse(self.notify_env_file.exists())
+        self.assertEqual(len(self.up_calls("email-worker")), 1)
+        self.assertEqual(self.up_calls("notify-worker"), [])
+        self.assertIn("notify-worker off; email-worker on", proc.stdout)
+
+    def test_sections_are_independent_of_the_pipeline_worker_and_of_their_order(self):
+        worker = "NIGHTSHIFT_WORKER_ENV=on\n" + "\n".join(
+            f"{k}={self.SECRET if k == 'SUPABASE_SERVICE_KEY' else ('https://abc.supabase.co' if k == 'SUPABASE_URL' else '')}"
+            for k in worker_example_keys()
+        ) + "\n"
+        for payload in (
+            self.payload() + worker + self.notify_section() + self.email_section(),
+            self.payload() + self.email_section() + self.notify_section() + worker,
+        ):
+            proc = self.deploy(payload)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("notify-worker on; email-worker on", proc.stdout)
+            self.assertNotIn("TELEGRAM_CUSTOMER_BOT_TOKEN", self.worker_env_file.read_text())
+            self.assertNotIn("GEMINI_API_KEY", self.notify_env_file.read_text())
+            self.assertNotIn("GEMINI_API_KEY", self.email_env_file.read_text())
+            self.assertNotIn("RESEND_API_KEY", self.worker_env_file.read_text())
+
+    def test_switching_off_removes_the_container_and_the_file_with_the_token(self):
+        self.assertEqual(self.deploy(self.payload() + self.notify_section()).returncode, 0)
+        self.assertTrue(self.notify_env_file.exists())
+        self.assertTrue(Path(str(self.notify_env_file)).exists())
+        self.assertEqual(self.deploy(self.payload() + self.notify_section()).returncode, 0)
+        self.assertTrue(Path(str(self.notify_env_file) + ".prev").exists())
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.notify_env_file.exists())
+        self.assertFalse(Path(str(self.notify_env_file) + ".prev").exists())
+        self.assertTrue(any(c.endswith("rm --stop --force notify-worker") for c in self.docker_calls()))
+
+    def test_a_key_the_sender_does_not_read_is_refused_without_changing_anything(self):
+        proc = self.deploy(self.payload() + self.notify_section(GEMINI_API_KEY=self.SECRET))
+        self.assertRefused(proc, "GEMINI_API_KEY is not a key in deploy/.env.notify.example")
+        self.assertFalse(self.notify_env_file.exists())
+        proc = self.deploy(self.payload() + self.email_section(TELEGRAM_CUSTOMER_BOT_TOKEN=self.SECRET))
+        self.assertRefused(proc, "TELEGRAM_CUSTOMER_BOT_TOKEN is not a key in deploy/.env.email.example")
+
+    def test_missing_empty_or_repeated_values_are_refused(self):
+        self.assertRefused(
+            self.deploy(self.payload() + self.notify_section(TELEGRAM_CUSTOMER_BOT_TOKEN="")),
+            "TELEGRAM_CUSTOMER_BOT_TOKEN is required and empty",
+        )
+        self.assertRefused(
+            self.deploy(self.payload() + self.notify_section(NOTIFY_APP_ORIGIN=None)),
+            "NOTIFY_APP_ORIGIN is missing",
+        )
+        self.assertRefused(self.deploy(self.payload() + self.email_section(RESEND_API_KEY="a$b")), "RESEND_API_KEY contains")
+        self.assertRefused(
+            self.deploy(self.payload() + self.notify_section() + "NIGHTSHIFT_NOTIFY_ENV=on\n"),
+            "NIGHTSHIFT_NOTIFY_ENV is not a key in deploy/.env.notify.example",
+        )
+
+    def test_only_the_exact_markers_open_a_section(self):
+        # `=off`, or a marker typed into the web lines with another value, is just an unknown web key.
+        self.assertRefused(
+            self.deploy(self.payload(NIGHTSHIFT_NOTIFY_ENV="off")), "NIGHTSHIFT_NOTIFY_ENV is not a key in deploy/.env.web.example"
+        )
+        self.assertRefused(
+            self.deploy(self.payload(NIGHTSHIFT_EMAIL_ENV="1")), "NIGHTSHIFT_EMAIL_ENV is not a key in deploy/.env.web.example"
+        )
+
+    def test_a_sender_that_fails_to_start_fails_the_deploy_after_web(self):
+        proc = self.deploy(self.payload() + self.notify_section(), FAKE_NOTIFY_UP_RC="1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("the notify worker did not start", proc.stderr)
+        proc = self.deploy(self.payload() + self.email_section(), FAKE_EMAIL_UP_RC="1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("the e-mail worker did not start", proc.stderr)
+
+    def test_log_hints_name_known_phrases_and_never_the_log_text(self):
+        text = f"2026 notify ERROR Traceback token={self.SECRET}"
+        proc = self.deploy(self.payload() + self.notify_section(), FAKE_LOG_TEXT=text)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("notify-worker log hints: Traceback", proc.stdout)
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
 
 
 if __name__ == "__main__":

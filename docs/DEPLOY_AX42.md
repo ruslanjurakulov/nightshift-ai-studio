@@ -347,6 +347,11 @@ faylini ishlatadi). Logda `creative-worker after 20s: state=running exit=0
 restarts=0 ...` qatori chiqadi. Boshqa har qanday qiymat (yoki o'chirilgan
 variable) → keyingi deployda creative worker to'xtatiladi va o'chiriladi.
 
+**Mijozlarga yuboruvchilar** (Telegram: `notify-worker`, e-mail: `email-worker`):
+har biri o'z switch'i (`NIGHTSHIFT_NOTIFY_WORKER`, `NIGHTSHIFT_EMAIL_WORKER` =
+`on`) va o'z env fayli (`.env.notify`, `.env.email`) bilan, `NIGHTSHIFT_WORKER`ga
+bog'liq emas. Standart — o'chiq. Nomlar va tartib: `docs/NOTIFY_TELEGRAM_SETUP.md`.
+
 ---
 
 Quyidagi 0–13-bo'limlar — serverni noldan tayyorlash va **qo'lda** deploy
