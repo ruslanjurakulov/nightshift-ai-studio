@@ -398,6 +398,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
         s.rows("insert into public.org_members (org_id, email, role) values (%s, %s, 'viewer') returning 1",
                [sc.alice.org, sc.invitee.email])
 
+    # Private review links (0101): tests/security/sec_review_links_0101.py — a review copy and a live link per tenant.
+    import sec_review_links_0101
+    sec_review_links_0101.seed(conn, sc)
+
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
     with as_superuser(conn, commit=False) as s:

@@ -160,5 +160,67 @@ class RouteCommandTestCase(unittest.TestCase):
         self.assertIn("Unknown", r.reply)
 
 
+class SendLayerTestCase(unittest.TestCase):
+    """The outbound layer, against a fake Telegram HTTP session (no network)."""
+
+    def make(self, status=200):
+        from tests.operator_bot_fakes import FakeTelegram
+        tg = FakeTelegram(status)
+        return TelegramControl(token="123456:TESTTOKENTESTTOKENTESTTOKENTEST", chat_id="42", session=tg), tg
+
+    def test_send_posts_text_parse_mode_and_markup(self):
+        c, tg = self.make()
+        self.assertTrue(c.send(42, "hi", parse_mode="HTML", reply_markup={"inline_keyboard": [[]]}))
+        payload = tg.sent()[0]
+        self.assertEqual((payload["chat_id"], payload["text"], payload["parse_mode"]), ("42", "hi", "HTML"))
+        self.assertIn("reply_markup", payload)
+        self.assertTrue(payload["disable_web_page_preview"])
+
+    def test_plain_send_has_no_parse_mode_or_markup(self):
+        c, tg = self.make()
+        c.send(42, "hi")
+        self.assertNotIn("parse_mode", tg.sent()[0])
+        self.assertNotIn("reply_markup", tg.sent()[0])
+
+    def test_long_text_is_split_and_the_keyboard_rides_on_the_last_part(self):
+        c, tg = self.make()
+        text = "\n".join("line %04d %s" % (i, "word " * 16) for i in range(200))
+        self.assertTrue(c.send(42, text, reply_markup={"inline_keyboard": [[{"text": "a", "callback_data": "c:menu"}]]}))
+        sent = tg.sent()
+        self.assertGreater(len(sent), 1)
+        self.assertTrue(all(len(p["text"]) <= 4096 for p in sent))
+        self.assertTrue(all("reply_markup" not in p for p in sent[:-1]))
+        self.assertIn("reply_markup", sent[-1])
+
+    def test_outgoing_text_is_scrubbed(self):
+        c, tg = self.make()
+        c.send(42, "key sk-abcdefghijklmnopqrstuvwxyz and a@b.co and /bot123456:ABCdef_ghi/x")
+        text = tg.texts()[0]
+        for leak in ("sk-abcdef", "a@b.co", "ABCdef_ghi"):
+            self.assertNotIn(leak, text)
+
+    def test_a_failure_is_false_and_never_raises(self):
+        c, _ = self.make(status=500)
+        self.assertFalse(c.send(42, "hi"))
+        boom = TelegramControl(token="t", chat_id="42", session=type("S", (), {"post": staticmethod(
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("token in https://api.telegram.org/bott:SECRET/x")))})())
+        self.assertFalse(boom.send(42, "hi"))
+
+    def test_empty_text_is_not_sent(self):
+        c, tg = self.make()
+        self.assertFalse(c.send(42, "   "))
+        self.assertEqual(tg.calls, [])
+
+    def test_answer_callback(self):
+        c, tg = self.make()
+        self.assertTrue(c.answer_callback("cb1", "Done"))
+        self.assertEqual(tg.answers()[0], {"callback_query_id": "cb1", "text": "Done"})
+        self.assertFalse(c.answer_callback("", "x"))
+        self.assertFalse(TelegramControl(token="", chat_id="1").answer_callback("cb1"))
+
+    def test_chat_id_property(self):
+        self.assertEqual(TelegramControl(token="t", chat_id=" 42 ").chat_id, "42")
+
+
 if __name__ == "__main__":
     unittest.main()

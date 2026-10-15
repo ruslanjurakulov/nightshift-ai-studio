@@ -132,6 +132,16 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "no-store" },
         ],
       },
+      // A review link's page (migration 0101): the address is the secret, so it is never cached, never leaves a
+      // Referer, and is not indexed (also noindex in the page and Disallow in robots.txt).
+      {
+        source: "/r/:token",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
       // Password recovery: the request page and the reset page are never cached
       // and send no Referer (the reset page is reached from an e-mailed link).
       {

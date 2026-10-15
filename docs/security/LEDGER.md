@@ -230,7 +230,15 @@ Recorded so these are not re-reported.
   manual dispatch (repository write access needed), but the Command Center always dispatches
   `privacy: "private"` (`command-center/lib/server/github-secrets.ts`).
 - **Telegram control** (`modules/telegram_control.route_command`) checks both chat id and sender id
-  before any query or action, and returns actions as intents.
+  before any query or action, and returns actions as intents. The operator bot built on it
+  (`modules/operator_bot/`, `docs/operator-bot.md`) applies the same check to every command AND every
+  inline button (an allow-listed `from.id` in the admin chat; edited, forwarded, channel, bot and
+  other-chat updates are ignored or refused), adds only read-only views plus an alert mute, keeps
+  `/publish` `/pause` `/resume` as intents, scrubs and escapes everything it sends, rate-limits per
+  sender, and in webhook mode compares `X-Telegram-Bot-Api-Secret-Token` in constant time and checks
+  the allow-list before any database write. Pinned by `tests/test_operator_bot_router.py` (the
+  refusal matrix over every command and button) and `tests/test_operator_bot_webhook.py`. No migration:
+  its memory is `operator.*` rows in `alert_events`.
 - **`deploy_web.yml`** keeps secrets in `env:` and stdin, pins the SSH host key, and uses
   `persist-credentials: false`. The server's forced command refuses commits that are not on `origin/main`.
 - **No hardcoded secrets in tracked files.** Pattern scan (provider key prefixes, JWTs, private-key

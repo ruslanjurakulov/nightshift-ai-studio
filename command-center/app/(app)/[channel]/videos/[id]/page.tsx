@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { PublishPanel } from "@/components/videos/PublishPanel";
+import { ShareReviewLink } from "@/components/videos/ShareReviewLink";
+import { atLeast } from "@/lib/auth/roles-shared";
 import { loadPublishPanel } from "@/lib/server/publish";
 import { loadDownloads } from "@/lib/server/downloads";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -273,6 +275,7 @@ export default async function VideoDetail({
         gate={gate}
         pendingIntent={pendingIntent}
       />
+      {video.preview_path && atLeast(orgRole, "admin") && <ShareReviewLink videoId={video.video_id} />}
       <PublishPanel
         video={video}
         channelName={channelName || video.channel_id}
