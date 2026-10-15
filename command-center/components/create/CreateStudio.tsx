@@ -784,6 +784,17 @@ export function CreateStudio({
               label={jobStatus ? f.status[jobStatus] : f.started}
             />
           </p>
+          <p className="fl-hint">{f.notifyHint}</p>
+          {/* A returning person's next step, without waiting here: see the videos, or start another. Make another is a
+              plain link on purpose: a full load is what clears this form and starts a new attempt. */}
+          <div className="fl-actions">
+            <Link href={path("/videos")} className="btn-quiet">
+              {f.seeVideos}
+            </Link>
+            <a href={path("/create")} className="btn-quiet">
+              {f.makeAnother}
+            </a>
+          </div>
           <details className="fl-more">
             <summary>{f.details}</summary>
             <div className="fl-more-body">
