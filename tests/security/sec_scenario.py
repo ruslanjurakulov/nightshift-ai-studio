@@ -372,6 +372,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The unique @username (0096): tests/security/sec_user_handles_0096.py — Alice has one, Bob has none.
     import sec_user_handles_0096
     sec_user_handles_0096.seed(conn, sc)
+    # Telegram notification channels (0102): tests/security/sec_notify_channels_0102.py — Alice and Bob each have a chat.
+    import sec_notify_channels_0102
+    sec_notify_channels_0102.seed(conn, sc)
+
     # First-party page counts (0104): tests/security/sec_page_views_0104.py — one daily total.
     import sec_page_views_0104
     sec_page_views_0104.seed(conn, sc)

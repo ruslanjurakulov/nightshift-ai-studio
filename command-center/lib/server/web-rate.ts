@@ -24,6 +24,9 @@ export interface RateRule {
 
 export const VOICE_LIST_RATE: RateRule = { bucket: "elevenlabs.voices", max: 20, windowSeconds: 3600 };
 export const VOICE_PREVIEW_RATE: RateRule = { bucket: "elevenlabs.preview", max: 10, windowSeconds: 3600 };
+/** Notification channel controls (pause, disconnect, language): a few real edits, not a loop. The link, test and
+ *  preference calls are limited again inside their own database functions (0102). */
+export const NOTIFY_CHANNEL_RATE: RateRule = { bucket: "notify.channel", max: 60, windowSeconds: 3600 };
 /** Profile photo changes (upload or remove) per person: a few real edits, not a loop. */
 export const AVATAR_WRITE_RATE: RateRule = { bucket: "avatar.write", max: 20, windowSeconds: 3600 };
 
