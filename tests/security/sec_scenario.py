@@ -375,6 +375,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Telegram notification channels (0102): tests/security/sec_notify_channels_0102.py — Alice and Bob each have a chat.
     import sec_notify_channels_0102
     sec_notify_channels_0102.seed(conn, sc)
+
+    # First-party page counts (0104): tests/security/sec_page_views_0104.py — one daily total.
+    import sec_page_views_0104
+    sec_page_views_0104.seed(conn, sc)
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
