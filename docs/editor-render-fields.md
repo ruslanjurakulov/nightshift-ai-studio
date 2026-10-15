@@ -554,8 +554,21 @@ kind, and the validators refuse a field the kind does not take ("`outline` does 
     the CI runner's exit 187 (a libx264 malloc) on another. A command with shapes therefore runs the filter
     graph (`-filter_threads`, `-filter_complex_threads`) and the decoder of every picture and shape input
     (`-threads`) on ONE thread (`render_spec.cap_inputs(single_thread_inputs=...)`); the clips' input and the
-    encoder keep theirs. The same document needs 1351 MiB on one core, 1378 on two and 1351 on four. A
+    encoder keep theirs. The same document needs 1351 MiB on one core, 1378 on two and 1351 on four (unpinned: 1346 on one, 1767 on four). A
     document without shapes keeps exactly the options it has always had (a test compares them).
+  * **The stack is pinned too.** glibc gives a new thread RLIMIT_STACK bytes of address space, so the host's
+    `ulimit -s` (8 MiB on usual Linux, 16 MiB on GitHub's runners, unlimited = 2 MiB in some containers) was a
+    footprint under the limit that the host chose: the 8 shapes + 8 full pictures document at 1080p60 has a
+    VmPeak of 1808 MiB at 8, 2094 at 16 (the runner: 2041-2102, so right at the 2 GiB limit and exit 187 in the
+    full suite) and 1484 at 2. `ffmpeg_limits.limited_argv` now starts every child with exactly
+    `CHILD_STACK_BYTES` (8 MiB, never above its hard limit): the same document measures 1745 MiB at a parent
+    stack of 16 MiB, 64 MiB or unlimited. (The fit below was made at 8 MiB.) A test starts the child under five
+    parent limits and reads what it sees.
+  * **Source pixels.** The validators judge a document without its files, so a picture is charged its box; the
+    export (`render_backend.check_layers_fit`, before any segment is encoded) charges a picture its box or its
+    own pixels, whichever is more, and refuses with the numbers ("use smaller pictures (their own pixels
+    count)"): four 16 MP photos shrunk to w 0.3 need about 80 MiB each (1325 MiB with four shapes), their box's
+    charge is 30. A video overlay is charged its box.
   * **The fit** (pinned): up to 2560x1440 about 354 MiB + 273 bytes per pixel of the frame, above it (the encoder
     has 2 threads and a lookahead of 20, `ffmpeg_limits.LARGE_OUTPUT_PX`) about 24 MiB + 200 bytes per pixel; plus
     21 MiB per layer and 9 bytes per pixel of its PNG. A PICTURE OVERLAY is a layer like a shape: it is charged
