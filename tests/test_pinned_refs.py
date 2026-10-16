@@ -110,6 +110,31 @@ class PinnedActionsTest(unittest.TestCase):
         self.assertRegex("actions/cache/restore@" + "a" * 40, PINNED_USES_RE)
 
 
+class OperatorBotServiceAddsNothingTest(unittest.TestCase):
+    """The always-on operator bot (deploy_web.yml, telegram_control.yml,
+    operator_alerts.yml, compose service operator-bot) adds no third-party code."""
+
+    def test_the_service_runs_the_image_this_repository_builds(self):
+        svc = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]["operator-bot"]
+        self.assertTrue(svc["image"].startswith(OWN_IMAGES), svc["image"])
+        self.assertEqual(svc["build"]["dockerfile"], "Dockerfile.worker")
+
+    def test_the_three_workflows_use_only_pinned_actions(self):
+        seen = {name for name, _line, _ref, _rest in _uses_lines()}
+        for name in ("deploy_web.yml", "telegram_control.yml", "operator_alerts.yml"):
+            self.assertIn(name, seen)
+        for name, line, ref, _rest in _uses_lines():
+            if name in ("deploy_web.yml", "telegram_control.yml", "operator_alerts.yml"):
+                self.assertRegex(ref, PINNED_USES_RE, f"{name}:{line}")
+
+    def test_skipping_the_jobs_did_not_add_a_step_or_an_action(self):
+        for name, job in (("telegram_control.yml", "poll"), ("operator_alerts.yml", "alerts")):
+            doc = yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+            self.assertEqual(doc["jobs"][job]["if"], "vars.NIGHTSHIFT_OPERATOR_BOT != 'on'")
+            for step in doc["jobs"][job]["steps"]:
+                self.assertNotIn("OPERATOR_BOT", str(step.get("if", "")))
+
+
 class PinnedImagesTest(unittest.TestCase):
     def test_every_pulled_image_is_pinned_by_digest(self):
         refs = list(_image_refs())

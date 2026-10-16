@@ -352,6 +352,54 @@ services:
     mem_limit: 256m
     logging: *default-logging
 
+  # The OPERATOR bot (Telegram) as a service that never stops:
+  # tools/operator_bot_service.py long-polls getUpdates continuously (a reply in
+  # a second or two) and runs the alert / digest pass on its own timer (every
+  # 5 minutes, 10 without a GitHub token), replacing the two GitHub workflows
+  # telegram_control.yml and operator_alerts.yml, whose schedule GitHub fires
+  # only every few hours. Its own profile, `operator`, started by
+  # deploy/remote-deploy.sh on every deploy while the GitHub variable
+  # NIGHTSHIFT_OPERATOR_BOT is `on`, removed (with its env file) otherwise; the
+  # same variable makes the two workflows skip their work, because Telegram
+  # allows ONE getUpdates consumer. docs/operator-bot.md.
+  # Its OWN env file (/opt/nightshift/.env.operator, mode 600) holds only the
+  # names in deploy/.env.operator.example: the bot token and chat id, the
+  # Supabase URL and service key (all its state lives in alert_events
+  # operator.* rows and telegram_updates), optionally a read-only GitHub token
+  # and the OPERATOR_* settings. Never a pipeline provider key.
+  # It listens on no port and Caddy does not know it: it only calls out
+  # (api.telegram.org, Supabase, api.github.com). A refused poll (409: a
+  # webhook or a second consumer; 401: a bad token) ends the process with
+  # exit 1 and docker restarts it, so `docker ps` shows it restarting. No
+  # volume: the update offset is held in memory (Telegram redelivers what it
+  # never saw confirmed, and the telegram_updates claims skip what was handled).
+  operator-bot:
+    profiles: ["operator"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/operator_bot_service.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${OPERATOR_ENV_FILE:-/opt/nightshift/.env.operator}
+        required: false
+    environment:
+      HOME: /tmp
+    # A long poll lasts up to 25 s; on stop the loop ends after the one in flight.
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 256m
+    logging: *default-logging
+
 volumes:
   caddy_data:
   caddy_config:

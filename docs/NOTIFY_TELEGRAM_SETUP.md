@@ -29,6 +29,14 @@ This is **not** the operator bot. The operator bot (`@NightshiftAiStudio_bot`,
 read, called or changed anywhere here. A bot cannot have both a webhook and
 getUpdates, which is one more reason for a separate bot.
 
+Where the operator bot runs is a separate switch with the same shape as the two
+here: the repository variable `NIGHTSHIFT_OPERATOR_BOT` = `on` makes *Deploy web*
+start the always-on `operator-bot` service (`/opt/nightshift/.env.operator`, its own
+file, never this one) and makes the two operator GitHub workflows skip their work,
+so only one process ever calls `getUpdates` for that bot. Its secrets and the
+one-time order are in `docs/operator-bot.md` ("Always on, on the server"). The
+customer bot is unaffected either way.
+
 ## How linking works
 
 1. Settings, Notifications, **Connect Telegram**. The database makes a one-time

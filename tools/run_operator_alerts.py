@@ -42,6 +42,14 @@ from modules.supabase_sync import SupabaseSync
 from modules.telegram_control import TelegramControl
 
 
+def build_engine(control, sync) -> AlertEngine:
+    """The alert engine with its real sources. Shared with the always-on service
+    (tools/operator_bot_service.py), which runs ``tick()`` on its own timer."""
+    cfg = OperatorConfig.from_env()
+    ops = OperatorSources(sync, default_http_get, cfg, github_token=os.getenv("GITHUB_TOKEN", ""))
+    return AlertEngine(ops, SupabaseAlertStore(sync), control, cfg)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--digest-now", action="store_true", help="send the daily digest now (not recorded)")
@@ -56,12 +64,11 @@ def main(argv=None) -> int:
     if not sync.enabled:
         logger.info("Supabase not configured — operator alerts are off (no state to read or remember)")
         return 0
-    cfg = OperatorConfig.from_env()
-    ops = OperatorSources(sync, default_http_get, cfg, github_token=os.getenv("GITHUB_TOKEN", ""))
+    engine = build_engine(control, sync)
     if args.digest_now:
-        reply = send_digest_reply(ops)
+        reply = send_digest_reply(engine.ops)
         control.send(control.chat_id, reply.text, parse_mode=reply.parse_mode, reply_markup=reply.markup())
-    report = AlertEngine(ops, SupabaseAlertStore(sync), control, cfg).tick()
+    report = engine.tick()
     logger.info("operator alerts: %s", report)   # counts and flags only
     return 0
 

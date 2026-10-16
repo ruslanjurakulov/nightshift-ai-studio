@@ -114,7 +114,7 @@ class TablesTestCase(unittest.TestCase):
     def test_no_per_language_branch_in_the_code(self):
         files = list((ROOT / "modules" / "operator_bot").glob("*.py")) + [
             ROOT / "modules" / "telegram_control.py", ROOT / "tools" / "run_telegram_control.py",
-            ROOT / "tools" / "run_operator_alerts.py"]
+            ROOT / "tools" / "run_operator_alerts.py", ROOT / "tools" / "operator_bot_service.py"]
         for path in files:
             text = path.read_text(encoding="utf-8")
             with self.subTest(file=path.name):
@@ -125,7 +125,8 @@ class TablesTestCase(unittest.TestCase):
         used = set()
         pattern = re.compile(r"""\bt[p]?\(\s*[^,()]+(?:\([^)]*\))?[^,()]*,\s*f?["']([a-z_]+\.[a-z_.]+)["']""")
         for path in list((ROOT / "modules" / "operator_bot").glob("*.py")) + [
-                ROOT / "modules" / "telegram_control.py", ROOT / "tools" / "run_telegram_control.py"]:
+                ROOT / "modules" / "telegram_control.py", ROOT / "tools" / "run_telegram_control.py",
+                ROOT / "tools" / "operator_bot_service.py"]:
             used |= set(pattern.findall(path.read_text(encoding="utf-8")))
         self.assertGreater(len(used), 100)
         self.assertEqual(sorted(k for k in used if k not in EN), [])

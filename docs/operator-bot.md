@@ -134,7 +134,8 @@ A source that cannot answer says so ("unknown (not configured)", "unknown
 
 ## Alerts
 
-`tools/run_operator_alerts.py` runs every 10 minutes (`operator_alerts.yml`),
+`tools/run_operator_alerts.py` runs every 10 minutes (`operator_alerts.yml`; on the
+server the service runs the same pass every 5, see "Always on, on the server"),
 looks at the same sources, and sends what is new. Each alert has three buttons:
 **Open**, **Mute 24h**, **Details** (runs the matching command).
 
@@ -235,16 +236,122 @@ Nothing here is applied until this PR is merged (scheduled workflows run from
 4. Send `/start` to the bot and tap through the menu.
 5. The poller now long-polls for about 4.5 minutes per run, every 5 minutes: while
    a run is live the reply arrives in a second or two; in the gap between runs it
-   waits for the next one. To return to the old behaviour set the cron in
+   waits for the next one. GitHub only fires that schedule every few hours in
+   practice: for an answer at any hour use the always-on service below ("Always on,
+   on the server"). To return to the old behaviour set the cron in
    `telegram_control.yml` back to `*/15` and the `--duration` to 0.
 
 The workflow tokens are least-privilege: `contents: read` plus `actions: read`
 (read-only run status for `/deploys`); no write scope anywhere.
 
+## Always on, on the server (recommended)
+
+GitHub's `schedule` is best effort. The `*/5` poller and the `*/10` alert pass were
+observed to fire only every three to five **hours**, so commands were answered hours
+late and alerts and the digest arrived late. The same server that runs the dashboard
+can run the bot as a service that never stops: `tools/operator_bot_service.py`, the
+compose service `operator-bot` (profile `operator`).
+
+* The main thread long-polls Telegram continuously (`getUpdates`, 25 s per call), so a
+  reply goes out within a second or two, around the clock. It uses the same code as
+  the workflow (`tools/run_telegram_control.py` `poll_once` and the router).
+* A second thread runs the alert and digest pass (`AlertEngine.tick`, the code
+  `tools/run_operator_alerts.py` runs) every 300 seconds (600 when there is no GitHub
+  token, because the unauthenticated GitHub API allows 60 requests an hour; the
+  interval is fixed, not a setting). Dedupe keys, cooldowns, mutes,
+  quiet hours, the hourly budget, the digest date and the language are the same
+  because they live in the engine and its store, not in the scheduler. Being a
+  thread, a slow pass never delays a reply. If a write to the alert feed fails (Supabase
+  briefly down), the engine remembers in memory what it already sent, so the same alert
+  or digest is not sent again on every pass and the hourly cap still holds.
+* It restarts on failure (`restart: unless-stopped`). Telegram refusing the poll with
+  **409** (a webhook is set, or a second consumer exists) or **401** (a bad token)
+  cannot be fixed by retrying, so the process logs one line and **exits with code 1**;
+  docker restarts it with a growing delay and `docker ps` shows it restarting. Any
+  other failed poll (network, a 5xx, however slowly it failed) is retried after 2, 4,
+  ... 30 seconds (reset by the next good answer), waits at least as long as Telegram's
+  `retry_after` on a 429 (at most 2 minutes), and never ends the process.
+* **State: none on the server.** Alert memory, mutes, the digest date and the language
+  are `alert_events` `operator.*` rows, and every update is claimed by its `update_id`
+  in `telegram_updates` before it is handled, exactly as in the workflows. What the
+  workflows kept in the Actions cache has this equivalent: the *getUpdates offset* is
+  held in memory (after a restart Telegram redelivers only what it never saw
+  confirmed, at most the last batch, and the claims skip what was already handled, so
+  nothing is answered or run twice); the *pipeline history* (`chronos.db`) is not
+  restored, so `/status` says "unavailable", the held-for-review count is left out
+  of `/approvals` and the digest, and the legacy `/pending` answers that it could not
+  read it. Every other
+  view reads Supabase and answers as before.
+* It listens on **no port**, has no Caddy route and is not the webhook server: it
+  only calls out (`api.telegram.org`, Supabase, `api.github.com`). The container runs
+  as uid 1000 with `cap_drop: ALL`, `no-new-privileges`, no volume and no docker
+  socket, with its own env file `/opt/nightshift/.env.operator` (mode 600) of exactly
+  the names in `deploy/.env.operator.example` - never a pipeline provider key.
+
+### The switch
+
+One GitHub **repository variable** (Settings > Secrets and variables > Actions >
+Variables > *Repository variables*), `NIGHTSHIFT_OPERATOR_BOT`. It must be a
+repository variable, **not** an environment variable of `production`: *Deploy web*
+runs in that environment and would see it, but the two operator workflows have no
+environment and would not, so they would keep polling and Telegram would answer 409.
+Anything but `on`
+(unset, `off`) is the default and changes nothing: the two workflows run as before,
+and a stray `operator-bot` container or `.env.operator` is removed by the next deploy.
+
+With `on`, the next *Deploy web* run
+
+1. checks, **before it touches SSH**, that `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`,
+   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set (it names the missing key, never
+   a value);
+2. writes `/opt/nightshift/.env.operator` (600) and starts `operator-bot` on the image
+   it just built (`docker compose --profile operator up -d --build --no-deps operator-bot`);
+3. prints `operator-bot after 20s: state=running exit=0 restarts=0 oom=false`.
+
+**While it is `on`, `telegram_control.yml` and `operator_alerts.yml` skip their job**
+(`if: vars.NIGHTSHIFT_OPERATOR_BOT != 'on'`), including a manual run. Telegram
+allows ONE `getUpdates` consumer, so this is what prevents a 409 between the server
+and a workflow. Use the bot's `/digest` command instead of the *Run workflow* digest
+checkbox.
+
+What the deploy reads (the same secrets and variables the workflows use):
+
+| Kind | Name | |
+|---|---|---|
+| Secret | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | required |
+| Secret | `TELEGRAM_ADMIN_USER_IDS` | optional, group chats only |
+| Secret | `OPERATOR_GITHUB_TOKEN` | optional: a fine-grained, **read-only** token for this repository with only *Actions: read*. It becomes `GITHUB_TOKEN` in the container (GitHub reserves that name for secrets) and feeds `/deploys`, `/health` and the failed-deploy alert. The server has no job token, so without it the public API is used anonymously (rate-limited, the alert pass slows to 10 minutes) and a refused answer shows "unavailable" for that line only. Never reuse `GH_SECRETS_TOKEN`, which can write secrets. |
+| Variable | `OPERATOR_LANGUAGE`, `OPERATOR_TZ`, `OPERATOR_QUIET_HOURS`, `OPERATOR_DIGEST_HOUR`, `OPERATOR_STUCK_MINUTES`, `OPERATOR_ALERT_MAX_PER_HOUR`, `OPERATOR_APP_URL`, `ELEVENLABS_LOW_CREDITS` | optional, as above |
+
+### One-time order
+
+1. Merge this change and let *Deploy web* run once with the variable unset (the server
+   learns the new deploy script; nothing else changes).
+2. Make sure the four required secrets exist (they do if the workflows already work).
+   Optionally add `OPERATOR_GITHUB_TOKEN`.
+3. Set the **repository** variable `NIGHTSHIFT_OPERATOR_BOT` = `on` (Settings > Secrets
+   and variables > Actions > Variables > Repository variables; not under the
+   `production` environment).
+4. Actions > *Deploy web* > Run workflow. In its log look for
+   `operator-bot after 20s: state=running`.
+5. Send `/start` to the bot. The reply should arrive in a second or two, at any hour.
+
+If a workflow poll was running at the moment of step 4 (they last up to 4.5 minutes),
+the service gets a 409, exits and is restarted by docker; it settles on its own as soon
+as that run ends. If it keeps restarting, `exit=1` plus the log hint
+`a_webhook_is_set` means a webhook is registered (`tools/operator_bot_server.py
+delete-webhook`) and `rejected_the_bot_token` means `TELEGRAM_BOT_TOKEN` is wrong.
+On the server: `dc logs --tail 50 operator-bot`.
+
+To go back, set the variable to anything else (or delete it) and run *Deploy web*: the
+container and `.env.operator` are removed and the workflows resume on their next tick.
+
 ## Faster than polling: webhook mode (optional, needs a host)
 
-`tools/operator_bot_server.py` answers within a fraction of a second. Polling keeps
-working unchanged and is what runs until you do this. **The repository's automatic
+`tools/operator_bot_server.py` answers within a fraction of a second. Polling (the
+always-on service above, or the scheduled workflow) keeps working unchanged and is
+what runs until you do this; do not run the webhook next to the service, a set webhook
+makes the service exit with 409. **The repository's automatic
 deploy does not start it**: that would need `deploy_web.yml` (and, for a route on
 the main domain, the pinned Caddyfile hash in `deploy/remote-deploy.sh`) to change,
 which this PR deliberately does not do. Run it on a host you control that is
@@ -296,5 +403,6 @@ comparison and gets an empty 200.
 | Webhook handler | `modules/operator_bot/webhook.py`, `tools/operator_bot_server.py` |
 | Neutral text helpers | `modules/tg_text.py` |
 | Polling runner / alert runner | `tools/run_telegram_control.py`, `tools/run_operator_alerts.py` |
-| Workflows | `.github/workflows/telegram_control.yml`, `operator_alerts.yml` |
-| Tests | `tests/test_operator_bot_*.py`, `tests/test_tg_text.py`, `tests/test_run_telegram_control.py` |
+| Always-on service (poll thread + alert timer) | `tools/operator_bot_service.py`, compose service `operator-bot` in `deploy/docker-compose.yml`, env `deploy/.env.operator.example` |
+| Workflows | `.github/workflows/telegram_control.yml`, `operator_alerts.yml` (skipped while `NIGHTSHIFT_OPERATOR_BOT` is `on`), `deploy_web.yml` |
+| Tests | `tests/test_operator_bot_*.py`, `tests/test_tg_text.py`, `tests/test_run_telegram_control.py`, `tests/test_operator_bot_service.py`, `tests/test_deploy_gha.py` |

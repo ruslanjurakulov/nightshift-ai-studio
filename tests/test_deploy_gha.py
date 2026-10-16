@@ -40,6 +40,9 @@ SETUP = ROOT / "deploy" / "setup-gha-deploy.sh"
 NOTIFY_EXAMPLE = ROOT / "deploy" / ".env.notify.example"
 EMAIL_EXAMPLE = ROOT / "deploy" / ".env.email.example"
 BUILD_SERVICE = ROOT / "deploy" / "build-service-env.py"
+OPERATOR_EXAMPLE = ROOT / "deploy" / ".env.operator.example"
+TELEGRAM_WORKFLOW = ROOT / ".github" / "workflows" / "telegram_control.yml"
+ALERTS_WORKFLOW = ROOT / ".github" / "workflows" / "operator_alerts.yml"
 
 REQUIRED = ("DOMAIN", "ACME_EMAIL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY")
 # Anything that grants access. GOOGLE_OAUTH_CLIENT_ID is not a credential on its
@@ -138,7 +141,8 @@ class WorkflowMappingTests(unittest.TestCase):
         # It is a repository secret for the bot, so it is one typo away. Only
         # the worker step may name it, and that goes to the worker's own file.
         for s in steps():
-            if s.get("name") in ("Build the worker env", "Build the notify env", "Build the e-mail env"):
+            if s.get("name") in ("Build the worker env", "Build the notify env", "Build the e-mail env",
+                                 "Build the operator-bot env"):
                 continue
             self.assertNotRegex(yaml.safe_dump(s), r"(secrets|vars)\.\w*SERVICE", s.get("name"))
 
@@ -300,10 +304,11 @@ FAKE_DOCKER = textwrap.dedent(
       *" up "*creative-worker) exit "${FAKE_CREATIVE_UP_RC:-0}" ;;
       *" up "*notify-worker) exit "${FAKE_NOTIFY_UP_RC:-0}" ;;
       *" up "*email-worker) exit "${FAKE_EMAIL_UP_RC:-0}" ;;
+      *" up "*operator-bot) exit "${FAKE_OPERATOR_UP_RC:-0}" ;;
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
       *" ps -q web"|*" ps -aq web") echo cid123 ;;
-      *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker"|*" ps -q notify-worker"|*" ps -q email-worker") echo cidw ;;
+      *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker"|*" ps -q notify-worker"|*" ps -q email-worker"|*" ps -q operator-bot") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
       logs*) echo "${FAKE_LOG_TEXT:-}" ;;
       *" logs "*) echo "${FAKE_LOG_TEXT:-}" ;;
@@ -375,6 +380,7 @@ class _RemoteDeployFixture(unittest.TestCase):
         shutil.copy(WORKER_EXAMPLE, up / "deploy" / ".env.worker.example")
         shutil.copy(NOTIFY_EXAMPLE, up / "deploy" / ".env.notify.example")
         shutil.copy(EMAIL_EXAMPLE, up / "deploy" / ".env.email.example")
+        shutil.copy(OPERATOR_EXAMPLE, up / "deploy" / ".env.operator.example")
         (up / "deploy" / "docker-compose.yml").write_text("services: {}\n")
         self.git(up, "add", "-A")
         self.git(up, "commit", "-q", "-m", "A")
@@ -403,6 +409,7 @@ class _RemoteDeployFixture(unittest.TestCase):
         self.worker_env_file = self.tmp / ".env.worker"
         self.notify_env_file = self.tmp / ".env.notify"
         self.email_env_file = self.tmp / ".env.email"
+        self.operator_env_file = self.tmp / ".env.operator"
 
     def payload(self, sha=None, drop=(), **values):
         vals = {k: "" for k in example_keys()}
@@ -427,6 +434,7 @@ class _RemoteDeployFixture(unittest.TestCase):
             NIGHTSHIFT_WORKER_ENV_FILE=str(self.worker_env_file),
             NIGHTSHIFT_NOTIFY_ENV_FILE=str(self.notify_env_file),
             NIGHTSHIFT_EMAIL_ENV_FILE=str(self.email_env_file),
+            NIGHTSHIFT_OPERATOR_ENV_FILE=str(self.operator_env_file),
             NIGHTSHIFT_LOCK_FILE=str(self.tmp / ".deploy.lock"),
             NIGHTSHIFT_DOCKER=str(self.tmp / "docker"),
             NIGHTSHIFT_HEALTH_TIMEOUT="10",
@@ -1868,6 +1876,416 @@ class RemoteDeploySendersTests(_RemoteDeployFixture):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("notify-worker log hints: Traceback", proc.stdout)
         self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+
+
+# ── The operator bot as a service (NIGHTSHIFT_OPERATOR_BOT) ────────────────────
+
+OPERATOR_STEP = "Build the operator-bot env"
+OPERATOR_REQUIRED = ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
+OPERATOR_OPTIONAL = [
+    "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
+    "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
+    "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
+]
+# Everything the pipeline worker holds that the operator bot must never see.
+PIPELINE_KEYS = (
+    "GEMINI_API_KEY", "PEXELS_API_KEY", "ELEVENLABS_API_KEY", "YOUTUBE_TOKEN_JSON", "YOUTUBE_CLIENT_SECRET_JSON",
+    "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "TIKTOK_CLIENT_SECRET", "GOOGLE_OAUTH_CLIENT_SECRET", "DEPLOY_SSH_KEY",
+    "DEPLOY_KNOWN_HOSTS", "GH_SECRETS_TOKEN", "RESEND_API_KEY", "TELEGRAM_CUSTOMER_BOT_TOKEN", "PADDLE_API_KEY",
+)
+
+
+class OperatorWorkflowTests(unittest.TestCase):
+    def test_the_example_names_the_agreed_keys_in_order(self):
+        self.assertEqual(_example_keys_of(OPERATOR_EXAMPLE), OPERATOR_REQUIRED + OPERATOR_OPTIONAL)
+
+    def test_the_step_maps_exactly_the_example_from_the_names_the_workflows_already_use(self):
+        s = step(name=OPERATOR_STEP)
+        prefix = "OPERATORENV_"
+        mapped = {k[len(prefix):]: v for k, v in s["env"].items() if k.startswith(prefix)}
+        self.assertEqual(sorted(mapped), sorted(_example_keys_of(OPERATOR_EXAMPLE)))
+        self.assertEqual(set(s["env"]) - {prefix + k for k in mapped}, {"PAYLOAD"})
+        expected = {
+            "SUPABASE_URL": "secrets.SUPABASE_URL",
+            "SUPABASE_SERVICE_KEY": "secrets.SUPABASE_SERVICE_KEY",
+            "TELEGRAM_BOT_TOKEN": "secrets.TELEGRAM_BOT_TOKEN",
+            "TELEGRAM_CHAT_ID": "secrets.TELEGRAM_CHAT_ID",
+            "TELEGRAM_ADMIN_USER_IDS": "secrets.TELEGRAM_ADMIN_USER_IDS",
+            # GitHub reserves the GITHUB_ prefix for secret names: renamed, like GH_SECRETS_TOKEN.
+            "GITHUB_TOKEN": "secrets.OPERATOR_GITHUB_TOKEN",
+            "GITHUB_REPOSITORY": "github.repository",
+            "ELEVENLABS_LOW_CREDITS": "vars.ELEVENLABS_LOW_CREDITS",
+        }
+        for key in OPERATOR_OPTIONAL:
+            expected.setdefault(key, f"vars.{key}")
+        for key, expr in mapped.items():
+            self.assertEqual(str(expr), "${{ " + expected[key] + " }}", key)
+        # The variables are the very ones telegram_control.yml / operator_alerts.yml read.
+        for path in (TELEGRAM_WORKFLOW, ALERTS_WORKFLOW):
+            text = path.read_text()
+            for key in OPERATOR_OPTIONAL + OPERATOR_REQUIRED:
+                if expected[key].startswith(("vars.OPERATOR_", "vars.ELEVENLABS", "secrets.SUPABASE", "secrets.TELEGRAM_BOT", "secrets.TELEGRAM_CHAT")):
+                    self.assertIn("${{ " + expected[key] + " }}", text, f"{path.name} does not use {expected[key]}")
+
+    def test_credentials_are_secrets_and_nothing_of_the_pipeline_is_mapped(self):
+        s = step(name=OPERATOR_STEP)
+        dump = yaml.safe_dump(s)
+        for key in _example_keys_of(OPERATOR_EXAMPLE):
+            if CREDENTIAL.search(key):
+                self.assertTrue(str(s["env"]["OPERATORENV_" + key]).startswith("${{ secrets."), key)
+        for name in PIPELINE_KEYS:
+            self.assertNotIn(name, dump)
+            self.assertNotRegex(OPERATOR_EXAMPLE.read_text(), rf"(?m)^{name}=")
+        self.assertNotIn("toJSON", dump)
+        self.assertNotIn("github.token", dump)
+        # the dashboard and the pipeline worker never get the bot token
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", ENV_EXAMPLE.read_text())
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", WORKER_EXAMPLE.read_text())
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", yaml.safe_dump(step(name="Build the worker env")))
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", yaml.safe_dump(step("payload")))
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", yaml.safe_dump(step(name="Build the notify env")))
+
+    def test_runs_only_while_the_switch_is_on_and_sits_between_the_web_env_and_ssh(self):
+        s = step(name=OPERATOR_STEP)
+        self.assertEqual(s["if"], "steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_OPERATOR_BOT == 'on'")
+        self.assertEqual(s["run"].strip(), 'python3 deploy/build-service-env.py operator "$PAYLOAD"')
+        names = [x.get("name") for x in steps()]
+        self.assertLess(names.index("Build the server env"), names.index(OPERATOR_STEP))
+        self.assertLess(names.index(OPERATOR_STEP), names.index("Deploy over SSH"))
+        # the only place the switch is read in this workflow
+        self.assertEqual(yaml.safe_dump(workflow()).count("NIGHTSHIFT_OPERATOR_BOT"), 1)
+
+    def test_secrets_are_only_ever_expressions_and_never_in_a_script_or_a_command_line(self):
+        for x in steps():
+            if "run" in x:
+                self.assertNotIn("${{", x["run"], x.get("name"))
+                self.assertNotRegex(x["run"], r"(?m)^\s*set\s+-\w*x", x.get("name"))
+        self.assertNotRegex(REMOTE.read_text(), r"(?m)^\s*set\s+-\w*x")
+        self.assertNotRegex(BUILD_SERVICE.read_text(), r"\bargv\[[^\]]*\]\s*\+\s*key|subprocess|os\.system")
+
+    def test_permissions_triggers_and_actions_are_unchanged(self):
+        wf = workflow()
+        self.assertEqual(wf["permissions"], {"contents": "read"})
+        self.assertEqual(wf[True]["push"]["branches"], ["main"])
+        self.assertNotIn("pull_request", wf[True])
+        uses = [x["uses"] for x in steps() if "uses" in x]
+        self.assertEqual(uses, ["actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"])
+
+    def test_both_operator_workflows_skip_while_the_switch_is_on_and_are_otherwise_as_before(self):
+        for path, job in ((TELEGRAM_WORKFLOW, "poll"), (ALERTS_WORKFLOW, "alerts")):
+            with self.subTest(path.name):
+                doc = yaml.safe_load(path.read_text())
+                # job level, so no step (and no Telegram call) runs at all
+                self.assertEqual(doc["jobs"][job]["if"], "vars.NIGHTSHIFT_OPERATOR_BOT != 'on'")
+                self.assertEqual(list(doc["jobs"]), [job])
+                # the default (variable unset or off) leaves the schedule and permissions exactly as they were
+                self.assertEqual(doc["permissions"], {"contents": "read", "actions": "read"})
+                self.assertFalse(doc["concurrency"]["cancel-in-progress"])
+                self.assertEqual(list(doc[True]), ["schedule", "workflow_dispatch"])
+                self.assertEqual(doc[True]["schedule"], [{"cron": "*/5 * * * *"} if job == "poll" else {"cron": "*/10 * * * *"}])
+                # the condition is on the job only: no step carries its own, and nothing else changed
+                for st in doc["jobs"][job]["steps"]:
+                    self.assertNotIn("NIGHTSHIFT_OPERATOR_BOT", str(st.get("if", "")))
+
+    def test_the_condition_is_the_exact_inverse_of_the_deploy_switch(self):
+        # Anything but exactly `on` (unset, off, On, a typo) keeps the workflows running, and the
+        # deploy treats the same values as off: there is no value for which neither or both run.
+        deploy_if = step(name=OPERATOR_STEP)["if"]
+        self.assertIn("vars.NIGHTSHIFT_OPERATOR_BOT == 'on'", deploy_if)
+        for path in (TELEGRAM_WORKFLOW, ALERTS_WORKFLOW):
+            self.assertIn("vars.NIGHTSHIFT_OPERATOR_BOT != 'on'", path.read_text())
+
+    def test_the_compose_service_is_hardened_like_the_notify_worker_and_unreachable(self):
+        c = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text())["services"]
+        bot, notify = c["operator-bot"], c["notify-worker"]
+        self.assertEqual(bot["profiles"], ["operator"])
+        self.assertEqual(bot["env_file"], [{"path": "${OPERATOR_ENV_FILE:-/opt/nightshift/.env.operator}", "required": False}])
+        self.assertEqual(bot["command"], ["python", "tools/operator_bot_service.py"])
+        for key in ("user", "cap_drop", "security_opt", "restart", "init", "tmpfs", "logging", "image"):
+            self.assertEqual(bot[key], notify[key], key)
+        self.assertEqual(bot["user"], "1000:1000")
+        for forbidden in ("ports", "expose", "volumes", "network_mode", "privileged", "cap_add", "devices", "pid", "ipc", "depends_on"):
+            self.assertNotIn(forbidden, bot, forbidden)
+        self.assertNotIn("docker.sock", yaml.safe_dump(bot))
+        self.assertNotIn("/opt/nightshift/.env.web", yaml.safe_dump(bot))
+        self.assertNotIn("operator", (ROOT / "deploy" / "Caddyfile").read_text().lower())
+        # nobody else reads its file
+        for svc in ("web", "caddy", "worker", "media-worker", "creative-worker", "notify-worker", "email-worker"):
+            self.assertNotIn(".env.operator", yaml.safe_dump(c[svc]))
+
+    def test_the_webhook_server_is_not_started_by_the_deploy(self):
+        for text in ((ROOT / "deploy" / "docker-compose.yml").read_text(), REMOTE.read_text(),
+                     WORKFLOW.read_text()):
+            self.assertNotIn("operator_bot_server", text)
+
+
+class BuildOperatorEnvTests(unittest.TestCase):
+    SECRET = "operator-secret-never-printed"
+
+    def setUp(self):
+        self.mod = _load_service_builder()
+
+    def env(self, **over):
+        vals = {k: "" for k in _example_keys_of(OPERATOR_EXAMPLE)}
+        vals.update(SUPABASE_URL="https://abc.supabase.co", SUPABASE_SERVICE_KEY=self.SECRET,
+                    TELEGRAM_BOT_TOKEN="123456:ABC-def_ghi", TELEGRAM_CHAT_ID="-1001234567890")
+        vals.update(over)
+        return {f"OPERATORENV_{k}": v for k, v in vals.items() if v is not None}
+
+    def build(self, **over):
+        return self.mod.build(self.env(**over), OPERATOR_EXAMPLE.read_text(), "OPERATORENV_", OPERATOR_EXAMPLE.name,
+                              self.mod.OPTIONAL["operator"])
+
+    def test_the_optional_set_is_exactly_the_documented_one(self):
+        self.assertEqual(sorted(self.mod.OPTIONAL["operator"]), sorted(OPERATOR_OPTIONAL))
+        self.assertEqual(sorted(set(_example_keys_of(OPERATOR_EXAMPLE)) - self.mod.OPTIONAL["operator"]), sorted(OPERATOR_REQUIRED))
+        self.assertNotIn("notify", self.mod.OPTIONAL)
+        self.assertNotIn("email", self.mod.OPTIONAL)
+
+    def test_only_the_required_four_are_needed_and_optional_ones_are_written_empty(self):
+        lines, errors = self.build()
+        self.assertEqual(errors, [])
+        self.assertEqual([l.split("=", 1)[0] for l in lines], _example_keys_of(OPERATOR_EXAMPLE))
+        self.assertIn("GITHUB_TOKEN=", lines)
+        self.assertIn("TELEGRAM_CHAT_ID=-1001234567890", lines)
+
+    def test_each_required_key_empty_fails_by_name(self):
+        for key in OPERATOR_REQUIRED:
+            with self.subTest(key):
+                _, errors = self.build(**{key: "  "})
+                self.assertIn(f"{key} is required and empty", "\n".join(errors))
+
+    def test_a_missing_mapping_fails_even_for_an_optional_key(self):
+        for key in ("GITHUB_TOKEN", "OPERATOR_TZ", "SUPABASE_URL"):
+            _, errors = self.build(**{key: None})
+            self.assertIn(f"{key} is in deploy/.env.operator.example but not mapped", "\n".join(errors))
+
+    def test_adversarial_values_are_refused_by_name_never_echoed_for_every_key(self):
+        bad = {
+            "dollar": "ab$(touch /tmp/x)" , "expansion": "${SUPABASE_SERVICE_KEY}", "newline": "a\nINJECTED=1",
+            "quote": "'quoted'", "dquote": '"quoted"', "backtick": "`id`", "comment": "value # tail",
+        }
+        for key in _example_keys_of(OPERATOR_EXAMPLE):
+            for label, raw in bad.items():
+                with self.subTest(key=key, case=label):
+                    value = raw + self.SECRET
+                    lines, errors = self.build(**{key: value})
+                    text = "\n".join(errors)
+                    self.assertIn(key, text)
+                    self.assertNotIn(self.SECRET, text)
+                    self.assertNotIn("INJECTED", text)
+
+    def test_an_embedded_tab_or_control_character_is_refused_before_ssh(self):
+        for key in _example_keys_of(OPERATOR_EXAMPLE):
+            for ch in ("\t", "\x1b", "\x00", "\x7f"):
+                with self.subTest(key=key, ch=repr(ch)):
+                    _, errors = self.build(**{key: "ab" + ch + "cd" + self.SECRET})
+                    text = "\n".join(errors)
+                    self.assertIn(f"{key} contains a control character", text)
+                    self.assertNotIn(self.SECRET, text)
+        # a tab at the edge is trimmed like other whitespace, as before
+        lines, errors = self.build(OPERATOR_TZ="\tUTC\t")
+        self.assertEqual(errors, [])
+        self.assertIn("OPERATOR_TZ=UTC", lines)
+
+    def test_a_trailing_carriage_return_or_space_is_trimmed_not_written(self):
+        lines, errors = self.build(TELEGRAM_BOT_TOKEN="123:abc \r", OPERATOR_TZ="Asia/Tashkent\r")
+        self.assertEqual(errors, [])
+        self.assertIn("TELEGRAM_BOT_TOKEN=123:abc", lines)
+        self.assertIn("OPERATOR_TZ=Asia/Tashkent", lines)
+        self.assertFalse(any("\r" in l or "\n" in l for l in lines))
+
+    def test_ordinary_settings_pass(self):
+        lines, errors = self.build(OPERATOR_QUIET_HOURS="23-7", OPERATOR_APP_URL="https://nightshift-ai.studio",
+                                   OPERATOR_LANGUAGE="uz", OPERATOR_DIGEST_HOUR="9", TELEGRAM_ADMIN_USER_IDS="1,2",
+                                   GITHUB_TOKEN="github_pat_11AAAA_bbbb", GITHUB_REPOSITORY="owner/repo",
+                                   ELEVENLABS_LOW_CREDITS="15000")
+        self.assertEqual(errors, [])
+
+    def test_main_appends_the_marker_prints_no_value_and_a_refusal_leaves_the_payload_alone(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        payload = tmp / "payload"
+        payload.write_text("NIGHTSHIFT_DEPLOY_SHA=" + "a" * 40 + "\nDOMAIN=x\n")
+        env = self.env(GITHUB_TOKEN="gh-" + self.SECRET)
+        env["PATH"] = os.environ["PATH"]
+        run = lambda: subprocess.run(
+            [sys.executable, str(BUILD_SERVICE), "operator", str(payload)], env=env, capture_output=True, text=True, timeout=30
+        )
+        proc = run()
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        lines = payload.read_text().splitlines()
+        self.assertEqual(lines[2], "NIGHTSHIFT_OPERATOR_ENV=on")
+        self.assertIn(f"SUPABASE_SERVICE_KEY={self.SECRET}", lines)
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+        before = payload.read_text()
+        env["OPERATORENV_TELEGRAM_BOT_TOKEN"] = ""      # a switch `on` with a missing secret: fails before SSH
+        proc = run()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("TELEGRAM_BOT_TOKEN is required and empty", proc.stdout)
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+        self.assertIn("NIGHTSHIFT_OPERATOR_BOT", proc.stdout)
+        self.assertEqual(payload.read_text(), before)
+
+    def test_the_other_services_still_require_every_key(self):
+        env = {"NOTIFYENV_" + k: "x" for k in _example_keys_of(NOTIFY_EXAMPLE)}
+        env["NOTIFYENV_NOTIFY_APP_ORIGIN"] = "https://app.example.com"
+        env["NOTIFYENV_TELEGRAM_CUSTOMER_BOT_TOKEN"] = ""
+        _, errors = self.mod.build(env, NOTIFY_EXAMPLE.read_text(), "NOTIFYENV_", NOTIFY_EXAMPLE.name)
+        self.assertIn("TELEGRAM_CUSTOMER_BOT_TOKEN is required and empty", "\n".join(errors))
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
+class RemoteDeployOperatorTests(_RemoteDeployFixture):
+    """The operator-bot section of the payload, on the same fixture."""
+
+    def section(self, drop=(), **values):
+        vals = {k: "" for k in _example_keys_of(OPERATOR_EXAMPLE)}
+        vals.update(SUPABASE_URL="https://abc.supabase.co", SUPABASE_SERVICE_KEY=self.SECRET,
+                    TELEGRAM_BOT_TOKEN="123:tok", TELEGRAM_CHAT_ID="-100123")
+        vals.update(values)
+        return "\n".join(["NIGHTSHIFT_OPERATOR_ENV=on"] + [f"{k}={v}" for k, v in vals.items() if k not in drop]) + "\n"
+
+    def up_calls(self, svc="operator-bot"):
+        return [c for c in self.docker_calls() if c.endswith(f"up -d --build --no-deps {svc}")]
+
+    def test_the_switch_off_changes_nothing_but_removing_what_is_not_there(self):
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.up_calls(), [])
+        self.assertFalse(self.operator_env_file.exists())
+        calls = self.docker_calls()
+        self.assertTrue(any(c.endswith("rm --stop --force operator-bot") for c in calls))
+        self.assertIn("operator-bot is off", proc.stdout)
+        self.assertIn("operator-bot off", proc.stdout)
+        # the rest of the deploy is what it was: web and caddy up, no other service started
+        self.assertTrue(any(c.endswith("up -d --build --remove-orphans web caddy") for c in calls))
+        ups = [c for c in calls if " up " in f" {c} "]
+        self.assertEqual(len(ups), 1, ups)
+
+    def test_a_stray_service_and_env_file_are_removed_when_the_switch_is_off(self):
+        self.operator_env_file.write_text("TELEGRAM_BOT_TOKEN=left-behind\n")
+        Path(str(self.operator_env_file) + ".prev").write_text("TELEGRAM_BOT_TOKEN=older\n")
+        other = self.tmp / "other-file"
+        other.write_text("keep")
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.operator_env_file.exists())
+        self.assertFalse(Path(str(self.operator_env_file) + ".prev").exists())
+        self.assertTrue(other.exists())
+        rm = [c for c in self.docker_calls() if " rm " in c and "operator" in c.split(" rm ", 1)[1]]
+        self.assertEqual(len(rm), 1)
+        self.assertTrue(rm[0].endswith("rm --stop --force operator-bot"))   # a fixed name, no globbing
+
+    def test_on_writes_its_own_600_file_with_exactly_its_names_and_starts_after_web(self):
+        proc = self.deploy(self.payload() + self.section(TELEGRAM_ADMIN_USER_IDS="1,2"))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(stat.S_IMODE(self.operator_env_file.stat().st_mode), 0o600)
+        text = self.operator_env_file.read_text()
+        names = [l.split("=", 1)[0] for l in text.splitlines() if l and not l.startswith("#")]
+        self.assertEqual(names, _example_keys_of(OPERATOR_EXAMPLE))
+        self.assertIn("TELEGRAM_BOT_TOKEN=123:tok\n", text)
+        self.assertIn("TELEGRAM_ADMIN_USER_IDS=1,2\n", text)
+        self.assertNotIn("NIGHTSHIFT_OPERATOR_ENV", text)
+        for other in (self.env_file, self.worker_env_file, self.notify_env_file, self.email_env_file):
+            self.assertFalse(other.exists() and ("TELEGRAM_BOT_TOKEN" in other.read_text()
+                                                  or "NIGHTSHIFT_OPERATOR_ENV" in other.read_text()))
+        calls = self.docker_calls()
+        web_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --remove-orphans web caddy")]
+        bot_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --no-deps operator-bot")]
+        self.assertEqual((len(web_up), len(bot_up)), (1, 1))
+        self.assertLess(web_up[0], bot_up[0])
+        self.assertTrue(all("--profile operator" in c for c in calls if " up " in f" {c} "))
+        self.assertTrue(any(c.startswith("inspect -f operator-bot after 0s: state=") for c in calls))
+        self.assertIn("operator-bot log hints:", proc.stdout)
+        self.assertIn("operator-bot on", proc.stdout)
+        self.assertEqual(self.up_calls("notify-worker") + self.up_calls("email-worker") + self.up_calls("worker"), [])
+
+    def test_optional_keys_may_be_empty_and_required_ones_may_not(self):
+        self.assertRefused(self.deploy(self.payload() + self.section(TELEGRAM_CHAT_ID="")), "TELEGRAM_CHAT_ID is required and empty")
+        self.assertRefused(self.deploy(self.payload() + self.section(SUPABASE_SERVICE_KEY="")), "SUPABASE_SERVICE_KEY is required and empty")
+        self.assertEqual(self.deploy(self.payload() + self.section()).returncode, 0)   # every optional key empty
+
+    def test_refused_values_are_named_by_key_and_change_nothing(self):
+        for key in ("TELEGRAM_BOT_TOKEN", "GITHUB_TOKEN", "OPERATOR_TZ"):
+            for label, value in (("dollar", "a$b" + self.SECRET), ("cr", "a\rb" + self.SECRET)):
+                with self.subTest(key=key, case=label):
+                    proc = self.deploy(self.payload() + self.section(**{key: value}))
+                    self.assertNotEqual(proc.returncode, 0)
+                    self.assertIn(key, proc.stderr)
+                    self.assertFalse(self.operator_env_file.exists())
+                    self.assertFalse(self.env_file.exists())
+                    self.assertEqual(self.docker_calls(), [])
+
+    def test_a_key_the_bot_does_not_read_is_refused_without_echoing_it(self):
+        for name in ("GEMINI_API_KEY", "ELEVENLABS_API_KEY", "TELEGRAM_CUSTOMER_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"):
+            with self.subTest(name):
+                proc = self.deploy(self.payload() + self.section(**{name: self.SECRET}))
+                self.assertRefused(proc, f"{name} is not a key in deploy/.env.operator.example")
+                self.assertFalse(self.operator_env_file.exists())
+
+    def test_a_missing_or_repeated_key_and_a_repeated_marker_are_refused(self):
+        self.assertRefused(self.deploy(self.payload() + self.section(drop=("GITHUB_TOKEN",))), "GITHUB_TOKEN is missing")
+        self.assertRefused(self.deploy(self.payload() + self.section() + "OPERATOR_TZ=UTC\n"), "OPERATOR_TZ is given more than once")
+        self.assertRefused(self.deploy(self.payload() + self.section() + "NIGHTSHIFT_OPERATOR_ENV=on\n"),
+                           "NIGHTSHIFT_OPERATOR_ENV is not a key in deploy/.env.operator.example")
+
+    def test_only_the_exact_marker_opens_the_section(self):
+        self.assertRefused(self.deploy(self.payload(NIGHTSHIFT_OPERATOR_ENV="off")),
+                           "NIGHTSHIFT_OPERATOR_ENV is not a key in deploy/.env.web.example")
+
+    def test_the_section_is_independent_of_the_other_sections_and_of_their_order(self):
+        notify = ("NIGHTSHIFT_NOTIFY_ENV=on\nSUPABASE_URL=https://abc.supabase.co\nSUPABASE_SERVICE_KEY=" + self.SECRET
+                  + "\nTELEGRAM_CUSTOMER_BOT_TOKEN=123:cust\nNOTIFY_APP_ORIGIN=https://app.example.com\n")
+        email = ("NIGHTSHIFT_EMAIL_ENV=on\nSUPABASE_URL=https://abc.supabase.co\nSUPABASE_SERVICE_KEY=" + self.SECRET
+                 + "\nRESEND_API_KEY=re_key\nNIGHTSHIFT_EMAIL_FROM=Nightshift <hello@example.com>\nAPP_ORIGIN=https://app.example.com\n")
+        worker = "NIGHTSHIFT_WORKER_ENV=on\n" + "\n".join(
+            f"{k}={self.SECRET if k == 'SUPABASE_SERVICE_KEY' else ('https://abc.supabase.co' if k == 'SUPABASE_URL' else '')}"
+            for k in worker_example_keys()
+        ) + "\n"
+        for payload in (
+            self.payload() + worker + notify + email + self.section(),
+            self.payload() + self.section() + email + notify + worker,
+        ):
+            proc = self.deploy(payload)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("operator-bot on", proc.stdout)
+            self.assertNotIn("TELEGRAM_BOT_TOKEN", self.worker_env_file.read_text())
+            self.assertNotIn("TELEGRAM_BOT_TOKEN", self.notify_env_file.read_text())
+            self.assertNotIn("GEMINI_API_KEY", self.operator_env_file.read_text())
+            self.assertNotIn("TELEGRAM_CUSTOMER_BOT_TOKEN", self.operator_env_file.read_text())
+
+    def test_switching_off_removes_the_container_and_the_file_with_the_token(self):
+        self.assertEqual(self.deploy(self.payload() + self.section()).returncode, 0)
+        self.assertEqual(self.deploy(self.payload() + self.section()).returncode, 0)
+        self.assertTrue(Path(str(self.operator_env_file) + ".prev").exists())
+        self.assertEqual(stat.S_IMODE(Path(str(self.operator_env_file) + ".prev").stat().st_mode), 0o600)
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.operator_env_file.exists())
+        self.assertFalse(Path(str(self.operator_env_file) + ".prev").exists())
+        self.assertTrue(any(c.endswith("rm --stop --force operator-bot") for c in self.docker_calls()))
+
+    def test_a_bot_that_fails_to_start_fails_the_deploy_after_web(self):
+        proc = self.deploy(self.payload() + self.section(), FAKE_OPERATOR_UP_RC="1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("the operator bot did not start", proc.stderr)
+        self.assertTrue(any(c.endswith("up -d --build --remove-orphans web caddy") for c in self.docker_calls()))
+
+    def test_log_hints_name_known_phrases_and_never_the_log_text(self):
+        text = f"ERROR operator bot stopped: a webhook is set for this bot token={self.SECRET}; Traceback"
+        proc = self.deploy(self.payload() + self.section(), FAKE_LOG_TEXT=text)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertRegex(proc.stdout, r"operator-bot log hints: (Traceback,a_webhook_is_set|a_webhook_is_set,Traceback)")
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+
+    def test_the_env_file_is_written_atomically_from_the_first_byte_with_mode_600(self):
+        text = REMOTE.read_text()
+        self.assertIn("umask 077", text)
+        self.assertRegex(text, r"tmp=\"\$\(mktemp \"\$\{target\}\.XXXXXX\"\)\"")
+        self.assertRegex(text, r"mv -f \"\$tmp\" \"\$target\"")
+        self.assertIn('write_env "$OPERATOR_ENV_FILE"', text)
+        self.assertIn('rm -f "$file" "${file}.prev"', text)
 
 
 if __name__ == "__main__":

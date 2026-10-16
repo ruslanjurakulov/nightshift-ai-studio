@@ -405,6 +405,94 @@ class FloodTestCase(unittest.TestCase):
         self.assertEqual((state.delivered_since(hour, critical=True), state.delivered_since(hour, critical=False)), (3, 2))
 
 
+class WriteFailureTestCase(unittest.TestCase):
+    """The alert feed is the memory of record. When a write to it fails (Supabase
+    down for a while), an always-on process must not send the same alert on every
+    pass, nor lift the hourly cap: it remembers what it sent in memory."""
+
+    def test_a_failed_write_does_not_repeat_the_alert_every_pass(self):
+        engine, store, tg, ops, clock = build()
+        arm(engine)
+        store.fail_write = True
+        ops.sync.tables["render_jobs"] = [failed_job(9)]
+        self.assertEqual(engine.tick().sent, 1)
+        for _ in range(6):                               # six more 5-minute passes
+            clock.advance(minutes=5)
+            heartbeat(ops, clock)
+            rep = engine.tick()
+            self.assertEqual(rep.sent, 0)
+            self.assertEqual(rep.deduped, 1)
+        self.assertEqual(len([t for t in tg.texts() if "failed runs" in t]), 1)
+        self.assertEqual(store.rows[-1]["kind"], "operator.alert")       # nothing was written meanwhile
+        self.assertEqual(len([r for r in store.rows if r["title"] == "run:9"]), 0)
+
+    def test_the_hourly_cap_still_applies_when_nothing_can_be_written(self):
+        cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", max_alerts_per_hour=2)
+        engine, store, tg, ops, clock = build(cfg=cfg)
+        arm(engine)
+        store.fail_write = True
+        total = 0
+        for step in range(10):                           # ten passes inside one hour, a new failure each time
+            heartbeat(ops, clock)
+            ops.sync.tables["render_jobs"] = [failed_job(f"n{step}", minutes_ago=2) | {"finished_at": ts(2, clock.now)}]
+            total += engine.tick().sent
+            clock.advance(minutes=5)
+        self.assertEqual(total, 2)                       # exactly the cap, however many passes
+        self.assertGreaterEqual(total, 1)
+
+    def test_a_failed_digest_record_does_not_send_it_again_the_same_day(self):
+        cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", digest_hour=12)
+        engine, store, tg, ops, clock = build(cfg=cfg)
+        arm(engine)
+        store.fail_write = True
+        self.assertTrue(engine.tick().digest_sent)
+        for _ in range(5):
+            clock.advance(minutes=5)
+            heartbeat(ops, clock)
+            self.assertFalse(engine.tick().digest_sent)
+        self.assertEqual(len([t for t in tg.texts() if "Daily digest" in t]), 1)
+        clock.advance(days=1)
+        heartbeat(ops, clock)
+        self.assertTrue(engine.tick().digest_sent)       # a new date is a new digest
+
+    def test_the_arming_notice_is_not_repeated_when_its_marker_cannot_be_written(self):
+        engine, store, tg, ops, clock = build({"render_jobs": [failed_job(5)]})
+        store.fail_write = True
+        self.assertTrue(engine.tick().baseline)
+        for _ in range(4):
+            clock.advance(minutes=5)
+            heartbeat(ops, clock)
+            rep = engine.tick()
+            self.assertFalse(rep.baseline)
+            self.assertEqual(rep.sent, 0)                # the item that existed at arming is not announced either
+        self.assertEqual(len(tg.sent()), 1)
+
+    def test_once_the_store_takes_writes_again_its_rows_are_the_memory(self):
+        engine, store, tg, ops, clock = build()
+        arm(engine)
+        store.fail_write = True
+        ops.sync.tables["render_jobs"] = [failed_job(9)]
+        engine.tick()
+        store.fail_write = False
+        clock.advance(minutes=5)
+        heartbeat(ops, clock)
+        self.assertEqual(engine.tick().sent, 0)
+        ops.sync.tables["render_jobs"] = [failed_job(9), failed_job(10)]
+        clock.advance(minutes=5)
+        heartbeat(ops, clock)
+        self.assertEqual(engine.tick().sent, 1)          # only the new one
+        self.assertEqual(len(engine._unrecorded), 1)
+
+    def test_the_in_memory_list_is_bounded(self):
+        engine, store, tg, ops, clock = build()
+        arm(engine)
+        store.fail_write = True
+        for i in range(alerts.MAX_UNRECORDED + 50):
+            fake = type("A", (), dict(key=f"k{i}", kind="run", severity="warn", channel_id=None))()
+            engine._record(fake, True, clock.now)
+        self.assertEqual(len(engine._unrecorded), alerts.MAX_UNRECORDED)
+
+
 class DigestTestCase(unittest.TestCase):
     def cfg(self, **kw):
         return OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", digest_hour=12, **kw)
