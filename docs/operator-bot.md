@@ -256,18 +256,21 @@ compose service `operator-bot` (profile `operator`).
   reply goes out within a second or two, around the clock. It uses the same code as
   the workflow (`tools/run_telegram_control.py` `poll_once` and the router).
 * A second thread runs the alert and digest pass (`AlertEngine.tick`, the code
-  `tools/run_operator_alerts.py` runs) every `OPERATOR_ALERT_INTERVAL_SECONDS`
-  (default 300; 600 when there is no GitHub token, because the unauthenticated GitHub
-  API allows 60 requests an hour; 60 to 3600 allowed). Dedupe keys, cooldowns, mutes,
+  `tools/run_operator_alerts.py` runs) every 300 seconds (600 when there is no GitHub
+  token, because the unauthenticated GitHub API allows 60 requests an hour; the
+  interval is fixed, not a setting). Dedupe keys, cooldowns, mutes,
   quiet hours, the hourly budget, the digest date and the language are the same
   because they live in the engine and its store, not in the scheduler. Being a
-  thread, a slow pass never delays a reply.
+  thread, a slow pass never delays a reply. If a write to the alert feed fails (Supabase
+  briefly down), the engine remembers in memory what it already sent, so the same alert
+  or digest is not sent again on every pass and the hourly cap still holds.
 * It restarts on failure (`restart: unless-stopped`). Telegram refusing the poll with
   **409** (a webhook is set, or a second consumer exists) or **401** (a bad token)
   cannot be fixed by retrying, so the process logs one line and **exits with code 1**;
   docker restarts it with a growing delay and `docker ps` shows it restarting. Any
-  other failure (network, a 5xx) is retried after 2, 4, ... 30 seconds and never ends
-  the process.
+  other failed poll (network, a 5xx, however slowly it failed) is retried after 2, 4,
+  ... 30 seconds (reset by the next good answer), waits at least as long as Telegram's
+  `retry_after` on a 429 (at most 2 minutes), and never ends the process.
 * **State: none on the server.** Alert memory, mutes, the digest date and the language
   are `alert_events` `operator.*` rows, and every update is claimed by its `update_id`
   in `telegram_updates` before it is handled, exactly as in the workflows. What the
@@ -275,8 +278,9 @@ compose service `operator-bot` (profile `operator`).
   held in memory (after a restart Telegram redelivers only what it never saw
   confirmed, at most the last batch, and the claims skip what was already handled, so
   nothing is answered or run twice); the *pipeline history* (`chronos.db`) is not
-  restored, so `/status` says "unavailable" and the held-for-review count is left out
-  of `/approvals` and the digest, and `/pending` says it could not read. Every other
+  restored, so `/status` says "unavailable", the held-for-review count is left out
+  of `/approvals` and the digest, and the legacy `/pending` answers that it could not
+  read it. Every other
   view reads Supabase and answers as before.
 * It listens on **no port**, has no Caddy route and is not the webhook server: it
   only calls out (`api.telegram.org`, Supabase, `api.github.com`). The container runs
@@ -286,7 +290,12 @@ compose service `operator-bot` (profile `operator`).
 
 ### The switch
 
-One GitHub **repository variable**, `NIGHTSHIFT_OPERATOR_BOT`. Anything but `on`
+One GitHub **repository variable** (Settings > Secrets and variables > Actions >
+Variables > *Repository variables*), `NIGHTSHIFT_OPERATOR_BOT`. It must be a
+repository variable, **not** an environment variable of `production`: *Deploy web*
+runs in that environment and would see it, but the two operator workflows have no
+environment and would not, so they would keep polling and Telegram would answer 409.
+Anything but `on`
 (unset, `off`) is the default and changes nothing: the two workflows run as before,
 and a stray `operator-bot` container or `.env.operator` is removed by the next deploy.
 
@@ -320,8 +329,9 @@ What the deploy reads (the same secrets and variables the workflows use):
    learns the new deploy script; nothing else changes).
 2. Make sure the four required secrets exist (they do if the workflows already work).
    Optionally add `OPERATOR_GITHUB_TOKEN`.
-3. Set the variable `NIGHTSHIFT_OPERATOR_BOT` = `on` (Settings > Secrets and variables
-   > Actions > Variables).
+3. Set the **repository** variable `NIGHTSHIFT_OPERATOR_BOT` = `on` (Settings > Secrets
+   and variables > Actions > Variables > Repository variables; not under the
+   `production` environment).
 4. Actions > *Deploy web* > Run workflow. In its log look for
    `operator-bot after 20s: state=running`.
 5. Send `/start` to the bot. The reply should arrive in a second or two, at any hour.

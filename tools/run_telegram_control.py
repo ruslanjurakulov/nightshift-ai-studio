@@ -199,18 +199,46 @@ def _default_store():
         return None
 
 
+def _retry_after(exc) -> int:
+    """Seconds Telegram asked us to wait (``parameters.retry_after`` of its error
+    body, or a Retry-After header), 0 when it did not say or the answer is odd."""
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return 0
+    value = None
+    try:
+        value = ((resp.json() or {}).get("parameters") or {}).get("retry_after")
+    except Exception:
+        value = None
+    if value is None:
+        try:
+            value = (getattr(resp, "headers", None) or {}).get("Retry-After")
+        except Exception:
+            value = None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, timeout: int = 0,
-              store=None, now=None, bot=None, raise_fatal: bool = False) -> int:
+              store=None, now=None, bot=None, raise_fatal: bool = False, outcome: dict | None = None) -> int:
     """Fetch one batch of updates, claim them durably, hand each new one to the
     operator router (reply, buttons, and an event per action intent). Returns
     the offset to use next (max update_id + 1). Never raises — a bad batch
     returns the offset unchanged — except that with ``raise_fatal`` a 409 or 401
     from Telegram raises :class:`PollFatal`, which ``run`` uses to stop instead of
-    retrying for the rest of its window."""
+    retrying for the rest of its window.
+
+    ``outcome``, when given, is filled in: ``failed`` (the getUpdates call itself
+    failed, however long it took) and ``retry_after`` (seconds Telegram asked us
+    to wait on a 429, else 0). The always-on service backs off on it."""
     import requests
     session = session or requests
     now = time.time() if now is None else now
     token = getattr(control, "_token", "")
+    if outcome is not None:
+        outcome.update(failed=False, retry_after=0)
     if not token:
         return offset
 
@@ -225,6 +253,8 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
         # error quote the URL, and the bot token is part of it.
         logger.warning("Telegram getUpdates failed (%s)", describe_http_error(e))
         status = getattr(getattr(e, "response", None), "status_code", None)
+        if outcome is not None:
+            outcome.update(failed=True, retry_after=_retry_after(e))
         if raise_fatal and status in FATAL_POLL_STATUS:
             raise PollFatal(FATAL_POLL_STATUS[status]) from None
         return offset

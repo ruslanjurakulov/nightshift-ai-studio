@@ -63,6 +63,9 @@ WORKER_LOST_MAX_AGE = timedelta(hours=24)
 #: hourly budget, but they are not unlimited: a flood of forged or merely noisy
 #: events must not become a flood of pings. Generous and finite; the rest wait.
 MAX_CRITICAL_PER_HOUR = 20
+#: Rows the store refused that are remembered in memory (see AlertEngine), and for how long.
+MAX_UNRECORDED = 500
+LOOKBACK_UNRECORDED = timedelta(hours=48)
 
 SEVERITY_ORDER = {"critical": 0, "warn": 1, "info": 2}
 
@@ -230,6 +233,14 @@ class AlertEngine:
         self.ops, self.store, self.control, self.cfg = ops, store, control, cfg
         self.low_credits = low_credits
         self.held_fn = held_fn
+        # What this process sent or marked whose row the store did not take (a
+        # failed write). The store is the memory of record, but a write that
+        # fails must not make the next pass send the same alert again and again,
+        # nor lift the hourly cap: these are merged into the state read from the
+        # store until the store has the row. Bounded, and only ever in memory.
+        self._unrecorded: list = []
+        self._digest_unrecorded: set = set()
+        self._baseline_unrecorded = False
 
     def tick(self) -> TickReport:
         rep = TickReport()
@@ -242,13 +253,14 @@ class AlertEngine:
             rep.state = "no_state"
             return rep
 
+        self._merge_unrecorded(state, now)
         self.ops.reset()
         lang = self._language()
         found = detect(self.ops, self.low_credits, lang)
         rep.detected = len(found)
 
         if not state.armed:
-            return self._baseline(found, rep, lang)
+            return self._baseline(found, rep, lang, now)
 
         quiet = self.cfg.in_quiet_hours(now)
         fresh = []
@@ -257,7 +269,7 @@ class AlertEngine:
                 rep.deduped += 1
             elif state.is_muted(a.kind, a.severity):
                 rep.muted += 1
-                self.store.record_alert(a.key, a.kind, False, a.severity, a.channel_id)
+                self._record(a, False, now)
             elif quiet and a.severity != "critical":
                 rep.quiet_held += 1
             else:
@@ -293,7 +305,7 @@ class AlertEngine:
                                  reply_markup=reply.markup()):
                 rep.sent += len(items)
                 for a in items:
-                    self.store.record_alert(a.key, a.kind, True, a.severity, a.channel_id)
+                    self._record(a, True, now)
             else:
                 rep.send_failed += len(items)
 
@@ -313,7 +325,27 @@ class AlertEngine:
             return False
         return a.cooldown_min <= 0 or now - seen < timedelta(minutes=a.cooldown_min)
 
-    def _baseline(self, found: list[Alert], rep: TickReport, lang: str = DEFAULT_LANGUAGE) -> TickReport:
+    def _record(self, a: Alert, delivered: bool, now: datetime) -> None:
+        """Write the alert's row; when the store refuses, remember it here."""
+        if self.store.record_alert(a.key, a.kind, delivered, a.severity, a.channel_id) is False:
+            self._unrecorded.append((now, a.key, a.kind, delivered, a.severity))
+            del self._unrecorded[:-MAX_UNRECORDED]
+
+    def _merge_unrecorded(self, state: AlertState, now: datetime) -> None:
+        keep = []
+        for at, key, kind, delivered, sev in self._unrecorded:
+            if now - at > LOOKBACK_UNRECORDED:
+                continue
+            if any(a[1] == key and a[0] >= at - timedelta(minutes=1) for a in state.alerts):
+                continue                  # the store has it now
+            keep.append((at, key, kind, delivered, sev))
+            state.alerts.append((at, key, kind, delivered, sev))
+        self._unrecorded = keep
+        if self._baseline_unrecorded:
+            state.baseline_seen = True
+
+    def _baseline(self, found: list[Alert], rep: TickReport, lang: str = DEFAULT_LANGUAGE,
+                  now: Optional[datetime] = None) -> TickReport:
         """First run: announce once, then mark what exists as seen."""
         rep.baseline = True
         ok = self.control.send(
@@ -324,9 +356,11 @@ class AlertEngine:
         # is what makes the next pass "armed", and a failed send must be retried
         # rather than silently skipped.
         if ok:
+            now = now or self.ops.now()
             for a in found:
-                self.store.record_alert(a.key, a.kind, False, a.severity, a.channel_id)
-            self.store.record_alert("baseline", "baseline", False)
+                self._record(a, False, now)
+            if self.store.record_alert("baseline", "baseline", False) is False:
+                self._baseline_unrecorded = True    # announced once; do not announce again
         else:
             rep.send_failed += 1
         return rep
@@ -339,12 +373,15 @@ class AlertEngine:
         local_hour, date = self.cfg.local_hour(now), self.cfg.local_date(now)
         # From the chosen hour on, once per local date, and never in quiet hours:
         # a digest hour inside the quiet window goes out when the window ends.
-        if local_hour < h or date in state.digest_dates:
+        if local_hour < h or date in state.digest_dates or date in self._digest_unrecorded:
             return
         reply = send_digest_reply(self.ops, self.held_fn, lang)
         if self.control.send(self.control.chat_id, reply.text, parse_mode=reply.parse_mode,
                              reply_markup=reply.markup()):
-            self.store.record_digest(date)
+            if self.store.record_digest(date) is False:
+                self._digest_unrecorded.add(date)
+                if len(self._digest_unrecorded) > 7:
+                    self._digest_unrecorded.discard(min(self._digest_unrecorded))
             rep.digest_sent = True
 
 

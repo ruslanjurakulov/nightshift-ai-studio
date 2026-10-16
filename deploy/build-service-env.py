@@ -68,6 +68,8 @@ def clean(key: str, raw: str, optional: bool = False) -> Tuple[str, List[str]]:
         return value, errors
     if "\n" in value:
         errors.append(f"{key} contains a line break; re-paste it on one line")
+    elif re.search(r"[\x00-\x1f\x7f]", value):
+        errors.append(f"{key} contains a control character (a tab?); re-paste it as plain text")
     if "$" in value:
         errors.append(f'{key} contains "$", which compose would interpolate; change the value')
     if value[0] in "\"'`" or " #" in value:

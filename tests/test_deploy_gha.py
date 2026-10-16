@@ -2075,6 +2075,19 @@ class BuildOperatorEnvTests(unittest.TestCase):
                     self.assertNotIn(self.SECRET, text)
                     self.assertNotIn("INJECTED", text)
 
+    def test_an_embedded_tab_or_control_character_is_refused_before_ssh(self):
+        for key in _example_keys_of(OPERATOR_EXAMPLE):
+            for ch in ("\t", "\x1b", "\x00", "\x7f"):
+                with self.subTest(key=key, ch=repr(ch)):
+                    _, errors = self.build(**{key: "ab" + ch + "cd" + self.SECRET})
+                    text = "\n".join(errors)
+                    self.assertIn(f"{key} contains a control character", text)
+                    self.assertNotIn(self.SECRET, text)
+        # a tab at the edge is trimmed like other whitespace, as before
+        lines, errors = self.build(OPERATOR_TZ="\tUTC\t")
+        self.assertEqual(errors, [])
+        self.assertIn("OPERATOR_TZ=UTC", lines)
+
     def test_a_trailing_carriage_return_or_space_is_trimmed_not_written(self):
         lines, errors = self.build(TELEGRAM_BOT_TOKEN="123:abc \r", OPERATOR_TZ="Asia/Tashkent\r")
         self.assertEqual(errors, [])

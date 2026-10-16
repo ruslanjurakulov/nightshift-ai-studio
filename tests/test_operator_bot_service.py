@@ -85,27 +85,15 @@ class _Fixture(unittest.TestCase):
         session.get.side_effect = get
         return session
 
-    def poll(self, session, wait=None, monotonic=None):
+    def poll(self, session, wait=None):
         wait = wait or (lambda s: self.waits.append(s) or False)
-        return svc.poll_loop(self.control, self.bot, self.claims, self.stop, self.stats, session=session,
-                             wait=wait, monotonic=monotonic or self.clock)
+        return svc.poll_loop(self.control, self.bot, self.claims, self.stop, self.stats, session=session, wait=wait)
 
     @property
     def waits(self):
         if not hasattr(self, "_waits"):
             self._waits = []
         return self._waits
-
-    @property
-    def clock(self):
-        # Each call advances 30 s: every poll "took" a full long poll, so an empty answer is not an error.
-        if not hasattr(self, "_t"):
-            self._t = [0.0]
-
-        def tick():
-            self._t[0] += 15.0
-            return self._t[0]
-        return tick
 
 
 class PollLoopTests(_Fixture):
@@ -153,19 +141,65 @@ class PollLoopTests(_Fixture):
 
     def test_other_errors_back_off_and_never_end_the_loop(self):
         self.stop.clear()
-        # three instant failures in a row (the clock does not move), then good news
-        flat = iter([0.0] * 20)
         session = self.session(_http_error(502), RuntimeError("down"), _http_error(500), _resp([_msg(1, "/start")]), _resp([]))
-        self.poll(session, monotonic=lambda: next(flat))
-        self.assertEqual(self.waits[:3], [2, 4, 8])
+        self.poll(session)
+        self.assertEqual(self.waits, [2, 4, 8])
         self.assertEqual(self.control.send.call_count, 1)
-        self.assertGreaterEqual(self.stats.poll_errors, 3)   # the flat clock also makes the last empty poll look instant
+        self.assertEqual(self.stats.poll_errors, 3)
 
-    def test_the_backoff_is_capped(self):
+    def test_a_slow_failure_backs_off_just_the_same(self):
+        # A 502 that took 1.2 s used to count as "not instant" and was retried at once: ~3000 requests an hour.
+        # The backoff now follows the failure, not its duration.
         self.stop.clear()
-        flat = iter([0.0] * 40)
-        self.poll(self.session(*[RuntimeError("down")] * 8), monotonic=lambda: next(flat))
+        session = MagicMock()
+        answers = [_http_error(502), _http_error(502), _resp([_msg(1, "/start")]), _resp([])]
+
+        def get(url, params=None, timeout=None):
+            item = answers.pop(0)
+            if not answers:
+                self.stop.set()
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+        session.get.side_effect = get
+        self.poll(session)
+        self.assertEqual(self.waits, [2, 4])
+
+    def test_the_backoff_resets_after_a_good_answer_and_is_capped(self):
+        self.stop.clear()
+        self.poll(self.session(*[RuntimeError("down")] * 8))
+        self.assertEqual(self.waits[:6], [2, 4, 8, 16, 30, 30])
         self.assertEqual(max(self.waits), svc.MAX_BACKOFF_S)
+        self.waits.clear()
+        self.stop.clear()
+        self.poll(self.session(RuntimeError("a"), _resp([_msg(2, "/start")]), RuntimeError("b"), _resp([])))
+        self.assertEqual(self.waits, [2, 2])
+
+    def test_a_429_retry_after_is_honoured_and_capped(self):
+        def flood(seconds):
+            resp = MagicMock(status_code=429)
+            resp.json.return_value = {"ok": False, "parameters": {"retry_after": seconds}}
+            return requests.HTTPError("429", response=resp)
+
+        self.stop.clear()
+        self.poll(self.session(flood(45), flood(99999), _resp([])))
+        self.assertEqual(self.waits, [45, svc.MAX_RETRY_AFTER_S])
+
+    def test_a_retry_after_header_or_a_junk_body_is_read_safely(self):
+        for body, headers, expected in (
+            (ValueError("not json"), {"Retry-After": "7"}, 7),
+            ({"parameters": {"retry_after": "x"}}, {}, 0),
+            ({"parameters": None}, {}, 0),
+            ({"parameters": {"retry_after": -5}}, {}, 0),
+        ):
+            resp = MagicMock(status_code=429, headers=headers)
+            if isinstance(body, Exception):
+                resp.json.side_effect = body
+            else:
+                resp.json.return_value = body
+            self.assertEqual(poll_tool._retry_after(requests.HTTPError("x", response=resp)), expected)
+        self.assertEqual(poll_tool._retry_after(RuntimeError("no response")), 0)
 
     def test_a_quiet_long_poll_is_not_an_error(self):
         self.poll(self.session(_resp([]), _resp([])))
@@ -275,17 +309,16 @@ class RunServiceTests(_Fixture):
 
 
 class IntervalAndMainTests(unittest.TestCase):
+    TEXT = (ROOT / "tools" / "operator_bot_service.py").read_text(encoding="utf-8")
+
     def test_default_depends_on_the_github_token(self):
         self.assertEqual(svc.alert_interval({}), 600)
         self.assertEqual(svc.alert_interval({"GITHUB_TOKEN": "  "}), 600)
         self.assertEqual(svc.alert_interval({"GITHUB_TOKEN": "t"}), 300)
 
-    def test_the_override_is_clamped_and_malformed_falls_back(self):
-        env = {"GITHUB_TOKEN": "t"}
-        self.assertEqual(svc.alert_interval({**env, "OPERATOR_ALERT_INTERVAL_SECONDS": "120"}), 120)
-        for bad in ("5", "99999", "abc", "", "1.5", "-3"):
-            with self.subTest(bad):
-                self.assertEqual(svc.alert_interval({**env, "OPERATOR_ALERT_INTERVAL_SECONDS": bad}), 300)
+    def test_it_is_not_a_setting(self):
+        self.assertEqual(svc.alert_interval({"GITHUB_TOKEN": "t", "OPERATOR_ALERT_INTERVAL_SECONDS": "60"}), 300)
+        self.assertNotIn("OPERATOR_ALERT_INTERVAL_SECONDS", self.TEXT)
 
     def test_without_telegram_it_exits_2_and_without_supabase_too(self):
         with patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}):
@@ -296,7 +329,7 @@ class IntervalAndMainTests(unittest.TestCase):
 
     def test_main_wires_the_real_engine_and_the_server_deps(self):
         env = {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "1", "SUPABASE_URL": "https://x.supabase.co",
-               "SUPABASE_SERVICE_KEY": "k", "GITHUB_TOKEN": "", "OPERATOR_ALERT_INTERVAL_SECONDS": ""}
+               "SUPABASE_SERVICE_KEY": "k", "GITHUB_TOKEN": ""}
         seen = {}
 
         def fake_run(control, bot, store, engine, stop, **kw):

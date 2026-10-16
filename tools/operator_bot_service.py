@@ -13,8 +13,8 @@ two jobs without a scheduler:
     ``poll_once`` -> modules/operator_bot router), so a reply goes out within a
     second or two of the message;
   * a second thread runs the alert/digest pass (tools/run_operator_alerts.py
-    ``build_engine`` -> AlertEngine.tick) every OPERATOR_ALERT_INTERVAL_SECONDS
-    (default 300 s, 600 s without a GitHub token), with the same dedupe keys,
+    ``build_engine`` -> AlertEngine.tick) every the interval
+    (300 s, 600 s without a GitHub token), with the same dedupe keys,
     mute, quiet hours, rate limit and language handling, because they live in
     the engine and its store, not in the scheduler. A long pass therefore never
     delays a reply.
@@ -57,7 +57,6 @@ import os
 import signal
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -76,13 +75,13 @@ logger = logging.getLogger("operator_bot_service")
 #: pass asks for three workflow lists).
 DEFAULT_INTERVAL_S = 300
 DEFAULT_INTERVAL_NO_TOKEN_S = 600
-MIN_INTERVAL_S = 60
-MAX_INTERVAL_S = 3600
 #: The first pass waits this long after a start, so a deploy's restart does not
 #: race the polling thread for the same Supabase rows.
 FIRST_PASS_DELAY_S = 20
 #: The longest pause after consecutive poll failures.
 MAX_BACKOFF_S = 30
+#: The longest we honour a Telegram 429 ``retry_after`` (it is per bot).
+MAX_RETRY_AFTER_S = 120
 HEARTBEAT_S = 3600
 
 EXIT_OK, EXIT_REFUSED, EXIT_NOT_CONFIGURED = 0, 1, 2
@@ -105,15 +104,10 @@ class ServiceDeps(poll_tool.StoreDeps):
 
 
 def alert_interval(environ=None) -> int:
-    """OPERATOR_ALERT_INTERVAL_SECONDS clamped to 60..3600; the default depends
-    on whether a GitHub token is set. A malformed value is the default."""
+    """Seconds between alert passes: 300 with a GitHub token, 600 without (fixed,
+    not a setting; the deploy passes no knob for it)."""
     env = os.environ if environ is None else environ
-    default = DEFAULT_INTERVAL_S if (env.get("GITHUB_TOKEN") or "").strip() else DEFAULT_INTERVAL_NO_TOKEN_S
-    try:
-        value = int(str(env.get("OPERATOR_ALERT_INTERVAL_SECONDS", "")).strip())
-    except ValueError:
-        return default
-    return value if MIN_INTERVAL_S <= value <= MAX_INTERVAL_S else default
+    return DEFAULT_INTERVAL_S if (env.get("GITHUB_TOKEN") or "").strip() else DEFAULT_INTERVAL_NO_TOKEN_S
 
 
 class Stats:
@@ -150,32 +144,36 @@ def alerts_loop(engine: Any, interval: float, stop: threading.Event, stats: Stat
 
 
 def poll_loop(control: TelegramControl, bot: Any, store: Any, stop: threading.Event, stats: Stats, *,
-              session: Any = None, monotonic: Callable[[], float] = time.monotonic,
+              session: Any = None,
               wait: Optional[Callable[[float], bool]] = None, timeout: int = poll_tool.LONG_POLL_S) -> int:
     """Long-poll until ``stop`` is set. Returns the final offset; raises
     :class:`tools.run_telegram_control.PollFatal` on a 409/401 (not retryable).
 
     ``poll_once`` swallows an ordinary failure and returns the offset it was
-    given; a long poll that found nothing takes ~``timeout`` seconds, so a
-    no-news return within a second is a failure, and backs off (2, 4, ... 30 s).
+    given; it reports through ``outcome`` that the call failed. EVERY failed poll
+    backs off, however long it took (a slow 502 included): 2, 4, ... 30 seconds,
+    reset by the next good answer, and never shorter than the ``retry_after``
+    Telegram sent with a 429 (capped at MAX_RETRY_AFTER_S).
     """
     wait = wait or stop.wait
     offset = 0
     failures = 0
     while not stop.is_set():
-        t0 = monotonic()
+        outcome: dict = {}
         new_offset = poll_tool.poll_once(control, None, session=session, offset=offset, timeout=timeout,
-                                         store=store, bot=bot, raise_fatal=True)
+                                         store=store, bot=bot, raise_fatal=True, outcome=outcome)
         stats.polls += 1
-        if new_offset != offset:
-            stats.updates += 1
-            offset, failures = new_offset, 0
-        elif monotonic() - t0 < 1.0:
+        if outcome.get("failed"):
             failures += 1
             stats.poll_errors += 1
-            wait(min(MAX_BACKOFF_S, 2 ** failures))
-        else:
-            failures = 0
+            pause = min(MAX_BACKOFF_S, 2 ** failures)
+            pause = max(pause, min(MAX_RETRY_AFTER_S, int(outcome.get("retry_after") or 0)))
+            wait(pause)
+            continue
+        failures = 0
+        if new_offset != offset:
+            stats.updates += 1
+            offset = new_offset
     return offset
 
 

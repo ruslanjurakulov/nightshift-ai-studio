@@ -355,7 +355,7 @@ bog'liq emas. Standart — o'chiq. Nomlar va tartib: `docs/NOTIFY_TELEGRAM_SETUP
 **Operator bot** (Telegram `@NightshiftAiStudio_bot`, `operator-bot`): GitHub
 `schedule` buyruqlarni bir necha **soatga** kechiktiradi, shuning uchun bot
 serverda doim ishlaydigan servis sifatida ham ishga tushadi. Switch:
-`NIGHTSHIFT_OPERATOR_BOT` = `on` (repository **variable**) → **Deploy web** →
+`NIGHTSHIFT_OPERATOR_BOT` = `on` (**repository** variable, `production` environmentda emas) → **Deploy web** →
 **Run workflow**; o'z env fayli `.env.operator`, `NIGHTSHIFT_WORKER`ga bog'liq emas.
 Logda `operator-bot after 20s: state=running ...` qatori chiqadi. Yoqilganda
 `telegram_control.yml` va `operator_alerts.yml` o'z ishini o'tkazib yuboradi
