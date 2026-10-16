@@ -29,6 +29,13 @@ name: Deploy web
 # (email-worker, /opt/nightshift/.env.email, step "Build the e-mail env").
 # Anything but `on` removes that container and its file. Both are independent
 # of NIGHTSHIFT_WORKER.
+# The operator bot has the same shape: while NIGHTSHIFT_OPERATOR_BOT is `on`,
+# the always-on operator-bot service (its own
+# /opt/nightshift/.env.operator, step "Build the operator-bot env") long-polls
+# Telegram and runs the alert pass, and the two GitHub workflows it replaces
+# (telegram_control.yml, operator_alerts.yml) skip their work on the same
+# variable, so Telegram never sees two getUpdates consumers. Anything but `on`
+# removes the container and its file and those workflows run as before.
 
 
 on:
@@ -328,6 +335,36 @@ jobs:
           EMAILENV_NIGHTSHIFT_EMAIL_FROM: ${{ vars.NIGHTSHIFT_EMAIL_FROM }}
           EMAILENV_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
         run: python3 deploy/build-service-env.py email "$PAYLOAD"
+
+      # The operator bot (docs/operator-bot.md), only while NIGHTSHIFT_OPERATOR_BOT
+      # is `on`: its OWN env, after a marker line, to /opt/nightshift/.env.operator
+      # (600). The names are the ones telegram_control.yml and operator_alerts.yml
+      # already read, from the same secrets and variables; no pipeline provider key
+      # is mapped. The optional ones may be empty. GITHUB_TOKEN is not the job
+      # token (the server has none): an optional read-only fine-grained token
+      # in the secret OPERATOR_GITHUB_TOKEN, for the /deploys and /health views.
+      # Named secrets only, as above; deploy/build-service-env.py prints key
+      # names, never values.
+      - name: Build the operator-bot env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_OPERATOR_BOT == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          OPERATORENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          OPERATORENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPERATORENV_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPERATORENV_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPERATORENV_TELEGRAM_ADMIN_USER_IDS: ${{ secrets.TELEGRAM_ADMIN_USER_IDS }}
+          OPERATORENV_GITHUB_TOKEN: ${{ secrets.OPERATOR_GITHUB_TOKEN }}
+          OPERATORENV_GITHUB_REPOSITORY: ${{ github.repository }}
+          OPERATORENV_ELEVENLABS_LOW_CREDITS: ${{ vars.ELEVENLABS_LOW_CREDITS }}
+          OPERATORENV_OPERATOR_APP_URL: ${{ vars.OPERATOR_APP_URL }}
+          OPERATORENV_OPERATOR_LANGUAGE: ${{ vars.OPERATOR_LANGUAGE }}
+          OPERATORENV_OPERATOR_TZ: ${{ vars.OPERATOR_TZ }}
+          OPERATORENV_OPERATOR_QUIET_HOURS: ${{ vars.OPERATOR_QUIET_HOURS }}
+          OPERATORENV_OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
+          OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
+          OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+        run: python3 deploy/build-service-env.py operator "$PAYLOAD"
 
       - name: Deploy over SSH
         if: steps.payload.outputs.run == 'true'

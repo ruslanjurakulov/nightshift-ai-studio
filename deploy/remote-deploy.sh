@@ -22,6 +22,9 @@
 #   NIGHTSHIFT_EMAIL_ENV=on       optional, own section for the customer e-mail
 #   KEY=value                     sender (variable NIGHTSHIFT_EMAIL_WORKER): one
 #   ...                           line per key in deploy/.env.email.example
+#   NIGHTSHIFT_OPERATOR_ENV=on    optional, own section for the operator bot
+#   KEY=value                     (variable NIGHTSHIFT_OPERATOR_BOT): one line per
+#   ...                           key in deploy/.env.operator.example
 #   (sections may come in any order after the web lines; each marker once)
 #
 # What it does, and refuses:
@@ -36,7 +39,8 @@
 #      same way against .env.worker.example, goes to /opt/nightshift/.env.worker
 #      (600) — without one, that file is deleted. The notify and e-mail
 #      sections are checked the same way and go to /opt/nightshift/.env.notify
-#      and .env.email (600), each its own file, never the worker's;
+#      and .env.email (600), each its own file, never the worker's; so does the
+#      operator-bot section (/opt/nightshift/.env.operator);
 #   5. checks out exactly that commit on the local `main` branch, runs
 #      `docker compose up -d --build --remove-orphans web caddy`, and waits for
 #      `web` to report healthy;
@@ -47,7 +51,9 @@
 #      NIGHTSHIFT_CREATIVE_WORKER=on (the repository variable of that name):
 #      started or recreated when it says `on` and the worker is on, stopped
 #      and removed otherwise. The notify-worker and email-worker follow their
-#      own sections the same way, independent of the pipeline worker;
+#      own sections the same way, independent of the pipeline worker, and so
+#      does the operator-bot (tools/operator_bot_service.py: it long-polls
+#      Telegram and runs the alert pass, no port, no Caddy route);
 #   7. last, loads deploy/Caddyfile into the running Caddy without a restart
 #      (a bind-mounted file that changes does not make compose recreate it),
 #      but ONLY the exact file whose sha256 is pinned below
@@ -68,6 +74,7 @@
 #   NIGHTSHIFT_WORKER_ENV_FILE the worker's env file   (/opt/nightshift/.env.worker)
 #   NIGHTSHIFT_NOTIFY_ENV_FILE the notify worker's     (/opt/nightshift/.env.notify)
 #   NIGHTSHIFT_EMAIL_ENV_FILE  the e-mail worker's     (/opt/nightshift/.env.email)
+#   NIGHTSHIFT_OPERATOR_ENV_FILE the operator bot's    (/opt/nightshift/.env.operator)
 #   NIGHTSHIFT_LOCK_FILE      one deploy at a time     (/opt/nightshift/.deploy.lock)
 #   NIGHTSHIFT_DOCKER         docker binary            (docker)
 #   NIGHTSHIFT_HEALTH_TIMEOUT seconds to wait for web  (420)
@@ -95,6 +102,7 @@ ENV_FILE="${NIGHTSHIFT_ENV_FILE:-/opt/nightshift/.env.web}"
 WORKER_ENV_FILE="${NIGHTSHIFT_WORKER_ENV_FILE:-/opt/nightshift/.env.worker}"
 NOTIFY_ENV_FILE="${NIGHTSHIFT_NOTIFY_ENV_FILE:-/opt/nightshift/.env.notify}"
 EMAIL_ENV_FILE="${NIGHTSHIFT_EMAIL_ENV_FILE:-/opt/nightshift/.env.email}"
+OPERATOR_ENV_FILE="${NIGHTSHIFT_OPERATOR_ENV_FILE:-/opt/nightshift/.env.operator}"
 LOCK_FILE="${NIGHTSHIFT_LOCK_FILE:-/opt/nightshift/.deploy.lock}"
 DOCKER="${NIGHTSHIFT_DOCKER:-docker}"
 HEALTH_TIMEOUT="${NIGHTSHIFT_HEALTH_TIMEOUT:-420}"
@@ -112,6 +120,7 @@ SHA_KEY=NIGHTSHIFT_DEPLOY_SHA
 WORKER_MARKER=NIGHTSHIFT_WORKER_ENV=on
 NOTIFY_MARKER=NIGHTSHIFT_NOTIFY_ENV=on
 EMAIL_MARKER=NIGHTSHIFT_EMAIL_ENV=on
+OPERATOR_MARKER=NIGHTSHIFT_OPERATOR_ENV=on
 # The per-channel YouTube tokens: the one family of worker keys that is not
 # listed in .env.worker.example, because each channel brings its own name.
 WORKER_TOKEN_KEY='^CHRONOS_YT_TOKEN_[A-Z0-9_]+$'
@@ -120,6 +129,8 @@ WORKER_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY)
 # empty, they would only log that they are OFF.
 NOTIFY_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY TELEGRAM_CUSTOMER_BOT_TOKEN NOTIFY_APP_ORIGIN)
 EMAIL_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY RESEND_API_KEY NIGHTSHIFT_EMAIL_FROM APP_ORIGIN)
+# The operator bot's file also lists optional keys (present, possibly empty).
+OPERATOR_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID)
 # Mirrors the ${VAR:?} guards in docker-compose.yml: without these the stack
 # either refuses to start or builds a dashboard that reads "NOT CONFIGURED".
 REQUIRED_KEYS=(DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -133,7 +144,8 @@ hint_words() {
   local text="$1" out="" w
   for w in "unrecognized arguments" "usage:" "Traceback" "ModuleNotFoundError" "ImportError" \
            "must be set" "must be absolute" "not a writable directory" "are required" "Permission denied" "No such file" \
-           "pillow-heif" "ConnectionError" "Timeout"; do
+           "pillow-heif" "ConnectionError" "Timeout" \
+           "a webhook is set" "rejected the bot token" "are not set"; do
     if printf '%s' "$text" | grep -qiF -- "$w"; then out="${out:+$out,}${w// /_}"; fi
   done
   printf '%s' "$out"
@@ -176,12 +188,14 @@ compose() {
   # WEB_ENV_FILE keeps the web container's env_file pointed at the same file
   # the interpolation reads, including under a test override; WORKER_ENV_FILE
   # does the same for the worker's, NOTIFY_ENV_FILE and EMAIL_ENV_FILE for the
-  # notify and e-mail workers'. The worker, notify and email profiles are always
-  # active so that compose knows those services (and --remove-orphans never
-  # mistakes them for orphans); services are named on every `up`.
+  # notify and e-mail workers', OPERATOR_ENV_FILE for the operator bot. The
+  # worker, notify, email and operator profiles are always active so that
+  # compose knows those services (and --remove-orphans never mistakes them for
+  # orphans); services are named on every `up`.
   WEB_ENV_FILE="$ENV_FILE" WORKER_ENV_FILE="$WORKER_ENV_FILE" \
-    NOTIFY_ENV_FILE="$NOTIFY_ENV_FILE" EMAIL_ENV_FILE="$EMAIL_ENV_FILE" "$DOCKER" compose \
-    --profile worker --profile notify --profile email --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
+    NOTIFY_ENV_FILE="$NOTIFY_ENV_FILE" EMAIL_ENV_FILE="$EMAIL_ENV_FILE" \
+    OPERATOR_ENV_FILE="$OPERATOR_ENV_FILE" "$DOCKER" compose \
+    --profile worker --profile notify --profile email --profile operator --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
 }
 
 # Checks the lines of one section against the KEY= lines of an example file.
@@ -533,7 +547,7 @@ caddy_apply() {
   log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
 }
 
-# One of the small customer senders (notify-worker, email-worker), switched by
+# One of the small services (notify-worker, email-worker, operator-bot), switched by
 # the presence of its section in the payload. Prints a state line as numbers
 # only, and the names of known phrases found in its log, never the log text.
 #   start_sender <service> <on|off> <env file> <GitHub variable> <words>
@@ -598,10 +612,10 @@ main() {
   # ── 3. Validate the env against the examples AT THAT COMMIT ────────────────
   # Read from git, not the working tree: a key added in the commit being
   # deployed is known before it is checked out.
-  # The payload is the web lines, then up to three sections, each opened by its
+  # The payload is the web lines, then up to four sections, each opened by its
   # marker line (once; a repeated marker is an unknown key and refused below).
-  local -a web_lines=() worker_lines=() notify_lines=() email_lines=()
-  local worker=off notify=off email=off line cur=web
+  local -a web_lines=() worker_lines=() notify_lines=() email_lines=() operator_lines=()
+  local worker=off notify=off email=off operator=off line cur=web
   for line in "${lines[@]}"; do
     if [[ "$worker" == off && "$line" == "$WORKER_MARKER" ]]; then
       worker=on cur=worker
@@ -615,10 +629,15 @@ main() {
       email=on cur=email
       continue
     fi
+    if [[ "$operator" == off && "$line" == "$OPERATOR_MARKER" ]]; then
+      operator=on cur=operator
+      continue
+    fi
     case "$cur" in
       worker) worker_lines+=("$line") ;;
       notify) notify_lines+=("$line") ;;
       email) email_lines+=("$line") ;;
+      operator) operator_lines+=("$line") ;;
       *) web_lines+=("$line") ;;
     esac
   done
@@ -627,7 +646,7 @@ main() {
   example="$(git show "${sha}:deploy/.env.web.example")" \
     || die "deploy/.env.web.example is missing at $sha"
   local -a problems=()
-  local nkeys=0 web_keys=0 worker_keys=0 notify_keys=0 email_keys=0
+  local nkeys=0 web_keys=0 worker_keys=0 notify_keys=0 email_keys=0 operator_keys=0
   local label="deploy/.env.web.example" section=web
   check_section "$example" "" "${REQUIRED_KEYS[*]}" "${web_lines[@]}"
   web_keys=$nkeys
@@ -651,6 +670,13 @@ main() {
     label="deploy/.env.email.example" section=email nkeys=0
     check_section "$example" "" "${EMAIL_REQUIRED_KEYS[*]}" "${email_lines[@]}"
     email_keys=$nkeys
+  fi
+  if [[ "$operator" == on ]]; then
+    example="$(git show "${sha}:deploy/.env.operator.example" 2>/dev/null)" \
+      || die "an operator-bot env was sent, but deploy/.env.operator.example is missing at $sha"
+    label="deploy/.env.operator.example" section=operator nkeys=0
+    check_section "$example" "" "${OPERATOR_REQUIRED_KEYS[*]}" "${operator_lines[@]}"
+    operator_keys=$nkeys
   fi
   # The creative worker's switch is one of the worker keys (the repository
   # variable NIGHTSHIFT_CREATIVE_WORKER): exactly `on` starts it, anything
@@ -681,6 +707,10 @@ main() {
   if [[ "$email" == on ]]; then
     write_env "$EMAIL_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${email_lines[@]}"
     log "wrote $EMAIL_ENV_FILE ($email_keys keys, mode 600)"
+  fi
+  if [[ "$operator" == on ]]; then
+    write_env "$OPERATOR_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${operator_lines[@]}"
+    log "wrote $OPERATOR_ENV_FILE ($operator_keys keys, mode 600)"
   fi
 
   # ── 5. Check out exactly that commit ───────────────────────────────────────
@@ -796,13 +826,17 @@ main() {
     log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on'); creative-worker is off with it"
   fi
 
-  # ── 8b. The customer notification senders ─────────────────────────────────
+  # ── 8b. The customer senders and the operator bot ──────────────────────────
   # Each follows its own section, whether or not the pipeline worker is on:
   # present = started, or moved onto the image just built; absent = stopped,
   # removed, and its env file (with the token or the mail key) deleted.
   # A start that fails fails the deploy, like the workers above.
   start_sender notify-worker "$notify" "$NOTIFY_ENV_FILE" NIGHTSHIFT_NOTIFY_WORKER "the notify worker"
   start_sender email-worker "$email" "$EMAIL_ENV_FILE" NIGHTSHIFT_EMAIL_WORKER "the e-mail worker"
+  # The operator bot (Telegram long-poll + alert pass). While it runs, the two
+  # GitHub workflows skip their work (they test the same variable), so Telegram
+  # never sees two getUpdates consumers; off, it is removed and they run as before.
+  start_sender operator-bot "$operator" "$OPERATOR_ENV_FILE" NIGHTSHIFT_OPERATOR_BOT "the operator bot"
 
   # ── 9. Caddy ───────────────────────────────────────────────────────────────
   # Last, so a proxy problem never holds back the worker; it still fails the
@@ -817,7 +851,7 @@ main() {
   # a disk. Only dangling images: nothing a container still uses.
   "$DOCKER" image prune -f >/dev/null 2>&1 || true
 
-  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email"
+  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email; operator-bot $operator"
 }
 
 main "$@"

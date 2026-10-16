@@ -164,6 +164,10 @@ class ComposeConfigTests(unittest.TestCase):
         # The worker is a commented placeholder until its own image lands.
         self.assertEqual(set(self.config["services"]), {"web", "caddy"})
 
+    def test_the_operator_bot_is_off_unless_its_profile_is_active(self):
+        # Its profile is only ever activated by deploy/remote-deploy.sh.
+        self.assertNotIn("operator-bot", self.config["services"])
+
     def test_the_app_port_is_never_published(self):
         # Docker-published ports bypass ufw; only Caddy faces the internet.
         self.assertFalse(self.config["services"]["web"].get("ports"))
@@ -405,6 +409,56 @@ class CaddyReloadStepTests(unittest.TestCase):
                     self.assertIn(">/dev/null 2>&1", line)
         self.assertIn("2>/dev/null", self.body("caddy_fetch"))
         self.assertIn("-o /dev/null", self.body("caddy_fetch"))
+
+
+@unittest.skipUnless(_docker_compose_available(), "docker compose not installed")
+class ComposeOperatorProfileTests(unittest.TestCase):
+    """`docker compose config` with the operator profile active, as remote-deploy.sh runs it."""
+
+    @classmethod
+    def setUpClass(cls):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(
+            DOMAIN="app.example.com",
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+            OPERATOR_ENV_FILE="/nonexistent/.env.operator",
+        )
+        result = subprocess.run(
+            ["docker", "compose", "--profile", "operator", "-f", str(COMPOSE), "config", "--format", "json"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        if result.returncode != 0:
+            raise AssertionError(f"docker compose config failed:\n{result.stderr}")
+        cls.config = json.loads(result.stdout)
+
+    def test_the_profile_adds_exactly_the_operator_bot(self):
+        self.assertEqual(set(self.config["services"]), {"web", "caddy", "operator-bot"})
+
+    def test_it_is_unreachable_and_unprivileged(self):
+        bot = self.config["services"]["operator-bot"]
+        self.assertFalse(bot.get("ports"))
+        self.assertFalse(bot.get("expose"))
+        self.assertFalse(bot.get("volumes"))
+        self.assertEqual(bot["user"], "1000:1000")
+        self.assertEqual(bot["cap_drop"], ["ALL"])
+        self.assertEqual(bot["security_opt"], ["no-new-privileges:true"])
+        self.assertEqual(bot["restart"], "unless-stopped")
+        self.assertNotIn("privileged", bot)
+        self.assertNotIn("docker.sock", json.dumps(bot))
+        # Caddy's published ports are still only 80 and 443 and it proxies nothing but web.
+        published = {p["published"] for p in self.config["services"]["caddy"]["ports"]}
+        self.assertEqual(published, {"80", "443"})
+        self.assertNotIn("operator", (DEPLOY / "Caddyfile").read_text().lower())
+
+    def test_it_reads_only_its_own_env_file_and_no_variable_is_interpolated_into_it(self):
+        bot = self.config["services"]["operator-bot"]
+        self.assertEqual(bot.get("env_file") or [], [])       # the file is optional and absent in this check
+        self.assertEqual(bot["environment"], {"HOME": "/tmp"})
+        self.assertEqual(bot["command"], ["python", "tools/operator_bot_service.py"])
+        self.assertEqual(bot["logging"]["options"]["max-size"], "10m")
 
 
 if __name__ == "__main__":

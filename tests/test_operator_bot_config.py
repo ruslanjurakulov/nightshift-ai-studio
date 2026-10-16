@@ -16,7 +16,7 @@ SOURCES = (
     sorted((ROOT / "modules" / "operator_bot").glob("*.py"))
     + [ROOT / "modules" / "telegram_control.py", ROOT / "modules" / "tg_text.py",
        ROOT / "tools" / "run_telegram_control.py", ROOT / "tools" / "run_operator_alerts.py",
-       ROOT / "tools" / "operator_bot_server.py"]
+       ROOT / "tools" / "operator_bot_server.py", ROOT / "tools" / "operator_bot_service.py"]
 )
 _ENV_READ = re.compile(r"""(?:getenv|environ\.get|env\.get|environ\[)\(?\s*["']([A-Z][A-Z0-9_]{2,})["']""")
 #: Names that already existed before the operator bot, read elsewhere in the repo.

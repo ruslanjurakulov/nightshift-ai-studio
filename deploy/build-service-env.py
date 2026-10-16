@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """Append one small worker's own env to the deploy payload (.github/workflows/deploy_web.yml).
 
-    python3 deploy/build-service-env.py <notify|email> <payload file>
+    python3 deploy/build-service-env.py <notify|email|operator> <payload file>
 
 Runs on the GitHub runner, only while that worker's switch is `on`
-(NIGHTSHIFT_NOTIFY_WORKER, NIGHTSHIFT_EMAIL_WORKER). Reads, from its own
-environment, ``NOTIFYENV_<KEY>`` / ``EMAILENV_<KEY>`` for every key in
-deploy/.env.notify.example / deploy/.env.email.example, which the workflow maps
+(NIGHTSHIFT_NOTIFY_WORKER, NIGHTSHIFT_EMAIL_WORKER, NIGHTSHIFT_OPERATOR_BOT).
+Reads, from its own environment, ``NOTIFYENV_<KEY>`` / ``EMAILENV_<KEY>`` /
+``OPERATORENV_<KEY>`` for every key in deploy/.env.notify.example /
+deploy/.env.email.example / deploy/.env.operator.example, which the workflow maps
 from the repository secret or variable of the same name. Nothing else: no
 ``toJSON(secrets)`` (GitHub holds such a run for manual approval), and nothing
 of the pipeline worker's or the dashboard's environment.
 
-Appends a marker line (``NIGHTSHIFT_NOTIFY_ENV=on`` / ``NIGHTSHIFT_EMAIL_ENV=on``)
-and then one ``KEY=value`` line per key; deploy/remote-deploy.sh splits the
-payload at the marker and writes that section to /opt/nightshift/.env.notify /
-.env.email (600), checked against the same example file at the deployed commit.
+Appends a marker line (``NIGHTSHIFT_NOTIFY_ENV=on`` / ``NIGHTSHIFT_EMAIL_ENV=on`` /
+``NIGHTSHIFT_OPERATOR_ENV=on``) and then one ``KEY=value`` line per key;
+deploy/remote-deploy.sh splits the payload at the marker and writes that section
+to /opt/nightshift/.env.notify / .env.email / .env.operator (600), checked
+against the same example file at the deployed commit.
 
-Every key of these two files is required: a worker that is switched on with a
-name empty would only log that it is OFF. Errors name the key and the fix, never
-a value: this output is a public Actions log.
+Every key of the notify and e-mail files is required: a worker that is switched
+on with a name empty would only log that it is OFF. The operator bot has a few
+OPTIONAL keys (OPTIONAL below): they must still be mapped, but may be empty,
+exactly as the GitHub workflows it replaces pass them. Errors name the key and
+the fix, never a value: this output is a public Actions log.
 """
 
 from __future__ import annotations
@@ -35,6 +39,15 @@ HERE = Path(__file__).resolve().parent
 SERVICES: Dict[str, Tuple[str, str, str, str]] = {
     "notify": ("NIGHTSHIFT_NOTIFY_ENV=on", ".env.notify.example", "NOTIFYENV_", "NIGHTSHIFT_NOTIFY_WORKER"),
     "email": ("NIGHTSHIFT_EMAIL_ENV=on", ".env.email.example", "EMAILENV_", "NIGHTSHIFT_EMAIL_WORKER"),
+    "operator": ("NIGHTSHIFT_OPERATOR_ENV=on", ".env.operator.example", "OPERATORENV_", "NIGHTSHIFT_OPERATOR_BOT"),
+}
+# service -> keys that may be empty (all others are required)
+OPTIONAL: Dict[str, frozenset] = {
+    "operator": frozenset({
+        "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
+        "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
+        "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
+    }),
 }
 ORIGIN_KEYS = ("NOTIFY_APP_ORIGIN", "APP_ORIGIN")
 ORIGIN = re.compile(r"^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$")
@@ -44,11 +57,13 @@ def example_keys(text: str) -> List[str]:
     return re.findall(r"^([A-Z][A-Z0-9_]*)=", text, re.M)
 
 
-def clean(key: str, raw: str) -> Tuple[str, List[str]]:
+def clean(key: str, raw: str, optional: bool = False) -> Tuple[str, List[str]]:
     """The value as it goes into the env file, and what is wrong with it."""
     value = raw.replace("\r", "").strip()
     errors: List[str] = []
     if not value:
+        if optional:
+            return value, errors
         errors.append(f"{key} is required and empty (repository secret or variable {key})")
         return value, errors
     if "\n" in value:
@@ -62,7 +77,8 @@ def clean(key: str, raw: str) -> Tuple[str, List[str]]:
     return value, errors
 
 
-def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: str) -> Tuple[List[str], List[str]]:
+def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: str,
+          optional: frozenset = frozenset()) -> Tuple[List[str], List[str]]:
     lines: List[str] = []
     errors: List[str] = []
     keys = example_keys(example_text)
@@ -72,7 +88,7 @@ def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: 
         if prefix + key not in env:
             errors.append(f"{key} is in deploy/{example_name} but not mapped in deploy_web.yml")
             continue
-        value, problems = clean(key, env[prefix + key])
+        value, problems = clean(key, env[prefix + key], key in optional)
         errors.extend(problems)
         lines.append(f"{key}={value}")
     return lines, errors
@@ -83,7 +99,8 @@ def main(argv: List[str]) -> int:
         print(f"usage: build-service-env.py <{'|'.join(SERVICES)}> <payload file>", file=sys.stderr)
         return 2
     marker, example_name, prefix, switch = SERVICES[argv[1]]
-    lines, errors = build(os.environ, (HERE / example_name).read_text(encoding="utf-8"), prefix, example_name)
+    lines, errors = build(os.environ, (HERE / example_name).read_text(encoding="utf-8"), prefix, example_name,
+                          OPTIONAL.get(argv[1], frozenset()))
     if errors:
         for e in errors:
             print(f"::error::{e}")

@@ -37,6 +37,12 @@ permissions:
 
 jobs:
   alerts:
+    # While the repository variable NIGHTSHIFT_OPERATOR_BOT is `on`, the
+    # always-on operator-bot service on the server runs the alert and digest
+    # pass on its own timer (tools/operator_bot_service.py), and this job does
+    # nothing, so an alert is never decided twice. Anything but `on` (the
+    # default) leaves this workflow exactly as it was.
+    if: vars.NIGHTSHIFT_OPERATOR_BOT != 'on'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
