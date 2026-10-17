@@ -9,6 +9,9 @@ route), BR-S-019 (body caps), BR-S-020 (secret and variable value checks, rate
 limit, recent-code step-up), BR-S-021 (session cookie), BR-S-022 (neutral sign-up),
 BR-S-023 (strict `enforce`: factor-less admins may only enrol), BR-S-024 (Team
 page last-owner guard). See "Hardening round 2" at the end.
+Hardening round 3 (migration 0107, **shipped dormant**): the database half of the second
+factor, audited and capped owner actions, and a security trail: BR-S-025 .. BR-S-028. See
+"The database backstop (migration 0107)" below.
 
 ## What changed
 
@@ -372,18 +375,171 @@ in at once, so the two cases still differ (the live project has confirmation on)
 
 The page no longer offers (and refuses) demoting or removing the only bound owner
 (`lib/members-guard.ts`). Anyone writing `app_members` directly bypasses it; the
-database guard (`owner_set_member_role` / `remove_member` refusing to leave zero
-owners, owner-only admin minting) needs a migration and is not in this change.
+database guard (`owner_set_member_role` / `owner_remove_member` refusing to leave zero
+owners, owner-only admin minting) is migration 0107 (dormant until the page uses it).
 
 ### What is NOT in PR A
 
 Migration items: S-1 (the database ignores the second factor; `admin_aal_ok()`,
-restrictive policies, `grant_credits` wrapper), S-5 (roster, price, factor and
-grant audit; `security_events`), S-6 (free-credit farming, CAPTCHA), S-7 (sign-out
+restrictive policies, `grant_credits` wrapper; **0107 ships `admin_aal_ok()` and the
+wrappers dormant, the restrictive policies are still to do**), S-5 (roster, price,
+factor and grant audit; `security_events`; **0107**), S-6 (free-credit farming, CAPTCHA), S-7 (sign-out
 everywhere, spend ceiling for the exempt org), B-05 database half. Also not done:
 `CSP_MODE=enforce`, the Caddy body cap, a way to tell a replaced value from a re-saved one (any hash
 of a value is derived from the secret, so none is logged or stored), a `/login/verify`-style in-place step-up page (the
 step-up asks for a fresh sign-in instead).
+
+## The database backstop (migration 0107): shipped DORMANT
+
+Migration `0107_owner_safety.sql` is the database half of everything above. **Merging it changes
+nothing a person can see or do**: the switch is off, nothing in the app calls the new functions
+yet, no policy, grant or existing function was touched (the one permitted redefinition is the
+audit action list, which only gained names). A later, separately reviewed change wires the
+screens behind `NIGHTSHIFT_OWNER_RPC`; the owner then switches the gate on by hand.
+
+### What it adds
+
+| Object | What it is | State after the merge |
+|---|---|---|
+| `owner_security_settings` | one row: the gate flag and the caps | `admin_aal2_required = false` |
+| `admin_aal_ok()` | the second-factor test the owner functions call | answers `true` to everyone (gate off) |
+| `enable_admin_mfa()` / `disable_admin_mfa()` / `owner_security_get()` | switch the gate (with checks), read the state | not called by anything |
+| `owner_grant_credits`, `owner_reverse_grant` | capped, idempotent, audited credit grant and its reversal | not called |
+| `owner_set_credit_price`, `owner_delete_credit_price`, `owner_restore_credit_price`, `credit_price_history` | price changes with a ratio guard and a way back | not called |
+| `owner_add_member`, `owner_set_member_role`, `owner_remove_member` | roster changes with a last-owner guard | not called |
+| `security_events`, `owner_security_events(limit)` | append-only security trail | **fills**: three triggers log every write to `app_members`, `credit_prices` and the settings row |
+
+The triggers (and one partial index, `credit_transactions_grant_created_idx`, that keeps the 24 h grant-cap read small) are the only live effect. The triggers are `AFTER` row triggers that wrap their logging in an
+exception block: if a log row cannot be written the price or roster change still goes through and
+the database logs a warning. (The owner functions are the opposite on purpose: their audit row is
+written in the same transaction and is not swallowed, so an action that cannot be audited does not
+happen.) A price changed straight from the browser also gets a `credit_price_history` row, so a
+price the browser deleted can be restored with `owner_restore_credit_price`.
+
+### The gate, and why it cannot lock you out
+
+`admin_aal_ok()` is asked by every owner function (it is **not** in `platform_role()`, so every page
+and every existing write keeps working for a password-only session):
+
+| Gate | The caller | Answer |
+|---|---|---|
+| off (default) | anyone | allowed |
+| on | has **no verified factor** in `auth.mfa_factors` | allowed (there is no code to ask for) |
+| on | has a verified factor, token `aal` is not `aal2` (or missing) | **refused**: `{"ok": false, "error": "mfa_required"}` |
+| on | verified factor, `aal2`, but the newest authenticator entry of the token's `amr` is older than `recent_mfa_minutes` (default 480) | **refused** (`mfa_required`, why `stale_mfa`): sign in again and type the code |
+| on | verified factor, `aal2`, no readable `amr` timestamp | allowed |
+| on | `auth.mfa_factors` cannot be read | allowed (and `enable_admin_mfa()` refuses) |
+
+Everything refuses with a JSON document, never a database error. The one exception is a caller who
+is not a platform owner/admin at all: that is a plain `42501`, as everywhere else in this schema.
+
+### Switching the gate on (later, after the app change)
+
+Do the two real-token checks in the next section first.
+
+1. Enrol **two** authenticators on every owner and admin account (steps 2 to 4 under "The owner's
+   steps"). `enable_admin_mfa()` physically refuses until every `owner`/`admin` row of `app_members`
+   is bound to an account with at least two verified factors, the factor table can be read, and the
+   session making the call would itself pass the gate (a fresh `aal2` token).
+2. Check first (Supabase SQL editor, read only):
+   ```sql
+   select public.owner_admin_factors();   -- every owner/admin: bound = true, verified_factors >= 2
+   ```
+3. Call `enable_admin_mfa()` from the Security page (the later app change) while signed in with your
+   code. The answer lists who is missing when it refuses. Doing it by hand in the SQL editor is
+   possible (`update public.owner_security_settings set admin_aal2_required = true;`) but skips
+   those checks.
+4. From then on a stolen password (an `aal1` token) gets `mfa_required` from every owner function.
+   Note what this does **not** yet do: the browser still writes the old paths directly (see below).
+
+### Two checks with a real token, BEFORE switching the gate on
+
+The lab uses hand-made claims. These two facts about the real Supabase project are not proven until
+someone looks:
+
+1. **The token carries what the gate reads.** Signed in with your authenticator code (a fresh
+   `aal2` session), call `rpc/owner_security_get` (from the Security page once wired, or with the
+   session's access token) and confirm `caller.aal = "aal2"`, `caller.mfa_age_seconds` is small,
+   `would_block_after_enable = false` and `can_enable = true`. Then decode the access token (the
+   middle part of the JWT, base64url) and confirm its `amr` holds an entry like
+   `{"method": "totp", "timestamp": <10 digits>}`. If the method is named differently (the gate also
+   accepts `mfa/totp`, `webauthn`, `mfa/webauthn`, `phone`, `mfa/phone`) or the timestamp is missing,
+   the gate still lets an `aal2` session through (it only judges a timestamp it can read), but the
+   recent-code window is then not enforced.
+2. **A password-only session cannot remove a factor.** On a throwaway account with one verified
+   factor, sign in with the password only (do not type the code) and try to unenrol the factor. It
+   must be refused. If it is not, the second factor protects nothing against a stolen password and
+   the gate must not be relied on.
+
+### Break-glass (a lost authenticator, a misbehaving gate)
+
+In the Supabase dashboard SQL editor (it runs as the database owner and needs no token):
+
+```sql
+update public.owner_security_settings set admin_aal2_required = false;
+```
+
+That is the whole of it; it takes effect on the next call, with no deploy. It leaves a
+`settings.change` row (severity `critical`, no actor) in `security_events`. A signed-in admin who
+passes the gate can also call `disable_admin_mfa()`; a password-only admin with a factor cannot (so
+a stolen password cannot open the door), and is told to use the line above. The factor itself is
+recovered as described under "You lost every device".
+
+### The caps (defaults, changed in the SQL editor)
+
+| Column | Default | Meaning |
+|---|---|---|
+| `grant_max_per_call` | 100,000 credits | one `owner_grant_credits` call (1 credit is about 1 US cent of vendor cost and about $0.01 retail, so about $1,000; the only cap `grant_credits` has is 100,000,000, about $1,000,000) |
+| `grant_max_per_24h` | 500,000 credits | all owner grants together, every actor, any rolling 24 h (about $5,000); manual `grant_credits` rows count too |
+| `price_max_change_ratio` | 3 | a price (or its charged figure with margin) may move by at most this factor up or down; a price of 0, a price rising from 0 and any delete need an explicit `p_confirm_big_change` |
+| `recent_mfa_minutes` | 480 | how old the authenticator code may be while the gate is on (5 to 1440) |
+| `reverse_window_days` | 14 | how long a grant can be reversed |
+
+```sql
+update public.owner_security_settings set grant_max_per_call = 20000, grant_max_per_24h = 100000;
+```
+
+### What the owner functions guarantee
+
+* Every one checks the caller is a platform owner/admin first, then the gate, then a per-person rate
+  limit (`take_web_rate`), and writes an `app_audit_log` row (`credits.grant`, `credits.reverse`,
+  `credits.price`, `member.add`, `member.role`, `member.remove`, `security.gate`) and a
+  `security_events` row in the same transaction. The operator bot already alerts on `member.*`; it now
+  also lists the other four.
+* `owner_grant_credits(org, credits, reason, idempotency_key)`: reason 8 to 300 characters, a request
+  key of 8 to 100 characters, the per-call and rolling caps, never the operator's own organization.
+  The key becomes `credit_transactions.external_id = 'owner-grant:<key>'`; the same request again
+  returns `duplicate: true` and the first answer, a different request with the same key is refused
+  (`key_reused`). Locks are taken in a fixed order (the cap, then the organization's account), so two
+  grants cannot both pass the cap.
+* `owner_reverse_grant(transaction_id, reason)`: one reversal per grant, bounded by what the grant's
+  lot still holds and by the organization's available credits; the rest is reported as `shortfall`.
+  Credits leave in the ledger's normal spend order, which is not always the lot the grant made.
+* Members: only an owner adds, promotes, demotes or removes an admin or an owner; nobody changes
+  their own role or removes themselves; the last bound owner with a confirmed address cannot be
+  demoted or removed.
+
+### What 0107 does NOT do
+
+* It does not close the old paths. The Team and Credits pages still write `app_members`,
+  `credit_prices` and call `grant_credits` straight from the browser, uncapped; they are only
+  observed (`security_events`, and the ledger's `created_by`). Closing them (flag-governed
+  restrictive policies, `revoke execute on grant_credits from authenticated`) is a later migration,
+  after the screens use the owner functions and have been used for a while.
+* It does not gate an admin who has no factor: the lockout rule. That account is protected by
+  enrolling (BR-S-023), not by the database. This includes **an admin added after the gate is
+  switched on**: until they enrol they are not gated, so add admins only after they have enrolled.
+  List owners/admins and their verified-factor counts (read only, SQL editor):
+  `select jsonb_pretty(public.owner_admin_factors());` (`owner_security_get()` returns the same list
+  as `admins`, with `can_enable`).
+* A reversal does not give the 24 h grant cap back (a reversed grant still counts toward it), and a
+  grant can be reversed once.
+* It does not seal the empty-roster bootstrap or change `platform_role()`.
+
+### Taking it out again
+
+`docs/sql/rollback_0107_owner_safety.sql` removes every object (and the security trail) and puts the
+audit list back to 0093's. Nothing needs it for the gate to be off: the flag is already false.
 
 ## What this does NOT do
 
@@ -391,9 +547,10 @@ step-up asks for a fresh sign-in instead).
   directly.** Supabase's REST API accepts an `aal1` token. The roster, the price
   list, provider billing and credit grants are written by the browser straight to
   Supabase under row-level security, which does not look at the assurance level.
-  Closing that needs the database backstop (a migration: `admin_aal_ok()` in
-  `platform_role()` and restrictive write policies, flag off by default). It is
-  the next step (a separate change with a migration), deliberately not in this one.
+  Closing that needs the database backstop. Migration 0107 ships its first half,
+  dormant (see "The database backstop (migration 0107)" above: `admin_aal_ok()` and
+  audited, capped owner functions, flag off by default); the second half (the screens
+  using them, then restrictive policies on the old direct paths) is a later change.
   Until then `enforce` protects the site and the server routes, not the
   database.
 - It does not stop a stolen *aal2* session cookie (see CSP, BR-S-008).
