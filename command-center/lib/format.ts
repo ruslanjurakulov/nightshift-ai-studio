@@ -1,4 +1,6 @@
 import { formatAgo, naWord } from "@/lib/date-format";
+import { formatNumber } from "@/lib/number-format";
+import { formatOwnerStamp, formatOwnerTime, isOwnerToday as isOwnerTodayMs, ownerClock } from "@/lib/owner-time";
 
 /** Formatting helpers. Everything renders "N/A" for null/undefined so the UI
  *  always distinguishes real data from missing data. */
@@ -30,8 +32,13 @@ export function storedMs(iso: string | null | undefined): number | null {
   return parseStoredTime(iso)?.getTime() ?? null;
 }
 
+/**
+ * A grouped number, the same text on the server and in every browser (lib/number-format.ts). The bare
+ * `toLocaleString()` this used to call follows the runtime: Node printed "1,234" while a phone set to Uzbek printed
+ * "1 234", React threw the server HTML away (#418) on every page that showed a count.
+ */
 export function num(value: number | null | undefined): string {
-  return value === null || value === undefined ? "N/A" : value.toLocaleString();
+  return value === null || value === undefined ? "N/A" : formatNumber(value, "en", 3);
 }
 
 export function decimal(value: number | null | undefined, digits = 1): string {
@@ -43,11 +50,11 @@ export function decimal(value: number | null | undefined, digits = 1): string {
  * (useI18n().locale on the client, getDictionary().locale on the server); without one it reads English, as it
  * always did, so a caller not yet migrated is unchanged. Tables, not Intl: lib/date-format.ts.
  */
-export function relativeTime(iso: string | null | undefined, locale?: string): string {
+export function relativeTime(iso: string | null | undefined, locale?: string, nowMs: number = Date.now()): string {
   if (!iso) return naWord(locale);
   const then = storedMs(iso);
   if (then === null) return iso;
-  const diff = Date.now() - then;
+  const diff = nowMs - then;
   const s = Math.max(0, Math.round(diff / 1000));
   const ago = (n: number, unit: "second" | "minute" | "hour" | "day") => formatAgo(n, unit, locale) ?? (formatAgo(n, unit, "en") as string);
   if (s < 60) return ago(s, "second");
@@ -58,6 +65,11 @@ export function relativeTime(iso: string | null | undefined, locale?: string): s
   return ago(Math.round(h / 24), "day");
 }
 
+/**
+ * The time of day in the viewer's own locale and zone ("1:53:41 PM"), as this always was: customer pages use it. It
+ * differs between a server in UTC and a phone in another zone, so it is NOT hydration-safe; operator pages use
+ * `ownerTimeOfDay` below.
+ */
 export function timeOfDay(iso: string | null | undefined): string {
   if (!iso) return "--:--:--";
   const d = parseStoredTime(iso);
@@ -65,6 +77,7 @@ export function timeOfDay(iso: string | null | undefined): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+/** Is the stored timestamp on today's UTC day. Customer pages; the owner's day is `isOwnerToday`. */
 export function isToday(iso: string | null | undefined): boolean {
   if (!iso) return false;
   const d = parseStoredTime(iso);
@@ -75,6 +88,37 @@ export function isToday(iso: string | null | undefined): boolean {
     d.getUTCMonth() === now.getUTCMonth() &&
     d.getUTCDate() === now.getUTCDate()
   );
+}
+
+/**
+ * OPERATOR pages only: the time of day the owner reads, 24 hours with seconds ("13:53:41"), in Tashkent time
+ * (lib/owner-time.ts), so a server in UTC and the owner's phone print the same text.
+ */
+export function ownerTimeOfDay(iso: string | null | undefined): string {
+  if (!iso) return "--:--:--";
+  const ms = storedMs(iso);
+  return ms === null ? "--:--:--" : ownerClock(ms, true);
+}
+
+/** OPERATOR pages only: "bugun 13:53" / "kecha 22:10" / "12 okt 13:53" (ru/en equivalents), in Tashkent time. */
+export function ownerTime(iso: string | null | undefined, locale?: string, nowMs: number = Date.now()): string {
+  if (!iso) return naWord(locale);
+  const ms = storedMs(iso);
+  return ms === null ? iso : formatOwnerTime(ms, locale, nowMs);
+}
+
+/** OPERATOR pages only: a stamp with its full date and seconds ("17 okt 2026 13:53:41", "bugun 13:53:41"), in Tashkent time. */
+export function ownerStamp(iso: string | null | undefined, locale?: string, nowMs: number = Date.now()): string {
+  if (!iso) return naWord(locale);
+  const ms = storedMs(iso);
+  return ms === null ? iso : formatOwnerStamp(ms, locale, nowMs);
+}
+
+/** OPERATOR pages only: is the stored timestamp on the owner's calendar day (Tashkent), not the UTC day. */
+export function isOwnerToday(iso: string | null | undefined, nowMs: number = Date.now()): boolean {
+  if (!iso) return false;
+  const ms = storedMs(iso);
+  return ms !== null && isOwnerTodayMs(ms, nowMs);
 }
 
 /** Human label + tone for an event/agent status string. */

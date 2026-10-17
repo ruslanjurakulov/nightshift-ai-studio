@@ -16,7 +16,7 @@ import type { CostDriver, UnitEconomics } from "@/lib/unitEconomics";
  * bring them in, so a blank reads as "set this price", never as "free".
  */
 export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: string }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const u = t.unitEconomics;
   const labels = u.units as Record<string, string>;
   const label = (d: Pick<CostDriver, "unit" | "provider">) =>
@@ -51,10 +51,10 @@ export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: str
       </div>
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
-        <StatCard label={u.medianVideo} value={usd(ue.medianPerVideo)} sub={pricedSub} tone={ue.medianPerVideo === null ? "idle" : undefined} />
-        <StatCard label={u.p90Video} value={usd(ue.p90PerVideo)} sub={pricedSub} tone={ue.p90PerVideo === null ? "idle" : undefined} />
-        <StatCard label={u.medianMinute} value={usd(ue.medianPerMinute)} sub={minuteSub} tone={ue.medianPerMinute === null ? "idle" : undefined} />
-        <StatCard label={u.p90Minute} value={usd(ue.p90PerMinute)} sub={minuteSub} tone={ue.p90PerMinute === null ? "idle" : undefined} />
+        <StatCard label={u.medianVideo} value={usd(ue.medianPerVideo, locale)} sub={pricedSub} tone={ue.medianPerVideo === null ? "idle" : undefined} />
+        <StatCard label={u.p90Video} value={usd(ue.p90PerVideo, locale)} sub={pricedSub} tone={ue.p90PerVideo === null ? "idle" : undefined} />
+        <StatCard label={u.medianMinute} value={usd(ue.medianPerMinute, locale)} sub={minuteSub} tone={ue.medianPerMinute === null ? "idle" : undefined} />
+        <StatCard label={u.p90Minute} value={usd(ue.p90PerMinute, locale)} sub={minuteSub} tone={ue.p90PerMinute === null ? "idle" : undefined} />
       </div>
 
       {ue.partialVideos > 0 && (
@@ -76,7 +76,7 @@ export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: str
                 <li key={d.key} className="g5-tile">
                   <span className="g5-tile-name">{label(d)}</span>
                   <span className="g5-v shrink-0 text-right">
-                    {usd(d.usdPerVideo)}
+                    {usd(d.usdPerVideo, locale)}
                     {u.perVideo}
                     {d.share !== null && (
                       <span className="g5-note" style={{ display: "inline" }}>

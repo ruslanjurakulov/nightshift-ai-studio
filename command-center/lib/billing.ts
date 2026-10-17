@@ -64,7 +64,15 @@ export interface BilledProvider {
   unitSize: number;
   /** Native units this ledger row consumed on this provider (0 when unrelated). */
   usage: (row: CostRowLite) => number;
+  /**
+   * False when nothing in the cost ledger maps to this provider (Anthropic and OpenAI spend is not written to
+   * `video_costs`). Its burn is then UNKNOWN, not zero: "0 used, lasts never" would be a lie.
+   */
+  tracked?: boolean;
 }
+
+/** Does the cost ledger carry this provider's usage at all? */
+export const isTracked = (p: BilledProvider): boolean => p.tracked !== false;
 
 const clipsOf = (id: string) => (r: CostRowLite) =>
   r.unit === "video_gen_clips" && r.stage === `broll:${id}` ? r.quantity : 0;
@@ -102,8 +110,8 @@ export const BILLED_PROVIDERS: BilledProvider[] = [
   { id: "wan", name: "Wan", billingUrl: "https://usercenter2-intl.aliyun.com/billing", unitLabel: "clip", unitSize: 1, usage: clipsOf("wan") },
   { id: "higgsfield", name: "Higgsfield", billingUrl: "https://higgsfield.ai/pricing", unitLabel: "clip", unitSize: 1, usage: clipsOf("higgsfield") },
   { id: "leonardo", name: "Leonardo.Ai", billingUrl: "https://app.leonardo.ai/api-access", unitLabel: "image", unitSize: 1, usage: imagesOf("leonardo") },
-  { id: "anthropic", name: "Anthropic Claude", billingUrl: "https://console.anthropic.com/settings/billing", unitLabel: "1M tokens", unitSize: 1_000_000, usage: none },
-  { id: "openai", name: "OpenAI", billingUrl: "https://platform.openai.com/settings/organization/billing/overview", unitLabel: "1M tokens", unitSize: 1_000_000, usage: none },
+  { id: "anthropic", name: "Anthropic Claude", billingUrl: "https://console.anthropic.com/settings/billing", unitLabel: "1M tokens", unitSize: 1_000_000, usage: none, tracked: false },
+  { id: "openai", name: "OpenAI", billingUrl: "https://platform.openai.com/settings/organization/billing/overview", unitLabel: "1M tokens", unitSize: 1_000_000, usage: none, tracked: false },
 ];
 
 export const BILLED_PROVIDER_IDS: readonly string[] = BILLED_PROVIDERS.map((p) => p.id);
@@ -131,28 +139,74 @@ export interface Burn {
   unitsPerDay: number;
   /** USD per day — null when there was usage but no price is set. */
   usdPerDay: number | null;
+  /** The number of days the per-day figures are averaged over (the window, shortened to the history there is). */
+  windowDays: number;
 }
 
-/** How fast `provider` is being consumed over the last `days` days. */
+/** A stored stamp in ms. The bot writes UTC with no zone; a bare stamp is read as UTC, never as the server's local time. */
+export function rowMs(recordedAt: string | null | undefined): number {
+  const text = String(recordedAt ?? "");
+  return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) || !text.includes("T") ? text : `${text}Z`);
+}
+
+/** The oldest `recorded_at` among the rows, in ms, or null. */
+export function oldestRowMs(rows: { recorded_at: string }[]): number | null {
+  let oldest: number | null = null;
+  for (const r of rows) {
+    const t = rowMs(r.recorded_at);
+    if (Number.isFinite(t) && (oldest === null || t < oldest)) oldest = t;
+  }
+  return oldest;
+}
+
+/** When THIS provider was first used: the oldest ledger row that consumed something on it, in ms, or null. */
+export function firstUseMs(provider: BilledProvider, rows: CostRowLite[]): number | null {
+  let first: number | null = null;
+  for (const r of rows) {
+    if (!(provider.usage(r) > 0)) continue;
+    const t = rowMs(r.recorded_at);
+    if (Number.isFinite(t) && (first === null || t < first)) first = t;
+  }
+  return first;
+}
+
+/**
+ * Where this provider's own history starts, for the burn window: its first usage row, or its first top-up when that
+ * came later (spend before the account was funded is not what the balance is spent at). Null with neither.
+ */
+export function providerHistoryStart(firstUse: number | null, firstTopup: number | null): number | null {
+  if (firstUse !== null && firstTopup !== null) return Math.max(firstUse, firstTopup);
+  return firstUse ?? firstTopup;
+}
+
+/**
+ * How fast `provider` is being consumed over the last `days` days, or over ITS OWN history when that is shorter
+ * (`startMs`, from providerHistoryStart): a provider first used two days ago is divided by two, not by thirty (and not by
+ * the age of the whole ledger, which is older than the provider). One `now` for the whole computation: the window edge is
+ * the start itself, so the row that started the history is never a few milliseconds outside it.
+ */
 export function providerBurn(
   provider: BilledProvider,
   rows: CostRowLite[],
   usdPerUnit: number | null,
   days = 30,
   now: number = Date.now(),
+  startMs: number | null = null,
 ): Burn {
-  const since = now - days * DAY_MS;
+  const full = now - days * DAY_MS;
+  const since = startMs !== null && Number.isFinite(startMs) && startMs > full ? startMs : full;
+  const windowDays = Math.max(1, (now - since) / DAY_MS);
   let units = 0;
   for (const r of rows) {
-    const t = Date.parse(r.recorded_at);
+    const t = rowMs(r.recorded_at);
     if (!Number.isFinite(t) || t < since || t > now) continue;
     const q = provider.usage(r);
     if (q > 0) units += q;
   }
-  const unitsPerDay = units / days;
+  const unitsPerDay = units / windowDays;
   const rate = finite(usdPerUnit);
   const usdPerDay = units === 0 ? 0 : rate === null ? null : (unitsPerDay / provider.unitSize) * rate;
-  return { units, unitsPerDay, usdPerDay };
+  return { units, unitsPerDay, usdPerDay, windowDays };
 }
 
 /** The newest balance snapshot for a provider, or null. */
@@ -168,27 +222,36 @@ export function latestBalance(rows: BalanceRow[], provider: string): BalanceRow 
 /**
  * The operator's own running balance for a provider with no balance API:
  * everything topped up, minus priced spend since the first top-up. Null when
- * there is no top-up, or there was spend since then with no price set.
+ * there is no top-up, when there was spend since then with no price set, when
+ * the spend history does not reach back to the first top-up (`coveredFromMs`:
+ * the oldest ledger row the page actually read; spend before it is missing and
+ * the balance would be overstated), and when the result is NEGATIVE (the
+ * top-ups logged do not cover the spend: a trial credit, an auto-recharge or a
+ * top-up that was never logged, so the true balance is not known).
  */
 export function ledgerBalanceUsd(
   provider: BilledProvider,
   topups: TopupRow[],
   rows: CostRowLite[],
   usdPerUnit: number | null,
+  coveredFromMs: number | null = null,
 ): number | null {
+  if (!isTracked(provider)) return null;
   const mine = topups.filter((t) => t.provider === provider.id && finite(t.amount_usd) !== null);
   if (mine.length === 0) return null;
   const first = Math.min(...mine.map((t) => Date.parse(t.paid_at)).filter(Number.isFinite));
+  if (coveredFromMs !== null && Number.isFinite(first) && first < coveredFromMs) return null;
   const paid = mine.reduce((s, t) => s + Number(t.amount_usd), 0);
   let units = 0;
   for (const r of rows) {
-    const t = Date.parse(r.recorded_at);
+    const t = rowMs(r.recorded_at);
     if (Number.isFinite(t) && t >= first) units += provider.usage(r);
   }
   if (units === 0) return paid;
   const rate = finite(usdPerUnit);
   if (rate === null) return null;
-  return paid - (units / provider.unitSize) * rate;
+  const left = paid - (units / provider.unitSize) * rate;
+  return left < 0 ? null : left;
 }
 
 /**
@@ -197,8 +260,10 @@ export function ledgerBalanceUsd(
  */
 export function daysLeft(balance: number | null, perDay: number | null): number | "never" | null {
   if (balance === null || perDay === null) return null;
+  // A negative balance is not "0 days left": the books do not add up (see ledgerBalanceUsd), so it is unknown.
+  if (balance < 0) return null;
   if (perDay <= 0) return "never";
-  return Math.max(0, balance / perDay);
+  return balance / perDay;
 }
 
 export interface ElevenLabsRunway {

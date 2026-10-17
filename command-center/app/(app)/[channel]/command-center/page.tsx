@@ -26,11 +26,16 @@ import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
-import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
+import { isToday, num, ownerTime, relativeTime, statusTone, storedMs } from "@/lib/format";
+import { ownerDayStartMs } from "@/lib/owner-time";
+import { BOT_KIND_PATTERN, ownerAlerts } from "@/lib/alert-count";
+import { timed } from "@/lib/server/read-timeout";
 import { heldOnly, uploadedOnly } from "@/lib/heldVideos";
 import { OwnerGlance, type GlanceTile } from "@/components/dashboard/OwnerGlance";
 import { agentLabel, agentSummary } from "@/lib/agent-names";
-import { balanceStale, balanceTone, lowestProviderBalance, workersAlive, workersTone } from "@/lib/owner-glance";
+import { SPEND_ROW_LIMIT, balanceStale, completeDayStart, balanceTone, lowestProviderBalance, spendToday, workersAlive, workersTone, type SpendToday } from "@/lib/owner-glance";
+import { formatUsdOwner } from "@/lib/number-format";
+import { ownerDate } from "@/lib/owner-time";
 import type { BalanceRow } from "@/lib/billing";
 import { WORKER_COLUMNS, coerceWorkers, type WorkerRow } from "@/lib/workers";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -42,6 +47,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** How many alert rows the tile reads; at the limit the count is a floor and says "500+". */
+const ALERT_ROW_LIMIT = 500;
 
 /**
  * What each stage of the run actually did, read from real events only.
@@ -112,7 +119,16 @@ export default async function CommandCenter() {
     alertsCount: number | null;
     alive: ReturnType<typeof workersAlive> | null;
     low: ReturnType<typeof lowestProviderBalance>;
+    /** The balance snapshots could not be read (as opposed to: no provider reports one). */
+    balanceFailed: boolean;
     showBalance: boolean;
+    /** Exact counts for the owner's two time-window figures; null = could not read. */
+    failed24h: number | null;
+    publishedToday: number | null;
+    /** What was spent today (the platform's provider accounts), and why there may be no figure. */
+    spend: SpendToday | null;
+    /** The alert read hit its row limit: the count is a floor ("500+"). */
+    alertsCapped: boolean;
   } | null = null;
   let events: SystemEventRow[] = [];
   let videos: VideoRow[] = [];
@@ -127,12 +143,14 @@ export default async function CommandCenter() {
   let signalsOk = true;
 
   if (supabase) {
+    // Every read has a time limit (lib/server/read-timeout.ts): a backend that never answers ends in "unknown" with a
+    // Retry after a few seconds, not a skeleton for ever.
     const [ev, vid, tp, snap, sg, videoIds] = await Promise.all([
-      scopeQuery(supabase.from("system_events").select("*"), scope, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(200),
-      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(50),
+      timed(scopeQuery(supabase.from("system_events").select("*"), scope, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(200)),
+      timed(uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(50)),
       fetchTopicScores(supabase, scope, 6),
-      supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(200),
-      scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(200),
+      timed(supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(200)),
+      timed(scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(200)),
       fetchScopedVideoIds(supabase, scope),
     ]);
     eventsOk = !readFailed(ev);
@@ -156,40 +174,105 @@ export default async function CommandCenter() {
   // heartbeats, Alerts' feed, the held videos Home counts). Light reads (a count, or the newest rows); a
   // failed one leaves its figure null = "unknown", never 0.
   if (operator && supabase) {
-    const since24 = new Date(Date.now() - DAY_MS).toISOString();
-    const [waitingRes, alertsRes, workersRes, balancesRes] = await Promise.all([
-      heldOnly(scopeQuery(supabase.from("videos").select("video_id", { count: "exact", head: true }), scope)),
-      scopeQuery(supabase.from("alert_events").select("id", { count: "exact", head: true }), orgWide(scope), { nullIsGlobal: true })
-        .in("severity", ["warn", "critical"])
-        .gte("at", since24),
-      supabase.from("worker_status").select(WORKER_COLUMNS).order("updated_at", { ascending: false }).limit(50),
+    const nowMs = Date.now();
+    const since24 = new Date(nowMs - DAY_MS).toISOString();
+    // "Today" is the owner's day (Tashkent), not the UTC day.
+    const todayStart = new Date(ownerDayStartMs(nowMs)).toISOString();
+    const [waitingRes, alertsRes, workersRes, balancesRes, failedRes, publishedRes, syncRes] = await Promise.all([
+      timed(heldOnly(scopeQuery(supabase.from("videos").select("video_id", { count: "exact", head: true }), scope))),
+      // The rows (kind, title, time), not a bare count: the bot's own bookkeeping rows are out and a repeated low-balance
+      // row counts once (lib/alert-count.ts), which a head count cannot do.
+      timed(
+        scopeQuery(supabase.from("alert_events").select("kind,title,at"), orgWide(scope), { nullIsGlobal: true })
+          .in("severity", ["warn", "critical"])
+          .not("kind", "like", BOT_KIND_PATTERN)
+          .gte("at", since24)
+          .order("at", { ascending: false })
+          .limit(ALERT_ROW_LIMIT),
+      ),
+      timed(supabase.from("worker_status").select(WORKER_COLUMNS).order("updated_at", { ascending: false }).limit(50)),
       // The provider accounts are the platform's own: only in the operator's own organization (as Billing does).
       scope.includeGlobal
-        ? supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200)
+        ? timed(supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200))
+        : Promise.resolve(null),
+      // Exact counts: the newest-200 / newest-50 windows above undercount on a busy day (the 201st-newest failure).
+      timed(
+        scopeQuery(supabase.from("system_events").select("ts", { count: "exact", head: true }), scope, { nullIsGlobal: true })
+          .or("status.ilike.failed,status.ilike.error")
+          .gte("ts", since24),
+      ),
+      timed(uploadedOnly(scopeQuery(supabase.from("videos").select("video_id", { count: "exact", head: true }), scope)).gte("published_at", todayStart)),
+      // Today's cost-ledger rows only (the provider accounts are the platform's: operator's own organization). One day of
+      // rows, not the 90 days Billing reads; a day that fills the page is not summed (the figure would be a floor).
+      // The ledger is mirrored nightly: when did the mirror last write? The spend shown is for the last COMPLETE day before that.
+      scope.includeGlobal
+        ? timed(supabase.from("video_costs").select("synced_at").order("synced_at", { ascending: false }).limit(1))
         : Promise.resolve(null),
     ]);
     const waiting = readFailed(waitingRes) ? null : (waitingRes.count ?? 0);
-    const alertsCount = readFailed(alertsRes) ? null : (alertsRes.count ?? 0);
+    const alertsCount = readFailed(alertsRes)
+      ? null
+      : ownerAlerts(((alertsRes.data ?? []) as { kind: string; title: string | null; at: string }[])).length;
     const workers: WorkerRow[] | null = workersRes.error ? null : coerceWorkers(workersRes.data);
     const alive = workers ? workersAlive(workers, Date.now()) : null;
+    const balanceFailed = Boolean(balancesRes && balancesRes.error);
     const low =
       balancesRes && !balancesRes.error ? lowestProviderBalance((balancesRes.data ?? []) as BalanceRow[]) : null;
-    glanceInputs = { waiting, alertsCount, alive, low, showBalance: scope.includeGlobal };
+    // The spend of the last COMPLETE day the mirror covers (the day before its last sync's day): read after the freshness
+    // read, since which day that is depends on it.
+    let spend: SpendToday | null = null;
+    if (scope.includeGlobal && syncRes) {
+      const syncRow = readFailed(syncRes) ? null : ((syncRes.data as { synced_at: string }[] | null)?.[0]?.synced_at ?? null);
+      const syncMs = syncRow ? Date.parse(syncRow) : NaN;
+      if (readFailed(syncRes)) spend = spendToday({ rows: null, syncMs: null, failed: true });
+      else if (!Number.isFinite(syncMs)) spend = spendToday({ rows: [], syncMs: null, failed: false });
+      else {
+        const dayStart = completeDayStart(syncMs);
+        const day = await timed(
+          supabase
+            .from("video_costs")
+            .select("quantity,estimated_usd")
+            .gte("recorded_at", new Date(dayStart).toISOString())
+            .lt("recorded_at", new Date(dayStart + DAY_MS).toISOString())
+            .order("recorded_at", { ascending: false })
+            .limit(SPEND_ROW_LIMIT),
+        );
+        spend = spendToday({ rows: (day.data ?? null) as { quantity: number | null; estimated_usd: number | null }[] | null, syncMs, failed: readFailed(day) });
+      }
+    }
+    glanceInputs = {
+      waiting,
+      alertsCount,
+      alive,
+      low,
+      balanceFailed,
+      showBalance: scope.includeGlobal,
+      failed24h: readFailed(failedRes) ? null : (failedRes.count ?? 0),
+      publishedToday: readFailed(publishedRes) ? null : (publishedRes.count ?? 0),
+      spend,
+      alertsCapped: !readFailed(alertsRes) && ((alertsRes.data as unknown[] | null)?.length ?? 0) >= ALERT_ROW_LIMIT,
+    };
   }
 
   // A failed read leaves these arrays empty; the figures below are null
   // ("unknown") in that case, never a 0.
-  const publishedToday = knownCount(videos.filter((v) => isToday(v.published_at)).length, videosOk);
-  const errors24h = knownCount(
-    events.filter((e) => statusTone(e.status) === "fail" && Date.now() - (storedMs(e.ts) ?? 0) < DAY_MS).length,
-    eventsOk,
-  );
+  // The owner's figures are exact counts (above); a customer's page keeps the window of the newest rows it already read.
+  const publishedToday = glanceInputs
+    ? glanceInputs.publishedToday
+    : knownCount(videos.filter((v) => isToday(v.published_at)).length, videosOk);
+  const errors24h = glanceInputs
+    ? glanceInputs.failed24h
+    : knownCount(
+        events.filter((e) => statusTone(e.status) === "fail" && Date.now() - (storedMs(e.ts) ?? 0) < DAY_MS).length,
+        eventsOk,
+      );
   const runningAgents = Array.from(
     new Set(events.filter((e) => statusTone(e.status) === "run").map((e) => e.agent)),
   ).filter(Boolean);
   const activeAgents = knownCount(runningAgents.length, eventsOk);
   const lastEventAt = events[0]?.ts ?? null;
-  const chip = commandCenterChip({ readable: dbHealthy, errors24h, events: events.length });
+  // The failed-count read is part of "readable": a chip never says healthy over a figure it could not read.
+  const chip = commandCenterChip({ readable: dbHealthy && errors24h !== null, errors24h, events: events.length });
   const recentVideos = videos.slice(0, 6);
   const mission = dailyMission(videos, snapshots, signals);
   const missionView = {
@@ -257,34 +340,76 @@ export default async function CommandCenter() {
         value: gl.low ? fmt(t.ownerShell.gBalanceLeft, { pct: gl.low.pct }) : null,
         sub: gl.low
           ? `${gl.low.name} · ${stale ? t.ownerShell.gBalanceStale : relativeTime(gl.low.checkedAt, locale)}`
-          : t.ownerShell.gBalanceNone,
+          : gl.balanceFailed
+            ? t.common.couldNotRead
+            : t.ownerShell.gBalanceNone,
         tone: gl.low ? balanceTone(gl.low.pct, stale) : "idle",
+        // No provider reports a balance is not a failed read: no Retry for it.
+        unknown: gl.balanceFailed,
       });
     }
+    if (gl.showBalance && gl.spend) {
+      // The money line. The ledger is mirrored nightly, so the figure is for the last COMPLETE day it covers, labelled with
+      // that date and "as of last sync HH:MM" (never "today"); with no sync at all there is no figure.
+      const sp: SpendToday = gl.spend;
+      const nowMs = Date.now();
+      const asOf = "syncMs" in sp ? fmt(t.ownerShell.gSpendAsOf, { t: ownerTime(new Date(sp.syncMs).toISOString(), locale, nowMs) }) : "";
+      const word =
+        sp.kind === "failed"
+          ? t.common.couldNotRead
+          : sp.kind === "not_synced"
+            ? t.ownerShell.gSpendNightly
+            : sp.kind === "no_rows"
+              ? t.ownerShell.gSpendNoRows
+              : sp.kind === "too_many"
+                ? t.ownerShell.gSpendTooMany
+                : sp.kind === "not_priced"
+                  ? t.ownerShell.gSpendNotPriced
+                  : sp.unpriced > 0
+                    ? t.ownerShell.gSpendPartial
+                    : "";
+      tiles.unshift({
+        key: "spend",
+        href: path("/billing"),
+        label: "dayMs" in sp ? fmt(t.ownerShell.gSpendDay, { date: ownerDate(sp.dayMs, locale, nowMs) }) : t.ownerShell.gSpend,
+        value: sp.kind === "ok" ? formatUsdOwner(sp.usd, locale) : null,
+        sub: [word, asOf].filter(Boolean).join(" · ") || undefined,
+        tone: "idle",
+        wide: true,
+        unknown: sp.kind === "failed",
+      });
+    }
+    // An unknown figure carries no confident words under it ("none", "idle" would say there is nothing); a system that has
+    // recorded nothing at all is "idle", not a green all-clear.
+    const nothingYet = eventsOk && events.length === 0;
     tiles.push(
       {
         key: "failed",
         href: path("/errors"),
         label: t.ownerShell.gFailed,
         value: errors24h === null ? null : num(errors24h),
-        sub: errors24h ? t.dashboard.needsAttention : t.common.none,
-        tone: flag(errors24h, "fail"),
+        sub: errors24h === null ? t.common.couldNotRead : errors24h ? t.dashboard.needsAttention : nothingYet ? t.ownerTruth.noEventsYet : t.common.none,
+        tone: errors24h === 0 && nothingYet ? "idle" : flag(errors24h, "fail"),
+        unknown: errors24h === null,
       },
       {
         key: "waiting",
         href: path("/videos"),
         label: t.ownerShell.gWaiting,
         value: gl.waiting === null ? null : num(gl.waiting),
-        sub: gl.waiting ? t.ownerShell.gWaitingSub : t.common.none,
+        sub: gl.waiting === null ? t.common.couldNotRead : gl.waiting ? t.ownerShell.gWaitingSub : t.common.none,
         tone: flag(gl.waiting, "warn"),
+        unknown: gl.waiting === null,
       },
       {
         key: "alerts",
         href: path("/alerts"),
         label: t.ownerShell.gAlerts,
-        value: gl.alertsCount === null ? null : num(gl.alertsCount),
-        sub: gl.alertsCount ? t.ownerShell.gAlertsSub : t.common.none,
+        // At the read limit the count is a floor, and says so.
+        value: gl.alertsCount === null ? null : `${num(gl.alertsCount)}${gl.alertsCapped ? "+" : ""}`,
+        sub: gl.alertsCount === null ? t.common.couldNotRead : gl.alertsCount ? t.ownerShell.gAlertsSub : t.common.none,
         tone: flag(gl.alertsCount, "warn"),
+        unknown: gl.alertsCount === null,
       },
       {
         key: "workers",
@@ -302,13 +427,16 @@ export default async function CommandCenter() {
                 .filter(Boolean)
                 .join(" · ") || t.ownerShell.gWorkersAll,
         tone: workersTone(gl.alive),
+        unknown: !gl.alive,
       },
       {
         key: "published",
         href: path("/videos"),
         label: t.dashboard.publishedToday,
         value: publishedToday === null ? null : num(publishedToday),
+        sub: publishedToday === null ? t.common.couldNotRead : undefined,
         tone: "idle",
+        unknown: publishedToday === null,
       },
       {
         // Humanized names, so the agent-name work is on the phone too (the figures row is desktop-only).
@@ -316,9 +444,15 @@ export default async function CommandCenter() {
         href: path("/agents"),
         label: t.dashboard.activeAgents,
         value: activeAgents === null ? null : num(activeAgents),
-        sub: runningAgents.length ? agentSummary(runningAgents, t.ownerShell.agentNames) : t.common.idle,
+        sub:
+          activeAgents === null
+            ? t.common.couldNotRead
+            : runningAgents.length
+              ? agentSummary(runningAgents, t.ownerShell.agentNames)
+              : t.common.idle,
         tone: "idle",
         wide: true,
+        unknown: activeAgents === null,
       },
     );
   }
@@ -353,6 +487,12 @@ export default async function CommandCenter() {
           tiles={tiles}
           unknown={t.common.unknown}
         />
+      )}
+      {/* Some figure could not be read (a failed or timed-out read): one Retry for the strip, not a tile that sits on "unknown". */}
+      {tiles.some((x) => x.unknown) && (
+        <div className="lg:hidden">
+          <ErrorState compact />
+        </div>
       )}
 
       {/* ── The run, and the instruments beside it ─────────────────────────── */}
@@ -462,7 +602,7 @@ export default async function CommandCenter() {
           </section>
 
           <Widget id="feed" title={t.ops.streamTitle}>
-            {eventsOk ? <ActivityFeed initial={events} scope={scope} /> : <ErrorState />}
+            {eventsOk ? <ActivityFeed initial={events} scope={scope} ownerClock={operator} /> : <ErrorState />}
           </Widget>
         </div>
 

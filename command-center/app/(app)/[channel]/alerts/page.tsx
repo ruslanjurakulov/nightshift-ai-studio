@@ -12,7 +12,10 @@ import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/gith
 import { readVariables } from "@/lib/server/github-variables";
 import { ALERT_SECRET_NAMES, deriveAlertConfig } from "@/lib/server/alerts";
 import { getDictionary } from "@/lib/i18n/server";
-import { relativeTime } from "@/lib/format";
+import { ownerTime } from "@/lib/format";
+import { ErrorState } from "@/components/ReadError";
+import { BOT_KIND_PATTERN, ownerAlerts } from "@/lib/alert-count";
+import { timed } from "@/lib/server/read-timeout";
 import { DataList } from "@/components/g4/DataList";
 import { Section } from "@/components/g4/Section";
 import "../../app-pages-g4.css";
@@ -75,11 +78,15 @@ export default async function AlertsPage() {
     // The current organization's alerts, whichever channel is selected; alerts
     // with no channel are the operator's and show in the default org only.
     const scope = orgWide(await getChannelScope());
-    const { data, error } = await scopeQuery(supabase.from("alert_events").select("*"), scope, { nullIsGlobal: true })
-      .order("at", { ascending: false })
-      .limit(FEED_LIMIT);
+    // Without the operator bot's own bookkeeping rows (kind operator.*), and one low-balance row per provider per day.
+    const { data, error } = await timed(
+      scopeQuery(supabase.from("alert_events").select("*"), scope, { nullIsGlobal: true })
+        .not("kind", "like", BOT_KIND_PATTERN)
+        .order("at", { ascending: false })
+        .limit(FEED_LIMIT),
+    );
     if (error) feedFailed = true;
-    events = (data as AlertEventRow[]) ?? [];
+    events = ownerAlerts((data as AlertEventRow[]) ?? []);
   }
 
   const severityLabel: Record<AlertEventRow["severity"], string> = {
@@ -128,7 +135,10 @@ export default async function AlertsPage() {
 
       {/* The durable feed */}
       <Section title={t.alerts.feedTitle}>
-        {feedFailed || events.length === 0 ? (
+        {feedFailed ? (
+          // A failed read is not "no alerts": the owner would take silence for safety.
+          <ErrorState />
+        ) : events.length === 0 ? (
           <EmptyState>{t.alerts.empty}</EmptyState>
         ) : (
           <DataList
@@ -136,7 +146,7 @@ export default async function AlertsPage() {
             rows={events}
             rowKey={(e) => e.id}
             columns={[
-              { key: "time", label: t.alerts.colTime, nowrap: true, render: (e) => <span className="tnum g4-muted">{relativeTime(e.at, locale)}</span> },
+              { key: "time", label: t.alerts.colTime, nowrap: true, render: (e) => <span className="tnum g4-muted">{ownerTime(e.at, locale)}</span> },
               { key: "kind", label: t.alerts.colKind, nowrap: true, render: (e) => <span className="tnum g4-muted">{e.kind}</span> },
               {
                 key: "title",

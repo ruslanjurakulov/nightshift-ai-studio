@@ -11,7 +11,7 @@ import { scopeQuery } from "@/lib/channels";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
 import { StageStrip, StageLegend, type StageState, type StageView } from "@/components/pipeline/StageStrip";
-import { relativeTime, statusTone, storedMs, timeOfDay } from "@/lib/format";
+import { relativeTime, statusTone, storedMs, ownerTimeOfDay } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -217,7 +217,7 @@ export default async function PipelinePage() {
                   <span className="g3-pass-agent">{p.agent ?? t.common.system}</span>
                   <span className="mono g3-pass-event">{p.event}</span>
                   <span className="tnum g3-pass-count">
-                    {p.count}× · {timeOfDay(p.lastTs)} {stale ? t.pipeline.stale : ""}
+                    {p.count}× · {ownerTimeOfDay(p.lastTs)} {stale ? t.pipeline.stale : ""}
                   </span>
                 </li>
               );

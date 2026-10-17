@@ -1,5 +1,6 @@
 import { BILLED_PROVIDERS, latestBalance, type BalanceRow } from "@/lib/billing";
 import { workerView, type WorkerRow } from "@/lib/workers";
+import { ownerDayStartMs } from "@/lib/owner-time";
 
 /**
  * The numbers on the Command Center's phone strip, derived from rows the page already reads (provider
@@ -87,4 +88,66 @@ export function workersTone(w: WorkersAlive | null): GlanceTone {
   if (!w || w.total === 0) return "idle";
   if (w.alive === w.total) return "ok";
   return w.alive === 0 ? "fail" : "warn";
+}
+
+/** How many rows of today's cost ledger the page reads; a day that fills it is not summed. */
+export const SPEND_ROW_LIMIT = 1000;
+
+/** Which complete owner day a spend figure is for, and how fresh the ledger it came from was. */
+export interface SpendBasis {
+  /** When the nightly mirror last wrote a cost row (ms). */
+  syncMs: number;
+  /** The start (ms) of the COMPLETE owner day (Tashkent) the figure covers: the day before the one the last sync fell in. */
+  dayMs: number;
+}
+
+export type SpendToday =
+  /** The read failed or timed out: unknown, worth a Retry. */
+  | { kind: "failed" }
+  /** The mirror has never written a row (or its time could not be read): there is no ledger to speak of. */
+  | { kind: "not_synced" }
+  /** The day has no rows: "no rows that day", never a measured $0. */
+  | ({ kind: "no_rows" } & SpendBasis)
+  /** So many rows that they are not added up here (the figure would be a floor). Not a read failure. */
+  | ({ kind: "too_many" } & SpendBasis)
+  /** Only unpriced rows on that day: there is no figure. */
+  | ({ kind: "not_priced" } & SpendBasis)
+  | ({ kind: "ok"; usd: number; unpriced: number } & SpendBasis);
+
+/** The complete owner day a ledger last synced at `syncMs` can speak for: the day BEFORE the sync's own day. */
+export function completeDayStart(syncMs: number): number {
+  return ownerDayStartMs(syncMs) - 24 * 60 * 60 * 1000;
+}
+
+/**
+ * What the pipeline spent on the most recent COMPLETE day the ledger covers. The ledger is MIRRORED (nightly), so "today" is
+ * never in it in full: a sync at 01:00 only holds rows up to 01:00. The figure is for the day before the last sync's day
+ * (labelled with its date and "as of last sync HH:MM"), and with no sync at all there is no figure. A row without
+ * `estimated_usd` is not $0: it is counted as unpriced, and a day with only unpriced rows has no figure.
+ */
+export function spendToday(input: {
+  rows: { quantity?: number | null; estimated_usd?: number | string | null }[] | null;
+  /** The newest `video_costs.synced_at` (any row), or null when there is none. */
+  syncMs: number | null;
+  failed: boolean;
+}): SpendToday {
+  if (input.failed) return { kind: "failed" };
+  if (input.syncMs === null) return { kind: "not_synced" };
+  if (input.rows === null) return { kind: "failed" };
+  const basis: SpendBasis = { syncMs: input.syncMs, dayMs: completeDayStart(input.syncMs) };
+  if (input.rows.length >= SPEND_ROW_LIMIT) return { kind: "too_many", ...basis };
+  if (input.rows.length === 0) return { kind: "no_rows", ...basis };
+  let usd = 0;
+  let priced = 0;
+  let unpriced = 0;
+  for (const r of input.rows) {
+    const v = typeof r.estimated_usd === "string" ? Number(r.estimated_usd) : r.estimated_usd;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      usd += v;
+      priced += 1;
+    } else if ((r.quantity ?? 0) > 0) {
+      unpriced += 1;
+    }
+  }
+  return priced > 0 ? { kind: "ok", usd, unpriced, ...basis } : { kind: "not_priced", ...basis };
 }

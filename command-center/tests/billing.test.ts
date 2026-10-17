@@ -3,6 +3,9 @@ import {
   BILLED_PROVIDERS,
   daysLeft,
   elevenLabsRunway,
+  firstUseMs,
+  providerHistoryStart,
+  rowMs,
   latestBalance,
   ledgerBalanceUsd,
   percentile,
@@ -164,5 +167,85 @@ describe("planTopups", () => {
   it("rounds needs up to the cent", () => {
     const plan = planTopups([{ id: "a", usdPerDay: 0.0333, balanceUsd: 0 }], 7);
     expect(plan.lines[0].amount).toBe(0.24);
+  });
+});
+
+describe("burn window = min(30, THIS provider's own history)", () => {
+  it("a provider first used 2 days ago, 10 clips, in a 25-day-old ledger: 5 a day (not 10/25, not 10/30)", () => {
+    const rows: CostRowLite[] = [
+      { unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: day(25) }, // the ledger is 25 days old
+      { unit: "video_gen_clips", quantity: 4, stage: "broll:kling", recorded_at: day(2) },
+      { unit: "video_gen_clips", quantity: 6, stage: "broll:kling", recorded_at: day(0.5) },
+    ];
+    const start = providerHistoryStart(firstUseMs(by("kling"), rows), null);
+    const b = providerBurn(by("kling"), rows, null, 30, NOW, start);
+    expect(b.units).toBe(10);
+    expect(b.windowDays).toBeCloseTo(2, 5);
+    expect(b.unitsPerDay).toBeCloseTo(5, 5);
+    // the whole ledger's age would have said 10 / 25
+    expect(providerBurn(by("kling"), rows, null, 30, NOW).unitsPerDay).toBeCloseTo(10 / 30, 5);
+  });
+  it("starts at its first top-up when that came later than its first use", () => {
+    const rows: CostRowLite[] = [
+      { unit: "video_gen_clips", quantity: 100, stage: "broll:kling", recorded_at: day(20) },
+      { unit: "video_gen_clips", quantity: 10, stage: "broll:kling", recorded_at: day(2) },
+    ];
+    const start = providerHistoryStart(firstUseMs(by("kling"), rows), NOW - 4 * 86_400_000);
+    const b = providerBurn(by("kling"), rows, null, 30, NOW, start);
+    expect(b.units).toBe(10);
+    expect(b.windowDays).toBeCloseTo(4, 5);
+  });
+  it("a long history keeps the 30-day window", () => {
+    const rows: CostRowLite[] = [{ unit: "tts_characters", quantity: 60000, stage: "voice", recorded_at: day(80) }, { unit: "tts_characters", quantity: 3000, stage: "voice", recorded_at: day(3) }];
+    const b = providerBurn(by("elevenlabs"), rows, null, 30, NOW, providerHistoryStart(firstUseMs(by("elevenlabs"), rows), null));
+    expect(b.windowDays).toBe(30);
+    expect(b.units).toBe(3000);
+  });
+  it("the oldest run is never dropped: the window edge IS the first row, whatever the milliseconds (clock offset T2 = T1 + 5 ms)", () => {
+    const T1 = Date.parse("2026-09-24T12:00:00.000Z");
+    const rows: CostRowLite[] = [{ unit: "video_gen_clips", quantity: 7, stage: "broll:kling", recorded_at: new Date(T1 - 3 * 86_400_000).toISOString() }];
+    const start = providerHistoryStart(firstUseMs(by("kling"), rows), null);
+    for (const offset of [0, 1, 5, 37, 999]) expect(providerBurn(by("kling"), rows, null, 30, T1 + offset, start).units, `+${offset}ms`).toBe(7);
+  });
+  it("randomized float round trip: a row's own stamp is always inside its own window", () => {
+    let seed = 12345;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    for (let i = 0; i < 500; i++) {
+      const now = Date.UTC(2026, 0, 1) + Math.floor(rand() * 1e10) + rand();
+      const ageDays = rand() * 29.9 + 0.001;
+      const stamp = new Date(now - ageDays * 86_400_000).toISOString();
+      const rows: CostRowLite[] = [{ unit: "video_gen_clips", quantity: 1, stage: "broll:kling", recorded_at: stamp }];
+      const start = providerHistoryStart(firstUseMs(by("kling"), rows), null);
+      expect(providerBurn(by("kling"), rows, null, 30, now + Math.floor(rand() * 20), start).units, stamp).toBe(1);
+    }
+  });
+  it("a bare stored stamp is read as UTC, not as the server's local time", () => {
+    expect(rowMs("2026-09-24T12:00:00")).toBe(Date.parse("2026-09-24T12:00:00Z"));
+    expect(rowMs("2026-09-24T12:00:00+05:00")).toBe(Date.parse("2026-09-24T07:00:00Z"));
+  });
+});
+
+describe("a ledger balance that cannot be trusted is unknown, not a number", () => {
+  const eleven = by("elevenlabs");
+  const spend: CostRowLite[] = [{ unit: "tts_characters", quantity: 2_000_000, stage: "voice", recorded_at: day(1) }];
+  it("negative (top-ups do not cover the spend: trial credit, auto-recharge, an unlogged top-up) is null, and so are its days", () => {
+    // 2,000,000 credits at $0.30 / 1000 = $600 spent against $100 topped up.
+    expect(ledgerBalanceUsd(eleven, [{ provider: "elevenlabs", amount_usd: 100, paid_at: day(10) }], spend, 0.3)).toBeNull();
+    expect(daysLeft(-5, 10)).toBeNull();
+    expect(daysLeft(0, 10)).toBe(0);
+  });
+  it("the first top-up is older than the spend we read: the balance would be overstated, so null", () => {
+    const topups = [{ provider: "elevenlabs", amount_usd: 500, paid_at: day(100) }];
+    expect(ledgerBalanceUsd(eleven, topups, [], 0.3)).toBe(500);
+    expect(ledgerBalanceUsd(eleven, topups, [], 0.3, NOW - 90 * 86_400_000)).toBeNull();
+    expect(ledgerBalanceUsd(eleven, topups, [], 0.3, NOW - 120 * 86_400_000)).toBe(500);
+  });
+  it("Anthropic and OpenAI are not tracked: no ledger balance, no burn pretending to be zero", async () => {
+    const { isTracked } = await import("@/lib/billing");
+    for (const id of ["anthropic", "openai"]) {
+      expect(isTracked(by(id))).toBe(false);
+      expect(ledgerBalanceUsd(by(id), [{ provider: id, amount_usd: 50, paid_at: day(5) }], [], 1)).toBeNull();
+    }
+    expect(isTracked(eleven)).toBe(true);
   });
 });

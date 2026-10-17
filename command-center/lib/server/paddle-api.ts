@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 import { portalOverviewUrl, resolvePaddleApi, resolvePaddleServerKey, type PaddleApiConfig } from "@/lib/paddle";
 
 /**
@@ -20,7 +21,7 @@ export const paddleServerKey = resolvePaddleServerKey({
 });
 
 async function paddle(cfg: Pick<PaddleApiConfig, "apiKey" | "baseUrl">, path: string, init: RequestInit): Promise<{ status: number; json: unknown }> {
-  const res = await fetch(cfg.baseUrl + path, {
+  const res = await fetchWithTimeout(cfg.baseUrl + path, {
     ...init,
     headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
     cache: "no-store",

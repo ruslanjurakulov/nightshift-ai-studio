@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ownerClock } from "@/lib/owner-time";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ErrorState } from "@/components/ReadError";
 import { useI18n } from "@/lib/i18n/context";
@@ -37,7 +40,24 @@ export function WorkerStatusPanel({
   nowMs: number;
 }) {
   const { t, locale } = useI18n();
+  const router = useRouter();
   const w = t.workers;
+  // The ages are as of the server's clock; ask the server again every minute while the tab is visible, and the moment it
+  // becomes visible again (a phone coming back from the background), so they do not keep saying "12 seconds ago".
+  useEffect(() => {
+    const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
+    const id = setInterval(() => {
+      if (visible()) router.refresh();
+    }, 60_000);
+    const onVisible = () => {
+      if (visible()) router.refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [router]);
   const views = sortWorkers(rows.map((r) => workerView(r, nowMs)));
 
   return (
@@ -50,6 +70,7 @@ export function WorkerStatusPanel({
       ) : (
         <div className="flex flex-col gap-4">
           <p className="g2-note">{w.subtitle}</p>
+          <p className="g2-note tnum" data-as-of="">{fmt(t.ownerTruth.asOf, { t: ownerClock(nowMs) })}</p>
           {views.length === 0 ? (
             <p className="g2-none">{w.empty}</p>
           ) : (
@@ -69,7 +90,7 @@ export function WorkerStatusPanel({
                     <StatusLamp tone={TONE[v.shown]} label={w.states[v.shown]} live={v.shown === "running"} />
                   </div>
                   <div className="g2-evidence tnum" style={{ marginTop: 0 }}>
-                    <span>{v.updatedAt && v.ageSeconds !== null ? fmt(w.heartbeat, { t: relativeTime(v.updatedAt, locale) }) : w.noHeartbeat}</span>
+                    <span>{v.updatedAt && v.ageSeconds !== null ? fmt(w.heartbeat, { t: relativeTime(v.updatedAt, locale, nowMs) }) : w.noHeartbeat}</span>
                     {v.version && <span>{fmt(w.version, { v: v.version })}</span>}
                   </div>
                   {v.detail && (

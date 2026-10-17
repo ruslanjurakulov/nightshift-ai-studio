@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRealtimeEvents } from "@/lib/useRealtimeEvents";
 import type { ChannelScope } from "@/lib/channels";
-import { statusTone, timeOfDay } from "@/lib/format";
+import { ownerTimeOfDay, statusTone, timeOfDay } from "@/lib/format";
 import { agentLabel } from "@/lib/agent-names";
 import { categorize, type EventCategory } from "@/lib/intelligence";
 import type { SystemEventRow } from "@/lib/types";
@@ -32,8 +32,11 @@ const FILTERS: { key: Filter; label: keyof Dictionary["ops"] }[] = [
 export function ActivityFeed({
   initial,
   scope,
+  ownerClock = false,
 }: {
   initial: SystemEventRow[];
+  /** The operator's console: 24 hours in Tashkent time (hydration-safe). A customer keeps their own locale's clock. */
+  ownerClock?: boolean;
   /** The page's channel scope — live events outside it are dropped. */
   scope: ChannelScope;
 }) {
@@ -72,7 +75,7 @@ export function ActivityFeed({
             const tone = statusTone(e.status);
             return (
               <li key={e.event_key} className={`g5-feed-item${freshKey === e.event_key ? " row-enter" : ""}`}>
-                <span className="g5-feed-t">{timeOfDay(e.ts)}</span>
+                <span className="g5-feed-t">{ownerClock ? ownerTimeOfDay(e.ts) : timeOfDay(e.ts)}</span>
                 <StatusLamp tone={tone as LampTone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[tone]} hideLabel />
                 <span className="g5-feed-agent" title={e.agent ?? undefined}>{e.agent ? agentLabel(e.agent, t.ownerShell.agentNames) : t.common.system}</span>
                 <span className="g5-feed-event">{e.event}</span>

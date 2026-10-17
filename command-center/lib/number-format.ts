@@ -89,3 +89,14 @@ export function formatUsdAmount(amount: number, locale = "en", minFraction = 0, 
   const text = (DOLLAR[base] ?? DOLLAR.en) === "suffix" ? `${body}${NBSP}$` : `$${body}`;
   return negative ? `-${text}` : text;
 }
+
+/**
+ * Dollars for the owner's cost figures: grouped, two decimals (three under $1), and a positive amount too small to show
+ * ("$0.000" would read as nothing was spent) prints as "<$0.001" ("<$0,001" in Uzbek, "<0,001 $" in Russian).
+ */
+export function formatUsdOwner(amount: number, locale = "en"): string {
+  if (!Number.isFinite(amount)) return "—";
+  if (amount > 0 && amount < 0.0005) return `<${formatUsdAmount(0.001, locale, 3, 3)}`;
+  const small = Math.abs(amount) < 1 && amount !== 0;
+  return formatUsdAmount(amount, locale, small ? 3 : 2, small ? 3 : 2);
+}

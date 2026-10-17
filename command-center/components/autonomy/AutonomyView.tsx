@@ -1,6 +1,6 @@
 "use client";
 
-import { relativeTime, timeOfDay } from "@/lib/format";
+import { relativeTime, ownerTimeOfDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { EmptyState, Panel } from "@/components/ui";
@@ -192,7 +192,7 @@ export function AutonomyView({
                 nowrap: true,
                 render: (a) => (
                   <span className="tnum g4-muted">
-                    {timeOfDay(a.ts)} <span className="g4-small">· {relativeTime(a.ts, locale)}</span>
+                    {ownerTimeOfDay(a.ts)} <span className="g4-small">· {relativeTime(a.ts, locale)}</span>
                   </span>
                 ),
               },
