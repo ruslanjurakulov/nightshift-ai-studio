@@ -1,0 +1,242 @@
+[
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:00:00.123456+00:00",
+   "quantity": 1200.0
+  },
+  "row_key": "v1:f3f513396c0cc592daebb4f50d6445a478517102b5440fdeb0386601f4e39f84"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:01:00.123456+00:00",
+   "quantity": 0.5
+  },
+  "row_key": "v1:54849b582026d8d56f1d7054cf0dcf14207cc92c6b2effec6e12fa8f23ccb87c"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:02:00.123456+00:00",
+   "quantity": 1e-05
+  },
+  "row_key": "v1:7042fb2850129560266a7600bee6b0c76f0b4de8723d49e0d2651535dcea63bf"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:03:00.123456+00:00",
+   "quantity": 100
+  },
+  "row_key": "v1:aa14ac046d2ae15261cc7f2cbbe0c80a9a0e1f2b49a6b051d1416b78138eeeef"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:04:00.123456+00:00",
+   "quantity": 123456.789
+  },
+  "row_key": "v1:ff35c20b2be4eb40fc9ddecf57facab18a804b94a15e5b45f30218ff800f0174"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:05:00.123456+00:00",
+   "quantity": 0.1
+  },
+  "row_key": "v1:c66e07b62c7176230f34c55b449c93bbec47402af2306f2f7b5b1ee496e136ad"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:06:00.123456+00:00",
+   "quantity": 1e+20
+  },
+  "row_key": "v1:746bd13c907729326ed9836f68f99db2a60bfc45662033fbff01a1cc82ec5ff8"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:07:00.123456+00:00",
+   "quantity": 0
+  },
+  "row_key": "v1:6d6d2f44b2986746cbc562c07880c5151d1607747cbd467c76dcf18e644330f2"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:08:00.123456+00:00",
+   "quantity": 2.5
+  },
+  "row_key": "v1:6014fadc6530329a09a45dc66f81a26335f40075e21513cd7da45eba168329d6"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:09:00.123456+00:00",
+   "quantity": 33333.333333333336
+  },
+  "row_key": "v1:f2e8bb748be1fcf6db4f9549b9c7256ec8d6bc3141c1f3bc70feb443b822ec2a"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:10:00.123456+00:00",
+   "quantity": 7.123456789012345
+  },
+  "row_key": "v1:e53e354643fa9f83ad276fd5c26a799602416af9e6ec5e90e39637009601bcf5"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:11:00.123456+00:00",
+   "quantity": 1e-07
+  },
+  "row_key": "v1:dd5877cc909203f5cc0ec802f93f62dd3a7a197f63210e69a714f252191979a4"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:12:00.123456+00:00",
+   "quantity": 1.2345678901234568e+16
+  },
+  "row_key": "v1:6cb34bf84474829939b0300d879a093c1fb09b7705e20ffa13347688881ea93a"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:13:00.123456+00:00",
+   "quantity": 0.30000000000000004
+  },
+  "row_key": "v1:1029c1d6aea18cf619d6f7cb7e91d3873551e95ff10a26f2381782ac6684fce6"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": null,
+   "recorded_at": "2026-09-01T10:14:00.123456+00:00",
+   "quantity": 1200.0
+  },
+  "row_key": "v1:1f2e2117d4ef833f287e31cfc4459bd26a3621e76f95068dd3a5bc6b6201bfeb"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "",
+   "recorded_at": "2026-09-01T10:15:00.123456+00:00",
+   "quantity": 1200.0
+  },
+  "row_key": "v1:ab26cef40ef6222ee036d9713ba5ae532a7211f001eae57406ee6890050781ee"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": null,
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:16:00.123456+00:00",
+   "quantity": 1200.0
+  },
+  "row_key": "v1:6e4b4c833ded47f0b98ec3a7b29ff7161e7035d2dd8228de8ba403d5f0de46f5"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "",
+   "slug": "rome",
+   "unit": "tts_characters",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:17:00.123456+00:00",
+   "quantity": 1200.0
+  },
+  "row_key": "v1:6fb73364258b1b5b575e856512df76821456f0350d3f52d7182cd54fc28f7c0e"
+ },
+ {
+  "row": {
+   "channel_id": "default",
+   "video_id": "v1",
+   "slug": "Řím — Рим 🏛",
+   "unit": "video_gen_clips",
+   "stage": "broll:minimax",
+   "recorded_at": "2026-09-01T10:18:00.123456+00:00",
+   "quantity": 1
+  },
+  "row_key": "v1:88593cb2dcc1717174dd74cc259c92e44336408ba303877938cbc851009a1724"
+ },
+ {
+  "row": {
+   "channel_id": "ch-2|x",
+   "video_id": "v1",
+   "slug": "rome",
+   "unit": "a_b",
+   "stage": "tts",
+   "recorded_at": "2026-09-01T10:19:00.123456+00:00",
+   "quantity": 1200.0
+  },
+  "row_key": "v1:2b1788304314371bc945f70401c35c6514f7d4dc03a373dc273a6cc1944a1437"
+ }
+]
