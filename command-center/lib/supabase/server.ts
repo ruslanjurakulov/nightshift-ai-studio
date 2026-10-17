@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
+import { hardenSessionCookie } from "@/lib/supabase/cookie-options";
 
 /**
  * Server-side Supabase client, bound to the request cookies so it acts as the
@@ -18,7 +19,7 @@ export async function createClient() {
       setAll(cookiesToSet) {
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options),
+            cookieStore.set(name, value, hardenSessionCookie(options)),
           );
         } catch {
           // Called from a Server Component where cookies are read-only — the

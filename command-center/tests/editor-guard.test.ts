@@ -97,7 +97,7 @@ function chunked(
   });
   return new Request("http://localhost/api/x", {
     method: "POST",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", origin: "http://localhost", ...headers },
     body,
     duplex: "half",
   } as RequestInit);
@@ -106,7 +106,7 @@ function chunked(
 const plain = (method: string, body: unknown) =>
   new Request("http://localhost/api/x", {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: "http://localhost" },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
@@ -222,7 +222,7 @@ describe("PUT /api/editor/projects/<id> reads at most twice the document cap", (
     const chunk = new Uint8Array(64 * 1024).fill(32);
     const req = new Request("http://localhost/api/editor/projects/x", {
       method: "PUT",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: new ReadableStream({
         pull(c) {
           c.enqueue(chunk);
@@ -243,6 +243,7 @@ describe("PUT /api/editor/projects/<id> reads at most twice the document cap", (
       method: "PUT",
       headers: {
         "content-type": "application/json",
+        origin: "http://localhost",
         "content-length": String(MAX_DOC_BYTES * 2 + 1),
       },
       body: "{}",

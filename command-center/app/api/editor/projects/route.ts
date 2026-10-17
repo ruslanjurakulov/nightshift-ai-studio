@@ -12,6 +12,7 @@ import {
   parseTitle,
   validateTimeline,
 } from "@/lib/editor";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export const dynamic = "force-dynamic";
  * create_editor_project(), which checks membership and that every file in it
  * is a live file of this organization. Free: nothing is priced or rendered.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
     detail: { org },
   });
   return NextResponse.json({ id }, { status: 201 });
-}
+});
 
 /**
  * The projects a file can be sent to: GET `?org_id=` (default: the current

@@ -3,6 +3,7 @@ import { unlink } from "node:fs/promises";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { mediaStagingDir, receiveUpload, stagedUploadPath } from "@/lib/server/media";
 import { mapMediaError, parseMediaId } from "@/lib/media";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export const dynamic = "force-dynamic";
  * 3. finish_upload_receive(ticket, bytes, ok) — then the worker takes over;
  *    nothing is served until it has checked the content.
  */
-export async function PUT(request: Request, { params }: { params: Promise<{ ticket: string }> }) {
+export const PUT = requireSameOrigin(async function PUT(request: Request, { params }: { params: Promise<{ ticket: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const dir = mediaStagingDir();
@@ -86,4 +87,4 @@ export async function PUT(request: Request, { params }: { params: Promise<{ tick
     return NextResponse.json({ error: "failed", status: typeof done.data === "string" ? done.data : null }, { status: 502 });
   }
   return NextResponse.json({ ok: true, ticket, status: "uploaded", bytes: got.bytes });
-}
+});

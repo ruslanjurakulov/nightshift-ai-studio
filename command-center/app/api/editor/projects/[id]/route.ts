@@ -16,6 +16,7 @@ import {
   validateTimeline,
   type TimelineDoc,
 } from "@/lib/editor";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ export async function GET(
  * then checks membership, that every file is this organization's, and that
  * nobody saved in between (stale_revision). Free: nothing is rendered.
  */
-export async function PUT(
+export const PUT = requireSameOrigin(async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -143,10 +144,10 @@ export async function PUT(
   if (!Number.isInteger(rev) || rev < 1)
     return NextResponse.json({ error: "failed" }, { status: 502 });
   return NextResponse.json({ id, rev });
-}
+});
 
 /** Delete: delete_editor_project() hides the project; exported files stay in the library. */
-export async function DELETE(
+export const DELETE = requireSameOrigin(async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -171,4 +172,4 @@ export async function DELETE(
   }
   await logAudit({ action: "editor.project_delete", target: id, detail: {} });
   return NextResponse.json({ ok: true });
-}
+});

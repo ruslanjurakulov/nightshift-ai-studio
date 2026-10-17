@@ -89,9 +89,14 @@ export function PipelineRouting({
         const unauthorized = data.error === "github_unauthorized";
         setErrorKey(unauthorized ? "unauthorized" : "failed");
         setState("error");
-        toast.error(unauthorized ? t.providers.routingUnauthorized : t.providers.routingFailed, {
-          title: t.providers.routingTitle,
-        });
+        toast.error(
+          unauthorized
+            ? t.providers.routingUnauthorized
+            : data.error === "mfa_recent_required"
+              ? t.mfa.recentRequired
+              : t.providers.routingFailed,
+          { title: t.providers.routingTitle },
+        );
         return false;
       }
       setState("saved");

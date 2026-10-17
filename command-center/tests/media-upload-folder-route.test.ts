@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 const post = (body: unknown) =>
-  POST(new Request("https://x/api/media/uploads", { method: "POST", body: JSON.stringify(body) }));
+  POST(new Request("https://x/api/media/uploads", { method: "POST", headers: { origin: "https://x" }, body: JSON.stringify(body) }));
 const rpcs = () => h.calls.filter((c) => c.kind === "rpc");
 const BASE = { org_id: ORG, filename: "a.png", mime: "image/png", bytes: 5 };
 

@@ -55,7 +55,9 @@ enough.
 2. Use the site for a few days: sign in, open Studio, the editor, the library,
    buy credits (Paddle overlay), the pricing page in the production Paddle
    environment (Paddle Retain loads only there).
-3. If no report names a directive other than an injected test, set
+3. If no report names a directive other than an injected test, and the checklist
+   in `ADMIN_MFA.md` ("Session cookie": real use with reports, every page opened,
+   the way back known, `img-src https:` accepted or narrowed) holds, set
    `CSP_MODE=enforce` and restart. If something breaks, `CSP_MODE=report-only`
    and a restart puts it back.
 

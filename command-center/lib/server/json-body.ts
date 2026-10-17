@@ -53,3 +53,29 @@ export async function readJsonBodyCapped(
     return { ok: false, reason: "bad" };
   }
 }
+
+/** The cap for a route that does not name its own: a form, a few ids, a title, a short prompt. */
+export const DEFAULT_JSON_BODY_BYTES = 65_536;
+/** A saved workflow graph (steps and their settings) is the largest document a customer posts. */
+export const LARGE_JSON_BODY_BYTES = 262_144;
+
+/** A body that was too large, or was not JSON. Routes catch it exactly where they caught `request.json()`. */
+export class JsonBodyError extends Error {
+  constructor(readonly reason: "too_large" | "bad") {
+    super(reason === "too_large" ? "payload_too_large" : "bad_json");
+    this.name = "JsonBodyError";
+  }
+}
+
+/**
+ * A drop-in for `await request.json()` with a hard byte cap (BR-S-019): it
+ * throws instead of returning, so a route keeps the try/catch it already has
+ * (a malformed body is its 400), and nothing past `maxBytes` is ever buffered.
+ */
+// `any`, like `request.json()` itself: the routes narrow the document themselves, field by field.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function parseJsonCapped(request: Request, maxBytes: number = DEFAULT_JSON_BODY_BYTES): Promise<any> {
+  const read = await readJsonBodyCapped(request, maxBytes);
+  if (!read.ok) throw new JsonBodyError(read.reason);
+  return read.value;
+}

@@ -2,6 +2,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { customerBotUsername } from "@/lib/server/notify-channels";
 import { guardNotifyWrite, notifyFail, notifyOk, readSmallJson, rpcFailure } from "@/lib/server/notify-route";
 import { isChannelEvent } from "@/lib/notify-channels";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  * POST `{ event, enabled }`. notification_pref_set checks the event against its
  * allow-list and limits changes to 120 an hour per person.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return notifyFail("unauthorized", 401);
   const refusal = await guardNotifyWrite(request, user);
@@ -31,4 +32,4 @@ export async function POST(request: Request) {
   // false = refused (a limit or an unknown event); the page keeps the switch where it was.
   if (data !== true) return notifyFail("rate_limited", 429);
   return notifyOk();
-}
+});

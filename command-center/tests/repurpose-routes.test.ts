@@ -57,7 +57,7 @@ const route = await import("../app/api/videos/[id]/repurpose/route");
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const get = (id: string, qs = "clips=s000-s002,s004-s004") => route.GET(new Request(`http://x/api/videos/${id}/repurpose?${qs}`), ctx(id));
 const post = (id: string, body: unknown, raw?: string) =>
-  route.POST(new Request(`http://x/api/videos/${id}/repurpose`, { method: "POST", body: raw ?? JSON.stringify(body) }), ctx(id));
+  route.POST(new Request(`http://x/api/videos/${id}/repurpose`, { method: "POST", headers: { origin: "http://x" }, body: raw ?? JSON.stringify(body) }), ctx(id));
 
 const CLIPS = [{ first: "s000", last: "s002" }, { first: "s004", last: "s004" }];
 const GOOD = { clips: CLIPS, max_credits: 8, idempotency_key: "repurpose:abcdef12345" };

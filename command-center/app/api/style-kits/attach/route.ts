@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { readJsonBody } from "@/lib/server/style-kits";
 import { mapStyleError, parseChannelRef, parseStyleId } from "@/lib/style-kits";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
  * It sets configuration only. Nothing is generated, rendered or published
  * here; nothing reads the default yet.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = (await readJsonBody(request)) as { channel_id?: unknown; kit_id?: unknown } | undefined;
@@ -43,4 +44,4 @@ export async function POST(request: Request) {
   if (!Array.isArray(data) || data.length === 0) return NextResponse.json({ error: "not_found" }, { status: 404 });
   await logAudit({ action: kit ? "style_kit.attach" : "style_kit.detach", target: kit ?? undefined, channelId: channel });
   return NextResponse.json({ ok: true, channel_id: channel, kit_id: kit });
-}
+});

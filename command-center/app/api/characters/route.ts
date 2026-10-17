@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { loadStyleContext, readJsonBody, resolveStyleOrg } from "@/lib/server/style-kits";
 import { mapStyleError, parseCharacterInput, parseStyleId } from "@/lib/style-kits";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
  * `name` is the @name (^[a-z0-9_]{2,32}$ once "@" is dropped and letters are
  * lower-cased), unique in the organization — a taken one is a 409.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await readJsonBody(request);
@@ -58,4 +59,4 @@ export async function POST(request: Request) {
   if (!id) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({ action: "character.create", target: id, detail: { references: input.value.assetIds.length } });
   return NextResponse.json({ id, name: input.value.name }, { status: 201 });
-}
+});

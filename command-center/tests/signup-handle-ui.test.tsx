@@ -232,3 +232,38 @@ describe("the sign-up username field", () => {
     expect(h.push).toHaveBeenCalledWith("/welcome");
   });
 });
+
+describe("sign-up does not confirm which addresses are registered (BR-S-022)", () => {
+  async function submitWith(result: unknown) {
+    h.signUp.mockResolvedValue(result);
+    render(<SignupPage />);
+    fireEvent.change(screen.getByLabelText(/email/i, { selector: "input[type=email]" }), { target: { value: "owner@example.com" } });
+    type("ana.k");
+    await settle();
+    const pw = document.querySelectorAll("input[type=password]");
+    fireEvent.change(pw[0], { target: { value: "correct horse battery" } });
+    fireEvent.change(pw[1], { target: { value: "correct horse battery" } });
+    fireEvent.click(document.querySelector("input[type=checkbox]") as HTMLInputElement);
+    await act(async () => {
+      fireEvent.submit(document.querySelector("form") as HTMLFormElement);
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    return document.body.textContent ?? "";
+  }
+
+  it("an address that already has an account gets the same screen as a new one", async () => {
+    const text = await submitWith({ data: { user: { identities: [] }, session: null }, error: null });
+    expect(text).toContain(en.signup.checkTitle);
+    expect(text).toContain("owner@example.com");
+    expect(text).not.toMatch(/already (exists|registered)/i);
+    cleanup();
+    const fresh = await submitWith({ data: { user: { identities: [{}] }, session: null }, error: null });
+    expect(fresh).toContain(en.signup.checkTitle);
+  });
+
+  it("the same when the project answers with an 'already registered' error", async () => {
+    const text = await submitWith({ data: { user: null, session: null }, error: { status: 422, code: "user_already_exists", message: "User already registered" } });
+    expect(text).toContain(en.signup.checkTitle);
+    expect(text).not.toMatch(/already (exists|registered)/i);
+  });
+});

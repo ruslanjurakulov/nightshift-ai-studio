@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { parseRunInput, startRun } from "@/lib/workflows-operations";
 import { workflowSession } from "@/lib/server/workflows";
 import { logAudit } from "@/lib/server/audit";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,12 +21,12 @@ export const dynamic = "force-dynamic";
  * second press answers the first run (200) instead of holding anything twice.
  * Nothing in a workflow publishes.
  */
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = requireSameOrigin(async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await workflowSession();
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
@@ -35,4 +37,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (out.status === 201)
     await logAudit({ action: "workflow.run", target: parsed.input.runId, detail: { workflow_id: id, max_credits: parsed.input.maxCredits } });
   return NextResponse.json(out.body, { status: out.status });
-}
+});

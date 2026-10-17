@@ -421,7 +421,7 @@ describe("PUT /api/media/uploads/[ticket]", () => {
 
   async function put(ticket: string, body: string, headers: Record<string, string> = {}) {
     const { PUT } = await import("@/app/api/media/uploads/[ticket]/route");
-    return PUT(new Request(`https://x/api/media/uploads/${ticket}`, { method: "PUT", body, headers, duplex: "half" } as RequestInit), {
+    return PUT(new Request(`https://x/api/media/uploads/${ticket}`, { method: "PUT", body, headers: { origin: "https://x", ...headers }, duplex: "half" } as RequestInit), {
       params: Promise.resolve({ ticket }),
     });
   }
@@ -482,7 +482,7 @@ describe("POST /api/media/uploads", () => {
 
   async function post(body: unknown) {
     const { POST } = await import("@/app/api/media/uploads/route");
-    return POST(new Request("https://x/api/media/uploads", { method: "POST", body: JSON.stringify(body) }));
+    return POST(new Request("https://x/api/media/uploads", { method: "POST", headers: { origin: "https://x" }, body: JSON.stringify(body) }));
   }
 
   it("sends a cleaned label, never a path, to request_upload", async () => {

@@ -64,6 +64,7 @@ const one = await import("../app/api/captions/tracks/[id]/route");
 
 const ROW = { id: TRACK, language: "uz", duration_s: "95.000", word_count: 2, created_at: "2026-10-01T10:00:00Z", asset_id: ASSET };
 const get = (url: string) => new Request(`http://x${url}`);
+const del = (url: string) => new Request(`http://x${url}`, { method: "DELETE", headers: { origin: "http://x" } });
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
 beforeEach(() => {
@@ -131,14 +132,14 @@ describe("GET /api/captions/tracks/<id>", () => {
   it("needs a session", async () => {
     h.user = null;
     expect((await one.GET(get("/x"), ctx(TRACK))).status).toBe(401);
-    expect((await one.DELETE(get("/x"), ctx(TRACK))).status).toBe(401);
+    expect((await one.DELETE(del("/x"), ctx(TRACK))).status).toBe(401);
   });
 });
 
 describe("DELETE /api/captions/tracks/<id>", () => {
   it("hides it through the database function and records who did", async () => {
     h.rpc.delete_caption_track = { data: true, error: null };
-    const res = await one.DELETE(get("/x"), ctx(TRACK));
+    const res = await one.DELETE(del("/x"), ctx(TRACK));
     expect(res.status).toBe(200);
     expect(h.calls[0]).toMatchObject({ kind: "rpc", name: "delete_caption_track", args: { p_track: TRACK } });
     expect(h.audits).toEqual([{ action: "captions.delete", target: TRACK }]);
@@ -146,15 +147,15 @@ describe("DELETE /api/captions/tracks/<id>", () => {
 
   it("another organization's track and a made-up one read alike; a member without the right is forbidden", async () => {
     h.rpc.delete_caption_track = { data: null, error: { code: "P0002", message: "not_found" } };
-    expect((await one.DELETE(get("/x"), ctx(TRACK))).status).toBe(404);
+    expect((await one.DELETE(del("/x"), ctx(TRACK))).status).toBe(404);
     h.rpc.delete_caption_track = { data: null, error: { code: "42501", message: "forbidden" } };
-    expect((await one.DELETE(get("/x"), ctx(TRACK))).status).toBe(403);
+    expect((await one.DELETE(del("/x"), ctx(TRACK))).status).toBe(403);
     h.rpc.delete_caption_track = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
-    expect((await one.DELETE(get("/x"), ctx(TRACK))).status).toBe(503);
+    expect((await one.DELETE(del("/x"), ctx(TRACK))).status).toBe(503);
     h.rpc.delete_caption_track = { data: null, error: { code: "XX000", message: "boom" } };
-    expect((await one.DELETE(get("/x"), ctx(TRACK))).status).toBe(502);
+    expect((await one.DELETE(del("/x"), ctx(TRACK))).status).toBe(502);
     expect(h.audits).toEqual([]);
-    expect((await one.DELETE(get("/x"), ctx("nope"))).status).toBe(404);
+    expect((await one.DELETE(del("/x"), ctx("nope"))).status).toBe(404);
   });
 });
 

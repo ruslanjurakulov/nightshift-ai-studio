@@ -23,7 +23,7 @@ import { InstallHint } from "@/components/shell/InstallHint";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { currentMfaAction, isOperator } from "@/lib/auth/org-roles";
 import { AdminMfaBanner } from "@/components/security/AdminMfaBanner";
-import { mfaVerifyUrl } from "@/lib/security/admin-mfa";
+import { ENROL_PATH, isEnrolOnlyPath, mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
 import { readCreditAccount } from "@/lib/server/credits";
 import { planValue, readBillingSummary } from "@/lib/server/plans";
@@ -89,6 +89,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // has the table and the lockout-safety rule). `warn_*` draws the banner below.
   const mfa = isSupabaseConfigured ? await currentMfaAction(user, operator) : "allow";
   if (mfa === "challenge") redirect(mfaVerifyUrl(path ? `${path}${headerStore.get(SEARCH_HEADER) ?? ""}` : undefined));
+  // Strict `enforce`: an admin with no authenticator opens only /security. Only a path KNOWN to be elsewhere is
+  // redirected (an unknown path is never a reason to loop), and the middleware already did the same for requests it saw.
+  if (mfa === "enrol_only" && path && !isEnrolOnlyPath(path)) redirect(ENROL_PATH);
   const { t: tt } = await getDictionary();
   if (path) {
     const to = appRedirect({

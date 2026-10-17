@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/server/audit";
 import { readJsonBody, resolveStyleOrg } from "@/lib/server/style-kits";
 import { mapStyleError, parseStyleId } from "@/lib/style-kits";
 import { parseLibraryAdd } from "@/lib/styles/add";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
  * It creates configuration only — a style kit. Nothing is generated, priced,
  * rendered or published here.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await readJsonBody(request);
@@ -49,4 +50,4 @@ export async function POST(request: Request) {
   if (!id || typeof row.created !== "boolean") return NextResponse.json({ error: "failed" }, { status: 502 });
   if (row.created) await logAudit({ action: "style_kit.add_library", target: id, detail: { library_id: input.value.style.id } });
   return NextResponse.json({ id, created: row.created }, { status: row.created ? 201 : 200 });
-}
+});

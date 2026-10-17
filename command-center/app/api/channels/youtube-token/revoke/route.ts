@@ -4,6 +4,8 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { resolveTokenStore, revokeVaultToken } from "@/lib/server/channel-tokens";
 import { GOOGLE_PERMISSIONS_URL } from "@/lib/channel-tokens";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,13 +26,13 @@ export const dynamic = "force-dynamic";
  * The operator's own channels are not disconnected here: their token is a
  * GitHub secret, managed on the Providers board as before.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: { channel_id?: unknown };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -55,4 +57,4 @@ export async function POST(request: Request) {
     detail: { store: "vault", revoked: result.revoked },
   });
   return NextResponse.json({ ok: true, revoked: result.revoked, google_permissions_url: GOOGLE_PERMISSIONS_URL });
-}
+});

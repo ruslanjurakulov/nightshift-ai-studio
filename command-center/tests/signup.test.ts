@@ -6,6 +6,7 @@ import {
   classifySignupError,
   classifySignupResult,
   isCallbackError,
+  neutralSignupOutcome,
   validateSignup,
 } from "@/lib/signup";
 
@@ -104,5 +105,20 @@ describe("callback errors", () => {
     expect(isCallbackError("link_expired")).toBe(true);
     expect(isCallbackError("<script>")).toBe(false);
     expect(isCallbackError(null)).toBe(false);
+  });
+});
+
+describe("neutralSignupOutcome: the page never says whether an address is registered (BR-S-022)", () => {
+  it("an existing account reads exactly like a new address", () => {
+    expect(neutralSignupOutcome(classifySignupResult({ user: { identities: [] }, session: null }))).toBe("check_email");
+    expect(neutralSignupOutcome(classifySignupResult({ user: { identities: [{}] }, session: null }))).toBe("check_email");
+    for (const error of [{ code: "user_already_exists" }, { code: "email_exists" }, { message: "User already registered" }]) {
+      expect(neutralSignupOutcome(classifySignupError(error))).toBe("check_email");
+    }
+  });
+  it("everything else is untouched", () => {
+    for (const o of ["check_email", "signed_in", "weak_password", "rate_limited", "email_invalid", "signups_closed", "failed"] as const) {
+      expect(neutralSignupOutcome(o)).toBe(o);
+    }
   });
 });

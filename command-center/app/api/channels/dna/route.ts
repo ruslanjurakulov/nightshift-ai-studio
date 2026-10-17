@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { readJsonBody } from "@/lib/server/style-kits";
 import { dnaRpcArgs, mapDnaError, parseDnaInput } from "@/lib/channel-dna";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export const dynamic = "force-dynamic";
  * It sets configuration only. Nothing is generated, priced, rendered or
  * published here: the forms that create things start from these values.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = parseDnaInput(await readJsonBody(request));
@@ -51,4 +52,4 @@ export async function POST(request: Request) {
     },
   });
   return NextResponse.json({ ok: true, dna: data ?? null });
-}
+});

@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { MEDIA_URL_TTL_S, mediaDir, mediaUrlSecret, signedMediaPath } from "@/lib/server/media";
 import { MEDIA_ASSET_COLUMNS, coerceAssets, mapMediaError, parseMediaId, type MediaVariant } from "@/lib/media";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  * its organization; another org's asset reads as not found). The row stays for
  * provenance; the worker removes the files and returns the bytes to the quota.
  */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id: raw } = await params;
@@ -66,4 +67,4 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
   await logAudit({ action: "media.delete", target: id, detail: { changed: data === true } });
   return NextResponse.json({ ok: true, deleted: data === true });
-}
+});

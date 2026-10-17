@@ -7,6 +7,7 @@ import { confirmYoutubePick } from "@/lib/server/connect-youtube";
 import { confirmSocialPick } from "@/lib/server/social-connect";
 import { isSocialPlatform } from "@/lib/social-accounts";
 import type { ConfirmResult } from "@/lib/connect-picker";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ function answer(result: ConfirmResult, extra: Record<string, unknown> = {}) {
  * checked against that held list, and the role is checked again here — the
  * same checks the per-channel connect makes, never the state of the screen.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -85,4 +86,4 @@ export async function POST(request: Request) {
     return answer(out.result);
   }
   return NextResponse.json({ error: "bad_request" }, { status: 400 });
-}
+});

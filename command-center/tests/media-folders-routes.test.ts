@@ -83,7 +83,7 @@ const library = await import("../app/api/media/route");
 function req(url: string, method: string, body?: unknown) {
   return new Request(`http://x${url}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: "http://x" },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 }

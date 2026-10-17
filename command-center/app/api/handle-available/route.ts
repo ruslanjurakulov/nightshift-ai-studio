@@ -3,6 +3,7 @@ import { isSameOriginPost } from "@/lib/auth-confirm";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { handleCheckKey, isHandleAvailablePublic, takeHandleCheck } from "@/lib/server/handle-check";
 import { HANDLE_MAX } from "@/lib/handles";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   try {
     const declared = Number(request.headers.get("content-length") ?? "0");
     if (Number.isFinite(declared) && declared > 1024) throw new Error("too big");
-    handle = ((await request.json()) as { handle?: unknown } | null)?.handle;
+    handle = ((await parseJsonCapped(request)) as { handle?: unknown } | null)?.handle;
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400, headers: NO_STORE });
   }

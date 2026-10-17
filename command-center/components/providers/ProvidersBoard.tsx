@@ -130,7 +130,10 @@ function ProviderCard({
         const unauthorized = data.error === "github_unauthorized";
         setState("error");
         setErrorKey(unauthorized ? "unauthorized" : "failed");
-        toast.error(unauthorized ? t.providers.unauthorized : t.providers.saveFailed, { title: provider.name });
+        toast.error(
+          unauthorized ? t.providers.unauthorized : data.error === "mfa_recent_required" ? t.mfa.recentRequired : t.providers.saveFailed,
+          { title: provider.name },
+        );
         return;
       }
       // Accepted by GitHub — drop the value from the browser at once.

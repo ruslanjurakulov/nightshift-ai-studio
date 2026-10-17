@@ -45,7 +45,7 @@ function post(body: unknown) {
   return route.POST(
     new Request("http://x/api/style-library/add", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: "http://x" },
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
   );

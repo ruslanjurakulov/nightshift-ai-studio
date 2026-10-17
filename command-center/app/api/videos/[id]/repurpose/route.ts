@@ -10,6 +10,8 @@ import {
   mapRepurposeError,
   parseQuote,
 } from "@/lib/repurpose";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,7 +64,7 @@ export async function GET(request: Request, { params }: Ctx) {
   return NextResponse.json({ quote, queue: backend === "queue" });
 }
 
-export async function POST(request: Request, { params }: Ctx) {
+export const POST = requireSameOrigin(async function POST(request: Request, { params }: Ctx) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
@@ -70,7 +72,7 @@ export async function POST(request: Request, { params }: Ctx) {
 
   let body: Record<string, unknown>;
   try {
-    const parsed = await request.json();
+    const parsed = await parseJsonCapped(request);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
       return NextResponse.json({ error: "bad_request" }, { status: 400 });
     body = parsed as Record<string, unknown>;
@@ -134,4 +136,4 @@ export async function POST(request: Request, { params }: Ctx) {
     credits_reserved: held != null && Number.isFinite(held) ? held : null,
     replayed: res.replayed === true,
   });
-}
+});

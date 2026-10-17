@@ -86,6 +86,16 @@ function isRateLimit(error: AuthErrorLike): boolean {
   return error.status === 429 || code.startsWith("over_") || /rate limit/i.test(error.message ?? "");
 }
 
+/**
+ * What the sign-up page TELLS the person. An address that already has an account gets exactly the answer a new
+ * address gets ("check your email"): the page must not confirm which addresses are registered (ledger BR-S-022).
+ * `classifySignupError` / `classifySignupResult` still say what really happened, so it can be logged or tested;
+ * this is the one place that turns it into what is shown.
+ */
+export function neutralSignupOutcome(outcome: SignupOutcome): Exclude<SignupOutcome, "already_registered"> {
+  return outcome === "already_registered" ? "check_email" : outcome;
+}
+
 /** Map a signUp() error to an outcome. Unknown errors are "failed", never echoed. */
 export function classifySignupError(error: AuthErrorLike): SignupOutcome {
   const code = codeOf(error);
@@ -103,10 +113,11 @@ export function classifySignupError(error: AuthErrorLike): SignupOutcome {
  *
  * With "Confirm email" on, Supabase answers a sign-up for an address that is
  * already registered with a user that has no identities and sends no mail —
- * so the address cannot be probed through an error. Telling the person to
- * sign in instead is still the honest thing to say: they are the one holding
- * the form, and "check your email" would have them wait for a message that
- * never comes.
+ * so the address cannot be probed through an error. This function still reports
+ * `already_registered` for that case; the PAGE does not show it as such
+ * (`neutralSignupOutcome`), because a different message for a registered address
+ * would be the probe. The check-your-email screen carries a "sign in instead"
+ * line for everyone.
  */
 export function classifySignupResult(data: {
   user: { identities?: unknown[] | null } | null;

@@ -28,6 +28,7 @@
 import {
   createRestStore,
   handlePaddleWebhook,
+  readBodyCapped,
   planTableFromEnv,
   priceTableFromEnv,
   promoAllowlistFromEnv,
@@ -55,8 +56,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error("paddle-webhook: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing");
     return Response.json({ error: "webhook not configured" }, { status: 500 });
   }
-  // The raw text, exactly as sent: the signature is over these bytes.
-  const rawBody = await req.text();
+  // The raw text, exactly as sent: the signature is over these bytes. Read with a hard cap and BEFORE the
+  // signature check, so an oversized body is refused without being buffered (a non-POST has no body to read).
+  let rawBody = "";
+  if (req.method === "POST") {
+    const read = await readBodyCapped(req);
+    if (!read.ok) return Response.json({ error: "payload too large" }, { status: 413 });
+    rawBody = read.text;
+  }
   const res = await handlePaddleWebhook(
     { method: req.method, rawBody, signature: req.headers.get("paddle-signature") },
     { secret, prices, store, apiProductId, plans, promos },

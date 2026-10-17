@@ -4,6 +4,8 @@ import { logAudit } from "@/lib/server/audit";
 import { downloadsDir } from "@/lib/server/downloads";
 import { parseInsufficient } from "@/lib/credits";
 import { mapDownloadError, type HdQuality } from "@/lib/downloads";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,14 +24,14 @@ export const dynamic = "force-dynamic";
  * On a host without the shared downloads volume (Vercel) nothing is sold:
  * the file could never be served here.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!downloadsDir()) return NextResponse.json({ error: "downloads_unavailable" }, { status: 503 });
 
   let body: { video_id?: unknown; quality?: unknown; max_credits?: unknown };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -69,4 +71,4 @@ export async function POST(request: Request) {
     detail: { id: out.id ?? null, quality, charged: out.charged ?? 0, reused: Boolean(out.reused), free: out.free_reason ?? null },
   });
   return NextResponse.json({ ok: true, ...out });
-}
+});

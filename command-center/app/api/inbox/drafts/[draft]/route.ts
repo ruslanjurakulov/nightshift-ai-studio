@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auditInbox, callInbox, jsonBody } from "@/lib/server/comment-inbox";
 import { cleanReply, isUuid } from "@/lib/comment-inbox";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ type Ctx = { params: Promise<{ draft: string }> };
  * migration 0081). Free. The text is cleaned and bounded here and again by the
  * database; it is still only a draft until it is approved.
  */
-export async function PATCH(request: Request, { params }: Ctx) {
+export const PATCH = requireSameOrigin(async function PATCH(request: Request, { params }: Ctx) {
   const { draft } = await params;
   if (!isUuid(draft)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await jsonBody(request);
@@ -23,10 +24,10 @@ export async function PATCH(request: Request, { params }: Ctx) {
   if (!out.ok) return out.response;
   await auditInbox("inbox.draft.edit", "reply_drafts", draft, { chars: text.length });
   return NextResponse.json({ ok: true });
-}
+});
 
 /** DELETE -> throw a ready draft away (discard_reply_draft). Nothing is refunded (it was made); a new draft is a new, priced press. */
-export async function DELETE(_request: Request, { params }: Ctx) {
+export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: Ctx) {
   const { draft } = await params;
   if (!isUuid(draft)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const out = await callInbox("discard_reply_draft", { p_draft: draft });
@@ -34,4 +35,4 @@ export async function DELETE(_request: Request, { params }: Ctx) {
   const res = (out.data ?? {}) as { already?: boolean };
   if (!res.already) await auditInbox("inbox.draft.discard", "reply_drafts", draft);
   return NextResponse.json({ ok: true });
-}
+});

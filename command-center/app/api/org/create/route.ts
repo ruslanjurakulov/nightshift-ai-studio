@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { ORG_COOKIE, isMissingFunction, validateOrgName } from "@/lib/orgs";
 import { ORG_COOKIE_OPTIONS } from "@/lib/orgs-server";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,13 +17,13 @@ export const dynamic = "force-dynamic";
  * remembered as the current one, so the first thing a new sign-up sees is
  * their own (empty) workspace.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let name: string | null = null;
   try {
-    const body = (await request.json()) as { name?: unknown };
+    const body = (await parseJsonCapped(request)) as { name?: unknown };
     name = typeof body.name === "string" ? validateOrgName(body.name) : null;
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
@@ -43,4 +45,4 @@ export async function POST(request: Request) {
   const response = NextResponse.json({ id: data });
   response.cookies.set(ORG_COOKIE, data, ORG_COOKIE_OPTIONS);
   return response;
-}
+});

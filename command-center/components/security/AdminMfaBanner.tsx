@@ -9,11 +9,14 @@ import { mfaVerifyUrl, type MfaAction } from "@/lib/security/admin-mfa";
  * have no authenticator at all (enrol one at /security). Server-rendered, one
  * line plus one key; the key is a full-height touch target on a phone.
  *
+ * `enrol_only` (strict `enforce`, no authenticator) shows the enrol notice too: it is where every other page
+ * sends that admin.
+ *
  * Draws nothing for any other action, so the layout can pass the gate's answer
  * straight in.
  */
 export function AdminMfaBanner({ action, t, path }: { action: MfaAction; t: Dictionary["mfa"]; path?: string | null }) {
-  if (action !== "warn_complete" && action !== "warn_enrol") return null;
+  if (action !== "warn_complete" && action !== "warn_enrol" && action !== "enrol_only") return null;
   const complete = action === "warn_complete";
   return (
     <div

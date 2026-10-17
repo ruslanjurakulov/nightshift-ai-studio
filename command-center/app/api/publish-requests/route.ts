@@ -3,6 +3,8 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { CHANNEL_ID_RE, PUBLISH_REQUEST_COLUMNS, coercePublishRequests, type PublishRequestRow } from "@/lib/publish";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,13 +32,13 @@ const MAX_TARGETS = 10;
  * target is not connected. One row per target, inserted one at a time, so each
  * target gets its own answer.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: { video_id?: unknown; account_ids?: unknown; channel_ids?: unknown };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -112,4 +114,4 @@ export async function POST(request: Request) {
 
   const status = rows.length ? 200 : errors.every((e) => e.error === "not_available") ? 503 : 409;
   return NextResponse.json({ ok: rows.length > 0, requests: rows, errors }, { status });
-}
+});

@@ -18,6 +18,7 @@ import {
   PASSWORD_MAX,
   PASSWORD_MIN,
   classifySignupError,
+  neutralSignupOutcome,
   classifySignupResult,
   validateSignup,
   type SignupFieldError,
@@ -58,17 +59,16 @@ export default function SignupPage() {
   const [confirm, setConfirm] = useState("");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<SignupFieldError | SignupOutcome | null>(null);
+  const [problem, setProblem] = useState<SignupFieldError | Exclude<SignupOutcome, "already_registered"> | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
 
-  const messages: Record<SignupFieldError | Exclude<SignupOutcome, "check_email" | "signed_in">, string> = {
+  const messages: Record<SignupFieldError | Exclude<SignupOutcome, "check_email" | "signed_in" | "already_registered">, string> = {
     email_invalid: t.signup.errEmail,
     handle_invalid: t.signup.errHandle,
     password_short: fmt(t.signup.errPasswordShort, { n: PASSWORD_MIN }),
     password_long: t.signup.errPasswordLong,
     password_mismatch: t.signup.errMismatch,
     consent_required: t.signup.errConsent,
-    already_registered: t.signup.errAlreadyRegistered,
     weak_password: t.signup.errWeakPassword,
     rate_limited: t.signup.errRateLimited,
     signups_closed: t.signup.errSignupsClosed,
@@ -101,7 +101,8 @@ export default function SignupPage() {
           emailRedirectTo: `${window.location.origin}${AUTH_CALLBACK_PATH}?next=${encodeURIComponent(WELCOME_PATH)}`,
         },
       });
-      const outcome = error ? classifySignupError(error) : classifySignupResult(data);
+      // An address that already has an account sees the same screen as a new one (neutralSignupOutcome).
+      const outcome = neutralSignupOutcome(error ? classifySignupError(error) : classifySignupResult(data));
       if (outcome === "signed_in") {
         // "Confirm email" is off in this project: the account is live already,
         // so there is no confirmation link to land on /auth/callback, where a
@@ -243,14 +244,6 @@ export default function SignupPage() {
           {shownProblem && (
             <AuthAlert tone="fail">
               {shownProblem}
-              {problem === "already_registered" && (
-                <>
-                  {" "}
-                  <Link href="/login" className="underline underline-offset-4 text-[var(--ns-text)]">
-                    {t.signup.signIn}
-                  </Link>
-                </>
-              )}
             </AuthAlert>
           )}
           <AuthSubmit busy={busy} disabled={!isSupabaseConfigured || handleStatus.kind === "checking"}>
