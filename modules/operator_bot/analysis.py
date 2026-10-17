@@ -125,6 +125,42 @@ def sum_credits(rows) -> Optional[float]:
     return sum(known) if known else (0.0 if not rows else None)
 
 
+def payment_kind(event_type) -> str:
+    """payment | refund | subscription | other, from the provider's event type
+    (``transaction.completed``, ``adjustment.updated``, ...). A refund and a
+    chargeback are both adjustments; the table does not say which."""
+    head = str(event_type or "").split(".")[0]
+    return {"transaction": "payment", "adjustment": "refund", "subscription": "subscription"}.get(head, "other")
+
+
+def classify_payments(rows, since: datetime) -> dict:
+    """The events received since ``since``, sorted into: paid (a purchase that
+    was credited), rejected (paid but not credited, or a refund not applied:
+    needs a person), failed (the provider retries), refunds (a refund or
+    chargeback that was applied)."""
+    out = {"paid": [], "rejected": [], "failed": [], "refunds": []}
+    for r in rows or []:
+        at = parse_ts(r.get("received_at"))
+        if at is not None and at < since:
+            continue
+        status, kind = r.get("status"), payment_kind(r.get("event_type"))
+        if status == "rejected":
+            out["rejected"].append(r)
+        elif status == "failed":
+            out["failed"].append(r)
+        elif status == "processed" and kind == "refund":
+            out["refunds"].append(r)
+        elif status == "processed" and r.get("event_type") == "transaction.completed":
+            out["paid"].append(r)
+    return out
+
+
+def review_queue(rows) -> list:
+    """Held runs waiting for a person's decision: everything but those the gate
+    blocked (a blocked run is kept, not waiting)."""
+    return [r for r in rows or [] if r.get("publish_state") != "blocked"]
+
+
 def count_by(rows, key) -> Counter:
     return Counter(str(r.get(key) or "unknown") for r in rows or [])
 

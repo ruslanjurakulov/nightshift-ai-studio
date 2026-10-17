@@ -4,8 +4,9 @@ The owner's control panel in Telegram: ask the system how it is, get told when
 something needs you, tap instead of type. It is **read-only by default** and it
 **cannot publish, spend credits, change prices or plans, grant roles, delete data
 or approve anything**. Those stay behind the publish gate and the human
-approvals. The old `/publish`, `/pause` and `/resume` still only produce
-*intents* that are recorded for the normal gated path; nothing here executes them.
+approvals. The old `/publish`, `/pause` and `/resume` are **gone** (nothing ever
+executed them): a typed one is answered, in your language, that the bot is
+view-only, and nothing is recorded or requested.
 
 This is the OPERATOR bot. The customer bot (`@reply_NightshiftAiStudio_bot`,
 per-user notifications) is a separate feature with its own token and variables
@@ -23,6 +24,7 @@ Everything below also exists as a button in the main menu (`/menu`, `/start`).
 | `/queue` | running and queued render jobs and creative jobs with ages; STUCK marked |
 | `/errors` | failures in the last 24 hours, grouped (by channel, by error code, by pipeline event); ids and codes only |
 | `/balance` | the latest provider balance snapshot per provider (ElevenLabs credits, Leonardo tokens), with the LOW flag for ElevenLabs |
+| `/payments` | payment events from the provider's webhook (`payment_events`, 0021): counts by outcome for 24 h / 7 d (paid, **rejected** = paid but not credited, failed = the provider retries, refunds and chargebacks applied), the ids that need a person, and the latest events with kind, status, amount + currency and age. Ids are shortened (`…ab12cd34`); no `detail`, no customer, no organization, no e-mail |
 | `/spend` | provider cost today and over 7 days (recorded estimates); credits captured. A figure built from rows that were not all priced says "at least", never a total |
 | `/today` | videos made / published / held / blocked / failed, jobs, new accounts: counts |
 | `/users` | new sign-ups in 24 h / 7 d / 30 d: counts only, no names, no e-mails |
@@ -32,15 +34,100 @@ Everything below also exists as a button in the main menu (`/menu`, `/start`).
 | `/digest` | the daily summary, now |
 | `/alerts` | quiet hours, digest hour, hourly limit, what is muted, the last alerts sent |
 | `/language [en\|ru\|uz]` | show or change the language the bot speaks (see Language) |
-| `/status` `/channels` `/pending` | the original commands, unchanged |
+| `/status` | counts from Supabase: videos held for review, blocked by the gate, published in 24 h / 7 d, what waits for a person |
+| `/pending` | the runs that did not upload (held, awaiting approval, repaired, blocked): short id, channel, state, age. No titles |
+| `/channels` | the original command, unchanged |
 | `/mute [kind\|all]` `/unmute [kind\|all]` | silence alerts for 24 hours (the one safe write: it changes nothing but what you are told) |
-| `/publish <id>` `/pause <id>` `/resume <id>` | requests only, through the original intent path; the publish gate still decides |
 | `/help` `/menu` | the list, the buttons |
 
 Where the app has the page, a message carries an **Open** button straight to it
 (`/{channel}/approvals`, `/errors`, `/jobs`, `/billing`, `/margin`, `/audit`,
 `/integrations`, the GitHub deploy page). Without `OPERATOR_APP_URL` there are no
 links: a link is never guessed.
+
+## BotFather command list
+
+The bot does not register its command menu itself. To get Telegram's `/` menu, send
+`/setcommands` to @BotFather, pick the bot, and paste the English block below
+(BotFather takes one list). The Russian and Uzbek blocks are for the Bot API's
+`setMyCommands` with `language_code` `ru` / `uz`, if you want the menu localized.
+There is no `publish`, `pause` or `resume`: the bot is view-only. Keep this in step
+with the command table above (`tests/test_operator_bot_owner_view.py` compares them).
+
+<!-- setcommands:en -->
+```text
+health - site, workers, last deploy
+queue - running and stuck jobs
+errors - failures in the last 24 hours
+balance - provider balances
+spend - provider cost, today and 7 days
+payments - payment events: paid, rejected, failed, refunds
+today - videos made, published, held
+users - new sign-ups (counts only)
+deploys - last deploys and CI
+approvals - waiting for a person
+security - recent security-relevant events
+digest - the daily summary, now
+alerts - alert settings and mutes
+status - held, blocked and published videos
+pending - videos held for review (ids only)
+channels - channels and autonomy
+menu - buttons
+help - the command list
+language - choose the language
+mute - silence alerts for 24 hours
+unmute - turn alerts back on
+```
+
+<!-- setcommands:ru -->
+```text
+health - сайт, воркеры, последний деплой
+queue - выполняющиеся и зависшие задачи
+errors - сбои за последние 24 часа
+balance - балансы провайдеров
+spend - затраты на провайдеров, сегодня и за 7 дней
+payments - платёжные события: оплачено, отклонено, сбои, возвраты
+today - видео: созданные, опубликованные, удержанные
+users - новые регистрации (только числа)
+deploys - последние деплои и CI
+approvals - ждёт решения человека
+security - недавние события безопасности
+digest - дневная сводка, сейчас
+alerts - настройки оповещений и заглушки
+status - удержанные, заблокированные и опубликованные видео
+pending - видео на проверке (только id)
+channels - каналы и автономность
+menu - кнопки
+help - список команд
+language - выбрать язык
+mute - заглушить оповещения на 24 часа
+unmute - вернуть оповещения
+```
+
+<!-- setcommands:uz -->
+```text
+health - sayt, ishchilar, oxirgi deploy
+queue - ishlayotgan va qotib qolgan vazifalar
+errors - oxirgi 24 soatdagi nosozliklar
+balance - provayderlar balansi
+spend - provayderlarga xarajat, bugun va 7 kun
+payments - toʻlov hodisalari: toʻlangan, rad etilgan, nosoz, qaytarishlar
+today - videolar: yaratilgan, chiqarilgan, ushlangan
+users - yangi roʻyxatdan oʻtishlar (faqat sonlar)
+deploys - oxirgi deploylar va CI
+approvals - odam qarorini kutayotganlar
+security - xavfsizlikka oid soʻnggi hodisalar
+digest - kunlik xulosa, hozir
+alerts - ogohlantirish sozlamalari va jim rejimlar
+status - ushlangan, bloklangan va chiqarilgan videolar
+pending - tekshiruvdagi videolar (faqat id)
+channels - kanallar va mustaqillik
+menu - tugmalar
+help - buyruqlar roʻyxati
+language - tilni tanlash
+mute - ogohlantirishlarni 24 soatga jim qilish
+unmute - ogohlantirishlarni qaytarish
+```
 
 ## Language
 
@@ -69,7 +156,7 @@ default, then English. A stranger is always answered in that default, never in t
 owner's stored choice, and the language is read only after the sender has been
 authorized.
 
-The language changes only words. Authorization, the intents, the publish gate, the
+The language changes only words. Authorization, the publish gate, the
 alert keys (so a language change never re-sends an alert), callback data, ids,
 codes, event names, ages (`3m`, `2h 5m`), numbers (`1,234`) and dates (ISO) are the
 same in every language.
@@ -88,6 +175,7 @@ same in every language.
 | `/security` | Security | Безопасность | Xavfsizlik |
 | `/digest` | Digest | Сводка | Xulosa |
 | `/alerts` | Alerts | Оповещения | Ogohlantirishlar |
+| `/payments` | Payments | Платежи | Toʻlovlar |
 | `/status` | Status | Статус | Holat |
 | `/channels` | Channels | Каналы | Kanallar |
 | `/pending` | Held | Удержанные | Ushlanganlar |
@@ -145,7 +233,8 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `stuck` | a running job has no heartbeat for 10 min (the database's own "abandoned" line); a job queued longer than `OPERATOR_STUCK_MINUTES` | warn | every 6 h while it lasts |
 | `balance` | ElevenLabs credits below `ELEVENLABS_LOW_CREDITS` | warn | every 12 h while it lasts |
 | `deploy` | the latest finished `deploy_web.yml`, `tests.yml` or `frontend.yml` run on `main` failed | warn | once per run |
-| `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that kind exists); a worker reported FAILED | **critical** | every 3 h while it lasts |
+| `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that kind exists; the bot's own `operator-bot` row is judged on its own); a worker reported FAILED | **critical** | every 3 h while it lasts |
+| `payment` | a payment-provider event the webhook **rejected** (paid but not credited, or a refund not applied: needs a person, **critical**), **failed** (the provider retries, warn), or a refund / chargeback that was applied (warn), received in the last 24 h | critical / warn | once per event and outcome |
 | `approval` | a new pending publish approval | info | once |
 | `audit` | an operator-level audit event with no channel (see above) | **critical** | once |
 
@@ -277,11 +366,18 @@ compose service `operator-bot` (profile `operator`).
   workflows kept in the Actions cache has this equivalent: the *getUpdates offset* is
   held in memory (after a restart Telegram redelivers only what it never saw
   confirmed, at most the last batch, and the claims skip what was already handled, so
-  nothing is answered or run twice); the *pipeline history* (`chronos.db`) is not
-  restored, so `/status` says "unavailable", the held-for-review count is left out
-  of `/approvals` and the digest, and the legacy `/pending` answers that it could not
-  read it. Every other
-  view reads Supabase and answers as before.
+  nothing is answered or run twice). The *pipeline history* (`chronos.db`) is not
+  restored on the server, so `/status`, `/pending` and the held-for-review count of
+  `/approvals` and the digest read the `videos` table (`publish_state`, 0016) instead.
+* **It reports its own liveness.** The service writes a `worker_status` row
+  `operator-bot` (kind `other`, migration 0045, the same reporter the e-mail worker uses):
+  `starting`, then `running` every 30 s **while Telegram is answering the poll**, then
+  `stopped` (or `failed` with a fixed reason, e.g. a webhook is set) on exit. Integrations
+  shows it, `/health` lists it, and a bot that dies without saying so reads "not
+  reporting" there after two minutes. A dead bot cannot message you itself, and
+  while the switch is `on` the two fallback workflows are skipped, so this row (and
+  `docker ps`) is how a dead bot shows. Its row never hides another `other` worker's
+  silence (the e-mail worker), and is not hidden by it.
 * It listens on **no port**, has no Caddy route and is not the webhook server: it
   only calls out (`api.telegram.org`, Supabase, `api.github.com`). The container runs
   as uid 1000 with `cap_drop: ALL`, `no-new-privileges`, no volume and no docker
@@ -394,7 +490,7 @@ comparison and gets an empty 200.
 
 | Piece | File |
 |---|---|
-| Authorization, legacy commands, intents | `modules/telegram_control.py` |
+| Authorization, the legacy `/channels` | `modules/telegram_control.py` |
 | Update router (poll and webhook share it) | `modules/operator_bot/router.py` |
 | Messages and keyboards | `modules/operator_bot/views.py` |
 | Words, per language (data only) | `modules/operator_bot/i18n.py`, `copy_data/{en,ru,uz}.py` |

@@ -1,7 +1,7 @@
 name: Telegram Control Panel
 
 # Polls Telegram for the operator bot's commands and button presses (the
-# read-only views, /mute, and the /publish /pause /resume intents) and replies.
+# read-only views and /mute) and replies.
 # Each run LONG-polls for about four and a half minutes, so while it is running a
 # reply goes out within a second or two; runs follow each other every five
 # minutes (GitHub's shortest schedule), and anything sent in a gap waits for the

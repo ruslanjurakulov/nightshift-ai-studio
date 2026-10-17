@@ -1,6 +1,9 @@
 """Proactive alerts: what is worth interrupting the owner for, and how not to
 overdo it.
 
+Payment problems (a rejected, failed or refunded provider event) are one more
+kind, ``payment``: one alert per event and outcome, ids shortened, no free text.
+
 Detection is pure over the sources (:func:`detect`). Delivery is
 :class:`AlertEngine`, which is where the restraint lives:
 
@@ -38,10 +41,10 @@ from typing import Callable, Optional
 from modules.operator_bot import analysis
 from modules.operator_bot.config import OperatorConfig
 from modules.operator_bot.i18n import DEFAULT_LANGUAGE, t
-from modules.operator_bot.sources import OperatorSources, age_label, parse_ts
+from modules.operator_bot.sources import BOT_WORKER_ID, OperatorSources, age_label, parse_ts
 from modules.operator_bot.store import AlertState, AlertStore, MUTE_FOR
 from modules.operator_bot import views
-from modules.tg_text import safe_id
+from modules.tg_text import safe_id, short_id
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,9 @@ WORKER_COOLDOWN = 3 * 60
 STUCK_COOLDOWN = 6 * 60
 CREATIVE_BURST = 3          # failures of one error code within the hour
 CREATIVE_COOLDOWN = 3 * 60
+#: How far back a payment problem is still news. Inside the 48 hours the store
+#: remembers, so an alert already sent is never sent a second time.
+PAYMENT_WINDOW = timedelta(hours=24)
 #: A silent worker whose last word is older than this is gone, not lost
 #: (e.g. an old container id); the table keeps such rows for two weeks.
 WORKER_LOST_MAX_AGE = timedelta(hours=24)
@@ -154,12 +160,15 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     ws = ops.workers()
     if ws.ok:
         rows = analysis.classify_workers(ws.data, now)
-        fresh_kinds = {w.get("kind") for w in rows if w.get("state") in ("running", "starting") and not w["stale"]}
+        # The bot's own row is kind "other", shared with the e-mail worker: it
+        # must not hide that worker's silence, nor be hidden by it.
+        fresh_kinds = {w.get("kind") for w in rows if w.get("state") in ("running", "starting")
+                       and not w["stale"] and w.get("worker_id") != BOT_WORKER_ID}
         for w in rows:
             wid = safe_id(w.get("worker_id"), 60)
             age = w["age_s"]
-            if w["stale"] and w.get("kind") not in fresh_kinds and age is not None \
-                    and timedelta(seconds=age) <= WORKER_LOST_MAX_AGE:
+            if w["stale"] and (w.get("kind") not in fresh_kinds or w.get("worker_id") == BOT_WORKER_ID) \
+                    and age is not None and timedelta(seconds=age) <= WORKER_LOST_MAX_AGE:
                 out.append(Alert("worker", f"worker:{wid}", "critical",
                                  t(lang, "alert.worker_lost", id=wid, kind=w.get("kind"),
                                    age=age_label(now - timedelta(seconds=age), now)),
@@ -176,6 +185,10 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
             out.append(Alert("approval", f"approval:{safe_id(r.get('id'), 40)}", "info",
                              t(lang, "alert.approval", channel=ch), ch or None))
 
+    pay = ops.payment_events(now - PAYMENT_WINDOW)
+    if pay.ok:
+        out += _payment_alerts(pay.data, now, lang)
+
     au = ops.audit(since)
     if au.ok:
         for r in au.data:
@@ -183,6 +196,32 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
             out.append(Alert("audit", f"audit:{safe_id(r.get('id'), 40)}", "critical",
                              t(lang, "alert.security", action=safe_id(r.get("action"), 40), target=tgt),
                              safe_id(r.get("channel_id")) or None))
+    return out
+
+
+def _payment_alerts(rows, now: datetime, lang: str) -> list[Alert]:
+    """Payment problems as alerts. A bug here must not silence the other kinds."""
+    out: list[Alert] = []
+    try:
+        c = analysis.classify_payments(rows, now - PAYMENT_WINDOW)
+        # Rejected = paid but not credited (or a refund not applied): a person
+        # must act. Failed = the provider retries. A refund or chargeback that
+        # was applied is news, not an emergency. One alert per event and
+        # outcome; the key holds only the tail of the provider's id.
+        for outcome, severity, copy in (("rejected", "critical", "alert.payment_rejected"),
+                                        ("failed", "warn", "alert.payment_failed"),
+                                        ("refunds", "warn", "alert.payment_refund")):
+            for r in c[outcome]:
+                tail = safe_id(r.get("event_id"), 200)[-8:]
+                if not tail:
+                    continue
+                out.append(Alert("payment", f"payment:{tail}:{outcome}", severity,
+                                 t(lang, copy, id=short_id(r.get("event_id")),
+                                   kind=views.payment_kind_word(lang, r.get("event_type")),
+                                   amount=views.money(lang, r.get("amount_minor"), r.get("currency")))))
+    except Exception as e:  # noqa: BLE001 - a malformed row must not end the pass
+        logger.warning("payment alerts skipped (%s)", type(e).__name__)
+        return []
     return out
 
 
@@ -203,7 +242,8 @@ def compose(kind: str, alerts: list[Alert], cfg: OperatorConfig, held_back: int 
     channel = channels.pop() if len(channels) == 1 else None
     page = views.KIND_PAGE.get(kind)
     open_btn = (views.url_button(t(lang, "btn.open"), views.app_link(cfg, page, channel)) if page
-                else views.url_button(t(lang, "btn.open"), views.github_actions_link(cfg)))
+                else views.url_button(t(lang, "btn.open"), views.github_actions_link(cfg))
+                if kind in views.GITHUB_KINDS else None)
     row = [x for x in (open_btn,) if x] + [
         views.cb(t(lang, "btn.mute24"), f"a:mute:{kind}"),
         views.cb(t(lang, "btn.details"), f"d:{kind}"),
@@ -389,12 +429,17 @@ def send_digest_reply(ops: OperatorSources, held_fn: Optional[Callable[[], list]
                       lang: str = DEFAULT_LANGUAGE) -> views.Reply:
     ops.reset()
     held = None
-    if held_fn is not None:
-        try:
-            held = held_fn()
-        except Exception:
-            held = None
+    try:
+        held = held_fn() if held_fn is not None else held_runs(ops)
+    except Exception:
+        held = None
     return views.view_digest(ops, held, lang)
+
+
+def held_runs(ops: OperatorSources) -> Optional[list]:
+    """Runs waiting for a person's decision, from Supabase; None when unknown."""
+    sec = ops.held_videos()
+    return analysis.review_queue(sec.data) if sec.ok else None
 
 
 # -- mute (the one safe write the bot does) --------------------------------

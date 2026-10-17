@@ -9,17 +9,19 @@ import unittest
 from unittest.mock import patch
 
 from modules.operator_bot import router, views
+from modules.operator_bot.config import OperatorConfig
+from modules.operator_bot.i18n import LANGUAGES, t
 from modules.operator_bot.store import MemoryAlertStore
 from tests.operator_bot_fakes import (
     FakeHttp, FakeTelegram, NOW, github_ok, healthy_tables, make_control, make_ops, site_ok,
-    update_callback, update_message,
+    ts, update_callback, update_message,
 )
 
 READ = [c for c in views.READ_COMMANDS if c != "alerts"]
-EVERY_COMMAND = (list(views.READ_COMMANDS) + ["status", "channels", "pending", "help", "menu", "start",
+EVERY_COMMAND = (list(views.READ_COMMANDS) + ["channels", "help", "menu", "start",
                                               "mute run", "unmute all", "publish v1", "pause finance",
                                               "resume finance"])
-EVERY_BUTTON = (["c:" + c for c in list(views.READ_COMMANDS) + ["status", "channels", "pending", "menu", "help"]]
+EVERY_BUTTON = (["c:" + c for c in list(views.READ_COMMANDS) + ["channels", "menu", "help"]]
                 + ["a:mute:run", "a:unmute:all", "a:mute:all"] + ["d:" + k for k in views.ALERT_KINDS])
 
 
@@ -235,12 +237,25 @@ class AuthorizedTestCase(unittest.TestCase):
         bot.handle_update(update_message("/help"))              # a plain command still needs no name
         self.assertEqual(len(tg.sent()), 1)
 
-    def test_legacy_commands_still_answer_in_plain_text(self):
+    def test_channels_still_answers_in_plain_text_from_the_legacy_deps(self):
         bot, tg, _, _, deps = build()
-        bot.handle_update(update_message("/status"))
-        self.assertEqual(tg.sent()[0]["text"], "Nightshift: 3 video(s) in the library.")
+        bot.handle_update(update_message("/channels"))
+        self.assertIn("default", tg.sent()[0]["text"])
         self.assertNotIn("parse_mode", tg.sent()[0])
-        self.assertEqual(deps.calls, ["status"])
+        self.assertEqual(deps.calls, ["channels"])
+
+    def test_status_and_pending_read_supabase_not_the_local_history(self):
+        bot, tg, sync, _, deps = build(tables={"videos": [
+            {"video_id": "run-0123456789abcdef0123", "channel_id": "default", "publish_state": "held",
+             "held_at": ts(30), "published_at": None, "title": "SECRET TITLE"}]})
+        bot.handle_update(update_message("/pending"))
+        bot.handle_update(update_message("/status"))
+        self.assertEqual(deps.calls, [], "the local history file must not be consulted")
+        self.assertTrue(any(table == "videos" for table, _ in sync.reads))
+        pending, status = tg.texts()
+        self.assertIn("run-01234567", pending)
+        self.assertNotIn("SECRET TITLE", pending + status)
+        self.assertIn("Held for review: 1", status)
 
     def test_plain_text_from_the_admin_gets_the_hint(self):
         bot, tg, *_ = build()
@@ -395,54 +410,67 @@ class MuteTestCase(unittest.TestCase):
             self.assertEqual(len(tg.sent()), 1, kind)
 
 
-class ActionIntentsTestCase(unittest.TestCase):
-    """/publish /pause /resume are unchanged: an INTENT through the old path."""
+class RemovedCommandsTestCase(unittest.TestCase):
+    """/publish /pause /resume are gone: nothing ever executed them. A typed one
+    is answered "view-only", records nothing and is not offered anywhere."""
 
-    def test_intent_is_recorded_not_executed(self):
-        bot, tg, *_ = build()
-        with patch("modules.event_log.emit") as emit:
-            bot.handle_update(update_message("/pause finance"))
-        emit.assert_called_once()
-        self.assertEqual(emit.call_args.kwargs["metadata"], {"action": "pause", "target": "finance"})
-        self.assertIn("Requested: pause finance", tg.texts()[0])
+    def test_a_typed_removed_command_is_answered_view_only_and_records_nothing(self):
+        for command in ("/publish v1", "/pause finance", "/resume finance", "/publish", "/PAUSE@NightshiftAiStudio_bot x"):
+            with self.subTest(command=command):
+                bot, tg, sync, store, deps = build()
+                with patch("modules.event_log.emit") as emit:
+                    bot.handle_update(update_message(command))
+                emit.assert_not_called()
+                self.assertEqual(len(tg.texts()), 1)
+                self.assertIn("view-only", tg.texts()[0])
+                self.assertNotIn("Requested", tg.texts()[0])
+                self.assertEqual(sync.upserts, [])
+                self.assertEqual(store.rows, [])
+                self.assertEqual(deps.calls, [])
 
-    def test_publish_reply_keeps_the_gate_sentence(self):
-        bot, tg, *_ = build()
-        with patch("modules.event_log.emit"):
-            bot.handle_update(update_message("/publish v1"))
-        self.assertIn("publish gate still decides", tg.texts()[0])
+    def test_the_removed_commands_are_not_in_help_menu_or_buttons(self):
+        for lang in LANGUAGES:
+            texts = [views.view_help(lang).text, views.view_menu(OperatorConfig(), lang).text,
+                     " ".join(b["callback_data"] for row in views.view_menu(OperatorConfig(), lang).keyboard for b in row)]
+            for text in texts:
+                self.assertNotRegex(text, r"/(publish|pause|resume)\b")
+        for name, _ in views.COMMANDS:
+            self.assertNotIn(name, ("publish", "pause", "resume"))
+        self.assertIn("view-only", views.view_help().text)
 
-    def test_not_durable_and_too_old_are_refused_without_an_event(self):
-        bot, tg, *_ = build()
-        with patch("modules.event_log.emit") as emit:
-            bot.handle_update(update_message("/publish v1"), durable=False)
-            bot.handle_update(update_message("/publish v1", date=int(NOW.timestamp()) - 7 * 3600))
-        emit.assert_not_called()
-        self.assertIn("could not be recorded durably", tg.texts()[0])
-        self.assertIn("more than 6 hours old", tg.texts()[1])
+    def test_the_view_only_answer_follows_the_language(self):
+        for lang in LANGUAGES:
+            bot, tg, sync, store, deps = build()
+            store.record_language(lang)
+            with patch("modules.event_log.emit") as emit:
+                bot.handle_update(update_message("/publish v1"))
+            emit.assert_not_called()
+            self.assertEqual(tg.texts()[0], t(lang, "err.view_only"))
 
     def test_there_is_no_button_or_command_that_publishes_spends_or_approves(self):
-        self.assertTrue(all(not c.startswith(("publish", "approve", "pay", "buy", "delete", "grant", "price"))
+        # "spend" and "payments" are read views (what was spent / received), not actions.
+        self.assertTrue(all(not c.startswith(("publish", "approve", "buy", "delete", "grant", "price"))
                             for c, _ in views.COMMANDS))
         for data in EVERY_BUTTON:
-            # "spend" is a read view (what was spent), not an action that spends.
-            self.assertNotRegex(data, r"publish|approve|pay|delete|grant|price|role")
+            self.assertNotRegex(data, r"publish|approve|pay(?!ment)|delete|grant|price|role")
             self.assertRegex(data, r"^(c:[a-z]+|a:(mute|unmute):[a-z]+|d:[a-z]+)$")
         bot, tg, sync, store, deps = build()
         for data in ("c:publish", "c:approve", "a:approve:run", "c:delete", "a:publish:all"):
             bot.handle_update(update_callback(data))
         with patch("modules.event_log.emit") as emit:
-            for command in ("/approve p1", "/delete v1", "/grant x", "/setprice 1", "/buy"):
+            for command in ("/approve p1", "/delete v1", "/grant x", "/setprice 1", "/buy", "/refund x", "/topup 5"):
                 bot.handle_update(update_message(command))
         emit.assert_not_called()
         self.assertEqual(sync.upserts, [])
         self.assertEqual(store.rows, [])
 
-    def test_a_plain_stranger_cannot_use_the_intent_path(self):
-        bot, tg, *_ = build()
+    def test_a_stranger_gets_nothing_from_the_removed_commands_either(self):
+        bot, tg, sync, store, deps = build()
         with patch("modules.event_log.emit") as emit:
             bot.handle_update(update_message("/publish v1", chat=999))
         emit.assert_not_called()
+        self.assertEqual(tg.texts(), [router.NOT_AUTHORIZED])
+        untouched(self, sync, store, deps)
 
 
 if __name__ == "__main__":
