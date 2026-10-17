@@ -505,7 +505,7 @@ describe("discounts", () => {
     expect(store.events.get("evt_d2")).toMatchObject({ status: "rejected" });
   });
 
-  it("an API top-up is scaled the same way", () => {
+  it("an API top-up is never discounted: any discount rejects it (no proportional credit)", () => {
     const API_PRODUCT = "pro_01apitopup00000000000000000";
     const topup = (totals: Record<string, string>, discountId: string | null = DSC) => ({
       id: TXN,
@@ -516,8 +516,9 @@ describe("discounts", () => {
       items: [{ price: { product_id: API_PRODUCT, unit_price: { amount: "2000", currency_code: "USD" } }, quantity: 1 }],
       details: { totals },
     });
-    expect(decideApiTopup(topup({ subtotal: "2000", discount: "0" }, null), API_PRODUCT)).toMatchObject({ cents: 2000 });
-    expect(decideApiTopup(topup({ subtotal: "2000", discount: "1000" }), API_PRODUCT)).toMatchObject({ cents: 1000 });
-    expect(decideApiTopup(topup({ subtotal: "2000", discount: "2000" }), API_PRODUCT).kind).toBe("reject");
+    expect(decideApiTopup(topup({ subtotal: "2000", discount: "0", grand_total: "2000" }, null), API_PRODUCT)).toMatchObject({ cents: 2000 });
+    expect(decideApiTopup(topup({ subtotal: "2000", discount: "1000", grand_total: "1000" }), API_PRODUCT).kind).toBe("reject");
+    expect(decideApiTopup(topup({ subtotal: "2000", discount: "2000", grand_total: "0" }), API_PRODUCT).kind).toBe("reject");
   });
+
 });

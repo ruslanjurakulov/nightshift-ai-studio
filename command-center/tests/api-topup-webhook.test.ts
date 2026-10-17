@@ -84,11 +84,11 @@ class Store implements PaddleStore {
 }
 
 const quiet = { info() {}, warn() {}, error() {} };
-function deliver(store: Store, event: Record<string, unknown>, apiProductId: string | null = PRODUCT) {
+function deliver(store: Store, event: Record<string, unknown>, apiProductId: string | null = PRODUCT, promos?: ReadonlySet<string>) {
   const body = JSON.stringify(event);
   return handlePaddleWebhook(
     { method: "POST", rawBody: body, signature: sign(body) },
-    { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, apiProductId },
+    { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, apiProductId, promos },
   );
 }
 
@@ -125,6 +125,59 @@ describe("API top-up decisions", () => {
     expect(body.currency_code).toBe("USD");
     const echoed = txn({ items: body.items, custom_data: body.custom_data });
     expect(decideApiTopup(echoed, PRODUCT)).toMatchObject({ kind: "api_topup", cents: 2500 });
+  });
+});
+
+// Owner policy: there is NO discount on API top-ups. Credit = what was paid
+// (the line's price, tax on top), and a discount of any kind, even an
+// allowlisted promo, or a zero payment credits nothing.
+describe("API top-ups never accept discounts", () => {
+  const DSC = "dsc_01h000000000000000000000aa";
+  const promos = new Set([DSC]);
+  const paidTxn = (extra: Record<string, unknown>, totals: Record<string, string>, cents = "2500") =>
+    txn({ ...extra, details: { totals } }, cents);
+
+  it("rejects the reported exploit: allowlisted discount, 500000-cent line, fully discounted", () => {
+    const data = paidTxn({ discount_id: DSC }, { subtotal: "500000", discount: "500000", total: "0", grand_total: "0" }, "500000");
+    // The allowlist is not even a parameter any more; a stale caller passing one changes nothing.
+    const d = (decideApiTopup as (...a: unknown[]) => ReturnType<typeof decideApiTopup>)(data, PRODUCT, promos);
+    expect(d.kind).toBe("reject");
+    expect(decideTransaction(data, prices, PRODUCT, new Map(), promos).kind).toBe("reject");
+  });
+
+  it("rejects a partially discounted top-up, with or without an allowlisted id", () => {
+    const totals = { subtotal: "2500", discount: "1250", total: "1250", grand_total: "1250" };
+    expect(decideApiTopup(paidTxn({ discount_id: DSC }, totals), PRODUCT).kind).toBe("reject");
+    expect(decideApiTopup(paidTxn({}, totals), PRODUCT).kind).toBe("reject");
+  });
+
+  it("rejects a discount id even when Paddle reports no discount amount", () => {
+    expect(decideApiTopup(paidTxn({ discount_id: DSC }, { subtotal: "2500", discount: "0", grand_total: "2500" }), PRODUCT).kind).toBe("reject");
+  });
+
+  it("rejects a discount amount that cannot be read", () => {
+    expect(decideApiTopup(paidTxn({}, { subtotal: "2500", discount: "n/a", grand_total: "2500" }), PRODUCT).kind).toBe("reject");
+  });
+
+  it("rejects a zero total, and a total that cannot be read", () => {
+    expect(decideApiTopup(paidTxn({}, { subtotal: "2500", discount: "0", grand_total: "0" }), PRODUCT).kind).toBe("reject");
+    expect(decideApiTopup(paidTxn({}, { subtotal: "2500", discount: "0" }), PRODUCT).kind).toBe("reject");
+  });
+
+  it("still credits exactly the paid line for an undiscounted top-up; tax stays on top", () => {
+    const d = decideApiTopup(paidTxn({ discount_id: null }, { subtotal: "2500", discount: "0", tax: "500", grand_total: "3000" }), PRODUCT);
+    expect(d).toMatchObject({ kind: "api_topup", cents: 2500, amountMinor: 3000 });
+    expect(decideApiTopup(paidTxn({}, { subtotal: "2500", grand_total: "2500" }), PRODUCT)).toMatchObject({ kind: "api_topup", cents: 2500 });
+  });
+
+  it("through the handler: a fully discounted top-up is recorded rejected and credits nothing", async () => {
+    const store = new Store();
+    const data = paidTxn({ discount_id: DSC }, { subtotal: "500000", discount: "500000", grand_total: "0" }, "500000");
+    const res = await deliver(store, { event_id: "evt_01exploit", event_type: "transaction.completed", data }, PRODUCT, promos);
+    expect(res.status).toBe(200);
+    expect(store.api.size).toBe(0);
+    expect(store.credits).toEqual([]);
+    expect(store.events.get("evt_01exploit")).toMatchObject({ status: "rejected" });
   });
 });
 

@@ -20,7 +20,7 @@
  *     (subtotal − discount), and a 100%-discounted one mints none — unless its
  *     discount id is an explicitly allowed promo (PADDLE_PROMO_DISCOUNT_IDS),
  *     which the owner created on purpose to give credits away. Packs and plan
- *     periods alike.
+ *     periods alike (not API top-ups: those never take a discount).
  *   - Every purchase is credited through add_purchased_credits() with the
  *     Paddle transaction id as its external_id, so a webhook delivered twice,
  *     or retried after a timeout, credits once.
@@ -35,7 +35,8 @@
  *     top-up" product and custom_data.purpose = "api_topup". It credits the
  *     organization's API balance (US cents, api_add_topup) with what Paddle
  *     charged for that line — never site credits — and only when every line
- *     is that product, in USD, within $5–$5,000.
+ *     is that product, in USD, within $5–$5,000, with NO discount of any kind
+ *     (PADDLE_PROMO_DISCOUNT_IDS does not apply) and something actually paid.
  */
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -520,12 +521,12 @@ export const PADDLE_PRODUCT_ID_RE = /^pro_[a-z0-9]{10,40}$/;
 /**
  * transaction.completed for an API top-up -> how many cents, for which
  * organization. The amount is Paddle's own record of the line's unit price x
- * quantity (tax is Paddle's, on top), never anything the browser said.
+ * quantity (tax is Paddle's, on top), never anything the browser said. No
+ * discount is ever accepted here, not even an allowlisted promo.
  */
 export function decideApiTopup(
   data: Record<string, unknown>,
   apiProductId: string | null | undefined,
-  promos: PromoAllowlist = new Set(),
 ): Decision {
   const transactionId = str(data.id);
   const custom = obj(data.custom_data);
@@ -563,11 +564,17 @@ export function decideApiTopup(
       return reject("paid API top-up with an unreadable amount or quantity — not credited");
     cents += amount * qty;
   }
-  // A discount scales the balance to what was paid, like credits.
-  const paid = paidShare(data, promos);
-  if ("error" in paid) return reject(`paid API top-up, but ${paid.error} — not credited`);
-  cents = Math.floor(Math.round(cents * paid.share * 1e6) / 1e6);
-  if (cents <= 0) return reject("API top-up fully discounted — not credited");
+  // Owner policy: NO discount on API top-ups, so the promo allowlist
+  // (PADDLE_PROMO_DISCOUNT_IDS) is deliberately not consulted here: the amount
+  // is open (up to $5,000), so a fully discounting allowlisted discount would
+  // credit a balance nobody paid for. The balance is exactly what was paid
+  // (the line's price; tax is Paddle's, on top), so anything that reduced the
+  // price, or a payment of nothing, is rejected for a person to look at.
+  if (str(data.discount_id)) return reject("API top-up with a discount — API top-ups take no discounts, not credited");
+  const totals = obj(obj(data.details).totals);
+  if (totals.discount !== undefined && totals.discount !== null && minorUnits(totals.discount) !== 0)
+    return reject("API top-up with a discount (or an unreadable discount total) — API top-ups take no discounts, not credited");
+  if (amountMinor === null || amountMinor <= 0) return reject("API top-up with nothing paid (zero or unreadable total) — not credited");
   if (cents < API_TOPUP_MIN_CENTS || cents > API_TOPUP_MAX_CENTS)
     return reject(`paid API top-up of ${cents} cents is outside $5-$5,000 — not credited`);
   const note = [`Paddle ${transactionId}: API top-up ${(cents / 100).toFixed(2)} USD`, userId ? `by user ${userId}` : null]
@@ -583,7 +590,7 @@ export function decideTransaction(
   plans: PlanTable = new Map(),
   promos: PromoAllowlist = new Set(),
 ): Decision {
-  if (str(obj(data.custom_data).purpose) === "api_topup") return decideApiTopup(data, apiProductId, promos);
+  if (str(obj(data.custom_data).purpose) === "api_topup") return decideApiTopup(data, apiProductId);
   // A subscription's transaction (first payment, renewal, upgrade) or any line
   // that is a plan price: the period's credits, never pack credits.
   const anyPlan = (Array.isArray(data.items) ? data.items : []).some((raw) => {
