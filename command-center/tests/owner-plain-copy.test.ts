@@ -20,6 +20,14 @@ describe("the Uzbek owner sentences that used to tell the owner to edit environm
     expect(hits.length, key).toBeGreaterThan(0);
     for (const [p, text] of hits) expect(text, p).not.toMatch(ENV);
   });
+  it("the unpriced-spend sentences send the owner to the developer, and do not claim a page can set the price", () => {
+    for (const [p, text] of all) {
+      if (p.endsWith(".advSpendOvUnpriced") || p.endsWith(".unpricedHint") || /portfolio\.notConfigured$/.test(p)) {
+        expect(text, p).toMatch(/dasturchi/i);
+        expect(text, p).not.toMatch(/sahifasida/i);
+      }
+    }
+  });
   it("the credits and portfolio 'not connected' sentences name no variable or doc file", () => {
     for (const [p, text] of all) if (/(credits|portfolio|margin)\..*(notConfigured)$/.test(p) || p.endsWith("buy.notConfigured")) expect(text, p).not.toMatch(ENV);
   });

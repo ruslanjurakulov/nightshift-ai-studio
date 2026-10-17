@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { relativeTime, timeOfDay } from "@/lib/format";
+import { relativeTime, ownerTimeOfDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import {
@@ -62,7 +62,7 @@ export function DecisionList({
               <div className="g3-dec-main">
                 <div className="g3-dec-title">{d.topic ?? t.common.na}</div>
                 <div className="g3-sub tnum">
-                  {t.intel.decType} · {timeOfDay(d.ts)} · {relativeTime(d.ts, locale)}
+                  {t.intel.decType} · {ownerTimeOfDay(d.ts)} · {relativeTime(d.ts, locale)}
                 </div>
               </div>
               <div className="g3-dec-facts">

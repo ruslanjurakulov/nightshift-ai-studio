@@ -22,6 +22,9 @@ export const ownerShellEn = {
   allSectionsLead: "Every section of the platform, one tap away.",
   // The strip at the top of the Command Center on a phone.
   glanceLabel: "At a glance",
+  gSpendTooMany: "too many rows to add up here",
+  gSpendNightly: "updates nightly, not synced yet",
+  gSpendNoRows: "no rows yet today",
   gSpendToday: "Spent today",
   gSpendPartial: "some not priced",
   gSpendNotPriced: "not priced",

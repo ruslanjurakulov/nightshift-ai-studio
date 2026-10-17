@@ -3,6 +3,9 @@ import {
   BILLED_PROVIDERS,
   daysLeft,
   elevenLabsRunway,
+  firstUseMs,
+  providerHistoryStart,
+  rowMs,
   latestBalance,
   ledgerBalanceUsd,
   percentile,
@@ -167,29 +170,58 @@ describe("planTopups", () => {
   });
 });
 
-describe("burn window = min(30, history) (a young ledger is not divided by thirty)", () => {
-  const young: CostRowLite[] = [
-    { unit: "tts_characters", quantity: 3000, stage: "voice", recorded_at: day(3) },
-    { unit: "tts_characters", quantity: 3000, stage: "voice", recorded_at: day(1) },
-  ];
-  it("historyDays is the age of the oldest row, at least one day", async () => {
-    const { historyDays } = await import("@/lib/billing");
-    expect(historyDays(young, NOW)).toBeCloseTo(3, 5);
-    expect(historyDays([{ recorded_at: day(0.2) }], NOW)).toBe(1);
-    expect(historyDays([], NOW)).toBeNull();
+describe("burn window = min(30, THIS provider's own history)", () => {
+  it("a provider first used 2 days ago, 10 clips, in a 25-day-old ledger: 5 a day (not 10/25, not 10/30)", () => {
+    const rows: CostRowLite[] = [
+      { unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: day(25) }, // the ledger is 25 days old
+      { unit: "video_gen_clips", quantity: 4, stage: "broll:kling", recorded_at: day(2) },
+      { unit: "video_gen_clips", quantity: 6, stage: "broll:kling", recorded_at: day(0.5) },
+    ];
+    const start = providerHistoryStart(firstUseMs(by("kling"), rows), null);
+    const b = providerBurn(by("kling"), rows, null, 30, NOW, start);
+    expect(b.units).toBe(10);
+    expect(b.windowDays).toBeCloseTo(2, 5);
+    expect(b.unitsPerDay).toBeCloseTo(5, 5);
+    // the whole ledger's age would have said 10 / 25
+    expect(providerBurn(by("kling"), rows, null, 30, NOW).unitsPerDay).toBeCloseTo(10 / 30, 5);
   });
-  it("3 days of history: 6000 characters is 2000 a day, not 200", async () => {
-    const { historyDays } = await import("@/lib/billing");
-    const fixed = providerBurn(by("elevenlabs"), young, null, 30, NOW);
-    expect(fixed.unitsPerDay).toBe(200);
-    const b = providerBurn(by("elevenlabs"), young, null, 30, NOW, historyDays(young, NOW));
-    expect(b.windowDays).toBeCloseTo(3, 5);
-    expect(b.unitsPerDay).toBeCloseTo(2000, 3);
+  it("starts at its first top-up when that came later than its first use", () => {
+    const rows: CostRowLite[] = [
+      { unit: "video_gen_clips", quantity: 100, stage: "broll:kling", recorded_at: day(20) },
+      { unit: "video_gen_clips", quantity: 10, stage: "broll:kling", recorded_at: day(2) },
+    ];
+    const start = providerHistoryStart(firstUseMs(by("kling"), rows), NOW - 4 * 86_400_000);
+    const b = providerBurn(by("kling"), rows, null, 30, NOW, start);
+    expect(b.units).toBe(10);
+    expect(b.windowDays).toBeCloseTo(4, 5);
   });
-  it("a long history keeps the 30-day window", async () => {
-    const { historyDays } = await import("@/lib/billing");
-    const long = [...young, { unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: day(80) }];
-    expect(providerBurn(by("elevenlabs"), long, null, 30, NOW, historyDays(long, NOW)).windowDays).toBe(30);
+  it("a long history keeps the 30-day window", () => {
+    const rows: CostRowLite[] = [{ unit: "tts_characters", quantity: 60000, stage: "voice", recorded_at: day(80) }, { unit: "tts_characters", quantity: 3000, stage: "voice", recorded_at: day(3) }];
+    const b = providerBurn(by("elevenlabs"), rows, null, 30, NOW, providerHistoryStart(firstUseMs(by("elevenlabs"), rows), null));
+    expect(b.windowDays).toBe(30);
+    expect(b.units).toBe(3000);
+  });
+  it("the oldest run is never dropped: the window edge IS the first row, whatever the milliseconds (clock offset T2 = T1 + 5 ms)", () => {
+    const T1 = Date.parse("2026-09-24T12:00:00.000Z");
+    const rows: CostRowLite[] = [{ unit: "video_gen_clips", quantity: 7, stage: "broll:kling", recorded_at: new Date(T1 - 3 * 86_400_000).toISOString() }];
+    const start = providerHistoryStart(firstUseMs(by("kling"), rows), null);
+    for (const offset of [0, 1, 5, 37, 999]) expect(providerBurn(by("kling"), rows, null, 30, T1 + offset, start).units, `+${offset}ms`).toBe(7);
+  });
+  it("randomized float round trip: a row's own stamp is always inside its own window", () => {
+    let seed = 12345;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    for (let i = 0; i < 500; i++) {
+      const now = Date.UTC(2026, 0, 1) + Math.floor(rand() * 1e10) + rand();
+      const ageDays = rand() * 29.9 + 0.001;
+      const stamp = new Date(now - ageDays * 86_400_000).toISOString();
+      const rows: CostRowLite[] = [{ unit: "video_gen_clips", quantity: 1, stage: "broll:kling", recorded_at: stamp }];
+      const start = providerHistoryStart(firstUseMs(by("kling"), rows), null);
+      expect(providerBurn(by("kling"), rows, null, 30, now + Math.floor(rand() * 20), start).units, stamp).toBe(1);
+    }
+  });
+  it("a bare stored stamp is read as UTC, not as the server's local time", () => {
+    expect(rowMs("2026-09-24T12:00:00")).toBe(Date.parse("2026-09-24T12:00:00Z"));
+    expect(rowMs("2026-09-24T12:00:00+05:00")).toBe(Date.parse("2026-09-24T07:00:00Z"));
   });
 });
 

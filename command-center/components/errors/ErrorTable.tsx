@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { relativeTime, timeOfDay } from "@/lib/format";
+import { relativeTime, ownerTimeOfDay } from "@/lib/format";
 import type { SystemEventRow } from "@/lib/types";
 import Link from "next/link";
 import { StatusLamp } from "@/components/ui/StatusLamp";
@@ -112,7 +112,7 @@ export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
               </div>
               <div className="g5-fail-when">
                 <div>{relativeTime(e.ts, locale)}</div>
-                <div>{timeOfDay(e.ts)}</div>
+                <div>{ownerTimeOfDay(e.ts)}</div>
               </div>
             </li>
           ))}

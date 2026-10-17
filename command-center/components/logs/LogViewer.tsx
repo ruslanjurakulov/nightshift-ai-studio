@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { statusTone, timeOfDay } from "@/lib/format";
+import { statusTone, ownerTimeOfDay } from "@/lib/format";
 import type { SystemEventRow } from "@/lib/types";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -76,7 +76,7 @@ export function LogViewer({ rows }: { rows: SystemEventRow[] }) {
           return (
             <li key={`${r.event_key}-${i}`}>
               <span className="g4-log-meta">
-                <span className="g4-muted">{timeOfDay(r.ts)}</span>
+                <span className="g4-muted">{ownerTimeOfDay(r.ts)}</span>
                 <StatusLamp tone={lv.lamp} label={levelLabel[lv.key]} />
                 <span className="truncate" style={{ color: "var(--ns-act-ink)" }}>{r.agent ?? t.common.system}</span>
               </span>

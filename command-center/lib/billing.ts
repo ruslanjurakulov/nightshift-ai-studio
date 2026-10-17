@@ -143,30 +143,47 @@ export interface Burn {
   windowDays: number;
 }
 
-/**
- * Whole-and-fractional days of ledger history: from the oldest cost row to `now`, at least one day. A young install
- * (3 days of rows) averaged over a fixed 30 understates its burn tenfold; the page passes this so the window is
- * min(30, history).
- */
-export function historyDays(rows: { recorded_at: string }[], now: number = Date.now()): number | null {
-  const oldest = oldestRowMs(rows);
-  return oldest === null ? null : Math.max(1, (now - oldest) / DAY_MS);
+/** A stored stamp in ms. The bot writes UTC with no zone; a bare stamp is read as UTC, never as the server's local time. */
+export function rowMs(recordedAt: string | null | undefined): number {
+  const text = String(recordedAt ?? "");
+  return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) || !text.includes("T") ? text : `${text}Z`);
 }
 
-/** The oldest `recorded_at` among the rows (a bare stored stamp is UTC), in ms, or null. */
+/** The oldest `recorded_at` among the rows, in ms, or null. */
 export function oldestRowMs(rows: { recorded_at: string }[]): number | null {
   let oldest: number | null = null;
   for (const r of rows) {
-    const text = String(r.recorded_at ?? "");
-    const t = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) || !text.includes("T") ? text : `${text}Z`);
+    const t = rowMs(r.recorded_at);
     if (Number.isFinite(t) && (oldest === null || t < oldest)) oldest = t;
   }
   return oldest;
 }
 
+/** When THIS provider was first used: the oldest ledger row that consumed something on it, in ms, or null. */
+export function firstUseMs(provider: BilledProvider, rows: CostRowLite[]): number | null {
+  let first: number | null = null;
+  for (const r of rows) {
+    if (!(provider.usage(r) > 0)) continue;
+    const t = rowMs(r.recorded_at);
+    if (Number.isFinite(t) && (first === null || t < first)) first = t;
+  }
+  return first;
+}
+
 /**
- * How fast `provider` is being consumed over the last `days` days — or over the history there is, when that is
- * shorter (`history`, from historyDays()), so a three-day-old ledger is not divided by thirty.
+ * Where this provider's own history starts, for the burn window: its first usage row, or its first top-up when that
+ * came later (spend before the account was funded is not what the balance is spent at). Null with neither.
+ */
+export function providerHistoryStart(firstUse: number | null, firstTopup: number | null): number | null {
+  if (firstUse !== null && firstTopup !== null) return Math.max(firstUse, firstTopup);
+  return firstUse ?? firstTopup;
+}
+
+/**
+ * How fast `provider` is being consumed over the last `days` days, or over ITS OWN history when that is shorter
+ * (`startMs`, from providerHistoryStart): a provider first used two days ago is divided by two, not by thirty (and not by
+ * the age of the whole ledger, which is older than the provider). One `now` for the whole computation: the window edge is
+ * the start itself, so the row that started the history is never a few milliseconds outside it.
  */
 export function providerBurn(
   provider: BilledProvider,
@@ -174,13 +191,14 @@ export function providerBurn(
   usdPerUnit: number | null,
   days = 30,
   now: number = Date.now(),
-  history: number | null = null,
+  startMs: number | null = null,
 ): Burn {
-  const windowDays = history === null ? days : Math.max(1, Math.min(days, history));
-  const since = now - windowDays * DAY_MS;
+  const full = now - days * DAY_MS;
+  const since = startMs !== null && Number.isFinite(startMs) && startMs > full ? startMs : full;
+  const windowDays = Math.max(1, (now - since) / DAY_MS);
   let units = 0;
   for (const r of rows) {
-    const t = Date.parse(r.recorded_at);
+    const t = rowMs(r.recorded_at);
     if (!Number.isFinite(t) || t < since || t > now) continue;
     const q = provider.usage(r);
     if (q > 0) units += q;
@@ -226,7 +244,7 @@ export function ledgerBalanceUsd(
   const paid = mine.reduce((s, t) => s + Number(t.amount_usd), 0);
   let units = 0;
   for (const r of rows) {
-    const t = Date.parse(r.recorded_at);
+    const t = rowMs(r.recorded_at);
     if (Number.isFinite(t) && t >= first) units += provider.usage(r);
   }
   if (units === 0) return paid;

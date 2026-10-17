@@ -85,3 +85,12 @@ export function ownerDateFull(ms: number, locale: string | undefined): string {
   const p = ownerParts(ms);
   return `${p.day} ${MONTHS[lang(locale)][p.month]} ${p.year}`;
 }
+
+/**
+ * A full stamp with seconds: "bugun 13:53:41" for today, "17 okt 2026 13:53:41" for any other day (always with the year,
+ * so an audit row from last year cannot be mistaken for this year's).
+ */
+export function formatOwnerStamp(ms: number, locale: string | undefined, nowMs: number): string {
+  if (isOwnerToday(ms, nowMs)) return formatOwnerTime(ms, locale, nowMs, true);
+  return `${ownerDateFull(ms, locale)} ${ownerClock(ms, true)}`;
+}

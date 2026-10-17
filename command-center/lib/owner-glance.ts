@@ -1,5 +1,6 @@
 import { BILLED_PROVIDERS, latestBalance, type BalanceRow } from "@/lib/billing";
 import { workerView, type WorkerRow } from "@/lib/workers";
+import { isOwnerToday } from "@/lib/owner-time";
 
 /**
  * The numbers on the Command Center's phone strip, derived from rows the page already reads (provider
@@ -89,24 +90,43 @@ export function workersTone(w: WorkersAlive | null): GlanceTone {
   return w.alive === 0 ? "fail" : "warn";
 }
 
-export interface SpendToday {
-  /** Dollars of priced spend recorded today (the owner's day); null when nothing recorded today carries a price. */
-  usd: number | null;
-  /** Today's rows that used something but carry no price (the figure is then a floor). */
-  unpriced: number;
-  rows: number;
-}
+/** How many rows of today's cost ledger the page reads; a day that fills it is not summed. */
+export const SPEND_ROW_LIMIT = 1000;
+
+export type SpendToday =
+  /** The read failed or timed out: unknown, worth a Retry. */
+  | { kind: "failed" }
+  /** The nightly mirror has not written anything today (Tashkent day): today's spend is not in the ledger yet. */
+  | { kind: "not_synced" }
+  /** The mirror ran today and there are no rows for today: "no rows yet", never a measured $0. */
+  | { kind: "no_rows" }
+  /** So many rows that they are not added up here (the figure would be a floor). Not a read failure. */
+  | { kind: "too_many" }
+  /** Only unpriced rows today: there is no figure. */
+  | { kind: "not_priced" }
+  | { kind: "ok"; usd: number; unpriced: number };
 
 /**
- * What the pipeline spent today, from the cost ledger rows of the owner's day (the rows Billing already reads, one day
- * of them). A row without `estimated_usd` is not $0: it is counted as unpriced, and a day with only unpriced rows has
- * no figure at all (null), never a "$0.00" that reads as "nothing was spent".
+ * What the pipeline spent today, from the cost ledger rows of the owner's day. The ledger is MIRRORED (nightly), so a
+ * figure is only shown when the newest `synced_at` is on the owner's day: before that, "$0.00" would be the mirror's age,
+ * not a measurement. A row without `estimated_usd` is not $0: it is counted as unpriced, and a day with only unpriced rows
+ * has no figure at all.
  */
-export function spendToday(rows: { quantity?: number | null; estimated_usd?: number | string | null }[]): SpendToday {
+export function spendToday(input: {
+  rows: { quantity?: number | null; estimated_usd?: number | string | null }[] | null;
+  /** The newest `video_costs.synced_at` (any row), or null when it could not be read / there is none. */
+  newestSyncMs: number | null;
+  failed: boolean;
+  nowMs: number;
+}): SpendToday {
+  if (input.failed || input.rows === null) return { kind: "failed" };
+  if (input.newestSyncMs === null || !isOwnerToday(input.newestSyncMs, input.nowMs)) return { kind: "not_synced" };
+  if (input.rows.length >= SPEND_ROW_LIMIT) return { kind: "too_many" };
+  if (input.rows.length === 0) return { kind: "no_rows" };
   let usd = 0;
   let priced = 0;
   let unpriced = 0;
-  for (const r of rows) {
+  for (const r of input.rows) {
     const v = typeof r.estimated_usd === "string" ? Number(r.estimated_usd) : r.estimated_usd;
     if (typeof v === "number" && Number.isFinite(v)) {
       usd += v;
@@ -115,6 +135,5 @@ export function spendToday(rows: { quantity?: number | null; estimated_usd?: num
       unpriced += 1;
     }
   }
-  if (rows.length === 0) return { usd: 0, unpriced: 0, rows: 0 };
-  return { usd: priced > 0 ? usd : null, unpriced, rows: rows.length };
+  return priced > 0 ? { kind: "ok", usd, unpriced } : { kind: "not_priced" };
 }

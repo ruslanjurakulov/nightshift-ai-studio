@@ -69,17 +69,22 @@ export function channelTokenSecret(ref: string): string {
 type PublicKey = { key_id: string; key: string };
 
 async function gh(path: string, init?: RequestInit): Promise<Response> {
-  return fetchWithTimeout(`https://api.github.com/repos/${GITHUB_REPO}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+  try {
+    return await fetchWithTimeout(`https://api.github.com/repos/${GITHUB_REPO}${path}`, {
+      ...init,
+      cache: "no-store",
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch {
+    // A timeout or a dropped connection is "GitHub is not answering", the same code a 5xx maps to, not a raw abort error.
+    throw new Error("github_unavailable");
+  }
 }
 
 /**

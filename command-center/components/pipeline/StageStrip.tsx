@@ -1,6 +1,6 @@
 "use client";
 
-import { timeOfDay } from "@/lib/format";
+import { ownerTimeOfDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 
@@ -46,7 +46,7 @@ function StageNode({ stage, index, words }: { stage: StageView; index: number; w
         <StatusLamp tone={STATE_TONE[stage.state]} label={words[stage.state]} live={stage.state === "RUNNING"} hideLabel size="md" />
       </span>
       <span className="g3-stage-name">{stage.label}</span>
-      <span className="g3-stage-time ns-tc">{stage.ts ? timeOfDay(stage.ts) : "\u2014"}</span>
+      <span className="g3-stage-time ns-tc">{stage.ts ? ownerTimeOfDay(stage.ts) : "\u2014"}</span>
     </li>
   );
 }

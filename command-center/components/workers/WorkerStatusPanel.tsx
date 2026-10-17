@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ownerClock } from "@/lib/owner-time";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ErrorState } from "@/components/ReadError";
 import { useI18n } from "@/lib/i18n/context";
@@ -37,7 +40,16 @@ export function WorkerStatusPanel({
   nowMs: number;
 }) {
   const { t, locale } = useI18n();
+  const router = useRouter();
   const w = t.workers;
+  // The ages are as of the server's clock; ask the server again every minute while the tab is visible so they do not
+  // keep saying "12 seconds ago" an hour later.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") router.refresh();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [router]);
   const views = sortWorkers(rows.map((r) => workerView(r, nowMs)));
 
   return (
@@ -50,6 +62,7 @@ export function WorkerStatusPanel({
       ) : (
         <div className="flex flex-col gap-4">
           <p className="g2-note">{w.subtitle}</p>
+          <p className="g2-note tnum" data-as-of="">{fmt(t.ownerTruth.asOf, { t: ownerClock(nowMs) })}</p>
           {views.length === 0 ? (
             <p className="g2-none">{w.empty}</p>
           ) : (

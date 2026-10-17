@@ -30,6 +30,8 @@ export interface ProviderView {
   tracked?: boolean;
   /** Units used in the window, or null when the spend could not be read / is not tracked. */
   units30: number | null;
+  /** The days `units30` and the per-day figure are averaged over: 30, or fewer when this provider is younger than that. */
+  windowDays?: number;
   usdPerDay: number | null;
   apiBalance: {
     remaining: number | null;
@@ -70,6 +72,9 @@ export function BillingBoard({
   runway,
   githubConfigured,
   spendUnknown = false,
+  spendNoRows = false,
+  lastSync = null,
+  basisDays = 30,
   runwayUnknown = false,
 }: {
   providers: ProviderView[];
@@ -77,6 +82,12 @@ export function BillingBoard({
   githubConfigured: boolean;
   /** The spend ledger or the prices could not be read: the 30-day figure is unknown, not $0. */
   spendUnknown?: boolean;
+  /** The ledger read worked and has no rows: "no rows yet", never a measured $0. */
+  spendNoRows?: boolean;
+  /** When the nightly mirror last wrote a cost row, already formatted; the ledger is only as fresh as this. */
+  lastSync?: string | null;
+  /** The days the headline figure is really averaged over (30, or fewer for a young ledger). */
+  basisDays?: number;
   /** The balance snapshots could not be read: the ElevenLabs panel says so instead of "no data yet". */
   runwayUnknown?: boolean;
 }) {
@@ -110,9 +121,20 @@ export function BillingBoard({
     <div className="rhythm stagger-enter">
       <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-3">
         <StatCard
-          label={t.billing.statBurn30}
-          value={spendUnknown ? t.common.unknown : usd(spend30, locale)}
-          sub={spendUnknown ? t.common.couldNotRead : partial ? t.billing.partialNote : undefined}
+          label={basisDays > 0 && basisDays < 30 ? t.ownerTruth.spendPace : t.billing.statBurn30}
+          value={spendUnknown ? t.common.unknown : spendNoRows ? t.ownerTruth.noRowsYet : usd(spend30, locale)}
+          sub={
+            spendUnknown
+              ? t.common.couldNotRead
+              : [
+                  partial ? t.billing.partialNote : "",
+                  basisDays > 0 && basisDays < 30 ? fmt(t.ownerTruth.basedOnDays, { n: basisDays }) : "",
+                  // The cost ledger is mirrored nightly: say how old it is.
+                  lastSync ? fmt(t.ownerTruth.lastSync, { when: lastSync }) : spendNoRows ? "" : t.ownerTruth.syncUnknown,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || undefined
+          }
         />
         <StatCard
           label={t.billing.statFirstOut}
@@ -270,7 +292,9 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
           <dd>{balance}</dd>
         </div>
         <div>
-          <dt className="g5-k">{t.billing.usage30}</dt>
+          <dt className="g5-k">
+            {p.windowDays !== undefined && p.windowDays < 29.5 ? fmt(t.ownerTruth.usedLastDays, { n: Math.max(1, Math.round(p.windowDays)) }) : t.billing.usage30}
+          </dt>
           <dd>
             {p.tracked === false
               ? t.ownerTruth.notTracked

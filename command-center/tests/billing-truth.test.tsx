@@ -6,7 +6,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
-import { EMPTY, FAILED, esc, supabaseStub, type StubResult } from "./helpers/supabaseStub";
+import { EMPTY, FAILED, esc, type StubResult } from "./helpers/supabaseStub";
+import { arg, has as called, recordingSupabase, type Call, type Res } from "./helpers/recordingStub";
 
 vi.mock("server-only", () => ({}));
 const state = vi.hoisted(() => ({ client: null as unknown }));
@@ -44,13 +45,21 @@ const iso = (daysAgo: number) => new Date(NOW - daysAgo * 86_400_000).toISOStrin
 const has = (html: string, text: string) => html.includes(esc(text));
 
 type Tables = Record<string, StubResult>;
+/** What a `video_costs` page request resolves to; defaults to the table's scripted answer. */
+let costPage: ((calls: Call[]) => Res) | null = null;
+let stub = recordingSupabase(() => ({ data: [], error: null }));
 async function page(tables: Tables): Promise<string> {
-  state.client = supabaseStub((name) => tables[name] ?? EMPTY);
+  stub = recordingSupabase((table, calls) => {
+    if (table === "video_costs" && costPage) return costPage(calls);
+    return (tables[table] as Res | undefined) ?? (EMPTY as Res);
+  });
+  state.client = stub.client;
   return renderToStaticMarkup(await BillingPage());
 }
 const ok = (data: unknown[]): StubResult => ({ data, error: null });
 
 beforeEach(() => {
+  costPage = null;
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
 });
 afterEach(() => vi.useRealTimers());
@@ -139,10 +148,24 @@ describe("days left", () => {
 });
 
 describe("the spend read is paged and says when it was cut", () => {
-  it("a ledger bigger than the ceiling prints the 'cut at N rows' note", async () => {
-    const full = Array.from({ length: 1000 }, (_, i) => ({ unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: iso(1 + i / 1000), video_id: `v${i}`, channel_id: "c" }));
-    const html = await page({ video_costs: ok(full) });
-    expect(html).toMatch(/cut at 20,?000 rows/);
+  /** A ledger of `n` rows with unique ids, answering exactly the range asked (like PostgREST with a big max_rows). */
+  const ledger = (n: number) => (calls: Call[]): Res => {
+    const [from, to] = (calls.find(([m]) => m === "range")?.[1] ?? [0, 499]) as [number, number];
+    const data = [];
+    for (let i = from; i <= Math.min(to, n - 1); i++) data.push({ id: n - i, unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: iso(1 + i / 100000), video_id: `v${i}`, channel_id: "c", synced_at: iso(0.1) });
+    return { data, error: null, count: n };
+  };
+  it("a ledger bigger than the ceiling (20,000 rows) prints the 'cut at N rows' note, with the rows it did read", async () => {
+    costPage = ledger(30000);
+    const html = await page({});
+    expect(html).toMatch(/cut at 20,000 rows/);
+  });
+  it("a ledger exactly at the ceiling is read whole, no note", async () => {
+    costPage = ledger(1800);
+    const html = await page({});
+    expect(html).not.toMatch(/cut at/);
+    const pages = stub.of("video_costs", "range");
+    expect(pages.map((q) => arg(q, "range"))).toEqual([0, 500, 1000, 1500]);
   });
   it("a short ledger prints no note", async () => {
     const html = await page({ video_costs: ok([]) });
@@ -150,3 +173,56 @@ describe("the spend read is paged and says when it was cut", () => {
   });
 });
 
+describe("what the page asks the database (recorded)", () => {
+  it("video_costs: newest first with the id tie-break, 500 a page with the exact count, since 90 days", async () => {
+    await page({});
+    const [first] = stub.of("video_costs");
+    expect(called(first, "order", "recorded_at", { ascending: false })).toBe(true);
+    expect(called(first, "order", "id", { ascending: false })).toBe(true);
+    expect(first.calls.find(([m]) => m === "range")?.[1]).toEqual([0, 499]);
+    expect(JSON.stringify(first.calls.find(([m]) => m === "select")?.[1][1])).toBe(JSON.stringify({ count: "exact" }));
+    expect(String(first.calls.find(([m]) => m === "select")?.[1][0])).toContain("id,");
+    const since = Date.parse(String(arg(first, "gte", 1)));
+    expect(Math.abs(since - (NOW - 90 * 86_400_000))).toBeLessThan(2000);
+  });
+  it("it reads back to the earliest top-up (so its balance is true)", async () => {
+    await page({ provider_topups: ok([{ provider: "kling", amount_usd: 50, paid_at: iso(120) }]) });
+    const since = Date.parse(String(arg(stub.of("video_costs")[0], "gte", 1)));
+    expect(Math.abs(since - (NOW - 120 * 86_400_000))).toBeLessThan(2000);
+  });
+  it("but never past 180 days, and says so; the balance that depends on the older top-up is unknown", async () => {
+    const html = await page({
+      provider_topups: ok([{ provider: "kling", amount_usd: 50, paid_at: iso(300) }]),
+      provider_billing_settings: ok([{ provider: "kling", usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: false, auto_recharge_on_provider: false, low_balance_days: 3 }]),
+    });
+    const since = Date.parse(String(arg(stub.of("video_costs")[0], "gte", 1)));
+    expect(Math.abs(since - (NOW - 180 * 86_400_000))).toBeLessThan(2000);
+    expect(has(html, en.ownerTruth.spendHorizon.replace("{n}", "180"))).toBe(true);
+    expect(lasts(html, "Kling")).toBe(en.billing.unknown);
+  });
+});
+
+describe("the ledger is only as fresh as the nightly mirror", () => {
+  const row = (syncedDaysAgo: number) => ({ id: 1, unit: "video_gen_clips", quantity: 3, stage: "broll:kling", recorded_at: iso(1), video_id: "v1", channel_id: "c", synced_at: iso(syncedDaysAgo) });
+  it("says when it last synced", async () => {
+    const html = await page({ video_costs: ok([row(0.2)]) });
+    expect(html).toMatch(/last sync (today|yesterday) \d\d:\d\d/);
+  });
+  it("no rows at all is 'no rows yet', never a measured $0.00", async () => {
+    const html = await page({ video_costs: ok([]) });
+    expect(has(html, en.ownerTruth.noRowsYet)).toBe(true);
+    expect(html).not.toMatch(/\$0\.00/);
+  });
+  it("a young provider's figures are labelled with their own window ('last 2 days'), not 30", async () => {
+    const html = await page({
+      video_costs: ok([
+        { id: 2, unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: iso(25), video_id: "v0", channel_id: "c", synced_at: iso(0.2) },
+        { id: 1, unit: "video_gen_clips", quantity: 10, stage: "broll:kling", recorded_at: iso(2), video_id: "v1", channel_id: "c", synced_at: iso(0.2) },
+      ]),
+      provider_billing_settings: ok([{ provider: "kling", usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: false, auto_recharge_on_provider: false, low_balance_days: 3 }]),
+    });
+    expect(has(card(html, "Kling"), en.ownerTruth.usedLastDays.replace("{n}", "2"))).toBe(true);
+    // 10 clips in 2 days at $1 is $5 a day, not $0.33
+    expect(card(html, "Kling")).toContain("$5.00");
+  });
+});

@@ -1,6 +1,6 @@
 import { formatAgo, naWord } from "@/lib/date-format";
 import { formatNumber } from "@/lib/number-format";
-import { formatOwnerTime, isOwnerToday, ownerClock } from "@/lib/owner-time";
+import { formatOwnerStamp, formatOwnerTime, isOwnerToday as isOwnerTodayMs, ownerClock } from "@/lib/owner-time";
 
 /** Formatting helpers. Everything renders "N/A" for null/undefined so the UI
  *  always distinguishes real data from missing data. */
@@ -66,27 +66,59 @@ export function relativeTime(iso: string | null | undefined, locale?: string, no
 }
 
 /**
- * The time of day the owner reads, 24 hours with seconds ("13:53:41"), in Tashkent time (lib/owner-time.ts): not the
- * runtime's zone and not AM/PM, so a server in UTC and a phone in Tashkent print the same text.
+ * The time of day in the viewer's own locale and zone ("1:53:41 PM"), as this always was: customer pages use it. It
+ * differs between a server in UTC and a phone in another zone, so it is NOT hydration-safe; operator pages use
+ * `ownerTimeOfDay` below.
  */
 export function timeOfDay(iso: string | null | undefined): string {
+  if (!iso) return "--:--:--";
+  const d = parseStoredTime(iso);
+  if (d === null) return "--:--:--";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+/** Is the stored timestamp on today's UTC day. Customer pages; the owner's day is `isOwnerToday`. */
+export function isToday(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const d = parseStoredTime(iso);
+  if (d === null) return false;
+  const now = new Date();
+  return (
+    d.getUTCFullYear() === now.getUTCFullYear() &&
+    d.getUTCMonth() === now.getUTCMonth() &&
+    d.getUTCDate() === now.getUTCDate()
+  );
+}
+
+/**
+ * OPERATOR pages only: the time of day the owner reads, 24 hours with seconds ("13:53:41"), in Tashkent time
+ * (lib/owner-time.ts), so a server in UTC and the owner's phone print the same text.
+ */
+export function ownerTimeOfDay(iso: string | null | undefined): string {
   if (!iso) return "--:--:--";
   const ms = storedMs(iso);
   return ms === null ? "--:--:--" : ownerClock(ms, true);
 }
 
-/** "bugun 13:53" / "kecha 22:10" / "12 okt 13:53" (ru/en equivalents) for a stored timestamp, in Tashkent time. */
+/** OPERATOR pages only: "bugun 13:53" / "kecha 22:10" / "12 okt 13:53" (ru/en equivalents), in Tashkent time. */
 export function ownerTime(iso: string | null | undefined, locale?: string, nowMs: number = Date.now()): string {
   if (!iso) return naWord(locale);
   const ms = storedMs(iso);
   return ms === null ? iso : formatOwnerTime(ms, locale, nowMs);
 }
 
-/** Is the stored timestamp on the owner's calendar day (Tashkent), not the UTC day. */
-export function isToday(iso: string | null | undefined, nowMs: number = Date.now()): boolean {
+/** OPERATOR pages only: a stamp with its full date and seconds ("17 okt 2026 13:53:41", "bugun 13:53:41"), in Tashkent time. */
+export function ownerStamp(iso: string | null | undefined, locale?: string, nowMs: number = Date.now()): string {
+  if (!iso) return naWord(locale);
+  const ms = storedMs(iso);
+  return ms === null ? iso : formatOwnerStamp(ms, locale, nowMs);
+}
+
+/** OPERATOR pages only: is the stored timestamp on the owner's calendar day (Tashkent), not the UTC day. */
+export function isOwnerToday(iso: string | null | undefined, nowMs: number = Date.now()): boolean {
   if (!iso) return false;
   const ms = storedMs(iso);
-  return ms !== null && isOwnerToday(ms, nowMs);
+  return ms !== null && isOwnerTodayMs(ms, nowMs);
 }
 
 /** Human label + tone for an event/agent status string. */

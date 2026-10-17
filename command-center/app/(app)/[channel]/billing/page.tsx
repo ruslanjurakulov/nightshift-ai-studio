@@ -14,6 +14,7 @@ import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 import { readAllPages } from "@/lib/paged-read";
+import { num, ownerTime } from "@/lib/format";
 import { timed } from "@/lib/server/read-timeout";
 import { fmt } from "@/lib/i18n";
 import { channelInScope, channelName, inSelection, isScoped, orgWide, scopeQuery } from "@/lib/channels";
@@ -22,16 +23,22 @@ import {
   BILLED_PROVIDERS,
   daysLeft,
   elevenLabsRunway,
-  historyDays,
+  firstUseMs,
   isTracked,
   latestBalance,
   ledgerBalanceUsd,
   oldestRowMs,
   providerBurn,
+  providerHistoryStart,
   type BalanceRow,
   type BillingSettingsRow,
   type TopupRow,
 } from "@/lib/billing";
+
+/** A day, and how far back the spend ledger is ever read for a top-up older than 90 days. */
+const DAY = 86_400_000;
+const HORIZON_DAYS = 180;
+type CostPageRow = LedgerRow & { id?: number; synced_at?: string | null };
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,12 +57,14 @@ export default async function BillingPage() {
   // Reads the operator's key names with the server's GitHub token: signed out
   // → /login, anyone else → 404, before any read (BR-H-001).
   const mayReadGithub = await guardOperatorPage();
-  const { t } = await getDictionary();
+  // One clock for the whole render: the window edges and the rows they are tested against must agree to the millisecond.
+  const NOW = Date.now();
+  const { t, locale } = await getDictionary();
   const tt = t.ownerTruth;
   const supabase = await createClient();
   const { channels, selection, scope } = await getChannelContext();
 
-  let costs: LedgerRow[] = [];
+  let costs: CostPageRow[] = [];
   let balances: BalanceRow[] = [];
   let settings: BillingSettingsRow[] = [];
   let topups: TopupRow[] = [];
@@ -67,7 +76,11 @@ export default async function BillingPage() {
   let topupsFailed = false;
   // The ledger read stopped at its ceiling: only the newest rows are counted.
   let costsCut = false;
+  // The earliest top-up is older than the longest look-back (180 days): balances that depend on it are unknown.
+  let horizonCapped = false;
   let coveredFromMs: number | null = null;
+  // The newest time the nightly mirror wrote a cost row: the ledger is only as fresh as this.
+  let lastSyncMs: number | null = null;
 
   // Provider accounts are the platform operator's (0018 gives them to the
   // default organization). Inside any other organization — including when a
@@ -95,31 +108,41 @@ export default async function BillingPage() {
     topups = (tp?.data ?? []) as TopupRow[];
     migrationMissing = [b?.error, s?.error, tp?.error].some((e) => e?.code === "42P01");
 
-    const now = Date.now();
     const firstTopup = Math.min(Infinity, ...topups.map((x) => Date.parse(x.paid_at)).filter(Number.isFinite));
-    const sinceMs = Math.min(now - 90 * 86_400_000, Number.isFinite(firstTopup) ? firstTopup : Infinity);
+    // Back 90 days, or to the earliest top-up so its balance is true, but never past 180 days (a long look-back is a long read).
+    const wantMs = Math.min(NOW - 90 * DAY, Number.isFinite(firstTopup) ? firstTopup : Infinity);
+    const sinceMs = Math.max(wantMs, NOW - HORIZON_DAYS * DAY);
+    horizonCapped = wantMs < sinceMs;
     const sinceIso = new Date(sinceMs).toISOString();
     // In the operator's view the ledger stays whole: the provider keys are shared by every channel, so their burn
     // and runway are only true when measured over everything they paid for. Unit economics is narrowed to the view
     // below. In a tenant's view only its own channels are read. Newest first with a unique tie-break, a page at a
-    // time: one `.limit(10000)` came back as an arbitrary 1,000 rows (PostgREST's cap).
-    const read = await readAllPages<LedgerRow>((from, to) => {
-      const base = supabase
-        .from("video_costs")
-        .select("unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd");
-      return timed(
-        (operatorView ? base : scopeQuery(base, orgWide(scope)))
-          .gte("recorded_at", sinceIso)
-          .order("recorded_at", { ascending: false })
-          .order("id", { ascending: false })
-          .range(from, to),
-      ) as unknown as PromiseLike<{ data: LedgerRow[] | null; error: unknown }>;
-    });
+    // time (lib/paged-read.ts): one `.limit(10000)` came back as an arbitrary 1,000 rows (PostgREST's cap). `id` is read
+    // so a row repeated by an insert between two pages is counted once.
+    const read = await readAllPages<CostPageRow>(
+      (from, to) => {
+        const base = supabase
+          .from("video_costs")
+          .select("id,unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd,synced_at", { count: "exact" });
+        return timed(
+          (operatorView ? base : scopeQuery(base, orgWide(scope)))
+            .gte("recorded_at", sinceIso)
+            .order("recorded_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to),
+        ) as unknown as PromiseLike<{ data: CostPageRow[] | null; error: unknown; count: number | null }>;
+      },
+      { keyOf: (r) => r.id },
+    );
     costsFailed = Boolean(read.error);
     costs = read.rows;
     costsCut = read.truncated;
+    for (const r of costs) {
+      const t = r.synced_at ? Date.parse(r.synced_at) : NaN;
+      if (Number.isFinite(t) && (lastSyncMs === null || t > lastSyncMs)) lastSyncMs = t;
+    }
     // Spend is complete from here on: back to the cut-off, or only as far as the oldest row when the read stopped short.
-    coveredFromMs = costsCut ? (oldestRowMs(costs) ?? now) : sinceMs;
+    coveredFromMs = costsCut ? (oldestRowMs(costs) ?? NOW) : sinceMs;
   }
 
   // Unit economics is per channel (a price per video is a property of what the
@@ -160,17 +183,22 @@ export default async function BillingPage() {
   }
   const secretOf = new Map(PROVIDERS.map((p) => [p.id, p.secretName]));
 
-  // The window the per-day figures are averaged over: 30 days, or the ledger's history when that is shorter.
-  const history = historyDays(costs);
+  const firstTopupOf = (id: string): number | null => {
+    const t = topups.filter((x) => x.provider === id).map((x) => Date.parse(x.paid_at)).filter(Number.isFinite);
+    return t.length ? Math.min(...t) : null;
+  };
   // Everything that needs the spend ledger AND the prices is unknown when either read failed.
   const usageUnknown = costsFailed || settingsFailed;
+  // An empty ledger measured nothing: burn is unknown ("no rows yet"), not a measured zero.
+  const burnUnknown = usageUnknown || costs.length === 0;
 
   const views: ProviderView[] = BILLED_PROVIDERS.map((p) => {
     const st = settings.find((x) => x.provider === p.id) ?? null;
     const price = st?.usd_per_unit === null || st?.usd_per_unit === undefined ? null : Number(st.usd_per_unit);
     const tracked = isTracked(p);
     const autoRecharge = st?.auto_recharge_on_provider ?? false;
-    const burn = providerBurn(p, costs, price, 30, Date.now(), history);
+    // The per-day figures are averaged over 30 days, or over THIS provider's own history when that is shorter.
+    const burn = providerBurn(p, costs, price, 30, NOW, providerHistoryStart(firstUseMs(p, costs), firstTopupOf(p.id)));
     const snap = balancesFailed ? null : latestBalance(balances, p.id);
     const ledgerUsd =
       usageUnknown || topupsFailed ? null : ledgerBalanceUsd(p, topups, costs, price, coveredFromMs);
@@ -183,6 +211,7 @@ export default async function BillingPage() {
     if (usageUnknown) left = null;
     else if (!tracked) left = "untracked";
     else if (autoRecharge) left = "auto";
+    else if (burnUnknown) left = null;
     else if (snap && snap.remaining !== null && p.id === "elevenlabs") left = daysLeft(snap.remaining, burn.unitsPerDay);
     else if (ledgerUsd !== null) left = daysLeft(ledgerUsd, burn.usdPerDay);
     // No balance known (no snapshot, no top-up logged, or a negative ledger) is unknown, even when nothing was spent:
@@ -198,8 +227,9 @@ export default async function BillingPage() {
       keyUnknown: keysUnknown,
       price: settingsFailed ? null : price,
       tracked,
-      units30: usageUnknown || !tracked ? null : burn.units,
-      usdPerDay: usageUnknown || !tracked ? null : burn.usdPerDay,
+      units30: burnUnknown || !tracked ? null : burn.units,
+      windowDays: burn.windowDays,
+      usdPerDay: burnUnknown || !tracked ? null : burn.usdPerDay,
       apiBalance: snap
         ? { remaining: snap.remaining, total: snap.total, unit: snap.unit, tier: snap.tier, resetsAt: snap.resets_at, checkedAt: snap.checked_at }
         : null,
@@ -249,7 +279,14 @@ export default async function BillingPage() {
       {costsCut && (
         <section className="panel">
           <StateBlock role="status" tone="warn" compact>
-            {fmt(tt.spendCut, { n: costs.length })}
+            {fmt(tt.spendCut, { n: num(costs.length) })}
+          </StateBlock>
+        </section>
+      )}
+      {horizonCapped && (
+        <section className="panel">
+          <StateBlock role="status" tone="warn" compact>
+            {fmt(tt.spendHorizon, { n: HORIZON_DAYS })}
           </StateBlock>
         </section>
       )}
@@ -260,6 +297,9 @@ export default async function BillingPage() {
           runway={runway}
           githubConfigured={isGithubConfigured}
           spendUnknown={usageUnknown}
+          spendNoRows={!costsFailed && costs.length === 0}
+          lastSync={lastSyncMs === null ? null : ownerTime(new Date(lastSyncMs).toISOString(), locale, NOW)}
+          basisDays={Math.round(Math.max(0, ...views.filter((v) => v.units30 !== null && v.units30 > 0).map((v) => v.windowDays ?? 0)))}
           runwayUnknown={balancesFailed}
         />
       ) : (

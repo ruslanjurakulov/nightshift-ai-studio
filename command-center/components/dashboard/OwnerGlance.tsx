@@ -19,6 +19,8 @@ export interface GlanceTile {
   tone: GlanceTone;
   /** Spans both columns: a line of names rather than a figure. */
   wide?: boolean;
+  /** The READ failed (or timed out), so a Retry is worth offering. A figure that is null for another reason (no balance feed, nothing priced, not synced yet) is not. */
+  unknown?: boolean;
 }
 
 const TONE_VAR: Record<GlanceTone, string | undefined> = {

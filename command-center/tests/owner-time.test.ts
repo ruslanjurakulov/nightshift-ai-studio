@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatOwnerTime, isOwnerToday, ownerClock, ownerDateFull, ownerDayStartMs, ownerParts } from "../lib/owner-time";
-import { isToday, num, ownerTime, relativeTime, timeOfDay } from "../lib/format";
+import { isOwnerToday as isOwnerTodayIso, isToday, num, ownerStamp, ownerTime, ownerTimeOfDay, relativeTime, timeOfDay } from "../lib/format";
 
 /** 2026-10-17 08:53 UTC is 13:53 in Tashkent (UTC+5, no daylight saving). */
 const NOW = Date.UTC(2026, 9, 17, 8, 53, 0);
@@ -72,19 +72,34 @@ describe("'today' changes at midnight in Tashkent, not in UTC", () => {
     expect(ownerDayStartMs(NOW)).toBe(midnight);
     expect(ownerDayStartMs(at(2026, 10, 16, 22, 0))).toBe(midnight);
   });
-  it("lib/format isToday follows it (a stored bare UTC timestamp too)", () => {
-    expect(isToday("2026-10-16T19:30:00", NOW)).toBe(true);
-    expect(isToday("2026-10-16T18:30:00", NOW)).toBe(false);
-    expect(isToday(null, NOW)).toBe(false);
+  it("lib/format isOwnerToday follows it (a stored bare UTC timestamp too)", () => {
+    expect(isOwnerTodayIso("2026-10-16T19:30:00", NOW)).toBe(true);
+    expect(isOwnerTodayIso("2026-10-16T18:30:00", NOW)).toBe(false);
+    expect(isOwnerTodayIso(null, NOW)).toBe(false);
+  });
+  it("customer pages keep the UTC-day isToday and the locale timeOfDay (they are not hard-coded to Tashkent)", () => {
+    const real = Date;
+    const now = new Date();
+    const sameUtcDay = new real(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 1)).toISOString();
+    const yesterday = new real(now.getTime() - 36 * 3600 * 1000).toISOString();
+    expect(isToday(sameUtcDay)).toBe(true);
+    expect(isToday(yesterday)).toBe(false);
+    expect(timeOfDay("2026-10-17T18:19:41Z")).toBe(new Date("2026-10-17T18:19:41Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   });
 });
 
 describe("lib/format is deterministic", () => {
-  it("timeOfDay is 24h Tashkent whatever the runtime zone", () => {
-    expect(timeOfDay("2026-10-17T18:19:41Z")).toBe("23:19:41");
-    expect(timeOfDay("2026-10-17T18:19:41")).toBe("23:19:41");
-    expect(timeOfDay(null)).toBe("--:--:--");
-    expect(timeOfDay("nonsense")).toBe("--:--:--");
+  it("ownerTimeOfDay is 24h Tashkent whatever the runtime zone", () => {
+    expect(ownerTimeOfDay("2026-10-17T18:19:41Z")).toBe("23:19:41");
+    expect(ownerTimeOfDay("2026-10-17T18:19:41")).toBe("23:19:41");
+    expect(ownerTimeOfDay(null)).toBe("--:--:--");
+    expect(ownerTimeOfDay("nonsense")).toBe("--:--:--");
+  });
+  it("ownerStamp: seconds today, the full date with the year on any other day", () => {
+    expect(ownerStamp("2026-10-17T08:53:41Z", "uz", NOW)).toBe("bugun 13:53:41");
+    expect(ownerStamp("2026-10-10T08:53:41Z", "uz", NOW)).toBe("10 okt 2026 13:53:41");
+    expect(ownerStamp("2025-10-10T08:53:41Z", "en", NOW)).toBe("10 Oct 2025 13:53:41");
+    expect(ownerStamp("2026-10-10T08:53:41Z", "ru", NOW)).toBe("10 окт. 2026 13:53:41");
   });
   it("ownerTime reads a stored timestamp", () => {
     expect(ownerTime("2026-10-16T17:10:00", "uz", NOW)).toBe("kecha 22:10");

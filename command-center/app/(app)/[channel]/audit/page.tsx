@@ -8,7 +8,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState } from "@/components/ui";
 import { PageHeader } from "@/components/PageHeader";
 import { getDictionary } from "@/lib/i18n/server";
-import { ownerTime } from "@/lib/format";
+import { ownerStamp } from "@/lib/format";
 import { formatAuditDetail, type AuditRow } from "@/lib/audit";
 import { ScrollText } from "lucide-react";
 import { DataList } from "@/components/g4/DataList";
@@ -19,9 +19,9 @@ export const revalidate = 0;
 
 const LIMIT = 100;
 
-/** The time in the owner's own clock: 24 hours, Tashkent, "bugun 13:53" (lib/owner-time.ts). */
+/** The time in the owner's own clock, to the second: "bugun 13:53:41", and the full date with the year for an older row (lib/owner-time.ts). */
 function renderAt(iso: string, locale: string): string {
-  return ownerTime(iso, locale);
+  return ownerStamp(iso, locale);
 }
 
 export default async function AuditPage() {

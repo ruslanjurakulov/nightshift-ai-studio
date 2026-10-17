@@ -6,7 +6,7 @@ import { Chip, ChipRow } from "@/components/ui/Chip";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
-import { parseStoredTime, statusTone, storedMs, timeOfDay } from "@/lib/format";
+import { parseStoredTime, statusTone, storedMs, ownerTimeOfDay } from "@/lib/format";
 
 type RangeKey = "today" | "yesterday" | "7d" | "30d" | "custom";
 const RANGES: { key: RangeKey; label: keyof Dictionary["ops"] }[] = [
@@ -123,7 +123,7 @@ export function TimeMachine({ initial }: { initial: SystemEventRow[] }) {
                         <li key={e.event_key}>
                           <button type="button" onClick={() => setSelected(e)} aria-pressed={on} className="g3-tm-event">
                             <StatusLamp tone={tone} label={e.status ?? t.status.idle} hideLabel />
-                            <span className="tnum g3-tm-time">{timeOfDay(e.ts)}</span>
+                            <span className="tnum g3-tm-time">{ownerTimeOfDay(e.ts)}</span>
                             <span className="g3-tm-agent">{e.agent ?? t.common.system}</span>
                             <span className="g3-tm-name">{e.event}</span>
                           </button>
