@@ -6,6 +6,10 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isChannelInCurrentOrg } from "@/lib/channels-server";
 import { atLeast, resolveRole, type Role } from "@/lib/auth/roles";
+import { organizationsAreExpected } from "@/lib/orgs";
+import { mfaDecision, mfaVerifyUrl, type MfaAction } from "@/lib/security/admin-mfa";
+import { adminMfaMode, logPasswordOnlyAdmin, readMfaState, type MfaUser } from "@/lib/security/admin-mfa-server";
+import { normalizeAal } from "@/lib/security/aal";
 
 /**
  * Role checks for actions that belong to an ORGANIZATION (migration 0018).
@@ -134,7 +138,11 @@ export async function isPlatformAdmin(): Promise<boolean> {
  *   the pre-0018 answer below and drew the whole console for anyone who got
  *   past the middleware.
  * - Before 0018 there are no customer organizations: every signed-in member
- *   is the operator's team, as before.
+ *   is the operator's team, as before. That reading exists only OUTSIDE
+ *   production (`organizationsAreExpected`): a production database always has
+ *   0018, so there "organizations are not here" can only be a failure — a stale
+ *   schema cache, a dropped grant, a bad migration — and it must not turn every
+ *   signed-in account into the operator. It reads as no (fail closed).
  * - With organizations: platform owner/admin only (is_platform_admin). An
  *   organization lookup that failed reads as no — fail closed.
  */
@@ -142,9 +150,30 @@ export const isOperator = cache(async (): Promise<boolean> => {
   if (!isSupabaseConfigured) return true;
   if (!(await getUser())) return false;
   const org = await getOrgContext();
-  if (!org.supported) return !org.unavailable;
+  if (!org.supported) return !org.unavailable && !organizationsAreExpected();
   return isPlatformAdmin();
 });
+
+/**
+ * The application-layer second-factor gate for the CURRENT session
+ * (lib/security/admin-mfa.ts has the table and the lockout-safety rule).
+ *
+ * Cheap where it can be: mode `off` reads nothing, and a session that is
+ * already aal2 never asks who the admin is. A caller that has just established
+ * who the admin is (isOperator) passes it as `adminHint`, so no second lookup
+ * is made. A signed-out caller, or a Command Center with no Supabase, is
+ * `allow` — the other guards own those cases.
+ */
+export async function currentMfaAction(user?: MfaUser | null, adminHint?: boolean): Promise<MfaAction> {
+  const mode = adminMfaMode();
+  if (mode === "off") return "allow";
+  const state = await readMfaState(user === undefined ? await getUser() : user);
+  if (!state) return "allow";
+  const admin = normalizeAal(state.aal) === "aal2" ? false : (adminHint ?? (await isPlatformAdmin()));
+  const action = mfaDecision({ mode, admin, aal: state.aal, hasVerifiedFactor: state.hasVerifiedFactor });
+  if (action === "warn_complete") logPasswordOnlyAdmin(state.userId);
+  return action;
+}
 
 /**
  * For a server-rendered PAGE that reads the platform operator's own things
@@ -165,12 +194,19 @@ export const isOperator = cache(async (): Promise<boolean> => {
  */
 export async function guardOperatorPage(): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
-  if (!(await getUser())) redirect("/login");
+  const user = await getUser();
+  if (!user) redirect("/login");
   if (!(await isOperator())) notFound();
+  // `enforce`: an operator with a factor who has not entered the code does not
+  // get a page that spends the server's credentials. Never for an operator
+  // without a factor (nothing could unblock them): lib/security/admin-mfa.ts.
+  if ((await currentMfaAction(user, true)) === "challenge") redirect(mfaVerifyUrl());
   return true;
 }
 
-export type OperatorCheck = { ok: true } | { ok: false; status: 401 | 403; error: "unauthorized" | "forbidden" };
+export type OperatorCheck =
+  | { ok: true }
+  | { ok: false; status: 401 | 403; error: "unauthorized" | "forbidden" | "mfa_required" };
 
 /**
  * For API routes that read or spend the platform operator's own things — the
@@ -179,9 +215,15 @@ export type OperatorCheck = { ok: true } | { ok: false; status: 401 | 403; error
  * (403): a platform owner/admin once organizations exist, fail closed on a
  * failed lookup. A customer organization's admin is NOT an operator; their
  * own channel's actions go through requireOrgRole instead.
+ *
+ * In `NIGHTSHIFT_ADMIN_MFA=enforce`, an operator who HAS a second factor but
+ * whose session is password-only gets 401 `mfa_required` (an operator with no
+ * factor is never refused here: lib/security/admin-mfa.ts).
  */
 export async function requireOperator(): Promise<OperatorCheck> {
   const user = await getUser();
   if (!user) return { ok: false, status: 401, error: "unauthorized" };
-  return (await isOperator()) ? { ok: true } : { ok: false, status: 403, error: "forbidden" };
+  if (!(await isOperator())) return { ok: false, status: 403, error: "forbidden" };
+  if ((await currentMfaAction(user, true)) === "challenge") return { ok: false, status: 401, error: "mfa_required" };
+  return { ok: true };
 }

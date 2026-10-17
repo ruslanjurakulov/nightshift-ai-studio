@@ -102,3 +102,14 @@ export function isMissingFunction(error: { code?: string; message?: string } | n
   if (error.code === "PGRST202" || error.code === "42883") return true;
   return /could not find the function|function .* does not exist/i.test(error.message ?? "");
 }
+
+/**
+ * Must organizations (migration 0018) exist in this process? True in a
+ * production build, where the database always has 0018: there, "the function
+ * is missing" is a failure to fail closed on, not the pre-0018 world. False in
+ * development and tests, where a database without 0018 is still a normal thing
+ * to run against. See isOperator (lib/auth/org-roles.ts).
+ */
+export function organizationsAreExpected(env: string | undefined = process.env.NODE_ENV): boolean {
+  return env === "production";
+}

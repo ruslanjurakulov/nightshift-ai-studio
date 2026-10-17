@@ -8,6 +8,7 @@ import { joinFromCookie } from "@/lib/server/friend-invites";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
 import { DEFAULT_AFTER_AUTH, safeLoginReturn } from "@/lib/safe-redirect";
 import { callbackErrorFor, type CallbackError } from "@/lib/signup";
+import { hasVerifiedTotpFactor, mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { GOOGLE_PROVIDER, googleCallbackError, googleGate, type GoogleError } from "@/lib/google-signin";
 import {
   FORGOT_PASSWORD_PATH,
@@ -82,6 +83,18 @@ const NO_FRAME: Record<string, string> = {
   "x-frame-options": "DENY",
   "content-security-policy": "frame-ancestors 'none'",
 };
+
+/**
+ * Where a freshly made session goes. A link, a code exchange or Google makes a
+ * password-class (aal1) session; an account with a verified authenticator is
+ * not signed in until the code is entered, so it goes to /login/verify first
+ * (which sends it on to `next` once it is). Everyone else goes straight on.
+ * Never used for a password-recovery session (that one is for /reset-password;
+ * the code is asked the moment it tries to enter the app).
+ */
+function afterSignIn(user: Parameters<typeof hasVerifiedTotpFactor>[0], next: string): string {
+  return hasVerifiedTotpFactor(user) ? mfaVerifyUrl(next) : next;
+}
 
 function redirect(url: URL, status = 307) {
   const res = NextResponse.redirect(url, status);
@@ -186,7 +199,7 @@ export async function GET(request: Request) {
       await joinFromCookie(supabase);
       // The username chosen at sign-up goes on the account now that it has a session (quiet; never blocks).
       await applyPendingHandle(supabase as unknown as HandleClient);
-      return redirect(new URL(next, origin));
+      return redirect(new URL(afterSignIn(data?.user ?? data?.session?.user, next), origin));
     }
     if (tokenHash && type && (CONFIRM_TYPES.includes(type) || type === RECOVERY_TYPE)) {
       const rec = type === RECOVERY_TYPE;
@@ -258,8 +271,8 @@ export async function POST(request: Request) {
     if (error) return toLogin(origin, callbackErrorFor(error.code), 303);
     await joinFromCookie(supabase);
     await applyPendingHandle(supabase as unknown as HandleClient);
+    return redirect(new URL(afterSignIn(data?.user ?? data?.session?.user, next), origin), 303);
   } catch {
     return pending.rec ? toForgot(origin, "expired", 303) : toLogin(origin, "link_invalid", 303);
   }
-  return redirect(new URL(next, origin), 303);
 }

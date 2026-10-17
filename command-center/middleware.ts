@@ -23,6 +23,8 @@ import {
 import { authorizeReturnPath } from "@/lib/oauth/authorize";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
+import { MFA_VERIFY_PATH, parseAdminMfaMode } from "@/lib/security/admin-mfa";
+import { mfaMiddlewareAction, type MfaMiddlewareClient } from "@/lib/security/mfa-middleware";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 import {
   FRAME_SRC_HEADER,
@@ -238,6 +240,29 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // Served as-is, with any refreshed auth cookies. The public pages sit outside
   // the channel layout, so they get no channel header.
   if (decision === "pass") return response;
+
+  // The second factor (docs/security/ADMIN_MFA.md). A signed-in app URL or API
+  // call from a password-only session whose account has an authenticator needs
+  // the code first: a page goes to /login/verify, an API route answers 401
+  // `mfa_required`. Admins are only sent in `enforce`; with no factor, or in
+  // `off`, nothing here ever blocks (lib/security/admin-mfa.ts).
+  if (
+    (await mfaMiddlewareAction(supabase as unknown as MfaMiddlewareClient, user, parseAdminMfaMode(process.env.NIGHTSHIFT_ADMIN_MFA))) ===
+    "challenge"
+  ) {
+    let blocked: NextResponse;
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      blocked = NextResponse.json({ error: "mfa_required" }, { status: 401, headers: { "cache-control": "no-store" } });
+    } else {
+      const url = request.nextUrl.clone();
+      url.pathname = MFA_VERIFY_PATH;
+      url.search = `?next=${encodeURIComponent(`${request.nextUrl.pathname}${request.nextUrl.search}`)}`;
+      blocked = NextResponse.redirect(url);
+    }
+    // Any auth cookies the Supabase client just refreshed still reach the browser.
+    response.cookies.getAll().forEach((c) => blocked.cookies.set(c));
+    return blocked;
+  }
 
   // A channelless URL is sent to one that names its channel.
   const redirectTo = channelRedirect(request);

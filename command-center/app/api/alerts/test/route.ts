@@ -11,6 +11,7 @@ import {
   sendSlackWebhook,
   type AlertConfig,
 } from "@/lib/server/alerts";
+import { guardAdminPost } from "@/lib/server/admin-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,11 +56,13 @@ export async function GET() {
   return NextResponse.json(await readConfig());
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!(await requireRole("admin")))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const refused = await guardAdminPost(request, user);
+  if (refused) return refused;
 
   const config = await readConfig();
 

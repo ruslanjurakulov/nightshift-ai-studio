@@ -4,6 +4,7 @@ import { requireOperator } from "@/lib/auth/org-roles";
 import { isMissingFunction } from "@/lib/orgs";
 import { logAudit } from "@/lib/server/audit";
 import { availabilityBlocker, coerceAdminModels, parseAvailabilityRequest } from "@/lib/models-admin";
+import { guardAdminPost } from "@/lib/server/admin-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const access = await requireOperator();
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
+  const refused = await guardAdminPost(request);
+  if (refused) return refused;
 
   let body: unknown;
   try {

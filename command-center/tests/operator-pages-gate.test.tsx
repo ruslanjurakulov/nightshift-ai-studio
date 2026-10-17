@@ -221,6 +221,17 @@ describe("isOperator() is false when nobody is signed in", () => {
     expect(await isOperator()).toBe(true);
   });
 
+  it("in PRODUCTION an unmarked 'not supported' answer is not the pre-0018 world: a signed-in member is NOT the operator", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      state.user = { id: "u-team" };
+      state.org = { supported: false, orgs: [], current: null };
+      expect(await isOperator()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("Supabase not configured (local development): true, as before", async () => {
     state.configured = false;
     expect(await isOperator()).toBe(true);

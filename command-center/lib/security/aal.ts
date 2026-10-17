@@ -15,8 +15,8 @@ export function normalizeAal(level: string | null | undefined): AalLevel | null 
 
 /**
  * True when a gentle "step up" hint should show: the current session is still
- * `aal1`, yet a verified factor exists on the account. A full sign-out/in then
- * enforces `aal2`.
+ * `aal1`, yet a verified factor exists on the account. The way forward is the
+ * code page (/login/verify); signing out and in asks for it too.
  */
 export function needsStepUp(
   currentLevel: string | null | undefined,

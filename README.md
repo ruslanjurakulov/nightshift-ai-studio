@@ -89,7 +89,7 @@ Standing brief: [`CLAUDE.md`](CLAUDE.md). The short version:
 Every finding lives in [`docs/security/LEDGER.md`](docs/security/LEDGER.md) with
 its fix and the test that fails if it comes back. `tests/security` runs against a
 real Postgres. Process and rubric: [`docs/security/README.md`](docs/security/README.md).
-Content-Security-Policy ships report-only: [`docs/security/CSP.md`](docs/security/CSP.md).
+Content-Security-Policy ships report-only: [`docs/security/CSP.md`](docs/security/CSP.md). The sign-in code step and the admin second-factor gate: [`docs/security/ADMIN_MFA.md`](docs/security/ADMIN_MFA.md).
 
 ## Quick start (local)
 

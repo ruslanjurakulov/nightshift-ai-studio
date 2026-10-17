@@ -315,6 +315,18 @@ export function isPublicPath(pathname: string): boolean {
 /** The sign-in page. */
 export const LOGIN_PATH = "/login";
 
+/**
+ * The second step of sign-in: enter the code from the authenticator app. It
+ * needs a session (the password step made one) and is the only place a
+ * password-only session on an account with a factor may be: the gate sends
+ * those sessions here, so the page must never send them back (no loop).
+ */
+export const MFA_VERIFY_PATH = "/login/verify";
+
+export function isMfaVerifyPath(pathname: string): boolean {
+  return normalize(pathname) === MFA_VERIFY_PATH;
+}
+
 export function isLoginPath(pathname: string): boolean {
   // Exact, like every other public path (BR-H-001). The original gate matched
   // the prefix, so `/loginx/providers` and `/login/providers` passed signed
@@ -379,6 +391,8 @@ export function gateDecision(pathname: string, signedIn: boolean, search: string
   // /forgot-password?s=needs_link (and a failed reset link may arrive signed in):
   // that notice page must open for them rather than bounce home.
   if (isForgotPasswordPath(pathname) && hasRecoveryNotice(search)) return "pass";
+  // Signed in: the page decides (it asks the auth server whether a code is needed). Signed out there is nothing to verify.
+  if (isMfaVerifyPath(pathname)) return signedIn ? "pass" : "to-login";
   if (isLoginPath(pathname) || isSignupPath(pathname) || isForgotPasswordPath(pathname)) return signedIn ? "to-home" : "pass";
   // A recovery session is a signed-in one: the page decides (session + the
   // marker the callback set), so the gate neither redirects nor resolves a channel.

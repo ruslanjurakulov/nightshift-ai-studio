@@ -3,6 +3,7 @@ import { getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/server/audit";
 import { dispatchWorkflow, isGithubConfigured } from "@/lib/server/github-secrets";
+import { guardAdminPost } from "@/lib/server/admin-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,10 +13,12 @@ export const dynamic = "force-dynamic";
  * workflow, which asks each provider with a balance API what is left and writes
  * a snapshot. The API keys stay in GitHub Actions; the site never sees them.
  */
-export async function POST() {
+export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const refused = await guardAdminPost(request, user);
+  if (refused) return refused;
   if (!isGithubConfigured) return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
   try {
     await dispatchWorkflow("provider_balances.yml");

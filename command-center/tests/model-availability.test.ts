@@ -121,7 +121,7 @@ function post(body: unknown) {
   return route.POST(
     new Request("http://localhost/api/models/availability", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: "http://localhost" },
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
   );

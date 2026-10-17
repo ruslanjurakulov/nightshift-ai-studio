@@ -120,7 +120,8 @@ function operator() {
 function post(body: unknown) {
   return new Request("http://test.local/api", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    // The browser sends our own Origin on every POST from our pages; the operator routes refuse one without it.
+    headers: { "content-type": "application/json", origin: "http://test.local" },
     body: JSON.stringify(body),
   });
 }

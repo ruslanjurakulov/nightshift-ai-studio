@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { ORG_COOKIE, coerceOrgs, isMissingFunction, resolveCurrentOrg, type OrgSummary } from "@/lib/orgs";
+import { ORG_COOKIE, coerceOrgs, isMissingFunction, organizationsAreExpected, resolveCurrentOrg, type OrgSummary } from "@/lib/orgs";
 
 /**
  * The organization this request is about, resolved on the server.
@@ -48,7 +48,11 @@ export const getOrgContext = cache(async (): Promise<OrgContext> => {
     // Nothing is bound here: a workspace has one person, who created it, and
     // there are no invitations to bind (migrations 0043 and 0091).
     const { data, error } = await supabase.rpc("my_organizations");
-    if (error) return isMissingFunction(error) ? UNSUPPORTED : UNAVAILABLE;
+    // "Function missing" means "0018 is not here yet" only where that can be
+    // true. In production it cannot, so it is a failure like any other and
+    // fails closed (isOperator would otherwise read it as "every signed-in
+    // account is the operator's team").
+    if (error) return isMissingFunction(error) && !organizationsAreExpected() ? UNSUPPORTED : UNAVAILABLE;
     const orgs = coerceOrgs(data);
     const remembered = (await cookies()).get(ORG_COOKIE)?.value;
     return { supported: true, orgs, current: resolveCurrentOrg(remembered, orgs) };

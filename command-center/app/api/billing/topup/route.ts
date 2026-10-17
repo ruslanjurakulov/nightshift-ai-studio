@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/server/audit";
 import { BILLED_PROVIDER_IDS } from "@/lib/billing";
+import { guardAdminPost } from "@/lib/server/admin-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const refused = await guardAdminPost(request, user);
+  if (refused) return refused;
 
   let body: { provider?: unknown; amount_usd?: unknown; note?: unknown };
   try {

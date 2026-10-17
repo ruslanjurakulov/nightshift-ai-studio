@@ -4,6 +4,7 @@ import { requireOperator } from "@/lib/auth/org-roles";
 import { VOICE_PREVIEW_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
 import { dispatchWorkflow, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isVoiceId } from "@/lib/ttsModels";
+import { guardAdminPost } from "@/lib/server/admin-post-guard";
 
 /**
  * Voice preview clips for the Create page (tools/voice_previews.py writes them
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const access = await requireOperator();
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
+  const refused = await guardAdminPost(request);
+  if (refused) return refused;
   let body: { voice_id?: unknown };
   try {
     body = await request.json();
