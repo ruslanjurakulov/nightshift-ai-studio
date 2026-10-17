@@ -7,7 +7,7 @@ Two things ship in 0106:
   ignored. The lab proves the SQL half of that contract: the exact statement
   PostgREST issues works against the index, NULL keys coexist, and the owner's
   one-time script (docs/sql/dedupe-video-costs.sql) writes the same keys the
-  Python mirror does (tests/fixtures/video_cost_keys.json is the shared proof).
+  Python mirror does (tests/fixtures/video_cost_keys.txt is the shared proof).
 * owner_provider_spend(), SECURITY DEFINER over every organization's provider
   costs. The whole defence is that it refuses everyone but a platform
   owner/admin before it reads anything, that anon and the service role cannot
@@ -33,7 +33,7 @@ D = Decimal
 SPEND = "select * from public.owner_provider_spend(%s)"
 COLUMNS = ["day", "provider", "usd", "usd_priced", "unpriced_rows", "units", "unit", "runs"]
 SCRIPT = REPO / "docs" / "sql" / "dedupe-video-costs.sql"
-KEYS = REPO / "tests" / "fixtures" / "video_cost_keys.json"
+KEYS = REPO / "tests" / "fixtures" / "video_cost_keys.txt"
 
 
 def _day(ago=0):

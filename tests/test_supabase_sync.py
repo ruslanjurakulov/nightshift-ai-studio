@@ -318,7 +318,7 @@ class VideoCostRowKeyTestCase(unittest.TestCase):
     def test_shared_vectors_match_what_the_owner_sql_script_writes(self):
         # tests/security/test_sec_provider_spend.py runs docs/sql/dedupe-video-costs.sql
         # against the same file and requires the same keys: one definition, two implementations.
-        vectors = json.loads((Path(__file__).parent / "fixtures" / "video_cost_keys.json").read_text("utf-8"))
+        vectors = json.loads((Path(__file__).parent / "fixtures" / "video_cost_keys.txt").read_text("utf-8"))
         self.assertGreaterEqual(len(vectors), 15)
         for v in vectors:
             self.assertEqual(video_cost_row_key(v["row"], 0), v["row_key"], v["row"])
