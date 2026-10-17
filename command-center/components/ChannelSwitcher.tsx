@@ -3,11 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
-import {
-  CHANNEL_COOKIE,
-  selectionSlug,
-  type ChannelSelection,
-} from "@/lib/channels";
+import { selectionSlug, type ChannelSelection } from "@/lib/channels";
+import { channelSwitchHref, rememberChannel } from "@/lib/context-switch";
 import type { ChannelRow } from "@/lib/types";
 
 /**
@@ -70,12 +67,8 @@ export function ChannelSwitcher({
 
   function choose(next: string) {
     setOpen(false);
-    const slug = selectionSlug(next, channels);
-    // One year, path-wide, Lax: a view preference, not a credential.
-    document.cookie = `${CHANNEL_COOKIE}=${encodeURIComponent(slug)}; path=/; max-age=31536000; samesite=lax`;
-    // Same screen, different channel: replace only the first segment.
-    const rest = pathname.split("/").slice(2).join("/");
-    router.push(`/${slug}${rest ? "/" + rest : "/command-center"}`);
+    rememberChannel(selectionSlug(next, channels));
+    router.push(channelSwitchHref(next, channels, pathname));
   }
 
   return (

@@ -26,7 +26,7 @@ function signalTone(signal: string): LampTone {
 
 export default async function FeedbackPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
   const scope = await getChannelScope();
@@ -72,7 +72,7 @@ export default async function FeedbackPage() {
       <Figures>
         <StatCard label={t.feedback.scoredTopics} value={<AnimatedNumber value={topics.length} />} />
         <StatCard label={t.feedback.signalsRecorded} value={<AnimatedNumber value={signals.length} />} sub={t.feedback.mostRecent} />
-        <StatCard label={t.feedback.lastAnalysis} value={lastRun ? relativeTime(lastRun) : t.common.dash} sub={lastRun ?? t.feedback.notRun} />
+        <StatCard label={t.feedback.lastAnalysis} value={lastRun ? relativeTime(lastRun, locale) : t.common.dash} sub={lastRun ?? t.feedback.notRun} />
         <StatCard
           label={t.feedback.aboveAvg}
           value={<AnimatedNumber value={topics.filter((tp) => tp.score >= 50).length} />}
@@ -102,7 +102,7 @@ export default async function FeedbackPage() {
               },
               { key: "videos", label: t.feedback.thVideos, render: (tp) => <span className="g4-muted tnum">{tp.videos_analyzed}</span> },
               { key: "reason", label: t.feedback.thReason, render: (tp) => <span className="g4-muted">{tp.reason ?? t.common.dash}</span> },
-              { key: "updated", label: t.feedback.thUpdated, nowrap: true, render: (tp) => <span className="g4-muted tnum">{relativeTime(tp.updated_at)}</span> },
+              { key: "updated", label: t.feedback.thUpdated, nowrap: true, render: (tp) => <span className="g4-muted tnum">{relativeTime(tp.updated_at, locale)}</span> },
             ]}
           />
         )}
@@ -121,7 +121,7 @@ export default async function FeedbackPage() {
               { key: "topic", label: t.feedback.sgTopic, render: (sg) => <span className="g4-muted">{sg.topic ?? t.common.dash}</span> },
               { key: "video", label: t.feedback.sgVideo, render: (sg) => <span className="mono g4-muted g4-small">{sg.video_id}</span> },
               { key: "detail", label: t.feedback.sgDetail, render: (sg) => <span className="g4-muted">{sg.detail ?? t.common.dash}</span> },
-              { key: "at", label: t.feedback.sgAnalyzed, nowrap: true, render: (sg) => <span className="g4-muted tnum">{relativeTime(sg.analyzed_date)}</span> },
+              { key: "at", label: t.feedback.sgAnalyzed, nowrap: true, render: (sg) => <span className="g4-muted tnum">{relativeTime(sg.analyzed_date, locale)}</span> },
             ]}
           />
         )}

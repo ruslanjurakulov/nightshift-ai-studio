@@ -74,6 +74,31 @@ export function formatAhead(value: number, unit: Unit, locale: string | undefine
   return `${value} ${unit === "day" ? "kundan" : unit === "hour" ? "soatdan" : "daqiqadan"} keyin`;
 }
 
+type AgoUnit = "second" | "minute" | "hour" | "day";
+
+/**
+ * "10h ago" / "10 ч назад" / "10 soat oldin" for a whole number of units in the past, in one of the three app
+ * languages, by table (see the note at the top of this file for why not Intl). English keeps its short form
+ * ("5m ago"); null for another language, which the caller renders as English.
+ */
+export function formatAgo(value: number, unit: AgoUnit, locale: string | undefined): string | null {
+  const l = lang(locale);
+  if (!l || !Number.isInteger(value) || value < 0) return null;
+  if (l === "en") return `${value}${unit === "second" ? "s" : unit === "minute" ? "m" : unit === "hour" ? "h" : "d"} ago`;
+  if (l === "ru") {
+    const word = unit === "second" ? "с" : unit === "minute" ? "мин" : unit === "hour" ? "ч" : "дн";
+    return `${value} ${word} назад`;
+  }
+  const word = unit === "second" ? "soniya" : unit === "minute" ? "daqiqa" : unit === "hour" ? "soat" : "kun";
+  return `${value} ${word} oldin`;
+}
+
+/** The "no value" word for a relative time that has no timestamp, in the app's language (the dictionary's common.na). */
+export function naWord(locale: string | undefined): string {
+  const l = lang(locale);
+  return l === "ru" ? "Н/Д" : l === "uz" ? "Yoʻq" : "N/A";
+}
+
 /**
  * A day and a time for display ("2026-10-13 20:18" is what Intl gives Uzbek): the three app languages by the same table as
  * formatDay, plus the time as 24-hour HH:MM; another language: the runtime's Intl short date and time. Viewer's own zone;

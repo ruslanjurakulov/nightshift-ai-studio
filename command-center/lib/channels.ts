@@ -57,6 +57,8 @@ export const ALL_CHANNELS_SLUG = "all-channels";
 export const SECTIONS = [
   "command-center",
   "home",
+  // All sections: the operator's phone page behind the bottom bar's More tab (lib/navigation ALL_SECTIONS).
+  "sections",
   "create",
   "videos",
   "inbox",

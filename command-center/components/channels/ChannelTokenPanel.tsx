@@ -43,7 +43,7 @@ export function ChannelTokenPanel({
   oauthConfigured,
   requiredScopes,
 }: ChannelTokenPanelProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const tt = t.channelTokens;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -111,7 +111,7 @@ export function ChannelTokenPanel({
               {connected && status.connected_at && (
                 <div>
                   <dt>{tt.since}: </dt>
-                  <dd>{relativeTime(status.connected_at)}</dd>
+                  <dd>{relativeTime(status.connected_at, locale)}</dd>
                 </div>
               )}
               {connected && status.connected_by_email && (
@@ -123,7 +123,7 @@ export function ChannelTokenPanel({
               {!connected && status.revoked_at && (
                 <div>
                   <dt>{tt.disconnectedAt}: </dt>
-                  <dd>{relativeTime(status.revoked_at)}</dd>
+                  <dd>{relativeTime(status.revoked_at, locale)}</dd>
                 </div>
               )}
               {connected && status.scopes.length > 0 && (

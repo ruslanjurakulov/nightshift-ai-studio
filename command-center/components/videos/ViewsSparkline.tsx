@@ -11,7 +11,7 @@ interface Point {
  * numbers — points with no views value are dropped from the line and shown as
  * N/A in the list. No client JS needed.
  */
-export function ViewsSparkline({ points, label = "Views over time" }: { points: Point[]; label?: string }) {
+export function ViewsSparkline({ points, label = "Views over time", locale }: { points: Point[]; label?: string; locale?: string }) {
   const series = points.filter((p): p is { date: string; views: number } => p.views != null);
 
   const W = 480;
@@ -58,7 +58,7 @@ export function ViewsSparkline({ points, label = "Views over time" }: { points: 
             {points.map((p) => (
               <tr key={p.date} className="border-b border-[var(--color-border)]/50">
                 <td className="py-1.5 pr-4 tnum text-xs text-[var(--color-muted)]">
-                  {relativeTime(p.date)}
+                  {relativeTime(p.date, locale)}
                 </td>
                 <td className="py-1.5 tnum text-xs text-[var(--color-muted)]">{p.date}</td>
                 <td className="py-1.5 text-right tnum tabular-nums text-[var(--color-fg)]">

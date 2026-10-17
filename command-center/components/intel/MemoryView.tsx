@@ -47,7 +47,7 @@ export function MemoryView({
   memories: Memory[];
   opportunities: Opportunity[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const metricLabel = useMetricLabel();
 
   return (
@@ -82,7 +82,7 @@ export function MemoryView({
                           : fmt(t.intel.memSignals, { n: m.evidenceCount })}
                       </span>
                       {m.score != null && <span>{t.intel.decScore}: {m.score.toFixed(0)}</span>}
-                      {m.updatedAt && <span>{t.intel.memUpdated}: {relativeTime(m.updatedAt)}</span>}
+                      {m.updatedAt && <span>{t.intel.memUpdated}: {relativeTime(m.updatedAt, locale)}</span>}
                       <span>{t.intel.memSources}: {m.sources.join(", ")}</span>
                     </div>
                   </div>
@@ -115,7 +115,7 @@ export function MemoryView({
                   <div className="g2-evidence tnum">
                     <span>{t.intel.oppEvidence}: {o.evidenceCount}</span>
                     {o.score != null && <span>{t.intel.decScore}: {o.score.toFixed(0)}</span>}
-                    {o.ts && <span>{relativeTime(o.ts)}</span>}
+                    {o.ts && <span>{relativeTime(o.ts, locale)}</span>}
                     <span>{t.intel.memSources}: {o.sources.join(", ")}</span>
                   </div>
                 </div>

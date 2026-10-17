@@ -1,3 +1,5 @@
+import { formatAgo, naWord } from "@/lib/date-format";
+
 /** Formatting helpers. Everything renders "N/A" for null/undefined so the UI
  *  always distinguishes real data from missing data. */
 
@@ -36,19 +38,24 @@ export function decimal(value: number | null | undefined, digits = 1): string {
   return value === null || value === undefined ? "N/A" : value.toFixed(digits);
 }
 
-export function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "N/A";
+/**
+ * How long ago a stored timestamp was: "10h ago", "10 ч назад", "10 soat oldin". Pass the viewer's locale
+ * (useI18n().locale on the client, getDictionary().locale on the server); without one it reads English, as it
+ * always did, so a caller not yet migrated is unchanged. Tables, not Intl: lib/date-format.ts.
+ */
+export function relativeTime(iso: string | null | undefined, locale?: string): string {
+  if (!iso) return naWord(locale);
   const then = storedMs(iso);
   if (then === null) return iso;
   const diff = Date.now() - then;
-  const s = Math.round(diff / 1000);
-  if (s < 60) return `${s}s ago`;
+  const s = Math.max(0, Math.round(diff / 1000));
+  const ago = (n: number, unit: "second" | "minute" | "hour" | "day") => formatAgo(n, unit, locale) ?? (formatAgo(n, unit, "en") as string);
+  if (s < 60) return ago(s, "second");
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return ago(m, "minute");
   const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.round(h / 24);
-  return `${d}d ago`;
+  if (h < 24) return ago(h, "hour");
+  return ago(Math.round(h / 24), "day");
 }
 
 export function timeOfDay(iso: string | null | undefined): string {

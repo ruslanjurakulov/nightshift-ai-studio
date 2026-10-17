@@ -19,7 +19,7 @@ type PrivacyFilter = (typeof PRIVACY_FILTERS)[number];
  */
 export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
   const path = useChannelPath();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [query, setQuery] = useState("");
   const [privacy, setPrivacy] = useState<PrivacyFilter>("all");
 
@@ -126,7 +126,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
                   </td>
                   <td className="px-4 py-2 text-[var(--color-muted)]">{v.topic ?? t.common.na}</td>
                   <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-                    {relativeTime(v.published_at)}
+                    {relativeTime(v.published_at, locale)}
                   </td>
                   <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                     {v.privacy ?? t.common.na}

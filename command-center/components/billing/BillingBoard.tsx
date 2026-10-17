@@ -137,7 +137,7 @@ export function BillingBoard({
 }
 
 function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   if (!runway) {
     return (
       <section className="panel" aria-labelledby="bl-eleven">
@@ -160,7 +160,7 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
         </h2>
         <span className="g5-note">
           {runway.tier ? `${runway.tier} · ` : ""}
-          {fmt(t.billing.checked, { when: relativeTime(runway.checkedAt) })}
+          {fmt(t.billing.checked, { when: relativeTime(runway.checkedAt, locale) })}
         </span>
       </div>
       <p className="g5-figure">{fmt(t.billing.elevenMinutes, { minutes: n0(runway.minMinutes) })}</p>

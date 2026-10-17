@@ -49,7 +49,7 @@ function pct(value: number | null, digits = 1): string {
 
 export default async function MeasurePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const scope = await getChannelScope();
 
   const supabase = await createClient();
@@ -210,7 +210,7 @@ export default async function MeasurePage() {
                         v.usd === null ? <span className="g4-muted">{t.measure.unknownCost}</span> : usd(v.usd),
                     },
                     { key: "entries", label: t.measure.thEntries, align: "end", render: (v) => <span className="g4-muted">{num(v.entries)}</span> },
-                    { key: "rec", label: t.measure.thRecorded, align: "end", nowrap: true, render: (v) => <span className="g4-muted">{relativeTime(v.recordedAt)}</span> },
+                    { key: "rec", label: t.measure.thRecorded, align: "end", nowrap: true, render: (v) => <span className="g4-muted">{relativeTime(v.recordedAt, locale)}</span> },
                   ]}
                 />
               )}
@@ -370,7 +370,7 @@ export default async function MeasurePage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="tnum g4-muted g4-small">
-                          {relativeTime(e.ts)}
+                          {relativeTime(e.ts, locale)}
                           {e.channel_id ? ` · ${e.channel_id}` : ""}
                         </div>
                         <ul className="mt-1 flex flex-col gap-0.5">

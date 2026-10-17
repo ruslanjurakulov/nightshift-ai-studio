@@ -152,7 +152,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                   </dl>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs text-[var(--color-muted)]">
-                      {t.credits.colUpdated}: {p.updatedAt ? relativeTime(p.updatedAt) : "—"}
+                      {t.credits.colUpdated}: {p.updatedAt ? relativeTime(p.updatedAt, locale) : "—"}
                     </span>
                     {canEdit && (
                       <span className="flex items-center gap-2">
@@ -213,7 +213,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                       <td className="tnum py-2 pr-3 text-right text-[var(--color-fg)]">{figure(p.creditsPerUnit)}</td>
                       <td className="tnum py-2 pr-3 text-right text-[var(--color-fg)]">{marginText(p)}</td>
                       <td className="tnum py-2 pr-3 text-right text-[var(--color-fg)]">{figure(chargePerUnit(p), 6)}</td>
-                      <td className="py-2 pr-3 text-[var(--color-muted)]">{p.updatedAt ? relativeTime(p.updatedAt) : "—"}</td>
+                      <td className="py-2 pr-3 text-[var(--color-muted)]">{p.updatedAt ? relativeTime(p.updatedAt, locale) : "—"}</td>
                       {canEdit && (
                         <td className="whitespace-nowrap py-2 text-right">
                           <button type="button" onClick={() => edit(p)} className="btn-quiet text-xs">

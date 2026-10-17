@@ -58,7 +58,7 @@ export function ChannelCard({
    */
   canControl?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -291,13 +291,13 @@ export function ChannelCard({
                 {credential.last_verified_at && (
                   <div>
                     <dt>{t.channels.lastVerified}: </dt>
-                    <dd>{relativeTime(credential.last_verified_at)}</dd>
+                    <dd>{relativeTime(credential.last_verified_at, locale)}</dd>
                   </div>
                 )}
                 {credential.expires_at && (
                   <div>
                     <dt>{t.channels.expiresAt}: </dt>
-                    <dd>{relativeTime(credential.expires_at)}</dd>
+                    <dd>{relativeTime(credential.expires_at, locale)}</dd>
                   </div>
                 )}
               </dl>

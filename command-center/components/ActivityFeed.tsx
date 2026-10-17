@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRealtimeEvents } from "@/lib/useRealtimeEvents";
 import type { ChannelScope } from "@/lib/channels";
 import { statusTone, timeOfDay } from "@/lib/format";
+import { agentLabel } from "@/lib/agent-names";
 import { categorize, type EventCategory } from "@/lib/intelligence";
 import type { SystemEventRow } from "@/lib/types";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
@@ -73,7 +74,7 @@ export function ActivityFeed({
               <li key={e.event_key} className={`g5-feed-item${freshKey === e.event_key ? " row-enter" : ""}`}>
                 <span className="g5-feed-t">{timeOfDay(e.ts)}</span>
                 <StatusLamp tone={tone as LampTone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[tone]} hideLabel />
-                <span className="g5-feed-agent">{e.agent ?? t.common.system}</span>
+                <span className="g5-feed-agent" title={e.agent ?? undefined}>{e.agent ? agentLabel(e.agent, t.ownerShell.agentNames) : t.common.system}</span>
                 <span className="g5-feed-event">{e.event}</span>
               </li>
             );

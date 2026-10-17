@@ -163,7 +163,7 @@ function ModelCard({
           <dt>{t.models.lastProbe}</dt>
           <dd className="min-w-0">
             {model.verifiedAt ? (
-              <span className="g2-ok block">{fmt(t.models.verified, { when: relativeTime(model.verifiedAt) })}</span>
+              <span className="g2-ok block">{fmt(t.models.verified, { when: relativeTime(model.verifiedAt, locale) })}</span>
             ) : (
               <span className="g2-warn block">{t.models.notVerified}</span>
             )}
@@ -171,8 +171,8 @@ function ModelCard({
               <span className="tnum block text-[13px] text-[var(--color-muted)]">
                 {probe
                   ? probe.ok
-                    ? fmt(t.models.probeOk, { when: relativeTime(probe.at) })
-                    : fmt(t.models.probeFailed, { when: relativeTime(probe.at), code: probe.errorCode ?? "—" })
+                    ? fmt(t.models.probeOk, { when: relativeTime(probe.at, locale) })
+                    : fmt(t.models.probeFailed, { when: relativeTime(probe.at, locale), code: probe.errorCode ?? "—" })
                   : t.models.noProbe}
               </span>
             )}

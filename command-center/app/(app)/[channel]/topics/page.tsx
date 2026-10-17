@@ -19,7 +19,7 @@ export const revalidate = 0;
 
 export default async function TopicManager() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
   const scope = await getChannelScope();
@@ -126,7 +126,7 @@ export default async function TopicManager() {
                     <td data-label={t.topics.thReason} data-wide className="dim g2-reason">
                       {tp.reason ?? t.common.na}
                     </td>
-                    <td data-label={t.topics.thUpdated} className="dim">{relativeTime(tp.updated_at)}</td>
+                    <td data-label={t.topics.thUpdated} className="dim">{relativeTime(tp.updated_at, locale)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -147,7 +147,7 @@ export default async function TopicManager() {
               <li key={d.id} className="g2-row g2-row-count">
                 <div className="g2-row-main">
                   <div className="g2-strong">{d.topic_phrase}</div>
-                  <div className="g2-note tnum">{fmt(t.topics.polled, { t: relativeTime(d.polled_date) })}</div>
+                  <div className="g2-note tnum">{fmt(t.topics.polled, { t: relativeTime(d.polled_date, locale) })}</div>
                 </div>
                 <div className="g2-count">
                   <div className="tnum">{num(d.mention_count)}</div>

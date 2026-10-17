@@ -87,7 +87,7 @@ export function AccountsBoard({
 }
 
 function Row({ account: a, here }: { account: AccountSummary; here: boolean }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const standing = {
     live: { tone: "ok" as const, label: t.accounts.standingLive },
@@ -140,10 +140,10 @@ function Row({ account: a, here }: { account: AccountSummary; here: boolean }) {
         {a.everRan ? num(a.failures) : t.common.dash}
       </td>
       <td data-label={t.accounts.thLastUpload} className="dim">
-        {a.lastPublishedAt ? relativeTime(a.lastPublishedAt) : <Absent label={t.accounts.never} />}
+        {a.lastPublishedAt ? relativeTime(a.lastPublishedAt, locale) : <Absent label={t.accounts.never} />}
       </td>
       <td data-label={t.accounts.thLastActivity} className="dim">
-        {a.lastActivityAt ? relativeTime(a.lastActivityAt) : <Absent label={t.accounts.never} />}
+        {a.lastActivityAt ? relativeTime(a.lastActivityAt, locale) : <Absent label={t.accounts.never} />}
       </td>
     </tr>
   );

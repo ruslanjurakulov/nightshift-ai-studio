@@ -45,29 +45,16 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("mobile navigation drawer", () => {
-  it("is a labelled modal dialog, and Escape closes it and returns focus to Menu", () => {
+describe("mobile navigation", () => {
+  // The owner's standing decision: no hamburger or drawer as the way to reach the main navigation.
+  // The operator's phone has a visible bottom tab bar (tests/owner-mobile-shell.test.tsx covers it in depth).
+  it("gives the operator visible tabs on a phone and no Menu button or drawer to open", () => {
     render(withI18n(<SideNav operator />));
-    const menu = screen.getByRole("button", { name: "Menu" });
-    menu.focus();
-    fireEvent.click(menu);
-
-    const dialog = screen.getByRole("dialog", { name: "Menu" });
-    expect(dialog.getAttribute("aria-modal")).toBe("true");
-    expect(menu.getAttribute("aria-expanded")).toBe("true");
-    expect(dialog.contains(document.activeElement)).toBe(true);
-
-    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Menu" })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(menu);
-  });
-
-  it("names its close button 'close', not 'Menu' — the trigger and the ✕ must not sound the same", () => {
-    render(withI18n(<SideNav operator />));
-    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
-    const dialog = screen.getByRole("dialog");
-    const close = dialog.querySelector("button");
-    expect(close?.getAttribute("aria-label")).toBe(dictionaries.en.ops.shortcutsClose);
+    const bar = screen.getByRole("navigation", { name: dictionaries.en.ownerShell.tabsLabel });
+    const labels = Array.from(bar.querySelectorAll("a")).map((a) => a.textContent);
+    expect(labels).toEqual(["Home", "Videos", "Billing", "Alerts", "More"]);
   });
 
   it("gives a customer a bottom tab bar with Studio in the centre and no drawer", () => {
@@ -76,19 +63,6 @@ describe("mobile navigation drawer", () => {
     const bar = screen.getAllByRole("navigation", { name: "Menu" }).at(-1)!;
     const labels = Array.from(bar.querySelectorAll("a")).map((a) => a.textContent);
     expect(labels).toEqual(["Videos", "Channels", "Studio", "Credits", "Settings"]);
-  });
-
-  it("keeps Tab inside the open drawer", () => {
-    render(withI18n(<SideNav operator />));
-    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
-    const dialog = screen.getByRole("dialog");
-    const items = Array.from(dialog.querySelectorAll<HTMLElement>("a[href], button"));
-    const last = items[items.length - 1];
-    last.focus();
-    fireEvent.keyDown(document, { key: "Tab" });
-    expect(document.activeElement).toBe(items[0]);
-    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(last);
   });
 });
 

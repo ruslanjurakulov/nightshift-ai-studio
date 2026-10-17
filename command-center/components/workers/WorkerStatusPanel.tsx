@@ -36,7 +36,7 @@ export function WorkerStatusPanel({
   rows: WorkerRow[];
   nowMs: number;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const w = t.workers;
   const views = sortWorkers(rows.map((r) => workerView(r, nowMs)));
 
@@ -69,7 +69,7 @@ export function WorkerStatusPanel({
                     <StatusLamp tone={TONE[v.shown]} label={w.states[v.shown]} live={v.shown === "running"} />
                   </div>
                   <div className="g2-evidence tnum" style={{ marginTop: 0 }}>
-                    <span>{v.updatedAt && v.ageSeconds !== null ? fmt(w.heartbeat, { t: relativeTime(v.updatedAt) }) : w.noHeartbeat}</span>
+                    <span>{v.updatedAt && v.ageSeconds !== null ? fmt(w.heartbeat, { t: relativeTime(v.updatedAt, locale) }) : w.noHeartbeat}</span>
                     {v.version && <span>{fmt(w.version, { v: v.version })}</span>}
                   </div>
                   {v.detail && (

@@ -11,13 +11,13 @@
 
 import type { Dictionary } from "@/lib/i18n";
 
-export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "gManage" | "gIntel" | "gSystem" | "menu" | "sections" | "home">;
+export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "allSections" | "gManage" | "gIntel" | "gSystem" | "menu" | "sections" | "home">;
 /**
  * A screen's name in breadcrumbs, tabs and the tab title. Wider than NavKey:
  * Home is a tab of the hub and never a rail entry of its own, so it has no
  * rail icon (SideNav's ICONS is keyed by NavKey alone).
  */
-export type SectionKey = NavKey | "home";
+export type SectionKey = NavKey | "home" | "allSections";
 export type NavGroupLabel = keyof Pick<Dictionary["nav"], "gManage" | "gIntel" | "gSystem">;
 export interface NavItem {
   href: string;
@@ -126,8 +126,19 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
-/** Every named screen: the rail's, plus Home (a customer screen with no rail icon). */
-export const SECTION_ITEMS: readonly SectionItem[] = [{ href: CUSTOMER_HOME, key: "home" }, ...NAV_ITEMS];
+/**
+ * The operator's phone: "All sections", the page behind the bottom bar's More tab. It lists the whole
+ * console, so a phone needs no drawer to reach a screen. Operator-only like every screen not in
+ * CUSTOMER_NAV_KEYS, and not a rail entry.
+ */
+export const ALL_SECTIONS = "/sections";
+
+/** Every named screen: the rail's, plus Home (a customer screen with no rail icon) and All sections. */
+export const SECTION_ITEMS: readonly SectionItem[] = [
+  { href: CUSTOMER_HOME, key: "home" },
+  { href: ALL_SECTIONS, key: "allSections" },
+  ...NAV_ITEMS,
+];
 
 /**
  * The sections a customer's workspace is made of — everything a person who
@@ -309,6 +320,39 @@ export function tabsFor(section: string): { rail: "hub" | "settings"; items: rea
     }
   }
   return null;
+}
+
+/** One key of the operator's phone tab bar; `more` is the page of every section. */
+export interface OperatorTab {
+  href: string;
+  key: "home" | "videos" | "billing" | "alerts" | "more";
+  /** The icon: a rail key, or the sections page's own. */
+  icon: NavKey | "sections";
+}
+
+/**
+ * The platform owner's bottom bar on a phone, in thumb order: the Command Center (money, failures, what waits
+ * for them at a glance), the videos, billing, alerts, and More, a visible tab to the page listing every other
+ * section. Visible navigation, never a drawer behind a button. Operator-only: SideNav draws it for the
+ * operator alone, and every route here is an operator screen the layout redirects a customer away from.
+ */
+export const OPERATOR_TABS: readonly OperatorTab[] = [
+  { href: HOME, key: "home", icon: "command" },
+  { href: "/videos", key: "videos", icon: "videos" },
+  { href: "/billing", key: "billing", icon: "billing" },
+  { href: "/alerts", key: "alerts", icon: "alerts" },
+  { href: ALL_SECTIONS, key: "more", icon: "sections" },
+];
+
+/**
+ * Which operator tab is the current place, from the section path ("/billing"). Home, Videos, Billing and
+ * Alerts light for their own screens (Videos also for a video's page); every other screen belongs to More.
+ */
+export function operatorTabCurrent(section: string): OperatorTab["key"] {
+  const first = "/" + (section.split("/").filter(Boolean)[0] ?? "");
+  if (first === HOME || first === "/") return "home";
+  const own = OPERATOR_TABS.find((t) => t.key !== "more" && t.href === first);
+  return own ? own.key : "more";
 }
 
 /** The rail for a viewer: the five customer destinations, or the operator's console. */

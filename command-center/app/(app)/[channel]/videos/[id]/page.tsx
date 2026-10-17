@@ -70,7 +70,7 @@ export default async function VideoDetail({
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { id } = await params;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const path = await getChannelPath();
 
   const supabase = await createClient();
@@ -299,9 +299,9 @@ export default async function VideoDetail({
             {video.topic ?? t.videoDetail.noTopic} ·{" "}
             {held
               ? video.held_at
-                ? fmt(t.held.heldAt, { t: relativeTime(video.held_at) })
+                ? fmt(t.held.heldAt, { t: relativeTime(video.held_at, locale) })
                 : t.held.notUploaded
-              : fmt(t.videoDetail.published, { t: relativeTime(video.published_at) })}
+              : fmt(t.videoDetail.published, { t: relativeTime(video.published_at, locale) })}
           </p>
         </div>
         {held ? (
@@ -521,7 +521,7 @@ export default async function VideoDetail({
                 <StatCard
                   label={t.videoDetail.snapshots}
                   value={num(snapshots.length)}
-                  sub={fmt(t.videoDetail.latestT, { t: relativeTime(latest.snapshot_date) })}
+                  sub={fmt(t.videoDetail.latestT, { t: relativeTime(latest.snapshot_date, locale) })}
                 />
               </div>
 
@@ -532,6 +532,7 @@ export default async function VideoDetail({
                   </div>
                   <ViewsSparkline
                     label={t.videoDetail.viewsOverTime}
+                    locale={locale}
                     points={snapshots.map((s) => ({
                       date: s.snapshot_date,
                       views: s.views,

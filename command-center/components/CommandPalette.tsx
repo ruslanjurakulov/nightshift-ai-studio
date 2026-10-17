@@ -8,6 +8,7 @@ import { orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
 import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
+import { agentLabel } from "@/lib/agent-names";
 import { useChannelPath } from "@/lib/channels-client";
 import { uploadedOnly } from "@/lib/heldVideos";
 import { useNavigation } from "@/components/navigation/NavigationProvider";
@@ -79,7 +80,7 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
   // Only the places this viewer's rail offers; the layout would bounce the rest.
   const nav = useMemo(() => NAV.filter((n) => sectionAllowed(n.href.slice(1), operator)), [operator]);
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // Every href below is a section path. The channel comes from the URL you are
   // already on, so a jump never quietly changes which channel you are viewing.
   const path = useChannelPath();
@@ -130,11 +131,11 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
         id: `e:${e.event_key}`,
         section: "events" as const,
         label: e.event,
-        sub: `${e.agent ?? "system"} · ${relativeTime(e.ts)}`,
+        sub: `${e.agent ? agentLabel(e.agent, t.ownerShell.agentNames) : t.common.system} · ${relativeTime(e.ts, locale)}`,
         href: e.video_id ? `/videos/${e.video_id}` : operator ? "/logs" : "/command-center",
       })),
     );
-  }, [scopeKey, operator]);
+  }, [scopeKey, operator, locale, t.common.system, t.ownerShell.agentNames]);
 
   const openPalette = useCallback(() => {
     setOpen(true);

@@ -137,7 +137,7 @@ const OVERALL_TONE: Record<Overall, "run" | "ok" | "fail" | "idle"> = {
 
 export default async function PipelinePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
   const scope = await getChannelScope();
@@ -192,7 +192,7 @@ export default async function PipelinePage() {
                   <span className="mono g3-lane-id">{p.videoId}</span>
                   <span className="g3-lane-meta">
                     <span className="tnum text-sm text-[var(--color-muted)]">
-                      {p.lastActivity ? relativeTime(p.lastActivity) : t.common.na}
+                      {p.lastActivity ? relativeTime(p.lastActivity, locale) : t.common.na}
                     </span>
                     <StatusLamp tone={OVERALL_TONE[p.overall]} label={overallLabel[p.overall]} live={p.overall === "RUNNING"} />
                   </span>

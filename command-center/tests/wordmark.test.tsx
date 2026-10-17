@@ -136,7 +136,6 @@ describe("inline lockup", () => {
 describe("where it is used", () => {
   const files = [
     "components/Header.tsx",
-    "components/SideNav.tsx",
     "components/shell/CustomerSidebar.tsx",
     "components/auth/AuthShell.tsx",
     "components/oauth/OAuthShell.tsx",

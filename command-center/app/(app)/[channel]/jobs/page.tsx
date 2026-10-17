@@ -113,7 +113,7 @@ function durationLabel(ms: number | null): string {
 
 export default async function JobsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
   const scope = await getChannelScope();
@@ -185,9 +185,9 @@ export default async function JobsPage() {
                       <div className="tnum g3-sub">{fmt(t.jobs.eventsN, { n: j.events })}</div>
                     </td>
                     <td className="tnum g3-sub" data-label={t.jobs.thLatest}>{j.latestEvent}</td>
-                    <td className="tnum g3-sub" data-label={t.jobs.thStarted}>{relativeTime(j.startedAt)}</td>
+                    <td className="tnum g3-sub" data-label={t.jobs.thStarted}>{relativeTime(j.startedAt, locale)}</td>
                     <td className="tnum g3-sub" data-label={t.jobs.thCompleted}>
-                      {j.completedAt ? relativeTime(j.completedAt) : t.common.dash}
+                      {j.completedAt ? relativeTime(j.completedAt, locale) : t.common.dash}
                     </td>
                     <td className="tnum g3-sub" data-label={t.jobs.thDuration}>{durationLabel(j.durationMs)}</td>
                     <td className="g3-cell-status" data-label={t.jobs.thStatus}>

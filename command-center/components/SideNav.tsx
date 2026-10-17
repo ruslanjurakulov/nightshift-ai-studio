@@ -2,15 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { navGroupsFor, tabsFor, type NavKey } from "@/lib/navigation";
-import { useOverlay } from "@/components/a11y/useOverlay";
+import { OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
-import { Wordmark } from "@/components/site/Wordmark";
 import { type AccountPlan } from "@/lib/account";
 import { Avatar } from "@/components/account/Avatar";
 import { nav as MNav } from "motion/react-m";
@@ -26,8 +23,10 @@ import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
  * navigation rather than a wall of admin links. Every route is still one click
  * away, and Cmd-K still reaches them all by name.
  *
- * On wide screens it is a sticky rail; below `lg` it collapses to a button that
- * opens the same list as a left drawer.
+ * On wide screens it is a sticky rail. Below `lg` the operator gets a bottom
+ * tab bar (OperatorBottomBar: Home, Videos, Billing, Alerts and More, where
+ * More is a visible page listing every section) — never a hamburger or a drawer
+ * hiding the main navigation.
  *
  * The routes and their order live in lib/navigation (the breadcrumbs and tab
  * titles read them too); the icons are shared (navigation/navIcons).
@@ -101,21 +100,6 @@ export function SideNav({
   avatarV?: number | null;
   plan?: AccountPlan | null;
 }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-
-  // Close the mobile drawer whenever the route changes.
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
-  // Escape closes, focus moves into the drawer and returns to the Menu button.
-  const menuRef = useRef<HTMLButtonElement>(null);
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const drawerId = useId();
-  useOverlay(open, { onClose: () => setOpen(false), container: drawerRef, opener: menuRef });
-
   return (
     <>
       {/* Desktop rail. z-30 keeps it above a section panel's scrim (z-0) so the
@@ -133,59 +117,8 @@ export function SideNav({
           the middle and raised — where the thumb is, as phone apps do. */}
       {!operator && <BottomBar email={email} avatarV={avatarV} />}
 
-      {/* Mobile trigger (operator) — a slim bar under the header */}
-      {operator && (
-      <div className="sticky top-[73px] z-20 flex items-center gap-2 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_82%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-2 backdrop-blur-md lg:hidden">
-        <button
-          ref={menuRef}
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          aria-controls={open ? drawerId : undefined}
-          className="btn-sky is-quiet pill inline-flex h-10 items-center gap-2 px-3 text-sm"
-        >
-          <Menu aria-hidden className="size-4" />
-          {t.nav.menu}
-        </button>
-      </div>
-      )}
-
-      {/* Mobile drawer */}
-      {operator && open && (
-        <div
-          ref={drawerRef}
-          id={drawerId}
-          className="fixed inset-0 z-50 outline-none lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t.nav.menu}
-          tabIndex={-1}
-        >
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-          />
-          <div className="drawer-enter absolute inset-y-0 left-0 flex w-[280px] max-w-[82vw] flex-col overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-4 shadow-[var(--shadow-elevated)]">
-            <div className="mb-3 flex items-center justify-between px-2">
-              <span className="inline-flex items-center text-[var(--color-fg)]">
-                <Wordmark height={28} />
-                <span className="sr-only">{t.brand.name}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label={t.ops.shortcutsClose}
-                className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center"
-              >
-                <X aria-hidden className="size-4" />
-              </button>
-            </div>
-            <NavList operator={operator} onNavigate={() => setOpen(false)} />
-          </div>
-        </div>
-      )}
+      {/* The owner's phone: the same bottom-bar idea, with the owner's five destinations. */}
+      {operator && <OperatorBottomBar />}
     </>
   );
 }
@@ -248,6 +181,54 @@ function BottomBar({ email, avatarV }: { email: string | null; avatarV: number |
                     </span>
                   )}
                   <span className="truncate">{t.nav[key]}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </MNav>
+    </SharedLayout>
+  );
+}
+
+/**
+ * The platform owner's phone bar: five visible tabs, no drawer. Home first (money, failures and what waits
+ * for them at a glance), then Videos, Billing and Alerts, and More: a tab to the page listing every section
+ * (app/(app)/[channel]/sections), so no screen is hidden behind a button. Hidden from `lg`, where the rail
+ * shows the whole list. The same bar chrome, tabs and sliding plate as the customer's (BottomBar).
+ */
+function OperatorBottomBar() {
+  const { t } = useI18n();
+  const pathname = usePathname();
+  const path = useChannelPath();
+  const current = operatorTabCurrent("/" + pathname.split("/").slice(2).join("/"));
+  const label: Record<OperatorTab["key"], string> = {
+    home: t.ownerShell.tabHome,
+    videos: t.ownerShell.tabVideos,
+    billing: t.ownerShell.tabBilling,
+    alerts: t.ownerShell.tabAlerts,
+    more: t.ownerShell.tabMore,
+  };
+  return (
+    <SharedLayout id="operator-tabbar">
+      <MNav
+        layoutRoot
+        aria-label={t.ownerShell.tabsLabel}
+        data-operator-tabbar=""
+        className="ns-tabbar fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      >
+        <ul className="mx-auto grid max-w-[520px] grid-cols-5 items-end px-1 pt-1">
+          {OPERATOR_TABS.map(({ href, key, icon }) => {
+            const active = current === key;
+            const Icon = icon === "sections" ? Ellipsis : ICONS[icon];
+            return (
+              <li key={key} className="flex justify-center">
+                <Link href={path(href)} aria-current={active ? "page" : undefined} className="ns-tab w-full min-w-0">
+                  <span className={active ? "ns-tab-icon ns-plate-host" : "ns-tab-icon"}>
+                    {active && <Plate id="tab-current" className="is-tab" />}
+                    <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
+                  </span>
+                  <span className="max-w-full truncate px-0.5">{label[key]}</span>
                 </Link>
               </li>
             );
