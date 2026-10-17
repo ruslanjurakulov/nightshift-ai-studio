@@ -407,9 +407,9 @@ screens behind `NIGHTSHIFT_OWNER_RPC`; the owner then switches the gate on by ha
 | `owner_grant_credits`, `owner_reverse_grant` | capped, idempotent, audited credit grant and its reversal | not called |
 | `owner_set_credit_price`, `owner_delete_credit_price`, `owner_restore_credit_price`, `credit_price_history` | price changes with a ratio guard and a way back | not called |
 | `owner_add_member`, `owner_set_member_role`, `owner_remove_member` | roster changes with a last-owner guard | not called |
-| `security_events`, `owner_security_events(limit)` | append-only security trail | **fills**: two triggers log every write to `app_members` and `credit_prices` |
+| `security_events`, `owner_security_events(limit)` | append-only security trail | **fills**: three triggers log every write to `app_members`, `credit_prices` and the settings row |
 
-The triggers are the only live effect. They are `AFTER` row triggers that wrap their logging in an
+The triggers (and one partial index, `credit_transactions_grant_created_idx`, that keeps the 24 h grant-cap read small) are the only live effect. The triggers are `AFTER` row triggers that wrap their logging in an
 exception block: if a log row cannot be written the price or roster change still goes through and
 the database logs a warning. (The owner functions are the opposite on purpose: their audit row is
 written in the same transaction and is not swallowed, so an action that cannot be audited does not
@@ -435,6 +435,8 @@ is not a platform owner/admin at all: that is a plain `42501`, as everywhere els
 
 ### Switching the gate on (later, after the app change)
 
+Do the two real-token checks in the next section first.
+
 1. Enrol **two** authenticators on every owner and admin account (steps 2 to 4 under "The owner's
    steps"). `enable_admin_mfa()` physically refuses until every `owner`/`admin` row of `app_members`
    is bound to an account with at least two verified factors, the factor table can be read, and the
@@ -449,6 +451,25 @@ is not a platform owner/admin at all: that is a plain `42501`, as everywhere els
    those checks.
 4. From then on a stolen password (an `aal1` token) gets `mfa_required` from every owner function.
    Note what this does **not** yet do: the browser still writes the old paths directly (see below).
+
+### Two checks with a real token, BEFORE switching the gate on
+
+The lab uses hand-made claims. These two facts about the real Supabase project are not proven until
+someone looks:
+
+1. **The token carries what the gate reads.** Signed in with your authenticator code (a fresh
+   `aal2` session), call `rpc/owner_security_get` (from the Security page once wired, or with the
+   session's access token) and confirm `caller.aal = "aal2"`, `caller.mfa_age_seconds` is small,
+   `would_block_after_enable = false` and `can_enable = true`. Then decode the access token (the
+   middle part of the JWT, base64url) and confirm its `amr` holds an entry like
+   `{"method": "totp", "timestamp": <10 digits>}`. If the method is named differently (the gate also
+   accepts `mfa/totp`, `webauthn`, `mfa/webauthn`, `phone`, `mfa/phone`) or the timestamp is missing,
+   the gate still lets an `aal2` session through (it only judges a timestamp it can read), but the
+   recent-code window is then not enforced.
+2. **A password-only session cannot remove a factor.** On a throwaway account with one verified
+   factor, sign in with the password only (do not type the code) and try to unenrol the factor. It
+   must be refused. If it is not, the second factor protects nothing against a stolen password and
+   the gate must not be relied on.
 
 ### Break-glass (a lost authenticator, a misbehaving gate)
 
@@ -506,7 +527,13 @@ update public.owner_security_settings set grant_max_per_call = 20000, grant_max_
   restrictive policies, `revoke execute on grant_credits from authenticated`) is a later migration,
   after the screens use the owner functions and have been used for a while.
 * It does not gate an admin who has no factor: the lockout rule. That account is protected by
-  enrolling (BR-S-023), not by the database.
+  enrolling (BR-S-023), not by the database. This includes **an admin added after the gate is
+  switched on**: until they enrol they are not gated, so add admins only after they have enrolled.
+  List owners/admins and their verified-factor counts (read only, SQL editor):
+  `select jsonb_pretty(public.owner_admin_factors());` (`owner_security_get()` returns the same list
+  as `admins`, with `can_enable`).
+* A reversal does not give the 24 h grant cap back (a reversed grant still counts toward it), and a
+  grant can be reversed once.
 * It does not seal the empty-roster bootstrap or change `platform_role()`.
 
 ### Taking it out again

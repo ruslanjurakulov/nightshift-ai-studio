@@ -53,6 +53,15 @@ class OwnerSafetyMigration(unittest.TestCase):
                 self.assertNotRegex(stmt, r"^(update|delete|truncate|drop)\b", stmt)
         self.assertIsNone(re.search(r"drop table|drop function|alter function|drop column|drop index|alter table [^;]* rename", CODE, re.I))
 
+    def test_the_only_additions_to_existing_tables_are_triggers_and_one_partial_index(self):
+        indexes = re.findall(r"create (?:unique )?index if not exists (\w+)\s+on public\.(\w+)", CODE)
+        existing = [i for i in indexes if i[1] not in NEW_TABLES]
+        self.assertEqual(existing, [("credit_transactions_grant_created_idx", "credit_transactions")])
+        self.assertIn("where kind = 'grant'", CODE)
+        # a lock that cannot be had fails the file instead of stalling writers; local to the file's transaction
+        self.assertRegex(CODE, r"(?m)^set local lock_timeout = '5s';")
+        self.assertNotRegex(CODE, r"(?m)^set (?!local)")
+
     def test_the_only_policy_it_creates_is_the_read_of_the_new_history_table(self):
         policies = re.findall(r"(create|drop|alter) policy (?:if exists )?(\w+) on public\.(\w+)", CODE)
         self.assertEqual({(p[1], p[2]) for p in policies}, {("credit_price_history_select", "credit_price_history")})
@@ -138,6 +147,7 @@ class OwnerSafetyMigration(unittest.TestCase):
         self.assertEqual(audit_list(rollback), old)
         for table in NEW_TABLES:
             self.assertIn(f"drop table if exists public.{table};", rollback)
+        self.assertIn("drop index if exists public.credit_transactions_grant_created_idx;", rollback)
         for fn in NEW_FUNCTIONS:
             self.assertRegex(rollback, rf"drop function if exists public\.{fn}\(")
 

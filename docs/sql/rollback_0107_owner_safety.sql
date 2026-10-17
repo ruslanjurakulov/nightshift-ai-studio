@@ -2,7 +2,7 @@
 -- SQL editor. Nothing in the app runs it. It is the same transaction a forward "undo" migration would be.
 --
 -- WHEN YOU NEED IT. Almost never: 0107 is dormant (the gate flag is false, no screen calls the owner
--- functions, and the two triggers only write a row). Switching it off WITHOUT this file:
+-- functions, and the three logging triggers only write a row). Switching it off WITHOUT this file:
 --     update public.owner_security_settings set admin_aal2_required = false;
 -- Use this file only to remove the objects completely. It DELETES the security trail and the price
 -- history (copy them first if you want them: select * from public.security_events;).
@@ -19,6 +19,7 @@ begin;
 drop trigger if exists app_members_security_trail on public.app_members;
 drop trigger if exists credit_prices_security_trail on public.credit_prices;
 
+drop index if exists public.credit_transactions_grant_created_idx;
 drop table if exists public.credit_price_history;
 drop table if exists public.security_events;
 drop table if exists public.owner_security_settings;

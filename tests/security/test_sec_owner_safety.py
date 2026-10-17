@@ -300,6 +300,10 @@ CASES = [
     ("verified factor, garbage aal claim", 1, {"aal": "banana"}, False, "aal1"),
     ("verified factor, aal2, recent code", 1, {"aal": "aal2", "amr": aal2(5)["amr"]}, True, "aal2"),
     ("verified factor, aal2, code 9 hours old (window 8 h)", 1, {"aal": "aal2", "amr": aal2(9 * 60)["amr"]}, False, "stale_mfa"),
+    ("verified factor, aal2, mfa/webauthn code 9 hours old", 1, {"aal": "aal2", "amr": [{"method": "mfa/webauthn", "timestamp": now() - 9 * 3600}]}, False, "stale_mfa"),
+    ("verified factor, aal2, mfa/phone code 9 hours old", 1, {"aal": "aal2", "amr": [{"method": "mfa/phone", "timestamp": now() - 9 * 3600}]}, False, "stale_mfa"),
+    ("verified factor, aal2, mfa/totp recent", 1, {"aal": "aal2", "amr": [{"method": "mfa/totp", "timestamp": now() - 60}]}, True, "aal2"),
+    ("verified factor, aal2, an unknown method 9 hours old fails open", 1, {"aal": "aal2", "amr": [{"method": "carrier-pigeon", "timestamp": now() - 9 * 3600}]}, True, "aal2"),
     ("verified factor, aal2, no amr claim", 1, {"aal": "aal2"}, True, "aal2"),
     ("verified factor, aal2, amr is not an array", 1, {"aal": "aal2", "amr": "totp"}, True, "aal2"),
     ("verified factor, aal2, amr entries are junk", 1, {"aal": "aal2", "amr": [1, "x", None, {"method": 7},
@@ -1274,3 +1278,14 @@ def test_the_rollback_file_removes_exactly_what_the_migration_added_and_the_migr
         assert {r[0] for r in t.sup("select proname from pg_proc where pronamespace = 'public'::regnamespace")} == before_fn
         assert t.sup("select public.audit_action_allowed('credits.grant')")[0][0] is True
         assert t.as_(sc.operator).value("select public.owner_security_get()")["ok"] is True
+
+
+def test_the_grant_cap_read_has_its_partial_index(conn):
+    with as_superuser(conn, commit=False) as s:
+        assert s.value("select pg_get_indexdef('public.credit_transactions_grant_created_idx'::regclass)").endswith(
+            "(created_at) WHERE (kind = 'grant'::text)")
+        s.run("set local enable_seqscan = off")
+        plan = "\n".join(r[0] for r in s.rows(
+            "explain select coalesce(sum(t.amount), 0) from public.credit_transactions t "
+            "where t.kind = 'grant' and t.created_at > now() - interval '24 hours'"))
+        assert "credit_transactions_grant_created_idx" in plan, plan

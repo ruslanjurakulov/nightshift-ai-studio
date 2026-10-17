@@ -17,9 +17,9 @@
 --     copied verbatim). platform_role(), is_platform_admin(), accessible_org_ids(), grant_credits()
 --     and every RLS policy are untouched, so a password-only (aal1) admin still sees and does exactly
 --     what they did before this file.
---   * The only thing that runs on every request after this file is two AFTER-row triggers
---     (app_members, credit_prices) that write a row to security_events. They can never fail or
---     roll back the write they observe (see 5).
+--   * The only thing that runs on every request after this file is three AFTER-row logging
+--     triggers (app_members, credit_prices, owner_security_settings) that write a row to
+--     security_events. They can never fail or roll back the write they observe (see 5).
 --
 -- WHAT IT ADDS
 --  1. owner_security_settings   one row (the primary key is the constant true). The flag and the
@@ -95,11 +95,22 @@
 --   * An owner_reverse_grant removes credits in the ledger's normal spend order, which is not necessarily
 --     from the lot the grant created; the total is right, the lot attribution may differ.
 --   * An admin who has no factor is never gated (the lockout rule). The gate protects accounts that enrolled.
+--     That includes an admin added AFTER the gate is switched on: until they enrol they are not gated, so
+--     add admins only after they have enrolled (owner_admin_factors() lists every owner/admin with the
+--     number of verified factors).
+--   * A reversal does not give the 24 h grant cap back (a grant that was reversed still counts), and a
+--     grant can be reversed once (the ledger's unique external id owner-reverse:<id>).
 --
 -- Additive and idempotent: create ... if not exists, create or replace for NEW functions (and for the one
 -- permitted redefinition), drop-then-create for the new triggers and policies, seed ON CONFLICT DO NOTHING.
 -- REQUIRES 0007/0018 (app_members, is_platform_admin), 0008/0087 (app_audit_log, its stamp trigger),
 -- 0020/0034 (credits, lots), 0042/0087 (take_web_rate), 0043 (my_confirmed_email, platform_role).
+
+-- If the lock for a trigger or the index below cannot be had within 5 seconds, this file fails as a
+-- whole (nothing is half applied) and can be applied again, instead of queueing behind a long
+-- transaction and stalling every writer of those tables. SET LOCAL: it lasts for this file's
+-- transaction only, and is a no-op (with a warning) if a runner applies statements one by one.
+set local lock_timeout = '5s';
 
 do $$
 begin
@@ -229,6 +240,12 @@ create index if not exists credit_price_history_unit_idx on public.credit_price_
 
 comment on table public.credit_price_history is
   'Append-only price history (migration 0107): one row per change of a credit_prices row, with the old and the new rate, margin and note. source rpc = an owner_*_credit_price function (with its reason); direct = a write the browser made straight to credit_prices.';
+
+-- The rolling 24 h grant cap reads recent 'grant' rows of the whole ledger; this keeps that read small
+-- (a partial index over the few grant rows, not the reserve/capture traffic). credit_transactions
+-- only ever gets INSERTs, so the build waits for in-flight writers for at most the 5 s above.
+create index if not exists credit_transactions_grant_created_idx
+  on public.credit_transactions (created_at) where kind = 'grant';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 2. Small internal helpers (no API role may call them)
@@ -365,7 +382,7 @@ begin
       select max(case when (e ->> 'timestamp') ~ '^[0-9]{1,12}$' then (e ->> 'timestamp')::bigint end)
         into v_newest
         from jsonb_array_elements(v_claims -> 'amr') e
-       where jsonb_typeof(e) = 'object' and (e ->> 'method') in ('totp', 'webauthn', 'phone');
+       where jsonb_typeof(e) = 'object' and (e ->> 'method') in ('totp', 'webauthn', 'phone', 'mfa/totp', 'mfa/webauthn', 'mfa/phone');
     exception when others then
       v_newest := null;
     end;
@@ -1265,6 +1282,7 @@ grant execute on function public.owner_remove_member(uuid, text) to authenticate
 --     (select count(*) = 1 and bool_and(not admin_aal2_required) from public.owner_security_settings) as gate_off_one_row,
 --     (select count(*) = 3 from pg_trigger where not tgisinternal and tgname in
 --        ('app_members_security_trail', 'credit_prices_security_trail', 'owner_security_settings_trail')) as trails,
+--     exists (select 1 from pg_indexes where indexname = 'credit_transactions_grant_created_idx') as grant_index,
 --     not has_table_privilege('authenticated', 'public.owner_security_settings', 'SELECT')
 --       and not has_table_privilege('authenticated', 'public.security_events', 'SELECT')
 --       and not has_table_privilege('anon', 'public.credit_price_history', 'SELECT') as tables_closed,
