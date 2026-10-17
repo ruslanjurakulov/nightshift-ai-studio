@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { StatusPill } from "@/components/ui";
 import { ErrorState } from "@/components/ReadError";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { resolvedTheme } from "@/lib/theme";
 import { paddleLocale, type PaddleEnvironment } from "@/lib/paddle";
 import { ensurePaddle, type PaddleEventData } from "@/lib/paddle-client";
@@ -598,6 +599,7 @@ const CELL = "block py-1 md:table-cell md:py-2 md:pr-3 before:mr-2 before:text-[
 export function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
   const { t, locale, fmt } = useI18n();
   const d = t.developers;
+  const { confirm, dialog } = useConfirm();
   const [keys, setKeys] = useState<KeyRow[] | null>(null);
   const [keysFailed, setKeysFailed] = useState(false);
   const [name, setName] = useState("");
@@ -679,9 +681,18 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
 
   async function revoke(k: KeyRow) {
     const supabase = createClient();
-    if (!supabase || !window.confirm(d.revokeConfirm)) return;
-    const { error: e } = await supabase.rpc("revoke_api_key", { p_key_id: k.id });
-    if (e) setError(d.revokeFailed);
+    if (!supabase) return;
+    // The key stops working at once: a sheet names it (never window.confirm, which embedded browsers swallow).
+    const done = await confirm({
+      title: `${d.revoke}: ${k.name}`,
+      message: d.revokeConfirm,
+      confirmLabel: d.revoke,
+      run: async () => {
+        const { error: e } = await supabase.rpc("revoke_api_key", { p_key_id: k.id });
+        return e ? d.revokeFailed : true;
+      },
+    });
+    if (done) setError(null);
     await load();
   }
 
@@ -708,6 +719,7 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
 
   return (
     <div className="rhythm">
+      {dialog}
       {shown && (
         <div className="panel flex flex-col gap-3 border-[var(--color-primary)] p-5 sm:p-6">
           <h2 className="t-section">{d.newKeyTitle}</h2>

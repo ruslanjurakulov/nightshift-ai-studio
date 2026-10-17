@@ -182,6 +182,9 @@
   --ns-cool: rgba(79, 70, 229, 0.07);
   --ns-grid: rgba(27, 26, 23, 0.05);
   --ns-tally: #b9341f;
+  /* A solid danger key for the confirm of a destructive action: white on #b9341f is 5.9:1. */
+  --ns-danger-bg: #b9341f;
+  --ns-on-danger: #ffffff;
   --ns-go: #0a7346;
   --ns-cue: #2a5bc0;
   --ns-caution: #7e6100;
@@ -276,6 +279,8 @@
     --ns-cool: rgba(101, 88, 245, 0.12);
     --ns-grid: rgba(241, 237, 230, 0.045);
     --ns-tally: #ff6e5e;
+    --ns-danger-bg: #ff6e5e;
+    --ns-on-danger: #1a0a07;
     --ns-go: #5fd49a;
     --ns-cue: #8db4ff;
     --ns-caution: #f3d36b;
@@ -373,6 +378,8 @@
   --ns-cool: rgba(101, 88, 245, 0.12);
   --ns-grid: rgba(241, 237, 230, 0.045);
   --ns-tally: #ff6e5e;
+  --ns-danger-bg: #ff6e5e;
+  --ns-on-danger: #1a0a07;
   --ns-go: #5fd49a;
   --ns-cue: #8db4ff;
   --ns-caution: #f3d36b;
@@ -1053,6 +1060,41 @@ option {
   transition: background-color var(--ns-dur-1) var(--ns-ease);
 }
 .btn-quiet:hover { background: var(--color-hover); }
+/* The one place red is a fill: the confirm key of a destructive action
+   (dark #1a0a07 on #ff6e5e is 7.0:1, light white on #b9341f is 5.9:1). */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--ns-r-key);
+  border: 1px solid var(--ns-danger-bg);
+  background: var(--ns-danger-bg);
+  color: var(--ns-on-danger);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  transition: filter var(--ns-dur-1) var(--ns-ease);
+}
+.btn-danger:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-danger:active:not(:disabled) { filter: brightness(0.92); }
+@media (hover: hover) {
+  .btn-danger:hover:not(:disabled) { filter: brightness(1.06); }
+}
+/* A row-level "Delete" before its confirm: the label is red, the key is not filled. */
+.btn-danger-quiet { color: var(--color-fail); }
+/* Toasts clear the bottom tab bar (the owner's and the customer's, both .ns-tabbar, shown below lg) instead of covering it. */
+@media (max-width: 1023.98px) {
+  body:has(.ns-tabbar) .toast-viewport { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
+}
+/* The keys of a confirm sheet are 48px: the one place a slip costs money. Scoped, so no other page changes. */
+[role="alertdialog"] .btn-quiet,
+[role="alertdialog"] .btn-danger,
+[role="alertdialog"] .btn-primary { min-height: 3rem; }
 @media (pointer: coarse), (max-width: 40rem) {
   .shell-link,
   .btn-primary,

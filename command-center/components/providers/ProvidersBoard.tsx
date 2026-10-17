@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { setupFailureText } from "@/lib/setup-errors";
 import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n";
 import { useToast } from "@/components/feedback/ToastProvider";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import {
   PROVIDER_CATEGORIES,
@@ -22,6 +24,11 @@ import {
  * never comes back, is never stored here, and is dropped from the browser the
  * moment GitHub accepts it. Providers marked "live" are used by the pipeline
  * today; the rest are opt-in adapters that stay off until a key is set.
+ *
+ * Replacing a key that is already on file overwrites a GitHub secret that cannot
+ * be read back, so it asks first (the sheet names the provider and says the key
+ * will be replaced; no part of the pasted key is ever shown) and locks
+ * against a second tap. A key with spaces or too short is refused before that.
  */
 export function ProvidersBoard({
   groups,
@@ -112,14 +119,13 @@ function ProviderCard({
   const { t } = useI18n();
   const [value, setValue] = useState("");
   const [state, setState] = useState<SaveState>("idle");
-  const [errorKey, setErrorKey] = useState<"unauthorized" | "failed" | null>(null);
+  const [errorKey, setErrorKey] = useState<"unauthorized" | "failed" | "invalid" | null>(null);
   const toast = useToast();
+  const { confirm, dialog } = useConfirm();
+  const lock = useRef(false);
 
-  async function save() {
-    const key = value.trim();
-    if (!key || state === "saving") return;
-    setState("saving");
-    setErrorKey(null);
+  /** Seals the key; returns the message to show when it did not go through. */
+  async function send(key: string): Promise<string | null> {
     try {
       const res = await fetch("/api/setup/secrets", {
         method: "POST",
@@ -131,25 +137,62 @@ function ProviderCard({
         const unauthorized = data.error === "github_unauthorized";
         setState("error");
         setErrorKey(unauthorized ? "unauthorized" : "failed");
-        toast.error(unauthorized ? t.providers.unauthorized : setupFailureText(t, data, t.providers.saveFailed), {
-          title: provider.name,
-        });
-        return;
+        return unauthorized ? t.providers.unauthorized : setupFailureText(t, data, t.providers.saveFailed);
       }
       // Accepted by GitHub — drop the value from the browser at once.
       setValue("");
       setState("saved");
-      toast.success(t.providers.saved, { title: provider.name });
       onSaved();
+      return null;
     } catch {
       setState("error");
       setErrorKey("failed");
-      toast.error(t.providers.saveFailed, { title: provider.name });
+      return t.providers.saveFailed;
     }
+  }
+
+  async function save() {
+    const key = value.trim();
+    if (!key || lock.current || state === "saving") return;
+    if (key.length < 8 || /\s/.test(key)) {
+      setState("error");
+      setErrorKey("invalid");
+      return;
+    }
+    lock.current = true;
+    setState("saving");
+    setErrorKey(null);
+    if (!configured) {
+      // A first key overwrites nothing.
+      const problem = await send(key);
+      lock.current = false;
+      if (problem) toast.error(problem, { title: provider.name });
+      else toast.success(t.providers.saved, { title: provider.name });
+      return;
+    }
+    let attempted = false;
+    const replaced = await confirm({
+      title: fmt(t.ownerSafety.keyReplaceTitle, { name: provider.name }),
+      message: fmt(t.ownerSafety.keyReplaceBody, { name: provider.name }),
+      confirmLabel: t.ownerSafety.keyReplaceConfirm,
+      details: [
+        { label: t.ownerSafety.dProvider, value: provider.name },
+        { label: t.ownerSafety.dKey, value: t.ownerSafety.keyWillReplace },
+      ],
+      successMessage: t.providers.saved,
+      run: async () => {
+        attempted = true;
+        return (await send(key)) ?? true;
+      },
+    });
+    lock.current = false;
+    // Cancelled before anything was sent: the field stays as typed and the card is idle again.
+    if (!replaced && !attempted) setState("idle");
   }
 
   return (
     <li className="g2-key">
+      {dialog}
       <div className="g2-key-id">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <h3 className="g2-strong">{provider.name}</h3>
@@ -167,7 +210,9 @@ function ProviderCard({
               : state === "error"
                 ? errorKey === "unauthorized"
                   ? t.providers.unauthorized
-                  : t.providers.saveFailed
+                  : errorKey === "invalid"
+                    ? t.ownerSafety.keyInvalid
+                    : t.providers.saveFailed
                 : <span className="mono">{provider.secretName}</span>}
           </span>
         </p>

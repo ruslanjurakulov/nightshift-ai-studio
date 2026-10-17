@@ -2,8 +2,12 @@
 
 import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n";
+import { priceTypedFigure } from "@/lib/confirm-tier";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { relativeTime } from "@/lib/format";
 import {
   LEDGER_UNITS,
@@ -52,43 +56,83 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
   const [margin, setMargin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
   const formRef = useRef<HTMLDivElement>(null);
   const rateRef = useRef<HTMLInputElement>(null);
 
+  /** What the owner calls a price: its plain meaning when there is one, else the code. */
+  function nameOf(u: string) {
+    return unitMeaning(u, t.credits.unitMeaning) ?? u;
+  }
+
   async function save() {
-    const supabase = createClient();
+    if (busy) return;
     const row = parsePriceInput(unit, rate, margin);
-    if (!supabase || busy) return;
     if (!row) {
       setError(t.credits.priceInvalid);
       return;
     }
+    const supabase = createClient();
+    if (!supabase) return;
     setBusy(true);
     setError(null);
-    const { error: e } = await supabase.from("credit_prices").upsert(row, { onConflict: "unit" });
+    const old = prices.find((p) => p.unit === row.unit) ?? null;
+    const next = { unit: row.unit, creditsPerUnit: row.credits_per_unit, margin: row.margin };
+    const name = nameOf(row.unit);
+    const show = (a: number | null, b: number, f: (n: number) => string) => (a === null || a === b ? f(b) : `${f(a)} → ${f(b)}`);
+    const saved = await confirm({
+      title: fmt(old ? t.ownerSafety.priceChangeTitle : t.ownerSafety.priceSetTitle, { name }),
+      message: t.ownerSafety.priceSaveBody,
+      confirmLabel: t.ownerSafety.priceSaveConfirm,
+      tone: "primary",
+      details: [
+        { label: t.ownerSafety.dService, value: name === row.unit ? row.unit : `${name} (${row.unit})` },
+        { label: t.ownerSafety.dRate, value: show(old?.creditsPerUnit ?? null, next.creditsPerUnit, (n) => figure(n)) },
+        { label: t.ownerSafety.dMargin, value: show(old ? old.margin : null, next.margin, (n) => marginOf(row.unit, n)) },
+        { label: t.ownerSafety.dCharged, value: show(old ? chargePerUnit(old) : null, chargePerUnit(next), (n) => figure(n, 6)) },
+      ],
+      typeToConfirm: priceTypedFigure(
+        old ? { rate: old.creditsPerUnit, margin: old.margin, charged: chargePerUnit(old) } : null,
+        { rate: next.creditsPerUnit, margin: next.margin, charged: chargePerUnit(next) },
+      ),
+      successMessage: fmt(t.ownerSafety.priceSaved, { name }),
+      run: async () => {
+        const { error: e } = await supabase.from("credit_prices").upsert(row, { onConflict: "unit" });
+        return e ? t.credits.priceFailed : true;
+      },
+    });
     setBusy(false);
-    if (e) {
-      setError(t.credits.priceFailed);
-      return;
-    }
+    if (!saved) return;
     setUnit("");
     setRate("");
     setMargin("");
     router.refresh();
   }
 
-  async function remove(u: string) {
+  async function remove(p: CreditPrice) {
+    if (busy) return;
     const supabase = createClient();
-    if (!supabase || busy) return;
+    if (!supabase) return;
     setBusy(true);
     setError(null);
-    const { error: e } = await supabase.from("credit_prices").delete().eq("unit", u);
+    const name = nameOf(p.unit);
+    const removed = await confirm({
+      title: fmt(t.ownerSafety.priceDeleteTitle, { name }),
+      message: t.ownerSafety.priceDeleteBody,
+      confirmLabel: t.ownerSafety.priceDeleteConfirm,
+      details: [
+        { label: t.ownerSafety.dService, value: name === p.unit ? p.unit : `${name} (${p.unit})` },
+        { label: t.ownerSafety.dRate, value: figure(p.creditsPerUnit) },
+        { label: t.ownerSafety.dCharged, value: figure(chargePerUnit(p), 6) },
+      ],
+      successMessage: fmt(t.ownerSafety.priceDeleted, { name }),
+      run: async () => {
+        const { error: e } = await supabase.from("credit_prices").delete().eq("unit", p.unit);
+        return e ? t.credits.priceFailed : true;
+      },
+    });
     setBusy(false);
-    if (e) {
-      setError(t.credits.priceFailed);
-      return;
-    }
-    router.refresh();
+    if (removed) router.refresh();
   }
 
   function edit(p: CreditPrice) {
@@ -103,8 +147,9 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
   // Figures as the operator set them, never rounded to a cent: 0.008 credits a
   // character must not read 0.01. Six significant digits hide float noise only.
   const figure = (n: number, digits = 8) => new Intl.NumberFormat(locale, { maximumSignificantDigits: digits }).format(n);
-  const marginText = (p: CreditPrice) =>
-    isFlatUnit(p.unit) ? t.credits.flatUnit : `${p.margin ? "+" : ""}${formatCredits(p.margin * 100, locale)}%`;
+  const marginOf = (u: string, m: number) =>
+    isFlatUnit(u) ? t.credits.flatUnit : `${m ? "+" : ""}${formatCredits(m * 100, locale)}%`;
+  const marginText = (p: CreditPrice) => marginOf(p.unit, p.margin);
 
   const inputClass =
     "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-base text-[var(--color-fg)] outline-none sm:text-[13px] focus:border-[var(--color-primary)]";
@@ -113,6 +158,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
 
   return (
     <div id="credit-prices" className="panel flex scroll-mt-7 flex-col gap-3 p-5 sm:p-6">
+      {dialog}
       <h2 className="t-section">{t.credits.pricesTitle}</h2>
       <p className="text-xs leading-relaxed text-[var(--color-muted)]">{t.credits.pricesHint}</p>
 
@@ -161,10 +207,9 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                         </button>
                         <button
                           type="button"
-                          onClick={() => remove(p.unit)}
+                          onClick={() => remove(p)}
                           disabled={busy}
-                          className="btn-quiet text-xs disabled:opacity-40"
-                          style={{ color: "var(--color-fail)" }}
+                          className="btn-quiet btn-danger-quiet text-xs disabled:opacity-55"
                         >
                           {t.credits.removePrice}
                         </button>
@@ -221,10 +266,9 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                           </button>{" "}
                           <button
                             type="button"
-                            onClick={() => remove(p.unit)}
+                            onClick={() => remove(p)}
                             disabled={busy}
-                            className="btn-quiet text-xs disabled:opacity-40"
-                            style={{ color: "var(--color-fail)" }}
+                            className="btn-quiet btn-danger-quiet text-xs disabled:opacity-55"
                           >
                             {t.credits.removePrice}
                           </button>
@@ -288,9 +332,11 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
             type="button"
             onClick={save}
             disabled={busy || !unit.trim() || !rate.trim()}
-            className="btn-quiet text-sm disabled:opacity-40"
+            aria-busy={busy}
+            className="btn-quiet text-sm disabled:opacity-55"
           >
-            {t.credits.savePrice}
+            {busy && <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />}
+            {busy ? t.ownerSafety.confirmWorking : t.credits.savePrice}
           </button>
         </div>
       ) : (

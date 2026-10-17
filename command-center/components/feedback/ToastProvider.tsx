@@ -75,7 +75,7 @@ function ToastViewport({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id:
     // with its first message is not announced by some screen readers.
     <section
       aria-label={t.ux.notifications}
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[120] flex justify-center p-4 sm:inset-x-auto sm:right-0 sm:justify-end"
+      className="toast-viewport pointer-events-none fixed inset-x-0 bottom-0 z-[120] flex justify-center p-4 sm:inset-x-auto sm:right-0 sm:justify-end"
     >
       <ol aria-live="polite" aria-relevant="additions" className="m-0 flex w-full max-w-sm list-none flex-col gap-2 p-0">
         {toasts.map((toast) => (
