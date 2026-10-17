@@ -181,13 +181,49 @@ chegirma — yarim kredit, 100% chegirma — **kredit berilmaydi** (`rejected`,
 odam ko'radi). Bu paketlarga va tarif davrlariga tegishli. **API top-up'ga
 chegirma umuman berilmaydi:** unga har qanday chegirma (ruxsat ro'yxatidagisi
 ham) yoki nol to'lov `rejected` bo'ladi va balans to'ldirilmaydi; top-up faqat
-haqiqatan to'langan summa (soliqsiz qator narxi) bilan to'ldiriladi. Agar biror chegirmani ataylab "bepul kredit" sifatida bermoqchi
+haqiqatan to'langan summa (soliqsiz qator narxi) bilan to'ldiriladi; Paddle
+`totals` qator narxiga mos kelmasa, USD bo'lmasa yoki to'lovning bir qismi
+Paddle kredit balansidan (`totals.credit`) qoplangan bo'lsa ham `rejected`
+(pastdagi "What the webhook checks before crediting" bo'limiga qarang). Agar biror chegirmani ataylab "bepul kredit" sifatida bermoqchi
 bo'lsangiz (masalan, hamkor uchun kupon), uning `dsc_…` id'sini ruxsat
 ro'yxatiga qo'ying — u to'liq kredit beradi:
 
 ```bash
 supabase secrets set PADDLE_PROMO_DISCOUNT_IDS=dsc_...,dsc_...
 ```
+
+#### What the webhook checks before crediting
+
+The Edge Function (`supabase/functions/_shared/paddle.ts`) credits only when
+Paddle's own `details.totals` agree with what we sell. Anything that fails a
+rule is recorded as `rejected` (HTTP 200, no retry) and credits nothing: a
+person looks at it in `payment_events` and either grants by hand or refunds.
+
+Paddle's definitions
+([totals](https://developer.paddle.com/api-reference/transactions/get-transaction),
+[credit balances](https://developer.paddle.com/build/customers/get-customer-credit-balances),
+[tax-inclusive/exclusive](https://developer.paddle.com/changelog/2025/automatic-tax-inclusive-exclusive-prices)):
+`total = subtotal - discount + tax`; `grand_total = total - credit` (amount due
+after credits, before payments); with a tax-inclusive price Paddle backs the
+tax out of `subtotal`, so `total` stays equal to the price.
+
+| Applies to | Rule |
+|---|---|
+| Every payment | The signature is valid and fresh; the transaction id is new (idempotent per `txn_…`); the organization exists. Nothing the browser sent decides an amount. |
+| API top-up | `custom_data.purpose = api_topup`; every line is the top-up product, priced in USD, quantity 1–1000; the credited cents are the sum of unit price × quantity, within $5–$5,000. |
+| API top-up | The transaction's `currency_code` is USD (and `totals.currency_code`, when sent). |
+| API top-up | No discount of any kind (`discount_id` absent, `totals.discount` zero), not even a promo from `PADDLE_PROMO_DISCOUNT_IDS`. |
+| API top-up | `totals.credit` and `totals.credit_to_balance` are absent or zero (nothing was paid from the customer's Paddle credit balance). |
+| API top-up | `subtotal`, `tax`, `total` and `grand_total` are readable, `total = subtotal + tax`, and `grand_total = total`. |
+| API top-up | The line price matches Paddle's totals: `subtotal` equals it (tax-exclusive price) or `total` equals it (tax-inclusive price). |
+| API top-up | Never more than was paid: `grand_total - tax` (exclusive) or `grand_total` (inclusive) is at least the credited cents. |
+| Credit pack | The Paddle price id is one of ours; quantity 1–1000; credits are scaled by the paid share `(subtotal - discount) / subtotal`, rounded down to the cent; a 100% discount credits nothing unless the discount id is in `PADDLE_PROMO_DISCOUNT_IDS`. |
+| Credit pack | `totals.credit` and `totals.credit_to_balance` are absent or zero: a pack bought with Paddle credit-balance money is `rejected` for review, not credited in full. |
+| Plan period | The price id is a plan on this deployment, quantity 1, a billing period is present, and the same discount/promo rule as a pack applies. The database grants once per subscription period (a mid-period upgrade tops up pro rata). |
+| Refund / chargeback | Only an `approved` refund or chargeback takes credits back, in proportion to the money returned, never more than was credited (the database caps the running total); a refund seen before its purchase is retried, not dropped. |
+
+Welcome credits and friend-invite credits are internal grants and are not
+touched by any of this.
 
 ### 3.4. Paddle notification destination — yoqiladigan hodisalar
 
