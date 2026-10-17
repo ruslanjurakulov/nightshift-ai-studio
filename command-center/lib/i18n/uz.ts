@@ -2,6 +2,7 @@ import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
+import { ownerSafetyUz } from "./owner-safety/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
@@ -21,6 +22,7 @@ export const uz: Dictionary = {
   presets: presetsUz,
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
+  ownerSafety: ownerSafetyUz,
   connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,
   reviewPage: reviewPageUz,
@@ -156,7 +158,7 @@ export const uz: Dictionary = {
     allDone: "Hammasi tayyor — har bir qadam bajarildi va konveyer videoni oʻzi tayyorlab, eʼlon qila oladi.",
     done: "Bajarildi",
     todo: "Qilinishi kerak",
-    fix: "Sozlash",
+    fix: "Hozir qilish",
     step_supabase: "Supabase’ni ulash",
     step_supabase_hint: "Boshqaruv markazi maʼlumotlarni Supabase’dan oʻqiydi. Sahifalar NOT CONFIGURED oʻrniga haqiqiy holatni koʻrsatishi uchun ochiq URL va anon kalitni kiriting.",
     step_signedIn: "Tizimga kirish",
@@ -1833,7 +1835,7 @@ export const uz: Dictionary = {
     explainNotEnough: "Bu qarorni tushuntirish uchun maʼlumot yetarli emas.",
     explainScore: "Ball",
     lifecycleTitle: "Video hayot davri",
-    customize: "Sozlash",
+    customize: "Koʻrinishni oʻzgartirish",
     customizeDone: "Tayyor",
     customizeReset: "Tiklash",
     customizeHint: "Vidjetlarni yoqing/oʻchiring — joylashuv shu qurilmada saqlanadi.",
@@ -3532,9 +3534,9 @@ export const uz: Dictionary = {
     enrollTitle: "Autentifikator qoʻshish",
     friendlyName: "Nomi (ixtiyoriy)",
     friendlyNamePh: "masalan, Telefon",
-    startEnroll: "Sozlashni boshlash",
+    startEnroll: "Autentifikatorni ulash",
     scanHint: "Ushbu QR-kodni autentifikator ilovasida skanerlang yoki kalitni qoʻlda kiriting, soʻng ilova koʻrsatgan 6 xonali kodni tering.",
-    secretLabel: "Sozlash kaliti",
+    secretLabel: "Qoʻlda kiritish kaliti",
     codeLabel: "6 xonali kod",
     codePh: "123456",
     verify: "Tekshirish va yoqish",
@@ -3567,10 +3569,11 @@ export const uz: Dictionary = {
     retry: "Qayta urinish",
     signOut: "Chiqish",
     signingOut: "Chiqilmoqda…",
-    bannerComplete: "Bu administrator seansi faqat parol bilan ochilgan, hisobingizda esa autentifikator bor. Kirishni yakunlash uchun kodni kiriting.",
+    bannerComplete: "Kirish tugallanmagan.",
     bannerCompleteAction: "Kodni kiritish",
-    bannerEnrol: "Bu administrator hisobida hali ikkinchi omil yoʻq. Parol oʻgʻirlansa ham kirib boʻlmasligi uchun autentifikator qoʻshing.",
-    bannerEnrolAction: "Sozlash",
+    bannerEnrol: "2 bosqichli kirish oʻchiq.",
+    bannerEnrolAction: "Yoqish",
+    bannerDismiss: "Bugunga yashirish",
   },
   approvals: {
     title: "Nashr tasdiqlashlari",

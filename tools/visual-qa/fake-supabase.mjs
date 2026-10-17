@@ -83,10 +83,10 @@ function b64url(s) {
 }
 
 /** The @supabase/ssr session cookie for a fake signed-in session against `url`. */
-export function sessionCookie(url = FAKE_URL_DEFAULT, state = "", avatarV = 0) {
+export function sessionCookie(url = FAKE_URL_DEFAULT, state = "", avatarV = 0, extra = {}) {
   const host = new URL(url).hostname.split(".")[0];
   const exp = Math.floor(Date.now() / 1000) + 24 * 3600;
-  const claims = { sub: USER.id, exp, role: "authenticated", aud: "authenticated", ...(state ? { qa: state } : {}), ...(avatarV ? { av: avatarV } : {}) };
+  const claims = { sub: USER.id, exp, role: "authenticated", aud: "authenticated", ...(state ? { qa: state } : {}), ...(avatarV ? { av: avatarV } : {}), ...extra };
   const jwt = [b64url(JSON.stringify({ alg: "none", typ: "JWT" })), b64url(JSON.stringify(claims)), "unsigned"].join(".");
   const session = { access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: exp, refresh_token: "visual-qa", user: userFor(avatarV) };
   return { name: `sb-${host}-auth-token`, value: "base64-" + b64url(JSON.stringify(session)) };
@@ -275,6 +275,12 @@ const OWNER_WORKERS = () => [
   { worker_id: "pipeline-1", kind: "pipeline", state: "running", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-10_000) },
   { worker_id: "email-1", kind: "other", state: "stopped", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-2 * 3_600_000) },
 ];
+// The team page: the signed-in owner (the only owner), an admin and an invited editor.
+const OWNER_MEMBERS = () => [
+  { id: "m1", user_id: USER.id, email: USER.email, role: "owner", created_at: "2026-01-01T08:00:00Z" },
+  { id: "m2", user_id: "00000000-0000-4000-8000-0000000000c2", email: "dilnoza@nightshift.uz", role: "admin", created_at: "2026-03-01T08:00:00Z" },
+  { id: "m3", user_id: null, email: "bekzod@nightshift.uz", role: "editor", created_at: "2026-09-20T08:00:00Z" },
+];
 const OWNER_ALERTS = () => [
   { id: "a1", at: iso(-3 * 3_600_000), kind: "balance.low", severity: "warn", channel_id: null, title: "ElevenLabs balance is low", body: null, delivered: true },
   { id: "a2", at: iso(-5 * 3_600_000), kind: "upload.failed", severity: "critical", channel_id: "chronos", title: "Upload failed", body: null, delivered: true },
@@ -386,7 +392,12 @@ export function startFakeSupabase(port = 54399) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://x");
     if (req.method === "OPTIONS") return send(res, 204);
-    if (url.pathname === "/auth/v1/user") return send(res, 200, userFor(claimsOf(req).av));
+    if (url.pathname === "/auth/v1/user") {
+      const claims = claimsOf(req);
+      // `sessionCookie(url, "owner", 0, { mfa: 1 })` gives the owner one verified authenticator: the Security page then shows the "last factor" state.
+      const user = userFor(claims.av);
+      return send(res, 200, claims.qa === "owner" && claims.mfa === 1 ? { ...user, factors: [{ id: "f1000000-0000-4000-8000-000000000001", friendly_name: "Telefon", factor_type: "totp", status: "verified", created_at: "2026-09-01T08:00:00Z", updated_at: "2026-09-01T08:00:00Z" }] } : user);
+    }
     // Which sign-in providers are on (the "Continue with Google" button asks). FAKE_GOOGLE=1 switches Google on.
     if (url.pathname === "/auth/v1/settings") return send(res, 200, { external: { email: true, google: process.env.FAKE_GOOGLE === "1" } });
     if (url.pathname.startsWith("/auth/v1/")) return send(res, 200, {});
@@ -434,6 +445,7 @@ export function startFakeSupabase(port = 54399) {
         return;
       }
       if (state === "owner" && rpc[1] === "is_platform_admin") return send(res, 200, true);
+      if (state === "owner" && rpc[1] === "bind_current_member") return send(res, 200, "owner");
       if (state === "owner" && rpc[1] === "my_organizations") return send(res, 200, OWNER_ORGS);
       if (rpc[1] in RPC) return send(res, 200, RPC[rpc[1]]);
       return send(res, 403, { code: "42501", message: "visual-qa fake: not available" });
@@ -461,6 +473,7 @@ export function startFakeSupabase(port = 54399) {
         if (table[1] === "worker_status") rows = OWNER_WORKERS();
         if (table[1] === "alert_events") rows = OWNER_ALERTS();
         if (table[1] === "provider_balances") rows = OWNER_BALANCES();
+        if (table[1] === "app_members") rows = OWNER_MEMBERS();
       }
       if (req.method === "HEAD") {
         // A count-only read (select(..., { count: "exact", head: true })): the count rides in Content-Range.

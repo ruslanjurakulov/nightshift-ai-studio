@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n";
 import { useToast } from "@/components/feedback/ToastProvider";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { PROVIDERS } from "@/lib/providers";
 import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
 
@@ -25,6 +27,11 @@ import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
  *     CHRONOS_ENABLE_IMAGE_GEN=1.
  * Selecting an option writes the whole consistent set at once, so the flags can
  * never disagree with the chosen provider.
+ *
+ * The screen follows the saved state, not the tap: a choice is shown as chosen
+ * only after the write landed, so a failed save leaves the old generator on
+ * screen (it is the one the pipeline will still use). Switching a generator and
+ * turning autopilot on ask first; turning it off does not.
  */
 
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
@@ -73,9 +80,17 @@ export function PipelineRouting({
   const [state, setState] = useState<SaveState>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const toast = useToast();
+  const { confirm, dialog } = useConfirm();
+  const lock = useRef(false);
 
-  async function save(variables: Vars) {
-    if (!githubConfigured) return;
+  /**
+   * Writes the variables. Returns null on success, or the message to show when
+   * it did not go through. The caller changes what the screen shows only after
+   * a null: a failed save leaves the old choice on screen, because that is what
+   * the pipeline will still use.
+   */
+  async function save(variables: Vars): Promise<string | null> {
+    if (!githubConfigured) return t.providers.routingNotConfigured;
     setState("saving");
     setErrorKey("failed");
     try {
@@ -89,53 +104,81 @@ export function PipelineRouting({
         const unauthorized = data.error === "github_unauthorized";
         setErrorKey(unauthorized ? "unauthorized" : "failed");
         setState("error");
-        toast.error(unauthorized ? t.providers.routingUnauthorized : t.providers.routingFailed, {
-          title: t.providers.routingTitle,
-        });
-        return false;
+        return unauthorized ? t.providers.routingUnauthorized : t.providers.routingFailed;
       }
       setState("saved");
-      toast.success(t.providers.routingSaved, { title: t.providers.routingTitle });
-      return true;
+      return null;
     } catch {
       setState("error");
-      toast.error(t.providers.routingFailed, { title: t.providers.routingTitle });
-      return false;
+      return t.providers.routingFailed;
     }
   }
 
-  async function chooseVideo(id: string) {
-    setVideo(id);
-    if (id === "off") {
-      await save({ CHRONOS_ENABLE_VIDEO_GEN: "0", CHRONOS_ENABLE_MINIMAX_BROLL: "0" });
-    } else if (id === "minimax") {
-      await save({
-        CHRONOS_VIDEO_PROVIDER: "minimax",
-        CHRONOS_ENABLE_MINIMAX_BROLL: "1",
-        CHRONOS_ENABLE_VIDEO_GEN: "0",
-      });
-    } else {
-      await save({
-        CHRONOS_VIDEO_PROVIDER: id,
-        CHRONOS_ENABLE_VIDEO_GEN: "1",
-        CHRONOS_ENABLE_MINIMAX_BROLL: "0",
-      });
-    }
-  }
+  const videoVars = (id: string): Vars =>
+    id === "off"
+      ? { CHRONOS_ENABLE_VIDEO_GEN: "0", CHRONOS_ENABLE_MINIMAX_BROLL: "0" }
+      : id === "minimax"
+        ? { CHRONOS_VIDEO_PROVIDER: "minimax", CHRONOS_ENABLE_MINIMAX_BROLL: "1", CHRONOS_ENABLE_VIDEO_GEN: "0" }
+        : { CHRONOS_VIDEO_PROVIDER: id, CHRONOS_ENABLE_VIDEO_GEN: "1", CHRONOS_ENABLE_MINIMAX_BROLL: "0" };
+  const imageVars = (id: string): Vars =>
+    id === "off" ? { CHRONOS_ENABLE_IMAGE_GEN: "0" } : { CHRONOS_IMAGE_PROVIDER: id, CHRONOS_ENABLE_IMAGE_GEN: "1" };
 
-  async function chooseImage(id: string) {
-    setImage(id);
-    if (id === "off") {
-      await save({ CHRONOS_ENABLE_IMAGE_GEN: "0" });
-    } else {
-      await save({ CHRONOS_IMAGE_PROVIDER: id, CHRONOS_ENABLE_IMAGE_GEN: "1" });
-    }
+  const videoName = (id: string) => (id === "off" ? t.providers.routingStock : (VIDEO_PROVIDERS.find((p) => p.id === id)?.name ?? id));
+  const imageName = (id: string) => (id === "off" ? t.providers.routingStock : (imageGeneratorById(id)?.name ?? id));
+
+  /** One change at a time; the lock is set before the first await, so a second tap is ignored. */
+  async function change(kind: "video" | "image", id: string) {
+    if (lock.current || !githubConfigured) return;
+    const current = kind === "video" ? video : image;
+    if (id === current) return;
+    const name = kind === "video" ? videoName(id) : imageName(id);
+    const secret = id === "off" ? undefined : kind === "video" ? secretFor(id) : imageGeneratorById(id)?.secretName;
+    const noKey = secret ? !configuredSet.has(secret) : false;
+    lock.current = true;
+    const ok = await confirm({
+      title: fmt(kind === "video" ? t.ownerSafety.routeSwitchTitleVideo : t.ownerSafety.routeSwitchTitleImage, { name }),
+      message: noKey ? `${t.ownerSafety.routeSwitchBody} ${t.ownerSafety.routeSwitchKeyMissing}` : t.ownerSafety.routeSwitchBody,
+      confirmLabel: t.ownerSafety.routeSwitchConfirm,
+      tone: "primary",
+      details: [
+        { label: t.ownerSafety.dNow, value: kind === "video" ? videoName(current) : imageName(current) },
+        { label: t.ownerSafety.dNew, value: name },
+      ],
+      successMessage: t.providers.routingSaved,
+      run: async () => (await save(kind === "video" ? videoVars(id) : imageVars(id))) ?? true,
+    });
+    lock.current = false;
+    if (!ok) return;
+    if (kind === "video") setVideo(id);
+    else setImage(id);
   }
 
   async function toggleAutopilot() {
-    const next = !autopilot;
-    setAutopilot(next);
-    await save({ CHRONOS_AGENT_AUTOPILOT: next ? "1" : "0" });
+    if (lock.current || !githubConfigured) return;
+    lock.current = true;
+    if (!autopilot) {
+      // Turning it on hands the daily topic to the machine: ask first.
+      const ok = await confirm({
+        title: t.ownerSafety.routeAutopilotTitle,
+        message: t.ownerSafety.routeAutopilotBody,
+        confirmLabel: t.ownerSafety.routeAutopilotConfirm,
+        tone: "primary",
+        successMessage: t.providers.routingSaved,
+        run: async () => (await save({ CHRONOS_AGENT_AUTOPILOT: "1" })) ?? true,
+      });
+      lock.current = false;
+      if (ok) setAutopilot(true);
+      return;
+    }
+    // Turning it off is the safe direction: no sheet, but the switch moves only once the save landed.
+    const problem = await save({ CHRONOS_AGENT_AUTOPILOT: "0" });
+    lock.current = false;
+    if (problem) {
+      toast.error(`${problem} ${t.ownerSafety.routeNotSaved}`, { title: t.providers.routingTitle });
+      return;
+    }
+    setAutopilot(false);
+    toast.success(t.providers.routingSaved, { title: t.providers.routingTitle });
   }
 
   // Warn when the selected generator has no key set — it would silently fall
@@ -153,6 +196,7 @@ export function PipelineRouting({
 
   return (
     <section className="g2-channel" aria-labelledby="routing-title">
+      {dialog}
       <div>
         <h2 id="routing-title" className="g2-h2">{t.providers.routingTitle}</h2>
         <p className="g2-sub max-w-[80ch]">{t.providers.routingHint}</p>
@@ -173,7 +217,7 @@ export function PipelineRouting({
             id="route-video"
             value={video}
             disabled={!githubConfigured || state === "saving"}
-            onChange={(e) => chooseVideo(e.target.value)}
+            onChange={(e) => change("video", e.target.value)}
             className={selectCls}
           >
             <option value="off">{t.providers.routingStock}</option>
@@ -197,7 +241,7 @@ export function PipelineRouting({
             id="route-image"
             value={image}
             disabled={!githubConfigured || state === "saving"}
-            onChange={(e) => chooseImage(e.target.value)}
+            onChange={(e) => change("image", e.target.value)}
             className={selectCls}
           >
             <option value="off">{t.providers.routingStock}</option>

@@ -2,6 +2,7 @@ import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { ownerSafetyRu } from "./owner-safety/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
@@ -21,6 +22,7 @@ export const ru: Dictionary = {
   presets: presetsRu,
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
+  ownerSafety: ownerSafetyRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   reviewPage: reviewPageRu,
@@ -156,7 +158,7 @@ export const ru: Dictionary = {
     allDone: "Всё готово — каждый шаг выполнен, и конвейер может сам создать и опубликовать видео.",
     done: "Готово",
     todo: "Осталось",
-    fix: "Настроить",
+    fix: "Сделать сейчас",
     step_supabase: "Подключить Supabase",
     step_supabase_hint: "Центр управления читает данные из Supabase. Укажите публичный URL и анонимный ключ, чтобы страницы показывали реальное состояние, а не NOT CONFIGURED.",
     step_signedIn: "Войти в систему",
@@ -1833,7 +1835,7 @@ export const ru: Dictionary = {
     explainNotEnough: "Недостаточно данных, чтобы объяснить это решение.",
     explainScore: "Оценка",
     lifecycleTitle: "Жизненный цикл видео",
-    customize: "Настроить",
+    customize: "Изменить вид",
     customizeDone: "Готово",
     customizeReset: "Сбросить",
     customizeHint: "Переключайте виджеты — раскладка сохраняется на этом устройстве.",
@@ -3532,9 +3534,9 @@ export const ru: Dictionary = {
     enrollTitle: "Добавить аутентификатор",
     friendlyName: "Название (необязательно)",
     friendlyNamePh: "напр. Телефон",
-    startEnroll: "Начать настройку",
+    startEnroll: "Подключить аутентификатор",
     scanHint: "Отсканируйте этот QR-код приложением-аутентификатором или введите ключ вручную, затем введите 6-значный код из приложения.",
-    secretLabel: "Ключ настройки",
+    secretLabel: "Ключ для ручного ввода",
     codeLabel: "6-значный код",
     codePh: "123456",
     verify: "Проверить и включить",
@@ -3567,10 +3569,11 @@ export const ru: Dictionary = {
     retry: "Повторить",
     signOut: "Выйти",
     signingOut: "Выходим…",
-    bannerComplete: "Эта сессия администратора открыта только по паролю, а в аккаунте есть аутентификатор. Введите код, чтобы завершить вход.",
+    bannerComplete: "Вход не завершён.",
     bannerCompleteAction: "Ввести код",
-    bannerEnrol: "У этого аккаунта администратора ещё нет второго фактора. Добавьте аутентификатор, чтобы украденного пароля было недостаточно.",
-    bannerEnrolAction: "Настроить",
+    bannerEnrol: "Вход в 2 шага выключен.",
+    bannerEnrolAction: "Включить",
+    bannerDismiss: "Скрыть на сегодня",
   },
   approvals: {
     title: "Согласования публикации",

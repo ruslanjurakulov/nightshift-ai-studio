@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n/core";
 import { AppName } from "@/components/oauth/AppName";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { cleanClientName, describeRedirect } from "@/lib/oauth/redirect";
 
 /**
@@ -49,6 +50,7 @@ export function ConnectedApps() {
   const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
   const [note, setNote] = useState<{ tone: "ok" | "fail"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -76,27 +78,40 @@ export function ConnectedApps() {
       : new Date(iso).toLocaleDateString(locale, { dateStyle: "medium" });
 
   async function revoke(g: Grant) {
-    if (!window.confirm(fmt(c.sure, { app: cleanClientName(g.client_name, "?") }))) return;
     const supabase = createClient();
-    if (!supabase) return;
+    if (!supabase || busy) return;
+    const app = cleanClientName(g.client_name, "?");
     setBusy(g.id);
     setNote(null);
-    const { error } = await supabase.rpc("oauth_revoke_grant", { p_grant: g.id });
+    const done = await confirm({
+      title: `${c.disconnect}: ${app}`,
+      message: fmt(c.sure, { app }),
+      confirmLabel: c.disconnect,
+      run: async () => {
+        const { error } = await supabase.rpc("oauth_revoke_grant", { p_grant: g.id });
+        return error ? c.actionFailed : true;
+      },
+    });
     setBusy(null);
-    if (error) return setNote({ tone: "fail", text: c.actionFailed });
-    await load();
+    if (done) await load();
   }
 
   async function revokeAll() {
-    if (!window.confirm(c.disconnectAll + "?")) return;
     const supabase = createClient();
-    if (!supabase) return;
+    if (!supabase || busy) return;
     setBusy("all");
     setNote(null);
-    const { error } = await supabase.rpc("oauth_revoke_all_grants");
+    const done = await confirm({
+      title: c.disconnectAll,
+      message: c.disconnectAll + "?",
+      confirmLabel: c.disconnectAll,
+      run: async () => {
+        const { error } = await supabase.rpc("oauth_revoke_all_grants");
+        return error ? c.actionFailed : true;
+      },
+    });
     setBusy(null);
-    if (error) return setNote({ tone: "fail", text: c.actionFailed });
-    await load();
+    if (done) await load();
   }
 
   async function saveLimit(g: Grant) {
@@ -116,6 +131,7 @@ export function ConnectedApps() {
 
   return (
     <section className="fl-card" aria-labelledby="connected-apps-title">
+      {dialog}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="connected-apps-title" className="fl-q">
           {c.title}

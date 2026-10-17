@@ -2,6 +2,7 @@ import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { ownerSafetyEn } from "./owner-safety/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
@@ -29,6 +30,7 @@ export const en = {
   presets: presetsEn,
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
+  ownerSafety: ownerSafetyEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
   reviewPage: reviewPageEn,
@@ -165,7 +167,7 @@ export const en = {
     allDone: "You're all set — every step is done and the pipeline can render and publish a video on its own.",
     done: "Done",
     todo: "To do",
-    fix: "Set up",
+    fix: "Do it now",
     step_supabase: "Connect Supabase",
     step_supabase_hint: "The Command Center reads its data from Supabase. Set the public URL and anon key so pages show real state instead of NOT CONFIGURED.",
     step_signedIn: "Sign in",
@@ -1845,7 +1847,7 @@ export const en = {
     explainNotEnough: "Not enough data to explain this decision.",
     explainScore: "Score",
     lifecycleTitle: "Video Lifecycle",
-    customize: "Customize",
+    customize: "Edit layout",
     customizeDone: "Done",
     customizeReset: "Reset",
     customizeHint: "Toggle widgets — your layout is saved on this device.",
@@ -3544,9 +3546,9 @@ export const en = {
     enrollTitle: "Add an authenticator",
     friendlyName: "Name (optional)",
     friendlyNamePh: "e.g. Phone",
-    startEnroll: "Start setup",
+    startEnroll: "Connect authenticator",
     scanHint: "Scan this QR code with an authenticator app, or enter the secret by hand, then type the 6-digit code it shows.",
-    secretLabel: "Setup key",
+    secretLabel: "Manual entry key",
     codeLabel: "6-digit code",
     codePh: "123456",
     verify: "Verify & enable",
@@ -3579,10 +3581,11 @@ export const en = {
     retry: "Try again",
     signOut: "Sign out",
     signingOut: "Signing out…",
-    bannerComplete: "This admin session is password-only, but your account has an authenticator. Enter your code to finish signing in.",
+    bannerComplete: "Sign-in is not finished.",
     bannerCompleteAction: "Enter code",
-    bannerEnrol: "This admin account has no second factor yet. Add an authenticator so a stolen password is not enough.",
-    bannerEnrolAction: "Set it up",
+    bannerEnrol: "2-step sign-in is off.",
+    bannerEnrolAction: "Turn on",
+    bannerDismiss: "Hide for today",
   },
   approvals: {
     title: "Publish approvals",

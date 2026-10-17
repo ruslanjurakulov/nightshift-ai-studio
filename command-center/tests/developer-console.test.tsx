@@ -358,6 +358,29 @@ describe("the key form", () => {
       expect(within(row(name)).getByRole("button", { name: d.revoke })).toBeTruthy();
     }
   });
+
+  it("Revoke asks in the shared sheet that names the key (never window.confirm); Cancel revokes nothing, Confirm revokes once", async () => {
+    const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await open();
+    await screen.findByText("Server");
+    const row = () => screen.getByText("Server").closest("tr") as HTMLElement;
+    fireEvent.click(within(row()).getByRole("button", { name: d.revoke }));
+    const dlg = await screen.findByRole("alertdialog");
+    expect(dlg.textContent).toContain(`${d.revoke}: Server`);
+    expect(dlg.textContent).toContain(d.revokeConfirm);
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    fireEvent.click(within(dlg).getByRole("button", { name: en.ux.confirmCancel }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(h.rpc.mock.calls.filter((c) => c[0] === "revoke_api_key")).toHaveLength(0);
+    fireEvent.click(within(row()).getByRole("button", { name: d.revoke }));
+    const again = await screen.findByRole("alertdialog");
+    const key = within(again).getByRole("button", { name: d.revoke });
+    fireEvent.click(key);
+    fireEvent.click(key);
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("revoke_api_key", { p_key_id: "k_full" }));
+    expect(h.rpc.mock.calls.filter((c) => c[0] === "revoke_api_key")).toHaveLength(1);
+    nativeConfirm.mockRestore();
+  });
 });
 
 describe("the dictionaries", () => {

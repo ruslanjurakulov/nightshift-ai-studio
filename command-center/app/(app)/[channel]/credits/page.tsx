@@ -9,7 +9,7 @@ import { BuyCredits, BuyCreditsAdminOnly } from "@/components/credits/BuyCredits
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
-import { coerceTransactions, inviteCardShown, isCreditExempt } from "@/lib/credits";
+import { UNIT_USD, chargePerUnit, coerceTransactions, inviteCardShown, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
@@ -235,7 +235,11 @@ export default async function CreditsPage() {
             {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
           </p>
           {!paddleConfig && !exempt && <p className="tnum text-xs text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
-          <GrantCreditsForm orgId={orgId} orgName={org.current.name} />
+          <GrantCreditsForm
+            orgId={orgId}
+            orgName={org.current.name}
+            creditsPerUsd={priceList && !priceList.failed && priceList.prices[UNIT_USD] ? chargePerUnit(priceList.prices[UNIT_USD]) : null}
+          />
           {inviteAdmin?.state === "ok" && <InviteAdminPanel admin={inviteAdmin.value} />}
           {inviteAdmin?.state === "failed" && (
             <div className="panel p-5 sm:p-6">

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a> }));
@@ -28,13 +28,26 @@ describe("Connected apps", () => {
           }
         : { data: true, error: null },
     );
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    // The confirmation is the shared sheet (never window.confirm, which embedded browsers swallow).
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ConnectedApps />);
     fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
-    const shown = String(confirm.mock.calls[0][0]);
+    const dialog = await screen.findByRole("alertdialog");
+    const shown = dialog.textContent ?? "";
     expect(shown).toContain("Evil gnp.exe App");
     expect(shown).not.toMatch(/[‮​]/);
+    expect(confirm).not.toHaveBeenCalled();
+    // Cancel revokes nothing.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(rpc).not.toHaveBeenCalledWith("oauth_revoke_grant", expect.anything());
+    // Confirming revokes once, however many times the key is tapped.
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    const again = await screen.findByRole("alertdialog");
+    const key = within(again).getByRole("button", { name: "Disconnect" });
+    fireEvent.click(key);
+    fireEvent.click(key);
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith("oauth_revoke_grant", { p_grant: "g1" }));
+    expect(rpc.mock.calls.filter((c) => c[0] === "oauth_revoke_grant")).toHaveLength(1);
   });
 });

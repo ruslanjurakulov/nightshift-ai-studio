@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
@@ -9,6 +9,9 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { StateBlock } from "@/components/states/StateBlock";
 import { ErrorState } from "@/components/ReadError";
 import { ROLES, type Role } from "@/lib/auth/roles-shared";
+import { fmt } from "@/lib/i18n";
+import { memberBlock } from "@/lib/confirm-tier";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 
 /**
  * Team & roles.
@@ -20,6 +23,11 @@ import { ROLES, type Role } from "@/lib/auth/roles-shared";
  *
  * Bootstrap: while the table is empty every signed-in user is the effective
  * owner, so the first person here claims ownership and the roster begins.
+ *
+ * Access changes ask first: removing a person or changing a role opens a sheet
+ * that names them. Your own row and the last owner cannot be changed or removed
+ * from here (memberBlock). That is a UI guard only: the database still lets a
+ * crafted request do it until a migration adds the same rule to the policies.
  */
 type Member = {
   id: string;
@@ -48,6 +56,10 @@ export function MembersBoard({
   const [role, setRole] = useState<Role>("editor");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
+  // One access change at a time, locked synchronously (state alone lags a render).
+  const acting = useRef(false);
+  const [actingId, setActingId] = useState<string | null>(null);
 
   const canManage = myRole === "owner" || myRole === "admin";
   const empty = members !== null && members.length === 0;
@@ -88,44 +100,97 @@ export function MembersBoard({
   async function add() {
     const supabase = createClient();
     const addr = email.trim().toLowerCase();
-    if (!supabase || !addr || busy) return;
+    if (!supabase || !addr || busy || acting.current) return;
+    acting.current = true;
     setBusy(true);
     setError(null);
-    const { error: e } = await supabase
-      .from("app_members")
-      .insert({ email: addr, role, created_by: myUserId });
-    setBusy(false);
-    if (e) {
-      setError(t.members.saveFailed);
-      return;
+    const write = async () => {
+      const { error: e } = await supabase.from("app_members").insert({ email: addr, role, created_by: myUserId });
+      return e ? t.members.saveFailed : true;
+    };
+    let ok: boolean;
+    if (role === "admin" || role === "owner") {
+      // Admin and owner reach keys, providers and the team: say who gets what before it happens.
+      ok = await confirm({
+        title: fmt(t.ownerSafety.memberAddTitle, { email: addr, role: roleLabel[role] }),
+        message: fmt(t.ownerSafety.memberAddBody, { cap: t.members[`cap_${role}` as const] }),
+        confirmLabel: t.ownerSafety.memberAddConfirm,
+        tone: "primary",
+        details: [
+          { label: t.ownerSafety.dPerson, value: addr },
+          { label: t.ownerSafety.dRole, value: roleLabel[role] },
+        ],
+        successMessage: fmt(t.ownerSafety.memberAdded, { email: addr, role: roleLabel[role] }),
+        run: write,
+      });
+    } else {
+      const res = await write();
+      ok = res === true;
+      if (!ok) setError(res as string);
     }
+    acting.current = false;
+    setBusy(false);
+    if (!ok) return;
     setEmail("");
     await load();
   }
 
   async function changeRole(m: Member, next: Role) {
+    if (acting.current || next === m.role) return;
+    // The select cannot offer these rows, but a stale render or a crafted event must not slip through.
+    if (memberBlock(m, members ?? [], { userId: myUserId, email: myEmail })) return;
     const supabase = createClient();
     if (!supabase) return;
+    acting.current = true;
+    setActingId(m.id);
     setError(null);
-    const { error: e } = await supabase.from("app_members").update({ role: next }).eq("id", m.id);
-    if (e) {
-      setError(t.members.saveFailed);
-      return;
-    }
+    const done = await confirm({
+      title: fmt(t.ownerSafety.roleChangeTitle, { email: m.email }),
+      message: fmt(t.ownerSafety.roleChangeBody, { cap: t.members[`cap_${next}` as const] }),
+      confirmLabel: t.ownerSafety.roleChangeConfirm,
+      tone: "primary",
+      details: [
+        { label: t.ownerSafety.dPerson, value: m.email },
+        { label: t.ownerSafety.dRole, value: `${roleLabel[m.role]} → ${roleLabel[next]}` },
+      ],
+      successMessage: fmt(t.ownerSafety.roleChanged, { email: m.email, role: roleLabel[next] }),
+      run: async () => {
+        const { error: e } = await supabase.from("app_members").update({ role: next }).eq("id", m.id);
+        return e ? t.members.saveFailed : true;
+      },
+    });
+    acting.current = false;
+    setActingId(null);
+    if (!done) return;
     await load();
     router.refresh();
   }
 
   async function remove(m: Member) {
+    if (acting.current) return;
+    if (memberBlock(m, members ?? [], { userId: myUserId, email: myEmail })) return;
     const supabase = createClient();
     if (!supabase) return;
+    acting.current = true;
+    setActingId(m.id);
     setError(null);
-    const { error: e } = await supabase.from("app_members").delete().eq("id", m.id);
-    if (e) {
-      setError(t.members.saveFailed);
-      return;
-    }
-    await load();
+    const done = await confirm({
+      title: fmt(t.ownerSafety.memberRemoveTitle, { email: m.email }),
+      message: t.ownerSafety.memberRemoveBody,
+      confirmLabel: t.ownerSafety.memberRemoveConfirm,
+      details: [
+        { label: t.ownerSafety.dPerson, value: m.email },
+        { label: t.ownerSafety.dRole, value: roleLabel[m.role] },
+      ],
+      successMessage: fmt(t.ownerSafety.memberRemoved, { email: m.email }),
+      run: async () => {
+        const { error: e } = await supabase.from("app_members").delete().eq("id", m.id);
+        return e ? t.members.saveFailed : true;
+      },
+    });
+    acting.current = false;
+    setActingId(null);
+    if (done) await load();
   }
 
   const roleLabel: Record<Role, string> = {
@@ -137,6 +202,7 @@ export function MembersBoard({
 
   return (
     <div className="rhythm">
+      {dialog}
       {/* The job on this page: claim the roster while it is empty, or add a person. One lit desk. */}
       {empty && (
         <section className="panel ns-desk" aria-labelledby="mb-claim">
@@ -224,7 +290,8 @@ export function MembersBoard({
           <ul className="g5-rows">
             {members.map((m) => {
               const isOwnerRow = m.role === "owner";
-              const canEditThis = canManage && (!isOwnerRow || myRole === "owner");
+              const block = memberBlock(m, members, { userId: myUserId, email: myEmail });
+              const canEditThis = canManage && (!isOwnerRow || myRole === "owner") && block === null;
               return (
                 <li key={m.id} className="g5-row g5-person">
                   <div className="min-w-0">
@@ -232,11 +299,15 @@ export function MembersBoard({
                     <p className="g5-row-meta">
                       <StatusLamp tone={m.user_id ? "ok" : "idle"} label={m.user_id ? t.members.statusActive : t.members.statusInvited} />
                     </p>
+                    {canManage && block && (
+                      <p className="g5-note mt-1">{block === "last_owner" ? t.ownerSafety.blockLast : t.ownerSafety.blockSelf}</p>
+                    )}
                   </div>
                   {canEditThis ? (
                     <select
                       value={m.role}
                       onChange={(e) => changeRole(m, e.target.value as Role)}
+                      disabled={actingId !== null}
                       aria-label={`${t.members.colRole}: ${m.email}`}
                       className="ns-field g5-person-role"
                     >
@@ -250,7 +321,12 @@ export function MembersBoard({
                     <span className="g5-v g5-person-role">{roleLabel[m.role]}</span>
                   )}
                   {canEditThis ? (
-                    <button type="button" onClick={() => remove(m)} className="btn-quiet">
+                    <button
+                      type="button"
+                      onClick={() => remove(m)}
+                      disabled={actingId !== null}
+                      className="btn-quiet btn-danger-quiet disabled:opacity-55"
+                    >
                       {t.members.remove}
                     </button>
                   ) : (
