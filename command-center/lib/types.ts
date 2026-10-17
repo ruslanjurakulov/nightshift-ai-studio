@@ -232,7 +232,9 @@ export interface ChannelAgentConfig {
   /**
    * When true, an auto-publish on this channel must be approved by a SECOND
    * admin (never the requester) before the video goes public — see migration
-   * 0009 and the Approvals page. Absent/false keeps today's behaviour.
+   * 0009. READ-ONLY for the app: the backend gate still honours it where it is
+   * already set, but no screen or API writes it and customers are not offered
+   * the feature (docs/security/LEDGER.md, lead 1). Absent/false is the default.
    */
   require_two_person_publish?: boolean;
   /**

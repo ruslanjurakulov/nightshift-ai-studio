@@ -115,8 +115,8 @@ export function ChannelCard({
    * channel — scheduled ones too — stops after the script and scene plan and
    * waits for a person to approve the render at one price. Off (the default):
    * runs go straight to the render, exactly as before. Merged into the live
-   * agent_config so no other setting is overwritten (the Approvals page's
-   * pattern); an unreadable config is not merged into.
+   * agent_config so no other setting is overwritten; an unreadable
+   * config is not merged into.
    */
   async function toggleReview() {
     const supabase = createClient();

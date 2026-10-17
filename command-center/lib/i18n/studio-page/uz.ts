@@ -87,7 +87,6 @@ export const studioPageUz: StudioPageDictionary = {
       { id: "private", title: "YouTube’ga yuklamalar shaxsiy", body: "Tayyor video kanalingizga shaxsiy video sifatida yuboriladi: ommaviy boʻlguncha uni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi." },
       { id: "check", title: "Avval nashr tekshiruvi", body: "Har bir video tekshiruvdan oʻtadi, hukm esa video sahifasida koʻrinadi: oʻtdi yoki bloklandi va nima uchun." },
       { id: "approve", title: "Ommaviy qilish — sizning tugmangiz", body: "Siz videoni koʻrasiz va «Tasdiqlash va nashr qilish»ni bosasiz — bu keyingi ishga tushirish bajaradigan soʻrov yuboradi. Avtomatik nashr har bir kanalda alohida yoqiladi va siz yoqmaguningizcha oʻchiq turadi." },
-      { id: "second", title: "Ikkinchi odam — xohlasangiz", body: "Kanal biror narsa ommaviy boʻlishidan oldin ikkinchi odamning tasdigʻini talab qilishi mumkin." },
     ],
     figure: "Ommaviy boʻlishdan oldingi video holati tasviri: shaxsiy holda yuklangan, nashr tekshiruvi oʻtgan, tasdigʻingizni kutmoqda. Koʻrsatilgan hamma narsa — namuna.",
     figureTitle: "Nashr pulti",
@@ -117,7 +116,7 @@ export const studioPageUz: StudioPageDictionary = {
       {
         id: "publishes",
         q: "Mening oʻrnimga nashr qilasizmi?",
-        a: "Faqat siz yoqsangiz. Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Avtomatik nashr kanal uchun siz yoqmaguningizcha oʻchiq; kanal ikkinchi odamning tasdigʻini ham talab qilishi mumkin.",
+        a: "Faqat siz yoqsangiz. Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Avtomatik nashr kanal uchun siz yoqmaguningizcha oʻchiq.",
       },
       {
         id: "languages",

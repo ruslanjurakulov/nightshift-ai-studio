@@ -13,7 +13,7 @@ Shared pieces: `components/g3/Section.tsx` (`Section` = ruled section or the des
 | :-- | :-- | :-- | :-- |
 | Pipeline | Video pipelines | none (read-only page) | Stage rundown: numbered, amber edge print, lamps; 9 columns on a wide desk, 2 or 3 on a phone (container query), never a sideways scroll |
 | Jobs | The job list | none | Lamps; the table becomes stacked, labelled rows on a phone |
-| Approvals | The request list | Request approval | Lamps; Approve / Reject outlined; every guard and the two-person rule unchanged |
+| Approvals | The request list | Request approval | Lamps; Approve / Reject outlined; every guard unchanged; the requirement switch was removed (the two-person feature is not offered) |
 | Decisions | The decision list | none | Outcome lamp, evidence word, reason in a sunken well, `aria-expanded` on Explain |
 | Inbox | The first reply that waits for approval | the final Approve and post (after the exact text is shown) | Lamp per state; Draft a reply stays priced but outlined |
 | Studio | Style presets | New style kit | Presets, kits and characters are film frames with edge numbers; amber selection |

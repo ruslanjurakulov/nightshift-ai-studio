@@ -202,8 +202,9 @@ xabarlarda ko'rinmaydi.
      so'rov navbatga yoziladi, VPS'dagi **worker** uni bajaradi.
 4. Qoidalar (o'zgarmaydi):
    - Faqat joylash tekshiruvidan (publish gate) o'tgan, **tasdiqlangan** va
-     YouTube'ga yuklangan video joylanadi. Ikki kishilik tasdiq yoqilgan
-     kanalda ikkinchi adminning tasdig'i ham kerak. Aks holda so'rov
+     YouTube'ga yuklangan video joylanadi. (Ikki kishilik tasdiq mijozlarga
+     taklif qilinmaydi; u faqat avvaldan yoqilgan kanallarda ishlaydi va u
+     yerda ikkinchi adminning tasdig'i ham kerak.) Aks holda so'rov
      "RAD ETILDI" holatida sababi bilan ko'rinadi.
    - YouTube'da video o'z kanalida allaqachon bor; uning maxfiyligi kanal
      qoidalariga ko'ra qoladi (standart — private). Bu yerdan o'zgarmaydi —

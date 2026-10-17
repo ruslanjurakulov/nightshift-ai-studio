@@ -132,7 +132,7 @@ Short (9). Checkpoints: `modules/run_checkpoint.py`; IR: `video_ir.py`.
 | visuals / voice / edit | implemented | `media_fetcher.py`, `audio_mixer.py`, `scene_render.py`, `compositor.py` |
 | thumbnail / title / SEO | implemented | `thumbnail_generator.py`, `title_planner.py`, `title_formulas.py`, `hook_ab.py`, `ab_testing.py` |
 | validation | implemented | `video_qc.py` (ffprobe/blackdetect/silencedetect), `fact_checker.py`, `originality_engine.py`, `video_critic.py` (advisory, off by default) |
-| publish gate | implemented | `publish_gate.py`, `publish_approval.py` (two-person), `upload_idempotency.py` |
+| publish gate | implemented | `publish_gate.py`, `publish_approval.py` (two-person gate, backend only, not offered to customers), `upload_idempotency.py` |
 | analytics | implemented | `analytics_client.py`, `revenue_tracker.py`, `intelligence_poller.py` |
 | learning | implemented (human-approved) | `learning_memory.py`, `0014_learnings.sql`, `feedback_engine.py` |
 | next content | partial | scheduled per channel (`daily_video.yml` hourly cron + `tools/list_channels.py`); learnings feed prompts, but not the schedule or format |

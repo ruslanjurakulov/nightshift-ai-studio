@@ -3559,12 +3559,7 @@ export const en = {
   },
   approvals: {
     title: "Publish approvals",
-    subtitle: "For channels that require it, an auto-publish must be signed off by a second admin — never the requester — before a video goes public.",
-    requireToggle: "Require two-person approval to publish",
-    requireOn: "Required",
-    requireOff: "Not required",
-    requireUnknown: "Unknown",
-    requireUnknownNote: "Could not read whether two-person approval is required for this channel. The switch is off until it can be read — retry, then change it.",
+    subtitle: "Request approval to publish a video; another admin signs it off.",
     readFailed: "Could not read the approval requests.",
     requestTitle: "Request approval to publish",
     videoRef: "Video reference (optional)",
@@ -3697,7 +3692,7 @@ export const en = {
       items: [
         { id: "price", title: "The price before every run", body: "Every generation and every video run shows its price in credits before it starts, and starts only after you confirm. If the price changes in between, you are asked again.", typical: "The cost is clear only after the render." },
         { id: "refund", title: "Credits back on failure, automatically", body: "If a run fails, the credits held for it return to your balance on their own — no ticket, no request. Your credit history shows every hold, charge and return.", typical: "A failed render can still use up credits." },
-        { id: "approval", title: "Nothing goes public without you", body: "Videos upload to YouTube as private and pass a publish check first. Making one public is your decision, with an optional second sign-off.", typical: "Download, then upload it yourself — or it posts on its own." },
+        { id: "approval", title: "Nothing goes public without you", body: "Videos upload to YouTube as private and pass a publish check first. Making one public is your decision: nothing goes public until you approve it.", typical: "Download, then upload it yourself — or it posts on its own." },
         { id: "channels", title: "Many channels in one place", body: "Run several YouTube channels from one account, each with its own language, voice, look and schedule — one at a time or all together.", typical: "One workspace per channel." },
         { id: "languages", title: "O'zbek, Русский, English", body: "The whole interface, and the videos you make, in Uzbek, Russian or English. Switch any time from the language menu.", typical: "English-first interfaces." },
       ],
