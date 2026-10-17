@@ -4,13 +4,20 @@ No real network calls: `requests.post` is mocked. A real tempdir StateStore is
 used so mirror_from_store exercises the real read path and row shaping.
 """
 
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from modules.state_store import StateStore
-from modules.supabase_sync import SupabaseSync
+from modules.supabase_sync import (
+    SupabaseSync,
+    _canonical_quantity,
+    video_cost_row_key,
+    video_cost_rows_with_keys,
+)
 
 
 class SupabaseSyncDisabledTestCase(unittest.TestCase):
@@ -136,6 +143,202 @@ class SupabaseSyncEnabledTestCase(unittest.TestCase):
 
     def test_strip_local_id(self):
         self.assertEqual(SupabaseSync._strip_local_id({"id": 3, "video_id": "v1"}), {"video_id": "v1"})
+
+
+class FakeCostsTable:
+    """A stand-in for the hosted video_costs table that enforces what migration
+    0106 does: a UNIQUE row_key, and PostgREST's ignore-duplicates on it."""
+
+    def __init__(self, migrated=True):
+        self.rows = []
+        self.posts = []
+        self.migrated = migrated
+
+    def post(self, url, params=None, json=None, headers=None, timeout=None):
+        resp = MagicMock()
+        self.posts.append({"url": url, "params": params, "prefer": (headers or {}).get("Prefer", ""), "n": len(json)})
+        if not url.endswith("/video_costs"):
+            resp.status_code, resp.text = 201, ""
+            return resp
+        if not self.migrated:
+            resp.status_code, resp.text = 400, '{"code":"PGRST204","message":"no row_key column"}'
+            return resp
+        assert params == {"on_conflict": "row_key"}, params
+        assert "resolution=ignore-duplicates" in headers["Prefer"], headers["Prefer"]
+        have = {r["row_key"] for r in self.rows}
+        for r in json:
+            if r["row_key"] not in have:
+                self.rows.append(r)
+                have.add(r["row_key"])
+        resp.status_code, resp.text = 201, ""
+        return resp
+
+
+class VideoCostsIdempotentTestCase(unittest.TestCase):
+    """B-03: the nightly mirror re-sends all of video_costs; a re-send must add nothing."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.store = StateStore(Path(self._tmpdir.name) / "costs.db")
+        self.sync = SupabaseSync(url="https://demo.supabase.co", service_key="service-key-123")
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def _cost(self, unit="gemini_input_tokens", quantity=100.0, recorded_at="2026-09-01T10:00:00+00:00", **kw):
+        kw.setdefault("video_id", "v1")
+        kw.setdefault("slug", "rome")
+        kw.setdefault("stage", "script")
+        self.store.record_video_cost(unit=unit, quantity=quantity, recorded_at=recorded_at, **kw)
+
+    def _mirror(self, table):
+        with patch("modules.supabase_sync.requests.post", side_effect=table.post):
+            return self.sync.mirror_from_store(self.store)
+
+    def test_mirroring_twice_leaves_the_same_row_count(self):
+        self._cost()
+        self._cost(unit="tts_characters", quantity=1200)
+        table = FakeCostsTable()
+        first = self._mirror(table)
+        self.assertEqual((first["video_costs"], len(table.rows)), (2, 2))
+        second = self._mirror(table)
+        self.assertEqual(second["video_costs"], 2)  # re-sent, all ignored
+        self.assertEqual(len(table.rows), 2)
+
+    def test_a_row_recorded_between_runs_is_added_once(self):
+        self._cost()
+        table = FakeCostsTable()
+        self._mirror(table)
+        self._cost(unit="render_seconds", quantity=42.5, recorded_at="2026-09-02T10:00:00+00:00")
+        self._mirror(table)
+        self._mirror(table)
+        self.assertEqual(len(table.rows), 2)
+
+    def test_two_genuinely_identical_rows_stay_two_across_runs(self):
+        # one flush of the ledger can record two equal entries (two clips, same stage)
+        self._cost(unit="video_gen_clips", quantity=1, stage="broll:minimax")
+        self._cost(unit="video_gen_clips", quantity=1, stage="broll:minimax")
+        table = FakeCostsTable()
+        self._mirror(table)
+        self._mirror(table)
+        self.assertEqual(len(table.rows), 2)
+        self.assertEqual(len({r["row_key"] for r in table.rows}), 2)
+
+    def test_rows_sent_carry_a_row_key_and_no_local_id(self):
+        self._cost()
+        table = FakeCostsTable()
+        self._mirror(table)
+        row = table.rows[0]
+        self.assertNotIn("id", row)
+        self.assertTrue(row["row_key"].startswith("v1:") and len(row["row_key"]) == 3 + 64)
+        self.assertEqual((row["unit"], row["quantity"], row["slug"]), ("gemini_input_tokens", 100.0, "rome"))
+
+    def test_the_failure_path_a_database_without_the_migration_inserts_nothing(self):
+        self._cost()
+        self._cost(unit="tts_characters", quantity=5)
+        table = FakeCostsTable(migrated=False)
+        counts = self._mirror(table)
+        cost_posts = [p for p in table.posts if p["url"].endswith("/video_costs")]
+        self.assertEqual(counts["video_costs"], 0)
+        self.assertEqual(len(cost_posts), 1, "no second attempt, no fallback to a plain insert")
+        self.assertEqual(table.rows, [])
+        # the other tables are still mirrored: one table skipped, not the run
+        self.assertIn("system_events", counts)
+
+    def test_the_failure_is_logged_and_the_next_run_after_the_migration_catches_up(self):
+        self._cost()
+        table = FakeCostsTable(migrated=False)
+        with self.assertLogs("modules.supabase_sync", level="WARNING") as logs:
+            self._mirror(table)
+        self.assertTrue(any("0106" in line for line in logs.output), logs.output)
+        table.migrated = True
+        self._mirror(table)
+        self._mirror(table)
+        self.assertEqual(len(table.rows), 1)
+
+    def test_a_network_error_sends_nothing_and_does_not_raise(self):
+        self._cost()
+        with patch("modules.supabase_sync.requests.post", side_effect=RuntimeError("down")):
+            counts = self.sync.mirror_from_store(self.store)
+        self.assertEqual(counts["video_costs"], 0)
+
+    def test_no_costs_means_no_request_for_the_table(self):
+        table = FakeCostsTable()
+        counts = self._mirror(table)
+        self.assertEqual(counts["video_costs"], 0)
+        self.assertFalse([p for p in table.posts if p["url"].endswith("/video_costs")])
+
+
+class VideoCostRowKeyTestCase(unittest.TestCase):
+    BASE = {"channel_id": "default", "video_id": "v1", "slug": "rome", "unit": "tts_characters",
+            "stage": "tts", "recorded_at": "2026-09-01T10:00:00+00:00", "quantity": 1200.0}
+
+    def key(self, **over):
+        return video_cost_row_key({**self.BASE, **over})
+
+    def test_key_is_stable(self):
+        self.assertEqual(self.key(), self.key())
+        # the local id and the estimate are not part of the identity
+        self.assertEqual(self.key(), video_cost_row_key({**self.BASE, "id": 99, "estimated_usd": 0.5}))
+        # pinned value: changing it re-keys history, which would duplicate every row once
+        self.assertEqual(
+            self.key(),
+            "v1:" + hashlib.sha256(
+                "default\x1fv1\x1frome\x1ftts_characters\x1ftts\x1f2026-09-01T10:00:00+00:00\x1f1200\x1f0".encode()
+            ).hexdigest(),
+        )
+
+    def test_key_differs_when_any_keyed_field_differs(self):
+        keys = {self.key()}
+        for over in ({"channel_id": "other"}, {"video_id": "v2"}, {"slug": "paris"}, {"unit": "render_seconds"},
+                     {"stage": "voice"}, {"recorded_at": "2026-09-01T10:00:01+00:00"}, {"quantity": 1200.5}):
+            keys.add(self.key(**over))
+        self.assertEqual(len(keys), 8)
+
+    def test_key_differs_by_occurrence(self):
+        self.assertNotEqual(video_cost_row_key(self.BASE, 0), video_cost_row_key(self.BASE, 1))
+
+    def test_equal_quantities_read_the_same_however_they_are_written(self):
+        self.assertEqual(self.key(quantity=1200), self.key(quantity=1200.0))
+        self.assertEqual(self.key(quantity="1200"), self.key(quantity=1200.0))
+        self.assertEqual(self.key(quantity=1e-05), self.key(quantity=0.00001))
+
+    def test_canonical_quantity(self):
+        for value, text in ((1200.0, "1200"), (0, "0"), (2.5, "2.5"), (0.00001, "0.00001"), (1e20, "100000000000000000000"),
+                            (0.1, "0.1"), (123456.789, "123456.789")):
+            self.assertEqual(_canonical_quantity(value), text)
+
+    def test_null_and_empty_read_the_same(self):
+        self.assertEqual(self.key(stage=None), self.key(stage=""))
+
+    def test_fields_cannot_run_into_each_other(self):
+        self.assertNotEqual(self.key(slug="a", unit="bc"), self.key(slug="ab", unit="c"))
+
+    def test_shared_vectors_match_what_the_owner_sql_script_writes(self):
+        # tests/security/test_sec_provider_spend.py runs docs/sql/dedupe-video-costs.sql
+        # against the same file and requires the same keys: one definition, two implementations.
+        vectors = json.loads((Path(__file__).parent / "fixtures" / "video_cost_keys.json").read_text("utf-8"))
+        self.assertGreaterEqual(len(vectors), 15)
+        for v in vectors:
+            self.assertEqual(video_cost_row_key(v["row"], 0), v["row_key"], v["row"])
+        self.assertEqual(len({v["row_key"] for v in vectors}), len(vectors))
+
+    def test_occurrence_index_follows_local_id_order(self):
+        a = dict(self.BASE, id=7)
+        b = dict(self.BASE, id=3)
+        other = dict(self.BASE, id=5, unit="render_seconds")
+        out = video_cost_rows_with_keys([a, other, b])
+        by_id = {}
+        for src, row in zip(sorted([a, other, b], key=lambda r: r["id"]), out):
+            by_id[src["id"]] = row["row_key"]
+        self.assertEqual(by_id[3], video_cost_row_key(self.BASE, 0))
+        self.assertEqual(by_id[7], video_cost_row_key(self.BASE, 1))
+        self.assertEqual(by_id[5], video_cost_row_key(other, 0))
+        # same keys whatever order the store hands the rows over in
+        again = video_cost_rows_with_keys([b, a, other])
+        self.assertEqual({r["row_key"] for r in out}, {r["row_key"] for r in again})
+        self.assertTrue(all("id" not in r for r in out))
 
 
 if __name__ == "__main__":

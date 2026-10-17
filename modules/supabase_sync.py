@@ -30,8 +30,10 @@ sync against unchanged data is safe and produces no duplicates.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+from decimal import Decimal
 
 import requests
 
@@ -58,11 +60,81 @@ _UPSERT_TABLES = {
 
 #: video_costs is append-only and has no natural key — a run that was retried
 #: cost real money twice, and an upsert would collapse that into one charge.
+#: Its rows get a deterministic ``row_key`` (migration 0106, see
+#: ``video_cost_row_keys``) and are sent with on_conflict=row_key +
+#: ignore-duplicates: a row already mirrored is left alone, a new row is added,
+#: and two genuinely identical rows stay two (their occurrence index differs).
 _APPEND_TABLES = ("video_costs",)
+
+#: The conflict target of the video_costs mirror: a plain UNIQUE index on
+#: video_costs(row_key) created by migration 0106.
+_VIDEO_COSTS_CONFLICT = "row_key"
+
+#: Separates the fields of a row_key's source text. A control character that no
+#: cost field holds, so "a|b" + "c" can never read as "a" + "b|c".
+_KEY_SEP = "\x1f"
 
 #: PostgREST / Postgres codes for "this table does not exist" — a deployment
 #: where the migration that creates it has not been applied yet.
 _TABLE_MISSING_CODES = ("PGRST205", "42P01")
+
+
+def _canonical_quantity(value) -> str:
+    """A quantity as plain decimal text with no exponent and no trailing zeros
+    (0.00001, 100, 2.5), rounded to the 15 significant digits Postgres keeps
+    when it turns a double into a number. The SQL in docs/sql/dedupe-video-costs.sql
+    writes the same text with ``trim_scale(quantity::numeric)::text``, so a key
+    computed here and one computed there are the same string."""
+    try:
+        text = format(Decimal("%.15g" % float(value)).normalize(), "f")
+    except (TypeError, ValueError, ArithmeticError):
+        return str(value)
+    return "0" if text in ("-0", "") else text
+
+
+def video_cost_group(row: dict) -> str:
+    """The fields that make two video_costs rows "the same charge": which
+    channel, video, slug, unit and stage, when it was recorded and how much.
+    NULL and '' read the same."""
+    parts = (
+        row.get("channel_id"), row.get("video_id"), row.get("slug"), row.get("unit"),
+        row.get("stage"), row.get("recorded_at"),
+    )
+    return _KEY_SEP.join("" if p is None else str(p) for p in parts) + _KEY_SEP + _canonical_quantity(row.get("quantity"))
+
+
+def video_cost_row_key(row: dict, occurrence: int = 0) -> str:
+    """Deterministic ``row_key`` of a video_costs row: ``v1:`` + sha256 over the
+    group (video_cost_group) and its ``occurrence`` index — 0 for the first row of
+    a group, 1 for the next identical one, and so on. The same row always gets
+    the same key, a different row a different key. sha256 rather than sha1
+    because Postgres has sha256() built in (the owner's one-time SQL script needs
+    to compute the same key without an extension)."""
+    text = f"{video_cost_group(row)}{_KEY_SEP}{int(occurrence)}"
+    return "v1:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def video_cost_rows_with_keys(rows: list[dict]) -> list[dict]:
+    """The rows as the mirror sends them: the local ``id`` dropped and a
+    ``row_key`` added. Rows identical in every keyed field (one flush of the cost
+    ledger can record two equal entries) are told apart by an occurrence index
+    that follows the local ``id`` order, so the Nth identical row has the same
+    key on every run. Rows without an ``id`` keep the order given."""
+    ordered = sorted(
+        range(len(rows)),
+        key=lambda i: (rows[i].get("id") is None, rows[i].get("id") if rows[i].get("id") is not None else 0, i),
+    )
+    seen: dict[str, int] = {}
+    out: list[dict] = []
+    for i in ordered:
+        row = rows[i]
+        group = video_cost_group(row)
+        n = seen.get(group, 0)
+        seen[group] = n + 1
+        keyed = {k: v for k, v in row.items() if k != "id"}
+        keyed["row_key"] = video_cost_row_key(row, n)
+        out.append(keyed)
+    return out
 
 
 class SupabaseReadError(RuntimeError):
@@ -298,10 +370,9 @@ class SupabaseSync:
         except Exception as e:
             logger.warning("Failed gathering metrics_snapshots for mirror (%s: %s)", type(e).__name__, e)
 
-        # -- costs (append-only: no upsert, so a retried run shows both charges) --
+        # -- costs (append-only; keyed so a re-sent row is ignored) --
         try:
-            rows = [self._strip_local_id(r) for r in store.list_video_costs(limit=100000)]
-            counts["video_costs"] = self.upsert("video_costs", rows)
+            counts["video_costs"] = self._mirror_video_costs(store)
         except Exception as e:
             logger.warning("Failed mirroring video_costs (%s: %s)", type(e).__name__, e)
 
@@ -496,6 +567,28 @@ class SupabaseSync:
             "updated_at": stamps[-1] if stamps else None,
             "channel_id": d.get("channel_id") or "default",
         }
+
+    def _mirror_video_costs(self, store) -> int:
+        """Send every local video_costs row with its ``row_key``, ignoring the
+        ones Supabase already has (so the nightly re-send of history adds
+        nothing). Returns the number of rows sent.
+
+        A failure skips the table for this run and sends NOTHING else. There is
+        deliberately no fallback to a plain insert: that is the old behaviour,
+        and it would store every row once more. The usual cause is a database
+        that has not applied migration 0106 yet (no ``row_key`` column, or no
+        unique index for on_conflict to name); the next run, after the migration,
+        mirrors the full history, and the local DB keeps every row meanwhile."""
+        rows = video_cost_rows_with_keys(store.list_video_costs(limit=100000))
+        sent = self.upsert("video_costs", rows, on_conflict=_VIDEO_COSTS_CONFLICT, ignore_duplicates=True)
+        if rows and not sent:
+            logger.warning(
+                "video_costs not mirrored this run (%d local rows kept locally): the write was refused or "
+                "failed, most likely because migration 0106_video_costs_idempotent.sql is not applied yet. "
+                "Nothing was inserted without its row_key, so no row can be duplicated; the next run retries.",
+                len(rows),
+            )
+        return sent
 
     @staticmethod
     def _strip_local_id(row: dict) -> dict:

@@ -533,3 +533,8 @@ sec_review_links_0101.extend(TABLES, FUNCTIONS)
 import sec_notify_language_0105  # noqa: E402
 
 sec_notify_language_0105.extend(TABLES, FUNCTIONS)
+
+# Migration 0106 (idempotent video_costs mirror, owner provider spend): tests/security/sec_provider_spend_0106.py
+import sec_provider_spend_0106  # noqa: E402
+
+sec_provider_spend_0106.extend(TABLES, FUNCTIONS)

@@ -61,6 +61,9 @@ No code change needed.
   `trending_snapshots`, `feedback_signals`, `topic_performance`
 - `system_events` (the activity feed; upserted on a synthetic `event_key` so
   re-syncs never duplicate)
+- `video_costs` (append-only; each row carries a deterministic `row_key` and is
+  sent with `on_conflict=row_key` + ignore-duplicates, so the nightly re-send of
+  the whole history adds nothing; see "Migration 0106" below)
 
 ## Security
 - RLS is **on** for every table with **no public read policy**, so the anon key
@@ -132,6 +135,38 @@ RLS-on with an authenticated-read policy and no write policy.
 
 See `docs/MEASUREMENT.md` for what reads these tables and for the pre-publish
 gate, which is the one Phase 6 change that alters publishing behaviour.
+
+## Migration 0106 — idempotent video_costs mirror
+
+`supabase/migrations/0106_video_costs_idempotent.sql` closes a duplication bug
+before it could cost anything: the nightly mirror used to re-insert every local
+`video_costs` row on each run (the table has no natural key), so a cost would
+have been stored once per night. It adds, and nothing else:
+
+- `video_costs.row_key` — nullable text, no default; rows from before the
+  migration keep NULL and are never touched.
+- `video_costs_row_key_uidx` — a **plain** UNIQUE index on `(row_key)`. Not a
+  partial index: PostgREST's `on_conflict=row_key` cannot carry the `WHERE` that
+  Postgres needs to match a partial unique index, and a unique index already
+  lets any number of NULLs coexist.
+- `owner_provider_spend(p_days)` — platform owner/admin only (SECURITY DEFINER,
+  checks `is_platform_admin()` first, `authenticated` may execute, `anon` and
+  `service_role` may not): provider spend per UTC day from `video_costs` and
+  `creative_job_costs`, 1 to 180 days. A total is NULL, never 0, when any row of
+  it is unpriced. Nothing reads it yet; a follow-up moves Billing off raw rows.
+
+The mirror computes `row_key = 'v1:' + sha256(channel_id, video_id, slug, unit,
+stage, recorded_at, quantity, occurrence)` (`video_cost_row_key` in
+`modules/supabase_sync.py`; `occurrence` tells two truly identical rows of one
+flush apart). If the column is missing (the migration is not applied yet) the
+write is refused, the mirror **skips `video_costs` for that run and logs why**; it
+does not fall back to a plain insert, because that is the old duplicating
+behaviour. The local database keeps every row, so the first run after the
+migration sends the whole history once.
+
+If `video_costs` was ever filled before this migration, run the owner-applied
+`docs/sql/dedupe-video-costs.sql` once (preview first; it ends in ROLLBACK until
+you change it). The table was empty when 0106 was written.
 
 ## Migration 0003 — Shorts
 
