@@ -228,7 +228,13 @@ payment history with Paddle invoice links) · Connected apps.
 
 API top-ups never accept discounts: a Paddle transaction with any discount
 (even an id in `PADDLE_PROMO_DISCOUNT_IDS`) or a zero payment is `rejected`
-and credits nothing; a normal top-up credits exactly what was paid.
+and credits nothing; a normal top-up credits exactly what was paid. The
+webhook also refuses (records `rejected`, credits nothing) a top-up whose
+transaction is not in USD, that was partly paid from Paddle credit
+(`totals.credit`), whose `details.totals` do not match the line price
+(subtotal for a tax-exclusive price, total for a tax-inclusive one), or whose
+payment is smaller than the cents it would credit. The full list is in
+`docs/BILLING_PLANS.md` → "What the webhook checks before crediting".
 
 See `docs/PADDLE_SETUP.md` → "8. API balansi". In short: apply 0031; create a
 Paddle product "Nightshift API balance top-up"; set `PADDLE_API_KEY` (secret)
