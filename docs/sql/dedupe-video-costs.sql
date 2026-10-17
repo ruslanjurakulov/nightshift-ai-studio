@@ -37,6 +37,15 @@
 --   * Run it when no mirror is running (the nightly job is a few minutes long).
 --
 -- Re-running it is safe: after a commit, no NULL-key group is left to touch.
+--
+-- HOW TO RUN IT (three steps, in the SQL editor)
+--   Step 1  the PREVIEW (section 1), alone. Read it.
+--   Step 2  the APPLY block (section 2), from `begin;` to the last line, as ONE
+--           run. It ends in ROLLBACK, so the first run only shows what it would
+--           do. Change the last line to COMMIT; and run it again to apply.
+--   Step 3  the CHECK (section 3), alone, afterwards. A statement placed after a
+--           ROLLBACK/COMMIT in the same run is not guaranteed to be shown by
+--           every editor, so it is kept apart.
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 1. PREVIEW (read-only). Run this first, alone, and read it.
@@ -75,7 +84,7 @@ having count(*) > 1
  limit 10;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 2. APPLY. Run from here to the end together. It ends in ROLLBACK.
+-- 2. APPLY. Run from `begin;` to the ROLLBACK line together. It ends in ROLLBACK.
 -- ───────────────────────────────────────────────────────────────────────────
 
 begin;
@@ -118,3 +127,14 @@ select (select count(*) from public.video_costs where row_key is null) as no_key
        (select count(*) from public.video_costs) as rows_now;
 
 rollback;  -- change to COMMIT; once the numbers above are what you expect
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 3. CHECK (read-only). Run alone, after step 2. After a COMMIT it must read
+--    rows_without_key = 0 and duplicate_keys = 0; after the default ROLLBACK it
+--    reads exactly like the preview, because nothing changed.
+-- ───────────────────────────────────────────────────────────────────────────
+
+select (select count(*) from public.video_costs) as rows_now,
+       (select count(*) from public.video_costs where row_key is null) as rows_without_key,
+       (select count(*) from (select row_key from public.video_costs where row_key is not null
+                               group by row_key having count(*) > 1) d) as duplicate_keys;

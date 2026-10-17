@@ -149,10 +149,14 @@ class FakeCostsTable:
     """A stand-in for the hosted video_costs table that enforces what migration
     0106 does: a UNIQUE row_key, and PostgREST's ignore-duplicates on it."""
 
-    def __init__(self, migrated=True):
+    def __init__(self, migrated=True, missing_code="PGRST204", fail_after=None, fail_status=500):
         self.rows = []
         self.posts = []
         self.migrated = migrated
+        self.missing_code = missing_code
+        #: fail every costs request after this many have succeeded (a flaky network)
+        self.fail_after = fail_after
+        self.fail_status = fail_status
 
     def post(self, url, params=None, json=None, headers=None, timeout=None):
         resp = MagicMock()
@@ -161,7 +165,12 @@ class FakeCostsTable:
             resp.status_code, resp.text = 201, ""
             return resp
         if not self.migrated:
-            resp.status_code, resp.text = 400, '{"code":"PGRST204","message":"no row_key column"}'
+            resp.status_code, resp.text = 400, '{"code":"%s","message":"no row_key column"}' % self.missing_code
+            resp.json.return_value = {"code": self.missing_code, "message": "no row_key column"}
+            return resp
+        if self.fail_after is not None and sum(1 for p in self.posts if p["url"].endswith("/video_costs")) > self.fail_after:
+            resp.status_code, resp.text = self.fail_status, "upstream timeout"
+            resp.json.side_effect = ValueError("not json")
             return resp
         assert params == {"on_conflict": "row_key"}, params
         assert "resolution=ignore-duplicates" in headers["Prefer"], headers["Prefer"]
@@ -256,6 +265,51 @@ class VideoCostsIdempotentTestCase(unittest.TestCase):
         self._mirror(table)
         self._mirror(table)
         self.assertEqual(len(table.rows), 1)
+
+    def test_the_missing_index_is_also_a_migration_problem(self):
+        self._cost()
+        table = FakeCostsTable(migrated=False, missing_code="42P10")
+        with self.assertLogs("modules.supabase_sync", level="WARNING") as logs:
+            counts = self._mirror(table)
+        self.assertEqual(counts["video_costs"], 0)
+        self.assertTrue(any("0106" in line and "42P10" in line for line in logs.output), logs.output)
+
+    def test_history_is_sent_in_chunks_and_a_rerun_adds_nothing(self):
+        for i in range(5):
+            self._cost(quantity=float(i + 1))
+        table = FakeCostsTable()
+        with patch("modules.supabase_sync._VIDEO_COSTS_CHUNK", 2):
+            first = self._mirror(table)
+            self._mirror(table)
+        sizes = [p["n"] for p in table.posts if p["url"].endswith("/video_costs")]
+        self.assertEqual(sizes, [2, 2, 1, 2, 2, 1])
+        self.assertEqual((first["video_costs"], len(table.rows)), (5, 5))
+
+    def test_a_failed_chunk_is_not_called_a_missing_migration_and_the_next_run_finishes(self):
+        for i in range(5):
+            self._cost(quantity=float(i + 1))
+        table = FakeCostsTable(fail_after=1)
+        with patch("modules.supabase_sync._VIDEO_COSTS_CHUNK", 2):
+            with self.assertLogs("modules.supabase_sync", level="WARNING") as logs:
+                counts = self._mirror(table)
+            self.assertEqual(counts["video_costs"], 2, "only the chunk that went through is counted")
+            self.assertEqual(len(table.rows), 2)
+            text = " ".join(logs.output)
+            self.assertIn("stopped after 2 of 5", text)
+            self.assertIn("not a missing migration", text)
+            self.assertNotIn("0106", text)
+            table.fail_after = None
+            self._mirror(table)
+        self.assertEqual(len(table.rows), 5)
+
+    def test_a_timeout_is_not_called_a_missing_migration(self):
+        self._cost()
+        with patch("modules.supabase_sync.requests.post", side_effect=TimeoutError("slow")):
+            with self.assertLogs("modules.supabase_sync", level="WARNING") as logs:
+                self.sync.mirror_from_store(self.store)
+        text = " ".join(logs.output)
+        self.assertIn("not a missing migration", text)
+        self.assertNotIn("0106", text)
 
     def test_a_network_error_sends_nothing_and_does_not_raise(self):
         self._cost()

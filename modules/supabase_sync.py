@@ -66,6 +66,16 @@ _UPSERT_TABLES = {
 #: and two genuinely identical rows stay two (their occurrence index differs).
 _APPEND_TABLES = ("video_costs",)
 
+#: Rows per request of the video_costs mirror. A whole history in one request can
+#: outgrow PostgREST's body limit or the 15 s timeout; ignore-duplicates makes a
+#: retried or repeated chunk harmless.
+_VIDEO_COSTS_CHUNK = 2000
+
+#: PostgREST / Postgres codes that mean "the schema lacks what the write names":
+#: the row_key column (PGRST204, 42703) or the unique index on it (42P10), or the
+#: table itself. Anything else (a timeout, a 5xx, a bad key) is not that.
+_SCHEMA_MISSING_CODES = ("PGRST204", "42703", "42P10", "PGRST205", "42P01")
+
 #: The conflict target of the video_costs mirror: a plain UNIQUE index on
 #: video_costs(row_key) created by migration 0106.
 _VIDEO_COSTS_CONFLICT = "row_key"
@@ -158,6 +168,10 @@ class SupabaseSync:
         self.url = (url if url is not None else os.getenv("SUPABASE_URL", "")).rstrip("/")
         self.service_key = service_key if service_key is not None else os.getenv("SUPABASE_SERVICE_KEY", "")
         self.enabled = bool(self.url and self.service_key)
+        #: (HTTP status or None, PostgREST code or exception name) of the last
+        #: failed upsert, None after a success. Lets a caller tell "the schema is
+        #: missing" from "the network is down".
+        self.last_failure: tuple | None = None
         if not self.enabled:
             logger.info(
                 "SupabaseSync disabled (SUPABASE_URL / SUPABASE_SERVICE_KEY not set) — "
@@ -189,6 +203,7 @@ class SupabaseSync:
         `ignore_duplicates=True` inserts only rows whose conflict key is new and
         leaves an existing row exactly as it is — for tables where a human's
         decision on a row must never be overwritten by the bot (learnings)."""
+        self.last_failure = None
         if not self.enabled or not rows:
             return 0
         params = {}
@@ -206,11 +221,23 @@ class SupabaseSync:
             )
             if resp.status_code >= 300:
                 logger.warning("Supabase upsert into %s failed: HTTP %s %s", table, resp.status_code, resp.text[:300])
+                self.last_failure = (resp.status_code, self._error_code(resp))
                 return 0
             return len(rows)
         except Exception as e:
             logger.warning("Supabase upsert into %s errored (%s: %s)", table, type(e).__name__, e)
+            self.last_failure = (None, type(e).__name__)
             return 0
+
+    @staticmethod
+    def _error_code(resp) -> str:
+        """The PostgREST error code of a failed response, or "" (never raises)."""
+        try:
+            body = resp.json()
+            raw = str(body.get("code") or "") if isinstance(body, dict) else ""
+            return raw if raw.isalnum() and len(raw) <= 16 else ""
+        except Exception:
+            return ""
 
     def insert_new(self, table: str, rows: list[dict], on_conflict: str) -> list[dict] | None:
         """Insert the rows whose conflict key is new and return exactly those
@@ -569,25 +596,39 @@ class SupabaseSync:
         }
 
     def _mirror_video_costs(self, store) -> int:
-        """Send every local video_costs row with its ``row_key``, ignoring the
-        ones Supabase already has (so the nightly re-send of history adds
-        nothing). Returns the number of rows sent.
+        """Send every local video_costs row with its ``row_key``, in chunks,
+        ignoring the ones Supabase already has (so the nightly re-send of history
+        adds nothing). Returns the number of rows SENT successfully; the count is
+        not the number inserted, Supabase silently skips the ones it has.
 
-        A failure skips the table for this run and sends NOTHING else. There is
-        deliberately no fallback to a plain insert: that is the old behaviour,
-        and it would store every row once more. The usual cause is a database
-        that has not applied migration 0106 yet (no ``row_key`` column, or no
-        unique index for on_conflict to name); the next run, after the migration,
-        mirrors the full history, and the local DB keeps every row meanwhile."""
+        On a failed chunk the table is abandoned for this run (the rest would
+        meet the same fate) and the warning says why. There is deliberately no
+        fallback to a plain insert: that is the old behaviour and it would store
+        every row once more. Ignore-duplicates makes the next run's re-send of
+        the same chunks harmless, and the local DB keeps every row meanwhile."""
         rows = video_cost_rows_with_keys(store.list_video_costs(limit=100000))
-        sent = self.upsert("video_costs", rows, on_conflict=_VIDEO_COSTS_CONFLICT, ignore_duplicates=True)
-        if rows and not sent:
-            logger.warning(
-                "video_costs not mirrored this run (%d local rows kept locally): the write was refused or "
-                "failed, most likely because migration 0106_video_costs_idempotent.sql is not applied yet. "
-                "Nothing was inserted without its row_key, so no row can be duplicated; the next run retries.",
-                len(rows),
-            )
+        sent = 0
+        for i in range(0, len(rows), _VIDEO_COSTS_CHUNK):
+            chunk = rows[i:i + _VIDEO_COSTS_CHUNK]
+            n = self.upsert("video_costs", chunk, on_conflict=_VIDEO_COSTS_CONFLICT, ignore_duplicates=True)
+            if n:
+                sent += n
+                continue
+            status, code = self.last_failure or (None, "")
+            if code in _SCHEMA_MISSING_CODES:
+                logger.warning(
+                    "video_costs not mirrored this run (%d local rows kept locally): the database refused the "
+                    "write (HTTP %s %s), so migration 0106_video_costs_idempotent.sql is probably not applied "
+                    "yet. Nothing was inserted without its row_key, so no row can be duplicated; the next run retries.",
+                    len(rows), status, code)
+            else:
+                logger.warning(
+                    "video_costs mirror stopped after %d of %d rows (HTTP %s %s): a failed or timed-out request, "
+                    "not a missing migration. Re-sending is safe (ignore-duplicates); the next run retries.",
+                    sent, len(rows), status or "-", code or "no answer")
+            break
+        if rows and sent == len(rows):
+            logger.info("video_costs mirror: sent %d rows (already-known rows are ignored by Supabase)", sent)
         return sent
 
     @staticmethod

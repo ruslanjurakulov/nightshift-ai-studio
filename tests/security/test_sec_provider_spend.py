@@ -50,6 +50,14 @@ def _vc(su, provider, *, day=None, ago=0, unit="video_gen_clips", qty=1, usd=Non
         [video, channel, slug, unit, qty, stage, usd, at, row_key])
 
 
+def _raw(su, unit, stage, *, qty=1, usd=None, ago=0, slug="lab-raw", recorded_at=None):
+    """A ledger row with exactly this unit and stage (what main.py and the repair paths write)."""
+    return su.value(
+        "insert into public.video_costs (video_id, channel_id, slug, unit, quantity, stage, estimated_usd, recorded_at) "
+        "values ('v', 'default', %s, %s, %s, %s, %s, %s) returning id",
+        [slug, unit, qty, stage, usd, recorded_at or f"{_day(ago)}T10:00:00.5+00:00"])
+
+
 def _job(su, org):
     return su.value(
         "insert into public.creative_jobs (org_id, capability, requested_model, routed_model, params, status, "
@@ -158,14 +166,14 @@ def test_both_sources_add_up_per_provider_and_day(conn, sc):
         j = _job(su, sc.alice.org)
         _cc(su, j, sc.alice.org, "lab-p1", unit="video_gen_clips", qty=3, usd=D("1.25"))
         _cc(su, _job(su, sc.bob.org), sc.bob.org, "lab-p1", unit="video_gen_clips", qty=1, usd=D("0.10"))
-        _vc(su, "lab-p2", ago=1, unit="tts_characters", qty=500, usd=D("0.01"))
+        _vc(su, "lab-p2", ago=1, unit="video_gen_clips", qty=500, usd=D("0.01"))
         got = mine(conn, sc.operator, "lab-p")
     r = got[(_day(0), "lab-p1")]
     assert r["usd"] == D("2.10") and r["usd_priced"] == D("2.10") and r["unpriced_rows"] == 0
     assert (r["units"], r["unit"]) == (D("7"), "video_gen_clips")
     assert r["runs"] == 4          # two videos (slugs a, b) and two creative jobs
     other = got[(_day(1), "lab-p2")]
-    assert (other["usd"], other["units"], other["unit"], other["runs"]) == (D("0.01"), D("500"), "tts_characters", 1)
+    assert (other["usd"], other["units"], other["unit"], other["runs"]) == (D("0.01"), D("500"), "video_gen_clips", 1)
     assert len(got) == 2
 
 
@@ -190,15 +198,49 @@ def test_mixed_units_are_not_added_together(conn, sc):
     assert r["unit"] == "mixed" and r["units"] is None and r["usd"] == D("0.3")
 
 
-def test_the_provider_is_the_media_stage_provider_else_the_first_word_of_the_unit(conn, sc):
+def test_providers_are_named_as_the_billing_page_names_them(conn, sc):
+    # command-center/lib/billing.ts BILLED_PROVIDERS: elevenlabs <- tts_characters, gemini <-
+    # gemini_*_tokens, a clip provider <- video_gen_clips + stage broll:<id>, an image provider <-
+    # image_generations + stage image:<id>. Everything else is a pseudo name, first word of the unit.
+    rows = [
+        ("tts_characters", "voice", "elevenlabs"),
+        ("gemini_input_tokens", "script", "gemini"),
+        ("gemini_output_tokens", "script", "gemini"),
+        ("gemini_input_tokens", "critique", "gemini"),       # vision tokens recorded under the critic's stage
+        ("video_gen_clips", "broll:minimax", "minimax"),
+        ("video_gen_clips", "broll:Kling ", "kling"),         # case and padding folded
+        ("image_generations", "image:leonardo", "leonardo"),
+        ("video_gen_clips", "regenerate_media", "video"),     # scene_regenerate.py: no provider in the stage
+        ("video_gen_clips", "image:leonardo", "video"),       # a stage prefix only counts on its own unit
+        ("image_generations", "broll:minimax", "image"),
+        ("vision_calls", "critique", "vision"),
+        ("render_seconds", "render", "render"),
+        ("pexels_requests", "media", "pexels"),
+        ("upload_bytes", "upload", "upload"),
+        ("tts_characters", "broll:minimax", "elevenlabs"),    # the unit decides, not a stray stage
+    ]
     with as_superuser(conn, commit=False) as su:
-        su.rows("insert into public.video_costs (video_id, channel_id, slug, unit, quantity, stage, estimated_usd, recorded_at) "
-                "values ('v', 'default', 'lab-s', 'gemini_input_tokens', 10, 'script', 0.001, %s) returning 1", [f"{_day()}T01:00:00+00:00"])
-        su.rows("insert into public.video_costs (video_id, channel_id, slug, unit, quantity, stage, estimated_usd, recorded_at) "
-                "values ('v', 'default', 'lab-s', 'image_generations', 1, 'image:Lab-Leo', 0.04, %s) returning 1", [f"{_day()}T01:00:00+00:00"])
+        su.run("delete from public.video_costs")
+        for i, (unit, stage, _) in enumerate(rows):
+            _raw(su, unit, stage, slug=f"lab-{i}")
         out = spend(conn, sc.operator)
-    providers = {r[1] for r in out.rows if r[0] == _day()}
-    assert {"gemini", "lab-leo"} <= providers
+    assert out.ok, out
+    got = {r[1]: r for r in out.rows if r[0] == _day() and r[1] != "acme"}   # acme: the scenario's creative cost
+    assert set(got) == {p for _, _, p in rows}, sorted(got)
+    assert got["gemini"][4] == 3 and got["gemini"][7] == 3          # three unpriced rows, three runs
+    assert got["video"][4] == 2                                      # the two pseudo-clip rows
+    assert got["gemini"][2] is None                                  # unpriced stays unknown
+
+
+def test_a_pseudo_provider_row_is_reported_as_recorded_not_as_a_bill(conn, sc):
+    with as_superuser(conn, commit=False) as su:
+        su.run("delete from public.video_costs")
+        _raw(su, "video_gen_clips", "regenerate_media", qty=2, usd=None)
+        _raw(su, "render_seconds", "render", qty=30.5, usd=D("0.0061"))
+        out = spend(conn, sc.operator)
+    got = {r[1]: dict(zip(COLUMNS, r)) for r in out.rows}
+    assert got["video"]["usd"] is None and got["video"]["unpriced_rows"] == 1 and got["video"]["units"] == D("2")
+    assert got["render"]["usd"] == D("0.0061") and got["render"]["units"] == D("30.5")
 
 
 def test_a_row_with_no_readable_date_is_shown_not_hidden_and_nothing_raises(conn, sc):
@@ -211,6 +253,37 @@ def test_a_row_with_no_readable_date_is_shown_not_hidden_and_nothing_raises(conn
     # date and sorts as text, so it is simply outside this window. Nothing raised.
     assert list(got) == [(None, "lab-d")]
     assert got[(None, "lab-d")]["usd"] == D("0.4") and got[(None, "lab-d")]["runs"] == 2
+
+
+def test_unit_is_null_not_mixed_when_no_row_has_one_and_units_are_null_when_a_quantity_is_unknown(conn, sc):
+    with as_superuser(conn, commit=False) as su:
+        for prov, unit, qty in (("lab-nu", None, None), ("lab-nq", "image", None), ("lab-mq", "image", 2), ("lab-mu", None, 2)):
+            j = _job(su, sc.alice.org)
+            su.rows("insert into public.creative_job_costs (job_id, org_id, provider, unit, quantity, usd_estimate, price_source) "
+                    "values (%s, %s, %s, %s, %s, 0.1, 'lab price') returning 1", [j, sc.alice.org, prov, unit, qty])
+        # a second row for lab-mq / lab-mu with the other shape
+        j = _job(su, sc.alice.org)
+        su.rows("insert into public.creative_job_costs (job_id, org_id, provider, unit, quantity, usd_estimate, price_source) "
+                "values (%s, %s, 'lab-mq', 'image', null, 0.1, 'lab price') returning 1", [j, sc.alice.org])
+        j = _job(su, sc.alice.org)
+        su.rows("insert into public.creative_job_costs (job_id, org_id, provider, unit, quantity, usd_estimate, price_source) "
+                "values (%s, %s, 'lab-mu', 'image', 3, 0.1, 'lab price') returning 1", [j, sc.alice.org])
+        got = mine(conn, sc.operator, "lab-m") | mine(conn, sc.operator, "lab-n")
+    d = _day()
+    assert (got[(d, "lab-nu")]["unit"], got[(d, "lab-nu")]["units"]) == (None, None)       # no unit anywhere
+    assert (got[(d, "lab-nq")]["unit"], got[(d, "lab-nq")]["units"]) == ("image", None)    # unit known, quantity not
+    assert (got[(d, "lab-mq")]["unit"], got[(d, "lab-mq")]["units"]) == ("image", None)    # one quantity unknown: no sum
+    assert (got[(d, "lab-mu")]["unit"], got[(d, "lab-mu")]["units"]) == ("mixed", None)    # some rows without a unit
+
+
+def test_the_day_of_a_cost_row_is_the_first_ten_characters_of_recorded_at(conn, sc):
+    # The cost ledger writes recorded_at as datetime.now(timezone.utc).isoformat(), so those ten
+    # characters ARE the UTC day. A writer that stored another offset would be bucketed by its own
+    # local date: this pins that assumption (documented in the migration) instead of hiding it.
+    with as_superuser(conn, commit=False) as su:
+        _vc(su, "lab-tz", recorded_at=f"{_day(1)}T23:30:00-05:00", usd=D("1"), slug="a")   # 04:30 UTC the next day
+        got = mine(conn, sc.operator, "lab-tz")
+    assert list(got) == [(_day(1), "lab-tz")]
 
 
 def test_the_window_is_clamped_to_1_through_180_days(conn, sc):
@@ -291,12 +364,15 @@ def test_a_duplicate_key_is_refused_without_on_conflict(conn):
         assert not out.ok and out.sqlstate == "23505", out
 
 
-def test_a_keyed_row_is_counted_once_by_the_report(conn, sc):
+def test_a_keyed_and_an_unkeyed_row_are_both_counted(conn, sc):
+    # The unique index is what stops a keyed row appearing twice; the report adds no dedupe of its own.
+    # Unkeyed rows (from before 0106) are counted as they are: the owner script removes old copies.
     with as_superuser(conn, commit=False) as su:
         _vc(su, "lab-once", usd=D("1"), row_key="v1:once", slug="a")
         _vc(su, "lab-once", usd=D("2"), slug="b")        # an old row, no key
+        _vc(su, "lab-once", usd=D("2"), slug="b")        # its old nightly copy, no key: still counted
         got = mine(conn, sc.operator, "lab-once")
-    assert got[(_day(0), "lab-once")]["usd"] == D("3")
+    assert got[(_day(0), "lab-once")]["usd"] == D("5")
 
 
 # ── the owner's one-time script writes the keys the mirror writes ───────────
@@ -305,7 +381,8 @@ def _script():
     """The script's body without its own transaction control, so the test can run
     it inside a transaction it rolls back afterwards (and look at the result)."""
     text = SCRIPT.read_text(encoding="utf-8")
-    assert text.rstrip().splitlines()[-1].startswith("rollback;"), "the script must end in ROLLBACK by default"
+    assert re.search(r"(?m)^rollback;", text) and not re.search(r"(?mi)^commit;", text), \
+        "the apply block must end in ROLLBACK by default"
     text = re.sub(r"(?m)^begin;\s*$", "", text)
     return re.sub(r"(?m)^rollback;.*$", "", text)
 

@@ -29,28 +29,49 @@
 --                         distinct in a unique index, so any number of NULL
 --                         rows coexist. Created on an empty table: instant.
 --   owner_provider_spend(p_days)   platform owner/admin only. What the platform
---                         paid each provider per UTC day, from video_costs
---                         (de-duplicated by coalesce(row_key, id::text)) and
+--                         paid each provider per UTC day, from video_costs and
 --                         creative_job_costs, as a few hundred rows at most
---                         (days x providers). A follow-up switches the Billing
+--                         (days x providers). A video_costs row is one row: the
+--                         unique index above guarantees a row_key appears once,
+--                         and rows without a key are counted as they are (the
+--                         owner script docs/sql/dedupe-video-costs.sql removes
+--                         old nightly copies). A follow-up switches the Billing
 --                         page to it; this migration changes no page.
 --
 -- owner_provider_spend: columns
---   day            'YYYY-MM-DD' (UTC) as text; NULL for a video_costs row whose
+--   day            'YYYY-MM-DD' as text; NULL for a video_costs row whose
 --                  recorded_at is not an ISO date (shown, never hidden).
---   provider       the provider that billed: for generated media the provider
---                  named by the stage ('broll:minimax' -> minimax), otherwise
---                  the first word of the unit (gemini, tts, render, pexels...);
---                  for creative jobs the recorded provider. Lower-cased.
+--                  ASSUMPTION: the day is the first ten characters of
+--                  video_costs.recorded_at, which the cost ledger writes as
+--                  datetime.now(timezone.utc).isoformat(), so it IS the UTC day.
+--                  A writer that stored another offset would be bucketed by its
+--                  local date (the lab pins this). creative_job_costs.recorded_at
+--                  is a timestamptz and is converted to UTC properly.
+--   provider       the provider that billed, named as command-center/lib/billing.ts
+--                  (BILLED_PROVIDERS) names it, lower-cased:
+--                    tts_characters                    -> elevenlabs
+--                    gemini_input/output_tokens        -> gemini
+--                    video_gen_clips, stage broll:<id> -> <id>   (minimax, kling...)
+--                    image_generations, stage image:<id> -> <id> (leonardo...)
+--                  Every other row has NO real provider in the ledger and is
+--                  reported under a pseudo name, the first word of its unit:
+--                  render, pexels, upload, vision (vision_calls), video
+--                  (video_gen_clips with another stage, e.g. regenerate_media),
+--                  image (image_generations with another stage). Their usd is
+--                  whatever estimate was recorded, NULL when unpriced; a pseudo
+--                  name is never a bill from a provider. Creative jobs: the
+--                  recorded provider.
 --   usd            sum of usd_estimate, NULL when ANY row of that day and
 --                  provider is unpriced. Unknown is never 0: a partial sum would
 --                  read as the whole cost (the rule of 0037 creative_economics).
 --   usd_priced     the sum of the priced rows only (a floor when unpriced_rows
 --                  is above 0); NULL when no row is priced.
 --   unpriced_rows  rows with no usd_estimate.
---   units          sum of quantity when every row shares one unit, else NULL
---                  (tokens and seconds do not add up).
---   unit           that unit, or 'mixed'.
+--   units          sum of quantity when every row has the same unit and a
+--                  quantity, else NULL (tokens and seconds do not add up, and an
+--                  unknown quantity is not 0).
+--   unit           that unit; 'mixed' when the rows differ (or some have none);
+--                  NULL when no row has a unit.
 --   runs           distinct videos / creative jobs behind the rows.
 --
 -- WHO MAY CALL IT: PLATFORM OWNER/ADMIN ONLY, like operator_margin_report (0063).
@@ -126,24 +147,30 @@ begin
 
   return query
   with vc as (
-    -- One row per mirrored cost. Rows that carry a row_key collapse by it (a
-    -- duplicate that slipped in some other way still counts once); rows from
-    -- before 0106 have none and stand on their own id.
-    select distinct on (coalesce(c.row_key, c.id::text))
-           c.unit as u, c.quantity::numeric as q, c.estimated_usd::numeric as usd_est,
-           lower(btrim(coalesce(nullif(substring(c.stage from '^(?:broll|image):(.+)$'), ''),
-                                split_part(c.unit, '_', 1)))) as prov,
-           -- ISO date only; anything else is undated, not an error.
+    -- One row per mirrored cost (row_key is unique, so no row is counted twice
+    -- through the key). The window is applied in the scan: an ISO-dated row must
+    -- be on or after the first day; a row whose recorded_at is not an ISO date
+    -- is kept (undated, never hidden). Text comparison is right for ISO dates.
+    select c.unit as u, c.quantity::numeric as q, c.estimated_usd::numeric as usd_est,
+           -- the provider, as billing.ts keys it (see the header)
+           coalesce(nullif(lower(btrim(case
+                 when c.unit = 'tts_characters' then 'elevenlabs'
+                 when c.unit in ('gemini_input_tokens', 'gemini_output_tokens') then 'gemini'
+                 when c.unit = 'video_gen_clips' and c.stage ~ '^broll:.+'
+                   then substring(c.stage from '^broll:(.+)$')
+                 when c.unit = 'image_generations' and c.stage ~ '^image:.+'
+                   then substring(c.stage from '^image:(.+)$')
+                 else split_part(c.unit, '_', 1) end)), ''), 'unknown') as prov,
            case when c.recorded_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'
                 then left(c.recorded_at, 10) end as dy,
            'v:' || c.channel_id || '|' || coalesce(nullif(c.slug, ''), nullif(c.video_id, ''), c.id::text) as run_key
       from public.video_costs c
-     order by coalesce(c.row_key, c.id::text), c.id
+     where c.recorded_at !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'
+        or c.recorded_at >= to_char(since, 'YYYY-MM-DD')
   ),
   allrows as (
     select dy, prov, u, q, usd_est, run_key
       from vc
-     where dy is null or dy >= to_char(since, 'YYYY-MM-DD')
     union all
     select to_char(j.recorded_at at time zone 'utc', 'YYYY-MM-DD'),
            lower(btrim(j.provider)), j.unit, j.quantity, j.usd_estimate, 'j:' || j.job_id::text
@@ -155,10 +182,11 @@ begin
          case when count(*) filter (where a.usd_est is null) = 0 then sum(a.usd_est) end,
          sum(a.usd_est),
          count(*) filter (where a.usd_est is null),
-         case when count(distinct a.u) = 1 and count(*) filter (where a.u is null) = 0
+         case when count(distinct a.u) = 1 and count(a.u) = count(*) and count(a.q) = count(*)
               then sum(a.q) end,
-         case when count(distinct a.u) = 1 and count(*) filter (where a.u is null) = 0
-              then min(a.u) else 'mixed' end,
+         case when count(a.u) = 0 then null
+              when count(distinct a.u) = 1 and count(a.u) = count(*) then min(a.u)
+              else 'mixed' end,
          count(distinct a.run_key)
     from allrows a
    group by a.dy, a.prov
@@ -167,7 +195,7 @@ end
 $$;
 
 comment on function public.owner_provider_spend(integer) is
-  'Provider spend per UTC day and provider, from video_costs (de-duplicated) and creative_job_costs; usd is NULL when any row is unpriced. Platform owner/admin only (migration 0106).';
+  'Provider spend per UTC day and provider, from video_costs and creative_job_costs, providers named as billing.ts names them; usd is NULL when any row is unpriced. Platform owner/admin only (migration 0106).';
 
 revoke all on function public.owner_provider_spend(integer) from public, anon, authenticated, service_role;
 grant execute on function public.owner_provider_spend(integer) to authenticated;

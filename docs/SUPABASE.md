@@ -152,16 +152,23 @@ have been stored once per night. It adds, and nothing else:
 - `owner_provider_spend(p_days)` — platform owner/admin only (SECURITY DEFINER,
   checks `is_platform_admin()` first, `authenticated` may execute, `anon` and
   `service_role` may not): provider spend per UTC day from `video_costs` and
-  `creative_job_costs`, 1 to 180 days. A total is NULL, never 0, when any row of
-  it is unpriced. Nothing reads it yet; a follow-up moves Billing off raw rows.
+  `creative_job_costs`, 1 to 180 days. Providers are named as
+  `command-center/lib/billing.ts` names them (`elevenlabs` for `tts_characters`,
+  `gemini`, the clip/image provider from the `broll:<id>` / `image:<id>` stage);
+  a row with no real provider (render, pexels, upload, vision, other clip stages)
+  is reported under a pseudo name, never as a bill. A total is NULL, never 0,
+  when any row of it is unpriced. Nothing reads it yet; a follow-up moves Billing
+  off raw rows.
 
 The mirror computes `row_key = 'v1:' + sha256(channel_id, video_id, slug, unit,
 stage, recorded_at, quantity, occurrence)` (`video_cost_row_key` in
 `modules/supabase_sync.py`; `occurrence` tells two truly identical rows of one
 flush apart). If the column is missing (the migration is not applied yet) the
-write is refused, the mirror **skips `video_costs` for that run and logs why**; it
-does not fall back to a plain insert, because that is the old duplicating
-behaviour. The local database keeps every row, so the first run after the
+write is refused, the mirror **skips `video_costs` for that run and logs why**
+(a missing column or index is told apart from a timeout or server error in the
+warning); it does not fall back to a plain insert, because that is the old
+duplicating behaviour. Rows go in chunks of 2000; ignore-duplicates makes a
+retried chunk harmless. The local database keeps every row, so the first run after the
 migration sends the whole history once.
 
 If `video_costs` was ever filled before this migration, run the owner-applied
