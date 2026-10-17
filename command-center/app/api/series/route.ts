@@ -5,6 +5,8 @@ import { getChannelScope } from "@/lib/channels-server";
 import { orgWide, scopeQuery } from "@/lib/channels";
 import { logAudit } from "@/lib/server/audit";
 import { AUTOMATION_LEVELS, PLATFORM_OPTIONS } from "@/lib/series";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +40,7 @@ function cleanPlatforms(value: unknown): string[] {
   return out.length ? Array.from(new Set(out)) : ["youtube"];
 }
 
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -47,7 +49,7 @@ export async function POST(request: Request) {
 
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -107,9 +109,9 @@ export async function POST(request: Request) {
   // Audit the creation against its channel (best-effort, never throws).
   await logAudit({ action: "series.create", target: seriesId, channelId });
   return NextResponse.json({ ok: true, series_id: seriesId });
-}
+});
 
-export async function PATCH(request: Request) {
+export const PATCH = requireSameOrigin(async function PATCH(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -118,7 +120,7 @@ export async function PATCH(request: Request) {
 
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -160,4 +162,4 @@ export async function PATCH(request: Request) {
   // Audit the status change — target series + new status (best-effort, never throws).
   await logAudit({ action: "series.update", target: seriesId, channelId, detail: { status } });
   return NextResponse.json({ ok: true });
-}
+});

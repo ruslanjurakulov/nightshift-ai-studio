@@ -5,6 +5,7 @@ import { VOICE_PREVIEW_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-r
 import { dispatchWorkflow, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isVoiceId } from "@/lib/ttsModels";
 import { guardAdminPost } from "@/lib/server/admin-post-guard";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 /**
  * Voice preview clips for the Create page (tools/voice_previews.py writes them
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
   if (refused) return refused;
   let body: { voice_id?: unknown };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }

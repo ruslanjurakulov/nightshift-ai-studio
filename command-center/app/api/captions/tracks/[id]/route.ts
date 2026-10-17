@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { parseMediaId } from "@/lib/media";
 import { TRACK_COLUMNS, coerceTrack } from "@/lib/captions";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  * checks). Captions already put into a project stay: they are the project's
  * own cues. Another organization's track reads exactly like a missing one.
  */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const id = parseMediaId((await params).id);
@@ -58,4 +59,4 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
   await logAudit({ action: "captions.delete", target: id });
   return NextResponse.json({ ok: true });
-}
+});

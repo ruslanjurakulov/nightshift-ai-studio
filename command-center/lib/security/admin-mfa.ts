@@ -16,10 +16,13 @@ export { MFA_VERIFY_PATH };
  * session). A verified factor on the account is what makes aal2 possible.
  *
  * LOCKOUT SAFETY, the one rule everything here bends around: a session is
- * only ever blocked when its account HAS a verified factor, so there is a code
- * that can unblock it. An admin with no factor is never blocked in any mode;
- * they get a banner pushing them to enrol at /security. Break-glass is the
- * environment variable set to `off` (see the doc).
+ * only ever left with NOTHING to do when its account HAS a verified factor, so
+ * there is a code that can unblock it. An admin with no factor is never shut
+ * out: in `off` and `warn` they get a banner pushing them to enrol at
+ * /security; in `enforce` they may reach ONLY /security (where the enrolment
+ * lives, so they can always get out of that state) and sign-out, and every
+ * other page sends them there. Break-glass is the environment variable set to
+ * `off` (or `warn`) (see the doc).
  */
 
 export const ADMIN_MFA_ENV = "NIGHTSHIFT_ADMIN_MFA";
@@ -45,6 +48,11 @@ export type MfaAction =
   | "warn_complete"
   /** Admin with no factor: let through, show the banner that pushes enrolment at /security. */
   | "warn_enrol"
+  /**
+   * `enforce` only: an admin with NO verified factor may reach /security (to enrol one) and nothing else.
+   * A page goes to /security, an API route answers 403 `mfa_enrol_required`. The banner still shows there.
+   */
+  | "enrol_only"
   /** Send to the code page (a page) or answer 401 `mfa_required` (an API route). */
   | "challenge";
 
@@ -61,11 +69,11 @@ export interface MfaInput {
 /**
  * What to do with this session.
  *
- * | mode    | aal2 | aal1, no factor           | aal1 + factor, admin | aal1 + factor, anyone else |
- * |---------|------|---------------------------|----------------------|----------------------------|
- * | off     | allow| allow                     | allow                | allow                      |
- * | warn    | allow| admin: warn_enrol; else allow | warn_complete    | challenge                  |
- * | enforce | allow| admin: warn_enrol; else allow | challenge        | challenge                  |
+ * | mode    | aal2 | aal1, no factor               | aal1 + factor, admin | aal1 + factor, anyone else |
+ * |---------|------|-------------------------------|----------------------|----------------------------|
+ * | off     | allow| allow                         | allow                | allow                      |
+ * | warn    | allow| admin: warn_enrol; else allow | warn_complete        | challenge                  |
+ * | enforce | allow| admin: enrol_only; else allow | challenge            | challenge                  |
  *
  * An ordinary account with a factor is challenged in `warn` and `enforce`
  * alike: the mode is the OPERATOR gate's knob, and what an enrolled customer
@@ -75,7 +83,7 @@ export function mfaDecision({ mode, admin, aal, hasVerifiedFactor }: MfaInput): 
   if (mode === "off") return "allow";
   if (normalizeAal(aal) === "aal2") return "allow";
   // Password-only (or unreadable) from here on.
-  if (!hasVerifiedFactor) return admin ? "warn_enrol" : "allow";
+  if (!hasVerifiedFactor) return admin ? (mode === "enforce" ? "enrol_only" : "warn_enrol") : "allow";
   if (!admin) return "challenge";
   return mode === "enforce" ? "challenge" : "warn_complete";
 }
@@ -98,3 +106,17 @@ export function hasVerifiedTotpFactor(
     (f) => f?.status === "verified" && (f.factor_type === undefined || f.factor_type === null || f.factor_type === "totp"),
   );
 }
+
+/**
+ * The pages an `enrol_only` admin may still open: the Security page, with or
+ * without a channel in front of it (`/security`, `/chronos/security`; the
+ * middleware sends `/security` to `/<channel>/security`). Exactly that shape,
+ * nothing else: a `security` as a later segment, a longer path or a different
+ * first segment (`/api/security`, `/a/b/security`) is not it.
+ */
+export function isEnrolOnlyPath(pathname: string): boolean {
+  return /^\/(?:[^/]+\/)?security\/?$/.test(pathname) && !pathname.startsWith("/api/");
+}
+
+/** Where an `enrol_only` admin is sent. */
+export const ENROL_PATH = "/security";

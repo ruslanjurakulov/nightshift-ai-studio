@@ -6,6 +6,8 @@ import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secr
 import { resolveRunBackend } from "@/lib/runBackend";
 import { quoteStoryboard, readStoryboard } from "@/lib/server/storyboards";
 import { isStoryboardId, mapStoryboardError } from "@/lib/storyboardReview";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,7 +42,7 @@ export const dynamic = "force-dynamic";
  * Publishing is unchanged: the render ends private and goes through the
  * publish gate, auto-publish and approvals exactly like any run.
  */
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = requireSameOrigin(async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
@@ -48,7 +50,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   let body: { max_credits?: unknown; revision?: unknown } = {};
   try {
-    const parsed = await request.json();
+    const parsed = await parseJsonCapped(request);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as typeof body;
     else return NextResponse.json({ error: "bad_request" }, { status: 400 });
   } catch {
@@ -157,4 +159,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     },
   });
   return NextResponse.json({ ok: true, status: "approved", backend, credits_reserved: held, job_id: res.render_job_id ?? null });
-}
+});

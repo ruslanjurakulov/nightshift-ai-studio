@@ -140,7 +140,7 @@ function callbackReq(ref: string, opts: { nonce?: string; cookie?: string; error
 function revokeReq(channelId: string) {
   return new Request("https://app.test/api/channels/youtube-token/revoke", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: "https://app.test" },
     body: JSON.stringify({ channel_id: channelId }),
   });
 }

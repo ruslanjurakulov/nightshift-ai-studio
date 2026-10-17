@@ -3,11 +3,16 @@ import { unlink } from "node:fs/promises";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { mediaStagingDir, receiveUpload, stagedUploadPath } from "@/lib/server/media";
 import { mapMediaError, parseMediaId } from "@/lib/media";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
+ * Same-origin gate (lib/server/same-origin.ts): the page uploads with XMLHttpRequest, and a same-origin PUT from some
+ * browsers carries no Origin header, so a missing Origin is accepted here ONLY with the browser-set
+ * `Sec-Fetch-Site: same-origin`; `Origin: null`, a foreign Origin and a bare request are refused.
+ *
  * Receive the body of an upload ticket (migration 0038) into the staging volume.
  *
  * PUT with the raw file as the body. This path is left out of middleware.ts's
@@ -26,7 +31,7 @@ export const dynamic = "force-dynamic";
  * 3. finish_upload_receive(ticket, bytes, ok) — then the worker takes over;
  *    nothing is served until it has checked the content.
  */
-export async function PUT(request: Request, { params }: { params: Promise<{ ticket: string }> }) {
+export const PUT = requireSameOrigin(async function PUT(request: Request, { params }: { params: Promise<{ ticket: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const dir = mediaStagingDir();
@@ -86,4 +91,4 @@ export async function PUT(request: Request, { params }: { params: Promise<{ tick
     return NextResponse.json({ error: "failed", status: typeof done.data === "string" ? done.data : null }, { status: 502 });
   }
   return NextResponse.json({ ok: true, ticket, status: "uploaded", bytes: got.bytes });
-}
+}, { allowMissingOriginWhenSameOrigin: true });

@@ -131,7 +131,7 @@ function setup(over: { files?: { id: string; org: string; kind: string }[]; proj
 const req = (body?: unknown) =>
   new Request("http://localhost/api/editor/send", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: "http://localhost" },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 // The per-person limiter (take_web_rate) is its own rpc; "before the database" means the editor's.

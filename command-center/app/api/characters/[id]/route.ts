@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { readJsonBody } from "@/lib/server/style-kits";
 import { mapStyleError, parseCharacterInput, parseStyleId } from "@/lib/style-kits";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  * save_character() takes the organization from the row, so another
  * organization's character (or a made-up id) is a plain 404.
  */
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = requireSameOrigin(async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const id = parseStyleId((await params).id);
@@ -37,10 +38,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (parseStyleId(data) !== id) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({ action: "character.update", target: id, detail: { references: input.value.assetIds.length } });
   return NextResponse.json({ id, name: input.value.name });
-}
+});
 
 /** Delete a character under the caller's session (RLS: an editor of its organization). */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const id = parseStyleId((await params).id);
@@ -56,4 +57,4 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!Array.isArray(data) || data.length === 0) return NextResponse.json({ error: "not_found" }, { status: 404 });
   await logAudit({ action: "character.delete", target: id });
   return NextResponse.json({ ok: true });
-}
+});

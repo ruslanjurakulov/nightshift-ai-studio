@@ -3,6 +3,8 @@ import { isUuid } from "@/lib/creative/operations";
 import { parseSaveInput, saveWorkflow } from "@/lib/workflows-operations";
 import { loadWorkflows, workflowSession } from "@/lib/server/workflows";
 import { logAudit } from "@/lib/server/audit";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped, LARGE_JSON_BODY_BYTES } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,12 +18,12 @@ export const dynamic = "force-dynamic";
  *
  * GET `?org_id=` lists the organization's workflows (RLS: its members).
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const session = await workflowSession();
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request, LARGE_JSON_BODY_BYTES);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
     await logAudit({ action: "workflow.save", target: wf.id, detail: { org_id: parsed.input.orgId, steps: parsed.input.steps.length } });
   }
   return NextResponse.json(out.body, { status: out.status });
-}
+});
 
 export async function GET(request: Request) {
   const session = await workflowSession();

@@ -4,6 +4,7 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
 import { logAudit } from "@/lib/server/audit";
 import { createPortalSession, paddleServerKey } from "@/lib/server/paddle-api";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
  * to Paddle. Nothing is changed here: every change happens in Paddle's portal
  * and comes back through the webhook.
  */
-export async function POST() {
+export const POST = requireSameOrigin(async function POST() {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!paddleServerKey) return NextResponse.json({ error: "portal_not_configured" }, { status: 503 });
@@ -46,4 +47,4 @@ export async function POST() {
   if (!url) return NextResponse.json({ error: "portal_failed" }, { status: 502 });
   await logAudit({ action: "billing.portal", target: orgId, detail: {} });
   return NextResponse.json({ url }, { headers: { "Cache-Control": "no-store" } });
-}
+});

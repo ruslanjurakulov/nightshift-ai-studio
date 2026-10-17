@@ -51,7 +51,6 @@ export const ownerSafetyEn = {
   dRole: "Role",
   blockSelf:
     "You cannot change or remove your own access here. Ask another owner to do it, so you are never locked out.",
-  blockLast: "This is the only owner. Make someone else an owner first.",
   // Provider top-ups
   topupTitle: "Record {amount} paid to {provider}?",
   topupBody:

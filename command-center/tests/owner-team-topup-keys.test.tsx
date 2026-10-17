@@ -143,7 +143,7 @@ describe("MembersBoard", () => {
     const mine = row("me@a.uz");
     expect(within(mine).queryByRole("combobox")).toBeNull();
     expect(within(mine).queryByRole("button", { name: en.members.remove })).toBeNull();
-    expect(mine.textContent).toContain(en.ownerSafety.blockLast);
+    expect(mine.textContent).toContain(en.members.lastOwnerNote);
   });
 
   it("your own row is blocked even when another owner exists", async () => {
@@ -297,6 +297,17 @@ describe("ProvidersBoard (replace a key)", () => {
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.keyReplaceConfirm }));
     expect(within(sheet()).getByRole("alert").textContent).toBe(en.providers.unauthorized);
     expect((field() as HTMLInputElement).value).toBe("sk_live_abcd1234wxyz");
+  });
+
+  it("a coded refusal (bad value) is worded by name inside the sheet, with no part of the value", async () => {
+    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "bad_value", name: "ELEVENLABS_API_KEY", reason: "sk_live_abcd1234wxyz" }) });
+    show(["ELEVENLABS_API_KEY"]);
+    fireEvent.change(field(), { target: { value: "sk_live_abcd1234wxyz" } });
+    await tap(screen.getByRole("button", { name: en.providers.replace }));
+    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.keyReplaceConfirm }));
+    const text = within(sheet()).getByRole("alert").textContent ?? "";
+    expect(text).toContain("ELEVENLABS_API_KEY");
+    expect(text).not.toMatch(/sk_live|abcd|wxyz/);
   });
 
   it("a first key needs no sheet", async () => {

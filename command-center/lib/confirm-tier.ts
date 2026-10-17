@@ -7,6 +7,8 @@
  *   2  money or access, not undoable here       (sheet: the object and the number)
  *   3  large: tier 2 plus typing the figure     (a big grant, a price swing)
  */
+import { wouldLeaveNoOwner, type MemberLike } from "@/lib/members-guard";
+
 export type ConfirmTier = 0 | 1 | 2 | 3;
 
 /** A grant above this many credits needs the figure typed back. */
@@ -48,15 +50,18 @@ export function creditsToUsd(credits: number, creditsPerUsd: number | null | und
 /** One credit is about a cent of vendor cost (docs/sql/prices_defaults_2026_10_03.sql) when no `usd` price is set. */
 export const DEFAULT_CREDITS_PER_USD = 100;
 
-/** Block removing or demoting your own row, or the last owner (UI-side; the database guard needs a migration). */
+/**
+ * Block removing or demoting from the Team page (UI only; the database half needs a migration).
+ *  - "last_owner": the only BOUND owner (lib/members-guard, the app-layer guard from the security PR).
+ *  - "self": your own row, so an owner or admin never edits their own access by accident.
+ */
 export type MemberBlock = "self" | "last_owner" | null;
 export function memberBlock(
-  member: { id: string; user_id: string | null; email: string; role: string },
-  all: { role: string }[],
+  member: MemberLike & { email: string },
+  all: readonly MemberLike[],
   me: { userId: string; email: string },
 ): MemberBlock {
-  const owners = all.filter((m) => m.role === "owner").length;
-  if (member.role === "owner" && owners <= 1) return "last_owner";
+  if (wouldLeaveNoOwner(all, member.id, "removed")) return "last_owner";
   const mine = (member.user_id !== null && member.user_id === me.userId) || member.email.toLowerCase() === me.email.toLowerCase();
   return mine ? "self" : null;
 }

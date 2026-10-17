@@ -5,6 +5,7 @@ import { isMissingFunction } from "@/lib/orgs";
 import { logAudit } from "@/lib/server/audit";
 import { availabilityBlocker, coerceAdminModels, parseAvailabilityRequest } from "@/lib/models-admin";
 import { guardAdminPost } from "@/lib/server/admin-post-guard";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }

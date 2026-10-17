@@ -50,17 +50,28 @@ export const EDITOR_EXPORT_RATE: RateRule = { bucket: "editor.export", max: 30, 
 /** "Open in editor" sends (POST): 120 per 10 minutes = 12 a minute. */
 export const EDITOR_SEND_RATE: RateRule = { bucket: "editor.send", max: 120, windowSeconds: 600 };
 
-const local = new Map<string, { start: number; count: number }>();
+const local = new Map<string, { start: number; count: number; end: number }>();
+/** Past this many entries a call first drops every window that has already ended, so a long-lived process that sees
+ *  many distinct people does not keep a row for each one forever. */
+const LOCAL_PRUNE_AT = 1000;
 
 /** The in-process fallback (pre-0042). Exported for tests. */
 export function takeLocal(userId: string, rule: RateRule, now = Date.now()): boolean {
   const windowMs = rule.windowSeconds * 1000;
   const start = Math.floor(now / windowMs) * windowMs;
   const key = `${userId}:${rule.bucket}`;
+  if (local.size >= LOCAL_PRUNE_AT) {
+    for (const [k, v] of local) if (v.end <= now) local.delete(k);
+  }
   const cur = local.get(key);
-  const next = cur && cur.start === start ? { start, count: cur.count + 1 } : { start, count: 1 };
+  const next = cur && cur.start === start ? { start, count: cur.count + 1, end: start + windowMs } : { start, count: 1, end: start + windowMs };
   local.set(key, next);
   return next.count <= rule.max;
+}
+
+/** For tests only: how many windows are held. */
+export function localRateEntries(): number {
+  return local.size;
 }
 
 function isMissingFunction(error: { code?: string; message?: string }): boolean {

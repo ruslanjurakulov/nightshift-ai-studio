@@ -155,7 +155,7 @@ function preMigration(platformRole: Role) {
 function post(body: unknown, method = "POST") {
   return new Request("http://test.local/api", {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: "http://test.local" },
     body: JSON.stringify(body),
   });
 }

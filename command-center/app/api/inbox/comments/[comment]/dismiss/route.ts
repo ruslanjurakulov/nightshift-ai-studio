@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { callInbox, jsonBody } from "@/lib/server/comment-inbox";
 import { isUuid } from "@/lib/comment-inbox";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  * waiting to be posted cannot be put aside; a ready draft is discarded with it.
  * Free; nothing is posted.
  */
-export async function POST(request: Request, { params }: { params: Promise<{ comment: string }> }) {
+export const POST = requireSameOrigin(async function POST(request: Request, { params }: { params: Promise<{ comment: string }> }) {
   const { comment } = await params;
   if (!isUuid(comment)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await jsonBody(request);
@@ -25,4 +26,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ com
   // back, in the append-only inbox_events (comment_dismissed / comment_restored), and the
   // audit-action allow-list (0087) names only the inbox actions that spend, speak or edit.
   return NextResponse.json({ ok: true, status: res.status ?? null });
-}
+});

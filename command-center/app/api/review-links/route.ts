@@ -13,6 +13,7 @@ import {
   reviewLinkPath,
   type ReviewLinkErrorCode,
 } from "@/lib/review-link";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
 
   let body: { video_id?: unknown; days?: unknown; locale?: unknown };
   try {
-    body = (await request.json()) as typeof body;
+    body = (await parseJsonCapped(request)) as typeof body;
   } catch {
     return fail("bad_request", 400);
   }

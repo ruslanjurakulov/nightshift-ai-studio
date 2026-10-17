@@ -10,6 +10,7 @@ import { DEFAULT_AFTER_AUTH, safeLoginReturn } from "@/lib/safe-redirect";
 import { callbackErrorFor, type CallbackError } from "@/lib/signup";
 import { hasVerifiedTotpFactor, mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { GOOGLE_PROVIDER, googleCallbackError, googleGate, type GoogleError } from "@/lib/google-signin";
+import { readBytesCapped } from "@/lib/server/json-body";
 import {
   FORGOT_PASSWORD_PATH,
   RECOVERY_COOKIE,
@@ -231,6 +232,9 @@ export async function GET(request: Request) {
  * browser's session, anything else drops it. Refused unless the POST comes
  * from our own page and echoes the pending sign-in's token.
  */
+/** The confirm form is a csrf token, an action and a return path. */
+const AUTH_FORM_MAX_BYTES = 8192;
+
 export async function POST(request: Request) {
   const origin = publicOrigin(request);
   const jar = await cookies();
@@ -238,9 +242,13 @@ export async function POST(request: Request) {
   const ours = [origin, new URL(request.url).origin];
   const sameOrigin = isSameOriginPost(request.headers, ours);
 
+  // This route is reachable signed out, so its body is read with a hard cap (the form is a token, an action and a
+  // path: a few hundred bytes). Over the cap, or unreadable, is the same answer as any other bad form.
   let form: FormData;
   try {
-    form = await request.formData();
+    const bytes = await readBytesCapped(request, AUTH_FORM_MAX_BYTES);
+    if (!bytes) return toLogin(origin, "link_invalid", 303);
+    form = await new Response(bytes, { headers: { "content-type": request.headers.get("content-type") ?? "" } }).formData();
   } catch {
     return toLogin(origin, "link_invalid", 303);
   }

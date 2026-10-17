@@ -30,7 +30,7 @@ const post = (body: unknown, headers: Record<string, string> = {}) =>
   POST(
     new Request(`${ORIGIN}/api/connect/pending`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: `${pending.PENDING_COOKIE}=HANDLE`, ...headers },
+      headers: { "content-type": "application/json", origin: ORIGIN, cookie: `${pending.PENDING_COOKIE}=HANDLE`, ...headers },
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
   );

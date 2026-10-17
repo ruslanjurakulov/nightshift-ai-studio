@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { parseGenerationInput, quote } from "@/lib/creative/operations";
 import { creativeSession } from "@/lib/server/creative";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,12 +17,12 @@ export const dynamic = "force-dynamic";
  * remove_bg take `params.source_asset_id` (and upscale `params.factor`); the
  * database checks the picture is this organization's (0046).
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const session = await creativeSession();
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
@@ -28,4 +30,4 @@ export async function POST(request: Request) {
   if (!parsed.ok) return NextResponse.json(parsed.result.body, { status: parsed.result.status });
   const out = await quote(session.db, parsed.input);
   return NextResponse.json(out.body, { status: out.status });
-}
+});

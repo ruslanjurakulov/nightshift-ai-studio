@@ -70,7 +70,7 @@ const post = (body: Record<string, unknown>) =>
   route.POST(
     new Request("http://test.local/api/agent/run", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://test.local" },
       body: JSON.stringify({ channel_id: "ch-a", ...body }),
     }),
   );

@@ -5,6 +5,7 @@ import { editorRateLimited, readSmallBody } from "@/lib/server/editor-guard";
 import { EDITOR_EXPORT_RATE } from "@/lib/server/web-rate";
 import { parseMediaId } from "@/lib/media";
 import { mapEditorError } from "@/lib/editor";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
  * puts the video in the library. It holds and charges no credits, calls no
  * provider, and publishes nothing — publishing stays behind the publish gate.
  */
-export async function POST(
+export const POST = requireSameOrigin(async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -61,4 +62,4 @@ export async function POST(
     detail: { project: id, rev },
   });
   return NextResponse.json({ id: exportId, status: "queued" }, { status: 201 });
-}
+});

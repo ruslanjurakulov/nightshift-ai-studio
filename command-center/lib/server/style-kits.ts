@@ -17,6 +17,7 @@ import {
   type ReferenceRow,
   type StyleContext,
 } from "@/lib/style-kits";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export type { StyleContext };
 
@@ -43,7 +44,7 @@ export async function resolveStyleOrg(asked: unknown): Promise<{ org: string | n
 /** The request's JSON body, or undefined when it is not JSON (a 400, not a 500). */
 export async function readJsonBody(request: Request): Promise<unknown> {
   try {
-    return await request.json();
+    return await parseJsonCapped(request);
   } catch {
     return undefined;
   }

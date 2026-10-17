@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/server/audit";
 import { readJsonBody } from "@/lib/server/media-folders";
 import { parseMediaId } from "@/lib/media";
 import { mapFolderError, parseFolderName } from "@/lib/media-folders";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
  * organization from the folder itself and checks that the caller edits it;
  * another organization's folder reads as not found (404).
  */
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = requireSameOrigin(async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id: raw } = await params;
@@ -34,14 +35,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (parseMediaId(data) !== id) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({ action: "media.folder_rename", target: id, detail: {} });
   return NextResponse.json({ id, name: name.value });
-}
+});
 
 /**
  * Delete a folder: delete_media_folder() under the caller's session (an
  * editor of its organization). Its files are not deleted — they go back to
  * "All files" in the same transaction.
  */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id: raw } = await params;
@@ -58,4 +59,4 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (data !== true) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({ action: "media.folder_delete", target: id, detail: {} });
   return NextResponse.json({ ok: true });
-}
+});

@@ -110,7 +110,7 @@ function goodDoc(over: Record<string, unknown> = {}) {
 const req = (method: string, body?: unknown, headers: Record<string, string> = {}) =>
   new Request("http://localhost/api/editor/projects", {
     method,
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", origin: "http://localhost", ...headers },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 const params = (id: string) => ({ params: Promise.resolve({ id }) });

@@ -180,8 +180,17 @@ describe.each(NAMES)("POST /api/%s", (name) => {
     expect([401, 403]).not.toContain(res.status);
   });
 
-  it("enforce: LOCKOUT SAFETY, an admin with NO factor is not blocked", async () => {
+  it("enforce (strict): an admin with NO factor may only enrol, so this route answers 403 mfa_enrol_required, nothing touched", async () => {
     vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+    admin([], "aal1");
+    const res = await routes[name](post(name, OURS));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "mfa_enrol_required" });
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it.each(["warn", "off", ""])("LOCKOUT SAFETY: NIGHTSHIFT_ADMIN_MFA=%j never blocks an admin with NO factor", async (mode) => {
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", mode);
     admin([], "aal1");
     const res = await routes[name](post(name, OURS));
     expect([401, 403]).not.toContain(res.status);

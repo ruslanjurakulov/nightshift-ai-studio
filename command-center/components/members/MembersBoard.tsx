@@ -138,7 +138,11 @@ export function MembersBoard({
   async function changeRole(m: Member, next: Role) {
     if (acting.current || next === m.role) return;
     // The select cannot offer these rows, but a stale render or a crafted event must not slip through.
-    if (memberBlock(m, members ?? [], { userId: myUserId, email: myEmail })) return;
+    const block = memberBlock(m, members ?? [], { userId: myUserId, email: myEmail });
+    if (block) {
+      setError(block === "last_owner" ? t.members.lastOwnerNote : t.ownerSafety.blockSelf);
+      return;
+    }
     const supabase = createClient();
     if (!supabase) return;
     acting.current = true;
@@ -168,7 +172,11 @@ export function MembersBoard({
 
   async function remove(m: Member) {
     if (acting.current) return;
-    if (memberBlock(m, members ?? [], { userId: myUserId, email: myEmail })) return;
+    const block = memberBlock(m, members ?? [], { userId: myUserId, email: myEmail });
+    if (block) {
+      setError(block === "last_owner" ? t.members.lastOwnerNote : t.ownerSafety.blockSelf);
+      return;
+    }
     const supabase = createClient();
     if (!supabase) return;
     acting.current = true;
@@ -300,7 +308,7 @@ export function MembersBoard({
                       <StatusLamp tone={m.user_id ? "ok" : "idle"} label={m.user_id ? t.members.statusActive : t.members.statusInvited} />
                     </p>
                     {canManage && block && (
-                      <p className="g5-note mt-1">{block === "last_owner" ? t.ownerSafety.blockLast : t.ownerSafety.blockSelf}</p>
+                      <p className="g5-note mt-1">{block === "last_owner" ? t.members.lastOwnerNote : t.ownerSafety.blockSelf}</p>
                     )}
                   </div>
                   {canEditThis ? (
@@ -318,7 +326,9 @@ export function MembersBoard({
                       ))}
                     </select>
                   ) : (
-                    <span className="g5-v g5-person-role">{roleLabel[m.role]}</span>
+                    <span className="g5-v g5-person-role" title={block === "last_owner" ? t.members.lastOwnerNote : undefined}>
+                      {roleLabel[m.role]}
+                    </span>
                   )}
                   {canEditThis ? (
                     <button

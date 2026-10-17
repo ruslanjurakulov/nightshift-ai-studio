@@ -6,8 +6,10 @@ import {
   createRestStore,
   decideAdjustment,
   decideTransaction,
+  MAX_BODY_BYTES,
   handlePaddleWebhook,
   parseSignatureHeader,
+  readBodyCapped,
   priceTableFromEnv,
   refundCredits,
   verifyPaddleSignature,
@@ -366,6 +368,111 @@ describe("handlePaddleWebhook", () => {
     const store = new FakeStore();
     expect((await deliver(store, completed(), sign(completed()), "GET")).status).toBe(405);
     expect((await deliver(store, "not json")).status).toBe(400);
+  });
+});
+
+// The body is read with a cap BEFORE the signature is checked (ledger BR-S-019): an unauthenticated caller must not
+// be able to make the function buffer an arbitrarily large body.
+describe("readBodyCapped", () => {
+  const enc = new TextEncoder();
+  const stream = (chunks: Uint8Array[], onPull?: () => void) => {
+    let i = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(c) {
+        onPull?.();
+        if (i < chunks.length) c.enqueue(chunks[i++]);
+        else c.close();
+      },
+    });
+  };
+  const reqOf = (body: ReadableStream<Uint8Array> | null, headers: Record<string, string> = {}) => ({
+    headers: new Headers(headers),
+    body,
+  });
+
+  it("reads an ordinary delivery whole, as the exact text the signature covers (multi-byte characters intact)", async () => {
+    const body = completed({ notes: "naïve ✓ Ёлка" });
+    const bytes = enc.encode(body);
+    const read = await readBodyCapped(reqOf(stream([bytes.slice(0, 7), bytes.slice(7)])));
+    expect(read).toEqual({ ok: true, text: body });
+    // ...and it still verifies and credits through the handler
+    const store = new FakeStore();
+    const res = await handlePaddleWebhook(
+      { method: "POST", rawBody: (read as { text: string }).text, signature: sign(body) },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet },
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("preserves the raw body byte for byte: trailing whitespace, multi-byte text and chunk splits mid-character, and the HMAC still verifies", async () => {
+    const body = completed({ notes: "Ёлка ✓ 日本語 😀" }) + "\n \t\r\n";
+    const bytes = enc.encode(body);
+    // split inside a multi-byte character on purpose
+    const cut = bytes.findIndex((b) => b >= 0xf0) + 2;
+    const read = await readBodyCapped(reqOf(stream([bytes.slice(0, cut), bytes.slice(cut, cut + 5), bytes.slice(cut + 5)])));
+    expect(read.ok).toBe(true);
+    const text = (read as { text: string }).text;
+    expect(text).toBe(body);
+    expect(Buffer.from(enc.encode(text)).equals(Buffer.from(bytes))).toBe(true);
+    const header = sign(body);
+    expect(await verifyPaddleSignature(text, header, SECRET, NOW_S)).toBe("ok");
+    // and it is exactly what the handler credits from
+    const store = new FakeStore();
+    const res = await handlePaddleWebhook(
+      { method: "POST", rawBody: text, signature: header },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet },
+    );
+    expect(res.status).toBe(200);
+    // one trailing byte changed anywhere breaks it
+    expect(await verifyPaddleSignature(text.trimEnd(), header, SECRET, NOW_S)).toBe("mismatch");
+  });
+
+  it("refuses a declared Content-Length over the cap without reading a byte", async () => {
+    const body = stream([enc.encode("{}")]);
+    const read = await readBodyCapped(reqOf(body, { "content-length": String(MAX_BODY_BYTES + 1) }));
+    expect(read).toEqual({ ok: false, reason: "too_large" });
+    // no reader was ever taken: the stream was left alone
+    expect(body.locked).toBe(false);
+  });
+
+  it("cuts a body with no length (or a false one) off at the cap and cancels the upload", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const chunk = new Uint8Array(64 * 1024).fill(32);
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled += 1;
+        c.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    expect(await readBodyCapped(reqOf(endless))).toEqual({ ok: false, reason: "too_large" });
+    expect(cancelled).toBe(true);
+    // 1 MB is 16 chunks; the stream's own read-ahead adds a few, never the whole upload.
+    expect(pulled).toBeLessThan(40);
+    const lying = await readBodyCapped(reqOf(stream([new Uint8Array(3000).fill(32)]), { "content-length": "10" }), 1000);
+    expect(lying).toEqual({ ok: false, reason: "too_large" });
+  });
+
+  it("a body exactly at the cap passes; no body is the empty text (the signature check then refuses it)", async () => {
+    expect(await readBodyCapped(reqOf(stream([new Uint8Array(1000).fill(65)])), 1000)).toMatchObject({ ok: true });
+    expect(await readBodyCapped(reqOf(null))).toEqual({ ok: true, text: "" });
+    const res = await handlePaddleWebhook(
+      { method: "POST", rawBody: "", signature: null },
+      { secret: SECRET, prices, store: new FakeStore(), now: () => NOW_MS, log: quiet },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("the handler's own limit is unchanged (1 MB of text is still 413 there)", async () => {
+    const big = "x".repeat(MAX_BODY_BYTES + 1);
+    const res = await handlePaddleWebhook(
+      { method: "POST", rawBody: big, signature: sign(big) },
+      { secret: SECRET, prices, store: new FakeStore(), now: () => NOW_MS, log: quiet },
+    );
+    expect(res.status).toBe(413);
   });
 });
 

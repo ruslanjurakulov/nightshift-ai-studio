@@ -44,7 +44,6 @@ export const ownerSafetyUz: OwnerSafetyDictionary = {
   dRole: "Rol",
   blockSelf:
     "Oʻz huquqingizni bu yerda oʻzgartirib yoki oʻchirib boʻlmaydi. Hisobdan chiqib qolmaslik uchun buni boshqa egadan soʻrang.",
-  blockLast: "Bu yagona ega. Avval boshqa kishini ega qiling.",
   topupTitle: "{provider} uchun {amount} toʻlov qayd etilsinmi?",
   topupBody:
     "Toʻlov balans jurnaliga yoziladi. Faqat haqiqatan kartangizdan chiqqan pulni yozing — xato yozuvni ilovada olib tashlab boʻlmaydi.",

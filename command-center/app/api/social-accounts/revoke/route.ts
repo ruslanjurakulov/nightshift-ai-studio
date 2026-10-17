@@ -4,6 +4,8 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { fetchSocialAccount, revokeSocialAccount } from "@/lib/server/social-accounts";
 import { PLATFORM_PERMISSIONS_URL } from "@/lib/social-accounts";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,13 +21,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * secrets. Access on the platform's side is removed by the user there — the
  * response carries the page, and the UI says so.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: { account_id?: unknown };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -52,4 +54,4 @@ export async function POST(request: Request) {
     revoked: result.revoked,
     permissions_url: PLATFORM_PERMISSIONS_URL[account.platform],
   });
-}
+});

@@ -133,6 +133,16 @@ describe("PipelineRouting", () => {
     expect(h.toast).toHaveBeenCalledWith(en.providers.routingSaved);
   });
 
+  it("a coded refusal from the server (recent code required) is worded in the sheet, never the raw code", async () => {
+    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "mfa_recent_required" }) });
+    show();
+    fireEvent.change(videoSelect(), { target: { value: "kling" } });
+    await act(async () => {});
+    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.routeSwitchConfirm }));
+    expect(within(sheet()).getByRole("alert").textContent).toBe(en.mfa.recentRequired);
+    expect(videoSelect().value).toBe("off");
+  });
+
   it("turning autopilot on asks first; a failed save leaves it off", async () => {
     h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
     show();
@@ -324,6 +334,15 @@ describe("AdminMfaBanner", () => {
     expect(screen.getByTestId("admin-mfa-banner")).toBeTruthy();
     await tap(dismiss()!);
     expect(screen.queryByTestId("admin-mfa-banner")).toBeNull();
+  });
+
+  it("strict enrolment (enrol_only) shows the notice and can never be hidden", async () => {
+    window.localStorage.setItem(MFA_BANNER_DISMISS_KEY, String(Date.now()));
+    render(<AdminMfaBanner action="enrol_only" t={t} />);
+    await act(async () => {});
+    expect(screen.getByTestId("admin-mfa-banner")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: t.bannerDismiss })).toBeNull();
+    expect(screen.getByRole("link", { name: t.bannerEnrolAction }).getAttribute("href")).toBe("/security");
   });
 
   it("draws nothing for any other action, and the close key is a 44px target", () => {

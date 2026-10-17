@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { customerBotUsername, readChannels } from "@/lib/server/notify-channels";
 import { guardNotifyWrite, notifyFail, notifyOk, readSmallJson, rpcFailure } from "@/lib/server/notify-route";
 import { isLanguageCode, isLinkToken, telegramLinkUrl } from "@/lib/notify-channels";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export async function GET() {
   );
 }
 
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return notifyFail("unauthorized", 401);
   const refusal = await guardNotifyWrite(request, user);
@@ -65,4 +66,4 @@ export async function POST(request: Request) {
   const url = isLinkToken(res.token) ? telegramLinkUrl(bot, res.token) : null;
   if (!url) return notifyFail("failed", 502);
   return notifyOk({ url, expires_at: typeof res.expires_at === "string" ? res.expires_at : null });
-}
+});

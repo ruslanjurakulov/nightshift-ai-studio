@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { setupFailureText } from "@/lib/setup-errors";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useToast } from "@/components/feedback/ToastProvider";
@@ -104,7 +105,7 @@ export function PipelineRouting({
         const unauthorized = data.error === "github_unauthorized";
         setErrorKey(unauthorized ? "unauthorized" : "failed");
         setState("error");
-        return unauthorized ? t.providers.routingUnauthorized : t.providers.routingFailed;
+        return unauthorized ? t.providers.routingUnauthorized : setupFailureText(t, data, t.providers.routingFailed);
       }
       setState("saved");
       return null;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auditInbox, callInbox, jsonBody } from "@/lib/server/comment-inbox";
 import { isIdempotencyKey, isUuid, parseQuote } from "@/lib/comment-inbox";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export async function GET(_request: Request, { params }: Ctx) {
   return NextResponse.json({ quote: parseQuote(out.data) });
 }
 
-export async function POST(request: Request, { params }: Ctx) {
+export const POST = requireSameOrigin(async function POST(request: Request, { params }: Ctx) {
   const { comment } = await params;
   if (!isUuid(comment)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await jsonBody(request);
@@ -66,4 +67,4 @@ export async function POST(request: Request, { params }: Ctx) {
     credits_reserved: held != null && Number.isFinite(held) ? held : null,
     replayed: res.replay === true,
   });
-}
+});

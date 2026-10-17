@@ -28,9 +28,12 @@ export function mfaBannerDismissed(now = Date.now()): boolean {
  * have no authenticator at all (enrol one at /security). One compact row; the
  * keys are full-height touch targets on a phone.
  *
- * Only the "no authenticator yet" nudge can be hidden (for a day, remembered in
- * this browser). The "enter your code" notice has no close key and ignores the
- * stored choice: that session really is half signed-in and must say so.
+ * Only the "no authenticator yet" nudge (warn_enrol) can be hidden (for a day,
+ * remembered in this browser). The "enter your code" notice and the strict
+ * enrol_only notice have no close key and ignore the stored choice.
+ *
+ * `enrol_only` (strict `enforce`, no authenticator) shows the enrol notice too: it is where every other page
+ * sends that admin.
  *
  * Draws nothing for any other action, so the layout can pass the gate's answer
  * straight in.
@@ -43,8 +46,10 @@ export function AdminMfaBanner({ action, t, path }: { action: MfaAction; t: Dict
     if (action === "warn_enrol" && mfaBannerDismissed()) setHidden(true);
   }, [action]);
 
-  if (action !== "warn_complete" && action !== "warn_enrol") return null;
-  if (hidden && !complete) return null;
+  if (action !== "warn_complete" && action !== "warn_enrol" && action !== "enrol_only") return null;
+  // Only the soft nudge can be hidden. "warn_complete" and "enrol_only" (strict enforcement, where every other page sends this admin) stay.
+  const hideable = action === "warn_enrol";
+  if (hidden && hideable) return null;
 
   function dismiss() {
     setHidden(true);
@@ -70,7 +75,7 @@ export function AdminMfaBanner({ action, t, path }: { action: MfaAction; t: Dict
       >
         {complete ? t.bannerCompleteAction : t.bannerEnrolAction}
       </Link>
-      {!complete && (
+      {hideable && (
         <button
           type="button"
           onClick={dismiss}

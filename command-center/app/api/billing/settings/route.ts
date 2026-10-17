@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/server/audit";
 import { BILLED_PROVIDER_IDS } from "@/lib/billing";
 import { guardAdminPost } from "@/lib/server/admin-post-guard";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
 
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }

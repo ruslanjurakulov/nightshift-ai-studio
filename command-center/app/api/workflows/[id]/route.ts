@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { deleteWorkflow, parseSaveInput, saveWorkflow } from "@/lib/workflows-operations";
 import { workflowSession } from "@/lib/server/workflows";
 import { logAudit } from "@/lib/server/audit";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped, LARGE_JSON_BODY_BYTES } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,12 +14,12 @@ export const dynamic = "force-dynamic";
  * version cannot be run: "Run now" carries the version it was quoted for.
  * Another organization's workflow reads as missing (404).
  */
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = requireSameOrigin(async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await workflowSession();
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request, LARGE_JSON_BODY_BYTES);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
@@ -27,14 +29,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const out = await saveWorkflow(session.db, parsed.input, id);
   if (out.status === 200) await logAudit({ action: "workflow.save", target: id, detail: { steps: parsed.input.steps.length } });
   return NextResponse.json(out.body, { status: out.status });
-}
+});
 
 /** Remove a workflow from the list. Its runs keep the definition they were started with. */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await workflowSession();
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   const { id } = await params;
   const out = await deleteWorkflow(session.db, id);
   if (out.status === 200) await logAudit({ action: "workflow.delete", target: id, detail: {} });
   return NextResponse.json(out.body, { status: out.status });
-}
+});

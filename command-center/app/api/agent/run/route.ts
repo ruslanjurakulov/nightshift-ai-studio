@@ -12,6 +12,8 @@ import { IDEMPOTENCY_KEY_RE } from "@/lib/creative/operations";
 import { isCreditExempt } from "@/lib/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { acceptedHint } from "@/lib/publish";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,7 +106,7 @@ export async function GET() {
   });
 }
 
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -124,7 +126,7 @@ export async function POST(request: Request) {
     max_credits?: unknown;
   };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -310,4 +312,4 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: reason, ...heldNote }, { status });
   }
-}
+});

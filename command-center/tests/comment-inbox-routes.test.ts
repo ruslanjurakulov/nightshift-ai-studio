@@ -68,7 +68,7 @@ const approveRoute = await import("../app/api/inbox/drafts/[draft]/approve/route
 const retryRoute = await import("../app/api/inbox/posts/[post]/retry/route");
 
 const post = (url: string, body: unknown) =>
-  new Request(`http://x${url}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  new Request(`http://x${url}`, { method: "POST", headers: { "content-type": "application/json", origin: "http://x" }, body: JSON.stringify(body) });
 const rpcs = () => h.calls.filter((c) => c.kind === "rpc");
 const writes = () => h.calls.filter((c) => c.chain.some((x) => ["insert", "update", "upsert", "delete"].includes(x.m)));
 
@@ -86,7 +86,7 @@ describe("every route", () => {
     ["draft", () => draftRoute.POST(post("/", { max_credits: 3, idempotency_key: KEY }), { params: Promise.resolve({ comment: C }) })],
     ["dismiss", () => dismissRoute.POST(post("/", { dismissed: true }), { params: Promise.resolve({ comment: C }) })],
     ["edit", () => draftOne.PATCH(post("/", { body: "Hi" }), { params: Promise.resolve({ draft: D }) })],
-    ["discard", () => draftOne.DELETE(new Request("http://x", { method: "DELETE" }), { params: Promise.resolve({ draft: D }) })],
+    ["discard", () => draftOne.DELETE(new Request("http://x", { method: "DELETE", headers: { origin: "http://x" } }), { params: Promise.resolve({ draft: D }) })],
     ["approve", () => approveRoute.POST(post("/", { body: "Hi" }), { params: Promise.resolve({ draft: D }) })],
     ["retry", () => retryRoute.POST(post("/", {}), { params: Promise.resolve({ post: P }) })],
   ];
@@ -181,7 +181,7 @@ describe("the draft route", () => {
     expect((await draftRoute.POST(post("/", { max_credits: 4, idempotency_key: "short" }), ctx)).status).toBe(400);
     expect((await draftRoute.POST(post("/", { max_credits: -1, idempotency_key: KEY }), ctx)).status).toBe(400);
     expect((await draftRoute.POST(post("/", { max_credits: "4", idempotency_key: KEY }), ctx)).status).toBe(400);
-    expect((await draftRoute.POST(new Request("http://x", { method: "POST", body: "not json" }), ctx)).status).toBe(400);
+    expect((await draftRoute.POST(new Request("http://x", { method: "POST", headers: { origin: "http://x" }, body: "not json" }), ctx)).status).toBe(400);
     expect((await draftRoute.GET(new Request("http://x"), { params: Promise.resolve({ comment: "nope" }) })).status).toBe(404);
     expect(h.calls).toEqual([]);
   });
@@ -256,7 +256,7 @@ describe("edit, discard, dismiss, retry", () => {
   });
   it("discards, dismisses and retries through their own database functions", async () => {
     h.rpc = { discard_reply_draft: { data: { already: false }, error: null }, dismiss_inbox_comment: { data: { status: "dismissed", already: false }, error: null }, retry_reply_post: { data: { already: false }, error: null } };
-    expect((await draftOne.DELETE(new Request("http://x", { method: "DELETE" }), { params: Promise.resolve({ draft: D }) })).status).toBe(200);
+    expect((await draftOne.DELETE(new Request("http://x", { method: "DELETE", headers: { origin: "http://x" } }), { params: Promise.resolve({ draft: D }) })).status).toBe(200);
     expect((await dismissRoute.POST(post("/", { dismissed: true }), { params: Promise.resolve({ comment: C }) })).status).toBe(200);
     expect((await dismissRoute.POST(post("/", { dismissed: false }), { params: Promise.resolve({ comment: C }) })).status).toBe(200);
     expect((await retryRoute.POST(post("/", {}), { params: Promise.resolve({ post: P }) })).status).toBe(200);

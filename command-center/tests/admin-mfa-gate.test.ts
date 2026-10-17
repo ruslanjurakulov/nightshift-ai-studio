@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  ENROL_PATH,
   hasVerifiedTotpFactor,
+  isEnrolOnlyPath,
   mfaDecision,
   mfaVerifyUrl,
   parseAdminMfaMode,
   type AdminMfaMode,
   type MfaAction,
 } from "../lib/security/admin-mfa";
-import { mfaMiddlewareAction, type MfaMiddlewareClient } from "../lib/security/mfa-middleware";
+import { mfaMiddlewareAction, resetAdminCache, type MfaMiddlewareClient } from "../lib/security/mfa-middleware";
 import { gateDecision } from "../lib/public-paths";
 
 /**
@@ -56,10 +58,11 @@ const TABLE: Row[] = [
       [true, false].map((factor): Row => ({ mode, admin, aal: "aal2", factor, want: "allow" })),
     ),
   ),
-  // aal1 (or unreadable), NO factor: nobody is blocked; an admin is pushed to enrol
+  // aal1 (or unreadable), NO factor: no customer is blocked; an admin is pushed to enrol, and in `enforce` may
+  // open /security and nothing else (enrol_only)
   ...(["warn", "enforce"] as const).flatMap((mode) =>
     ["aal1", null].flatMap((aal): Row[] => [
-      { mode, admin: true, aal, factor: false, want: "warn_enrol" },
+      { mode, admin: true, aal, factor: false, want: mode === "enforce" ? "enrol_only" : "warn_enrol" },
       { mode, admin: false, aal, factor: false, want: "allow" },
     ]),
   ),
@@ -100,6 +103,17 @@ describe("mfaDecision, every state", () => {
           expect(mfaDecision({ mode, admin, aal, hasVerifiedFactor: false })).not.toBe("challenge");
   });
 
+  it("STRICT ENFORCE: enrol_only happens in `enforce`, for an admin, with no verified factor, and nowhere else", () => {
+    for (const mode of MODES)
+      for (const admin of [true, false])
+        for (const aal of ["aal1", "aal2", null, "garbage"])
+          for (const factor of [true, false]) {
+            const got = mfaDecision({ mode, admin, aal, hasVerifiedFactor: factor });
+            const expected = mode === "enforce" && admin && !factor && aal !== "aal2";
+            expect(got === "enrol_only", `${mode}/${admin}/${aal}/${factor}`).toBe(expected);
+          }
+  });
+
   it("DEFAULT SAFETY: in the default mode no admin is ever sent to the challenge", () => {
     for (const aal of ["aal1", "aal2", null])
       for (const factor of [true, false])
@@ -111,6 +125,20 @@ describe("mfaDecision, every state", () => {
       expect(mfaDecision({ mode: "enforce", admin: true, aal, hasVerifiedFactor: true })).toBe("challenge");
     }
     expect(mfaDecision({ mode: "enforce", admin: true, aal: "aal2", hasVerifiedFactor: true })).toBe("allow");
+  });
+});
+
+describe("isEnrolOnlyPath: the only pages a factor-less admin keeps in strict enforce", () => {
+  it("is /security, with or without a channel, with or without a trailing slash", () => {
+    for (const p of ["/security", "/security/", "/chronos/security", "/all-channels/security", "/some-channel/security/"]) {
+      expect(isEnrolOnlyPath(p), p).toBe(true);
+    }
+    expect(ENROL_PATH).toBe("/security");
+  });
+  it("is nothing else: no deeper path, no api, no other section, no look-alike", () => {
+    for (const p of ["/", "/command-center", "/chronos/billing", "/security/x", "/a/b/security", "/api/security", "/chronos/security/x", "/securityx", "/chronos/security.json", "//security", "/chronos//security"]) {
+      expect(isEnrolOnlyPath(p), p).toBe(false);
+    }
   });
 });
 
@@ -186,12 +214,35 @@ describe("mfaMiddlewareAction", () => {
     expect(calls).toEqual({ aal: 0, rpc: 0 });
   });
 
-  it("an account with no factor is never touched: no level read, no admin lookup (the common customer costs nothing)", async () => {
+  it("warn: an account with no factor is never touched: no level read, no admin lookup (the common customer costs nothing)", async () => {
     const { client, calls } = fakeClient({ aal: "aal1", admin: true });
-    for (const mode of ["warn", "enforce"] as const) {
-      expect(await mfaMiddlewareAction(client, NO_FACTOR, mode)).toBe("allow");
-    }
+    expect(await mfaMiddlewareAction(client, NO_FACTOR, "warn")).toBe("allow");
     expect(calls).toEqual({ aal: 0, rpc: 0 });
+  });
+
+  it("enforce (strict): an account with no factor costs one admin lookup, no level read; an admin is enrol_only, a customer allowed", async () => {
+    resetAdminCache();
+    const asAdmin = fakeClient({ aal: "aal1", admin: true });
+    expect(await mfaMiddlewareAction(asAdmin.client, { id: "u-a", factors: [] }, "enforce")).toBe("enrol_only");
+    expect(asAdmin.calls).toEqual({ aal: 0, rpc: 1 });
+    const asCustomer = fakeClient({ aal: "aal1", admin: false });
+    expect(await mfaMiddlewareAction(asCustomer.client, { id: "u-c", factors: [] }, "enforce")).toBe("allow");
+    // remembered for a minute per user, then asked again
+    expect(await mfaMiddlewareAction(asCustomer.client, { id: "u-c", factors: [] }, "enforce", Date.now() + 1000)).toBe("allow");
+    expect(asCustomer.calls.rpc).toBe(1);
+    expect(await mfaMiddlewareAction(asCustomer.client, { id: "u-c", factors: [] }, "enforce", Date.now() + 61_000)).toBe("allow");
+    expect(asCustomer.calls.rpc).toBe(2);
+  });
+
+  it("enforce (strict): a failing or throwing admin lookup is 'not an admin' and is not remembered", async () => {
+    resetAdminCache();
+    const failing = fakeClient({ aal: "aal1", admin: "error" });
+    expect(await mfaMiddlewareAction(failing.client, { id: "u-e", factors: [] }, "enforce")).toBe("allow");
+    expect(await mfaMiddlewareAction(failing.client, { id: "u-e", factors: [] }, "enforce")).toBe("allow");
+    expect(failing.calls.rpc).toBe(2);
+    const throwing = fakeClient({ aal: "aal1", admin: "throw" });
+    expect(await mfaMiddlewareAction(throwing.client, { id: "u-t", factors: [] }, "enforce")).toBe("allow");
+    expect(await mfaMiddlewareAction(failing.client, null, "enforce")).toBe("allow");
   });
 
   it("aal2 passes without asking who the admin is", async () => {
