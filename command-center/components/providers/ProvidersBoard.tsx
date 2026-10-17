@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Check } from "lucide-react";
+import { setupFailureText } from "@/lib/setup-errors";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { StatusLamp } from "@/components/ui/StatusLamp";
@@ -130,7 +131,9 @@ function ProviderCard({
         const unauthorized = data.error === "github_unauthorized";
         setState("error");
         setErrorKey(unauthorized ? "unauthorized" : "failed");
-        toast.error(unauthorized ? t.providers.unauthorized : t.providers.saveFailed, { title: provider.name });
+        toast.error(unauthorized ? t.providers.unauthorized : setupFailureText(t, data, t.providers.saveFailed), {
+          title: provider.name,
+        });
         return;
       }
       // Accepted by GitHub — drop the value from the browser at once.

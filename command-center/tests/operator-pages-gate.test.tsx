@@ -29,7 +29,10 @@ const state: {
   org: OrgContext;
   platformAdmin: boolean;
   aal: string;
+  /** The path the middleware stamps on the request (x-nightshift-path); null = no header. */
+  path: string | null;
 } = {
+  path: null,
   configured: true,
   aal: "aal1",
   user: null,
@@ -54,7 +57,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/headers", () => ({
-  headers: async () => new Headers(),
+  headers: async () => new Headers(state.path ? { "x-nightshift-path": state.path } : {}),
   cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => undefined }),
 }));
 
@@ -183,6 +186,7 @@ function operator() {
 beforeEach(() => {
   state.configured = true;
   state.aal = "aal1";
+  state.path = null;
   vi.unstubAllEnvs();
   signedOut();
   calls.orgContext = 0;
@@ -369,10 +373,24 @@ describe("the (app) layout and the second factor", () => {
     await expect(AppLayout({ children: null })).rejects.toThrow("NEXT_REDIRECT:/login/verify");
   });
 
-  it("enforce: an operator with NO factor is not locked out", async () => {
-    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+  it("warn: an operator with NO factor is not locked out", async () => {
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "warn");
     operator();
     await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+  });
+
+  it("enforce (strict): an operator with NO factor is sent to /security from any other page, and opens /security itself", async () => {
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+    operator();
+    state.path = "/chronos/providers";
+    await expect(AppLayout({ children: null })).rejects.toThrow("NEXT_REDIRECT:/security");
+    // an unknown path is never a reason to redirect (no loop)
+    state.path = null;
+    await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+    state.path = "/all-channels/security";
+    const tree = JSON.stringify(await AppLayout({ children: null }), (_k, v) => (typeof v === "function" ? v.name : v));
+    // ...with the enrol banner on it
+    expect(tree).toContain("AdminMfaBanner");
   });
 
   it("warn (default): an operator with a factor on aal1 gets the app, with the banner", async () => {

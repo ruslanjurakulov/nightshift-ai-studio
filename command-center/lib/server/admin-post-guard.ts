@@ -1,9 +1,8 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { isSameOriginPost } from "@/lib/auth-confirm";
 import { currentMfaAction } from "@/lib/auth/org-roles";
 import type { MfaUser } from "@/lib/security/admin-mfa-server";
-import { publicOrigin } from "@/lib/server/public-origin";
+import { rejectCrossOrigin } from "@/lib/server/same-origin";
 
 /**
  * The two checks every operator POST makes after it knows WHO is asking and
@@ -25,12 +24,13 @@ import { publicOrigin } from "@/lib/server/public-origin";
 const NO_STORE = { "cache-control": "no-store" };
 
 export async function guardAdminPost(request: Request, user?: MfaUser | null): Promise<NextResponse | null> {
-  const ours = [publicOrigin(request), new URL(request.url).origin];
-  if (!isSameOriginPost(request.headers, ours)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
-  }
-  if (user && (await currentMfaAction(user, true)) === "challenge") {
-    return NextResponse.json({ error: "mfa_required" }, { status: 401, headers: NO_STORE });
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+  if (user) {
+    const action = await currentMfaAction(user, true);
+    if (action === "challenge") return NextResponse.json({ error: "mfa_required" }, { status: 401, headers: NO_STORE });
+    // Strict `enforce`: an admin with no authenticator may only enrol (lib/security/admin-mfa.ts).
+    if (action === "enrol_only") return NextResponse.json({ error: "mfa_enrol_required" }, { status: 403, headers: NO_STORE });
   }
   return null;
 }

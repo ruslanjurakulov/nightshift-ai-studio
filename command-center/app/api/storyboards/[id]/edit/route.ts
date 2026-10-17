@@ -4,6 +4,7 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { quoteStoryboard, readStoryboard } from "@/lib/server/storyboards";
 import { isStoryboardId, mapStoryboardError, toScenes, toSceneEdits } from "@/lib/storyboardReview";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ const MAX_BODY_BYTES = 300_000;
  * The text is data: it is stored as JSON and later spoken and captioned. The
  * audit records counts only, never the words.
  */
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = requireSameOrigin(async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
@@ -120,4 +121,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     scenes: saved,
     quote,
   });
-}
+});

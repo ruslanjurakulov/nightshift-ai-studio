@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { mapInboxError } from "@/lib/comment-inbox";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 /**
  * The comment inbox's routes (migration 0081) all do the same thing: one
@@ -60,7 +61,7 @@ export async function auditInbox(
 
 export async function jsonBody(request: Request): Promise<Record<string, unknown> | null> {
   try {
-    const parsed = await request.json();
+    const parsed = await parseJsonCapped(request);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;

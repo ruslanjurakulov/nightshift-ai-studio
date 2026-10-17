@@ -14,6 +14,7 @@ const auth = vi.hoisted(() => ({
   user: null as { id: string; factors?: Array<{ status: string; factor_type: string }> } | null,
   aal: "aal1",
   admin: false,
+  rpcFails: false,
   calls: { aal: 0, rpc: 0 },
 }));
 
@@ -30,13 +31,14 @@ vi.mock("@supabase/ssr", () => ({
     },
     rpc: async () => {
       auth.calls.rpc += 1;
-      return { data: auth.admin, error: null };
+      return auth.rpcFails ? { data: null, error: { message: "boom" } } : { data: auth.admin, error: null };
     },
   }),
 }));
 vi.mock("@/lib/config", () => ({ SUPABASE_URL: "https://project.supabase.test", SUPABASE_ANON_KEY: "anon", isSupabaseConfigured: true }));
 
 const { middleware } = await import("@/middleware");
+const { resetAdminCache } = await import("@/lib/security/mfa-middleware");
 
 const VERIFIED: Factor[] = [{ status: "verified", factor_type: "totp" }];
 const get = (path: string) => middleware(new NextRequest(`https://nightshift.test${path}`));
@@ -45,7 +47,9 @@ beforeEach(() => {
   auth.user = null;
   auth.aal = "aal1";
   auth.admin = false;
+  auth.rpcFails = false;
   auth.calls = { aal: 0, rpc: 0 };
+  resetAdminCache();
   vi.unstubAllEnvs();
   vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "");
 });
@@ -164,11 +168,15 @@ describe("the admin", () => {
     expect(await goesToCode()).toBe(false);
   });
 
-  it("enforce: LOCKOUT SAFETY, an admin with no factor gets in", async () => {
-    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+  it("warn (and unset): LOCKOUT SAFETY, an admin with no factor gets in everywhere", async () => {
     auth.user = { id: "a1", factors: [] };
     expect(await goesToCode()).toBe(false);
     expect((await get("/api/billing/topup")).status).not.toBe(401);
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "warn");
+    expect((await get("/chronos/billing")).headers.get("location")).toBeNull();
+    expect((await get("/api/billing/topup")).status).not.toBe(403);
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "off");
+    expect((await get("/chronos/billing")).headers.get("location")).toBeNull();
   });
 
   it("enforce: /welcome is held for an aal1 admin with a factor; warn lets it through", async () => {
@@ -186,6 +194,85 @@ describe("the admin", () => {
   it("a typo in the variable behaves as warn, not enforce", async () => {
     vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enfroce");
     expect(await goesToCode()).toBe(false);
+  });
+});
+
+describe("strict enforce: an admin with NO authenticator may open /security and nothing else", () => {
+  const to = async (path: string) => new URL((await get(path)).headers.get("location") ?? "https://x/");
+  beforeEach(() => {
+    resetAdminCache();
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+    auth.user = { id: "a9", factors: [] };
+    auth.admin = true;
+  });
+
+  it("every other page goes to /security", async () => {
+    for (const path of ["/chronos/billing", "/command-center", "/all-channels/providers", "/chronos/videos?x=1", "/welcome", "/"]) {
+      const target = await to(path);
+      expect(target.pathname, path).toBe("/security");
+      expect(target.search, path).toBe("");
+    }
+  });
+
+  it("/security itself, with or without a channel, is not redirected to itself", async () => {
+    const bare = await get("/security");
+    // the usual channel redirect, never the enrolment redirect
+    expect(new URL(bare.headers.get("location") ?? "https://x/").pathname).toBe("/all-channels/security");
+    for (const path of ["/chronos/security", "/all-channels/security"]) {
+      const res = await get(path);
+      expect(res.headers.get("location"), path).toBeNull();
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it("an API route is 403 mfa_enrol_required (not a redirect)", async () => {
+    const res = await get("/api/billing/topup");
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "mfa_enrol_required" });
+  });
+
+  it("lookalikes of /security are not let through", async () => {
+    for (const path of ["/chronos/billing/security", "/security/x", "/a/b/security"]) {
+      expect((await to(path)).pathname, path).toBe("/security");
+    }
+    // an API path that ends in /security is still an API path
+    expect((await get("/api/security")).status).toBe(403);
+  });
+
+  it("a customer with no authenticator is untouched (and the admin lookup is remembered)", async () => {
+    auth.admin = false;
+    auth.user = { id: "c-strict", factors: [] };
+    expect((await get("/chronos/videos")).headers.get("location")).toBeNull();
+    expect((await get("/api/agent/run")).status).not.toBe(403);
+    expect((await get("/chronos/videos")).headers.get("location")).toBeNull();
+    expect(auth.calls.rpc).toBe(1);
+    expect(auth.calls.aal).toBe(0);
+  });
+
+  it("a failing admin lookup never blocks anyone (it is a tightening, not a gate)", async () => {
+    auth.rpcFails = true;
+    auth.user = { id: "c-err", factors: [] };
+    expect((await get("/chronos/videos")).headers.get("location")).toBeNull();
+  });
+
+  it("the same admin with a verified factor is the ordinary enforce case (code page, not /security)", async () => {
+    auth.user = { id: "a9", factors: VERIFIED };
+    expect((await to("/chronos/billing")).pathname).toBe("/login/verify");
+    auth.aal = "aal2";
+    expect((await get("/chronos/billing")).headers.get("location")).toBeNull();
+  });
+
+  it("warn and off never send a factor-less admin anywhere", async () => {
+    for (const mode of ["warn", "off", "", "enfroce"]) {
+      vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", mode);
+      expect((await get("/chronos/billing")).headers.get("location"), mode).toBeNull();
+    }
+  });
+
+  it("the public pages and the sign-in flow are not touched", async () => {
+    for (const path of ["/pricing", "/reset-password", "/auth/callback"]) {
+      expect((await get(path)).headers.get("location"), path).toBeNull();
+    }
   });
 });
 

@@ -22,6 +22,7 @@ import {
   validateTimeline,
   type EditorError,
 } from "@/lib/editor";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,7 +63,7 @@ const fail = (error: EditorError, status: number) =>
  * Free: nothing is priced, rendered or published here. The send only writes a
  * document; an export is a separate, explicit press in the editor.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return fail("unauthorized", 401);
   const limited = await editorRateLimited(user.id, EDITOR_SEND_RATE);
@@ -180,4 +181,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ id: project.id, rev, created: false });
   }
   return fail("stale_revision", 409);
-}
+});

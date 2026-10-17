@@ -3,6 +3,7 @@ import { customerBotUsername } from "@/lib/server/notify-channels";
 import { guardNotifyWrite, notifyFail, notifyOk, readSmallJson, rpcFailure } from "@/lib/server/notify-route";
 import { CHANNEL_ACTIONS, isLanguageCode, type ChannelAction } from "@/lib/notify-channels";
 import { NOTIFY_CHANNEL_RATE } from "@/lib/server/web-rate";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * message is queued, not sent here (the notify worker sends it), and is limited
  * to three an hour per person in the database.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return notifyFail("unauthorized", 401);
   const refusal = await guardNotifyWrite(request, user, NOTIFY_CHANNEL_RATE);
@@ -66,4 +67,4 @@ export async function POST(request: Request) {
   }
   if (result.data !== true) return notifyFail(action === "resume" || action === "pause" ? "not_active" : "not_found", action === "disconnect" || action === "locale" ? 404 : 409);
   return notifyOk();
-}
+});

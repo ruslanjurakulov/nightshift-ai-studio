@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { readJsonBody, resolveMediaOrg } from "@/lib/server/media-folders";
 import { mapFolderError, parseMoveInput } from "@/lib/media-folders";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
  * organization's, a deleted one, a made-up one) and nothing moves. Moving
  * changes which folder lists a file and nothing else.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await readJsonBody(request);
@@ -46,4 +47,4 @@ export async function POST(request: Request) {
     detail: { org, files: input.value.assetIds.length, moved },
   });
   return NextResponse.json({ ok: true, moved, folder_id: input.value.folderId });
-}
+});

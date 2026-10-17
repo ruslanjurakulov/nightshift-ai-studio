@@ -6,6 +6,8 @@ import { paddleApi, createTopupTransaction } from "@/lib/server/paddle-api";
 import { paddleClient } from "@/lib/paddle";
 import { isCreditExempt } from "@/lib/credits";
 import { TOPUP_MAX_CENTS, TOPUP_MIN_CENTS, topupTransactionBody } from "@/lib/api/pricing";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,14 +25,14 @@ export const dynamic = "force-dynamic";
  * An owner/admin of an organization that has activated the API. The operator's
  * own organization is never charged, so it is never offered a checkout.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!paddleApi || !paddleClient) return NextResponse.json({ error: "topup_not_configured" }, { status: 503 });
 
   let body: { org_id?: unknown; amount_cents?: unknown };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -57,4 +59,4 @@ export async function POST(request: Request) {
   }
   await logAudit({ action: "api.topup_checkout", target: orgId, detail: { amount_cents: cents, transaction_id: txn.id } });
   return NextResponse.json({ transaction_id: txn.id });
-}
+});

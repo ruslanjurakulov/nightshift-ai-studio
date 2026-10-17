@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createGeneration, isUuid, listJobs, parseCapabilityFilter, parseGenerationInput } from "@/lib/creative/operations";
 import { creativeSession } from "@/lib/server/creative";
 import { logAudit } from "@/lib/server/audit";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,12 +27,12 @@ export const dynamic = "force-dynamic";
  * GET `?org_id=` lists the organization's newest jobs (RLS: its members);
  * `&capability=t2v,i2v` lists only those tools' jobs (a Studio desk's).
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const session = await creativeSession();
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
@@ -52,7 +54,7 @@ export async function POST(request: Request) {
     });
   }
   return NextResponse.json(out.body, { status: out.status });
-}
+});
 
 export async function GET(request: Request) {
   const session = await creativeSession();

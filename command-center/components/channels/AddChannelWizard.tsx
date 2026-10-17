@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ChannelMark } from "@/components/channels/ChannelMark";
+import { setupFailureText } from "@/lib/setup-errors";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { fmt } from "@/lib/i18n";
@@ -340,7 +341,7 @@ export function AddChannelWizard({
           setError(
             data.error === "github_unauthorized"
               ? t.channels.secretsUnauthorized
-              : t.channels.secretsFailed,
+              : setupFailureText(t, data, t.channels.secretsFailed),
           );
           return;
         }

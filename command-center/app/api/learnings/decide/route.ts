@@ -3,6 +3,8 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { isMissingTable, nextStatus, parseDecision, type LearningStatus } from "@/lib/learnings";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,13 +21,13 @@ export const dynamic = "force-dynamic";
  * conditioned on the status we read, so two admins deciding at once cannot
  * silently overwrite each other (the loser gets 409).
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -71,4 +73,4 @@ export async function POST(request: Request) {
     detail: { kind: row.kind, from, to },
   });
   return NextResponse.json({ ok: true, status: to });
-}
+});

@@ -7,7 +7,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { isChannelInCurrentOrg } from "@/lib/channels-server";
 import { atLeast, resolveRole, type Role } from "@/lib/auth/roles";
 import { organizationsAreExpected } from "@/lib/orgs";
-import { mfaDecision, mfaVerifyUrl, type MfaAction } from "@/lib/security/admin-mfa";
+import { ENROL_PATH, mfaDecision, mfaVerifyUrl, type MfaAction } from "@/lib/security/admin-mfa";
 import { adminMfaMode, logPasswordOnlyAdmin, readMfaState, type MfaUser } from "@/lib/security/admin-mfa-server";
 import { normalizeAal } from "@/lib/security/aal";
 
@@ -198,15 +198,18 @@ export async function guardOperatorPage(): Promise<boolean> {
   if (!user) redirect("/login");
   if (!(await isOperator())) notFound();
   // `enforce`: an operator with a factor who has not entered the code does not
-  // get a page that spends the server's credentials. Never for an operator
-  // without a factor (nothing could unblock them): lib/security/admin-mfa.ts.
-  if ((await currentMfaAction(user, true)) === "challenge") redirect(mfaVerifyUrl());
+  // get a page that spends the server's credentials. An operator without a
+  // factor is sent to /security to enrol one (strict `enforce` only; in `warn`
+  // and `off` nothing here blocks them): lib/security/admin-mfa.ts.
+  const action = await currentMfaAction(user, true);
+  if (action === "challenge") redirect(mfaVerifyUrl());
+  if (action === "enrol_only") redirect(ENROL_PATH);
   return true;
 }
 
 export type OperatorCheck =
   | { ok: true }
-  | { ok: false; status: 401 | 403; error: "unauthorized" | "forbidden" | "mfa_required" };
+  | { ok: false; status: 401 | 403; error: "unauthorized" | "forbidden" | "mfa_required" | "mfa_enrol_required" };
 
 /**
  * For API routes that read or spend the platform operator's own things — the
@@ -217,13 +220,17 @@ export type OperatorCheck =
  * own channel's actions go through requireOrgRole instead.
  *
  * In `NIGHTSHIFT_ADMIN_MFA=enforce`, an operator who HAS a second factor but
- * whose session is password-only gets 401 `mfa_required` (an operator with no
- * factor is never refused here: lib/security/admin-mfa.ts).
+ * whose session is password-only gets 401 `mfa_required`; one with NO factor gets
+ * 403 `mfa_enrol_required` (they may only open /security and enrol; in `warn` and
+ * `off` an operator with no factor is never refused here: lib/security/admin-mfa.ts).
  */
 export async function requireOperator(): Promise<OperatorCheck> {
   const user = await getUser();
   if (!user) return { ok: false, status: 401, error: "unauthorized" };
   if (!(await isOperator())) return { ok: false, status: 403, error: "forbidden" };
-  if ((await currentMfaAction(user, true)) === "challenge") return { ok: false, status: 401, error: "mfa_required" };
+  const action = await currentMfaAction(user, true);
+  if (action === "challenge") return { ok: false, status: 401, error: "mfa_required" };
+  // Strict `enforce`: an admin with no authenticator has /security and nothing else.
+  if (action === "enrol_only") return { ok: false, status: 403, error: "mfa_enrol_required" };
   return { ok: true };
 }

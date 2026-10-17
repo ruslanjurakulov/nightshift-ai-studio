@@ -209,16 +209,22 @@ describe("currentMfaAction", () => {
     expect(await currentMfaAction(state.user)).toBe("challenge");
   });
 
-  it("enforce: LOCKOUT SAFETY, an admin with NO factor is not blocked (enrol banner)", async () => {
+  it("enforce (strict): an admin with NO factor may only enrol (/security), they are not asked for a code that does not exist", async () => {
     setMode("enforce");
     admin([], "aal1");
-    expect(await currentMfaAction(state.user)).toBe("warn_enrol");
+    expect(await currentMfaAction(state.user)).toBe("enrol_only");
   });
 
-  it("enforce: an admin with only an UNVERIFIED enrolment is not blocked either", async () => {
+  it("enforce (strict): an admin with only an UNVERIFIED enrolment is in the same state", async () => {
     setMode("enforce");
     admin([{ status: "unverified", factor_type: "totp" }], "aal1");
-    expect(await currentMfaAction(state.user)).toBe("warn_enrol");
+    expect(await currentMfaAction(state.user)).toBe("enrol_only");
+  });
+
+  it("warn and off: an admin with NO factor is never restricted", async () => {
+    setMode("off");
+    admin([], "aal1");
+    expect(await currentMfaAction(state.user)).toBe("allow");
   });
 
   it("enforce: aal2 passes, without asking who the admin is", async () => {
@@ -306,8 +312,15 @@ describe("requireOperator and guardOperatorPage in each mode", () => {
     await expect(guardOperatorPage()).resolves.toBe(true);
   });
 
-  it("enforce: an admin with no factor is NOT locked out (the rule that protects the only admin)", async () => {
+  it("enforce (strict): an admin with no factor gets 403 mfa_enrol_required from the API guard and /security from the page guard", async () => {
     setMode("enforce");
+    operatorSession([], "aal1");
+    expect(await requireOperator()).toEqual({ ok: false, status: 403, error: "mfa_enrol_required" });
+    await expect(guardOperatorPage()).rejects.toThrow("NEXT_REDIRECT:/security");
+  });
+
+  it("warn: an admin with no factor is NOT locked out (the rule that protects the only admin)", async () => {
+    setMode("warn");
     operatorSession([], "aal1");
     expect(await requireOperator()).toEqual({ ok: true });
     await expect(guardOperatorPage()).resolves.toBe(true);

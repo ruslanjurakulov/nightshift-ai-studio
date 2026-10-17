@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { loadStyleContext, readJsonBody, resolveStyleOrg } from "@/lib/server/style-kits";
 import { mapStyleError, parseKitInput, parseStyleId } from "@/lib/style-kits";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
  * organization and that every id is a live image of ITS library — another
  * organization's asset is refused however it got into the request.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await readJsonBody(request);
@@ -59,4 +60,4 @@ export async function POST(request: Request) {
   if (!id) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({ action: "style_kit.create", target: id, detail: { references: input.value.assetIds.length } });
   return NextResponse.json({ id }, { status: 201 });
-}
+});

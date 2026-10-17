@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { StateBlock } from "@/components/states/StateBlock";
 import { ErrorState } from "@/components/ReadError";
 import { ROLES, type Role } from "@/lib/auth/roles-shared";
+import { wouldLeaveNoOwner } from "@/lib/members-guard";
 
 /**
  * Team & roles.
@@ -107,6 +108,10 @@ export function MembersBoard({
     const supabase = createClient();
     if (!supabase) return;
     setError(null);
+    if (members && wouldLeaveNoOwner(members, m.id, next)) {
+      setError(t.members.lastOwnerNote);
+      return;
+    }
     const { error: e } = await supabase.from("app_members").update({ role: next }).eq("id", m.id);
     if (e) {
       setError(t.members.saveFailed);
@@ -120,6 +125,10 @@ export function MembersBoard({
     const supabase = createClient();
     if (!supabase) return;
     setError(null);
+    if (members && wouldLeaveNoOwner(members, m.id, "removed")) {
+      setError(t.members.lastOwnerNote);
+      return;
+    }
     const { error: e } = await supabase.from("app_members").delete().eq("id", m.id);
     if (e) {
       setError(t.members.saveFailed);
@@ -224,7 +233,9 @@ export function MembersBoard({
           <ul className="g5-rows">
             {members.map((m) => {
               const isOwnerRow = m.role === "owner";
-              const canEditThis = canManage && (!isOwnerRow || myRole === "owner");
+              // The only bound owner is shown, not editable: demoting or removing them would leave nobody who can administer.
+              const lastOwner = wouldLeaveNoOwner(members, m.id, "removed");
+              const canEditThis = canManage && (!isOwnerRow || myRole === "owner") && !lastOwner;
               return (
                 <li key={m.id} className="g5-row g5-person">
                   <div className="min-w-0">
@@ -247,7 +258,9 @@ export function MembersBoard({
                       ))}
                     </select>
                   ) : (
-                    <span className="g5-v g5-person-role">{roleLabel[m.role]}</span>
+                    <span className="g5-v g5-person-role" title={lastOwner ? t.members.lastOwnerNote : undefined}>
+                      {roleLabel[m.role]}
+                    </span>
                   )}
                   {canEditThis ? (
                     <button type="button" onClick={() => remove(m)} className="btn-quiet">

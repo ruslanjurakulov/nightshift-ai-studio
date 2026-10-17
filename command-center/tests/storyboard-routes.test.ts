@@ -70,7 +70,7 @@ const edit = (await import("@/app/api/storyboards/[id]/edit/route")).POST;
 const reopen = (await import("@/app/api/storyboards/[id]/reopen/route")).POST;
 
 function req(body: unknown = {}) {
-  return new Request(`http://x/api/storyboards/${ID}/approve`, { method: "POST", body: JSON.stringify(body) });
+  return new Request(`http://x/api/storyboards/${ID}/approve`, { method: "POST", headers: { origin: "http://x" }, body: JSON.stringify(body) });
 }
 const ctx = (id = ID) => ({ params: Promise.resolve({ id }) });
 
@@ -210,14 +210,14 @@ describe("approve", () => {
 
 describe("discard", () => {
   it("discards through the database, which checks the right again", async () => {
-    const res = await discard(new Request("http://x", { method: "POST" }), ctx());
+    const res = await discard(new Request("http://x", { method: "POST", headers: { origin: "http://x" } }), ctx());
     expect(res.status).toBe(200);
     expect(h.rpcCalls).toEqual([{ name: "discard_storyboard", args: { p_storyboard: ID } }]);
   });
 
   it("someone who may not start runs cannot discard", async () => {
     h.access = { ok: false, status: 403, error: "forbidden" };
-    expect((await discard(new Request("http://x", { method: "POST" }), ctx())).status).toBe(403);
+    expect((await discard(new Request("http://x", { method: "POST", headers: { origin: "http://x" } }), ctx())).status).toBe(403);
     expect(h.rpcCalls).toEqual([]);
   });
 });
@@ -230,7 +230,7 @@ const EDITED = [
 ];
 
 function editReq(body: unknown) {
-  return new Request(`http://x/api/storyboards/${ID}/edit`, { method: "POST", body: JSON.stringify(body) });
+  return new Request(`http://x/api/storyboards/${ID}/edit`, { method: "POST", headers: { origin: "http://x" }, body: JSON.stringify(body) });
 }
 
 describe("approve, once storyboards can be edited", () => {
@@ -312,7 +312,7 @@ describe("edit", () => {
       expect(res.status, JSON.stringify(scenes)).toBe(400);
     }
     expect((await edit(editReq({ revision: -1, scenes: body.scenes }), ctx())).status).toBe(400);
-    expect((await edit(new Request("http://x", { method: "POST", body: "x".repeat(300_001) }), ctx())).status).toBe(413);
+    expect((await edit(new Request("http://x", { method: "POST", headers: { origin: "http://x" }, body: "x".repeat(300_001) }), ctx())).status).toBe(413);
     expect(h.rpcCalls).toEqual([]);
   });
 
@@ -361,7 +361,7 @@ describe("edit", () => {
 });
 
 describe("reopen", () => {
-  const post = () => reopen(new Request("http://x", { method: "POST" }), ctx());
+  const post = () => reopen(new Request("http://x", { method: "POST", headers: { origin: "http://x" } }), ctx());
 
   it("re-opens a failed render's storyboard through the database", async () => {
     h.storyboard = { ...h.storyboard, status: "approved", revision: 1 };

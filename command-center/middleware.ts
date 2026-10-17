@@ -22,9 +22,10 @@ import {
   isWelcomePath,
 } from "@/lib/public-paths";
 import { authorizeReturnPath } from "@/lib/oauth/authorize";
+import { hardenSessionCookie } from "@/lib/supabase/cookie-options";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
-import { MFA_VERIFY_PATH, parseAdminMfaMode } from "@/lib/security/admin-mfa";
+import { ENROL_PATH, MFA_VERIFY_PATH, isEnrolOnlyPath, parseAdminMfaMode } from "@/lib/security/admin-mfa";
 import { mfaMiddlewareAction, type MfaMiddlewareClient } from "@/lib/security/mfa-middleware";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 import {
@@ -202,7 +203,7 @@ async function gate(request: NextRequest): Promise<NextResponse> {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
+          response.cookies.set(name, value, hardenSessionCookie(options)),
         );
       },
     },
@@ -249,10 +250,29 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // the code first: a page goes to /login/verify, an API route answers 401
   // `mfa_required`. Admins are only sent in `enforce`; with no factor, or in
   // `off`, nothing here ever blocks (lib/security/admin-mfa.ts).
-  if (
-    (await mfaMiddlewareAction(supabase as unknown as MfaMiddlewareClient, user, parseAdminMfaMode(process.env.NIGHTSHIFT_ADMIN_MFA))) ===
-    "challenge"
-  ) {
+  const mfaAction = await mfaMiddlewareAction(
+    supabase as unknown as MfaMiddlewareClient,
+    user,
+    parseAdminMfaMode(process.env.NIGHTSHIFT_ADMIN_MFA),
+  );
+  // Strict `enforce`: an admin with NO authenticator may open only /security (to enrol one). Everything else goes
+  // there, an API route answers 403 `mfa_enrol_required`. Sign-out and the enrolment itself talk to the auth
+  // server from the browser, not through this app, so they are never in the way. NIGHTSHIFT_ADMIN_MFA=warn|off
+  // undoes it (docs/security/ADMIN_MFA.md).
+  if (mfaAction === "enrol_only" && !isEnrolOnlyPath(request.nextUrl.pathname)) {
+    let blocked: NextResponse;
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      blocked = NextResponse.json({ error: "mfa_enrol_required" }, { status: 403, headers: { "cache-control": "no-store" } });
+    } else {
+      const url = request.nextUrl.clone();
+      url.pathname = ENROL_PATH;
+      url.search = "";
+      blocked = NextResponse.redirect(url);
+    }
+    response.cookies.getAll().forEach((c) => blocked.cookies.set(c));
+    return blocked;
+  }
+  if (mfaAction === "challenge") {
     let blocked: NextResponse;
     if (request.nextUrl.pathname.startsWith("/api/")) {
       blocked = NextResponse.json({ error: "mfa_required" }, { status: 401, headers: { "cache-control": "no-store" } });

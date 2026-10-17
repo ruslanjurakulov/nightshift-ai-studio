@@ -210,7 +210,7 @@ describe("POST /api/channels/dna", () => {
     route.POST(
       new Request("http://x/api/channels/dna", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", origin: "http://x" },
         body: typeof body === "string" ? body : JSON.stringify(body),
       }),
     );

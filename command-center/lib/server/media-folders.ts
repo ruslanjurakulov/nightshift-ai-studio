@@ -9,6 +9,7 @@ import {
   shapeFolders,
   type MediaFoldersState,
 } from "@/lib/media-folders";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 /**
  * Media library folders (migration 0049), read on the server.
@@ -33,7 +34,7 @@ export async function resolveMediaOrg(asked: unknown): Promise<{ org: string | n
 /** The request's JSON body, or undefined when it is not JSON (a 400, not a 500). */
 export async function readJsonBody(request: Request): Promise<unknown> {
   try {
-    return await request.json();
+    return await parseJsonCapped(request);
   } catch {
     return undefined;
   }

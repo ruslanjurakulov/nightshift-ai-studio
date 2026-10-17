@@ -222,7 +222,7 @@ vi.mock("@/lib/server/audit", () => ({
 const route = await import("../app/api/videos/[id]/scenes/[scene]/regenerate/route");
 const ctx = (id = VID, scene = "s001") => ({ params: Promise.resolve({ id, scene }) });
 const post = (body: unknown) =>
-  new Request("http://x/api", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
+  new Request("http://x/api", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json", Origin: "http://x" } });
 const KEY = "scene-regen:11111111-1111-4111-8111-111111111111";
 
 describe("GET / POST /api/videos/<id>/scenes/<scene>/regenerate", () => {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auditInbox, callInbox, jsonBody } from "@/lib/server/comment-inbox";
 import { cleanReply, isUuid } from "@/lib/comment-inbox";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
  * This route posts nothing itself: it files the approval and the queue
  * worker (which holds the channel's token) posts it a moment later.
  */
-export async function POST(request: Request, { params }: { params: Promise<{ draft: string }> }) {
+export const POST = requireSameOrigin(async function POST(request: Request, { params }: { params: Promise<{ draft: string }> }) {
   const { draft } = await params;
   if (!isUuid(draft)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await jsonBody(request);
@@ -37,4 +38,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ dra
     });
   }
   return NextResponse.json({ ok: true, post_id: res.post_id ?? null, status: res.status ?? "queued", replayed: res.replay === true });
-}
+});

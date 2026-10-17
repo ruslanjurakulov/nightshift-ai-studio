@@ -926,6 +926,46 @@ export interface WebhookResponse {
 /** Paddle's payloads are a few KB; anything this large is not one. */
 export const MAX_BODY_BYTES = 1_000_000;
 
+/**
+ * The delivery's raw body, read with a hard byte cap BEFORE anything is verified (ledger BR-S-019).
+ *
+ * `req.text()` buffers whatever is sent, and the signature can only be checked once the whole text is in hand, so
+ * without a cap anybody who can reach the function URL could make it hold a body of any size. A declared
+ * Content-Length over the cap is refused before a byte is read; a body with no length (chunked) or a false one is
+ * read as a stream and cut off, and its upload cancelled, the moment the running total passes the cap. The text is
+ * decoded exactly as `req.text()` would (UTF-8), so the signature is still over the bytes Paddle sent.
+ */
+export type BodyRead = { ok: true; text: string } | { ok: false; reason: "too_large" };
+
+export async function readBodyCapped(
+  req: { headers: { get(name: string): string | null }; body: ReadableStream<Uint8Array> | null },
+  maxBytes: number = MAX_BODY_BYTES,
+): Promise<BodyRead> {
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > maxBytes) return { ok: false, reason: "too_large" };
+  if (!req.body) return { ok: true, text: "" };
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return { ok: false, reason: "too_large" };
+    }
+    parts.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    bytes.set(part, at);
+    at += part.byteLength;
+  }
+  return { ok: true, text: new TextDecoder().decode(bytes) };
+}
+
 /** SQLSTATEs that retrying cannot fix: the purchase is recorded as rejected. */
 const PERMANENT_CODES = new Set(["23505", "22023", "P0002"]);
 

@@ -3,6 +3,8 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { mediaDir, mediaStagingDir } from "@/lib/server/media";
 import { cleanUploadName, mapMediaError, parseMaxDetail, parseMediaId, parseQuotaDetail } from "@/lib/media";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,14 +37,14 @@ export const dynamic = "force-dynamic";
  * On a host without the media volumes (Vercel) no ticket is handed out: the
  * body could never be received or served here.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!mediaStagingDir() || !mediaDir()) return NextResponse.json({ error: "media_unavailable" }, { status: 503 });
 
   let body: { org_id?: unknown; filename?: unknown; mime?: unknown; bytes?: unknown; project_id?: unknown; folder_id?: unknown };
   try {
-    body = await request.json();
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -109,4 +111,4 @@ export async function POST(request: Request) {
     folder_id: folderApplied ? (parseMediaId(out.folder_id) ?? null) : null,
     folder_applied: folderId === null ? null : folderApplied,
   });
-}
+});

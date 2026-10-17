@@ -4,6 +4,7 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { readStoryboard } from "@/lib/server/storyboards";
 import { isStoryboardId, mapStoryboardError } from "@/lib/storyboardReview";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export const dynamic = "force-dynamic";
  * can never render — approving again places a new hold. Same right as
  * approving (the Run now rule).
  */
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = requireSameOrigin(async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
@@ -44,4 +45,4 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
   await logAudit({ action: "storyboard.reopen", target: id, channelId: sb.channelId, detail: { scenes: sb.scenes.length } });
   return NextResponse.json({ ok: true, status: "ready" });
-}
+});

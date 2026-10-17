@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/server/audit";
 import { loadMediaFolders, readJsonBody, resolveMediaOrg } from "@/lib/server/media-folders";
 import { parseMediaId } from "@/lib/media";
 import { mapFolderError, parseFolderName } from "@/lib/media-folders";
+import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
  * signed-in user and checks that they edit this organization, the name
  * (1–60 characters, unique ignoring case) and the 200-folder cap.
  */
-export async function POST(request: Request) {
+export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await readJsonBody(request);
@@ -53,4 +54,4 @@ export async function POST(request: Request) {
   if (!id) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({ action: "media.folder_create", target: id, detail: { org } });
   return NextResponse.json({ id, name: name.value }, { status: 201 });
-}
+});
