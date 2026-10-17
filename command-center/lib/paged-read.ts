@@ -84,8 +84,14 @@ export async function readAllPages<T>(
     }
     // The next page starts after what was received (a server cap below `size` must not end the read early).
     from += res.data.length;
-    if (res.data.length === 0) return { rows, error: null, truncated: total !== null && rows.length < total, reason: total !== null && rows.length < total ? "ceiling" : null };
-    if (total !== null ? from >= total : res.data.length < size) return { rows, error: null, truncated: false, reason: null };
+    // With the exact total the read ends when that many DISTINCT rows are in hand (a repeat from a shifted offset does not
+    // count), or when the server has nothing more to give: then anything short of the total is flagged as cut.
+    if (total !== null) {
+      if (rows.length >= total) return { rows, error: null, truncated: false, reason: null };
+      if (res.data.length === 0) return { rows, error: null, truncated: true, reason: "ceiling" };
+      continue;
+    }
+    if (res.data.length < size) return { rows, error: null, truncated: false, reason: null };
   }
   return { rows, error: null, truncated: true, reason: "ceiling" };
 }

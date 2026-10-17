@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
 import { esc } from "./helpers/supabaseStub";
 
-const unescape = (s: string) => s.replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+const unescape = (s: string) => s.replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
 vi.mock("server-only", () => ({}));
 const state = vi.hoisted(() => ({ tables: {} as Record<string, unknown> }));
 
@@ -96,7 +96,7 @@ const { default: CommandCenter } = await import("../app/(app)/[channel]/command-
 
 /** The tiles by what they are, found through their label. */
 const KEY_OF: Record<string, string> = {
-  [en.ownerShell.gSpendToday]: "spend",
+  [en.ownerShell.gSpend]: "spend",
   [en.ownerShell.gBalance]: "balance",
   [en.ownerShell.gFailed]: "errors",
   [en.ownerShell.gWaiting]: "waiting",
@@ -106,15 +106,15 @@ const KEY_OF: Record<string, string> = {
   [en.dashboard.activeAgents]: "agents",
 };
 
-async function glance(): Promise<Record<string, { value: string; sub: string; tone: string }>> {
+async function glance(): Promise<Record<string, { label: string; value: string; sub: string; tone: string }>> {
   const html = renderToStaticMarkup(await CommandCenter());
   const section = html.slice(html.indexOf("data-owner-glance"));
   const end = section.indexOf("</section>");
   const items = section.slice(0, end).split("<li ").slice(1);
-  const out: Record<string, { value: string; sub: string; tone: string }> = {};
+  const out: Record<string, { label: string; value: string; sub: string; tone: string }> = {};
   for (const li of items) {
     const spans = [...li.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1]);
-    out[KEY_OF[unescape(spans[0] ?? "")] ?? spans[0] ?? "?"] = { value: spans[1] ?? "", sub: spans[2] ?? "", tone: li.match(/border-color:([^;"]*)/)?.[1] ?? "" };
+    out[KEY_OF[unescape(spans[0] ?? "")] ?? (/^Spent /.test(unescape(spans[0] ?? "")) ? "spend" : spans[0]) ?? "?"] = { label: spans[0] ?? "", value: spans[1] ?? "", sub: spans[2] ?? "", tone: li.match(/border-color:([^;"]*)/)?.[1] ?? "" };
   }
   return out;
 }
@@ -199,60 +199,95 @@ describe("a read that never answers", () => {
   });
 });
 
-describe("Spent today (the ledger is mirrored nightly)", () => {
-  const today = () => rows([{ synced_at: new Date().toISOString() }]);
-  const costs = (r: unknown[], synced: Res | null = today()) => {
+describe("Spent (the ledger is mirrored nightly: the last COMPLETE day, as of the last sync)", () => {
+  // The mirror last ran at 2026-10-17 01:00 Tashkent (= 2026-10-16T20:00Z); the complete day before it is 16 Oct (Tashkent).
+  const SYNC = "2026-10-16T20:00:00.000Z";
+  const NOW_T = new Date("2026-10-17T08:53:00Z");
+  const sync = (iso: string | null = SYNC) => rows(iso ? [{ synced_at: iso }] : []);
+  const costs = (r: unknown[], synced: Res | null = sync()) => {
     state.tables.video_costs = { data: r, error: null };
     if (synced) state.tables.video_costs_sync = synced;
   };
-  it("synced today: sums the priced rows", async () => {
+  const run = async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: NOW_T });
+    try {
+      return (await glance()).spend;
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  it("sums the priced rows of the last complete day, labelled with that date and the sync time, never 'today'", async () => {
     costs([{ quantity: 10, estimated_usd: 1.25 }, { quantity: 5, estimated_usd: 2 }]);
-    const t = (await glance()).spend;
+    const t = await run();
     expect(t.value).toBe("$3.25");
-    expect(t.sub).toBe("");
+    expect(unescape(t.sub)).toBe("as of last sync today 01:00");
+    expect(unescape(t.label)).toBe("Spent 16 Oct");
+    expect(t.label).not.toMatch(/today/i);
   });
-  it("under $1 it keeps three decimals", async () => {
+  it("the rows asked for are exactly that day: [16 Oct 00:00, 17 Oct 00:00) Tashkent, newest first, 1000-row guard", async () => {
+    costs([{ quantity: 1, estimated_usd: 1 }]);
+    await run();
+    const q = rec.log.find((x) => x.table === "video_costs" && x.calls.some(([m]) => m === "lt"));
+    expect(q).toBeTruthy();
+    const call = (m: string) => q!.calls.find(([x]) => x === m)?.[1];
+    expect(call("gte")).toEqual(["recorded_at", "2026-10-15T19:00:00.000Z"]);
+    expect(call("lt")).toEqual(["recorded_at", "2026-10-16T19:00:00.000Z"]);
+    expect(call("order")).toEqual(["recorded_at", { ascending: false }]);
+    expect(call("limit")).toEqual([1000]);
+  });
+  it("a sync that ran earlier today still speaks for the day before it, not for 'today'", async () => {
+    costs([{ quantity: 1, estimated_usd: 4 }], sync("2026-10-17T03:00:00.000Z")); // 08:00 Tashkent, 17 Oct
+    const t = await run();
+    expect(unescape(t.label)).toBe("Spent 16 Oct");
+    expect(unescape(t.sub)).toBe("as of last sync today 08:00");
+  });
+  it("a stale mirror speaks for an older day, and says so", async () => {
+    costs([{ quantity: 1, estimated_usd: 4 }], sync("2026-10-12T20:00:00.000Z"));
+    const t = await run();
+    expect(unescape(t.label)).toBe("Spent 12 Oct");
+    expect(unescape(t.sub)).toContain("as of last sync 13 Oct 01:00");
+  });
+  it("under $1 it keeps three decimals, and a positive amount too small to show is '<$0.001', never $0.000", async () => {
     costs([{ quantity: 1, estimated_usd: 0.0123 }]);
-    expect((await glance()).spend.value).toBe("$0.012");
+    expect((await run()).value).toBe("$0.012");
+    costs([{ quantity: 1, estimated_usd: 0.0002 }]);
+    expect(unescape((await run()).value)).toBe("<$0.001");
   });
   it("some unpriced rows make it a floor and say so", async () => {
     costs([{ quantity: 10, estimated_usd: 1 }, { quantity: 5, estimated_usd: null }]);
-    const t = (await glance()).spend;
+    const t = await run();
     expect(t.value).toBe("$1.00");
-    expect(unescape(t.sub)).toBe(en.ownerShell.gSpendPartial);
+    expect(unescape(t.sub)).toContain(en.ownerShell.gSpendPartial);
   });
   it("only unpriced rows: no figure, never $0.00, and no Retry for it", async () => {
     costs([{ quantity: 10, estimated_usd: null }]);
-    const t = (await glance()).spend;
+    const t = await run();
     expect(unescape(t.value)).toBe(en.common.unknown);
-    expect(unescape(t.sub)).toBe(en.ownerShell.gSpendNotPriced);
+    expect(unescape(t.sub)).toContain(en.ownerShell.gSpendNotPriced);
   });
-  it("the mirror has not run today (newest sync yesterday, or none): unknown, 'updates nightly', never a confident $0.00", async () => {
-    for (const synced of [rows([{ synced_at: new Date(Date.now() - 30 * 3600 * 1000).toISOString() }]), rows([])]) {
-      costs([], synced);
-      const t = (await glance()).spend;
-      expect(unescape(t.value)).toBe(en.common.unknown);
-      expect(unescape(t.sub)).toBe(en.ownerShell.gSpendNightly);
-    }
-    costs([{ quantity: 10, estimated_usd: 5 }], rows([{ synced_at: new Date(Date.now() - 30 * 3600 * 1000).toISOString() }]));
-    expect(unescape((await glance()).spend.value)).toBe(en.common.unknown);
+  it("no sync at all: unknown, 'updates nightly', no spend rows are even asked for", async () => {
+    costs([{ quantity: 10, estimated_usd: 5 }], sync(null));
+    const t = await run();
+    expect(unescape(t.value)).toBe(en.common.unknown);
+    expect(unescape(t.sub)).toBe(en.ownerShell.gSpendNightly);
+    expect(rec.log.some((x) => x.table === "video_costs" && x.calls.some(([m]) => m === "lt"))).toBe(false);
   });
-  it("synced today but no rows for today: 'no rows yet', not a measured $0.00", async () => {
+  it("a sync but no rows that day: 'no rows that day', not a measured $0.00", async () => {
     costs([]);
-    const t = (await glance()).spend;
+    const t = await run();
     expect(unescape(t.value)).toBe(en.common.unknown);
-    expect(unescape(t.sub)).toBe(en.ownerShell.gSpendNoRows);
+    expect(unescape(t.sub)).toContain(en.ownerShell.gSpendNoRows);
     expect(t.value).not.toContain("$");
   });
   it("a day that fills the read (1000 rows) says 'too many rows', not 'could not read'", async () => {
     costs(Array.from({ length: 1000 }, () => ({ quantity: 1, estimated_usd: 1 })));
-    const t = (await glance()).spend;
-    expect(unescape(t.sub)).toBe(en.ownerShell.gSpendTooMany);
-    expect(unescape(t.sub)).not.toBe(en.common.couldNotRead);
+    const t = await run();
+    expect(unescape(t.sub)).toContain(en.ownerShell.gSpendTooMany);
+    expect(unescape(t.sub)).not.toContain(en.common.couldNotRead);
   });
   it("a failed ledger read is unknown, could not read", async () => {
     state.tables.video_costs = FAIL;
-    const t = (await glance()).spend;
+    const t = await run();
     expect(unescape(t.value)).toBe(en.common.unknown);
     expect(unescape(t.sub)).toBe(en.common.couldNotRead);
   });
@@ -311,16 +346,13 @@ describe("what the page actually asks the database (recorded)", () => {
     expect(published).toHaveLength(1);
     expect(call(published[0].calls, "gte")).toEqual(["published_at", "2026-10-16T19:00:00.000Z"]);
     expect(JSON.stringify(call(published[0].calls, "select")?.[1])).toBe(JSON.stringify({ count: "exact", head: true }));
-    // Spent today: today's rows, newest first, with the 1000-row guard, and the freshness read
-    const spend = q("video_costs", (c) => c.some(([m, a]) => m === "gte" && a[0] === "recorded_at"));
-    expect(spend).toHaveLength(1);
-    expect(call(spend[0].calls, "gte")).toEqual(["recorded_at", "2026-10-16T19:00:00.000Z"]);
-    expect(call(spend[0].calls, "order")).toEqual(["recorded_at", { ascending: false }]);
-    expect(call(spend[0].calls, "limit")).toEqual([1000]);
+    // The freshness read of the cost ledger: the newest synced_at
     const fresh = q("video_costs", (c) => c.some(([m, a]) => m === "select" && a[0] === "synced_at"));
     expect(fresh).toHaveLength(1);
     expect(call(fresh[0].calls, "order")).toEqual(["synced_at", { ascending: false }]);
     expect(call(fresh[0].calls, "limit")).toEqual([1]);
+    // the alert read has an ORDER BY under its limit
+    expect(call(alerts[0].calls, "order")).toEqual(["at", { ascending: false }]);
   });
   it("at the alert row limit the tile says '500+' (a floor)", async () => {
     state.tables.alert_events = rows(Array.from({ length: 500 }, (_, i) => ({ kind: "upload.failed", title: `t${i}`, at: new Date().toISOString() })));

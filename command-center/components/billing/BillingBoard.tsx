@@ -10,7 +10,7 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Meter } from "@/components/ui/Meter";
 import { StateBlock } from "@/components/states/StateBlock";
 import { relativeTime } from "@/lib/format";
-import { formatNumber, formatUsdAmount } from "@/lib/number-format";
+import { formatNumber, formatUsdOwner } from "@/lib/number-format";
 import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
 import { postOperator } from "@/lib/operator-post";
@@ -60,9 +60,7 @@ export type RunwayView = ElevenLabsRunway & {
 
 /** Dollars, grouped and fixed ("$1,234.56", three decimals under $1): the same text on the server and in the browser. */
 export function usd(v: number | null, locale = "en"): string {
-  if (v === null) return "—";
-  const small = Math.abs(v) < 1 && v !== 0;
-  return formatUsdAmount(v, locale, small ? 3 : 2, small ? 3 : 2);
+  return v === null ? "—" : formatUsdOwner(v, locale);
 }
 
 const n0 = (v: number, locale = "en") => formatNumber(Math.round(v), locale, 0);
@@ -103,6 +101,9 @@ export function BillingBoard({
     .filter((p) => typeof p.daysLeft === "number" && !p.autoRecharge)
     .sort((a, b) => (a.daysLeft as number) - (b.daysLeft as number));
   const first = running[0] ?? null;
+  // "Nothing is running out" is only true when every provider is known not to be (not in use, topped up by itself, or
+  // not tracked); a provider whose days left is unknown keeps the answer unknown.
+  const nothingRunningOut = providers.every((p) => p.daysLeft === "never" || p.daysLeft === "auto" || p.daysLeft === "untracked");
 
   async function doRefresh() {
     setRefresh("busy");
@@ -128,7 +129,7 @@ export function BillingBoard({
               ? t.common.couldNotRead
               : [
                   partial ? t.billing.partialNote : "",
-                  basisDays > 0 && basisDays < 30 ? fmt(t.ownerTruth.basedOnDays, { n: basisDays }) : "",
+                  basisDays > 0 && basisDays < 30 ? fmt(basisDays === 1 ? t.ownerTruth.basedOnDay : t.ownerTruth.basedOnDays, { n: basisDays }) : "",
                   // The cost ledger is mirrored nightly: say how old it is.
                   lastSync ? fmt(t.ownerTruth.lastSync, { when: lastSync }) : spendNoRows ? "" : t.ownerTruth.syncUnknown,
                 ]
@@ -138,7 +139,7 @@ export function BillingBoard({
         />
         <StatCard
           label={t.billing.statFirstOut}
-          value={first ? first.name : t.billing.statFirstOutNone}
+          value={first ? first.name : nothingRunningOut ? t.billing.statFirstOutNone : t.common.unknown}
           sub={first ? fmt(t.billing.days, { n: Math.floor(first.daysLeft as number) }) : undefined}
           tone={first && (first.daysLeft as number) <= first.lowBalanceDays ? "warn" : undefined}
         />
@@ -293,7 +294,7 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
         </div>
         <div>
           <dt className="g5-k">
-            {p.windowDays !== undefined && p.windowDays < 29.5 ? fmt(t.ownerTruth.usedLastDays, { n: Math.max(1, Math.round(p.windowDays)) }) : t.billing.usage30}
+            {p.windowDays !== undefined && p.windowDays < 29.5 ? fmt(Math.round(p.windowDays) <= 1 ? t.ownerTruth.usedLastDay : t.ownerTruth.usedLastDays, { n: Math.max(1, Math.round(p.windowDays)) }) : t.billing.usage30}
           </dt>
           <dd>
             {p.tracked === false

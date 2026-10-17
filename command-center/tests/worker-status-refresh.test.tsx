@@ -46,10 +46,20 @@ describe("WorkerStatusPanel", () => {
     expect(h.refresh).toHaveBeenCalledTimes(1);
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
   });
+  it("refreshes the moment the tab becomes visible again (a phone back from the background)", () => {
+    render(<WorkerStatusPanel read="ok" rows={rows} nowMs={SERVER_NOW} />);
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(h.refresh).not.toHaveBeenCalled();
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+  });
   it("stops asking when it unmounts", () => {
     const { unmount } = render(<WorkerStatusPanel read="ok" rows={rows} nowMs={SERVER_NOW} />);
     unmount();
     vi.advanceTimersByTime(300_000);
+    document.dispatchEvent(new Event("visibilitychange"));
     expect(h.refresh).not.toHaveBeenCalled();
   });
 });

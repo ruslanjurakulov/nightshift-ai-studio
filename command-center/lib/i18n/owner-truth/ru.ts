@@ -22,6 +22,8 @@ export const ownerTruthRu: OwnerTruthDictionary = {
   lastSync: "последняя синхронизация {when}",
   syncUnknown: "последняя синхронизация неизвестна",
   basedOnDays: "по последним {n} дням",
+  usedLastDay: "Использовано, последний {n} дн.",
+  basedOnDay: "по последнему {n} дню",
   usedLastDays: "Использовано, последние {n} дн.",
   spendPace: "Расход в таком темпе, 30 дней",
   asOf: "на {t}",

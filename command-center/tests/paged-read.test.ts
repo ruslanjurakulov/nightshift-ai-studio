@@ -48,12 +48,24 @@ describe("readAllPages", () => {
     expect(out.rows).toHaveLength(120);
     expect(out.truncated).toBe(false);
   });
-  it("a row repeated because an insert shifted the offsets is counted once", async () => {
+  it("an insert between two pages shifts the offsets: the repeated row is counted once and the read goes on until every distinct row is in", async () => {
+    // 8 rows when the first page was read (ids 0..7, newest first); a newer row (id -1) lands before the second page.
+    const before = rows(8);
+    const after = [{ id: -1 }, ...before];
     const out = await readAllPages(
-      async (from) => ({ data: from === 0 ? rows(4) : [{ id: 3 }, { id: 4 }, { id: 5 }, { id: 6 }], error: null, count: 8 }),
+      async (from, to) => ({ data: (from === 0 ? before : after).slice(from, to + 1), error: null, count: 8 }),
       { pageSize: 4, keyOf: (r) => r.id },
     );
-    expect(out.rows.map((r) => r.id)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(out.rows.map((r) => r.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(out.truncated).toBe(false);
+  });
+  it("fewer distinct rows than the total, and the server has no more to give: flagged as cut, not silently complete", async () => {
+    const out = await readAllPages(
+      async (from) => ({ data: from === 0 ? rows(4) : from === 4 ? [{ id: 3 }, { id: 4 }] : [], error: null, count: 10 }),
+      { pageSize: 4, keyOf: (r) => r.id },
+    );
+    expect(out.rows.map((r) => r.id)).toEqual([0, 1, 2, 3, 4]);
+    expect(out.truncated).toBe(true);
   });
   it("stops at the ceiling and SAYS it stopped short", async () => {
     const page = vi.fn(async (from: number) => ({ data: rows(1000, from), error: null }));

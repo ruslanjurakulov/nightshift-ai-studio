@@ -123,7 +123,8 @@ export default async function BillingPage() {
       (from, to) => {
         const base = supabase
           .from("video_costs")
-          .select("id,unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd,synced_at", { count: "exact" });
+          // The exact total is asked for on the FIRST page only: counting is a scan, and the total does not change by page.
+          .select("id,unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd,synced_at", from === 0 ? { count: "exact" } : undefined);
         return timed(
           (operatorView ? base : scopeQuery(base, orgWide(scope)))
             .gte("recorded_at", sinceIso)
@@ -198,7 +199,10 @@ export default async function BillingPage() {
     const tracked = isTracked(p);
     const autoRecharge = st?.auto_recharge_on_provider ?? false;
     // The per-day figures are averaged over 30 days, or over THIS provider's own history when that is shorter.
-    const burn = providerBurn(p, costs, price, 30, NOW, providerHistoryStart(firstUseMs(p, costs), firstTopupOf(p.id)));
+    // When the read stopped short, rows older than the oldest one read are missing: the window must not reach before them.
+    const ownStart = providerHistoryStart(firstUseMs(p, costs), firstTopupOf(p.id));
+    const start = costsCut && coveredFromMs !== null ? Math.max(ownStart ?? coveredFromMs, coveredFromMs) : ownStart;
+    const burn = providerBurn(p, costs, price, 30, NOW, start);
     const snap = balancesFailed ? null : latestBalance(balances, p.id);
     const ledgerUsd =
       usageUnknown || topupsFailed ? null : ledgerBalanceUsd(p, topups, costs, price, coveredFromMs);
@@ -299,7 +303,11 @@ export default async function BillingPage() {
           spendUnknown={usageUnknown}
           spendNoRows={!costsFailed && costs.length === 0}
           lastSync={lastSyncMs === null ? null : ownerTime(new Date(lastSyncMs).toISOString(), locale, NOW)}
-          basisDays={Math.round(Math.max(0, ...views.filter((v) => v.units30 !== null && v.units30 > 0).map((v) => v.windowDays ?? 0)))}
+          basisDays={(() => {
+            // The headline is "last 30 days" only when EVERY provider that contributes has a full window: the shortest one rules.
+            const w = views.filter((v) => v.units30 !== null && v.units30 > 0).map((v) => v.windowDays ?? 30);
+            return w.length ? Math.round(Math.min(...w)) : 30;
+          })()}
           runwayUnknown={balancesFailed}
         />
       ) : (

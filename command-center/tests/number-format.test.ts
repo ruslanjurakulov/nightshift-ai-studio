@@ -4,6 +4,7 @@
  * symbols and prints "1,191". The table decides, not the runtime — pinned
  * here with Intl.NumberFormat taken away entirely.
  */
+import { formatUsdOwner } from "../lib/number-format";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatNumber } from "@/lib/number-format";
 import { formatCredits } from "@/lib/credits";
@@ -42,5 +43,19 @@ describe("formatNumber", () => {
     expect(formatNumber(1191, "uz-Latn-UZ")).toBe(`1${NBSP}191`);
     expect(formatNumber(Number.NaN, "en")).toBe("—");
     expect(formatCredits(null, "uz")).toBe("—");
+  });
+});
+
+describe("formatUsdOwner (the owner's dollar figures)", () => {
+  it("two decimals, three under $1", () => {
+    expect(formatUsdOwner(1234.5, "en")).toBe("$1,234.50");
+    expect(formatUsdOwner(0.0123, "en")).toBe("$0.012");
+    expect(formatUsdOwner(0, "en")).toBe("$0.00");
+  });
+  it("a positive amount too small to show is '<$0.001', never $0.000", () => {
+    expect(formatUsdOwner(0.0002, "en")).toBe("<$0.001");
+    expect(formatUsdOwner(0.0002, "uz")).toBe("<$0,001");
+    expect(formatUsdOwner(0.0002, "ru")).toBe("<0,001\u00a0$");
+    expect(formatUsdOwner(0.0005, "en")).toBe("$0.001");
   });
 });

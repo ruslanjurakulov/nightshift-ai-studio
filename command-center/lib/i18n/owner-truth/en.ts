@@ -30,6 +30,8 @@ export const ownerTruthEn = {
   lastSync: "last sync {when}",
   syncUnknown: "last sync unknown",
   basedOnDays: "based on the last {n} days",
+  usedLastDay: "Used, last {n} day",
+  basedOnDay: "based on the last {n} day",
   usedLastDays: "Used, last {n} days",
   spendPace: "Spend at this pace, 30 days",
   asOf: "as of {t}",

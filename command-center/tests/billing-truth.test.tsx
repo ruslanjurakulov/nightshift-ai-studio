@@ -160,12 +160,14 @@ describe("the spend read is paged and says when it was cut", () => {
     const html = await page({});
     expect(html).toMatch(/cut at 20,000 rows/);
   });
-  it("a ledger exactly at the ceiling is read whole, no note", async () => {
+  it("a ledger of 1,800 rows is read whole in four pages (500, 500, 500, 300) with no cut note", async () => {
     costPage = ledger(1800);
     const html = await page({});
     expect(html).not.toMatch(/cut at/);
     const pages = stub.of("video_costs", "range");
     expect(pages.map((q) => arg(q, "range"))).toEqual([0, 500, 1000, 1500]);
+    // the exact total is asked for on the first page only (a count is a scan)
+    expect(pages.map((q) => JSON.stringify(q.calls.find(([m]) => m === "select")?.[1][1] ?? null))).toEqual([JSON.stringify({ count: "exact" }), "null", "null", "null"]);
   });
   it("a short ledger prints no note", async () => {
     const html = await page({ video_costs: ok([]) });
@@ -224,5 +226,82 @@ describe("the ledger is only as fresh as the nightly mirror", () => {
     expect(has(card(html, "Kling"), en.ownerTruth.usedLastDays.replace("{n}", "2"))).toBe(true);
     // 10 clips in 2 days at $1 is $5 a day, not $0.33
     expect(card(html, "Kling")).toContain("$5.00");
+  });
+});
+
+describe("the headline", () => {
+  const settings = (...ids: string[]) =>
+    ok(ids.map((provider) => ({ provider, usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: false, auto_recharge_on_provider: false, low_balance_days: 3 })));
+  const full = (stage: string, n: number, d: number, id: number) => ({ id, unit: "video_gen_clips", quantity: n, stage, recorded_at: iso(d), video_id: `v${id}`, channel_id: "c", synced_at: iso(0.1) });
+  const stat = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+  it("mixed windows (one provider with 30 days, one with 2): it is a 'pace', never 'last 30 days', and the shortest window rules", async () => {
+    const html = await page({
+      video_costs: ok([full("broll:minimax", 30, 29, 1), full("broll:minimax", 30, 1, 2), full("broll:kling", 10, 2, 3), full("broll:kling", 5, 0.5, 4)]),
+      provider_billing_settings: settings("minimax", "kling"),
+    });
+    const text = stat(html);
+    expect(text).toContain(en.ownerTruth.spendPace);
+    expect(text).not.toContain(en.billing.statBurn30);
+    expect(text).toContain(en.ownerTruth.basedOnDays.replace("{n}", "2"));
+  });
+  it("every contributing provider with a full 30-day window keeps 'Spend, last 30 days'", async () => {
+    const html = await page({
+      video_costs: ok([full("broll:minimax", 30, 29.9, 1), full("broll:minimax", 30, 1, 2), full("broll:kling", 10, 29.9, 3), full("broll:kling", 5, 0.5, 4)]),
+      provider_billing_settings: settings("minimax", "kling"),
+    });
+    expect(stat(html)).toContain(en.billing.statBurn30);
+    expect(stat(html)).not.toContain(en.ownerTruth.spendPace);
+  });
+  it("a single day of history reads 'last 1 day', not 'last 1 days'", async () => {
+    const html = await page({ video_costs: ok([full("broll:kling", 5, 0.3, 1)]), provider_billing_settings: settings("kling") });
+    expect(has(html, en.ownerTruth.usedLastDay.replace("{n}", "1"))).toBe(true);
+    expect(stat(html)).not.toMatch(/last 1 days/);
+  });
+  it("'Nothing is running out' only when every provider is known not to be", async () => {
+    const html = await page({});
+    const text = stat(html);
+    expect(text).not.toContain(en.billing.statFirstOutNone);
+    expect(text).toContain(en.billing.statFirstOut);
+  });
+  it("...and says it when they all are (never used with a balance, tops itself up, not tracked)", async () => {
+    const providers = ["elevenlabs", "gemini", "minimax", "kling", "veo", "seedance", "wan", "higgsfield", "leonardo"];
+    const html = await page({
+      video_costs: ok([full("broll:other", 1, 1, 1)]),
+      provider_billing_settings: ok(providers.map((provider) => ({ provider, usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: true, auto_recharge_on_provider: true, low_balance_days: 3 }))),
+    });
+    expect(stat(html)).toContain(en.billing.statFirstOutNone);
+  });
+});
+
+describe("a ledger that was cut: the window never reaches before the oldest row read", () => {
+  it("burn is averaged only over what was read", async () => {
+    // 30,000 rows of one clip each; the newest 20,000 are read, covering only the last ~2 days of a long ledger.
+    const total = 30000;
+    costPage = (calls) => {
+      const [from, to] = (calls.find(([m]) => m === "range")?.[1] ?? [0, 499]) as [number, number];
+      const data = [];
+      for (let i = from; i <= Math.min(to, total - 1); i++) data.push({ id: total - i, unit: "video_gen_clips", quantity: 1, stage: "broll:kling", recorded_at: new Date(NOW - (i / 10000) * 86_400_000).toISOString(), video_id: `v${i}`, channel_id: "c", synced_at: iso(0.1) });
+      return { data, error: null, count: total };
+    };
+    const html = await page({
+      provider_billing_settings: ok([{ provider: "kling", usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: false, auto_recharge_on_provider: false, low_balance_days: 3 }]),
+    });
+    // 20,000 clips over the ~2 days actually read = about 10,000 a day at $1 (not 20,000 / 30 = 667)
+    expect(card(html, "Kling")).toMatch(/\$10,0\d\d\.\d\d\/day/);
+  });
+  it("a provider with an old top-up and no usage in the part that was read is labelled with the window actually read (2 days), not 30", async () => {
+    const total = 30000;
+    costPage = (calls) => {
+      const [from, to] = (calls.find(([m]) => m === "range")?.[1] ?? [0, 499]) as [number, number];
+      const data = [];
+      for (let i = from; i <= Math.min(to, total - 1); i++) data.push({ id: total - i, unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: new Date(NOW - (i / 10000) * 86_400_000).toISOString(), video_id: `v${i}`, channel_id: "c", synced_at: iso(0.1) });
+      return { data, error: null, count: total };
+    };
+    const html = await page({
+      provider_topups: ok([{ provider: "kling", amount_usd: 50, paid_at: iso(100) }]),
+      provider_billing_settings: ok([{ provider: "kling", usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: false, auto_recharge_on_provider: false, low_balance_days: 3 }]),
+    });
+    expect(has(card(html, "Kling"), en.ownerTruth.usedLastDays.replace("{n}", "2"))).toBe(true);
   });
 });

@@ -42,13 +42,21 @@ export function WorkerStatusPanel({
   const { t, locale } = useI18n();
   const router = useRouter();
   const w = t.workers;
-  // The ages are as of the server's clock; ask the server again every minute while the tab is visible so they do not
-  // keep saying "12 seconds ago" an hour later.
+  // The ages are as of the server's clock; ask the server again every minute while the tab is visible, and the moment it
+  // becomes visible again (a phone coming back from the background), so they do not keep saying "12 seconds ago".
   useEffect(() => {
+    const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
     const id = setInterval(() => {
-      if (typeof document === "undefined" || document.visibilityState === "visible") router.refresh();
+      if (visible()) router.refresh();
     }, 60_000);
-    return () => clearInterval(id);
+    const onVisible = () => {
+      if (visible()) router.refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [router]);
   const views = sortWorkers(rows.map((r) => workerView(r, nowMs)));
 

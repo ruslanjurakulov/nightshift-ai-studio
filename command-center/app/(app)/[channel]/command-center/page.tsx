@@ -26,15 +26,16 @@ import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
-import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
+import { isToday, num, ownerTime, relativeTime, statusTone, storedMs } from "@/lib/format";
 import { ownerDayStartMs } from "@/lib/owner-time";
 import { BOT_KIND_PATTERN, ownerAlerts } from "@/lib/alert-count";
 import { timed } from "@/lib/server/read-timeout";
 import { heldOnly, uploadedOnly } from "@/lib/heldVideos";
 import { OwnerGlance, type GlanceTile } from "@/components/dashboard/OwnerGlance";
 import { agentLabel, agentSummary } from "@/lib/agent-names";
-import { SPEND_ROW_LIMIT, balanceStale, balanceTone, lowestProviderBalance, spendToday, workersAlive, workersTone, type SpendToday } from "@/lib/owner-glance";
-import { formatUsdAmount } from "@/lib/number-format";
+import { SPEND_ROW_LIMIT, balanceStale, completeDayStart, balanceTone, lowestProviderBalance, spendToday, workersAlive, workersTone, type SpendToday } from "@/lib/owner-glance";
+import { formatUsdOwner } from "@/lib/number-format";
+import { ownerDate } from "@/lib/owner-time";
 import type { BalanceRow } from "@/lib/billing";
 import { WORKER_COLUMNS, coerceWorkers, type WorkerRow } from "@/lib/workers";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -177,7 +178,7 @@ export default async function CommandCenter() {
     const since24 = new Date(nowMs - DAY_MS).toISOString();
     // "Today" is the owner's day (Tashkent), not the UTC day.
     const todayStart = new Date(ownerDayStartMs(nowMs)).toISOString();
-    const [waitingRes, alertsRes, workersRes, balancesRes, failedRes, publishedRes, spendRes, syncRes] = await Promise.all([
+    const [waitingRes, alertsRes, workersRes, balancesRes, failedRes, publishedRes, syncRes] = await Promise.all([
       timed(heldOnly(scopeQuery(supabase.from("videos").select("video_id", { count: "exact", head: true }), scope))),
       // The rows (kind, title, time), not a bare count: the bot's own bookkeeping rows are out and a repeated low-balance
       // row counts once (lib/alert-count.ts), which a head count cannot do.
@@ -186,6 +187,7 @@ export default async function CommandCenter() {
           .in("severity", ["warn", "critical"])
           .not("kind", "like", BOT_KIND_PATTERN)
           .gte("at", since24)
+          .order("at", { ascending: false })
           .limit(ALERT_ROW_LIMIT),
       ),
       timed(supabase.from("worker_status").select(WORKER_COLUMNS).order("updated_at", { ascending: false }).limit(50)),
@@ -202,17 +204,7 @@ export default async function CommandCenter() {
       timed(uploadedOnly(scopeQuery(supabase.from("videos").select("video_id", { count: "exact", head: true }), scope)).gte("published_at", todayStart)),
       // Today's cost-ledger rows only (the provider accounts are the platform's: operator's own organization). One day of
       // rows, not the 90 days Billing reads; a day that fills the page is not summed (the figure would be a floor).
-      scope.includeGlobal
-        ? timed(
-            supabase
-              .from("video_costs")
-              .select("quantity,estimated_usd")
-              .gte("recorded_at", todayStart)
-              .order("recorded_at", { ascending: false })
-              .limit(SPEND_ROW_LIMIT),
-          )
-        : Promise.resolve(null),
-      // The ledger is mirrored nightly: when did the mirror last write? Today's spend is only shown once it has run today.
+      // The ledger is mirrored nightly: when did the mirror last write? The spend shown is for the last COMPLETE day before that.
       scope.includeGlobal
         ? timed(supabase.from("video_costs").select("synced_at").order("synced_at", { ascending: false }).limit(1))
         : Promise.resolve(null),
@@ -226,6 +218,28 @@ export default async function CommandCenter() {
     const balanceFailed = Boolean(balancesRes && balancesRes.error);
     const low =
       balancesRes && !balancesRes.error ? lowestProviderBalance((balancesRes.data ?? []) as BalanceRow[]) : null;
+    // The spend of the last COMPLETE day the mirror covers (the day before its last sync's day): read after the freshness
+    // read, since which day that is depends on it.
+    let spend: SpendToday | null = null;
+    if (scope.includeGlobal && syncRes) {
+      const syncRow = readFailed(syncRes) ? null : ((syncRes.data as { synced_at: string }[] | null)?.[0]?.synced_at ?? null);
+      const syncMs = syncRow ? Date.parse(syncRow) : NaN;
+      if (readFailed(syncRes)) spend = spendToday({ rows: null, syncMs: null, failed: true });
+      else if (!Number.isFinite(syncMs)) spend = spendToday({ rows: [], syncMs: null, failed: false });
+      else {
+        const dayStart = completeDayStart(syncMs);
+        const day = await timed(
+          supabase
+            .from("video_costs")
+            .select("quantity,estimated_usd")
+            .gte("recorded_at", new Date(dayStart).toISOString())
+            .lt("recorded_at", new Date(dayStart + DAY_MS).toISOString())
+            .order("recorded_at", { ascending: false })
+            .limit(SPEND_ROW_LIMIT),
+        );
+        spend = spendToday({ rows: (day.data ?? null) as { quantity: number | null; estimated_usd: number | null }[] | null, syncMs, failed: readFailed(day) });
+      }
+    }
     glanceInputs = {
       waiting,
       alertsCount,
@@ -235,14 +249,7 @@ export default async function CommandCenter() {
       showBalance: scope.includeGlobal,
       failed24h: readFailed(failedRes) ? null : (failedRes.count ?? 0),
       publishedToday: readFailed(publishedRes) ? null : (publishedRes.count ?? 0),
-      spend: spendRes
-        ? spendToday({
-            rows: (spendRes.data ?? null) as { quantity: number | null; estimated_usd: number | null }[] | null,
-            newestSyncMs: syncRes && !readFailed(syncRes) ? (((syncRes.data as { synced_at: string }[] | null)?.[0]?.synced_at ? Date.parse((syncRes.data as { synced_at: string }[])[0].synced_at) : null)) : null,
-            failed: readFailed(spendRes) || readFailed(syncRes),
-            nowMs,
-          })
-        : null,
+      spend,
       alertsCapped: !readFailed(alertsRes) && ((alertsRes.data as unknown[] | null)?.length ?? 0) >= ALERT_ROW_LIMIT,
     };
   }
@@ -342,29 +349,31 @@ export default async function CommandCenter() {
       });
     }
     if (gl.showBalance && gl.spend) {
-      // The money line: what was spent today. The ledger is mirrored nightly, so there is a figure only once the mirror has
-      // run today; otherwise it says so, and never shows a measured-looking $0.00.
+      // The money line. The ledger is mirrored nightly, so the figure is for the last COMPLETE day it covers, labelled with
+      // that date and "as of last sync HH:MM" (never "today"); with no sync at all there is no figure.
       const sp: SpendToday = gl.spend;
-      const small = sp.kind === "ok" && Math.abs(sp.usd) < 1 && sp.usd !== 0;
+      const nowMs = Date.now();
+      const asOf = "syncMs" in sp ? fmt(t.ownerShell.gSpendAsOf, { t: ownerTime(new Date(sp.syncMs).toISOString(), locale, nowMs) }) : "";
+      const word =
+        sp.kind === "failed"
+          ? t.common.couldNotRead
+          : sp.kind === "not_synced"
+            ? t.ownerShell.gSpendNightly
+            : sp.kind === "no_rows"
+              ? t.ownerShell.gSpendNoRows
+              : sp.kind === "too_many"
+                ? t.ownerShell.gSpendTooMany
+                : sp.kind === "not_priced"
+                  ? t.ownerShell.gSpendNotPriced
+                  : sp.unpriced > 0
+                    ? t.ownerShell.gSpendPartial
+                    : "";
       tiles.unshift({
         key: "spend",
         href: path("/billing"),
-        label: t.ownerShell.gSpendToday,
-        value: sp.kind === "ok" ? formatUsdAmount(sp.usd, locale, small ? 3 : 2, small ? 3 : 2) : null,
-        sub:
-          sp.kind === "failed"
-            ? t.common.couldNotRead
-            : sp.kind === "not_synced"
-              ? t.ownerShell.gSpendNightly
-              : sp.kind === "no_rows"
-                ? t.ownerShell.gSpendNoRows
-                : sp.kind === "too_many"
-                  ? t.ownerShell.gSpendTooMany
-                  : sp.kind === "not_priced"
-                    ? t.ownerShell.gSpendNotPriced
-                    : sp.unpriced > 0
-                      ? t.ownerShell.gSpendPartial
-                      : undefined,
+        label: "dayMs" in sp ? fmt(t.ownerShell.gSpendDay, { date: ownerDate(sp.dayMs, locale, nowMs) }) : t.ownerShell.gSpend,
+        value: sp.kind === "ok" ? formatUsdOwner(sp.usd, locale) : null,
+        sub: [word, asOf].filter(Boolean).join(" · ") || undefined,
         tone: "idle",
         wide: true,
         unknown: sp.kind === "failed",

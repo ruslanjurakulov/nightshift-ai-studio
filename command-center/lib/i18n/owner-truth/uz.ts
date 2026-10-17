@@ -22,6 +22,8 @@ export const ownerTruthUz: OwnerTruthDictionary = {
   lastSync: "oxirgi yangilanish {when}",
   syncUnknown: "oxirgi yangilanish nomaʼlum",
   basedOnDays: "soʻnggi {n} kun asosida",
+  usedLastDay: "Ishlatildi, soʻnggi {n} kun",
+  basedOnDay: "soʻnggi {n} kun asosida",
   usedLastDays: "Ishlatildi, soʻnggi {n} kun",
   spendPace: "Shu surʼatda sarf, 30 kun",
   asOf: "{t} holatiga",
