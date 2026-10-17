@@ -147,14 +147,14 @@ class HandleTestCase(unittest.TestCase):
         post(service, update_message("/health", update_id=5))
         self.assertEqual(len(tg.sent()), 1)
 
-    def test_a_claim_that_cannot_be_made_still_answers_reads_but_refuses_actions(self):
+    def test_a_claim_that_cannot_be_made_still_answers_reads_and_records_no_action(self):
         service, tg, sync, claims = build(Claims(fail=True))
         with patch("modules.event_log.emit") as emit:
             post(service, update_message("/health", update_id=7))
             post(service, update_message("/publish v1", update_id=8))
         emit.assert_not_called()
         self.assertEqual(len(tg.sent()), 2)
-        self.assertIn("could not be recorded durably", tg.texts()[1])
+        self.assertIn("view-only", tg.texts()[1])
 
     def test_a_button_press_over_the_webhook(self):
         service, tg, *_ = build()

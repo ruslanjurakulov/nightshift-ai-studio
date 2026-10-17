@@ -28,26 +28,30 @@ from modules.operator_bot import analysis
 from modules.operator_bot.config import OperatorConfig, STUCK_HEARTBEAT_MINUTES
 from modules.operator_bot.i18n import DEFAULT_LANGUAGE, LANGUAGES, Raw, has, t
 from modules.operator_bot.sources import OperatorSources, Section, age_label, parse_ts
-from modules.tg_text import clip, html_escape, safe_id
+from modules.tg_text import clip, html_escape, safe_id, short_id
 
 # Alert kinds (short, because callback_data is limited to 64 bytes) and where
 # each one points. The kind ids are stable identifiers (they travel in callback
 # data and in /mute); what the owner reads for each comes from the copy table.
-ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit")
+ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment")
 KIND_COMMAND = {
     "run": "errors", "stuck": "queue", "balance": "balance", "deploy": "deploys",
-    "worker": "health", "approval": "approvals", "audit": "security",
+    "worker": "health", "approval": "approvals", "audit": "security", "payment": "payments",
 }
 KIND_PAGE = {
     "run": "errors", "stuck": "jobs", "balance": "billing", "worker": "integrations",
     "approval": "approvals", "audit": "audit",
 }
+#: Kinds with no page of their own that fall back to the GitHub Actions link (a
+#: deploy). A kind in neither table has no Open button: a payment has no page
+#: in the app, and a link is never guessed.
+GITHUB_KINDS = ("deploy",)
 
 #: The read-only commands, in menu order. What each one is described as comes
 #: from the copy table (``cmddesc.<name>``).
 COMMANDS = tuple((name, f"cmddesc.{name}") for name in (
-    "health", "queue", "errors", "balance", "spend", "today", "users", "deploys",
-    "approvals", "security", "digest", "alerts"))
+    "health", "queue", "errors", "balance", "spend", "payments", "today", "users", "deploys",
+    "approvals", "security", "digest", "alerts", "status", "pending"))
 READ_COMMANDS = tuple(name for name, _ in COMMANDS)
 
 
@@ -146,7 +150,7 @@ def github_actions_link(cfg: OperatorConfig, workflow: str = "deploy_web.yml") -
 #: group names: ``grp.<group>``.
 MENU_GROUPS = (
     ("live", ("health", "queue", "errors")),
-    ("money", ("balance", "spend")),
+    ("money", ("balance", "spend", "payments")),
     ("activity", ("today", "users", "deploys", "approvals")),
     ("reports", ("security", "digest", "alerts")),
     ("original", ("status", "channels", "pending")),
@@ -193,8 +197,7 @@ def view_help(lang: str = DEFAULT_LANGUAGE) -> Reply:
     lines = [t(lang, "help.title"), t(lang, "help.readonly")]
     lines += [f"/{name} — {t(lang, key)}" for name, key in COMMANDS]
     lines += [t(lang, k) for k in (
-        "help.status", "help.channels", "help.pending", "help.menu", "help.language", "help.safe",
-        "help.mute", "help.unmute", "help.requests", "help.request_cmds")]
+        "help.channels", "help.menu", "help.language", "help.safe", "help.mute", "help.unmute", "help.viewonly")]
     lines.append(t(lang, "help.kinds", kinds=", ".join(ALERT_KINDS)))
     return Reply("\n".join(lines), [language_row(), [cb(t(lang, "btn.menu"), "c:menu")]])
 
@@ -585,6 +588,136 @@ def view_security(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     lines.append(t(lang, "security.footer"))
     return Reply("\n".join(lines), _with_menu(
         lang, [], [open_button(lang, "audit", app_link(cfg, "audit"))], again="security"))
+
+
+# -- /payments, /status, /pending ------------------------------------------
+
+#: Currencies whose smallest unit is the whole unit (amount_minor is not cents).
+ZERO_DECIMAL = ("JPY", "KRW", "VND", "CLP", "UGX", "PYG")
+
+
+def money(lang: str, amount_minor, currency) -> str:
+    """``12.50 USD`` from the provider's lowest-denomination amount, or the
+    unknown word when either part is missing."""
+    cur = safe_id(currency, 3).upper()
+    try:
+        minor = int(amount_minor)
+    except (TypeError, ValueError, OverflowError):
+        return t(lang, "unknown_word")
+    if not cur or minor < 0:
+        return t(lang, "unknown_word")
+    if cur in ZERO_DECIMAL:
+        return f"{minor:,} {cur}"
+    return f"{minor // 100:,}.{minor % 100:02d} {cur}"
+
+
+def payment_kind_word(lang: str, event_type) -> str:
+    return t(lang, f"pk.{analysis.payment_kind(event_type)}")
+
+
+def _short_ids(lang: str, rows: list, limit: int = 8) -> str:
+    ids = [short_id(r.get("event_id")) or "?" for r in rows[:limit]]
+    more = len(rows) - len(ids)
+    return ", ".join(ids) + (t(lang, "errors.more", n=more) if more > 0 else "")
+
+
+def view_payments(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
+    """Payment events from the provider's webhook: counts by outcome and the
+    latest few. Ids are shortened; amount, currency, kind, status and time are
+    all that is shown (no `detail`, no customer, no organization)."""
+    now = ops.now()
+    lines = [t(lang, "payments.title")]
+    sec = ops.payment_events(now - timedelta(days=7))
+    if not sec.ok:
+        lines.append(t(lang, "payments.unknown", why=unknown(lang, sec)))
+    else:
+        week_start = now - timedelta(days=7)
+        rows = sorted((r for r in sec.data or [] if (parse_ts(r.get("received_at")) or week_start) >= week_start),
+                      key=lambda r: str(r.get("received_at") or ""), reverse=True)
+        if not rows:
+            lines.append(t(lang, "payments.none"))
+        else:
+            for label, delta in (("payments.p24", timedelta(hours=24)), ("payments.p7", timedelta(days=7))):
+                c = analysis.classify_payments(rows, now - delta)
+                lines.append(t(lang, "payments.counts", period=t(lang, label), paid=len(c["paid"]),
+                               rejected=len(c["rejected"]), failed=len(c["failed"]),
+                               refunds=len(c["refunds"]), cut=cut(lang, sec)))
+            c = analysis.classify_payments(rows, week_start)
+            for key, name in (("rejected", "attention"), ("failed", "failed"), ("refunds", "refunds")):
+                if c[key]:
+                    lines.append(t(lang, f"payments.{name}", n=len(c[key]), ids=_short_ids(lang, c[key])))
+                elif key == "rejected":
+                    lines.append(t(lang, "payments.attention_none"))
+            latest = [r for r in rows if r.get("status") not in ("duplicate", "ignored")][:8]
+            if latest:
+                lines.append(t(lang, "payments.latest"))
+            for r in latest:
+                lines.append(t(lang, "payments.line", id=code(short_id(r.get("event_id")) or "?"),
+                               kind=payment_kind_word(lang, r.get("event_type")),
+                               status=status_word(lang, r.get("status")),
+                               amount=money(lang, r.get("amount_minor"), r.get("currency")),
+                               when=ago(lang, parse_ts(r.get("received_at")), now)))
+        lines.append(t(lang, "payments.footer"))
+    return Reply("\n".join(lines), _with_menu(lang, [_nav(lang, "spend", "errors")], again="payments"))
+
+
+def view_status(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
+    """The library at a glance, from Supabase: held, blocked, published, and
+    what waits for a person. Counts only."""
+    now, cfg = ops.now(), ops.cfg
+    lines = [t(lang, "status.title")]
+    held = ops.held_videos()
+    if not held.ok:
+        lines.append(t(lang, "status.videos_unknown", why=unknown(lang, held)))
+    else:
+        lines.append(t(lang, "status.held", n=len(analysis.review_queue(held.data)), cut=cut(lang, held)))
+        lines.append(t(lang, "status.blocked", n=len(held.data) - len(analysis.review_queue(held.data))))
+    pub = ops.videos_published(now - timedelta(days=7))
+    if not pub.ok:
+        lines.append(t(lang, "status.published_unknown", why=unknown(lang, pub)))
+    else:
+        stamps = [parse_ts(r.get("published_at")) for r in pub.data or []]
+        lines.append(t(lang, "status.published", day=sum(1 for s in stamps if s and s >= now - timedelta(hours=24)),
+                       week=sum(1 for s in stamps if s and s >= now - timedelta(days=7)), cut=cut(lang, pub)))
+    pa, runs = ops.publish_approvals(), ops.runs_awaiting_approval()
+    waiting = (len(pa.data) if pa.ok else 0) + (len(runs.data) if runs.ok else 0)
+    lines.append(t(lang, "digest.waiting", n=waiting,
+                   partial=Raw(t(lang, "digest.partial")) if not (pa.ok and runs.ok) else ""))
+    lines.append(t(lang, "status.footer"))
+    return Reply("\n".join(lines), _with_menu(
+        lang, [_nav(lang, "pending", "approvals")], [open_button(lang, "dashboard", app_link(cfg, "home"))],
+        again="status"))
+
+
+def view_pending(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
+    """Runs that did not upload, newest first: short id, channel, state, age.
+    No title or topic (that is the video's content)."""
+    now, cfg = ops.now(), ops.cfg
+    lines = [t(lang, "pending.v_title")]
+    sec = ops.held_videos()
+    if not sec.ok:
+        lines.append(t(lang, "pending.v_unknown", why=unknown(lang, sec)))
+    else:
+        queue = analysis.review_queue(sec.data)
+        if not queue:
+            lines.append(t(lang, "pending.v_none"))
+        else:
+            counts = analysis.count_by(queue, "publish_state")
+            lines.append(t(lang, "pending.v_count", n=len(queue), held=counts.get("held", 0),
+                           awaiting=counts.get("awaiting_approval", 0),
+                           repaired=counts.get("repaired_awaiting_review", 0), cut=cut(lang, sec)))
+            for r in queue[:10]:
+                lines.append(t(lang, "pending.v_line", id=code(safe_id(r.get("video_id"), 12) or "?"),
+                               channel=safe_id(r.get("channel_id")), state=status_word(lang, r.get("publish_state")),
+                               age=age_label(parse_ts(r.get("held_at")), now)))
+            if len(queue) > 10:
+                lines.append(t(lang, "pending.v_more", n=len(queue) - 10))
+        blocked = len(sec.data) - len(queue)
+        if blocked:
+            lines.append(t(lang, "pending.v_blocked", n=blocked))
+    lines.append(t(lang, "pending.v_footer"))
+    return Reply("\n".join(lines), _with_menu(
+        lang, [_nav(lang, "approvals")], [open_button(lang, "approvals", app_link(cfg, "approvals"))], again="pending"))
 
 
 # -- /digest ---------------------------------------------------------------

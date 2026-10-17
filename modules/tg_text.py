@@ -75,6 +75,15 @@ def safe_id(value, limit: int = 64) -> str:
     return _SAFE_ID.sub("", "" if value is None else str(value))[:limit]
 
 
+def short_id(value, keep: int = 8) -> str:
+    """The tail of an identifier, safe to print (``…ab12cd34``); never the whole
+    of a long one. For ids that belong to another system (a payment provider's
+    event id): enough to tell two apart, not enough to look the record up.
+    Empty when there is no id."""
+    text = safe_id(value, 200)
+    return text if len(text) <= keep else "…" + text[-keep:]
+
+
 def sanitize_outgoing(text: str) -> str:
     """The last scrub over text about to leave for Telegram."""
     text = log_redaction.redact("" if text is None else str(text))

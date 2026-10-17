@@ -25,10 +25,16 @@ is claimed by its update_id in `telegram_updates` (0042) before it is handled.
 The Actions workflows also kept the getUpdates offset in a cache; here it is
 held in memory. After a restart Telegram hands over the updates it never saw
 confirmed (the last batch at most) and the claims skip the ones already
-handled, so a restart replays nothing. /status and the legacy /pending read the
-pipeline's local history file (chronos.db), which the workflow restored from a
-cache; the server has no copy, so those two say so and the rest (everything
-that reads Supabase) answers as before.
+handled, so a restart replays nothing. /status and /pending read Supabase
+(videos), like every other view; only /channels uses the legacy deps.
+
+Liveness: the service reports itself to `worker_status` (migration 0045) as
+``operator-bot`` (kind ``other``), through the same WorkerStatusReporter the
+e-mail worker uses, so Integrations shows it and a dead bot reads "not
+reporting" there. It is reported 'running' only while the poll loop is getting
+answers from Telegram; if the loop stalls the row simply goes stale, and the
+bot's own alert pass (or a fallback workflow, while the switch is off) raises the
+worker alert.
 
 Telegram allows ONE getUpdates consumer. While this service runs, the two
 workflows skip their work (`if: vars.NIGHTSHIFT_OPERATOR_BOT != 'on'`). If a
@@ -57,6 +63,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -64,7 +71,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules import log_redaction  # noqa: E402
 from modules.operator_bot.i18n import tp  # noqa: E402
+from modules.operator_bot.sources import BOT_WORKER_ID  # noqa: E402
 from modules.telegram_control import TelegramControl  # noqa: E402
+from modules.worker_status import WorkerStatusReporter  # noqa: E402
 from tools import run_operator_alerts as alerts_tool  # noqa: E402
 from tools import run_telegram_control as poll_tool  # noqa: E402
 
@@ -83,6 +92,10 @@ MAX_BACKOFF_S = 30
 #: The longest we honour a Telegram 429 ``retry_after`` (it is per bot).
 MAX_RETRY_AFTER_S = 120
 HEARTBEAT_S = 3600
+#: worker_status is refreshed this often (the site calls a worker silent after
+#: 120 s), but only while Telegram has answered a poll within STATUS_FRESH_S.
+STATUS_BEAT_S = 30
+STATUS_FRESH_S = 90
 
 EXIT_OK, EXIT_REFUSED, EXIT_NOT_CONFIGURED = 0, 1, 2
 
@@ -91,10 +104,9 @@ class ServiceDeps(poll_tool.StoreDeps):
     """The legacy read-only queries, minus the ones that need the pipeline's
     local history file (chronos.db), which only exists next to the pipeline.
 
-    ``/status`` says it is unavailable; ``pending_review`` raises, which the
-    router turns into "unknown" (the approvals and digest views then leave the
-    held-for-review line out rather than claim "none"). ``/channels`` reads the
-    channel registry, which uses Supabase."""
+    The router no longer asks these two (``/status`` and ``/pending`` read
+    Supabase through the operator sources); they only guard a caller that
+    still does. ``/channels`` reads the channel registry, which uses Supabase."""
 
     def status_summary(self, lang: str = "en") -> str:
         return tp(lang, "status.unavailable")
@@ -120,6 +132,8 @@ class Stats:
         self.passes = 0
         self.pass_errors = 0
         self.last_pass = "none"
+        #: When Telegram last answered a poll (monotonic seconds).
+        self.last_poll_ok = time.monotonic()
 
 
 def alerts_loop(engine: Any, interval: float, stop: threading.Event, stats: Stats, *,
@@ -139,6 +153,21 @@ def alerts_loop(engine: Any, interval: float, stop: threading.Event, stats: Stat
         except Exception as e:  # noqa: BLE001 - one bad pass must not end the service
             stats.pass_errors += 1
             logger.warning("operator alert pass failed (%s)", type(e).__name__)
+        if wait(interval):
+            return
+
+
+def status_loop(reporter: Any, stats: Stats, stop: threading.Event, *, interval: float = STATUS_BEAT_S,
+                fresh: float = STATUS_FRESH_S, clock: Callable[[], float] = time.monotonic,
+                wait: Optional[Callable[[float], bool]] = None) -> None:
+    """Report 'running' to worker_status every ``interval`` seconds, but only
+    while the poll loop has had an answer from Telegram within ``fresh``
+    seconds: a bot that cannot hear the owner is not "running". Reporting never
+    raises (WorkerStatusReporter swallows its own failures)."""
+    wait = wait or stop.wait
+    while True:
+        if clock() - stats.last_poll_ok <= fresh:
+            reporter.report("running")
         if wait(interval):
             return
 
@@ -171,6 +200,7 @@ def poll_loop(control: TelegramControl, bot: Any, store: Any, stop: threading.Ev
             wait(pause)
             continue
         failures = 0
+        stats.last_poll_ok = time.monotonic()
         if new_offset != offset:
             stats.updates += 1
             offset = new_offset
@@ -179,9 +209,15 @@ def poll_loop(control: TelegramControl, bot: Any, store: Any, stop: threading.Ev
 
 def run_service(control: TelegramControl, bot: Any, store: Any, engine: Any, stop: threading.Event, *,
                 interval: float, session: Any = None, first_delay: float = FIRST_PASS_DELAY_S,
-                poll_timeout: int = poll_tool.LONG_POLL_S) -> int:
-    """Both loops until ``stop``; the exit code."""
+                poll_timeout: int = poll_tool.LONG_POLL_S, reporter: Any = None) -> int:
+    """Both loops until ``stop``; the exit code. ``reporter`` (a
+    WorkerStatusReporter, or None) carries the bot's own status to worker_status."""
     stats = Stats()
+    if reporter is not None:
+        reporter.report("starting")
+        threading.Thread(target=status_loop, name="operator-status", daemon=True,
+                         args=(reporter, stats, stop)).start()
+    final = ("failed", "the operator bot stopped unexpectedly")
     thread = threading.Thread(target=alerts_loop, name="operator-alerts", daemon=True,
                               args=(engine, interval, stop, stats), kwargs={"first_delay": first_delay})
     thread.start()
@@ -189,12 +225,16 @@ def run_service(control: TelegramControl, bot: Any, store: Any, engine: Any, sto
     beat.start()
     try:
         poll_loop(control, bot, store, stop, stats, session=session, timeout=poll_timeout)
+        final = ("stopped", None)
     except poll_tool.PollFatal as e:
         logger.error("operator bot stopped: %s", e)
+        final = ("failed", str(e))          # a fixed sentence about Telegram, no value
         return EXIT_REFUSED
     finally:
         stop.set()
         thread.join(timeout=10)
+        if reporter is not None:
+            reporter.close(*final)
     logger.info("operator bot stopped (polls %d, updates %d, passes %d)", stats.polls, stats.updates, stats.passes)
     return EXIT_OK
 
@@ -225,7 +265,10 @@ def main(argv=None) -> int:
         signal.signal(sig, lambda *_: stop.set())
     interval = alert_interval()
     logger.info("operator bot service started: long-polling Telegram, alert pass every %d s", interval)
-    return run_service(control, bot, sync, engine, stop, interval=interval, session=requests.Session())
+    reporter = WorkerStatusReporter(sync.url, sync.service_key, worker_id=BOT_WORKER_ID, kind="other",
+                                    scrub=log_redaction.redact)      # sync.enabled was checked above
+    return run_service(control, bot, sync, engine, stop, interval=interval, session=requests.Session(),
+                       reporter=reporter)
 
 
 if __name__ == "__main__":

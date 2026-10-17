@@ -24,10 +24,10 @@ every button goes through it):
   after one "Slow down." notice.
 
 What an authorized sender can ask for: read-only views (modules/operator_bot/
-views.py), mute / unmute of alerts, and the legacy ``/publish`` ``/pause``
-``/resume``, which still come back from ``route_command`` as INTENTS and are
-recorded as events for the normal gated path — they are neither executed nor
-widened here. Nothing in this file publishes, spends, approves or deletes.
+views.py) and mute / unmute of alerts. The old ``/publish`` ``/pause``
+``/resume`` are gone: nothing ever executed them, so a typed one is answered
+"this bot is view-only" and records nothing. Nothing in this file publishes,
+spends, approves or deletes.
 
 No exception text ever reaches the chat: a failure answers "Could not read that
 right now." and the type goes to the log.
@@ -43,7 +43,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-from modules import event_log as events
 from modules.operator_bot import alerts as alerts_mod
 from modules.operator_bot import views
 from modules.operator_bot.i18n import DEFAULT_LANGUAGE, LANGUAGES, normalize_language, t
@@ -54,8 +53,7 @@ from modules.tg_text import safe_id
 
 logger = logging.getLogger(__name__)
 
-#: An action request older than this is not acted on (a schedule that slipped
-#: by hours, or a replayed batch, must not publish what was asked yesterday).
+#: Kept for the importers that re-export it; no command is acted on any more.
 ACTION_MAX_AGE_S = 6 * 3600
 RATE_MAX = 12
 RATE_WINDOW_S = 60
@@ -75,8 +73,9 @@ CLAIMED_KINDS = ("message", "callback", "forwarded")
 
 _FORWARD_KEYS = ("forward_origin", "forward_from", "forward_from_chat", "forward_date",
                  "forward_sender_name", "forward_signature", "forward_from_message_id")
-_LEGACY_READ = {"status", "channels", "pending"}
-_LEGACY_ACTION = {"publish", "pause", "resume"}
+_LEGACY_READ = {"channels"}
+#: Removed commands: no executor ever existed. Answered, never acted on.
+_REMOVED = {"publish", "pause", "resume"}
 _CALLBACK = re.compile(
     r"^(?:c:[a-z]{2,12}|a:(?:mute|unmute):[a-z]{2,12}|d:[a-z]{2,12}|l:[a-z]{2}(?:-[a-z]{2,4})?)$")
 
@@ -266,35 +265,14 @@ class OperatorBot:
         cmd, _, _addressee = parts[0][1:].lower().partition("@")
         args = parts[1:]
 
-        if cmd in _LEGACY_ACTION:
-            self._legacy_action(inbound, durable, lang)
+        if cmd in _REMOVED:
+            self._reply(chat_id, views.Reply(t(lang, "err.view_only"), [[views.cb(t(lang, "btn.menu"), "c:menu")]]))
             return
         try:
             self._reply(chat_id, self._view_for(cmd, args, inbound, lang))
         except Exception as e:
             logger.warning("operator command %s failed (%s)", cmd[:20], type(e).__name__)
             self._reply(chat_id, views.Reply(t(lang, "err.failed")))
-
-    def _legacy_action(self, inbound: Inbound, durable: bool, lang: str) -> None:
-        """/publish /pause /resume: the existing intent path, byte for byte.
-        The result is an INTENT; it is recorded as an event for the gated
-        pipeline to pick up. Refused when it cannot be recorded durably or is
-        too old."""
-        chat_id = inbound.chat_id
-        result = route_command(inbound.text, chat_id, self.control, self.deps, user_id=inbound.user_id, lang=lang)
-        if result.intent:
-            if not durable:
-                self.control.send(chat_id, t(lang, "err.not_durable"))
-                return
-            sent_at = inbound.date
-            if not isinstance(sent_at, (int, float)) or self._clock() - sent_at > ACTION_MAX_AGE_S:
-                self.control.send(chat_id, t(lang, "err.too_old"))
-                return
-        self.control.send(chat_id, result.reply)
-        if result.intent:
-            events.emit(events.TELEGRAM_COMMAND, agent="telegram_control",
-                        status=events.STATUS_COMPLETED, metadata=result.intent)
-            logger.info("Telegram intent recorded: %s", result.intent)
 
     # -- buttons ----------------------------------------------------------
 
@@ -364,8 +342,8 @@ class OperatorBot:
                 return views.Reply(t(lang, "mute.usage", cmd=cmd, kinds=", ".join(views.ALERT_KINDS)),
                                    [[views.cb(t(lang, "cmd.alerts"), "c:alerts")]])
             return self._mute_reply(cmd == "mute", args[0].lower(), lang)
-        if cmd in _LEGACY_READ:
-            return self._legacy_read(cmd, inbound, lang)
+        if cmd in _LEGACY_READ or (cmd in ("status", "pending") and self.ops is None):
+            return self._legacy_read(cmd, inbound, lang)       # no database sources: the original path
         if cmd == "alerts":
             state = self.store.load(self._now()) if self.store is not None else None
             return views.view_alerts(self.cfg, state, self._now(), lang)
@@ -373,23 +351,29 @@ class OperatorBot:
             if self.ops is None:
                 return views.Reply(t(lang, "err.no_data"))
             self.ops.reset()
-            held = self._held()
             return {
                 "health": lambda: views.view_health(self.ops, lang),
                 "queue": lambda: views.view_queue(self.ops, lang),
                 "errors": lambda: views.view_errors(self.ops, lang),
                 "balance": lambda: views.view_balance(self.ops, lang),
                 "spend": lambda: views.view_spend(self.ops, lang),
+                "payments": lambda: views.view_payments(self.ops, lang),
+                "status": lambda: views.view_status(self.ops, lang),
+                "pending": lambda: views.view_pending(self.ops, lang),
                 "today": lambda: views.view_today(self.ops, lang),
                 "users": lambda: views.view_users(self.ops, lang),
                 "deploys": lambda: views.view_deploys(self.ops, lang),
-                "approvals": lambda: views.view_approvals(self.ops, held, lang),
+                "approvals": lambda: views.view_approvals(self.ops, self._held(), lang),
                 "security": lambda: views.view_security(self.ops, lang),
                 "digest": lambda: alerts_mod.send_digest_reply(self.ops, self._held, lang),
             }[cmd]()
         return views.Reply(t(lang, "err.unknown_command", cmd=safe_id(cmd, 24)))
 
     def _held(self) -> Optional[list]:
+        """Runs waiting for a person, read from Supabase (the server has no
+        local history); None when unknown. Without sources, the legacy deps."""
+        if self.ops is not None:
+            return alerts_mod.held_runs(self.ops)
         if self.deps is None:
             return None
         try:
