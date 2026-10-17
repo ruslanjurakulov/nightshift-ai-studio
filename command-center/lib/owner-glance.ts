@@ -88,3 +88,33 @@ export function workersTone(w: WorkersAlive | null): GlanceTone {
   if (w.alive === w.total) return "ok";
   return w.alive === 0 ? "fail" : "warn";
 }
+
+export interface SpendToday {
+  /** Dollars of priced spend recorded today (the owner's day); null when nothing recorded today carries a price. */
+  usd: number | null;
+  /** Today's rows that used something but carry no price (the figure is then a floor). */
+  unpriced: number;
+  rows: number;
+}
+
+/**
+ * What the pipeline spent today, from the cost ledger rows of the owner's day (the rows Billing already reads, one day
+ * of them). A row without `estimated_usd` is not $0: it is counted as unpriced, and a day with only unpriced rows has
+ * no figure at all (null), never a "$0.00" that reads as "nothing was spent".
+ */
+export function spendToday(rows: { quantity?: number | null; estimated_usd?: number | string | null }[]): SpendToday {
+  let usd = 0;
+  let priced = 0;
+  let unpriced = 0;
+  for (const r of rows) {
+    const v = typeof r.estimated_usd === "string" ? Number(r.estimated_usd) : r.estimated_usd;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      usd += v;
+      priced += 1;
+    } else if ((r.quantity ?? 0) > 0) {
+      unpriced += 1;
+    }
+  }
+  if (rows.length === 0) return { usd: 0, unpriced: 0, rows: 0 };
+  return { usd: priced > 0 ? usd : null, unpriced, rows: rows.length };
+}

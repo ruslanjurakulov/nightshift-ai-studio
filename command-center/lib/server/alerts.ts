@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 
 /**
  * Alert channels — Slack + email, dependency-free HTTP integrations.
@@ -113,7 +114,7 @@ export function formatAlertHtml(input: {
  * reads or exposes the secret. Returns whether Slack accepted the message.
  */
 export async function sendSlackWebhook(url: string, text: string): Promise<boolean> {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
@@ -134,7 +135,7 @@ export async function sendResendEmail(
   subject: string,
   html: string,
 ): Promise<boolean> {
-  const res = await fetch("https://api.resend.com/emails", {
+  const res = await fetchWithTimeout("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

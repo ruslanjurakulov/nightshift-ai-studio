@@ -11,14 +11,22 @@ import { BillingBoard, type ProviderView, type RunwayView } from "@/components/b
 import { UnitEconomicsCard } from "@/components/billing/UnitEconomicsCard";
 import { getChannelContext } from "@/lib/channels-server";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
+import { readAllPages } from "@/lib/paged-read";
+import { timed } from "@/lib/server/read-timeout";
+import { fmt } from "@/lib/i18n";
 import { channelInScope, channelName, inSelection, isScoped, orgWide, scopeQuery } from "@/lib/channels";
 import { unitEconomics, type DurationRow, type LedgerRow } from "@/lib/unitEconomics";
 import {
   BILLED_PROVIDERS,
   daysLeft,
   elevenLabsRunway,
+  historyDays,
+  isTracked,
   latestBalance,
   ledgerBalanceUsd,
+  oldestRowMs,
   providerBurn,
   type BalanceRow,
   type BillingSettingsRow,
@@ -43,6 +51,7 @@ export default async function BillingPage() {
   // → /login, anyone else → 404, before any read (BR-H-001).
   const mayReadGithub = await guardOperatorPage();
   const { t } = await getDictionary();
+  const tt = t.ownerTruth;
   const supabase = await createClient();
   const { channels, selection, scope } = await getChannelContext();
 
@@ -51,6 +60,14 @@ export default async function BillingPage() {
   let settings: BillingSettingsRow[] = [];
   let topups: TopupRow[] = [];
   let migrationMissing = false;
+  // A failed read is "unknown", never an empty list that computes to $0 burn and "lasts never".
+  let costsFailed = false;
+  let settingsFailed = false;
+  let balancesFailed = false;
+  let topupsFailed = false;
+  // The ledger read stopped at its ceiling: only the newest rows are counted.
+  let costsCut = false;
+  let coveredFromMs: number | null = null;
 
   // Provider accounts are the platform operator's (0018 gives them to the
   // default organization). Inside any other organization — including when a
@@ -59,36 +76,57 @@ export default async function BillingPage() {
   const operatorView = scope.includeGlobal;
 
   if (supabase) {
-    const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
-    const ledger = supabase
-      .from("video_costs")
-      .select("unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd");
-    const [c, b, s, tp] = await Promise.all([
-      // In the operator's view the ledger stays whole: the provider keys are
-      // shared by every channel, so their burn and runway are only true when
-      // measured over everything they paid for. Unit economics is narrowed to
-      // the view below. In a tenant's view only its own channels are read.
-      (operatorView ? ledger : scopeQuery(ledger, orgWide(scope))).gte("recorded_at", since).limit(10000),
+    // The small tables first: the earliest top-up decides how far back the spend ledger must reach for the running
+    // balance to be true (a top-up older than the window would leave its balance overstated).
+    const [b, s, tp] = await Promise.all([
       operatorView
-        ? supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200)
+        ? timed(supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200))
         : null,
-      operatorView ? supabase.from("provider_billing_settings").select("*") : null,
+      operatorView ? timed(supabase.from("provider_billing_settings").select("*")) : null,
       operatorView
-        ? supabase.from("provider_topups").select("provider,amount_usd,paid_at").order("paid_at", { ascending: false }).limit(1000)
+        ? timed(supabase.from("provider_topups").select("provider,amount_usd,paid_at").order("paid_at", { ascending: false }).limit(1000))
         : null,
     ]);
-    costs = (c.data ?? []) as LedgerRow[];
+    balancesFailed = readFailed(b) && b?.error?.code !== "42P01";
+    settingsFailed = readFailed(s) && s?.error?.code !== "42P01";
+    topupsFailed = readFailed(tp) && tp?.error?.code !== "42P01";
     balances = (b?.data ?? []) as BalanceRow[];
     settings = (s?.data ?? []) as BillingSettingsRow[];
     topups = (tp?.data ?? []) as TopupRow[];
     migrationMissing = [b?.error, s?.error, tp?.error].some((e) => e?.code === "42P01");
+
+    const now = Date.now();
+    const firstTopup = Math.min(Infinity, ...topups.map((x) => Date.parse(x.paid_at)).filter(Number.isFinite));
+    const sinceMs = Math.min(now - 90 * 86_400_000, Number.isFinite(firstTopup) ? firstTopup : Infinity);
+    const sinceIso = new Date(sinceMs).toISOString();
+    // In the operator's view the ledger stays whole: the provider keys are shared by every channel, so their burn
+    // and runway are only true when measured over everything they paid for. Unit economics is narrowed to the view
+    // below. In a tenant's view only its own channels are read. Newest first with a unique tie-break, a page at a
+    // time: one `.limit(10000)` came back as an arbitrary 1,000 rows (PostgREST's cap).
+    const read = await readAllPages<LedgerRow>((from, to) => {
+      const base = supabase
+        .from("video_costs")
+        .select("unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd");
+      return timed(
+        (operatorView ? base : scopeQuery(base, orgWide(scope)))
+          .gte("recorded_at", sinceIso)
+          .order("recorded_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      ) as unknown as PromiseLike<{ data: LedgerRow[] | null; error: unknown }>;
+    });
+    costsFailed = Boolean(read.error);
+    costs = read.rows;
+    costsCut = read.truncated;
+    // Spend is complete from here on: back to the cut-off, or only as far as the oldest row when the read stopped short.
+    coveredFromMs = costsCut ? (oldestRowMs(costs) ?? now) : sinceMs;
   }
 
   // Unit economics is per channel (a price per video is a property of what the
   // channel makes), unlike the provider accounts above, which are shared.
   const channelCosts = costs.filter((r) => inSelection(r.channel_id, scope));
   let ue = unitEconomics(channelCosts);
-  if (supabase && ue.sampleSize > 0) {
+  if (supabase && !costsFailed && ue.sampleSize > 0) {
     // Length of each sampled video from its Video IR (narration is the master
     // clock). Missing migration 0013 or a pre-IR video just leaves the length
     // unknown, and that video out of the per-minute figures.
@@ -110,28 +148,45 @@ export default async function BillingPage() {
   const ueScope = isScoped(selection) ? channelName(channels, selection) : t.channels.allChannels;
 
   let configured = new Set<string>();
+  // Which keys are set is read from GitHub; when that read fails the lamp says "unknown", not "key missing".
+  let keysUnknown = false;
   if (isGithubConfigured && operatorView && mayReadGithub) {
     try {
       configured = new Set(await listConfiguredSecretNames());
     } catch {
       configured = new Set();
+      keysUnknown = true;
     }
   }
   const secretOf = new Map(PROVIDERS.map((p) => [p.id, p.secretName]));
 
+  // The window the per-day figures are averaged over: 30 days, or the ledger's history when that is shorter.
+  const history = historyDays(costs);
+  // Everything that needs the spend ledger AND the prices is unknown when either read failed.
+  const usageUnknown = costsFailed || settingsFailed;
+
   const views: ProviderView[] = BILLED_PROVIDERS.map((p) => {
     const st = settings.find((x) => x.provider === p.id) ?? null;
     const price = st?.usd_per_unit === null || st?.usd_per_unit === undefined ? null : Number(st.usd_per_unit);
-    const burn = providerBurn(p, costs, price);
-    const snap = latestBalance(balances, p.id);
-    const ledgerUsd = ledgerBalanceUsd(p, topups, costs, price);
+    const tracked = isTracked(p);
+    const autoRecharge = st?.auto_recharge_on_provider ?? false;
+    const burn = providerBurn(p, costs, price, 30, Date.now(), history);
+    const snap = balancesFailed ? null : latestBalance(balances, p.id);
+    const ledgerUsd =
+      usageUnknown || topupsFailed ? null : ledgerBalanceUsd(p, topups, costs, price, coveredFromMs);
 
     // Days left: a native-unit balance against native-unit burn (ElevenLabs
-    // credits vs characters), else the USD ledger against USD burn.
-    let left: number | "never" | null = null;
-    if (snap && snap.remaining !== null && p.id === "elevenlabs") left = daysLeft(snap.remaining, burn.unitsPerDay);
+    // credits vs characters), else the USD ledger against USD burn. Never a
+    // number for a provider whose spend is not recorded, and no alarm for one
+    // that tops itself up.
+    let left: ProviderView["daysLeft"] = null;
+    if (usageUnknown) left = null;
+    else if (!tracked) left = "untracked";
+    else if (autoRecharge) left = "auto";
+    else if (snap && snap.remaining !== null && p.id === "elevenlabs") left = daysLeft(snap.remaining, burn.unitsPerDay);
     else if (ledgerUsd !== null) left = daysLeft(ledgerUsd, burn.usdPerDay);
-    else if (burn.units === 0) left = "never";
+    // No balance known (no snapshot, no top-up logged, or a negative ledger) is unknown, even when nothing was spent:
+    // "lasts never" is only true of a balance we can see.
 
     const secret = secretOf.get(p.id);
     return {
@@ -140,9 +195,11 @@ export default async function BillingPage() {
       billingUrl: p.billingUrl,
       unitLabel: p.unitLabel,
       keySet: secret ? configured.has(secret) : false,
-      price,
-      units30: burn.units,
-      usdPerDay: burn.usdPerDay,
+      keyUnknown: keysUnknown,
+      price: settingsFailed ? null : price,
+      tracked,
+      units30: usageUnknown || !tracked ? null : burn.units,
+      usdPerDay: usageUnknown || !tracked ? null : burn.usdPerDay,
       apiBalance: snap
         ? { remaining: snap.remaining, total: snap.total, unit: snap.unit, tier: snap.tier, resetsAt: snap.resets_at, checkedAt: snap.checked_at }
         : null,
@@ -151,22 +208,22 @@ export default async function BillingPage() {
       // ElevenLabs credits priced at the operator's rate. Unknown otherwise.
       balanceUsd:
         ledgerUsd ??
-        (p.id === "elevenlabs" && snap?.remaining != null && price !== null
+        (p.id === "elevenlabs" && snap?.remaining != null && price !== null && !settingsFailed
           ? (snap.remaining / p.unitSize) * price
           : null),
       daysLeft: left,
       lowBalanceDays: st?.low_balance_days ?? 3,
       includeInBulk: st?.include_in_bulk ?? true,
       cardSaved: st?.card_saved_on_provider ?? false,
-      autoRecharge: st?.auto_recharge_on_provider ?? false,
+      autoRecharge,
     };
   });
 
   const eleven = latestBalance(balances, "elevenlabs");
   const runway: RunwayView | null =
-    eleven && eleven.remaining !== null
+    !balancesFailed && eleven && eleven.remaining !== null
       ? {
-          ...elevenLabsRunway(eleven.remaining, costs),
+          ...elevenLabsRunway(eleven.remaining, costsFailed ? [] : costs),
           total: eleven.total,
           resetsAt: eleven.resets_at,
           tier: eleven.tier,
@@ -184,9 +241,27 @@ export default async function BillingPage() {
           </StateBlock>
         </section>
       )}
-      <UnitEconomicsCard ue={ue} scope={ueScope} />
+      {(costsFailed || settingsFailed || balancesFailed || topupsFailed) && (
+        <section className="panel">
+          <ErrorState message={tt.billingReadFailed} />
+        </section>
+      )}
+      {costsCut && (
+        <section className="panel">
+          <StateBlock role="status" tone="warn" compact>
+            {fmt(tt.spendCut, { n: costs.length })}
+          </StateBlock>
+        </section>
+      )}
+      {costsFailed ? null : <UnitEconomicsCard ue={ue} scope={ueScope} />}
       {operatorView ? (
-        <BillingBoard providers={views} runway={runway} githubConfigured={isGithubConfigured} />
+        <BillingBoard
+          providers={views}
+          runway={runway}
+          githubConfigured={isGithubConfigured}
+          spendUnknown={usageUnknown}
+          runwayUnknown={balancesFailed}
+        />
       ) : (
         <section className="panel">
           <StateBlock role="status" tone="idle" compact>

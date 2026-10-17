@@ -1313,7 +1313,7 @@ export const en = {
     stepClose: "Close",
   },
   unitEconomics: {
-    title: "Unit economics — 1 video = $X",
+    title: "What one video costs",
     scope: "last {n} videos · {days} days · {scope}",
     medianVideo: "Median per video",
     p90Video: "p90 per video",

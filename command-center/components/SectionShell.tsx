@@ -98,7 +98,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
         tabIndex={-1}
         aria-hidden="true"
         onClick={() => router.push(home)}
-        className="scrim-enter fixed inset-0 z-0 cursor-default bg-black/55 backdrop-blur-[2px]"
+        className="scrim-enter section-scrim fixed inset-0 z-0 cursor-default"
       />
       <PageTransition className="relative z-10 mx-auto w-full max-w-[1100px]">
         <div className="section-card relative">
@@ -112,7 +112,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
               onClick={() => router.push(home)}
               aria-label={t.ops.shortcutsClose}
               title={t.ops.shortcutsClose}
-              className="sheet-close shrink-0"
+              className="sheet-close section-close shrink-0"
             >
               ✕
             </button>

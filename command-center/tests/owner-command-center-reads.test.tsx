@@ -49,7 +49,7 @@ vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: f
 vi.mock("@/lib/auth/org-roles", () => ({ isOperator: async () => operatorNow, resolveCurrentOrgRole: async () => "viewer" }));
 vi.mock("@/lib/server/run-backend", () => ({ isRunNowConfigured: false }));
 
-const GLANCE_TABLES = ["provider_balances", "worker_status", "alert_events", "videos#count", "alert_events#count"];
+const GLANCE_TABLES = ["provider_balances", "worker_status", "alert_events", "videos#count", "system_events#count"];
 
 /** Does the returned React element tree contain a component with this name? (Walks children, not rendering.) */
 function hasComponent(node: unknown, name: string): boolean {

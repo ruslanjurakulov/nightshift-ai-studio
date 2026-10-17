@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 import { GITHUB_REPO, GITHUB_TOKEN, isGithubConfigured } from "./github-secrets";
 
 /**
@@ -41,7 +42,7 @@ export function isWritableVariable(name: string): name is WritableVariable {
 }
 
 async function gh(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`https://api.github.com/repos/${GITHUB_REPO}${path}`, {
+  return fetchWithTimeout(`https://api.github.com/repos/${GITHUB_REPO}${path}`, {
     ...init,
     cache: "no-store",
     headers: {

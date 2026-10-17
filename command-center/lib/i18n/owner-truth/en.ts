@@ -23,6 +23,12 @@ export const ownerTruthEn = {
   accessErrorWorking: "Checking…",
   // Sign out
   signOutFailed: "Could not sign you out on this phone. Close the browser tab and try again.",
+  // Billing and the Command Center: what is unknown or cut is said, never shown as zero
+  billingReadFailed: "Part of the billing data could not be read. The figures that depend on it are shown as unknown, not as zero.",
+  spendCut: "The spend history was cut at {n} rows: only the newest are counted, so spend and days left may be understated.",
+  notTracked: "not tracked",
+  autoRechargeOn: "tops itself up",
+  noEventsYet: "nothing recorded yet",
   // Alerts test
 };
 

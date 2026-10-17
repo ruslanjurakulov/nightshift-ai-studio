@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { formatOwnerTime } from "@/lib/owner-time";
 import { StatusPill, EmptyState } from "@/components/ui";
 import { ErrorState } from "@/components/ReadError";
 import { canDecide, canRequest, type ApprovalStatus } from "@/lib/approvals";
@@ -42,10 +43,10 @@ const STATUS_TONE: Record<ApprovalStatus, "warn" | "ok" | "fail"> = {
   rejected: "fail",
 };
 
-function fmt(ts: string | null): string {
+function fmt(ts: string | null, locale: string, nowMs: number): string {
   if (!ts) return "—";
-  const d = new Date(ts);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
+  const ms = Date.parse(ts);
+  return Number.isNaN(ms) ? "—" : formatOwnerTime(ms, locale, nowMs);
 }
 
 export function ApprovalsBoard({
@@ -59,7 +60,7 @@ export function ApprovalsBoard({
   myEmail: string;
   myUserId: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [rows, setRows] = useState<Approval[] | null>(null);
   const [people, setPeople] = useState<Record<string, string>>({});
   const [loadFailed, setLoadFailed] = useState(false);
@@ -206,11 +207,11 @@ export function ApprovalsBoard({
                   <div className="g3-ask-main">
                     <div className="g3-ask-title">{row.video_ref || t.approvals.noVideoRef}</div>
                     <div className="tnum g3-sub">
-                      {t.approvals.colRequested}: {who(row.requested_by)} · {fmt(row.requested_at)}
+                      {t.approvals.colRequested}: {who(row.requested_by)} · {fmt(row.requested_at, locale, Date.now())}
                     </div>
                     {row.status !== "pending" && (
                       <div className="tnum g3-sub">
-                        {t.approvals.colDecided}: {who(row.decided_by)} · {fmt(row.decided_at)}
+                        {t.approvals.colDecided}: {who(row.decided_by)} · {fmt(row.decided_at, locale, Date.now())}
                       </div>
                     )}
                   </div>

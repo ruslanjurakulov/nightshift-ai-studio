@@ -166,3 +166,54 @@ describe("planTopups", () => {
     expect(plan.lines[0].amount).toBe(0.24);
   });
 });
+
+describe("burn window = min(30, history) (a young ledger is not divided by thirty)", () => {
+  const young: CostRowLite[] = [
+    { unit: "tts_characters", quantity: 3000, stage: "voice", recorded_at: day(3) },
+    { unit: "tts_characters", quantity: 3000, stage: "voice", recorded_at: day(1) },
+  ];
+  it("historyDays is the age of the oldest row, at least one day", async () => {
+    const { historyDays } = await import("@/lib/billing");
+    expect(historyDays(young, NOW)).toBeCloseTo(3, 5);
+    expect(historyDays([{ recorded_at: day(0.2) }], NOW)).toBe(1);
+    expect(historyDays([], NOW)).toBeNull();
+  });
+  it("3 days of history: 6000 characters is 2000 a day, not 200", async () => {
+    const { historyDays } = await import("@/lib/billing");
+    const fixed = providerBurn(by("elevenlabs"), young, null, 30, NOW);
+    expect(fixed.unitsPerDay).toBe(200);
+    const b = providerBurn(by("elevenlabs"), young, null, 30, NOW, historyDays(young, NOW));
+    expect(b.windowDays).toBeCloseTo(3, 5);
+    expect(b.unitsPerDay).toBeCloseTo(2000, 3);
+  });
+  it("a long history keeps the 30-day window", async () => {
+    const { historyDays } = await import("@/lib/billing");
+    const long = [...young, { unit: "tts_characters", quantity: 1, stage: "voice", recorded_at: day(80) }];
+    expect(providerBurn(by("elevenlabs"), long, null, 30, NOW, historyDays(long, NOW)).windowDays).toBe(30);
+  });
+});
+
+describe("a ledger balance that cannot be trusted is unknown, not a number", () => {
+  const eleven = by("elevenlabs");
+  const spend: CostRowLite[] = [{ unit: "tts_characters", quantity: 2_000_000, stage: "voice", recorded_at: day(1) }];
+  it("negative (top-ups do not cover the spend: trial credit, auto-recharge, an unlogged top-up) is null, and so are its days", () => {
+    // 2,000,000 credits at $0.30 / 1000 = $600 spent against $100 topped up.
+    expect(ledgerBalanceUsd(eleven, [{ provider: "elevenlabs", amount_usd: 100, paid_at: day(10) }], spend, 0.3)).toBeNull();
+    expect(daysLeft(-5, 10)).toBeNull();
+    expect(daysLeft(0, 10)).toBe(0);
+  });
+  it("the first top-up is older than the spend we read: the balance would be overstated, so null", () => {
+    const topups = [{ provider: "elevenlabs", amount_usd: 500, paid_at: day(100) }];
+    expect(ledgerBalanceUsd(eleven, topups, [], 0.3)).toBe(500);
+    expect(ledgerBalanceUsd(eleven, topups, [], 0.3, NOW - 90 * 86_400_000)).toBeNull();
+    expect(ledgerBalanceUsd(eleven, topups, [], 0.3, NOW - 120 * 86_400_000)).toBe(500);
+  });
+  it("Anthropic and OpenAI are not tracked: no ledger balance, no burn pretending to be zero", async () => {
+    const { isTracked } = await import("@/lib/billing");
+    for (const id of ["anthropic", "openai"]) {
+      expect(isTracked(by(id))).toBe(false);
+      expect(ledgerBalanceUsd(by(id), [{ provider: id, amount_usd: 50, paid_at: day(5) }], [], 1)).toBeNull();
+    }
+    expect(isTracked(eleven)).toBe(true);
+  });
+});

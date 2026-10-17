@@ -122,6 +122,8 @@
   --ns-dur-1: 120ms;
   --ns-dur-2: 200ms;
   --ns-dur-3: 320ms;
+  /* The ground behind an operator section's panel (SectionShell): none in light, where it turned the whole phone grey. */
+  --ns-section-ground: transparent;
   /* The app's type scale (px). Names kept from the first version; the sizes
      moved up: no label is smaller than 13. */
   --ns-t-label: 13px;
@@ -252,6 +254,7 @@
 /* Dark — the control room. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --ns-section-ground: rgb(0 0 0 / 0.55);
     /* The identity — control room. The console leans ink-blue, the type is
        lamp-warmed, amber is the lit thing: the meter, the key, the mark. */
     --ns-ground: #131210;
@@ -351,6 +354,7 @@
 
 :root[data-theme="dark"],
 [data-theme-scope="dark"] {
+  --ns-section-ground: rgb(0 0 0 / 0.55);
   /* The identity — control room. The console leans ink-blue, the type is
      lamp-warmed, amber is the lit thing: the meter, the key, the mark. */
   --ns-ground: #131210;
@@ -1276,6 +1280,14 @@ option {
 /* The scrim behind either one. */
 @keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
 .scrim-enter { animation: scrim-in 0.32s ease both; }
+
+/* An operator section is a page, not a modal over the dashboard, on a phone: no dimmed ground behind it, and the
+   close cross (the back arrow and the tab bar are the ways out) goes. From 640px up, in dark, it keeps the panel look. */
+.section-scrim { background: var(--ns-section-ground); backdrop-filter: blur(2px); }
+@media (max-width: 639px) {
+  .section-scrim,
+  .section-close { display: none; }
+}
 
 /* Children of an opened surface arrive after it, in order. Give each child an
    inline --i; the container's own entrance is the 0.12s head start. */

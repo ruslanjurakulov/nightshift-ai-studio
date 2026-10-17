@@ -8,7 +8,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState } from "@/components/ui";
 import { PageHeader } from "@/components/PageHeader";
 import { getDictionary } from "@/lib/i18n/server";
-import { parseStoredTime } from "@/lib/format";
+import { ownerTime } from "@/lib/format";
 import { formatAuditDetail, type AuditRow } from "@/lib/audit";
 import { ScrollText } from "lucide-react";
 import { DataList } from "@/components/g4/DataList";
@@ -19,16 +19,14 @@ export const revalidate = 0;
 
 const LIMIT = 100;
 
-/** A stable UTC rendering of the timestamp, safe for server-only render. */
-function renderAt(iso: string): string {
-  const d = parseStoredTime(iso);
-  if (!d) return iso;
-  return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+/** The time in the owner's own clock: 24 hours, Tashkent, "bugun 13:53" (lib/owner-time.ts). */
+function renderAt(iso: string, locale: string): string {
+  return ownerTime(iso, locale);
 }
 
 export default async function AuditPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
 
   const supabase = await createClient();
   let rows: AuditRow[] = [];
@@ -62,7 +60,7 @@ export default async function AuditPage() {
             rows={rows}
             rowKey={(row) => row.id}
             columns={[
-              { key: "time", label: t.audit.colTime, nowrap: true, render: (row) => <span className="tnum g4-muted">{renderAt(row.at)}</span> },
+              { key: "time", label: t.audit.colTime, nowrap: true, render: (row) => <span className="tnum g4-muted">{renderAt(row.at, locale)}</span> },
               { key: "actor", label: t.audit.colActor, render: (row) => row.actor_email ?? "—" },
               {
                 key: "action",

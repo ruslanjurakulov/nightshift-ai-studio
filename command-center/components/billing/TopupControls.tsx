@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { planTopups } from "@/lib/billing";
 import { formatUsdAmount } from "@/lib/number-format";
+import { ownerDateFull } from "@/lib/owner-time";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { postOperator } from "@/lib/operator-post";
@@ -29,8 +30,6 @@ import type { ProviderView } from "@/components/billing/BillingBoard";
  * place. (/api/billing/topup takes no request id yet, so the lock is the only
  * double-record protection until a server-side idempotency key exists.)
  */
-
-const money = (v: number | null) => (v === null ? "—" : `$${v.toFixed(2)}`);
 
 export type OwnerPostResult = Awaited<ReturnType<typeof postOperator>>;
 
@@ -67,7 +66,7 @@ function CopyButton({ value }: { value: string }) {
 const inputClass = "ns-field tnum";
 
 /** Today as the owner reads it, for the "Date" line of a confirm sheet. */
-const todayText = (locale: string) => new Date().toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+const todayText = (locale: string) => ownerDateFull(Date.now(), locale);
 
 /** The per-provider Pay panel, opened from its card. */
 export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested: number | null; onDone: () => void }) {
@@ -185,6 +184,7 @@ const HORIZONS = [7, 30, 90];
 /** "Pay all providers": select, see exact per-provider amounts and the total, then pay step by step. */
 export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDone: () => void }) {
   const { t, locale } = useI18n();
+  const money = (v: number | null) => (v === null ? "—" : formatUsdAmount(v, locale, 2, 2));
   const toast = useToast();
   const { confirm, dialog } = useConfirm();
   const lock = useRef(false);
@@ -350,7 +350,8 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
         <div className="g5-plan-total">
           <span className="g5-h">{t.billing.bulkTotal}</span>
           <span className="g5-figure" style={{ fontSize: "1.75rem" }}>
-            {money(plan.total)}
+            {/* A total of nothing is not "$0.00": while no provider has a price there is no total. */}
+            {plan.lines.some((l) => l.need !== null) ? money(plan.total) : "—"}
           </span>
         </div>
       </div>

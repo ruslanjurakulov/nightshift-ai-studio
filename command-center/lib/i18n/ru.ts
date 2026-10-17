@@ -1302,7 +1302,7 @@ export const ru: Dictionary = {
     stepClose: "Закрыть",
   },
   unitEconomics: {
-    title: "Юнит-экономика — 1 видео = $X",
+    title: "Сколько стоит одно видео",
     scope: "последние {n} видео · {days} дн. · {scope}",
     medianVideo: "Медиана на видео",
     p90Video: "p90 на видео",

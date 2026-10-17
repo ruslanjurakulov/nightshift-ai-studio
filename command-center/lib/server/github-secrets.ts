@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 import { PROVIDER_SECRET_NAMES } from "../providers";
 import { IMAGE_PROVIDERS } from "@/lib/imageProviders";
 import { isTtsModel, isVoiceId } from "@/lib/ttsModels";
@@ -68,7 +69,7 @@ export function channelTokenSecret(ref: string): string {
 type PublicKey = { key_id: string; key: string };
 
 async function gh(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`https://api.github.com/repos/${GITHUB_REPO}${path}`, {
+  return fetchWithTimeout(`https://api.github.com/repos/${GITHUB_REPO}${path}`, {
     ...init,
     cache: "no-store",
     headers: {

@@ -16,4 +16,9 @@ export const ownerTruthUz: OwnerTruthDictionary = {
   accessErrorRetry: "Qayta urinish",
   accessErrorWorking: "Tekshirilmoqda…",
   signOutFailed: "Bu telefonda chiqib boʻlmadi. Brauzer oynasini yoping va qayta urinib koʻring.",
+  billingReadFailed: "Hisob maʼlumotlarining bir qismini oʻqib boʻlmadi. Unga bogʻliq raqamlar nol emas, «nomaʼlum» deb koʻrsatilgan.",
+  spendCut: "Sarf tarixi {n} qatorda uzildi: faqat eng yangilari hisoblandi, shuning uchun sarf va qolgan kunlar kam koʻrinishi mumkin.",
+  notTracked: "kuzatilmaydi",
+  autoRechargeOn: "oʻzi toʻldiriladi",
+  noEventsYet: "hali hech narsa yozilmagan",
 };

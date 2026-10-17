@@ -10,6 +10,7 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Meter } from "@/components/ui/Meter";
 import { StateBlock } from "@/components/states/StateBlock";
 import { relativeTime } from "@/lib/format";
+import { formatNumber, formatUsdAmount } from "@/lib/number-format";
 import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
 import { postOperator } from "@/lib/operator-post";
@@ -22,8 +23,13 @@ export interface ProviderView {
   billingUrl: string;
   unitLabel: string;
   keySet: boolean;
+  /** The key-name read (GitHub) failed: the lamp says "unknown", not "key missing". */
+  keyUnknown?: boolean;
   price: number | null;
-  units30: number;
+  /** False when nothing in the cost ledger maps to this provider (Anthropic, OpenAI): its usage is not tracked. */
+  tracked?: boolean;
+  /** Units used in the window, or null when the spend could not be read / is not tracked. */
+  units30: number | null;
   usdPerDay: number | null;
   apiBalance: {
     remaining: number | null;
@@ -35,7 +41,8 @@ export interface ProviderView {
   } | null;
   ledgerUsd: number | null;
   balanceUsd: number | null;
-  daysLeft: number | "never" | null;
+  /** "untracked": spend is not recorded here. "auto": the provider tops itself up. null: unknown. */
+  daysLeft: number | "never" | "untracked" | "auto" | null;
   lowBalanceDays: number;
   includeInBulk: boolean;
   cardSaved: boolean;
@@ -49,29 +56,37 @@ export type RunwayView = ElevenLabsRunway & {
   checkedAt: string;
 };
 
-export function usd(v: number | null): string {
+/** Dollars, grouped and fixed ("$1,234.56", three decimals under $1): the same text on the server and in the browser. */
+export function usd(v: number | null, locale = "en"): string {
   if (v === null) return "—";
-  return `$${v.toFixed(Math.abs(v) < 1 && v !== 0 ? 3 : 2)}`;
+  const small = Math.abs(v) < 1 && v !== 0;
+  return formatUsdAmount(v, locale, small ? 3 : 2, small ? 3 : 2);
 }
 
-const n0 = (v: number) => Math.round(v).toLocaleString();
+const n0 = (v: number, locale = "en") => formatNumber(Math.round(v), locale, 0);
 
 export function BillingBoard({
   providers,
   runway,
   githubConfigured,
+  spendUnknown = false,
+  runwayUnknown = false,
 }: {
   providers: ProviderView[];
   runway: RunwayView | null;
   githubConfigured: boolean;
+  /** The spend ledger or the prices could not be read: the 30-day figure is unknown, not $0. */
+  spendUnknown?: boolean;
+  /** The balance snapshots could not be read: the ElevenLabs panel says so instead of "no data yet". */
+  runwayUnknown?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [refresh, setRefresh] = useState<"idle" | "busy" | "ok" | "fail">("idle");
   const [refreshWhy, setRefreshWhy] = useState<string | null>(null);
 
   const known = providers.filter((p) => p.usdPerDay !== null);
-  const spend30 = known.length ? known.reduce((s, p) => s + (p.usdPerDay ?? 0) * 30, 0) : null;
+  const spend30 = spendUnknown ? null : known.length ? known.reduce((s, p) => s + (p.usdPerDay ?? 0) * 30, 0) : null;
   const partial = providers.some((p) => p.usdPerDay === null);
   const running = providers
     .filter((p) => typeof p.daysLeft === "number" && !p.autoRecharge)
@@ -96,8 +111,8 @@ export function BillingBoard({
       <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-3">
         <StatCard
           label={t.billing.statBurn30}
-          value={usd(spend30)}
-          sub={partial ? t.billing.partialNote : undefined}
+          value={spendUnknown ? t.common.unknown : usd(spend30, locale)}
+          sub={spendUnknown ? t.common.couldNotRead : partial ? t.billing.partialNote : undefined}
         />
         <StatCard
           label={t.billing.statFirstOut}
@@ -122,7 +137,7 @@ export function BillingBoard({
         </div>
       </div>
 
-      <ElevenLabsPanel runway={runway} />
+      <ElevenLabsPanel runway={runway} unknown={runwayUnknown} />
 
       <section className="panel" aria-labelledby="bl-providers">
         <div className="g5-sechead">
@@ -142,7 +157,7 @@ export function BillingBoard({
   );
 }
 
-function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
+function ElevenLabsPanel({ runway, unknown }: { runway: RunwayView | null; unknown: boolean }) {
   const { t, locale } = useI18n();
   if (!runway) {
     return (
@@ -153,7 +168,7 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
           </h2>
         </div>
         <StateBlock tone="idle" compact>
-          {t.billing.elevenNoData}
+          {unknown ? t.common.couldNotRead : t.billing.elevenNoData}
         </StateBlock>
       </section>
     );
@@ -169,10 +184,10 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
           {fmt(t.billing.checked, { when: relativeTime(runway.checkedAt, locale) })}
         </span>
       </div>
-      <p className="g5-figure">{fmt(t.billing.elevenMinutes, { minutes: n0(runway.minMinutes) })}</p>
+      <p className="g5-figure">{fmt(t.billing.elevenMinutes, { minutes: n0(runway.minMinutes, locale) })}</p>
       <p className="g5-sub" style={{ marginTop: 0 }}>
         {runway.minVideos !== null && runway.perVideoChars !== null
-          ? fmt(t.billing.elevenVideos, { videos: n0(runway.minVideos), chars: n0(runway.perVideoChars) })
+          ? fmt(t.billing.elevenVideos, { videos: n0(runway.minVideos, locale), chars: n0(runway.perVideoChars, locale) })
           : t.billing.elevenNoHistory}
       </p>
       {runway.total !== null && runway.total > 0 && (
@@ -182,13 +197,13 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
           size="lg"
           segments={24}
           label={t.billing.elevenTitle}
-          valueText={fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })}
+          valueText={fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits, locale), total: n0(runway.total, locale) })}
         />
       )}
       <p className="g5-note">
         {runway.total !== null
-          ? fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })
-          : n0(runway.remainingCredits)}
+          ? fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits, locale), total: n0(runway.total, locale) })
+          : n0(runway.remainingCredits, locale)}
         {runway.resetsAt ? ` · ${fmt(t.billing.elevenResets, { date: runway.resetsAt.slice(0, 10) })}` : ""}
       </p>
     </section>
@@ -196,7 +211,7 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
 }
 
 function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [price, setPrice] = useState(p.price === null ? "" : String(p.price));
   const [state, setState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
   const [failWhy, setFailWhy] = useState<string | null>(null);
@@ -221,17 +236,21 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
   }
 
   const balance = p.apiBalance && p.apiBalance.remaining !== null
-    ? `${n0(p.apiBalance.remaining)} ${p.apiBalance.unit}`
+    ? `${n0(p.apiBalance.remaining, locale)} ${p.apiBalance.unit}`
     : p.ledgerUsd !== null
-      ? fmt(t.billing.balanceLedger, { usd: usd(p.ledgerUsd) })
+      ? fmt(t.billing.balanceLedger, { usd: usd(p.ledgerUsd, locale) })
       : t.billing.balanceUnknown;
 
   const lasts =
     p.daysLeft === "never"
       ? t.billing.never
-      : p.daysLeft === null
-        ? t.billing.unknown
-        : fmt(t.billing.days, { n: Math.floor(p.daysLeft) });
+      : p.daysLeft === "untracked"
+        ? t.ownerTruth.notTracked
+        : p.daysLeft === "auto"
+          ? t.ownerTruth.autoRechargeOn
+          : p.daysLeft === null
+            ? t.billing.unknown
+            : fmt(t.billing.days, { n: Math.floor(p.daysLeft) });
   const low = typeof p.daysLeft === "number" && p.daysLeft <= p.lowBalanceDays && !p.autoRecharge;
 
   return (
@@ -240,7 +259,10 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
         <h3 className="g5-row-title" style={{ fontWeight: 600 }}>
           {p.name}
         </h3>
-        <StatusLamp tone={p.keySet ? "ok" : "idle"} label={p.keySet ? t.billing.keySet : t.billing.keyMissing} />
+        <StatusLamp
+          tone={p.keyUnknown ? "warn" : p.keySet ? "ok" : "idle"}
+          label={p.keyUnknown ? t.billing.unknown : p.keySet ? t.billing.keySet : t.billing.keyMissing}
+        />
       </div>
       <dl className="g5-prov-facts">
         <div>
@@ -250,8 +272,12 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
         <div>
           <dt className="g5-k">{t.billing.usage30}</dt>
           <dd>
-            {n0(p.units30)}
-            {p.usdPerDay !== null && p.usdPerDay > 0 ? ` · ${usd(p.usdPerDay)}${t.billing.perDay}` : ""}
+            {p.tracked === false
+              ? t.ownerTruth.notTracked
+              : p.units30 === null
+                ? t.billing.unknown
+                : n0(p.units30, locale)}
+            {p.units30 !== null && p.usdPerDay !== null && p.usdPerDay > 0 ? ` · ${usd(p.usdPerDay, locale)}${t.billing.perDay}` : ""}
           </dd>
         </div>
         <div>
