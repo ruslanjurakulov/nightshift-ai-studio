@@ -46,14 +46,19 @@ HELD_STATES = ("held", "awaiting_approval", "repaired_awaiting_review", "blocked
 CREATIVE_ACTIVE = ("queued", "planning", "running", "provider_pending", "processing", "rendering")
 
 #: Audit actions worth a push: only those a PLATFORM OPERATOR performs (setup
-#: secrets and variables, provider billing settings, model availability). The
+#: secrets and variables, provider billing settings, model availability, and the
+#: owner actions of migration 0107: a credit grant or its reversal, a price
+#: change, the second-factor gate). The
 #: customer-triggered ones (api_key.*, mcp.*, api.*, channel.youtube.disconnect)
 #: are ordinary tenant activity that any signed-in customer can generate, so they
 #: are not alerts. `role.` / `member.` prefixes are matched too so a role change
-#: is covered the day one is logged; none is today. Only rows with no channel
+#: is covered the day one is logged (0107 writes member.add / member.role /
+#: member.remove from owner_add_member, owner_set_member_role and
+#: owner_remove_member). Only rows with no channel
 #: count: an operator action is not about a customer's channel.
 SECURITY_AUDIT_ACTIONS = (
     "secret.write", "variable.write", "billing.settings", "model.availability",
+    "credits.grant", "credits.reverse", "credits.price", "security.gate",
 )
 SECURITY_AUDIT_PREFIXES = ("role.", "member.")
 

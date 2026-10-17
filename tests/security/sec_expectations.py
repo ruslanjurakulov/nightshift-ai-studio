@@ -533,3 +533,8 @@ sec_review_links_0101.extend(TABLES, FUNCTIONS)
 import sec_notify_language_0105  # noqa: E402
 
 sec_notify_language_0105.extend(TABLES, FUNCTIONS)
+
+# Migration 0107 (owner safety: the second-factor gate, audited owner actions, security trail): tests/security/sec_owner_safety_0107.py
+import sec_owner_safety_0107  # noqa: E402
+
+sec_owner_safety_0107.extend(TABLES, FUNCTIONS)
