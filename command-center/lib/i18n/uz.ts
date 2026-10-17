@@ -3547,12 +3547,7 @@ export const uz: Dictionary = {
   },
   approvals: {
     title: "Nashr tasdiqlashlari",
-    subtitle: "Buni talab qiladigan kanallar uchun avto-nashrni video ommaviy boʻlishidan oldin ikkinchi admin — soʻragan kishi emas — tasdiqlashi shart.",
-    requireToggle: "Nashr qilish uchun ikki kishilik tasdiqlashni talab qilish",
-    requireOn: "Talab qilinadi",
-    requireOff: "Talab qilinmaydi",
-    requireUnknown: "Nomaʼlum",
-    requireUnknownNote: "Bu kanal uchun ikki kishilik tasdiq talab qilinishini oʻqib boʻlmadi. Oʻqib boʻlmaguncha tugma oʻchiq — qayta urinib koʻring, soʻng oʻzgartiring.",
+    subtitle: "Videoni nashr qilish uchun tasdiq soʻrang va u ommaviy boʻlishidan oldin tasdiqlang.",
     readFailed: "Tasdiq soʻrovlarini oʻqib boʻlmadi.",
     requestTitle: "Nashrni tasdiqlashni soʻrash",
     videoRef: "Video havolasi (ixtiyoriy)",

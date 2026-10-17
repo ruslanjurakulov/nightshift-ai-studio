@@ -319,31 +319,33 @@ describe("pricing: a failed read is unknown, not 'none on sale' or 'not publishe
   });
 });
 
-describe("approvals: an unreadable requirement is unknown and the toggle is disabled", () => {
+describe("approvals: the two-person requirement is not offered", () => {
   const load = async () => (await import("../app/(app)/[channel]/approvals/page")).default();
 
-  it("failed read", async () => {
+  // The page used to read agent_config for a switch. It reads nothing now, so the
+  // output is the same whether the channel row is unreadable, empty or has the
+  // flag set (an old channel the backend gate still holds): no control, no label.
+  const cases: Array<[string, unknown]> = [
+    ["failed read", failingSupabase()],
+    ["no flag", supabaseStub(() => ({ data: { agent_config: {} }, error: null }))],
+    ["flag already set", supabaseStub(() => ({ data: { agent_config: { require_two_person_publish: true } }, error: null }))],
+  ];
+  it.each(cases)("%s: the board renders with no two-person control", async (_name, client) => {
+    state.client = client;
     const html = await render(load);
-    expect(has(html, en.approvals.requireUnknown)).toBe(true);
-    expect(has(html, en.approvals.requireUnknownNote)).toBe(true);
-    expect(has(html, en.approvals.requireOff)).toBe(false);
+    expect(html).toContain(esc(en.approvals.requestTitle));
     expect(html).not.toContain('role="switch"');
-    expect(html).toMatch(/data-requirement-toggle[^>]*\sdisabled=""/);
+    expect(html).not.toContain("data-requirement-toggle");
+    expect(html).not.toMatch(/two-person|second admin|require_two_person/i);
   });
 
-  it("readable: the switch is offered, enabled, and reads 'Not required'", async () => {
-    state.client = supabaseStub(() => ({ data: { agent_config: {} }, error: null }));
-    const html = await render(load);
-    expect(has(html, en.approvals.requireOff)).toBe(true);
-    expect(html).toContain('role="switch"');
-    expect(html).not.toMatch(/role="switch"[^>]*\sdisabled=""/);
-    expect(has(html, en.approvals.requireUnknown)).toBe(false);
-  });
-
-  it("readable and required", async () => {
-    state.client = supabaseStub(() => ({ data: { agent_config: { require_two_person_publish: true } }, error: null }));
-    const html = await render(load);
-    expect(has(html, en.approvals.requireOn)).toBe(true);
+  it("the approvals page no longer reads channels.agent_config at all", async () => {
+    const from = vi.fn(() => {
+      throw new Error("approvals page must not query the channels table");
+    });
+    state.client = { from };
+    await render(load);
+    expect(from).not.toHaveBeenCalled();
   });
 });
 

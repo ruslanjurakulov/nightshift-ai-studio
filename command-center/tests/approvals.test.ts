@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canDecide, canRequest, canToggleRequirement } from "@/lib/approvals";
+import { canDecide, canRequest } from "@/lib/approvals";
 
 describe("canDecide (two-person publish rule)", () => {
   const requester = "user-a";
@@ -33,16 +33,5 @@ describe("canRequest", () => {
   });
   it("refuses viewer", () => {
     expect(canRequest("viewer")).toBe(false);
-  });
-});
-
-describe("canToggleRequirement", () => {
-  // BR-G-003 (migration 0086): the requirement is an administrator's, because an
-  // editor could otherwise switch off the check that holds a publish for a second person.
-  it("allows admin and above, refuses editor and viewer", () => {
-    expect(canToggleRequirement("owner")).toBe(true);
-    expect(canToggleRequirement("admin")).toBe(true);
-    expect(canToggleRequirement("editor")).toBe(false);
-    expect(canToggleRequirement("viewer")).toBe(false);
   });
 });

@@ -3559,12 +3559,7 @@ export const en = {
   },
   approvals: {
     title: "Publish approvals",
-    subtitle: "For channels that require it, an auto-publish must be signed off by a second admin — never the requester — before a video goes public.",
-    requireToggle: "Require two-person approval to publish",
-    requireOn: "Required",
-    requireOff: "Not required",
-    requireUnknown: "Unknown",
-    requireUnknownNote: "Could not read whether two-person approval is required for this channel. The switch is off until it can be read — retry, then change it.",
+    subtitle: "Request approval to publish a video and sign it off before it goes public.",
     readFailed: "Could not read the approval requests.",
     requestTitle: "Request approval to publish",
     videoRef: "Video reference (optional)",

@@ -2,12 +2,10 @@ import { PageHeader } from "@/components/PageHeader";
 import { Note } from "@/components/g3/Section";
 import { ApprovalsBoard } from "@/components/approvals/ApprovalsBoard";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { getChannelSelection } from "@/lib/channels-server";
 import { isScoped } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
-import { readFailed } from "@/lib/readState";
-import type { ChannelRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -18,8 +16,8 @@ export const revalidate = 0;
  * A request log readable by any member of the channel's organization; an
  * editor+ there may open a request, and a SECOND admin there — never the
  * requester — may approve or reject. The database (migration 0009) enforces the
- * two-person rule regardless of what the UI shows. The per-channel requirement
- * toggle writes `channels.agent_config.require_two_person_publish`.
+ * two-person rule regardless of what the UI shows. There is no per-channel
+ * requirement switch: the feature is not offered to customers.
  *
  * The feature is per-channel, so it needs a channel selected. Across all
  * channels there is nothing to show — we say so rather than mixing channels.
@@ -54,28 +52,11 @@ export default async function ApprovalsPage() {
     );
   }
 
-  // Read the current channel's requirement flag so the toggle renders without a flash.
-  // null = unknown (the read failed, or there is no client): the board then
-  // shows "unknown" and disables the switch rather than "Not required".
-  let initialRequire: boolean | null = null;
-  const supabase = await createClient();
-  if (supabase) {
-    const { data, error } = await supabase
-      .from("channels")
-      .select("agent_config")
-      .eq("channel_id", selection)
-      .maybeSingle();
-    if (!readFailed({ error })) {
-      initialRequire = Boolean((data as Pick<ChannelRow, "agent_config"> | null)?.agent_config?.require_two_person_publish);
-    }
-  }
-
   return (
     <div className="rhythm ns-open">
       <PageHeader icon="approvals" title={t.approvals.title} subtitle={t.approvals.subtitle} />
       <ApprovalsBoard
         channelId={selection}
-        initialRequire={initialRequire}
         myRole={role}
         myEmail={user.email ?? ""}
         myUserId={user.id}

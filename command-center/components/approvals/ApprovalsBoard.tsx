@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { StatusPill, EmptyState } from "@/components/ui";
 import { ErrorState } from "@/components/ReadError";
-import { canDecide, canRequest, canToggleRequirement, type ApprovalStatus } from "@/lib/approvals";
+import { canDecide, canRequest, type ApprovalStatus } from "@/lib/approvals";
 import type { Role } from "@/lib/auth/roles-shared";
 
 /**
@@ -19,9 +18,9 @@ import type { Role } from "@/lib/auth/roles-shared";
  * The UI mirrors those rules so a viewer or the requester never sees a control
  * the database would reject — but the database decides.
  *
- * The per-channel "require two-person approval" flag lives in
- * `channels.agent_config.require_two_person_publish`; toggling it merges into
- * the existing config so no other setting is lost.
+ * There is deliberately no per-channel "require two people" control here or
+ * anywhere else in the product: the backend gate still honours the channel flag
+ * if it is already set, but customers are not offered it (docs/security/LEDGER.md).
  */
 type Approval = {
   id: string;
@@ -51,33 +50,25 @@ function fmt(ts: string | null): string {
 
 export function ApprovalsBoard({
   channelId,
-  initialRequire,
   myRole,
   myEmail,
   myUserId,
 }: {
   channelId: string;
-  /** null = the requirement could not be read: unknown, never "not required". */
-  initialRequire: boolean | null;
   myRole: Role;
   myEmail: string;
   myUserId: string;
 }) {
   const { t } = useI18n();
-  const router = useRouter();
   const [rows, setRows] = useState<Approval[] | null>(null);
   const [people, setPeople] = useState<Record<string, string>>({});
-  const [require2p, setRequire2p] = useState<boolean | null>(initialRequire);
   const [loadFailed, setLoadFailed] = useState(false);
 
-  // A retry re-runs the page; take its (now readable) answer.
-  useEffect(() => setRequire2p(initialRequire), [initialRequire]);
   const [videoRef, setVideoRef] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canReq = canRequest(myRole);
-  const canToggle = canToggleRequirement(myRole);
 
   async function load() {
     const supabase = createClient();
@@ -117,37 +108,6 @@ export function ApprovalsBoard({
     if (!id) return t.approvals.someone;
     if (id === myUserId) return t.approvals.you;
     return people[id] ?? `${id.slice(0, 8)}…`;
-  }
-
-  async function toggleRequirement(next: boolean) {
-    const supabase = createClient();
-    if (!supabase || busy) return;
-    setBusy(true);
-    setError(null);
-    // Merge into the live config so no other agent setting is clobbered.
-    const { data: current, error: readErr } = await supabase
-      .from("channels")
-      .select("agent_config")
-      .eq("channel_id", channelId)
-      .maybeSingle();
-    if (readErr) {
-      // Merging into an unread config would overwrite every other setting.
-      setBusy(false);
-      setError(t.common.readFailedTitle);
-      return;
-    }
-    const merged = { ...(current?.agent_config ?? {}), require_two_person_publish: next };
-    const { error: e } = await supabase
-      .from("channels")
-      .update({ agent_config: merged })
-      .eq("channel_id", channelId);
-    setBusy(false);
-    if (e) {
-      setError(t.approvals.saveFailed);
-      return;
-    }
-    setRequire2p(next);
-    router.refresh();
   }
 
   async function request() {
@@ -195,53 +155,6 @@ export function ApprovalsBoard({
 
   return (
     <div className="rhythm">
-      {/* Per-channel requirement toggle */}
-      <section aria-labelledby="g3-req-h" className="g3-section g3-req">
-        <div className="min-w-0">
-          <h2 id="g3-req-h" className="t-panel">{t.approvals.requireToggle}</h2>
-          <p className="g3-hint">
-            {require2p === null
-              ? t.approvals.requireUnknownNote
-              : require2p
-                ? t.approvals.requireOn
-                : t.approvals.requireOff}
-          </p>
-          {!canToggle && <p className="g3-hint">{t.channels.adminOnly}</p>}
-        </div>
-        {require2p === null ? (
-          // Unknown is not "off": the switch is disabled until it can be read.
-          <div className="flex flex-wrap items-center gap-3">
-            {canToggle && (
-              <button
-                type="button"
-                data-requirement-toggle
-                disabled
-                className="g3-switch pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
-              >
-                <StatusPill tone="idle" label={t.approvals.requireUnknown} />
-              </button>
-            )}
-            {!canToggle && <StatusPill tone="idle" label={t.approvals.requireUnknown} />}
-            <button type="button" onClick={() => router.refresh()} className="btn-sky pill px-4 py-2 text-sm">
-              {t.common.retry}
-            </button>
-          </div>
-        ) : canToggle ? (
-          <button
-            type="button"
-            role="switch"
-            aria-checked={require2p}
-            disabled={busy}
-            onClick={() => toggleRequirement(!require2p)}
-            className="g3-switch pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
-          >
-            <StatusPill tone={require2p ? "ok" : "idle"} label={require2p ? t.approvals.requireOn : t.approvals.requireOff} />
-          </button>
-        ) : (
-          <StatusPill tone={require2p ? "ok" : "idle"} label={require2p ? t.approvals.requireOn : t.approvals.requireOff} />
-        )}
-      </section>
-
       {/* Open a request (editor+) */}
       {canReq && (
         <section aria-labelledby="g3-ask-h" className="g3-section">

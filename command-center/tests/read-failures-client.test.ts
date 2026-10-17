@@ -136,7 +136,7 @@ describe("DeveloperConsole lists", () => {
 });
 
 describe("ApprovalsBoard request list", () => {
-  const props = { channelId: "chan1", initialRequire: false, myRole: "owner", myEmail: "me@example.com", myUserId: "u1" } as const;
+  const props = { channelId: "chan1", myRole: "owner", myEmail: "me@example.com", myUserId: "u1" } as const;
 
   it("failed read: error state, not 'no approval requests yet'", async () => {
     h.client = failingSupabase();
