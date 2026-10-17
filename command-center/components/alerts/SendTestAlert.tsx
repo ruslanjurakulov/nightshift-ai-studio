@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { postOperator } from "@/lib/operator-post";
+import { operatorFailureText } from "@/lib/setup-errors";
 
 type State = "idle" | "sending" | "sent" | "error";
 
@@ -15,22 +17,22 @@ type State = "idle" | "sending" | "sent" | "error";
 export function SendTestAlert() {
   const { t } = useI18n();
   const [state, setState] = useState<State>("idle");
+  const [why, setWhy] = useState<string | null>(null);
 
   async function send() {
     if (state === "sending") return;
     setState("sending");
-    try {
-      const res = await fetch("/api/alerts/test", { method: "POST" });
-      if (!res.ok) {
-        setState("error");
-        return;
-      }
-      setState("sent");
-      // Reload so the freshly-written feed row shows without a manual refresh.
-      setTimeout(() => window.location.reload(), 600);
-    } catch {
+    setWhy(null);
+    // Success is the server saying it wrote the row: a redirect, a sign-in page, `ok:false` and `recorded:false` are not.
+    const out = await postOperator("/api/alerts/test");
+    if (!out.ok) {
+      setWhy(operatorFailureText(t, out, t.alerts.testFailed));
       setState("error");
+      return;
     }
+    setState("sent");
+    // Reload so the freshly-written feed row shows without a manual refresh.
+    setTimeout(() => window.location.reload(), 600);
   }
 
   return (
@@ -54,7 +56,7 @@ export function SendTestAlert() {
           style={{ color: "var(--color-warn)" }}
           role="status"
         >
-          {t.alerts.testFailed}
+          {why ?? t.alerts.testFailed}
         </span>
       )}
     </div>

@@ -30,7 +30,8 @@ const { middleware } = await import("@/middleware");
 
 async function visit(path: string, signedIn: boolean) {
   auth.user = signedIn ? { id: "u1" } : null;
-  const res = await middleware(new NextRequest(`https://nightshift.test${path}`));
+  // A browser visit: it marks itself as a navigation, so a signed-out API-shaped URL is still sent to /login.
+  const res = await middleware(new NextRequest(`https://nightshift.test${path}`, { headers: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } }));
   const location = res.headers.get("location");
   return { redirect: location ? new URL(location).pathname : null, res };
 }

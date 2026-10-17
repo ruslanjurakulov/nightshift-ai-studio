@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { setupFailureText } from "@/lib/setup-errors";
+import { operatorFailureText } from "@/lib/setup-errors";
+import { postOperator } from "@/lib/operator-post";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useToast } from "@/components/feedback/ToastProvider";
@@ -94,25 +95,15 @@ export function PipelineRouting({
     if (!githubConfigured) return t.providers.routingNotConfigured;
     setState("saving");
     setErrorKey("failed");
-    try {
-      const res = await fetch("/api/setup/variables", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ variables }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const unauthorized = data.error === "github_unauthorized";
-        setErrorKey(unauthorized ? "unauthorized" : "failed");
-        setState("error");
-        return unauthorized ? t.providers.routingUnauthorized : setupFailureText(t, data, t.providers.routingFailed);
-      }
-      setState("saved");
-      return null;
-    } catch {
+    const out = await postOperator("/api/setup/variables", { variables });
+    if (!out.ok) {
+      const unauthorized = out.data.error === "github_unauthorized";
+      setErrorKey(unauthorized ? "unauthorized" : "failed");
       setState("error");
-      return t.providers.routingFailed;
+      return unauthorized ? t.providers.routingUnauthorized : operatorFailureText(t, out, t.providers.routingFailed);
     }
+    setState("saved");
+    return null;
   }
 
   const videoVars = (id: string): Vars =>

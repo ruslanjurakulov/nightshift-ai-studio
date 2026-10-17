@@ -1,5 +1,6 @@
 "use client";
 
+import { postOperator } from "@/lib/operator-post";
 import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
@@ -69,22 +70,14 @@ export function VoiceEditor({
     const key = apiKey.trim();
     if (!key) return;
     setLoadPhase("loading");
-    try {
-      const res = await fetch("/api/setup/voices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: key }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setLoadPhase("error");
-        return;
-      }
-      setVoices(Array.isArray(data.voices) ? (data.voices as Voice[]) : []);
-      setLoadPhase("idle");
-    } catch {
+    // A signed-out or redirected answer is a failure here, never "an empty voice list" (lib/operator-post.ts).
+    const out = await postOperator("/api/setup/voices", { apiKey: key });
+    if (!out.ok) {
       setLoadPhase("error");
+      return;
     }
+    setVoices(Array.isArray(out.data.voices) ? (out.data.voices as Voice[]) : []);
+    setLoadPhase("idle");
   }
 
   function preview(v: Voice) {

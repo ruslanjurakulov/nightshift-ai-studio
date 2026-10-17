@@ -8,6 +8,7 @@ import { getChannelContext } from "@/lib/channels-server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { WELCOME_PATH } from "@/lib/public-paths";
+import { landingSection } from "@/lib/navigation";
 import {
   ALL_CHANNELS,
   ALL_CHANNELS_SLUG,
@@ -21,7 +22,9 @@ import { NavigationProvider } from "@/components/navigation/NavigationProvider";
 import { ScrollToTop } from "@/components/navigation/ScrollToTop";
 import { InstallHint } from "@/components/shell/InstallHint";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { currentMfaAction, isOperator } from "@/lib/auth/org-roles";
+import { currentMfaAction, operatorLookup } from "@/lib/auth/org-roles";
+import { AccessError } from "@/components/shell/AccessError";
+import { SessionEndedBar } from "@/components/shell/SessionEndedBar";
 import { AdminMfaBanner } from "@/components/security/AdminMfaBanner";
 import { ENROL_PATH, isEnrolOnlyPath, mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
@@ -80,9 +83,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // And the app is one workspace for everyone but the platform operator: no
   // every-channel roll-up (their first channel instead), and no operator-only
   // section (their Command Center instead). See appRedirect in lib/channels.
-  const operator = await isOperator();
+  const lookup = await operatorLookup();
+  const operator = lookup.operator;
   const headerStore = await headers();
   const path = headerStore.get(PATH_HEADER);
+  // The access lookup itself failed (the database did not answer). That is not "this person is a customer": on a page
+  // only an operator may open, or on the Command Center the owner lands on, say "can't reach the database, retry"
+  // instead of silently redrawing the app as the customer frame. Still fail closed: nothing of the operator's is read
+  // or drawn here, and a customer who hits the same blip on one of their own pages keeps their app.
+  if (lookup.failed && !operator && path) {
+    const base = { path, search: headerStore.get(SEARCH_HEADER) ?? "", honestSlug: honest, selection, channels };
+    const operatorOnly = appRedirect({ ...base, operator: false }) !== appRedirect({ ...base, operator: true });
+    const landing = path.split("/")[2] === landingSection(true);
+    if (operatorOnly || landing) {
+      return (
+        <AppProviders locale={await getLocale()}>
+          <AccessError />
+        </AppProviders>
+      );
+    }
+  }
   // The second factor (docs/security/ADMIN_MFA.md). The middleware has already
   // sent a password-only session that needs a code to /login/verify; this is the
   // same decision again for a request it did not see (lib/security/admin-mfa.ts
@@ -159,6 +179,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AppProviders locale={await getLocale()}>
       <FlashNotice />
+      <SessionEndedBar />
       {/* The motion kit's engine for the signed-in app (docs/design/MOTION.md):
           here rather than in the root layout, so the public pages do not carry
           Motion's core until a page of theirs animates with it. */}

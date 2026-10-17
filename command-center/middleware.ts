@@ -144,6 +144,12 @@ function notFoundResponse(request: NextRequest): NextResponse {
   return NextResponse.rewrite(new URL(NOT_FOUND_PATH, request.url), { request, status: 404 });
 }
 
+/** A top-level page navigation (the address bar, a link), as the browser itself marks it. */
+function isBrowserNavigation(request: NextRequest): boolean {
+  if (request.method !== "GET" && request.method !== "HEAD") return false;
+  return request.headers.get("sec-fetch-mode") === "navigate" || request.headers.get("sec-fetch-dest") === "document";
+}
+
 async function gate(request: NextRequest): Promise<NextResponse> {
   // The Atelier concept prototypes (lib/concepts.ts): a separate namespace,
   // decided before the gate and only for it. Off, every path under /atelier is
@@ -227,6 +233,17 @@ async function gate(request: NextRequest): Promise<NextResponse> {
       isUnknownDocsPath(request.nextUrl.pathname))
   ) {
     return notFoundResponse(request);
+  }
+  // A signed-out CALL to an API route is answered, not redirected. A fetch() follows a 307 to /login and gets the
+  // sign-in page back as a 200, so a client that only looks at `res.ok` reports a success that never happened (a
+  // refresh, a recorded payment, a price). 401 JSON is what every route already answers once it is reached.
+  // A browser NAVIGATION to an API-shaped URL (the YouTube connect link, a download link) keeps the redirect: the
+  // person sees the sign-in page, not raw JSON. Browsers mark it themselves (Sec-Fetch-Mode: navigate); anything
+  // that does not say it is a navigation (fetch, XHR, curl, every non-GET) is a call.
+  if (decision === "to-login" && request.nextUrl.pathname.startsWith("/api/") && !isBrowserNavigation(request)) {
+    const unauthenticated = NextResponse.json({ error: "unauthenticated" }, { status: 401, headers: { "cache-control": "no-store" } });
+    response.cookies.getAll().forEach((c) => unauthenticated.cookies.set(c));
+    return unauthenticated;
   }
   if (decision === "to-login" || decision === "to-home") {
     const url = request.nextUrl.clone();

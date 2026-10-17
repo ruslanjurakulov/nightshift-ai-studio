@@ -3,6 +3,7 @@ import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
+import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
@@ -23,6 +24,7 @@ export const uz: Dictionary = {
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
   ownerSafety: ownerSafetyUz,
+  ownerTruth: ownerTruthUz,
   connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,
   reviewPage: reviewPageUz,

@@ -1,5 +1,7 @@
 "use client";
 
+import { postOperator } from "@/lib/operator-post";
+import { operatorFailureText } from "@/lib/setup-errors";
 import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -103,28 +105,21 @@ function ModelCard({
     }
     setBusy(true);
     setError(null);
-    try {
-      const res = await fetch("/api/models/availability", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: model.id, availability: to }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: unknown };
-      if (!res.ok) {
-        const msg = errorText(data.error);
-        setError(msg);
-        toast.error(msg, { title: model.displayName });
-        return;
-      }
-      setAvailability(to);
-      toast.success(fmt(t.models.saved, { model: model.displayName, availability: label(to) }), { title: model.displayName });
-      router.refresh();
-    } catch {
-      setError(t.models.err_failed);
-      toast.error(t.models.err_failed, { title: model.displayName });
-    } finally {
-      setBusy(false);
+    const out = await postOperator("/api/models/availability", { id: model.id, availability: to });
+    setBusy(false);
+    if (!out.ok) {
+      // A session that ended, a missing second step or no connection say so; the route's own refusals keep their words.
+      const msg =
+        out.kind === "session" || out.kind === "network" || out.kind === "mfa" || out.kind === "mfa_enrol"
+          ? operatorFailureText(t, out, t.models.err_failed)
+          : errorText(out.data.error);
+      setError(msg);
+      toast.error(msg, { title: model.displayName });
+      return;
     }
+    setAvailability(to);
+    toast.success(fmt(t.models.saved, { model: model.displayName, availability: label(to) }), { title: model.displayName });
+    router.refresh();
   }
 
   const price = model.creditUnit && prices ? prices[model.creditUnit] : undefined;

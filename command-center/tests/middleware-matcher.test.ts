@@ -145,7 +145,7 @@ describe("BR-H-001: the matcher has no unanchored exclusion", () => {
   });
 
   it.each(HOSTILE)("signed out, %s is sent to /login or answered with the public 404", async (path) => {
-    const res = await middleware(new NextRequest(`https://nightshift.test${path}`));
+    const res = await middleware(new NextRequest(`https://nightshift.test${path}`, { headers: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } }));
     // A path that cannot be a channel URL (a dot in its first segment, an
     // unknown root word) is answered with the public 404 instead of a sign-in
     // form: a rewrite to the root not-found page, which runs no app layout and

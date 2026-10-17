@@ -3,6 +3,7 @@ import { notifyChannelsRu } from "./notify-channels/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
+import { ownerTruthRu } from "./owner-truth/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
@@ -23,6 +24,7 @@ export const ru: Dictionary = {
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
   ownerSafety: ownerSafetyRu,
+  ownerTruth: ownerTruthRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   reviewPage: reviewPageRu,

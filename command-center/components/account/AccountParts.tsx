@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CircleCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { I18nContext } from "@/lib/i18n/public-context";
 import { fmt } from "@/lib/i18n";
 import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
 import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
@@ -19,6 +20,8 @@ import {
   type Platform,
 } from "@/lib/account";
 import { clearAllDrafts } from "@/lib/create-draft";
+import { signOutThisBrowser } from "@/lib/sign-out";
+import { useToast } from "@/components/feedback/ToastProvider";
 
 /**
  * The pieces of the account panel that more than one place draws: the read of
@@ -70,15 +73,20 @@ export function useAccountSummary(active: boolean): { data: AccountSummary | nul
 /** Sign out of this browser, then to the sign-in page. One implementation for the panel and Settings. */
 export function useSignOut(): () => Promise<void> {
   const router = useRouter();
+  const toast = useToast();
+  // Optional context: a few callers render this hook outside the app's provider, and the sentence below is only for the
+  // rare case that nothing could sign this browser out.
+  const i18n = useContext(I18nContext);
   return async function signOut() {
     // The create form's unfinished draft is this person's; it goes with the session, before anything can fail.
     clearAllDrafts();
-    const supabase = createClient();
-    try {
-      if (supabase) await supabase.auth.signOut();
-    } finally {
-      clearAllCreateAttempts();
-      clearAllEditorDrafts();
+    const outcome = await signOutThisBrowser(createClient()?.auth);
+    clearAllCreateAttempts();
+    clearAllEditorDrafts();
+    // Not signed out (even the local clear failed): /login would bounce straight back in, so say so and stay.
+    if (outcome === "failed") {
+      toast.error(i18n?.full ? i18n.t.ownerTruth.signOutFailed : "Could not sign you out. Close this tab and try again.");
+      return;
     }
     router.push("/login");
     router.refresh();

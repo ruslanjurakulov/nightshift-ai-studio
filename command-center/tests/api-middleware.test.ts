@@ -43,8 +43,13 @@ describe("the public API and its docs pass the cookie gate", () => {
     "%s is not the public API and stays behind sign-in",
     async (path) => {
       expect(isPublicApiPath(path)).toBe(false);
-      const res = await middleware(new NextRequest(`https://nightshift.test${path}`));
-      expect(new URL(res.headers.get("location") ?? "https://x/").pathname).toBe("/login");
+      // A browser visit to the URL is sent to the sign-in page; a call (fetch, no navigation mark) gets 401 JSON.
+      const visit = await middleware(new NextRequest(`https://nightshift.test${path}`, { headers: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } }));
+      expect(new URL(visit.headers.get("location") ?? "https://x/").pathname).toBe("/login");
+      const call = await middleware(new NextRequest(`https://nightshift.test${path}`));
+      expect(call.headers.get("location")).toBeNull();
+      expect(call.status).toBe(401);
+      expect(await call.json()).toEqual({ error: "unauthenticated" });
     },
   );
 

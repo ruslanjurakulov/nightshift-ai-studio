@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ChannelMark } from "@/components/channels/ChannelMark";
-import { setupFailureText } from "@/lib/setup-errors";
+import { operatorFailureText } from "@/lib/setup-errors";
+import { postOperator } from "@/lib/operator-post";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { fmt } from "@/lib/i18n";
@@ -232,70 +233,57 @@ export function AddChannelWizard({
   async function loadVoices() {
     setVoicesBusy(true);
     setVoicesError(null);
-    try {
-      const res = await fetch("/api/setup/voices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: elevenKey.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setVoicesError(
-          data.error === "key_rejected"
-            ? fmt(t.channels.voiceKeyRejected, { reason: data.reason || "401" })
+    const out = await postOperator("/api/setup/voices", { apiKey: elevenKey.trim() });
+    setVoicesBusy(false);
+    if (!out.ok) {
+      const data = out.data;
+      setVoicesError(
+        out.kind === "session" || out.kind === "network" || out.kind === "mfa" || out.kind === "mfa_enrol"
+          ? operatorFailureText(t, out, t.channels.voiceFailed)
+          : data.error === "key_rejected"
+            ? fmt(t.channels.voiceKeyRejected, { reason: typeof data.reason === "string" && data.reason ? data.reason : "401" })
             : data.error === "missing_key"
               ? t.channels.voiceNeedsKey
-              : res.status === 403
+              : out.kind === "forbidden"
                 ? t.channels.voiceOperatorOnly
-                : res.status === 429
+                : out.kind === "rate_limited"
                   ? t.channels.voiceRateLimited
                   : t.channels.voiceFailed,
-        );
-        return;
-      }
-      setVoices(data.voices as Voice[]);
-    } catch {
-      setVoicesError(t.channels.voiceFailed);
-    } finally {
-      setVoicesBusy(false);
+      );
+      return;
     }
+    setVoices(out.data.voices as Voice[]);
   }
 
   async function verify() {
     setVerifyBusy(true);
     setVerifyError(null);
     setInfo(null);
-    try {
-      const res = await fetch("/api/setup/youtube", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: ytDataKey.trim(),
-          channelId: youtubeChannelId.trim(),
-          handle: handle.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setVerifyError(
-          data.error === "key_rejected"
+    const out = await postOperator("/api/setup/youtube", {
+      apiKey: ytDataKey.trim(),
+      channelId: youtubeChannelId.trim(),
+      handle: handle.trim(),
+    });
+    setVerifyBusy(false);
+    if (!out.ok) {
+      const data = out.data;
+      setVerifyError(
+        out.kind === "session" || out.kind === "network" || out.kind === "mfa" || out.kind === "mfa_enrol" || out.kind === "forbidden"
+          ? operatorFailureText(t, out, t.channels.verifyFailed)
+          : data.error === "key_rejected"
             ? t.channels.verifyKeyRejected
             : data.error === "channel_not_found"
               ? t.channels.verifyNotFound
               : data.error === "missing_key"
                 ? t.channels.verifyNeedsKey
                 : t.channels.verifyFailed,
-        );
-        return;
-      }
-      setInfo(data as ChannelInfo);
-      // The confirmed id is authoritative — a handle lookup fills the field in.
-      if (data.channelId) setYoutubeChannelId(data.channelId);
-    } catch {
-      setVerifyError(t.channels.verifyFailed);
-    } finally {
-      setVerifyBusy(false);
+      );
+      return;
     }
+    const found = out.data as unknown as ChannelInfo;
+    setInfo(found);
+    // The confirmed id is authoritative — a handle lookup fills the field in.
+    if (found.channelId) setYoutubeChannelId(found.channelId);
   }
 
   async function create() {
@@ -328,37 +316,25 @@ export function AddChannelWizard({
     const secrets = pendingSecrets();
     if (Object.keys(secrets).length > 0 && ghConfigured) {
       setStage(t.channels.pushingSecrets);
-      try {
-        const res = await fetch("/api/setup/secrets", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ secrets }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setBusy(false);
-          setStage(null);
-          setError(
-            data.error === "github_unauthorized"
-              ? t.channels.secretsUnauthorized
-              : setupFailureText(t, data, t.channels.secretsFailed),
-          );
-          return;
-        }
-        setPushed(data.written ?? []);
-        // Accepted by GitHub — drop every value from the browser.
-        setGeminiKey("");
-        setPexelsKey("");
-        setElevenKey("");
-        setYtDataKey("");
-        setClientSecretJson("");
-        setTokenJson("");
-      } catch {
+      const out = await postOperator("/api/setup/secrets", { secrets });
+      if (!out.ok) {
         setBusy(false);
         setStage(null);
-        setError(t.channels.secretsFailed);
+        setError(
+          out.data.error === "github_unauthorized"
+            ? t.channels.secretsUnauthorized
+            : operatorFailureText(t, out, t.channels.secretsFailed),
+        );
         return;
       }
+      setPushed((out.data.written as { name: string; result: string }[] | undefined) ?? []);
+      // Accepted by GitHub — drop every value from the browser.
+      setGeminiKey("");
+      setPexelsKey("");
+      setElevenKey("");
+      setYtDataKey("");
+      setClientSecretJson("");
+      setTokenJson("");
     }
 
     // 2. Create the channel row — configuration only, no credential material.
