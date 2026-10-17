@@ -25,3 +25,13 @@ export function agentLabel(id: string | null | undefined, names: Readonly<Record
   const hit = Object.prototype.hasOwnProperty.call(names, key) ? names[key] : undefined;
   return hit && hit.trim() ? hit : prettifyAgentId(key);
 }
+
+/**
+ * A short line for a phone: the first `max` names, then "+N" for the rest ("Pipeline, Research +1").
+ * Empty in, empty out.
+ */
+export function agentSummary(ids: ReadonlyArray<string | null>, names: Readonly<Record<string, string>>, max = 2): string {
+  const labels = ids.map((id) => agentLabel(id, names)).filter(Boolean);
+  const shown = labels.slice(0, max).join(", ");
+  return labels.length > max ? `${shown} +${labels.length - max}` : shown;
+}

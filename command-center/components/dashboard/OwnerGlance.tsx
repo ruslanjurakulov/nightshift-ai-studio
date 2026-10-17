@@ -17,6 +17,8 @@ export interface GlanceTile {
   value: string | null;
   sub?: string;
   tone: GlanceTone;
+  /** Spans both columns: a line of names rather than a figure. */
+  wide?: boolean;
 }
 
 const TONE_VAR: Record<GlanceTone, string | undefined> = {
@@ -50,7 +52,7 @@ export function OwnerGlance({
           const known = t.value !== null;
           const flagged = known && (t.tone === "fail" || t.tone === "warn");
           return (
-            <li key={t.key} className="min-w-0">
+            <li key={t.key} className={t.wide ? "col-span-2 min-w-0" : "min-w-0"}>
               <Link
                 href={t.href}
                 className="flex min-h-[5.25rem] flex-col justify-between gap-1 rounded-xl border bg-[var(--color-panel)] p-3 transition-colors hover:bg-[var(--color-hover)]"
@@ -63,7 +65,7 @@ export function OwnerGlance({
                 >
                   {known ? t.value : unknown}
                 </span>
-                {t.sub && <span className="line-clamp-2 text-xs leading-tight text-[var(--color-muted)]">{t.sub}</span>}
+                {t.sub && <span className={`${t.wide ? "truncate" : "line-clamp-2"} text-xs leading-tight text-[var(--color-muted)]`}>{t.sub}</span>}
               </Link>
             </li>
           );

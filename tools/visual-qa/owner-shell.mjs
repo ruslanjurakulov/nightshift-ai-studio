@@ -36,6 +36,7 @@ const MODE = String(arg("mode", "checks"));
 const TAG = String(arg("tag", "after"));
 const OUT = path.resolve(String(arg("out", path.join(REPO, "docs", "design", "owner-mobile"))));
 const LOCALE = String(arg("locale", "uz"));
+const THEME = String(arg("theme", "dark"));
 const CH = "chronos";
 
 function loadPlaywright() {
@@ -74,7 +75,7 @@ function chromiumPath() {
 }
 const browser = await chromium.launch({ executablePath: chromiumPath() });
 
-async function open(width, route, { height = 844, theme = "dark", loc = LOCALE } = {}) {
+async function open(width, route, { height = 844, theme = THEME, loc = LOCALE } = {}) {
   const phone = width < 600;
   const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: "reduce", hasTouch: phone, isMobile: phone });
   await context.addCookies([
@@ -93,7 +94,7 @@ async function shots() {
   mkdirSync(OUT, { recursive: true });
   const tmp = path.join(OUT, ".png-tmp");
   mkdirSync(tmp, { recursive: true });
-  const jobs = [
+  const jobs = THEME === "light" ? [{ name: "light-home-390", width: 390, route: "/command-center", clip: { x: 0, y: 0, w: 390, h: 844 } }] : [
     { name: "home-390", width: 390, route: "/command-center", clip: { x: 0, y: 0, w: 390, h: 844 } },
     { name: "header-320", width: 320, route: "/command-center", clip: { x: 0, y: 0, w: 320, h: 200 } },
     { name: "home-1440", width: 1440, height: 900, route: "/command-center", clip: { x: 0, y: 0, w: 1440, h: 900 } },
@@ -146,6 +147,9 @@ async function checks() {
             : [];
         const menu = [...document.querySelectorAll("button")].filter(vis).filter((b) => /^(menyu|menu|меню)$/i.test((b.textContent || "").trim()));
         const text = document.body.innerText;
+        // A tab label cut short by its cell ("Toʻlovl…") reads as a bug: every label must fit unclipped.
+        const clippedTab = bar ? [...bar.querySelectorAll("a span.truncate")].filter((e) => e.scrollWidth > e.clientWidth + 0.5).map((e) => e.textContent) : [];
+        const sectionsRow = !!document.querySelector("main nav[aria-label] ol");
         return {
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           headerH: Math.round(hdr.getBoundingClientRect().height),
@@ -155,6 +159,8 @@ async function checks() {
           menuButtons: menu.length,
           englishAgo: /\b\d+\s?[smhd] ago\b/.test(text),
           rawIds: /intelligence_poll|youtube_uploader/.test(text),
+          clippedTab,
+          sectionsRow: sectionsRow && [...document.querySelectorAll("main nav[aria-label] ol")].some(vis),
           strip: !!document.querySelector("[data-owner-glance]") && vis(document.querySelector("[data-owner-glance]")),
         };
       });
@@ -175,6 +181,8 @@ async function checks() {
       if (r.barVisible !== tabletDown) bad.push(`${route}@${width}: tab bar visible=${r.barVisible}, expected ${tabletDown}`);
       if (r.menuButtons) bad.push(`${route}@${width}: a Menu button is visible`);
       if (r.smallBar.length || (phone && r.smallHeader.length)) bad.push(`${route}@${width}: small targets header=${r.smallHeader.join("|")} bar=${r.smallBar.join("|")}`);
+      if (r.clippedTab.length) bad.push(`${route}@${width}: tab label clipped: ${r.clippedTab.join("|")}`);
+      if (route === "/sections" && phone && r.sectionsRow) bad.push(`${route}@${width}: breadcrumb row still shown on a phone`);
       if (r.englishAgo && LOCALE !== "en") bad.push(`${route}@${width}: English relative time`);
       if (r.rawIds) bad.push(`${route}@${width}: raw agent id visible`);
       lines.push(`| ${route} | ${width} | ${r.overflow} | ${r.headerH}px | ${r.barVisible ? "yes" : "no"} | ${r.menuButtons} | ${r.smallHeader.length + r.smallBar.length} | ${r.strip ? "yes" : "no"} | ${axeLine || "n/a"} |`);

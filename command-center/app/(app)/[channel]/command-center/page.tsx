@@ -29,8 +29,8 @@ import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerfor
 import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
 import { heldOnly, uploadedOnly } from "@/lib/heldVideos";
 import { OwnerGlance, type GlanceTile } from "@/components/dashboard/OwnerGlance";
-import { agentLabel } from "@/lib/agent-names";
-import { balanceTone, lowestProviderBalance, workersAlive } from "@/lib/owner-glance";
+import { agentLabel, agentSummary } from "@/lib/agent-names";
+import { balanceStale, balanceTone, lowestProviderBalance, workersAlive, workersTone } from "@/lib/owner-glance";
 import type { BalanceRow } from "@/lib/billing";
 import { WORKER_COLUMNS, coerceWorkers, type WorkerRow } from "@/lib/workers";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -249,13 +249,16 @@ export default async function CommandCenter() {
     const gl = glanceInputs;
     const flag = (n: number | null, bad: GlanceTile["tone"]): GlanceTile["tone"] => (n === null ? "idle" : n > 0 ? bad : "ok");
     if (gl.showBalance) {
+      const stale = gl.low ? balanceStale(gl.low.checkedAt, Date.now()) : false;
       tiles.push({
         key: "balance",
         href: path("/billing"),
         label: t.ownerShell.gBalance,
-        value: gl.low ? `${gl.low.pct}%` : null,
-        sub: gl.low ? `${gl.low.name} · ${relativeTime(gl.low.checkedAt, locale)}` : t.ownerShell.gBalanceNone,
-        tone: gl.low ? balanceTone(gl.low.pct) : "idle",
+        value: gl.low ? fmt(t.ownerShell.gBalanceLeft, { pct: gl.low.pct }) : null,
+        sub: gl.low
+          ? `${gl.low.name} · ${stale ? t.ownerShell.gBalanceStale : relativeTime(gl.low.checkedAt, locale)}`
+          : t.ownerShell.gBalanceNone,
+        tone: gl.low ? balanceTone(gl.low.pct, stale) : "idle",
       });
     }
     tiles.push(
@@ -292,10 +295,13 @@ export default async function CommandCenter() {
           ? t.common.couldNotRead
           : gl.alive.total === 0
             ? t.ownerShell.gWorkersNone
-            : gl.alive.silent > 0
-              ? fmt(t.ownerShell.gWorkersSilent, { n: gl.alive.silent })
-              : t.ownerShell.gWorkersAll,
-        tone: !gl.alive || gl.alive.total === 0 ? "idle" : gl.alive.silent > 0 ? "warn" : "ok",
+            : [
+                gl.alive.silent > 0 ? fmt(t.ownerShell.gWorkersSilent, { n: gl.alive.silent }) : "",
+                gl.alive.stopped > 0 ? fmt(t.ownerShell.gWorkersStopped, { n: gl.alive.stopped }) : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") || t.ownerShell.gWorkersAll,
+        tone: workersTone(gl.alive),
       },
       {
         key: "published",
@@ -303,6 +309,16 @@ export default async function CommandCenter() {
         label: t.dashboard.publishedToday,
         value: publishedToday === null ? null : num(publishedToday),
         tone: "idle",
+      },
+      {
+        // Humanized names, so the agent-name work is on the phone too (the figures row is desktop-only).
+        key: "agents",
+        href: path("/agents"),
+        label: t.dashboard.activeAgents,
+        value: activeAgents === null ? null : num(activeAgents),
+        sub: runningAgents.length ? agentSummary(runningAgents, t.ownerShell.agentNames) : t.common.idle,
+        tone: "idle",
+        wide: true,
       },
     );
   }

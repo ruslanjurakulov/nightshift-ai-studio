@@ -7,11 +7,15 @@ import type { ReactNode } from "react";
 
 const push = vi.fn();
 let pathname = "/chronos/command-center";
+let operatorNow = true;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
   useSearchParams: () => new URLSearchParams(""),
   useRouter: () => ({ push, refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  notFound: () => {
+    throw new Error("NEXT_NOT_FOUND");
+  },
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
@@ -24,6 +28,12 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
 vi.mock("@/components/navigation/NavigationProvider", () => ({
   useNavigation: () => ({ canGoBack: () => false, goBack: vi.fn(), channelName: () => null, showChannel: false }),
 }));
+vi.mock("@/lib/auth/org-roles", () => ({ isOperator: async () => operatorNow }));
+vi.mock("@/lib/i18n/server", async () => {
+  const { dictionaries } = await import("@/lib/i18n");
+  return { getDictionary: async () => ({ locale: "en", t: dictionaries.en }) };
+});
+vi.mock("@/lib/channels-path-server", () => ({ getChannelPath: async () => (p: string) => `/chronos${p}` }));
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
 
 import { I18nProvider } from "@/lib/i18n/context";
@@ -60,6 +70,7 @@ const CHANNELS = [
 ] as unknown as ChannelRow[];
 
 beforeEach(() => {
+  operatorNow = true;
   pathname = "/chronos/command-center";
   push.mockClear();
   window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
@@ -134,13 +145,17 @@ describe("the owner's phone navigation is visible, not a drawer", () => {
     expect(ALL_SECTIONS).toBe("/sections");
   });
 
-  it("the sections page lists everything the desktop rail does, so nothing is only reachable from the rail", () => {
-    const rail = navGroupsFor(true).flatMap((g) => g.items.map((i) => i.href));
-    expect(rail.length).toBeGreaterThan(30);
-    // The page renders navGroupsFor(true) directly: pin that it is the operator's list.
-    const src = readFileSync(path.join(__dirname, "..", "app", "(app)", "[channel]", "sections", "page.tsx"), "utf8");
-    expect(src).toContain("navGroupsFor(true)");
-    expect(src).toContain("isOperator()");
+  it("the sections page 404s for a non-operator and, for the operator, lists everything the desktop rail does", async () => {
+    const { default: AllSectionsPage } = await import("../app/(app)/[channel]/sections/page");
+    operatorNow = false;
+    await expect(AllSectionsPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    operatorNow = true;
+    render(await AllSectionsPage());
+    const railHrefs = navGroupsFor(true).flatMap((g) => g.items.map((i) => `/chronos${i.href}`));
+    expect(railHrefs.length).toBeGreaterThan(30);
+    const listed = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+    for (const h of railHrefs) expect(listed, h).toContain(h);
+    expect(screen.getByRole("heading", { level: 1, name: en.nav.allSections })).toBeTruthy();
   });
 
   it("SideNav has no hamburger icon, drawer or Menu button left for the owner", () => {

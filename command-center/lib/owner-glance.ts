@@ -41,8 +41,19 @@ export function lowestProviderBalance(rows: BalanceRow[]): LowestBalance | null 
 
 export type GlanceTone = "ok" | "warn" | "fail" | "idle";
 
-export function balanceTone(pct: number): GlanceTone {
-  return pct < BALANCE_CRITICAL_PCT ? "fail" : pct < BALANCE_LOW_PCT ? "warn" : "ok";
+/** A balance snapshot older than this is not today's number: the tile is never "fine" on it. */
+export const BALANCE_STALE_MS = 24 * 60 * 60 * 1000;
+
+/** Is the snapshot older than a day (or unreadable)? */
+export function balanceStale(checkedAt: string, nowMs: number): boolean {
+  const at = Date.parse(checkedAt);
+  return !Number.isFinite(at) || nowMs - at > BALANCE_STALE_MS;
+}
+
+/** Critical below 5%, low below 20%; a stale snapshot caps at warn, since the real figure may be lower. */
+export function balanceTone(pct: number, stale = false): GlanceTone {
+  const tone: GlanceTone = pct < BALANCE_CRITICAL_PCT ? "fail" : pct < BALANCE_LOW_PCT ? "warn" : "ok";
+  return stale && tone === "ok" ? "warn" : tone;
 }
 
 export interface WorkersAlive {
@@ -50,16 +61,30 @@ export interface WorkersAlive {
   total: number;
   /** Workers that said they run but whose heartbeat is stale, plus ones that reported a failure. */
   silent: number;
+  /** Workers that reported a clean stop: not broken, but not working either. */
+  stopped: number;
 }
 
-/** How many registered workers are reporting right now (a running worker with a stale heartbeat is not). */
+/** How many registered workers are reporting right now (a running worker with a stale heartbeat is not; a stopped one is counted apart). */
 export function workersAlive(rows: WorkerRow[], nowMs: number): WorkersAlive {
   let alive = 0;
   let silent = 0;
+  let stopped = 0;
   for (const r of rows) {
     const shown = workerView(r, nowMs).shown;
     if (shown === "running" || shown === "starting") alive += 1;
     else if (shown === "notReporting" || shown === "failed") silent += 1;
+    else if (shown === "stopped") stopped += 1;
   }
-  return { alive, total: rows.length, silent };
+  return { alive, total: rows.length, silent, stopped };
+}
+
+/**
+ * The workers tile's tone: fine only when every registered worker is alive. A stopped or silent worker is
+ * never "all reporting"; with none alive it is a failure.
+ */
+export function workersTone(w: WorkersAlive | null): GlanceTone {
+  if (!w || w.total === 0) return "idle";
+  if (w.alive === w.total) return "ok";
+  return w.alive === 0 ? "fail" : "warn";
 }

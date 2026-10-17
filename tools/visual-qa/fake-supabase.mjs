@@ -273,6 +273,7 @@ const OWNER_WORKERS = () => [
   { worker_id: "media-1", kind: "media", state: "running", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-20_000) },
   { worker_id: "creative-1", kind: "creative", state: "running", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-30 * 60_000) },
   { worker_id: "pipeline-1", kind: "pipeline", state: "running", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-10_000) },
+  { worker_id: "email-1", kind: "other", state: "stopped", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-2 * 3_600_000) },
 ];
 const OWNER_ALERTS = () => [
   { id: "a1", at: iso(-3 * 3_600_000), kind: "balance.low", severity: "warn", channel_id: null, title: "ElevenLabs balance is low", body: null, delivered: true },

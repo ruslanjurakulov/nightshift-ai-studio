@@ -24,7 +24,8 @@ export const ownerShellEn = {
   glanceLabel: "At a glance",
   gBalance: "Lowest balance",
   gBalanceNone: "no balance data",
-  gBalanceLow: "running low",
+  gBalanceLeft: "{pct}% left",
+  gBalanceStale: "checked over a day ago",
   gFailed: "Failed (24h)",
   gWaiting: "Waiting for you",
   gWaitingSub: "approve or reject",
@@ -33,8 +34,8 @@ export const ownerShellEn = {
   gWorkers: "Workers alive",
   gWorkersAll: "all reporting",
   gWorkersSilent: "{n} not reporting",
+  gWorkersStopped: "{n} stopped",
   gWorkersNone: "none registered",
-  gSystem: "System",
   // Readable names for the agent ids in system_events.agent. Any id not listed is shown prettified.
   agentNames: {
     pipeline: "Pipeline",

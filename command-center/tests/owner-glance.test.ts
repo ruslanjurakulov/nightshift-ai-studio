@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { relativeTime } from "@/lib/format";
 import { formatAgo, naWord } from "@/lib/date-format";
-import { agentLabel, prettifyAgentId } from "@/lib/agent-names";
+import { agentLabel, agentSummary, prettifyAgentId } from "@/lib/agent-names";
 import { dictionaries } from "@/lib/i18n";
-import { BALANCE_CRITICAL_PCT, BALANCE_LOW_PCT, balanceTone, lowestProviderBalance, workersAlive } from "@/lib/owner-glance";
+import { BALANCE_CRITICAL_PCT, BALANCE_LOW_PCT, balanceStale, balanceTone, lowestProviderBalance, workersAlive, workersTone } from "@/lib/owner-glance";
 import type { BalanceRow } from "@/lib/billing";
 import type { WorkerRow } from "@/lib/workers";
 
@@ -86,6 +86,14 @@ describe("agent ids a person can read", () => {
     expect(agentLabel("  ", names)).toBe("");
   });
 
+  it("summarises running agents for a phone: two names, then +N", () => {
+    const en = dictionaries.en.ownerShell.agentNames;
+    expect(agentSummary([], en)).toBe("");
+    expect(agentSummary(["pipeline"], en)).toBe("Pipeline");
+    expect(agentSummary(["intelligence_poll", "pipeline", "research_engine", "x_y"], en)).toBe("Intelligence poller, Pipeline +2");
+    expect(agentSummary(["pipeline", null], en)).toBe("Pipeline");
+  });
+
   it("does not resolve prototype keys", () => {
     expect(agentLabel("constructor", names)).toBe("Constructor");
     expect(agentLabel("toString", names)).toBe("ToString");
@@ -130,6 +138,26 @@ describe("the owner's strip numbers", () => {
     expect(balanceTone(BALANCE_LOW_PCT)).toBe("ok");
   });
 
+  it("is never fine while a worker is stopped or silent", () => {
+    expect(workersTone(null)).toBe("idle");
+    expect(workersTone({ alive: 0, total: 0, silent: 0, stopped: 0 })).toBe("idle");
+    expect(workersTone({ alive: 3, total: 3, silent: 0, stopped: 0 })).toBe("ok");
+    // A cleanly stopped worker is not "all reporting".
+    expect(workersTone({ alive: 2, total: 3, silent: 0, stopped: 1 })).toBe("warn");
+    expect(workersTone({ alive: 2, total: 3, silent: 1, stopped: 0 })).toBe("warn");
+    expect(workersTone({ alive: 0, total: 2, silent: 0, stopped: 2 })).toBe("fail");
+  });
+
+  it("caps a day-old balance at warn, and reads an unparseable time as stale", () => {
+    expect(balanceStale(ago(2 * HOUR), NOW)).toBe(false);
+    expect(balanceStale(ago(25 * HOUR), NOW)).toBe(true);
+    expect(balanceStale("not a time", NOW)).toBe(true);
+    expect(balanceTone(60, true)).toBe("warn");
+    expect(balanceTone(60, false)).toBe("ok");
+    expect(balanceTone(2, true)).toBe("fail");
+    expect(balanceTone(10, true)).toBe("warn");
+  });
+
   it("counts only workers that are reporting now", () => {
     const w = (id: string, state: WorkerRow["state"], updatedAt: string | null): WorkerRow => ({
       workerId: id,
@@ -147,7 +175,7 @@ describe("the owner's strip numbers", () => {
       w("d", "stopped", ago(DAY)),
       w("e", "starting", ago(10_000)),
     ];
-    expect(workersAlive(rows, NOW)).toEqual({ alive: 2, total: 5, silent: 2 });
-    expect(workersAlive([], NOW)).toEqual({ alive: 0, total: 0, silent: 0 });
+    expect(workersAlive(rows, NOW)).toEqual({ alive: 2, total: 5, silent: 2, stopped: 1 });
+    expect(workersAlive([], NOW)).toEqual({ alive: 0, total: 0, silent: 0, stopped: 0 });
   });
 });
