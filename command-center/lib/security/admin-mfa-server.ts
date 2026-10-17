@@ -51,10 +51,26 @@ export async function readMfaState(user: MfaUser | null | undefined): Promise<Mf
   }
 }
 
-/** A server-side warning for an admin session that is still password-only although a code is available. No e-mail, no token. */
-export function logPasswordOnlyAdmin(userId: string): void {
+const WARN_EVERY_MS = 60 * 60 * 1000;
+const warned = new Map<string, number>();
+
+/** For tests only: forget what was already logged. */
+export function resetMfaWarnThrottle(): void {
+  warned.clear();
+}
+
+/**
+ * A server-side warning for an admin session that is still password-only although a code is available.
+ * No e-mail, no token. At most once per process, per user-id prefix, per hour: in `warn` mode every admin
+ * request would otherwise log it.
+ */
+export function logPasswordOnlyAdmin(userId: string, now: number = Date.now()): void {
+  const key = userId.slice(0, 8);
+  const last = warned.get(key);
+  if (last !== undefined && now - last < WARN_EVERY_MS) return;
+  warned.set(key, now);
   console.warn(
-    `[admin-mfa] warn: platform admin ${userId.slice(0, 8)} is on a password-only (aal1) session and has a verified second factor; ` +
+    `[admin-mfa] warn: platform admin ${key} is on a password-only (aal1) session and has a verified second factor; ` +
       `${ADMIN_MFA_ENV}=enforce would have blocked this request`,
   );
 }

@@ -19,6 +19,7 @@ import {
   isSignedMediaPath,
   isUnknownDocsPath,
   isUnknownSolutionPath,
+  isWelcomePath,
 } from "@/lib/public-paths";
 import { authorizeReturnPath } from "@/lib/oauth/authorize";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
@@ -239,7 +240,9 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   }
   // Served as-is, with any refreshed auth cookies. The public pages sit outside
   // the channel layout, so they get no channel header.
-  if (decision === "pass") return response;
+  // /welcome is the one signed-in page the gate serves as "pass": it is checked for the second factor below
+  // like any app URL (a password-only session must not reach onboarding either). /reset-password stays exempt.
+  if (decision === "pass" && !isWelcomePath(request.nextUrl.pathname)) return response;
 
   // The second factor (docs/security/ADMIN_MFA.md). A signed-in app URL or API
   // call from a password-only session whose account has an authenticator needs
@@ -263,6 +266,7 @@ async function gate(request: NextRequest): Promise<NextResponse> {
     response.cookies.getAll().forEach((c) => blocked.cookies.set(c));
     return blocked;
   }
+  if (decision === "pass") return response;
 
   // A channelless URL is sent to one that names its channel.
   const redirectTo = channelRedirect(request);

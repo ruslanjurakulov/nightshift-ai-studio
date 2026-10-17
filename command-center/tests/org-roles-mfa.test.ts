@@ -66,6 +66,7 @@ vi.mock("@/lib/auth/roles", async () => {
 
 const { isOperator, requireOperator, guardOperatorPage, currentMfaAction } = await import("../lib/auth/org-roles");
 const { getOrgContext } = await import("../lib/orgs-server");
+const { logPasswordOnlyAdmin, resetMfaWarnThrottle } = await import("../lib/security/admin-mfa-server");
 
 const VERIFIED: Factor[] = [{ status: "verified", factor_type: "totp" }];
 const ORG = [{ id: "o1", name: "O", slug: "o", role: "owner", is_default: false }];
@@ -82,6 +83,7 @@ function reset() {
 
 beforeEach(() => {
   reset();
+  resetMfaWarnThrottle();
   vi.unstubAllEnvs();
 });
 afterEach(() => {
@@ -176,6 +178,23 @@ describe("currentMfaAction", () => {
     expect(line).toContain("u-admin-"); // an id prefix only
     expect(line).not.toContain("u-admin-1234567");
     expect(line).not.toMatch(/@/);
+  });
+
+  it("the warning is logged once per user-id prefix per hour, not on every request", async () => {
+    setMode("warn");
+    admin(VERIFIED, "aal1");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    for (let i = 0; i < 5; i++) expect(await currentMfaAction(state.user)).toBe("warn_complete");
+    expect(warn).toHaveBeenCalledTimes(1);
+    // another admin is a separate key
+    logPasswordOnlyAdmin("zzzzzzzz-other");
+    expect(warn).toHaveBeenCalledTimes(2);
+    // within the hour: silent; after it: once more
+    const t0 = Date.now();
+    logPasswordOnlyAdmin("zzzzzzzz-other", t0 + 59 * 60 * 1000);
+    expect(warn).toHaveBeenCalledTimes(2);
+    logPasswordOnlyAdmin("zzzzzzzz-other", t0 + 61 * 60 * 1000);
+    expect(warn).toHaveBeenCalledTimes(3);
   });
 
   it("warn: an admin with NO factor gets the enrol banner, never a block", async () => {

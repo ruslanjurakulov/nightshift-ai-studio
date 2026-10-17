@@ -86,12 +86,36 @@ describe("a customer with an authenticator", () => {
     expect(new URL(res.headers.get("location") ?? "https://nightshift.test/chronos/videos").pathname).not.toBe("/login/verify");
   });
 
+  it("/welcome (onboarding, served as 'pass' by the gate) is held for the code too, without a loop", async () => {
+    const to = new URL((await get("/welcome")).headers.get("location") ?? "https://x/");
+    expect(to.pathname).toBe("/login/verify");
+    expect(to.searchParams.get("next")).toBe("/welcome");
+    // ...and once the code is in, the same URL opens.
+    auth.aal = "aal2";
+    const ok = await get("/welcome");
+    expect(ok.headers.get("location")).toBeNull();
+    expect(ok.status).toBe(200);
+  });
+
+  it("/reset-password stays exempt (a recovery session must reach it)", async () => {
+    const res = await get("/reset-password");
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
   it("public pages are open to them, signed in", async () => {
     expect((await get("/pricing")).headers.get("location")).toBeNull();
   });
 });
 
 describe("a customer who never enrolled", () => {
+  it("/welcome opens as before", async () => {
+    auth.user = { id: "c5", factors: [] };
+    const res = await get("/welcome");
+    expect(res.headers.get("location")).toBeNull();
+    expect(auth.calls).toEqual({ aal: 0, rpc: 0 });
+  });
+
   it("is never asked, and nothing is looked up for them", async () => {
     auth.user = { id: "c2", factors: [] };
     const res = await get("/chronos/videos");
@@ -145,6 +169,13 @@ describe("the admin", () => {
     auth.user = { id: "a1", factors: [] };
     expect(await goesToCode()).toBe(false);
     expect((await get("/api/billing/topup")).status).not.toBe(401);
+  });
+
+  it("enforce: /welcome is held for an aal1 admin with a factor; warn lets it through", async () => {
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+    expect(await goesToCode("/welcome")).toBe(true);
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "warn");
+    expect(await goesToCode("/welcome")).toBe(false);
   });
 
   it("off: break-glass, an aal1 admin with a factor gets in", async () => {

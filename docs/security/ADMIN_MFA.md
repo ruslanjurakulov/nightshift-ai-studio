@@ -33,13 +33,14 @@ setting.
 
 ## The switch: `NIGHTSHIFT_ADMIN_MFA`
 
-Read on every request, so a restart is enough. Anything other than exactly
-`off` or `enforce` (unset, empty, a typo) is `warn`.
+Read on every request, so a restart is enough. The value is trimmed and
+lower-cased, so ` Enforce ` is `enforce`. Anything that is not `off` or `enforce`
+after that (unset, empty, a typo such as `enforced`) is `warn`.
 
 | Mode | Operator on a password-only session, **with** a verified factor | Operator, **no** factor | Everyone else |
 |---|---|---|---|
 | `off` | passes | passes | passes, and nobody is asked for a code at all |
-| `warn` (default) | passes; banner "enter your code" on every admin page; a server-side warning is logged | passes; banner "add an authenticator" linking `/security` | enrolled account: challenged; never enrolled: untouched |
+| `warn` (default) | passes; banner "enter your code" on every admin page; a server-side warning is logged | passes; banner "add an authenticator" linking `/security` | **enrolled account: challenged at sign-in** (`warn` only relaxes the *admin*); never enrolled: untouched |
 | `enforce` | pages redirect to `/login/verify`; API routes answer `401 {"error":"mfa_required"}` | passes; same banner as `warn` | same as `warn` |
 
 An `aal2` session passes in every mode.
@@ -62,10 +63,16 @@ the device. That is the break-glass case below.
 
 Do them in this order. Do not skip to step 5.
 
-1. Merge and deploy this change. Nothing changes for you: `warn` is the default,
-   you only see the banner.
-2. Open `/security` and enrol an authenticator app. Confirm the 6-digit code so
-   it shows as verified.
+1. Merge and deploy this change. Nothing is blocked for you: `warn` is the
+   default and you only see the banner. (This is not "nothing changes" for the
+   site: any customer who has already enrolled an authenticator is now asked for
+   the code at sign-in, in `warn` as well. The live database had no enrolled
+   factor when this was written.)
+2. **Enrol your factor before anything else.** While the owner account has no
+   verified factor, someone who steals the password can sign in, enrol *their
+   own* authenticator on your account, and then they are the one holding the
+   second factor. Open `/security` and enrol an authenticator app now, and confirm
+   the 6-digit code so it shows as verified.
 3. Enrol a **second** factor on a second device (or a second authenticator on a
    password manager). Write both setup keys down offline. There are no recovery
    codes in the app: a lost device is recovered with the second factor, then
@@ -81,18 +88,50 @@ Do them in this order. Do not skip to step 5.
 
 ## Break-glass
 
-You lost both devices, or the code page misbehaves and you cannot get in:
+### How Supabase behaves (and what to confirm)
 
-1. Set `NIGHTSHIFT_ADMIN_MFA` to `off` (the repository variable, then redeploy;
-   the deploy overwrites the server env file, so editing the file on the box does
-   not stick).
-2. Sign in with the password. `/login/verify` sends you straight on, and nothing
-   asks for a code anywhere while the mode is `off`.
-3. At `/security` remove the lost factor, enrol new ones, then set the variable
-   back to `warn` and later `enforce`.
-4. If you cannot even sign in with the password, that is not this gate: use the
-   Supabase dashboard (password reset, or `delete from auth.mfa_factors where
-   id = '…'` in the SQL editor for a lost factor).
+Once an account has a verified factor, GoTrue (`internal/api/mfa.go` in
+supabase/auth) wants an `aal2` session to **unenroll** a verified factor, and the
+JavaScript reference says the same for unenroll. By the same code path, enrolling
+a *new* factor also needs `aal2` once a verified factor exists. That is what
+protects an enrolled account from a password-only attacker adding their own
+factor. It means a password-only session cannot remove a lost factor and cannot
+add a replacement. **The live GoTrue behaviour has not been tested; the owner
+should confirm it once** (with an enrolled test account on a password-only
+session, try to enrol a second factor at `/security` and expect a refusal). Until
+that is confirmed, treat "an attacker with only the password cannot add a factor
+to an account that already has one" as expected, not proven.
+
+### You lost every device
+
+Setting `NIGHTSHIFT_ADMIN_MFA=off` is **not enough on its own**. It switches off
+only this application's gate (the middleware, the layout banner, the code page).
+It does not touch the factor: the account still has a verified factor, your
+password session is still `aal1`, and Supabase will still refuse to unenroll the
+factor or enrol a new one from it. So:
+
+1. **Primary path, in the Supabase dashboard SQL editor** (your dashboard account
+   is the root of trust; protect it with a hardware key):
+   ```sql
+   select id, friendly_name, status from auth.mfa_factors
+   where user_id = (select id from auth.users where email = '<owner e-mail>');
+   delete from auth.mfa_factors where id = '<lost factor id>';
+   ```
+   Delete only the factor(s) you lost. With no verified factor left, the account
+   is an ordinary password account again: the code page is skipped and the gate
+   has nothing to ask. (The deleted factors' sessions are not signed out for you;
+   sign out of other sessions afterwards.)
+2. Sign in with the password, **enrol a new factor at `/security` immediately**
+   (see "enrol your factor before anything else" above: until you do, anyone with
+   the password could enrol theirs).
+3. Only if the code page itself misbehaves while factors are fine: set the
+   repository variable `NIGHTSHIFT_ADMIN_MFA` to `off` and redeploy (the deploy
+   overwrites the server env file, so editing the file on the box does not
+   stick). The app then asks nobody for a code, `/login/verify` sends you
+   straight on, and you can reach `/security`. Set it back to `warn`, then
+   `enforce`, when fixed.
+4. If you cannot sign in with the password at all, that is not this gate: use the
+   Supabase dashboard (password reset).
 5. After any break-glass: change the password, sign out of other sessions, and
    check who else was signed in.
 
