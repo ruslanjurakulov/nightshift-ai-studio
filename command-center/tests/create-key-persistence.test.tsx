@@ -314,19 +314,50 @@ describe("sign-out clears the entries", () => {
     expect(localCalls).toHaveBeenCalledTimes(1);
   });
 
-  it("useSignOut clears them even when nothing could sign out, and does not pretend it did (no navigation)", async () => {
+  it("useSignOut when the library cannot sign out at all (auth outage): the session is removed by hand, the entries go, then /login", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      seed();
+      document.cookie = "sb-proj-auth-token=abc; Path=/";
+      signOutImpl = () => Promise.resolve({ error: { message: "503" } });
+      localImpl = () => Promise.resolve({ error: { message: "503" } });
+      let out: () => Promise<void> = async () => {};
+      function Grab() {
+        out = useSignOut();
+        return null;
+      }
+      render(<Grab />);
+      const done = out();
+      await vi.advanceTimersByTimeAsync(2000);
+      await done;
+      expect(document.cookie).not.toContain("sb-proj-auth-token");
+      expect(left()).toEqual(["other.key"]);
+      expect(nav.push).toHaveBeenCalledWith("/login");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("useSignOut when the session cookie cannot be removed: nothing is thrown away and there is no navigation", async () => {
     seed();
     signOutImpl = () => Promise.reject(new Error("offline"));
     localImpl = () => Promise.reject(new Error("storage"));
-    let out: () => Promise<void> = async () => {};
-    function Grab() {
-      out = useSignOut();
-      return null;
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, "cookie")!;
+    Object.defineProperty(document, "cookie", { configurable: true, get: () => "sb-proj-auth-token=abc", set: () => undefined });
+    try {
+      let out: () => Promise<void> = async () => {};
+      function Grab() {
+        out = useSignOut();
+        return null;
+      }
+      render(<Grab />);
+      await out();
+      expect(left().length).toBeGreaterThan(1);
+      expect(nav.push).not.toHaveBeenCalled();
+    } finally {
+      delete (document as unknown as Record<string, unknown>).cookie;
+      Object.defineProperty(Document.prototype, "cookie", original);
     }
-    render(<Grab />);
-    await out();
-    expect(left()).toEqual(["other.key"]);
-    expect(nav.push).not.toHaveBeenCalled();
   });
 
   it("useSignOut (the account panel and Settings)", async () => {

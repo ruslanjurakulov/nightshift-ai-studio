@@ -22,7 +22,8 @@ export const ownerTruthEn = {
   accessErrorRetry: "Retry",
   accessErrorWorking: "Checking…",
   // Sign out
-  signOutFailed: "Could not sign you out on this phone. Close the browser tab and try again.",
+  signOutFailed: "Could not reach the server to sign you out. Try again when you are online.",
+  testDeliveredNotSaved: "Delivered, but not saved to the feed. It will not show in the list below.",
   // Billing and the Command Center: what is unknown or cut is said, never shown as zero
   billingReadFailed: "Part of the billing data could not be read. The figures that depend on it are shown as unknown, not as zero.",
   spendCut: "The spend history was cut at {n} rows: only the newest are counted, so spend and days left may be understated.",
