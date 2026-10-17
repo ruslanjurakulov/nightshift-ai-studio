@@ -98,7 +98,7 @@ function LearningItem({
   actions: LearningDecision[];
   withdraw?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [state, setState] = useState<"idle" | "busy" | "fail">("idle");
   const [error, setError] = useState("");
@@ -134,8 +134,8 @@ function LearningItem({
         <span className="text-[var(--color-primary)]">{kindLabel}</span>
         {showChannel && <span>· {row.channel_id}</span>}
         <span>· {t.learnings.confidence}: {pct === null ? t.learnings.confidenceUnknown : `${pct}%`}</span>
-        <span>· {t.learnings.proposed} {relativeTime(row.created_at)}</span>
-        {row.decided_at && <span>· {t.learnings.decided} {relativeTime(row.decided_at)}</span>}
+        <span>· {t.learnings.proposed} {relativeTime(row.created_at, locale)}</span>
+        {row.decided_at && <span>· {t.learnings.decided} {relativeTime(row.decided_at, locale)}</span>}
       </div>
       <p className="m-0 text-base text-[var(--color-fg)]">{row.observation}</p>
       {evidenceLines(row.evidence).length > 0 && (

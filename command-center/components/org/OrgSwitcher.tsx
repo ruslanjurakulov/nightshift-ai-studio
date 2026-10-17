@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
-import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE } from "@/lib/channels";
+import { ALL_CHANNELS_SLUG } from "@/lib/channels";
+import { switchOrganization } from "@/lib/context-switch";
 import type { OrgSummary } from "@/lib/orgs";
 
 /**
@@ -49,23 +50,14 @@ export function OrgSwitcher({ orgs, currentId }: { orgs: OrgSummary[]; currentId
     if (id === currentId || busy) return;
     setBusy(true);
     setError(false);
-    try {
-      const res = await fetch("/api/org/select", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId: id }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      // The remembered channel belongs to the org being left.
-      document.cookie = `${CHANNEL_COOKIE}=${ALL_CHANNELS_SLUG}; path=/; max-age=31536000; samesite=lax`;
+    if (await switchOrganization(id)) {
       // The bare segment lands on the first channel (app/(app)/[channel]/page.tsx).
       router.push(`/${ALL_CHANNELS_SLUG}`);
       router.refresh();
-    } catch {
+    } else {
       setError(true);
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   }
 
   return (

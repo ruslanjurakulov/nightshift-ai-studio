@@ -43,7 +43,7 @@ export function SystemStatus({
   /** The page's channel scope — live events outside it are dropped. */
   scope: ChannelScope;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { events, connected } = useRealtimeEvents(initial, "chronos_status", scope);
   const subs = useMemo(() => subsystemHealth(events, dbOk, connected ?? true), [events, dbOk, connected]);
   const overall = overallStatus(subs);
@@ -60,7 +60,7 @@ export function SystemStatus({
           <li key={s.key} className="g5-tile">
             <span className="g5-tile-name">{String(t.ops[NAME_KEY[s.key]])}</span>
             <span className="g5-tile-end">
-              {s.lastSuccess && <span className="g5-tile-time hidden sm:inline">{relativeTime(s.lastSuccess)}</span>}
+              {s.lastSuccess && <span className="g5-tile-time hidden sm:inline">{relativeTime(s.lastSuccess, locale)}</span>}
               <StatusLamp tone={s.tone as LampTone} label={String(t.ops[STATE_KEY[s.state]])} />
             </span>
           </li>

@@ -14,6 +14,7 @@ import { NotificationBell } from "@/components/shell/NotificationBell";
 import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { OrgSwitcher } from "@/components/org/OrgSwitcher";
+import { ContextSwitcher } from "@/components/shell/ContextSwitcher";
 import { CreditBalanceChip } from "@/components/credits/CreditBalanceChip";
 import { CreditMenu } from "@/components/shell/CreditMenu";
 import type { CreditAccount } from "@/lib/credits";
@@ -128,56 +129,61 @@ export function Header({
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_78%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-4 backdrop-blur-md sm:py-5">
-      <div className="bar-measure flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-        <div className="flex min-w-0 items-center gap-6 xl:gap-10">
-        <Link
-          href={path("/command-center")}
-          aria-label={t.brand.name}
-          className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:32px] max-[389px]:[--wm-h:27px] max-[359px]:[--wm-h:24px]"
-        >
-          <Wordmark />
-        </Link>
-      </div>
-
-        {/* Below `sm` the bar keeps only what a phone needs every minute: the
-            channel, the bell and the account. Credits, language and theme move
-            into the account menu (which shows them anyway), and the ⌘K search
-            has no keyboard on a phone. The wrappers are `contents` from `sm`
-            up, so the desktop bar is unchanged. They are spans rather than a
-            `hidden` class on the control because `.btn-sky` sets its own
-            display, which beats the utility. */}
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">
-        <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
-        <span className="hidden sm:contents">
-          <CreditBalanceChip account={credits} />
-        </span>
-        <ChannelSwitcher channels={channels} selection={selection} />
-        <span className="hidden sm:contents">
-          <button
-            type="button"
-            onClick={openPalette}
-            aria-label={t.ops.palettePlaceholder}
-            className="btn-sky is-quiet pill h-10 gap-2 px-3.5"
+    <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_78%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-2 backdrop-blur-md sm:py-5">
+      {/* One row on a phone, as the customer's bar is: the mark, ONE workspace picker (organization above
+          channel, full names in its sheet), the bell and the account. Navigation is the bottom bar
+          (SideNav), not a second row. From `sm` the bar is the desktop one, wrapping as it always did. */}
+      <div className="bar-measure flex items-center justify-between gap-x-2 sm:flex-wrap sm:gap-x-6 sm:gap-y-3">
+        <div className="flex min-w-0 shrink-0 items-center gap-6 xl:gap-10">
+          <Link
+            href={path("/command-center")}
+            aria-label={t.brand.name}
+            className="tap-link inline-flex min-w-11 shrink-0 items-center justify-center text-[var(--color-fg)] [--wm-h:32px] sm:min-w-0 sm:justify-start"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
-          </button>
-        </span>
-        <UtcClock />
-        <NotificationsCenter scope={scope} />
-        <span className="hidden sm:contents">
-          <LanguageSelector />
-          <ThemeToggle />
-          <span className="hidden md:contents">
-            <ViewModeToggle showLabel compact />
+            <span className="sm:hidden">
+              <Wordmark mark />
+            </span>
+            <span className="hidden sm:block">
+              <Wordmark />
+            </span>
+          </Link>
+        </div>
+
+        {/* Below `sm` the bar keeps only what a phone needs every minute: the workspace, the bell and the
+            account. Credits, language and theme move into the account menu (which shows them anyway), and the
+            ⌘K search has no keyboard on a phone. The wrappers are `contents` from `sm` up, so the desktop bar
+            is unchanged. They are spans rather than a `hidden` class on the control because `.btn-sky` sets
+            its own display, which beats the utility. */}
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none sm:flex-nowrap sm:gap-3">
+          <ContextSwitcher orgs={orgs} currentOrgId={currentOrgId} channels={channels} selection={selection} />
+          <span className="hidden sm:contents">
+            <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
+            <CreditBalanceChip account={credits} />
+            <ChannelSwitcher channels={channels} selection={selection} />
+            <button
+              type="button"
+              onClick={openPalette}
+              aria-label={t.ops.palettePlaceholder}
+              className="btn-sky is-quiet pill h-10 gap-2 px-3.5"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
+            </button>
           </span>
-        </span>
-        <AccountMenu email={email} avatarV={avatarV} />
-      </div>
+          <UtcClock />
+          <NotificationsCenter scope={scope} />
+          <span className="hidden sm:contents">
+            <LanguageSelector />
+            <ThemeToggle />
+            <span className="hidden md:contents">
+              <ViewModeToggle showLabel compact />
+            </span>
+          </span>
+          <AccountMenu email={email} avatarV={avatarV} />
+        </div>
       </div>
     </header>
   );

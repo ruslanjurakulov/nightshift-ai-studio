@@ -19,7 +19,7 @@ import { quotaGaugeView } from "@/lib/quota-gauge";
 import { inferNextStage, dailyMission, PIPELINE_ORDER, type PipelineStageKey } from "@/lib/intelligence";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchScopedVideoIds, fetchTopicScores, getChannelContext } from "@/lib/channels-server";
-import { isScoped, scopeQuery } from "@/lib/channels";
+import { isScoped, orgWide, scopeQuery } from "@/lib/channels";
 import { isRunNowConfigured } from "@/lib/server/run-backend";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
@@ -27,7 +27,12 @@ import { atLeast } from "@/lib/auth/roles";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
-import { uploadedOnly } from "@/lib/heldVideos";
+import { heldOnly, uploadedOnly } from "@/lib/heldVideos";
+import { OwnerGlance, type GlanceTile } from "@/components/dashboard/OwnerGlance";
+import { agentLabel, agentSummary } from "@/lib/agent-names";
+import { balanceStale, balanceTone, lowestProviderBalance, workersAlive, workersTone } from "@/lib/owner-glance";
+import type { BalanceRow } from "@/lib/billing";
+import { WORKER_COLUMNS, coerceWorkers, type WorkerRow } from "@/lib/workers";
 import { getOrgContext } from "@/lib/orgs-server";
 import { WELCOME_PATH } from "@/lib/public-paths";
 import { ErrorState } from "@/components/ReadError";
@@ -74,7 +79,7 @@ function stageTones(events: SystemEventRow[]): Record<PipelineStageKey, StageTon
 
 export default async function CommandCenter() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const path = await getChannelPath();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
@@ -102,6 +107,13 @@ export default async function CommandCenter() {
   const needsSetup = Boolean(org.supported && org.current && !org.current.is_default && channels.length === 0);
 
   const supabase = await createClient();
+  let glanceInputs: {
+    waiting: number | null;
+    alertsCount: number | null;
+    alive: ReturnType<typeof workersAlive> | null;
+    low: ReturnType<typeof lowestProviderBalance>;
+    showBalance: boolean;
+  } | null = null;
   let events: SystemEventRow[] = [];
   let videos: VideoRow[] = [];
   let topics: TopicPerformanceRow[] = [];
@@ -137,6 +149,32 @@ export default async function CommandCenter() {
       (s) => !videoIds || videoIds.has(s.video_id),
     );
     signals = (sg.data as FeedbackSignalRow[]) ?? [];
+  }
+
+  // The owner's phone strip (operator only; a customer's page is unchanged): the few things the owner needs
+  // first, each from a read that already exists elsewhere (Billing's balance snapshots, Integrations' worker
+  // heartbeats, Alerts' feed, the held videos Home counts). Light reads (a count, or the newest rows); a
+  // failed one leaves its figure null = "unknown", never 0.
+  if (operator && supabase) {
+    const since24 = new Date(Date.now() - DAY_MS).toISOString();
+    const [waitingRes, alertsRes, workersRes, balancesRes] = await Promise.all([
+      heldOnly(scopeQuery(supabase.from("videos").select("video_id", { count: "exact", head: true }), scope)),
+      scopeQuery(supabase.from("alert_events").select("id", { count: "exact", head: true }), orgWide(scope), { nullIsGlobal: true })
+        .in("severity", ["warn", "critical"])
+        .gte("at", since24),
+      supabase.from("worker_status").select(WORKER_COLUMNS).order("updated_at", { ascending: false }).limit(50),
+      // The provider accounts are the platform's own: only in the operator's own organization (as Billing does).
+      scope.includeGlobal
+        ? supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200)
+        : Promise.resolve(null),
+    ]);
+    const waiting = readFailed(waitingRes) ? null : (waitingRes.count ?? 0);
+    const alertsCount = readFailed(alertsRes) ? null : (alertsRes.count ?? 0);
+    const workers: WorkerRow[] | null = workersRes.error ? null : coerceWorkers(workersRes.data);
+    const alive = workers ? workersAlive(workers, Date.now()) : null;
+    const low =
+      balancesRes && !balancesRes.error ? lowestProviderBalance((balancesRes.data ?? []) as BalanceRow[]) : null;
+    glanceInputs = { waiting, alertsCount, alive, low, showBalance: scope.includeGlobal };
   }
 
   // A failed read leaves these arrays empty; the figures below are null
@@ -202,12 +240,92 @@ export default async function CommandCenter() {
   const runLabel = !eventsOk
     ? t.dashboard.runUnknown
     : lastEventAt
-      ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt)}`
+      ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt, locale)}`
       : t.dashboard.noRunsYet;
+
+  // The owner's strip, most urgent first: money, failures, what waits for them, alerts, workers, output.
+  const tiles: GlanceTile[] = [];
+  if (glanceInputs) {
+    const gl = glanceInputs;
+    const flag = (n: number | null, bad: GlanceTile["tone"]): GlanceTile["tone"] => (n === null ? "idle" : n > 0 ? bad : "ok");
+    if (gl.showBalance) {
+      const stale = gl.low ? balanceStale(gl.low.checkedAt, Date.now()) : false;
+      tiles.push({
+        key: "balance",
+        href: path("/billing"),
+        label: t.ownerShell.gBalance,
+        value: gl.low ? fmt(t.ownerShell.gBalanceLeft, { pct: gl.low.pct }) : null,
+        sub: gl.low
+          ? `${gl.low.name} · ${stale ? t.ownerShell.gBalanceStale : relativeTime(gl.low.checkedAt, locale)}`
+          : t.ownerShell.gBalanceNone,
+        tone: gl.low ? balanceTone(gl.low.pct, stale) : "idle",
+      });
+    }
+    tiles.push(
+      {
+        key: "failed",
+        href: path("/errors"),
+        label: t.ownerShell.gFailed,
+        value: errors24h === null ? null : num(errors24h),
+        sub: errors24h ? t.dashboard.needsAttention : t.common.none,
+        tone: flag(errors24h, "fail"),
+      },
+      {
+        key: "waiting",
+        href: path("/videos"),
+        label: t.ownerShell.gWaiting,
+        value: gl.waiting === null ? null : num(gl.waiting),
+        sub: gl.waiting ? t.ownerShell.gWaitingSub : t.common.none,
+        tone: flag(gl.waiting, "warn"),
+      },
+      {
+        key: "alerts",
+        href: path("/alerts"),
+        label: t.ownerShell.gAlerts,
+        value: gl.alertsCount === null ? null : num(gl.alertsCount),
+        sub: gl.alertsCount ? t.ownerShell.gAlertsSub : t.common.none,
+        tone: flag(gl.alertsCount, "warn"),
+      },
+      {
+        key: "workers",
+        href: path("/integrations"),
+        label: t.ownerShell.gWorkers,
+        value: gl.alive ? `${gl.alive.alive}/${gl.alive.total}` : null,
+        sub: !gl.alive
+          ? t.common.couldNotRead
+          : gl.alive.total === 0
+            ? t.ownerShell.gWorkersNone
+            : [
+                gl.alive.silent > 0 ? fmt(t.ownerShell.gWorkersSilent, { n: gl.alive.silent }) : "",
+                gl.alive.stopped > 0 ? fmt(t.ownerShell.gWorkersStopped, { n: gl.alive.stopped }) : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") || t.ownerShell.gWorkersAll,
+        tone: workersTone(gl.alive),
+      },
+      {
+        key: "published",
+        href: path("/videos"),
+        label: t.dashboard.publishedToday,
+        value: publishedToday === null ? null : num(publishedToday),
+        tone: "idle",
+      },
+      {
+        // Humanized names, so the agent-name work is on the phone too (the figures row is desktop-only).
+        key: "agents",
+        href: path("/agents"),
+        label: t.dashboard.activeAgents,
+        value: activeAgents === null ? null : num(activeAgents),
+        sub: runningAgents.length ? agentSummary(runningAgents, t.ownerShell.agentNames) : t.common.idle,
+        tone: "idle",
+        wide: true,
+      },
+    );
+  }
 
   return (
     <div className="rhythm ns-open g5-page stagger-enter">
-      <PageHeader icon="autonomy" title={t.dashboard.title} subtitle={t.dashboard.subtitle} actions={<CustomizeButton />} />
+      <PageHeader icon="autonomy" title={t.dashboard.title} subtitle={t.dashboard.subtitle} actions={<CustomizeButton />} compactPhone={operator} />
 
       {needsSetup && (
         <section className="panel ns-desk" aria-labelledby="cc-setup">
@@ -228,6 +346,15 @@ export default async function CommandCenter() {
         </section>
       )}
 
+      {tiles.length > 0 && (
+        <OwnerGlance
+          label={t.ownerShell.glanceLabel}
+          health={{ tone: lamp, text: lampLabel, detail: null, live: chip === "healthy" }}
+          tiles={tiles}
+          unknown={t.common.unknown}
+        />
+      )}
+
       {/* ── The run, and the instruments beside it ─────────────────────────── */}
       <div className="g5-cc">
         <div className="g5-cc-main">
@@ -241,6 +368,8 @@ export default async function CommandCenter() {
             </h2>
             <p className="g5-run-lead">{lead}</p>
 
+            {/* The owner's phone shows these in the strip above (OwnerGlance); the figures keep their place from `lg`. */}
+            <div className={operator ? "max-lg:hidden" : undefined}>
             <div className="g5-figs" style={{ marginTop: 28 }}>
               <Figure label={t.dashboard.publishedToday} value={publishedToday} unknown={t.common.unknown} unknownSub={t.common.couldNotRead} />
               <Figure
@@ -248,7 +377,7 @@ export default async function CommandCenter() {
                 value={activeAgents}
                 unknown={t.common.unknown}
                 unknownSub={t.common.couldNotRead}
-                sub={runningAgents.length ? runningAgents.join(", ") : t.common.idle}
+                sub={runningAgents.length ? runningAgents.map((a) => agentLabel(a, t.ownerShell.agentNames)).join(", ") : t.common.idle}
                 tone={runningAgents.length ? "var(--ns-amber-ink)" : undefined}
               />
               <Figure
@@ -268,6 +397,7 @@ export default async function CommandCenter() {
                 unknownSub={videosOk ? undefined : t.common.couldNotRead}
                 sub={videos.length >= 8 ? t.dashboard.showingLatest8 : t.dashboard.inLibrary}
               />
+            </div>
             </div>
 
             <div className="g5-actions" style={{ marginTop: 28 }}>
@@ -323,7 +453,7 @@ export default async function CommandCenter() {
                   <li key={v.video_id} className="g5-row" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
                     <span className="g5-row-title">{v.title ?? v.video_id}</span>
                     <span className="g5-row-meta tnum" style={{ margin: 0, textAlign: "right" }}>
-                      {v.topic ?? t.common.dash} · {relativeTime(v.published_at)}
+                      {v.topic ?? t.common.dash} · {relativeTime(v.published_at, locale)}
                     </span>
                   </li>
                 ))}
@@ -396,7 +526,7 @@ export default async function CommandCenter() {
       {/* ── The run as one line ───────────────────────────────────────────── */}
       <PipelineStrip
         tones={tones}
-        right={lastEventAt ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt)}` : null}
+        right={lastEventAt ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt, locale)}` : null}
       />
     </div>
   );

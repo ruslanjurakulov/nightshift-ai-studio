@@ -43,7 +43,7 @@ export default async function AlertsPage() {
   // GitHub token: signed out → /login, anyone else → 404, before any read
   // (BR-H-001).
   const mayReadGithub = await guardOperatorPage();
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const role = await resolveRole();
   const isAdmin = atLeast(role, "admin");
 
@@ -136,7 +136,7 @@ export default async function AlertsPage() {
             rows={events}
             rowKey={(e) => e.id}
             columns={[
-              { key: "time", label: t.alerts.colTime, nowrap: true, render: (e) => <span className="tnum g4-muted">{relativeTime(e.at)}</span> },
+              { key: "time", label: t.alerts.colTime, nowrap: true, render: (e) => <span className="tnum g4-muted">{relativeTime(e.at, locale)}</span> },
               { key: "kind", label: t.alerts.colKind, nowrap: true, render: (e) => <span className="tnum g4-muted">{e.kind}</span> },
               {
                 key: "title",

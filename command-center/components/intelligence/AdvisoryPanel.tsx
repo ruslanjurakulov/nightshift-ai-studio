@@ -31,6 +31,7 @@ function Card({
   desk?: boolean;
   children: React.ReactNode;
 }) {
+  const { locale } = useI18n();
   return (
     <section className={`section-open${desk ? " ns-desk" : ""}`}>
       <header className="section-head">
@@ -38,7 +39,7 @@ function Card({
         <span className="g4-head-state">
           {/* The card's own sentence says what the lamp means; it is a mark, not the only signal. */}
           {tone && <span aria-hidden className="ns-lamp" data-tone={tone} />}
-          {updated && <span className="g4-when">{relativeTime(updated)}</span>}
+          {updated && <span className="g4-when">{relativeTime(updated, locale)}</span>}
         </span>
       </header>
       <div className="flex flex-col gap-1">{children}</div>

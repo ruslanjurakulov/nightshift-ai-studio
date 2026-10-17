@@ -40,7 +40,7 @@ const KIND_TONE: Record<NotificationKind, "ok" | "fail" | "warn" | "info" | "run
  * everything up to now (also per-device). Nothing is fabricated.
  */
 export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const path = useChannelPath();
   const { operator } = useShell();
   const [events, setEvents] = useState<SystemEventRow[]>([]);
@@ -215,7 +215,7 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
                     <div className="g5-notif-kind">{String(t.ops[KIND_LABEL[n.kind]])}</div>
                     <div className="g5-notif-subject">{n.subject}</div>
                   </div>
-                  <span className="g5-notif-time">{relativeTime(n.ts)}</span>
+                  <span className="g5-notif-time">{relativeTime(n.ts, locale)}</span>
                 </li>
               ))}
             </ul>

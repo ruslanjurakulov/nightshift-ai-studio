@@ -1,6 +1,7 @@
 import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
+import { ownerShellUz } from "./owner-shell/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import type { Dictionary } from "./index";
@@ -19,6 +20,7 @@ export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
   libraryUx: libraryUxUz,
+  ownerShell: ownerShellUz,
   connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,
   reviewPage: reviewPageUz,
@@ -35,6 +37,7 @@ export const uz: Dictionary = {
     settings: "Sozlamalar",
     sections: "Boʻlimlar",
     more: "Yana",
+    allSections: "Barcha boʻlimlar",
     gManage: "Boshqaruv",
     gIntel: "Aql",
     gSystem: "Tizim",

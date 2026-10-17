@@ -45,7 +45,7 @@ export function DecisionList({
   decisions: Decision[];
   lineage: Record<string, LineageRow[]>;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const metricLabel = useMetricLabel();
   const [open, setOpen] = useState<string | null>(null);
   const uid = useId();
@@ -62,7 +62,7 @@ export function DecisionList({
               <div className="g3-dec-main">
                 <div className="g3-dec-title">{d.topic ?? t.common.na}</div>
                 <div className="g3-sub tnum">
-                  {t.intel.decType} · {timeOfDay(d.ts)} · {relativeTime(d.ts)}
+                  {t.intel.decType} · {timeOfDay(d.ts)} · {relativeTime(d.ts, locale)}
                 </div>
               </div>
               <div className="g3-dec-facts">

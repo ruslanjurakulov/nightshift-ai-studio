@@ -26,7 +26,7 @@ export interface VideoWithMetrics extends VideoRow {
 
 export default async function VideoLibrary() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
   const scope = await getChannelScope();
@@ -142,7 +142,7 @@ export default async function VideoLibrary() {
                     <div className="truncate text-sm text-[var(--color-fg)]">{sb.title ?? sb.topic}</div>
                     <div className="mt-0.5 text-xs text-[var(--color-muted)]">
                       {fmt(t.storyboardReview.total, { n: sb.scenes.length, m: minutesLabel(sb.durationS) })}
-                      {sb.createdAt ? ` · ${relativeTime(sb.createdAt)}` : ""}
+                      {sb.createdAt ? ` · ${relativeTime(sb.createdAt, locale)}` : ""}
                     </div>
                   </div>
                   <Link href={path(`/videos/storyboard/${sb.id}`)} className={`${i === 0 ? "btn-primary" : "btn-quiet"} shrink-0`}>
@@ -185,7 +185,7 @@ export default async function VideoLibrary() {
                     <td className="px-4 py-2 text-[var(--color-muted)]">{v.topic ?? t.common.na}</td>
                     <td className="px-4 py-2 text-[var(--color-fg)]">{heldStateLabel(heldState(v), t.held)}</td>
                     <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-                      {v.held_at ? relativeTime(v.held_at) : t.common.na}
+                      {v.held_at ? relativeTime(v.held_at, locale) : t.common.na}
                     </td>
                   </tr>
                 ))}

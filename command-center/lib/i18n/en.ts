@@ -1,6 +1,7 @@
 import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
+import { ownerShellEn } from "./owner-shell/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
@@ -27,6 +28,7 @@ export const en = {
   site: siteEn,
   presets: presetsEn,
   libraryUx: libraryUxEn,
+  ownerShell: ownerShellEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
   reviewPage: reviewPageEn,
@@ -43,6 +45,7 @@ export const en = {
     settings: "Settings",
     sections: "Sections",
     more: "More",
+    allSections: "All sections",
     gManage: "Manage",
     gIntel: "Intelligence",
     gSystem: "System",

@@ -21,7 +21,7 @@ const LABEL: Record<TraceStep["key"], keyof Dictionary["intel"]> = {
  * loop actually got.
  */
 export function IntelligenceTrace({ steps }: { steps: TraceStep[] }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   return (
     <ol className="flex flex-col p-4">
@@ -53,7 +53,7 @@ export function IntelligenceTrace({ steps }: { steps: TraceStep[] }) {
                 {s.detail && <span className="tnum ml-2 text-xs text-[var(--color-muted)]">{s.detail}</span>}
               </span>
               <span className="tnum text-xs text-[var(--color-muted)]">
-                {s.done ? (s.at ? relativeTime(s.at) : "") : t.intel.trPending}
+                {s.done ? (s.at ? relativeTime(s.at, locale) : "") : t.intel.trPending}
               </span>
             </div>
           </li>

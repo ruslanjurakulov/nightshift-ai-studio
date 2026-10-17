@@ -174,7 +174,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 {header}
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                   <SideNav operator />
-                  <main id="main" tabIndex={-1} className="pad-page min-w-0 flex-1 focus:outline-none">{children}</main>
+                  {/* The operator's phone has its bottom tab bar too (SideNav): the page keeps its end above it. */}
+                  <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}</main>
                 </div>
               </div>
             ) : (
@@ -191,7 +192,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </div>
             )}
             <CommandPalette scope={scope} operator={operator} />
-            <ScrollToTop dock={!operator} />
+            <ScrollToTop dock />
             <InstallHint />
           </div>
         </SidebarProvider>

@@ -1,6 +1,7 @@
 import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { libraryUxRu } from "./library-ux/ru";
+import { ownerShellRu } from "./owner-shell/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import type { Dictionary } from "./index";
@@ -19,6 +20,7 @@ export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
   libraryUx: libraryUxRu,
+  ownerShell: ownerShellRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   reviewPage: reviewPageRu,
@@ -35,6 +37,7 @@ export const ru: Dictionary = {
     settings: "Настройки",
     sections: "Разделы",
     more: "Ещё",
+    allSections: "Все разделы",
     gManage: "Управление",
     gIntel: "Интеллект",
     gSystem: "Система",

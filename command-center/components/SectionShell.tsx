@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { HOME } from "@/lib/navigation";
+import { ALL_SECTIONS, HOME } from "@/lib/navigation";
 import { PageNav } from "@/components/navigation/PageNav";
 import { SectionTabs } from "@/components/navigation/SectionTabs";
 import { useShell } from "@/components/shell/ShellContext";
@@ -36,6 +36,9 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
   const { operator } = useShell();
   // Below a section (/videos/<id>): the way back is worth a row of its own.
   const nested = pathname.split("/").filter(Boolean).length > 2;
+  // "All sections" is a bottom-bar tab, not a panel opened from the Command Center: on a phone its back arrow,
+  // trail and ✕ only repeat the tab bar, so that row is left out there. Only this page; every other keeps it.
+  const tabPage = pathname === path(ALL_SECTIONS);
 
   useEffect(() => {
     // A customer's screens are pages, not panels over a dashboard: Escape
@@ -102,7 +105,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
           {/* The panel's own bar: where you are and the way back on the left,
               the ✕ on the right. In flow rather than pinned to the corners, so
               neither can sit on top of the page's title or its actions. */}
-          <div className="-mt-1 mb-5 flex items-center justify-between gap-3 sm:-mt-2">
+          <div className={`-mt-1 mb-5 items-center justify-between gap-3 sm:-mt-2 ${tabPage ? "hidden sm:flex" : "flex"}`}>
             <PageNav />
             <button
               type="button"

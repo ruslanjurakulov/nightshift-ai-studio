@@ -115,6 +115,8 @@ const STATES = {
   low: { plan: "creator", granted: 2000, spent: 1980, held: 0, extra: 0, bonus: 0, on: true },
   extraoff: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 0, on: false },
   unpriced: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 100, on: true },
+  // The platform owner's view (FAKE_ADMIN is implied): two organizations, two channels, events, workers, alerts, balances.
+  owner: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
   // Settings → Account and security (0096): the account of `videos`, with or without an @username.
   acct: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
   acct_handle: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
@@ -201,7 +203,7 @@ function creditAccountFor(state) {
 const ADMIN = process.env.FAKE_ADMIN === "1";
 
 // ── what each app-screen state has made ────────────────────────────────────
-const APP_STATES = new Set(["new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool"]);
+const APP_STATES = new Set(["owner", "new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool"]);
 // Made-up held @usernames: the check says "taken" for these and "free" for anything else well formed.
 const TAKEN_HANDLES = new Set(["taken.name", "maria.k", "alice.lab", "night.owl"]);
 const handleRow = (state) =>
@@ -246,6 +248,41 @@ const JOBS = (state) => {
   if (state === "running") out.unshift({ ...base, id: "00000000-0000-4000-8000-00000000d0aa", capability: "t2v", status: "running", finished_at: null, charged_credits: null, params: { prompt: "A paper boat on a flooded street, cinematic", aspect: "16:9", duration: 5 }, created_at: iso(-90_000), updated_at: iso(-30_000) });
   return out;
 };
+
+// ── the platform owner's world (state "owner") ─────────────────────────────
+const OWNER_ORG = { id: "00000000-0000-4000-8000-0000000000b0", name: "Nightshift", slug: "nightshift", role: "owner", is_default: true };
+const OWNER_ORGS = [OWNER_ORG, { ...ORG, name: "Atelier Customer Studio" }];
+const OWNER_CHANNELS = [
+  { ...CHANNEL, channel_id: "chronos", name: "Chronos History", org_id: OWNER_ORG.id, niche: "history" },
+  { ...CHANNEL, channel_id: "extinct-world", name: "Extinct World", org_id: OWNER_ORG.id, niche: "nature" },
+];
+const ev = (n, agent, event, status, minutesAgo, extra = {}) => ({
+  id: n, ts: iso(-minutesAgo * 60_000).replace("Z", ""), agent, event, status, channel_id: "chronos", job_id: null, video_id: null, duration_ms: null, payload: {}, ...extra,
+});
+const OWNER_EVENTS = () => [
+  ev(1, "intelligence_poll", "system.heartbeat", "running", 12),
+  ev(2, "pipeline", "topic.selected", "running", 600),
+  ev(3, "youtube_uploader", "upload.failed", "failed", 640),
+  ev(4, "script_engine", "script.completed", "completed", 700),
+  ev(5, "feedback_engine", "feedback.generated", "completed", 720),
+  ev(6, "pipeline", "research.completed", "completed", 760),
+  ev(7, "publish_gate", "gate.verdict", "completed", 800),
+  ev(8, "research_engine", "research.started", "running", 820),
+];
+const OWNER_WORKERS = () => [
+  { worker_id: "media-1", kind: "media", state: "running", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-20_000) },
+  { worker_id: "creative-1", kind: "creative", state: "running", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-30 * 60_000) },
+  { worker_id: "pipeline-1", kind: "pipeline", state: "running", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-10_000) },
+  { worker_id: "email-1", kind: "other", state: "stopped", detail: null, version: "1.4", started_at: iso(-DAY), updated_at: iso(-2 * 3_600_000) },
+];
+const OWNER_ALERTS = () => [
+  { id: "a1", at: iso(-3 * 3_600_000), kind: "balance.low", severity: "warn", channel_id: null, title: "ElevenLabs balance is low", body: null, delivered: true },
+  { id: "a2", at: iso(-5 * 3_600_000), kind: "upload.failed", severity: "critical", channel_id: "chronos", title: "Upload failed", body: null, delivered: true },
+];
+const OWNER_BALANCES = () => [
+  { provider: "elevenlabs", metric: "credits", remaining: 18000, total: 100000, unit: "credits", tier: "creator", resets_at: iso(12 * DAY), source: "api", checked_at: iso(-2 * 3_600_000) },
+  { provider: "gemini", metric: "usd", remaining: 80, total: 100, unit: "usd", tier: null, resets_at: null, source: "ledger", checked_at: iso(-3_600_000) },
+];
 
 const RPC = {
   my_organizations: [ORG],
@@ -396,11 +433,13 @@ export function startFakeSupabase(port = 54399) {
         });
         return;
       }
+      if (state === "owner" && rpc[1] === "is_platform_admin") return send(res, 200, true);
+      if (state === "owner" && rpc[1] === "my_organizations") return send(res, 200, OWNER_ORGS);
       if (rpc[1] in RPC) return send(res, 200, RPC[rpc[1]]);
       return send(res, 403, { code: "42501", message: "visual-qa fake: not available" });
     }
     const table = url.pathname.match(/^\/rest\/v1\/([a-z_0-9]+)/);
-    if (table && req.method === "GET") {
+    if (table && (req.method === "GET" || req.method === "HEAD")) {
       let rows = table[1] === "credit_accounts" && state ? [creditAccountFor(state)] : (TABLES[table[1]] ?? []);
       if (APP_STATES.has(state)) {
         // A new person has no channel, video, job or model yet; the others have a channel.
@@ -415,6 +454,18 @@ export function startFakeSupabase(port = 54399) {
         if (table[1] === "creative_jobs") rows = JOBS(state);
         if (table[1] === "user_handles") rows = handleRow(state);
         if (table[1] === "model_registry") rows = state === "new" ? [] : MODELS;
+      }
+      if (state === "owner") {
+        if (table[1] === "channels") rows = OWNER_CHANNELS;
+        if (table[1] === "system_events") rows = OWNER_EVENTS();
+        if (table[1] === "worker_status") rows = OWNER_WORKERS();
+        if (table[1] === "alert_events") rows = OWNER_ALERTS();
+        if (table[1] === "provider_balances") rows = OWNER_BALANCES();
+      }
+      if (req.method === "HEAD") {
+        // A count-only read (select(..., { count: "exact", head: true })): the count rides in Content-Range.
+        res.writeHead(200, { "content-range": `${rows.length ? "0-" + (rows.length - 1) : "*"}/${rows.length}`, "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-expose-headers": "content-range" });
+        return res.end();
       }
       const single = String(req.headers.accept || "").includes("vnd.pgrst.object");
       if (single) return rows.length ? send(res, 200, rows[0]) : send(res, 406, { code: "PGRST116", message: "0 rows" });

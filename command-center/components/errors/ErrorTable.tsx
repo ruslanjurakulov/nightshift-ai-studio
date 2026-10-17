@@ -40,7 +40,7 @@ function isError(e: SystemEventRow): boolean {
  * component or a specific failure without a round-trip.
  */
 export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const path = useChannelPath();
   const [query, setQuery] = useState("");
 
@@ -111,7 +111,7 @@ export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
                 )}
               </div>
               <div className="g5-fail-when">
-                <div>{relativeTime(e.ts)}</div>
+                <div>{relativeTime(e.ts, locale)}</div>
                 <div>{timeOfDay(e.ts)}</div>
               </div>
             </li>

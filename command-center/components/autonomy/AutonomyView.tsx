@@ -66,7 +66,7 @@ export function AutonomyView({
   window: PublishingWindow | null;
   duplicates: DuplicateGroup[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const weekday = (n: number) => String(t.auto[`wd${n}` as keyof Dictionary["auto"]]);
 
   return (
@@ -81,7 +81,7 @@ export function AutonomyView({
                   {String(t.auto[`p${p.key.charAt(0).toUpperCase()}${p.key.slice(1)}` as keyof Dictionary["auto"]])}
                 </div>
                 <div className="tnum g4-small g4-muted">
-                  {p.evidenceTs ? fmt(t.auto.postureEvidence, { t: relativeTime(p.evidenceTs) }) : t.auto.postureNoEvidence}
+                  {p.evidenceTs ? fmt(t.auto.postureEvidence, { t: relativeTime(p.evidenceTs, locale) }) : t.auto.postureNoEvidence}
                 </div>
               </div>
               <span className="shrink-0">
@@ -171,7 +171,7 @@ export function AutonomyView({
               { key: "agent", label: t.auto.fAgent, render: (f) => <span className="mono" style={{ color: "var(--ns-act-ink)" }}>{f.agent}</span> },
               { key: "count", label: t.auto.fCount, align: "end", render: (f) => f.count },
               { key: "cause", label: t.auto.fCause, render: (f) => <span className="g4-muted">{f.cause ?? t.auto.fCauseUnknown}</span> },
-              { key: "last", label: t.auto.fLast, nowrap: true, render: (f) => <span className="g4-muted tnum">{relativeTime(f.lastTs)}</span> },
+              { key: "last", label: t.auto.fLast, nowrap: true, render: (f) => <span className="g4-muted tnum">{relativeTime(f.lastTs, locale)}</span> },
             ]}
           />
         )}
@@ -192,7 +192,7 @@ export function AutonomyView({
                 nowrap: true,
                 render: (a) => (
                   <span className="tnum g4-muted">
-                    {timeOfDay(a.ts)} <span className="g4-small">· {relativeTime(a.ts)}</span>
+                    {timeOfDay(a.ts)} <span className="g4-small">· {relativeTime(a.ts, locale)}</span>
                   </span>
                 ),
               },

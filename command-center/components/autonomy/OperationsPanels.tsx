@@ -28,7 +28,7 @@ export function OperationsPanels({
   runs: PipelineRunRow[];
   tablesMissing: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   return (
     <div className="g4-cols">
@@ -55,7 +55,7 @@ export function OperationsPanels({
               },
               { key: "status", label: t.auto.qStatus, render: (q) => <StatusLamp tone={STATUS_LAMP[q.status] ?? "idle"} label={q.status} /> },
               { key: "source", label: t.auto.qSource, render: (q) => <span className="tnum g4-muted">{q.source ?? t.common.dash}</span> },
-              { key: "added", label: t.auto.qAdded, nowrap: true, render: (q) => <span className="tnum g4-muted">{relativeTime(q.added_at)}</span> },
+              { key: "added", label: t.auto.qAdded, nowrap: true, render: (q) => <span className="tnum g4-muted">{relativeTime(q.added_at, locale)}</span> },
             ]}
           />
         )}
@@ -94,7 +94,7 @@ export function OperationsPanels({
                   </>
                 ),
               },
-              { key: "updated", label: t.auto.rUpdated, nowrap: true, render: (r) => <span className="tnum g4-muted">{r.updated_at ? relativeTime(r.updated_at) : t.common.dash}</span> },
+              { key: "updated", label: t.auto.rUpdated, nowrap: true, render: (r) => <span className="tnum g4-muted">{r.updated_at ? relativeTime(r.updated_at, locale) : t.common.dash}</span> },
             ]}
           />
         )}

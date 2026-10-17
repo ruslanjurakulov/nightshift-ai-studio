@@ -54,7 +54,7 @@ function derive(
 
 export default async function IntegrationsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
   const scope = await getChannelScope();
@@ -109,7 +109,7 @@ export default async function IntegrationsPage() {
                 <p className="g2-note tnum mt-1">{t.integrations[h.detailKey]}</p>
               </div>
               <p className="g2-note tnum g2-last">
-                {fmt(t.integrations.lastSuccess, { t: h.lastSuccess ? relativeTime(h.lastSuccess) : t.common.na })}
+                {fmt(t.integrations.lastSuccess, { t: h.lastSuccess ? relativeTime(h.lastSuccess, locale) : t.common.na })}
               </p>
               <StatusLamp tone={h.tone} label={h.status} live={h.tone === "ok"} />
             </li>

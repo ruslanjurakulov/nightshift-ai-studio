@@ -2,6 +2,7 @@
 
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { relativeTime } from "@/lib/format";
+import { agentLabel } from "@/lib/agent-names";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 
@@ -30,7 +31,7 @@ function durationLabel(ms: number | null): string {
  * most recent events. Missing signals render N/A rather than being invented.
  */
 export function AgentCard({ agent }: { agent: AgentSummary }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const statusLabel =
     agent.status === "RUNNING" ? t.status.running : agent.status === "FAILED" ? t.status.failed : t.status.idle;
@@ -39,8 +40,8 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
   return (
     <li>
       <div className="min-w-0">
-        <div className="tnum truncate font-semibold" style={{ color: "var(--ns-act-ink)" }}>
-          {agent.agent}
+        <div className="tnum truncate font-semibold" style={{ color: "var(--ns-act-ink)" }} title={agent.agent}>
+          {agentLabel(agent.agent, t.ownerShell.agentNames)}
         </div>
         <div className="g4-small g4-muted">{fmt(t.agents.recentEvents, { n: agent.eventCount })}</div>
       </div>
@@ -51,7 +52,7 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
         <div className="tnum truncate text-[var(--color-fg)]">{agent.currentTask}</div>
         <div className="tnum g4-small g4-muted">
           {agent.durationMs !== null ? fmt(t.agents.took, { d: durationLabel(agent.durationMs) }) : ""}
-          {agent.lastActivity ? relativeTime(agent.lastActivity) : t.common.na}
+          {agent.lastActivity ? relativeTime(agent.lastActivity, locale) : t.common.na}
         </div>
       </div>
 
@@ -59,13 +60,13 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
         <div>
           <dt className="g4-small g4-muted">{t.agents.lastSuccess}</dt>
           <dd className="tnum m-0" style={{ color: agent.lastSuccess ? "var(--color-ok)" : "var(--color-muted)" }}>
-            {agent.lastSuccess ? relativeTime(agent.lastSuccess) : t.common.na}
+            {agent.lastSuccess ? relativeTime(agent.lastSuccess, locale) : t.common.na}
           </dd>
         </div>
         <div>
           <dt className="g4-small g4-muted">{t.agents.lastFailure}</dt>
           <dd className="tnum m-0" style={{ color: agent.lastFailure ? "var(--color-fail)" : "var(--color-muted)" }}>
-            {agent.lastFailure ? relativeTime(agent.lastFailure) : t.common.na}
+            {agent.lastFailure ? relativeTime(agent.lastFailure, locale) : t.common.na}
           </dd>
         </div>
       </dl>

@@ -21,7 +21,7 @@ import type { ChannelStats } from "@/lib/channels";
  * block of labelled lines, so nothing scrolls sideways.
  */
 export function ChannelComparison({ stats, thumbnails = {} }: { stats: ChannelStats[]; thumbnails?: Record<string, string | null> }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   if (stats.length === 0) return <EmptyState>{t.channels.empty}</EmptyState>;
 
   return (
@@ -64,7 +64,7 @@ export function ChannelComparison({ stats, thumbnails = {} }: { stats: ChannelSt
                 {s.daysPerVideo === null ? <Unknown label={t.channels.unknown} /> : s.daysPerVideo}
               </td>
               <td data-label={t.channels.lastPublished} className="dim">
-                {s.lastPublishedAt ? relativeTime(s.lastPublishedAt) : "—"}
+                {s.lastPublishedAt ? relativeTime(s.lastPublishedAt, locale) : "—"}
               </td>
             </tr>
           ))}

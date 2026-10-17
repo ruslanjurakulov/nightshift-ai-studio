@@ -38,7 +38,7 @@ export interface SocialAccountsPanelProps {
  * "not available yet" instead of starting a flow that cannot finish.
  */
 export function SocialAccountsPanel({ accounts, available, hasOrg, role, configured, result }: SocialAccountsPanelProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const ts = t.socialAccounts;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -128,7 +128,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
                             <div className="truncate text-[0.9375rem] font-medium text-[var(--color-fg)]">{accountLabel(a)}</div>
                             <div className="tnum text-[13px] text-[var(--color-muted)]">
                               {a.username && a.display_name ? `@${a.username} · ` : ""}
-                              {a.connected_at ? fmt(ts.since, { when: relativeTime(a.connected_at) }) : ""}
+                              {a.connected_at ? fmt(ts.since, { when: relativeTime(a.connected_at, locale) }) : ""}
                             </div>
                           </div>
                         </div>

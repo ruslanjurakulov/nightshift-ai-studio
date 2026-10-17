@@ -22,7 +22,7 @@ export function LearningView({
   signals: DecisionSignal[];
   topics: TopicIntel[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const metricLabel = useMetricLabel();
 
   return (
@@ -51,7 +51,7 @@ export function LearningView({
               { key: "base", label: t.intel.sigBaseline, align: "end", render: (s) => <span className="g4-muted">{num(s.baseline)}</span> },
               { key: "detail", label: t.intel.sigDetail, render: (s) => <span className="g4-muted g4-small">{s.detail ?? t.common.dash}</span> },
               { key: "video", label: t.intel.sigVideo, render: (s) => <span className="mono g4-muted g4-small">{s.videoId}</span> },
-              { key: "date", label: t.intel.sigDate, nowrap: true, render: (s) => <span className="g4-muted g4-small">{relativeTime(s.analyzedDate)}</span> },
+              { key: "date", label: t.intel.sigDate, nowrap: true, render: (s) => <span className="g4-muted g4-small">{relativeTime(s.analyzedDate, locale)}</span> },
             ]}
           />
         )}
@@ -82,7 +82,7 @@ export function LearningView({
                 { key: "conf", label: t.intel.decConfidence, render: (ti) => <ConfidenceBadge confidence={ti.confidence} /> },
                 { key: "videos", label: t.intel.tiVideos, align: "end", render: (ti) => <span className="g4-muted">{ti.videosAnalyzed ?? t.common.na}</span> },
                 { key: "signals", label: t.intel.tiSignals, align: "end", render: (ti) => <span className="g4-muted">{ti.signalCount}</span> },
-                { key: "last", label: t.intel.tiLastUsed, nowrap: true, render: (ti) => <span className="g4-muted g4-small">{ti.lastUsed ? relativeTime(ti.lastUsed) : t.common.na}</span> },
+                { key: "last", label: t.intel.tiLastUsed, nowrap: true, render: (ti) => <span className="g4-muted g4-small">{ti.lastUsed ? relativeTime(ti.lastUsed, locale) : t.common.na}</span> },
               ]}
             />
             <p className="g4-note tnum mt-4">{t.intel.trendNote}</p>
