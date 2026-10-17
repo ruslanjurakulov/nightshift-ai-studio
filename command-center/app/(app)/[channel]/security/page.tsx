@@ -11,8 +11,9 @@ export const revalidate = 0;
  *
  * Enrolment and management run entirely in the client component against the
  * browser Supabase client's `auth.mfa.*` API; Supabase Auth stores the factors,
- * so there is no application table to read here. Enforcing AAL2 at login is a
- * Supabase project-level policy — this page delivers the enrolment UI.
+ * so there is no application table to read here. The application asks for the
+ * code at sign-in (/login/verify, the middleware and the operator guards;
+ * docs/security/ADMIN_MFA.md) — this page delivers the enrolment UI.
  */
 export default async function SecurityPage() {
   const { t } = await getDictionary();

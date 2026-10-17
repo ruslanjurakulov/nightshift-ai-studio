@@ -21,7 +21,9 @@ import { NavigationProvider } from "@/components/navigation/NavigationProvider";
 import { ScrollToTop } from "@/components/navigation/ScrollToTop";
 import { InstallHint } from "@/components/shell/InstallHint";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { isOperator } from "@/lib/auth/org-roles";
+import { currentMfaAction, isOperator } from "@/lib/auth/org-roles";
+import { AdminMfaBanner } from "@/components/security/AdminMfaBanner";
+import { mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
 import { readCreditAccount } from "@/lib/server/credits";
 import { planValue, readBillingSummary } from "@/lib/server/plans";
@@ -31,7 +33,7 @@ import { ShellProvider } from "@/components/shell/ShellContext";
 import { SidebarProvider } from "@/components/shell/SidebarState";
 import { SIDEBAR_COOKIE, isSidebarCollapsed } from "@/lib/sidebar-pref";
 import { AppProviders } from "@/components/AppProviders";
-import { getLocale } from "@/lib/i18n/server";
+import { getDictionary, getLocale } from "@/lib/i18n/server";
 import { MotionProvider } from "@/components/motion/MotionProvider";
 import { FlashNotice } from "@/components/account/FlashNotice";
 import { SkipLink } from "@/components/shell/SkipLink";
@@ -81,6 +83,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const operator = await isOperator();
   const headerStore = await headers();
   const path = headerStore.get(PATH_HEADER);
+  // The second factor (docs/security/ADMIN_MFA.md). The middleware has already
+  // sent a password-only session that needs a code to /login/verify; this is the
+  // same decision again for a request it did not see (lib/security/admin-mfa.ts
+  // has the table and the lockout-safety rule). `warn_*` draws the banner below.
+  const mfa = isSupabaseConfigured ? await currentMfaAction(user, operator) : "allow";
+  if (mfa === "challenge") redirect(mfaVerifyUrl(path ? `${path}${headerStore.get(SEARCH_HEADER) ?? ""}` : undefined));
+  const { t: tt } = await getDictionary();
   if (path) {
     const to = appRedirect({
       path,
@@ -161,6 +170,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <NeuralBackdrop dim />
             {operator ? (
               <div className="relative z-10 flex min-h-svh flex-col">
+                <AdminMfaBanner action={operator ? mfa : "allow"} t={tt.mfa} path={path} />
                 {header}
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                   <SideNav operator />

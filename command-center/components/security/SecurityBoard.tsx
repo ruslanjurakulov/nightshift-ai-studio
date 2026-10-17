@@ -20,8 +20,10 @@ import { needsStepUp, normalizeAal, type AalLevel } from "@/lib/security/aal";
  * verified. The secret shown here is the user's own factor seed, not an app
  * secret, so displaying it to them is expected.
  *
- * Enforcing AAL2 at login (rejecting a password-only session) is a Supabase
- * project-level policy; this board delivers enrolment and management only.
+ * This board delivers enrolment and management. The code is asked at sign-in by
+ * the application (/login/verify, the middleware and the operator guards,
+ * docs/security/ADMIN_MFA.md); it is NOT a Supabase project policy, so removing
+ * the last factor here really does turn the second step off for the account.
  */
 type Factor = {
   id: string;

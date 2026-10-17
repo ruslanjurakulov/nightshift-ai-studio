@@ -25,11 +25,13 @@ vi.mock("server-only", () => ({}));
 
 const state: {
   configured: boolean;
-  user: { id: string; email?: string } | null;
+  user: { id: string; email?: string; factors?: Array<{ status: string; factor_type: string }> } | null;
   org: OrgContext;
   platformAdmin: boolean;
+  aal: string;
 } = {
   configured: true,
+  aal: "aal1",
   user: null,
   org: { supported: false, orgs: [], current: null },
   platformAdmin: false,
@@ -82,7 +84,10 @@ const fakeClient = {
     if (fn === "bind_current_member") return { data: state.platformAdmin ? "owner" : null, error: null };
     return { data: null, error: null };
   },
-  auth: { getUser: async () => ({ data: { user: state.user } }) },
+  auth: {
+    getUser: async () => ({ data: { user: state.user } }),
+    mfa: { getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: state.aal }, error: null }) },
+  },
 };
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -177,6 +182,8 @@ function operator() {
 
 beforeEach(() => {
   state.configured = true;
+  state.aal = "aal1";
+  vi.unstubAllEnvs();
   signedOut();
   calls.orgContext = 0;
   calls.channelContext = 0;
@@ -219,6 +226,17 @@ describe("isOperator() is false when nobody is signed in", () => {
     state.user = { id: "u-team" };
     state.org = { supported: false, orgs: [], current: null };
     expect(await isOperator()).toBe(true);
+  });
+
+  it("in PRODUCTION an unmarked 'not supported' answer is not the pre-0018 world: a signed-in member is NOT the operator", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      state.user = { id: "u-team" };
+      state.org = { supported: false, orgs: [], current: null };
+      expect(await isOperator()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("Supabase not configured (local development): true, as before", async () => {
@@ -314,5 +332,54 @@ describe("the four GitHub-token pages check the operator themselves", () => {
     state.configured = false;
     await render();
     expect(githubReads()).toBe(0);
+  });
+});
+
+describe("the (app) layout and the second factor", () => {
+  const VERIFIED = [{ status: "verified", factor_type: "totp" }];
+  const withFactor = (factors: Array<{ status: string; factor_type: string }>) => {
+    state.user = { ...state.user!, factors };
+  };
+
+  it("an enrolled customer on a password-only session is sent to the code page, before anything is drawn", async () => {
+    customerAdmin();
+    withFactor(VERIFIED);
+    await expect(AppLayout({ children: null })).rejects.toThrow("NEXT_REDIRECT:/login/verify");
+    expect(shell.sideNav).toHaveLength(0);
+  });
+
+  it("the same customer on an aal2 session gets the app", async () => {
+    customerAdmin();
+    withFactor(VERIFIED);
+    state.aal = "aal2";
+    await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+  });
+
+  it("a customer who never enrolled (or only started enrolling) is not asked", async () => {
+    customerAdmin();
+    await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+    withFactor([{ status: "unverified", factor_type: "totp" }]);
+    await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+  });
+
+  it("enforce: an operator with a factor on aal1 is sent to the code page", async () => {
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+    operator();
+    withFactor(VERIFIED);
+    await expect(AppLayout({ children: null })).rejects.toThrow("NEXT_REDIRECT:/login/verify");
+  });
+
+  it("enforce: an operator with NO factor is not locked out", async () => {
+    vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "enforce");
+    operator();
+    await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+  });
+
+  it("warn (default): an operator with a factor on aal1 gets the app, with the banner", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    operator();
+    withFactor(VERIFIED);
+    const tree = JSON.stringify(await AppLayout({ children: null }), (_k, v) => (typeof v === "function" ? v.name : v));
+    expect(tree).toContain("AdminMfaBanner");
   });
 });

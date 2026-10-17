@@ -3,6 +3,7 @@ import { getUser } from "@/lib/supabase/server";
 import { requireOperator } from "@/lib/auth/org-roles";
 import { VOICE_LIST_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
 import { listAllVoices } from "@/lib/elevenlabsVoices";
+import { guardAdminPost } from "@/lib/server/admin-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,8 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const access = await requireOperator();
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
+  const refused = await guardAdminPost(request);
+  if (refused) return refused;
 
   let body: { apiKey?: string };
   try {

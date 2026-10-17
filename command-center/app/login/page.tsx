@@ -12,6 +12,8 @@ import { safeLoginReturn } from "@/lib/safe-redirect";
 import { clearAllDrafts } from "@/lib/create-draft";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
 import { FORGOT_PASSWORD_PATH } from "@/lib/public-paths";
+import { mfaVerifyUrl } from "@/lib/security/admin-mfa";
+import { signInNextStep, type MfaClient } from "@/lib/security/challenge";
 import { classifySignInError, isCallbackError, type CallbackError, type SignInOutcome } from "@/lib/signup";
 
 export default function LoginPage() {
@@ -63,7 +65,13 @@ export default function LoginPage() {
     await applyPendingHandle(supabase as unknown as HandleClient);
     // A connection request from an AI app sent this person here: back to it
     // (only that exact page is honoured), otherwise the app as always.
-    router.push(safeLoginReturn(new URLSearchParams(window.location.search).get("next"), "/command-center"));
+    const destination = safeLoginReturn(new URLSearchParams(window.location.search).get("next"), "/command-center");
+    // An account with an authenticator is not signed in yet: the password made a
+    // password-only session, and the code makes it complete. Nothing is pushed
+    // to the app before that; /login/verify asks the server again and moves on
+    // at once for anyone who needs no code.
+    const step = await signInNextStep(supabase as unknown as MfaClient);
+    router.push(step === "challenge" ? mfaVerifyUrl(destination) : destination);
     router.refresh();
   }
 

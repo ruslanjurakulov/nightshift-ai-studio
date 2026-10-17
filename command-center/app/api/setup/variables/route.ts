@@ -5,6 +5,7 @@ import { requireOperator } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { isGithubConfigured } from "@/lib/server/github-secrets";
 import { isWritableVariable, putVariable, readVariables } from "@/lib/server/github-variables";
+import { guardAdminPost } from "@/lib/server/admin-post-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,8 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   // Changing which generator the pipeline uses is an owner/admin action.
   if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const refused = await guardAdminPost(request, user);
+  if (refused) return refused;
   if (!isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 

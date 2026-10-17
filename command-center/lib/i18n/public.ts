@@ -34,6 +34,12 @@ export type PublicDictionary = {
   /** /forgot-password, the "reset your password?" confirmation and /reset-password. */
   recovery: Dictionary["recovery"];
   auth: Pick<Dictionary["auth"], "email" | "password" | "signIn" | "signingIn">;
+  /** /login/verify: the second step of sign-in for an account with an authenticator (components/auth/MfaChallenge.tsx). */
+  mfa: Pick<
+    Dictionary["mfa"],
+    | "title" | "subtitle" | "codeLabel" | "codePh" | "factorLabel" | "factorFallback" | "submit" | "submitting" | "loading"
+    | "wrongCode" | "expired" | "rateLimited" | "noFactor" | "failed" | "unavailable" | "retry" | "signOut" | "signingOut"
+  >;
   /** The error screen (components/feedback/ErrorScreen), shown by app/error.tsx on any page. */
   ux: Pick<Dictionary["ux"], "errorTitle" | "errorBody" | "errorRetry" | "errorHome" | "errorRef">;
 };
@@ -58,6 +64,26 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     signup: t.signup,
     recovery: t.recovery,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
+    mfa: {
+      title: t.mfa.title,
+      subtitle: t.mfa.subtitle,
+      codeLabel: t.mfa.codeLabel,
+      codePh: t.mfa.codePh,
+      factorLabel: t.mfa.factorLabel,
+      factorFallback: t.mfa.factorFallback,
+      submit: t.mfa.submit,
+      submitting: t.mfa.submitting,
+      loading: t.mfa.loading,
+      wrongCode: t.mfa.wrongCode,
+      expired: t.mfa.expired,
+      rateLimited: t.mfa.rateLimited,
+      noFactor: t.mfa.noFactor,
+      failed: t.mfa.failed,
+      unavailable: t.mfa.unavailable,
+      retry: t.mfa.retry,
+      signOut: t.mfa.signOut,
+      signingOut: t.mfa.signingOut,
+    },
     ux: {
       errorTitle: t.ux.errorTitle,
       errorBody: t.ux.errorBody,
