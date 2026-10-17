@@ -1341,6 +1341,8 @@ export const en = {
     },
   },
   providers: {
+    badValue: "{name} was not accepted: check its format and try again.",
+    rateLimited: "Too many changes just now. Wait a few minutes, then try again.",
     title: "Providers",
     subtitle: "Every external provider this account can use. Paste an API key and it is sealed into a GitHub Actions secret the bot reads at runtime — this site never stores, logs, or shows the key.",
     storedNote: "keys sealed into GitHub Actions secrets, never shown here",
@@ -3584,6 +3586,7 @@ export const en = {
     bannerEnrol: "This admin account has no second factor yet. Add an authenticator so a stolen password is not enough.",
     bannerEnrolAction: "Set it up",
     recentRequired: "For your safety, confirm your authenticator code again before changing keys or settings: sign out, sign in and enter the code.",
+    enrolRequired: "Add an authenticator on the Security page first; until then only that page is open.",
   },
   approvals: {
     title: "Publish approvals",

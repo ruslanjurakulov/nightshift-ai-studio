@@ -62,8 +62,9 @@ describe("secrets: keys and ids", () => {
       expect(reason(validateSecretValue(name, "abcdefgh$ijklmnop"))).toBe("forbidden_chars");
       expect(reason(validateSecretValue(name, "abcdefgh`id`"))).toBe("forbidden_chars");
       expect(reason(validateSecretValue(name, `"abcdefghijkl"`))).toBe("forbidden_chars");
-      expect(reason(validateSecretValue(name, "a".repeat(513)))).toBe("too_long");
+      expect(reason(validateSecretValue(name, "a".repeat(4097)))).toBe("too_long");
       expect(reason(validateSecretValue(name, "short"))).toBe("bad_shape");
+      expect(validateSecretValue(name, "a".repeat(4096)).ok).toBe(true);
     },
   );
   it("non-strings and blanks never pass", () => {
@@ -77,8 +78,17 @@ describe("secrets: Google OAuth JSON", () => {
     expect(validateSecretValue("YOUTUBE_TOKEN_JSON", GOOGLE_TOKEN).ok).toBe(true);
     expect(validateSecretValue("CHRONOS_YT_TOKEN_MYCHANNEL", GOOGLE_TOKEN).ok).toBe(true);
     expect(validateSecretValue("YOUTUBE_CLIENT_SECRET_JSON", CLIENT_FILE).ok).toBe(true);
-    // pretty-printed JSON (line breaks inside the document) is fine: these never go into the web env file
-    expect(validateSecretValue("YOUTUBE_TOKEN_JSON", JSON.stringify(JSON.parse(GOOGLE_TOKEN), null, 2)).ok).toBe(true);
+    // a pasted pretty-printed document is accepted but WRITTEN compact, on one line: a line break in it would make the
+    // worker env file builder (deploy/build-service-env.py) refuse every deploy
+    const pretty = JSON.stringify(JSON.parse(GOOGLE_TOKEN), null, 2);
+    expect(pretty).toContain("\n");
+    for (const name of ["YOUTUBE_TOKEN_JSON", "CHRONOS_YT_TOKEN_MYCHANNEL"]) {
+      const r = validateSecretValue(name, `\n${pretty}\n`);
+      expect(r).toEqual({ ok: true, value: GOOGLE_TOKEN });
+      expect((r as { value: string }).value).not.toMatch(/[\r\n]/);
+    }
+    const prettyClient = JSON.stringify(JSON.parse(CLIENT_FILE), null, 4);
+    expect(validateSecretValue("YOUTUBE_CLIENT_SECRET_JSON", prettyClient)).toEqual({ ok: true, value: CLIENT_FILE });
   });
   it("a token_uri on another host is refused (the refresh token would be posted there)", () => {
     const evil = JSON.stringify({ ...JSON.parse(GOOGLE_TOKEN), token_uri: "https://evil.example/token" });
@@ -86,6 +96,16 @@ describe("secrets: Google OAuth JSON", () => {
     expect(reason(validateSecretValue("CHRONOS_YT_TOKEN_X", evil))).toBe("bad_host");
     const evilClient = JSON.stringify({ web: { client_id: "i", client_secret: "s", token_uri: "http://oauth2.googleapis.com/token" } });
     expect(reason(validateSecretValue("YOUTUBE_CLIENT_SECRET_JSON", evilClient))).toBe("bad_host");
+  });
+  it("a document that would still break the env file once compact is refused: `$` or ' #' inside a string", () => {
+    const withDollar = JSON.stringify({ ...JSON.parse(GOOGLE_TOKEN), note: "a$b" });
+    expect(reason(validateSecretValue("YOUTUBE_TOKEN_JSON", withDollar))).toBe("forbidden_chars");
+    const escaped = '{"refresh_token":"1//0abc","note":"a\\u0024b"}';
+    expect(reason(validateSecretValue("YOUTUBE_TOKEN_JSON", escaped))).toBe("forbidden_chars");
+    const withHash = JSON.stringify({ ...JSON.parse(GOOGLE_TOKEN), note: "x #y" });
+    expect(reason(validateSecretValue("YOUTUBE_TOKEN_JSON", withHash))).toBe("forbidden_chars");
+    // a '#' with no space before it is fine
+    expect(validateSecretValue("YOUTUBE_TOKEN_JSON", JSON.stringify({ ...JSON.parse(GOOGLE_TOKEN), note: "x#y" })).ok).toBe(true);
   });
   it("wrong shapes are refused", () => {
     expect(reason(validateSecretValue("YOUTUBE_TOKEN_JSON", "not json"))).toBe("bad_json");

@@ -153,6 +153,29 @@ describe("/auth/callback", () => {
     expect(auth.refresh).not.toHaveBeenCalled();
   });
 
+  it("reads the form with a hard cap: an oversized body (declared or streamed) is refused as an invalid link, sign-in untouched", async () => {
+    const pending = await pendingFromLink();
+    const big = await confirmPost({ action: "continue", csrf: pending.csrf, next: "/welcome", pad: "x".repeat(20_000) });
+    expect(big.status).toBe(303);
+    expect(new URL(big.headers.get("location")!).search).toBe("?error=link_invalid");
+    expect(auth.refresh).not.toHaveBeenCalled();
+    // no Content-Length (chunked): the stream is cut off at the cap all the same
+    const enc = new TextEncoder().encode(new URLSearchParams({ action: "continue", csrf: pending.csrf, pad: "y".repeat(20_000) }).toString());
+    const streamed = await POST(
+      new Request("https://nightshift.test/auth/callback", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://nightshift.test" },
+        body: new ReadableStream({ start: (c) => (c.enqueue(enc), c.close()) }),
+        duplex: "half",
+      } as RequestInit),
+    );
+    expect(new URL(streamed.headers.get("location")!).search).toBe("?error=link_invalid");
+    expect(auth.refresh).not.toHaveBeenCalled();
+    // ...and a normal form still works afterwards
+    const ok = await confirmPost({ action: "continue", csrf: pending.csrf, next: "/welcome" });
+    expect(new URL(ok.headers.get("location")!).pathname).toBe("/welcome");
+  });
+
   it("cancels: drops the pending sign-in, signs nobody in", async () => {
     const pending = await pendingFromLink();
     const res = await confirmPost({ action: "cancel", csrf: pending.csrf, next: "/welcome" });

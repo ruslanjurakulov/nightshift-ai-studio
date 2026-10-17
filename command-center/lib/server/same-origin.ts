@@ -24,10 +24,27 @@ import { publicOrigin } from "@/lib/server/public-origin";
  */
 const NO_STORE = { "cache-control": "no-store" };
 
+export interface SameOriginOptions {
+  /**
+   * Accept a request with NO Origin header, but only when the browser itself says `Sec-Fetch-Site: same-origin`.
+   * For the XHR upload PUT, where some browsers omit Origin on a same-origin PUT. `Sec-Fetch-Site` is set by the
+   * browser and a page cannot forge or remove it (it is a forbidden header name), so a cross-site page cannot
+   * use this; `Origin: null`, a foreign Origin, and a missing Origin without that header are still refused.
+   */
+  allowMissingOriginWhenSameOrigin?: boolean;
+}
+
 /** The 403 to send when the request did not come from our own page, or null to carry on. */
-export function rejectCrossOrigin(request: Request): NextResponse | null {
+export function rejectCrossOrigin(request: Request, options: SameOriginOptions = {}): NextResponse | null {
   const ours = [publicOrigin(request), new URL(request.url).origin];
   if (isSameOriginPost(request.headers, ours)) return null;
+  if (
+    options.allowMissingOriginWhenSameOrigin &&
+    request.headers.get("origin") === null &&
+    request.headers.get("sec-fetch-site") === "same-origin"
+  ) {
+    return null;
+  }
   return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
 }
 
@@ -37,8 +54,11 @@ export function rejectCrossOrigin(request: Request): NextResponse | null {
  * route typing and the `{ params }` second argument are unchanged.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function requireSameOrigin<H extends (request: any, ...rest: any[]) => Response | Promise<Response>>(handler: H): H {
+export function requireSameOrigin<H extends (request: any, ...rest: any[]) => Response | Promise<Response>>(
+  handler: H,
+  options: SameOriginOptions = {},
+): H {
   const wrapped = async (request: Request, ...rest: unknown[]): Promise<Response> =>
-    rejectCrossOrigin(request) ?? (await handler(request, ...rest));
+    rejectCrossOrigin(request, options) ?? (await handler(request, ...rest));
   return wrapped as unknown as H;
 }

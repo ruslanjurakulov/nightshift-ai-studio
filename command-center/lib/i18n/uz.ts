@@ -1330,6 +1330,8 @@ export const uz: Dictionary = {
     },
   },
   providers: {
+    badValue: "{name} qabul qilinmadi: formatini tekshirib, qayta urinib koʻring.",
+    rateLimited: "Hozir juda koʻp oʻzgartirish boʻldi. Bir necha daqiqa kuting va qayta urinib koʻring.",
     title: "Provayderlar",
     subtitle: "Bu akkaunt ishlatishi mumkin boʻlgan barcha tashqi provayderlar. API kalitini kiriting — u bot ish vaqtida oʻqiydigan GitHub Actions maxfiy kalitiga muhrlanadi; sayt kalitni saqlamaydi, log qilmaydi va koʻrsatmaydi.",
     storedNote: "kalitlar GitHub Actions secretlariga muhrlanadi, bu yerda koʻrsatilmaydi",
@@ -3572,6 +3574,7 @@ export const uz: Dictionary = {
     bannerEnrol: "Bu administrator hisobida hali ikkinchi omil yoʻq. Parol oʻgʻirlansa ham kirib boʻlmasligi uchun autentifikator qoʻshing.",
     bannerEnrolAction: "Sozlash",
     recentRequired: "Xavfsizlik uchun kalit yoki sozlamalarni oʻzgartirishdan oldin autentifikator kodini yana tasdiqlang: chiqing, qayta kiring va kodni kiriting.",
+    enrolRequired: "Avval Xavfsizlik sahifasida autentifikator qoʻshing; shu paytgacha faqat shu sahifa ochiq.",
   },
   approvals: {
     title: "Nashr tasdiqlashlari",

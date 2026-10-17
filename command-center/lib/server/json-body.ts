@@ -15,10 +15,9 @@ export type CappedBody =
 /** The cap for routes whose body is a few ids and a title. */
 export const SMALL_BODY_BYTES = 16_384;
 
-export async function readJsonBodyCapped(
-  request: Request,
-  maxBytes: number,
-): Promise<CappedBody> {
+type Capped = { ok: true; bytes: Uint8Array } | { ok: false; reason: "too_large" | "bad" };
+
+async function readCapped(request: Request, maxBytes: number): Promise<Capped> {
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > maxBytes) return { ok: false, reason: "too_large" };
   const stream = request.body;
@@ -47,8 +46,26 @@ export async function readJsonBodyCapped(
     bytes.set(p, at);
     at += p.byteLength;
   }
+  return { ok: true, bytes };
+}
+
+/**
+ * The body's bytes under the same hard cap, or null when it is over `maxBytes` (a declared length over it is refused
+ * before a byte is read), absent, or the stream broke. For a body that is not JSON, such as a small form.
+ */
+export async function readBytesCapped(request: Request, maxBytes: number): Promise<Uint8Array | null> {
+  const read = await readCapped(request, maxBytes);
+  return read.ok ? read.bytes : null;
+}
+
+export async function readJsonBodyCapped(
+  request: Request,
+  maxBytes: number,
+): Promise<CappedBody> {
+  const read = await readCapped(request, maxBytes);
+  if (!read.ok) return read;
   try {
-    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) };
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(read.bytes)) };
   } catch {
     return { ok: false, reason: "bad" };
   }

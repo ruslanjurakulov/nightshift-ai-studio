@@ -404,6 +404,29 @@ describe("readBodyCapped", () => {
     expect(res.status).toBe(200);
   });
 
+  it("preserves the raw body byte for byte: trailing whitespace, multi-byte text and chunk splits mid-character, and the HMAC still verifies", async () => {
+    const body = completed({ notes: "Ёлка ✓ 日本語 😀" }) + "\n \t\r\n";
+    const bytes = enc.encode(body);
+    // split inside a multi-byte character on purpose
+    const cut = bytes.findIndex((b) => b >= 0xf0) + 2;
+    const read = await readBodyCapped(reqOf(stream([bytes.slice(0, cut), bytes.slice(cut, cut + 5), bytes.slice(cut + 5)])));
+    expect(read.ok).toBe(true);
+    const text = (read as { text: string }).text;
+    expect(text).toBe(body);
+    expect(Buffer.from(enc.encode(text)).equals(Buffer.from(bytes))).toBe(true);
+    const header = sign(body);
+    expect(await verifyPaddleSignature(text, header, SECRET, NOW_S)).toBe("ok");
+    // and it is exactly what the handler credits from
+    const store = new FakeStore();
+    const res = await handlePaddleWebhook(
+      { method: "POST", rawBody: text, signature: header },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet },
+    );
+    expect(res.status).toBe(200);
+    // one trailing byte changed anywhere breaks it
+    expect(await verifyPaddleSignature(text.trimEnd(), header, SECRET, NOW_S)).toBe("mismatch");
+  });
+
   it("refuses a declared Content-Length over the cap without reading a byte", async () => {
     const body = stream([enc.encode("{}")]);
     const read = await readBodyCapped(reqOf(body, { "content-length": String(MAX_BODY_BYTES + 1) }));

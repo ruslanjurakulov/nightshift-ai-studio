@@ -40,7 +40,7 @@ const CONTROL = /[\x00-\x1f\x7f]/;
 const ENV_SYNTAX = /[$`"'\\]/;
 
 /** Hard ceilings, by kind. */
-export const MAX_KEY_CHARS = 512;
+export const MAX_KEY_CHARS = 4096;
 export const MAX_URL_CHARS = 300;
 export const MAX_JSON_CHARS = 16_384;
 export const MAX_EMAIL_CHARS = 254;
@@ -104,6 +104,12 @@ function isGoogleEndpoint(value: unknown): boolean {
  * object. The pipeline posts the refresh token and client secret to its
  * `token_uri`, so a document that names another host there would hand those to
  * whoever owns it: any endpoint named in the document must be Google's.
+ *
+ * The value WRITTEN is the compact form (`JSON.stringify(JSON.parse(raw))`): one
+ * line, no pretty-printing. The worker env file builder (deploy/build-service-env.py
+ * `clean()`) refuses a line break, `$` and ` #`, so a pasted pretty-printed token
+ * would otherwise break a deploy. A compact document that still holds `$` or ` #`
+ * (inside a string) is refused here for the same reason.
  */
 function checkGoogleJson(raw: string, kind: "client" | "token"): ValueCheck {
   if (raw.length > MAX_JSON_CHARS) return no("too_long");
@@ -128,7 +134,9 @@ function checkGoogleJson(raw: string, kind: "client" | "token"): ValueCheck {
   for (const key of ["token_uri", "auth_uri", "revoke_uri"]) {
     if (key in fields && !isGoogleEndpoint(fields[key])) return no("bad_host");
   }
-  return ok(raw);
+  const compact = JSON.stringify(doc);
+  if (compact.includes("$") || compact.includes(" #")) return no("forbidden_chars");
+  return ok(compact);
 }
 
 /** One plain address: ASCII local part and a dotted domain with a real TLD. */

@@ -16,6 +16,8 @@ import { rejectCrossOrigin, requireSameOrigin } from "../lib/server/same-origin"
  * handler with a missing, foreign, `null` and cross-site origin and expects the 403 before anything else runs.
  */
 
+vi.mock("server-only", () => ({}));
+
 const APP = join(__dirname, "..", "app");
 
 /** Mutating routes that are deliberately NOT same-origin gated, each with its reason. */
@@ -126,6 +128,34 @@ describe("requireSameOrigin / rejectCrossOrigin", () => {
     expect(rejectCrossOrigin(post({ origin: OURS }))).toBeNull();
   });
 
+  describe("allowMissingOriginWhenSameOrigin (the XHR upload PUT only)", () => {
+    const put = (headers: Record<string, string>) => new Request(`${OURS}/api/media/uploads/t`, { method: "PUT", headers, body: "x" });
+    const lenient = { allowMissingOriginWhenSameOrigin: true };
+
+    it("accepts: no Origin, but the browser says Sec-Fetch-Site: same-origin", () => {
+      expect(rejectCrossOrigin(put({ "sec-fetch-site": "same-origin" }), lenient)).toBeNull();
+    });
+    it.each<[string, Record<string, string>]>([
+      ["no Origin and no Sec-Fetch-Site", {}],
+      ["no Origin and Sec-Fetch-Site: cross-site", { "sec-fetch-site": "cross-site" }],
+      ["no Origin and Sec-Fetch-Site: same-site", { "sec-fetch-site": "same-site" }],
+      ["no Origin and Sec-Fetch-Site: none", { "sec-fetch-site": "none" }],
+      ["Origin: null even with same-origin", { origin: "null", "sec-fetch-site": "same-origin" }],
+      ["a foreign Origin even with same-origin", { origin: "https://evil.example", "sec-fetch-site": "same-origin" }],
+      ["a foreign Origin alone", { origin: "https://evil.example" }],
+    ])("still refuses %s", (_label, headers) => {
+      expect(rejectCrossOrigin(put(headers), lenient)?.status).toBe(403);
+    });
+    it("our own Origin still passes, and the strict default still refuses a missing Origin with same-origin", () => {
+      expect(rejectCrossOrigin(put({ origin: OURS }), lenient)).toBeNull();
+      expect(rejectCrossOrigin(put({ "sec-fetch-site": "same-origin" }))?.status).toBe(403);
+    });
+    it("only the media upload PUT asks for it", () => {
+      const users = mutating.filter((f) => f.src.includes("allowMissingOriginWhenSameOrigin")).map((f) => f.rel);
+      expect(users).toEqual(["api/media/uploads/[ticket]/route.ts"]);
+    });
+  });
+
   it("behind the reverse proxy the configured APP_ORIGIN is ours too (the request URL there is the bind address)", async () => {
     vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
     try {
@@ -139,7 +169,6 @@ describe("requireSameOrigin / rejectCrossOrigin", () => {
 });
 
 describe("every wrapped handler refuses a missing, foreign, null or cross-site Origin with a 403", () => {
-  vi.mock("server-only", () => ({}));
   const wrapped = mutating.filter((f) => !MACHINE_TO_MACHINE[f.rel] && f.src.includes("requireSameOrigin("));
 
   it("covers most of the mutating routes", () => {

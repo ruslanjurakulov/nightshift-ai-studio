@@ -248,20 +248,21 @@ value or any part of it).
 | `SLACK_WEBHOOK_URL` | `https://hooks.slack.com/services/T../B../token` (also `hooks.slack-gov.com`); no port, query, fragment, userinfo, whitespace or env syntax |
 | `RESEND_API_KEY` | `re_` + token |
 | `YOUTUBE_CHANNEL_ID` | `UC` + 22 url-safe characters |
-| `YOUTUBE_TOKEN_JSON`, `CHRONOS_YT_TOKEN_*` | a JSON object with a `refresh_token`; any `token_uri` / `auth_uri` / `revoke_uri` in it must be an `https` Google host (the pipeline posts the refresh token and client secret to `token_uri`) |
+| `YOUTUBE_TOKEN_JSON`, `CHRONOS_YT_TOKEN_*` | a JSON object with a `refresh_token`; any `token_uri` / `auth_uri` / `revoke_uri` in it must be an `https` Google host (the pipeline posts the refresh token and client secret to `token_uri`). Written in **compact** form (`JSON.stringify(JSON.parse(raw))`, one line); refused if the compact form still holds `$` or ` #` |
 | `YOUTUBE_CLIENT_SECRET_JSON` | a JSON object with an `installed` or `web` section holding `client_id` and `client_secret`; same endpoint rule |
-| every other provider key | one printable-ASCII token of 8-512 characters: no whitespace, `$`, backtick, quotes or backslash |
+| every other provider key | one printable-ASCII token of 8-4096 characters: no whitespace, `$`, backtick, quotes or backslash |
 | `ALERT_EMAIL_TO` | exactly one address |
-| `ALERT_EMAIL_FROM` | one address, or `Display Name <address>` |
+| `ALERT_EMAIL_FROM` | one address, or `Display Name <address>`; the display name is 1-60 characters of letters, digits, space, `.`, `_` and `-` only (no quotes, commas, `@`, `<` or `>`), the address is the same plain form as `ALERT_EMAIL_TO` |
 | `CHRONOS_VIDEO_PROVIDER`, `CHRONOS_IMAGE_PROVIDER` | the closed lists (`VIDEO_PROVIDERS`, `IMAGE_PROVIDERS`), case-folded |
 | the `CHRONOS_ENABLE_*` / `CHRONOS_AGENT_AUTOPILOT` switches | `0 1 true false yes no on off` |
 
 `$`, a line break, a leading quote or ` #` in a value that goes into the server
-env file would make `deploy_web.yml` (and `deploy/build-service-env.py`) refuse
-every deploy; the validators refuse them first. Only `SLACK_WEBHOOK_URL` of the
-writable names goes into the web env file; the rest are GitHub Actions secrets,
-so JSON secrets may contain line breaks. An empty variable value is still
-allowed (it is how a variable is cleared).
+env file or the worker env file would make `deploy_web.yml` (and
+`deploy/build-service-env.py`, whose `clean()` refuses exactly those) refuse every
+deploy; the validators refuse them first. For that reason the Google OAuth JSON
+secrets are written in compact one-line form, so a pasted pretty-printed token cannot
+carry a line break into an env file. An empty variable value is still allowed (it is
+how a variable is cleared).
 
 Writes are rate limited per person in process memory (`secret-write.ts`): secrets
 20 per 10 minutes, variables 40 per 10 minutes, the wizard's YouTube key check 30
@@ -301,6 +302,8 @@ the check. Same-origin `fetch` from the PWA and the Mobile view always sends
 `Origin`, so the site is unaffected; a script that called a cookie route without a
 browser must now send `Origin: https://<your domain>`. The test fails for any new
 mutating route that has neither the check nor an allow-list entry.
+
+One leniency: the XHR upload `PUT /api/media/uploads/<ticket>` (`MediaLibrary.tsx`) accepts a request with **no** `Origin` header, but only when the browser itself sends `Sec-Fetch-Site: same-origin` (a header a page cannot forge or remove); `Origin: null`, a foreign Origin, and a missing Origin without that header are still `403` (`allowMissingOriginWhenSameOrigin`, used by that one route, pinned by a test).
 
 ### Body caps (BR-S-019, always on)
 
