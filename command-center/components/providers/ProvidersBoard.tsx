@@ -25,8 +25,8 @@ import {
  * today; the rest are opt-in adapters that stay off until a key is set.
  *
  * Replacing a key that is already on file overwrites a GitHub secret that cannot
- * be read back, so it asks first (the sheet names the provider and shows the
- * last four characters of the new key, which catches a mis-paste) and locks
+ * be read back, so it asks first (the sheet names the provider and says the key
+ * will be replaced; no part of the pasted key is ever shown) and locks
  * against a second tap. A key with spaces or too short is refused before that.
  */
 export function ProvidersBoard({
@@ -176,7 +176,7 @@ function ProviderCard({
       confirmLabel: t.ownerSafety.keyReplaceConfirm,
       details: [
         { label: t.ownerSafety.dProvider, value: provider.name },
-        { label: t.ownerSafety.dNewKey, value: fmt(t.ownerSafety.keyEnds, { tail: key.slice(-4) }) },
+        { label: t.ownerSafety.dKey, value: t.ownerSafety.keyWillReplace },
       ],
       successMessage: t.providers.saved,
       run: async () => {

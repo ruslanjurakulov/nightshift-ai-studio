@@ -58,8 +58,8 @@ export const ownerSafetyUz: OwnerSafetyDictionary = {
   keyReplaceBody:
     "Saqlangan kalit ustidan yoziladi va uni qayta oʻqib boʻlmaydi. Yangi kalit xato boʻlsa, {name} konveyerda ishlamay qoladi.",
   keyReplaceConfirm: "Kalitni almashtirish",
-  keyEnds: "oxiri: {tail}",
-  dNewKey: "Yangi kalit",
+  keyWillReplace: "almashtiriladi",
+  dKey: "Kalit",
   keyInvalid: "Bu kalitga oʻxshamaydi. Boʻshliqlarni olib tashlab, kalitni toʻliq joylashtiring.",
   routeAutopilotTitle: "Avtopilot yoqilsinmi?",
   routeAutopilotBody: "Bundan buyon Nightshift har kunlik mavzuni sizdan soʻramasdan oʻzi tanlaydi.",

@@ -252,12 +252,15 @@ describe("ProvidersBoard (replace a key)", () => {
   const field = () => screen.getByLabelText("ElevenLabs API key");
   const secretsCalls = () => h.fetch.mock.calls.filter((c) => c[0] === "/api/setup/secrets");
 
-  it("replacing a key on file asks first and names the provider and the last four characters", async () => {
+  it("replacing a key on file asks first and names the provider; no part of the pasted key is shown anywhere", async () => {
     show(["ELEVENLABS_API_KEY"]);
-    fireEvent.change(field(), { target: { value: "sk_live_abcd1234wxyz" } });
+    const secret = "sk_live_abcd1234wxyz";
+    fireEvent.change(field(), { target: { value: secret } });
     await tap(screen.getByRole("button", { name: en.providers.replace }));
     expect(sheet().textContent).toContain("Replace the key of ElevenLabs?");
-    expect(sheet().textContent).toContain("ends with wxyz");
+    expect(sheet().textContent).toContain(en.ownerSafety.keyWillReplace);
+    // never the key, a prefix, a suffix or a masked fragment of it
+    for (const frag of [secret, "wxyz", "sk_live", "abcd", "1234"]) expect(sheet().textContent).not.toContain(frag);
     expect(secretsCalls()).toHaveLength(0);
   });
 
@@ -310,6 +313,8 @@ describe("ProvidersBoard (replace a key)", () => {
     await tap(screen.getByRole("button", { name: en.providers.replace }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.getByText(en.ownerSafety.keyInvalid)).toBeTruthy();
+    // the refusal does not echo any part, or the length, of what was typed
+    expect(screen.getByText(en.ownerSafety.keyInvalid).textContent).not.toMatch(/\d|abc|def/);
     expect(secretsCalls()).toHaveLength(0);
   });
 });

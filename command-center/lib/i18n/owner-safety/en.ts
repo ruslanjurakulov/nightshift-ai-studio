@@ -67,8 +67,8 @@ export const ownerSafetyEn = {
   keyReplaceBody:
     "The stored key is overwritten and cannot be read back. If the new key is wrong, {name} stops working in the pipeline.",
   keyReplaceConfirm: "Replace key",
-  keyEnds: "ends with {tail}",
-  dNewKey: "New key",
+  keyWillReplace: "will be replaced",
+  dKey: "Key",
   keyInvalid: "That does not look like a key. Remove any spaces and paste the whole key.",
   // Pipeline routing
   routeAutopilotTitle: "Turn on autopilot?",

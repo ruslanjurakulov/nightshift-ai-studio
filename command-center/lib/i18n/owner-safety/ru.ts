@@ -58,8 +58,8 @@ export const ownerSafetyRu: OwnerSafetyDictionary = {
   keyReplaceBody:
     "Сохранённый ключ будет перезаписан, прочитать его обратно нельзя. Если новый ключ неверный, {name} перестанет работать в конвейере.",
   keyReplaceConfirm: "Заменить ключ",
-  keyEnds: "оканчивается на {tail}",
-  dNewKey: "Новый ключ",
+  keyWillReplace: "будет заменён",
+  dKey: "Ключ",
   keyInvalid: "Это не похоже на ключ. Уберите пробелы и вставьте ключ целиком.",
   routeAutopilotTitle: "Включить автопилот?",
   routeAutopilotBody: "Отныне Nightshift сам выбирает тему дня, не спрашивая вас.",
