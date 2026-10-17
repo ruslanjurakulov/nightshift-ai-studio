@@ -40,4 +40,20 @@ describe("require_two_person_publish is never written by the app", () => {
       expect(src, f).not.toMatch(/requireToggle|requireUnknown|requireOn:|requireOff:/);
     }
   });
+
+  it("customer-facing marketing copy promises no second approver, and has no stray ',.'", () => {
+    const files = ["site/en", "site/ru", "site/uz", "studio-page/en", "studio-page/ru", "studio-page/uz"];
+    for (const f of files) {
+      const src = readFileSync(join(ROOT, "lib/i18n", `${f}.ts`), "utf8");
+      expect(src, f).not.toMatch(
+        /second (person|sign-?off|admin|approv)|two approvals|ikkinchi (shaxs|tasdiq)|ikki tasdiq|второго человека|второе (одобрение|подтверждение)|два одобрения/i,
+      );
+      expect(src, f).not.toMatch(/[a-zа-я],\./i);
+    }
+    // The two "Nothing goes public without you" cards on the home page.
+    for (const f of ["en", "ru", "uz"]) {
+      const src = readFileSync(join(ROOT, "lib/i18n", `${f}.ts`), "utf8");
+      expect(src, f).not.toMatch(/optional second sign-off|со вторым подтверждением|ikkinchi tasdiq bilan/);
+    }
+  });
 });

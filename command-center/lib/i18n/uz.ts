@@ -3547,7 +3547,7 @@ export const uz: Dictionary = {
   },
   approvals: {
     title: "Nashr tasdiqlashlari",
-    subtitle: "Videoni nashr qilish uchun tasdiq soʻrang va u ommaviy boʻlishidan oldin tasdiqlang.",
+    subtitle: "Videoni nashr qilish uchun tasdiq soʻrang; uni boshqa administrator tasdiqlaydi.",
     readFailed: "Tasdiq soʻrovlarini oʻqib boʻlmadi.",
     requestTitle: "Nashrni tasdiqlashni soʻrash",
     videoRef: "Video havolasi (ixtiyoriy)",
@@ -3680,7 +3680,7 @@ export const uz: Dictionary = {
       items: [
         { id: "price", title: "Har bir ishga tushirishdan oldin narx", body: "Har bir generatsiya va har bir video ishga tushirish boshlanishidan oldin narxini kreditlarda koʻrsatadi va faqat siz tasdiqlaganingizdan keyin boshlanadi. Bu orada narx oʻzgarsa, sizdan qayta soʻraladi.", typical: "Narx faqat renderdan keyin maʼlum boʻladi." },
         { id: "refund", title: "Xatoda kreditlar avtomatik qaytadi", body: "Ish muvaffaqiyatsiz boʻlsa, uning uchun band qilingan kreditlar balansingizga oʻzi qaytadi — murojaatsiz, arizasiz. Kredit tarixida har bir band, yechim va qaytarish koʻrinadi.", typical: "Muvaffaqiyatsiz render ham kreditlarni yeyishi mumkin." },
-        { id: "approval", title: "Sizsiz hech narsa ommaga chiqmaydi", body: "Videolar YouTube’ga yopiq holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Ommaga chiqarishni siz hal qilasiz, xohlasangiz — ikkinchi tasdiq bilan.", typical: "Yuklab olib, oʻzingiz joylaysiz — yoki oʻzi chiqib ketadi." },
+        { id: "approval", title: "Sizsiz hech narsa ommaga chiqmaydi", body: "Videolar YouTube’ga yopiq holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Ommaga chiqarishni siz hal qilasiz: tasdiqlamaguningizcha hech narsa ommaga chiqmaydi.", typical: "Yuklab olib, oʻzingiz joylaysiz — yoki oʻzi chiqib ketadi." },
         { id: "channels", title: "Koʻp kanal — bitta joyda", body: "Bitta akkauntdan bir nechta YouTube kanalni yuriting — har birining oʻz tili, ovozi, uslubi va jadvali, bittalab yoki hammasi birga.", typical: "Har bir kanal uchun alohida ish maydoni." },
         { id: "languages", title: "Oʻzbek, Русский, English", body: "Butun interfeys va siz yaratgan videolar — oʻzbek, rus yoki ingliz tilida. Tilni istalgan vaqtda menyudan almashtirasiz.", typical: "Asosan ingliz tilidagi interfeyslar." },
       ],

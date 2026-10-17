@@ -485,7 +485,7 @@ export const siteEn = {
     secondary: "See pricing",
     pictures: {
       signoff: {
-        figure: "Illustration of one finished video on a channel that asks for two approvals: it waits on YouTube as private, the publish check has passed, your approval is in, and the second sign-off is still to come.",
+        figure: "Illustration of one finished video at the publish desk: it waits on YouTube as private, the publish check has passed, and your approval is the last step before it goes public.",
         title: "Publish desk",
         channel: "Your channel",
         tag: "Illustration",
@@ -494,10 +494,8 @@ export const siteEn = {
         check: "Publish check",
         checkState: "Passed",
         first: "Your approval",
-        firstState: "Approved",
-        second: "Second sign-off",
-        secondState: "Waiting",
-        air: "It goes public only when both are in.",
+        firstState: "Waiting for you",
+        air: "It goes public only when you approve it.",
       },
       composer: {
         figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate button that carries its price.",

@@ -474,7 +474,7 @@ export const siteUz: SiteDictionary = {
     secondary: "Narxlarni koʻrish",
     pictures: {
       signoff: {
-        figure: "Tasvir: ikki tasdiq talab qiladigan kanaldagi tayyor video. U YouTube’da shaxsiy holda kutmoqda, nashr tekshiruvi oʻtgan, sizning tasdigʻingiz bor, ikkinchisi hali kutilmoqda.",
+        figure: "Tasvir: nashr pultidagi tayyor video. U YouTube’da shaxsiy holda kutmoqda, nashr tekshiruvi oʻtgan, ommaga chiqishdan oldingi oxirgi qadam — sizning tasdigʻingiz.",
         title: "Nashr pulti",
         channel: "Kanalingiz",
         tag: "Tasvir",
@@ -483,10 +483,8 @@ export const siteUz: SiteDictionary = {
         check: "Nashr tekshiruvi",
         checkState: "Oʻtdi",
         first: "Sizning tasdigʻingiz",
-        firstState: "Tasdiqlandi",
-        second: "Ikkinchi tasdiq",
-        secondState: "Kutilmoqda",
-        air: "Ikkalasi ham boʻlgandagina efirga chiqadi.",
+        firstState: "Sizni kutmoqda",
+        air: "Siz tasdiqlagandagina efirga chiqadi.",
       },
       composer: {
         figure: "Studiya konstruktori rasmi: tavsif, tanlangan 16:9 shakli, uslublaringizdan biri va narxi ustida koʻrsatilgan «Yaratish» tugmasi.",

@@ -88,9 +88,9 @@ export function ApiPicture({ t }: { t: Dictionary }) {
 }
 
 /**
- * For channel operators: one finished video at the publish desk of a channel
- * that asks for two approvals — the frame of the video itself, private on
- * YouTube, and the three gates it passes before it airs. A different picture
+ * For channel operators: one finished video at the publish desk — the frame of
+ * the video itself, private on YouTube, and the two gates it passes before it
+ * airs (the publish check, then the owner's own approval). A different picture
  * from the landing's rundown: this is the last step up close, not the whole
  * run. One image to assistive tech; nothing in it can be pressed.
  */
@@ -98,8 +98,7 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
   const s = t.site.solutions.pictures.signoff;
   const gates = [
     { id: "check", name: s.check, state: s.checkState, tone: "ok" as const },
-    { id: "first", name: s.first, state: s.firstState, tone: "ok" as const },
-    { id: "second", name: s.second, state: s.secondState, tone: "run" as const },
+    { id: "first", name: s.first, state: s.firstState, tone: "run" as const },
   ];
   return (
     <figure role="img" aria-label={s.figure} className="st-monitor">

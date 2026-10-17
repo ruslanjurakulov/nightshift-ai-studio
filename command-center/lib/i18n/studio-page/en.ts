@@ -121,7 +121,7 @@ export const studioPageEn = {
       {
         id: "publishes",
         q: "Do you publish for me?",
-        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on,.",
+        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on.",
       },
       {
         id: "languages",

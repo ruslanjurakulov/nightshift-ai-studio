@@ -19,8 +19,8 @@ Supabase: render_jobs  ──claim_render_job()──►  VPS: tools/queue_worke
   uni `running` qiladi va har 30 soniyada `heartbeat_at` ni yangilaydi.
 - Vazifa uchun workflow'dagi **aynan o'sha** buyruq ishga tushadi: bir xil `main.py`
   argumentlari, bir xil env qoidalari (`modules/run_request.py`). Maxfiylik (privacy)
-  standart holatda `private`; publish gate, auto-publish va ikki kishilik tasdiq
-  `main.py` ichida — worker ularni chetlab o'tmaydi va o'zgartirmaydi.
+  standart holatda `private`; publish gate, auto-publish va (avvaldan yoqilgan kanallardagi) ikki kishilik
+  tasdiq `main.py` ichida — worker ularni chetlab o'tmaydi va o'zgartirmaydi.
 - Kanal workflow'dagi kabi tekshiriladi (`tools/list_channels.py` → `resolve_only`):
   noma'lum yoki YouTube'da tasdiqlanmagan kanal hech narsa sarflanmasdan `failed` bo'ladi.
 - Bitta kanal uchun bir vaqtda faqat bitta vazifa `running` bo'ladi (bazadagi qoida).
