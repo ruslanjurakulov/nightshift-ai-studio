@@ -130,7 +130,7 @@ describe("the well-known names, exactly", () => {
   ])("%s is NOT public: signed out it is sent to /login or answered with the 404, and the matcher runs", async (path) => {
     expect(isPublicApiPath(path), path).toBe(false);
     expect(matchers.some((r) => r.test(path)), path).toBe(true);
-    const res = await middleware(new NextRequest(`https://nightshift.test${path}`));
+    const res = await middleware(new NextRequest(`https://nightshift.test${path}`, { headers: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } }));
     if (res.status === 404) return;
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("location") ?? "https://x/").pathname).toMatch(/^\/login\/?$/);

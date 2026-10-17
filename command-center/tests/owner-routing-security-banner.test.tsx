@@ -4,6 +4,7 @@
  * not the tap), the two-factor board (honest states, a stronger confirm on the
  * last factor, the same-phone enrolment link, cancel) and the 2FA banner.
  */
+import { jsonRes } from "./helpers/response";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -40,7 +41,7 @@ import { SecurityBoard } from "../components/security/SecurityBoard";
 import { AdminMfaBanner, MFA_BANNER_DISMISS_KEY, MFA_BANNER_QUIET_MS } from "../components/security/AdminMfaBanner";
 
 beforeEach(() => {
-  h.fetch.mockReset().mockResolvedValue({ ok: true, json: async () => ({}) });
+  h.fetch.mockReset().mockImplementation(async () => jsonRes({}));
   vi.stubGlobal("fetch", h.fetch);
   h.toast.mockReset();
   h.toastError.mockReset();
@@ -94,7 +95,7 @@ describe("PipelineRouting", () => {
   });
 
   it("a failed save rolls back: the choice is NOT shown as chosen, and the sheet says why", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "boom" }) });
+    h.fetch.mockResolvedValueOnce(jsonRes({ error: "boom" }, 500));
     show();
     fireEvent.change(videoSelect(), { target: { value: "kling" } });
     await act(async () => {});
@@ -111,7 +112,7 @@ describe("PipelineRouting", () => {
     fireEvent.change(videoSelect(), { target: { value: "kling" } });
     await act(async () => {});
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.routeSwitchConfirm }));
-    expect(within(sheet()).getByRole("alert").textContent).toBe(en.providers.routingFailed);
+    expect(within(sheet()).getByRole("alert").textContent).toBe(en.ownerTruth.offline);
     expect(videoSelect().value).toBe("off");
   });
 
@@ -128,13 +129,13 @@ describe("PipelineRouting", () => {
     expect(JSON.parse(variablesCalls()[0][1].body)).toEqual({
       variables: { CHRONOS_VIDEO_PROVIDER: "kling", CHRONOS_ENABLE_VIDEO_GEN: "1", CHRONOS_ENABLE_MINIMAX_BROLL: "0" },
     });
-    await act(async () => finish({ ok: true, json: async () => ({}) }));
+    await act(async () => finish(jsonRes({})));
     expect(videoSelect().value).toBe("kling");
     expect(h.toast).toHaveBeenCalledWith(en.providers.routingSaved);
   });
 
   it("a coded refusal from the server (recent code required) is worded in the sheet, never the raw code", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "mfa_recent_required" }) });
+    h.fetch.mockResolvedValueOnce(jsonRes({ error: "mfa_recent_required" }, 500));
     show();
     fireEvent.change(videoSelect(), { target: { value: "kling" } });
     await act(async () => {});
@@ -144,7 +145,7 @@ describe("PipelineRouting", () => {
   });
 
   it("turning autopilot on asks first; a failed save leaves it off", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
+    h.fetch.mockResolvedValueOnce(jsonRes({}, 500));
     show();
     expect(autopilot().getAttribute("aria-checked")).toBe("false");
     await tap(autopilot());
@@ -160,7 +161,7 @@ describe("PipelineRouting", () => {
   });
 
   it("turning autopilot off needs no sheet, but the switch moves only after the save landed", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
+    h.fetch.mockResolvedValueOnce(jsonRes({}, 500));
     show({ CHRONOS_AGENT_AUTOPILOT: "1" });
     expect(autopilot().getAttribute("aria-checked")).toBe("true");
     await tap(autopilot());

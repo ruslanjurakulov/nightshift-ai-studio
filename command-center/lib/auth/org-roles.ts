@@ -116,13 +116,19 @@ export async function resolveCurrentOrgRole(): Promise<Role> {
  * something extra, so an unknown must read as no.
  */
 export async function isPlatformAdmin(): Promise<boolean> {
+  return (await platformAdminLookup()) === "yes";
+}
+
+/** is_platform_admin as three answers: an error is "error", never "no" (isPlatformAdmin folds it to false for callers that only ALLOW). */
+async function platformAdminLookup(): Promise<"yes" | "no" | "error"> {
   const supabase = await createClient();
-  if (!supabase) return false;
+  if (!supabase) return "error";
   try {
     const { data, error } = await supabase.rpc("is_platform_admin");
-    return !error && data === true;
+    if (error) return "error";
+    return data === true ? "yes" : "no";
   } catch {
-    return false;
+    return "error";
   }
 }
 
@@ -146,12 +152,24 @@ export async function isPlatformAdmin(): Promise<boolean> {
  * - With organizations: platform owner/admin only (is_platform_admin). An
  *   organization lookup that failed reads as no — fail closed.
  */
-export const isOperator = cache(async (): Promise<boolean> => {
-  if (!isSupabaseConfigured) return true;
-  if (!(await getUser())) return false;
+export const isOperator = cache(async (): Promise<boolean> => (await operatorLookup()).operator);
+
+/**
+ * isOperator plus WHETHER THE ANSWER IS TRUSTWORTHY. `operator: false` with `failed: true` means "could not check"
+ * (the organization or is_platform_admin read errored), which is not the same as "not an operator": the access answer
+ * stays false (fail closed, no operator page or data is served), but the shell can tell a customer from an owner whose
+ * phone just lost the network and say so, instead of silently dressing the owner as a customer.
+ */
+export const operatorLookup = cache(async (): Promise<{ operator: boolean; failed: boolean }> => {
+  if (!isSupabaseConfigured) return { operator: true, failed: false };
+  if (!(await getUser())) return { operator: false, failed: false };
   const org = await getOrgContext();
-  if (!org.supported) return !org.unavailable && !organizationsAreExpected();
-  return isPlatformAdmin();
+  if (!org.supported) {
+    const operator = !org.unavailable && !organizationsAreExpected();
+    return { operator, failed: !operator && (org.unavailable === true || organizationsAreExpected()) };
+  }
+  const admin = await platformAdminLookup();
+  return { operator: admin === "yes", failed: admin === "error" };
 });
 
 /**

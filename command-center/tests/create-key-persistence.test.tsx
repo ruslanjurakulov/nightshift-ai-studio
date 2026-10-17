@@ -12,7 +12,8 @@ import type { ReactNode } from "react";
 
 const signOutMock = vi.fn(() => Promise.resolve({ error: null }));
 let signOutImpl: () => Promise<unknown> = () => signOutMock();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/chronos/create" }));
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, refresh: vi.fn() }), usePathname: () => "/chronos/create" }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
@@ -21,7 +22,8 @@ vi.mock("next/link", () => ({
   ),
 }));
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
-vi.mock("@/lib/supabase/client", () => ({ createClient: () => ({ auth: { signOut: () => signOutImpl() } }) }));
+vi.mock("@/lib/supabase/client", () => ({ createClient: () => ({ auth: { signOut: (o?: { scope: string }) => (o?.scope === "local" ? localImpl() : signOutImpl()) } }) }));
+let localImpl: () => Promise<unknown> = () => Promise.resolve({ error: null });
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
@@ -51,6 +53,8 @@ beforeEach(() => {
   window.localStorage.clear();
   runAnswer = () => json({ ok: true });
   signOutImpl = () => signOutMock();
+  localImpl = () => Promise.resolve({ error: null });
+  nav.push.mockClear();
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
@@ -294,17 +298,66 @@ describe("sign-out clears the entries", () => {
     expect(signOutMock).toHaveBeenCalled();
   });
 
-  it("useSignOut clears them even when signing out fails (the failure still surfaces)", async () => {
+  it("useSignOut clears them even when the server sign-out fails, and still signs this browser out (scope local)", async () => {
     seed();
     signOutImpl = () => Promise.reject(new Error("offline"));
+    const localCalls = vi.fn(() => Promise.resolve({ error: null }));
+    localImpl = localCalls;
     let out: () => Promise<void> = async () => {};
     function Grab() {
       out = useSignOut();
       return null;
     }
     render(<Grab />);
-    await expect(out()).rejects.toThrow("offline");
+    await out();
     expect(left()).toEqual(["other.key"]);
+    expect(localCalls).toHaveBeenCalledTimes(1);
+  });
+
+  it("useSignOut when the library cannot sign out at all (auth outage): the session is removed by hand, the entries go, then /login", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      seed();
+      document.cookie = "sb-proj-auth-token=abc; Path=/";
+      signOutImpl = () => Promise.resolve({ error: { message: "503" } });
+      localImpl = () => Promise.resolve({ error: { message: "503" } });
+      let out: () => Promise<void> = async () => {};
+      function Grab() {
+        out = useSignOut();
+        return null;
+      }
+      render(<Grab />);
+      const done = out();
+      await vi.advanceTimersByTimeAsync(2000);
+      await done;
+      expect(document.cookie).not.toContain("sb-proj-auth-token");
+      expect(left()).toEqual(["other.key"]);
+      expect(nav.push).toHaveBeenCalledWith("/login");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("useSignOut when the session cookie cannot be removed: nothing is thrown away and there is no navigation", async () => {
+    seed();
+    signOutImpl = () => Promise.reject(new Error("offline"));
+    localImpl = () => Promise.reject(new Error("storage"));
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, "cookie")!;
+    Object.defineProperty(document, "cookie", { configurable: true, get: () => "sb-proj-auth-token=abc", set: () => undefined });
+    try {
+      let out: () => Promise<void> = async () => {};
+      function Grab() {
+        out = useSignOut();
+        return null;
+      }
+      render(<Grab />);
+      await out();
+      expect(left().length).toBeGreaterThan(1);
+      expect(nav.push).not.toHaveBeenCalled();
+    } finally {
+      delete (document as unknown as Record<string, unknown>).cookie;
+      Object.defineProperty(Document.prototype, "cookie", original);
+    }
   });
 
   it("useSignOut (the account panel and Settings)", async () => {

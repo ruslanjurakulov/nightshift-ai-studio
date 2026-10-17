@@ -8,6 +8,8 @@ import { planTopups } from "@/lib/billing";
 import { formatUsdAmount } from "@/lib/number-format";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { useToast } from "@/components/feedback/ToastProvider";
+import { postOperator } from "@/lib/operator-post";
+import { operatorFailureText } from "@/lib/setup-errors";
 import type { ProviderView } from "@/components/billing/BillingBoard";
 
 /**
@@ -30,25 +32,14 @@ import type { ProviderView } from "@/components/billing/BillingBoard";
 
 const money = (v: number | null) => (v === null ? "—" : `$${v.toFixed(2)}`);
 
-async function postJson(url: string, body: unknown): Promise<boolean> {
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+export type OwnerPostResult = Awaited<ReturnType<typeof postOperator>>;
+
+export function recordTopup(provider: string, amount: number): Promise<OwnerPostResult> {
+  return postOperator("/api/billing/topup", { provider, amount_usd: amount });
 }
 
-export function recordTopup(provider: string, amount: number) {
-  return postJson("/api/billing/topup", { provider, amount_usd: amount });
-}
-
-export function saveSetting(provider: string, patch: Record<string, unknown>) {
-  return postJson("/api/billing/settings", { provider, ...patch });
+export function saveSetting(provider: string, patch: Record<string, unknown>): Promise<OwnerPostResult> {
+  return postOperator("/api/billing/settings", { provider, ...patch });
 }
 
 function CopyButton({ value }: { value: string }) {
@@ -97,11 +88,11 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
   async function toggle(flag: "card_saved_on_provider" | "auto_recharge_on_provider", next: boolean) {
     if (flag === "card_saved_on_provider") setCardSaved(next);
     else setAutoRecharge(next);
-    const ok = await saveSetting(p.id, { [flag]: next });
-    if (!ok) {
+    const out = await saveSetting(p.id, { [flag]: next });
+    if (!out.ok) {
       if (flag === "card_saved_on_provider") setCardSaved(!next);
       else setAutoRecharge(!next);
-      toast.error(t.ownerSafety.settingFailed, { title: p.name });
+      toast.error(operatorFailureText(t, out, t.ownerSafety.settingFailed), { title: p.name });
     }
   }
 
@@ -121,7 +112,10 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
         { label: t.ownerSafety.dDate, value: todayText(locale) },
       ],
       successMessage: fmt(t.ownerSafety.topupDone, { amount: shown, provider: p.name }),
-      run: async () => ((await recordTopup(p.id, value)) ? true : t.ownerSafety.topupFailed),
+      run: async () => {
+        const out = await recordTopup(p.id, value);
+        return out.ok ? true : operatorFailureText(t, out, t.ownerSafety.topupFailed, true);
+      },
     });
     lock.current = false;
     setState("idle");
@@ -231,10 +225,10 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
 
   async function toggle(id: string, next: boolean) {
     setIn(id, next);
-    const ok = await saveSetting(id, { include_in_bulk: next });
-    if (!ok) {
+    const out = await saveSetting(id, { include_in_bulk: next });
+    if (!out.ok) {
       setIn(id, !next);
-      toast.error(t.ownerSafety.settingFailed, { title: providers.find((p) => p.id === id)?.name });
+      toast.error(operatorFailureText(t, out, t.ownerSafety.settingFailed), { title: providers.find((p) => p.id === id)?.name });
     }
   }
 
@@ -256,7 +250,10 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
         { label: t.ownerSafety.dDate, value: todayText(locale) },
       ],
       successMessage: fmt(t.ownerSafety.topupDone, { amount: shown, provider: item.name }),
-      run: async () => ((await recordTopup(item.id, item.amount)) ? true : t.ownerSafety.topupFailed),
+      run: async () => {
+        const out = await recordTopup(item.id, item.amount);
+        return out.ok ? true : operatorFailureText(t, out, t.ownerSafety.topupFailed, true);
+      },
     });
     lock.current = false;
     setBusy(false);

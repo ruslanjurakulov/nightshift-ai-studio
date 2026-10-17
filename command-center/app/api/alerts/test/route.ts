@@ -99,6 +99,14 @@ export async function POST(request: Request) {
     recorded = !error;
   }
 
+  // A test that wrote nothing to the feed is a failure, not a success with a flag the client has to remember to read.
+  if (!recorded) {
+    return NextResponse.json(
+      { ok: false, error: "not_recorded", recorded: false, delivered },
+      { status: 500, headers: { "cache-control": "no-store" } },
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     slackConfigured: config.slackConfigured,

@@ -1,5 +1,7 @@
 "use client";
 
+import { supabaseFailureKind } from "@/lib/operator-post";
+import { operatorFailureText } from "@/lib/setup-errors";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -74,12 +76,21 @@ export function GrantCreditsForm({
       typeToConfirm: tier === 3 ? typedFigure(credits) : undefined,
       successMessage: fmt(t.ownerSafety.grantDone, { credits: shown, unit, org: orgName }),
       run: async () => {
-        const { error } = await supabase.rpc("grant_credits", {
+        const { error, status } = await supabase.rpc("grant_credits", {
           p_org: orgId,
           p_amount: credits,
           p_note: note.trim().slice(0, 500) || null,
         });
-        return error ? `${t.credits.grantFailed} ${t.ownerSafety.checkLedger}` : true;
+        if (!error) return true;
+        // Why it failed, in its own words: an ended session and a refusal are not the same advice as a server error,
+        // and only the last one may have gone through (grant_credits has no request id).
+        const kind = supabaseFailureKind(error, status);
+        return operatorFailureText(
+          t,
+          { kind, data: {} },
+          `${t.ownerTruth.serverError} ${t.ownerSafety.checkLedger}`,
+          true,
+        );
       },
     });
     lock.current = false;

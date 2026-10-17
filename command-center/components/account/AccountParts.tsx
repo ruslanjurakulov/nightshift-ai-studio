@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CircleCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { I18nContext } from "@/lib/i18n/public-context";
 import { fmt } from "@/lib/i18n";
 import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
 import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
@@ -19,6 +20,8 @@ import {
   type Platform,
 } from "@/lib/account";
 import { clearAllDrafts } from "@/lib/create-draft";
+import { signOutThisBrowser } from "@/lib/sign-out";
+import { useToast } from "@/components/feedback/ToastProvider";
 
 /**
  * The pieces of the account panel that more than one place draws: the read of
@@ -70,15 +73,26 @@ export function useAccountSummary(active: boolean): { data: AccountSummary | nul
 /** Sign out of this browser, then to the sign-in page. One implementation for the panel and Settings. */
 export function useSignOut(): () => Promise<void> {
   const router = useRouter();
+  const toast = useToast();
+  // Optional context: a few callers render this hook outside the app's provider, and the sentence below is only for the
+  // rare case that nothing could sign this browser out.
+  const i18n = useContext(I18nContext);
   return async function signOut() {
-    // The create form's unfinished draft is this person's; it goes with the session, before anything can fail.
+    const outcome = await signOutThisBrowser(createClient()?.auth);
+    const message = i18n?.full ? i18n.t.ownerTruth.signOutFailed : "Could not reach the server to sign you out. Try again when you are online.";
+    // Still signed in here (the session could not be removed): nothing of this person's is thrown away, and they are told.
+    if (outcome === "failed") {
+      toast.error(message);
+      return;
+    }
+    // The create form's unfinished draft is this person's; it goes with the session.
     clearAllDrafts();
-    const supabase = createClient();
-    try {
-      if (supabase) await supabase.auth.signOut();
-    } finally {
-      clearAllCreateAttempts();
-      clearAllEditorDrafts();
+    clearAllCreateAttempts();
+    clearAllEditorDrafts();
+    // Signed out in this browser, but the server could not be reached to end the session there: say so before leaving.
+    if (outcome === "cleared") {
+      toast.error(message);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
     router.push("/login");
     router.refresh();

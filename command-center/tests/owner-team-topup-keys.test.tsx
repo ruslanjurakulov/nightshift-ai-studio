@@ -4,6 +4,7 @@
  * payment and replacing a provider key. Own row and last owner are blocked in
  * the UI; every other change names the person; payments and keys write once.
  */
+import { jsonRes } from "./helpers/response";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { en } from "../lib/i18n/en";
@@ -51,7 +52,7 @@ beforeEach(() => {
   h.refresh.mockReset();
   h.toast.mockReset();
   h.toastError.mockReset();
-  h.fetch.mockReset().mockResolvedValue({ ok: true, json: async () => ({}) });
+  h.fetch.mockReset().mockImplementation(async () => jsonRes({}));
   vi.stubGlobal("fetch", h.fetch);
 });
 afterEach(() => {
@@ -209,7 +210,7 @@ describe("PayPanel (record a provider payment)", () => {
     fireEvent.click(key);
     expect(topups()).toHaveLength(1);
     expect(JSON.parse(topups()[0][1].body)).toEqual({ provider: "elevenlabs", amount_usd: 50 });
-    await act(async () => finish({ ok: true, json: async () => ({}) }));
+    await act(async () => finish(jsonRes({})));
     expect(h.refresh).toHaveBeenCalledTimes(1);
     expect(h.toast).toHaveBeenCalledWith("Recorded $50.00 for ElevenLabs.");
     // recorded: the key is off for the same amount, even after editing and putting it back
@@ -224,7 +225,7 @@ describe("PayPanel (record a provider payment)", () => {
   });
 
   it("a failure shows in the sheet and the key works again", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
+    h.fetch.mockResolvedValueOnce(jsonRes({}, 500));
     show();
     await tap(screen.getByRole("button", { name: en.billing.payDone }));
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.topupConfirm }));
@@ -234,7 +235,7 @@ describe("PayPanel (record a provider payment)", () => {
   });
 
   it("a setting that fails to save is put back and says so", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
+    h.fetch.mockResolvedValueOnce(jsonRes({}, 500));
     show();
     const box = screen.getByLabelText(en.billing.cardSaved) as HTMLInputElement;
     await act(async () => {
@@ -284,13 +285,13 @@ describe("ProvidersBoard (replace a key)", () => {
     fireEvent.click(key);
     fireEvent.click(key);
     expect(secretsCalls()).toHaveLength(1);
-    await act(async () => finish({ ok: true, json: async () => ({}) }));
+    await act(async () => finish(jsonRes({})));
     expect((field() as HTMLInputElement).value).toBe("");
     expect(h.toast).toHaveBeenCalledWith(en.providers.saved);
   });
 
   it("a rejected replace shows in the sheet and keeps the key typed", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "github_unauthorized" }) });
+    h.fetch.mockResolvedValueOnce(jsonRes({ error: "github_unauthorized" }, 500));
     show(["ELEVENLABS_API_KEY"]);
     fireEvent.change(field(), { target: { value: "sk_live_abcd1234wxyz" } });
     await tap(screen.getByRole("button", { name: en.providers.replace }));
@@ -300,7 +301,7 @@ describe("ProvidersBoard (replace a key)", () => {
   });
 
   it("a coded refusal (bad value) is worded by name inside the sheet, with no part of the value", async () => {
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "bad_value", name: "ELEVENLABS_API_KEY", reason: "sk_live_abcd1234wxyz" }) });
+    h.fetch.mockResolvedValueOnce(jsonRes({ error: "bad_value", name: "ELEVENLABS_API_KEY", reason: "sk_live_abcd1234wxyz" }, 500));
     show(["ELEVENLABS_API_KEY"]);
     fireEvent.change(field(), { target: { value: "sk_live_abcd1234wxyz" } });
     await tap(screen.getByRole("button", { name: en.providers.replace }));
@@ -369,14 +370,14 @@ describe("BulkPay (pay all providers)", () => {
     fireEvent.click(key);
     expect(topups()).toHaveLength(1);
     expect(JSON.parse(topups()[0][1].body)).toEqual({ provider: "a", amount_usd: 30 });
-    await act(async () => finish({ ok: true, json: async () => ({}) }));
+    await act(async () => finish(jsonRes({})));
     // moved on to the next provider
     expect(screen.getByText(/Beta · \$60\.00/)).toBeTruthy();
   });
 
   it("a failed record stays on the same step with the message in the sheet", async () => {
     const { BulkPay } = await import("../components/billing/TopupControls");
-    h.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
+    h.fetch.mockResolvedValueOnce(jsonRes({}, 500));
     render(<BulkPay providers={providers} onDone={h.refresh} />);
     await tap(screen.getByRole("button", { name: new RegExp(en.billing.bulkPay) }));
     await tap(screen.getByRole("button", { name: en.billing.payDone }));

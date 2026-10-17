@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
-import { setupFailureText } from "@/lib/setup-errors";
+import { operatorFailureText } from "@/lib/setup-errors";
+import { postOperator } from "@/lib/operator-post";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useToast } from "@/components/feedback/ToastProvider";
@@ -126,29 +127,18 @@ function ProviderCard({
 
   /** Seals the key; returns the message to show when it did not go through. */
   async function send(key: string): Promise<string | null> {
-    try {
-      const res = await fetch("/api/setup/secrets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secrets: { [provider.secretName]: key } }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const unauthorized = data.error === "github_unauthorized";
-        setState("error");
-        setErrorKey(unauthorized ? "unauthorized" : "failed");
-        return unauthorized ? t.providers.unauthorized : setupFailureText(t, data, t.providers.saveFailed);
-      }
-      // Accepted by GitHub — drop the value from the browser at once.
-      setValue("");
-      setState("saved");
-      onSaved();
-      return null;
-    } catch {
+    const out = await postOperator("/api/setup/secrets", { secrets: { [provider.secretName]: key } });
+    if (!out.ok) {
+      const unauthorized = out.data.error === "github_unauthorized";
       setState("error");
-      setErrorKey("failed");
-      return t.providers.saveFailed;
+      setErrorKey(unauthorized ? "unauthorized" : "failed");
+      return unauthorized ? t.providers.unauthorized : operatorFailureText(t, out, t.providers.saveFailed);
     }
+    // Accepted by GitHub — drop the value from the browser at once.
+    setValue("");
+    setState("saved");
+    onSaved();
+    return null;
   }
 
   async function save() {

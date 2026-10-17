@@ -78,7 +78,7 @@ describe("signed media links pass the cookie gate", () => {
     `/api/media/filex/${ID}/thumb`,
   ])("%s stays behind sign-in", async (path) => {
     expect(isSignedMediaPath(path)).toBe(false);
-    const res = await middleware(new NextRequest(`https://nightshift.test${path}`));
+    const res = await middleware(new NextRequest(`https://nightshift.test${path}`, { headers: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } }));
     expect(new URL(res.headers.get("location") ?? "https://x/").pathname).toBe("/login");
   });
 });

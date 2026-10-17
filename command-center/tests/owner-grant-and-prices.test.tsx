@@ -103,7 +103,9 @@ describe("GrantCreditsForm", () => {
     type(en.credits.grantAmount, "10");
     await tap(screen.getByRole("button", { name: en.credits.grant }));
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.grantConfirm }));
-    expect(within(sheet()).getByRole("alert").textContent).toContain(en.credits.grantFailed);
+    // A server error is worded as one (not as "only a platform owner may"), and says the grant may have gone through.
+    expect(within(sheet()).getByRole("alert").textContent).toContain(en.ownerTruth.serverError);
+    expect(within(sheet()).getByRole("alert").textContent).not.toContain(en.credits.grantFailed);
     expect(within(sheet()).getByRole("alert").textContent).toContain(en.ownerSafety.checkLedger);
     expect(h.refresh).not.toHaveBeenCalled();
     expect((screen.getByLabelText(en.credits.grantAmount) as HTMLInputElement).value).toBe("10");
@@ -166,11 +168,11 @@ describe("CreditPricesEditor", () => {
   });
 
   it("a failed delete shows in the sheet and keeps the price", async () => {
-    h.del.mockResolvedValueOnce({ error: { message: "rls" } });
+    h.del.mockResolvedValueOnce({ error: { message: "rls", code: "42501" }, status: 403 });
     show();
     await tap(removeKey("custom_thing"));
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.priceDeleteConfirm }));
-    expect(within(sheet()).getByRole("alert").textContent).toBe(en.credits.priceFailed);
+    expect(within(sheet()).getByRole("alert").textContent).toBe(en.ownerTruth.forbidden);
     expect(h.refresh).not.toHaveBeenCalled();
     expect(within(sheet()).getByRole("button", { name: en.ownerSafety.priceDeleteConfirm }).hasAttribute("disabled")).toBe(false);
   });

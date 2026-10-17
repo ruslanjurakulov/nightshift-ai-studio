@@ -12,6 +12,8 @@ import { StateBlock } from "@/components/states/StateBlock";
 import { relativeTime } from "@/lib/format";
 import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
+import { postOperator } from "@/lib/operator-post";
+import { operatorFailureText } from "@/lib/setup-errors";
 
 /** One paid provider, already derived on the server (see billing/page.tsx). */
 export interface ProviderView {
@@ -66,6 +68,7 @@ export function BillingBoard({
   const { t } = useI18n();
   const router = useRouter();
   const [refresh, setRefresh] = useState<"idle" | "busy" | "ok" | "fail">("idle");
+  const [refreshWhy, setRefreshWhy] = useState<string | null>(null);
 
   const known = providers.filter((p) => p.usdPerDay !== null);
   const spend30 = known.length ? known.reduce((s, p) => s + (p.usdPerDay ?? 0) * 30, 0) : null;
@@ -77,12 +80,15 @@ export function BillingBoard({
 
   async function doRefresh() {
     setRefresh("busy");
-    try {
-      const res = await fetch("/api/billing/refresh", { method: "POST" });
-      setRefresh(res.ok ? "ok" : "fail");
-    } catch {
-      setRefresh("fail");
+    setRefreshWhy(null);
+    // "Started" only when the server said so: a sign-in page or a redirect answers 200 too (lib/operator-post.ts).
+    const out = await postOperator("/api/billing/refresh");
+    if (out.ok) {
+      setRefresh("ok");
+      return;
     }
+    setRefreshWhy(operatorFailureText(t, out, t.billing.refreshFailed));
+    setRefresh("fail");
   }
 
   return (
@@ -111,7 +117,7 @@ export function BillingBoard({
           </button>
           <span className="g5-note" aria-live="polite">
             {refresh === "ok" && <span className="text-[var(--color-ok)]">{t.billing.refreshQueued}</span>}
-            {refresh === "fail" && <span className="g5-fail-text">{t.billing.refreshFailed}</span>}
+            {refresh === "fail" && <span className="g5-fail-text">{refreshWhy ?? t.billing.refreshFailed}</span>}
           </span>
         </div>
       </div>
@@ -193,23 +199,25 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
   const { t } = useI18n();
   const [price, setPrice] = useState(p.price === null ? "" : String(p.price));
   const [state, setState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
+  const [failWhy, setFailWhy] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   // Suggested top-up: what covers the next 30 days at the current burn.
   const suggested = planTopups([{ id: p.id, usdPerDay: p.usdPerDay, balanceUsd: p.balanceUsd }], 30).lines[0].amount;
 
   async function save() {
     setState("busy");
-    try {
-      const res = await fetch("/api/billing/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: p.id, usd_per_unit: price.trim() === "" ? null : Number(price) }),
-      });
-      setState(res.ok ? "ok" : "fail");
-      if (res.ok) onSaved();
-    } catch {
+    setFailWhy(null);
+    const out = await postOperator("/api/billing/settings", {
+      provider: p.id,
+      usd_per_unit: price.trim() === "" ? null : Number(price),
+    });
+    if (!out.ok) {
+      setFailWhy(operatorFailureText(t, out, t.billing.saveFailed));
       setState("fail");
+      return;
     }
+    setState("ok");
+    onSaved();
   }
 
   const balance = p.apiBalance && p.apiBalance.remaining !== null
@@ -285,7 +293,7 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
       </div>
       {state === "fail" && (
         <p role="alert" className="g5-note g5-fail-text" style={{ gridColumn: "1 / -1" }}>
-          {t.billing.saveFailed}
+          {failWhy ?? t.billing.saveFailed}
         </p>
       )}
       {paying && (

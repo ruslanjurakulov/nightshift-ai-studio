@@ -1,5 +1,7 @@
 "use client";
 
+import { supabaseFailureKind } from "@/lib/operator-post";
+import { operatorFailureText } from "@/lib/setup-errors";
 import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -97,8 +99,8 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
       ),
       successMessage: fmt(t.ownerSafety.priceSaved, { name }),
       run: async () => {
-        const { error: e } = await supabase.from("credit_prices").upsert(row, { onConflict: "unit" });
-        return e ? t.credits.priceFailed : true;
+        const { error: e, status } = await supabase.from("credit_prices").upsert(row, { onConflict: "unit" });
+        return e ? operatorFailureText(t, { kind: supabaseFailureKind(e, status), data: {} }, t.ownerTruth.serverError) : true;
       },
     });
     setBusy(false);
@@ -127,8 +129,8 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
       ],
       successMessage: fmt(t.ownerSafety.priceDeleted, { name }),
       run: async () => {
-        const { error: e } = await supabase.from("credit_prices").delete().eq("unit", p.unit);
-        return e ? t.credits.priceFailed : true;
+        const { error: e, status } = await supabase.from("credit_prices").delete().eq("unit", p.unit);
+        return e ? operatorFailureText(t, { kind: supabaseFailureKind(e, status), data: {} }, t.ownerTruth.serverError) : true;
       },
     });
     setBusy(false);
