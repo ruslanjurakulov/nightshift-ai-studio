@@ -80,7 +80,10 @@ export async function POST(request: Request) {
     if (typeof value !== "string" || value.length > MAX_EMAIL_CHARS)
       return NextResponse.json({ error: "bad_value", name }, { status: 400 });
     const check = validateVariableValue(name, value);
-    if (!check.ok) return NextResponse.json({ error: "bad_value", name, reason: check.reason }, { status: 400 });
+    if (!check.ok) {
+      logAdminWrite("variable", user.id, name, { outcome: "rejected", reason: check.reason });
+      return NextResponse.json({ error: "bad_value", name, reason: check.reason }, { status: 400 });
+    }
     checked.push({ name, value: check.value });
   }
 
@@ -88,7 +91,7 @@ export async function POST(request: Request) {
     for (const { name, value } of checked) {
       await putVariable(name, value);
     }
-    logAdminWrite("variable", user.id, checked);
+    for (const { name } of checked) logAdminWrite("variable", user.id, name, { outcome: "accepted" });
     // Audit the write — variable names only (best-effort, never throws).
     await logAudit({ action: "variable.write", detail: { names: entries.map(([n]) => n) } });
     return NextResponse.json({ ok: true });

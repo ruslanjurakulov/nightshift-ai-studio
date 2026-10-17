@@ -268,13 +268,13 @@ Writes are rate limited per person in process memory (`secret-write.ts`): secret
 per 10 minutes; `429 {"error":"rate_limited"}` with `retry-after`. The limiter
 never refuses because of an infrastructure error, so it cannot lock anyone out.
 
-Each written name logs one server line, e.g.
-`[admin-write] secret user=1a2b3c4d name=GEMINI_API_KEY sha256=9f8e7d6c`: the
-first 8 hex characters of the SHA-256 of the value. Never the value, a prefix of
-it or its length. (A reviewer should confirm this fits non-negotiable 1 in
-`CLAUDE.md`: the hash prefix is 32 bits of a one-way digest, not a fragment of
-the secret. It is not stored in Supabase.) The existing `secret.write` /
-`variable.write` audit rows still hold names only.
+Each name written or refused logs one server line, e.g.
+`[admin-write] secret user=1a2b3c4d name=GEMINI_API_KEY outcome=accepted` or
+`... outcome=rejected reason=forbidden_chars`: who (a user-id prefix), which NAME and
+the outcome (the reason is the same code the 400 carries). Nothing derived from the
+value is logged: no hash, no length, no prefix (`CLAUDE.md`, non-negotiable 1), and
+the 400 body carries only the name and the reason code. The existing
+`secret.write` / `variable.write` audit rows still hold names only.
 
 `POST /api/setup/youtube` (the wizard's "verify channel" key check) was checked
 for being an open relay: it is **not** operator-only on purpose, because a customer
@@ -378,8 +378,8 @@ Migration items: S-1 (the database ignores the second factor; `admin_aal_ok()`,
 restrictive policies, `grant_credits` wrapper), S-5 (roster, price, factor and
 grant audit; `security_events`), S-6 (free-credit farming, CAPTCHA), S-7 (sign-out
 everywhere, spend ceiling for the exempt org), B-05 database half. Also not done:
-`CSP_MODE=enforce`, the Caddy body cap, audit detail with old/new value hashes (it
-would put a hash in Supabase), a `/login/verify`-style in-place step-up page (the
+`CSP_MODE=enforce`, the Caddy body cap, a way to tell a replaced value from a re-saved one (any hash
+of a value is derived from the secret, so none is logged or stored), a `/login/verify`-style in-place step-up page (the
 step-up asks for a fresh sign-in instead).
 
 ## What this does NOT do

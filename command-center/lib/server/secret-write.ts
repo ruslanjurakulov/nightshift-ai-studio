@@ -1,5 +1,4 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { takeLocal, type RateRule } from "@/lib/server/web-rate";
 
@@ -11,11 +10,11 @@ import { takeLocal, type RateRule } from "@/lib/server/web-rate";
  *   over the allow-list (a fixed window; per server process, which is exactly
  *   as strong as it needs to be here: it never refuses on an infrastructure
  *   error, so it cannot lock the owner out);
- * - one server log line per written name with a SHA-256 prefix of the value, so
- *   "this key changed at 03:12" is answerable from the logs and a replaced value
- *   can be told from a re-saved one. The value itself, its length and any part
- *   of it are never logged. (Eight hex characters of a hash are 32 bits: not a
- *   fragment of the value and no way back to it for a key of real entropy.)
+ * - one server log line per name written or refused, so "this key changed at
+ *   03:12" is answerable from the logs: who (a user-id prefix), which NAME, and
+ *   the outcome (accepted, or rejected with the reason code). Nothing derived
+ *   from the value is ever logged: no hash, no length, no prefix, no fragment
+ *   (CLAUDE.md, non-negotiable 1).
  */
 
 export const SECRET_WRITE_RATE: RateRule = { bucket: "setup.secrets", max: 20, windowSeconds: 600 };
@@ -31,18 +30,10 @@ export function rateLimitRefusal(userId: string, rule: RateRule, now: number = D
   );
 }
 
-/** The first 8 hex characters of SHA-256(value). */
-export function valueFingerprint(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("hex").slice(0, 8);
-}
+export type WriteOutcome = { outcome: "accepted" } | { outcome: "rejected"; reason: string };
 
-/** One line per written name: who (id prefix), what kind, which name, which value (hash prefix). Never the value. */
-export function logAdminWrite(
-  kind: "secret" | "variable",
-  userId: string,
-  entries: ReadonlyArray<{ name: string; value: string }>,
-): void {
-  for (const { name, value } of entries) {
-    console.info(`[admin-write] ${kind} user=${userId.slice(0, 8)} name=${name} sha256=${valueFingerprint(value)}`);
-  }
+/** One line per name: who (id prefix), what kind, which name, the outcome. Never anything about the value. */
+export function logAdminWrite(kind: "secret" | "variable", userId: string, name: string, result: WriteOutcome): void {
+  const tail = result.outcome === "rejected" ? ` outcome=rejected reason=${result.reason}` : " outcome=accepted";
+  console.info(`[admin-write] ${kind} user=${userId.slice(0, 8)} name=${name}${tail}`);
 }

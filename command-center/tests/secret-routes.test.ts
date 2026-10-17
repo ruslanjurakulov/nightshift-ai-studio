@@ -4,7 +4,7 @@ import type { OrgContext } from "../lib/orgs-server";
 /**
  * The GitHub secret and variable routes (ledger BR-S-020): a value is checked against its NAME before anything is
  * sent to GitHub, writes are rate limited, `enforce` asks for a recent code, and every written name leaves a log line
- * with a hash prefix of the value and never the value. What would break without these: a typed value that swaps the
+ * with the name and the outcome and nothing derived from the value. What would break without these: a typed value that swaps the
  * alert address or Slack URL, a Google token JSON that sends the refresh token elsewhere, a `$` that makes every deploy
  * fail, a stolen session looping over the allow-list, an old stolen aal2 cookie rewriting credentials.
  */
@@ -64,7 +64,7 @@ vi.mock("@/lib/server/github-variables", () => ({
 const secrets = (await import("../app/api/setup/secrets/route")).POST;
 const variables = (await import("../app/api/setup/variables/route")).POST;
 const youtube = (await import("../app/api/setup/youtube/route")).POST;
-const { SECRET_WRITE_RATE, valueFingerprint } = await import("../lib/server/secret-write");
+const { SECRET_WRITE_RATE } = await import("../lib/server/secret-write");
 
 const ORG = { id: "0b000000-0000-0000-0000-00000000000b", name: "B", slug: "b", role: "owner" as const, is_default: false };
 const VERIFIED: Factor[] = [{ status: "verified", factor_type: "totp" }];
@@ -142,20 +142,32 @@ describe("POST /api/setup/secrets: values are checked against their name", () =>
     expect(res.status).toBe(400);
   });
 
-  it("logs the name and a SHA-256 prefix per written secret, never the value", async () => {
+  it("logs only the name and the outcome per secret: nothing derived from the value (no hash, length or prefix)", async () => {
     admin();
     const value = "sk-live-VERY-SECRET-value-0123456789";
     const res = await secrets(req("secrets", { secrets: { OPENAI_API_KEY: value } }));
     expect(res.status).toBe(200);
     const lines = info.mock.calls.map((c: unknown[]) => String(c[0]));
     const line = lines.find((l: string) => l.includes("[admin-write]"));
-    expect(line).toContain("secret");
-    expect(line).toContain("name=OPENAI_API_KEY");
-    expect(line).toContain(`sha256=${valueFingerprint(value)}`);
-    expect(valueFingerprint(value)).toMatch(/^[0-9a-f]{8}$/);
-    expect(JSON.stringify(info.mock.calls)).not.toContain(value);
-    expect(JSON.stringify(info.mock.calls)).not.toContain(value.slice(0, 10));
-    expect(JSON.stringify(audit.mock.calls)).not.toContain(value);
+    expect(line).toMatch(/^\[admin-write\] secret user=u-admin- name=OPENAI_API_KEY outcome=accepted$/);
+    const everything = JSON.stringify([info.mock.calls, audit.mock.calls]);
+    expect(everything).not.toContain(value);
+    expect(everything).not.toContain(value.slice(0, 6));
+    expect(everything).not.toMatch(/sha256|hash/i);
+    expect(everything).not.toContain(String(value.length));
+    expect(everything).not.toMatch(/\b[0-9a-f]{8}\b/);
+  });
+
+  it("a refused value logs the name and the reason code only, and the 400 body has no value, length or prefix", async () => {
+    admin();
+    const value = "abcdefgh$HOME-secret-tail";
+    const res = await secrets(req("secrets", { secrets: { GEMINI_API_KEY: value } }));
+    expect(res.status).toBe(400);
+    const text = JSON.stringify(await res.json());
+    expect(text).toBe('{"error":"bad_value","name":"GEMINI_API_KEY","reason":"forbidden_chars"}');
+    const lines = info.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines).toEqual(["[admin-write] secret user=u-admin- name=GEMINI_API_KEY outcome=rejected reason=forbidden_chars"]);
+    expect(lines.join()).not.toContain("abcdefgh");
   });
 
   it("the same person is rate limited (429) after the window's allowance; another person is not", async () => {
@@ -188,7 +200,10 @@ describe("POST /api/setup/variables: values are checked against their name", () 
     expect(res.status).toBe(200);
     expect(put).toHaveBeenCalledWith("variable", "CHRONOS_VIDEO_PROVIDER", "higgsfield");
     expect(put).toHaveBeenCalledWith("variable", "ALERT_EMAIL_TO", "owner@example.com");
-    expect(info.mock.calls.filter((c: unknown[]) => String(c[0]).includes("[admin-write] variable")).length).toBe(3);
+    const varLines = info.mock.calls.map((c: unknown[]) => String(c[0])).filter((l: string) => l.includes("[admin-write] variable"));
+    expect(varLines.length).toBe(3);
+    for (const l of varLines) expect(l).toMatch(/ name=[A-Z_]+ outcome=accepted$/);
+    expect(varLines.join()).not.toContain("owner@example.com");
     expect(audit).toHaveBeenCalledWith({
       action: "variable.write",
       detail: { names: ["CHRONOS_VIDEO_PROVIDER", "ALERT_EMAIL_TO", "CHRONOS_ENABLE_VIDEO_GEN"] },

@@ -40,7 +40,8 @@ export const dynamic = "force-dynamic";
  * name and a reason code, never the value. Writes are rate limited per person,
  * and in NIGHTSHIFT_ADMIN_MFA=enforce an aal2 session must have typed its code
  * recently (401 `mfa_recent_required`: sign out and in). Each written name leaves
- * one server log line with a hash prefix of the value, never the value.
+ * one server log line with the name and the outcome (accepted, or rejected with the
+ * reason code), never anything derived from the value.
  */
 
 export async function GET() {
@@ -85,7 +86,10 @@ export async function POST(request: Request) {
   const checked: { name: string; value: string }[] = [];
   for (const [name, raw] of entries) {
     const check = validateSecretValue(name, raw);
-    if (!check.ok) return NextResponse.json({ error: "bad_value", name, reason: check.reason }, { status: 400 });
+    if (!check.ok) {
+      logAdminWrite("secret", user.id, name, { outcome: "rejected", reason: check.reason });
+      return NextResponse.json({ error: "bad_value", name, reason: check.reason }, { status: 400 });
+    }
     checked.push({ name, value: check.value });
   }
 
@@ -94,7 +98,7 @@ export async function POST(request: Request) {
     const written: { name: string; result: "created" | "updated" }[] = [];
     for (const { name, value } of checked) {
       written.push({ name, result: await putSecret(name, value, key) });
-      logAdminWrite("secret", user.id, [{ name, value }]);
+      logAdminWrite("secret", user.id, name, { outcome: "accepted" });
     }
     // Audit the write — names only, never a value (best-effort, never throws).
     await logAudit({ action: "secret.write", detail: { names: written.map((w) => w.name) } });
