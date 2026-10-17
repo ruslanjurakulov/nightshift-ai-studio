@@ -54,6 +54,12 @@ INTERNAL = {
 
 # ── plumbing ────────────────────────────────────────────────────────────────
 
+def second_connection(conn):
+    """Another session on the same lab database (the connection string without its password is not enough in CI)."""
+    import sec_db
+    return psycopg.connect(psycopg.conninfo.make_conninfo(sec_db.admin_dsn(), dbname=conn.info.dbname))
+
+
 def now() -> int:
     return int(time.time())
 
@@ -643,7 +649,7 @@ def test_a_rate_limit_stops_a_runaway_script(conn, sc):
 
 def test_two_grants_cannot_both_pass_the_cap_check(conn, sc):
     # The cap's lock is taken before the balance is read: a second grant waits for the first.
-    other = psycopg.connect(conn.info.dsn)
+    other = second_connection(conn)
     try:
         other.execute("select pg_advisory_xact_lock(hashtext('nightshift.owner'), hashtext('grant_cap'))")
         with tx(conn) as t:
@@ -656,7 +662,7 @@ def test_two_grants_cannot_both_pass_the_cap_check(conn, sc):
 
 
 def test_a_grant_waits_for_the_organizations_account_lock(conn, sc):
-    other = psycopg.connect(conn.info.dsn)
+    other = second_connection(conn)
     try:
         other.execute("select 1 from public.credit_accounts where org_id = %s for update", [sc.bob.org])
         with tx(conn) as t:
@@ -1097,7 +1103,7 @@ def test_the_roster_functions_do_not_open_the_empty_roster_bootstrap(conn, sc):
 
 
 def test_roster_changes_wait_for_each_other(conn, sc):
-    other = psycopg.connect(conn.info.dsn)
+    other = second_connection(conn)
     try:
         other.execute("select pg_advisory_xact_lock(hashtext('nightshift.owner'), hashtext('roster'))")
         with tx(conn) as t:
