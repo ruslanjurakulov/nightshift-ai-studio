@@ -78,15 +78,21 @@ export function useSignOut(): () => Promise<void> {
   // rare case that nothing could sign this browser out.
   const i18n = useContext(I18nContext);
   return async function signOut() {
-    // The create form's unfinished draft is this person's; it goes with the session, before anything can fail.
-    clearAllDrafts();
     const outcome = await signOutThisBrowser(createClient()?.auth);
+    const message = i18n?.full ? i18n.t.ownerTruth.signOutFailed : "Could not reach the server to sign you out. Try again when you are online.";
+    // Still signed in here (the session could not be removed): nothing of this person's is thrown away, and they are told.
+    if (outcome === "failed") {
+      toast.error(message);
+      return;
+    }
+    // The create form's unfinished draft is this person's; it goes with the session.
+    clearAllDrafts();
     clearAllCreateAttempts();
     clearAllEditorDrafts();
-    // Not signed out (even the local clear failed): /login would bounce straight back in, so say so and stay.
-    if (outcome === "failed") {
-      toast.error(i18n?.full ? i18n.t.ownerTruth.signOutFailed : "Could not sign you out. Close this tab and try again.");
-      return;
+    // Signed out in this browser, but the server could not be reached to end the session there: say so before leaving.
+    if (outcome === "cleared") {
+      toast.error(message);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
     router.push("/login");
     router.refresh();

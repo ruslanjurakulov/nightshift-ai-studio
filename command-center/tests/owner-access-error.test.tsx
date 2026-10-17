@@ -73,6 +73,7 @@ vi.mock("@/lib/i18n/context", async () => {
   const { fmt } = await import("../lib/i18n");
   return { useI18n: () => ({ t: en, locale: "en", fmt, setLocale: () => {} }), I18nProvider: ({ children }: { children: React.ReactNode }) => children };
 });
+vi.mock("@/components/account/AccountParts", () => ({ useSignOut: () => async () => {} }));
 const shell = vi.hoisted(() => ({ operator: [] as boolean[] }));
 vi.mock("@/components/SideNav", () => ({ SideNav: () => null }));
 vi.mock("@/components/NeuralBackdrop", () => ({ NeuralBackdrop: () => null }));
@@ -182,6 +183,10 @@ describe("AccessError", () => {
     expect(screen.getByRole("alert").textContent).toContain(en.ownerTruth.accessErrorTitle);
     fireEvent.click(screen.getByRole("button", { name: en.ownerTruth.accessErrorRetry }));
     expect(state.refresh).toHaveBeenCalledTimes(1);
+  });
+  it("offers a plain Sign out that needs no database", () => {
+    render(<AccessError />);
+    expect(screen.getByRole("button", { name: en.common.signOut })).toBeTruthy();
   });
   it("draws no operator link", () => {
     const { container } = render(<AccessError />);

@@ -219,12 +219,12 @@ describe("the draft is cleared", () => {
     expect(stored()).toEqual([]);
   });
 
-  it("on sign-out (SignOutButton), whoever's drafts they were, before the session call", async () => {
+  it("on sign-out (SignOutButton), whoever's drafts they were, once the browser is signed out", async () => {
     window.sessionStorage.setItem(draftKey(me), "x");
     window.sessionStorage.setItem(draftKey({ ...me, userId: "u9" }), "y");
     window.sessionStorage.setItem("unrelated", "keep");
     nav.signOut.mockImplementation(async () => {
-      expect(stored()).toEqual([]);
+      expect(stored()).not.toEqual([]);
       return {};
     });
     render(
@@ -235,17 +235,18 @@ describe("the draft is cleared", () => {
     fireEvent.click(screen.getByRole("button", { name: t.common.signOut }));
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/login"));
     expect(nav.signOut).toHaveBeenCalled();
+    expect(stored()).toEqual([]);
     expect(window.sessionStorage.getItem("unrelated")).toBe("keep");
   });
 });
 
 describe("the account menu's sign-out clears it too", () => {
-  it("every draft in the tab goes before the session call", async () => {
+  it("every draft in the tab goes once the browser is signed out", async () => {
     window.sessionStorage.setItem(draftKey(me), "x");
     // The menu carries the theme toggle, which reads the system preference.
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {} }));
     nav.signOut.mockImplementation(async () => {
-      expect(stored()).toEqual([]);
+      expect(stored()).not.toEqual([]);
       return {};
     });
     render(
@@ -257,14 +258,16 @@ describe("the account menu's sign-out clears it too", () => {
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(t.common.signOut) }));
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/login"));
     expect(nav.signOut).toHaveBeenCalled();
+    expect(stored()).toEqual([]);
   });
 });
 
 describe("the shared sign-out (the panel and Settings → Account) clears it", () => {
-  it("useSignOut removes every draft before the session call", async () => {
+  it("useSignOut removes every draft once the browser is signed out (and keeps them if it is not)", async () => {
     window.sessionStorage.setItem(draftKey(me), "x");
     nav.signOut.mockImplementation(async () => {
-      expect(stored()).toEqual([]);
+      // still there while the session call is in flight
+      expect(stored()).not.toEqual([]);
       return {};
     });
     function Out() {

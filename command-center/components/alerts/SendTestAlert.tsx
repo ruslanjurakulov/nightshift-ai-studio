@@ -26,7 +26,8 @@ export function SendTestAlert() {
     // Success is the server saying it wrote the row: a redirect, a sign-in page, `ok:false` and `recorded:false` are not.
     const out = await postOperator("/api/alerts/test");
     if (!out.ok) {
-      setWhy(operatorFailureText(t, out, t.alerts.testFailed));
+      // Slack got it but the feed row was not written: say exactly that, not a generic "could not send".
+      setWhy(out.data.delivered === true && out.data.recorded === false ? t.ownerTruth.testDeliveredNotSaved : operatorFailureText(t, out, t.alerts.testFailed));
       setState("error");
       return;
     }

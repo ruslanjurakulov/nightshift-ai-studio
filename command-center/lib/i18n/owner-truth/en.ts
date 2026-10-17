@@ -22,7 +22,8 @@ export const ownerTruthEn = {
   accessErrorRetry: "Retry",
   accessErrorWorking: "Checking…",
   // Sign out
-  signOutFailed: "Could not sign you out on this phone. Close the browser tab and try again.",
+  signOutFailed: "Could not reach the server to sign you out. Try again when you are online.",
+  testDeliveredNotSaved: "Delivered, but not saved to the feed. It will not show in the list below.",
   // Alerts test
 };
 

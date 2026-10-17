@@ -15,5 +15,6 @@ export const ownerTruthUz: OwnerTruthDictionary = {
   accessErrorBody: "Ruxsatingizni hozir tekshirib boʻlmadi. Hisobingiz joyida, hech narsa oʻzgarmadi. Qayta urinib koʻring.",
   accessErrorRetry: "Qayta urinish",
   accessErrorWorking: "Tekshirilmoqda…",
-  signOutFailed: "Bu telefonda chiqib boʻlmadi. Brauzer oynasini yoping va qayta urinib koʻring.",
+  signOutFailed: "Chiqish uchun serverga ulanib boʻlmadi. Internet paydo boʻlganda qayta urinib koʻring.",
+  testDeliveredNotSaved: "Yuborildi, lekin lentaga saqlanmadi. Quyidagi roʻyxatda koʻrinmaydi.",
 };

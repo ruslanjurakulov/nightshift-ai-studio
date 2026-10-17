@@ -159,6 +159,12 @@ describe("Alerts: send a test", () => {
     expect(screen.queryByText(en.alerts.testSent)).toBeNull();
     expect(screen.getByRole("status").textContent).toContain(en.ownerTruth.notRecorded);
   });
+  it("delivered to Slack but not saved to the feed has its own sentence", async () => {
+    h.fetch.mockImplementation(async () => jsonRes({ ok: false, error: "not_recorded", recorded: false, delivered: true }, 500));
+    render(<SendTestAlert />);
+    await tap(screen.getByRole("button", { name: en.alerts.sendTest }));
+    expect(screen.getByRole("status").textContent).toBe(en.ownerTruth.testDeliveredNotSaved);
+  });
   it("a recorded test says so", async () => {
     h.fetch.mockImplementation(async () => jsonRes({ ok: true, recorded: true, delivered: false, queued: true }));
     render(<SendTestAlert />);
@@ -182,6 +188,8 @@ describe("postOperator / readOperatorResponse", () => {
     expect(await kind(jsonRes({ error: "forbidden" }, 403))).toBe("forbidden");
     expect(await kind(jsonRes({ error: "rate_limited" }, 429))).toBe("rate_limited");
     expect(await kind(jsonRes({ error: "save_failed" }, 500))).toBe("server");
+    // the auth server did not answer: a server problem, NOT "your session ended"
+    expect(await kind(jsonRes({ error: "auth_unavailable" }, 503))).toBe("server");
     expect(await kind(jsonRes({ ok: false }))).toBe("server");
     expect(await kind(jsonRes({ ok: true, recorded: false }))).toBe("not_recorded");
     expect(await kind(new Response("oops", { status: 200, headers: { "content-type": "text/plain" } }))).toBe("server");
@@ -208,6 +216,19 @@ describe("postOperator / readOperatorResponse", () => {
     expect(supabaseFailureKind({ message: "permission denied", code: "42501" }, 403)).toBe("forbidden");
     expect(supabaseFailureKind({ message: "TypeError: Failed to fetch" }, 0)).toBe("network");
     expect(supabaseFailureKind({ message: "boom", code: "XX000" }, 500)).toBe("server");
+  });
+});
+
+describe("the auth server being down is not 'sign in again'", () => {
+  it("a 503 auth_unavailable is worded as a server problem and raises no sign-in bar", async () => {
+    const seen = vi.fn();
+    window.addEventListener(SESSION_ENDED_EVENT, seen);
+    h.fetch.mockImplementation(async () => jsonRes({ error: "auth_unavailable" }, 503));
+    render(<SendTestAlert />);
+    await tap(screen.getByRole("button", { name: en.alerts.sendTest }));
+    expect(screen.getByRole("status").textContent).toBe(en.alerts.testFailed);
+    expect(seen).not.toHaveBeenCalled();
+    window.removeEventListener(SESSION_ENDED_EVENT, seen);
   });
 });
 

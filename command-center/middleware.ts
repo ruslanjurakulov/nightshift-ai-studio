@@ -144,11 +144,27 @@ function notFoundResponse(request: NextRequest): NextResponse {
   return NextResponse.rewrite(new URL(NOT_FOUND_PATH, request.url), { request, status: 404 });
 }
 
-/** A top-level page navigation (the address bar, a link), as the browser itself marks it. */
+/**
+ * A top-level page navigation (the address bar, a link), as the browser itself marks it. A browser too old to send
+ * Sec-Fetch-* is told apart by what it asks for: a navigation accepts HTML, a fetch() asks for JSON or anything.
+ */
 function isBrowserNavigation(request: NextRequest): boolean {
   if (request.method !== "GET" && request.method !== "HEAD") return false;
-  return request.headers.get("sec-fetch-mode") === "navigate" || request.headers.get("sec-fetch-dest") === "document";
+  const mode = request.headers.get("sec-fetch-mode");
+  if (mode !== null) return mode === "navigate" || request.headers.get("sec-fetch-dest") === "document";
+  return /\btext\/html\b/i.test(request.headers.get("accept") ?? "");
 }
+
+/** What a retryable auth failure looks like: the auth server did not answer (offline, 5xx), as opposed to "no session". */
+function authUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { name?: unknown; status?: unknown };
+  if (e.name === "AuthRetryableFetchError") return true;
+  return typeof e.status === "number" && (e.status === 0 || e.status >= 500);
+}
+
+/** The answer depends on how the request was made, so a cache must not hand one kind's answer to the other. */
+const VARY_FETCH = "Sec-Fetch-Mode, Sec-Fetch-Dest";
 
 async function gate(request: NextRequest): Promise<NextResponse> {
   // The Atelier concept prototypes (lib/concepts.ts): a separate namespace,
@@ -217,6 +233,7 @@ async function gate(request: NextRequest): Promise<NextResponse> {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
   // Only /login, /signup, the auth callback and the public pages (landing,
@@ -238,12 +255,17 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // sign-in page back as a 200, so a client that only looks at `res.ok` reports a success that never happened (a
   // refresh, a recorded payment, a price). 401 JSON is what every route already answers once it is reached.
   // A browser NAVIGATION to an API-shaped URL (the YouTube connect link, a download link) keeps the redirect: the
-  // person sees the sign-in page, not raw JSON. Browsers mark it themselves (Sec-Fetch-Mode: navigate); anything
-  // that does not say it is a navigation (fetch, XHR, curl, every non-GET) is a call.
-  if (decision === "to-login" && request.nextUrl.pathname.startsWith("/api/") && !isBrowserNavigation(request)) {
-    const unauthenticated = NextResponse.json({ error: "unauthenticated" }, { status: 401, headers: { "cache-control": "no-store" } });
-    response.cookies.getAll().forEach((c) => unauthenticated.cookies.set(c));
-    return unauthenticated;
+  // person sees the sign-in page, not raw JSON. Anything that is not a navigation (fetch, XHR, curl, every non-GET)
+  // is a call. When the auth server itself did not answer (offline, 5xx), "no user" is not "signed out": the call gets
+  // 503 auth_unavailable, which a client words as a server problem, not as an ended session.
+  const apiPath = request.nextUrl.pathname.startsWith("/api/");
+  if (decision === "to-login" && apiPath && !isBrowserNavigation(request)) {
+    const answer = authUnavailable(userError)
+      ? NextResponse.json({ error: "auth_unavailable" }, { status: 503, headers: { "cache-control": "no-store" } })
+      : NextResponse.json({ error: "unauthenticated" }, { status: 401, headers: { "cache-control": "no-store" } });
+    answer.headers.set("Vary", VARY_FETCH);
+    response.cookies.getAll().forEach((c) => answer.cookies.set(c));
+    return answer;
   }
   if (decision === "to-login" || decision === "to-home") {
     const url = request.nextUrl.clone();
@@ -254,7 +276,10 @@ async function gate(request: NextRequest): Promise<NextResponse> {
     if (decision === "to-login" && request.nextUrl.pathname === "/oauth/authorize") {
       url.search = `?next=${encodeURIComponent(authorizeReturnPath(request.nextUrl.search))}`;
     }
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    // An API-shaped URL is answered by how it was asked for (above), so its redirect varies the same way.
+    if (apiPath) redirect.headers.set("Vary", VARY_FETCH);
+    return redirect;
   }
   // Served as-is, with any refreshed auth cookies. The public pages sit outside
   // the channel layout, so they get no channel header.
