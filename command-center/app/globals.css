@@ -1087,10 +1087,14 @@ option {
 }
 /* A row-level "Delete" before its confirm: the label is red, the key is not filled. */
 .btn-danger-quiet { color: var(--color-fail); }
-/* Toasts clear the owner's bottom tab bar on a phone instead of covering it. */
+/* Toasts clear the bottom tab bar (the owner's and the customer's, both .ns-tabbar, shown below lg) instead of covering it. */
 @media (max-width: 1023.98px) {
-  body:has([data-operator-tabbar]) .toast-viewport { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
+  body:has(.ns-tabbar) .toast-viewport { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
 }
+/* The keys of a confirm sheet are 48px: the one place a slip costs money. Scoped, so no other page changes. */
+[role="alertdialog"] .btn-quiet,
+[role="alertdialog"] .btn-danger,
+[role="alertdialog"] .btn-primary { min-height: 3rem; }
 @media (pointer: coarse), (max-width: 40rem) {
   .shell-link,
   .btn-primary,

@@ -197,15 +197,43 @@ describe("CreditPricesEditor", () => {
     expect(h.refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("a price swing over 30% asks for the new rate to be typed", async () => {
+  it("a rate swing over 30% (markup unchanged) asks for the new rate to be typed", async () => {
     show();
     fireEvent.change(screen.getByPlaceholderText(en.credits.unitPh), { target: { value: "video_minute" } });
     fireEvent.change(screen.getByPlaceholderText(en.credits.ratePh), { target: { value: "40" } });
+    fireEvent.change(screen.getByPlaceholderText(en.credits.marginPh), { target: { value: "2" } });
     await tap(screen.getByRole("button", { name: en.credits.savePrice }));
+    expect(sheet().textContent).toContain(en.ownerSafety.typeToConfirm.replace("{word}", "40"));
     const key = within(sheet()).getByRole("button", { name: en.ownerSafety.priceSaveConfirm });
     expect(key.hasAttribute("disabled")).toBe(true);
     fireEvent.change(within(sheet()).getByRole("textbox"), { target: { value: "40" } });
     expect(key.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("a markup-only change that moves the customer-charged figure over 30% asks for that figure, not the rate", async () => {
+    show();
+    fireEvent.change(screen.getByPlaceholderText(en.credits.unitPh), { target: { value: "video_minute" } });
+    fireEvent.change(screen.getByPlaceholderText(en.credits.ratePh), { target: { value: "20" } });
+    fireEvent.change(screen.getByPlaceholderText(en.credits.marginPh), { target: { value: "3" } });
+    await tap(screen.getByRole("button", { name: en.credits.savePrice }));
+    // 20 x 3 = 60 before, 20 x 4 = 80 after: +33%
+    expect(within(sheet()).getByText("60 → 80")).toBeTruthy();
+    expect(sheet().textContent).toContain(en.ownerSafety.typeToConfirm.replace("{word}", "80"));
+    const key = within(sheet()).getByRole("button", { name: en.ownerSafety.priceSaveConfirm });
+    expect(key.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(sheet()).getByRole("textbox"), { target: { value: "20" } });
+    expect(key.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(sheet()).getByRole("textbox"), { target: { value: "80" } });
+    expect(key.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("a small markup-only change needs no typing", async () => {
+    show();
+    fireEvent.change(screen.getByPlaceholderText(en.credits.unitPh), { target: { value: "video_minute" } });
+    fireEvent.change(screen.getByPlaceholderText(en.credits.ratePh), { target: { value: "20" } });
+    fireEvent.change(screen.getByPlaceholderText(en.credits.marginPh), { target: { value: "2.5" } });
+    await tap(screen.getByRole("button", { name: en.credits.savePrice }));
+    expect(within(sheet()).queryByRole("textbox")).toBeNull();
   });
 
   it("Cancel on the save sheet writes nothing and keeps the form", async () => {

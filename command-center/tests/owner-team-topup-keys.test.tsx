@@ -228,7 +228,7 @@ describe("PayPanel (record a provider payment)", () => {
     show();
     await tap(screen.getByRole("button", { name: en.billing.payDone }));
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.topupConfirm }));
-    expect(within(sheet()).getByRole("alert").textContent).toBe(en.billing.payFailed);
+    expect(within(sheet()).getByRole("alert").textContent).toBe(en.ownerSafety.topupFailed);
     expect(h.refresh).not.toHaveBeenCalled();
     expect(within(sheet()).getByRole("button", { name: en.ownerSafety.topupConfirm }).hasAttribute("disabled")).toBe(false);
   });
@@ -381,7 +381,7 @@ describe("BulkPay (pay all providers)", () => {
     await tap(screen.getByRole("button", { name: new RegExp(en.billing.bulkPay) }));
     await tap(screen.getByRole("button", { name: en.billing.payDone }));
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.topupConfirm }));
-    expect(within(sheet()).getByRole("alert").textContent).toBe(en.billing.payFailed);
+    expect(within(sheet()).getByRole("alert").textContent).toBe(en.ownerSafety.topupFailed);
     await tap(within(sheet()).getByRole("button", { name: en.ux.confirmCancel }));
     expect(screen.getAllByText(/Alpha/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Beta · /)).toBeNull();

@@ -48,6 +48,7 @@ export const ownerSafetyUz: OwnerSafetyDictionary = {
   topupBody:
     "Toʻlov balans jurnaliga yoziladi. Faqat haqiqatan kartangizdan chiqqan pulni yozing — xato yozuvni ilovada olib tashlab boʻlmaydi.",
   topupConfirm: "Toʻlovni qayd etish",
+  topupFailed: "Toʻlovni qayd etib boʻlmadi. Aloqa uzilgan boʻlsa, qayta qayd etishdan oldin balans tarixini tekshiring.",
   topupDone: "{provider} uchun {amount} qayd etildi.",
   dProvider: "Provayder",
   dAmount: "Summa",

@@ -121,7 +121,7 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
         { label: t.ownerSafety.dDate, value: todayText(locale) },
       ],
       successMessage: fmt(t.ownerSafety.topupDone, { amount: shown, provider: p.name }),
-      run: async () => ((await recordTopup(p.id, value)) ? true : t.billing.payFailed),
+      run: async () => ((await recordTopup(p.id, value)) ? true : t.ownerSafety.topupFailed),
     });
     lock.current = false;
     setState("idle");
@@ -256,7 +256,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
         { label: t.ownerSafety.dDate, value: todayText(locale) },
       ],
       successMessage: fmt(t.ownerSafety.topupDone, { amount: shown, provider: item.name }),
-      run: async () => ((await recordTopup(item.id, item.amount)) ? true : t.billing.payFailed),
+      run: async () => ((await recordTopup(item.id, item.amount)) ? true : t.ownerSafety.topupFailed),
     });
     lock.current = false;
     setBusy(false);

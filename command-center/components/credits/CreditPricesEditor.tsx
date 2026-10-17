@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { priceChangeTier, typedFigure } from "@/lib/confirm-tier";
+import { priceTypedFigure } from "@/lib/confirm-tier";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { relativeTime } from "@/lib/format";
 import {
@@ -91,7 +91,10 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
         { label: t.ownerSafety.dMargin, value: show(old ? old.margin : null, next.margin, (n) => marginOf(row.unit, n)) },
         { label: t.ownerSafety.dCharged, value: show(old ? chargePerUnit(old) : null, chargePerUnit(next), (n) => figure(n, 6)) },
       ],
-      typeToConfirm: priceChangeTier(old ? old.creditsPerUnit : null, next.creditsPerUnit) === 3 ? typedFigure(next.creditsPerUnit) : undefined,
+      typeToConfirm: priceTypedFigure(
+        old ? { rate: old.creditsPerUnit, margin: old.margin, charged: chargePerUnit(old) } : null,
+        { rate: next.creditsPerUnit, margin: next.margin, charged: chargePerUnit(next) },
+      ),
       successMessage: fmt(t.ownerSafety.priceSaved, { name }),
       run: async () => {
         const { error: e } = await supabase.from("credit_prices").upsert(row, { onConflict: "unit" });

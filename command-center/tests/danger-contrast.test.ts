@@ -53,7 +53,11 @@ describe("danger key contrast", () => {
     expect(contrast("#b9341f", "#4f46e5")).toBeLessThan(2);
   });
 
-  it("toasts are lifted above the owner's tab bar on a phone", () => {
-    expect(css).toMatch(/body:has\(\[data-operator-tabbar\]\) \.toast-viewport \{ bottom: calc\(env\(safe-area-inset-bottom\) \+ 4\.75rem\)/);
+  it("the keys inside a confirm sheet are 48px, scoped to the sheet", () => {
+    expect(css).toMatch(/\[role="alertdialog"\] \.btn-quiet,\s*\[role="alertdialog"\] \.btn-danger,\s*\[role="alertdialog"\] \.btn-primary \{ min-height: 3rem; \}/);
+  });
+
+  it("toasts are lifted above the owner's and the customer's tab bar on a phone", () => {
+    expect(css).toMatch(/body:has\(\.ns-tabbar\) \.toast-viewport \{ bottom: calc\(env\(safe-area-inset-bottom\) \+ 4\.75rem\)/);
   });
 });

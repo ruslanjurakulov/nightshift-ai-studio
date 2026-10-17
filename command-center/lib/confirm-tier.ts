@@ -20,10 +20,29 @@ export function grantTier(credits: number): ConfirmTier {
   return credits > GRANT_TYPED_ABOVE ? 3 : 2;
 }
 
-/** A first price (no old rate) is tier 2; so is a swing up to 30%. A deleted price is always 2. */
-export function priceChangeTier(oldRate: number | null, newRate: number): ConfirmTier {
-  if (oldRate === null || oldRate <= 0) return 2;
-  return Math.abs(newRate - oldRate) / oldRate > PRICE_SWING_TYPED_ABOVE ? 3 : 2;
+/**
+ * What the customer is charged per unit is rate x (1 + markup), so the swing is judged on that figure:
+ * a markup-only change that moves it past 30% is as large as a rate change. A first price is tier 2.
+ */
+export function priceChangeTier(oldCharged: number | null, newCharged: number): ConfirmTier {
+  if (oldCharged === null || oldCharged <= 0) return 2;
+  return Math.abs(newCharged - oldCharged) / oldCharged > PRICE_SWING_TYPED_ABOVE ? 3 : 2;
+}
+
+/** A figure smaller than this is not worth typing back (0.0004 is easy to get wrong): the sheet stays tier 2. */
+export const MIN_TYPED_FIGURE = 0.001;
+
+/**
+ * The text to type for a price save, or undefined when the plain tier-2 sheet is enough. A rate change types
+ * the new rate; when the markup moved too, the new customer-charged figure (the number the sheet shows).
+ */
+export function priceTypedFigure(
+  old: { rate: number; margin: number; charged: number } | null,
+  next: { rate: number; margin: number; charged: number },
+): string | undefined {
+  if (priceChangeTier(old ? old.charged : null, next.charged) !== 3) return undefined;
+  const figure = old !== null && old.margin === next.margin ? next.rate : next.charged;
+  return figure >= MIN_TYPED_FIGURE ? typedFigure(figure) : undefined;
 }
 
 /** The figure to type back as plain text: no grouping, no trailing zeros. */
@@ -33,11 +52,11 @@ export function typedFigure(n: number): string {
 
 /**
  * Does what the person typed match what we asked for? Case, spaces and the
- * apostrophe-like marks are ignored, so «OʻCHIR» is satisfied by "ochir" on a
+ * apostrophe-like marks are ignored, and a decimal comma counts as a point (many phone keyboards only have one), so «OʻCHIR» is satisfied by "ochir" on a
  * phone keyboard that has no ʻ.
  */
 export function typedMatches(typed: string, expected: string): boolean {
-  const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[\s'`ʻʼ’‘]/g, "");
+  const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/,/g, ".").replace(/[\s'`ʻʼ’‘]/g, "");
   return norm(typed) === norm(expected) && norm(expected) !== "";
 }
 

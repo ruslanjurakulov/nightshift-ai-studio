@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { en } from "../lib/i18n/en";
 import type { Role } from "../lib/auth/roles-shared";
-import { grantTier, priceChangeTier, typedFigure, typedMatches, memberBlock, GRANT_TYPED_ABOVE } from "../lib/confirm-tier";
+import { grantTier, priceChangeTier, priceTypedFigure, typedFigure, typedMatches, memberBlock, GRANT_TYPED_ABOVE } from "../lib/confirm-tier";
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/lib/i18n/context", async () => {
@@ -161,6 +161,25 @@ describe("the sheet", () => {
     expect(screen.getByRole("alert").textContent).toBe(en.ownerSafety.actionFailed);
   });
 
+  it("Enter in the typed-confirm field does nothing while the word is empty or wrong, and goes ahead once it matches", async () => {
+    const run = vi.fn(async () => true);
+    open({ message: "m", confirmLabel: "Remove", typeToConfirm: "REMOVE", run });
+    const input = screen.getByRole("textbox");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {});
+    expect(run).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "remo" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {});
+    expect(run).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "remove" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it("a figure to type keeps the key off until it matches (case, spaces and ʻ ignored)", async () => {
     const run = vi.fn(async () => true);
     open({ message: "m", confirmLabel: "Remove", typeToConfirm: "OʻCHIR", run });
@@ -182,17 +201,34 @@ describe("tiers", () => {
     expect(grantTier(GRANT_TYPED_ABOVE)).toBe(2);
     expect(grantTier(GRANT_TYPED_ABOVE + 1)).toBe(3);
   });
-  it("a first price is tier 2, a swing over 30% is tier 3", () => {
+  it("a first price is tier 2; a swing of the customer-charged figure over 30% is tier 3", () => {
     expect(priceChangeTier(null, 50)).toBe(2);
-    expect(priceChangeTier(40, 45)).toBe(2);
-    expect(priceChangeTier(40, 53)).toBe(3);
-    expect(priceChangeTier(40, 20)).toBe(3);
+    expect(priceChangeTier(60, 67.5)).toBe(2);
+    expect(priceChangeTier(60, 80)).toBe(3);
+    expect(priceChangeTier(60, 24)).toBe(3);
+  });
+  it("types the new rate when only the rate moved, the charged figure when the markup moved too", () => {
+    const old = { rate: 20, margin: 2, charged: 60 };
+    expect(priceTypedFigure(old, { rate: 40, margin: 2, charged: 120 })).toBe("40");
+    // markup-only change that moves the charged figure by 33%: typed, and it is the charged figure
+    expect(priceTypedFigure(old, { rate: 20, margin: 3, charged: 80 })).toBe("80");
+    // a small markup-only change is plain tier 2
+    expect(priceTypedFigure(old, { rate: 20, margin: 2.5, charged: 70 })).toBeUndefined();
+    expect(priceTypedFigure(null, { rate: 20, margin: 2, charged: 60 })).toBeUndefined();
+  });
+  it("never asks for a figure under 0.001 to be typed", () => {
+    const old = { rate: 0.0004, margin: 0, charged: 0.0004 };
+    expect(priceTypedFigure(old, { rate: 0.0009, margin: 0, charged: 0.0009 })).toBeUndefined();
+    expect(priceTypedFigure({ rate: 0.008, margin: 2, charged: 0.024 }, { rate: 0.016, margin: 2, charged: 0.048 })).toBe("0.016");
   });
   it("types back plain digits", () => {
     expect(typedFigure(5000)).toBe("5000");
     expect(typedFigure(0.1 + 0.2)).toBe("0.3");
     expect(typedMatches("5 000", "5000")).toBe(true);
     expect(typedMatches("", "")).toBe(false);
+    // a decimal comma is a point
+    expect(typedMatches("0,016", "0.016")).toBe(true);
+    expect(typedMatches("0.016", "0,016")).toBe(true);
   });
   it("blocks your own row and the last BOUND owner (the security PR's guard), nobody else", () => {
     const rows: { id: string; user_id: string | null; email: string; role: Role }[] = [

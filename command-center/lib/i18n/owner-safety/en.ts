@@ -56,6 +56,7 @@ export const ownerSafetyEn = {
   topupBody:
     "The payment is added to the balance ledger. Record only money that really left your card: a wrong entry cannot be removed in the app.",
   topupConfirm: "Record payment",
+  topupFailed: "Could not record the payment. If the connection dropped, check the balance history before recording again.",
   topupDone: "Recorded {amount} for {provider}.",
   dProvider: "Provider",
   dAmount: "Amount",

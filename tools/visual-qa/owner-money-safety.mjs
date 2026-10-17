@@ -35,6 +35,8 @@ const MODE = String(arg("mode", "checks"));
 const TAG = String(arg("tag", "after"));
 const OUT = path.resolve(String(arg("out", path.join(REPO, "docs", "design", "owner-money-safety"))));
 const LOCALE = String(arg("locale", "uz"));
+const STATE = String(arg("state", "owner"));
+const ONLY = arg("only", "");
 const CH = "chronos";
 
 function loadPlaywright() {
@@ -78,7 +80,7 @@ async function open(width, route, { height = 844, theme = "dark", mfa = false } 
   const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: "reduce", hasTouch: phone, isMobile: phone });
   await context.addCookies([
     { name: "chronos_locale", value: LOCALE, url: BASE },
-    { ...sessionCookie(FAKE, "owner", 0, mfa ? { mfa: 1 } : {}), url: BASE },
+    { ...sessionCookie(FAKE, STATE, 0, mfa ? { mfa: 1 } : {}), url: BASE },
   ]);
   const page = await context.newPage();
   await page.goto(`${BASE}/${CH}${route}`, { waitUntil: "load", timeout: 180000 });
@@ -119,6 +121,14 @@ const SCENARIOS = {
     route: "/command-center",
     async act(page) {
       await page.waitForSelector('[data-testid="admin-mfa-banner"]');
+    },
+    noSheet: true,
+  },
+  // A customer page (run with --state videos --only customer): the toast area must clear the customer tab bar too.
+  customer: {
+    route: "/videos",
+    async act(page) {
+      await page.waitForSelector(".ns-tabbar");
     },
     noSheet: true,
   },
@@ -178,6 +188,8 @@ async function checks() {
   for (const theme of ["dark", "light"]) {
     for (const width of [320, 390, 1440]) {
       for (const [name, s] of Object.entries(SCENARIOS)) {
+        if (ONLY ? name !== ONLY : name === "customer") continue;
+        if (name === "customer" && width >= 1024) continue; // the tab bar is a phone and tablet bar
         const { context, page } = await open(width, s.route, { height: width < 600 ? 844 : 900, theme, mfa: s.mfa });
         await s.act(page);
         await page.waitForTimeout(500);
@@ -197,7 +209,7 @@ async function checks() {
             out.banner = { h: Math.round(banner.getBoundingClientRect().height), close: x ? [Math.round(x.getBoundingClientRect().width), Math.round(x.getBoundingClientRect().height)] : null };
           }
           const tray = document.querySelector("section.toast-viewport");
-          const bar = document.querySelector("[data-operator-tabbar]");
+          const bar = document.querySelector(".ns-tabbar");
           if (tray && bar && getComputedStyle(bar).display !== "none") {
             const t = tray.getBoundingClientRect();
             out.toast = { trayBottom: Math.round(t.bottom - 16), barTop: Math.round(bar.getBoundingClientRect().top) };
@@ -245,7 +257,7 @@ async function checks() {
           else {
             if (!r.sheet.inside) bad.push(`${key}: sheet leaves the screen`);
             if (!r.sheet.cancelLeft) bad.push(`${key}: Cancel is not left of the danger key`);
-            if (r.sheet.minH < 44 || r.sheet.minW < 44) bad.push(`${key}: key smaller than 44px (${r.sheet.minW}x${r.sheet.minH})`);
+            if (r.sheet.minH < 48 || r.sheet.minW < 44) bad.push(`${key}: key smaller than 48px high / 44px wide (${r.sheet.minW}x${r.sheet.minH})`);
           }
         }
         if (name === "banner") {
