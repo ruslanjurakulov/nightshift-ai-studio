@@ -215,6 +215,16 @@ describe("API top-ups: totals must agree with the line price", () => {
       expect(decideApiTopup(paid({ subtotal: "909", discount: "0", tax: "91", total: "1000", credit: "0", grand_total: "1000" }, {}, "1000"), PRODUCT)).toMatchObject({ kind: "api_topup", cents: 1000, amountMinor: 1000 });
     });
 
+    it("tax-inclusive with a one-cent rounding drift in the tax split is still credited", () => {
+      // $18.99 at 21% VAT: Paddle splits 1569 + 331 = 1900, one cent off the 1899 total.
+      const d = decideApiTopup(paid({ subtotal: "1569", discount: "0", tax: "331", total: "1899", credit: "0", grand_total: "1899" }, {}, "1899"), PRODUCT);
+      expect(d).toMatchObject({ kind: "api_topup", cents: 1899, amountMinor: 1899 });
+    });
+
+    it("a drift never helps an exclusive price: its identity must hold exactly", () => {
+      rejected(decideApiTopup(paid({ subtotal: "1899", discount: "0", tax: "331", total: "2229", grand_total: "2229" }, {}, "1899"), PRODUCT), /inconsistent/);
+    });
+
     it("quantity > 1: the summed lines match the subtotal", () => {
       const data = txn({
         items: [{ quantity: 3, price: { product_id: PRODUCT, unit_price: { amount: "1000", currency_code: "USD" } } }],

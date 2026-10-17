@@ -214,9 +214,8 @@ tax out of `subtotal`, so `total` stays equal to the price.
 | API top-up | The transaction's `currency_code` is USD (and `totals.currency_code`, when sent). |
 | API top-up | No discount of any kind (`discount_id` absent, `totals.discount` zero), not even a promo from `PADDLE_PROMO_DISCOUNT_IDS`. |
 | API top-up | `totals.credit` and `totals.credit_to_balance` are absent or zero (nothing was paid from the customer's Paddle credit balance). |
-| API top-up | `subtotal`, `tax`, `total` and `grand_total` are readable, `total = subtotal + tax`, and `grand_total = total`. |
-| API top-up | The line price matches Paddle's totals: `subtotal` equals it (tax-exclusive price) or `total` equals it (tax-inclusive price). |
-| API top-up | Never more than was paid: `grand_total - tax` (exclusive) or `grand_total` (inclusive) is at least the credited cents. |
+| API top-up | `subtotal`, `tax`, `total` and `grand_total` are readable, and `grand_total = total` (no hidden credit). |
+| API top-up | The line price matches Paddle's totals in one of two ways. Tax-inclusive price: `total` (= `grand_total`) equals the line price, so the amount paid covers the credit; the tax split may be a cent off Paddle's rounding and is not checked. Tax-exclusive price: `subtotal` equals the line price and `total = subtotal + tax` exactly, so the amount paid net of tax equals the credit. Anything else is rejected. |
 | Credit pack | The Paddle price id is one of ours; quantity 1–1000; credits are scaled by the paid share `(subtotal - discount) / subtotal`, rounded down to the cent; a 100% discount credits nothing unless the discount id is in `PADDLE_PROMO_DISCOUNT_IDS`. |
 | Credit pack | `totals.credit` and `totals.credit_to_balance` are absent or zero: a pack bought with Paddle credit-balance money is `rejected` for review, not credited in full. |
 | Plan period | The price id is a plan on this deployment, quantity 1, a billing period is present, and the same discount/promo rule as a pack applies. The database grants once per subscription period (a mid-period upgrade tops up pro rata). |

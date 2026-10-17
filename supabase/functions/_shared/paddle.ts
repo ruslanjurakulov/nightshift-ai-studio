@@ -625,20 +625,25 @@ export function decideApiTopup(
   const total = minorUnits(totals.total);
   if (subtotal === null || tax === null || total === null)
     return reject("API top-up whose subtotal, tax or total cannot be read — not credited");
-  if (total !== subtotal + tax) return reject("API top-up whose totals are inconsistent (total != subtotal + tax) — not credited");
+  // grand_total = total - credit, and credit is zero (above), so they must agree.
   if (amountMinor !== total) return reject("API top-up whose grand total differs from its total (credit applied?) — not credited");
-  // Tax-exclusive price: the customer paid subtotal + tax, we keep the subtotal.
-  // Tax-inclusive price: the price IS the gross amount paid. Either way the
-  // line price must be what Paddle's totals show.
-  const exclusive = subtotal === cents;
+  // Which pricing was this? What matters is that the cents we credit are
+  // covered by what the customer paid, in both modes:
+  //  - tax-INCLUSIVE price: the price IS the gross amount paid, so
+  //    total === grand_total === cents. That alone proves the payment covers the
+  //    credit; subtotal + tax may drift by a cent from Paddle's rounding of the
+  //    tax split (e.g. $18.99 at 21% VAT), so that identity is not required here.
+  //  - tax-EXCLUSIVE price: subtotal === cents and total === subtotal + tax, so
+  //    grand_total - tax === cents, i.e. the net of tax paid is the credit.
+  // Either way the credit never exceeds the amount paid (net of tax when
+  // exclusive); there is no separate "paid >= cents" test because these
+  // equalities already imply it.
   const inclusive = total === cents;
-  if (!exclusive && !inclusive)
+  const exclusive = subtotal === cents && total === subtotal + tax;
+  if (!inclusive && !exclusive) {
+    if (subtotal === cents) return reject("API top-up whose totals are inconsistent (total != subtotal + tax) — not credited");
     return reject(`API top-up whose totals (${subtotal}/${total}) do not match its line price (${cents}) — not credited`);
-  // Never credit more than the amount actually paid, net of tax where the
-  // price is tax-exclusive (grand_total - tax); gross where tax-inclusive.
-  const paid = exclusive ? amountMinor - tax : amountMinor;
-  if (Math.min(cents, paid) < cents)
-    return reject(`API top-up paid ${paid} cents for a ${cents}-cent credit — not credited`);
+  }
   const note = [`Paddle ${transactionId}: API top-up ${(cents / 100).toFixed(2)} USD`, userId ? `by user ${userId}` : null]
     .filter(Boolean)
     .join(" · ");
