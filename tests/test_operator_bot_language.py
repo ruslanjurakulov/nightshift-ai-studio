@@ -433,13 +433,14 @@ class RouterLanguageTestCase(unittest.TestCase):
             self.assertNotIn("Held for review:", tg.texts()[-1])
 
     def test_legacy_status_uses_the_language_when_the_source_can(self):
+        # With no database sources the original path answers (route_command).
         class Localized(Deps):
             localized = True
 
             def status_summary(self, lang="en"):
                 return tp(lang, "status.summary", n=3)
         bot, tg, *_ = build()
-        bot.deps = Localized()
+        bot.deps, bot.ops = Localized(), None
         bot.handle_update(update_message("/language uz"))
         bot.handle_update(update_message("/status"))
         self.assertEqual(tg.texts()[-1], "Nightshift: kutubxonada 3 ta video.")
@@ -509,16 +510,15 @@ class AuthorizationUnchangedTestCase(unittest.TestCase):
         bot.handle_update(update_callback("c:health", chat=555, user=100))
         self.assertEqual(tg.answers()[-1]["text"], t("uz", "err.not_authorized_toast"))
 
-    def test_the_intent_path_is_identical_in_every_language(self):
+    def test_no_command_records_an_intent_in_any_language(self):
         for lang in LANGUAGES:
             bot, tg, sync, store = build()
             store.record_language(lang)
             with patch("modules.event_log.emit") as emit:
                 bot.handle_update(update_message("/pause finance"))
                 bot.handle_update(update_message("/publish v1"))
-            self.assertEqual([c.kwargs["metadata"] for c in emit.call_args_list],
-                             [{"action": "pause", "target": "finance"}, {"action": "publish", "target": "v1"}])
-            self.assertEqual(emit.call_count, 2)
+            emit.assert_not_called()
+            self.assertEqual(tg.texts(), [t(lang, "err.view_only")] * 2)
 
     def test_action_refusals_are_localized_and_still_refuse(self):
         for lang in LANGUAGES:

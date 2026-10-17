@@ -101,5 +101,17 @@ class SanitizeTestCase(unittest.TestCase):
         self.assertEqual(tg_text.sanitize_outgoing(None), "")
 
 
+class ShortIdTestCase(unittest.TestCase):
+    def test_a_long_provider_id_is_shown_by_its_tail_only(self):
+        full = "evt_01h83xenpcfjyhkzewa4pbkjv5"
+        self.assertEqual(tg_text.short_id(full), "…" + full[-8:])
+        self.assertNotIn(full[:12], tg_text.short_id(full))
+
+    def test_a_short_id_stays_and_nothing_unsafe_survives(self):
+        self.assertEqual(tg_text.short_id("abc"), "abc")
+        self.assertEqual(tg_text.short_id(None), "")
+        self.assertEqual(tg_text.short_id("<b>x</b>&\n" + "z" * 30), "…" + "z" * 8)
+
+
 if __name__ == "__main__":
     unittest.main()

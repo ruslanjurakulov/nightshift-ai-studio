@@ -4,7 +4,8 @@ Four kinds of source, none of them new:
 
 * Supabase tables the platform already writes (render_jobs, creative_jobs,
   worker_status 0045, provider_balances 0012, creative_job_costs 0037,
-  publish_approvals 0009, app_audit_log 0008, system_events, organizations),
+  publish_approvals 0009, app_audit_log 0008, payment_events 0021, system_events,
+  videos 0016, organizations),
   read with the service key by the same SupabaseSync client the pipeline uses.
   Reads select no person's free text: no job `params` or `error`, no topic, no
   e-mail, no audit actor or detail. What is selected is ids, statuses, counts and
@@ -35,6 +36,12 @@ logger = logging.getLogger(__name__)
 #: The organization every pre-0018 channel belongs to; it is the operator's own,
 #: not a sign-up.
 DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
+
+#: The worker_status row the bot service writes about itself (migration 0045).
+BOT_WORKER_ID = "operator-bot"
+
+#: videos.publish_state values (migration 0016) of a run that did NOT upload.
+HELD_STATES = ("held", "awaiting_approval", "repaired_awaiting_review", "blocked")
 
 CREATIVE_ACTIVE = ("queued", "planning", "running", "provider_pending", "processing", "rendering")
 
@@ -222,6 +229,40 @@ class OperatorSources:
         return self._read("creative_job_costs", {
             "select": "provider,usd_estimate,recorded_at",
             "recorded_at": f"gte.{iso(since)}", "order": "recorded_at.desc", "limit": "5000",
+        })
+
+    PAYMENTS_LIMIT = 1000
+
+    def payment_events(self, since: datetime) -> Section:
+        """Payment-provider events received since ``since`` (0021, service role
+        only). Ids, type, status, amount and time: NOT `detail` (free text),
+        not the organization, not the provider's transaction or adjustment id,
+        and there is no customer column at all."""
+        return self._read("payment_events", {
+            "select": "event_id,event_type,status,amount_minor,currency,received_at",
+            "received_at": f"gte.{iso(since)}", "order": "received_at.desc",
+            "limit": str(self.PAYMENTS_LIMIT),
+        })
+
+    # -- videos -----------------------------------------------------------
+
+    def held_videos(self) -> Section:
+        """Runs that did not upload (held, awaiting approval, repaired, blocked
+        by the gate), newest first. Ids and states: no title, no topic, no
+        `hold_detail`."""
+        sec = self._read("videos", {
+            "select": "video_id,channel_id,publish_state,held_at",
+            "publish_state": f"in.({','.join(HELD_STATES)})", "published_at": "is.null",
+            "order": "held_at.desc", "limit": "200",
+        })
+        if not sec.ok:
+            return sec
+        return Section(True, [r for r in sec.data or [] if r.get("publish_state") in HELD_STATES], cap=sec.cap)
+
+    def videos_published(self, since: datetime) -> Section:
+        return self._read("videos", {
+            "select": "video_id,published_at", "published_at": f"gte.{iso(since)}",
+            "order": "published_at.desc", "limit": "1000",
         })
 
     # -- activity ---------------------------------------------------------

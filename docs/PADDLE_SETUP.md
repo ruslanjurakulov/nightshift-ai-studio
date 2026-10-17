@@ -344,7 +344,9 @@ Sandbox uchun bularning hech biri shart emas.
 ## Kuzatish
 
 Odam aralashishi kerak bo'lgan hodisalar (pul olingan, kredit qo'shilmagan yoki
-Paddle qayta urinib ko'ryapti):
+Paddle qayta urinib ko'ryapti). Webhook yetarli ishonch bo'lmagan to'lovni
+(masalan, `totals` mos kelmasa) kredit qilmaydi va `rejected` deb yozadi — shu
+so'rov aynan ularni ko'rsatadi, uni vaqti-vaqti bilan ishga tushiring:
 
 ```sql
 select provider, event_id, event_type, status, detail, org_id, transaction_id, received_at
@@ -385,6 +387,11 @@ kerak bo'lsa Credits sahifasidan `grant` qiling.
 | `rejected: price … is not a credit pack` | Supabase'da `PADDLE_PRICE_*` yo'q yoki boshqa | `supabase secrets set …` |
 | `rejected: organization does not exist` | Tashkilot o'chirilgan / payload qo'lda yasalgan | Paddle'da refund yoki qo'lda `grant` |
 | `failed: purchase not recorded yet` | Refund xariddan oldin keldi | Kutish — Paddle qayta yuboradi |
+| `rejected: API top-up not in USD` / `totals are not in USD` | Tranzaksiya USD'da emas | Paddle'da refund yoki qo'lda `api_adjust_balance` |
+| `rejected: … paid partly from Paddle credit` | To'lovning bir qismi mijozning Paddle kredit balansidan qoplangan (`totals.credit`); paket yoki API top-up | Haqiqatan to'langan summaga qarab qo'lda `grant` / `api_adjust_balance`, yoki Paddle'da refund |
+| `rejected: … do not match its line price` | Paddle `totals` qator narxiga mos emas (narx o'zgartirilgan, kam to'langan) | `payment_events.amount_minor` va Paddle'dagi tranzaksiyani solishtiring; qo'lda kredit yoki refund |
+| `rejected: … inconsistent` / `grand total differs from its total` | `total ≠ subtotal + tax` yoki `grand_total ≠ total` (kredit yashirilgan bo'lishi mumkin) | Xuddi shunday: tekshirib, qo'lda kredit yoki refund |
+| `rejected: … cannot be read` | `subtotal`/`tax`/`total` yo'q yoki o'qib bo'lmaydi | Paddle'dagi tranzaksiyani oching; qo'lda kredit yoki refund |
 | To'lov bo'ldi, kredit 1 daqiqada tushmadi | Webhook yetib bormadi | Paddle → Notifications → destination → loglar; `payment_events` |
 
 ## Xavfsizlik

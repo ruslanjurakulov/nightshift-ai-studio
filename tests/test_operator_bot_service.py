@@ -118,14 +118,16 @@ class PollLoopTests(_Fixture):
         self.assertEqual(self.poll(self.session(_resp(batch))), 5)
         self.assertEqual(self.control.send.call_count, 2, "a claimed update must not be answered twice")
 
-    def test_a_stranger_is_refused_and_a_pause_is_only_an_intent(self):
+    def test_a_stranger_is_refused_and_a_pause_is_only_answered_view_only(self):
         with patch("modules.event_log.emit") as emit:
             self.poll(self.session(_resp([_msg(5, "/status", chat=999), _msg(6, "/pause finance")])))
-        self.assertEqual(emit.call_count, 1)
-        self.assertEqual(emit.call_args.args[0], "telegram.command")
+        emit.assert_not_called()
         self.assertIn("Not authorized", self.control.send.call_args_list[0].args[1])
+        self.assertIn("view-only", self.control.send.call_args_list[1].args[1])
 
-    def test_the_server_has_no_local_history_so_status_says_so_instead_of_inventing_a_count(self):
+    def test_without_database_sources_the_server_deps_do_not_invent_a_count(self):
+        # The real service always has sources (status and pending then read Supabase, see
+        # test_operator_bot_router); this bot has none, so the stub deps answer and say so.
         self.poll(self.session(_resp([_msg(8, "/status")])))
         self.assertIn("unavailable", self.control.send.call_args.args[1].lower())
         # ... and the held-for-review count is unknown, not zero.
@@ -306,6 +308,110 @@ class RunServiceTests(_Fixture):
         code = svc.run_service(self.control, self.bot, self.claims, MagicMock(), self.stop, interval=3600,
                                session=session, first_delay=3600)
         self.assertEqual(code, svc.EXIT_OK)
+
+
+class _Reporter:
+    """Stands in for WorkerStatusReporter: records (state, detail), never touches the network."""
+
+    def __init__(self):
+        self.calls = []
+        self.closed = None
+
+    def report(self, state, detail=None):
+        self.calls.append((state, detail))
+        return True
+
+    def close(self, state="stopped", detail=None):
+        self.closed = (state, detail)
+        return True
+
+
+class HeartbeatTests(_Fixture):
+    def test_the_status_loop_reports_running_while_telegram_answers(self):
+        rep = _Reporter()
+        beats = iter([False, False, True])
+        self.stats.last_poll_ok = 100.0
+        svc.status_loop(rep, self.stats, self.stop, clock=lambda: 130.0, wait=lambda s: next(beats))
+        self.assertEqual(rep.calls, [("running", None)] * 3)
+
+    def test_a_stalled_poll_loop_stops_the_heartbeat_so_the_row_goes_stale(self):
+        rep = _Reporter()
+        self.stats.last_poll_ok = 100.0
+        svc.status_loop(rep, self.stats, self.stop, clock=lambda: 100.0 + svc.STATUS_FRESH_S + 1, wait=lambda s: True)
+        self.assertEqual(rep.calls, [])
+
+    def test_a_good_poll_refreshes_the_liveness_stamp(self):
+        before = self.stats.last_poll_ok = 0.0
+        self.poll(self.session(_resp([])))
+        self.assertGreater(self.stats.last_poll_ok, before)
+
+    def test_a_failed_poll_does_not(self):
+        self.stats.last_poll_ok = 0.0
+        self.poll(self.session(_http_error(500)))
+        self.assertEqual(self.stats.last_poll_ok, 0.0)
+
+    def test_the_service_reports_starting_then_stopped_on_a_clean_stop(self):
+        rep = _Reporter()
+        session = MagicMock()
+        session.get.side_effect = lambda *a, **k: (self.stop.set(), _resp([]))[1]
+        code = svc.run_service(self.control, self.bot, self.claims, MagicMock(), self.stop, interval=3600,
+                               session=session, first_delay=3600, reporter=rep)
+        self.assertEqual(code, svc.EXIT_OK)
+        self.assertEqual(rep.calls[0], ("starting", None))
+        self.assertEqual(rep.closed, ("stopped", None))
+
+    def test_a_refused_poll_is_reported_failed_with_the_fixed_reason(self):
+        rep = _Reporter()
+        session = MagicMock()
+        session.get.side_effect = _http_error(409)
+        code = svc.run_service(self.control, self.bot, self.claims, MagicMock(), self.stop, interval=3600,
+                               session=session, first_delay=3600, reporter=rep)
+        self.assertEqual(code, svc.EXIT_REFUSED)
+        state, detail = rep.closed
+        self.assertEqual(state, "failed")
+        self.assertIn("webhook", detail)
+        self.assertNotIn("tok", detail)
+
+    def test_an_unexpected_crash_is_reported_failed_not_stopped(self):
+        rep = _Reporter()
+        with patch.object(svc, "poll_loop", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                svc.run_service(self.control, self.bot, self.claims, MagicMock(), self.stop, interval=3600,
+                                first_delay=3600, reporter=rep)
+        self.assertEqual(rep.closed[0], "failed")
+        self.assertNotIn("boom", rep.closed[1])
+
+    def test_without_a_reporter_nothing_changes(self):
+        session = MagicMock()
+        session.get.side_effect = lambda *a, **k: (self.stop.set(), _resp([]))[1]
+        self.assertEqual(svc.run_service(self.control, self.bot, self.claims, MagicMock(), self.stop,
+                                         interval=3600, session=session, first_delay=3600), svc.EXIT_OK)
+
+    def test_the_real_reporter_posts_the_rpc_as_a_kind_other_worker(self):
+        from modules.worker_status import WorkerStatusReporter
+        session = MagicMock()
+        session.post.return_value = MagicMock(status_code=204)
+        rep = WorkerStatusReporter("https://x.supabase.co", "k", worker_id=svc.BOT_WORKER_ID, kind="other",
+                                   session=session)
+        self.assertTrue(rep.report("running"))
+        url = session.post.call_args.args[0]
+        payload = session.post.call_args.kwargs["json"]
+        self.assertTrue(url.endswith("/rest/v1/rpc/report_worker_status"))
+        self.assertEqual((payload["p_worker_id"], payload["p_kind"], payload["p_state"]),
+                         ("operator-bot", "other", "running"))
+
+    def test_main_hands_the_service_a_reporter_for_its_own_row(self):
+        env = {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "1", "SUPABASE_URL": "https://x.supabase.co",
+               "SUPABASE_SERVICE_KEY": "k", "GITHUB_TOKEN": ""}
+        seen = {}
+
+        def fake_run(control, bot, store, engine, stop, **kw):
+            seen.update(kw)
+            return 0
+
+        with patch.dict("os.environ", env), patch.object(svc, "run_service", fake_run), patch("signal.signal"):
+            svc.main([])
+        self.assertEqual((seen["reporter"].worker_id, seen["reporter"].kind), ("operator-bot", "other"))
 
 
 class IntervalAndMainTests(unittest.TestCase):

@@ -87,14 +87,13 @@ class PollOnceTestCase(_PollBase):
         self.assertIn("Not authorized", text_arg)
         self.deps.status_summary.assert_not_called()
 
-    def test_action_intent_is_emitted_not_executed(self):
+    def test_a_removed_action_command_emits_nothing_and_says_view_only(self):
         session = MagicMock()
         session.get.return_value = _updates_response([_msg(3, 100, "/pause finance")])
         with patch("modules.event_log.emit") as emit:
             self.poll(session)
-        emit.assert_called_once()
-        self.assertEqual(emit.call_args.args[0], "telegram.command")
-        self.assertEqual(emit.call_args.kwargs["metadata"], {"action": "pause", "target": "finance"})
+        emit.assert_not_called()
+        self.assertIn("view-only", self.control.send.call_args.args[1])
 
     def test_getupdates_failure_keeps_offset(self):
         session = MagicMock()
@@ -118,15 +117,13 @@ class ReplayTestCase(_PollBase):
         batch = [_msg(3, 100, "/pause finance"), _msg(4, 100, "/status")]
         session = MagicMock()
         session.get.return_value = _updates_response(batch)
-        with patch("modules.event_log.emit") as emit:
-            self.assertEqual(self.poll(session), 5)
-            # The cache was evicted: the offset is back to 0 and Telegram
-            # hands the same updates over again.
-            self.assertEqual(self.poll(session, offset=0), 5)
-        emit.assert_called_once()
+        self.assertEqual(self.poll(session), 5)
+        # The cache was evicted: the offset is back to 0 and Telegram
+        # hands the same updates over again.
+        self.assertEqual(self.poll(session, offset=0), 5)
         self.assertEqual(self.control.send.call_count, 2)
 
-    def test_no_durable_store_answers_queries_but_refuses_actions(self):
+    def test_no_durable_store_answers_queries_and_records_no_action(self):
         self.claims.fail = True
         session = MagicMock()
         session.get.return_value = _updates_response([_msg(5, 100, "/publish v1"), _msg(6, 100, "/status")])
@@ -134,16 +131,16 @@ class ReplayTestCase(_PollBase):
             self.poll(session)
         emit.assert_not_called()
         replies = [c.args[1] for c in self.control.send.call_args_list]
-        self.assertIn("could not be recorded durably", replies[0])
+        self.assertIn("view-only", replies[0])
         self.assertIn("all good", replies[1])
 
-    def test_an_old_action_is_not_requested(self):
+    def test_an_old_action_is_not_requested_either(self):
         session = MagicMock()
         session.get.return_value = _updates_response([_msg(7, 100, "/publish v1", date=NOW - 7 * 3600)])
         with patch("modules.event_log.emit") as emit:
             self.poll(session)
         emit.assert_not_called()
-        self.assertIn("more than 6 hours old", self.control.send.call_args.args[1])
+        self.assertIn("view-only", self.control.send.call_args.args[1])
 
     def test_an_edited_command_is_ignored(self):
         edited = {"update_id": 8, "edited_message": {"text": "/publish v1", "chat": {"id": 100},

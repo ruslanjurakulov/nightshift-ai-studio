@@ -396,14 +396,15 @@ class MenuAndHelpTestCase(unittest.TestCase):
         for name in views.READ_COMMANDS:
             self.assertIn(f"/{name}", helptext)
         self.assertIn("/mute", helptext)
-        self.assertIn("/publish", helptext)
+        for gone in ("/publish", "/pause", "/resume"):
+            self.assertNotIn(gone, helptext)
         data = callback_data(views.view_menu(OperatorConfig()))
         for name in ("health", "queue", "errors", "balance", "spend", "today", "users", "deploys",
-                     "approvals", "security", "digest", "alerts", "status", "channels", "pending"):
+                     "approvals", "security", "digest", "alerts", "status", "channels", "pending", "payments"):
             self.assertIn(f"c:{name}", data)
 
-    def test_help_says_it_is_read_only_and_requests_pass_the_gate(self):
-        self.assertIn("gate", views.view_help().text)
+    def test_help_says_it_is_view_only(self):
+        self.assertIn("view-only", views.view_help().text)
         self.assertIn("Read-only", views.view_menu(OperatorConfig()).text)
 
 
