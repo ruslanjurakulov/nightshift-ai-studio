@@ -13,9 +13,9 @@ A row is never deleted. It moves to `fixed` or `wontfix` with a reason.
 | Severity | Open | Fixed | Wontfix |
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
-| high | 1 | 13 | 0 |
-| medium | 1 | 28 | 1 |
-| low | 21 | 64 | 2 |
+| high | 1 | 14 | 0 |
+| medium | 3 | 29 | 1 |
+| low | 21 | 67 | 2 |
 | info | 36 | 21 | 12 |
 
 ## Findings

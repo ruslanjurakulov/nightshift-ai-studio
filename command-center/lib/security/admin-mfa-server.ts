@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { ADMIN_MFA_ENV, hasVerifiedTotpFactor, parseAdminMfaMode, type AdminMfaMode } from "@/lib/security/admin-mfa";
-import { RECENT_MFA_ENV, lastSecondFactorAtMs, parseRecentMfaMinutes, recentMfaDecision } from "@/lib/security/recent-mfa";
+import { lastSecondFactorAtMs, parseRecentMfaMinutes, recentMfaDecision } from "@/lib/security/recent-mfa";
 
 /**
  * What the server knows about this request's second factor, read the safe way.
@@ -98,7 +98,7 @@ export async function requireRecentMfa(user: MfaUser | null | undefined, now: nu
     aal: state.aal,
     lastFactorAt: state.lastFactorAt,
     now,
-    windowMinutes: parseRecentMfaMinutes(process.env[RECENT_MFA_ENV]),
+    windowMinutes: parseRecentMfaMinutes(process.env.NIGHTSHIFT_ADMIN_MFA_RECENT_MINUTES),
   });
   return verdict === "stale"
     ? NextResponse.json({ error: "mfa_recent_required" }, { status: 401, headers: { "cache-control": "no-store" } })

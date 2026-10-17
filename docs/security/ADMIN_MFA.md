@@ -227,7 +227,8 @@ window gets `401 {"error":"mfa_recent_required"}` and the Providers board shows
 "confirm your authenticator code again: sign out, sign in and enter the code".
 
 - Window: `NIGHTSHIFT_ADMIN_MFA_RECENT_MINUTES` (default 480 = 8 hours, clamped to
-  5 minutes .. 24 hours; junk means the default). Read per request.
+  5 minutes .. 24 hours; junk means the default). Read per request. It is a repository variable mapped by `deploy_web.yml` (`vars.NIGHTSHIFT_ADMIN_MFA_RECENT_MINUTES`,
+  unset = default) and listed in `deploy/.env.web.example`.
 - Lockout-safe by design: a timestamp that cannot be read is never "stale"; only an
   `aal2` session is judged (a password-only session with a factor is already sent
   to the code page; an account with no factor has no code to ask); the way through
