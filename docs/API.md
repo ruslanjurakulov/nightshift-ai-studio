@@ -226,6 +226,10 @@ payment history with Paddle invoice links) · Connected apps.
 
 ## Owner setup
 
+API top-ups never accept discounts: a Paddle transaction with any discount
+(even an id in `PADDLE_PROMO_DISCOUNT_IDS`) or a zero payment is `rejected`
+and credits nothing; a normal top-up credits exactly what was paid.
+
 See `docs/PADDLE_SETUP.md` → "8. API balansi". In short: apply 0031; create a
 Paddle product "Nightshift API balance top-up"; set `PADDLE_API_KEY` (secret)
 and `PADDLE_API_TOPUP_PRODUCT_ID` (variable) for the web app, and

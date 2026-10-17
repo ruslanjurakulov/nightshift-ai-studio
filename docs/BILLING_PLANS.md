@@ -178,8 +178,10 @@ supabase functions deploy paddle-webhook --no-verify-jwt
 **Chegirmalar (discount).** Kredit **to'langan summaga** qarab beriladi, ro'yxat
 narxiga emas: Paddle `details.totals` dagi `subtotal − discount` ulushi. 50%
 chegirma — yarim kredit, 100% chegirma — **kredit berilmaydi** (`rejected`,
-odam ko'radi). Bu paketlarga, tarif davrlariga va API top-up'ga birdek
-tegishli. Agar biror chegirmani ataylab "bepul kredit" sifatida bermoqchi
+odam ko'radi). Bu paketlarga va tarif davrlariga tegishli. **API top-up'ga
+chegirma umuman berilmaydi:** unga har qanday chegirma (ruxsat ro'yxatidagisi
+ham) yoki nol to'lov `rejected` bo'ladi va balans to'ldirilmaydi; top-up faqat
+haqiqatan to'langan summa (soliqsiz qator narxi) bilan to'ldiriladi. Agar biror chegirmani ataylab "bepul kredit" sifatida bermoqchi
 bo'lsangiz (masalan, hamkor uchun kupon), uning `dsc_…` id'sini ruxsat
 ro'yxatiga qo'ying — u to'liq kredit beradi:
 
