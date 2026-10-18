@@ -10,10 +10,11 @@ import { ICONS } from "@/components/site/SocialIcons";
 afterEach(cleanup);
 
 describe("lib/site/social", () => {
-  it("lists the studio's Telegram channel and Instagram profile, in that order", () => {
+  it("lists the studio's Telegram channel, Instagram profile and X account, in that order", () => {
     expect(SOCIAL.map((s) => [s.id, s.href])).toEqual([
       ["telegram", "https://t.me/nightshiftaistudio"],
       ["instagram", "https://www.instagram.com/nightshift_ai.studio/"],
+      ["x", "https://x.com/nightshift_ai"],
     ]);
   });
 
@@ -56,9 +57,19 @@ describe("the public footer's social links", () => {
     expect(container.querySelector(".st-social img, .st-social script, .st-social image, .st-social use")).toBeNull();
   });
 
+  it("links X at exactly https://x.com/nightshift_ai, opening in a new tab without opener or referrer", () => {
+    const t = dictionaries.en;
+    render(<PublicFooter t={t} />);
+    const a = screen.getByRole("link", { name: "X" });
+    expect(a.getAttribute("href")).toBe("https://x.com/nightshift_ai");
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
   it("names the Telegram channel in each language", () => {
     expect(dictionaries.en.site.footer.telegram).toBe("Telegram channel");
     expect(dictionaries.en.site.footer.instagram).toBe("Instagram");
+    for (const { code } of LOCALES) expect(dictionaries[code].site.footer.x).toBe("X");
     expect(dictionaries.ru.site.footer.telegram).toBe("Telegram-канал");
     expect(dictionaries.uz.site.footer.telegram).toBe("Telegram kanali");
   });

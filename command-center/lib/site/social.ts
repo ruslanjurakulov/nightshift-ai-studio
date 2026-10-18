@@ -22,4 +22,5 @@ export type Social = {
 export const SOCIAL: readonly Social[] = [
   { id: "telegram", href: "https://t.me/nightshiftaistudio", host: "t.me", label: "telegram", icon: "telegram" },
   { id: "instagram", href: "https://www.instagram.com/nightshift_ai.studio/", host: "www.instagram.com", label: "instagram", icon: "instagram" },
+  { id: "x", href: "https://x.com/nightshift_ai", host: "x.com", label: "x", icon: "x" },
 ];

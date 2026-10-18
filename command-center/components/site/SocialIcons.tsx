@@ -11,6 +11,7 @@ export const ICONS: Record<string, React.ReactNode> = {
       <circle cx="17.2" cy="6.8" r="1.2" />
     </>
   ),
+  x: <path d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.4L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z" />,
 };
 
 /** The platforms under the footer's brand block: icon buttons, each at least 44 x 44, wrapping onto a second row when they run out of width. */
