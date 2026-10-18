@@ -82,3 +82,21 @@ policy, grant, trigger or function touched except the audit action list, which o
 - **Replay.** The seed is `on conflict do nothing`, so re-running the file keeps whatever the owner set.
   Re-running 0093 or 0087 afterwards would put the old audit list back and the owner functions would
   start to fail loudly at their audit write (never silently): re-apply 0107 after it.
+
+## Migrations that ship dormant (0108)
+
+0108 (`0108_marketing_posts.sql`: the database half of the brand-channel poster, `docs/MARKETING_POSTS.md`) follows the
+0107 pattern: new tables and functions only, every switch off, no existing policy, grant, trigger or function touched
+except the audit action list, which only gained eight names (0107's list is copied verbatim; a test compares the two).
+`tests/test_marketing_posts_migration.py` fails if that ever stops being true, and fails if anything in the application
+starts to call the new objects before a reviewed change wires them.
+
+- **Is it off?** `select enabled from public.marketing_settings;` must read `false`. While it is false,
+  `claim_marketing_post()` hands out nothing, however much is approved.
+- **Is it working?** The verify block at the bottom of the file.
+- **Undo.** The switch is the undo for behaviour (`update public.marketing_settings set enabled = false;`). To remove the
+  objects, and the record of every post: `docs/sql/rollback_0108_marketing_posts.sql` (owner-applied; the lab applies it
+  to a scratch database and then re-applies 0108).
+- **Replay.** The seed is `on conflict do nothing`, so re-running the file keeps whatever the owner set. Re-running 0107
+  afterwards would put 0107's audit list back and the owner functions would fail loudly at their audit write (never
+  silently): re-apply 0108 after it.

@@ -408,6 +408,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Private review links (0101): tests/security/sec_review_links_0101.py — a review copy and a live link per tenant.
     import sec_review_links_0101
     sec_review_links_0101.seed(conn, sc)
+    # The brand-channel poster (0108): tests/security/sec_marketing_0108.py — one draft post and one showcase asset.
+    import sec_marketing_0108
+    sec_marketing_0108.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
