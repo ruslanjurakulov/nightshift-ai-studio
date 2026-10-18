@@ -303,7 +303,10 @@ class DeadlineTestCase(unittest.TestCase):
                 mock.patch.object(render_backend.subprocess, "Popen") as popen:
             run.return_value = subprocess.CompletedProcess([], 0, "", "")
             render_backend._run(["ffmpeg"])
-        run.assert_called_once_with(["ffmpeg"], capture_output=True, text=True)
+        # Deliberately changed (video-pipeline audit D3): the pipeline's own call is
+        # the same, plus a wall-clock bound so a hung decode cannot hold the run.
+        run.assert_called_once_with(["ffmpeg"], capture_output=True, text=True,
+                                    timeout=render_backend.PIPELINE_COMMAND_TIMEOUT_S)
         popen.assert_not_called()
 
     def test_a_timeout_is_not_retried_or_fallen_back_from(self):
