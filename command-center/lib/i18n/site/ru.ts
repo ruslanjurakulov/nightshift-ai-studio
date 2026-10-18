@@ -460,6 +460,7 @@ export const siteRu: SiteDictionary = {
     instagram: "Instagram",
     x: "X",
     youtube: "YouTube",
+    tiktok: "TikTok",
   },
   solutions: {
     meta: {
