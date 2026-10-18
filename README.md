@@ -87,7 +87,8 @@ Standing brief: [`CLAUDE.md`](CLAUDE.md). The short version:
 - **Operator bot** (`@NightshiftAiStudio_bot`): the owner's read-only control panel in
   Telegram. Commands and inline buttons for `/health`, `/queue`, `/errors`,
   `/balance`, `/payments`, `/spend`, `/today`, `/users`, `/deploys`, `/approvals`,
-  `/status`, `/pending`, `/security`, `/digest`;
+  `/status`, `/pending`, `/security`, `/digest`, and `/marketing` (counts only; an
+  information-only alert when a post waits for approval or was sent, never an approve button);
   de-duplicated, rate-limited proactive alerts with quiet hours and a daily digest;
   replies in seconds (long polling, or an optional webhook). It cannot publish,
   spend, approve, change prices or grant roles. Commands, alerts and the exact

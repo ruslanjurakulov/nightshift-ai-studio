@@ -104,3 +104,21 @@ starts to call the new objects other than the poster worker and, since the owner
 - **Replay.** The seed is `on conflict do nothing`, so re-running the file keeps whatever the owner set. Re-running 0107
   afterwards would put 0107's audit list back and the owner functions would fail loudly at their audit write (never
   silently): re-apply 0108 after it.
+
+## A read-only function for the operator bot (0109)
+
+0109 (`0109_operator_marketing_summary.sql`) is one `SECURITY DEFINER` function, `operator_marketing_summary()`, and nothing
+else: no table, policy, trigger or other function is created or changed (`audit_action_allowed` included). 0108 took every table
+privilege on the poster's tables away from `service_role`, so the operator bot (which reads with the service key) cannot select
+from them; the function returns counts by status, the week's use of the cap, the switch, the last sent post and the last failure
+(kind, closed code, time), and never a post's words, link, media or chat. `EXECUTE` is granted to `service_role` only.
+`tests/test_operator_marketing_summary_migration.py` pins that from the file; `tests/security/test_sec_marketing_summary.py`
+attacks it in the lab.
+
+- **Is it working?** The verify block at the bottom of the file (every column true), or as the SQL editor:
+  `select public.operator_marketing_summary();`.
+- **Wired?** The bot's `/marketing` and its `marketing` alerts call it (`docs/operator-bot.md`, "Marketing"). Before it is applied
+  the bot says "not available yet" and sends no marketing alert; nothing else changes, so the order of merge and apply does not matter.
+- **Undo.** `docs/sql/rollback_0109_operator_marketing_summary.sql` (owner-applied; the lab applies it to a scratch database and
+  then re-applies 0109). It drops the function and nothing else.
+- **Replay.** `create or replace` plus a revoke and a grant: a replay leaves the same function and the same privileges.

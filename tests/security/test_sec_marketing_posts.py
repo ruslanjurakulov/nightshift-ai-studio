@@ -1369,7 +1369,18 @@ def test_the_poster_cannot_post_on_its_own_it_only_hands_out_what_a_person_appro
         assert status(t, pid) == "sent"
 
 
-def test_nothing_in_the_repository_calls_the_new_objects_yet():
+def test_nothing_in_the_repository_calls_the_new_objects_but_the_poster_and_the_owner_page():
+    # The same allow-list as tests/test_marketing_posts_migration.py (which also scans .github): the poster worker and
+    # its two modules, and the owner page with its route. This test said "nothing at all" and so failed on main once
+    # those slices merged (the security job only runs on a change under supabase/ or tests/security/, so it had not run).
+    poster = {"tools/marketing_worker.py", "modules/channel_post.py", "modules/marketing_content.py"}
+    owner_page = {
+        "command-center/app/(app)/[channel]/marketing/page.tsx",
+        "command-center/app/api/marketing/route.ts",
+        "command-center/components/marketing/MarketingBoard.tsx",
+        "command-center/lib/marketing-posts.ts",
+        "command-center/lib/server/marketing.ts",
+    }
     names = re.compile(r"marketing_posts|marketing_settings|showcase_assets|owner_marketing_|claim_marketing_post|"
                        r"complete_marketing_post|marketing_draft_upsert")
     offenders = []
@@ -1377,4 +1388,4 @@ def test_nothing_in_the_repository_calls_the_new_objects_yet():
         base = REPO / root
         files = [base] if base.is_file() else [p for p in base.rglob("*") if p.is_file() and p.suffix in (".ts", ".tsx", ".py", ".js", ".sql")]
         offenders += [str(p.relative_to(REPO)) for p in files if names.search(p.read_text(encoding="utf-8", errors="ignore"))]
-    assert offenders == [], offenders
+    assert sorted(set(offenders) - poster - owner_page) == [], offenders

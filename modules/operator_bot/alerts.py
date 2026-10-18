@@ -4,6 +4,12 @@ overdo it.
 Payment problems (a rejected, failed or refunded provider event) are one more
 kind, ``payment``: one alert per event and outcome, ids shortened, no free text.
 
+The brand-channel poster is another, ``marketing``, and INFORMATION ONLY: a
+count of drafts waiting for the owner, a post that ended ``dead`` or ``failed``
+(with the named fix), a post that was sent (its kind and time). Never a post's
+words, link, media or chat id; deciding stays in the app behind the second
+factor, and there is no button here that could (modules/operator_bot/router.py).
+
 Detection is pure over the sources (:func:`detect`). Delivery is
 :class:`AlertEngine`, which is where the restraint lives:
 
@@ -34,7 +40,7 @@ An alert's text is built from ids, counts and fixed words only: a failed job is
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 
@@ -64,6 +70,12 @@ PAYMENT_WINDOW = timedelta(hours=24)
 #: A silent worker whose last word is older than this is gone, not lost
 #: (e.g. an old container id); the table keeps such rows for two weeks.
 WORKER_LOST_MAX_AGE = timedelta(hours=24)
+#: A send result (sent, failed, dead) is news for this long; inside the 48 hours
+#: the store remembers, so it is announced once.
+MARKETING_WINDOW = timedelta(hours=24)
+#: Dedupe-key prefix of the drafts-waiting alert and of its silent markers
+#: (``marketing:drafts:<count>[:<epoch>]``); see ``AlertEngine._gate_marketing_drafts``.
+MARKETING_DRAFTS = "marketing:drafts:"
 
 #: Critical alerts are not subject to quiet hours, mutes of "all" or the normal
 #: hourly budget, but they are not unlimited: a flood of forged or merely noisy
@@ -189,6 +201,10 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     if pay.ok:
         out += _payment_alerts(pay.data, now, lang)
 
+    mk = ops.marketing_summary()
+    if mk.ok:
+        out += _marketing_alerts(mk.data, now, lang)
+
     au = ops.audit(since)
     if au.ok:
         for r in au.data:
@@ -223,6 +239,53 @@ def _payment_alerts(rows, now: datetime, lang: str) -> list[Alert]:
         logger.warning("payment alerts skipped (%s)", type(e).__name__)
         return []
     return out
+
+
+def _marketing_alerts(summary, now: datetime, lang: str) -> list[Alert]:
+    """The poster's three kinds of news, from counts and closed codes only. A
+    bug here must not silence the other kinds."""
+    out: list[Alert] = []
+    try:
+        st = analysis.marketing_state(summary)
+        drafts = st["counts"]["draft"]
+        if drafts:
+            out.append(Alert("marketing", f"marketing:drafts:{drafts}", "info",
+                             t(lang, "alert.marketing_draft_one" if drafts == 1 else "alert.marketing_drafts", n=drafts)))
+        fail = st["failure"]
+        if fail and fail["at"] is not None and now - MARKETING_WINDOW <= fail["at"] <= now + timedelta(minutes=5):
+            stamp = int(fail["at"].timestamp())
+            kind = views.marketing_kind_word(lang, fail["kind"])
+            if fail["status"] == "dead":
+                # CRITICAL: a post that may be live on the channel and could be sent again by mistake must not wait
+                # for quiet hours or the hourly budget (the hourly cap of critical alerts still applies).
+                out.append(Alert("marketing", f"marketing:dead:{stamp}", "critical",
+                                 t(lang, "alert.marketing_dead", kind=kind, when=views.marketing_time(fail["at"]))))
+            else:
+                out.append(Alert("marketing", f"marketing:failed:{stamp}", "warn",
+                                 t(lang, "alert.marketing_failed", kind=kind, code=views.code(fail["code"] or "?"),
+                                   fix=views.marketing_fix(lang, fail["code"]), when=views.marketing_time(fail["at"]))))
+        if st["sent_at"] is not None and now - MARKETING_WINDOW <= st["sent_at"] <= now + timedelta(minutes=5):
+            out.append(Alert("marketing", f"marketing:sent:{int(st['sent_at'].timestamp())}", "info",
+                             t(lang, "alert.marketing_sent", kind=views.marketing_kind_word(lang, st["sent_kind"]),
+                               when=views.marketing_time(st["sent_at"]))))
+    except Exception as e:  # noqa: BLE001 - a malformed answer must not end the pass
+        logger.warning("marketing alerts skipped (%s)", type(e).__name__)
+        return []
+    return out
+
+
+def last_draft_count(state: AlertState) -> int:
+    """The drafts-waiting count last seen (announced, muted or silently noted), 0 when none or after a zero."""
+    best, count = None, 0
+    for at, key, _kind, _delivered, _sev in state.alerts:
+        if key.startswith(MARKETING_DRAFTS):
+            try:
+                n = int(key[len(MARKETING_DRAFTS):].split(":")[0])
+            except ValueError:
+                continue
+            if best is None or at >= best:
+                best, count = at, n
+    return count
 
 
 # -- composition -----------------------------------------------------------
@@ -301,6 +364,7 @@ class AlertEngine:
 
         if not state.armed:
             return self._baseline(found, rep, lang, now)
+        found = self._gate_marketing_drafts(found, state, now)
 
         quiet = self.cfg.in_quiet_hours(now)
         fresh = []
@@ -351,6 +415,30 @@ class AlertEngine:
 
         self._maybe_digest(state, now, quiet, rep, lang)
         return rep
+
+    def _gate_marketing_drafts(self, found: list, state: AlertState, now: datetime) -> list:
+        """Announce drafts waiting only when their count RISES above the last count seen.
+
+        A key per count with a cooldown would swallow a NEW draft after 1 -> 0 -> 1 within a day, and would announce
+        "1 post is waiting" because the owner approved one of two (their own action). So the memory is the count: every
+        change is recorded (silently when it does not rise), 0 clears it, and a rise is announced under a fresh key.
+        Nothing is repeated while the count stays the same; /marketing and /approvals show what waits."""
+        mk = self.ops.marketing_summary()
+        if not mk.ok:
+            return found
+        n = analysis.marketing_state(mk.data)["counts"]["draft"]
+        if n is None:
+            return found
+        last = last_draft_count(state)
+        rest = [a for a in found if not a.key.startswith(MARKETING_DRAFTS)]
+        if n == last:
+            return rest
+        stamped = f"{MARKETING_DRAFTS}{n}:{int(now.timestamp())}"
+        if n > last:
+            mine = [a for a in found if a.key == f"{MARKETING_DRAFTS}{n}"]
+            return rest + [replace(a, key=stamped) for a in mine]
+        self._record(Alert("marketing", stamped, "info", ""), False, now)      # fell: remember it, say nothing
+        return rest
 
     def _language(self) -> str:
         """The owner's chosen language, else the configured default."""

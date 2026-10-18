@@ -12,6 +12,11 @@ Four kinds of source, none of them new:
   short codes, plus two short strings that are clipped and escaped before they are
   shown: a worker's own `detail` (its scrubbed remedy line) and an audit row's
   `target` (an id or a variable name).
+* ONE database function, ``operator_marketing_summary()`` (migration 0109): the
+  brand-channel poster's tables grant the service key nothing, so the counts come
+  from a definer function that returns numbers, kinds and closed codes and never
+  a post's words, link, media or chat. Read like a table: a function the database
+  does not have yet reads as "not set up yet".
 * GitHub Actions run status (the repository's own, via the job token).
 * The public pages of the site (a GET, status code only).
 
@@ -63,6 +68,10 @@ SECURITY_AUDIT_ACTIONS = (
 SECURITY_AUDIT_PREFIXES = ("role.", "member.")
 
 GITHUB_WORKFLOWS = (("deploy_web.yml", "deploy"), ("tests.yml", "tests"), ("frontend.yml", "frontend"))
+#: The only database functions the bot may call (each takes no argument and only reads). A new one is a deliberate
+#: addition here, reviewed with its migration; anything else is refused before a request is made.
+_READ_FUNCTIONS = frozenset({"operator_marketing_summary"})
+
 SITE_PAGES = ("/", "/pricing", "/login", "/signup")
 
 
@@ -159,6 +168,33 @@ class OperatorSources:
             logger.warning("operator read of %s failed (%s)", table, e.detail)
         except Exception as e:  # a fake or an unexpected shape — never raise
             logger.warning("operator read of %s failed (%s)", table, type(e).__name__)
+            out = Section.fail("unavailable")
+        self._cache[key] = out
+        return out
+
+    def _rpc(self, name: str) -> Section:
+        """One argument-less database function, cached like a table read. Never
+        raises; the answer must be a JSON object that says ``ok``."""
+        if name not in _READ_FUNCTIONS:
+            logger.warning("operator refused to call %s: not a read function of the bot", name[:40])
+            return Section.fail("unavailable")
+        if self.sync is None or not getattr(self.sync, "enabled", False):
+            return Section.fail("not configured")
+        key = ("rpc", name)
+        if key in self._cache:
+            return self._cache[key]
+        from modules.supabase_sync import SupabaseReadError
+
+        try:
+            call = getattr(self.sync, "rpc_strict", None)
+            data = call(name, {}) if call is not None else None
+            out = Section(True, data) if isinstance(data, dict) and data.get("ok") is True else Section.fail("unavailable")
+        except SupabaseReadError as e:
+            out = Section.fail("not set up yet" if e.function_missing else "unavailable")
+            # A function the database does not have yet is the normal state before its migration: not a warning every pass.
+            (logger.info if e.function_missing else logger.warning)("operator call of %s failed (%s)", name, e.detail)
+        except Exception as e:  # a fake or an unexpected shape - never raise
+            logger.warning("operator call of %s failed (%s)", name, type(e).__name__)
             out = Section.fail("unavailable")
         self._cache[key] = out
         return out
@@ -304,6 +340,12 @@ class OperatorSources:
             "current_stage": "eq.HUMAN_APPROVAL", "human_approved": "eq.false",
             "order": "updated_at.desc", "limit": "50",
         })
+
+    def marketing_summary(self) -> Section:
+        """The brand-channel poster at a glance: counts by status, the week's
+        count against its cap, the switch, the last sent post and the last
+        failure (migration 0109). Counts, kinds and closed codes only."""
+        return self._rpc("operator_marketing_summary")
 
     def audit(self, since: datetime) -> Section:
         """Operator-level audit events only, filtered by the database (a Python

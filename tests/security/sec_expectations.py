@@ -548,3 +548,8 @@ sec_owner_safety_0107.extend(TABLES, FUNCTIONS)
 import sec_marketing_0108  # noqa: E402
 
 sec_marketing_0108.extend(TABLES, FUNCTIONS)
+
+# Migration 0109 (the operator bot's read of the brand-channel poster): tests/security/sec_marketing_summary_0109.py
+import sec_marketing_summary_0109  # noqa: E402
+
+sec_marketing_summary_0109.extend(TABLES, FUNCTIONS)

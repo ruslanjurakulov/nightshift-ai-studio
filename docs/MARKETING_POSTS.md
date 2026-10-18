@@ -150,7 +150,7 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
 | 4 | `tools/marketing_worker.py`, compose service `marketing-worker` (profile `marketing`), `deploy/.env.marketing.example`, deploy wiring | built, **off by default** |
 | 5 | News drafting from `docs/news`, price template from the database (`modules/marketing_content.py`) | built, off with the worker |
 | 6 | Owner page `/{channel}/marketing`, `POST /api/marketing`, en/ru/uz strings, confirm sheets, all states, 390 px (below) | built, **off by default** (`NIGHTSHIFT_MARKETING_POSTS`) |
-| 7 | Operator-bot alert kind `marketing` (a count and a link only) | not started |
+| 7 | Operator-bot alert kind `marketing` and `/marketing` (counts, kinds and closed codes only; no text, no approve) through migration 0109 `operator_marketing_summary()` | built, information only |
 | 8 | Showcase mark/revoke, public bucket, showcase posts (the biggest unknown: where a finished video file lives and how to export it) | not started |
 | 9 | A currency amount in price posts (a timestamped capture); Instagram | not decided |
 
