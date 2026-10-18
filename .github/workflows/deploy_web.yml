@@ -36,6 +36,12 @@ name: Deploy web
 # (telegram_control.yml, operator_alerts.yml) skip their work on the same
 # variable, so Telegram never sees two getUpdates consumers. Anything but `on`
 # removes the container and its file and those workflows run as before.
+# The brand channel's poster (migration 0108, docs/MARKETING_POSTS.md) is the same
+# shape and OFF by default: while NIGHTSHIFT_MARKETING_WORKER is `on` the
+# marketing-worker (its own /opt/nightshift/.env.marketing, step "Build the
+# marketing env") exists, and it still drafts and sends nothing until
+# NIGHTSHIFT_MARKETING_POSTS is `on` too. Anything but `on` removes the container
+# and its file, so no secret has to exist for a deploy while it is off.
 
 
 on:
@@ -55,6 +61,9 @@ on:
       - "modules/**"
       - "tools/**"
       - "schemas/**"
+      # The marketing worker reads docs/news/*.json and banned-claims.json from its image
+      # (docs/MARKETING_POSTS.md): a merged news item must rebuild it.
+      - "docs/news/**"
   workflow_dispatch:
 
 # One deploy at a time, and never cancelled halfway: an interrupted
@@ -370,6 +379,28 @@ jobs:
           OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
         run: python3 deploy/build-service-env.py operator "$PAYLOAD"
+
+      # The brand channel's poster (docs/MARKETING_POSTS.md), only while
+      # NIGHTSHIFT_MARKETING_WORKER is `on` (default: unset = off, and then NO
+      # secret below needs to exist): its OWN env, six names, after a marker line,
+      # to /opt/nightshift/.env.marketing (600). The bot token is the DEDICATED
+      # channel bot's (TELEGRAM_CHANNEL_BOT_TOKEN), never TELEGRAM_BOT_TOKEN
+      # (operator) or TELEGRAM_CUSTOMER_BOT_TOKEN (customers). No pipeline provider
+      # key is mapped. NIGHTSHIFT_MARKETING_POSTS is the poster's own switch: empty
+      # or anything but `on` and the container idles. Named secrets only, as above;
+      # deploy/build-service-env.py prints key names, never values.
+      - name: Build the marketing env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_MARKETING_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          MARKETINGENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          MARKETINGENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MARKETINGENV_TELEGRAM_CHANNEL_BOT_TOKEN: ${{ secrets.TELEGRAM_CHANNEL_BOT_TOKEN }}
+          MARKETINGENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
+          # The link in a post. Empty variable = the app's own domain.
+          MARKETINGENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
+          MARKETINGENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
+        run: python3 deploy/build-service-env.py marketing "$PAYLOAD"
 
       - name: Deploy over SSH
         if: steps.payload.outputs.run == 'true'

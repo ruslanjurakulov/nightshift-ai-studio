@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 """Append one small worker's own env to the deploy payload (.github/workflows/deploy_web.yml).
 
-    python3 deploy/build-service-env.py <notify|email|operator> <payload file>
+    python3 deploy/build-service-env.py <notify|email|operator|marketing> <payload file>
 
 Runs on the GitHub runner, only while that worker's switch is `on`
-(NIGHTSHIFT_NOTIFY_WORKER, NIGHTSHIFT_EMAIL_WORKER, NIGHTSHIFT_OPERATOR_BOT).
+(NIGHTSHIFT_NOTIFY_WORKER, NIGHTSHIFT_EMAIL_WORKER, NIGHTSHIFT_OPERATOR_BOT,
+NIGHTSHIFT_MARKETING_WORKER).
 Reads, from its own environment, ``NOTIFYENV_<KEY>`` / ``EMAILENV_<KEY>`` /
-``OPERATORENV_<KEY>`` for every key in deploy/.env.notify.example /
-deploy/.env.email.example / deploy/.env.operator.example, which the workflow maps
+``OPERATORENV_<KEY>`` / ``MARKETINGENV_<KEY>`` for every key in deploy/.env.notify.example /
+deploy/.env.email.example / deploy/.env.operator.example / deploy/.env.marketing.example, which the workflow maps
 from the repository secret or variable of the same name. Nothing else: no
 ``toJSON(secrets)`` (GitHub holds such a run for manual approval), and nothing
 of the pipeline worker's or the dashboard's environment.
 
 Appends a marker line (``NIGHTSHIFT_NOTIFY_ENV=on`` / ``NIGHTSHIFT_EMAIL_ENV=on`` /
-``NIGHTSHIFT_OPERATOR_ENV=on``) and then one ``KEY=value`` line per key;
+``NIGHTSHIFT_OPERATOR_ENV=on`` / ``NIGHTSHIFT_MARKETING_ENV=on``) and then one ``KEY=value`` line per key;
 deploy/remote-deploy.sh splits the payload at the marker and writes that section
-to /opt/nightshift/.env.notify / .env.email / .env.operator (600), checked
+to /opt/nightshift/.env.notify / .env.email / .env.operator / .env.marketing (600), checked
 against the same example file at the deployed commit.
 
 Every key of the notify and e-mail files is required: a worker that is switched
 on with a name empty would only log that it is OFF. The operator bot has a few
 OPTIONAL keys (OPTIONAL below): they must still be mapped, but may be empty,
-exactly as the GitHub workflows it replaces pass them. Errors name the key and
+exactly as the GitHub workflows it replaces pass them. The marketing poster has one
+too (NIGHTSHIFT_MARKETING_POSTS: empty means the worker idles). Errors name the key and
 the fix, never a value: this output is a public Actions log.
 """
 
@@ -40,6 +42,7 @@ SERVICES: Dict[str, Tuple[str, str, str, str]] = {
     "notify": ("NIGHTSHIFT_NOTIFY_ENV=on", ".env.notify.example", "NOTIFYENV_", "NIGHTSHIFT_NOTIFY_WORKER"),
     "email": ("NIGHTSHIFT_EMAIL_ENV=on", ".env.email.example", "EMAILENV_", "NIGHTSHIFT_EMAIL_WORKER"),
     "operator": ("NIGHTSHIFT_OPERATOR_ENV=on", ".env.operator.example", "OPERATORENV_", "NIGHTSHIFT_OPERATOR_BOT"),
+    "marketing": ("NIGHTSHIFT_MARKETING_ENV=on", ".env.marketing.example", "MARKETINGENV_", "NIGHTSHIFT_MARKETING_WORKER"),
 }
 # service -> keys that may be empty (all others are required)
 OPTIONAL: Dict[str, frozenset] = {
@@ -48,8 +51,12 @@ OPTIONAL: Dict[str, frozenset] = {
         "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
         "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
     }),
+    # Empty = the worker idles. The deploy never needs the poster's own switch to succeed.
+    "marketing": frozenset({"NIGHTSHIFT_MARKETING_POSTS"}),
 }
 ORIGIN_KEYS = ("NOTIFY_APP_ORIGIN", "APP_ORIGIN")
+CHAT_KEYS = ("MARKETING_TELEGRAM_CHAT",)
+CHAT = re.compile(r"^(@[A-Za-z][A-Za-z0-9_]{4,31}|-?[0-9]{5,20})$")
 ORIGIN = re.compile(r"^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$")
 
 
@@ -76,6 +83,8 @@ def clean(key: str, raw: str, optional: bool = False) -> Tuple[str, List[str]]:
         errors.append(f"{key} starts with a quote or contains ' #', which compose would read as syntax; change the value")
     if key in ORIGIN_KEYS and not ORIGIN.match(value):
         errors.append(f"{key} must be https://<host> with no path (a link a person will tap is built on it)")
+    if key in CHAT_KEYS and not CHAT.match(value):
+        errors.append(f"{key} must be @channelname or a numeric chat id (-100...)")
     return value, errors
 
 

@@ -168,6 +168,10 @@ class ComposeConfigTests(unittest.TestCase):
         # Its profile is only ever activated by deploy/remote-deploy.sh.
         self.assertNotIn("operator-bot", self.config["services"])
 
+    def test_the_marketing_worker_is_off_unless_its_profile_is_active(self):
+        # Its profile is only ever activated by deploy/remote-deploy.sh, and only while a section is sent.
+        self.assertNotIn("marketing-worker", self.config["services"])
+
     def test_the_app_port_is_never_published(self):
         # Docker-published ports bypass ufw; only Caddy faces the internet.
         self.assertFalse(self.config["services"]["web"].get("ports"))
@@ -459,6 +463,59 @@ class ComposeOperatorProfileTests(unittest.TestCase):
         self.assertEqual(bot["environment"], {"HOME": "/tmp"})
         self.assertEqual(bot["command"], ["python", "tools/operator_bot_service.py"])
         self.assertEqual(bot["logging"]["options"]["max-size"], "10m")
+
+
+@unittest.skipUnless(_docker_compose_available(), "docker compose not installed")
+class ComposeMarketingProfileTests(unittest.TestCase):
+    """`docker compose config` with the marketing profile active, as remote-deploy.sh runs it."""
+
+    @classmethod
+    def setUpClass(cls):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(
+            DOMAIN="app.example.com",
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+            MARKETING_ENV_FILE="/nonexistent/.env.marketing",
+        )
+        result = subprocess.run(
+            ["docker", "compose", "--profile", "marketing", "-f", str(COMPOSE), "config", "--format", "json"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        if result.returncode != 0:
+            raise AssertionError(f"docker compose config failed:\n{result.stderr}")
+        cls.config = json.loads(result.stdout)
+
+    def test_the_profile_adds_exactly_the_marketing_worker(self):
+        self.assertEqual(set(self.config["services"]), {"web", "caddy", "marketing-worker"})
+
+    def test_it_is_unreachable_unprivileged_and_has_no_volume(self):
+        w = self.config["services"]["marketing-worker"]
+        self.assertFalse(w.get("ports"))
+        self.assertFalse(w.get("expose"))
+        self.assertFalse(w.get("volumes"))
+        self.assertEqual(w["user"], "1000:1000")
+        self.assertEqual(w["cap_drop"], ["ALL"])
+        self.assertEqual(w["security_opt"], ["no-new-privileges:true"])
+        self.assertEqual(w["restart"], "unless-stopped")
+        self.assertNotIn("privileged", w)
+        self.assertNotIn("docker.sock", json.dumps(w))
+        published = {p["published"] for p in self.config["services"]["caddy"]["ports"]}
+        self.assertEqual(published, {"80", "443"})
+        self.assertNotIn("marketing", (DEPLOY / "Caddyfile").read_text().lower())
+
+    def test_it_reads_only_its_own_env_file_and_the_switch_is_not_set_in_compose(self):
+        w = self.config["services"]["marketing-worker"]
+        self.assertEqual(w.get("env_file") or [], [])       # the file is optional and absent in this check
+        # Nothing here turns it on: the poster's own switch lives only in its env file, default off.
+        self.assertEqual(w["environment"], {"HOME": "/tmp", "NIGHTSHIFT_WORKER_ID": "marketing-01"})
+        self.assertEqual(w["command"], ["python", "tools/marketing_worker.py"])
+
+    def test_the_other_services_do_not_name_the_marketing_env_file(self):
+        for name in ("web", "caddy"):
+            self.assertNotIn(".env.marketing", json.dumps(self.config["services"][name]))
 
 
 if __name__ == "__main__":

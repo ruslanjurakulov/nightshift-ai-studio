@@ -195,7 +195,11 @@ class MarketingPostsMigration(unittest.TestCase):
         self.assertRegex(rollback, r"(?m)^begin;$")
         self.assertRegex(rollback, r"(?m)^commit;$")
 
-    def test_nothing_in_the_application_uses_it_yet(self):
+    def test_nothing_in_the_application_uses_it_but_the_poster_worker(self):
+        # The app, the edge functions and the workflows still never touch the marketing tables or functions.
+        # The only callers are the brand-channel worker and its two modules (docs/MARKETING_POSTS.md, slices 3 to 5),
+        # switched off by default; the owner page (slice 6) is a later change that widens this list on purpose.
+        poster = {"tools/marketing_worker.py", "modules/channel_post.py", "modules/marketing_content.py"}
         names = re.compile(r"marketing_posts|marketing_settings|showcase_assets|owner_marketing_|claim_marketing_post|"
                            r"complete_marketing_post|marketing_draft_upsert")
         skip = {"node_modules", ".next", "__pycache__"}
@@ -208,7 +212,7 @@ class MarketingPostsMigration(unittest.TestCase):
                 if p.is_file() and not skip & set(p.parts) and p.suffix in (".ts", ".tsx", ".py", ".js", ".yml", ".yaml", ".sql"):
                     if names.search(p.read_text(encoding="utf-8", errors="ignore")):
                         offenders.append(str(p.relative_to(REPO)))
-        self.assertEqual(offenders, [])
+        self.assertEqual(sorted(set(offenders) - poster), [])
 
 
 if __name__ == "__main__":

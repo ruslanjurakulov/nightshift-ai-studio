@@ -400,6 +400,48 @@ services:
     mem_limit: 256m
     logging: *default-logging
 
+  # The brand channel's poster (Telegram): tools/marketing_worker.py, migration 0108,
+  # docs/MARKETING_POSTS.md. Drafts the public news items and the month's price post
+  # and sends the posts a person approved, ONE message per post to ONE channel.
+  # Its own profile, `marketing`, started by deploy/remote-deploy.sh on every deploy
+  # while the GitHub variable NIGHTSHIFT_MARKETING_WORKER is `on`, removed (with its
+  # env file, and so the bot token) otherwise. OFF by default, twice over: with the
+  # container running it still does nothing until NIGHTSHIFT_MARKETING_POSTS is `on`,
+  # and the database refuses every claim until the owner re-arms
+  # marketing_settings.enabled.
+  # Its OWN env file (/opt/nightshift/.env.marketing, mode 600) holds exactly the
+  # names in deploy/.env.marketing.example: the Supabase URL and service key, the
+  # DEDICATED channel bot's token, the channel, our site's origin and its switch.
+  # Never a pipeline provider key, and never the operator's or the customer's bot
+  # token. It listens on no port and has no volume: it only calls out
+  # (api.telegram.org, Supabase).
+  marketing-worker:
+    profiles: ["marketing"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/marketing_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${MARKETING_ENV_FILE:-/opt/nightshift/.env.marketing}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: marketing-01
+      HOME: /tmp
+    stop_grace_period: 20s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 256m
+    logging: *default-logging
+
 volumes:
   caddy_data:
   caddy_config:

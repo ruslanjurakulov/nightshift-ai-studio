@@ -1,7 +1,7 @@
 # Marketing posts: the brand channel (Telegram first)
 
-Status: **designed, and the first two slices are built but dormant** (migration 0108, `docs/news/`). Nothing
-posts anything today. "(unverified)" marks a fact that was not confirmed in the repository or in the official
+Status: **designed; slices 1 to 5 are built and everything is OFF** (migration 0108, `docs/news/`, the sender and the
+worker). Nothing posts anything today: the worker is not deployed until the owner switches it on. "(unverified)" marks a fact that was not confirmed in the repository or in the official
 documentation.
 
 ## What the owner decided
@@ -30,12 +30,12 @@ documentation.
 
 ```
 docs/news/<date>-<slug>.json ──► marketing worker ──► marketing_draft_upsert ──► marketing_posts (draft)
-plans / plan_entitlements   ──►  (later slices)                                        │
+plans / plan_entitlements   ──►  (tools/marketing_worker.py)                           │
                                                                               owner page (later)
                                               owner_marketing_edit / approve / reject / kill
                                                                                        │ approved
 marketing worker ◄── claim_marketing_post (one post, under a lock) ◄──────────────────┘
-      │ sendMessage to the one configured channel
+      │ sendMessage / sendPhoto / sendVideo to the one configured channel
       └──► complete_marketing_post (sent | failed | dead | retry)
 ```
 
@@ -44,8 +44,10 @@ marketing worker ◄── claim_marketing_post (one post, under a lock) ◄─�
 One file per announceable change in `docs/news/`, added in the pull request that ships it
 ([format and rules](news/README.md)). Claude drafts the three texts in that pull request and the owner merges it,
 so every claim is a reviewed diff line. The worker image contains the deployed commit's `docs/` (the Dockerfile
-copies the repository and `.dockerignore` does not exclude `docs/`; that every merge rebuilds the image is
-unverified), so only what is deployed can be announced. `public: true` is a human decision per file; security work
+copies the repository and `.dockerignore` does not exclude `docs/`). `deploy_web.yml` runs on a push to `main` that
+touches `docs/news/**` (as well as `modules/**`, `tools/**`, `deploy/**` and the rest), and `remote-deploy.sh` starts the
+marketing worker with `up -d --build` while it is switched on, so a merged news file reaches the worker's image on
+that deploy. Only what is deployed can be announced. `public: true` is a human decision per file; security work
 is never news by default. **No language model in phase 1**: templates plus Claude-written pull request text remove a
 whole class of invented claims. Mechanical checks (`tests/test_news_format.py`): three languages, a short paragraph
 each in its own script, the same numbers in all three, no placeholder or URL, and the banned-claims list.
@@ -131,7 +133,7 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
   made with the product and must not imply endorsement by YouTube or any provider. Whether local law or YouTube
   requires an AI-disclosure label is not defined in the repository: ask the owner.
 - **Secrets.** A dedicated bot token that appears only inside the request URL held by `TelegramClient`; logs carry
-  codes and counts only; a test sends a fake token through every failure path (later slice). Never reuse the
+  codes and counts only; a test sends a fake token through every failure path. Never reuse the
   operator bot's or the customer bot's token: the customer bot would give the customer notify worker the power to
   post publicly.
 - **Failures are visible** with a closed code list (`blocked`, `bad_request`, `not_configured`, `rate_limited`,
@@ -143,45 +145,128 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
 |---|---|---|
 | 1 | `docs/news/` format, banned claims, `tests/test_news_format.py`, this document | built |
 | 2 | Migration 0108 and its security-lab tests, rollback `docs/sql/rollback_0108_marketing_posts.sql` | built, dormant |
-| 3 | Telegram media sender (`sendPhoto`, `sendVideo`) and the fake server | not started |
-| 4 | `tools/marketing_worker.py`, compose service, `.env.marketing.example`, deploy wiring, off by default | not started |
-| 5 | News drafting from `docs/news`, price template from the database | not started |
+| 3 | Telegram sender: `modules/channel_post.py` (`sendMessage`, `sendPhoto`, `sendVideo`), the fake server | built, unused until the worker is switched on |
+| 4 | `tools/marketing_worker.py`, compose service `marketing-worker` (profile `marketing`), `deploy/.env.marketing.example`, deploy wiring | built, **off by default** |
+| 5 | News drafting from `docs/news`, price template from the database (`modules/marketing_content.py`) | built, off with the worker |
 | 6 | Owner page `/{channel}/marketing`, APIs, en/ru/uz strings, confirm sheet, all states, 390 px | not started |
 | 7 | Operator-bot alert kind `marketing` (a count and a link only) | not started |
 | 8 | Showcase mark/revoke, public bucket, showcase posts (the biggest unknown: where a finished video file lives and how to export it) | not started |
 | 9 | A currency amount in price posts (a timestamped capture); Instagram | not decided |
 
-## What the owner does by hand (when the worker exists)
+Until slice 6 there is no screen to approve anything, so no draft can reach the channel even with every switch on:
+approval is the owner functions of 0108 (`owner_marketing_approve`), which the app does not call yet.
+
+## The worker (slices 3 to 5)
+
+`tools/marketing_worker.py`, compose service `marketing-worker` (profile `marketing`, its own env file
+`/opt/nightshift/.env.marketing`, mode 600, exactly the names in `deploy/.env.marketing.example`).
+
+**Three switches, all off by default.**
+
+| Switch | Where | Off means |
+|---|---|---|
+| `NIGHTSHIFT_MARKETING_WORKER` | GitHub variable, read by `deploy_web.yml` | no container, no env file, no secret needed |
+| `NIGHTSHIFT_MARKETING_POSTS` | GitHub variable, in the worker's env file | anything but `on`: the worker idles. No draft, no claim, no request to Telegram. It still calls `report_worker_status` about once a minute (`running`, detail "off", kind `other`) so `/health` shows it |
+| `marketing_settings.enabled` | the database (0108) | `claim_marketing_post` hands out nothing |
+
+The worker cannot read the database switch (every API role's grant on the marketing tables is revoked, by design), so
+with the database switch off it still drafts, and claims return nothing. A draft left untouched for 30 days expires and
+its key is used up, so re-arm the database switch soon after the environment switch (the hand steps below do).
+To keep a first start from drafting a backlog, **a news item whose `shipped` date is more than 30 days old is not
+drafted** (`NEWS_MAX_AGE_DAYS` in `modules/marketing_content.py`; the log says how many were left out). Flip an item to
+`public: true` within 30 days of shipping, or edit its `shipped` date (and the file name's date, which must agree) to
+announce it later. After each drafting pass the log says how many new drafts are waiting for approval.
+
+**Each loop** (a minute apart): (1) at most once an hour, draft: every `docs/news/*.json` with `"public": true`
+(re-checked: shape, banned claims, not in the future; a file that fails is skipped by reason, never posted) and the
+month's price post; (2) claim **at most one** approved post, send it, settle it.
+
+**Price post.** Built from `plans`, `plan_entitlements` and `entitlement_keys` only: the plan name, credits per month and
+concurrency of each public paid plan, plus the link `/pricing`. **No currency amount, ever** (there is none in the
+database, and rule 5 of `CLAUDE.md` forbids typing one). If any read fails, any fact is not a number, or `concurrency` is
+not an enforced entitlement, no price post is made (no default). The key is `price:<plan ids>:<yyyy-mm>`: at most one per
+month per plan set. The Uzbek and Russian wording of the template is a machine draft; the owner reads all three before
+approving.
+
+**Settling.** After a send, `complete_marketing_post` is retried up to three more times (0.5, 1 and 2 seconds apart, and
+not after 90 seconds from the claim, inside the 120-second lease) if the database does not answer. Only the settle is
+repeated, never the send. If every try fails, the lease runs out and the database ends the post as `dead` /
+`unconfirmed`; it is not sent again. At start the log names the origin host in use (host only) and whether the chat is a
+channel name or a numeric id, never the token or the chat itself.
+
+**What the message is.** One message, three labelled blocks in the fixed order (Oʻzbekcha, Русский, English), then
+`<site origin><link>`. The texts are the approved plain texts, only HTML-escaped (`& < >`). 4096 characters for a message,
+1024 for a caption, counted in UTF-16 units after parsing. A post over the limit is **refused with a code** (`too_long`,
+settled `failed` / `bad_request`), never cut. Other local refusals: `bad_texts`, `bad_link`, `no_origin`, `unsafe_text`
+(the words contain something that looks like a key or an address; they are never altered), `bad_media`, `no_media_base`.
+Media is fetched by Telegram from `<SUPABASE_URL>/storage/v1/object/public/<media_path>` (public `showcase/` bucket,
+`.jpg .jpeg .png` as a photo, `.mp4` as a video; nothing else is sent). No media is ever attached to a news or price post.
+
+**How each answer is settled** (the same classifier as the customer sender, `classify_response`, with one change: whatever
+leaves "was it posted?" open is final):
+
+| What happened | Reported to `complete_marketing_post` | Worker |
+|---|---|---|
+| 200 `ok` | `sent` + message id | |
+| 429 | `retry` / `rate_limited` + `retry_after` | pauses `retry_after` (at most 10 min) |
+| 401 / 404 (token refused) | `retry` / `not_configured` | ALARM in the log, pauses 5 min, reports `failed` with the remedy |
+| connection never established (refused, unresolvable, connect timeout) | `retry` / `network` | the database retries it later |
+| 403, 400 "chat not found" | `failed` / `blocked` | the bot was removed or is not an admin |
+| other 4xx, or a post that was refused locally | `failed` / `bad_request` | |
+| 5xx | `dead` / `http_5xx` | **never retried** (the customer sender retries a 5xx) |
+| read timeout, reset, 200 without `ok`, unreadable reply, anything unexpected | `dead` / `unconfirmed` | **never retried** |
+| the settle call itself fails, or answers "lease lost" | | logged; the database ends the post as `dead` / `unconfirmed`; **never sent again** |
+
+**The token.** Only from `TELEGRAM_CHANNEL_BOT_TOKEN` (never `TELEGRAM_BOT_TOKEN` or `TELEGRAM_CUSTOMER_BOT_TOKEN`; a
+test pins it). It appears only in the request URL held by `TelegramClient`. Log lines carry codes and counts: no exception
+text, URL, text, chat or key is logged, and `urllib3`'s own DEBUG line (`POST /bot<token>/sendMessage`) is silenced.
+`tests/test_marketing_worker.py` pipes a fake token through every failure path (connection refused, connect and read
+timeout, reset, SSL, 4xx, 5xx, unreadable replies, refused posts, the success path) with the redaction net switched off
+and asserts no fragment of it appears in any log line, report, result or exception.
+
+**Local runs.** `NOTIFY_TELEGRAM_API_BASE=http://127.0.0.1:8081` points the worker at `tools/fake_telegram.py`
+(the customer worker's variable; never set in the deployed env file).
+
+## What the owner does by hand (the worker exists now; nothing runs until you do this)
 
 1. In Telegram, @BotFather, `/newbot`, a name and a username ending in `bot`. Copy the token; paste it nowhere
    except step 3.
-2. In the channel (`t.me/nightshiftaistudio`), Manage channel, Administrators, add the new bot with only "Post
-   messages".
+2. **Make a throwaway test channel first** and add the new bot as an administrator with only "Post messages". The
+   simplest handle is a temporary public username (`@something_test`); a private channel needs its numeric id
+   (`-100...`), which a bot such as @getidsbot shows (unverified, not checked here).
 3. GitHub, Settings, Secrets and variables, Actions: secret `TELEGRAM_CHANNEL_BOT_TOKEN`; variable
-   `MARKETING_TELEGRAM_CHAT` = `@nightshiftaistudio`.
+   `MARKETING_TELEGRAM_CHAT` = the **test** channel id from step 2.
 4. Set variables `NIGHTSHIFT_MARKETING_WORKER` = `on` and `NIGHTSHIFT_MARKETING_POSTS` = `on`, then run Deploy web.
+   The log ends with `marketing-worker after 20s: state=running`. (With only the first variable on, the container
+   exists and idles; with neither, there is no container and no env file.)
 5. Check the 0107 second-factor gate is on (`select admin_aal2_required from public.owner_security_settings;`).
-   Then re-arm the database switch on the Marketing page (or `owner_marketing_kill(false, '<reason>')`) **before**
+   Then re-arm the database switch (`owner_marketing_kill(false, '<reason>')`, later the Marketing page) **before**
    approving anything: approving is refused while the poster is off.
-6. There is deliberately **no "send test" button** (a test would be a public post). The first real approved draft
-   is the test; delete it by hand in Telegram if it is wrong. A private test channel is an open question.
+6. Approve a draft (`owner_marketing_approve`; the owner page is slice 6) and watch it arrive in the **test channel**.
+   Check all three blocks, the link and the escaping. Only then change `MARKETING_TELEGRAM_CHAT` to
+   `@nightshiftaistudio` and re-run Deploy web. There is deliberately **no "send test" button** (a test would be a
+   public post) and no second chat variable in the database contract: the test channel is the same variable pointed
+   somewhere private. **A rehearsal is a real send as far as the database knows**: it uses up that draft's idempotency
+   key (the real channel will not get that item) and one of the week's two slots (the cap counts sent posts for 7 days).
+   Pick the draft you can afford to spend.
 
-To stop: set `NIGHTSHIFT_MARKETING_POSTS` to anything but `on`, tap the kill switch, or run
-`update public.marketing_settings set enabled = false where id;` in the SQL editor.
+To stop: set `NIGHTSHIFT_MARKETING_POSTS` to anything but `on` (the worker idles at once on the next deploy), tap the
+kill switch, run `update public.marketing_settings set enabled = false where id;` in the SQL editor, or set
+`NIGHTSHIFT_MARKETING_WORKER` to anything but `on` (the container and the file holding the token are removed).
 
-## The sender slice must (notes from review, not built yet)
+## What the sender does (the notes from review, now built and pinned by tests)
 
-- **Retries.** Report `rate_limited` (HTTP 429, honouring `retry_after`) and `not_configured` (the token is refused)
-  as `retry` with that code: the database does not use up an attempt for either, and the worker should pause on a
-  refused token as `notify_worker` does. A refused connection (`network`, nothing was sent) is a `retry` too.
+- **Retries.** `rate_limited` (HTTP 429, `retry_after` honoured) and `not_configured` (the token is refused) are reported
+  as `retry`: the database does not use up an attempt for either, and the worker pauses on a refused token as
+  `notify_worker` does. A refused connection (`network`, nothing was sent) is a `retry` too.
 - **Ambiguous answers are `dead`, never `retry`.** `http_5xx`, a read timeout, a dropped connection after the request
-  was written, an unparseable reply: Telegram may have posted the message. Report them as `dead`; the database turns
-  any other `retry` code into `dead` / `unconfirmed` anyway, and a dead post keeps its weekly slot.
-- **Reuse `modules/notify_telegram.py`'s classification** (`classify_response`, its `_connect_failed` check for
-  "the connection never opened") instead of writing a second one, and pin the mapping with a test in that slice: a
-  fake server that refuses the connection gives `retry/network`, one that closes after the request gives `dead`.
-- Put the site origin in front of `link` (a path), send exactly the approved texts in the fixed three-block order,
-  and send only to the one configured channel id.
+  was written, an unparseable reply: Telegram may have posted the message. The database turns any other `retry` code
+  into `dead` / `unconfirmed` anyway, and a dead post keeps its weekly slot.
+- **Reuses `modules/notify_telegram.py`'s classification** (`classify_response`, `_connect_failed`) instead of a second
+  one; `tests/test_channel_post.py` pins the mapping against real sockets: a closed port gives `retry/network`, a server
+  that closes after the request, a read timeout, a 5xx and an unreadable 200 give `dead`, each with exactly one request.
+- The site origin goes in front of `link` (a path), exactly the approved texts are sent in the fixed three-block order,
+  and only to the one configured channel id.
 
 ## Instagram: deferred
 
@@ -197,7 +282,8 @@ reposters. The `target` column keeps the model channel-neutral.
 2. Should a price post ever carry a dollar figure, and from which source? May promo discounts be advertised?
 3. Required AI-disclosure wording for videos in public marketing (YouTube, local law).
 4. Who reads the Russian and Uzbek wording? (The existing notification wording is a machine draft too.)
-5. Does the owner want a private test channel first (one more variable)?
+5. ~~Private test channel first?~~ Answered by the hand steps above: point `MARKETING_TELEGRAM_CHAT` at a private channel
+   first (no second variable, no change to the database contract).
 6. Is Telegram's 1024-character caption limit and 50 MB bot upload limit current? (The 50 MB figure was confirmed in
    the Bot API FAQ; the caption and URL-fetch figures are from memory: unverified. The texts are kept short enough
    to fit a caption in any case.)

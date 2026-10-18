@@ -363,6 +363,12 @@ Logda `operator-bot after 20s: state=running ...` qatori chiqadi. Yoqilganda
 o'chiq. Portsiz, Caddy marshrutisiz; faqat chiquvchi so'rovlar. Sirlar, tartib va
 nosozliklar: `docs/operator-bot.md`, "Always on, on the server".
 
+**Brend kanali posteri** (`marketing-worker`, Telegram): switch
+`NIGHTSHIFT_MARKETING_WORKER` = `on` (konteyner va `.env.marketing` bor-yo'qligi).
+Standart — o'chiq; o'chiq paytda hech qanday sir kerak emas. Konteyner bor bo'lsa
+ham, `NIGHTSHIFT_MARKETING_POSTS` = `on` bo'lmaguncha u hech narsa qoralamaydi va
+yubormaydi. Qadamlar va nomlar: `docs/MARKETING_POSTS.md`.
+
 ---
 
 Quyidagi 0–13-bo'limlar — serverni noldan tayyorlash va **qo'lda** deploy
