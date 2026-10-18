@@ -9,6 +9,10 @@ import { PROVIDERS } from "@/lib/providers";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { BillingBoard, type ProviderView, type RunwayView } from "@/components/billing/BillingBoard";
 import { UnitEconomicsCard } from "@/components/billing/UnitEconomicsCard";
+import { ProviderSpendPanel } from "@/components/billing/ProviderSpendPanel";
+import { ownerRpcOn } from "@/lib/server/owner-rpc";
+import { readOwnerProviderSpend } from "@/lib/server/owner-reads";
+import { summarizeProviderSpend } from "@/lib/owner-reads";
 import { getChannelContext } from "@/lib/channels-server";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { ErrorState } from "@/components/ReadError";
@@ -265,9 +269,22 @@ export default async function BillingPage() {
         }
       : null;
 
+  // NIGHTSHIFT_OWNER_RPC=on: the provider-by-provider spend is asked of the database (owner_provider_spend, 0106),
+  // which adds the ledger up itself, instead of being summed here from raw rows that a page read may have cut short.
+  // The raw rows above still feed what the aggregate has no room for (unit economics per video, the ElevenLabs
+  // per-video runway, the top-up ledger balance), so those are unchanged.
+  const spendRead = operatorView && supabase && ownerRpcOn() ? await readOwnerProviderSpend(supabase, 30) : null;
+
   return (
     <div className="rhythm ns-open g5-page">
       <PageHeader icon="billing" title={t.billing.title} subtitle={t.billing.subtitle} />
+      {spendRead && (
+        <ProviderSpendPanel
+          state={spendRead.state}
+          summary={spendRead.state === "ok" ? summarizeProviderSpend(spendRead.value) : null}
+          days={30}
+        />
+      )}
       {migrationMissing && (
         <section className="panel">
           <StateBlock role="status" tone="warn" compact>

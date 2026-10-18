@@ -536,6 +536,44 @@ update public.owner_security_settings set grant_max_per_call = 20000, grant_max_
   grant can be reversed once.
 * It does not seal the empty-roster bootstrap or change `platform_role()`.
 
+### Wiring the screens: `NIGHTSHIFT_OWNER_RPC` (default off)
+
+The Command Center can send the owner's money and roster changes through the 0107 functions. It is a
+server environment variable, `on` or `off`; empty, `off` or anything else is **off**, and off is
+exactly today's behaviour (the old forms, the direct table writes, `grant_credits()`). It is read per
+request (`lib/server/owner-rpc.ts`), so a restart is enough; the deploy workflow maps the repository
+variable `NIGHTSHIFT_OWNER_RPC` to it (`deploy/.env.web.example`). It needs migrations 0106 and 0107;
+a page whose function is missing (checked with `owner_security_get`) falls back to the old behaviour,
+and a route answers `migration_missing`.
+
+When it is `on`, a platform owner/admin sees:
+
+| Screen | What changes | Function |
+|---|---|---|
+| Credits, grant | A reason (8 to 300 characters) is required; the per-grant and rolling 24 h limits are shown; a confirm sheet names the organization, credits, reason and limits; the request key is made once per distinct grant and reused on a retry, so a double tap is one grant (`duplicate`) | `owner_grant_credits` |
+| Credits, recent grants | Each grant inside the reversal window has a Reverse action: reason field, then a confirm sheet; the answer says how much was taken back and the shortfall | `owner_reverse_grant` |
+| Credits, prices | Save and delete go through the server with an optional reason. A rate of zero, a price that was zero, or a swing past the limit (default 3x, either way, on the rate or on what the customer pays) is shown as an explicit big-change sheet with before, after and the ratio, and the figure (or the word CONFIRM) must be typed; if the server disagrees with the screen it answers `confirm_required` and the next tap confirms. Delete always sends the confirm from its sheet | `owner_set_credit_price`, `owner_delete_credit_price` |
+| Credits, price history | The newest 40 changes with old and new figures; Restore on the newest change of each service puts it back (a price that change created is removed), through the same sheet and guard | `owner_restore_credit_price` |
+| Team | Add, change role and remove go through the server (last-owner guard, no change to yourself, only an owner touches an admin or an owner). Claiming an empty roster stays a direct write: with no owner there is no one to check | `owner_add_member`, `owner_set_member_role`, `owner_remove_member` |
+| Billing | A new panel, "What providers charged us", from the database's own sum of the cost ledger for 30 days. A provider with any unpriced row has no total ("unknown", with "at least" the priced part); rendering, stock footage and other non-provider names are listed apart as our own estimates, never added to the bills | `owner_provider_spend(30)` |
+| Security | A read-only panel: gate on or off, whether this session would pass, the limits, each owner and admin with their verified-authenticator count, whether the gate could be switched on, and the newest security events | `owner_security_get`, `owner_security_events` |
+
+How a call is made: the browser posts JSON to `/api/owner/credits/grant`, `/api/owner/credits/reverse`,
+`/api/owner/prices` or `/api/owner/team`. Each route checks, in order, that our own page sent it
+(403), that the flag is on (404 otherwise), that the caller is signed in (401) and an owner or admin
+(403), the application second-factor gate (`NIGHTSHIFT_ADMIN_MFA`, 401 `mfa_required`), a small JSON
+body, and then makes **one** rpc **as the signed-in user** (their cookie session and the anon key; no
+service key anywhere), so `auth.uid()` in the function is the owner and the function's own checks,
+limits, second-factor test and audit trail apply. The database's refusals (`owner_err` codes) come
+back as a code plus figures; the screens word every one of them in English, Russian and Uzbek
+(`lib/i18n/owner-rpc`), and an unknown future code is shown as "refused (code)", never as success.
+
+What it deliberately does **not** do: there is no button that switches the database gate
+(`enable_admin_mfa`); the browser can still write `credit_prices`, `app_members` and call
+`grant_credits` directly (the 0107 triggers observe those writes, they do not block them); and with
+the flag on, the Billing page still reads the raw cost rows for what the aggregate has no room for
+(unit economics per video, the ElevenLabs per-video runway, the top-up ledger balance).
+
 ### Taking it out again
 
 `docs/sql/rollback_0107_owner_safety.sql` removes every object (and the security trail) and puts the

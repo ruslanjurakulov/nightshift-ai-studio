@@ -151,6 +151,9 @@ jobs:
           WEBENV_CSP_REPORT_URI: ${{ vars.CSP_REPORT_URI }}
           WEBENV_NIGHTSHIFT_ADMIN_MFA: ${{ vars.NIGHTSHIFT_ADMIN_MFA }}
           WEBENV_NIGHTSHIFT_ADMIN_MFA_RECENT_MINUTES: ${{ vars.NIGHTSHIFT_ADMIN_MFA_RECENT_MINUTES }}
+          # Off unless the repository variable is exactly `on`: the owner pages use the server-side owner functions
+          # of migration 0107 (docs/security/ADMIN_MFA.md). Empty = today's behaviour.
+          WEBENV_NIGHTSHIFT_OWNER_RPC: ${{ vars.NIGHTSHIFT_OWNER_RPC }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
           WEBENV_DEV_CLI_PAGE: ${{ vars.DEV_CLI_PAGE }}
           WEBENV_MCP_OAUTH_LIVE: ${{ vars.MCP_OAUTH_LIVE }}

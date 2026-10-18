@@ -12,6 +12,8 @@ import { ROLES, type Role } from "@/lib/auth/roles-shared";
 import { fmt } from "@/lib/i18n";
 import { memberBlock } from "@/lib/confirm-tier";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
+import { postOperator } from "@/lib/operator-post";
+import { ownerFailureText } from "@/lib/owner-rpc-text";
 
 /**
  * Team & roles.
@@ -43,12 +45,21 @@ export function MembersBoard({
   myRole,
   myEmail,
   myUserId,
+  ownerRpc = false,
 }: {
   myRole: Role;
   myEmail: string;
   myUserId: string;
+  /**
+   * NIGHTSHIFT_OWNER_RPC is on (decided on the server, passed down): adding a person, changing a role and removing a
+   * person go through /api/owner/team -> owner_add_member / owner_set_member_role / owner_remove_member, which refuse
+   * to leave no owner, to change yourself, or to let a non-owner touch an admin or an owner, and write the audit
+   * trail. Off (the default) the board writes app_members from the browser as it always did. Claiming an empty
+   * roster stays a direct write in both: with no owner yet there is no one for the functions to check.
+   */
+  ownerRpc?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [members, setMembers] = useState<Member[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -105,6 +116,10 @@ export function MembersBoard({
     setBusy(true);
     setError(null);
     const write = async () => {
+      if (ownerRpc) {
+        const out = await postOperator("/api/owner/team", { action: "add", email: addr, role });
+        return out.ok ? true : ownerFailureText(t, out, locale);
+      }
       const { error: e } = await supabase.from("app_members").insert({ email: addr, role, created_by: myUserId });
       return e ? t.members.saveFailed : true;
     };
@@ -159,6 +174,10 @@ export function MembersBoard({
       ],
       successMessage: fmt(t.ownerSafety.roleChanged, { email: m.email, role: roleLabel[next] }),
       run: async () => {
+        if (ownerRpc) {
+          const out = await postOperator("/api/owner/team", { action: "role", member: m.id, role: next });
+          return out.ok ? true : ownerFailureText(t, out, locale);
+        }
         const { error: e } = await supabase.from("app_members").update({ role: next }).eq("id", m.id);
         return e ? t.members.saveFailed : true;
       },
@@ -192,6 +211,10 @@ export function MembersBoard({
       ],
       successMessage: fmt(t.ownerSafety.memberRemoved, { email: m.email }),
       run: async () => {
+        if (ownerRpc) {
+          const out = await postOperator("/api/owner/team", { action: "remove", member: m.id });
+          return out.ok ? true : ownerFailureText(t, out, locale);
+        }
         const { error: e } = await supabase.from("app_members").delete().eq("id", m.id);
         return e ? t.members.saveFailed : true;
       },

@@ -9,6 +9,9 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { priceTypedFigure } from "@/lib/confirm-tier";
+import { postOperator } from "@/lib/operator-post";
+import { priceBigChange, ratioText, REASON_MAX } from "@/lib/owner-rpc";
+import { ownerFailureText } from "@/lib/owner-rpc-text";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { relativeTime } from "@/lib/format";
 import {
@@ -50,7 +53,22 @@ function sentence(text: string, locale: string) {
   return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
 }
 
-export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[]; canEdit: boolean }) {
+/**
+ * `rpc` is passed only while NIGHTSHIFT_OWNER_RPC is on: saving and deleting then go through the server
+ * (/api/owner/prices -> owner_set_credit_price / owner_delete_credit_price) instead of the table, with an optional
+ * reason, the database's own big-change guard (a rate of zero, or a swing past `maxRatio` either way, needs an
+ * explicit confirm) and a history row to restore from. Without it nothing below the two `if (rpc)` lines runs
+ * differently from before.
+ */
+export function CreditPricesEditor({
+  prices,
+  canEdit,
+  rpc,
+}: {
+  prices: CreditPrice[];
+  canEdit: boolean;
+  rpc?: { maxRatio: number | null };
+}) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [unit, setUnit] = useState("");
@@ -58,6 +76,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
   const [margin, setMargin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
   const { confirm, dialog } = useConfirm();
   const formRef = useRef<HTMLDivElement>(null);
   const rateRef = useRef<HTMLInputElement>(null);
@@ -69,6 +88,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
 
   async function save() {
     if (busy) return;
+    if (rpc) return saveViaServer(rpc.maxRatio);
     const row = parsePriceInput(unit, rate, margin);
     if (!row) {
       setError(t.credits.priceInvalid);
@@ -113,6 +133,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
 
   async function remove(p: CreditPrice) {
     if (busy) return;
+    if (rpc) return removeViaServer(p);
     const supabase = createClient();
     if (!supabase) return;
     setBusy(true);
@@ -131,6 +152,110 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
       run: async () => {
         const { error: e, status } = await supabase.from("credit_prices").delete().eq("unit", p.unit);
         return e ? operatorFailureText(t, { kind: supabaseFailureKind(e, status), data: {} }, t.ownerTruth.serverError) : true;
+      },
+    });
+    setBusy(false);
+    if (removed) router.refresh();
+  }
+
+  /** Save through owner_set_credit_price. The sheet is the confirm step; a big change says so before its key works. */
+  async function saveViaServer(maxRatioRead: number | null) {
+    const row = parsePriceInput(unit, rate, margin);
+    if (!row) {
+      setError(t.credits.priceInvalid);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const p = t.ownerRpc.prices;
+    const old = prices.find((x) => x.unit === row.unit) ?? null;
+    const next = { unit: row.unit, creditsPerUnit: row.credits_per_unit, margin: row.margin };
+    const name = nameOf(row.unit);
+    // The live limit when it was read, else the default the database ships with; the database decides either way.
+    const maxRatio = maxRatioRead ?? 3;
+    const big = priceBigChange(
+      old ? { rate: old.creditsPerUnit, margin: old.margin } : null,
+      { rate: next.creditsPerUnit, margin: next.margin },
+      maxRatio,
+    );
+    // Set when the server calls it big although the screen did not: the next tap on the same sheet confirms it.
+    let serverSaidBig = false;
+    const show = (a: number | null, b: number, f: (n: number) => string) => (a === null || a === b ? f(b) : `${f(a)} → ${f(b)}`);
+    const oldFigures = old ? { rate: old.creditsPerUnit, margin: old.margin, charged: chargePerUnit(old) } : null;
+    const newFigures = { rate: next.creditsPerUnit, margin: next.margin, charged: chargePerUnit(next) };
+    const details = [
+      { label: t.ownerSafety.dService, value: name === row.unit ? row.unit : `${name} (${row.unit})` },
+      { label: t.ownerSafety.dRate, value: show(old?.creditsPerUnit ?? null, next.creditsPerUnit, (n) => figure(n)) },
+      { label: t.ownerSafety.dMargin, value: show(old ? old.margin : null, next.margin, (n) => marginOf(row.unit, n)) },
+      { label: t.ownerSafety.dCharged, value: show(old ? chargePerUnit(old) : null, chargePerUnit(next), (n) => figure(n, 6)) },
+    ];
+    if (big.big) {
+      const rateX = ratioText(big.rateRatio);
+      const chargedX = ratioText(big.chargedRatio);
+      details.push({ label: p.dChange, value: rateX && chargedX ? fmt(p.changeText, { rate: rateX, charged: chargedX }) : row.credits_per_unit === 0 ? p.zeroNote : p.wasZeroNote });
+      details.push({ label: p.dLimit, value: fmt(p.limitText, { max: maxRatio }) });
+    }
+    // A big change always asks for something to be typed: the figure when it is long enough to be worth typing, else a word.
+    const typed = big.big ? (priceTypedFigure(oldFigures, newFigures) ?? p.bigWord) : priceTypedFigure(oldFigures, newFigures);
+    const saved = await confirm({
+      title: big.big ? fmt(p.bigTitle, { name }) : fmt(old ? t.ownerSafety.priceChangeTitle : t.ownerSafety.priceSetTitle, { name }),
+      message: big.big ? fmt(p.bigBody, { max: maxRatio }) : t.ownerSafety.priceSaveBody,
+      confirmLabel: big.big ? p.bigConfirm : t.ownerSafety.priceSaveConfirm,
+      tone: big.big ? "danger" : "primary",
+      details,
+      typeToConfirm: typed,
+      successMessage: fmt(t.ownerSafety.priceSaved, { name }),
+      run: async () => {
+        const out = await postOperator("/api/owner/prices", {
+          action: "set",
+          unit: row.unit,
+          rate: row.credits_per_unit,
+          margin: row.margin,
+          reason: reason.trim() || undefined,
+          confirm: big.big || serverSaidBig,
+        });
+        if (out.ok) return true;
+        if (out.data.error === "confirm_required") {
+          // The screen's numbers and the server's disagree (a price changed meanwhile): show the server's and let the
+          // next tap on this same sheet confirm it, explicitly.
+          serverSaidBig = true;
+          const num = (v: unknown) => (typeof v === "number" ? v : null);
+          return fmt(p.serverBig, {
+            rate: ratioText(num(out.data.rate_ratio)) ?? "—",
+            charged: ratioText(num(out.data.charged_ratio)) ?? "—",
+            max: num(out.data.max_ratio) ?? maxRatio,
+          });
+        }
+        return ownerFailureText(t, out, locale, true);
+      },
+    });
+    setBusy(false);
+    if (!saved) return;
+    setUnit("");
+    setRate("");
+    setMargin("");
+    setReason("");
+    router.refresh();
+  }
+
+  /** Delete through owner_delete_credit_price. The database counts every delete as a big change, so the sheet's key sends the confirm. */
+  async function removeViaServer(p: CreditPrice) {
+    setBusy(true);
+    setError(null);
+    const name = nameOf(p.unit);
+    const removed = await confirm({
+      title: fmt(t.ownerSafety.priceDeleteTitle, { name }),
+      message: t.ownerSafety.priceDeleteBody,
+      confirmLabel: t.ownerSafety.priceDeleteConfirm,
+      details: [
+        { label: t.ownerSafety.dService, value: name === p.unit ? p.unit : `${name} (${p.unit})` },
+        { label: t.ownerSafety.dRate, value: figure(p.creditsPerUnit) },
+        { label: t.ownerSafety.dCharged, value: figure(chargePerUnit(p), 6) },
+      ],
+      successMessage: fmt(t.ownerSafety.priceDeleted, { name }),
+      run: async () => {
+        const out = await postOperator("/api/owner/prices", { action: "delete", unit: p.unit, reason: reason.trim() || undefined, confirm: true });
+        return out.ok ? true : ownerFailureText(t, out, locale, true);
       },
     });
     setBusy(false);
@@ -330,6 +455,19 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
               className={inputClass}
             />
           </label>
+          {rpc && (
+            <label className="flex w-full flex-col gap-1">
+              <span className={fieldLabel}>{t.ownerRpc.prices.reasonLabel}</span>
+              <input
+                type="text"
+                maxLength={REASON_MAX}
+                value={reason}
+                placeholder={t.ownerRpc.prices.reasonPh}
+                onChange={(e) => setReason(e.target.value)}
+                className={inputClass}
+              />
+            </label>
+          )}
           <button
             type="button"
             onClick={save}

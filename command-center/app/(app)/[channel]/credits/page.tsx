@@ -26,6 +26,11 @@ import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 import { ScrollToHash } from "@/components/navigation/ScrollToHash";
+import { OwnerGrantForm } from "@/components/credits/OwnerGrantForm";
+import { OwnerRecentGrants } from "@/components/credits/OwnerRecentGrants";
+import { OwnerPriceHistory } from "@/components/credits/OwnerPriceHistory";
+import { ownerRpcOn } from "@/lib/server/owner-rpc";
+import { readGrantWindow, readOwnerSecurity, readPriceHistory } from "@/lib/server/owner-reads";
 
 const FAILED_READ = { state: "failed" as const };
 
@@ -102,6 +107,17 @@ export default async function CreditsPage() {
   // anyone else, so a member's page never carries a margin.
   const priceList = platformAdmin ? await readCreditPriceList(supabase) : null;
   const inviteAdmin = platformAdmin ? await readInviteAdmin(supabase) : null;
+  // NIGHTSHIFT_OWNER_RPC=on: grants, prices and their history go through the server's audited, capped functions
+  // (migration 0107). Off, or 0107 not applied yet (owner_security_get does not exist): the page is what it was.
+  const ownerSecurity = platformAdmin && ownerRpcOn() ? await readOwnerSecurity(supabase) : null;
+  const rpcActive = ownerSecurity !== null && ownerSecurity.state !== "unsupported";
+  const sec = ownerSecurity?.state === "ok" ? ownerSecurity.value : null;
+  const [grantWindow, priceHistory] = rpcActive
+    ? await Promise.all([
+        sec?.reverseWindowDays != null ? readGrantWindow(supabase, orgId, sec.reverseWindowDays) : null,
+        readPriceHistory(supabase),
+      ])
+    : [null, null];
   // acct.account is null exactly when the read failed: the balance is unknown,
   // and no figure, purchase flow or "no prices" line may stand in for it.
   const account = acct.account;
@@ -235,11 +251,33 @@ export default async function CreditsPage() {
             {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
           </p>
           {!paddleConfig && !exempt && <p className="tnum text-xs text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
-          <GrantCreditsForm
-            orgId={orgId}
-            orgName={org.current.name}
-            creditsPerUsd={priceList && !priceList.failed && priceList.prices[UNIT_USD] ? chargePerUnit(priceList.prices[UNIT_USD]) : null}
-          />
+          {rpcActive ? (
+            <>
+              <OwnerGrantForm
+                orgId={orgId}
+                orgName={org.current.name}
+                creditsPerUsd={priceList && !priceList.failed && priceList.prices[UNIT_USD] ? chargePerUnit(priceList.prices[UNIT_USD]) : null}
+                limits={{
+                  perCall: sec?.grantMaxPerCall ?? null,
+                  per24h: sec?.grantMax24h ?? null,
+                  granted24h: grantWindow?.state === "ok" ? grantWindow.value.granted24h : null,
+                  windowDays: sec?.reverseWindowDays ?? null,
+                }}
+              />
+              <OwnerRecentGrants
+                orgName={org.current.name}
+                grants={grantWindow?.state === "ok" ? grantWindow.value.grants : null}
+                windowDays={sec?.reverseWindowDays ?? 14}
+                failed={grantWindow?.state !== "ok"}
+              />
+            </>
+          ) : (
+            <GrantCreditsForm
+              orgId={orgId}
+              orgName={org.current.name}
+              creditsPerUsd={priceList && !priceList.failed && priceList.prices[UNIT_USD] ? chargePerUnit(priceList.prices[UNIT_USD]) : null}
+            />
+          )}
           {inviteAdmin?.state === "ok" && <InviteAdminPanel admin={inviteAdmin.value} />}
           {inviteAdmin?.state === "failed" && (
             <div className="panel p-5 sm:p-6">
@@ -253,7 +291,20 @@ export default async function CreditsPage() {
               <ErrorState compact />
             </div>
           ) : (
-            <CreditPricesEditor prices={Object.values(priceList.prices)} canEdit />
+            <>
+              <CreditPricesEditor
+                prices={Object.values(priceList.prices)}
+                canEdit
+                rpc={rpcActive ? { maxRatio: sec?.priceMaxRatio ?? null } : undefined}
+              />
+              {rpcActive && (
+                <OwnerPriceHistory
+                  history={priceHistory?.state === "ok" ? priceHistory.value : null}
+                  prices={Object.values(priceList.prices)}
+                  maxRatio={sec?.priceMaxRatio ?? null}
+                />
+              )}
+            </>
           )}
         </>
       )}

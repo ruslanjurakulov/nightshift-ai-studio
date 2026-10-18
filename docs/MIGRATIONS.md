@@ -77,6 +77,9 @@ policy, grant, trigger or function touched except the audit action list, which o
 - **Is it working?** The verify block at the bottom of the file, and `select kind, at from
   public.security_events order by id desc limit 20;` (the three logging triggers fill it from any
   write to `app_members`, `credit_prices` or the settings row).
+- **Wired?** Not until the server variable `NIGHTSHIFT_OWNER_RPC` is `on` (default off): then the Credits, Team, Billing and
+  Security pages use the functions (docs/security/ADMIN_MFA.md, "Wiring the screens"). That variable is separate from the
+  database gate; neither implies the other.
 - **Undo.** The flag is the undo for behaviour. To remove the objects: `docs/sql/rollback_0107_owner_safety.sql`
   (owner-applied; the lab applies it to a scratch database and then re-applies 0107).
 - **Replay.** The seed is `on conflict do nothing`, so re-running the file keeps whatever the owner set.
