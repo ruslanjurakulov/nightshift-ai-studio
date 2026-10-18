@@ -369,7 +369,11 @@ class ResumeFromApproved(unittest.TestCase):
 # ── the money around a paused run ─────────────────────────────────────────
 
 CUSTOMER_ORG = "11111111-2222-3333-4444-555555555555"
-FAKE_MAIN = ("import os, sys\nopen('report.out', 'w').write('ran')\n"
+FAKE_MAIN = ("import json, os, sys\nopen('report.out', 'w').write('ran')\n"
+             "rf = os.environ.get('NIGHTSHIFT_RUN_RESULT_FILE')\n"
+             # A finished run leaves a video and says so; the worker captures only then.
+             "if rf:\n    open('final_video.mp4', 'wb').write(b'video')\n"
+             "    json.dump({'video_path': os.path.abspath('final_video.mp4')}, open(rf, 'w'))\n"
              "sys.exit(int(os.environ.get('FAKE_RC', '0')))\n")
 
 

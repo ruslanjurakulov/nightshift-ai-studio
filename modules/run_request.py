@@ -43,6 +43,10 @@ VIDEO_PROVIDERS = ("minimax", "higgsfield", "kling", "veo", "seedance", "wan")
 IMAGE_PROVIDERS = ("pexels", "leonardo", "gpt-image", "nano-banana", "flux", "ideogram", "fal")
 TTS_MODELS = ("eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5")
 KINDS = ("daily", "repair")
+#: Set by the queue worker (not a workflow input): the file main.py writes once
+#: its render stage has produced the video, so the worker can tell "exited 0 with
+#: a video" from "exited 0 with nothing" before it captures a customer's credits.
+RESULT_FILE_ENV = "NIGHTSHIFT_RUN_RESULT_FILE"
 #: Keys a job may carry that are NOT pipeline inputs (never passed to main.py
 #: or its env): the Create page's "Making this for:" account (migration 0029).
 HINT_PARAMS = ("publish_hint",)

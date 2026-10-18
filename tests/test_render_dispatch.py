@@ -126,6 +126,14 @@ class DispatchTestCase(_Base):
         self.assertIn("RenderBackendError", res.fallback_reason)
         self.assertEqual(res.to_metadata()["render_backend_requested"], "ffmpeg")
 
+    def test_a_render_timeout_is_not_fallen_back_from(self):
+        # A command that ran past its limit would hang MoviePy just as long; the
+        # run fails instead of spending the rest of the job on a second render.
+        timeout = mock.Mock(side_effect=render_backend.RenderTimeout("an ffmpeg command ran past 2400s"))
+        with self.assertRaises(render_backend.RenderTimeout):
+            self.dispatch(backend="ffmpeg", ffmpeg_render=timeout)
+        self.assertEqual(self.moviepy_calls, 0)
+
     def test_any_exception_type_falls_back(self):
         res = self.dispatch(backend="ffmpeg", ffmpeg_render=mock.Mock(side_effect=MemoryError()))
         self.assertEqual(res.backend, "moviepy")

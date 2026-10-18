@@ -608,6 +608,14 @@ jobs:
             echo "Storyboard ready — this run waits for approval in the Command Center."
             exit 0
           fi
+          # Exit 78: the channel's spend ceiling stopped the run before it spent
+          # anything (modules/budget.py). Still a green step, as before, but the
+          # settle step releases the hold: no video was made, so nothing is charged.
+          if [ "$rc" -eq 78 ]; then
+            echo "paused=true" >> "$GITHUB_OUTPUT"
+            echo "Spend ceiling reached — nothing was spent."
+            exit 0
+          fi
           exit "$rc"
 
       # Settle the hold claimed above: on success, charge what the run's cost

@@ -206,6 +206,26 @@ def record_stage(
         return None
 
 
+def write_result(slug: str, video_path) -> None:
+    """Tell the queue worker the render stage produced ``video_path``.
+
+    The worker names a file in ``NIGHTSHIFT_RUN_RESULT_FILE`` (modules/
+    run_request.RESULT_FILE_ENV) and captures a customer's credits only when this
+    wrote it and the video is still there. Nothing else sets the variable, so
+    outside the worker (Actions, a shell) this does nothing. Never raises."""
+    import os  # noqa: PLC0415
+    from modules.run_request import RESULT_FILE_ENV  # noqa: PLC0415
+
+    target = os.environ.get(RESULT_FILE_ENV, "").strip()
+    if not target:
+        return
+    try:
+        Path(target).write_text(json.dumps({"slug": slug, "video_path": str(video_path)}),
+                                encoding="utf-8")
+    except Exception as e:
+        logger.warning("Could not write the run result (%s: %s) — continuing", type(e).__name__, e)
+
+
 def run_epoch(slug: str, root: Optional[Path] = None) -> str:
     """A stable identity for the current run of ``slug``: the checkpoint's
     ``created_at``, or "" when there is no readable checkpoint.
