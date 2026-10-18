@@ -152,6 +152,15 @@ describe("MCP endpoint", () => {
     expect(state.calls).toEqual([]);
   });
 
+  it("get_job_status sends the sentence and code, not the worker log", async () => {
+    state.answer = { ok: true, status: 200, data: { id: 7, status: "failed", error: "[code:voice] main.py exited with code 1\nVoiceUnavailable: top up ElevenLabs" } };
+    const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "get_job_status", arguments: { job_id: 7 } } }));
+    const text = JSON.stringify(await res.json());
+    expect(text).toContain("error_code");
+    expect(text).toContain("voice");
+    expect(text).not.toMatch(/ElevenLabs|exited with code/);
+  });
+
   it.each(["video_provider", "image_provider"])("refuses %s on create_video, never dropping it silently", async (field) => {
     const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "create_video", arguments: { channel_id: "c", [field]: "kling" } } }));
     const body = (await res.json()) as { result?: { isError?: boolean }; error?: unknown };

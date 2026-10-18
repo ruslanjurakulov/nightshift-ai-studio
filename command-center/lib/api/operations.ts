@@ -9,7 +9,8 @@
  * Pure apart from the injected `rpc`, so it is unit-tested with a fake one.
  */
 
-import type { RunBackend } from "@/lib/runBackend";
+import { parseJobError, type RunBackend } from "@/lib/runBackend";
+import { en } from "@/lib/i18n/en";
 import { API_KEY_PREFIX, hashApiKey, parseBearer, sha256Hex } from "@/lib/api/keys";
 import { apiError, fromRpcResult, type ApiResult } from "@/lib/api/http";
 import { parseGenerationInput } from "@/lib/creative/operations";
@@ -119,12 +120,17 @@ export function parseCreateVideo(
 ): { ok: true; channelId: string; params: Record<string, string | number> } | { ok: false; result: ApiResult } {
   const b = obj(body);
   if (!b) return { ok: false, result: bad("invalid_body", "Send a JSON object.") };
-  if (PROVIDER_FIELDS.some((k) => k in b))
+  // Blank ('' or null) is what a client that always sent the field sends: ignored for one release. Anything
+  // else is refused. Route level only: the SQL entry points still accept the params from a direct caller.
+  const blank = (v: unknown) => v == null || v === "";
+  if (PROVIDER_FIELDS.some((k) => k in b && !blank(b[k])))
     return {
       ok: false,
       result: bad("unknown_parameter", "video_provider and image_provider cannot be set through the API: the platform chooses the providers."),
     };
-  const unknown = Object.keys(b).filter((k) => !(CREATE_VIDEO_FIELDS as readonly string[]).includes(k));
+  const unknown = Object.keys(b).filter(
+    (k) => !(CREATE_VIDEO_FIELDS as readonly string[]).includes(k) && !((PROVIDER_FIELDS as readonly string[]).includes(k) && blank(b[k])),
+  );
   if (unknown.length) return { ok: false, result: bad("unknown_parameter", `Unknown field(s): ${unknown.join(", ")}.`) };
   const channelId = typeof b.channel_id === "string" ? b.channel_id.trim() : "";
   if (!CHANNEL_RE.test(channelId))
@@ -225,7 +231,22 @@ export async function getVideo(caller: ApiCaller, videoId: string): Promise<ApiR
 
 export async function getJob(caller: ApiCaller, jobId: string): Promise<ApiResult> {
   if (!/^[1-9]\d{0,14}$/.test(jobId)) return apiError(404, "job_not_found", "No job with that id in this key's organization.");
-  return call(caller, "api_get_job", { p_job_id: Number(jobId) });
+  return withPublicJobError(await call(caller, "api_get_job", { p_job_id: Number(jobId) }));
+}
+
+/**
+ * api_get_job returns render_jobs.error verbatim: the operator's header and log tail, with vendor names and
+ * remedies. The API sends a code and one fixed sentence instead (the same ones the Create page shows), never the
+ * text. TypeScript only; the SQL function itself is unchanged.
+ */
+export function withPublicJobError(result: ApiResult): ApiResult {
+  if (!result.ok) return result;
+  const data = obj(result.data);
+  if (!data || !("error" in data)) return result;
+  const raw = typeof data.error === "string" && data.error !== "" ? data.error : null;
+  if (raw === null) return { ...result, data: { ...data, error: null, error_code: null } };
+  const code = parseJobError(raw).code ?? "unknown";
+  return { ...result, data: { ...data, error: en.create.jobError[code], error_code: code } };
 }
 
 // ── videos.publish ─────────────────────────────────────────────────────────

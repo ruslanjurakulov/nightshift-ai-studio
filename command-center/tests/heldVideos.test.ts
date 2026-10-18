@@ -140,7 +140,10 @@ describe("D1: an upload that failed is shown as that, with the fixed cause", () 
       expect(label).not.toBe(d.held.stateHeld);
       expect(d.held.uploadFailedNote.length).toBeGreaterThan(20);
     }
-    expect(en.held.stateUploadFailed).toMatch(/upload failed.*reconnect YouTube/i);
+    expect(en.held.stateUploadFailed).toBe("Finished, but the upload did not complete");
+    expect(en.held.uploadFailedNote).toMatch(/expired channel connection/);
+    // The note itself makes no claim about a preview: that sentence is shown separately, only when one exists.
+    expect(en.held.uploadFailedNote).not.toMatch(/watch/i);
   });
 
   it("without the cause the label is unchanged", () => {

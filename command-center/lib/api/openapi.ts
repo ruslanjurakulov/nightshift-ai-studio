@@ -213,7 +213,12 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             created_at: { type: "string", format: "date-time" },
             started_at: { type: ["string", "null"], format: "date-time" },
             finished_at: { type: ["string", "null"], format: "date-time" },
-            error: { type: ["string", "null"] },
+            error: { type: ["string", "null"], description: "One plain sentence saying why a job failed; never a log." },
+            error_code: {
+              type: ["string", "null"],
+              enum: ["credits", "voice", "provider_quota", "media", "render", "timeout", "unknown", null],
+              description: "Why a job failed, as a stable code.",
+            },
             charge: {
               type: ["object", "null"],
               properties: {

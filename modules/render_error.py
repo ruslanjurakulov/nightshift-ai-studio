@@ -52,7 +52,9 @@ PREFIX_RE = re.compile(r"^\[code:([a-z_]+)\][ \t]?")
 #: failed at the stage the class belongs to.
 _BY_CLASS = {
     "VoiceUnavailable": VOICE,
-    "VideoModelUnavailable": PROVIDER_QUOTA,
+    # Raised for config, key, auth and non-JSON answers as well as quota: it is `media`
+    # (the clip source could not be used) unless its own message says quota (see classify).
+    "VideoModelUnavailable": MEDIA,
     "MediaUnavailable": MEDIA,
     "RenderBackendError": RENDER,
     "RenderRefused": RENDER,
@@ -63,10 +65,19 @@ _BY_CLASS = {
     "CreditRefused": CREDITS,
 }
 
-_EXC_LINE = re.compile(r"^(?:[A-Za-z_][\w]*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout))\b:?(.*)$")
-# A vendor's own "out of quota" answer that no pipeline class wraps.
-_QUOTA_TEXT = re.compile(r"RESOURCE_EXHAUSTED|\b429\b|insufficient[_ ]quota|quota[_ ]exceeded", re.I)
+#: A traceback's last line: `pkg.mod.ClassName: message`, or a bare `ClassName` (no message). A log line that merely
+#: mentions a class (`INFO falling back after VoiceUnavailable: nope`) does not start like this.
+_EXC_LINE = re.compile(r"^(?:[A-Za-z_]\w*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout))\b(?::[ \t]?(.*))?$")
+# A vendor's own "out of quota" answer. The 429 is anchored to an HTTP-looking phrase, never a bare number.
+_QUOTA_TEXT = re.compile(
+    r"RESOURCE_EXHAUSTED|insufficient[_ ]quota|quota[_ ]exceeded|\bquota\b|too many requests"
+    r"|(?:HttpError|HTTP|status(?:_code)?)[ =:]*429\b",
+    re.I,
+)
 _TIMED_OUT = re.compile(r"\btimed out\b", re.I)
+
+#: The stored text is capped by a CHECK (render_jobs.error, 0017: length <= 2000).
+MAX_CHARS = 2000
 
 
 def classify(header: str = "", tail: Iterable[str] = ()) -> str:
@@ -84,18 +95,35 @@ def classify(header: str = "", tail: Iterable[str] = ()) -> str:
             last = m
             break
     if last is not None:
-        code = _BY_CLASS.get(last.group(1))
+        cls, message = last.group(1), last.group(2) or ""
+        # ElevenLabs' ApiError carries the account's own answer: out of characters is the voice.
+        if cls == "ApiError" and re.search(r"quota_exceeded", message, re.I):
+            return VOICE
+        code = _BY_CLASS.get(cls)
+        if code == MEDIA and cls == "VideoModelUnavailable" and _QUOTA_TEXT.search(message):
+            return PROVIDER_QUOTA
         if code:
             return code
-        if _QUOTA_TEXT.search(last.group(2)):
+        if _QUOTA_TEXT.search(message):
             return PROVIDER_QUOTA
     return UNKNOWN
 
 
-def tag(code: Optional[str], text: str) -> str:
-    """``text`` behind its ``[code:...]`` prefix (replacing one it already has)."""
+def tag(code: Optional[str], text: str, limit: int = MAX_CHARS) -> str:
+    """``text`` behind its ``[code:...]`` prefix (replacing one it already has), never longer than ``limit``.
+
+    The column has a CHECK on its length, so a write that is one character over is refused and the job would stay
+    "running". When the prefix does not fit, the MIDDLE of the body goes: the header line and the end of the log
+    (where the reason is) survive."""
     code = code if code in CODES else UNKNOWN
-    return f"[code:{code}] " + PREFIX_RE.sub("", text or "", count=1)
+    prefix = f"[code:{code}] "
+    body = PREFIX_RE.sub("", text or "", count=1)
+    room = limit - len(prefix)
+    if len(body) > room:
+        head = body.split("\n", 1)[0][: max(0, room // 4)]
+        tail_room = room - len(head) - 2
+        body = head + "\n…" + (body[-tail_room:] if tail_room > 0 else "")
+    return prefix + body
 
 
 def code_of(text: Optional[str]) -> Optional[str]:

@@ -138,6 +138,8 @@ class FakeSupabase:
 
     def delete(self, url, params=None, json=None, headers=None, timeout=None):
         self.calls.append(("delete", url, params, json, headers))
+        if "/storage/" in url:  # a bucket delete is not a row delete
+            return Resp(200)
         for h in self._match(params):
             self.rows.pop(h)
         return Resp(204)

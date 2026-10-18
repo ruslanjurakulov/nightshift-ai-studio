@@ -139,8 +139,8 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     {
       title: "Get job status",
       description: oauth
-        ? "A video job's status (queued, running, succeeded, failed, cancelled), its error if any, and the credits it holds or was charged."
-        : "A video job's status (queued, running, succeeded, failed, cancelled), its error if any, and what it was charged.",
+        ? "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, and the credits it holds or was charged."
+        : "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, and what it was charged.",
       inputSchema: { job_id: z.number().int().positive() },
       annotations: { readOnlyHint: true },
     },

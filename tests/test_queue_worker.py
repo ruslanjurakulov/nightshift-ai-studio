@@ -362,6 +362,18 @@ class WorkerCase(unittest.TestCase):
         # The operator keeps the log tail after the prefix.
         self.assertIn("out of characters", error)
 
+    def test_a_full_length_failure_still_fits_the_column_with_its_code(self):
+        # B1: format_error fills 2000 characters; the prefix must not push the write over CHECK (length <= 2000).
+        lines = [f"log {i:02d} " + "z" * 140 for i in range(60)] + ["modules.audio_mixer.VoiceUnavailable: nope"]
+        full = qw.format_error("main.py exited with code 1", lines, [])
+        self.assertEqual(len(full), qw.MAX_ERROR_CHARS)
+        w = self.worker(FakeQueue())
+        w._finish({"id": 1}, "failed", full)
+        stored = w.client.calls[-1][3]
+        self.assertLessEqual(len(stored), 2000)
+        self.assertTrue(stored.startswith("[code:voice] main.py exited with code 1\n"))
+        self.assertTrue(stored.endswith("VoiceUnavailable: nope"))
+
     def test_credit_refusal_is_coded_credits(self):
         w = self.worker(FakeQueue())
         w._finish({"id": 1}, "failed", "credits: not enough credits (nothing was run)")

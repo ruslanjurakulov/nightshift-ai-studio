@@ -165,8 +165,9 @@ export function toQueueJob(row: Record<string, unknown>): QueueJob {
 /**
  * Mark each FAILED job whose credit hold was released ("your credits were returned"). `refs` is render_jobs.credit_ref
  * per job id, `reservations` the organization's own credit_reservations rows (RLS shows members their own). Only a
- * reservation read as `released` says yes: an open or captured one, a missing row or an unreadable table leaves null,
- * so the page never claims a refund it did not see. Pure.
+ * reservation read as `released` says yes. An `open` or `captured` one is `false` (credits are still held, or were
+ * charged: the page says nothing about a refund); a missing row or an unreadable table leaves null, so the page never
+ * claims a refund it did not see. Only `true` is ever shown. Pure.
  */
 export function withCreditsReturned(
   jobs: QueueJob[],

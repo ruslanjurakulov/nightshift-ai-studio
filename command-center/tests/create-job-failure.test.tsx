@@ -23,6 +23,7 @@ import { dictionaries } from "@/lib/i18n";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
 import { toQueueJob } from "@/lib/runBackend";
+import { DEFAULT_ORG_ID } from "@/lib/orgs";
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
 const priced = { supported: true, enforced: true, exempt: false, estimate: { credits: 120, basis: "per_minute", sample: 0, floorApplied: false, gap: null }, available: 900 };
@@ -47,11 +48,11 @@ afterEach(() => {
   clearAllCreateAttempts();
 });
 
-async function startRun(locale: "en" | "ru" | "uz", operator = false) {
+async function startRun(locale: "en" | "ru" | "uz", operator = false, orgId: string | null = "org-1") {
   const t = dictionaries[locale];
   render(
     <I18nProvider locale={locale}>
-      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun userId="5b0c2f6e-1d44-4c2e-9b1f-0a7e2d9c3e11" orgId="org-1" backend="queue" operator={operator} />
+      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun userId="5b0c2f6e-1d44-4c2e-9b1f-0a7e2d9c3e11" orgId={orgId} backend="queue" operator={operator} />
     </I18nProvider>,
   );
   await screen.findByText(/120/);
@@ -101,5 +102,30 @@ describe("a failed job on the Create page", () => {
     const t = await startRun("en", true);
     await waitFor(() => expect(document.body.textContent).toContain(t.create.jobError.provider_quota));
     expect(document.body.textContent).toContain("main.py exited with code 1");
+  });
+});
+
+describe("F8: the provider selects follow the route's customerRun rule", () => {
+  const selects = (t: (typeof dictionaries)["en"]) => screen.queryAllByText(t.create.videoModel);
+  const open = async (operator: boolean, orgId: string | null) => {
+    jobs = [];
+    const t = dictionaries.en;
+    render(
+      <I18nProvider locale="en">
+        <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun userId="5b0c2f6e-1d44-4c2e-9b1f-0a7e2d9c3e11" orgId={orgId} backend="queue" operator={operator} />
+      </I18nProvider>,
+    );
+    await screen.findByText(/120/);
+    return t;
+  };
+
+  it("hidden for a customer organization even when the viewer is the operator", async () => {
+    expect(selects(await open(true, "org-customer"))).toHaveLength(0);
+  });
+  it("hidden for a non-operator in any organization", async () => {
+    expect(selects(await open(false, DEFAULT_ORG_ID))).toHaveLength(0);
+  });
+  it("shown to the operator in the operator's own organization", async () => {
+    expect(selects(await open(true, DEFAULT_ORG_ID)).length).toBeGreaterThan(0);
   });
 });

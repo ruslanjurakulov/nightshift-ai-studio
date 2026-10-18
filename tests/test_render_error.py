@@ -14,6 +14,12 @@ class Classify(unittest.TestCase):
         for last, code in [
             ("modules.audio_mixer.VoiceUnavailable: voice 'x' is out of characters", "voice"),
             ("modules.minimax_broll.VideoModelUnavailable: refused: quota", "provider_quota"),
+            # F4: it is also raised for config / key / auth / non-JSON answers: that is the clip source, not a quota
+            ("modules.minimax_broll.VideoModelUnavailable: no API key is configured", "media"),
+            ("modules.minimax_broll.VideoModelUnavailable: the provider answered 401 invalid key", "media"),
+            ("modules.minimax_broll.VideoModelUnavailable: answer was not JSON", "media"),
+            ("modules.minimax_broll.VideoModelUnavailable: HTTP 429 Too Many Requests", "provider_quota"),
+            ("elevenlabs.core.api_error.ApiError: status_code: 401, body: {'detail': {'status': 'quota_exceeded'}}", "voice"),
             ("modules.media_fetcher.MediaUnavailable: no footage", "media"),
             ("modules.render_backend.RenderBackendError: ffmpeg failed", "render"),
             ("modules.scene_render.SceneRenderError: bad scene", "render"),
@@ -24,8 +30,27 @@ class Classify(unittest.TestCase):
                 self.assertEqual(re_.classify("main.py exited with code 1", tb(last)), code)
 
     def test_a_vendor_quota_answer_is_provider_quota(self):
-        last = "google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. quota"
-        self.assertEqual(re_.classify("main.py exited with code 1", tb(last)), "provider_quota")
+        for last in ("google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. quota",
+                     "googleapiclient.errors.HttpError: <HttpError 429 when requesting ...>",
+                     "requests.exceptions.HTTPError: status_code=429 Too Many Requests"):
+            with self.subTest(last=last):
+                self.assertEqual(re_.classify("main.py exited with code 1", tb(last)), "provider_quota")
+
+    def test_a_bare_429_number_is_not_a_quota(self):
+        for last in ("ValueError: scene 429 has no footage", "RuntimeError: rendered 4290 frames"):
+            self.assertEqual(re_.classify("main.py exited with code 1", tb(last)), "unknown")
+
+    def test_a_log_line_that_only_mentions_a_class_is_not_an_exception(self):
+        # F5
+        for line in ("INFO falling back after VoiceUnavailable: nope",
+                     "2026-10-18 ERROR modules.audio_mixer.VoiceUnavailable: x",
+                     "note: RenderBackendError handled"):
+            self.assertEqual(re_.classify("main.py exited with code 1", [line]), "unknown", line)
+
+    def test_credits_only_counts_as_the_header(self):
+        # F5
+        self.assertEqual(re_.classify("main.py exited with code 1", ["credits: 3 left"]), "unknown")
+        self.assertEqual(re_.classify("main.py exited with code 1\ncredits: 3 left"), "unknown")
 
     def test_the_last_exception_wins_over_an_earlier_one(self):
         tail = tb("modules.audio_mixer.VoiceUnavailable: x") + ["During handling ...", "RuntimeError: boom"]
@@ -48,6 +73,26 @@ class Classify(unittest.TestCase):
 
 
 class Tag(unittest.TestCase):
+    def test_never_longer_than_the_column_allows_for_every_code(self):
+        # B1: render_jobs.error has CHECK (length(error) <= 2000); an over-long write is refused and the job stays running.
+        tail = [f"line {i:02d} " + "x" * 142 for i in range(60)]
+        header = "main.py exited with code 1"
+        for code in re_.CODES:
+            with self.subTest(code=code):
+                body = header + "\n" + "\n".join(tail)
+                out = re_.tag(code, body)
+                self.assertLessEqual(len(out), 2000)
+                self.assertTrue(out.startswith(f"[code:{code}] {header}\n"))
+                self.assertTrue(out.endswith("x" * 100))  # the end of the log (the reason) survives
+                self.assertEqual(re_.code_of(out), code)
+                # Already exactly full, and a full-length body behind an existing prefix.
+                full = "h\n" + "y" * 1997
+                self.assertLessEqual(len(re_.tag(code, full)), 2000)
+                self.assertLessEqual(len(re_.tag(code, re_.tag("voice", full))), 2000)
+
+    def test_a_short_body_is_untouched(self):
+        self.assertEqual(re_.tag("voice", "a\nb"), "[code:voice] a\nb")
+
     def test_prefix_round_trip(self):
         text = re_.tag("voice", "main.py exited with code 1\nlog tail")
         self.assertEqual(text, "[code:voice] main.py exited with code 1\nlog tail")

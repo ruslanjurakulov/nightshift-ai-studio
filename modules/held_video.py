@@ -293,7 +293,14 @@ class HeldVideos:
                     # A row for this YouTube id already exists (the mirror got
                     # there first). One run, one row: drop the stand-in; the
                     # review record that follows the upload refills the scenes.
-                    return self._delete(filters)
+                    # Its preview object would be orphaned: remove it with the row.
+                    old_preview = self._preview_path(held_id)
+                    gone = self._delete(filters)
+                    if gone and old_preview:
+                        from modules.video_review import VideoReview
+
+                        VideoReview(url=self.url, service_key=self.service_key).delete_objects([old_preview])
+                    return gone
                 if not _is_missing_column(resp):
                     logger.warning("Could not promote held row %s (HTTP %s)", held_id, resp.status_code)
                     return False
@@ -302,6 +309,14 @@ class HeldVideos:
             logger.warning("Could not promote the held row (%s: %s) — the upload is unaffected",
                            type(e).__name__, e)
             return False
+
+    def _preview_path(self, video_id: str) -> Optional[str]:
+        resp = self._send("get", {"video_id": f"eq.{video_id}", "select": "preview_path"}, None, "")
+        if resp is None or resp.status_code >= 300:
+            return None
+        rows = _json_list(resp)
+        path = rows[0].get("preview_path") if rows and isinstance(rows[0], dict) else None
+        return path if isinstance(path, str) and path else None
 
     def _delete(self, filters: dict) -> bool:
         resp = self._send("delete", filters, None, "return=minimal")

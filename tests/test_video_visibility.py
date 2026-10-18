@@ -19,9 +19,9 @@ from types import SimpleNamespace
 from unittest import mock
 
 from modules import held_video
-from modules.held_video import held_video_id
+from modules.held_video import HeldVideos, held_video_id
 from modules.video_review import VideoReview
-from tests.test_video_review_record import FakeSupabase, KEY, URL, _patched
+from tests.test_video_review_record import FakeSupabase, KEY, URL, _patched, _record, _review
 
 MAIN = Path(__file__).resolve().parent.parent / "main.py"
 
@@ -136,6 +136,103 @@ class PruneRanksHeldApart(unittest.TestCase):
             n = VideoReview(url=URL, service_key=KEY).prune("news")
         self.assertEqual(n, 1)
         self.assertEqual(deleted, [{"prefixes": ["news/old.mp4"]}])
+
+
+HELD_OBJECT = f"news/{held_video_id('news', 'the-lost-city')}.mp4"
+
+
+def _storage_deletes(fake):
+    return [c[3]["prefixes"] for c in fake.calls if c[0] == "delete" and "/storage/" in c[1]]
+
+
+class HeldPreviewIsNotOrphaned(unittest.TestCase):
+    """F6: the held run's preview object goes when the run uploads (or its row is merged away)."""
+
+    def _hold(self, fake):
+        HeldVideos(url=URL, service_key=KEY).record_held(
+            channel_id="news", slug="the-lost-city", state=held_video.STATE_HELD, topic="t")
+        fake.rows[held_video_id("news", "the-lost-city")]["preview_path"] = HELD_OBJECT
+
+    def _promote(self):
+        return HeldVideos(url=URL, service_key=KEY).promote(
+            channel_id="news", slug="the-lost-city", youtube_id="dQw4w9WgXcQ",
+            published_at="2026-09-26T08:00:00", privacy="private")
+
+    def test_upload_after_hold_deletes_the_old_object_and_points_at_the_new_one(self):
+        fake = FakeSupabase()
+        with _patched(fake):
+            self._hold(fake)
+            self.assertTrue(self._promote())
+            _record(_review())  # upload_preview -> news/dQw4w9WgXcQ.mp4
+        self.assertEqual(fake.rows["dQw4w9WgXcQ"]["preview_path"], "news/dQw4w9WgXcQ.mp4")
+        self.assertIn([HELD_OBJECT], _storage_deletes(fake))
+
+    def test_a_failed_new_upload_keeps_the_old_object(self):
+        fake = FakeSupabase()
+        r = _review()
+        r.upload_preview = mock.MagicMock(return_value=None)
+        with _patched(fake):
+            self._hold(fake)
+            self._promote()
+            _record(r)
+        self.assertNotIn([HELD_OBJECT], _storage_deletes(fake))
+
+    def test_re_recording_a_held_run_does_not_delete_its_own_preview(self):
+        fake = FakeSupabase()
+        r = _review()
+        r.upload_preview = mock.MagicMock(return_value=HELD_OBJECT)
+        with _patched(fake):
+            self._hold(fake)
+            _record(r, video_id=held_video_id("news", "the-lost-city"))
+        self.assertNotIn([HELD_OBJECT], _storage_deletes(fake))
+
+    def test_the_merged_away_held_row_takes_its_object_with_it(self):
+        fake = FakeSupabase()
+        with _patched(fake):
+            self._hold(fake)
+            fake.rows["dQw4w9WgXcQ"] = {"video_id": "dQw4w9WgXcQ", "channel_id": "news"}  # the mirror got there first
+            self.assertTrue(self._promote())
+        self.assertNotIn(held_video_id("news", "the-lost-city"), fake.rows)
+        self.assertIn([HELD_OBJECT], _storage_deletes(fake))
+
+    def test_prune_keeps_two_held_and_five_uploaded(self):
+        offsets = {}
+
+        def get(url, params=None, headers=None, timeout=None):
+            offsets[params["published_at"]] = params["offset"]
+            return mock.Mock(raise_for_status=lambda: None, json=lambda: [])
+
+        with mock.patch("requests.get", get):
+            VideoReview(url=URL, service_key=KEY).prune("news")
+        self.assertEqual(offsets, {"not.is.null": "5", "is.null": "2"})
+
+
+class RepairedRowShowsTheRepairedCut(unittest.TestCase):
+    """F7: a 'repaired' row never keeps the pre-repair preview."""
+
+    def _repair(self, new_preview):
+        from modules import scene_repair
+
+        fake = FakeSupabase()
+        plan = SimpleNamespace(channel_id="news", slug="the-lost-city", topic="t", run_dir=Path("/nonexistent"),
+                               script={"title": "T", "sections": []}, scene_ids=("s001",))
+        result = SimpleNamespace(video_path=Path("/out/final_video.mp4"), repaired_at="2026-09-25T10:00:00+00:00")
+        env = {"SUPABASE_URL": URL, "SUPABASE_SERVICE_KEY": KEY}
+        with _patched(fake), mock.patch.dict(os.environ, env), \
+                mock.patch.object(VideoReview, "upload_preview", return_value=new_preview):
+            HeldVideos().record_held(channel_id="news", slug="the-lost-city", state=held_video.STATE_HELD, script_text="s")
+            fake.rows[held_video_id("news", "the-lost-city")]["preview_path"] = HELD_OBJECT
+            scene_repair._record_repaired_row(plan, result)
+        return fake.rows[held_video_id("news", "the-lost-city")]
+
+    def test_the_repaired_cut_replaces_the_preview(self):
+        row = self._repair("news/new-cut.mp4")
+        self.assertEqual(row["publish_state"], "repaired_awaiting_review")
+        self.assertEqual(row["preview_path"], "news/new-cut.mp4")
+        self.assertEqual(row["script_text"], "s")  # the first hold's script is not blanked
+
+    def test_without_a_new_copy_the_old_pointer_is_cleared(self):
+        self.assertIsNone(self._repair(None)["preview_path"])
 
 
 if __name__ == "__main__":

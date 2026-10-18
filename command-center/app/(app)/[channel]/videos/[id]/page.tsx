@@ -321,7 +321,10 @@ export default async function VideoDetail({
               {isClip ? t.repurpose.clipState : heldStateLabel(heldState(video), t.held, heldCause(video))}
             </div>
             {!isClip && heldCause(video) === "upload_failed" && (
-              <p className="m-0 text-xs leading-relaxed text-[var(--color-fg)]">{t.held.uploadFailedNote}</p>
+              <p className="m-0 text-xs leading-relaxed text-[var(--color-fg)]">
+                {t.held.uploadFailedNote}
+                {video.preview_path ? ` ${t.held.uploadFailedWatch}` : ""}
+              </p>
             )}
             <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{t.held.detailNote}</p>
             {heldVerdict ? (

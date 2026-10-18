@@ -97,6 +97,12 @@ describe("the sentences", () => {
     });
   }
 
+  it("F3: the credits sentence is neutral: worker-side hold failures are not a balance shortfall", () => {
+    expect(en.create.jobError.credits).toMatch(/could not be reserved/);
+    expect(en.create.jobError.credits).toMatch(/Nothing was charged/);
+    for (const d of [en, ru, uz]) expect(d.create.jobError.credits).not.toMatch(/enough|хватает|yetarli/i);
+  });
+
   it("the three languages differ (a missing translation is not a copy of English)", () => {
     for (const code of JOB_ERROR_CODES) {
       expect(ru.create.jobError[code]).not.toBe(en.create.jobError[code]);
