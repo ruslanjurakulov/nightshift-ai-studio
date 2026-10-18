@@ -13,9 +13,13 @@ for a few sections instead of the nearest stock match. It mirrors the b-roll vid
   image ("Nano Banana"), Black Forest Labs FLUX.2, Ideogram 3, and fal.ai (any of
   its text-to-image models by id). ``CHRONOS_IMAGE_MODEL`` picks a model for the
   selected one; empty means ``DEFAULT_MODELS``.
-* **Never breaks a render.** Every failure (auth, quota, a job that never
-  finishes, an odd response) is caught, logged without the key, and returns
-  ``None`` for that one image — the section falls back to stock.
+* **Soft only when the model returned nothing.** A job that never finishes, a
+  network blip or an odd/empty response is logged without the key and returns
+  ``None`` for that one image — the section falls back to stock. A refusal that
+  re-running will not fix (credentials, quota or billing, a content-policy
+  block) raises :class:`ImageProviderUnavailable` instead: the generator was
+  chosen on purpose, so the run stops with the remedy rather than quietly
+  shipping stock images while the customer is charged (CLAUDE.md #4).
 * **A key is never logged**, and endpoints/model are env-overridable so they can
   be pinned to Leonardo's current API without a code change.
 """
@@ -39,6 +43,115 @@ _ID_KEYS = ("generationId", "id", "sdGenerationJobId")
 _STATUS_KEYS = ("status", "state")
 _SUCCESS = {"complete", "completed", "finished", "done", "ready", "success"}
 _FAILURE = {"failed", "error", "canceled", "cancelled"}
+
+
+class ImageProviderUnavailable(RuntimeError):
+    """The selected image generator refused the request (bad credentials, no
+    quota, or a content-policy block) or cannot be used at all. Nothing else is
+    substituted. The message names the remedy and never carries a key."""
+
+    def __init__(self, provider: str, model: str, reason: str, remedy: str):
+        self.provider = provider
+        self.model = model
+        self.reason = reason
+        self.remedy = remedy
+        super().__init__(f"{provider} ({model or 'no model'}): {reason}. Fix: {remedy}")
+
+
+# Vendor wording, by what it tells us. Only structured / unambiguous phrases
+# count as "the account is out of money": several vendors put a billing
+# pointer at the tail of an ordinary per-minute rate-limit message, so the
+# bare words "quota" or "billing" prove nothing.
+_HARD_QUOTA = ("insufficient_quota", "billing_hard_limit", "exhausted balance", "insufficient balance",
+               "insufficient credit", "insufficient funds", "out of credits", "no credits",
+               "requestsperday", "per day", "perday", "daily")
+_TRANSIENT = ("per minute", "perminute", "retry in", "try again in", "rate limit reached",
+              "requests per", "too many requests", "slow down")
+_POLICY_WORDS = ("moderat", "content_policy", "content policy", "safety system", "safety_violation",
+                 "policy violation")
+
+_REFUSALS = {
+    "auth": ("refused the credentials",
+             "check the provider's API key on the worker; a key for another account or region is refused"),
+    "quota": ("refused the request for quota, balance or billing",
+              "top up the provider account (or wait for its limit to reset), then re-run"),
+    "policy": ("refused the prompt under its content policy",
+               "generated stills are optional extras: turn image generation off for this run "
+               "(CHRONOS_ENABLE_IMAGE_GEN), or change the topic wording, then re-run"),
+}
+
+#: The longest a single 429 is waited out (once) before the image is left to stock.
+RETRY_AFTER_CAP_S = 30.0
+
+
+def _body_text(resp) -> str:
+    text = getattr(resp, "text", "")
+    return text[:2000].lower() if isinstance(text, str) else ""
+
+
+def _retry_after(resp) -> Optional[float]:
+    headers = getattr(resp, "headers", None)
+    try:
+        value = headers.get("Retry-After") if headers is not None else None
+        return max(0.0, float(value)) if value not in (None, "") else None
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _is_transient_429(resp) -> bool:
+    """A 429 that waiting fixes: a per-minute limit ("retry in 27s", "try again
+    in 12s") or one that carries ``Retry-After``. A daily / billing form is not."""
+    text = _body_text(resp)
+    if any(w in text for w in _HARD_QUOTA):
+        return False
+    return _retry_after(resp) is not None or any(w in text for w in _TRANSIENT)
+
+
+def refusal_category(error: Exception) -> Optional[str]:
+    """``auth`` / ``quota`` / ``policy`` when ``error`` is an HTTP refusal that
+    re-running will not fix, else ``None`` (timeouts, 5xx, per-minute 429s, odd
+    responses stay soft). Reads the status and a bounded slice of the body."""
+    resp = getattr(error, "response", None)
+    status = getattr(resp, "status_code", None)
+    if isinstance(status, bool) or not isinstance(status, int):
+        return None
+    text = _body_text(resp)
+    if "billing_hard_limit" in text or "insufficient_quota" in text:
+        return "quota"
+    if status == 402:
+        return "quota"
+    if status in (401, 403):
+        # fal answers 403 "Exhausted balance"; that is money, not a bad key.
+        return "quota" if any(w in text for w in _HARD_QUOTA) else "auth"
+    if status == 429:
+        if _is_transient_429(resp):
+            return None
+        # "You exceeded your current quota, please check your plan and billing details."
+        if any(w in text for w in _HARD_QUOTA) or ("exceeded your current quota" in text and "billing" in text):
+            return "quota"
+        return None
+    if status in (400, 422) and any(w in text for w in _POLICY_WORDS):
+        return "policy"
+    return None
+
+
+def _post(session, url, **kw):
+    """``session.post`` that waits out one transient 429 (``Retry-After`` or a
+    per-minute message, at most ``RETRY_AFTER_CAP_S``) before giving up on it."""
+    resp = session.post(url, **kw)
+    if getattr(resp, "status_code", None) == 429 and _is_transient_429(resp):
+        wait = _retry_after(resp)
+        time.sleep(min(RETRY_AFTER_CAP_S, wait if wait is not None else 5.0))
+        resp = session.post(url, **kw)
+    return resp
+
+
+def _raise_if_refused(provider: str, model: str, error: Exception) -> None:
+    category = refusal_category(error)
+    if category:
+        what, remedy = _REFUSALS[category]
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        raise ImageProviderUnavailable(provider, model, f"{what} (HTTP {status})", remedy) from None
 
 
 def _first(d: dict, keys: Sequence[str]) -> Optional[object]:
@@ -87,6 +200,25 @@ def is_enabled() -> bool:
     if provider not in KEY_ATTRS:
         return False
     return bool(_key(provider)) and bool(getattr(config, "IMAGE_GEN_OPT_IN", False))
+
+
+def preflight() -> None:
+    """Before the run spends anything: when image generation was asked for
+    (``CHRONOS_ENABLE_IMAGE_GEN`` with a generator selected), raise
+    ``ImageProviderUnavailable`` if the provider id is unknown or its key is
+    missing, instead of letting every section quietly use stock. A no-op when
+    generation is off or the provider is the default ``pexels``. No request."""
+    provider = active_provider()
+    if not getattr(config, "IMAGE_GEN_OPT_IN", False) or provider == "pexels":
+        return
+    if provider not in KEY_ATTRS:
+        raise ImageProviderUnavailable(
+            provider, "", "is not a known image provider",
+            "set CHRONOS_IMAGE_PROVIDER to one of: " + ", ".join(PROVIDERS))
+    if not _key(provider):
+        raise ImageProviderUnavailable(
+            provider, active_model(), "image generation is on but no API key is configured",
+            f"set {KEY_ATTRS[provider]} on the worker, or turn image generation off")
 
 
 def active_model() -> str:
@@ -138,7 +270,11 @@ class _Base:
 
     provider_id = ""
 
-    def _warn(self, what: str, e: Exception) -> None:
+    def _warn(self, what: str, e: Exception, *, api: bool = True) -> None:
+        # ``api`` is False for a fetch from the result CDN, whose 403 is an
+        # expired link rather than a refusal of our credentials.
+        if api:
+            _raise_if_refused(self.name, self.model, e)
         # The exception text of requests never carries our header values; the
         # key is only ever in headers.
         logger.warning("%s %s failed (%s: %s) — using stock image instead",
@@ -154,7 +290,7 @@ class _Base:
                         if chunk:
                             fh.write(chunk)
         except Exception as e:
-            self._warn("download", e)
+            self._warn("download", e, api=False)
             return None
         return dest if dest.exists() and dest.stat().st_size > 0 else None
 
@@ -162,7 +298,7 @@ class _Base:
         try:
             raw = base64.b64decode(data, validate=False)
         except Exception as e:
-            self._warn("decode", e)
+            self._warn("decode", e, api=False)
             return None
         if not raw:
             return None
@@ -194,7 +330,7 @@ class OpenAIImageClient(_Base):
         body = {"model": self.model, "prompt": prompt.strip(), "n": 1, "size": size,
                 "quality": self.quality, "output_format": "jpeg"}
         try:
-            resp = self.session.post(f"{self.base_url}/images/generations", json=body,
+            resp = _post(self.session, f"{self.base_url}/images/generations", json=body,
                                      headers={"Authorization": f"Bearer {self.api_key}"},
                                      timeout=max(self.timeout, 180))
             resp.raise_for_status()
@@ -235,7 +371,7 @@ class GeminiImageClient(_Base):
             },
         }
         try:
-            resp = self.session.post(f"{self.base_url}/models/{self.model}:generateContent", json=body,
+            resp = _post(self.session, f"{self.base_url}/models/{self.model}:generateContent", json=body,
                                      headers={"x-goog-api-key": self.api_key}, timeout=max(self.timeout, 120))
             resp.raise_for_status()
             data = resp.json()
@@ -271,7 +407,7 @@ class FluxClient(_Base):
         headers = {"x-key": self.api_key, "accept": "application/json"}
         body = {"prompt": prompt.strip(), "width": _round16(width), "height": _round16(height)}
         try:
-            resp = self.session.post(f"{self.base_url}/{self.model}", json=body, headers=headers,
+            resp = _post(self.session, f"{self.base_url}/{self.model}", json=body, headers=headers,
                                      timeout=self.timeout)
             resp.raise_for_status()
             job = resp.json()
@@ -296,7 +432,10 @@ class FluxClient(_Base):
             if status == "Ready":
                 sample = (data.get("result") or {}).get("sample")
                 return self._download(sample, Path(out_path)) if sample else None
-            if status in ("Error", "Failed", "Content Moderated", "Request Moderated", "Task not found"):
+            if status in ("Content Moderated", "Request Moderated"):
+                what, remedy = _REFUSALS["policy"]
+                raise ImageProviderUnavailable(self.name, self.model, f"{what} ({status})", remedy)
+            if status in ("Error", "Failed", "Task not found"):
                 logger.warning("FLUX generation ended with status %r", status)
                 return None
             time.sleep(max(0.0, interval))
@@ -322,7 +461,7 @@ class IdeogramClient(_Base):
                 "aspect_ratio": (None, _aspect(width, height).replace(":", "x")),
                 "rendering_speed": (None, os.getenv("CHRONOS_IDEOGRAM_SPEED", "DEFAULT") or "DEFAULT")}
         try:
-            resp = self.session.post(f"{self.base_url}/v1/ideogram-v3/generate", files=form,
+            resp = _post(self.session, f"{self.base_url}/v1/ideogram-v3/generate", files=form,
                                      headers={"Api-Key": self.api_key}, timeout=max(self.timeout, 120))
             resp.raise_for_status()
             items = resp.json().get("data") or []
@@ -356,7 +495,7 @@ class FalImageClient(_Base):
                 "4:3": "landscape_4_3", "3:4": "portrait_4_3"}.get(aspect, "landscape_16_9")
         body = {"prompt": prompt.strip(), "image_size": size, "num_images": 1}
         try:
-            resp = self.session.post(f"{self.base_url}/{self.model.strip('/')}", json=body,
+            resp = _post(self.session, f"{self.base_url}/{self.model.strip('/')}", json=body,
                                      headers={"Authorization": f"Key {self.api_key}"},
                                      timeout=max(self.timeout, 180))
             resp.raise_for_status()
@@ -399,10 +538,11 @@ class LeonardoClient:
         if self.model_id:
             body["modelId"] = self.model_id
         try:
-            resp = self.session.post(f"{self.base_url}/generations", json=body, timeout=self.timeout)
+            resp = _post(self.session, f"{self.base_url}/generations", json=body, timeout=self.timeout)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
+            _raise_if_refused("Leonardo", self.model_id, e)
             logger.warning("Leonardo submit failed (%s: %s) — using stock image instead",
                            type(e).__name__, e)
             return None
@@ -418,6 +558,7 @@ class LeonardoClient:
                 resp.raise_for_status()
                 data = resp.json()
             except Exception as e:
+                _raise_if_refused("Leonardo", self.model_id, e)
                 logger.warning("Leonardo poll failed (%s: %s)", type(e).__name__, e)
                 return None
             # Result nests under `generations_by_pk`.
