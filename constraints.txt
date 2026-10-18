@@ -1,0 +1,14 @@
+# Exact versions of the SDKs whose behaviour a worker image must not change by
+# itself. requirements.txt keeps its floors (>=); Dockerfile.worker installs with
+# `-c constraints.txt`, so a rebuild can never pick up a newer major release of
+# these without a reviewed change here. Raise a pin deliberately, in its own PR,
+# after the test suite passes on the new version.
+#
+# Versions = what /home/user/venv (the environment the 5543-test suite ran in on
+# 2026-10-18) has installed; all four exist on PyPI for Python 3.11, the image's
+# interpreter (elevenlabs, google-genai, edge-tts as wheels, openai-whisper as an
+# sdist). The repository has no lockfile and no CI pin to compare against.
+elevenlabs==2.70.0
+google-genai==2.26.0
+edge-tts==7.2.8
+openai-whisper==20250625

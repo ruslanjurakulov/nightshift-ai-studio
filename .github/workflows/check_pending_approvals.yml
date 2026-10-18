@@ -36,7 +36,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: pip install -c constraints.txt -r requirements.txt
 
       - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
