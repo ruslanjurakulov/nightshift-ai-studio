@@ -9,7 +9,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { ReactNode } from "react";
 import { en } from "@/lib/i18n/en";
 import { LEGACY_SCOPES } from "@/lib/api/scopes";
-import { limitEffect } from "@/lib/limit-change";
+import { effectiveOrgLimit, limitEffect } from "@/lib/limit-change";
 import { supabaseStub } from "./helpers/supabaseStub";
 
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a> }));
@@ -90,6 +90,19 @@ describe("limitEffect", () => {
     expect(limitEffect(900, 500)).toBe("down");
     expect(limitEffect(500, null)).toBe("removed");
     expect(limitEffect(null, 500)).toBe("set");
+    expect(limitEffect(500, 0)).toBe("blocked");
+    expect(limitEffect(null, 0)).toBe("blocked");
+    expect(limitEffect(0, 0)).toBe("same");
+    expect(limitEffect(0, 500)).toBe("up");
+  });
+
+  it("effectiveOrgLimit is the server's rule: min(plan ceiling, own limit or the ceiling)", () => {
+    expect(effectiveOrgLimit(null, 10000)).toBe(10000);
+    expect(effectiveOrgLimit(50000, 10000)).toBe(10000);
+    expect(effectiveOrgLimit(4000, 10000)).toBe(4000);
+    expect(effectiveOrgLimit(0, 10000)).toBe(0);
+    expect(effectiveOrgLimit(4000, null)).toBe(4000);
+    expect(effectiveOrgLimit(null, null)).toBeNull();
   });
 });
 
@@ -125,8 +138,8 @@ describe("activating the API", () => {
 });
 
 describe("the account's monthly limit", () => {
-  async function open() {
-    answer(INFO);
+  async function open(info: unknown = INFO) {
+    answer(info);
     render(<DeveloperConsole orgId="o1" topup={TOPUP} />);
     fireEvent.click(await screen.findByRole("tab", { name: d.tabUsage }));
     return await screen.findByLabelText(d.orgLimit);
@@ -161,11 +174,70 @@ describe("the account's monthly limit", () => {
     expect(called("api_set_monthly_limit")).toHaveLength(1);
   });
 
+  it("saving sends exactly what was typed: an emptied field is null (no limit of its own), never 0 and never the clamped figure", async () => {
+    let input = await open();
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: d.save }));
+    fireEvent.click(confirmKey(cs.limitConfirm));
+    await waitFor(() => expect(called("api_set_monthly_limit")).toHaveLength(1));
+    expect(called("api_set_monthly_limit")[0][1]).toEqual({ p_org: "o1", p_cents: null });
+    cleanup();
+    h.rpc.mockReset();
+    input = await open();
+    fireEvent.change(input, { target: { value: "500" } });
+    fireEvent.click(screen.getByRole("button", { name: d.save }));
+    fireEvent.click(confirmKey(cs.limitConfirm));
+    await waitFor(() => expect(called("api_set_monthly_limit")).toHaveLength(1));
+    // the server applies the ceiling; the browser does not pre-empt it
+    expect(called("api_set_monthly_limit")[0][1]).toEqual({ p_org: "o1", p_cents: 50000 });
+  });
+
   it("an empty field means the plan ceiling, and the sheet says so rather than 'no limit'", async () => {
     const input = await open();
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: d.save }));
     expect(screen.getByRole("alertdialog").textContent).toContain("the plan ceiling of $100.00 applies");
+  });
+
+  it("a figure above the plan ceiling shows the EFFECTIVE limit and says the ceiling is what binds", async () => {
+    const input = await open();
+    fireEvent.change(input, { target: { value: "500" } });
+    fireEvent.click(screen.getByRole("button", { name: d.save }));
+    const dlg = screen.getByRole("alertdialog");
+    const text = dlg.textContent ?? "";
+    expect(text).toContain("You entered $500.00 but your plan ceiling is $100.00, so $100.00 applies.");
+    // After: the effective $100, never the typed $500
+    const rows = Array.from(dlg.querySelectorAll("div")).filter((x) => x.querySelector("dt"));
+    const after = rows.find((x) => x.querySelector("dt")?.textContent === cs.dAfter);
+    expect(after?.querySelector("dd")?.textContent).toBe("$100.00");
+    expect(text).toContain(cs.limitUp);
+  });
+
+  it("with no limit of its own, going to a figure under the ceiling is LOWER (an unknown 'before' is the ceiling, not 0)", async () => {
+    const input = await open({ ...INFO, monthly_limit_cents: null });
+    fireEvent.change(input, { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: d.save }));
+    const text = screen.getByRole("alertdialog").textContent ?? "";
+    expect(text).toContain("None set, the plan ceiling of $100.00 applies");
+    expect(text).toContain("$50.00");
+    expect(text).toContain(cs.limitDown);
+    expect(text).not.toContain(cs.limitUp);
+  });
+
+  it("entering the ceiling itself, or above it, with no limit set changes nothing and says so", async () => {
+    const input = await open({ ...INFO, monthly_limit_cents: null });
+    fireEvent.change(input, { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: d.save }));
+    expect(screen.getByRole("alertdialog").textContent).toContain(cs.limitSame);
+  });
+
+  it("a limit of $0 says it blocks every API call, not that calls are refused sooner", async () => {
+    const input = await open();
+    fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: d.save }));
+    const text = screen.getByRole("alertdialog").textContent ?? "";
+    expect(text).toContain(cs.limitOrgBlocked);
+    expect(text).not.toContain(cs.limitDown);
   });
 
   it("a number that does not parse is refused before any sheet", async () => {
@@ -195,7 +267,7 @@ describe("a key's monthly limit", () => {
     expect(text).toContain("Server");
     expect(text).toContain("$5.00");
     expect(text).toContain(d.noLimit);
-    expect(text).toContain(cs.limitRemoved);
+    expect(text).toContain(cs.limitKeyRemoved);
     expect(called("set_api_key_limit")).toHaveLength(0);
   });
 
@@ -211,6 +283,15 @@ describe("a key's monthly limit", () => {
     fireEvent.click(confirmKey(cs.limitConfirm));
     await waitFor(() => expect(called("set_api_key_limit")).toHaveLength(1));
     expect(called("set_api_key_limit")[0][1]).toEqual({ p_key_id: "k1", p_cents: 1250 });
+  });
+
+  it("a key limit of $0 says it blocks every call made with that key", async () => {
+    await open("0");
+    fireEvent.click(setLimitButtons()[0]);
+    await screen.findByRole("alertdialog");
+    const text = screen.getByRole("alertdialog").textContent ?? "";
+    expect(text).toContain(cs.limitKeyBlocked);
+    expect(text).not.toContain(cs.limitDown);
   });
 
   it("a prompt the person dismissed opens no sheet and writes nothing", async () => {

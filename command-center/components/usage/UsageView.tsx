@@ -430,9 +430,10 @@ function ExtraCredits({
    */
   async function press() {
     if (busy || !canChange || asking.current) return;
-    if (!on) {
-      asking.current = true;
-      try {
+    // Held until the save has been started, not only while the sheet is open, so a tap in between cannot start a second.
+    asking.current = true;
+    try {
+      if (!on) {
         const cs = t.confirmSheets;
         const ok = await confirm({
           title: cs.extraOnTitle,
@@ -451,11 +452,11 @@ function ExtraCredits({
           ],
         });
         if (!ok) return;
-      } finally {
-        asking.current = false;
       }
+      await flip();
+    } finally {
+      asking.current = false;
     }
-    await flip();
   }
 
   const day = useDay();

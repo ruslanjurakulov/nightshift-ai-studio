@@ -20,6 +20,8 @@ const h = vi.hoisted(() => ({
   writes: [] as { table: string; op: string; args: unknown[] }[],
   reads: {} as Record<string, unknown>,
   writeError: null as { message: string } | null,
+  /** When set, a write waits for it: a save that is still in flight. */
+  hold: null as Promise<void> | null,
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: h.refresh, push: vi.fn() }), usePathname: () => "/chronos/channels" }));
@@ -48,7 +50,8 @@ vi.mock("@/lib/supabase/client", () => ({
       b.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => {
         const wrote = ops.some(([n]) => n === "update" || n === "insert");
         const out = wrote ? { data: null, error: h.writeError } : { data: h.reads[table] ?? [], error: null };
-        return Promise.resolve(out).then(res, rej);
+        const settled = wrote && h.hold ? h.hold.then(() => out) : Promise.resolve(out);
+        return settled.then(res, rej);
       };
       return b;
     },
@@ -80,6 +83,7 @@ beforeEach(() => {
   h.writes.length = 0;
   h.reads = {};
   h.writeError = null;
+  h.hold = null;
 });
 afterEach(cleanup);
 
@@ -181,6 +185,25 @@ describe("channel card: auto publish", () => {
     fireEvent.click(autoSwitch());
     expect(screen.getAllByRole("alertdialog").length).toBe(1);
     expect(h.writes).toEqual([]);
+  });
+
+  it("while a confirmed save is still in flight, another switch on the card cannot start a question or a second write", async () => {
+    let release: () => void = () => {};
+    h.hold = new Promise<void>((r) => {
+      release = r;
+    });
+    card();
+    fireEvent.click(autoSwitch());
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.click(confirmKey(cs.autoOnConfirm));
+    await waitFor(() => expect(h.writes.length).toBe(1));
+    // the write has not come back: the pause key is not disabled by the auto-publish save, only the card's lock stops it
+    fireEvent.click(screen.getByRole("button", { name: en.channels.pause }));
+    await settle();
+    expect(dialog()).toBeNull();
+    expect(h.rpc).not.toHaveBeenCalled();
+    release();
+    await settle();
   });
 
   it("turning it OFF is the safe direction and stays one tap", async () => {
@@ -303,6 +326,26 @@ describe("usage: extra credits", () => {
     expect(h.rpc).toHaveBeenCalledTimes(1);
   });
 
+  it("while the confirmed save is in flight, another tap on the switch neither asks again nor saves twice", async () => {
+    let release: (v: unknown) => void = () => {};
+    h.rpc.mockReturnValue(
+      new Promise((r) => {
+        release = r;
+      }),
+    );
+    usage(false);
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "SPEND" } });
+    fireEvent.click(confirmKey(cs.extraOnConfirm));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("switch"));
+    await settle();
+    expect(dialog()).toBeNull();
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+    release({ data: { use_extra_credits: true, changed: true }, error: null });
+    await settle();
+  });
+
   it("turning it OFF protects the packs and stays one tap", async () => {
     h.rpc.mockResolvedValue({ data: { use_extra_credits: false, changed: true }, error: null });
     usage(true);
@@ -380,6 +423,37 @@ describe("publish approvals", () => {
     expect((h.writes[0].args[0] as Record<string, unknown>).status).toBe("rejected");
   });
 
+  it("a request that was decided by someone else while the sheet was open is not decided again, and nothing is sent", async () => {
+    const view = approvals();
+    fireEvent.click(await screen.findByRole("button", { name: en.approvals.approve }));
+    // another admin decides it, and the list reloads (a new channel prop reloads it) while our sheet is still open
+    h.reads.publish_approvals = [{ ...ROW, status: "approved", decided_by: "u-other", decided_at: "2026-10-03T09:00:00Z" }];
+    view.rerender(
+      <I18nProvider locale="en">
+        <ApprovalsBoard channelId="chronos2" myRole="admin" myEmail="me@x.uz" myUserId="u-me" />
+      </I18nProvider>,
+    );
+    await settle();
+    fireEvent.click(confirmKey(cs.approveConfirm));
+    await settle();
+    expect(h.writes).toEqual([]);
+    expect(screen.getByText(cs.staleSheet)).toBeTruthy();
+  });
+
+  it("if the person can no longer decide when the sheet is answered (role changed), nothing is sent", async () => {
+    const view = approvals();
+    fireEvent.click(await screen.findByRole("button", { name: en.approvals.approve }));
+    view.rerender(
+      <I18nProvider locale="en">
+        <ApprovalsBoard channelId="chronos" myRole="viewer" myEmail="me@x.uz" myUserId="u-me" />
+      </I18nProvider>,
+    );
+    fireEvent.click(confirmKey(cs.approveConfirm));
+    await settle();
+    expect(h.writes).toEqual([]);
+    expect(screen.getByText(cs.staleSheet)).toBeTruthy();
+  });
+
   it("the keys are 44px tall", async () => {
     approvals();
     const key = await screen.findByRole("button", { name: en.approvals.approve });
@@ -434,7 +508,7 @@ describe("video review panel", () => {
     await settle();
     expect(h.writes).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    const key = confirmKey(cs.rvApproveConfirm);
+    const key = confirmKey(en.review.approve);
     fireEvent.click(key);
     fireEvent.click(key);
     await waitFor(() => expect(h.writes.length).toBe(1));
@@ -443,12 +517,55 @@ describe("video review panel", () => {
     expect(h.writes.length).toBe(1);
   });
 
+  it("the sheet uses the same words as the page: button names, Privacy and the Publish gate", () => {
+    review({ allowed: true, reasons: [], flagged: null });
+    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
+    const dlg = screen.getByRole("alertdialog");
+    expect(within(dlg).getByRole("button", { name: en.review.approve })).toBeTruthy();
+    expect(dlg.textContent).toContain(en.review.privacy);
+    expect(dlg.textContent).toContain(en.review.gate);
+  });
+
+  it("if the gate verdict changes while the sheet is open, nothing is filed and the person is told", async () => {
+    const view = wrap(<ReviewPanel video={video()} autoPublish={false} gate={{ allowed: true, reasons: [], flagged: null }} pendingIntent={null} />);
+    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
+    view.rerender(
+      <I18nProvider locale="en">
+        <ReviewPanel video={video()} autoPublish={false} gate={{ allowed: false, reasons: ["claim flagged"], flagged: 2 }} pendingIntent={null} />
+      </I18nProvider>,
+    );
+    fireEvent.click(confirmKey(en.review.approve));
+    await settle();
+    expect(h.writes).toEqual([]);
+    expect(screen.getByText(cs.staleSheet)).toBeTruthy();
+  });
+
+  it("if the video is no longer waiting when Approve is answered, nothing is filed", async () => {
+    const view = review({ allowed: true, reasons: [], flagged: null });
+    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
+    view.rerender(
+      <I18nProvider locale="en">
+        <ReviewPanel video={video({ review_state: "approved" } as Partial<VideoRow>)} autoPublish={false} gate={{ allowed: true, reasons: [], flagged: null }} pendingIntent={null} />
+      </I18nProvider>,
+    );
+    fireEvent.click(confirmKey(en.review.approve));
+    await settle();
+    expect(h.writes).toEqual([]);
+    expect(screen.getByText(cs.staleSheet)).toBeTruthy();
+  });
+
+  it("render again and new script say that the price is not shown here", () => {
+    review();
+    fireEvent.click(screen.getByRole("button", { name: en.review.regenerate }));
+    expect(screen.getByRole("alertdialog").textContent).toContain("cannot show the price");
+  });
+
   it("render again and new script each ask, and file their own action", async () => {
     review();
     fireEvent.click(screen.getByRole("button", { name: en.review.regenerate }));
     expect(h.writes).toEqual([]);
     expect(screen.getByRole("alertdialog").textContent).toContain(cs.rvRegenBody);
-    fireEvent.click(confirmKey(cs.rvRegenConfirm));
+    fireEvent.click(confirmKey(en.review.regenerate));
     await waitFor(() => expect(h.writes.length).toBe(1));
     expect((h.writes[0].args[0] as Record<string, unknown>).action).toBe("regenerate");
     cleanup();
@@ -456,7 +573,7 @@ describe("video review panel", () => {
     review();
     fireEvent.click(screen.getByRole("button", { name: en.review.regenerateScript }));
     expect(h.writes).toEqual([]);
-    fireEvent.click(confirmKey(cs.rvScriptConfirm));
+    fireEvent.click(confirmKey(en.review.regenerateScript));
     await waitFor(() => expect(h.writes.length).toBe(1));
     expect((h.writes[0].args[0] as Record<string, unknown>).action).toBe("regenerate_script");
   });

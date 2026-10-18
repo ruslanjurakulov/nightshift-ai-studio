@@ -9,7 +9,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { StatusPill } from "@/components/ui";
 import { ErrorState } from "@/components/ReadError";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
-import { limitEffect, type LimitEffect } from "@/lib/limit-change";
+import { effectiveOrgLimit, limitEffect, type LimitEffect } from "@/lib/limit-change";
 import { resolvedTheme } from "@/lib/theme";
 import { paddleLocale, type PaddleEnvironment } from "@/lib/paddle";
 import { ensurePaddle, type PaddleEventData } from "@/lib/paddle-client";
@@ -446,8 +446,32 @@ function limitWords(
   return ceiling === undefined || ceiling === null ? d.limitNone : fmt(d.limitPlanCeiling, { cap: formatUsd(ceiling, locale) });
 }
 
-function effectText(effect: LimitEffect, d: { limitUp: string; limitDown: string; limitSame: string; limitRemoved: string; limitSet: string }): string {
-  return { up: d.limitUp, down: d.limitDown, same: d.limitSame, removed: d.limitRemoved, set: d.limitSet }[effect];
+type EffectWords = {
+  limitUp: string;
+  limitDown: string;
+  limitSame: string;
+  limitOrgBlocked: string;
+  limitKeyRemoved: string;
+  limitKeySet: string;
+  limitKeyBlocked: string;
+};
+
+/** "Removed" and "set" only happen to a key (an account always has the plan ceiling), so each path has its own words. */
+function effectText(effect: LimitEffect, d: EffectWords, scope: "key" | "org"): string {
+  switch (effect) {
+    case "up":
+      return d.limitUp;
+    case "down":
+      return d.limitDown;
+    case "same":
+      return d.limitSame;
+    case "blocked":
+      return scope === "key" ? d.limitKeyBlocked : d.limitOrgBlocked;
+    case "removed":
+      return d.limitKeyRemoved;
+    case "set":
+      return d.limitKeySet;
+  }
 }
 
 function Activate({
@@ -755,7 +779,7 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
         { label: cs.dKey, value: k.name },
         { label: cs.dNow, value: limitWords(k.monthly_limit_cents, cs, locale, fmt) },
         { label: cs.dAfter, value: limitWords(limit.cents, cs, locale, fmt) },
-        { label: cs.dEffect, value: effectText(limitEffect(k.monthly_limit_cents, limit.cents), cs), multiline: true },
+        { label: cs.dEffect, value: effectText(limitEffect(k.monthly_limit_cents, limit.cents), cs, "key"), multiline: true },
       ],
     });
     if (!ok) return;
@@ -1138,22 +1162,31 @@ function Limits({ orgId, info, onSaved }: { orgId: string; info: Console; onSave
       setMsg(d.limitInvalid);
       return;
     }
-    // The account without a limit of its own is held by the plan's ceiling, so that is what "none" is compared as.
+    // What applies is the server's rule, min(plan ceiling, own limit or the ceiling): an account without a limit of its
+    // own is held by the ceiling, and a typed figure above it is cut down to it. The sheet shows that, not the typed
+    // figure, and says when the ceiling is what binds.
+    const cs = t.confirmSheets;
     const cap = info.tier_cap_cents;
-    const before = info.monthly_limit_cents ?? cap;
-    const after = limit.cents ?? cap;
+    const before = effectiveOrgLimit(info.monthly_limit_cents, cap);
+    const after = effectiveOrgLimit(limit.cents, cap);
+    const binds = cap !== null && limit.cents !== null && limit.cents > cap;
+    const shown = (own: number | null, effective: number | null) =>
+      own === null ? limitWords(null, cs, locale, fmt, cap) : formatUsd(effective, locale);
     asking.current = true;
     try {
-      const cs = t.confirmSheets;
       const ok = await confirm({
         title: cs.limitOrgTitle,
         message: cs.limitBody,
         confirmLabel: cs.limitConfirm,
         tone: "primary",
         details: [
-          { label: cs.dNow, value: limitWords(info.monthly_limit_cents, cs, locale, fmt, cap) },
-          { label: cs.dAfter, value: limitWords(limit.cents, cs, locale, fmt, cap) },
-          { label: cs.dEffect, value: effectText(limitEffect(before, after), cs), multiline: true },
+          { label: cs.dNow, value: shown(info.monthly_limit_cents, before) },
+          { label: cs.dAfter, value: shown(limit.cents, after) },
+          {
+            label: cs.dEffect,
+            value: `${binds ? `${fmt(cs.limitCeilingBinds, { entered: formatUsd(limit.cents, locale), cap: formatUsd(cap, locale) })} ` : ""}${effectText(limitEffect(before, after), cs, "org")}`,
+            multiline: true,
+          },
         ],
       });
       if (!ok) return;

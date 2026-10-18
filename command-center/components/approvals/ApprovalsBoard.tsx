@@ -76,6 +76,9 @@ export function ApprovalsBoard({
   // Locked synchronously while a sheet is open or the decision is being written: a second tap on any row's key must
   // not open a second sheet or send a second decision.
   const deciding = useRef(false);
+  // The newest list and role, read after the person has answered: the sheet may have been open while the list reloaded.
+  const latest = useRef({ rows, myRole });
+  latest.current = { rows, myRole };
 
   async function load() {
     const supabase = createClient();
@@ -177,6 +180,14 @@ export function ApprovalsBoard({
         ],
       });
       if (!ok) return;
+      // Still the same pending request, and still mine to decide? The database decides anyway; this only avoids
+      // acting on a sheet that describes something that has since changed.
+      const now = latest.current.rows?.find((r) => r.id === row.id);
+      if (!now || now.status !== "pending" || now.video_ref !== row.video_ref || !canDecide(latest.current.myRole, now.requested_by, myUserId)) {
+        setError(cs.staleSheet);
+        await load();
+        return;
+      }
       await decide(row, status);
     } finally {
       deciding.current = false;

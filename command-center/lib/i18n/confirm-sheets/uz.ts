@@ -11,18 +11,16 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
   dRole: "Rol",
   dKey: "API kaliti",
   dEffect: "Nima oʻzgaradi",
-  dPrivacy: "Hozirgi kirish",
-  dGate: "Joylashdan oldingi tekshiruv",
-  dAutoPublish: "Avto joylash",
+  dAutoPublish: "Avto nashr",
   dExtraBalance: "Hisobdagi qoʻshimcha kreditlar",
 
-  autoOnTitle: "«{name}» uchun avto joylash yoqilsinmi?",
+  autoOnTitle: "«{name}» uchun avto nashr yoqilsinmi?",
   autoOnBody:
-    "Videolar sizdan soʻramasdan joylanadi. Video joylashdan oldingi tekshiruvdan oʻtishi bilan oʻzi ommaviy boʻladi va uni hech kim oldindan tasdiqlamaydi. Tekshiruv ishlashda davom etadi, lekin u yagona qolgan toʻsiq.",
-  autoOnConfirm: "Avto joylashni yoqish",
+    "Videolar sizdan soʻramasdan nashr qilinadi. Video nashr darvozasidan oʻtishi bilan oʻzi ommaviy boʻladi va uni hech kim oldindan tasdiqlamaydi. Darvoza ishlashda davom etadi, lekin u yagona qolgan toʻsiq.",
+  autoOnConfirm: "Avto nashrni yoqish",
   autoOnWord: "NASHR",
   autoModeAsk: "Avval sizdan soʻraydi",
-  autoModeSelf: "Oʻzi joylaydi",
+  autoModeSelf: "Oʻzi nashr qiladi",
 
   pauseTitle: "«{name}» pauzaga qoʻyilsinmi?",
   pauseBody: "Rejalashtiruvchi bu kanalni davom ettirmaguningizcha oʻtkazib yuboradi, shuning uchun yangi videolar yaratilmaydi. Videolar va tarix saqlanadi.",
@@ -31,7 +29,7 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
   resumeBody:
     "Rejalashtiruvchi bu kanal uchun jadvali boʻyicha yana video yarata boshlaydi. Har bir ishga tushirish kreditlar yoki provayder limitlarini sarflaydi.",
   resumeConfirm: "Kanalni davom ettirish",
-  resumeAutoOn: "Bu kanalda avto joylash yoqilgan, shuning uchun u yaratgan narsa sizdan soʻramasdan ommaviy boʻlishi mumkin.",
+  resumeAutoOn: "Bu kanalda avto nashr yoqilgan, shuning uchun u yaratgan narsa sizdan soʻramasdan ommaviy boʻlishi mumkin.",
 
   reviewOffTitle: "«{name}» uchun storyboard tekshiruvi oʻchirilsinmi?",
   reviewOffBody:
@@ -45,24 +43,23 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
   extraOnWord: "SARFLASH",
 
   approveTitle: "«{video}» tasdiqlansinmi?",
-  approveBody: "Bu videoning ommaviy boʻlishiga ruxsat beradi. Joylashdan oldingi tekshiruv baribir uning oldida ishlaydi.",
+  approveBody: "Bu videoning ommaviy boʻlishiga ruxsat beradi. Nashr darvozasi baribir uning oldida ishlaydi.",
   approveConfirm: "Tasdiqlash",
   rejectTitle: "«{video}» rad etilsinmi?",
   rejectBody:
     "Video ommaviy boʻlishga tasdiqlanmadi. Soʻrov rad etilgan sifatida yopiladi, qayta soʻrash uchun yangi soʻrov kerak.",
   rejectConfirm: "Rad etish",
 
-  rvApproveTitle: "«{title}» tasdiqlanib, joylansinmi?",
+  rvApproveTitle: "«{title}» tasdiqlanib, nashr qilinsinmi?",
   rvApproveBody:
-    "Siz konveyerdan videoni keyingi ishga tushirishda ommaviy qilishni soʻraysiz. Joylashdan oldingi tekshiruv birinchi ishlaydi, u toʻxtatgan video chiqmaydi.",
-  rvApproveConfirm: "Tasdiqlash va joylash",
+    "Siz konveyerdan videoni keyingi ishga tushirishda ommaviy qilishni soʻraysiz. Nashr darvozasi birinchi ishlaydi, u toʻxtatgan video chiqmaydi.",
   rvRegenTitle: "«{title}» qaytadan renderlansinmi?",
-  rvRegenBody: "Keyingi ishga tushirish bu videoni boshidan qayta renderlaydi. Bu yangi renderga tushadi.",
-  rvRegenConfirm: "Qaytadan renderlash",
+  rvRegenBody:
+    "Keyingi ishga tushirish bu videoni boshidan qayta renderlaydi. Bu yangi renderga tushadi. Narxni bu sahifa koʻrsata olmaydi: u faqat ishga tushganda maʼlum boʻladi.",
   rvScriptTitle: "«{title}» uchun yangi ssenariy yozilsinmi?",
   rvScriptBody:
-    "Keyingi ishga tushirish yangi ssenariy yozadi va u boʻyicha yangi video renderlaydi. Bu yangi ssenariy va yangi renderga tushadi.",
-  rvScriptConfirm: "Yangi ssenariy, yangi video",
+    "Keyingi ishga tushirish yangi ssenariy yozadi va u boʻyicha yangi video renderlaydi. Bu yangi ssenariy va yangi renderga tushadi. Narxni bu sahifa koʻrsata olmaydi: u faqat ishga tushganda maʼlum boʻladi.",
+  staleSheet: "Savol ochiq turganda bu oʻzgardi, shuning uchun hech narsa yuborilmadi. Uni qayta oching va tekshiring.",
 
   apiActivateTitle: "API yoqilsinmi?",
   apiActivateBody:
@@ -77,8 +74,11 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
   limitUp: "Yuqoriroq: API orqali oyiga koʻproq sarflash mumkin.",
   limitDown: "Pastroq: chaqiruvlar tezroq rad etiladi.",
   limitSame: "Hozirgidek: hech narsa oʻzgarmaydi.",
-  limitRemoved: "Limit olib tashlanadi: bu kalitni faqat akkaunt limitlari cheklaydi.",
-  limitSet: "Limit qoʻshiladi: kalit unga yetganda toʻxtaydi.",
+  limitOrgBlocked: "$0 limit bu akkauntdan barcha API chaqiruvlarini siz uni oshirmaguningizcha bloklaydi.",
+  limitKeyRemoved: "Limit olib tashlanadi: bu kalitni faqat akkaunt limitlari cheklaydi.",
+  limitKeySet: "Limit qoʻshiladi: kalit unga yetganda toʻxtaydi.",
+  limitKeyBlocked: "$0 limit bu kalit bilan qilingan barcha chaqiruvlarni siz uni oshirmaguningizcha bloklaydi.",
+  limitCeilingBinds: "Siz {entered} kiritdingiz, lekin tarifingiz chegarasi {cap}, shuning uchun {cap} amal qiladi.",
 
   claimTitle: "Oʻzingizni egasi qilasizmi?",
   claimBody:

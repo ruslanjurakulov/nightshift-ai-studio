@@ -51,6 +51,23 @@ describe("confirmSheets parity", () => {
     }
   });
 
+  it("uz says nashr (as the typed word and the review page do), not joylash", () => {
+    const all = Object.values(uz.confirmSheets).join(" ");
+    expect(all).not.toMatch(/joyla/i);
+    expect(uz.confirmSheets.autoOnWord).toBe("NASHR");
+  });
+
+  it("the review-panel sheets borrow the page's own words for the buttons, the gate and privacy", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const r = dicts[loc].review;
+      expect(r.approve.length).toBeGreaterThan(2);
+      expect(r.gate.length).toBeGreaterThan(2);
+      expect(r.privacy.length).toBeGreaterThan(2);
+    }
+    expect(ru.confirmSheets.approveBody).toContain("Шлюз публикации");
+    expect(uz.confirmSheets.approveBody).toContain("Nashr darvozasi");
+  });
+
   it("the auto publish and approval sheets say the consequence in plain words (en)", () => {
     expect(en.confirmSheets.autoOnBody).toContain("Videos publish without asking you");
     expect(en.confirmSheets.approveBody).toContain("This lets the video go public");

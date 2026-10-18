@@ -16,8 +16,6 @@ export const confirmSheetsEn = {
   dRole: "Role",
   dKey: "API key",
   dEffect: "Effect",
-  dPrivacy: "Privacy now",
-  dGate: "Publish gate",
   dAutoPublish: "Auto publish",
   dExtraBalance: "Extra credits you hold",
 
@@ -67,14 +65,13 @@ export const confirmSheetsEn = {
   rvApproveTitle: "Approve and publish “{title}”?",
   rvApproveBody:
     "This asks the pipeline to take the video public on its next run. The publish gate still runs first, and a video it blocks does not go out.",
-  rvApproveConfirm: "Approve and publish",
   rvRegenTitle: "Render “{title}” again?",
-  rvRegenBody: "The next run renders this video again from the start. That costs a new render.",
-  rvRegenConfirm: "Render it again",
+  rvRegenBody:
+    "The next run renders this video again from the start. That costs a new render. This page cannot show the price: it is only known when the run starts.",
   rvScriptTitle: "New script for “{title}”?",
   rvScriptBody:
-    "The next run writes a new script and renders a new video from it. That costs a new script and a new render.",
-  rvScriptConfirm: "New script, new video",
+    "The next run writes a new script and renders a new video from it. That costs a new script and a new render. This page cannot show the price: it is only known when the run starts.",
+  staleSheet: "This changed while the question was open, so nothing was sent. Open it again and check.",
 
   // API access and limits
   apiActivateTitle: "Activate the API?",
@@ -90,8 +87,11 @@ export const confirmSheetsEn = {
   limitUp: "Higher: more can be spent through the API each month.",
   limitDown: "Lower: calls are refused sooner.",
   limitSame: "The same as now: nothing changes.",
-  limitRemoved: "Limit removed: this key is held back only by the limits of the account.",
-  limitSet: "A limit is added: this key stops when it is reached.",
+  limitOrgBlocked: "A limit of $0 blocks every API call from this account until you raise it.",
+  limitKeyRemoved: "Limit removed: this key is held back only by the limits of the account.",
+  limitKeySet: "A limit is added: this key stops when it is reached.",
+  limitKeyBlocked: "A limit of $0 blocks every call made with this key until you raise it.",
+  limitCeilingBinds: "You entered {entered} but your plan ceiling is {cap}, so {cap} applies.",
 
   // Team: claiming ownership
   claimTitle: "Make yourself the owner?",

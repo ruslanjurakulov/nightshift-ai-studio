@@ -88,9 +88,19 @@ export function ReviewPanel({
     router.refresh();
   }
 
+  const waiting = video.review_state === "pending" && !autoPublish;
+
+  /** What the sheet was about, as a comparable string: a different gate verdict is a different question. */
+  const gateKey = gate ? `${gate.allowed}:${gate.flagged}:${gate.reasons.join("|")}` : "none";
+  // The newest props, read after the person has answered: the sheet may have been open while the page refreshed.
+  const latest = useRef({ waiting, gateKey, filed });
+  latest.current = { waiting, gateKey, filed };
+
   /**
    * Each decision asks first, in words: approve is what lets the video go public, the other two start a new render.
    * Then the same intent row is filed as before; the sheet changes nothing about what the pipeline does with it.
+   * If what the sheet showed (still waiting, the same gate verdict, nothing filed yet) is no longer true when it is
+   * answered, nothing is sent: the server would decide anyway, but the person agreed to a different question.
    */
   async function ask(action: ReviewIntentRow["action"]) {
     if (busy !== null || asking.current) return;
@@ -105,10 +115,11 @@ export function ReviewPanel({
       const gateLine = gate ? (gate.allowed ? t.review.gatePassed : t.review.gateBlocked) : t.review.gateUnknown;
       const copy =
         action === "approve"
-          ? { title: cs.rvApproveTitle, message: cs.rvApproveBody, confirmLabel: cs.rvApproveConfirm }
+          ? { title: cs.rvApproveTitle, message: cs.rvApproveBody, confirmLabel: t.review.approve }
           : action === "regenerate_script"
-            ? { title: cs.rvScriptTitle, message: cs.rvScriptBody, confirmLabel: cs.rvScriptConfirm }
-            : { title: cs.rvRegenTitle, message: cs.rvRegenBody, confirmLabel: cs.rvRegenConfirm };
+            ? { title: cs.rvScriptTitle, message: cs.rvScriptBody, confirmLabel: t.review.regenerateScript }
+            : { title: cs.rvRegenTitle, message: cs.rvRegenBody, confirmLabel: t.review.regenerate };
+      const shownGate = gateKey;
       const ok = await confirm({
         title: fmt(copy.title, { title: name }),
         message: copy.message,
@@ -119,20 +130,23 @@ export function ReviewPanel({
           { label: cs.dChannel, value: video.channel_id },
           ...(action === "approve"
             ? [
-                { label: cs.dPrivacy, value: privacy },
-                { label: cs.dGate, value: gateLine, multiline: true },
+                { label: t.review.privacy, value: privacy },
+                { label: t.review.gate, value: gateLine, multiline: true },
               ]
             : []),
         ],
       });
       if (!ok) return;
+      const now = latest.current;
+      if (now.filed !== null || now.gateKey !== shownGate || (action === "approve" && !now.waiting)) {
+        setError(cs.staleSheet);
+        return;
+      }
       await file(action);
     } finally {
       asking.current = false;
     }
   }
-
-  const waiting = video.review_state === "pending" && !autoPublish;
 
   return (
     <section className="section-card flex flex-col gap-6">
