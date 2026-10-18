@@ -534,6 +534,11 @@ import sec_notify_language_0105  # noqa: E402
 
 sec_notify_language_0105.extend(TABLES, FUNCTIONS)
 
+# Migration 0106 (idempotent video_costs mirror, owner provider spend): tests/security/sec_provider_spend_0106.py
+import sec_provider_spend_0106  # noqa: E402
+
+sec_provider_spend_0106.extend(TABLES, FUNCTIONS)
+
 # Migration 0107 (owner safety: the second-factor gate, audited owner actions, security trail): tests/security/sec_owner_safety_0107.py
 import sec_owner_safety_0107  # noqa: E402
 

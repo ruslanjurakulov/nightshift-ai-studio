@@ -10,7 +10,7 @@ limit, recent-code step-up), BR-S-021 (session cookie), BR-S-022 (neutral sign-u
 BR-S-023 (strict `enforce`: factor-less admins may only enrol), BR-S-024 (Team
 page last-owner guard). See "Hardening round 2" at the end.
 Hardening round 3 (migration 0107, **shipped dormant**): the database half of the second
-factor, audited and capped owner actions, and a security trail: BR-S-025 .. BR-S-028. See
+factor, audited and capped owner actions, and a security trail: BR-S-026 .. BR-S-029. See
 "The database backstop (migration 0107)" below.
 
 ## What changed

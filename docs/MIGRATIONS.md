@@ -41,6 +41,29 @@ because a fresh database always has the edited text; to test an upgrade path,
 apply the old version of the earlier migration
 (`git show <sha>:supabase/migrations/NNNN_name.sql`) and then the new one.
 
+## When a migration changes what a Python writer sends
+
+A migration is applied to the live database the moment it merges, and the nightly
+jobs run from `main` straight after. So a writer that starts using a new column
+must still be safe against a database that has not applied it yet (a delayed
+apply, a stale PostgREST schema cache). Pick the option that cannot corrupt data:
+
+- A write that would **duplicate** rows if it fell back to the old shape (an
+  append-only table) is skipped for that run, logged with the migration's name,
+  and retried by the next run. 0106 does this for the `video_costs` mirror: the
+  new `row_key` column is its idempotency key, so without it nothing is sent.
+- A write that is harmless in the old shape may fall back.
+
+Anything that has to clean up existing rows is an **owner-applied script** under
+`docs/sql/`, not a migration: it previews first, ends in `ROLLBACK`, and the
+owner changes that to `COMMIT`. `docs/sql/dedupe-video-costs.sql` (for 0106) is
+the example; a lab test runs it against the same fixtures the Python code is
+tested with, so the two implementations of a key cannot drift apart.
+
+Unique indexes that PostgREST upserts into (`on_conflict=col`) must be **plain**,
+not partial: PostgREST cannot send the index predicate, and Postgres then answers
+42P10. A plain unique index still lets NULLs coexist.
+
 ## Migrations that ship dormant (0107)
 
 Some migrations are written to change nothing until a later change turns them on. 0107
