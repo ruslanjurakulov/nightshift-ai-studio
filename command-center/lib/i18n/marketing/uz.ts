@@ -211,7 +211,7 @@ export const marketingUz: MarketingDictionary = {
     banned: {
       title: "Tekshirish kerak boʻlgan soʻzlar",
       lead:
-        "Maʼlumotlar bazasi taqiqlangan soʻzlarni tekshirmaydi, shuning uchun bu sahifa uchala matnni docs/news/banned-claims.json roʻyxati bilan solishtiradi. Bu soʻzlar oʻsha roʻyxatda bor. Bu saqlashga toʻsqinlik qilmaydi: qaror sizniki.",
+        "Maʼlumotlar bazasi taqiqlangan soʻzlarni tekshirmaydi, shuning uchun bu sahifa uchala matnni bizning taqiqlangan soʻzlar roʻyxatimiz bilan solishtiradi. Bu soʻzlar oʻsha roʻyxatda bor. Bu saqlashga toʻsqinlik qilmaydi: qaror sizniki.",
       none: "Taqiqlangan soʻzlar roʻyxatidan hech narsa topilmadi. Roʻyxat qoʻpol: u matndagi har bir daʼvo toʻgʻriligiga kafolat bermaydi.",
       found: "{lang}: “{text}”",
       provider: "Sunʼiy intellekt modeli yoki provayder ({name}) nomi keltirilgan. Nomni faqat uning adapteri orqali haqiqiy chaqiruv muvaffaqiyatli boʻlgandan keyin ishlatish mumkin.",

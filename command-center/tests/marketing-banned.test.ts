@@ -54,6 +54,10 @@ describe("it says what the Python checker says", () => {
     expect(bannedHits({ en: "" })).toEqual([]);
   });
 
+  it("a ligature reads as its letters, as Python's casefold does (\"proﬁt\" is \"profit\")", () => {
+    expect(bannedHits({ en: "Big pro\ufb01ts ahead" }).map((h) => h.id)).toEqual(["income"]);
+  });
+
   it("the Uzbek apostrophes are all one apostrophe, as in the worker", () => {
     for (const a of ["'", "ʻ", "ʼ", "‘", "’", "`", "´"]) {
       expect(bannedHits({ uz: `Eng zo${a}r xizmat` }).map((h) => h.id), a).toEqual(["superlative"]);

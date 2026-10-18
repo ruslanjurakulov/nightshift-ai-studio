@@ -142,6 +142,66 @@ describe("opening the form", () => {
   });
 });
 
+describe("keyboard and screen reader", () => {
+  const confirmKey = () => within(sheet()).getByRole("button", { name: m.newPost.confirmButton });
+
+  it("focus goes to the first text when the form opens", async () => {
+    show();
+    await openForm();
+    expect(document.activeElement).toBe(field("uz"));
+  });
+
+  it("Cancel puts focus back on the New post button", async () => {
+    show();
+    await openForm();
+    await tap(screen.getByRole("button", { name: m.newPost.cancel }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: m.newPost.aria }));
+  });
+
+  it("after a save, focus lands on the message (the form and its buttons are gone)", async () => {
+    show();
+    await openForm();
+    fill();
+    await tap(createButton());
+    await tap(confirmKey());
+    expect(document.activeElement).toBe(document.querySelector("[data-new-post-done]"));
+  });
+
+  it("each counter is outside its label and described by it; the label is only the language", async () => {
+    show();
+    await openForm();
+    for (const lang of ["uz", "ru", "en"] as const) {
+      const box = field(lang);
+      const label = document.querySelector(`label[for="${box.id}"]`)!;
+      expect(label.textContent).not.toMatch(/characters/);
+      const counter = document.getElementById(box.getAttribute("aria-describedby")!)!;
+      expect(counter.textContent).toMatch(/of 1000 characters/);
+      expect(label.contains(counter)).toBe(false);
+    }
+  });
+
+  it("aria-invalid marks the language that keeps Create off, for every kind of problem, and no other", async () => {
+    show();
+    await openForm();
+    expect(field("en").getAttribute("aria-invalid")).toBe("false"); // nothing typed: nothing is wrong yet
+    fill();
+    for (const lang of ["uz", "ru", "en"] as const) expect(field(lang).getAttribute("aria-invalid"), lang).toBe("false");
+    change(field("en"), "");
+    expect(field("en").getAttribute("aria-invalid")).toBe("true"); // empty
+    change(field("en"), "a\u202eb");
+    expect(field("en").getAttribute("aria-invalid")).toBe("true"); // invisible character
+    change(field("en"), "write me@example.com");
+    expect(field("en").getAttribute("aria-invalid")).toBe("true"); // shaped like an address
+    change(field("en"), "x".repeat(1001));
+    expect(field("en").getAttribute("aria-invalid")).toBe("true"); // too long
+    expect(field("uz").getAttribute("aria-invalid")).toBe("false");
+  });
+
+  it("the banned-wording lead names no file path", () => {
+    for (const d of [en, ru, uz]) expect(d.marketing.newPost.banned.lead).not.toMatch(/docs\/|\.json/);
+  });
+});
+
 describe("what keeps Create off (each with its reason on the screen)", () => {
   const blocked = async (texts: Record<string, string>, text: string | RegExp) => {
     show();
@@ -157,6 +217,12 @@ describe("what keeps Create off (each with its reason on the screen)", () => {
   it("a message over 4096 UTF-16 units (an emoji counts two)", async () =>
     blocked({ uz: "😀".repeat(700), ru: "😀".repeat(700), en: "😀".repeat(700) }, m.edit.tooLong));
   it("text shaped like an e-mail address or a key (the sender refuses it)", async () => blocked({ en: "write to me@example.com" }, m.approve.blockedUnsafe));
+
+  it("a NUL or a lone surrogate half (Postgres refuses both)", async () => {
+    await blocked({ en: "a\u0000b" }, m.newPost.problem.badChars);
+    cleanup();
+    await blocked({ en: "broken \ud83d" }, m.newPost.problem.badChars);
+  });
 
   it("a link that is not a path on our own site", async () => {
     show();
@@ -384,9 +450,13 @@ describe("custom and promo posts are ordinary cards", () => {
     expect(within(card).getByRole("heading", { name: label })).toBeTruthy();
     expect(card.hasAttribute("data-post-other")).toBe(false);
     expect(card.querySelector("[data-telegram-preview]")).toBeTruthy();
-    expect(within(card).getByRole("button", { name: new RegExp(`Edit the texts of this post: ${source}`) })).toBeTruthy();
-    expect(within(card).getByRole("button", { name: new RegExp(`Reject this post: ${source}`) })).toBeTruthy();
-    const approve = within(card).getByRole("button", { name: new RegExp(`Approve this post for publishing: ${source}`) }) as HTMLButtonElement;
+    // a custom post's source is the owner's user id: the buttons are named by the kind instead; the visible source line stays
+    const named = kind === "custom" ? label : source;
+    expect(within(card).getByRole("button", { name: `Edit the texts of this post: ${named}` })).toBeTruthy();
+    expect(within(card).getByRole("button", { name: `Reject this post: ${named}` })).toBeTruthy();
+    expect(card.textContent).toContain(source);
+    expect(card.querySelector("[aria-label]")?.getAttribute("aria-label") ?? "").not.toContain("owner:");
+    const approve = within(card).getByRole("button", { name: `Approve this post for publishing: ${named}` }) as HTMLButtonElement;
     expect(approve.disabled).toBe(false);
     await tap(approve);
     expect(sheet().textContent).toContain(label);

@@ -218,7 +218,7 @@ export const marketingEn = {
     banned: {
       title: "Wording to check",
       lead:
-        "The database cannot check banned wording, so this page checks your three texts against the list in docs/news/banned-claims.json. These words are on it. This does not stop you from saving: you decide.",
+        "The database cannot check banned wording, so this page checks your three texts against our list of banned wording. These words are on it. This does not stop you from saving: you decide.",
       none: "Nothing on the banned-wording list was found. The list is blunt; it does not promise that every claim in your text is true.",
       found: "{lang}: “{text}”",
       provider: "Names an AI model or provider ({name}). A name may be used only after a real call through its adapter has succeeded.",

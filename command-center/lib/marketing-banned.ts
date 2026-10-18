@@ -122,9 +122,13 @@ const COMPILED_PROVIDERS = BANNED_PROVIDER_NAMES.map((name) => ({
   re: new RegExp(`(?<![\\p{L}\\p{N}_-])${escapeRe(name)}(?![\\p{L}\\p{N}_-])`, "iu"),
 }));
 
-/** The same normalisation as the Python checker: lower case, the Uzbek apostrophes to ', and ё to е. */
+/**
+ * The same normalisation as the Python checker (casefold, the Uzbek apostrophes to ', ё to е), plus NFKC first so a ligature such as
+ * "ﬁ" reads as "fi" (Python's casefold does that too; JavaScript's toLowerCase does not).
+ */
 export function normaliseForBanned(text: string): string {
-  return text.toLowerCase().replace(/[ʻʼ‘’`´]/g, "'").replace(/ё/g, "е");
+  // The apostrophes first: NFKC would turn the acute accent ´ into a space and a combining mark.
+  return text.replace(/[ʻʼ‘’`´]/g, "'").normalize("NFKC").toLowerCase().replace(/ё/g, "е");
 }
 
 export interface BannedHit {

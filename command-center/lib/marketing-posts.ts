@@ -79,10 +79,10 @@ const REQUEST_ID = /^[A-Za-z0-9_-]{16,64}$/;
 const LINK = /^\/[a-z0-9][a-z0-9/_-]{0,78}$/;
 export const linkOk = (link: string): boolean => LINK.test(link) && !link.includes("//") && !link.includes("..");
 /**
- * What the database refuses inside a text (marketing_texts_ok): control characters (a new line is allowed), the C1 controls, soft
+ * What the database refuses inside a text (marketing_texts_ok, and Postgres itself for NUL): control characters (a new line is allowed), the C1 controls, soft
  * hyphen, zero-width and direction-changing characters, line and paragraph separators, the byte order mark.
  */
-const BAD_CHARS = /[\u0001-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
+const BAD_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
 /** Each language is at most this many characters (code points), as marketing_texts_ok demands. */
 export const TEXT_MAX = 1000;
 export const LANGS = ["uz", "ru", "en"] as const;
@@ -175,12 +175,18 @@ function parseTexts(v: unknown): Texts | null {
  * in UTF-16 units, and the form checks it with buildPreview.)
  */
 export type TextsProblem = "empty" | "bad_chars" | "lang_too_long";
-export function textsProblem(texts: Texts): TextsProblem | null {
-  const all = LANGS.map((l) => texts[l]);
-  if (all.some((x) => x.trim() === "")) return "empty";
-  if (all.some((x) => BAD_CHARS.test(x))) return "bad_chars";
-  if (all.some((x) => charCount(x) > TEXT_MAX)) return "lang_too_long";
+/** A lone surrogate half (a broken emoji): Postgres refuses it (22P05) as it refuses a NUL, so the page does before the call. */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+/** The same check for one language's (already trimmed) text. */
+export function textProblem(text: string): TextsProblem | null {
+  if (text.trim() === "") return "empty";
+  if (BAD_CHARS.test(text) || LONE_SURROGATE.test(text)) return "bad_chars";
+  if (charCount(text) > TEXT_MAX) return "lang_too_long";
   return null;
+}
+export function textsProblem(texts: Texts): TextsProblem | null {
+  const all = LANGS.map((l) => textProblem(texts[l]));
+  return all.includes("empty") ? "empty" : all.includes("bad_chars") ? "bad_chars" : all.includes("lang_too_long") ? "lang_too_long" : null;
 }
 
 /**

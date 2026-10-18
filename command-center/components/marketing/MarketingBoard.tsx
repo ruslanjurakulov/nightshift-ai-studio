@@ -475,6 +475,8 @@ function PostCard({
   }
 
   const titleId = `mk-post-${post.id}`;
+  // What a button's name calls this post. A custom post's source is the owner's user id (owner:<uuid>): the kind reads better.
+  const ariaName = post.kind === "custom" ? m.kind.custom : post.sourceRef;
   const posterOff = !settings.enabled;
   // Everything that keeps Approve off, each with its reason on the screen. The sender would refuse a post that is too long,
   // has text shaped like a key or an address, or a bad link; with the channel unknown the sheet could not say where it goes.
@@ -638,7 +640,7 @@ function PostCard({
                 type="button"
                 onClick={() => void approve()}
                 disabled={blockers.length > 0}
-                aria-label={fmt(m.approve.aria, { source: post.sourceRef })}
+                aria-label={fmt(m.approve.aria, { source: ariaName })}
                 className="btn-primary min-h-11 px-4 text-sm disabled:opacity-55"
               >
                 {m.approve.button}
@@ -651,7 +653,7 @@ function PostCard({
                 setMode("edit");
                 setMsg(null);
               }}
-              aria-label={fmt(m.edit.aria, { source: post.sourceRef })}
+              aria-label={fmt(m.edit.aria, { source: ariaName })}
               className="btn-quiet min-h-11 px-4 text-sm"
             >
               {m.edit.button}
@@ -662,7 +664,7 @@ function PostCard({
                 setMode("reject");
                 setMsg(null);
               }}
-              aria-label={fmt(m.reject.aria, { source: post.sourceRef })}
+              aria-label={fmt(m.reject.aria, { source: ariaName })}
               className="btn-quiet min-h-11 px-4 text-sm"
             >
               {m.reject.button}

@@ -266,6 +266,9 @@ describe("parseMarketing: create, a custom draft the owner typed (owner_marketin
     [{ texts: { uz: "a\u200bb", ru: "b", en: "c" } }, "bad_texts"],
     [{ texts: { uz: "a\u202eb", ru: "b", en: "c" } }, "bad_texts"],
     [{ texts: { uz: "a\u0007b", ru: "b", en: "c" } }, "bad_texts"],
+    [{ texts: { uz: "a\u0000b", ru: "b", en: "c" } }, "bad_texts"],
+    [{ texts: { uz: "a\ud83dz", ru: "b", en: "c" } }, "bad_texts"],
+    [{ texts: { uz: "a\ude00z", ru: "b", en: "c" } }, "bad_texts"],
     [{ link: "pricing" }, "bad_link"],
     [{ link: "/Pricing" }, "bad_link"],
     [{ link: "/a//b" }, "bad_link"],
@@ -311,7 +314,13 @@ describe("textsProblem and linkOk: what the form checks before the database does
   it("names the first problem, in the database's order of checks", () => {
     expect(textsProblem(T({ en: "" }))).toBe("empty");
     expect(textsProblem(T({ en: "a\u200bb" }))).toBe("bad_chars");
+    expect(textsProblem(T({ en: "a\u0000b" }))).toBe("bad_chars"); // Postgres cannot hold NUL
+    expect(textsProblem(T({ en: "broken \ud83d" }))).toBe("bad_chars"); // a lone surrogate (22P05)
+    expect(textsProblem(T({ en: "\ude00 broken" }))).toBe("bad_chars");
     expect(textsProblem(T({ en: "x".repeat(1001) }))).toBe("lang_too_long");
+  });
+  it("a whole emoji (a surrogate pair) is fine", () => {
+    expect(textsProblem(T({ en: "ok \ud83d\ude00" }))).toBeNull();
   });
   it("counts code points as the database does: 1000 emoji is one language of 1000 characters", () => {
     expect(textsProblem(T({ en: "😀".repeat(1000) }))).toBeNull();

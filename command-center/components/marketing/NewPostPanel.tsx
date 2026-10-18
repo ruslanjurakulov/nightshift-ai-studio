@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { postOperator } from "@/lib/operator-post";
@@ -14,7 +14,9 @@ import {
   linkOk,
   newRequestId,
   senderRefusal,
+  textProblem,
   textsProblem,
+  looksUnsafe,
   type Lang,
   type Texts,
 } from "@/lib/marketing-posts";
@@ -54,6 +56,15 @@ export function NewPostPanel({
   const m = t.marketing;
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
+  // Where focus goes once the form is gone (its buttons are unmounted): back to "New post…" after Cancel, to the message after a save.
+  const after = useRef<"button" | "done" | null>(null);
+  const openButton = useRef<HTMLButtonElement>(null);
+  const doneNote = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (open || after.current === null) return;
+    (after.current === "done" ? doneNote.current : openButton.current)?.focus();
+    after.current = null;
+  }, [open]);
 
   return (
     <section className="panel flex flex-col gap-3 p-4 sm:p-5" aria-labelledby="mk-new-title" data-new-post="">
@@ -63,6 +74,7 @@ export function NewPostPanel({
         </h2>
         {!open && (
           <button
+            ref={openButton}
             type="button"
             onClick={() => {
               setDone(null);
@@ -80,8 +92,12 @@ export function NewPostPanel({
         <NewPostForm
           origin={origin}
           confirm={confirm}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            after.current = "button";
+            setOpen(false);
+          }}
           onDone={(d) => {
+            after.current = "done";
             setDone(d);
             setOpen(false);
             refresh();
@@ -92,7 +108,7 @@ export function NewPostPanel({
       )}
       <div aria-live="polite" className="min-h-4">
         {done && (
-          <p className="break-words text-sm" style={{ color: done.tone === "created" ? "var(--color-ok)" : "var(--color-warn)" }} data-new-post-done={done.tone}>
+          <p ref={doneNote} tabIndex={-1} className="break-words text-sm" style={{ color: done.tone === "created" ? "var(--color-ok)" : "var(--color-warn)" }} data-new-post-done={done.tone}>
             {done.tone === "created" ? m.newPost.created : done.tone === "existing" ? m.newPost.existing : m.newPost.existingDifferent}{" "}
             {done.id && (
               <a href={`#mk-post-${done.id}`} className="underline">
@@ -136,6 +152,12 @@ function NewPostForm({
   const [choice, setChoice] = useState("");
   const [typed, setTyped] = useState("");
   const busy = useRef(false);
+  const firstField = useRef<HTMLTextAreaElement>(null);
+  const idBase = useId();
+  // A phone keyboard opens on the first text, not on nothing.
+  useEffect(() => {
+    firstField.current?.focus();
+  }, []);
 
   const texts: Texts = { uz: draft.uz.trim(), ru: draft.ru.trim(), en: draft.en.trim() };
   const link = choice === OTHER ? typed.trim() : choice;
@@ -213,21 +235,27 @@ function NewPostForm({
 
       {LANGS.map((lang) => {
         const n = charCount(texts[lang]);
+        const fieldId = `${idBase}-${lang}`;
+        // Invalid for any reason that keeps Create off for this language (an empty one counts once the owner has typed elsewhere).
+        const invalid = !empty && (textProblem(texts[lang]) !== null || looksUnsafe(texts[lang]));
         return (
-          <label key={lang} className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
-            {fmt(m.newPost.langLabel, { lang: LABELS[lang] })}
+          <div key={lang} className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
+            <label htmlFor={fieldId}>{fmt(m.newPost.langLabel, { lang: LABELS[lang] })}</label>
             <textarea
+              id={fieldId}
+              ref={lang === LANGS[0] ? firstField : undefined}
               rows={4}
               lang={lang}
               value={draft[lang]}
               onChange={(e) => setDraft({ ...draft, [lang]: e.target.value })}
               className="ns-field min-w-0"
-              aria-invalid={n > TEXT_MAX}
+              aria-invalid={invalid}
+              aria-describedby={`${fieldId}-count`}
             />
-            <span className={`tnum ${n > TEXT_MAX ? "font-semibold text-[var(--color-fail)]" : ""}`}>
+            <span id={`${fieldId}-count`} className={`tnum ${n > TEXT_MAX ? "font-semibold text-[var(--color-fail)]" : ""}`}>
               {fmt(m.newPost.count, { chars: n, max: TEXT_MAX, units: unitCount(t, locale, texts[lang].length) })}
             </span>
-          </label>
+          </div>
         );
       })}
 
