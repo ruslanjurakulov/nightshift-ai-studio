@@ -360,6 +360,35 @@ kill switch, run `update public.marketing_settings set enabled = false where id;
 - The site origin goes in front of `link` (a path), exactly the approved texts are sent in the fixed three-block order,
   and only to the one configured channel id.
 
+## Promo and custom posts (migration `0110_marketing_promo_custom.sql`, Telegram only, dormant)
+
+Two more kinds, `promo` (drafted by the worker from a reviewed repository file, a later slice) and `custom` (typed by the
+owner on the page, a later slice). Only the database half exists: **nothing calls either new function yet**.
+
+- **Same life as news.** Draft, the owner's approval of the exact words (`approved_hash`), the 72 hour expiry, the kill
+  switch, the claim. No 0108 function, trigger or the status machine is redefined; the live worker keeps calling the same
+  9-argument `marketing_draft_upsert`, `claim_marketing_post` and `complete_marketing_post`.
+- **One cap for every kind.** news, price, promo and custom share the 2 posts per rolling 7 days (the owner's decision).
+  `marketing_cap_used()` and the approval check count every row, as before.
+- **Keys.** `promo:<slug>:telegram` with `source_ref promo:<slug>` (one file, one row per target); `custom:<request id>:telegram`
+  with `source_ref owner:<user id>`. The page makes the request id once per "New post" screen, so a double tap or a retry
+  returns the same post (`created: false`) and never a second.
+- **`owner_marketing_create(p_request_id, p_texts, p_link, p_kind default 'custom')`**: the owner's front door
+  (`owner_guard`: platform owner/admin, second factor, a rate limit of 20 per 10 minutes), the same text rules as a draft,
+  a link that is a path. It makes a **draft only**; approving is a separate act on the card. `p_kind` may only be `custom`:
+  a `promo` row cannot be made by a person through this function. Audited as `marketing.create` (lengths and hash, never the
+  words).
+- **`marketing_draft_upsert_v2(...)`**: the worker's (service_role only), the same arguments as the 0108 function; it
+  accepts `news`, `price` (handed to the 0108 function unchanged) and `promo` (own checks, same freeze rule: a draft a person
+  edited is never overwritten). `showcase` and `custom` are refused.
+- **Not checked by the database:** `docs/news/banned-claims.json` (a repository file SQL cannot read). The page warns for a
+  custom post; the worker blocks for a promo post.
+- **Merge order.** After 0110 is applied a row of an unknown kind may exist. The page and the operator bot must be tolerant
+  of an unknown kind (separate PR) and deployed BEFORE this migration merges: a page that rejects one unknown kind reads the
+  whole list as "could not read".
+- **Rollback.** `docs/sql/rollback_0110_marketing_promo_custom.sql`. While a promo or custom row exists it leaves the widened
+  CHECKs in place (posts are never deleted) and says so.
+
 ## Instagram: deferred
 
 The official publishing API needs an Instagram professional account, a Meta developer app with the content-publish
