@@ -386,6 +386,7 @@ TABLE = {
     "mk.news": "news",
     "mk.showcase": "showcase",
     "mk.price": "price",
+    "mk.other": "newer-kind",
     "mkst.failed": "failed",
     "mkst.dead": "dead",
     "mkfix.blocked": "the bot is not an administrator of the channel: add it with only the Post messages right",

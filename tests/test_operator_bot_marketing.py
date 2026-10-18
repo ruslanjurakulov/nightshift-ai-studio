@@ -691,5 +691,63 @@ class DocsTestCase(unittest.TestCase):
                 self.assertEqual(placeholders(table(lang)[k]), placeholders(table("en")[k]), (lang, k))
 
 
+
+# -- kinds from a newer database -------------------------------------------
+
+class UnknownKindTestCase(unittest.TestCase):
+    """The database learns a new kind (migration 0110) before this code does. The bot must neither crash nor hide the
+    post: counts per status already cover every kind, and the kind is named ``other`` (never the database's word)."""
+
+    def test_a_clean_unknown_kind_is_other_and_a_dirty_one_is_unknown(self):
+        for kind in ("promo", "custom", "x" * 24, "some_new_kind"):
+            self.assertEqual(analysis.marketing_kind(kind), "other", kind)
+        for kind in ("news", "showcase", "price"):
+            self.assertEqual(analysis.marketing_kind(kind), kind)
+        for kind in (None, "", 7, ["promo"], {"a": 1}, "Promo", "p2", "a-b", "x" * 25, "<script>", " promo"):
+            self.assertIsNone(analysis.marketing_kind(kind), repr(kind))
+
+    def test_the_state_names_an_unknown_kind_other_and_never_keeps_the_word(self):
+        st = analysis.marketing_state(summary(minutes_ago_sent=5, sent_kind="promo", draft=1,
+                                              failure=failure("failed", "blocked", "custom", 9)))
+        self.assertEqual((st["sent_kind"], st["failure"]["kind"]), ("other", "other"))
+        self.assertNotIn("promo", json.dumps(st, default=str))
+        self.assertNotIn("custom", json.dumps(st, default=str))
+
+    def test_counts_cover_posts_of_every_kind_and_unknown_fields_or_statuses_are_ignored(self):
+        answer = summary(draft=3, sent=2)
+        answer["counts"]["brand_new_status"] = 5
+        answer["by_kind"] = {"promo": 3}
+        answer["targets"] = [{"target": "instagram"}]
+        answer["last_failure"] = {**failure("failed", "token_expired", "promo", 9), "target": "instagram", "payload": {"x": 1}}
+        st = analysis.marketing_state(answer)
+        self.assertEqual((st["counts"]["draft"], st["counts"]["sent"]), (3, 2))
+        self.assertEqual(set(st["counts"]), set(analysis.MARKETING_STATUSES))
+        self.assertEqual((st["failure"]["code"], st["failure"]["kind"]), (None, "other"))
+
+    def test_the_command_says_other_for_the_last_send_and_does_not_crash(self):
+        expect = {"en": "newer-kind", "ru": "новый вид", "uz": "yangi tur"}
+        for lang in LANGUAGES:
+            ops, _ = ops_with(summary(minutes_ago_sent=30, sent_kind="promo", enabled=True, used=1, draft=2))
+            text = views.view_marketing(ops, lang).text
+            self.assertIn(expect[lang], text, lang)
+            self.assertNotIn("promo", text)
+            ops, _ = ops_with(summary(failure=failure("dead", "unconfirmed", "promo", 20)))    # names no kind: must still render
+            self.assertIn("unconfirmed", views.view_marketing(ops, lang).text, lang)
+
+    def test_a_kind_that_is_not_a_clean_code_still_reads_unknown(self):
+        self.assertEqual(views.marketing_kind_word("en", "<script>"), t("en", "unknown_word"))
+        self.assertEqual(views.marketing_kind_word("en", None), t("en", "unknown_word"))
+        self.assertEqual(views.marketing_kind_word("en", "other"), t("en", "mk.other"))
+
+    def test_the_alerts_for_an_unknown_kind_are_raised_not_hidden(self):
+        (a,) = detect(summary(failure=failure("dead", "unconfirmed", "promo", minutes_ago=20)))
+        self.assertEqual(a.line, f"A newer-kind post ended unconfirmed ({views.marketing_time(NOW - timedelta(minutes=20))}): "
+                                 "check the channel, do not resend")
+        (a,) = detect(summary(minutes_ago_sent=4, sent_kind="custom"))
+        self.assertEqual(a.line, f"A newer-kind post was sent ({views.marketing_time(NOW - timedelta(minutes=4))})")
+        (a,) = detect(summary(draft=2, failure=None))
+        self.assertEqual(a.key, "marketing:drafts:2")
+
+
 if __name__ == "__main__":
     unittest.main()

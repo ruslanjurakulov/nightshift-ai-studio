@@ -18,16 +18,20 @@ import {
   MARKETING_REFUSALS,
   MESSAGE_LIMIT,
   POST_COLUMNS,
+  POST_STATUSES,
   buildPreview,
   channelHandle,
+  coerceListedPost,
   coercePost,
   coercePosts,
   coerceSettings,
   isMarketingRefusal,
+  isOtherPost,
   lastSettled,
   mediaKind,
   parseMarketing,
   parseMarketingFlag,
+  safeCode,
   senderRefusal,
   sortPosts,
   validOrigin,
@@ -618,5 +622,120 @@ describe("the new files hold no service key and no control that sends or tests",
     const dir = join(__dirname, "..", "components", "marketing");
     const found = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
     expect(found.sort()).toEqual(["MarketingBoard.tsx", "TelegramPreview.tsx"]);
+  });
+});
+
+describe("a post this page version does not know is listed, never dropped and never approvable (slice 1 of the multichannel plan)", () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: ID,
+    kind: "news",
+    status: "draft",
+    texts: TEXTS,
+    media_path: null,
+    link: "/pricing",
+    source_ref: "pr:#12",
+    content_hash: HASH,
+    created_at: "2026-10-17T10:00:00Z",
+    updated_at: "2026-10-17T10:00:00Z",
+    ...over,
+  });
+  const ID2 = "22222222-2222-3333-4444-555555555555";
+
+  it("an unknown kind is an Other row with a sanitized code, its status and its age, not a failed read", () => {
+    const p = coerceListedPost(row({ kind: "promo", target: "instagram", delivery: "manual", payload: { hashtags: ["a"] }, brand_new: 1 }));
+    expect(p && isOtherPost(p)).toBe(true);
+    expect(p).toMatchObject({ other: true, id: ID, status: "draft", reason: "kind", kindCode: "promo", targetCode: "instagram", deliveryCode: "manual", createdAt: "2026-10-17T10:00:00Z" });
+  });
+
+  it("the code is [a-z_]{1,24}, anything else is 'unknown': markup, case, a long word, digits, a non-string", () => {
+    for (const kind of ["<script>alert(1)</script>", "Promo", "a-b", "x".repeat(25), "p2", "", "  promo", 7, null, { a: 1 }]) {
+      expect(safeCode(kind), JSON.stringify(kind)).toBe("unknown");
+      const p = coerceListedPost(row({ kind }));
+      expect(p, JSON.stringify(kind)).toMatchObject({ other: true, kindCode: "unknown" });
+    }
+    expect(safeCode("x".repeat(24))).toBe("x".repeat(24));
+    expect(safeCode("custom_post")).toBe("custom_post");
+  });
+
+  it("a known kind on another target, or with another delivery, is also Other (it is never approved as a Telegram post)", () => {
+    expect(coerceListedPost(row({ target: "youtube" }))).toMatchObject({ other: true, reason: "target", kindCode: "news", targetCode: "youtube" });
+    expect(coerceListedPost(row({ delivery: "manual" }))).toMatchObject({ other: true, reason: "delivery", deliveryCode: "manual" });
+    expect(coerceListedPost(row({ target: "telegram", delivery: "auto" }))).not.toHaveProperty("other");
+    // coercePost itself stays the strict reader of the Telegram path
+    expect(coercePost(row({ target: "instagram" }))).toBeNull();
+    expect(coercePost(row({ delivery: "manual" }))).toBeNull();
+  });
+
+  it("a row without target, delivery or payload is the Telegram path of today, byte for byte", () => {
+    const plain = coerceListedPost(row());
+    expect(plain).toEqual(coercePost(row()));
+    expect(plain && isOtherPost(plain)).toBe(false);
+    // extra fields on a known row are ignored, not a failure
+    expect(coercePost(row({ target: "telegram", delivery: "auto", payload: { x: 1 }, future: [1, 2] }))).toMatchObject({ id: ID, kind: "news" });
+  });
+
+  it("its words are kept only if they have the known three-language shape", () => {
+    expect(coerceListedPost(row({ kind: "promo" }))).toMatchObject({ texts: TEXTS });
+    for (const texts of [{ uz: "a", ru: "b" }, { uz: "a", ru: "", en: "c" }, "x", null, { uz: "a", ru: "b", en: "x".repeat(1001) }, { uz: 1, ru: "b", en: "c" }]) {
+      expect(coerceListedPost(row({ kind: "promo", texts })), JSON.stringify(texts)).toMatchObject({ other: true, texts: null });
+    }
+    // extra languages are ignored, not copied
+    const extra = coerceListedPost(row({ kind: "promo", texts: { ...TEXTS, de: "Hallo" } }));
+    expect(extra && isOtherPost(extra) && extra.texts).toEqual(TEXTS);
+  });
+
+  it("only a uuid and a known status are required of an Other row; a missing hash, source or texts do not fail the read", () => {
+    expect(coerceListedPost({ id: ID, kind: "promo", status: "approved" })).toMatchObject({ other: true, texts: null, sourceRef: null });
+    expect(coerceListedPost({ id: "nope", kind: "promo", status: "draft" })).toBeNull();
+    expect(coerceListedPost({ id: ID, kind: "promo", status: "teleported" })).toBeNull();
+    expect(coerceListedPost(null)).toBeNull();
+    expect(coerceListedPost([])).toBeNull();
+  });
+
+  it("an unknown error code is shown as the closed code it is, or 'unknown'", () => {
+    expect(coerceListedPost(row({ kind: "promo", last_error_code: "token_expired" }))).toMatchObject({ lastErrorCode: "token_expired" });
+    expect(coerceListedPost(row({ kind: "promo", last_error_code: "http_5xx" }))).toMatchObject({ lastErrorCode: "http_5xx" });
+    expect(coerceListedPost(row({ kind: "promo", last_error_code: "sk-abc Secret words" }))).toMatchObject({ lastErrorCode: "unknown" });
+    expect(coerceListedPost(row({ kind: "promo", last_error_code: null }))).toMatchObject({ lastErrorCode: null });
+    expect(fixText(en, "token_expired")).toContain("token_expired");
+    expect(fixText(en, "<b>x</b> Secret")).toContain("(unknown)");
+    expect(fixText(en, "<b>x</b> Secret")).not.toContain("Secret");
+    expect(marketingRefusalText(en, { ok: false, error: "A very Secret sentence" })).toContain("unknown");
+    expect(marketingRefusalText(en, { ok: false, error: "A very Secret sentence" })).not.toContain("Secret");
+    expect(marketingRefusalText(en, { ok: false, error: "target_off" })).toContain("target_off");
+    expect(marketingRefusalText(en, {})).toContain("?");
+  });
+
+  it("a mixed list keeps the known posts and the unknown ones, in one list, in order", () => {
+    const list = coercePosts([row(), row({ id: ID2, kind: "promo", target: "instagram", created_at: "2026-10-18T08:00:00Z" })]);
+    expect(list).toHaveLength(2);
+    expect(list!.map((p) => isOtherPost(p))).toEqual([false, true]);
+    // the same sorting and 'last send' rules apply to both
+    const sorted = sortPosts(list!);
+    expect(sorted.map((p) => p.id)).toEqual([ID2, ID]);
+    const settled = coercePosts([row({ status: "sent", sent_at: "2026-10-17T11:00:00Z" }), row({ id: ID2, kind: "promo", status: "sent", sent_at: "2026-10-18T11:00:00Z" })])!;
+    expect(lastSettled(settled)!.id).toBe(ID2);
+    // a row that is unreadable even as Other still fails the whole list (it is never silently dropped)
+    expect(coercePosts([row(), row({ id: ID2, kind: "promo", status: "?" })])).toBeNull();
+    expect(coercePosts([row(), row({ status: "?" })])).toBeNull();
+  });
+
+  it("the page does not select columns that do not exist yet (delivery, payload come with a later migration)", () => {
+    const cols = POST_COLUMNS.split(",");
+    expect(cols).toContain("target");
+    expect(cols).not.toContain("delivery");
+    expect(cols).not.toContain("payload");
+  });
+
+  it("POST_STATUSES is the status CHECK list of migration 0108, word for word", () => {
+    const m = /add constraint marketing_posts_status_check\s+check \(status in \(([^)]*)\)\)/.exec(sql);
+    expect(m, "the status CHECK of 0108 was not found: the regex needs updating").not.toBeNull();
+    const inSql = [...m![1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+    expect(inSql.length).toBeGreaterThan(0);
+    expect([...inSql].sort()).toEqual([...POST_STATUSES].sort());
+  });
+
+  it("extra fields in the settings document are ignored", () => {
+    expect(coerceSettings({ ok: true, enabled: true, max_per_7d: 2, used_7d: 1, targets: [{ target: "instagram" }], future: { a: 1 } })).toMatchObject({ enabled: true, maxPer7d: 2, used7d: 1 });
   });
 });

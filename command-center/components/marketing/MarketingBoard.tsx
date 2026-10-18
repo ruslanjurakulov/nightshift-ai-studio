@@ -12,11 +12,14 @@ import {
   LABELS,
   TEXT_MAX,
   buildPreview,
+  isOtherPost,
   lastSettled,
   senderRefusal,
   sortPosts,
+  type ListedPost,
   type MarketingPost,
   type MarketingSettings,
+  type OtherPost,
   type PostStatus,
   type Texts,
 } from "@/lib/marketing-posts";
@@ -64,7 +67,7 @@ export function MarketingBoard({
   gateOn = null,
 }: {
   settings: MarketingSettings;
-  posts: MarketingPost[];
+  posts: ListedPost[];
   truncated: boolean;
   /** The database's second-factor gate (0107), read only: true, false, or null when it could not be read (never "off"). */
   gateOn?: boolean | null;
@@ -82,6 +85,7 @@ export function MarketingBoard({
   const sorted = sortPosts(posts);
   const last = lastSettled(posts);
   const when = (iso: string | null) => ownerTime(iso, locale, nowMs);
+  const others = posts.filter(isOtherPost).length;
 
   return (
     <div className="flex flex-col gap-4" aria-busy={pending}>
@@ -95,13 +99,19 @@ export function MarketingBoard({
         {last === null ? (
           <p className="text-sm text-[var(--color-muted)]">{m.lastSend.none}</p>
         ) : (
-          <LastSend post={last} settings={settings} when={when} />
+          isOtherPost(last) ? <LastSendOther post={last} when={when} /> : <LastSend post={last} settings={settings} when={when} />
         )}
       </section>
 
       {pending && (
         <p role="status" className="text-xs text-[var(--color-muted)]">
           {m.refreshing}
+        </p>
+      )}
+
+      {others > 0 && (
+        <p role="note" className="text-xs text-[var(--color-muted)]" data-other-notice="">
+          {fmt(m.other.notice, { n: others })}
         </p>
       )}
 
@@ -113,7 +123,11 @@ export function MarketingBoard({
         <ul className="flex flex-col gap-4" aria-label={m.title}>
           {sorted.map((p) => (
             <li key={p.id}>
-              <PostCard post={p} settings={settings} channel={channel} origin={origin} nowMs={nowMs} confirm={confirm} refresh={refresh} />
+              {isOtherPost(p) ? (
+                <OtherCard post={p} nowMs={nowMs} />
+              ) : (
+                <PostCard post={p} settings={settings} channel={channel} origin={origin} nowMs={nowMs} confirm={confirm} refresh={refresh} />
+              )}
             </li>
           ))}
         </ul>
@@ -140,6 +154,26 @@ function LastSend({ post, settings, when }: { post: MarketingPost; settings: Mar
       ))}
     </div>
   );
+}
+
+/** The last settled post when it is one this page version does not know: its status as the database says it, and nothing about a channel. */
+function LastSendOther({ post, when }: { post: OtherPost; when: (iso: string | null) => string }) {
+  const { t } = useI18n();
+  const m = t.marketing;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <StatusLamp tone={TONE[post.status]} label={`${m.status[post.status]} · ${when(post.sentAt ?? post.updatedAt)}`} />
+      <p className="break-words text-xs text-[var(--color-muted)]">{fmt(m.other.lastSend, { title: otherTitle(m, post) })}</p>
+    </div>
+  );
+}
+
+function otherTitle(m: ReturnType<typeof useI18n>["t"]["marketing"], post: OtherPost): string {
+  return post.reason === "kind"
+    ? fmt(m.other.titleKind, { code: post.kindCode })
+    : post.reason === "target"
+      ? fmt(m.other.titleTarget, { code: post.targetCode })
+      : fmt(m.other.titleDelivery, { code: post.deliveryCode ?? "unknown" });
 }
 
 // ─── The poster: the database kill switch ──────────────────────────────────────────────────────────
@@ -640,6 +674,88 @@ function PostCard({
       <p className="min-h-4 break-words text-xs" style={{ color: msg?.ok ? "var(--color-ok)" : "var(--color-fail)" }} aria-live="polite">
         {msg?.text}
       </p>
+    </article>
+  );
+}
+
+// ─── A post this page version does not know ────────────────────────────────────────────────────────
+
+/**
+ * A row of a kind, target or delivery from a newer version of the app. It is shown (title, status, age, the words if they have
+ * the known shape) and offers no action but a DISABLED Approve with the reason: this page cannot know what approving it would
+ * publish, where, or what the preview should say. Edit and Reject are not offered either: they are for the kinds it knows.
+ * Nothing here calls the route.
+ */
+function OtherCard({ post, nowMs }: { post: OtherPost; nowMs: number }) {
+  const { t, locale } = useI18n();
+  const m = t.marketing;
+  const when = (iso: string | null) => ownerTime(iso, locale, nowMs);
+  const titleId = `mk-post-${post.id}`;
+  const codes = [
+    fmt(m.other.kindLine, { code: post.kindCode }),
+    fmt(m.other.targetLine, { code: post.targetCode }),
+    ...(post.deliveryCode !== null ? [fmt(m.other.deliveryLine, { code: post.deliveryCode })] : []),
+  ].join(" · ");
+  const title = otherTitle(m, post);
+  return (
+    <article className="panel flex flex-col gap-3 p-4 sm:p-5" aria-labelledby={titleId} data-post-status={post.status} data-post-other="">
+      <header className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <h3 id={titleId} className="text-base font-semibold text-[var(--color-fg)]">
+            {title}
+          </h3>
+          <StatusLamp tone={TONE[post.status]} label={m.status[post.status]} live={post.status === "sending"} />
+        </div>
+        {post.sourceRef && <p className="break-all text-xs text-[var(--color-muted)]">{fmt(m.post.source, { source: post.sourceRef })}</p>}
+        <p className="break-words text-xs text-[var(--color-muted)]">{codes}</p>
+        <p className="text-xs text-[var(--color-muted)]">
+          {[
+            fmt(m.post.created, { age: relativeTime(post.createdAt, locale, nowMs) }),
+            post.status === "approved" && post.approvedAt ? fmt(m.post.approvedAt, { when: when(post.approvedAt) }) : "",
+            post.status === "approved" && post.expiresAt ? fmt(m.post.expiresAt, { when: when(post.expiresAt) }) : "",
+            post.sentAt ? fmt(m.post.sentAt, { when: when(post.sentAt) }) : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+        {post.lastErrorCode !== null && <p className="break-words text-xs text-[var(--color-muted)]">{fmt(m.other.errorLine, { code: post.lastErrorCode })}</p>}
+      </header>
+
+      {post.texts ? (
+        <section className="flex flex-col gap-2" aria-label={m.other.wordsTitle}>
+          <h4 className="text-sm font-semibold text-[var(--color-fg)]">{m.other.wordsTitle}</h4>
+          <div className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-sm text-[var(--color-fg)]">
+            {LANGS.map((lang) => (
+              <div key={lang} className="flex flex-col gap-0.5">
+                <p className="font-semibold">{LABELS[lang]}</p>
+                <p lang={lang} className="whitespace-pre-wrap break-words leading-relaxed">
+                  {post.texts![lang]}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--color-muted)]">{m.other.wordsNote}</p>
+        </section>
+      ) : (
+        <p className="text-sm text-[var(--color-muted)]" data-preview-unavailable="">
+          {m.other.noPreview}
+        </p>
+      )}
+
+      {post.status === "draft" && (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            disabled
+            aria-label={fmt(m.approve.aria, { source: post.sourceRef ?? title })}
+            className="btn-primary min-h-11 self-start px-4 text-sm disabled:opacity-55"
+          >
+            {m.approve.button}
+          </button>
+          <p className="text-xs text-[var(--color-warn)]">{m.other.cannotApprove}</p>
+          <p className="text-xs text-[var(--color-muted)]">{m.other.noActions}</p>
+        </div>
+      )}
     </article>
   );
 }

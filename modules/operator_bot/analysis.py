@@ -6,6 +6,7 @@ disagree). No I/O, no clock of its own: ``now`` is an argument.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Optional
@@ -192,6 +193,8 @@ def latest_run(runs: list) -> Optional[dict]:
 #: database function that was changed behind this code's back.
 MARKETING_STATUSES = ("draft", "approved", "sending", "sent", "failed", "dead", "rejected", "expired")
 MARKETING_KINDS = ("news", "showcase", "price")
+#: What the bot calls a kind it does not know (see :func:`marketing_kind`); counts per status already include every kind.
+MARKETING_OTHER_KIND = "other"
 MARKETING_ERROR_CODES = ("blocked", "bad_request", "not_configured", "rate_limited", "network", "http_5xx",
                          "unconfirmed")
 
@@ -200,6 +203,20 @@ def _count(value) -> Optional[int]:
     """A whole, non-negative count, or None. A missing count is unknown, not zero."""
     n = _num(value)
     return int(n) if n is not None and n >= 0 and n == int(n) else None
+
+
+_KIND_CODE = re.compile(r"[a-z_]{1,24}")
+
+
+def marketing_kind(value) -> Optional[str]:
+    """A post kind the bot may name: one of the three it knows, ``other`` for a
+    clean closed code it does not know yet (a newer database adds kinds before
+    this code does), else None (unknown). The word itself is never kept, so a
+    kind that is not a plain lower-case code (free text, markup) cannot reach a
+    message even if the function were changed behind this code's back."""
+    if value in MARKETING_KINDS:
+        return value
+    return "other" if isinstance(value, str) and _KIND_CODE.fullmatch(value) else None
 
 
 def marketing_state(summary) -> dict:
@@ -215,7 +232,7 @@ def marketing_state(summary) -> dict:
         code = last.get("last_error_code")
         kind = last.get("kind")
         failure = {"status": last["status"], "code": code if code in MARKETING_ERROR_CODES else None,
-                   "kind": kind if kind in MARKETING_KINDS else None, "at": parse_ts(last.get("at"))}
+                   "kind": marketing_kind(kind), "at": parse_ts(last.get("at"))}
     kind = s.get("last_sent_kind")
     enabled = s.get("enabled")
     return {
@@ -224,7 +241,7 @@ def marketing_state(summary) -> dict:
         "cap": _count(s.get("max_per_7d")),
         "enabled": enabled if isinstance(enabled, bool) else None,
         "sent_at": parse_ts(s.get("last_sent_at")),
-        "sent_kind": kind if kind in MARKETING_KINDS else None,
+        "sent_kind": marketing_kind(kind),
         "failure": failure,
     }
 

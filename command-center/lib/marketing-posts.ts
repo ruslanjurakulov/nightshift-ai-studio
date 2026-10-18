@@ -265,10 +265,24 @@ export const POST_STATUSES = ["draft", "approved", "sending", "sent", "failed", 
 export type PostStatus = (typeof POST_STATUSES)[number];
 export const POST_KINDS = ["news", "showcase", "price"] as const;
 export type PostKind = (typeof POST_KINDS)[number];
+/** The one target and delivery this page version can approve (the worker's Telegram path). Anything else is shown, never approved. */
+export const KNOWN_TARGET = "telegram";
+export const KNOWN_DELIVERY = "auto";
+
+/**
+ * A closed code (a kind, a target, a delivery, an error code) made safe to print: lower-case letters and underscores
+ * (digits too when `digits`), 1 to `max` characters, else "unknown". The database's vocabularies are closed, but this page is
+ * deployed BEFORE the database learns a new word, so what it prints must never be free text, markup or a secret by accident.
+ */
+export function safeCode(v: unknown, max = 24, digits = false): string {
+  if (typeof v !== "string") return "unknown";
+  const ok = digits ? /^[a-z0-9_]+$/.test(v) : /^[a-z_]+$/.test(v);
+  return ok && v.length >= 1 && v.length <= max ? v : "unknown";
+}
 
 /** The columns the page reads from marketing_posts (a platform admin may SELECT). Not `facts`: it is for the drafter. */
 export const POST_COLUMNS =
-  "id,kind,status,texts,media_path,link,source_ref,content_hash,created_at,updated_at,approved_at,expires_at,edited_at," +
+  "id,kind,target,status,texts,media_path,link,source_ref,content_hash,created_at,updated_at,approved_at,expires_at,edited_at," +
   "rejected_at,reject_reason,claimed_at,sent_at,attempts,max_attempts,next_attempt_at,last_error_code,facts_as_of";
 
 /** How many posts the page reads. A full read says so: the page does not pretend the list is complete. */
@@ -301,10 +315,26 @@ export interface MarketingPost {
   factsAsOf: string | null;
 }
 
-/** One row of marketing_posts, or null when it is not one this page can show safely (the whole read is then "failed"). */
+/**
+ * Is this row one the Telegram path of this page version understands: a kind it knows, the Telegram target and automatic
+ * delivery? `target` and `delivery` are optional (0108 has no `delivery`; a row without them is the Telegram path of today).
+ * Anything else is an OtherPost: listed, labelled, never approved.
+ */
+function supportedRow(d: Record<string, unknown>): boolean {
+  const target = d.target === undefined || d.target === null ? KNOWN_TARGET : d.target;
+  const delivery = d.delivery === undefined || d.delivery === null ? KNOWN_DELIVERY : d.delivery;
+  return POST_KINDS.some((k) => k === d.kind) && target === KNOWN_TARGET && delivery === KNOWN_DELIVERY;
+}
+
+/**
+ * One row of marketing_posts the Telegram path knows, or null when it is not one this page can show safely. Extra fields are
+ * ignored. A row of a kind, target or delivery this page version does not know is ALSO null here: it is read by
+ * coerceListedPost as an OtherPost, so it is never mistaken for a post this page can approve.
+ */
 export function coercePost(data: unknown): MarketingPost | null {
   const d = rec(data);
   if (!d) return null;
+  if (!supportedRow(d)) return null;
   const id = text(d.id);
   const kind = POST_KINDS.find((k) => k === d.kind);
   const status = POST_STATUSES.find((s) => s === d.status);
@@ -344,12 +374,91 @@ export function coercePost(data: unknown): MarketingPost | null {
   };
 }
 
-/** All rows, or null if ANY row is unreadable: a list that silently drops a post would read as "nothing to approve". */
-export function coercePosts(data: unknown): MarketingPost[] | null {
+/**
+ * A row this page version does not know how to act on: a kind, target or delivery from a newer version of the app (migration
+ * 0110/0111 will add some). It is LISTED, with its status and age, so it is never dropped and never counted as 0, but it
+ * carries no hash to approve, and its words appear only if they have the known three-language shape.
+ */
+export interface OtherPost {
+  other: true;
+  id: string;
+  status: PostStatus;
+  /** Which part was not known: the title says "Other kind", "Other target" or "Other delivery". */
+  reason: "kind" | "target" | "delivery";
+  /** The kind as a closed code ([a-z_]{1,24}), or "unknown". */
+  kindCode: string;
+  targetCode: string;
+  /** Null when the row carries no delivery column (today's database). */
+  deliveryCode: string | null;
+  /** The three languages, only if they have the known shape; otherwise null and the page says "preview unavailable". */
+  texts: Texts | null;
+  sourceRef: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  approvedAt: string | null;
+  expiresAt: string | null;
+  sentAt: string | null;
+  /** A closed code, or "unknown". */
+  lastErrorCode: string | null;
+}
+export type ListedPost = MarketingPost | OtherPost;
+export const isOtherPost = (p: ListedPost): p is OtherPost => "other" in p;
+
+function otherTexts(v: unknown): Texts | null {
+  const t = rec(v);
+  if (!t) return null;
+  const out: Partial<Texts> = {};
+  for (const lang of LANGS) {
+    const x = t[lang];
+    if (typeof x !== "string" || x.trim() === "" || charCount(x) > TEXT_MAX) return null;
+    out[lang] = x;
+  }
+  return out as Texts;
+}
+
+/**
+ * A row of any kind: a post this page knows (read exactly as coercePost reads it, null if unreadable), or an OtherPost. Only the
+ * columns every row has since 0108 are required of an OtherPost: a uuid and a status this page knows. Everything else is
+ * optional, so one row from the future cannot turn the whole page into "could not read".
+ */
+export function coerceListedPost(data: unknown): ListedPost | null {
+  const d = rec(data);
+  if (!d) return null;
+  if (supportedRow(d)) return coercePost(d);
+  const id = text(d.id);
+  const status = POST_STATUSES.find((s) => s === d.status);
+  if (!id || !UUID.test(id) || !status) return null;
+  const kindKnown = POST_KINDS.some((k) => k === d.kind);
+  const targetKnown = d.target === undefined || d.target === null || d.target === KNOWN_TARGET;
+  const code = text(d.last_error_code);
+  return {
+    other: true,
+    id,
+    status,
+    reason: !kindKnown ? "kind" : !targetKnown ? "target" : "delivery",
+    kindCode: safeCode(d.kind),
+    targetCode: d.target === undefined || d.target === null ? KNOWN_TARGET : safeCode(d.target),
+    deliveryCode: d.delivery === undefined || d.delivery === null ? null : safeCode(d.delivery),
+    texts: otherTexts(d.texts),
+    sourceRef: text(d.source_ref),
+    createdAt: text(d.created_at),
+    updatedAt: text(d.updated_at),
+    approvedAt: text(d.approved_at),
+    expiresAt: text(d.expires_at),
+    sentAt: text(d.sent_at),
+    lastErrorCode: code === null ? null : safeCode(code, 40, true),
+  };
+}
+
+/**
+ * All rows, or null if ANY row is unreadable: a list that silently drops a post would read as "nothing to approve". A row of a
+ * kind, target or delivery this page version does not know is readable (an OtherPost), so it is listed, never dropped.
+ */
+export function coercePosts(data: unknown): ListedPost[] | null {
   if (!Array.isArray(data)) return null;
-  const out: MarketingPost[] = [];
+  const out: ListedPost[] = [];
   for (const row of data) {
-    const p = coercePost(row);
+    const p = coerceListedPost(row);
     if (!p) return null;
     out.push(p);
   }
@@ -383,17 +492,17 @@ export function coerceSettings(data: unknown): MarketingSettings | null {
 // ─── Derived ───────────────────────────────────────────────────────────────────────────────────────
 
 /** Drafts and approvals first (they wait for the owner or the worker), then the rest, each newest first. */
-export function sortPosts(posts: readonly MarketingPost[]): MarketingPost[] {
-  const open = (p: MarketingPost) => (p.status === "draft" || p.status === "approved" || p.status === "sending" ? 0 : 1);
-  const at = (p: MarketingPost) => Date.parse(p.createdAt ?? "") || 0;
+export function sortPosts<T extends Pick<MarketingPost, "id" | "status" | "createdAt">>(posts: readonly T[]): T[] {
+  const open = (p: T) => (p.status === "draft" || p.status === "approved" || p.status === "sending" ? 0 : 1);
+  const at = (p: T) => Date.parse(p.createdAt ?? "") || 0;
   return [...posts].sort((a, b) => open(a) - open(b) || at(b) - at(a) || (a.id < b.id ? -1 : 1));
 }
 
 /** The post that settled most recently (sent, failed or dead): "the last send". Null when none has. */
-export function lastSettled(posts: readonly MarketingPost[]): MarketingPost | null {
+export function lastSettled<T extends Pick<MarketingPost, "status" | "sentAt" | "updatedAt">>(posts: readonly T[]): T | null {
   const settled = posts.filter((p) => p.status === "sent" || p.status === "failed" || p.status === "dead");
-  const at = (p: MarketingPost) => Date.parse(p.sentAt ?? p.updatedAt ?? "") || 0;
-  return settled.reduce<MarketingPost | null>((best, p) => (best === null || at(p) > at(best) ? p : best), null);
+  const at = (p: T) => Date.parse(p.sentAt ?? p.updatedAt ?? "") || 0;
+  return settled.reduce<T | null>((best, p) => (best === null || at(p) > at(best) ? p : best), null);
 }
 
 /** Does this send need the owner to look at the channel, not to resend? A dead post may be on the channel. */

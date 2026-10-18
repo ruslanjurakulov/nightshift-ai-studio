@@ -9,7 +9,7 @@ import {
   coerceSettings,
   parseMarketingFlag,
   validOrigin,
-  type MarketingPost,
+  type ListedPost,
   type MarketingSettings,
 } from "@/lib/marketing-posts";
 
@@ -45,7 +45,7 @@ export function marketingTargets(): { channel: string | null; origin: string | n
 
 export interface MarketingData {
   settings: MarketingSettings;
-  posts: MarketingPost[];
+  posts: ListedPost[];
   /** The read hit its ceiling: older posts exist that this page does not list. */
   truncated: boolean;
 }

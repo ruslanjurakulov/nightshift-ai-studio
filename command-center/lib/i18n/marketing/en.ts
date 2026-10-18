@@ -96,6 +96,24 @@ export const marketingEn = {
     price: "Plans",
   },
 
+  // A post of a kind or target this page version does not know (a newer database). Listed, never approved here.
+  other: {
+    titleKind: "Other kind: {code}",
+    titleTarget: "Other target: {code}",
+    titleDelivery: "Other delivery: {code}",
+    kindLine: "Kind: {code}",
+    targetLine: "Target: {code}",
+    deliveryLine: "Delivery: {code}",
+    errorLine: "Error code: {code}",
+    cannotApprove: "This page version cannot approve this kind: the page needs updating (a new deploy).",
+    noActions: "This page version cannot edit or reject it either.",
+    wordsTitle: "Words, as stored",
+    wordsNote: "Shown as stored, not as any channel would show them.",
+    noPreview: "Preview unavailable: this page version cannot read the words of this post.",
+    notice: "Posts of a kind or target this page version does not know are listed as Other kind or Other target ({n}). They cannot be approved here.",
+    lastSend: "{title}. Status as the database says; this page cannot tell where it went.",
+  },
+
   post: {
     source: "Source: {source}",
     created: "Created {age}",
