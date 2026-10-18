@@ -54,7 +54,7 @@ each in its own script, the same numbers in all three, no placeholder or URL, an
 
 - `marketing_posts`: kind `news | showcase | price`, `target` (`telegram` only; a column so Instagram later is a new
   sender and token, not a redesign), the status, `texts` (exactly `uz`, `ru`, `en`), `media_path` (public `showcase/`
-  bucket only), `source_ref` (`pr:#N`, `plan:<ids>`, `asset:<uuid>`), `facts` with `facts_as_of`, the approval
+  bucket only), `link` (a path on our own site), `source_ref` (`pr:#N`, `plan:<ids>`, `asset:<uuid>`), `facts` with `facts_as_of`, the approval
   (`approved_by`, `approved_at`, `approved_hash`, `expires_at`), the send record, and a unique `idempotency_key`
   (`news:<slug>`, `price:<plan-set>:<yyyy-mm>`, `showcase:<asset id>`), so the same thing is never drafted twice.
 - `marketing_settings`: one row. `enabled` (false), `max_per_7d` (2, `CHECK` 0..2), `facts_max_age_hours` (24),
@@ -66,7 +66,7 @@ Row-level security is on for all three and every API role's table grants are rev
 `SELECT` `marketing_posts` (one policy). Every write is a `SECURITY DEFINER` function with a pinned `search_path`.
 The browser never holds the service key.
 
-### Status machine (a trigger, so it holds for every writer)
+### Status machine (a trigger: it holds for the API roles, the owner functions and the worker)
 
 ```
 draft ─► approved ─► sending ─► sent | failed | dead
@@ -76,10 +76,17 @@ draft ─► approved ─► sending ─► sent | failed | dead
   └─► expired      (draft or approved)
 ```
 
-- **Approval** needs the approver, the time, an expiry and a hash equal to the hash of the content as it stands.
+- **Approval** needs the approver, the time, an expiry and a hash equal to the hash of the content as it stands. The
+  hash covers everything the sender puts in the message: kind, target, media, **link** and the three texts.
   `owner_marketing_approve(id, content_hash)` takes the hash the owner was looking at and refuses if the post
-  changed since (`content_changed`), if a price post's facts are older than 24 h, or if the week's slots are already
-  used or promised.
+  changed since (`content_changed`), if a price post's facts are older than 24 h, if the week's slots are already
+  used or promised, **or while the poster is switched off (`poster_off`)**: with the switch off nothing can be
+  claimed, so an approval would lapse unsent after 72 h and use up the post's key (a news item is drafted once).
+  Re-arm first, then approve. An approval that already lapsed is answered `expired` and the post is expired, never
+  "already approved".
+- **The worker never overwrites a person's words.** `marketing_draft_upsert` updates a draft only while nobody has
+  edited it (`edited_at` is empty), so an owner edit, including an edit that sent an approved post back to draft,
+  survives the next pass over the news files.
 - **Edit after approval** returns the post to draft and clears the approval (`owner_marketing_edit`, and the trigger
   for any other writer). What goes out is exactly what the owner saw.
 - **Claim** (`claim_marketing_post`, service key only) takes one advisory lock, then: settles lost leases and
@@ -90,6 +97,9 @@ draft ─► approved ─► sending ─► sent | failed | dead
 - **A lost lease** ends as `dead` / `unconfirmed` and is **never sent again** (Telegram has no idempotency token; a
   missed post is better than a duplicate: the same rule as migration 0102). A dead post keeps its slot for the week,
   because it may be on the channel. Only a request that never left is retried.
+- **A showcase post must carry its video** (a `CHECK`). In the showcase slice the claim must also join a *live*
+  `showcase_assets` row (not revoked), so revoking a video stops a post that has not gone out yet. That join is not
+  built here.
 - **Final rows are frozen and no row is deleted**: a deleted row would forget its key and let a news item be drafted
   again.
 
@@ -103,6 +113,13 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
 
 ## Safety
 
+- **What the database owner can still do.** The cap, the kill switch and the status machine protect against bugs and
+  against every API caller. A superuser (the SQL editor) can disable the trigger, set `session_replication_role`, or
+  update `marketing_settings` directly, and so step around them. That is the owner's own access, not a hole in the
+  API, but it means the controls are not a defence against someone who holds the database password.
+- **Turn the 0107 second-factor gate on before re-arming the poster.** While `owner_security_settings.admin_aal2_required`
+  is false, a password-only admin session passes `owner_guard()` and could approve a public post
+  (`docs/security/ADMIN_MFA.md`).
 - **No auto-publish.** The database allows `sending` only from `approved` with a matching hash and a live approval.
   `marketing_settings.enabled` is false until the owner re-arms it. Later, the app and the worker add their own
   switch (`NIGHTSHIFT_MARKETING_POSTS`, default off); both must be on.
@@ -143,12 +160,28 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
 3. GitHub, Settings, Secrets and variables, Actions: secret `TELEGRAM_CHANNEL_BOT_TOKEN`; variable
    `MARKETING_TELEGRAM_CHAT` = `@nightshiftaistudio`.
 4. Set variables `NIGHTSHIFT_MARKETING_WORKER` = `on` and `NIGHTSHIFT_MARKETING_POSTS` = `on`, then run Deploy web.
-5. Re-arm the database switch on the Marketing page (or `owner_marketing_kill(false, '<reason>')`).
+5. Check the 0107 second-factor gate is on (`select admin_aal2_required from public.owner_security_settings;`).
+   Then re-arm the database switch on the Marketing page (or `owner_marketing_kill(false, '<reason>')`) **before**
+   approving anything: approving is refused while the poster is off.
 6. There is deliberately **no "send test" button** (a test would be a public post). The first real approved draft
    is the test; delete it by hand in Telegram if it is wrong. A private test channel is an open question.
 
 To stop: set `NIGHTSHIFT_MARKETING_POSTS` to anything but `on`, tap the kill switch, or run
-`update public.marketing_settings set enabled = false;` in the SQL editor.
+`update public.marketing_settings set enabled = false where id;` in the SQL editor.
+
+## The sender slice must (notes from review, not built yet)
+
+- **Retries.** Report `rate_limited` (HTTP 429, honouring `retry_after`) and `not_configured` (the token is refused)
+  as `retry` with that code: the database does not use up an attempt for either, and the worker should pause on a
+  refused token as `notify_worker` does. A refused connection (`network`, nothing was sent) is a `retry` too.
+- **Ambiguous answers are `dead`, never `retry`.** `http_5xx`, a read timeout, a dropped connection after the request
+  was written, an unparseable reply: Telegram may have posted the message. Report them as `dead`; the database turns
+  any other `retry` code into `dead` / `unconfirmed` anyway, and a dead post keeps its weekly slot.
+- **Reuse `modules/notify_telegram.py`'s classification** (`classify_response`, its `_connect_failed` check for
+  "the connection never opened") instead of writing a second one, and pin the mapping with a test in that slice: a
+  fake server that refuses the connection gives `retry/network`, one that closes after the request gives `dead`.
+- Put the site origin in front of `link` (a path), send exactly the approved texts in the fixed three-block order,
+  and send only to the one configured channel id.
 
 ## Instagram: deferred
 

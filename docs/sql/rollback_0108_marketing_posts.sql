@@ -3,7 +3,7 @@
 --
 -- WHEN YOU NEED IT. Almost never: 0108 is dormant (marketing_settings.enabled is false, nothing calls the
 -- functions, no trigger sits on an existing table). To stop posting WITHOUT this file:
---     update public.marketing_settings set enabled = false;
+--     update public.marketing_settings set enabled = false where id;
 -- Use this file only to remove the objects completely. It DELETES every post record, including the memory
 -- of which news items were already announced (copy them first: select * from public.marketing_posts;).
 -- Audit rows already written with the marketing.* actions stay in app_audit_log and security_events.
@@ -12,6 +12,13 @@
 -- function 0108 added, and puts audit_action_allowed(text) back to 0107's body (the marketing.* and
 -- showcase.* actions become unknown again). It touches nothing else: 0108 changed no existing table,
 -- policy, grant or function.
+--
+-- CHECK BEFORE YOU RUN IT: this file puts audit_action_allowed(text) back to 0107's body. If a later migration
+-- has redefined that function (it is redefined whole in each migration that adds an action), running this file
+-- would silently undo that later list and the owner functions of the later migration would start to fail at their
+-- audit write. Compare first:  select pg_get_functiondef('public.audit_action_allowed(text)'::regprocedure);
+-- If the list there holds names beyond 0107's and the marketing.* / showcase.* ones, edit the body below to
+-- that list minus those eight names, or do not run this file.
 --
 -- tests/security/test_sec_marketing_posts.py applies this file to the lab database and then re-applies 0108.
 
@@ -26,7 +33,7 @@ drop function if exists public.owner_marketing_edit(uuid, jsonb);
 drop function if exists public.owner_marketing_approve(uuid, text);
 drop function if exists public.owner_marketing_reject(uuid, text);
 drop function if exists public.owner_marketing_kill(boolean, text);
-drop function if exists public.marketing_draft_upsert(text, text, jsonb, text, jsonb, timestamptz, text, text);
+drop function if exists public.marketing_draft_upsert(text, text, jsonb, text, jsonb, timestamptz, text, text, text);
 drop function if exists public.claim_marketing_post(text, integer, text);
 drop function if exists public.complete_marketing_post(uuid, text, text, text, integer, text);
 drop function if exists public.marketing_cap_used();
@@ -36,7 +43,7 @@ drop function if exists public.marketing_settings_no_delete();
 drop function if exists public.marketing_settings_stamp();
 drop function if exists public.marketing_settings_trail();
 drop function if exists public.marketing_texts_ok(jsonb, boolean);
-drop function if exists public.marketing_post_hash(text, text, jsonb, text);
+drop function if exists public.marketing_post_hash(text, text, jsonb, text, text);
 
 -- 0107's body, verbatim.
 create or replace function public.audit_action_allowed(p_action text) returns boolean

@@ -47,7 +47,7 @@ WORKER_CALLS = {
     "claim_marketing_post": "select * from public.claim_marketing_post('attacker')",
     "complete_marketing_post": "select public.complete_marketing_post('%s', 'attacker', 'sent')" % ZERO_UUID,
 }
-INTERNAL = {"marketing_texts_ok": "jsonb, boolean", "marketing_post_hash": "text, text, jsonb, text", "marketing_cap_used": ""}
+INTERNAL = {"marketing_texts_ok": "jsonb, boolean", "marketing_post_hash": "text, text, jsonb, text, text", "marketing_cap_used": ""}
 
 
 # ── plumbing ────────────────────────────────────────────────────────────────
@@ -111,11 +111,11 @@ def approved(t, op, key, pr=10, texts=None):
 
 
 def enable(t):
-    t.sup("update public.marketing_settings set enabled = true returning 1")
+    t.sup("update public.marketing_settings set enabled = true where id returning 1")
 
 
 def claim(t, worker="worker-1", lease=120):
-    out = t.as_(SERVICE).run("select post_id, kind, target, texts, media_path, attempts, content_hash "
+    out = t.as_(SERVICE).run("select post_id, kind, target, texts, media_path, link, attempts, content_hash "
                              "from public.claim_marketing_post(%s, %s)", [worker, lease])
     assert out.ok, out
     return out.rows
@@ -168,7 +168,7 @@ def test_the_worker_functions_are_for_the_service_key_only(conn, sc, fn):
             assert not out.ok and out.sqlstate == "42501", (fn, getattr(who, "name", "anon"), out)
         assert t.as_(SERVICE).run(WORKER_CALLS[fn]).sqlstate != "42501", fn
     with as_superuser(conn, commit=False) as s:
-        sig = {"marketing_draft_upsert": "public.marketing_draft_upsert(text,text,jsonb,text,jsonb,timestamptz,text,text)",
+        sig = {"marketing_draft_upsert": "public.marketing_draft_upsert(text,text,jsonb,text,jsonb,timestamptz,text,text,text)",
                "claim_marketing_post": "public.claim_marketing_post(text,integer,text)",
                "complete_marketing_post": "public.complete_marketing_post(uuid,text,text,text,integer,text)"}[fn]
         assert [s.value("select has_function_privilege(%s, %s, 'EXECUTE')", [r, sig]) for r in
@@ -309,6 +309,7 @@ def test_illegal_moves_out_of_a_draft_are_refused(conn, sc, op):
 
 def test_illegal_moves_out_of_an_approved_post_are_refused(conn, sc, op):
     with tx(conn) as t:
+        enable(t)
         pid = approved(t, op, "news:m-2")
         for target in ILLEGAL_FROM_APPROVED:
             out = run(t, "update public.marketing_posts set status = %s where id = %s", [target, pid])
@@ -402,6 +403,7 @@ def test_nobody_but_the_owner_functions_can_approve(conn, sc, op):
 
 def test_an_approval_is_for_the_words_the_owner_saw(conn, sc, op):
     with tx(conn) as t:
+        enable(t)
         pid = draft(t, "news:saw-1")
         seen = chash(t, pid)
         assert approve(t, op, pid, OTHER_HASH)["error"] == "content_changed"
@@ -432,6 +434,7 @@ def test_only_a_draft_can_be_approved(conn, sc, op):
 
 def test_a_price_post_with_old_facts_cannot_be_approved(conn, sc, op):
     with tx(conn) as t:
+        enable(t)
         stale = price_draft(t, "price:stale-1", age_hours=25)
         out = approve(t, op, stale)
         assert out["error"] == "facts_stale" and out["max_age_hours"] == 24, out
@@ -486,6 +489,7 @@ def test_the_content_of_a_post_being_sent_cannot_change(conn, sc, op):
 
 def test_an_edit_that_changes_nothing_voids_nothing(conn, sc, op):
     with tx(conn) as t:
+        enable(t)
         pid = approved(t, op, "news:edit-4")
         out = t.as_(op).value("select public.owner_marketing_edit(%s, %s::jsonb)", [pid, json.dumps({k: f" {v} " for k, v in TEXTS.items()})])
         assert out["ok"] and out["unchanged"] is True and status(t, pid) == "approved"
@@ -526,6 +530,7 @@ def test_a_caption_is_shorter_than_a_message(conn, sc, op):
 
 def test_drafting_the_same_thing_twice_makes_one_post_and_never_rewrites_a_decided_one(conn, sc, op):
     with tx(conn) as t:
+        enable(t)
         s = t.as_(SERVICE)
         first = s.value("select public.marketing_draft_upsert('news:idem-1', 'news', %s::jsonb, 'pr:#7')", [json.dumps(TEXTS)])
         second = s.value("select public.marketing_draft_upsert('news:idem-1', 'news', %s::jsonb, 'pr:#7')", [json.dumps(TEXTS)])
@@ -557,7 +562,10 @@ def test_drafting_the_same_thing_twice_makes_one_post_and_never_rewrites_a_decid
     ("'news:k 1', 'news', %s::jsonb, 'pr:#1'", "bad_key"),
     ("'news:k1', 'news', %s::jsonb, 'plan:plus'", "bad_source"),
     ("'news:k1', 'news', %s::jsonb, 'pr:#x'", "bad_source"),
-    ("'showcase:k1', 'showcase', %s::jsonb, 'pr:#1'", "bad_source"),
+    ("'showcase:k1', 'showcase', %s::jsonb, 'pr:#1', '{}'::jsonb, null, 'showcase/a.mp4'", "bad_source"),
+    ("'showcase:k1', 'showcase', %s::jsonb, 'asset:00000000-0000-0000-0000-000000000001'", "media_required"),
+    ("'news:k1', 'news', %s::jsonb, 'pr:#1', '{}'::jsonb, null, null, 'telegram', 'https://evil.example'", "bad_link"),
+    ("'news:k1', 'news', %s::jsonb, 'pr:#1', '{}'::jsonb, null, null, 'telegram', '/a/../b'", "bad_link"),
 ])
 def test_drafting_refuses_nonsense(conn, sc, args, error):
     with tx(conn) as t:
@@ -579,7 +587,9 @@ def test_one_key_cannot_name_two_different_posts(conn, sc):
 def test_nothing_is_claimed_while_the_switch_is_off_however_much_is_approved(conn, sc, op):
     with tx(conn) as t:
         assert t.sup("select enabled from public.marketing_settings")[0][0] is False
+        enable(t)
         pid = approved(t, op, "news:off-1")
+        t.sup("update public.marketing_settings set enabled = false where id returning 1")   # the switch goes off (SQL editor)
         assert claim(t) == []
         assert status(t, pid) == "approved"
         enable(t)
@@ -633,7 +643,7 @@ def test_a_third_post_in_seven_days_is_never_claimable(conn, sc, op):
 def test_a_cap_of_zero_stops_approvals_and_claims(conn, sc, op):
     with tx(conn) as t:
         enable(t)
-        t.sup("update public.marketing_settings set max_per_7d = 0 returning 1")
+        t.sup("update public.marketing_settings set max_per_7d = 0 where id returning 1")
         pid = draft(t, "news:zero-1")
         assert approve(t, op, pid)["error"] == "cap_full"
         raw(t, "update public.marketing_posts set status = 'approved', approved_by = %s, approved_at = now(), "
@@ -648,7 +658,7 @@ def test_one_claim_hands_out_one_post_and_the_oldest_approval_first(conn, sc, op
         raw(t, "update public.marketing_posts set approved_at = now() - interval '2 hours' where id = %s", [a])
         b = approved(t, op, "news:order-2", pr=2)
         got = claim(t)
-        assert [str(r[0]) for r in got] == [str(a)] and got[0][1:3] == ("news", "telegram") and got[0][5] == 1
+        assert [str(r[0]) for r in got] == [str(a)] and got[0][1:3] == ("news", "telegram") and got[0][6] == 1
         assert status(t, b) == "approved"
         r = row(t, a)
         assert r["status"] == "sending" and r["claimed_by"] == "worker-1" and r["attempts"] == 1
@@ -659,7 +669,7 @@ def test_two_claims_at_once_are_serialised_and_the_cap_holds(conn, sc):
     a = b = c = None
     try:
         with as_superuser(conn) as s:   # committed: two sessions cannot see each other's rolled-back rows
-            s.rows("update public.marketing_settings set enabled = true returning 1")
+            s.rows("update public.marketing_settings set enabled = true where id returning 1")
             for i, key in enumerate(keys, 1):
                 s.rows("insert into public.marketing_posts (idempotency_key, kind, texts, source_ref) "
                        "values (%s, 'news', %s::jsonb, %s) returning 1", [key, json.dumps(TEXTS), f"pr:#9{i}"])
@@ -699,7 +709,7 @@ def test_two_claims_at_once_are_serialised_and_the_cap_holds(conn, sc):
         with as_superuser(conn) as s:
             s.run("set local session_replication_role = replica")
             s.run("delete from public.marketing_posts where idempotency_key = any(%s)", [keys])
-            s.run("update public.marketing_settings set enabled = false")
+            s.run("update public.marketing_settings set enabled = false where id")
 
 
 # ── expiry, age and the hash at the claim ───────────────────────────────────
@@ -918,6 +928,7 @@ def test_every_owner_action_is_audited_in_the_same_transaction_with_the_actor(co
 def test_the_audit_is_part_of_the_change_not_beside_it(conn, sc, op):
     # If the audit list ever stops allowing a name, the action fails whole: nothing is approved without a record.
     with tx(conn) as t:
+        enable(t)
         pid = draft(t, "news:atomic-1")
         h = chash(t, pid)
         t.sup("create or replace function public.audit_action_allowed(p_action text) returns boolean "
@@ -948,6 +959,267 @@ def test_an_unknown_post_is_an_answer_not_an_error(conn, sc, op):
         pid = approved(t, op, "news:sent-edit-2")
         send(t, pid)
         assert t.as_(op).value("select public.owner_marketing_edit(%s, %s::jsonb)", [pid, json.dumps(TEXTS)])["error"] == "not_editable"
+
+
+# ── review round: owner edits survive the worker, the poster must be on, the link is hashed ──────────────
+
+def upsert(t, key, texts=None, pr=10, link=None, **kw):
+    return t.as_(SERVICE).value("select public.marketing_draft_upsert(%s, 'news', %s::jsonb, %s, '{}'::jsonb, null, null, 'telegram', %s)",
+                                [key, json.dumps(texts or TEXTS), f"pr:#{pr}", link])
+
+
+def test_the_worker_never_overwrites_a_draft_the_owner_edited(conn, sc, op):
+    with tx(conn) as t:
+        enable(t)
+        pid = draft(t, "news:own-edit-1")
+        owner_words = {**TEXTS, "en": "The owner's own words"}
+        assert t.as_(op).value("select public.owner_marketing_edit(%s, %s::jsonb)", [pid, json.dumps(owner_words)])["ok"]
+        # the news file is read again (the worker loops): with its old text, or with a newer one
+        for file_text in (TEXTS, {**TEXTS, "en": "A newer file text"}):
+            out = upsert(t, "news:own-edit-1", file_text)
+            assert out["created"] is False and out["updated"] is False and out["owner_edited"] is True, out
+            assert row(t, pid)["texts"] == owner_words
+        # a draft nobody edited still follows the file
+        other = draft(t, "news:own-edit-2")
+        assert upsert(t, "news:own-edit-2", {**TEXTS, "en": "File changed"}, pr=10)["updated"] is True
+        assert row(t, other)["texts"]["en"] == "File changed"
+
+
+def test_an_approved_post_the_owner_edited_back_to_draft_keeps_the_owners_words(conn, sc, op):
+    with tx(conn) as t:
+        enable(t)
+        pid = approved(t, op, "news:own-edit-3")
+        owner_words = {**TEXTS, "ru": "Слова владельца"}
+        out = t.as_(op).value("select public.owner_marketing_edit(%s, %s::jsonb)", [pid, json.dumps(owner_words)])
+        assert out["approval_voided"] is True and status(t, pid) == "draft"
+        out = upsert(t, "news:own-edit-3", {**TEXTS, "ru": "Текст файла"})
+        assert out["updated"] is False and out["owner_edited"] is True
+        assert row(t, pid)["texts"] == owner_words and status(t, pid) == "draft"
+
+
+def test_approving_is_refused_while_the_poster_is_off_and_nothing_is_used_up(conn, sc, op):
+    with tx(conn) as t:
+        pid = draft(t, "news:off-approve-1")
+        assert t.sup("select enabled from public.marketing_settings")[0][0] is False
+        out = approve(t, op, pid)
+        assert out["error"] == "poster_off", out
+        r = row(t, pid)
+        assert r["status"] == "draft" and r["approved_hash"] is None   # still a draft: the key is not burnt
+        assert t.sup("select count(*) from public.app_audit_log where action = 'marketing.approve'")[0][0] == 0
+        # the kill switch turns approving off too
+        enable(t)
+        assert approve(t, op, pid)["ok"]
+        other = draft(t, "news:off-approve-2", pr=11)
+        assert t.as_(op).value("select public.owner_marketing_kill(true, null)")["enabled"] is False
+        assert approve(t, op, other)["error"] == "poster_off"
+        # approving an already approved post is still an answer, and re-arming needs a reason
+        assert t.as_(op).value("select public.owner_marketing_kill(false, 'The channel is ready again')")["enabled"] is True
+        assert approve(t, op, other)["ok"]
+
+
+def test_an_approval_that_lapsed_unswept_is_expired_not_already_approved(conn, sc, op):
+    with tx(conn) as t:
+        enable(t)
+        pid = approved(t, op, "news:lapsed-1")
+        run(t, "update public.marketing_posts set expires_at = now() - interval '1 second' where id = %s", [pid])
+        assert status(t, pid) == "approved"          # nothing has swept it yet
+        out = approve(t, op, pid)
+        assert out["error"] == "expired" and out.get("already") is None, out
+        r = row(t, pid)
+        assert (r["status"], r["last_error_code"]) == ("expired", "expired")
+        assert approve(t, op, pid)["error"] == "not_draft"
+
+
+def test_the_link_is_part_of_what_is_approved(conn, sc, op):
+    with tx(conn) as t:
+        enable(t)
+        pid = upsert(t, "news:link-1", link="/pricing")["id"]
+        seen = chash(t, pid)
+        assert upsert(t, "news:link-1", link="/studio")["updated"] is True      # the file's link changed while the owner read it
+        assert chash(t, pid) != seen
+        assert approve(t, op, pid, seen)["error"] == "content_changed"          # a stale approval is blocked
+        assert approve(t, op, pid)["ok"]
+        got = claim(t)
+        assert [str(got[0][0]), got[0][5]] == [str(pid), "/studio"]
+        # the hash function itself separates the same words with and without a link
+        h = lambda link: t.sup("select public.marketing_post_hash('news', 'telegram', %s::jsonb, null, %s)", [json.dumps(TEXTS), link])[0][0]
+        assert len({h(None), h("/pricing"), h("/studio"), h("/pricing/")}) == 4
+
+
+def test_a_link_written_under_an_approval_voids_it_and_a_tampered_one_is_not_sent(conn, sc, op):
+    with tx(conn) as t:
+        enable(t)
+        voided = approved(t, op, "news:link-2", pr=1)
+        assert run(t, "update public.marketing_posts set link = '/other' where id = %s", [voided]).ok
+        assert row(t, voided)["status"] == "draft" and row(t, voided)["approved_hash"] is None
+        tampered = approved(t, op, "news:link-3", pr=2)
+        raw(t, "update public.marketing_posts set link = '/evil' where id = %s", [tampered])   # the triggers were skipped
+        assert [r for r in claim(t) if str(r[0]) == str(tampered)] == []
+        assert status(t, tampered) == "approved"
+
+
+def test_a_showcase_needs_its_video(conn, sc):
+    key, src = "showcase:00000000-0000-0000-0000-000000000001", "asset:00000000-0000-0000-0000-000000000001"
+    ins = ("insert into public.marketing_posts (idempotency_key, kind, texts, source_ref, media_path) "
+           "values (%s, 'showcase', %s::jsonb, %s, %s)")
+    with tx(conn) as t:
+        assert run(t, ins, [key, json.dumps(TEXTS), src, None]).sqlstate == "23514"
+        assert run(t, ins, [key, json.dumps(TEXTS), src, "showcase/clip.mp4"]).ok
+
+
+@pytest.mark.parametrize("columns,values,why", [
+    ("idempotency_key, kind, source_ref", ("price:x1", "news", "pr:#1"), "a key must start with its kind"),
+    ("idempotency_key, kind, source_ref", ("news:has space", "news", "pr:#1"), "unsafe characters in the key"),
+    ("idempotency_key, kind, source_ref", ("news:" + "x" * 101, "news", "pr:#1"), "key longer than 100 after the kind"),
+    ("idempotency_key, kind, source_ref", ("news:x1", "news", "plan:plus"), "source does not match the kind"),
+    ("idempotency_key, kind, source_ref", ("news:x1", "tweet", "pr:#1"), "unknown kind"),
+    ("idempotency_key, kind, source_ref, media_path", ("news:x1", "news", "pr:#1", "previews/private.mp4"), "private bucket"),
+    ("idempotency_key, kind, source_ref, media_path", ("news:x1", "news", "pr:#1", "showcase/../previews/x.mp4"), "path traversal"),
+    ("idempotency_key, kind, source_ref, link", ("news:x1", "news", "pr:#1", "https://evil.example/"), "a link is a path"),
+    ("idempotency_key, kind, source_ref, link", ("news:x1", "news", "pr:#1", "//evil.example"), "a protocol-relative link"),
+    ("idempotency_key, kind, source_ref, target", ("news:x1", "news", "pr:#1", "instagram"), "only telegram exists"),
+])
+def test_the_table_checks_hold_for_a_direct_insert(conn, columns, values, why):
+    cols = columns.split(", ")
+    with tx(conn) as t:
+        out = run(t, f"insert into public.marketing_posts ({columns}, texts) values ({', '.join(['%s'] * len(cols))}, %s::jsonb)",
+                  [*values, json.dumps(TEXTS)])
+        assert out.sqlstate == "23514", (why, out)
+
+
+@pytest.mark.parametrize("texts,ok", [
+    (TEXTS, True),
+    ({**TEXTS, "fr": "Un texte"}, False),
+    ({"uz": "a", "ru": "b"}, False),
+    ({"uz": "a", "ru": "b", "xx": "c"}, False),
+    ({**TEXTS, "en": "x" * 1001}, False),
+    ({**TEXTS, "en": "line one\nline two"}, True),
+    ({**TEXTS, "en": "tab\there"}, False),
+    ({**TEXTS, "en": "trailing\n"}, False),
+    ({**TEXTS, "en": "\tleading"}, False),
+])
+def test_marketing_texts_ok_and_the_table_check_agree(conn, texts, ok):
+    with tx(conn) as t:
+        assert t.sup("select public.marketing_texts_ok(%s::jsonb, false)", [json.dumps(texts)])[0][0] is ok
+        out = run(t, "insert into public.marketing_posts (idempotency_key, kind, texts, source_ref) values ('news:chk-1', 'news', %s::jsonb, 'pr:#1')",
+                  [json.dumps(texts)])
+        assert out.ok is ok, out
+    with tx(conn) as t:
+        assert t.sup("select public.marketing_texts_ok(%s::jsonb, true)", [json.dumps({"uz": "a" * 300, "ru": "b", "en": "c"})])[0][0] is True
+        assert t.sup("select public.marketing_texts_ok(%s::jsonb, true)", [json.dumps({"uz": "a" * 900, "ru": "b", "en": "c"})])[0][0] is False
+
+
+def test_surrounding_whitespace_of_every_kind_is_trimmed_before_it_is_checked(conn, sc, op):
+    with tx(conn) as t:
+        padded = {"uz": "\n\tNamuna matn \r\n", "ru": " Пример текста\n", "en": "\tSample text\t"}
+        out = upsert(t, "news:trim-1", padded)
+        assert out["ok"], out
+        assert row(t, out["id"])["texts"] == TEXTS
+        edited = t.as_(op).value("select public.owner_marketing_edit(%s, %s::jsonb)", [out["id"], json.dumps({**padded, "en": "\n Edited text \n"})])
+        assert edited["ok"] and row(t, out["id"])["texts"]["en"] == "Edited text"
+        # trimming leaves an empty text empty, and that is refused
+        assert t.as_(op).value("select public.owner_marketing_edit(%s, %s::jsonb)", [out["id"], json.dumps({**TEXTS, "en": " \n\t "})])["error"] == "bad_texts"
+
+
+INVISIBLE = ["‮", "‭", "‪", "‬", "⁦", "⁧", "⁨", "⁩", "​", "‌", "‍",
+             "‎", "‏", " ", " ", "\u0085", "﻿", "­", "⁠", "\u0007", "\u007f", "\u009f"]
+
+
+@pytest.mark.parametrize("ch", INVISIBLE, ids=[f"U+{ord(c):04X}" for c in INVISIBLE])
+def test_invisible_and_direction_changing_characters_are_refused_everywhere(conn, sc, op, ch):
+    bad = {**TEXTS, "en": f"Sample{ch}text"}
+    with tx(conn) as t:
+        assert upsert(t, "news:inv-1", bad)["error"] == "bad_texts"
+        pid = draft(t, "news:inv-2")
+        assert t.as_(op).value("select public.owner_marketing_edit(%s, %s::jsonb)", [pid, json.dumps(bad)])["error"] == "bad_texts"
+        assert t.sup("select public.marketing_texts_ok(%s::jsonb, false)", [json.dumps(bad)])[0][0] is False
+        assert run(t, "update public.marketing_posts set texts = %s::jsonb where id = %s", [json.dumps(bad), pid]).sqlstate == "23514"
+        assert row(t, pid)["texts"] == TEXTS
+
+
+# ── review round: the window, the lease, the expiry in the trigger ──────────
+
+def test_the_seven_day_window_edges(conn, sc, op):
+    with tx(conn) as t:
+        enable(t)
+        a = approved(t, op, "news:win-1", pr=1)
+        send(t, a)
+        for age, counted in (("6 days 23 hours", 1), ("6 days 23 hours 59 minutes", 1), ("7 days 1 minute", 0), ("30 days", 0)):
+            raw(t, "update public.marketing_posts set sent_at = now() - %s::interval, claimed_at = now() - %s::interval where id = %s", [age, age, a])
+            assert used(t) == counted, (age, used(t))
+        # a sending or dead post is measured from its claim
+        raw(t, "update public.marketing_posts set status = 'dead', last_error_code = 'unconfirmed', sent_at = null, "
+               "claimed_at = now() - interval '6 days 23 hours' where id = %s", [a])
+        assert used(t) == 1
+        raw(t, "update public.marketing_posts set claimed_at = now() - interval '7 days 1 minute' where id = %s", [a])
+        assert used(t) == 0
+
+
+@pytest.mark.parametrize("asked,expected", [(1, 30), (30, 30), (120, 120), (600, 600), (601, 600), (99999, 600), (None, 120)])
+def test_the_lease_is_clamped_to_30_through_600_seconds(conn, sc, op, asked, expected):
+    with tx(conn) as t:
+        enable(t)
+        pid = approved(t, op, "news:lease-clamp")
+        out = t.as_(SERVICE).run("select count(*) from public.claim_marketing_post('w-clamp', %s)", [asked])
+        assert out.ok and out.rows[0][0] == 1, out
+        secs = t.sup("select round(extract(epoch from (claimed_until - claimed_at))) from public.marketing_posts where id = %s", [pid])[0][0]
+        assert secs == expected
+
+
+def test_the_trigger_itself_refuses_to_send_on_an_expired_approval(conn, sc, op):
+    with tx(conn) as t:
+        enable(t)
+        pid = approved(t, op, "news:trig-exp")
+        run(t, "update public.marketing_posts set expires_at = now() - interval '1 second' where id = %s", [pid])
+        out = run(t, "update public.marketing_posts set status = 'sending', claimed_by = 'w', claimed_at = now(), "
+                     "claimed_until = now() + interval '1 minute' where id = %s", [pid])
+        assert out.sqlstate == "23514" and "current, matching approval" in out.error, out
+        # and a matching, live approval is allowed through by the same statement
+        fresh = approved(t, op, "news:trig-ok", pr=2)
+        assert run(t, "update public.marketing_posts set status = 'sending', claimed_by = 'w', claimed_at = now(), "
+                      "claimed_until = now() + interval '1 minute' where id = %s", [fresh]).ok
+
+
+def test_approving_waits_for_a_claim_in_flight_and_then_sees_its_slot(conn, sc):
+    keys = ["news:race-1", "news:race-2"]
+    a = b = None
+    try:
+        with as_superuser(conn) as s:   # committed: two sessions cannot see each other's rolled-back rows
+            s.rows("update public.marketing_settings set enabled = true, max_per_7d = 1 where id returning 1")
+            for i, key in enumerate(keys, 1):
+                s.rows("insert into public.marketing_posts (idempotency_key, kind, texts, source_ref) "
+                       "values (%s, 'news', %s::jsonb, %s) returning 1", [key, json.dumps(TEXTS), f"pr:#8{i}"])
+            s.rows("update public.marketing_posts set status = 'approved', approved_by = %s, approved_at = now(), "
+                   "approved_hash = content_hash, expires_at = now() + interval '72 hours' where idempotency_key = %s returning 1",
+                   [sc.operator.uid, keys[0]])
+            draft_id, draft_hash = s.rows("select id, content_hash from public.marketing_posts where idempotency_key = %s", [keys[1]])[0]
+
+        def as_(conn_, claims):
+            conn_.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps(claims)])
+            conn_.execute(f"set local role {claims['role']}")
+
+        a, b = second_connection(conn), second_connection(conn)
+        as_(a, {"role": "service_role"})
+        assert len(a.execute("select post_id from public.claim_marketing_post('worker-a')").fetchall()) == 1   # lock held, uncommitted
+        operator = {"role": "authenticated", "sub": sc.operator.uid, "email": sc.operator.email}
+        as_(b, operator)
+        b.execute("set local lock_timeout = '400ms'")
+        with pytest.raises(psycopg.errors.LockNotAvailable):
+            b.execute("select public.owner_marketing_approve(%s, %s)", [draft_id, draft_hash])   # waits behind the claim
+        b.rollback()
+        a.commit()
+        as_(b, operator)
+        out = b.execute("select public.owner_marketing_approve(%s, %s)", [draft_id, draft_hash]).fetchone()[0]
+        b.rollback()
+        assert out["error"] == "cap_full" and out["used_7d"] == 1 and out["max_per_7d"] == 1, out   # it sees the claimed slot
+    finally:
+        for x in (a, b):
+            if x is not None:
+                x.close()
+        with as_superuser(conn) as s:
+            s.run("set local session_replication_role = replica")
+            s.run("delete from public.marketing_posts where idempotency_key = any(%s)", [keys])
+            s.run("update public.marketing_settings set enabled = false, max_per_7d = 2 where id")
 
 
 # ── the second factor and the rate limit ────────────────────────────────────
@@ -1019,7 +1291,7 @@ def test_the_migration_replays_without_changing_state(conn, sc, op):
     text = MIGRATION.read_text(encoding="utf-8")
     with tx(conn) as t:
         enable(t)
-        t.sup("update public.marketing_settings set max_per_7d = 1 returning 1")
+        t.sup("update public.marketing_settings set max_per_7d = 1 where id returning 1")
         pid = draft(t, "news:replay-1", pr=1)
         assert approve(t, op, pid)["ok"]
         before = t.sup("select count(*) from public.marketing_posts")[0][0]
@@ -1041,7 +1313,7 @@ def test_the_function_acls_survive_a_replay(conn):
             assert [t.sup("select has_function_privilege(%s, %s, 'EXECUTE')", [r, "public." + fn])[0][0]
                     for r in ("anon", "authenticated", "service_role")] == [False, True, False], fn
         for fn in ("claim_marketing_post(text,integer,text)", "complete_marketing_post(uuid,text,text,text,integer,text)",
-                   "marketing_draft_upsert(text,text,jsonb,text,jsonb,timestamptz,text,text)"):
+                   "marketing_draft_upsert(text,text,jsonb,text,jsonb,timestamptz,text,text,text)"):
             assert [t.sup("select has_function_privilege(%s, %s, 'EXECUTE')", [r, "public." + fn])[0][0]
                     for r in ("anon", "authenticated", "service_role")] == [False, False, True], fn
         for table, want in (("marketing_posts", (False, True, False)), ("marketing_settings", (False, False, False)),
@@ -1075,6 +1347,8 @@ def test_the_rollback_file_removes_exactly_what_the_migration_added_and_the_migr
         assert t.sup("select public.audit_action_allowed('marketing.send')")[0][0] is True
         assert t.sup("select enabled from public.marketing_settings")[0][0] is False
         pid = draft(t, "news:back-1")
+        assert approve(t, op, pid)["error"] == "poster_off"   # dormant again after the re-apply
+        enable(t)
         assert approve(t, op, pid)["ok"]
 
 
@@ -1089,8 +1363,8 @@ def test_the_poster_cannot_post_on_its_own_it_only_hands_out_what_a_person_appro
         assert approve(t, op, pid)["ok"]
         got = claim(t)
         assert [str(r[0]) for r in got] == [str(pid)]
-        assert got[0][3] == TEXTS and got[0][4] is None   # exactly the approved words, no media
-        assert got[0][6] == t.sup("select approved_hash from public.marketing_posts where id = %s", [pid])[0][0]
+        assert got[0][3] == TEXTS and got[0][4] is None and got[0][5] is None   # exactly the approved words, no media, no link
+        assert got[0][7] == t.sup("select approved_hash from public.marketing_posts where id = %s", [pid])[0][0]
         assert complete(t, pid, "worker-1", "sent", mid="9") is True
         assert status(t, pid) == "sent"
 

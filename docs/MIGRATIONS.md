@@ -94,7 +94,7 @@ starts to call the new objects before a reviewed change wires them.
 - **Is it off?** `select enabled from public.marketing_settings;` must read `false`. While it is false,
   `claim_marketing_post()` hands out nothing, however much is approved.
 - **Is it working?** The verify block at the bottom of the file.
-- **Undo.** The switch is the undo for behaviour (`update public.marketing_settings set enabled = false;`). To remove the
+- **Undo.** The switch is the undo for behaviour (`update public.marketing_settings set enabled = false where id;`). To remove the
   objects, and the record of every post: `docs/sql/rollback_0108_marketing_posts.sql` (owner-applied; the lab applies it
   to a scratch database and then re-applies 0108).
 - **Replay.** The seed is `on conflict do nothing`, so re-running the file keeps whatever the owner set. Re-running 0107

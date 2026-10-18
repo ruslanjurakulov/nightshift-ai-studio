@@ -2,7 +2,7 @@
 
 One file per change that could be announced, added **in the pull request that ships it**:
 
-    docs/news/<yyyy-mm-dd>-<slug>.json        e.g. 2026-10-15-telegram-notifications.json
+    docs/news/<yyyy-mm-dd>-<slug>.json        e.g. 2026-10-15-editor-shapes.json
 
 The date is the day the change reached the live product (the file name and `shipped` must
 agree). The slug becomes the post's idempotency key (`news:<slug>`), so it is unique and never
@@ -15,7 +15,7 @@ post, one by one, on the owner page (which is a later change). Today nothing rea
 
 ```json
 {
-  "pr": 490,
+  "pr": 484,
   "shipped": "2026-10-15",
   "kind": "feature",
   "public": false,
@@ -97,7 +97,7 @@ is meant to guard the price-post and showcase templates in later changes.
 
 ## Adding an item
 
-1. Copy the example (`2026-10-15-example-telegram-notifications.json`, `public: false`).
+1. Copy the example (`2026-10-15-example-editor-shapes.json`, `public: false`).
 2. Write the three texts. Keep `public` false until the change is live and you want it announced.
 3. `python3 -m unittest tests.test_news_format` and fix what it says.
 4. In the pull request description, say who decided `public`.

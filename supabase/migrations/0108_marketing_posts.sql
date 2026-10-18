@@ -29,13 +29,18 @@
 --  3. showcase_assets      the explicit "this video is public" list. Closed (no policy, no grant) and limited
 --                          to the operator's own organization by a CHECK. The owner functions that fill it
 --                          (showcase.mark / showcase.revoke) are a later change.
---  4. The status machine is a TRIGGER, so it holds for every writer, the SQL editor included:
+--  4. The status machine is a TRIGGER, so it holds for every API role, the owner functions and the worker,
+--     and it also catches a careless write in the SQL editor. It is NOT a defence against the database owner:
+--     a superuser can still disable the trigger, set session_replication_role = replica, or update
+--     marketing_settings directly, and so step around the cap and the kill switch. Those two protect against
+--     bugs and against every API caller, not against the owner of the database.
 --         draft -> approved -> sending -> sent | failed | dead
 --         draft -> rejected          draft | approved -> expired
 --         approved -> draft          only by an edit (the approval is void), never by a bare status write
 --         sending -> approved        only for a request that never left (rate limit, refused connection)
 --     Any other move is refused (23514). A draft becomes approved only with the approver, the time and a hash
---     equal to the hash of the content as it stands. Content (texts, media) cannot change once a post is
+--     equal to the hash of the content as it stands: kind, target, media, link and the three texts, that is,
+--     everything the sender will put in the message. Content cannot change once a post is
 --     sending or later; an edit of an approved post sends it back to draft and clears the approval, so what
 --     goes out is exactly what the owner saw. Final rows (sent, failed, dead, rejected, expired) are frozen,
 --     and no row is ever deleted: a deleted row would also forget its idempotency key and let a news item
@@ -46,11 +51,14 @@
 --     cannot be written stops the change):
 --         owner_marketing_get()                       the settings and the week's count (read)
 --         owner_marketing_edit(id, texts)             draft or approved; an approved post goes back to draft
---         owner_marketing_approve(id, content_hash)   the hash the owner saw; refuses if the post changed
+--         owner_marketing_approve(id, content_hash)   the hash the owner saw; refuses if the post changed, and
+--                                                     refuses (poster_off) while the switch is off, so an
+--                                                     approval cannot lapse unsent and burn its news key
 --         owner_marketing_reject(id, reason)          draft, or approved (voided first)
 --         owner_marketing_kill(kill, reason)          kill = true stops claims; false re-arms (needs a reason)
 --  6. Worker functions (SECURITY DEFINER, EXECUTE for service_role ONLY):
---         marketing_draft_upsert(...)                 idempotent; only a draft is ever updated
+--         marketing_draft_upsert(...)                 idempotent; only a draft the owner has not edited is
+--                                                     ever updated
 --         claim_marketing_post(worker, lease, target) at most ONE post, under an advisory lock
 --         complete_marketing_post(...)                sent | failed | dead | retry (never-left only)
 --  7. audit_action_allowed(): 0107's list verbatim plus marketing.edit, marketing.approve, marketing.reject,
@@ -74,6 +82,10 @@
 --     units; the allowance below is generous and docs/news/ is far under it.
 --   * Owner-typed text is not checked against docs/news/banned-claims.json here: that list is enforced on
 --     the repository's news files (tests/test_news_format.py). The owner page is the place for a live check.
+--   * Turn the 0107 admin_aal2 gate on BEFORE re-arming the poster. Until it is on, a password-only admin
+--     session passes owner_guard() and could approve a public post.
+--   * A showcase post must also join a LIVE showcase_assets row at claim time; that belongs to the showcase
+--     slice, which also adds the owner functions that fill the table. This file only requires media.
 --   * The cap counts all targets together. When a second target exists, a post to both counts twice.
 --
 -- Additive and idempotent: create ... if not exists, create or replace for NEW functions (and for the one
@@ -125,7 +137,7 @@ alter table public.marketing_settings drop constraint if exists marketing_settin
 alter table public.marketing_settings add constraint marketing_settings_ttl_check check (approval_ttl_hours between 1 and 72);
 
 comment on table public.marketing_settings is
-  'One row (id is always true). enabled = false is the kill switch: claim_marketing_post() hands out nothing. max_per_7d is capped at 2 by a CHECK. No API role can read or write it: owner_marketing_get() reads it, owner_marketing_kill() and the SQL editor change it. Break-glass: update public.marketing_settings set enabled = false;';
+  'One row (id is always true). enabled = false is the kill switch: claim_marketing_post() hands out nothing. max_per_7d is capped at 2 by a CHECK. No API role can read or write it: owner_marketing_get() reads it, owner_marketing_kill() and the SQL editor change it. Break-glass: update public.marketing_settings set enabled = false where id;';
 
 insert into public.marketing_settings (id) values (true) on conflict (id) do nothing;
 
@@ -133,8 +145,8 @@ insert into public.marketing_settings (id) values (true) on conflict (id) do not
 -- 2. Small internal helpers (no API role may call them)
 -- ───────────────────────────────────────────────────────────────────────────
 
--- Exactly the keys uz, ru, en; each a non-empty string without surrounding whitespace or control characters
--- (a new line is allowed); each at most 1000 characters. The combined message (three blocks, their labels
+-- Exactly the keys uz, ru, en; each a non-empty string without surrounding whitespace, control or invisible
+-- characters (a new line inside is allowed); each at most 1000 characters. The combined message (three blocks, their labels
 -- and a link: 160 characters of allowance) must fit Telegram's 4096, or the 1024 of a photo or video caption
 -- when the post carries media.
 create or replace function public.marketing_texts_ok(p_texts jsonb, p_has_media boolean) returns boolean
@@ -159,8 +171,13 @@ begin
   v_u := p_texts ->> 'uz';
   v_r := p_texts ->> 'ru';
   v_e := p_texts ->> 'en';
+  -- No whitespace at either end (the callers trim all of it first, new lines and tabs included), no control
+  -- character except a new line inside, and no invisible or direction-changing character: zero-width and
+  -- format characters (U+200B-200F, U+2060-2064, U+FEFF, U+00AD), line and paragraph separators and the
+  -- bidi embeddings and overrides (U+2028-202E), bidi isolates (U+2066-2069), and the C1 controls (U+0080-009F,
+  -- which include U+0085).
   if v_u ~ '^\s|\s$' or v_r ~ '^\s|\s$' or v_e ~ '^\s|\s$'
-     or v_u ~ '[\x01-\x09\x0b-\x1f\x7f]' or v_r ~ '[\x01-\x09\x0b-\x1f\x7f]' or v_e ~ '[\x01-\x09\x0b-\x1f\x7f]' then
+     or (v_u || v_r || v_e) ~ '[\x01-\x09\x0b-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]' then
     return false;
   end if;
   if char_length(v_u) not between 1 and 1000 or char_length(v_r) not between 1 and 1000
@@ -172,15 +189,16 @@ begin
 end
 $$;
 
--- The fingerprint of what a reader would see: kind, target, media and the three texts, each length-prefixed so
+-- The fingerprint of what a reader would see: kind, target, media, link and the three texts, each length-prefixed so
 -- no two different posts can share one input string. Approval stores it; the claim recomputes it.
-create or replace function public.marketing_post_hash(p_kind text, p_target text, p_texts jsonb, p_media text)
+create or replace function public.marketing_post_hash(p_kind text, p_target text, p_texts jsonb, p_media text, p_link text)
   returns text
   language sql immutable set search_path = public, pg_temp as $$
   select encode(sha256(convert_to(
     char_length(coalesce(p_kind, '')) || ':' || coalesce(p_kind, '') || ';' ||
     char_length(coalesce(p_target, '')) || ':' || coalesce(p_target, '') || ';' ||
     char_length(coalesce(p_media, '')) || ':' || coalesce(p_media, '') || ';' ||
+    char_length(coalesce(p_link, '')) || ':' || coalesce(p_link, '') || ';' ||
     char_length(coalesce(p_texts ->> 'uz', '')) || ':' || coalesce(p_texts ->> 'uz', '') || ';' ||
     char_length(coalesce(p_texts ->> 'ru', '')) || ':' || coalesce(p_texts ->> 'ru', '') || ';' ||
     char_length(coalesce(p_texts ->> 'en', '')) || ':' || coalesce(p_texts ->> 'en', ''), 'UTF8')), 'hex')
@@ -198,6 +216,7 @@ create table if not exists public.marketing_posts (
   status               text not null default 'draft',
   texts                jsonb not null,
   media_path           text,
+  link                 text,
   source_ref           text not null,
   facts                jsonb not null default '{}'::jsonb,
   facts_as_of          timestamptz,
@@ -243,6 +262,15 @@ alter table public.marketing_posts add constraint marketing_posts_texts_check
 alter table public.marketing_posts drop constraint if exists marketing_posts_media_check;
 alter table public.marketing_posts add constraint marketing_posts_media_check
   check (media_path is null or (media_path ~ '^showcase/[A-Za-z0-9._/-]{1,200}$' and media_path !~ '\.\.'));
+-- A showcase post is a video: no media, no post. (At claim time it must also join a live showcase_assets row;
+-- that join belongs to the showcase slice.)
+alter table public.marketing_posts drop constraint if exists marketing_posts_showcase_media_check;
+alter table public.marketing_posts add constraint marketing_posts_showcase_media_check
+  check (kind <> 'showcase' or media_path is not null);
+-- The link is a path on our own site; the sender puts the origin in front. It is part of the hash.
+alter table public.marketing_posts drop constraint if exists marketing_posts_link_check;
+alter table public.marketing_posts add constraint marketing_posts_link_check
+  check (link is null or (link ~ '^/[a-z0-9][a-z0-9/_-]{0,78}$' and link !~ '//' and link !~ '\.\.'));
 alter table public.marketing_posts drop constraint if exists marketing_posts_source_check;
 alter table public.marketing_posts add constraint marketing_posts_source_check
   check ((kind = 'news' and source_ref ~ '^pr:#[0-9]{1,7}$')
@@ -305,7 +333,7 @@ create or replace function public.marketing_posts_guard() returns trigger
 declare
   v_changed boolean;
 begin
-  new.content_hash := public.marketing_post_hash(new.kind, new.target, new.texts, new.media_path);
+  new.content_hash := public.marketing_post_hash(new.kind, new.target, new.texts, new.media_path, new.link);
   new.updated_at := now();
 
   if tg_op = 'INSERT' then
@@ -549,10 +577,12 @@ begin
      or jsonb_typeof(p_texts -> 'ru') <> 'string' or jsonb_typeof(p_texts -> 'en') <> 'string' then
     return public.owner_err('bad_texts', 'Give the Uzbek, Russian and English texts.');
   end if;
-  v_texts := jsonb_build_object('uz', btrim(p_texts ->> 'uz'), 'ru', btrim(p_texts ->> 'ru'), 'en', btrim(p_texts ->> 'en'));
+  v_texts := jsonb_build_object('uz', regexp_replace(p_texts ->> 'uz', '^\s+|\s+$', '', 'g'),
+                                'ru', regexp_replace(p_texts ->> 'ru', '^\s+|\s+$', '', 'g'),
+                                'en', regexp_replace(p_texts ->> 'en', '^\s+|\s+$', '', 'g'));
   if (select count(*) from jsonb_object_keys(p_texts)) <> 3 or not public.marketing_texts_ok(v_texts, p.media_path is not null) then
     return public.owner_err('bad_texts',
-      'Each language needs a text without control characters; the three together must fit one message (a caption when there is media).');
+      'Each language needs a text without control, invisible or direction-changing characters; the three together must fit one message (a caption when there is media).');
   end if;
   if v_texts = p.texts then
     return jsonb_build_object('ok', true, 'unchanged', true, 'id', p.id, 'status', p.status, 'content_hash', p.content_hash);
@@ -596,11 +626,22 @@ begin
   if not found then
     return public.owner_err('no_such_post', 'That post does not exist.');
   end if;
+  -- An approval that lapsed but has not been swept yet is expired now: say so, never "already approved".
+  if p.status = 'approved' and p.expires_at <= now() then
+    update public.marketing_posts set status = 'expired', last_error_code = 'expired' where id = p.id;
+    return public.owner_err('expired', 'That approval has lapsed and the post is expired. Draft it again.',
+      jsonb_build_object('expires_at', p.expires_at));
+  end if;
   if p.status = 'approved' and p.approved_hash = p.content_hash and p_content_hash = p.content_hash then
     return jsonb_build_object('ok', true, 'already', true, 'id', p.id, 'status', p.status, 'expires_at', p.expires_at);
   end if;
   if p.status <> 'draft' then
     return public.owner_err('not_draft', 'Only a draft can be approved.', jsonb_build_object('status', p.status));
+  end if;
+  -- While the poster is off nothing can be claimed, so an approval would lapse unsent and use up the post's key
+  -- (a news item is drafted once). Re-arm first, then approve.
+  if s.enabled is not true then
+    return public.owner_err('poster_off', 'The poster is switched off. Switch it on first, then approve.');
   end if;
   if p_content_hash <> p.content_hash then
     return public.owner_err('content_changed', 'The post changed since you opened it. Read it again before approving.',
@@ -693,7 +734,7 @@ begin
   if s.enabled = not p_kill then
     return jsonb_build_object('ok', true, 'already', true, 'enabled', s.enabled);
   end if;
-  update public.marketing_settings set enabled = not p_kill;
+  update public.marketing_settings set enabled = not p_kill where id;
 
   perform public.owner_audit('marketing.kill', 'marketing_settings',
     jsonb_build_object('enabled', not p_kill, 'was', s.enabled, 'reason', v_why),
@@ -706,13 +747,14 @@ $$;
 -- 7. The worker's calls (service_role only)
 -- ───────────────────────────────────────────────────────────────────────────
 
--- Create the draft of a thing, once. The same key again changes nothing unless the post is still a draft
--- (then the new words replace the old: a news file was edited before anyone approved it). A key that names
+-- Create the draft of a thing, once. The same key again changes nothing unless the post is still a draft that
+-- NO PERSON has edited (then the new words replace the old: a news file was edited before anyone looked at it).
+-- A draft the owner edited, or an approved post the owner edited back to draft, keeps the owner's words. A key that names
 -- a different kind, target or source is refused. Returns {ok, id, status, created, updated} or {ok:false, error}.
 create or replace function public.marketing_draft_upsert(
   p_idempotency_key text, p_kind text, p_texts jsonb, p_source_ref text,
   p_facts jsonb default '{}'::jsonb, p_facts_as_of timestamptz default null,
-  p_media_path text default null, p_target text default 'telegram'
+  p_media_path text default null, p_target text default 'telegram', p_link text default null
 ) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -735,9 +777,11 @@ begin
      or jsonb_typeof(p_texts -> 'ru') <> 'string' or jsonb_typeof(p_texts -> 'en') <> 'string' then
     return public.owner_err('bad_texts', 'Give the Uzbek, Russian and English texts.');
   end if;
-  v_texts := jsonb_build_object('uz', btrim(p_texts ->> 'uz'), 'ru', btrim(p_texts ->> 'ru'), 'en', btrim(p_texts ->> 'en'));
+  v_texts := jsonb_build_object('uz', regexp_replace(p_texts ->> 'uz', '^\s+|\s+$', '', 'g'),
+                                'ru', regexp_replace(p_texts ->> 'ru', '^\s+|\s+$', '', 'g'),
+                                'en', regexp_replace(p_texts ->> 'en', '^\s+|\s+$', '', 'g'));
   if (select count(*) from jsonb_object_keys(p_texts)) <> 3 or not public.marketing_texts_ok(v_texts, p_media_path is not null) then
-    return public.owner_err('bad_texts', 'The texts are empty, too long, or hold control characters.');
+    return public.owner_err('bad_texts', 'The texts are empty, too long, or hold control, invisible or direction-changing characters.');
   end if;
   if p_facts is null or jsonb_typeof(p_facts) <> 'object' or octet_length(p_facts::text) > 8192 then
     return public.owner_err('bad_facts', 'facts must be a JSON object of at most 8192 bytes.');
@@ -748,14 +792,20 @@ begin
   if p_media_path is not null and (p_media_path !~ '^showcase/[A-Za-z0-9._/-]{1,200}$' or p_media_path ~ '\.\.') then
     return public.owner_err('bad_media', 'Media must live in the public showcase bucket.');
   end if;
+  if p_kind = 'showcase' and p_media_path is null then
+    return public.owner_err('media_required', 'A showcase post needs its video.');
+  end if;
+  if p_link is not null and (p_link !~ '^/[a-z0-9][a-z0-9/_-]{0,78}$' or p_link ~ '//' or p_link ~ '\.\.') then
+    return public.owner_err('bad_link', 'The link must be a path on our own site such as /pricing.');
+  end if;
   if p_source_ref is null or not ((p_kind = 'news' and p_source_ref ~ '^pr:#[0-9]{1,7}$')
        or (p_kind = 'price' and p_source_ref ~ '^plan:[a-z0-9_.:,-]{1,100}$')
        or (p_kind = 'showcase' and p_source_ref ~ '^asset:[0-9a-f-]{36}$')) then
     return public.owner_err('bad_source', 'source_ref must be pr:#N, plan:<ids> or asset:<uuid> to match the kind.');
   end if;
 
-  insert into public.marketing_posts (idempotency_key, kind, target, texts, media_path, source_ref, facts, facts_as_of)
-  values (p_idempotency_key, p_kind, p_target, v_texts, p_media_path, p_source_ref, p_facts, p_facts_as_of)
+  insert into public.marketing_posts (idempotency_key, kind, target, texts, media_path, link, source_ref, facts, facts_as_of)
+  values (p_idempotency_key, p_kind, p_target, v_texts, p_media_path, p_link, p_source_ref, p_facts, p_facts_as_of)
   on conflict (idempotency_key) do nothing
   returning id into v_id;
   if v_id is not null then
@@ -766,14 +816,16 @@ begin
   if p.kind <> p_kind or p.target <> p_target or p.source_ref <> p_source_ref then
     return public.owner_err('key_reused', 'That key already names a different post.');
   end if;
-  if p.status = 'draft' and (p.texts <> v_texts or p.media_path is distinct from p_media_path
-                             or p.facts <> p_facts or p.facts_as_of is distinct from p_facts_as_of) then
+  if p.status = 'draft' and p.edited_at is null
+     and (p.texts <> v_texts or p.media_path is distinct from p_media_path or p.link is distinct from p_link
+          or p.facts <> p_facts or p.facts_as_of is distinct from p_facts_as_of) then
     update public.marketing_posts
-       set texts = v_texts, media_path = p_media_path, facts = p_facts, facts_as_of = p_facts_as_of
+       set texts = v_texts, media_path = p_media_path, link = p_link, facts = p_facts, facts_as_of = p_facts_as_of
      where id = p.id;
     v_upd := true;
   end if;
-  return jsonb_build_object('ok', true, 'id', p.id, 'status', p.status, 'created', false, 'updated', v_upd);
+  return jsonb_build_object('ok', true, 'id', p.id, 'status', p.status, 'created', false, 'updated', v_upd,
+                            'owner_edited', p.edited_at is not null);
 end
 $$;
 
@@ -781,7 +833,7 @@ $$;
 create or replace function public.claim_marketing_post(
   p_worker text, p_lease_seconds integer default 120, p_target text default 'telegram'
 ) returns table (
-  post_id uuid, kind text, target text, texts jsonb, media_path text, attempts integer,
+  post_id uuid, kind text, target text, texts jsonb, media_path text, link text, attempts integer,
   content_hash text, claimed_until timestamptz
 )
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -824,7 +876,7 @@ begin
    where x.status = 'approved' and x.target = p_target
      and x.expires_at > now() and x.approved_at > now() - interval '72 hours'
      and x.next_attempt_at <= now()
-     and x.approved_hash = public.marketing_post_hash(x.kind, x.target, x.texts, x.media_path)
+     and x.approved_hash = public.marketing_post_hash(x.kind, x.target, x.texts, x.media_path, x.link)
    order by x.approved_at, x.id
    limit 1
    for update skip locked;
@@ -838,7 +890,7 @@ begin
    where x.id = v_id;
 
   return query
-  select x.id, x.kind, x.target, x.texts, x.media_path, x.attempts, x.content_hash, x.claimed_until
+  select x.id, x.kind, x.target, x.texts, x.media_path, x.link, x.attempts, x.content_hash, x.claimed_until
     from public.marketing_posts x where x.id = v_id;
 end
 $$;
@@ -976,7 +1028,7 @@ create policy marketing_posts_select_admin on public.marketing_posts
 
 -- Internal helpers and trigger functions: not callable by any API role.
 revoke all on function public.marketing_texts_ok(jsonb, boolean) from public, anon, authenticated, service_role;
-revoke all on function public.marketing_post_hash(text, text, jsonb, text) from public, anon, authenticated, service_role;
+revoke all on function public.marketing_post_hash(text, text, jsonb, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.marketing_cap_used() from public, anon, authenticated, service_role;
 revoke all on function public.marketing_posts_guard() from public, anon, authenticated, service_role;
 revoke all on function public.marketing_posts_no_delete() from public, anon, authenticated, service_role;
@@ -998,12 +1050,12 @@ grant execute on function public.owner_marketing_reject(uuid, text) to authentic
 grant execute on function public.owner_marketing_kill(boolean, text) to authenticated;
 
 -- The poster worker (the service key): nothing else.
-revoke all on function public.marketing_draft_upsert(text, text, jsonb, text, jsonb, timestamptz, text, text)
+revoke all on function public.marketing_draft_upsert(text, text, jsonb, text, jsonb, timestamptz, text, text, text)
   from public, anon, authenticated, service_role;
 revoke all on function public.claim_marketing_post(text, integer, text) from public, anon, authenticated, service_role;
 revoke all on function public.complete_marketing_post(uuid, text, text, text, integer, text)
   from public, anon, authenticated, service_role;
-grant execute on function public.marketing_draft_upsert(text, text, jsonb, text, jsonb, timestamptz, text, text) to service_role;
+grant execute on function public.marketing_draft_upsert(text, text, jsonb, text, jsonb, timestamptz, text, text, text) to service_role;
 grant execute on function public.claim_marketing_post(text, integer, text) to service_role;
 grant execute on function public.complete_marketing_post(uuid, text, text, text, integer, text) to service_role;
 
@@ -1027,7 +1079,7 @@ grant execute on function public.complete_marketing_post(uuid, text, text, text,
 --       and not has_function_privilege('anon', 'public.claim_marketing_post(text,integer,text)', 'EXECUTE')
 --       and has_function_privilege('authenticated', 'public.owner_marketing_approve(uuid,text)', 'EXECUTE')
 --       and not has_function_privilege('service_role', 'public.owner_marketing_approve(uuid,text)', 'EXECUTE')
---       and not has_function_privilege('authenticated', 'public.marketing_post_hash(text,text,jsonb,text)', 'EXECUTE') as functions_scoped,
+--       and not has_function_privilege('authenticated', 'public.marketing_post_hash(text,text,jsonb,text,text)', 'EXECUTE') as functions_scoped,
 --     (select bool_and(p.prosecdef and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
 --        from pg_proc p where p.pronamespace = 'public'::regnamespace
 --         and p.proname in ('owner_marketing_get', 'owner_marketing_edit', 'owner_marketing_approve',

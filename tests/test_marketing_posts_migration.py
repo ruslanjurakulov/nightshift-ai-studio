@@ -160,6 +160,25 @@ class MarketingPostsMigration(unittest.TestCase):
                        "to_regprocedure('public.default_org_id()') is null"):
             self.assertIn(needle, CODE)
 
+    def test_the_review_fixes_are_in_the_file(self):
+        # approving needs the poster on, so an approval cannot lapse unsent and use up the key
+        approve = body("owner_marketing_approve")
+        self.assertIn("owner_err('poster_off'", approve)
+        self.assertLess(approve.index("'expired'"), approve.index("'already', true"))   # a lapsed approval is not "already approved"
+        # the worker never overwrites what a person edited
+        self.assertIn("p.status = 'draft' and p.edited_at is null", body("marketing_draft_upsert"))
+        # everything the sender puts in the message is in the hash
+        self.assertIn("coalesce(p_link, '')", body("marketing_post_hash"))
+        self.assertIn("new.media_path, new.link", body("marketing_posts_guard"))
+        self.assertIn("x.media_path, x.link", body("claim_marketing_post"))
+        self.assertIn("check (kind <> 'showcase' or media_path is not null)", CODE)
+        # invisible and direction-changing characters
+        for needle in (r"\u200b-\u200f", r"\u2028-\u202e", r"\u2066-\u2069", r"\ufeff", r"\x7f-\x9f"):
+            self.assertIn(needle, body("marketing_texts_ok"))
+        # every statement that rewrites the settings row names it (safe for pg_safeupdate)
+        for stmt in re.findall(r"update public\.marketing_settings[^;]*;", CODE):
+            self.assertRegex(stmt, r"where id;$", stmt)
+
     def test_the_text_limits_are_the_documented_ones(self):
         fn = body("marketing_texts_ok")
         self.assertIn("not between 1 and 1000", fn)
