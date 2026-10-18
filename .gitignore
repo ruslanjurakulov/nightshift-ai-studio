@@ -11,6 +11,9 @@
 # The wording of the customer notifications (migration 0105): the registry and one
 # file per language, read by the Edge Function and the Python workers. Words only.
 !supabase/functions/_shared/notify-i18n/*.json
+# The news items the channel poster may announce (docs/news/README.md): words and a schema, no credentials.
+# Without this line the blanket rule above hides every one of them (the 0105 wording files had the same problem).
+!docs/news/*.json
 # Command Center (Next.js app) config — no credentials, and Vercel needs the
 # lockfile for reproducible `npm ci` builds.
 !command-center/tsconfig.json

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/news/schema.json",
+  "title": "Nightshift news item",
+  "description": "One announceable (or not yet announceable) change. File name: docs/news/<yyyy-mm-dd>-<slug>.json, where the date equals `shipped`. tests/test_news_format.py is the validator of record: it checks everything below plus what a schema cannot express (script of each language, banned claims, lengths of the combined message, numbers that must match across languages).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pr", "shipped", "kind", "public", "text"],
+  "properties": {
+    "pr": {
+      "description": "The pull request that shipped the change.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "shipped": {
+      "description": "The date the change reached the live product (the merge/deploy date), not the date the text was written.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["feature", "fix"]
+    },
+    "public": {
+      "description": "A human decided this may be announced. Only `true` makes a file announceable; the default for anything security-related is false.",
+      "type": "boolean"
+    },
+    "text": {
+      "description": "Plain text, one short paragraph per language, no markup, no URL (the link goes in `link`). The same facts in all three languages.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uz", "ru", "en"],
+      "properties": {
+        "uz": {"type": "string", "minLength": 20, "maxLength": 260},
+        "ru": {"type": "string", "minLength": 20, "maxLength": 260},
+        "en": {"type": "string", "minLength": 20, "maxLength": 260}
+      }
+    },
+    "link": {
+      "description": "A path on our own site, for example /pricing. The sender prefixes the site origin.",
+      "type": "string",
+      "pattern": "^/[a-z0-9][a-z0-9/_-]{0,78}$"
+    },
+    "media": {
+      "description": "A hint for the owner about which picture or video would suit this item. Never a file; nothing is attached automatically.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hint"],
+      "properties": {
+        "hint": {"type": "string", "minLength": 3, "maxLength": 200}
+      }
+    }
+  }
+}

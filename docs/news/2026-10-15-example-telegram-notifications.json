@@ -1,0 +1,14 @@
+{
+  "pr": 490,
+  "shipped": "2026-10-15",
+  "kind": "feature",
+  "public": false,
+  "text": {
+    "uz": "Faqat namuna, e'lon qilinmaydi: endi Sozlamalarda Telegram'ni ulab, video tayyor bo'lganda xabar olishingiz mumkin.",
+    "ru": "Только пример, не публикуется: теперь можно привязать свой Telegram в настройках и получать сообщение, когда видео готово.",
+    "en": "Example only, never posted: you can now link your Telegram chat in Settings and get a message when your video is ready."
+  },
+  "media": {
+    "hint": "A phone screenshot of the Telegram message, with the chat name hidden."
+  }
+}
