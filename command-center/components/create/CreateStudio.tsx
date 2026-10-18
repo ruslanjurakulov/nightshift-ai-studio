@@ -24,6 +24,10 @@ import { Check, ChevronDown } from "lucide-react";
 import "@/components/create/flow.css";
 
 const CUSTOM_VOICE = "__custom__";
+/** Higgsfield b-roll talks to a guessed endpoint with a Bearer key (its real API is `Key id:secret`), so it fails
+ *  closed on every run. It stays out of the operator's video-model list until tools/probe_models.py shows it
+ *  answering; flip this with that change. The id is still a valid run parameter. */
+const HIGGSFIELD_BROLL_PROBED = false;
 
 /** A connected account the video can be made for (lib/connectedAccounts.ts). */
 export interface CreateTarget {
@@ -642,7 +646,7 @@ export function CreateStudio({
                     <option value="seedance">Seedance</option>
                     <option value="kling">Kling</option>
                     <option value="veo">Veo</option>
-                    <option value="higgsfield">Higgsfield</option>
+                    {HIGGSFIELD_BROLL_PROBED && <option value="higgsfield">Higgsfield</option>}
                     <option value="wan">Wan</option>
                     <option value="minimax">MiniMax</option>
                   </select>

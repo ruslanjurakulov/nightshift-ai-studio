@@ -179,13 +179,11 @@ def print_secrets(reveal: bool):
         entries.append((name, path.read_text().strip() if path.exists() else None))
 
     for name, value in entries:
-        if value is None:
-            print(f"\n{name}\n  (not available yet)")
-        elif reveal:
+        if reveal and value:
             print(f"\n{name}\n{value}")
         else:
-            shown = value[:6] + "..." if len(value) > 12 else "***"
-            print(f"\n{name}\n  set, {len(value)} chars, starts {shown}")
+            # Presence only: never a prefix, never a length (CLAUDE.md #1).
+            print(f"\n{name}\n  {'set' if value else 'missing'}")
 
     if not reveal:
         print("\nRe-run with --reveal to print the full values for copy-paste.")

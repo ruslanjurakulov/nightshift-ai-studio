@@ -118,7 +118,9 @@ class TheSecondVoiceIsChosenNotTyped(unittest.TestCase):
     def test_narrator_is_an_explicit_choice_and_costs_no_extra_request(self, get):
         get.return_value = MagicMock(status_code=200, json=lambda: {})
         verify_voice(channel("elevenlabs", secondary="narrator"))
-        self.assertEqual(get.call_count, 1)
+        # One voice lookup (the subscription read added for D11 is a separate, account-level request).
+        voice_lookups = [c for c in get.call_args_list if "/voices/" in c.args[0]]
+        self.assertEqual(len(voice_lookups), 1)
 
     @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "k")
     @patch("modules.audio_mixer.requests.get")

@@ -265,7 +265,8 @@ class ClientSplitTestCase(unittest.TestCase):
         client = vp.GenericAsyncVideoClient(cfg)
         client.session = mock.Mock()
         client.session.get.side_effect = ConnectionError("reset")
-        self.assertEqual(client.resume("job-7", Path("/tmp/none.mp4")).state, pt.OUTCOME_PENDING)
+        with mock.patch("time.sleep", lambda *_: None):   # the poll now retries with backoff first
+            self.assertEqual(client.resume("job-7", Path("/tmp/none.mp4")).state, pt.OUTCOME_PENDING)
 
     def test_minimax_resume_and_failure_states(self):
         from modules.minimax_client import MiniMaxClient

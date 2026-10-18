@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
@@ -14,6 +15,7 @@ from pydub.effects import normalize
 
 from config import (
     EDGE_TTS_VOICE,
+    EXPECT_TTS_PROVIDER,
     ELEVENLABS_API_KEY,
     ELEVENLABS_MODEL_ID,
     ELEVENLABS_RUN_VOICE_ID,
@@ -25,6 +27,8 @@ from config import (
     SFX_DIR,
     SFX_VOLUME,
     TTS_PROVIDER,
+    TTS_PROVIDER_EXPLICIT,
+    VIDEO_DURATION_TARGET,
 )
 from modules.script_engine import Script
 
@@ -99,6 +103,7 @@ def verify_voice(channel=None) -> None:
     agent = channel.agent if channel is not None else None
     provider = agent.tts_provider if agent else TTS_PROVIDER
     if provider != "elevenlabs":
+        _refuse_default_edge(explicit=getattr(agent, "tts_provider_explicit", False) is True)
         return
 
     voice_id = narrator_voice(agent)
@@ -139,6 +144,71 @@ def verify_voice(channel=None) -> None:
     _verify_voice_exists(voice_id)
     if secondary != NARRATOR and secondary != voice_id:
         _verify_voice_exists(secondary)
+    _verify_characters_left(agent)
+
+
+def _refuse_default_edge(*, explicit: bool = False) -> None:
+    """The run resolved to the free Edge voice, but ElevenLabs was expected.
+
+    ``config.TTS_PROVIDER`` is "edge" whenever the key is empty and nothing set
+    ``TTS_PROVIDER`` — which is also what a deployment looks like when its
+    ElevenLabs secret never reached the worker. When the deployment says it
+    expects ElevenLabs (``NIGHTSHIFT_EXPECT_TTS=elevenlabs``), or this run was
+    given an ElevenLabs voice on the Create page, a missing key stops the run
+    at its start rather than narrating in the robot voice (CLAUDE.md #4).
+    Edge chosen on purpose is respected: a global ``TTS_PROVIDER`` or the
+    channel's own saved provider (``explicit``)."""
+    if ELEVENLABS_API_KEY or TTS_PROVIDER_EXPLICIT or explicit:
+        return
+    if EXPECT_TTS_PROVIDER == "elevenlabs" or ELEVENLABS_RUN_VOICE_ID:
+        raise VoiceUnavailable(
+            "This run expects ElevenLabs narration (NIGHTSHIFT_EXPECT_TTS or a voice chosen for "
+            "this run), but ELEVENLABS_API_KEY is empty, so it would fall back to the free Edge "
+            "voice. Add the key to the worker's environment (and redeploy). If this channel should "
+            "narrate with Edge, set that in the channel's own voice settings; only if the whole "
+            "deployment should, unset NIGHTSHIFT_EXPECT_TTS and set TTS_PROVIDER=edge. "
+            "Refusing to narrate in a different voice than expected."
+        )
+
+
+#: Narration speed the estimate assumes: roughly 15 characters a second.
+CHARS_PER_SECOND = 15
+
+
+def _estimated_characters(agent) -> int:
+    """About how many characters this run will send to ElevenLabs."""
+    seconds = getattr(agent, "target_duration_seconds", None) if agent is not None else None
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or seconds <= 0:
+        seconds = VIDEO_DURATION_TARGET
+    return int(seconds * CHARS_PER_SECOND)
+
+
+def _verify_characters_left(agent) -> None:
+    """Does the account have the characters this run will need?
+
+    ``GET /v1/voices/{id}`` answers 200 on an empty account, so without this
+    the shortage surfaces at synthesis, after topic, research, script and
+    fact-check were paid. An unreadable answer (network, shape) is not fatal;
+    an account that may extend its limit (pay-as-you-go overage) is not short."""
+    try:
+        resp = requests.get(f"{ELEVENLABS_API}/user/subscription",
+                            headers={"xi-api-key": ELEVENLABS_API_KEY}, timeout=15)
+        if resp.status_code != 200:
+            return
+        data = resp.json()
+        limit, used = float(data["character_limit"]), float(data["character_count"])
+    except Exception:
+        return
+    if data.get("allowed_to_extend_character_limit"):
+        return   # usage-based billing past the limit is switched on
+    left = max(0.0, limit - used)
+    need = _estimated_characters(agent)
+    if left < need:
+        raise VoiceUnavailable(
+            f"ElevenLabs has about {int(left)} characters left on this account and this run needs "
+            f"about {need} (roughly {need // CHARS_PER_SECOND} s of narration). Top up the "
+            "ElevenLabs plan or wait for the monthly reset; no other voice is substituted."
+        )
 
 
 def secondary_voice(agent) -> str:
@@ -257,12 +327,20 @@ class AudioMixer:
 
     async def _tts_edge(self, text: str, voice: str, out_path: Path):
         communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(str(out_path))
+        part = out_path.with_name(f"{out_path.name}.{os.getpid()}.part")
+        try:
+            await communicate.save(str(part))
+            if part.stat().st_size == 0:
+                raise RuntimeError("Edge TTS returned an empty audio stream")
+            os.replace(part, out_path)
+        finally:
+            part.unlink(missing_ok=True)
 
     def _tts_elevenlabs(self, text: str, voice_id: str, out_path: Path):
         from elevenlabs import ElevenLabs, VoiceSettings  # lazy import
 
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+        part = out_path.with_name(f"{out_path.name}.{os.getpid()}.part")
         # eleven_v3 accepts only the stability presets 0.0 / 0.5 / 1.0
         # (creative / natural / robust); the others take any value.
         stability = 0.5 if self.elevenlabs_model == "eleven_v3" else 0.45
@@ -273,10 +351,20 @@ class AudioMixer:
                 model_id=self.elevenlabs_model,
                 voice_settings=VoiceSettings(stability=stability, similarity_boost=0.82),
             )
-            with open(out_path, "wb") as f:
+            # Written beside the cache name and moved into place only once it is
+            # complete: a kill mid-write leaves a .part file, never a short
+            # segment a resume would reuse as the narration.
+            with open(part, "wb") as f:
                 for chunk in audio:
                     f.write(chunk)
+            if part.stat().st_size == 0:
+                raise VoiceUnavailable(
+                    f"ElevenLabs returned an empty audio stream for voice {voice_id!r}. No segment is "
+                    "cached and no other voice is substituted; re-run, and check the account's status "
+                    "if it repeats.")
+            os.replace(part, out_path)
         except Exception as e:
+            part.unlink(missing_ok=True)
             status = getattr(e, "status_code", None)
             if status is None:
                 raise
@@ -321,7 +409,9 @@ class AudioMixer:
         digest = hashlib.sha1(f"{voice_key}:{voice_role}:{text}".encode("utf-8")).hexdigest()[:12]
         out = self.work_dir / f"seg_{digest}_{voice_role}.mp3"
         if out.exists():
-            return out
+            if out.stat().st_size > 0:
+                return out
+            out.unlink()   # an empty file is a write that never finished, not a segment
         self.characters_synthesized += len(text)
         if self.tts_provider == "elevenlabs":
             self._tts_elevenlabs(text, self._elevenlabs_voice_for(voice_role), out)

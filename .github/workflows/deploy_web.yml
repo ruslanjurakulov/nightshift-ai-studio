@@ -56,6 +56,7 @@ on:
       - "Dockerfile.worker"
       - ".dockerignore"
       - "requirements.txt"
+      - "constraints.txt"
       - "main.py"
       - "config.py"
       - "modules/**"
@@ -295,6 +296,7 @@ jobs:
           WORKERENV_RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
           WORKERENV_LUMA_AGENTS_API_KEY: ${{ secrets.LUMA_AGENTS_API_KEY }}
           WORKERENV_TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+          WORKERENV_NIGHTSHIFT_EXPECT_TTS: ${{ vars.NIGHTSHIFT_EXPECT_TTS }}
           WORKERENV_ELEVENLABS_MODEL_ID: ${{ vars.ELEVENLABS_MODEL_ID }}
           WORKERENV_ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
           WORKERENV_ELEVENLABS_SECONDARY_VOICE_ID: ${{ vars.ELEVENLABS_SECONDARY_VOICE_ID }}
