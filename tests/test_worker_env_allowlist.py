@@ -62,7 +62,7 @@ def example_keys() -> list:
 
 def config_env_names() -> set:
     text = (ROOT / "config.py").read_text()
-    names = set(re.findall(r"""os\.getenv\(\s*["']([A-Z][A-Z0-9_]*)["']""", text))
+    names = set(re.findall(r"""(?:os\.getenv|_count_env)\(\s*["']([A-Z][A-Z0-9_]*)["']""", text))
     names |= set(re.findall(r"""os\.environ(?:\.get)?[\[(]\s*["']([A-Z][A-Z0-9_]*)["']""", text))
     return names
 
@@ -158,6 +158,45 @@ class AnEmptyVariableIsTheDefault(unittest.TestCase):
         self.assertEqual(differ, {}, "an empty variable must keep the code default")
 
 
+_COUNT_CHILD = r"""
+import json, sys, warnings
+sys.path.insert(0, sys.argv[1])
+import os
+os.environ["CHRONOS_MINIMAX_BROLL_MAX_CLIPS"] = sys.argv[2]
+os.environ["CHRONOS_LEONARDO_MAX_IMAGES"] = sys.argv[2]
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+    import config
+print("RESULT " + json.dumps([config.MINIMAX_BROLL_MAX_CLIPS, config.LEONARDO_MAX_IMAGES, len(w)]))
+"""
+
+
+class CountsCannotBreakTheWorker(unittest.TestCase):
+    """The clip / still counts are deployable now: a typo must not crash config at
+    import (a crash-looping worker) nor make the cost brake negative."""
+
+    def counts(self, raw):
+        proc = subprocess.run([sys.executable, "-I", "-c", _COUNT_CHILD, str(ROOT), raw], capture_output=True,
+                              text=True, timeout=120, cwd=tempfile.gettempdir(),
+                              env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir()})
+        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
+        self.assertIsNotNone(line, proc.stderr[-2000:])
+        return json.loads(line[len("RESULT "):])
+
+    def test_good_values_are_taken_and_empty_is_the_default(self):
+        self.assertEqual(self.counts("3"), [3, 3, 0])
+        self.assertEqual(self.counts("0"), [0, 0, 0])
+        self.assertEqual(self.counts(""), [2, 2, 0])
+
+    def test_typos_and_negatives_fall_back_to_the_default_with_a_warning(self):
+        for bad in ("two", "2.5", "-1", "$3"):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.counts(bad), [2, 2, 2])
+
+    def test_a_huge_number_is_capped(self):
+        self.assertEqual(self.counts("9999"), [50, 50, 0])
+
+
 class TheQuotaRemedyIsActionable(unittest.TestCase):
     def test_it_names_the_variable_that_now_reaches_the_worker_and_how_to_apply_it(self):
         from modules import minimax_broll as mb
@@ -169,6 +208,24 @@ class TheQuotaRemedyIsActionable(unittest.TestCase):
         self.assertIn("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", example_keys())
         self.assertIn("WORKERENV_CHRONOS_MINIMAX_BROLL_MAX_CLIPS: ${{ vars.CHRONOS_MINIMAX_BROLL_MAX_CLIPS }}",
                       WORKFLOW.read_text())
+
+
+class ClientsRefuseAKeyOverHttp(unittest.TestCase):
+    def test_the_generic_and_minimax_clients_refuse_a_non_https_host_before_any_request(self):
+        from unittest.mock import patch
+
+        from modules import minimax_broll, minimax_client, video_providers
+
+        with patch("config.KLING_API_KEY", "k"), patch("config.KLING_BASE_URL", "http://kling.example.test"):
+            client = video_providers.get_client("kling")
+            with self.assertRaises(minimax_broll.VideoModelUnavailable) as ctx:
+                client.preflight()
+            self.assertIn("https", str(ctx.exception))
+        with patch("config.KLING_API_KEY", "k"), patch("config.KLING_BASE_URL", "https://kling.example.test"):
+            video_providers.get_client("kling").preflight()
+        with patch("config.MINIMAX_BASE_URL", "http://api.minimax.example"):
+            with self.assertRaises(minimax_broll.VideoModelUnavailable):
+                minimax_client.MiniMaxClient(api_key="k", model="MiniMax-Hailuo-2.3").preflight()
 
 
 class DeployWarnings(unittest.TestCase):
@@ -228,6 +285,31 @@ class DeployWarnings(unittest.TestCase):
         self.assertIn("CHRONOS_MAX_RUN_USD is not a valid number", text)
         self.assertIn("CHRONOS_PRICE_RENDER_SECONDS is not a valid number", text)
         self.assertNotIn("not a valid number", self.text(CHRONOS_MAX_RUN_USD="off", CHRONOS_PRICE_RENDER_SECONDS="0"))
+
+    def test_counts_must_be_whole_numbers(self):
+        for bad in ("two", "2.5", "-1"):
+            text = self.text(CHRONOS_MINIMAX_BROLL_MAX_CLIPS=bad, CHRONOS_LEONARDO_MAX_IMAGES=bad)
+            self.assertIn("CHRONOS_MINIMAX_BROLL_MAX_CLIPS is not a whole number", text)
+            self.assertIn("CHRONOS_LEONARDO_MAX_IMAGES is not a whole number", text)
+        self.assertNotIn("whole number", self.text(CHRONOS_MINIMAX_BROLL_MAX_CLIPS="3", CHRONOS_LEONARDO_MAX_IMAGES="0"))
+
+    def test_nan_and_inf_are_invalid_and_off_words_are_shared_with_the_guard(self):
+        from modules import spend_guard
+
+        for bad in ("nan", "inf", "-inf"):
+            self.assertIn("CHRONOS_MAX_RUN_USD is not a valid number", self.text(CHRONOS_MAX_RUN_USD=bad), bad)
+            self.assertIn("CHRONOS_PRICE_TTS_CHARACTERS is not a valid number",
+                          self.text(CHRONOS_PRICE_TTS_CHARACTERS=bad), bad)
+        self.assertIs(self.mod.OFF_WORDS, spend_guard.OFF_WORDS)
+        for word in spend_guard.OFF_WORDS:
+            self.assertNotIn("CHRONOS_MAX_DAILY_USD is not a valid number", self.text(CHRONOS_MAX_DAILY_USD=word), word)
+
+    def test_a_base_url_must_be_https(self):
+        text = self.text(KLING_BASE_URL="http://api.example.test", MINIMAX_BASE_URL="https://api.minimax.io",
+                         VEO_BASE_URL="ftp://x")
+        self.assertIn("KLING_BASE_URL is not an https:// URL", text)
+        self.assertIn("VEO_BASE_URL is not an https:// URL", text)
+        self.assertNotIn("MINIMAX_BASE_URL is not", text)
 
     def test_warnings_carry_names_never_values_or_lengths(self):
         text = self.text(GEMINI_API_KEY=self.SECRET, CHRONOS_ENABLE_VIDEO_GEN="true", CHRONOS_VIDEO_PROVIDER="wan",

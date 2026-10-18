@@ -638,7 +638,7 @@ class SupabaseSync:
             "channel_id": d.get("channel_id") or "default",
         }
 
-    def mirror_costs(self, store, since_iso: str | None = None) -> int:
+    def mirror_costs(self, store, since_iso: str | None = None, is_operator=None) -> int:
         """Mirror ONLY the local cost ledger (``video_costs``) — what the queue
         worker calls after each job so the VPS's ``history/chronos.db`` reaches
         Supabase (the Billing page, ``owner_provider_spend``). Not
@@ -650,18 +650,33 @@ class SupabaseSync:
         ignore-duplicates), so a repeated or overlapping send adds nothing.
         ``since_iso`` limits the send to rows recorded at or after it; a whole
         ``recorded_at`` group is always in or out together, so row keys do not
-        change. Returns the rows sent; 0 when disabled or on any failure. Never
-        raises."""
+        change.
+
+        Privacy: what a provider charged is the operator's margin, not a
+        customer's business. ``is_operator(channel_id) -> bool`` says which
+        channels are the operator's own; every other channel's rows are sent
+        with ``estimated_usd`` None (units, quantities and stages are kept), and
+        so are all rows when no ``is_operator`` is given or it raises. The
+        ``row_key`` does not include the USD, so keys are unaffected.
+
+        Returns the rows sent; 0 when disabled or on any failure. Never raises."""
         if not self.enabled:
             return 0
+
+        def usd_visible(channel_id) -> bool:
+            try:
+                return bool(is_operator is not None and is_operator(str(channel_id or "")))
+            except Exception:
+                return False
+
         try:
-            return self._mirror_video_costs(store, since_iso=since_iso)
+            return self._mirror_video_costs(store, since_iso=since_iso, usd_visible=usd_visible)
         except Exception as e:
             logger.warning("video_costs mirror failed (%s) — the local ledger is intact; the next job retries",
                            type(e).__name__)
             return 0
 
-    def _mirror_video_costs(self, store, since_iso: str | None = None) -> int:
+    def _mirror_video_costs(self, store, since_iso: str | None = None, usd_visible=None) -> int:
         """Send every local video_costs row with its ``row_key``, in chunks,
         ignoring the ones Supabase already has (so the nightly re-send of history
         adds nothing). Returns the number of rows SENT successfully; the count is
@@ -675,6 +690,8 @@ class SupabaseSync:
         local = store.list_video_costs(limit=100000)
         if since_iso:
             local = [r for r in local if str(r.get("recorded_at") or "") >= since_iso]
+        if usd_visible is not None:
+            local = [r if usd_visible(r.get("channel_id")) else {**r, "estimated_usd": None} for r in local]
         rows = video_cost_rows_with_keys(local)
         sent = 0
         for i in range(0, len(rows), _VIDEO_COSTS_CHUNK):

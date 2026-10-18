@@ -83,7 +83,7 @@ def unit_price(unit: str) -> Optional[float]:
             _PRICE_ENV_PREFIX, unit.upper(), raw,
         )
         return None
-    return price if price >= 0 else None
+    return price if 0 <= price < float("inf") else None
 
 
 @dataclass

@@ -368,6 +368,27 @@ class WorkerCase(unittest.TestCase):
         self.worker(q, cost_mirror=boom).run_forever(once=True)
         self.assertEqual(q.ends(), [("finish", 7, "succeeded", None)])
 
+    def test_the_default_cost_mirror_shows_usd_only_for_the_operators_own_channels(self):
+        from unittest.mock import patch
+
+        seen = {}
+
+        def fake_mirror(self, store, since_iso=None, is_operator=None):
+            seen.update(since=since_iso, ours=is_operator("news"), theirs=is_operator("cust"),
+                        unknown=is_operator("gone"))
+            return 0
+
+        rows = {"news": {"is_operators": True}, "cust": {"is_operators": False}}
+
+        def resolve(cid):
+            return rows[cid]            # KeyError for "gone"
+
+        with patch("modules.supabase_sync.SupabaseSync.mirror_costs", fake_mirror), \
+                patch("modules.state_store.StateStore") as store:
+            store.return_value.__enter__.return_value = object()
+            qw._cost_mirror("https://x.supabase.co", "k", resolve)("2026-10-01T00:00:00+00:00")
+        self.assertEqual(seen, {"since": "2026-10-01T00:00:00+00:00", "ours": True, "theirs": False, "unknown": False})
+
     def test_invalid_job_fails_without_running_anything(self):
         q = FakeQueue([job(params={"no_upload": True})])
         self.worker(q).run_forever(once=True)

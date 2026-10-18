@@ -6,8 +6,9 @@ run starts. It cannot stop a run that is already paying, and a deployment with n
 ceiling set had no brake at all. This module adds two operator-level caps, both
 read from the worker's environment (repository VARIABLES, see
 deploy/.env.worker.example) and both checked by ``main.run`` immediately before
-each stage that buys something (the voice, generated clips, generated stills, the
-vision critic):
+each stage that buys something it ledgers: the topic (so an exhausted daily cap
+stops the run before any paid planning), the voice, generated clips, generated
+stills, and the avatar presenter.
 
 ``CHRONOS_MAX_RUN_USD``    USD one run may have spent so far (default 10).
 ``CHRONOS_MAX_DAILY_USD``  USD the whole worker may have spent today, UTC (default
@@ -26,6 +27,14 @@ with no price counts as 0 here, so with no prices set the caps never fire. That 
 said out loud: the first check of a run logs a warning naming the unpriced units.
 ``planned`` lets the caller include what it is about to buy (the clips it is about
 to submit) so a cap stops the submit instead of noticing afterwards.
+
+NOT covered, said plainly: the avatar presenter clip itself (Higgsfield; it has no
+cost-ledger unit, so its price is not counted, only a stop before it on what was
+already spent), the advisory vision critic (it runs after the render; stopping
+there would throw away a finished video, so it keeps its own channel ceiling),
+scene regeneration jobs (tools/queue_worker -> main --regenerate-scene, paid by
+their own confirmed price and not through ``main.run``) and every Creative OS job
+(tools/creative_worker.py), which has its own price and hold.
 
 A breach raises :class:`SpendLimitExceeded`; ``main.run`` lets it propagate, the
 worker marks the job failed (the credit hold is released), the cost ledger is
@@ -47,7 +56,8 @@ RUN_ENV = "CHRONOS_MAX_RUN_USD"
 DAILY_ENV = "CHRONOS_MAX_DAILY_USD"
 DEFAULT_MAX_RUN_USD = 10.0
 DEFAULT_MAX_DAILY_USD = 30.0
-_OFF = ("off", "none", "unlimited", "disabled")
+#: The words that switch a cap off (build-worker-env.py reads the same tuple).
+OFF_WORDS = ("off", "none", "unlimited", "disabled")
 
 
 class SpendLimitExceeded(RuntimeError):
@@ -59,7 +69,7 @@ def limit(env_name: str, default: float, env=None) -> Optional[float]:
     raw = str((os.environ if env is None else env).get(env_name, "") or "").strip()
     if not raw:
         return default
-    if raw.lower() in _OFF:
+    if raw.lower() in OFF_WORDS:
         return None
     try:
         value = float(raw)

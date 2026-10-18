@@ -18,6 +18,8 @@ import re
 import sys
 import time
 import functools
+import signal
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -359,21 +361,48 @@ def _flush_costs(costs, slug: str | None = None) -> None:
 _RUN_COSTS: list = []
 
 
+def _exit_on_sigterm(signum, _frame):
+    """SIGTERM (docker stop, the worker's timeout) as an exit that unwinds, so the
+    ``finally`` of ``_flush_costs_on_exit`` runs; the default action would kill
+    the process (exit 143) without recording what the run had bought."""
+    raise SystemExit(128 + signum)
+
+
 def _flush_costs_on_exit(fn):
     """Wrap ``run``: whatever the run bought is recorded even when it raises
-    (a failed render, a refused clip, a spend-guard stop). Entries already
-    flushed on the normal path are not written twice (CostLedger.flushed)."""
+    (a failed render, a refused clip, a spend-guard stop) or is terminated with
+    SIGTERM. Entries already flushed on the normal path are not written twice
+    (CostLedger.flushed). Nothing in the finally can replace the run's own
+    exception."""
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         _RUN_COSTS.clear()
+        previous = None
+        installed = False
+        if threading.current_thread() is threading.main_thread():
+            try:
+                previous = signal.signal(signal.SIGTERM, _exit_on_sigterm)
+                installed = True
+            except (ValueError, OSError):
+                pass
         try:
             return fn(*args, **kwargs)
         finally:
-            ledgers = list(_RUN_COSTS)
-            _RUN_COSTS.clear()
-            for ledger in ledgers:
-                if ledger.pending():
-                    _flush_costs(ledger)
+            try:
+                ledgers = list(_RUN_COSTS)
+                _RUN_COSTS.clear()
+                for ledger in ledgers:
+                    if ledger.pending():
+                        _flush_costs(ledger)
+            except Exception as e:
+                logger.warning("Could not record costs on exit (%s) — the run's own outcome is unchanged",
+                               type(e).__name__)
+            finally:
+                if installed:
+                    try:
+                        signal.signal(signal.SIGTERM, previous if previous is not None else signal.SIG_DFL)
+                    except (ValueError, OSError):
+                        pass
     return wrapper
 
 
@@ -537,6 +566,8 @@ def run(
     # a render that is later blocked still cost real money.
     costs = CostLedger(channel_id=channel_id)
     _RUN_COSTS[:] = [costs]
+    # An exhausted daily cap stops the run before any paid planning (topic, research, script).
+    _guard_spend(ctx, costs, "the topic")
     # Observability events (event_log.emit never raises and never alters the
     # pipeline — see modules/event_log.py). They feed the Command Center's live
     # activity feed and per-video pipeline timeline.
@@ -1045,6 +1076,8 @@ def run(
     presenter_path = None
     avatar_cfg = resolve_avatar_config(ctx, series_obj)
     if avatar_cfg.enabled:
+        # The presenter clip is not in the cost ledger (no unit), so this only stops on what was spent before it.
+        _guard_spend(ctx, costs, "generating the presenter")
         events.emit(events.AVATAR_STARTED, agent="avatar", status=events.STATUS_RUNNING,
                     channel_id=channel_id, metadata={"provider": avatar_cfg.provider})
         try:

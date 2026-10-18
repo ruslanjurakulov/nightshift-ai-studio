@@ -294,15 +294,29 @@ class QueueClient:
         return self._patch_mine(job_id, worker_id, values)
 
 
-def _cost_mirror(url: str, key: str) -> Callable[[str], object]:
+def _cost_mirror(url: str, key: str, resolve_channel: Callable[[str], Mapping] = None) -> Callable[[str], object]:
     """The worker's after-job send of history/chronos.db's video_costs to
-    Supabase (SupabaseSync.mirror_costs: idempotent, never raises)."""
+    Supabase (SupabaseSync.mirror_costs: idempotent, never raises). A channel's
+    USD is sent only when it is one of the operator's own (``is_operators``);
+    a channel that cannot be resolved counts as a customer's."""
+    resolve = resolve_channel or _default_resolve_channel
+
     def mirror(since_iso: str):
         from modules.state_store import StateStore  # noqa: PLC0415 — only the real worker needs it
         from modules.supabase_sync import SupabaseSync  # noqa: PLC0415
 
+        known: Dict[str, bool] = {}
+
+        def is_operator(channel_id: str) -> bool:
+            if channel_id not in known:
+                try:
+                    known[channel_id] = resolve(channel_id).get("is_operators") is True
+                except Exception:
+                    known[channel_id] = False
+            return known[channel_id]
+
         with StateStore() as store:
-            return SupabaseSync(url, key).mirror_costs(store, since_iso=since_iso)
+            return SupabaseSync(url, key).mirror_costs(store, since_iso=since_iso, is_operator=is_operator)
 
     return mirror
 
@@ -784,6 +798,8 @@ class Worker:
     #: How far back each job's cost mirror reaches: a send that failed (Supabase
     #: down, migration 0106 not applied yet) is retried by the next jobs for this
     #: long. Re-sending rows Supabase already has is free (ignore-duplicates).
+    #: (Two days is a judgement call: long enough to ride out an outage of a
+    #: day or so, short enough that each job sends a handful of rows, not the history.)
     COST_MIRROR_WINDOW = timedelta(days=2)
 
     def _mirror_costs(self, run_started: str) -> None:

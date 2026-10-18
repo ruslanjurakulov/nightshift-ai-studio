@@ -182,28 +182,46 @@ class LedgerFlushOnce(unittest.TestCase):
 
 
 _CHILD = r"""
-import json, logging, os, sys, tempfile
+import json, logging, os, sys, tempfile, traceback
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 sys.path.insert(0, sys.argv[1])
 row = json.loads(sys.argv[2])
+mode = sys.argv[3]
 import main
 from modules.channels import ChannelContext
 from modules.state_store import StateStore
-from modules import spend_guard
 
 ctx = ChannelContext.from_dict(row)
 work = Path(tempfile.mkdtemp())
 os.chdir(work)
-db = work / "costs.db"
+db = Path(os.environ["CHRONOS_STATE_DB"])
+out = {}
 
 class FakeMixer:
     characters_synthesized = 6000
     def __init__(self, *a, **k): pass
-    def build(self, script): return work / "a.mp3", []
+    def build(self, script):
+        out["voice_built"] = True
+        return work / "a.mp3", []
 
 fetcher = MagicMock()
-out = {}
+fetcher.generate_broll.return_value = SimpleNamespace(generated=0, by_section={}, newly_generated=0, to_dict=lambda: {})
+topic_manager = MagicMock()
+
+if mode == "daily":     # the operator's day is already spent, before this run starts
+    with StateStore(db) as seed:
+        seed.record_video_cost(unit="tts_characters", quantity=1, estimated_usd=50.0, channel_id="other",
+                               recorded_at=datetime.now(timezone.utc).isoformat())
+
+real_slug = main._run_slug
+def slug_after_planning_spend(topic, c):
+    # what the topic + script calls would have put in the ledger by now
+    main._RUN_COSTS[0].add("gemini_output_tokens", 1000000, "script")
+    return real_slug(topic, c)
+
 patches = [
     patch.object(main, "resolve_channel", return_value=ctx),
     patch.object(main, "ensure_assets", return_value=0),
@@ -211,38 +229,93 @@ patches = [
     patch.object(main.video_providers, "preflight", return_value=None),
     patch.object(main, "AudioMixer", FakeMixer),
     patch.object(main, "MediaFetcher", return_value=fetcher),
+    patch.object(main, "TopicManager", return_value=topic_manager),
     patch.object(main, "StateStore", lambda: StateStore(db)),
 ]
+if mode == "planning":
+    patches.append(patch.object(main, "_run_slug", slug_after_planning_spend))
 for p in patches: p.start()
 try:
     main.run(script_file=str(Path(sys.argv[1]) / "samples" / "demo_script.json"), channel=ctx.channel_id,
              skip_upload=True)
     out["raised"] = None
 except BaseException as e:
-    import traceback; out["raised"] = [type(e).__name__, str(e)]; out["tb"] = traceback.format_exc()[-1500:]
+    out["raised"] = [type(e).__name__, str(e)]
+    out["tb"] = traceback.format_exc()[-1500:]
 out["broll_called"] = fetcher.generate_broll.called
 out["images_called"] = fetcher.generate_images.called
+out["topic_manager_called"] = topic_manager.called
+out.setdefault("voice_built", False)
 store = StateStore(db)
 out["rows"] = [[r["unit"], r["quantity"], r["estimated_usd"], r["stage"]] for r in store.list_video_costs()]
 print("RESULT " + json.dumps(out))
 """
 
+_TERM_CHILD = r"""
+import json, os, signal, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import main
+from modules.cost_ledger import CostLedger
+from modules.state_store import StateStore
+
+db = Path(tempfile.mkdtemp()) / "c.db"
+main.StateStore = lambda: StateStore(db)
+before = signal.getsignal(signal.SIGTERM)
+
+@main._flush_costs_on_exit
+def fake_run():
+    led = CostLedger(channel_id="c1", slug="s")
+    main._RUN_COSTS[:] = [led]
+    led.add("tts_characters", 10, "voice")
+    os.kill(os.getpid(), signal.SIGTERM)      # docker stop / the worker's timeout
+    raise AssertionError("SIGTERM did not stop the run")
+
+@main._flush_costs_on_exit
+def broken_run():
+    led = CostLedger(channel_id="c1", slug="s2")
+    main._RUN_COSTS[:] = [led]
+    led.add("tts_characters", 5, "voice")
+    raise KeyError("the run's own error")
+
+out = {}
+try:
+    fake_run()
+except SystemExit as e:
+    out["exit"] = e.code
+out["restored"] = signal.getsignal(signal.SIGTERM) == before
+
+# a flush that itself blows up must not replace the run's exception
+def boom(*a, **k): raise RuntimeError("flush exploded")
+main._flush_costs = boom
+try:
+    broken_run()
+except BaseException as e:
+    out["original"] = type(e).__name__
+print("RESULT " + json.dumps({**out, "rows": [[r["unit"], r["quantity"]] for r in StateStore(db).list_video_costs()]}))
+"""
+
+ROW = {"channel_id": "news", "name": "news", "niche": "tech", "status": "ACTIVE",
+       "agent_config": {"language": "English"},
+       "schedule_config": {"enabled": True, "publish_hour_utc": 15},
+       "credential_ref": {"youtube_channel_id": "UCnews", "verified_at": "2026-09-01T00:00:00Z"}}
+
+
+def child(code, env, *args):
+    proc = subprocess.run([sys.executable, "-I", "-c", code, str(ROOT), *args], capture_output=True, text=True,
+                          timeout=300, cwd=tempfile.gettempdir(),
+                          env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
+                               "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"), **env})
+    line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
+    assert line is not None, proc.stderr[-3000:]
+    return json.loads(line[len("RESULT "):])
+
 
 class PipelineStopsAndRecordsSpend(unittest.TestCase):
     """main.run, end to end with every external stage replaced."""
 
-    def drive(self, env):
-        row = {"channel_id": "news", "name": "news", "niche": "tech", "status": "ACTIVE",
-               "agent_config": {"language": "English"},
-               "schedule_config": {"enabled": True, "publish_hour_utc": 15},
-               "credential_ref": {"youtube_channel_id": "UCnews", "verified_at": "2026-09-01T00:00:00Z"}}
-        proc = subprocess.run([sys.executable, "-I", "-c", _CHILD, str(ROOT), json.dumps(row)],
-                              capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir(),
-                              env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
-                                   "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"), **env})
-        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
-        self.assertIsNotNone(line, proc.stderr[-3000:])
-        return json.loads(line[len("RESULT "):])
+    def drive(self, env, mode="plain"):
+        return child(_CHILD, env, json.dumps(ROW), mode)
 
     def test_a_run_over_its_cap_stops_before_the_clips_and_still_records_what_it_spent(self):
         out = self.drive({"CHRONOS_PRICE_TTS_CHARACTERS": "0.001", "CHRONOS_MAX_RUN_USD": "5"})
@@ -254,14 +327,52 @@ class PipelineStopsAndRecordsSpend(unittest.TestCase):
         # the failed run's spend reached the ledger (it used to be lost)
         self.assertIn(["tts_characters", 6000.0, 6.0, "voice"], out["rows"])
 
+    def test_the_voice_is_not_synthesized_when_planning_already_went_over_the_cap(self):
+        out = self.drive({"CHRONOS_PRICE_GEMINI_OUTPUT_TOKENS": "0.00001", "CHRONOS_MAX_RUN_USD": "5"}, "planning")
+        self.assertEqual(out["raised"][0], "SpendLimitExceeded", out.get("tb"))
+        self.assertIn("the voice", out["raised"][1])
+        self.assertFalse(out["voice_built"])       # AudioMixer.build was never called
+        self.assertFalse(out["broll_called"])
+        self.assertIn(["gemini_output_tokens", 1000000.0, 10.0, "script"], out["rows"])   # planning spend kept
+
+    def test_stills_are_not_requested_when_they_would_go_over_the_cap(self):
+        # clips are off (no video provider), stills are on: 2 stills x $1 > the $1 cap
+        out = self.drive({"CHRONOS_ENABLE_IMAGE_GEN": "1", "CHRONOS_IMAGE_PROVIDER": "leonardo",
+                          "LEONARDO_API_KEY": "not-a-real-key", "CHRONOS_PRICE_IMAGE_GENERATIONS": "1",
+                          "CHRONOS_MAX_RUN_USD": "1"})
+        self.assertEqual(out["raised"][0], "SpendLimitExceeded", out.get("tb"))
+        self.assertIn("generating stills", out["raised"][1])
+        self.assertTrue(out["voice_built"])
+        self.assertFalse(out["images_called"])
+
+    def test_an_exhausted_daily_cap_stops_the_operators_run_before_any_paid_planning(self):
+        out = self.drive({"CHRONOS_MAX_DAILY_USD": "30"}, "daily")      # $50 already spent today
+        self.assertEqual(out["raised"][0], "SpendLimitExceeded", out.get("tb"))
+        self.assertIn("the topic", out["raised"][1])
+        self.assertIn("CHRONOS_MAX_DAILY_USD", out["raised"][1])
+        self.assertFalse(out["topic_manager_called"])
+        self.assertFalse(out["voice_built"])
+
     def test_a_run_that_fails_for_any_other_reason_also_records_its_spend(self):
-        # no cap, no price: the pipeline goes on past the guard, then dies in the fake fetcher's
+        # no cap: the pipeline goes on past the guard, then dies in the fake fetcher's
         # first use of a MagicMock-built value; the TTS entry must still be in the ledger.
         out = self.drive({"CHRONOS_MAX_RUN_USD": "off"})
         self.assertIsNotNone(out["raised"])
         self.assertNotEqual(out["raised"][0], "SpendLimitExceeded")
         self.assertIn("tts_characters", [r[0] for r in out["rows"]])
         self.assertEqual([r[0] for r in out["rows"]].count("tts_characters"), 1)   # once, not twice
+
+
+class TerminatedRunStillRecordsSpend(unittest.TestCase):
+    def test_sigterm_unwinds_so_the_ledger_is_flushed_and_the_handler_is_restored(self):
+        out = child(_TERM_CHILD, {})
+        self.assertEqual(out["exit"], 143)
+        self.assertTrue(out["restored"])
+        self.assertIn(["tts_characters", 10.0], out["rows"])
+
+    def test_a_failing_flush_never_replaces_the_runs_own_exception(self):
+        out = child(_TERM_CHILD, {})
+        self.assertEqual(out["original"], "KeyError")
 
 
 if __name__ == "__main__":

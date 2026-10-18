@@ -16,6 +16,36 @@ for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
 
 BASE_DIR = Path(__file__).parent
 
+def _clamp_int(raw, default, lo, hi):
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        v = default
+    return max(lo, min(hi, v))
+
+
+def _count_env(name, default, hi=50):
+    """A small non-negative count (how many clips / stills one video may buy)
+    from an env var. Empty = the default. Text that is not a whole number, or a
+    negative one, falls back to the default WITH a warning: these names are
+    deployable now, and a typo must neither crash the worker at import nor turn
+    the cost brake into a negative number."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        value = -1
+    if value < 0:
+        import warnings
+
+        warnings.warn(f"{name} is not a whole number >= 0 - using the default {default}", stacklevel=2)
+        return default
+    return _clamp_int(value, default, 0, hi)
+
+
+
 # API Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
@@ -45,7 +75,7 @@ MINIMAX_BROLL_ENABLED = (
 )
 # How many sections of one video may get a generated clip (cost control); the
 # rest use Pexels stock. A generated clip is billable, so this is deliberately low.
-MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
+MINIMAX_BROLL_MAX_CLIPS = _count_env("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", 2)
 
 # ── AI b-roll: which video-generation provider (Track 4) ──────────────────────
 # Nightshift is provider-agnostic (modules/providers.py). This selects which
@@ -136,7 +166,7 @@ LEONARDO_BASE_URL = (os.getenv("LEONARDO_BASE_URL") or "https://cloud.leonardo.a
 LEONARDO_MODEL_ID = (os.getenv("LEONARDO_MODEL_ID") or "aa77f04e-3eec-4034-9c07-d0f619684628")
 # How many sections of one video may get a generated still (cost control).
 # Applies to every image provider below, despite the name.
-LEONARDO_MAX_IMAGES = int(os.getenv("CHRONOS_LEONARDO_MAX_IMAGES", "2") or 2)
+LEONARDO_MAX_IMAGES = _count_env("CHRONOS_LEONARDO_MAX_IMAGES", 2)
 # The other generators (modules/image_providers.py). Each runs only when it is
 # the selected CHRONOS_IMAGE_PROVIDER, its key is set, and the opt-in flag is on.
 #   gpt-image    OpenAI GPT Image (reuses OPENAI_API_KEY)
@@ -267,13 +297,6 @@ SUBTITLE_POSITION = ("center", 0.80)
 # each with a distinct on-brand look (modules/thumbnail_generator.py). Clamped
 # to the 2..4 the generator has real styles for — a bad env value never crashes
 # a render or silently produces clone thumbnails.
-def _clamp_int(raw, default, lo, hi):
-    try:
-        v = int(raw)
-    except (TypeError, ValueError):
-        v = default
-    return max(lo, min(hi, v))
-
 THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"), 2, 2, 4)
 
 # Render backend (roadmap #49). "moviepy" (default) keeps the current

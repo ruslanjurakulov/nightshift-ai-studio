@@ -30,6 +30,7 @@ output is a public Actions log.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -37,6 +38,10 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Tuple
 
 EXAMPLE = Path(__file__).resolve().parent / ".env.worker.example"
+# One list of "switch the cap off" words, shared with the code that reads the cap
+# (modules/spend_guard.py, stdlib only).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from modules.spend_guard import OFF_WORDS  # noqa: E402
 MARKER = "NIGHTSHIFT_WORKER_ENV=on"
 TOKEN_NAME = re.compile(r"^CHRONOS_YT_TOKEN_[A-Z0-9_]+$")
 REQUIRED = ("SUPABASE_URL", "SUPABASE_SERVICE_KEY")
@@ -180,15 +185,27 @@ def warnings(values: Mapping[str, str], example_text: str) -> List[str]:
     if not prices:
         out.append("no " + PRICE_PREFIX + "* variable is set: costs are recorded without USD, so "
                    "CHRONOS_MAX_RUN_USD / CHRONOS_MAX_DAILY_USD cannot see any spend.")
+    def number(raw: str):
+        try:
+            value = float(raw)
+        except ValueError:
+            return None
+        return value if math.isfinite(value) else None
+
     for key in ("CHRONOS_MAX_RUN_USD", "CHRONOS_MAX_DAILY_USD") + tuple(k for k in values if k.startswith(PRICE_PREFIX)):
         raw = get(key)
-        if raw and raw.lower() != "off":
-            try:
-                ok = float(raw) > 0 if key.startswith("CHRONOS_MAX") else float(raw) >= 0
-            except ValueError:
-                ok = False
-            if not ok:
+        if raw and (raw.lower() not in OFF_WORDS or key.startswith(PRICE_PREFIX)):
+            value = number(raw)
+            if value is None or (value <= 0 if key.startswith("CHRONOS_MAX") else value < 0):
                 out.append(f"{key} is not a valid number: it is ignored (the default applies / the unit stays unpriced).")
+    for key in ("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "CHRONOS_LEONARDO_MAX_IMAGES"):
+        raw = get(key)
+        if raw and not re.fullmatch(r"[0-9]+", raw):
+            out.append(f"{key} is not a whole number >= 0: the default (2) is used.")
+    for key in values:
+        raw = get(key)
+        if key.endswith("_BASE_URL") and raw and not raw.lower().startswith("https://"):
+            out.append(f"{key} is not an https:// URL: the provider's key would travel unencrypted, so the run refuses it.")
     return out
 
 

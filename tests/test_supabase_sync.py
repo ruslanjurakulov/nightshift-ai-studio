@@ -271,6 +271,34 @@ class VideoCostsIdempotentTestCase(unittest.TestCase):
         table = FakeCostsTable()
         self.assertEqual(self._costs_only(table), 1)
 
+    def test_customer_channels_rows_carry_no_usd_but_keep_units_and_stage(self):
+        self._cost(unit="tts_characters", quantity=500, channel_id="ours", estimated_usd=0.5)
+        self._cost(unit="video_gen_clips", quantity=2, channel_id="theirs", estimated_usd=3.2, stage="broll:kling")
+        table = FakeCostsTable()
+        self._costs_only(table, is_operator=lambda cid: cid == "ours")
+        by_channel = {r["channel_id"]: r for r in table.rows}
+        self.assertEqual(by_channel["ours"]["estimated_usd"], 0.5)
+        self.assertIsNone(by_channel["theirs"]["estimated_usd"])
+        self.assertEqual((by_channel["theirs"]["unit"], by_channel["theirs"]["quantity"], by_channel["theirs"]["stage"]),
+                         ("video_gen_clips", 2, "broll:kling"))
+        # the local ledger is untouched
+        self.assertEqual({r["channel_id"]: r["estimated_usd"] for r in self.store.list_video_costs()},
+                         {"ours": 0.5, "theirs": 3.2})
+
+    def test_without_an_operator_test_or_when_it_raises_no_usd_is_sent(self):
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        for kw in ({}, {"is_operator": lambda cid: 1 / 0}):
+            table = FakeCostsTable()
+            self._costs_only(table, **kw)
+            self.assertEqual([r["estimated_usd"] for r in table.rows], [None])
+
+    def test_hiding_the_usd_does_not_change_the_row_keys(self):
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        shown, hidden = FakeCostsTable(), FakeCostsTable()
+        self._costs_only(shown, is_operator=lambda cid: True)
+        self._costs_only(hidden)
+        self.assertEqual([r["row_key"] for r in shown.rows], [r["row_key"] for r in hidden.rows])
+
     def test_mirror_costs_is_off_without_credentials(self):
         self._cost()
         self.assertEqual(SupabaseSync(url="", service_key="").mirror_costs(self.store), 0)
