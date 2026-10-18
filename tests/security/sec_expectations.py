@@ -553,3 +553,8 @@ sec_marketing_0108.extend(TABLES, FUNCTIONS)
 import sec_marketing_summary_0109  # noqa: E402
 
 sec_marketing_summary_0109.extend(TABLES, FUNCTIONS)
+
+# Migration 0110 (promo and custom brand-channel posts, Telegram only): tests/security/sec_marketing_0110.py
+import sec_marketing_0110  # noqa: E402
+
+sec_marketing_0110.extend(TABLES, FUNCTIONS)
