@@ -458,6 +458,7 @@ export const siteRu: SiteDictionary = {
     social: "Мы в соцсетях",
     telegram: "Telegram-канал",
     instagram: "Instagram",
+    x: "X",
   },
   solutions: {
     meta: {

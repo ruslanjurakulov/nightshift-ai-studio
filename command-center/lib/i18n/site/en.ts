@@ -469,6 +469,7 @@ export const siteEn = {
     social: "Our channels",
     telegram: "Telegram channel",
     instagram: "Instagram",
+    x: "X",
   },
   solutions: {
     meta: {
