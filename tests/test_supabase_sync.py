@@ -285,12 +285,43 @@ class VideoCostsIdempotentTestCase(unittest.TestCase):
         self.assertEqual({r["channel_id"]: r["estimated_usd"] for r in self.store.list_video_costs()},
                          {"ours": 0.5, "theirs": 3.2})
 
-    def test_without_an_operator_test_or_when_it_raises_no_usd_is_sent(self):
+    def test_without_an_operator_test_no_usd_is_sent(self):
         self._cost(estimated_usd=1.0, channel_id="ours")
-        for kw in ({}, {"is_operator": lambda cid: 1 / 0}):
-            table = FakeCostsTable()
-            self._costs_only(table, **kw)
-            self.assertEqual([r["estimated_usd"] for r in table.rows], [None])
+        table = FakeCostsTable()
+        self._costs_only(table)
+        self.assertEqual([r["estimated_usd"] for r in table.rows], [None])
+
+    def test_a_channel_that_cannot_be_looked_up_is_skipped_not_sent_without_usd(self):
+        # ignore-duplicates would lock a wrongly-NULL row in forever: wait until it can be decided
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        self._cost(unit="tts_characters", estimated_usd=2.0, channel_id="theirs")
+        registry_up = {"ok": False}
+
+        def is_operator(cid):
+            if not registry_up["ok"]:
+                raise RuntimeError("registry down")
+            return cid == "ours"
+
+        table = FakeCostsTable()
+        self.assertEqual(self._costs_only(table, is_operator=is_operator), 0)
+        self.assertEqual(table.rows, [])
+        registry_up["ok"] = True
+        self._costs_only(table, is_operator=is_operator)
+        self.assertEqual(sorted((r["channel_id"], r["estimated_usd"]) for r in table.rows),
+                         [("ours", 1.0), ("theirs", None)])
+
+    def test_mirror_from_store_the_actions_path_also_hides_customer_usd(self):
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        self._cost(unit="tts_characters", estimated_usd=2.0, channel_id="theirs")
+        table = FakeCostsTable()
+        with patch("modules.supabase_sync.requests.post", side_effect=table.post):
+            self.sync.mirror_from_store(self.store, is_operator=lambda cid: cid == "ours")
+        self.assertEqual(sorted((r["channel_id"], r["estimated_usd"]) for r in table.rows),
+                         [("ours", 1.0), ("theirs", None)])
+        table = FakeCostsTable()
+        with patch("modules.supabase_sync.requests.post", side_effect=table.post):
+            self.sync.mirror_from_store(self.store)             # no test given: nobody's USD
+        self.assertEqual({r["estimated_usd"] for r in table.rows}, {None})
 
     def test_hiding_the_usd_does_not_change_the_row_keys(self):
         self._cost(estimated_usd=1.0, channel_id="ours")

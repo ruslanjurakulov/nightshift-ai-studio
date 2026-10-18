@@ -437,5 +437,40 @@ class CheckDurabilityTestCase(unittest.TestCase):
             self.assertTrue((Path(d) / "durability_snapshot.json").exists())
 
 
+class MirrorToSupabaseCostPrivacyTestCase(unittest.TestCase):
+    """The Actions poll's mirror must not send a customer channel's provider USD."""
+
+    def channels(self):
+        return [MagicMock(channel_id="news", is_operators=True), MagicMock(channel_id="cust", is_operators=False)]
+
+    def test_operator_test_is_true_only_for_the_operators_channels(self):
+        with patch.object(mod, "ChannelRegistry") as reg:
+            reg.return_value.list.return_value = self.channels()
+            ours = mod._operator_test()
+        self.assertTrue(ours("news"))
+        self.assertTrue(ours(mod.DEFAULT_CHANNEL_ID))
+        self.assertFalse(ours("cust"))
+        self.assertFalse(ours("never-heard-of-it"))
+
+    def test_an_unreadable_registry_makes_every_channel_undecidable_not_a_customer(self):
+        with patch.object(mod, "ChannelRegistry", side_effect=RuntimeError("down")):
+            unknown = mod._operator_test()
+        with self.assertRaises(RuntimeError):
+            unknown("news")
+
+    def test_the_poll_hands_the_operator_test_to_the_mirror(self):
+        sync = MagicMock(enabled=True)
+        sync.mirror_from_store.return_value = {}
+        sync.mirror_planner_and_runs.return_value = {}
+        sync.mirror_channels.return_value = {}
+        with patch.object(mod, "SupabaseSync", return_value=sync), patch.object(mod, "StateStore"), \
+                patch.object(mod, "ChannelRegistry") as reg:
+            reg.return_value.list.return_value = self.channels()
+            mod.mirror_to_supabase()
+        test = sync.mirror_from_store.call_args.kwargs["is_operator"]
+        self.assertTrue(test("news"))
+        self.assertFalse(test("cust"))
+
+
 if __name__ == "__main__":
     unittest.main()

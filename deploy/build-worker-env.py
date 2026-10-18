@@ -72,6 +72,8 @@ IMAGE_KEYS = {
     "fal": "FAL_KEY",
 }
 PRICE_PREFIX = "CHRONOS_PRICE_"
+#: config._count_env clamps the clip / still counts to this.
+MAX_COUNT = 50
 
 
 def example_keys(text: str) -> List[str]:
@@ -202,6 +204,8 @@ def warnings(values: Mapping[str, str], example_text: str) -> List[str]:
         raw = get(key)
         if raw and not re.fullmatch(r"[0-9]+", raw):
             out.append(f"{key} is not a whole number >= 0: the default (2) is used.")
+        elif raw and int(raw) > MAX_COUNT:
+            out.append(f"{key} is above {MAX_COUNT}: config.py caps it at {MAX_COUNT}.")
     for key in values:
         raw = get(key)
         if key.endswith("_BASE_URL") and raw and not raw.lower().startswith("https://"):

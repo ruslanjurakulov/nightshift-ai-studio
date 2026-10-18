@@ -390,6 +390,12 @@ def _flush_costs_on_exit(fn):
         try:
             return fn(*args, **kwargs)
         finally:
+            if installed:
+                # A second SIGTERM (the worker repeats it) must not abort the flush.
+                try:
+                    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                except (ValueError, OSError):
+                    pass
             try:
                 ledgers = list(_RUN_COSTS)
                 _RUN_COSTS.clear()

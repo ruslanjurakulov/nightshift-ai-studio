@@ -76,7 +76,13 @@ jobs (priced and held on their own), and Creative OS jobs (own price and hold).
 **Privacy of the mirror.** The worker's copy of `video_costs` in Supabase carries
 `estimated_usd` only for the operator's own channels; a customer channel's rows keep
 units, quantities and stage but a NULL USD (what a provider charges is the
-operator's margin).
+operator's margin). This holds for both mirror paths: the worker's
+(`SupabaseSync.mirror_costs`) and the Actions intelligence poll's
+(`mirror_from_store`, called from `tools/run_intelligence_poll.py`), which decide
+"the operator's own channel" from the channel registry (`is_operators`). A channel
+that cannot be looked up at that moment has its cost rows skipped until it can (a
+row sent with a wrong NULL would stay NULL: Supabase ignores duplicates); a
+caller that gives no test sends no USD at all.
 
 ## 2. Thumbnail and title A/B
 

@@ -304,6 +304,15 @@ class DeployWarnings(unittest.TestCase):
         for word in spend_guard.OFF_WORDS:
             self.assertNotIn("CHRONOS_MAX_DAILY_USD is not a valid number", self.text(CHRONOS_MAX_DAILY_USD=word), word)
 
+    def test_none_and_the_other_off_words_are_not_invalid_numbers(self):
+        for word in ("none", "off", "unlimited", "disabled", "OFF"):
+            self.assertNotIn("not a valid number", self.text(CHRONOS_MAX_RUN_USD=word, CHRONOS_MAX_DAILY_USD=word), word)
+
+    def test_counts_above_the_cap_are_called_out(self):
+        text = self.text(CHRONOS_MINIMAX_BROLL_MAX_CLIPS="51", CHRONOS_LEONARDO_MAX_IMAGES="50")
+        self.assertIn("CHRONOS_MINIMAX_BROLL_MAX_CLIPS is above 50", text)
+        self.assertNotIn("CHRONOS_LEONARDO_MAX_IMAGES is above", text)
+
     def test_a_base_url_must_be_https(self):
         text = self.text(KLING_BASE_URL="http://api.example.test", MINIMAX_BASE_URL="https://api.minimax.io",
                          VEO_BASE_URL="ftp://x")

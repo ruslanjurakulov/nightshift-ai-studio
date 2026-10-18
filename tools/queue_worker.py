@@ -327,7 +327,7 @@ def _cost_mirror(url: str, key: str, resolve_channel: Callable[[str], Mapping] =
     """The worker's after-job send of history/chronos.db's video_costs to
     Supabase (SupabaseSync.mirror_costs: idempotent, never raises). A channel's
     USD is sent only when it is one of the operator's own (``is_operators``);
-    a channel that cannot be resolved counts as a customer's."""
+    a channel that does not exist counts as a customer's, and one that cannot be looked up right now is skipped until it can."""
     resolve = resolve_channel or _default_resolve_channel
 
     def mirror(since_iso: str):
@@ -340,8 +340,10 @@ def _cost_mirror(url: str, key: str, resolve_channel: Callable[[str], Mapping] =
             if channel_id not in known:
                 try:
                     known[channel_id] = resolve(channel_id).get("is_operators") is True
-                except Exception:
-                    known[channel_id] = False
+                except (KeyError, ValueError):
+                    known[channel_id] = False      # no such confirmed channel: not the operator's
+                # any other failure (registry down) propagates: the mirror skips the
+                # channel's rows this time instead of sending them without USD for good
             return known[channel_id]
 
         with StateStore() as store:

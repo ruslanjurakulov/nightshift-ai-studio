@@ -505,6 +505,27 @@ def check_durability() -> dict:
         return {}
 
 
+def _operator_test():
+    """``channel_id -> bool`` for the cost mirror: True only for the operator's own
+    organisation's channels (their provider USD is the operator's to see). A
+    channel the registry does not list is not the operator's; when the registry
+    cannot be read at all the answer is "unknown" (an exception), so the mirror
+    skips those rows this time instead of sending them without USD for good."""
+    try:
+        registry = ChannelRegistry().list()
+    except Exception as e:
+        logger.warning("Channel registry unavailable (%s) — cost rows are not mirrored this run "
+                       "(their USD cannot be attributed); everything else is", type(e).__name__)
+
+        def unknown(channel_id):
+            raise RuntimeError("channel registry unavailable")
+
+        return unknown
+    ours = {str(c.channel_id) for c in registry if getattr(c, "is_operators", False)}
+    ours.add(DEFAULT_CHANNEL_ID)
+    return lambda channel_id: channel_id in ours
+
+
 def mirror_to_supabase() -> dict:
     """Mirror the current local state into Supabase for the Command Center.
     No-op (returns {}) when SUPABASE_URL / SUPABASE_SERVICE_KEY aren't set, so
@@ -521,7 +542,7 @@ def mirror_to_supabase() -> dict:
     counts: dict = {}
     try:
         with StateStore() as store:
-            counts.update(sync.mirror_from_store(store))
+            counts.update(sync.mirror_from_store(store, is_operator=_operator_test()))
     except Exception as e:
         logger.warning("Supabase mirror failed (%s: %s)", type(e).__name__, e)
     try:
