@@ -6,12 +6,12 @@
 -- *** automatically, and an applied migration is never edited: fix by a new forward
 -- *** migration (docs/MIGRATIONS.md).
 --
--- *** MERGE ORDER. After this file is applied a row may exist whose kind is `promo` or `custom`. The owner page
--- *** (lib/marketing-posts.ts) and the operator bot (modules/operator_bot/analysis.py) must already be tolerant of a
--- *** kind they do not know BEFORE that can happen: a page that rejects one unknown kind reads the WHOLE list as
--- *** "could not read". The change that makes them tolerant is a separate PR; merge it, and let it deploy, first.
--- *** Nothing in this file depends on it for correctness, and nothing creates such a row until a later change calls
--- *** owner_marketing_create() or marketing_draft_upsert_v2().
+-- *** MERGE ORDER. Depends on #526 (deployed). After this file is applied a row may exist whose kind is `promo` or
+-- *** `custom`. The owner page (lib/marketing-posts.ts) and the operator bot (modules/operator_bot/analysis.py) must
+-- *** already be tolerant of a kind they do not know BEFORE that can happen: a page that rejects one unknown kind
+-- *** reads the WHOLE list as "could not read". PR #526 (the tolerant approval page and bot) makes them tolerant:
+-- *** merge it, and let it deploy, first. Nothing in this file depends on it for correctness, and nothing creates such
+-- *** a row until a later change calls owner_marketing_create() or marketing_draft_upsert_v2().
 --
 -- WHAT "DORMANT" MEANS HERE
 --   * marketing_settings.enabled is still whatever it is (FALSE until the owner re-arms the poster); this file does
@@ -21,10 +21,10 @@
 --     functions or triggers is redefined here: marketing_posts_guard(), owner_marketing_edit / approve / reject / kill,
 --     claim_marketing_post(), complete_marketing_post() and marketing_draft_upsert() (9 arguments) are byte-for-byte
 --     what 0108 made, and the live worker keeps calling them unchanged.
---   * NO existing table is created, no existing policy, grant or trigger is changed. Three existing CHECKs on
---     marketing_posts are widened (kind, source_ref) or joined by a fourth (the key shape); every value they
---     allowed before they still allow. audit_action_allowed(text) is redefined to ADD one name (its whole 0108
---     list is copied verbatim).
+--   * NO existing table is created, no existing policy, grant or trigger is changed. On marketing_posts two existing
+--     CHECKs are widened (kind, source_ref) and one is added (key_shape); every value the two old ones allowed
+--     before they still allow. audit_action_allowed(text) is redefined to ADD one name (its whole 0108 list is
+--     copied verbatim).
 --
 -- WHAT IT ADDS
 --  1. marketing_posts.kind        news | showcase | price | promo | custom.
@@ -35,6 +35,9 @@
 --                                                                  "New post" screen, so a double tap or a retry
 --                                                                  finds the same row and never makes a second
 --     (marketing_posts_key_shape_check; the 0108 key check, "starts with the kind", still holds.)
+--     A promo key promo:<slug>:telegram is PERMANENT: a post is never deleted, so a rejected or expired promo cannot
+--     be redrafted. marketing_draft_upsert_v2 then returns the old row (created: false, updated: false). The worker
+--     slice must log "already exists (status X)" and not treat it as an error.
 --  4. owner_marketing_create(p_request_id, p_texts, p_link, p_kind default 'custom')   SIGNED-IN OWNER ONLY
 --       owner_guard() (platform owner/admin, second factor, per-person rate limit), then the same checks as a draft:
 --       exactly the keys uz, ru, en, trimmed, no control, invisible or direction-changing characters, the message

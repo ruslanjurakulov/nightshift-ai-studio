@@ -26,6 +26,7 @@
 -- and then re-applies 0110.
 
 begin;
+set local lock_timeout = '5s';
 
 drop function if exists public.owner_marketing_create(text, jsonb, text, text);
 drop function if exists public.marketing_draft_upsert_v2(text, text, jsonb, text, jsonb, timestamptz, text, text, text);

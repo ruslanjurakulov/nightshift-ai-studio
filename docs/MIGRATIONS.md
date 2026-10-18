@@ -122,3 +122,23 @@ attacks it in the lab.
 - **Undo.** `docs/sql/rollback_0109_operator_marketing_summary.sql` (owner-applied; the lab applies it to a scratch database and
   then re-applies 0109). It drops the function and nothing else.
 - **Replay.** `create or replace` plus a revoke and a grant: a replay leaves the same function and the same privileges.
+
+## Promo and custom posts (0110)
+
+0110 (`0110_marketing_promo_custom.sql`: `promo` and `custom` kinds for the brand-channel poster, `docs/MARKETING_POSTS.md`) ships
+dormant: it adds `owner_marketing_create` and `marketing_draft_upsert_v2`, widens two CHECKs on `marketing_posts` (kind,
+source_ref), adds one (key_shape) and adds `marketing.create` to the audit list. No 0108 function, trigger or grant is redefined.
+`tests/test_marketing_promo_custom_migration.py` pins that from the file.
+
+- **Is it off?** Yes, by absence: no code calls `owner_marketing_create` or `marketing_draft_upsert_v2` yet (the static test fails if
+  any file mentions them), so no `promo` or `custom` row can exist. **Depends on PR #526 (the tolerant approval page and bot)
+  being DEPLOYED before any slice that calls them**: the page rejects an unknown kind and reads the whole list as "could not read".
+- **Undo.** `docs/sql/rollback_0110_marketing_promo_custom.sql` (owner-applied; the lab applies it, then re-applies 0110). It drops
+  the two functions and restores 0108's audit list. If `promo` or `custom` rows exist it leaves the wide CHECKs in place (a post is
+  never deleted), which is harmless.
+- **Replay.** `create or replace`, drop-then-create for the constraints, revoke then grant: a replay leaves the same objects.
+  Re-running 0108 after 0110 puts 0108's audit list back and drops `marketing.create`, so `owner_marketing_create` then fails
+  loudly at its audit write (the insert rolls back, nothing is half-done): re-apply 0110 after it.
+- **Promo keys are permanent.** `promo:<slug>:telegram` is never freed: a rejected or expired promo cannot be redrafted, and
+  `marketing_draft_upsert_v2` returns the old row (`created: false`, `updated: false`). The worker slice must log
+  "already exists (status X)" rather than treat it as an error.
