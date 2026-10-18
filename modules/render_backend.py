@@ -71,8 +71,10 @@ class RenderBackendError(RuntimeError):
 
 
 class RenderTimeout(RenderBackendError):
-    """The render ran past its wall-clock limit; the ffmpeg running was killed.
-    Never retried or fallen back from: the next attempt would hang the same way."""
+    """A render command ran past its wall-clock limit (an editor export's deadline,
+    or the pipeline's PIPELINE_COMMAND_TIMEOUT_S); the ffmpeg running was killed.
+    Never retried or fallen back from (render_dispatch re-raises it rather than
+    rendering again with MoviePy): the next attempt would hang the same way."""
 
 
 class RenderRefused(RenderBackendError):
@@ -93,6 +95,11 @@ def resolve_ffmpeg() -> str:
         return "ffmpeg"
 
 
+#: One pipeline ffmpeg command's wall-clock limit. Under the queue worker's
+#: whole-job limit (WORKER_JOB_TIMEOUT_SECONDS, 55 min) and the workflow's 60.
+PIPELINE_COMMAND_TIMEOUT_S = 40 * 60
+
+
 def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
     """Run one ffmpeg command, raising RenderBackendError with its stderr tail
     on failure. Never leaks a process — subprocess.run waits and reaps.
@@ -110,7 +117,15 @@ def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
     playable clips, BR-L-008). The pipeline's renders (no deadline) make
     exactly the call they always made."""
     if deadline is None:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        # A bound, not a budget: a decode that never ends used to hold the whole
+        # run (and the queue worker's only slot) until the host was restarted.
+        # subprocess.run kills and reaps the child on timeout.
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=PIPELINE_COMMAND_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            raise RenderTimeout(f"an ffmpeg command ran past {PIPELINE_COMMAND_TIMEOUT_S}s "
+                                "and was stopped") from None
         returncode, stderr = proc.returncode, proc.stderr
     else:
         remaining = deadline - time.monotonic()

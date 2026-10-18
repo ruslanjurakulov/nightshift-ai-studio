@@ -30,6 +30,21 @@ QUALITY_PRIORITY = ["uhd", "hd", "sd"]
 PEXELS_LICENSE = "Pexels License"
 
 
+class MediaUnavailable(RuntimeError):
+    """The media stage produced no footage and no images at all. Rendering on
+    would give a black video that exits 0 and is charged; the run stops with the
+    remedy instead (CLAUDE.md rule 4: no video is the better failure)."""
+
+
+def require_media(videos, images, *, allow_placeholder: bool = False) -> None:
+    """Raise MediaUnavailable when the run has nothing to put on screen.
+    ``allow_placeholder`` is the render benchmark's explicit colour-placeholder run."""
+    if not videos and not images and not allow_placeholder:
+        raise MediaUnavailable(
+            "The media stage found no footage and no images (Pexels returned nothing or refused the "
+            "requests). Check PEXELS_API_KEY and the Pexels quota, then run again.")
+
+
 def _safe_call(fn):
     try:
         return fn()
