@@ -258,6 +258,34 @@ Operatorning o'z (standart) tashkiloti kanallari avvalgidek bandsiz ishlaydi.
 Navbat rejimida Command Center'da `NIGHTSHIFT_CREDITS_ENFORCE` o'chiq bo'lsa,
 mijoz tashkilotining "Run now"i rad etiladi (`credits_not_enforced`).
 
+**Hisob-kitob tartibi va xavfsizligi.** Hisob-kitob vazifa qatori tugatilishidan
+OLDIN bajariladi va 3 marta (2 s, 4 s kutish bilan) qayta uriniladi. Kredit
+yechilishi faqat `main.py` render bosqichidan keyin natija faylini
+(`NIGHTSHIFT_RUN_RESULT_FILE`) yozgan va unda ko'rsatilgan video diskda bo'sh
+bo'lmagan holda turgan bo'lsa amalga oshadi. 0-kod bilan tugagan, lekin video
+yaratmagan ishga tushirish `failed` bo'ladi va band qaytariladi; xarajat chegarasi
+(`spend ceiling`) bilan to'xtash — chiqish kodi 78 — ham `failed` + qaytarish.
+
+**Vaqt chegarasi (`WORKER_JOB_TIMEOUT_SECONDS`, standart 3300, eng kami 300).**
+Shu vaqtdan keyin ham tugamagan ish to'xtatiladi, vazifa `failed` bo'ladi va band
+HAR DOIM qaytariladi — render allaqachon tugagan bo'lsa ham (mijoz uchun
+qulayroq qaror: video yetkazilmagan bo'lsa, pul olinmaydi). Foydalanuvchiga
+sozlama nomi ko'rsatilmaydi.
+
+**Kutilayotgan hisob-kitoblar.** Kredit API'ga 3 urinishda ham yetib bo'lmasa,
+qaror (capture/release va AYNAN shu miqdor) `output/.pending_settlements.json`
+fayliga yoziladi va worker har 60 soniyada o'sha qarorni takrorlaydi (jurnaldan
+qayta hisoblanmaydi). 72 soatdan eski qator xato bilan tashlab yuboriladi.
+Fayl buzilgan bo'lsa, u o'chirilmaydi: `.pending_settlements.json.<vaqt>.corrupt`
+nomi bilan yoniga qo'yiladi va jurnalda `settle it by hand` yoziladi.
+Qo'lda tiklash: `.corrupt` faylidagi har bir qator uchun `job_ref` bo'yicha
+`credit_reservations`dan holatni tekshiring (`select status, captured from
+credit_reservations where job_id = '<job_ref>'`); `open` bo'lsa, service rol bilan
+`select capture_credits('<job_ref>', <amount_to_capture>)` yoki
+`select release_credits('<job_ref>')` chaqiring (`action` maydoniga qarab).
+Taxmin: bitta worker jarayoni `output/` hajmiga egalik qiladi; ikki worker bir
+hajmni ulashsa, bu fayl uchun poyga bo'ladi — shunday qilmang.
+
 ## 5c. Sahnani qayta yaratish (0076 va 0085 migratsiyalari)
 
 Command Center'dagi "Regenerate scene" bosilishi navbatga `repair` vazifasini qo'yadi

@@ -31,7 +31,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from modules import budget, media_fetcher, render_backend, run_checkpoint, run_request  # noqa: E402
+from modules import budget, credential_health, media_fetcher, render_backend, run_checkpoint, run_request  # noqa: E402
 from tools import queue_worker as qw  # noqa: E402
 
 MAIN = ROOT / "main.py"
@@ -51,6 +51,96 @@ class RequireMedia(unittest.TestCase):
     def test_either_kind_of_media_is_enough(self):
         media_fetcher.require_media([Path("a.mp4")], [])
         media_fetcher.require_media([], [Path("a.jpg")])
+
+
+class PexelsRequirement(unittest.TestCase):
+    """Pexels is required unless generated media can carry the video, or this is
+    the render benchmark's explicit colour-placeholder run."""
+
+    def report(self, *, pexels_key: str, ai: bool = False, placeholder: bool = False):
+        env = {k: v for k, v in os.environ.items() if k != credential_health.PLACEHOLDER_MEDIA_ENV}
+        if placeholder:
+            env[credential_health.PLACEHOLDER_MEDIA_ENV] = "1"
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch("config.GEMINI_API_KEY", "g", create=True), \
+                mock.patch("config.PEXELS_API_KEY", pexels_key, create=True), \
+                mock.patch("config.TTS_PROVIDER", "edge", create=True), \
+                mock.patch.object(credential_health, "ai_media_usable", return_value=ai), \
+                mock.patch("modules.channel_credentials.credential_status",
+                           return_value=type("s", (), {"is_connected": False, "detail": ""})()):
+            return credential_health.check_run_credentials(None)
+
+    def test_a_missing_key_blocks_a_stock_footage_run(self):
+        self.assertEqual([c.name for c in self.report(pexels_key="").blocking], ["pexels"])
+
+    def test_a_present_key_never_blocks(self):
+        self.assertEqual(self.report(pexels_key="k").blocking, [])
+
+    def test_an_ai_only_configuration_is_not_blocked_by_the_missing_pexels_key(self):
+        report = self.report(pexels_key="", ai=True)
+        self.assertEqual(report.blocking, [])
+        self.assertIn("generated media only", [c for c in report.checks if c.name == "pexels"][0].detail)
+
+    def test_the_benchmarks_placeholder_run_is_not_blocked(self):
+        self.assertEqual(self.report(pexels_key="", placeholder=True).blocking, [])
+
+    def test_the_media_check_has_the_same_two_exceptions_and_nothing_else(self):
+        media_fetcher.require_media([], [], allow_placeholder=True)
+        with self.assertRaises(media_fetcher.MediaUnavailable):
+            media_fetcher.require_media([], [])
+
+    def test_the_benchmark_workflow_opts_in_and_main_reads_the_flag(self):
+        text = (ROOT / ".github" / "workflows" / "render_benchmark.yml").read_text()
+        self.assertIn(f'{credential_health.PLACEHOLDER_MEDIA_ENV}: "1"', text)
+        self.assertIn("allow_placeholder=placeholder_media_allowed()", MAIN.read_text())
+
+
+class MainRunBehaviour(unittest.TestCase):
+    """run() itself, with the credential report and the budget stubbed: it must
+    stop before any paid stage. Skipped where main.py's render stack is absent."""
+
+    def setUp(self):
+        try:
+            import main  # noqa: PLC0415
+        except Exception as e:  # pragma: no cover - environment without the render stack
+            self.skipTest(f"main.py cannot be imported here ({type(e).__name__})")
+        self.main = main
+        self.cwd = os.getcwd()
+        self.tmp = tempfile.TemporaryDirectory()
+        os.chdir(self.tmp.name)  # run() makes ./logs
+        from modules.channels import ChannelContext  # noqa: PLC0415
+        self.ctx = ChannelContext(channel_id="default", name="X", niche="h")
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmp.cleanup()
+
+    def health(self, *checks):
+        from modules.credential_health import HealthReport  # noqa: PLC0415
+        return HealthReport("default", tuple(checks))
+
+    def test_run_raises_credentials_missing_before_anything_is_fetched_or_spent(self):
+        from modules.credential_health import CredentialCheck, CredentialsMissing  # noqa: PLC0415
+        bad = self.health(CredentialCheck("pexels", "missing", required=True, detail="Set PEXELS_API_KEY."))
+        with mock.patch.object(self.main, "check_run_credentials", return_value=bad), \
+                mock.patch.object(self.main, "MediaFetcher", side_effect=AssertionError("fetched")), \
+                mock.patch.object(self.main, "StateStore", side_effect=AssertionError("budget read")):
+            with self.assertRaises(CredentialsMissing) as caught:
+                self.main.run(channel=self.ctx, skip_upload=True)
+        self.assertIn("Set PEXELS_API_KEY.", str(caught.exception))
+
+    def test_run_raises_budget_stop_not_a_return_when_the_ceiling_is_met(self):
+        from dataclasses import replace  # noqa: PLC0415
+        from modules.credential_health import CredentialCheck  # noqa: PLC0415
+        ok = self.health(CredentialCheck("gemini", "ok", required=True))
+        ctx = replace(self.ctx, agent=replace(self.ctx.agent, spend_ceiling_usd=1.0))
+        status = budget.BudgetStatus("default", 1.0, 2.0, False)
+        with mock.patch.object(self.main, "check_run_credentials", return_value=ok), \
+                mock.patch.object(self.main, "StateStore"), \
+                mock.patch.object(budget, "check_budget", return_value=status), \
+                mock.patch.object(self.main, "MediaFetcher", side_effect=AssertionError("fetched")):
+            with self.assertRaises(budget.BudgetStop):
+                self.main.run(channel=ctx, skip_upload=True)
 
 
 class MainWiring(unittest.TestCase):
@@ -73,7 +163,7 @@ class MainWiring(unittest.TestCase):
 
     def test_the_media_check_sits_between_media_generation_and_whisper(self):
         body = self.run_src
-        check = body.index("require_media(videos, images)")
+        check = body.index("require_media(videos, images")
         self.assertGreater(check, body.index("fetcher.generate_images("))
         self.assertLess(check, body.index("run_checkpoint.record_stage(slug, run_checkpoint.STAGE_MEDIA)"))
         self.assertLess(check, body.index("log_usage(\"before transcription\")"))
@@ -194,7 +284,8 @@ class JobTimeout(unittest.TestCase):
         (status, error), = q.ends
         self.assertEqual(status, "failed")
         self.assertIn("timed out", error)
-        self.assertIn("WORKER_JOB_TIMEOUT_SECONDS", error)
+        # Shown to the customer: no setting names in it.
+        self.assertNotIn("WORKER_JOB_TIMEOUT_SECONDS", error)
 
     def test_a_run_inside_the_limit_is_untouched(self):
         q = FakeQueue([self.job()])
@@ -222,6 +313,55 @@ class JobTimeout(unittest.TestCase):
             self.assertEqual(qw._int_env("WORKER_JOB_TIMEOUT_SECONDS", qw.DEFAULT_JOB_TIMEOUT_SECONDS), 120)
         with mock.patch.dict(os.environ, {"WORKER_JOB_TIMEOUT_SECONDS": ""}):
             self.assertEqual(qw._int_env("WORKER_JOB_TIMEOUT_SECONDS", qw.DEFAULT_JOB_TIMEOUT_SECONDS), 3300)
+
+
+class TerminateKillsTheWholeGroup(unittest.TestCase):
+    def test_a_helper_left_behind_by_a_leader_that_exited_on_sigterm_is_killed(self):
+        import signal  # noqa: PLC0415
+        import subprocess  # noqa: PLC0415
+        w = qw.Worker(FakeQueue([]), worker_id="w1", env={}, repo_dir=ROOT, prelude=[], kill_after_seconds=2)
+        # The leader prints its helper's pid and exits at once; the helper stays in its group.
+        proc = subprocess.Popen(["sh", "-c", "sleep 300 & echo $!"], stdout=subprocess.PIPE, text=True,
+                                start_new_session=True)
+        helper = int(proc.stdout.readline())
+        proc.wait()
+        os.kill(helper, 0)  # alive
+        w._terminate(proc)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(helper, 0)
+            except ProcessLookupError:
+                return
+            try:  # a zombie child of this process still answers kill(0); reap if it is ours
+                os.waitpid(helper, os.WNOHANG)
+            except ChildProcessError:
+                pass
+            time.sleep(0.05)
+        os.kill(helper, signal.SIGKILL)
+        self.fail("the helper in the run's process group survived _terminate")
+
+
+class JobLimitSettings(unittest.TestCase):
+    def main_with(self, value):
+        env = {"SUPABASE_URL": "https://example.invalid", "SUPABASE_SERVICE_KEY": "x" * 20,
+               "WORKER_JOB_TIMEOUT_SECONDS": value}
+        with mock.patch.dict(os.environ, env), mock.patch.object(qw, "Worker") as worker, \
+                mock.patch.object(qw.logging, "basicConfig"), mock.patch.object(qw.log_redaction, "install"), \
+                self.assertLogs("queue_worker", level="INFO") as logs:
+            worker.return_value.run_forever.return_value = 0
+            qw.main(["--once"])
+        return worker.call_args.kwargs["job_timeout_seconds"], "\n".join(logs.output)
+
+    def test_a_value_under_five_minutes_warns_and_falls_back(self):
+        used, log = self.main_with("30")
+        self.assertEqual(used, 3300)
+        self.assertIn("below the 300s minimum", log)
+
+    def test_a_sane_value_is_used_and_shown_in_the_startup_banner(self):
+        used, log = self.main_with("1800")
+        self.assertEqual(used, 1800)
+        self.assertIn("job limit 1800s", log)
 
 
 class PipelineCommandTimeout(unittest.TestCase):

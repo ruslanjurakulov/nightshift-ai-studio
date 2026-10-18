@@ -374,13 +374,32 @@ class WorkerCredits(unittest.TestCase):
 
     # -- D7: what a charge is for ------------------------------------------
 
-    def test_exit_0_without_a_video_releases_the_hold_instead_of_capturing_it(self):
+    def test_exit_0_without_a_video_fails_the_job_and_releases_the_hold(self):
         # Used to capture the whole hold ("no_ledger"): a black cut, a budget
         # stop, anything that exited 0 with nothing to show was charged.
         self.env["FAKE_NO_VIDEO"] = "1"
         fake = FakeCredits()
-        self.run_one(job(), fake)
+        ends = self.run_one(job(), fake)
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("without producing a video", ends[0][1])
         self.assertEqual(fake.settled(), [("release", "rj-abc")])
+
+    def test_an_api_balance_job_that_exits_0_without_a_video_is_failed_so_the_database_releases(self):
+        class ApiCredits(FakeCredits):
+            def api_hold_start(self, ref, job_id):
+                self.calls.append(("api_hold_start", ref, job_id))
+                return 12.0
+
+        for no_video, status in ((True, "failed"), (False, "succeeded")):
+            with self.subTest(no_video=no_video):
+                self.env.pop("FAKE_NO_VIDEO", None)
+                if no_video:
+                    self.env["FAKE_NO_VIDEO"] = "1"
+                fake = ApiCredits()
+                ends = self.run_one(job(credit_ref=None, api_hold_ref="api-1"), fake)
+                self.assertEqual(ends[0][0], status)
+                self.assertEqual(fake.settled(), [])  # settled in the database, not here
+                self.assertTrue((self.repo / "report.out").exists())
 
     def test_only_a_non_empty_video_the_result_file_names_counts(self):
         w = qw.Worker(FakeQueue([]), worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
@@ -434,40 +453,167 @@ class WorkerCredits(unittest.TestCase):
             self.run_one(job(), fake)
         self.assertEqual(order, ["release", "finish"])
 
-    def test_a_settlement_that_cannot_reach_the_api_is_kept_and_retried(self):
-        class Down(FakeCredits):
-            broken = False
+    def down_then_up(self):
+        """A credits client whose capture/release fail until ``broken`` is cleared."""
+        class Flaky(FakeCredits):
+            broken = True
 
             def capture(self, ref, amount):
                 if self.broken:
                     raise CreditsUnavailable("capture_credits: ReadTimeout")
                 return super().capture(ref, amount)
 
-        fake = Down()
-        fake.broken = True
+            def release(self, ref):
+                if self.broken:
+                    raise CreditsUnavailable("release_credits: ReadTimeout")
+                return super().release(ref)
+        return Flaky()
+
+    def marker(self):
+        return self.repo / "output" / qw.PENDING_SETTLEMENTS_FILE
+
+    def replay(self):
+        self.worker._last_pending_retry = None
+        self.worker._retry_pending_settlements()
+
+    def test_a_settlement_that_cannot_reach_the_api_is_kept_and_retried(self):
+        fake = self.down_then_up()
         with mock.patch.object(credits, "SETTLE_BACKOFF_SECONDS", 0.0):
             ends = self.run_one(job(), fake, [entry("tts_characters", 5000)])
         self.assertEqual(ends, [("succeeded", None)])  # the delivered video stays delivered
         self.assertEqual(fake.settled(), [])
-        marker = self.repo / "output" / qw.PENDING_SETTLEMENTS_FILE
-        rows = json.loads(marker.read_text())
-        self.assertEqual([(r["job_ref"], r["charge"]) for r in rows], [("rj-abc", True)])
+        rows = json.loads(self.marker().read_text())
+        self.assertEqual([(r["job_ref"], r["action"], r["amount_to_capture"]) for r in rows],
+                         [("rj-abc", "capture", 5.0)])
 
         # The API is back: the loop's retry settles it from the marker and clears it.
         fake.broken = False
-        self.worker._last_pending_retry = None
-        self.worker._retry_pending_settlements()
+        self.replay()
         self.assertEqual(fake.settled(), [("capture", "rj-abc", 5.0)])
-        self.assertFalse(marker.exists())
+        self.assertFalse(self.marker().exists())
+
+    def test_a_replay_charges_the_amount_decided_at_the_end_of_that_job_not_a_fresh_ledger(self):
+        # Job A's settlement is pending; job B then runs and records 30 credits'
+        # worth of costs in the same local ledger. Replaying A must still capture
+        # exactly A's 5.00 (it used to read the ledger again: 35.00).
+        fake = self.down_then_up()
+        with mock.patch.object(credits, "SETTLE_BACKOFF_SECONDS", 0.0):
+            self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.entries = [entry("tts_characters", 5000), entry("tts_characters", 30000)]
+        fake.broken = False
+        self.replay()
+        self.assertEqual(fake.settled(), [("capture", "rj-abc", 5.0)])
+
+    def test_a_pending_release_is_replayed_as_a_release_never_a_capture(self):
+        self.env["FAKE_RC"] = "2"
+        fake = self.down_then_up()
+        with mock.patch.object(credits, "SETTLE_BACKOFF_SECONDS", 0.0):
+            ends = self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(ends[0][0], "failed")
+        self.assertEqual([r["action"] for r in json.loads(self.marker().read_text())], ["release"])
+        fake.broken = False
+        self.replay()
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
+        self.assertFalse(self.marker().exists())
+
+    def pending_worker(self, fake):
+        return qw.Worker(FakeQueue([]), worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                         credits=fake)
+
+    @staticmethod
+    def pending_row(**kw):
+        row = {"job_id": 1, "job_ref": "rj-x", "org_id": CUSTOMER_ORG, "hold": 40.0, "action": "capture",
+               "amount_to_capture": 5.0, "detail": "", "channel_id": "news", "at": qw._now()}
+        row.update(kw)
+        return row
 
     def test_a_pending_settlement_still_down_stays_pending(self):
-        w = qw.Worker(FakeQueue([]), worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
-                      credits=FakeCredits(down=True))
-        w._save_pending([{"job_id": 1, "job_ref": "rj-x", "org_id": CUSTOMER_ORG, "amount": 40.0,
-                          "charge": False, "channel_id": "news", "since": None, "at": qw._now()}])
+        self.worker = w = self.pending_worker(FakeCredits(down=True))
+        w._save_pending([self.pending_row()])
         with mock.patch.object(credits, "SETTLE_BACKOFF_SECONDS", 0.0):
-            w._retry_pending_settlements()
+            self.replay()
         self.assertEqual(len(w._load_pending()), 1)
+
+    def test_a_pending_settlement_older_than_72_hours_is_dropped_with_an_error(self):
+        fake = FakeCredits()
+        self.worker = w = self.pending_worker(fake)
+        old = (qw.datetime.now(qw.timezone.utc) - qw.timedelta(hours=73)).isoformat()
+        w._save_pending([self.pending_row(at=old)])
+        with self.assertLogs("queue_worker", level="ERROR") as logs:
+            self.replay()
+        self.assertTrue(any("giving up" in m and "rj-x" in m for m in logs.output))
+        self.assertEqual(fake.settled(), [])
+        self.assertEqual(w._load_pending(), [])
+
+    def test_a_capture_that_comes_back_as_zero_is_reported_not_captured(self):
+        class Expired(FakeCredits):
+            def capture(self, ref, amount):
+                self.calls.append(("capture", ref, amount))
+                return 0.0  # the reservation was already released by the expiry sweep
+        self.worker = w = self.pending_worker(Expired())
+        w._save_pending([self.pending_row()])
+        with self.assertLogs("modules.credits", level="ERROR") as logs:
+            self.replay()
+        self.assertTrue(any("took effect as 0" in m for m in logs.output))
+        self.assertEqual(w._load_pending(), [])  # asking again would say the same
+
+    def test_a_corrupt_pending_file_is_kept_aside_never_overwritten(self):
+        self.worker = w = self.pending_worker(FakeCredits())
+        (self.repo / "output").mkdir()
+        self.marker().write_text('[{"job_ref": "rj-x", "action": "capt')  # truncated by a crash
+        with self.assertLogs("queue_worker", level="ERROR") as logs:
+            self.assertEqual(w._load_pending(), [])
+        self.assertTrue(any("by hand" in m for m in logs.output))
+        kept = list((self.repo / "output").glob(qw.PENDING_SETTLEMENTS_FILE + ".*.corrupt"))
+        self.assertEqual(len(kept), 1)
+        self.assertIn("rj-x", kept[0].read_text())
+        w._save_pending([self.pending_row()])  # a new row does not touch the kept file
+        self.assertIn("rj-x", kept[0].read_text())
+
+    def test_the_hold_is_settled_before_the_row_ends_on_a_timeout_and_on_a_budget_stop(self):
+        for label, env, kw in (("timeout", {"FAKE_SLEEP": "60"}, {"job_timeout_seconds": 1, "kill_after_seconds": 2}),
+                               ("budget stop", {"FAKE_RC": str(BUDGET_STOP_EXIT), "FAKE_NO_VIDEO": "1"}, {})):
+            with self.subTest(label):
+                self.env = {"PATH": os.environ.get("PATH", ""), **env}
+                order = []
+                fake = FakeCredits()
+                fake.release = lambda ref: order.append("release") or 40.0
+                real_finish = FakeQueue.finish
+
+                def finish(self_q, job_id, worker_id, status, error):
+                    order.append("finish")
+                    return real_finish(self_q, job_id, worker_id, status, error)
+                with mock.patch.object(FakeQueue, "finish", finish):
+                    self.run_one(job(), fake, **kw)
+                self.assertEqual(order, ["release", "finish"])
+
+    # -- a re-queued job whose credits the dead attempt already took ---------
+
+    def requeued(self, *, status="captured", with_video=True, attempts=2):
+        class Taken(FakeCredits):
+            def reservation(self, ref):
+                return {"status": status, "captured": 5}
+        fake = Taken(hold=None)  # start_credit_reservation: not open any more
+        result = self.repo / ".run_result_9.json"
+        for stale in (result, self.repo / "final_video.mp4", self.repo / "report.out"):
+            stale.unlink(missing_ok=True)
+        if with_video:
+            (self.repo / "final_video.mp4").write_bytes(b"v")
+            result.write_text(json.dumps({"video_path": "final_video.mp4"}))  # relative: against repo_dir
+        return fake, self.run_one(job(attempts=attempts), fake)
+
+    def test_a_requeued_job_already_charged_with_its_video_on_disk_is_finished_succeeded(self):
+        fake, ends = self.requeued()
+        self.assertEqual(ends, [("succeeded", None)])
+        self.assertFalse(self.ran())  # nothing was run again
+        self.assertEqual(fake.settled(), [])
+
+    def test_it_is_still_failed_when_the_charge_or_the_video_is_missing_or_it_is_the_first_attempt(self):
+        for kw in ({"status": "released"}, {"with_video": False}, {"attempts": 1}):
+            with self.subTest(**kw):
+                _, ends = self.requeued(**kw)
+                self.assertEqual(ends[0][0], "failed")
+                self.assertIn("not open", ends[0][1])
 
     # -- D3: a hung run ends the job and gives the credits back --------------
 
@@ -479,7 +625,7 @@ class WorkerCredits(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 30)
         self.assertEqual(ends[0][0], "failed")
         self.assertIn("timed out", ends[0][1])
-        self.assertIn("WORKER_JOB_TIMEOUT_SECONDS", ends[0][1])
+        self.assertNotIn("WORKER_JOB_TIMEOUT_SECONDS", ends[0][1])  # customer-facing text
         self.assertEqual(fake.settled(), [("release", "rj-abc")])
 
     def test_enforced_job_without_a_hold_fails_without_running(self):

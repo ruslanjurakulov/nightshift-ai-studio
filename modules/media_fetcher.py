@@ -36,9 +36,10 @@ class MediaUnavailable(RuntimeError):
     remedy instead (CLAUDE.md rule 4: no video is the better failure)."""
 
 
-def require_media(videos, images) -> None:
-    """Raise MediaUnavailable when the run has nothing to put on screen."""
-    if not videos and not images:
+def require_media(videos, images, *, allow_placeholder: bool = False) -> None:
+    """Raise MediaUnavailable when the run has nothing to put on screen.
+    ``allow_placeholder`` is the render benchmark's explicit colour-placeholder run."""
+    if not videos and not images and not allow_placeholder:
         raise MediaUnavailable(
             "The media stage found no footage and no images (Pexels returned nothing or refused the "
             "requests). Check PEXELS_API_KEY and the Pexels quota, then run again.")

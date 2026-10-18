@@ -71,8 +71,10 @@ class RenderBackendError(RuntimeError):
 
 
 class RenderTimeout(RenderBackendError):
-    """The render ran past its wall-clock limit; the ffmpeg running was killed.
-    Never retried or fallen back from: the next attempt would hang the same way."""
+    """A render command ran past its wall-clock limit (an editor export's deadline,
+    or the pipeline's PIPELINE_COMMAND_TIMEOUT_S); the ffmpeg running was killed.
+    Never retried or fallen back from (render_dispatch re-raises it rather than
+    rendering again with MoviePy): the next attempt would hang the same way."""
 
 
 class RenderRefused(RenderBackendError):

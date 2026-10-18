@@ -287,6 +287,11 @@ class CreditsRest:
     def release(self, job_ref: str) -> Optional[float]:
         return _num(self._rpc("release_credits", {"p_job_id": job_ref}))
 
+    def reservation(self, job_ref: str) -> Optional[dict]:
+        """The reservation's ``status`` / ``captured`` (a read; None when there is none)."""
+        rows = self._get("credit_reservations", {"select": "status,captured", "job_id": f"eq.{job_ref}"})
+        return dict(rows[0]) if rows else None
+
     def expire(self) -> Optional[float]:
         return _num(self._rpc("expire_credit_reservations", {}))
 
@@ -476,34 +481,71 @@ def _with_backoff(fn, *args, sleep=time.sleep):
             sleep(SETTLE_BACKOFF_SECONDS * (attempt + 1))
 
 
+@dataclass(frozen=True)
+class SettlePlan:
+    """What a run's hold is settled with, decided ONCE: a capture carries the
+    amount, so a retry (the queue worker's pending-settlement marker) replays
+    exactly this number and never recomputes it from a ledger that, by then,
+    also holds other jobs' costs."""
+    action: str                 # "capture" | "release"
+    amount: float = 0.0         # credits to capture (0 for a release)
+    detail: str = ""            # what the amount is made of, for the log
+
+
+def plan_settlement(client, hold: Hold, *, succeeded: bool, channel_id: str, since,
+                    ledger=local_run_entries, sleep=time.sleep) -> SettlePlan:
+    """Decide the settlement: a release on failure, else the metered cost of the
+    run (see the module docstring) read from the ledger. Reads the ledger and the
+    prices; touches no credits."""
+    if not succeeded:
+        return SettlePlan("release")
+    try:
+        entries = ledger(channel_id, since)
+    except Exception as e:
+        logger.warning("credits: could not read the run's ledger (%s) — charging the hold",
+                       type(e).__name__)
+        entries = []
+    try:
+        prices = _with_backoff(client.prices, sleep=sleep)
+    except CreditsUnavailable as e:
+        logger.warning("credits: prices unavailable (%s) — every entry counts as unpriced", e)
+        prices = {}
+    s = settle_amount(hold.amount, entries, prices)
+    return SettlePlan("capture", float(s.amount), s.describe())
+
+
+def apply_settlement(client, hold: Hold, plan: SettlePlan, *, sleep=time.sleep) -> Optional[str]:
+    """Carry out ``plan`` (3 tries, backing off). Returns a one-line description,
+    or None when the credits API could not be reached (the hold stays open). A
+    capture that comes back as 0 although a charge was asked for means the
+    reservation was already settled without one (expired and released) — logged
+    as an error and reported, since asking again would say the same."""
+    try:
+        if plan.action == "release":
+            released = _with_backoff(client.release, hold.job_ref, sleep=sleep)
+            return f"released {float(released or 0):.2f} credits (run did not complete)"
+        got = _with_backoff(client.capture, hold.job_ref, plan.amount, sleep=sleep)
+        if plan.amount > 0 and got is not None and float(got) == 0:
+            logger.error("credits: capture of %.2f credits for reservation %s took effect as 0 — it was "
+                         "already settled without a charge (expired?); check it by hand",
+                         plan.amount, hold.job_ref)
+            return f"NOT captured: reservation {hold.job_ref} was already settled without a charge"
+        return "captured " + plan.detail
+    except CreditsUnavailable as e:
+        logger.error("credits: could not settle reservation %s (%s) — it stays open until it "
+                     "is retried or expires; settle it by hand if this persists", hold.job_ref, e)
+        return None
+
+
 def settle_hold(client, hold: Hold, *, succeeded: bool, channel_id: str, since,
                 ledger=local_run_entries, sleep=time.sleep) -> Optional[str]:
     """After the run: capture on success, release on failure. Returns a one-line
     description of what happened, or None when the credits API could not be
     reached after SETTLE_TRIES tries (the hold then stays open; logged as an
-    error, and the queue worker keeps a pending-settlement marker to try again)."""
-    try:
-        if not succeeded:
-            released = _with_backoff(client.release, hold.job_ref, sleep=sleep)
-            return f"released {float(released or 0):.2f} credits (run did not complete)"
-        try:
-            entries = ledger(channel_id, since)
-        except Exception as e:
-            logger.warning("credits: could not read the run's ledger (%s) — charging the hold",
-                           type(e).__name__)
-            entries = []
-        try:
-            prices = _with_backoff(client.prices, sleep=sleep)
-        except CreditsUnavailable as e:
-            logger.warning("credits: prices unavailable (%s) — every entry counts as unpriced", e)
-            prices = {}
-        s = settle_amount(hold.amount, entries, prices)
-        _with_backoff(client.capture, hold.job_ref, s.amount, sleep=sleep)
-        return "captured " + s.describe()
-    except CreditsUnavailable as e:
-        logger.error("credits: could not settle reservation %s (%s) — it stays open until it "
-                     "is retried or expires; settle it by hand if this persists", hold.job_ref, e)
-        return None
+    error)."""
+    plan = plan_settlement(client, hold, succeeded=succeeded, channel_id=channel_id, since=since,
+                           ledger=ledger, sleep=sleep)
+    return apply_settlement(client, hold, plan, sleep=sleep)
 
 
 def _safe(fn, *args):

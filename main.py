@@ -42,7 +42,7 @@ from modules.avatar import (
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, effective_privacy, resolve_channel
-from modules.credential_health import CredentialsMissing, check_run_credentials
+from modules.credential_health import CredentialsMissing, check_run_credentials, placeholder_media_allowed
 from modules.cost_ledger import (
     CostLedger, IMAGE_GENERATIONS, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS,
     UPLOAD_BYTES, VIDEO_GEN_CLIPS,
@@ -937,7 +937,7 @@ def run(
         # fetcher swallows each one) and no generated media made up for it: the
         # compositor would draw a black background for the whole video, exit 0,
         # and the customer would be charged for it.
-        require_media(videos, images)
+        require_media(videos, images, allow_placeholder=placeholder_media_allowed())
     except MediaUnavailable as e:
         logger.error("[channel: %s] %s", channel_id, e)
         events.emit(events.AGENT_FAILED, agent="media_fetcher", status=events.STATUS_FAILED,
