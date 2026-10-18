@@ -24,4 +24,5 @@ export const SOCIAL: readonly Social[] = [
   { id: "instagram", href: "https://www.instagram.com/nightshift_ai.studio/", host: "www.instagram.com", label: "instagram", icon: "instagram" },
   { id: "x", href: "https://x.com/nightshift_ai", host: "x.com", label: "x", icon: "x" },
   { id: "youtube", href: "https://www.youtube.com/@nightshift_ai_studio", host: "www.youtube.com", label: "youtube", icon: "youtube" },
+  { id: "tiktok", href: "https://www.tiktok.com/@nightshift_ai_studio", host: "www.tiktok.com", label: "tiktok", icon: "tiktok" },
 ];
