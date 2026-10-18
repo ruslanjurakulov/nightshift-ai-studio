@@ -22,12 +22,14 @@ THE RESTRAINT, on top of what the engine already does (same dedupe semantics,
 same mute, same quiet hours with critical exempt, same hourly figure):
 * its OWN ledger, ``operator.mail`` rows (store.py), so an e-mail that failed is
   not forgotten and one that was sent is not repeated, whatever Telegram did;
-* a failed send is retried at most MAX_ATTEMPTS times per alert, RETRY_AFTER
-  apart, and every attempt counts against the hourly cap: a down provider cannot
-  turn a five-minute loop into a storm; a permanent refusal is never retried;
+* a failed delivery backs the whole sink off (5 minutes, doubling, up to an hour) and ends the pass; per alert at
+  most MAX_ATTEMPTS failed tries per window (its cooldown), after which it is tried again, not dropped; a refused
+  key (401 / 403) marks no alert at all; every attempt counts against its hourly budget (problems, critical, and
+  news with a small budget of its own) so a down provider cannot become a storm;
+* after two failures in a row Telegram is told once a day (kind ``email``), and /alerts shows the state;
 * a ledger that cannot be written is remembered in memory (bounded), a ledger
   that cannot be read sends nothing (the engine never calls us without a state);
-* the first pass only records what already exists, then sends one "on" e-mail;
+* the first pass only records what already exists, then sends one "on" e-mail (retried until it has gone out);
 * nothing here ever raises into the alert loop (:meth:`OwnerMail.run` catches).
 
 WHAT IS IN A MAIL. The alert lines the bot already shows (ids, counts, amounts,
@@ -44,6 +46,7 @@ from __future__ import annotations
 import html
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -55,7 +58,7 @@ from modules.operator_bot.alerts import EVENT_WINDOW, PAYMENT_WINDOW, SEVERITY_O
 from modules.operator_bot.config import OperatorConfig
 from modules.operator_bot.i18n import DEFAULT_LANGUAGE, t
 from modules.operator_bot.sources import OperatorSources, parse_ts
-from modules.operator_bot.store import MAIL_BASELINE, AlertState
+from modules.operator_bot.store import MAIL_ARMED, MAIL_BASELINE, MAIL_SINK, AlertState
 from modules.tg_text import safe_id, sanitize_outgoing, short_id
 
 logger = logging.getLogger(__name__)
@@ -74,7 +77,22 @@ DEFAULT_KINDS = ("payment", "signup", "run", "stuck", "worker", "deploy", "marke
 INFO_KINDS = ("payment", "signup")
 
 MAX_ATTEMPTS = 3
+#: Per alert: attempts are spaced this far apart, at most MAX_ATTEMPTS inside one window, and a window is the
+#: alert's own cooldown (REARM_MIN for a one-off alert). When it has passed the alert may be tried again: an
+#: outage that outlasts the attempts delays a mail, it does not drop it for good.
 RETRY_AFTER = timedelta(minutes=15)
+REARM_MIN = 180
+#: Sink level: after a failed delivery nothing is sent until this has passed, doubling per failure in a row
+#: up to the maximum. A refused key (401 / 403) is the same state: a configuration problem, not a verdict on
+#: any alert, so no alert is marked dead for it.
+SINK_BACKOFF = timedelta(minutes=5)
+SINK_BACKOFF_MAX = timedelta(minutes=60)
+#: Failures in a row (since the last mail that went out) after which Telegram is told once a day.
+OUTAGE_AFTER = 2
+AUTH_REFUSED = ("http_401", "http_403")
+#: Budgets per hour of attempts. Warn-level problems use the engine's OPERATOR_ALERT_MAX_PER_HOUR; news (a
+#: payment received, a new account) has its own small one, so six sign-ups can never hold back a failed job.
+MAX_INFO_PER_HOUR = 3
 #: Critical mails have a budget of their own so a flood of the rest cannot starve them
 #: (alerts.MAX_CRITICAL_PER_HOUR is the same idea; this one is lower: it is a mailbox).
 MAX_CRITICAL_PER_HOUR = 10
@@ -86,9 +104,11 @@ MAX_LINES = 10
 MAX_RECIPIENTS = 3
 MAX_EXTRAS = 50
 ADDRESS_CACHE = timedelta(minutes=10)
+#: The whole roster-to-address lookup gets this long; whatever was confirmed by then is used, uncached.
+LOOKUP_DEADLINE_S = 20.0
 
-_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_ADDRESS = re.compile(r"^[^@\s<>\"',;()\[\]\\]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}$")
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_ADDRESS = re.compile(r"[^@\s<>\"',;()\[\]\\]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}")
 
 
 # -- configuration ----------------------------------------------------------
@@ -140,46 +160,54 @@ def _fetch_auth_user(sync, user_id: str) -> Optional[dict]:
 class OwnerDirectory:
     """The confirmed e-mail addresses of the platform's owners and admins.
 
-    The roster (``app_members``) is read for ``user_id`` and ``role`` only; the
-    address comes from Supabase Auth for that user id, and only when Auth says it
-    is confirmed. The roster's own ``email`` column is never selected."""
+    The roster (``app_members``) is read for ``user_id``, ``role`` and ``created_at`` only; the address
+    comes from Supabase Auth for that user id, and only when Auth says it is confirmed. The roster's own
+    ``email`` column is never selected. Owners come first, then oldest first, so the same few people are
+    chosen on every pass when there are more than MAX_RECIPIENTS."""
 
-    def __init__(self, sync, now: Callable[[], datetime], fetch_user: Optional[Callable[[str], Optional[dict]]] = None):
+    def __init__(self, sync, now: Callable[[], datetime], fetch_user: Optional[Callable[[str], Optional[dict]]] = None,
+                 monotonic: Callable[[], float] = time.monotonic):
         self.sync = sync
         self._now = now
         self._fetch = fetch_user or (lambda uid: _fetch_auth_user(sync, uid))
+        self._monotonic = monotonic
         self._cached: Optional[tuple] = None
 
     def addresses(self) -> list:
         now = self._now()
         if self._cached is not None and now - self._cached[0] < ADDRESS_CACHE:
             return list(self._cached[1])
-        found = self._read(now)
-        if found is None:           # could not find out: nobody, rather than the last answer of a roster that may have changed
-            self._cached = None
-            return []
-        self._cached = (now, found)
+        found, complete = self._read(now)
+        self._cached = (now, found) if complete else None   # a failed or cut-short lookup is asked again next pass
         return list(found)
 
-    def _read(self, now: datetime) -> Optional[list]:
+    def _read(self, now: datetime) -> tuple:
+        """(addresses, complete). Nobody and incomplete when the roster cannot be read."""
         try:
             rows = self.sync.select_strict("app_members", {
-                "select": "user_id,role", "role": "in.(owner,admin)", "user_id": "not.is.null", "limit": "50"})
+                "select": "user_id,role,created_at", "role": "in.(owner,admin)", "user_id": "not.is.null",
+                "order": "role.desc,created_at.asc", "limit": "50"})
         except Exception as e:  # noqa: BLE001
             logger.warning("owner e-mail: roster unreadable (%s)", type(e).__name__)
-            return None
-        out: list = []
-        for row in rows or []:
+            return [], False
+        # The database is asked for the order, and the order is applied again here: the same people are chosen
+        # on every pass whatever the database answered ("owner" before "admin", then oldest first).
+        people = sorted((r for r in rows or [] if isinstance(r, dict) and r.get("role") in ("owner", "admin")),
+                        key=lambda r: (r.get("role") != "owner", str(r.get("created_at") or ""), str(r.get("user_id") or "")))
+        started, out = self._monotonic(), []
+        for row in people:
+            if self._monotonic() - started > LOOKUP_DEADLINE_S:
+                logger.warning("owner e-mail: account lookup ran out of time")
+                return out, False
             uid = str(row.get("user_id") or "").lower()
-            if row.get("role") not in ("owner", "admin") or not _UUID.match(uid):
+            if not _UUID.fullmatch(uid):
                 continue
-            user = self._fetch(uid)
-            address = self._confirmed(user, uid, now)
+            address = self._confirmed(self._fetch(uid), uid, now)
             if address and address not in out:
                 out.append(address)
             if len(out) >= MAX_RECIPIENTS:
                 break
-        return out
+        return out, True
 
     @staticmethod
     def _confirmed(user, uid: str, now: datetime) -> Optional[str]:
@@ -191,7 +219,7 @@ class OwnerDirectory:
         if banned is not None and banned > now:
             return None
         address = str(user.get("email") or "").strip().lower()
-        return address if len(address) <= 254 and _ADDRESS.match(address) else None
+        return address if len(address) <= 254 and _ADDRESS.fullmatch(address) else None
 
 
 # -- the e-mail itself ------------------------------------------------------
@@ -272,7 +300,7 @@ def render_digest(lang: str, op_cfg: OperatorConfig, digest: owner_digest.Digest
 
 @dataclass
 class MailReport:
-    state: str = "ok"          # ok | off | no_recipients
+    state: str = "ok"          # ok | no_recipients | backoff | unknown | error
     baseline: bool = False
     sent: int = 0              # alerts whose e-mail went out
     failed: int = 0            # alerts whose e-mail did not
@@ -281,6 +309,7 @@ class MailReport:
     quiet_held: int = 0
     rate_held: int = 0
     digest_sent: bool = False
+    failing: Optional[str] = None      # the closed code of the delivery that failed in this pass
 
 
 class OwnerMail:
@@ -346,6 +375,9 @@ class OwnerMail:
             del self._unrecorded[:-MAX_UNRECORDED]
 
     def _merge_unrecorded(self, state: AlertState, now: datetime) -> None:
+        if state.mail_merged:
+            return
+        state.mail_merged = True
         keep = []
         for at, key, kind, outcome, sev in self._unrecorded:
             if now - at > LOOKBACK_UNRECORDED:
@@ -359,8 +391,8 @@ class OwnerMail:
             state.mail_baseline_seen = True
 
     def _deduped(self, key: str, cooldown_min: int, state: AlertState, now: datetime) -> bool:
-        """True when this key must not be mailed now: it was sent (or marked seen) and its
-        cooldown has not passed, or its attempts since then are used up or too recent."""
+        """True when this key must not be mailed now: it was sent (or marked seen) and its cooldown has not
+        passed, or its failed attempts inside the current window are used up or too recent."""
         rows = sorted((m for m in state.mails if m[1] == key), key=lambda m: m[0])
         if not rows:
             return False
@@ -368,29 +400,62 @@ class OwnerMail:
         last_ok = max(ok) if ok else None
         if last_ok is not None and (cooldown_min <= 0 or now - last_ok < timedelta(minutes=cooldown_min)):
             return True
-        bad = [m for m in rows if last_ok is None or m[0] > last_ok]
-        if any(m[3] == "dead" for m in bad) or len(bad) >= MAX_ATTEMPTS:
+        window = timedelta(minutes=cooldown_min if cooldown_min > 0 else REARM_MIN)
+        bad = [m for m in rows if m[3] == "retry" and (last_ok is None or m[0] > last_ok) and now - m[0] < window]
+        if len(bad) >= MAX_ATTEMPTS:
             return True
         return bool(bad) and now - bad[-1][0] < RETRY_AFTER
+
+    @staticmethod
+    def _failures(state: AlertState) -> list:
+        """Failed deliveries (sink rows) since the last mail that went out, oldest first."""
+        sent = max((m[0] for m in state.mails if m[3] == "sent"), default=None)
+        return sorted((m for m in state.mails if m[1] == MAIL_SINK and (sent is None or m[0] > sent)),
+                      key=lambda m: m[0])
+
+    def _sink_wait(self, state: AlertState, now: datetime) -> bool:
+        """True while the sink is backing off after failed deliveries (doubling, up to SINK_BACKOFF_MAX)."""
+        fails = self._failures(state)
+        if not fails:
+            return False
+        wait = min(SINK_BACKOFF * 2 ** (len(fails) - 1), SINK_BACKOFF_MAX)
+        return now - fails[-1][0] < wait
+
+    def outage_alerts(self, state: AlertState, now: datetime, lang: str) -> list:
+        """One info alert per local date while deliveries keep failing, for the Telegram path (its dedupe,
+        mute and quiet hours apply). It names a closed code, never a message or an address."""
+        try:
+            self._merge_unrecorded(state, now)
+            fails = self._failures(state)
+            if len(fails) < OUTAGE_AFTER:
+                return []
+            code = safe_id(fails[-1][2], 40) or "unknown"
+            return [Alert("email", f"email:outage:{self.cfg.local_date(now)}", "info",
+                          t(lang, "ownermail.outage", code=code))]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("owner e-mail: outage note skipped (%s)", type(e).__name__)
+            return []
 
     # -- delivery
 
     def deliver(self, build: Callable[[str], mail.Message], recipients: list) -> tuple:
-        """Send one message to each recipient. Returns (outcome, code): ``sent`` when at
-        least one went out (the others are not retried: that would mail the first
-        twice), ``dead`` when every refusal was permanent, else ``retry``. Never raises."""
-        sent, permanent, code = 0, 0, None
+        """Send one message to each recipient. Returns (outcome, code): ``sent`` when at least one went out
+        (the others are not retried: that would mail the first twice), ``config`` when every refusal was the
+        provider rejecting our key (401 / 403), else ``retry``. Never raises."""
+        sent, code = 0, None
+        refused = 0
         for address in recipients:
             try:
                 self.transport.send(build(address))
                 sent += 1
             except mail.TransportError as e:
-                code, permanent = e.code, permanent + (1 if e.permanent else 0)
+                code = e.code
+                refused += 1 if e.code in AUTH_REFUSED else 0
             except Exception as e:  # noqa: BLE001
                 code = "send_" + type(e).__name__.lower()[:20]
         if sent:
             return "sent", None
-        return ("dead" if permanent == len(recipients) else "retry"), code
+        return ("config" if refused == len(recipients) else "retry"), code
 
     def run(self, found: list, state: AlertState, now: datetime, lang: str = DEFAULT_LANGUAGE) -> MailReport:
         """One pass over what the engine detected. Never raises."""
@@ -400,13 +465,32 @@ class OwnerMail:
             logger.warning("owner e-mail pass failed (%s)", type(e).__name__)
             return MailReport(state="error")
 
+    def _fail(self, outcome: str, code: Optional[str], items: list, now: datetime, rep: MailReport) -> None:
+        """A delivery failed: remember it at sink level (the backoff and the outage note read it) and, for a
+        failure that may be about the message, per alert. A refused key marks no alert."""
+        code = safe_id(code, 40) or "unknown"
+        rep.failing = code
+        self._record(MAIL_SINK, code, "retry", "info", now)
+        if outcome == "retry":
+            for a in items:
+                self._record(a.key, a.kind, "retry", a.severity, now)
+        rep.failed += len(items)
+        logger.warning("owner e-mail: not sent (%s)", code)
+
     def _run(self, found: list, state: AlertState, now: datetime, lang: str) -> MailReport:
         rep = MailReport()
+        if not state.mail_state_known:
+            rep.state = "unknown"           # the ledger's marker could not be read: not a first pass, not a later one
+            return rep
         self._merge_unrecorded(state, now)
         everything = list(found) + self.extra_alerts(now, lang)
 
         if not state.mail_baseline_seen:
             return self._baseline(everything, state, now, lang, rep)
+
+        if self._sink_wait(state, now):
+            rep.state = "backoff"
+            return rep
 
         quiet = self.cfg.in_quiet_hours(now)
         fresh: list = []
@@ -422,24 +506,22 @@ class OwnerMail:
                 fresh.append(a)
 
         hour_ago = now - timedelta(hours=1)
-        budget = max(0, self.cfg.max_alerts_per_hour - state.mails_since(hour_ago, critical=False))
-        crit_budget = max(0, MAX_CRITICAL_PER_HOUR - state.mails_since(hour_ago, critical=True))
+        budgets = {"critical": MAX_CRITICAL_PER_HOUR - state.mails_since(hour_ago, "critical"),
+                   "info": MAX_INFO_PER_HOUR - state.mails_since(hour_ago, "info"),
+                   "warn": self.cfg.max_alerts_per_hour - state.mails_since(hour_ago, "warn")}
         fresh.sort(key=lambda a: (SEVERITY_ORDER.get(a.severity, 9), a.key))
         chosen: list = []
         for a in fresh:
-            if a.severity == "critical":
-                ok = crit_budget > 0
-                crit_budget -= 1 if ok else 0
-            else:
-                ok = budget > 0
-                budget -= 1 if ok else 0
-            if ok:
+            klass = "critical" if a.severity == "critical" else "info" if a.severity == "info" else "warn"
+            if budgets[klass] > 0:
+                budgets[klass] -= 1
                 chosen.append(a)
             else:
                 rep.rate_held += 1
 
+        armed_due = not any(m[1] == MAIL_ARMED and m[3] == "sent" for m in state.mails)
         due_digest = self._digest_due(state, now, quiet)
-        if not chosen and not due_digest:
+        if not chosen and not due_digest and not armed_due:
             return rep
         recipients = self.directory.addresses()
         if not recipients:
@@ -447,22 +529,36 @@ class OwnerMail:
             logger.info("owner e-mail: no confirmed owner or admin address; nothing sent")
             return rep
 
+        if armed_due and not self._send_armed(lang, recipients, now, rep):
+            return rep
         groups: dict = {}
         for a in chosen:
             groups.setdefault(group_of(a), []).append(a)
         for group, items in groups.items():
             outcome, code = self.deliver(lambda to, g=group, i=items: render_alerts(lang, self.cfg, g, i, to), recipients)
+            if outcome != "sent":
+                self._fail(outcome, code, items, now, rep)
+                return rep                      # the provider or the key is down: the rest waits for the next pass
             for a in items:
-                self._record(a.key, a.kind, outcome, a.severity, now)
-            if outcome == "sent":
-                rep.sent += len(items)
-            else:
-                rep.failed += len(items)
-                logger.warning("owner e-mail: %s not sent (%s)", group, code)
+                self._record(a.key, a.kind, "sent", a.severity, now)
+            rep.sent += len(items)
 
         if due_digest:
-            self._send_digest(state, now, lang, recipients, rep)
+            self._send_digest(now, lang, recipients, rep)
         return rep
+
+    def _send_armed(self, lang: str, recipients: list, now: datetime, rep: MailReport) -> bool:
+        """The "on" mail, repeated (with the sink's backoff) until it has gone out once."""
+        title = plain(t(lang, "ownermail.subject_armed"), 80)
+        line = t(lang, "ownermail.armed")
+        outcome, code = self.deliver(lambda to: _compose(
+            lang, self.cfg, to=to, subject=title, title=title, lines=[line], open_url=_link(self.cfg, "alerts")), recipients)
+        if outcome != "sent":
+            self._fail(outcome, code, [], now, rep)
+            return False
+        self._record(MAIL_ARMED, "armed", "sent", "info", now)
+        rep.sent += 1
+        return True
 
     def _digest_due(self, state: AlertState, now: datetime, quiet: bool) -> Optional[str]:
         """The key of today's digest when it is time, else None. From OPERATOR_DIGEST_HOUR
@@ -473,7 +569,7 @@ class OwnerMail:
         key = f"digest:{self.cfg.local_date(now)}"
         return None if self._deduped(key, 0, state, now) else key
 
-    def _send_digest(self, state: AlertState, now: datetime, lang: str, recipients: list, rep: MailReport) -> None:
+    def _send_digest(self, now: datetime, lang: str, recipients: list, rep: MailReport) -> None:
         key = f"digest:{self.cfg.local_date(now)}"
         held = None
         try:
@@ -482,15 +578,16 @@ class OwnerMail:
             held = None
         digest = owner_digest.build(self.ops, lang, held)
         outcome, code = self.deliver(lambda to: render_digest(lang, self.cfg, digest, to), recipients)
-        self._record(key, "digest", outcome, "info", now)
-        rep.digest_sent = outcome == "sent"
-        if outcome != "sent":
-            logger.warning("owner e-mail: digest not sent (%s)", code)
+        if outcome == "sent":
+            self._record(key, "digest", "sent", "info", now)
+            rep.digest_sent = True
+        else:
+            self._fail(outcome, code, [Alert("digest", key, "info", "")], now, rep)
 
     def _baseline(self, everything: list, state: AlertState, now: datetime, lang: str, rep: MailReport) -> MailReport:
-        """First pass: what exists is marked seen (no history is announced), then ONE
-        'on' e-mail confirms the setup. The marker is written only when there is somebody
-        to tell, so a missing address does not use the first pass up."""
+        """First pass: what exists is marked seen (no history is announced). The marker is written only when
+        there is somebody to tell, so a missing address does not use the first pass up. The "on" mail follows
+        in the same pass and, if it fails, on later ones until it has gone out."""
         rep.baseline = True
         recipients = self.directory.addresses()
         if not recipients:
@@ -501,16 +598,7 @@ class OwnerMail:
             self._record(a.key, a.kind, "seen", a.severity, now)
         if self.store.record_mail(MAIL_BASELINE, "baseline", "seen", "info") is False:
             self._baseline_unrecorded = True
-        armed = Alert("signup", "mail:armed", "info", t(lang, "ownermail.armed"))
-        outcome, code = self.deliver(lambda to: _compose(
-            lang, self.cfg, to=to, subject=plain(t(lang, "ownermail.subject_armed"), 80),
-            title=plain(t(lang, "ownermail.subject_armed"), 80), lines=[armed.line],
-            open_url=_link(self.cfg, "alerts")), recipients)
-        self._record(armed.key, "armed", outcome, "info", now)
-        rep.sent += 1 if outcome == "sent" else 0
-        rep.failed += 0 if outcome == "sent" else 1
-        if outcome != "sent":
-            logger.warning("owner e-mail: the 'on' e-mail was not sent (%s)", code)
+        self._send_armed(lang, recipients, now, rep)
         return rep
 
 

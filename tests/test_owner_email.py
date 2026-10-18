@@ -197,7 +197,7 @@ class RecipientsTestCase(unittest.TestCase):
         reads = [p for table_name, p in rig.ops.sync.reads if table_name == "app_members"]
         self.assertTrue(reads)
         for params in reads:
-            self.assertEqual(params["select"], "user_id,role")
+            self.assertEqual(params["select"], "user_id,role,created_at")
             self.assertNotIn("email", params["select"])
 
     def test_each_mail_goes_to_one_address_only_and_to_nobody_else(self):
@@ -488,54 +488,96 @@ class RestraintTestCase(unittest.TestCase):
 # -- failure -----------------------------------------------------------------
 
 class FailureTestCase(unittest.TestCase):
-    def failing(self, error):
-        rig = Rig({"render_jobs": []}, transport=RecordingTransport(fail=error))
+    def failing(self, error, armed=True):
+        """A system that is armed (the 'on' mail went out), then the provider starts failing and a job fails."""
+        rig = Rig({"render_jobs": []})
         rig.arm()
+        rig.transport.fail = error
         rig.ops.sync.tables["render_jobs"] = [failed_job(5)]
         return rig
 
+    def owner_mails(self, rig):
+        return [m for m in rig.transport.sent if m.to == OWNER_ADDR]
+
     def test_a_failing_provider_never_stops_the_telegram_alert_or_raises(self):
         for error in (mail.TransportError("http_500"), RuntimeError("boom with secret " + API_KEY),
-                      mail.TransportError("http_422", permanent=True), ConnectionError("down")):
+                      mail.TransportError("http_422", permanent=True), mail.TransportError("http_403", permanent=True),
+                      ConnectionError("down")):
             with self.subTest(error=type(error).__name__):
                 rig = self.failing(error)
                 rep = rig.tick(minutes=1)
                 self.assertEqual(rep.sent, 1)                                    # Telegram still told the owner
                 self.assertEqual(rep.mail.sent, 0)
+                self.assertIsNotNone(rep.mail.failing)
 
-    def test_retries_are_bounded_per_alert_and_per_hour_in_a_storm(self):
+    def test_503_three_passes_then_recovery_delivers_exactly_once(self):
         rig = self.failing(mail.TransportError("http_503"))
-        for _ in range(48):                                                      # four hours of five-minute passes
+        attempts = []
+        for _ in range(3):                                   # the provider stays down through three backed-off passes
+            rig.tick(minutes=1)
+            attempts.append(rig.transport.attempts)
+            rig.clock.advance(minutes=60)                    # past the sink backoff and the per-alert spacing
+        self.assertEqual(rig.transport.attempts, 6)          # one try per pass (to both owners): the first failed group ends the pass
+        rig.transport.fail = None
+        rig.tick(minutes=1)
+        self.assertEqual(len(self.owner_mails(rig)), 1)
+        self.assertEqual(self.owner_mails(rig)[0].subject, "Failed jobs")
+        for _ in range(6):
+            rig.tick(minutes=20)
+        self.assertEqual(len(self.owner_mails(rig)), 1)      # never twice
+
+    def test_retries_in_a_storm_are_bounded_by_backoff_per_alert_window_and_hour(self):
+        rig = self.failing(mail.TransportError("http_503"))
+        for _ in range(48):                                  # four hours of five-minute passes
             rig.tick(minutes=5)
-        # 2 recipients x at most MAX_ATTEMPTS passes; never one attempt per pass
-        self.assertLessEqual(rig.transport.attempts, 2 * owner_mail.MAX_ATTEMPTS)
+        # the sink backs off 5, 10, 20, 40, 60 minutes: a handful of tries, never one per pass
+        self.assertLessEqual(rig.transport.attempts, 2 * 8)
         self.assertGreaterEqual(rig.transport.attempts, 2)
 
-    def test_retries_are_spaced_by_the_retry_delay(self):
+    def test_the_sink_backs_off_after_a_failure_and_a_pass_inside_it_sends_nothing(self):
         rig = self.failing(mail.TransportError("http_503"))
         rig.tick(minutes=1)
         first = rig.transport.attempts
-        rig.tick(minutes=5)
-        self.assertEqual(rig.transport.attempts, first)                         # too soon
-        rig.tick(minutes=11)
-        self.assertEqual(rig.transport.attempts, 2 * first)
+        rep = rig.tick(minutes=2)
+        self.assertEqual((rep.mail.state, rig.transport.attempts), ("backoff", first))
 
-    def test_a_permanent_refusal_is_not_retried(self):
-        rig = self.failing(mail.TransportError("http_422", permanent=True))
-        for _ in range(10):
-            rig.tick(minutes=20)
-        self.assertEqual(rig.transport.attempts, 2)
-
-    def test_a_provider_that_recovers_gets_the_mail_exactly_once(self):
-        rig = self.failing(mail.TransportError("http_503"))
+    def test_a_refused_key_403_marks_no_alert_and_the_fixed_key_delivers_at_the_next_pass(self):
+        rig = self.failing(mail.TransportError("http_403", permanent=True))
         rig.tick(minutes=1)
+        rows = [r for r in rig.store.rows if r["kind"] == "operator.mail"]
+        self.assertEqual({r["title"] for r in rows} - {"mail:baseline", "mail:armed", "run:5"}, {"mail:sink"})
+        self.assertNotIn("run:5", {r["title"] for r in rows if r["body"].endswith(":retry")})   # no per-alert row for a config problem
+        self.assertFalse([r for r in rows if r["body"].endswith(":dead")])
+        rig.transport.fail = None                            # the owner fixed the key
+        rig.tick(minutes=6)                                  # past the 5-minute backoff
+        self.assertEqual(len(self.owner_mails(rig)), 1)
+        self.assertEqual(self.owner_mails(rig)[0].subject, "Failed jobs")
+
+    def test_a_permanent_refusal_that_is_not_about_the_key_is_bounded_per_window_then_rearmed(self):
+        rig = self.failing(mail.TransportError("http_422", permanent=True))
+        for _ in range(20):
+            rig.tick(minutes=20)                             # ~6.7 hours
+        # at most MAX_ATTEMPTS per 3-hour window for the one alert (2 owners each), then it is tried again
+        self.assertLessEqual(rig.transport.attempts, 2 * owner_mail.MAX_ATTEMPTS * 3)
+        self.assertGreater(rig.transport.attempts, 2 * owner_mail.MAX_ATTEMPTS)
+
+    def test_the_on_mail_is_retried_until_it_has_gone_out_once(self):
+        rig = Rig({"render_jobs": []}, transport=RecordingTransport(fail=mail.TransportError("http_503")))
+        rep = rig.engine.tick()
+        self.assertTrue(rep.mail.baseline)
+        self.assertEqual(rig.transport.sent, [])
+        for _ in range(4):
+            rig.tick(minutes=61)
+        self.assertEqual(rig.transport.sent, [])
         rig.transport.fail = None
-        rig.tick(minutes=16)
-        got = [m for m in rig.transport.sent if m.to == OWNER_ADDR]
-        self.assertEqual(len(got), 1)
-        for _ in range(5):
-            rig.tick(minutes=16)
-        self.assertEqual(len([m for m in rig.transport.sent if m.to == OWNER_ADDR]), 1)
+        rig.tick(minutes=61)
+        self.assertEqual({m.subject for m in rig.transport.sent}, {"Owner e-mail alerts are on"})
+        sent = len(rig.transport.sent)
+        for _ in range(4):
+            rig.tick(minutes=61)
+        self.assertEqual(len(rig.transport.sent), sent)      # once it went out it is not sent again
+        # and the history was not announced
+        self.assertEqual({m.subject for m in rig.transport.sent}, {"Owner e-mail alerts are on"})
 
     def test_a_ledger_that_cannot_be_written_does_not_cause_a_resend(self):
         rig = Rig({"render_jobs": []})
@@ -544,7 +586,7 @@ class FailureTestCase(unittest.TestCase):
         rig.store.fail_write = True
         for _ in range(6):
             rig.tick(minutes=5)
-        self.assertEqual(len([m for m in rig.transport.sent if m.to == OWNER_ADDR]), 1)
+        self.assertEqual(len(self.owner_mails(rig)), 1)
 
     def test_a_ledger_that_cannot_be_read_sends_nothing(self):
         rig = Rig({"render_jobs": []})
@@ -553,6 +595,37 @@ class FailureTestCase(unittest.TestCase):
         rig.store.fail_load = True
         rep = rig.tick(minutes=1)
         self.assertEqual((rep.state, rig.transport.attempts), ("no_state", 0))
+
+    def test_an_unreadable_mail_marker_does_not_stop_telegram_and_sends_no_mail(self):
+        rig = Rig({"render_jobs": []})
+        rig.arm()
+        rig.ops.sync.tables["render_jobs"] = [failed_job(5)]
+        rig.store.fail_mail_marker = True
+        rep = rig.tick(minutes=1)
+        self.assertEqual((rep.sent, rep.mail.state, rig.transport.attempts), (1, "unknown", 0))
+
+    def test_the_marker_read_happens_only_while_the_sink_is_on_and_a_failure_of_it_is_not_fatal_for_the_real_store(self):
+        from modules.operator_bot.store import SupabaseAlertStore
+        from modules.supabase_sync import SupabaseReadError
+        rig = Rig({"render_jobs": []})
+        store = SupabaseAlertStore(rig.ops.sync)
+        state = store.load(rig.clock.now)
+        self.assertIsNotNone(state)
+        self.assertFalse([1 for t_, p in rig.ops.sync.reads if p.get("kind") == "eq.operator.mail"])   # off: not read
+        state = store.load(rig.clock.now, mail=True)
+        self.assertTrue([1 for t_, p in rig.ops.sync.reads if p.get("kind") == "eq.operator.mail"])
+        self.assertTrue(state.mail_state_known)
+        real = rig.ops.sync.select_strict
+
+        def failing(table, params=None):
+            if (params or {}).get("kind") == "eq.operator.mail":
+                raise SupabaseReadError(table, 500, "")
+            return real(table, params)
+
+        rig.ops.sync.select_strict = failing
+        state = store.load(rig.clock.now, mail=True)
+        self.assertIsNotNone(state)                           # the rest of the state still loads
+        self.assertFalse(state.mail_state_known)
 
     def test_a_bug_inside_the_sink_is_contained(self):
         rig = Rig({"render_jobs": []})
@@ -565,20 +638,19 @@ class FailureTestCase(unittest.TestCase):
 
     def test_the_resend_transport_error_paths_carry_a_code_and_never_the_key_or_an_address(self):
         class Session:
-            def __init__(self, status=None, exc=None):
-                self.status, self.exc, self.posted = status, exc, []
+            def __init__(self, status=None):
+                self.status, self.posted = status, []
 
             def post(self, url, json=None, headers=None, timeout=None):
                 self.posted.append((url, json, headers))
-                if self.exc:
-                    raise self.exc
                 return type("R", (), {"status_code": self.status})()
 
-        for status, permanent in ((500, False), (429, False), (422, True), (403, True)):
-            session = Session(status)
+        for status in (500, 429, 422, 403, 401):
+            session = Session(200)
             sender = mail.ResendTransport(API_KEY, "Nightshift <hello@example.org>", session=session)
             rig = Rig({"render_jobs": []}, transport=sender)
             rig.arm()
+            session.status = status
             session.posted.clear()
             rig.ops.sync.tables["render_jobs"] = [failed_job(5)]
             with self.assertLogs(level="INFO") as cap:
@@ -592,7 +664,7 @@ class FailureTestCase(unittest.TestCase):
             for _url, body, _headers in session.posted:
                 self.assertNotIn(API_KEY, str(body))
                 self.assertEqual(len(body["to"]), 1)                              # never a list of owners in one mail
-            self.assertEqual(len(session.posted), 2)                              # one pass: one try per owner
+            self.assertEqual(len(session.posted), 2)                              # one pass: one try per owner, then it stops
 
     def test_the_key_is_only_ever_in_the_authorization_header(self):
         class Session:
@@ -611,6 +683,66 @@ class FailureTestCase(unittest.TestCase):
         for _url, body, headers in session.posted:
             self.assertNotIn(API_KEY, str(body))
             self.assertEqual(headers["Authorization"], f"Bearer {API_KEY}")
+
+
+class OutageVisibilityTestCase(unittest.TestCase):
+    def outage(self):
+        rig = Rig({"render_jobs": []})
+        rig.arm()
+        rig.transport.fail = mail.TransportError("http_503")
+        rig.ops.sync.tables["render_jobs"] = [failed_job(5)]
+        return rig
+
+    def telegram_notes(self, rig):
+        return [x for x in rig.tg.texts() if "Owner e-mail is failing" in x or "owner e-mail" in x.lower()]
+
+    def test_one_telegram_note_per_outage_per_day_with_a_closed_code_and_nothing_secret(self):
+        rig = self.outage()
+        for _ in range(30):
+            rig.tick(minutes=61)                  # backed-off tries accumulate failures
+        notes = [x for x in rig.tg.texts() if "Owner e-mail is failing: http_503" in x]
+        days = {rig.clock.now.date()}
+        self.assertGreaterEqual(len(notes), 1)
+        self.assertLessEqual(len(notes), 2)       # 30 hours of outage: at most one per local date
+        for x in rig.tg.texts():
+            self.assertNotIn(API_KEY, x)
+            self.assertNotIn(OWNER_ADDR, x)
+        self.assertTrue(days)
+
+    def test_a_single_failure_is_not_yet_an_outage(self):
+        rig = self.outage()
+        rig.tick(minutes=1)
+        self.assertEqual(self.telegram_notes(rig), [])
+
+    def test_the_note_follows_the_alert_rules_mute_and_it_is_info_only(self):
+        rig = self.outage()
+        alerts.mute(rig.store, "email", rig.clock.now)
+        for _ in range(6):
+            rig.tick(minutes=61)
+        self.assertEqual([x for x in rig.tg.texts() if "Owner e-mail is failing" in x], [])
+
+    def test_alerts_shows_the_mail_state(self):
+        from modules.operator_bot import views
+        rig = Rig({"render_jobs": []})
+        self.assertNotIn("Owner e-mail", views.view_alerts(rig.ops.cfg, rig.store.load(rig.clock.now), rig.clock.now, "en").text)
+        rig.arm()
+        self.assertIn("Owner e-mail: working", views.view_alerts(rig.ops.cfg, rig.store.load(rig.clock.now), rig.clock.now, "en").text)
+        rig.transport.fail = mail.TransportError("http_503")
+        rig.ops.sync.tables["render_jobs"] = [failed_job(5)]
+        rig.tick(minutes=1)
+        text = views.view_alerts(rig.ops.cfg, rig.store.load(rig.clock.now), rig.clock.now, "en").text
+        self.assertIn("Owner e-mail: FAILING (http_503)", text)
+        for lang, word in (("ru", "СБОЙ"), ("uz", "NOSOZ")):
+            self.assertIn(word, views.view_alerts(rig.ops.cfg, rig.store.load(rig.clock.now), rig.clock.now, lang).text)
+
+    def test_the_recovery_clears_the_failing_state(self):
+        rig = self.outage()
+        for _ in range(3):
+            rig.tick(minutes=61)
+        rig.transport.fail = None
+        rig.tick(minutes=61)
+        state = rig.store.load(rig.clock.now)
+        self.assertEqual(state.mail_health()[0], "ok")
 
 
 # -- privacy -----------------------------------------------------------------
@@ -782,7 +914,7 @@ class DigestTestCase(unittest.TestCase):
         self.assertIn("Payments received: 32.50 USD (2 payments)", m.text)
         self.assertIn("rejected 1", m.text)
         self.assertIn("refunds or chargebacks 1", m.text)
-        self.assertIn("New accounts: 2", m.text)
+        self.assertIn("New accounts (organizations created): 2", m.text)
         self.assertIn("Videos: made 2 · published 1 · held 1 · failed 1", m.text)
         self.assertIn("Provider cost estimate: $2.00", m.text)
         self.assertIn("1 payment(s) rejected in the last 7 days", m.text)
@@ -836,7 +968,7 @@ class DigestTestCase(unittest.TestCase):
         rig.tick(minutes=1)
         text = self.digests(rig)[0].text
         self.assertIn("Payments received: none", text)
-        self.assertIn("New accounts: 0", text)
+        self.assertIn("New accounts (organizations created): 0", text)
         self.assertIn("Nothing needs attention.", text)
 
     def test_what_needs_a_person_is_listed(self):
@@ -865,10 +997,13 @@ class DigestTestCase(unittest.TestCase):
             self.assertIn("Asia/Tashkent", m.text)
 
     def test_a_failed_digest_is_retried_a_bounded_number_of_times(self):
-        rig = self.rig(transport=RecordingTransport(fail=mail.TransportError("http_503")))
+        rig = self.rig()
+        rig.transport.fail = mail.TransportError("http_503")
         for _ in range(40):
             rig.tick(minutes=5)
-        self.assertLessEqual(rig.transport.attempts, 2 * owner_mail.MAX_ATTEMPTS)
+        # the sink backs off 5, 10, 20, 40, 60 minutes: five or six tries in 200 minutes, each to two owners
+        self.assertLessEqual(rig.transport.attempts, 2 * 6)
+        self.assertGreaterEqual(rig.transport.attempts, 2)
 
     def test_every_digest_key_exists_in_every_language(self):
         src = (ROOT / "modules" / "operator_bot" / "owner_digest.py").read_text()
@@ -923,6 +1058,127 @@ class CopyTestCase(unittest.TestCase):
         self.assertGreater(len(en), 40)
         for lang in LANGUAGES:
             self.assertEqual({k for k in table(lang) if k.startswith("ownermail.")}, en, lang)
+
+
+class BudgetsTestCase(unittest.TestCase):
+    def test_six_signups_cannot_hold_back_a_failed_job(self):
+        orgs = [{"id": f"aaaaaaaa-0000-4000-8000-00000000000{i}", "created_at": ts(30 - i)} for i in range(6)]
+        rig = Rig({"render_jobs": [], "organizations": []})
+        rig.arm()
+        rig.ops.sync.tables["organizations"] = orgs
+        rig.ops.sync.tables["render_jobs"] = [failed_job(5)]
+        rep = rig.tick(minutes=1)
+        subjects_ = {m.subject for m in rig.transport.sent}
+        self.assertIn("Failed jobs", subjects_)                                   # the problem got through
+        news = [m for m in rig.transport.sent if m.subject.startswith("New accounts") and m.to == OWNER_ADDR]
+        self.assertEqual([m.subject for m in news], [f"New accounts: {owner_mail.MAX_INFO_PER_HOUR}"])
+        self.assertEqual(rep.mail.rate_held, 6 - owner_mail.MAX_INFO_PER_HOUR)
+        rig.transport.sent.clear()
+        rig.tick(minutes=61)                                                      # the rest of the news the next hour
+        self.assertEqual({m.subject for m in rig.transport.sent}, {f"New accounts: {owner_mail.MAX_INFO_PER_HOUR}"})
+
+    def test_a_flood_of_problems_cannot_hold_back_the_news_either(self):
+        cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", max_alerts_per_hour=2)
+        rig = Rig({"render_jobs": [], "organizations": []}, cfg=cfg)
+        rig.arm()
+        rig.ops.sync.tables["render_jobs"] = [failed_job(i) for i in range(1, 8)]
+        rig.ops.sync.tables["organizations"] = [{"id": "aaaaaaaa-0000-4000-8000-00000000000a", "created_at": ts(5)}]
+        rig.tick(minutes=1)
+        self.assertEqual({m.subject for m in rig.transport.sent}, {"Failed jobs", "New accounts: 1"})
+
+
+class RosterTestCase(unittest.TestCase):
+    def roster(self, n_admins=5):
+        ids = [f"4444444{i}-4444-4444-8444-444444444444" for i in range(n_admins)]
+        roster = [{"user_id": u, "role": "admin", "created_at": f"2026-02-0{i + 1}T00:00:00Z"} for i, u in enumerate(ids)]
+        roster.append({"user_id": OWNER, "role": "owner", "created_at": "2026-03-01T00:00:00Z"})
+        auth = {u: {"id": u, "email": f"admin{i}@example.org", "email_confirmed_at": "2026-01-01T00:00:00Z"}
+                for i, u in enumerate(ids)}
+        auth[OWNER] = AUTH[OWNER]
+        return roster, auth
+
+    def test_owners_come_first_then_the_oldest_and_the_cap_is_deterministic(self):
+        roster, auth = self.roster()
+        for shuffle in (roster, list(reversed(roster))):
+            rig = Rig(roster=shuffle, auth=auth)
+            self.assertEqual(rig.directory.addresses(), [OWNER_ADDR, "admin0@example.org", "admin1@example.org"])
+            self.assertEqual(len(rig.fetched), owner_mail.MAX_RECIPIENTS)         # nobody beyond the cap is looked up
+
+    def test_the_roster_is_asked_in_that_order(self):
+        rig = Rig()
+        rig.directory.addresses()
+        params = [p for t_, p in rig.ops.sync.reads if t_ == "app_members"][0]
+        self.assertEqual(params["order"], "role.desc,created_at.asc")             # "owner" sorts after "admin": desc puts it first
+
+    def test_an_address_with_a_trailing_newline_or_a_uuid_with_one_is_refused(self):
+        for bad in ("owner@example.org\n", "owner@example.org\r\n"):
+            auth = {OWNER: {"id": OWNER, "email": bad, "email_confirmed_at": "2026-01-01T00:00:00Z"}}
+            # strip() would hide a trailing newline from a looser check: the shape check must still hold afterwards
+            self.assertEqual(Rig(roster=[{"user_id": OWNER, "role": "owner"}], auth=auth).directory.addresses(),
+                             [OWNER_ADDR])
+        self.assertIsNone(owner_mail._UUID.fullmatch(OWNER + "\n"))
+        self.assertIsNone(owner_mail._ADDRESS.fullmatch("a@example.org\n"))
+
+    def test_the_lookup_has_an_overall_deadline_and_a_cut_short_answer_is_not_cached(self):
+        roster, auth = self.roster()
+        ticks = iter(range(0, 1000, 15))                      # every monotonic reading is 15 seconds later
+        rig = Rig(roster=roster, auth=auth)
+        rig.directory._monotonic = lambda: next(ticks)
+        got = rig.directory.addresses()
+        self.assertLess(len(got), owner_mail.MAX_RECIPIENTS)
+        self.assertEqual(len(rig.fetched), 1)                 # the second reading is past 20 s: no more lookups
+        self.assertIsNone(rig.directory._cached)
+
+    def test_no_environment_value_or_argument_can_name_a_recipient(self):
+        import os
+        from unittest import mock
+        env = {"OWNER_MAIL_DEST": "attacker@evil.test", "OWNER_EMAIL_TO": "attacker@evil.test",
+               "OWNER_EMAIL": "attacker@evil.test", "NIGHTSHIFT_OWNER_EMAIL_TO": "attacker@evil.test",
+               "OWNER_EMAIL_RECIPIENTS": "attacker@evil.test", "EMAIL_TO": "attacker@evil.test",
+               "ADMIN_EMAIL": "attacker@evil.test", "ACME_EMAIL": "attacker@evil.test", "NIGHTSHIFT_OWNER_EMAIL": "on",
+               "RESEND_API_KEY": API_KEY, "NIGHTSHIFT_EMAIL_FROM": "Nightshift <hello@example.org>"}
+        with mock.patch.dict(os.environ, env):
+            rig = Rig({"render_jobs": []})
+            sink = owner_mail.OwnerMail.from_env(rig.ops, rig.store, rig.ops.sync, rig.ops.cfg, os.environ)
+            self.assertIsNotNone(sink)
+            sink.directory = rig.directory
+            sink.transport = rig.transport
+            rig.engine.owner_mail = sink
+            rig.arm()
+            rig.ops.sync.tables["render_jobs"] = [failed_job(5)]
+            rig.tick(minutes=1)
+        self.assertEqual(sorted({m.to for m in rig.transport.sent}), [ADMIN_ADDR, OWNER_ADDR])
+        self.assertNotIn("evil.test", "\n".join(rig.transport.texts()))
+
+
+class WordingTestCase(unittest.TestCase):
+    def test_the_footer_names_the_real_pause_button_in_each_language_and_says_what_a_mute_does_not_stop(self):
+        for lang, button, critical in (("en", "Mute all 24h", "critical"), ("ru", "Заглушить всё на 24 ч", "критичные"),
+                                       ("uz", "Hammasini 24 soat jim", "jiddiy")):
+            with self.subTest(lang=lang):
+                self.assertIn(button, t(lang, "btn.mute_all"))                    # the button really is called that
+                text = t(lang, "ownermail.pause")
+                self.assertIn("/alerts", text)
+                self.assertIn(button, text)
+                self.assertIn(critical, text)
+                self.assertIn("NIGHTSHIFT_OWNER_EMAIL", text)
+                self.assertNotIn("Mute 24h", text.replace("Mute all 24h", ""))
+
+    def test_a_sign_up_is_described_as_an_organization_created(self):
+        for lang in LANGUAGES:
+            self.assertIn("{id}", t(lang, "ownermail.signup_line", id="{id}", when="x"))
+        self.assertIn("organization", t("en", "ownermail.signup_line", id="x", when="y"))
+        self.assertIn("organizations created", t("en", "ownermail.dg_accounts", n=1))
+
+    def test_the_on_info_line_carries_no_key_and_no_address(self):
+        rig = Rig()
+        env = {"NIGHTSHIFT_OWNER_EMAIL": "on", "RESEND_API_KEY": API_KEY, "NIGHTSHIFT_EMAIL_FROM": "Nightshift <hello@example.org>"}
+        with self.assertLogs("modules.operator_bot.owner_mail", "INFO") as cap:
+            self.assertIsNotNone(owner_mail.OwnerMail.from_env(rig.ops, rig.store, rig.ops.sync, rig.ops.cfg, env))
+        out = "\n".join(cap.output)
+        self.assertIn("owner e-mail: on", out)
+        for secret in (API_KEY, "hello@example.org", OWNER_ADDR, ADMIN_ADDR, "example.org"):
+            self.assertNotIn(secret, out)
 
 
 if __name__ == "__main__":

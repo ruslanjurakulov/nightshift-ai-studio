@@ -357,7 +357,7 @@ class AlertEngine:
             rep.state = "not_configured"
             return rep
         now = self.ops.now()
-        state = self.store.load(now)
+        state = self.store.load(now, mail=True) if self.owner_mail is not None else self.store.load(now)
         if state is None:
             rep.state = "no_state"
             return rep
@@ -366,6 +366,9 @@ class AlertEngine:
         self.ops.reset()
         lang = self._language()
         found = detect(self.ops, self.low_credits, lang)
+        if self.owner_mail is not None:
+            # One info note per day while the owner's e-mail is failing, through the same restraint as any alert.
+            found = found + self.owner_mail.outage_alerts(state, now, lang)
         rep.detected = len(found)
 
         try:

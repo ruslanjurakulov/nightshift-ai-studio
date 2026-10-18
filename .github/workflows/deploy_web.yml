@@ -386,11 +386,13 @@ jobs:
           OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
           # The owner's e-mail copy (docs/OWNER_EMAIL.md), all optional and OFF while the variable
-          # NIGHTSHIFT_OWNER_EMAIL is not exactly `on`. The mail key and sender are the customer
-          # e-mail worker's own secret and variable, so there is nothing new to create.
+          # NIGHTSHIFT_OWNER_EMAIL is not exactly `on`. The key is its OWN secret, OPERATOR_RESEND_API_KEY (a
+          # Resend "Sending access" key restricted to the one domain, created by the owner for this), and it
+          # is mapped ONLY while the switch is `on`: with the switch off the container never receives it.
+          # (build-service-env.py enforces the same, so a mapping mistake here cannot leak it.)
           OPERATORENV_NIGHTSHIFT_OWNER_EMAIL: ${{ vars.NIGHTSHIFT_OWNER_EMAIL }}
           OPERATORENV_OWNER_EMAIL_KINDS: ${{ vars.OWNER_EMAIL_KINDS }}
-          OPERATORENV_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          OPERATORENV_RESEND_API_KEY: ${{ vars.NIGHTSHIFT_OWNER_EMAIL == 'on' && secrets.OPERATOR_RESEND_API_KEY || '' }}
           OPERATORENV_NIGHTSHIFT_EMAIL_FROM: ${{ vars.NIGHTSHIFT_EMAIL_FROM }}
         run: python3 deploy/build-service-env.py operator "$PAYLOAD"
 
