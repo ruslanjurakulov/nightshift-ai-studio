@@ -30,6 +30,21 @@ QUALITY_PRIORITY = ["uhd", "hd", "sd"]
 PEXELS_LICENSE = "Pexels License"
 
 
+class MediaUnavailable(RuntimeError):
+    """The media stage produced no footage and no images at all. Rendering on
+    would give a black video that exits 0 and is charged; the run stops with the
+    remedy instead (CLAUDE.md rule 4: no video is the better failure)."""
+
+
+def require_media(videos, images, *, allow_placeholder: bool = False) -> None:
+    """Raise MediaUnavailable when the run has nothing to put on screen.
+    ``allow_placeholder`` is the render benchmark's explicit colour-placeholder run."""
+    if not videos and not images and not allow_placeholder:
+        raise MediaUnavailable(
+            "The media stage found no footage and no images (Pexels returned nothing or refused the "
+            "requests). Check PEXELS_API_KEY and the Pexels quota, then run again.")
+
+
 def _safe_call(fn):
     try:
         return fn()
@@ -206,6 +221,8 @@ class MediaFetcher:
 
         result = minimax_broll.GenerationResult(model=video_providers.active_model())
         if not video_providers.is_enabled():
+            if client is None:
+                video_providers.preflight()   # asked for but unusable: raise, don't go stock
             return result
 
         specs = minimax_broll.select_specs(
@@ -350,9 +367,12 @@ class MediaFetcher:
         """Optionally generate a few on-topic stills with the selected image
         provider (modules/image_providers.py), supplementing the Pexels stock
         above. Off by default: with no key / the flag unset this makes no request
-        and returns ``[]``, so backgrounds come from stock exactly as before. A
-        per-image failure is swallowed — that section simply falls back to stock.
-        Never raises.
+        and returns ``[]``, so backgrounds come from stock exactly as before. When
+        the model merely returned nothing (a timeout, an empty answer) that
+        section falls back to stock. When the selected generator REFUSES the
+        request (credentials, quota, content policy) this raises
+        ``image_providers.ImageProviderUnavailable`` and the run stops (CLAUDE.md
+        #4); generation asked for but unusable (no key, unknown id) raises too.
 
         ``prompt_hook`` (``(index, prompt) -> prompt``) adds the channel DNA's
         style guide to each still's prompt; ``size`` is the still's
@@ -362,6 +382,8 @@ class MediaFetcher:
         from modules import cost_ledger, image_providers
 
         if not image_providers.is_enabled():
+            if client is None:
+                image_providers.preflight()   # asked for but unusable: raise, don't go stock
             return []
         if client is None:
             client = image_providers.get_client()
@@ -398,7 +420,9 @@ class MediaFetcher:
             dest = self.image_dir / f"gen_img_{i}.jpg"
             try:
                 path = client.generate(prompt, dest, width=int(size[0]), height=int(size[1]))
-            except Exception as e:   # a broken image must never sink the render
+            except image_providers.ImageProviderUnavailable:
+                raise   # the chosen generator refused (credentials/quota/policy): stop, no stock swap
+            except Exception as e:   # a model that returned nothing must not sink the render
                 logger.warning("Image generation error for section %d (%s: %s)",
                                i, type(e).__name__, e)
                 path = None

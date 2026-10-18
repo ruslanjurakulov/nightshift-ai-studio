@@ -118,10 +118,17 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 
 # Ixtiyoriy — Actions VARIABLE'lari bilan bir xil ma'noda
 # TTS_PROVIDER=
+# NIGHTSHIFT_EXPECT_TTS=elevenlabs  (run stops at its start if ELEVENLABS_API_KEY is missing, instead of using the free Edge voice)
 # NIGHTSHIFT_RENDER_THREADS=
 # CHRONOS_VIDEO_PROVIDER=  CHRONOS_ENABLE_VIDEO_GEN=
+#   CHRONOS_ENABLE_VIDEO_GEN=true requires the chosen provider's key; with the default provider (minimax)
+#   it also requires CHRONOS_ENABLE_MINIMAX_BROLL. Otherwise the run stops at its start (no silent stock footage).
+#   Poll windows: Veo/Kling 15 min, Seedance/Wan 10 min per clip, max 2 clips: keep the worker job deadline above that.
 # CHRONOS_IMAGE_PROVIDER=  CHRONOS_ENABLE_IMAGE_GEN=
 # MINIMAX_API_KEY= HIGGSFIELD_API_KEY= KLING_API_KEY= VEO_API_KEY= SEEDANCE_API_KEY= WAN_API_KEY=
+# MiniMax go-live: the default model MiniMax-H3 will not start without MINIMAX_V2_QUERY_PATH (unconfirmed);
+#   set MINIMAX_H3_MODEL=MiniMax-Hailuo-2.3 and CHRONOS_ENABLE_MINIMAX_BROLL=true (a run that picks MiniMax
+#   without that flag now stops with the fix instead of using stock footage).
 # MINIMAX_H3_MODEL= MINIMAX_V2_QUERY_PATH= KLING_ACCESS_KEY= KLING_SECRET_KEY= WAN_WORKSPACE_ID=
 # LEONARDO_API_KEY= OPENAI_API_KEY= VIDIQ_ACCESS_TOKEN=
 # CHRONOS_AGENT_AUTOPILOT= CHRONOS_AI_CRITIC= CHRONOS_RENDER_BACKEND=
@@ -131,6 +138,7 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # WORKER_POLL_SECONDS=15
 # WORKER_STALE_MINUTES=10
 # WORKER_STOP_GRACE_SECONDS=3300
+# WORKER_JOB_TIMEOUT_SECONDS=3300   # shu vaqtdan keyin ham tugamagan ish to'xtatiladi, topshiriq xato bilan tugaydi (hold qaytariladi)
 
 # Izohlar qutisi (migration 0081, modules/comment_replies.py). DEFAULT: O'CHIQ.
 # NIGHTSHIFT_COMMENT_INBOX=on           # faqat "on" bo'lsa ishlaydi (0081 qo'llanganidan keyin)
@@ -256,6 +264,34 @@ uzunlikni ishlatadi — kanalning keyinroq o'zgartirilgan maqsad uzunligini emas
 Operatorning o'z (standart) tashkiloti kanallari avvalgidek bandsiz ishlaydi.
 Navbat rejimida Command Center'da `NIGHTSHIFT_CREDITS_ENFORCE` o'chiq bo'lsa,
 mijoz tashkilotining "Run now"i rad etiladi (`credits_not_enforced`).
+
+**Hisob-kitob tartibi va xavfsizligi.** Hisob-kitob vazifa qatori tugatilishidan
+OLDIN bajariladi va 3 marta (2 s, 4 s kutish bilan) qayta uriniladi. Kredit
+yechilishi faqat `main.py` render bosqichidan keyin natija faylini
+(`NIGHTSHIFT_RUN_RESULT_FILE`) yozgan va unda ko'rsatilgan video diskda bo'sh
+bo'lmagan holda turgan bo'lsa amalga oshadi. 0-kod bilan tugagan, lekin video
+yaratmagan ishga tushirish `failed` bo'ladi va band qaytariladi; xarajat chegarasi
+(`spend ceiling`) bilan to'xtash — chiqish kodi 78 — ham `failed` + qaytarish.
+
+**Vaqt chegarasi (`WORKER_JOB_TIMEOUT_SECONDS`, standart 3300, eng kami 300).**
+Shu vaqtdan keyin ham tugamagan ish to'xtatiladi, vazifa `failed` bo'ladi va band
+HAR DOIM qaytariladi — render allaqachon tugagan bo'lsa ham (mijoz uchun
+qulayroq qaror: video yetkazilmagan bo'lsa, pul olinmaydi). Foydalanuvchiga
+sozlama nomi ko'rsatilmaydi.
+
+**Kutilayotgan hisob-kitoblar.** Kredit API'ga 3 urinishda ham yetib bo'lmasa,
+qaror (capture/release va AYNAN shu miqdor) `output/.pending_settlements.json`
+fayliga yoziladi va worker har 60 soniyada o'sha qarorni takrorlaydi (jurnaldan
+qayta hisoblanmaydi). 72 soatdan eski qator xato bilan tashlab yuboriladi.
+Fayl buzilgan bo'lsa, u o'chirilmaydi: `.pending_settlements.json.<vaqt>.corrupt`
+nomi bilan yoniga qo'yiladi va jurnalda `settle it by hand` yoziladi.
+Qo'lda tiklash: `.corrupt` faylidagi har bir qator uchun `job_ref` bo'yicha
+`credit_reservations`dan holatni tekshiring (`select status, captured from
+credit_reservations where job_id = '<job_ref>'`); `open` bo'lsa, service rol bilan
+`select capture_credits('<job_ref>', <amount_to_capture>)` yoki
+`select release_credits('<job_ref>')` chaqiring (`action` maydoniga qarab).
+Taxmin: bitta worker jarayoni `output/` hajmiga egalik qiladi; ikki worker bir
+hajmni ulashsa, bu fayl uchun poyga bo'ladi — shunday qilmang.
 
 ## 5c. Sahnani qayta yaratish (0076 va 0085 migratsiyalari)
 

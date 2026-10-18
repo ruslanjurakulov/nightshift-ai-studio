@@ -27,6 +27,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+class CredentialsMissing(RuntimeError):
+    """A key the run cannot do without is not configured. Raised by main.py at
+    the top of the run, before anything is spent (CLAUDE.md rule 6)."""
+
+
 OK = "ok"
 MISSING = "missing"
 UNKNOWN = "unknown"
@@ -87,6 +93,26 @@ class HealthReport:
         }
 
 
+#: Set only by the render benchmark workflow: a measured render with no stock
+#: footage is a documented colour-placeholder run there, not a failed video.
+PLACEHOLDER_MEDIA_ENV = "NIGHTSHIFT_ALLOW_PLACEHOLDER_MEDIA"
+
+
+def placeholder_media_allowed() -> bool:
+    return os.environ.get(PLACEHOLDER_MEDIA_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def ai_media_usable() -> bool:
+    """True when generated clips or stills are enabled AND keyed for this run
+    (the providers' own is_enabled(), config only: no request)."""
+    try:
+        from modules import image_providers, video_providers  # noqa: PLC0415
+
+        return bool(video_providers.is_enabled()) or bool(image_providers.is_enabled())
+    except Exception:
+        return False
+
+
 def _present(value: Optional[str]) -> bool:
     return bool((value or "").strip())
 
@@ -116,11 +142,18 @@ def check_run_credentials(channel=None, *, tts_provider: Optional[str] = None) -
     ))
 
     # Pexels — needed for the b-roll. Required: a run with no footage is not a
-    # video worth publishing.
+    # video worth publishing. Not required when generated media is switched on
+    # and usable (an AI-only configuration), or for the render benchmark's
+    # explicit colour-placeholder run; main.py's media check still stops a run
+    # that ends up with nothing at all on screen.
+    pexels_ok = _present(getattr(cfg, "PEXELS_API_KEY", ""))
+    pexels_optional = (not pexels_ok) and (placeholder_media_allowed() or ai_media_usable())
     checks.append(CredentialCheck(
-        name="pexels", required=True,
-        status=OK if _present(getattr(cfg, "PEXELS_API_KEY", "")) else MISSING,
-        detail="" if _present(getattr(cfg, "PEXELS_API_KEY", "")) else "Set PEXELS_API_KEY.",
+        name="pexels", required=not pexels_optional,
+        status=OK if pexels_ok else MISSING,
+        detail="" if pexels_ok else (
+            "PEXELS_API_KEY is unset; this run relies on generated media only." if pexels_optional
+            else "Set PEXELS_API_KEY."),
     ))
 
     # ElevenLabs — required ONLY when this run narrates with it. An edge run

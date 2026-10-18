@@ -188,6 +188,14 @@ describe("the price card is never empty", () => {
     await screen.findByText(/About 120 credits/);
   });
 
+  it("offers the operator the probed video models and not the unprobed Higgsfield b-roll", () => {
+    show("en", { operator: true });
+    const select = screen.getByLabelText(t.create.videoModel) as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toEqual(expect.arrayContaining(["seedance", "kling", "veo", "wan", "minimax"]));
+    expect(values).not.toContain("higgsfield");
+  });
+
   it("keeps the 'not charged yet' line for the operator and drops it for a customer", async () => {
     answer({ enforced: false });
     show("en", { operator: true });

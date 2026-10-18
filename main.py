@@ -40,12 +40,13 @@ from modules import video_qc
 from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
-    AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, resolve_avatar_config,
+    AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, preflight_avatar,
+    resolve_avatar_config,
 )
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, effective_privacy, resolve_channel
-from modules.credential_health import check_run_credentials
+from modules.credential_health import CredentialsMissing, check_run_credentials, placeholder_media_allowed
 from modules.cost_ledger import (
     CostLedger, IMAGE_GENERATIONS, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS,
     UPLOAD_BYTES, VIDEO_GEN_CLIPS,
@@ -61,8 +62,9 @@ from modules.resource_monitor import MemorySampler, log_usage
 from modules.video_review import VideoReview
 from modules import held_video
 from modules.fact_checker import fact_check_claims
-from modules.media_fetcher import MediaFetcher
+from modules.media_fetcher import MediaFetcher, MediaUnavailable, require_media
 from modules import video_providers
+from modules import image_providers
 from modules import dna_render
 from modules.minimax_broll import VideoModelUnavailable
 from modules import pinned_comment
@@ -426,6 +428,19 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
     return allowed
 
 
+def _preflight_pictures(ctx, series_obj, channel_id) -> None:
+    """Raise (after recording the failure) when generated stills or a presenter
+    were asked for but cannot be made. Makes no request."""
+    try:
+        image_providers.preflight()
+        preflight_avatar(resolve_avatar_config(ctx, series_obj))
+    except (image_providers.ImageProviderUnavailable, AvatarUnavailable, UnsafeAvatarRequest) as e:
+        logger.error("Generated pictures or presenter not usable for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="media_preflight", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}", "stage": "preflight"})
+        raise
+
+
 @_flush_costs_on_exit
 def run(
     niche: str | None = None,
@@ -520,10 +535,12 @@ def run(
         logger.info("Series style — visual: %r | voice: %r | cadence: %s",
                     visual_style, voice_style, cadence)
     # Credential preflight — a safe-to-log report of which keys this run needs
-    # and whether they are present, BEFORE it spends anything. Advisory: it logs
-    # and emits, and never aborts on its own (verify_voice below is the one hard
-    # stop, for the voice). A missing required key is surfaced loudly here so the
-    # failure is legible at the top of the run rather than three paid stages in.
+    # and whether they are present, BEFORE it spends anything. It logs and
+    # emits. A missing REQUIRED key (Gemini, Pexels, ElevenLabs when this
+    # channel narrates with it) stops the run right after the report, before the
+    # first paid call: without Pexels the media stage finds nothing and the run
+    # used to render a black video, exit 0, and be charged (CLAUDE.md rule 6).
+    health = None
     try:
         health = check_run_credentials(ctx)
         if health.blocking:
@@ -537,6 +554,10 @@ def run(
                     channel_id=channel_id, metadata=health.to_dict())
     except Exception as e:
         logger.warning("Credential preflight failed (%s: %s) — continuing", type(e).__name__, e)
+    if health is not None and health.blocking:
+        raise CredentialsMissing(
+            "Run stopped before spending anything: required credential(s) not configured — "
+            + "; ".join(f"{c.name}: {c.detail or 'missing'}" for c in health.blocking))
     # Spend ceiling — a hard stop BEFORE the run spends anything. Off unless this
     # channel set a ceiling; then a run that would push its known monthly spend
     # at or past the ceiling does not start. It halts spending, never the publish
@@ -558,7 +579,12 @@ def run(
                       f"${ceiling:.2f}). Run stopped before spending.")
                 events.emit(events.BUDGET_EXCEEDED, agent="budget", status=events.STATUS_FAILED,
                             channel_id=channel_id, metadata=budget_status.to_dict())
-                return None
+                # Not a return: an exit-0 "success" with no video was captured in
+                # full by the queue worker. __main__ turns this into BUDGET_STOP_EXIT.
+                raise budget.BudgetStop(f"spend ceiling reached (${budget_status.spent_usd:.2f} "
+                                        f"of ${ceiling:.2f} this month)")
+        except budget.BudgetStop:
+            raise
         except Exception as e:
             logger.warning("Budget preflight failed (%s: %s) — continuing without a ceiling check",
                            type(e).__name__, e)
@@ -615,6 +641,12 @@ def run(
         events.emit(events.AGENT_FAILED, agent="minimax_broll", status=events.STATUS_FAILED,
                     channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
         raise
+
+    # ── Stage 0c': image generator and presenter, same reasoning
+    # Asked for but unusable (unknown provider, missing key/credentials) stops
+    # the run here, before the script is paid for, instead of quietly becoming
+    # stock stills / a faceless cut (CLAUDE.md #4). Config only: no request.
+    _preflight_pictures(ctx, series_obj, channel_id)
 
     # ── Stage 0d: Channel DNA's style kit and characters
     # Read now, before anything is paid for: a kit or character the generated
@@ -948,6 +980,31 @@ def run(
         parts = [s for s in (director_style.get(i), element_style.get(i)) if s]
         return "; ".join(parts) if parts else None
 
+    # Stills go BEFORE b-roll: they are cheap and share no state with the clips, so a
+    # refused image key stops the run before any clip is paid for.
+    # Optional: generate on-topic stills with the selected image provider
+    # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
+    # are set; a model that returns nothing falls back to stock, a refusal stops the run.
+    _guard_spend(ctx, costs, "generating stills", planned=(
+        [(IMAGE_GENERATIONS, config.LEONARDO_MAX_IMAGES)] if image_providers.is_enabled() else None))
+    try:
+        gen_images = fetcher.generate_images(
+            script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
+            size=render_fmt.image_size)
+    except image_providers.ImageProviderUnavailable as e:
+        # The generator that was chosen refused (credentials, quota, policy):
+        # stop with the remedy instead of shipping stock stills (CLAUDE.md #4).
+        logger.error("Generated images failed for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="image_providers", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "images"})
+        raise
+    if gen_images:
+        from modules import image_providers as _img
+        images = list(gen_images) + list(images)
+        costs.add(IMAGE_GENERATIONS, len(gen_images), stage=f"image:{_img.active_provider()}")
+        events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id,
+                    metadata={"generated": len(gen_images), "provider": _img.active_provider()})
     # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
     # supplementing the stock above. Off unless a key + flag are set, in which
     # case it makes no request and changes nothing. Generated clips join the
@@ -975,24 +1032,19 @@ def run(
         costs.add(VIDEO_GEN_CLIPS, broll.newly_generated, stage=f"broll:{_vp.active_provider()}")
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata=broll.to_dict())
-    # Optional: generate on-topic stills with the selected image provider
-    # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
-    # are set; a failure falls back to stock and never breaks the render.
-    from modules import image_providers as _img_guard
-    _guard_spend(ctx, costs, "generating stills", planned=(
-        [(IMAGE_GENERATIONS, config.LEONARDO_MAX_IMAGES)] if _img_guard.is_enabled() else None))
-    gen_images = fetcher.generate_images(
-        script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
-        size=render_fmt.image_size)
-    if gen_images:
-        from modules import image_providers as _img
-        images = list(gen_images) + list(images)
-        costs.add(IMAGE_GENERATIONS, len(gen_images), stage=f"image:{_img.active_provider()}")
-        events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
-                    channel_id=channel_id,
-                    metadata={"generated": len(gen_images), "provider": _img.active_provider()})
     logger.info("Media: %d videos (%d AI-generated), %d images (%d AI-generated)",
                 len(videos), broll.generated, len(images), len(gen_images))
+    try:
+        # Every Pexels search/download failed (dead key, quota, outage — the
+        # fetcher swallows each one) and no generated media made up for it: the
+        # compositor would draw a black background for the whole video, exit 0,
+        # and the customer would be charged for it.
+        require_media(videos, images, allow_placeholder=placeholder_media_allowed())
+    except MediaUnavailable as e:
+        logger.error("[channel: %s] %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="media_fetcher", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "media"})
+        raise
     # The baseline Whisper is about to be loaded on top of, and the number
     # release_model should return the process to.
     log_usage("before transcription")
@@ -1070,9 +1122,10 @@ def run(
     # A synthetic on-camera character composited into a corner of the video.
     # Nightshift is faceless unless a channel/series enables this; when off,
     # presenter_path stays None and the render below is byte-for-byte the same.
-    # No silent fallback: an enabled-but-unconfigured or unsafe request is logged
-    # loudly and the run continues faceless — a blank/wrong presenter is never
-    # shipped, and the publish gate below still decides every upload.
+    # No silent fallback: an enabled-but-unconfigured or unsafe request stops the
+    # run with the reason — a blank/wrong presenter is never shipped, a faceless
+    # cut is not substituted for the presenter that was asked for, and the
+    # publish gate below still decides every upload.
     presenter_path = None
     avatar_cfg = resolve_avatar_config(ctx, series_obj)
     if avatar_cfg.enabled:
@@ -1088,11 +1141,14 @@ def run(
                         channel_id=channel_id, metadata={"presenter_path": str(presenter_path)})
             logger.info("Presenter generated: %s", presenter_path)
         except (AvatarUnavailable, UnsafeAvatarRequest) as e:
-            presenter_path = None
-            logger.error("Presenter unavailable (%s: %s) — rendering faceless this run",
+            # A presenter was asked for: the run stops (CLAUDE.md #4) instead of
+            # quietly going out faceless. The generated pieces stay in the
+            # checkpoint, so the re-run after the fix does not repeat them.
+            logger.error("Presenter unavailable (%s: %s) — stopping; the run was set up with a presenter",
                          type(e).__name__, e)
             events.emit(events.AVATAR_FAILED, agent="avatar", status=events.STATUS_FAILED,
                         channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}"})
+            raise
     else:
         events.emit(events.AVATAR_SKIPPED, agent="avatar", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata={"reason": "avatar not enabled"})
@@ -1142,6 +1198,7 @@ def run(
                 channel_id=channel_id,
                 metadata={"video_path": str(video_path), **render_result.to_metadata()})
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_RENDER, artifacts={"video": str(video_path)})
+    run_checkpoint.write_result(slug, video_path)
     # The video exists on disk now. If this topic came off the content-planner
     # queue, record that it reached "rendered" — true whether or not the upload
     # below succeeds, so a blocked or failed-upload run leaves an honest
@@ -1647,3 +1704,8 @@ if __name__ == "__main__":
             print(f"\n⏸ Storyboard {paused.reason}: nothing renders until it is approved "
                   f"in the Command Center (storyboard {paused.storyboard_id}).")
             sys.exit(storyboard_review.PAUSED_EXIT)
+        except budget.BudgetStop:
+            # The ceiling stopped the run before it spent anything; the log and
+            # the console line above say so. A distinct code so the runners
+            # release the hold (tools/queue_worker.py) instead of reading "0".
+            sys.exit(budget.BUDGET_STOP_EXIT)

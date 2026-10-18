@@ -99,6 +99,9 @@ jobs:
           YOUTUBE_PRIVACY: private
           # Free stock footage when the secret exists; empty otherwise.
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          # Without the secret this is the documented colour-placeholder run: say so
+          # explicitly, since an empty media stage is otherwise a failed run.
+          NIGHTSHIFT_ALLOW_PLACEHOLDER_MEDIA: "1"
           # TopicManager builds a Gemini client at start-up even when the script
           # comes from a file, and refuses an empty key. A placeholder (not a
           # secret, not a key) satisfies the constructor; the only Gemini call a

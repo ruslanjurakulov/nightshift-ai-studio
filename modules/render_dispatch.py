@@ -320,10 +320,15 @@ def render_video(
         return memo["choice"]
 
     if scene_render_enabled:
+        from modules import render_backend  # noqa: PLC0415
+
         try:
             return _render_scenes(ir_project=ir_project, output_path=output_path, script=script,
                                   presenter_path=presenter_path, scene_renderer=scene_renderer,
                                   captions=captions)
+        except render_backend.RenderTimeout:
+            # A command that hung for 40 minutes would hang the fallback too.
+            raise
         except Exception as e:
             scene_reason = f"scenes: {type(e).__name__}: {e}"[:500]
             logger.warning("Scene-level render not used (%s) — rendering with the configured "
@@ -377,6 +382,8 @@ def _render_configured(
         logger.info("Render backend used: moviepy")
         return RenderResult(path, BACKEND_MOVIEPY, requested)
 
+    from modules import render_backend  # noqa: PLC0415
+
     reason: Optional[str] = None
     if presenter_path is not None:
         reason = "presenter overlay is only supported by the moviepy backend"
@@ -404,6 +411,10 @@ def _render_configured(
                                     and choice.reason != "no word timestamps") else None
             return RenderResult(out, BACKEND_FFMPEG, requested, captions=mode,
                                 captions_fallback_reason=why)
+        except render_backend.RenderTimeout:
+            # Not "ffmpeg backend not used": a command ran past its limit, and
+            # rendering again with MoviePy would only spend the rest of the job.
+            raise
         except Exception as e:
             reason = f"{type(e).__name__}: {e}"[:500]
 
