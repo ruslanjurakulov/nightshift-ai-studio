@@ -113,7 +113,7 @@ Owner protection, in layers:
 - **Security trail:** an append-only `security_events` table that even the owner role
   cannot rewrite; the operator bot reads it.
 - **Payments:** the Paddle webhook verifies the signature on a size-capped body, and
-  refuses a top-up or pack whose currency, tax or amount does not match the order.
+  refuses an API top-up whose currency, tax or total does not match what was ordered.
 
 ## Quick start (local)
 
