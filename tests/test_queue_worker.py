@@ -346,6 +346,28 @@ class WorkerCase(unittest.TestCase):
         self.assertIn("running with key [redacted]", error)
         self.assertNotIn("gemini-secret-value-123", error)
 
+    # -- the cost ledger reaches Supabase after every job -------------------
+
+    def test_the_cost_ledger_is_mirrored_after_a_success_and_after_a_failure(self):
+        for rc, status in (("0", "succeeded"), ("3", "failed")):
+            with self.subTest(rc=rc):
+                self.env["FAKE_RC"] = rc
+                sent = []
+                q = FakeQueue([job()])
+                self.worker(q, cost_mirror=sent.append).run_forever(once=True)
+                self.assertEqual(q.ends()[-1][2], status)
+                self.assertEqual(len(sent), 1)          # a failed run spent money too
+                # a window that starts before the job did, so an earlier failed send is retried
+                self.assertLess(datetime.fromisoformat(sent[0]), datetime.now(timezone.utc) - timedelta(hours=24))
+
+    def test_a_cost_mirror_that_raises_never_fails_the_job(self):
+        def boom(_since):
+            raise RuntimeError("supabase is down")
+
+        q = FakeQueue([job()])
+        self.worker(q, cost_mirror=boom).run_forever(once=True)
+        self.assertEqual(q.ends(), [("finish", 7, "succeeded", None)])
+
     def test_invalid_job_fails_without_running_anything(self):
         q = FakeQueue([job(params={"no_upload": True})])
         self.worker(q).run_forever(once=True)

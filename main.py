@@ -17,6 +17,7 @@ import logging
 import re
 import sys
 import time
+import functools
 from datetime import datetime
 from pathlib import Path
 
@@ -48,6 +49,7 @@ from modules.cost_ledger import (
     UPLOAD_BYTES, VIDEO_GEN_CLIPS,
 )
 from modules import budget
+from modules import spend_guard
 from modules import shorts
 from modules.claim_extractor import extract_section_claims
 from modules import claim_scenes
@@ -352,6 +354,36 @@ def _flush_costs(costs, slug: str | None = None) -> None:
                        type(e).__name__, e)
 
 
+#: The running pipeline's cost ledger, so ``_flush_costs_on_exit`` can record
+#: what a run that died part-way had already bought (one run per process).
+_RUN_COSTS: list = []
+
+
+def _flush_costs_on_exit(fn):
+    """Wrap ``run``: whatever the run bought is recorded even when it raises
+    (a failed render, a refused clip, a spend-guard stop). Entries already
+    flushed on the normal path are not written twice (CostLedger.flushed)."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        _RUN_COSTS.clear()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            ledgers = list(_RUN_COSTS)
+            _RUN_COSTS.clear()
+            for ledger in ledgers:
+                if ledger.pending():
+                    _flush_costs(ledger)
+    return wrapper
+
+
+def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
+    """Stop the run, loudly, before ``stage`` buys anything if the ledger so far
+    is over CHRONOS_MAX_RUN_USD (or, for the operator's own organisation, the
+    day is over CHRONOS_MAX_DAILY_USD). See modules/spend_guard.py."""
+    spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned)
+
+
 def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
     """The privacy this run may upload with. If the channel's Command Center
     auto-publish switch is not ON (and the source carries one at all), anything
@@ -365,6 +397,7 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
     return allowed
 
 
+@_flush_costs_on_exit
 def run(
     niche: str | None = None,
     topic: str | None = None,
@@ -503,6 +536,7 @@ def run(
     # What this run consumes. Recorded whether or not it ends in an upload —
     # a render that is later blocked still cost real money.
     costs = CostLedger(channel_id=channel_id)
+    _RUN_COSTS[:] = [costs]
     # Observability events (event_log.emit never raises and never alters the
     # pipeline — see modules/event_log.py). They feed the Command Center's live
     # activity feed and per-video pipeline timeline.
@@ -709,6 +743,7 @@ def run(
         costs.add_gemini_usage(engine.last_response, stage="script")
 
     slug = _run_slug(topic, ctx)
+    costs.slug = slug
     logger.info("Script: '%s'", script.title)
     events.emit(events.SCRIPT_COMPLETED, agent="script_engine", status=events.STATUS_COMPLETED,
                 channel_id=channel_id, metadata={"title": script.title})
@@ -815,6 +850,7 @@ def run(
     keyword_map = ScriptEngine.extract_visual_keywords(script)
 
     # ── Stage 3: Audio
+    _guard_spend(ctx, costs, "the voice")
     events.emit(events.VOICE_STARTED, agent="audio_mixer", status=events.STATUS_RUNNING, channel_id=channel_id)
     mixer = AudioMixer(slug, channel=ctx)
     audio_path, timeline = mixer.build(script)
@@ -889,6 +925,8 @@ def run(
     # Character-Bible consistency directive (whichever are present).
     # When generated b-roll is on, a clip the configured model did not produce
     # stops the run with the remedy — it is never quietly replaced by stock.
+    _guard_spend(ctx, costs, "generating b-roll clips", planned=(
+        [(VIDEO_GEN_CLIPS, config.MINIMAX_BROLL_MAX_CLIPS)] if video_providers.is_enabled() else None))
     try:
         broll = fetcher.generate_broll(
             script.sections, topic, style_for=_scene_style,
@@ -909,6 +947,9 @@ def run(
     # Optional: generate on-topic stills with the selected image provider
     # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
     # are set; a failure falls back to stock and never breaks the render.
+    from modules import image_providers as _img_guard
+    _guard_spend(ctx, costs, "generating stills", planned=(
+        [(IMAGE_GENERATIONS, config.LEONARDO_MAX_IMAGES)] if _img_guard.is_enabled() else None))
     gen_images = fetcher.generate_images(
         script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
         size=render_fmt.image_size)

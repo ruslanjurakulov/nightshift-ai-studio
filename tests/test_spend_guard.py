@@ -1,0 +1,268 @@
+"""Spend guard (modules/spend_guard.py), the cost ledger's flush-once rule, and
+the pipeline's flush-in-finally + guard calls (main.run).
+
+What would break without these:
+
+* a failed run losing every cost it had already paid for (the ledger was flushed
+  once, at the very end of a successful run);
+* a run that keeps buying clips after it has spent more than the operator allows,
+  or a cap that fails quietly (no message, or no variable to change);
+* a typo in CHRONOS_MAX_RUN_USD switching the brake off.
+
+Nothing here calls a provider or the network. The pipeline test runs main.run in
+a child interpreter (as tests/test_auto_publish_never_public.py does: `import
+main` is heavy) with every external stage replaced.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from modules import cost_ledger, spend_guard  # noqa: E402
+from modules.cost_ledger import CostLedger  # noqa: E402
+from modules.state_store import StateStore  # noqa: E402
+
+
+def ledger(**units) -> CostLedger:
+    led = CostLedger(channel_id="c1", slug="s")
+    for unit, qty in units.items():
+        led.add(unit, qty, stage="t")
+    return led
+
+
+class LimitParsing(unittest.TestCase):
+    def test_unset_and_empty_use_the_documented_defaults(self):
+        self.assertEqual(spend_guard.limit("X", 10.0, {}), 10.0)
+        self.assertEqual(spend_guard.limit("X", 10.0, {"X": "  "}), 10.0)
+        self.assertEqual(spend_guard.DEFAULT_MAX_RUN_USD, 10.0)
+        self.assertEqual(spend_guard.DEFAULT_MAX_DAILY_USD, 30.0)
+
+    def test_a_number_is_taken_and_off_removes_the_cap(self):
+        self.assertEqual(spend_guard.limit("X", 10.0, {"X": "2.5"}), 2.5)
+        self.assertIsNone(spend_guard.limit("X", 10.0, {"X": "OFF"}))
+
+    def test_a_typo_zero_or_negative_never_removes_the_brake(self):
+        for bad in ("abc", "0", "-3", "nan", "inf", "$5"):
+            with self.subTest(bad=bad), self.assertLogs(spend_guard.logger, "WARNING"):
+                self.assertEqual(spend_guard.limit("X", 10.0, {"X": bad}), 10.0)
+
+
+class PerRunCap(unittest.TestCase):
+    PRICES = {"CHRONOS_PRICE_TTS_CHARACTERS": "0.001", "CHRONOS_PRICE_VIDEO_GEN_CLIPS": "2"}
+
+    def check(self, units, stage="the voice", env=None, **kw):
+        """Build the ledger and run the check under one environment (a unit is
+        priced when it is added, so the prices must already be set)."""
+        with patch.dict("os.environ", {**self.PRICES, **(env or {})}):
+            spend_guard.check(ledger(**units), stage, **kw)
+
+    def test_under_the_cap_passes(self):
+        self.check({"tts_characters": 1000}, env={"CHRONOS_MAX_RUN_USD": "5"})  # $1
+
+    def test_over_the_cap_stops_loudly_and_names_the_variable_and_the_stage(self):
+        with self.assertLogs(spend_guard.logger, "ERROR"), self.assertRaises(spend_guard.SpendLimitExceeded) as ctx:
+            self.check({"tts_characters": 6000}, "generating b-roll clips", env={"CHRONOS_MAX_RUN_USD": "5"})
+        msg = str(ctx.exception)
+        for part in ("CHRONOS_MAX_RUN_USD", "generating b-roll clips", "$6.00", "$5.00", "Deploy web"):
+            self.assertIn(part, msg)
+
+    def test_the_default_cap_applies_when_nothing_is_set(self):
+        with self.assertLogs(spend_guard.logger, "ERROR"), self.assertRaises(spend_guard.SpendLimitExceeded):
+            self.check({"tts_characters": 11000})  # $11 > the $10 default
+
+    def test_what_the_stage_is_about_to_buy_counts(self):
+        # $1 spent + 2 clips x $2 = $5 > $4, although the ledger alone is under it.
+        env = {"CHRONOS_MAX_RUN_USD": "4"}
+        with self.assertLogs(spend_guard.logger, "ERROR"), self.assertRaises(spend_guard.SpendLimitExceeded) as ctx:
+            self.check({"tts_characters": 1000}, "generating b-roll clips", env=env,
+                       planned=[(cost_ledger.VIDEO_GEN_CLIPS, 2)])
+        self.assertIn("would add about $4.00", str(ctx.exception))
+        self.check({"tts_characters": 1000}, "generating b-roll clips", env=env, planned=None)
+
+    def test_off_never_stops(self):
+        self.check({"tts_characters": 10 ** 7}, env={"CHRONOS_MAX_RUN_USD": "off"})
+
+    def test_unpriced_units_are_called_out_once_not_hidden(self):
+        with patch.dict("os.environ", {}, clear=True):
+            led = ledger(pexels_requests=3)  # no rate configured
+            with self.assertLogs(spend_guard.logger, "WARNING") as logs:
+                spend_guard.check(led, "the voice")
+                spend_guard.check(led, "generating stills")
+        self.assertEqual(len(logs.records), 1)
+        text = logs.records[0].getMessage()
+        self.assertIn("pexels_requests", text)
+        self.assertIn("CHRONOS_PRICE_PEXELS_REQUESTS", text)
+
+    def test_the_stop_is_an_event_for_the_dashboard(self):
+        with patch("modules.event_log.emit") as emit, self.assertLogs(spend_guard.logger, "ERROR"), \
+                self.assertRaises(spend_guard.SpendLimitExceeded):
+            self.check({"tts_characters": 5000}, env={"CHRONOS_MAX_RUN_USD": "1"})
+        self.assertEqual(emit.call_args.args[0], "budget.exceeded")
+        self.assertEqual(emit.call_args.kwargs["metadata"]["variable"], "CHRONOS_MAX_RUN_USD")
+
+
+class PerDayCap(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.store = StateStore(Path(self.tmp) / "c.db")
+        self.addCleanup(self.store.close)
+        now = datetime.now(timezone.utc)
+        self.today = now.replace(hour=0, minute=1, second=0, microsecond=0)
+        self.yesterday = self.today - timedelta(days=1)
+
+    def spend(self, usd, when, channel="other"):
+        self.store.record_video_cost(unit="tts_characters", quantity=1, recorded_at=when.isoformat(),
+                                     channel_id=channel, estimated_usd=usd)
+
+    def test_the_operators_day_is_capped_across_every_channel_but_only_todays_rows_count(self):
+        self.spend(20.0, self.today, channel="a")
+        self.spend(9.0, self.today, channel="b")
+        self.spend(500.0, self.yesterday, channel="a")
+        led = ledger()
+        with patch.dict("os.environ", {"CHRONOS_MAX_DAILY_USD": "30"}):
+            spend_guard.check(led, "the voice", operators=True, store=self.store)   # $29 <= $30
+            self.spend(2.0, self.today)
+            with self.assertRaises(spend_guard.SpendLimitExceeded) as ctx, self.assertLogs(spend_guard.logger, "ERROR"):
+                spend_guard.check(led, "the voice", operators=True, store=self.store)
+        self.assertIn("CHRONOS_MAX_DAILY_USD", str(ctx.exception))
+
+    def test_a_customers_run_is_not_stopped_by_the_operators_day(self):
+        self.spend(999.0, self.today)
+        with patch.dict("os.environ", {"CHRONOS_MAX_DAILY_USD": "30"}):
+            spend_guard.check(ledger(), "the voice", operators=False, store=self.store)
+
+    def test_this_runs_unflushed_spend_counts_toward_the_day(self):
+        self.spend(29.0, self.today)
+        led = CostLedger(channel_id="c1")
+        with patch.dict("os.environ", {"CHRONOS_PRICE_TTS_CHARACTERS": "0.001", "CHRONOS_MAX_DAILY_USD": "30",
+                                       "CHRONOS_MAX_RUN_USD": "off"}):
+            led.add("tts_characters", 2000, "voice")  # $2 not yet in the store
+            with self.assertRaises(spend_guard.SpendLimitExceeded), self.assertLogs(spend_guard.logger, "ERROR"):
+                spend_guard.check(led, "generating stills", operators=True, store=self.store)
+            led.flush(self.store)  # now it is in the store: counted once, not twice
+            with self.assertRaises(spend_guard.SpendLimitExceeded), self.assertLogs(spend_guard.logger, "ERROR"):
+                spend_guard.check(led, "generating stills", operators=True, store=self.store)
+        self.assertEqual(led.priced_usd(pending_only=True), 0.0)
+
+    def test_an_unreadable_database_skips_the_daily_cap_with_a_warning(self):
+        broken = MagicMock()
+        broken.list_video_costs.side_effect = RuntimeError("disk gone")
+        with patch.dict("os.environ", {"CHRONOS_MAX_DAILY_USD": "1"}):
+            spend_guard.check(ledger(), "the voice", operators=True, store=broken)
+
+
+class LedgerFlushOnce(unittest.TestCase):
+    def test_a_second_flush_writes_only_what_was_added_since(self):
+        store = MagicMock()
+        led = ledger(tts_characters=10)
+        self.assertEqual(led.flush(store), 1)
+        self.assertEqual(led.flush(store), 0)          # the finally of a run that already flushed
+        led.add("render_seconds", 5, "render")
+        self.assertEqual(led.flush(store), 1)
+        self.assertEqual(store.record_video_cost.call_count, 2)
+
+    def test_priced_total_is_a_floor_that_survives_an_unpriced_unit(self):
+        with patch.dict("os.environ", {"CHRONOS_PRICE_TTS_CHARACTERS": "0.5"}, clear=True):
+            led = ledger(tts_characters=2, pexels_requests=9)
+        self.assertEqual(led.priced_usd(), 1.0)
+        self.assertIsNone(led.total_usd())             # the honest total stays unknown
+        self.assertEqual(led.unpriced_units(), ["pexels_requests"])
+
+
+_CHILD = r"""
+import json, logging, os, sys, tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+sys.path.insert(0, sys.argv[1])
+row = json.loads(sys.argv[2])
+import main
+from modules.channels import ChannelContext
+from modules.state_store import StateStore
+from modules import spend_guard
+
+ctx = ChannelContext.from_dict(row)
+work = Path(tempfile.mkdtemp())
+os.chdir(work)
+db = work / "costs.db"
+
+class FakeMixer:
+    characters_synthesized = 6000
+    def __init__(self, *a, **k): pass
+    def build(self, script): return work / "a.mp3", []
+
+fetcher = MagicMock()
+out = {}
+patches = [
+    patch.object(main, "resolve_channel", return_value=ctx),
+    patch.object(main, "ensure_assets", return_value=0),
+    patch.object(main, "verify_voice", return_value=None),
+    patch.object(main.video_providers, "preflight", return_value=None),
+    patch.object(main, "AudioMixer", FakeMixer),
+    patch.object(main, "MediaFetcher", return_value=fetcher),
+    patch.object(main, "StateStore", lambda: StateStore(db)),
+]
+for p in patches: p.start()
+try:
+    main.run(script_file=str(Path(sys.argv[1]) / "samples" / "demo_script.json"), channel=ctx.channel_id,
+             skip_upload=True)
+    out["raised"] = None
+except BaseException as e:
+    import traceback; out["raised"] = [type(e).__name__, str(e)]; out["tb"] = traceback.format_exc()[-1500:]
+out["broll_called"] = fetcher.generate_broll.called
+out["images_called"] = fetcher.generate_images.called
+store = StateStore(db)
+out["rows"] = [[r["unit"], r["quantity"], r["estimated_usd"], r["stage"]] for r in store.list_video_costs()]
+print("RESULT " + json.dumps(out))
+"""
+
+
+class PipelineStopsAndRecordsSpend(unittest.TestCase):
+    """main.run, end to end with every external stage replaced."""
+
+    def drive(self, env):
+        row = {"channel_id": "news", "name": "news", "niche": "tech", "status": "ACTIVE",
+               "agent_config": {"language": "English"},
+               "schedule_config": {"enabled": True, "publish_hour_utc": 15},
+               "credential_ref": {"youtube_channel_id": "UCnews", "verified_at": "2026-09-01T00:00:00Z"}}
+        proc = subprocess.run([sys.executable, "-I", "-c", _CHILD, str(ROOT), json.dumps(row)],
+                              capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir(),
+                              env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
+                                   "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"), **env})
+        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
+        self.assertIsNotNone(line, proc.stderr[-3000:])
+        return json.loads(line[len("RESULT "):])
+
+    def test_a_run_over_its_cap_stops_before_the_clips_and_still_records_what_it_spent(self):
+        out = self.drive({"CHRONOS_PRICE_TTS_CHARACTERS": "0.001", "CHRONOS_MAX_RUN_USD": "5"})
+        self.assertEqual(out["raised"][0], "SpendLimitExceeded")
+        self.assertIn("CHRONOS_MAX_RUN_USD", out["raised"][1])
+        self.assertIn("generating b-roll clips", out["raised"][1])
+        self.assertFalse(out["broll_called"])      # nothing was submitted
+        self.assertFalse(out["images_called"])
+        # the failed run's spend reached the ledger (it used to be lost)
+        self.assertIn(["tts_characters", 6000.0, 6.0, "voice"], out["rows"])
+
+    def test_a_run_that_fails_for_any_other_reason_also_records_its_spend(self):
+        # no cap, no price: the pipeline goes on past the guard, then dies in the fake fetcher's
+        # first use of a MagicMock-built value; the TTS entry must still be in the ledger.
+        out = self.drive({"CHRONOS_MAX_RUN_USD": "off"})
+        self.assertIsNotNone(out["raised"])
+        self.assertNotEqual(out["raised"][0], "SpendLimitExceeded")
+        self.assertIn("tts_characters", [r[0] for r in out["rows"]])
+        self.assertEqual([r[0] for r in out["rows"]].count("tts_characters"), 1)   # once, not twice
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -50,7 +50,23 @@ whose entries are *partly* priced reports no total at all — a partial sum woul
 understate the real cost and read as if it were the whole thing.
 
 Recording a cost can never break a video: like `event_log`, every method
-swallows its own failures.
+swallows its own failures. A run that fails part-way still records what it had
+bought (`main.run` flushes the ledger in a `finally`), and the queue worker
+mirrors its `history/chronos.db` costs to Supabase `video_costs` after every job
+(`SupabaseSync.mirror_costs`, idempotent through the `row_key` of migration 0106).
+
+**Hard USD caps** (`modules/spend_guard.py`). Two repository *variables*, both
+reaching the worker through `deploy/.env.worker.example` ("Deploy web" applies a
+change): `CHRONOS_MAX_RUN_USD` (default 10) stops a run, with a message naming the
+variable, before the next stage that buys something (voice, generated clips,
+generated stills) once its ledger is over the cap, counting the clips it is about
+to submit; `CHRONOS_MAX_DAILY_USD` (default 30) does the same for the operator's
+own organisation when today's (UTC) ledger on that worker is over it. `off` removes
+a cap; zero or text that is not a number keeps the default. The caps see only
+priced units, so set the `CHRONOS_PRICE_*` variables for every unit you buy
+(`gemini_input_tokens`, `gemini_output_tokens`, `tts_characters`, `video_gen_clips`,
+`image_generations`, `render_seconds`, ...); the deploy log and the run log warn
+when none are set.
 
 ## 2. Thumbnail and title A/B
 

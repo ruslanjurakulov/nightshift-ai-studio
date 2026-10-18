@@ -638,7 +638,30 @@ class SupabaseSync:
             "channel_id": d.get("channel_id") or "default",
         }
 
-    def _mirror_video_costs(self, store) -> int:
+    def mirror_costs(self, store, since_iso: str | None = None) -> int:
+        """Mirror ONLY the local cost ledger (``video_costs``) — what the queue
+        worker calls after each job so the VPS's ``history/chronos.db`` reaches
+        Supabase (the Billing page, ``owner_provider_spend``). Not
+        ``mirror_from_store``: that also upserts videos, topic performance and
+        the rest from this machine's database, which on the worker is not the
+        freshest copy of those and must not overwrite the Actions poll's.
+
+        Idempotent (rows carry a deterministic ``row_key`` and are sent with
+        ignore-duplicates), so a repeated or overlapping send adds nothing.
+        ``since_iso`` limits the send to rows recorded at or after it; a whole
+        ``recorded_at`` group is always in or out together, so row keys do not
+        change. Returns the rows sent; 0 when disabled or on any failure. Never
+        raises."""
+        if not self.enabled:
+            return 0
+        try:
+            return self._mirror_video_costs(store, since_iso=since_iso)
+        except Exception as e:
+            logger.warning("video_costs mirror failed (%s) — the local ledger is intact; the next job retries",
+                           type(e).__name__)
+            return 0
+
+    def _mirror_video_costs(self, store, since_iso: str | None = None) -> int:
         """Send every local video_costs row with its ``row_key``, in chunks,
         ignoring the ones Supabase already has (so the nightly re-send of history
         adds nothing). Returns the number of rows SENT successfully; the count is
@@ -649,7 +672,10 @@ class SupabaseSync:
         fallback to a plain insert: that is the old behaviour and it would store
         every row once more. Ignore-duplicates makes the next run's re-send of
         the same chunks harmless, and the local DB keeps every row meanwhile."""
-        rows = video_cost_rows_with_keys(store.list_video_costs(limit=100000))
+        local = store.list_video_costs(limit=100000)
+        if since_iso:
+            local = [r for r in local if str(r.get("recorded_at") or "") >= since_iso]
+        rows = video_cost_rows_with_keys(local)
         sent = 0
         for i in range(0, len(rows), _VIDEO_COSTS_CHUNK):
             chunk = rows[i:i + _VIDEO_COSTS_CHUNK]

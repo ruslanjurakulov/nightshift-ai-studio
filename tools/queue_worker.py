@@ -294,6 +294,19 @@ class QueueClient:
         return self._patch_mine(job_id, worker_id, values)
 
 
+def _cost_mirror(url: str, key: str) -> Callable[[str], object]:
+    """The worker's after-job send of history/chronos.db's video_costs to
+    Supabase (SupabaseSync.mirror_costs: idempotent, never raises)."""
+    def mirror(since_iso: str):
+        from modules.state_store import StateStore  # noqa: PLC0415 — only the real worker needs it
+        from modules.supabase_sync import SupabaseSync  # noqa: PLC0415
+
+        with StateStore() as store:
+            return SupabaseSync(url, key).mirror_costs(store, since_iso=since_iso)
+
+    return mirror
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -574,6 +587,7 @@ class Worker:
         downloads=None,
         repurposer=None,
         comments=None,
+        cost_mirror: Optional[Callable[[str], object]] = None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -615,6 +629,10 @@ class Worker:
         # runs none (migration 0041: no unpaid fallback).
         self.credits = credits
         self.ledger_reader = ledger_reader or credit_rules.local_run_entries
+        # Called with an ISO time after every job: sends this machine's cost
+        # ledger (history/chronos.db) to Supabase video_costs, where the Billing
+        # page reads it. None = not mirrored. Must never fail a job.
+        self.cost_mirror = cost_mirror
         self._last_sweep: Optional[float] = None
 
     # -- signals ----------------------------------------------------------
@@ -747,6 +765,7 @@ class Worker:
             return self._finish(job, "failed", f"credits: {e} (nothing was run)")
 
         outcome = self._execute(job, argv, run_env, channel_row)
+        self._mirror_costs(run_started)
         # "paused": the run stopped at its storyboard (modules/storyboard_review)
         # and waits for a person. Released in full like a failed run — planning
         # is never charged on its own; the render is paid by the hold placed
@@ -761,6 +780,22 @@ class Worker:
         # belongs to whoever took the job. A job failed on its last attempt by
         # the stale sweep is released by expire_credit_reservations.
         return outcome
+
+    #: How far back each job's cost mirror reaches: a send that failed (Supabase
+    #: down, migration 0106 not applied yet) is retried by the next jobs for this
+    #: long. Re-sending rows Supabase already has is free (ignore-duplicates).
+    COST_MIRROR_WINDOW = timedelta(days=2)
+
+    def _mirror_costs(self, run_started: str) -> None:
+        """Mirror the cost ledger after a job, whatever its outcome: a failed run
+        spent money too. Bookkeeping only — any failure is logged and swallowed."""
+        if self.cost_mirror is None:
+            return
+        try:
+            since = (datetime.fromisoformat(run_started) - self.COST_MIRROR_WINDOW).isoformat()
+            self.cost_mirror(since)
+        except Exception as e:
+            logger.warning("cost ledger mirror skipped (%s) — the local ledger is intact", type(e).__name__)
 
     def _process_regeneration(self, job: Mapping, channel_id: str, clean: Mapping,
                               channel_row: Mapping, regen_id: str) -> str:
@@ -1173,6 +1208,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         youtube_credentials=lambda cid: youtube_publish_credentials(
                             cid, os.environ, token_client)),
                     downloads=downloads,
+                    cost_mirror=_cost_mirror(url, key),
                     repurposer=repurpose.RepurposeService(url, key, output_dir=REPO_DIR / "output",
                                                           worker_id=args.worker_id),
                     comments=comments)
