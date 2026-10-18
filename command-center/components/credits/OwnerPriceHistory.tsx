@@ -12,6 +12,7 @@ import { ownerFailureText } from "@/lib/owner-rpc-text";
 import type { PriceHistoryEntry } from "@/lib/owner-reads";
 import { ownerTime } from "@/lib/format";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
+import { useToast } from "@/components/feedback/ToastProvider";
 import { ErrorState } from "@/components/ReadError";
 
 /**
@@ -36,6 +37,7 @@ export function OwnerPriceHistory({
   const p = t.ownerRpc.prices;
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
 
@@ -63,38 +65,51 @@ export function OwnerPriceHistory({
     const target = e.oldRate === null ? null : { rate: e.oldRate, margin: e.oldMargin ?? 0 };
     const limit = maxRatio ?? 3;
     const big = priceBigChange(now ? { rate: now.creditsPerUnit, margin: now.margin } : null, target, limit);
-    let serverSaidBig = false;
-    const done = await confirm({
+    type BigView = { rateX: number | null; chargedX: number | null; max: number };
+    const base = [
+      { label: t.ownerSafety.dService, value: label === e.unit ? e.unit : `${label} (${e.unit})` },
+      { label: t.ownerSafety.dNow, value: now ? `${figure(now.creditsPerUnit)} → ${figure(chargePerUnit(now))}` : p.noPrice },
+      { label: p.dAfter, value: target === null ? p.noPrice : `${figure(target.rate)} → ${figure(chargePerUnit({ unit: e.unit, creditsPerUnit: target.rate, margin: target.margin }))}` },
+    ];
+    // The same sheet, with the same typing, whether the screen or the server noticed that the change is big.
+    const ask = (view: BigView | null, stale: boolean) => ({
       title: fmt(p.restoreTitle, { name: label }),
-      message: target === null ? fmt(p.restoreBodyRemove, { name: label }) : fmt(p.restoreBody, { name: label }),
-      confirmLabel: big.big ? p.bigConfirm : p.restoreConfirm,
-      tone: big.big ? "danger" : "primary",
-      details: [
-        { label: t.ownerSafety.dService, value: label === e.unit ? e.unit : `${label} (${e.unit})` },
-        { label: t.ownerSafety.dNow, value: now ? `${figure(now.creditsPerUnit)} → ${figure(chargePerUnit(now))}` : p.noPrice },
-        { label: p.dAfter, value: target === null ? p.noPrice : `${figure(target.rate)} → ${figure(chargePerUnit({ unit: e.unit, creditsPerUnit: target.rate, margin: target.margin }))}` },
-        ...(big.big ? [{ label: p.dLimit, value: fmt(p.limitText, { max: limit }) }] : []),
-      ],
-      typeToConfirm: big.big ? p.bigWord : undefined,
-      successMessage: fmt(p.restoreDone, { name: label }),
-      run: async () => {
-        const out = await postOperator("/api/owner/prices", { action: "restore", historyId: e.id, confirm: big.big || serverSaidBig });
-        if (out.ok) return true;
-        if (out.data.error === "confirm_required") {
-          serverSaidBig = true;
-          const num = (v: unknown) => (typeof v === "number" ? v : null);
-          return fmt(p.serverBig, {
-            rate: ratioText(num(out.data.rate_ratio)) ?? "—",
-            charged: ratioText(num(out.data.charged_ratio)) ?? "—",
-            max: num(out.data.max_ratio) ?? limit,
-          });
-        }
-        return ownerFailureText(t, out, locale, true);
-      },
+      message: view
+        ? stale
+          ? fmt(p.staleNote, { rate: ratioText(view.rateX) ?? "—", charged: ratioText(view.chargedX) ?? "—", max: view.max })
+          : target === null
+            ? fmt(p.restoreBodyRemove, { name: label })
+            : fmt(p.bigBody, { max: view.max })
+        : target === null
+          ? fmt(p.restoreBodyRemove, { name: label })
+          : fmt(p.restoreBody, { name: label }),
+      confirmLabel: view ? p.bigConfirm : p.restoreConfirm,
+      tone: (view ? "danger" : "primary") as "danger" | "primary",
+      details: view ? [...base, { label: p.dLimit, value: fmt(p.limitText, { max: view.max }) }] : base,
+      typeToConfirm: view ? p.bigWord : undefined,
     });
+    // Set when the server calls it big although the screen did not (a stale page): that sheet closes and the
+    // big-change sheet opens with its typing. One extra tap never confirms it.
+    let staleView: BigView | null = null;
+    const send = (view: BigView | null) => async () => {
+      const out = await postOperator("/api/owner/prices", { action: "restore", historyId: e.id, confirm: view !== null });
+      if (out.ok) return true;
+      if (out.data.error === "confirm_required" && view === null) {
+        const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+        staleView = { rateX: num(out.data.rate_ratio), chargedX: num(out.data.charged_ratio), max: num(out.data.max_ratio) ?? limit };
+        return true;
+      }
+      return ownerFailureText(t, out, locale, true);
+    };
+    const localView: BigView | null = big.big ? { rateX: big.rateRatio, chargedX: big.chargedRatio, max: limit } : null;
+    let done = await confirm({ ...ask(localView, false), run: send(localView) });
+    const again = staleView as BigView | null;
+    if (done && again) done = await confirm({ ...ask(again, true), run: send(again) });
     lock.current = false;
     setBusy(false);
-    if (done) router.refresh();
+    if (!done) return;
+    toast.success(fmt(p.restoreDone, { name: label }));
+    router.refresh();
   }
 
   const actionText = (a: PriceHistoryEntry["action"]) => (a === "delete" ? p.actionDelete : a === "restore" ? p.actionRestore : p.actionSet);
@@ -124,7 +139,7 @@ export function OwnerPriceHistory({
                 </p>
               </div>
               {newest.has(e.id) && (
-                <button type="button" onClick={() => void restore(e)} disabled={busy} className="btn-quiet min-h-11 shrink-0 text-xs disabled:opacity-55">
+                <button type="button" onClick={() => void restore(e)} disabled={busy} aria-label={fmt(p.restoreAria, { name: name(e.unit) })} className="btn-quiet min-h-11 shrink-0 text-xs disabled:opacity-55">
                   {p.restore}
                 </button>
               )}

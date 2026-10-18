@@ -49,6 +49,8 @@ export const OWNER_REFUSALS = [
   "no_such_price",
   "no_such_history",
   "confirm_required",
+  /** The price was changed after the page was loaded (Restore only offers the newest change of a service). */
+  "price_changed",
   // team
   "bad_role",
   "bad_email",
@@ -97,16 +99,27 @@ function optionalText(v: unknown): { ok: true; value: string | null } | { ok: fa
   if (v === undefined || v === null) return { ok: true, value: null };
   if (typeof v !== "string") return { ok: false };
   const t = v.trim();
-  if (t.length > 300) return { ok: false };
+  if (charCount(t) > REASON_MAX) return { ok: false };
   return { ok: true, value: t === "" ? null : t };
 }
 
 export const REASON_MIN = 8;
 export const REASON_MAX = 300;
 
+/**
+ * Characters as Postgres counts them (char_length: code points), not UTF-16 units: an emoji is one character to the
+ * database and two to String.length. The counter, the minimum and the maximum all use this, so the screen and the
+ * database agree on what "8 to 300 characters" means.
+ */
+export function charCount(s: string): number {
+  return Array.from(s).length;
+}
+
 /** A required reason: 8 to 300 characters after trimming, as owner_grant_credits / owner_reverse_grant demand. */
 export function reasonOk(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length >= REASON_MIN && v.trim().length <= REASON_MAX;
+  if (typeof v !== "string") return false;
+  const n = charCount(v.trim());
+  return n >= REASON_MIN && n <= REASON_MAX;
 }
 
 export function parseGrant(body: unknown): OwnerParse {

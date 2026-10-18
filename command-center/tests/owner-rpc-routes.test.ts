@@ -18,12 +18,46 @@ const h = vi.hoisted(() => ({
   role: "owner" as string | null,
   guard: null as Response | null,
   rpc: vi.fn(),
+  /** credit_price_history rows the restore check reads; `error` makes every read fail. */
+  history: [{ id: 5, unit: "usd" }] as { id: number; unit: string }[],
+  historyError: null as { code: string; message: string } | null,
+  reads: [] as string[],
   client: true,
 }));
 
+/** A query builder over h.history: .eq(col, v) filters, .maybeSingle() / awaiting after .order().limit() resolve. */
+function fakeFrom(table: string) {
+  let rows = h.history;
+  let one = false;
+  let top = false;
+  const q: Record<string, unknown> = {
+    select: () => q,
+    eq: (col: string, v: unknown) => {
+      rows = rows.filter((r) => (r as Record<string, unknown>)[col] === v);
+      return q;
+    },
+    order: () => {
+      top = true;
+      return q;
+    },
+    limit: () => q,
+    maybeSingle: () => {
+      one = true;
+      return q;
+    },
+    then: (res: (v: unknown) => unknown) => {
+      h.reads.push(table);
+      if (h.historyError) return Promise.resolve({ data: null, error: h.historyError }).then(res);
+      const sorted = top ? [...rows].sort((a, b) => b.id - a.id) : rows;
+      return Promise.resolve({ data: one ? (sorted[0] ?? null) : sorted.slice(0, 1), error: null }).then(res);
+    },
+  };
+  return q;
+}
+
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => h.user,
-  createClient: async () => (h.client ? { rpc: h.rpc } : null),
+  createClient: async () => (h.client ? { rpc: h.rpc, from: fakeFrom } : null),
 }));
 vi.mock("@/lib/auth/roles", () => ({ requireRole: async () => h.role }));
 vi.mock("@/lib/server/admin-post-guard", () => ({ guardAdminPost: async () => h.guard }));
@@ -59,6 +93,9 @@ beforeEach(() => {
   h.guard = null;
   h.client = true;
   h.rpc.mockReset().mockResolvedValue({ data: { ok: true }, error: null });
+  h.history = [{ id: 5, unit: "usd" }];
+  h.historyError = null;
+  h.reads = [];
 });
 
 describe("with the flag off (the default) the routes do not exist", () => {
@@ -207,6 +244,52 @@ describe("with the flag on", () => {
       h.client = false;
       expect((await grant(post("credits/grant", GRANT))).status).toBe(503);
     });
+  });
+});
+
+describe("Restore refuses a row that is no longer the newest change of its service", () => {
+  beforeEach(() => vi.stubEnv("NIGHTSHIFT_OWNER_RPC", "on"));
+  const restore = (id: number) => prices(post("prices", { action: "restore", historyId: id }));
+
+  it("the newest row goes through to the function", async () => {
+    h.history = [{ id: 5, unit: "usd" }, { id: 4, unit: "usd" }, { id: 9, unit: "image_generations" }];
+    const res = await restore(5);
+    expect(res.status).toBe(200);
+    expect(h.rpc).toHaveBeenCalledWith("owner_restore_credit_price", { p_history_id: 5, p_reason: null, p_confirm_big_change: false });
+  });
+
+  it("an older row is 409 price_changed, and the function is never called", async () => {
+    h.history = [{ id: 7, unit: "usd" }, { id: 5, unit: "usd" }];
+    const res = await restore(5);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ ok: false, error: "price_changed" });
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("another service's newer change does not matter", async () => {
+    h.history = [{ id: 8, unit: "other" }, { id: 5, unit: "usd" }];
+    expect((await restore(5)).status).toBe(200);
+  });
+
+  it("a row that does not exist is left to the function to name (no_such_history)", async () => {
+    h.history = [];
+    h.rpc.mockResolvedValue({ data: { ok: false, error: "no_such_history", message: "x" }, error: null });
+    const res = await restore(99);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: "no_such_history" });
+  });
+
+  it("a history read that fails refuses (no guess) and the function is never called", async () => {
+    h.historyError = { code: "XX000", message: "boom" };
+    const res = await restore(5);
+    expect(res.status).toBe(502);
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("only Restore reads the history: set and delete do not", async () => {
+    await prices(post("prices", { action: "set", unit: "usd", rate: 1, margin: 0 }));
+    await prices(post("prices", { action: "delete", unit: "usd", confirm: true }));
+    expect(h.reads).toEqual([]);
   });
 });
 

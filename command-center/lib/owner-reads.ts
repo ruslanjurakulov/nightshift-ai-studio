@@ -156,7 +156,8 @@ export interface SpendRow {
   /** Null when ANY row of that day and provider has no price: a partial sum would read as the whole cost. */
   usd: number | null;
   usdPriced: number | null;
-  unpricedRows: number;
+  /** Null when the database sent something that is not a number: unknown, not "none". */
+  unpricedRows: number | null;
   units: number | null;
   unit: string | null;
   runs: number | null;
@@ -174,7 +175,7 @@ export function coerceProviderSpend(data: unknown): SpendRow[] | null {
         provider: provider.toLowerCase(),
         usd: fin(r.usd),
         usdPriced: fin(r.usd_priced),
-        unpricedRows: fin(r.unpriced_rows) ?? 0,
+        unpricedRows: fin(r.unpriced_rows),
         units: fin(r.units),
         unit: text(r.unit),
         runs: fin(r.runs),
@@ -197,7 +198,8 @@ export interface ProviderSpend {
   /** Total dollars, or null when ANY of its rows is unpriced (then `atLeastUsd` is the priced part). */
   usd: number | null;
   atLeastUsd: number | null;
-  unpricedRows: number;
+  /** Null when any of its rows did not say how many are unpriced. */
+  unpricedRows: number | null;
   /** Units when every day used the same unit and a quantity; null otherwise (mixed units do not add up). */
   units: number | null;
   unit: string | null;
@@ -209,7 +211,7 @@ export interface SpendGroup {
   /** Null when any provider in the group is partly unpriced. */
   usd: number | null;
   atLeastUsd: number | null;
-  unpricedRows: number;
+  unpricedRows: number | null;
 }
 
 export interface SpendSummary {
@@ -225,7 +227,7 @@ export function summarizeProviderSpend(rows: readonly SpendRow[]): SpendSummary 
   const by = new Map<string, SpendRow[]>();
   for (const r of rows) by.set(r.provider, [...(by.get(r.provider) ?? []), r]);
   const providers: ProviderSpend[] = [...by.entries()].map(([provider, rs]) => {
-    const unpricedRows = rs.reduce((s, r) => s + r.unpricedRows, 0);
+    const unpricedRows = rs.some((r) => r.unpricedRows === null) ? null : rs.reduce((s, r) => s + (r.unpricedRows ?? 0), 0);
     const anyUnknown = rs.some((r) => r.usd === null);
     const priced = rs.filter((r) => r.usdPriced !== null);
     const units = new Set(rs.map((r) => r.unit));
@@ -251,7 +253,7 @@ export function summarizeProviderSpend(rows: readonly SpendRow[]): SpendSummary 
     return {
       usd: ps.length && ps.every((p) => p.usd !== null) ? ps.reduce((s, p) => s + (p.usd ?? 0), 0) : null,
       atLeastUsd: priced.length ? priced.reduce((s, p) => s + (p.atLeastUsd ?? 0), 0) : null,
-      unpricedRows: ps.reduce((s, p) => s + p.unpricedRows, 0),
+      unpricedRows: ps.some((p) => p.unpricedRows === null) ? null : ps.reduce((s, p) => s + (p.unpricedRows ?? 0), 0),
     };
   };
   return { providers, billed: group("billed"), estimates: group("estimate") };

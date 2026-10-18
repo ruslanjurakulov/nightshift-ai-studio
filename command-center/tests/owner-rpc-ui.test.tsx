@@ -297,12 +297,32 @@ describe("OwnerRecentGrants", () => {
     const rows = screen.getAllByRole("listitem");
     expect(within(rows[1]).getByText(o.grant.reversedTag)).toBeTruthy();
     expect(within(rows[1]).queryByRole("button")).toBeNull();
-    expect(within(rows[0]).getByRole("button", { name: o.grant.reverse })).toBeTruthy();
+    expect(within(rows[0]).getByRole("button", { name: /^Reverse the grant of 500 credits$/ })).toBeTruthy();
+  });
+
+  it("each Reverse button names its amount, and says which form it opens", async () => {
+    show();
+    const btn = screen.getByRole("button", { name: "Reverse the grant of 500 credits" });
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(btn.getAttribute("aria-controls")).toBe("reverse-form-31");
+    await tap(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById("reverse-form-31")).toBeTruthy();
+  });
+
+  it("the reason is counted in characters, not UTF-16 units: eight emoji are enough", async () => {
+    show();
+    await tap(screen.getByRole("button", { name: /^Reverse the grant of 500/ }));
+    change(screen.getByPlaceholderText(o.grant.reasonPh), "😀".repeat(8));
+    expect(screen.getByText("8 / 300")).toBeTruthy();
+    expect(screen.getByRole("button", { name: o.grant.reverseReview }).hasAttribute("disabled")).toBe(false);
+    change(screen.getByPlaceholderText(o.grant.reasonPh), "😀".repeat(7));
+    expect(screen.getByRole("button", { name: o.grant.reverseReview }).hasAttribute("disabled")).toBe(true);
   });
 
   it("an unreadable list offers nothing as reversible", () => {
     show(null, true);
-    expect(screen.queryByRole("button", { name: o.grant.reverse })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Reverse the grant of 500 credits$/ })).toBeNull();
     expect(screen.getByText(o.grant.recentFailed)).toBeTruthy();
   });
 
@@ -315,7 +335,7 @@ describe("OwnerRecentGrants", () => {
     let done: (r: Response) => void = () => {};
     h.fetch.mockImplementation(() => new Promise<Response>((r) => (done = r)));
     show();
-    await tap(screen.getByRole("button", { name: o.grant.reverse }));
+    await tap(screen.getByRole("button", { name: /^Reverse the grant of 500 credits$/ }));
     const review = screen.getByRole("button", { name: o.grant.reverseReview });
     expect(review.hasAttribute("disabled")).toBe(true);
     change(screen.getByPlaceholderText(o.grant.reasonPh), "given twice by mistake");
@@ -336,7 +356,7 @@ describe("OwnerRecentGrants", () => {
   it("a refusal (too old, nothing left, already reversed) shows in the sheet", async () => {
     h.fetch.mockImplementation(async () => jsonRes({ ok: false, error: "too_old", window_days: 14 }, 422));
     show();
-    await tap(screen.getByRole("button", { name: o.grant.reverse }));
+    await tap(screen.getByRole("button", { name: /^Reverse the grant of 500 credits$/ }));
     change(screen.getByPlaceholderText(o.grant.reasonPh), "given twice by mistake");
     await tap(screen.getByRole("button", { name: o.grant.reverseReview }));
     await tap(within(sheet()).getByRole("button", { name: o.grant.reverseConfirm }));
@@ -396,22 +416,51 @@ describe("CreditPricesEditor through the server", () => {
     expect(sent().body).toMatchObject({ rate: 0, confirm: true });
   });
 
-  it("when the server calls it big and the screen did not, the sheet shows the server's figures and the next tap confirms", async () => {
+  it("when the server calls it big and the screen did not (a stale page), the big-change sheet opens with the same typing; one more tap does not confirm it", async () => {
     h.fetch
       .mockImplementationOnce(async () => jsonRes({ ok: false, error: "confirm_required", reason: "ratio", rate_ratio: 4, charged_ratio: 4, max_ratio: 3 }, 409))
       .mockImplementation(async () => jsonRes({ ok: true }));
     show();
     fillPrice("1.2");
     await save();
-    const key = () => within(sheet()).getByRole("button", { name: en.ownerSafety.priceSaveConfirm });
-    await tap(key());
-    expect(within(sheet()).getByRole("alert").textContent).toContain("rate ×4, charged ×4");
+    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.priceSaveConfirm }));
+    // the first sheet is gone; the big-change sheet is up, with the server's figures
+    expect(sheet().textContent).toContain("Big price change");
+    expect(sheet().textContent).toContain("rate ×4, charged ×4");
     expect(h.refresh).not.toHaveBeenCalled();
-    await tap(key());
+    expect(h.toast).not.toHaveBeenCalled();
+    const key = within(sheet()).getByRole("button", { name: o.prices.bigConfirm });
+    expect(key.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(key);
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    change(within(sheet()).getByRole("textbox"), "confirm");
+    await tap(key);
     expect(h.fetch).toHaveBeenCalledTimes(2);
     expect(sent(0).body.confirm).toBe(false);
     expect(sent(1).body.confirm).toBe(true);
     expect(h.refresh).toHaveBeenCalledTimes(1);
+    expect(h.toast).toHaveBeenCalledWith("Price saved: custom_thing.");
+  });
+
+  it("cancelling the stale big-change sheet saves nothing", async () => {
+    h.fetch.mockImplementationOnce(async () => jsonRes({ ok: false, error: "confirm_required", rate_ratio: 4, charged_ratio: 4, max_ratio: 3 }, 409));
+    show();
+    fillPrice("1.2");
+    await save();
+    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.priceSaveConfirm }));
+    await tap(within(sheet()).getByRole("button", { name: en.ux.confirmCancel }));
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(h.toast).not.toHaveBeenCalled();
+  });
+
+  it("a plain save says so with a toast, once", async () => {
+    show();
+    fillPrice("1.2");
+    await save();
+    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.priceSaveConfirm }));
+    expect(h.toast).toHaveBeenCalledTimes(1);
+    expect(h.toast).toHaveBeenCalledWith("Price saved: custom_thing.");
   });
 
   it("the reason is optional and is sent when given", async () => {
@@ -423,14 +472,17 @@ describe("CreditPricesEditor through the server", () => {
     expect(sent().body.reason).toBe("supplier raised the price");
   });
 
-  it("delete is a sheet, then one server call that carries the confirm", async () => {
+  it("delete is a sheet, then one server call that carries the confirm and NO leftover reason from the price form", async () => {
     show();
+    change(screen.getByPlaceholderText(o.prices.reasonPh), "typed for a different price");
     const li = screen.getAllByRole("listitem").find((r) => r.textContent?.includes("custom_thing"))!;
     await tap(within(li).getByRole("button", { name: en.credits.removePrice }));
     expect(h.fetch).not.toHaveBeenCalled();
     await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.priceDeleteConfirm }));
     expect(sent()).toEqual({ url: "/api/owner/prices", body: { action: "delete", unit: "custom_thing", confirm: true } });
     expect(h.del).not.toHaveBeenCalled();
+    // and the field is cleared after the action, so it cannot ride on the next one either
+    expect((screen.getByPlaceholderText(o.prices.reasonPh) as HTMLInputElement).value).toBe("");
   });
 
   it("a refusal (bad rate, rate limited) is shown in the sheet", async () => {
@@ -464,7 +516,7 @@ describe("OwnerPriceHistory", () => {
     show([entry({ id: 12, source: "direct", reason: null }), entry({ id: 11, oldRate: null, oldMargin: null, newRate: 1 }), entry({ id: 10 })]);
     const rows = screen.getAllByRole("listitem");
     expect(rows).toHaveLength(3);
-    expect(within(rows[0]).getByRole("button", { name: o.prices.restore })).toBeTruthy();
+    expect(within(rows[0]).getByRole("button", { name: /^Restore the previous price of custom_thing$/ })).toBeTruthy();
     expect(rows[0].textContent).toContain(o.prices.direct);
     expect(rows[0].textContent).toContain("1 → 5");
     expect(rows[1].textContent).toContain(`${o.prices.noPrice} → 1`);
@@ -474,7 +526,7 @@ describe("OwnerPriceHistory", () => {
 
   it("Restore shows the price now and after, is a big-change sheet when the swing is big, and calls the server with the history id", async () => {
     show([entry({ id: 12 })]);
-    await tap(screen.getByRole("button", { name: o.prices.restore }));
+    await tap(screen.getByRole("button", { name: /^Restore the previous price of custom_thing$/ }));
     const dlg = sheet();
     expect(dlg.textContent).toContain("Put “custom_thing” back?");
     expect(within(dlg).getByText("5 → 5")).toBeTruthy(); // now
@@ -491,8 +543,39 @@ describe("OwnerPriceHistory", () => {
 
   it("restoring a change that created the price removes it, and says so", async () => {
     show([entry({ id: 12, oldRate: null, oldMargin: null, newRate: 5 })]);
-    await tap(screen.getByRole("button", { name: o.prices.restore }));
+    await tap(screen.getByRole("button", { name: /^Restore the previous price of custom_thing$/ }));
     expect(sheet().textContent).toContain("restoring removes it again");
+  });
+
+  it("when the server calls a restore big and the screen did not, the big-change sheet opens with the typed word; one more tap does not confirm", async () => {
+    h.fetch
+      .mockImplementationOnce(async () => jsonRes({ ok: false, error: "confirm_required", rate_ratio: 4, charged_ratio: 4, max_ratio: 3 }, 409))
+      .mockImplementation(async () => jsonRes({ ok: true }));
+    show([entry({ id: 12, oldRate: 4, oldMargin: 0, newRate: 5 })]); // 5 -> 4: not big on this screen
+    await tap(screen.getByRole("button", { name: /^Restore the previous price of custom_thing$/ }));
+    expect(sheet().textContent).not.toContain("Big price change");
+    await tap(within(sheet()).getByRole("button", { name: o.prices.restoreConfirm }));
+    expect(sheet().textContent).toContain("rate ×4, charged ×4");
+    const key = within(sheet()).getByRole("button", { name: o.prices.bigConfirm });
+    expect(key.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(key);
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    change(within(sheet()).getByRole("textbox"), "confirm");
+    await tap(key);
+    expect(h.fetch).toHaveBeenCalledTimes(2);
+    expect(sent(0).body.confirm).toBe(false);
+    expect(sent(1).body.confirm).toBe(true);
+    expect(h.toast).toHaveBeenCalledWith("Price restored: custom_thing.");
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("a price changed since the page loaded (price_changed) is refused in the sheet in plain words; nothing is restored", async () => {
+    h.fetch.mockImplementation(async () => jsonRes({ ok: false, error: "price_changed" }, 409));
+    show([entry({ id: 12, oldRate: 4, oldMargin: 0, newRate: 5 })]);
+    await tap(screen.getByRole("button", { name: /^Restore the previous price of custom_thing$/ }));
+    await tap(within(sheet()).getByRole("button", { name: o.prices.restoreConfirm }));
+    expect(within(sheet()).getByRole("alert").textContent).toBe(o.err.price_changed);
+    expect(h.refresh).not.toHaveBeenCalled();
   });
 
   it("an unreadable history says so; an empty one says nothing happened yet", () => {
@@ -609,6 +692,21 @@ describe("ProviderSpendPanel", () => {
     cleanup();
     const partial = render(panel([spendRow({ usd: null, usdPriced: 2, unpricedRows: 1 })]));
     expect(partial.container.textContent).toContain("at least $2.00");
+  });
+
+  it("an unpriced provider whose row count is unknown says unknown and invents no count", () => {
+    const { container } = render(panel([spendRow({ provider: "kling", usd: null, usdPriced: null, unpricedRows: null, units: 4, unit: "video_gen_clips" })]));
+    expect(screen.getAllByText(o.spend.unknown).length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/\\d+ rows? (has|have) no price/);
+    expect(container.textContent).not.toContain("0 rows");
+  });
+
+  it("the title and the groups call the figures estimates, never what a provider charged or billed", () => {
+    const { container } = render(panel([spendRow({ usd: 3.5 }), spendRow({ provider: "render", usd: 9, usdPriced: 9 })]));
+    expect(screen.getByText(o.spend.title)).toBeTruthy();
+    expect(o.spend.title).toMatch(/Estimated/);
+    expect(o.spend.billedTitle).toMatch(/estimated/);
+    expect(container.textContent?.toLowerCase()).not.toMatch(/charged us|billed by/);
   });
 
   it("our own estimates are listed apart from the bills, with their plain names", () => {

@@ -6,7 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { postOperator } from "@/lib/operator-post";
-import { REASON_MAX, REASON_MIN, type ReversibleGrant } from "@/lib/owner-rpc";
+import { REASON_MAX, REASON_MIN, charCount, type ReversibleGrant } from "@/lib/owner-rpc";
 import { ownerFailureText } from "@/lib/owner-rpc-text";
 import { ownerTime } from "@/lib/format";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
@@ -45,7 +45,7 @@ export function OwnerRecentGrants({
   async function review(grant: ReversibleGrant) {
     if (lock.current) return;
     const why = reason.trim();
-    if (why.length < REASON_MIN) {
+    if (charCount(why) < REASON_MIN) {
       setMsg({ ok: false, text: g.reasonShort });
       return;
     }
@@ -127,6 +127,8 @@ export function OwnerRecentGrants({
                       setMsg(null);
                     }}
                     aria-expanded={open === row.id}
+                    aria-controls={`reverse-form-${row.id}`}
+                    aria-label={fmt(g.reverseAria, { credits: formatCredits(row.amount, locale) })}
                     className="btn-quiet btn-danger-quiet min-h-11 shrink-0 text-xs"
                   >
                     {g.reverse}
@@ -134,7 +136,7 @@ export function OwnerRecentGrants({
                 )}
               </div>
               {open === row.id && !row.reversed && (
-                <div className="flex flex-col gap-2">
+                <div id={`reverse-form-${row.id}`} className="flex flex-col gap-2">
                   <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
                     {g.reverseReasonLabel}
                     <textarea
@@ -145,10 +147,10 @@ export function OwnerRecentGrants({
                       onChange={(e) => setReason(e.target.value)}
                       className="ns-field min-w-0"
                     />
-                    <span className="tnum self-end">{fmt(g.reasonCount, { n: reason.trim().length })}</span>
+                    <span className="tnum self-end">{fmt(g.reasonCount, { n: charCount(reason.trim()) })}</span>
                   </label>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => void review(row)} disabled={reason.trim().length < REASON_MIN} className="btn-quiet min-h-11 text-sm disabled:opacity-55">
+                    <button type="button" onClick={() => void review(row)} disabled={charCount(reason.trim()) < REASON_MIN} className="btn-quiet min-h-11 text-sm disabled:opacity-55">
                       {g.reverseReview}
                     </button>
                     <button type="button" onClick={() => setOpen(null)} className="btn-quiet min-h-11 text-sm">

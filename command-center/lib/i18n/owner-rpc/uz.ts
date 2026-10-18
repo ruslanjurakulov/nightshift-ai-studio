@@ -26,6 +26,8 @@ export const ownerRpcUz: OwnerRpcDictionary = {
     bad_note: "Izoh yoki sabab 300 belgidan oshmasligi kerak. Hech narsa oʻzgarmadi.",
     no_such_price: "Bu xizmatda oʻchiriladigan narx yoʻq. Hech narsa oʻzgarmadi.",
     no_such_history: "Tarixda bunday yozuv yoʻq. Hech narsa oʻzgarmadi.",
+    price_changed:
+      "Bu xizmat narxi sahifa yuklangandan keyin oʻzgargan, shuning uchun qaytarilmadi. Sahifani yangilab, avval narxlar tarixini koʻring. Hech narsa oʻzgarmadi.",
     confirm_required:
       "Bu narxning katta oʻzgarishi (narx {rate}, mijoz toʻlovi {charged}; odatiy chegara — {max} martagacha oshish yoki kamayish). Eski va yangi raqamlarni tekshirib, aniq tasdiqlang.",
     bad_role: "Rol owner, admin, editor yoki viewer boʻlishi kerak. Hech narsa oʻzgarmadi.",
@@ -74,6 +76,7 @@ export const ownerRpcUz: OwnerRpcDictionary = {
     recentFailed: "Oxirgi berilgan kreditlarni oʻqib boʻlmadi, shuning uchun hech biri qaytariladigan deb koʻrsatilmaydi.",
     reversedTag: "Qaytarilgan",
     reverse: "Qaytarish",
+    reverseAria: "{credits} kredit berilganini qaytarish",
     reverseReasonLabel: "Qaytarish sababi",
     reverseReview: "Koʻrib chiqish",
     reverseCancel: "Bekor qilish",
@@ -104,8 +107,8 @@ export const ownerRpcUz: OwnerRpcDictionary = {
     limitText: "{max} martagacha oshish yoki kamayish",
     zeroNote: "Nol narx bu xizmatni barcha mijozlar uchun bepul qiladi.",
     wasZeroNote: "Narx avval nol edi.",
-    serverBig:
-      "Server buni katta oʻzgarish deb hisoblaydi: narx {rate}, mijoz toʻlovi {charged}, odatiy chegara {max} marta. Tasdiqlash uchun tugmani yana bosing.",
+    staleNote:
+      "Sahifa yuklangandan keyin narx oʻzgargan, shuning uchun server buni katta oʻzgarish deb hisoblaydi (narx {rate}, mijoz toʻlovi {charged}, odatiy chegara {max} marta). Raqamlarni yana tekshiring.",
     historyTitle: "Narxlar tarixi",
     historyHint: "Har bir oʻzgarish eski va yangi raqamlari bilan. «Qaytarish» xizmatni shu oʻzgarishdan oldingi holatiga qaytaradi.",
     historyEmpty: "Narx oʻzgarishlari hali yozilmagan.",
@@ -117,6 +120,7 @@ export const ownerRpcUz: OwnerRpcDictionary = {
     fromTo: "{from} → {to}",
     noPrice: "narx yoʻq",
     restore: "Qaytarish",
+    restoreAria: "{name} narxini oldingisiga qaytarish",
     restoreTitle: "«{name}» narxi qaytarilsinmi?",
     restoreBody: "{name} shu oʻzgarishdan oldingi holatiga qaytadi. Keyingi ishdan boshlab mijozlardan qaytarilgan narx olinadi.",
     restoreBodyRemove: "Bu oʻzgarish narxni yaratgan edi, shuning uchun qaytarish uni yana olib tashlaydi. {name} narxsiz qoladi.",
@@ -125,12 +129,12 @@ export const ownerRpcUz: OwnerRpcDictionary = {
   },
 
   spend: {
-    title: "Provayderlar bizdan nima undirdi",
+    title: "Provayderlar boʻyicha taxminiy xarajat (xarajatlar jurnalimizdan)",
     subtitle:
-      "Oxirgi {days} kun, xarajatlar jurnalidan, provayderlar kesimida. Narxsiz qator summani nomaʼlum qiladi, hech qachon $0 emas.",
-    billedTitle: "Provayderlar hisobi",
+      "Oxirgi {days} kun. Xarajatlar jurnalimizga yozilgan narxnoma boʻyicha taxminiy hisob-kitob, hisob-faktura emas. Narxsiz qator summani nomaʼlum qiladi, hech qachon $0 emas.",
+    billedTitle: "Provayderlar (taxminiy)",
     estimatesTitle: "Oʻzimizning baholarimiz, provayder hisobi emas",
-    estimatesHint: "Render, stok videolar va boshqa bosqichlarning provayder hisobi yoʻq. Bular yozilgan baholar, agar boʻlsa.",
+    estimatesHint: "Render, stok videolar va boshqa bosqichlarda provayder yoʻq. Bular yozilgan baholar, agar boʻlsa.",
     total: "Jami",
     atLeast: "kamida {usd}",
     unknown: "nomaʼlum",

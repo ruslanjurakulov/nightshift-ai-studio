@@ -7,7 +7,8 @@ import type { ProviderSpend, SpendGroup, SpendSummary } from "@/lib/owner-reads"
 import { ErrorState } from "@/components/ReadError";
 
 /**
- * What the providers charged us over the last N days, from owner_provider_spend (NIGHTSHIFT_OWNER_RPC on).
+ * Estimated spend by provider over the last N days, from owner_provider_spend (NIGHTSHIFT_OWNER_RPC on). The figures are
+ * rate-card estimates recorded in our cost ledger (video_costs.estimated_usd, creative_job_costs.usd_estimate), not invoices.
  *
  * The database adds the cost ledger up by provider, so this is a few dozen rows, not a page of raw ones that PostgREST
  * may cut at its cap. It keeps the rule of the whole Billing page: an unknown is not a zero. A provider with any
@@ -31,6 +32,8 @@ export function ProviderSpendPanel({
   const value = (usdTotal: number | null, atLeast: number | null) =>
     usdTotal !== null ? usd(usdTotal) : atLeast !== null ? fmt(s.atLeast, { usd: usd(atLeast) }) : s.unknown;
   const unpricedText = (n: number) => (n === 1 ? s.unpricedOne : fmt(s.unpriced, { n }));
+  // Only a count the database actually sent is shown; an unknown count is not "0 rows".
+  const hasUnpriced = (n: number | null): n is number => n !== null && n > 0;
 
   const nameOf = (p: ProviderSpend) =>
     p.kind === "estimate" ? ((s.names as Record<string, string>)[p.provider] ?? p.provider) : (p.label ?? p.provider);
@@ -46,7 +49,7 @@ export function ProviderSpendPanel({
           </p>
         </div>
         {hint && <p className="text-xs leading-relaxed text-[var(--color-muted)]">{hint}</p>}
-        {group.usd === null && group.unpricedRows > 0 && <p className="text-xs text-[var(--color-warn)]">{unpricedText(group.unpricedRows)}</p>}
+        {group.usd === null && hasUnpriced(group.unpricedRows) && <p className="text-xs text-[var(--color-warn)]">{unpricedText(group.unpricedRows)}</p>}
         <ul className="flex flex-col">
           {rows.map((p) => (
             <li key={p.provider} className="flex items-start justify-between gap-3 border-t border-[var(--color-border)] py-2.5 first:border-t-0">
@@ -64,7 +67,7 @@ export function ProviderSpendPanel({
               </div>
               <div className="flex shrink-0 flex-col items-end">
                 <p className="tnum text-sm font-semibold text-[var(--color-fg)]">{value(p.usd, p.atLeastUsd)}</p>
-                {p.usd === null && p.unpricedRows > 0 && <p className="text-xs text-[var(--color-warn)]">{unpricedText(p.unpricedRows)}</p>}
+                {p.usd === null && hasUnpriced(p.unpricedRows) && <p className="text-xs text-[var(--color-warn)]">{unpricedText(p.unpricedRows)}</p>}
               </div>
             </li>
           ))}

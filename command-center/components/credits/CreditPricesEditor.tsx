@@ -13,6 +13,7 @@ import { postOperator } from "@/lib/operator-post";
 import { priceBigChange, ratioText, REASON_MAX } from "@/lib/owner-rpc";
 import { ownerFailureText } from "@/lib/owner-rpc-text";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
+import { useToast } from "@/components/feedback/ToastProvider";
 import { relativeTime } from "@/lib/format";
 import {
   LEDGER_UNITS,
@@ -78,6 +79,7 @@ export function CreditPricesEditor({
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const { confirm, dialog } = useConfirm();
+  const toast = useToast();
   const formRef = useRef<HTMLDivElement>(null);
   const rateRef = useRef<HTMLInputElement>(null);
 
@@ -178,59 +180,71 @@ export function CreditPricesEditor({
       { rate: next.creditsPerUnit, margin: next.margin },
       maxRatio,
     );
-    // Set when the server calls it big although the screen did not: the next tap on the same sheet confirms it.
-    let serverSaidBig = false;
     const show = (a: number | null, b: number, f: (n: number) => string) => (a === null || a === b ? f(b) : `${f(a)} → ${f(b)}`);
     const oldFigures = old ? { rate: old.creditsPerUnit, margin: old.margin, charged: chargePerUnit(old) } : null;
     const newFigures = { rate: next.creditsPerUnit, margin: next.margin, charged: chargePerUnit(next) };
-    const details = [
+    const base = [
       { label: t.ownerSafety.dService, value: name === row.unit ? row.unit : `${name} (${row.unit})` },
       { label: t.ownerSafety.dRate, value: show(old?.creditsPerUnit ?? null, next.creditsPerUnit, (n) => figure(n)) },
       { label: t.ownerSafety.dMargin, value: show(old ? old.margin : null, next.margin, (n) => marginOf(row.unit, n)) },
       { label: t.ownerSafety.dCharged, value: show(old ? chargePerUnit(old) : null, chargePerUnit(next), (n) => figure(n, 6)) },
     ];
-    if (big.big) {
-      const rateX = ratioText(big.rateRatio);
-      const chargedX = ratioText(big.chargedRatio);
-      details.push({ label: p.dChange, value: rateX && chargedX ? fmt(p.changeText, { rate: rateX, charged: chargedX }) : row.credits_per_unit === 0 ? p.zeroNote : p.wasZeroNote });
-      details.push({ label: p.dLimit, value: fmt(p.limitText, { max: maxRatio }) });
-    }
     // A big change always asks for something to be typed: the figure when it is long enough to be worth typing, else a word.
-    const typed = big.big ? (priceTypedFigure(oldFigures, newFigures) ?? p.bigWord) : priceTypedFigure(oldFigures, newFigures);
-    const saved = await confirm({
-      title: big.big ? fmt(p.bigTitle, { name }) : fmt(old ? t.ownerSafety.priceChangeTitle : t.ownerSafety.priceSetTitle, { name }),
-      message: big.big ? fmt(p.bigBody, { max: maxRatio }) : t.ownerSafety.priceSaveBody,
-      confirmLabel: big.big ? p.bigConfirm : t.ownerSafety.priceSaveConfirm,
-      tone: big.big ? "danger" : "primary",
-      details,
-      typeToConfirm: typed,
-      successMessage: fmt(t.ownerSafety.priceSaved, { name }),
-      run: async () => {
-        const out = await postOperator("/api/owner/prices", {
-          action: "set",
-          unit: row.unit,
-          rate: row.credits_per_unit,
-          margin: row.margin,
-          reason: reason.trim() || undefined,
-          confirm: big.big || serverSaidBig,
-        });
-        if (out.ok) return true;
-        if (out.data.error === "confirm_required") {
-          // The screen's numbers and the server's disagree (a price changed meanwhile): show the server's and let the
-          // next tap on this same sheet confirm it, explicitly.
-          serverSaidBig = true;
-          const num = (v: unknown) => (typeof v === "number" ? v : null);
-          return fmt(p.serverBig, {
-            rate: ratioText(num(out.data.rate_ratio)) ?? "—",
-            charged: ratioText(num(out.data.charged_ratio)) ?? "—",
-            max: num(out.data.max_ratio) ?? maxRatio,
-          });
-        }
-        return ownerFailureText(t, out, locale, true);
-      },
+    // The same sheet, with the same typing, whether the screen or the server noticed that the change is big.
+    type BigView = { rateX: number | null; chargedX: number | null; max: number };
+    const ask = (view: BigView | null, stale: boolean) => ({
+      title: view ? fmt(p.bigTitle, { name }) : fmt(old ? t.ownerSafety.priceChangeTitle : t.ownerSafety.priceSetTitle, { name }),
+      message: view
+        ? stale
+          ? fmt(p.staleNote, { rate: ratioText(view.rateX) ?? "—", charged: ratioText(view.chargedX) ?? "—", max: view.max })
+          : fmt(p.bigBody, { max: view.max })
+        : t.ownerSafety.priceSaveBody,
+      confirmLabel: view ? p.bigConfirm : t.ownerSafety.priceSaveConfirm,
+      tone: (view ? "danger" : "primary") as "danger" | "primary",
+      details: view
+        ? [
+            ...base,
+            {
+              label: p.dChange,
+              value:
+                ratioText(view.rateX) && ratioText(view.chargedX)
+                  ? fmt(p.changeText, { rate: ratioText(view.rateX) ?? "—", charged: ratioText(view.chargedX) ?? "—" })
+                  : row.credits_per_unit === 0
+                    ? p.zeroNote
+                    : p.wasZeroNote,
+            },
+            { label: p.dLimit, value: fmt(p.limitText, { max: view.max }) },
+          ]
+        : base,
+      typeToConfirm: view ? (priceTypedFigure(oldFigures, newFigures) ?? p.bigWord) : priceTypedFigure(oldFigures, newFigures),
     });
+    // Set when the server calls it big although the screen did not (a stale page): that sheet closes and the big-change
+    // sheet opens, with the typing a locally detected big change needs. One extra tap never confirms it.
+    let staleView: BigView | null = null;
+    const send = (view: BigView | null) => async () => {
+      const out = await postOperator("/api/owner/prices", {
+        action: "set",
+        unit: row.unit,
+        rate: row.credits_per_unit,
+        margin: row.margin,
+        reason: reason.trim() || undefined,
+        confirm: view !== null,
+      });
+      if (out.ok) return true;
+      if (out.data.error === "confirm_required" && view === null) {
+        const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+        staleView = { rateX: num(out.data.rate_ratio), chargedX: num(out.data.charged_ratio), max: num(out.data.max_ratio) ?? maxRatio };
+        return true;
+      }
+      return ownerFailureText(t, out, locale, true);
+    };
+    const localView: BigView | null = big.big ? { rateX: big.rateRatio, chargedX: big.chargedRatio, max: maxRatio } : null;
+    let saved = await confirm({ ...ask(localView, false), run: send(localView) });
+    const again = staleView as BigView | null;
+    if (saved && again) saved = await confirm({ ...ask(again, true), run: send(again) });
     setBusy(false);
     if (!saved) return;
+    toast.success(fmt(t.ownerSafety.priceSaved, { name }));
     setUnit("");
     setRate("");
     setMargin("");
@@ -254,11 +268,14 @@ export function CreditPricesEditor({
       ],
       successMessage: fmt(t.ownerSafety.priceDeleted, { name }),
       run: async () => {
-        const out = await postOperator("/api/owner/prices", { action: "delete", unit: p.unit, reason: reason.trim() || undefined, confirm: true });
+        // No reason is sent: the reason field belongs to the price form, and a delete sheet has no field of its own,
+        // so text left there by an earlier edit must not ride along on a different action.
+        const out = await postOperator("/api/owner/prices", { action: "delete", unit: p.unit, confirm: true });
         return out.ok ? true : ownerFailureText(t, out, locale, true);
       },
     });
     setBusy(false);
+    setReason("");
     if (removed) router.refresh();
   }
 

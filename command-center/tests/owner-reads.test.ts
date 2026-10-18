@@ -122,6 +122,20 @@ describe("coerceProviderSpend", () => {
     expect(out[0]).toMatchObject({ provider: "elevenlabs", usd: 1.5, unpricedRows: 0 });
     expect(out[1]).toMatchObject({ day: null, provider: "gemini", usd: null, usdPriced: null, unpricedRows: 3 });
   });
+  it("an unpriced-row count that is not a number stays unknown (null), never 0", () => {
+    const out = coerceProviderSpend([
+      { day: "2026-10-17", provider: "kling", usd: null, usd_priced: null, unpriced_rows: "many", units: 2, unit: "video_gen_clips" },
+      { day: "2026-10-17", provider: "veo", usd: null, usd_priced: null, units: 2, unit: "video_gen_clips" },
+      { day: "2026-10-17", provider: "gemini", usd: 1, usd_priced: 1, unpriced_rows: "3", units: 2, unit: "gemini_input_tokens" },
+    ])!;
+    expect(out.map((r) => r.unpricedRows)).toEqual([null, null, 3]);
+  });
+  it("and the unknown carries into the provider and the group, which then have no count", () => {
+    const s = summarizeProviderSpend([row({ provider: "kling", usd: null, usdPriced: null, unpricedRows: null }), row({ provider: "gemini", usd: 1, unpricedRows: 0 })]);
+    expect(s.providers.find((p) => p.provider === "kling")!.unpricedRows).toBeNull();
+    expect(s.providers.find((p) => p.provider === "gemini")!.unpricedRows).toBe(0);
+    expect(s.billed.unpricedRows).toBeNull();
+  });
   it("not a list is null, an empty list is an empty list", () => {
     expect(coerceProviderSpend(null)).toBeNull();
     expect(coerceProviderSpend([])).toEqual([]);

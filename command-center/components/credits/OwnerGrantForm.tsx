@@ -9,7 +9,7 @@ import { creditUnit, formatCredits, parseGrantAmount } from "@/lib/credits";
 import { DEFAULT_CREDITS_PER_USD, creditsToUsd, grantTier, typedFigure } from "@/lib/confirm-tier";
 import { formatUsdAmount } from "@/lib/number-format";
 import { postOperator } from "@/lib/operator-post";
-import { REASON_MAX, REASON_MIN, newIdempotencyKey } from "@/lib/owner-rpc";
+import { REASON_MAX, REASON_MIN, charCount, newIdempotencyKey } from "@/lib/owner-rpc";
 import { ownerFailureText } from "@/lib/owner-rpc-text";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 
@@ -71,7 +71,7 @@ export function OwnerGrantForm({
       return;
     }
     const why = reason.trim();
-    if (why.length < REASON_MIN) {
+    if (charCount(why) < REASON_MIN) {
       setMsg({ ok: false, text: g.reasonShort });
       return;
     }
@@ -194,7 +194,7 @@ export function OwnerGrantForm({
           />
           <span className="flex justify-between gap-3">
             <span>{g.reasonHint}</span>
-            <span className="tnum">{fmt(g.reasonCount, { n: reason.trim().length })}</span>
+            <span className="tnum">{fmt(g.reasonCount, { n: charCount(reason.trim()) })}</span>
           </span>
         </label>
         <button

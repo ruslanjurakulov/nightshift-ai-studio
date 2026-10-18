@@ -30,6 +30,8 @@ export const ownerRpcEn = {
     bad_note: "The note or the reason may be at most 300 characters. Nothing was changed.",
     no_such_price: "That service has no price to delete. Nothing was changed.",
     no_such_history: "That history entry does not exist. Nothing was changed.",
+    price_changed:
+      "The price of this service changed after this page was loaded, so it was not restored. Reload the page and look at the price history first. Nothing was changed.",
     confirm_required:
       "This is a big price change (rate {rate}, charged {charged}; the normal limit is {max}× up or down). Check the old and new figures, then confirm it explicitly.",
     bad_role: "The role must be owner, admin, editor or viewer. Nothing was changed.",
@@ -79,6 +81,7 @@ export const ownerRpcEn = {
     recentFailed: "Could not read the recent grants, so none is shown as reversible.",
     reversedTag: "Reversed",
     reverse: "Reverse",
+    reverseAria: "Reverse the grant of {credits} credits",
     reverseReasonLabel: "Reason for taking it back",
     reverseReview: "Review",
     reverseCancel: "Cancel",
@@ -110,8 +113,7 @@ export const ownerRpcEn = {
     limitText: "{max}× up or down",
     zeroNote: "A rate of zero makes this service free for every customer.",
     wasZeroNote: "The price was zero.",
-    serverBig:
-      "The server treats this as a big change: rate {rate}, charged {charged}, normal limit {max}×. Tap the button again to confirm it.",
+    staleNote: "The price changed since this page was loaded, so the server treats this as a big change (rate {rate}, charged {charged}, normal limit {max}×). Check the figures again.",
     historyTitle: "Price history",
     historyHint: "Every change with the old and the new figures. Restore puts a service back to what it was before that change.",
     historyEmpty: "No price changes recorded yet.",
@@ -123,6 +125,7 @@ export const ownerRpcEn = {
     fromTo: "{from} → {to}",
     noPrice: "no price",
     restore: "Restore",
+    restoreAria: "Restore the previous price of {name}",
     restoreTitle: "Put “{name}” back?",
     restoreBody: "{name} goes back to what it was before this change. Customers are charged the restored rate from the next run.",
     restoreBodyRemove: "This change created the price, so restoring removes it again. {name} will have no price.",
@@ -130,14 +133,14 @@ export const ownerRpcEn = {
     restoreDone: "Price restored: {name}.",
   },
 
-  // Billing: what the providers charged us
+  // Billing: estimated spend by provider
   spend: {
-    title: "What providers charged us",
+    title: "Estimated spend by provider (from our cost ledger)",
     subtitle:
-      "Last {days} days, from the cost ledger, by provider. A row with no price makes the figure unknown, never $0.",
-    billedTitle: "Billed by providers",
+      "Last {days} days. Rate-card estimates recorded in our cost ledger, not invoices. A row with no price makes the figure unknown, never $0.",
+    billedTitle: "Providers (estimated)",
     estimatesTitle: "Our own estimates, not provider bills",
-    estimatesHint: "Rendering, stock footage and other steps have no provider bill. These are the estimates that were recorded, if any.",
+    estimatesHint: "Rendering, stock footage and other steps have no provider. These are the estimates that were recorded, if any.",
     total: "Total",
     atLeast: "at least {usd}",
     unknown: "unknown",

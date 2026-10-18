@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   OWNER_REFUSALS,
+  charCount,
   granted24h,
   isOwnerGrant,
   isOwnerRefusal,
@@ -347,6 +348,86 @@ describe("which grants can be reversed, and what the 24 hour cap has used", () =
     const rows = [row(1, { amount: 100 }), row(2, { amount: 50, org_id: "other" }), row(3, { amount: 999, created_at: hoursAgo(25) }), row(4, { amount: 7, external_id: "welcome:x" })];
     expect(granted24h(rows, NOW)).toBe(150);
     expect(granted24h([], NOW)).toBe(0);
+  });
+});
+
+describe("characters are counted the way Postgres counts them (code points)", () => {
+  it("an emoji is one character, not two", () => {
+    expect(charCount("a😀")).toBe(2);
+    expect("a😀".length).toBe(3);
+    expect(charCount("é")).toBe(1);
+  });
+  it("eight emoji are a long enough reason, seven are not, and 300 are not too long", () => {
+    expect(reasonOk("😀".repeat(8))).toBe(true);
+    expect(reasonOk("😀".repeat(7))).toBe(false);
+    expect(reasonOk("😀".repeat(300))).toBe(true);
+    expect(reasonOk("😀".repeat(301))).toBe(false);
+  });
+  it("parseGrant and the optional reason on prices and team use the same count", () => {
+    const grant = { org: ORG, credits: 5, key: KEY };
+    expect(parseGrant({ ...grant, reason: "😀".repeat(8) }).ok).toBe(true);
+    expect(parseGrant({ ...grant, reason: "😀".repeat(7) })).toEqual({ ok: false, error: "reason_required" });
+    expect(parsePrice({ action: "delete", unit: "usd", reason: "😀".repeat(300) }).ok).toBe(true);
+    expect(parsePrice({ action: "delete", unit: "usd", reason: "😀".repeat(301) })).toEqual({ ok: false, error: "bad_note" });
+    expect(parseTeam({ action: "remove", member: MEMBER, reason: "😀".repeat(300) }).ok).toBe(true);
+  });
+});
+
+describe("the arguments the routes send are the ones the SQL functions declare", () => {
+  const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0107_owner_safety.sql"), "utf8");
+  /** `p_name` parameters of `create or replace function public.<fn>(...) returns`. */
+  const declared = (fn: string): string[] => {
+    const m = new RegExp(`create or replace function public\\.${fn}\\(([\\s\\S]*?)\\)\\s*returns`).exec(sql);
+    expect(m, `${fn} is declared in 0107`).toBeTruthy();
+    return [...m![1].matchAll(/\b(p_[a-z0-9_]+)\s+[a-z]/g)].map((x) => x[1]).sort();
+  };
+  const good = [
+    parseGrant({ org: ORG, credits: 5, reason: WHY, key: KEY }),
+    parseReverse({ transactionId: 4, reason: WHY }),
+    parsePrice({ action: "set", unit: "usd", rate: 1, margin: 0 }),
+    parsePrice({ action: "delete", unit: "usd" }),
+    parsePrice({ action: "restore", historyId: 3 }),
+    parseTeam({ action: "add", email: "a@b.uz", role: "viewer" }),
+    parseTeam({ action: "role", member: MEMBER, role: "viewer" }),
+    parseTeam({ action: "remove", member: MEMBER }),
+  ];
+
+  it.each(good.map((g) => (g.ok ? g.call : null)))("%j", (call) => {
+    expect(call).not.toBeNull();
+    expect(Object.keys(call!.args).sort(), call!.fn).toEqual(declared(call!.fn));
+  });
+
+  it("covers every owner function a screen calls", () => {
+    expect(good.every((g) => g.ok)).toBe(true);
+    expect(new Set(good.map((g) => (g.ok ? g.call.fn : ""))).size).toBe(8);
+  });
+
+  it("the read helpers call functions that exist, with their declared argument", () => {
+    expect(declared("owner_security_events")).toEqual(["p_limit"]);
+    expect(declared("owner_security_get")).toEqual([]);
+    const spend = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0106_video_costs_idempotent.sql"), "utf8");
+    expect(spend).toMatch(/create or replace function public\.owner_provider_spend\(p_days integer/);
+  });
+});
+
+describe("the order of the route's checks", () => {
+  it("origin, then the flag, then who is asking, then the role, then the app second factor, then the body, then the database", () => {
+    const src = readFileSync(join(__dirname, "..", "lib", "server", "owner-rpc.ts"), "utf8");
+    const at = (needle: string) => {
+      const i = src.indexOf(needle);
+      expect(i, needle).toBeGreaterThan(-1);
+      return i;
+    };
+    const order = [
+      at("rejectCrossOrigin(request)"),
+      at("if (!ownerRpcOn())"),
+      at("await getUser()"),
+      at('await requireRole("admin")'),
+      at("await guardAdminPost(request, user)"),
+      at("await parseJsonCapped(request)"),
+      at("await supabase.rpc("),
+    ];
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 });
 
