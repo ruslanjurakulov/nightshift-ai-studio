@@ -320,8 +320,9 @@ class TerminateKillsTheWholeGroup(unittest.TestCase):
         import signal  # noqa: PLC0415
         import subprocess  # noqa: PLC0415
         w = qw.Worker(FakeQueue([]), worker_id="w1", env={}, repo_dir=ROOT, prelude=[], kill_after_seconds=2)
-        # The leader prints its helper's pid and exits at once; the helper stays in its group.
-        proc = subprocess.Popen(["sh", "-c", "sleep 300 & echo $!"], stdout=subprocess.PIPE, text=True,
+        # The leader prints its helper's pid and exits at once; the helper (which ignores
+        # SIGTERM) stays in its group, so only the SIGKILL after the grace removes it.
+        proc = subprocess.Popen(["sh", "-c", "trap '' TERM; sleep 300 & echo $!"], stdout=subprocess.PIPE, text=True,
                                 start_new_session=True)
         helper = int(proc.stdout.readline())
         proc.wait()
