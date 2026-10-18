@@ -367,6 +367,19 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
     return allowed
 
 
+def _preflight_pictures(ctx, series_obj, channel_id) -> None:
+    """Raise (after recording the failure) when generated stills or a presenter
+    were asked for but cannot be made. Makes no request."""
+    try:
+        image_providers.preflight()
+        preflight_avatar(resolve_avatar_config(ctx, series_obj))
+    except (image_providers.ImageProviderUnavailable, AvatarUnavailable, UnsafeAvatarRequest) as e:
+        logger.error("Generated pictures or presenter not usable for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="media_preflight", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}", "stage": "preflight"})
+        raise
+
+
 def run(
     niche: str | None = None,
     topic: str | None = None,
@@ -554,18 +567,10 @@ def run(
         raise
 
     # ── Stage 0c': image generator and presenter, same reasoning
-    # An image generator or a presenter that was asked for but cannot be used
-    # (unknown provider, missing key/credentials) stops the run here, before the
-    # script is paid for, instead of quietly becoming stock stills / a faceless
-    # cut (CLAUDE.md #4). Config only: no request is made.
-    try:
-        image_providers.preflight()
-        preflight_avatar(resolve_avatar_config(ctx, series_obj))
-    except (image_providers.ImageProviderUnavailable, AvatarUnavailable, UnsafeAvatarRequest) as e:
-        logger.error("Generated pictures or presenter not usable for channel %s: %s", channel_id, e)
-        events.emit(events.AGENT_FAILED, agent="media_preflight", status=events.STATUS_FAILED,
-                    channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}", "stage": "preflight"})
-        raise
+    # Asked for but unusable (unknown provider, missing key/credentials) stops
+    # the run here, before the script is paid for, instead of quietly becoming
+    # stock stills / a faceless cut (CLAUDE.md #4). Config only: no request.
+    _preflight_pictures(ctx, series_obj, channel_id)
 
     # ── Stage 0d: Channel DNA's style kit and characters
     # Read now, before anything is paid for: a kit or character the generated
@@ -897,6 +902,29 @@ def run(
         parts = [s for s in (director_style.get(i), element_style.get(i)) if s]
         return "; ".join(parts) if parts else None
 
+    # Stills go BEFORE b-roll: they are cheap and share no state with the clips, so a
+    # refused image key stops the run before any clip is paid for.
+    # Optional: generate on-topic stills with the selected image provider
+    # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
+    # are set; a model that returns nothing falls back to stock, a refusal stops the run.
+    try:
+        gen_images = fetcher.generate_images(
+            script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
+            size=render_fmt.image_size)
+    except image_providers.ImageProviderUnavailable as e:
+        # The generator that was chosen refused (credentials, quota, policy):
+        # stop with the remedy instead of shipping stock stills (CLAUDE.md #4).
+        logger.error("Generated images failed for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="image_providers", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "images"})
+        raise
+    if gen_images:
+        from modules import image_providers as _img
+        images = list(gen_images) + list(images)
+        costs.add(IMAGE_GENERATIONS, len(gen_images), stage=f"image:{_img.active_provider()}")
+        events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id,
+                    metadata={"generated": len(gen_images), "provider": _img.active_provider()})
     # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
     # supplementing the stock above. Off unless a key + flag are set, in which
     # case it makes no request and changes nothing. Generated clips join the
@@ -922,27 +950,6 @@ def run(
         costs.add(VIDEO_GEN_CLIPS, broll.newly_generated, stage=f"broll:{_vp.active_provider()}")
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata=broll.to_dict())
-    # Optional: generate on-topic stills with the selected image provider
-    # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
-    # are set; a model that returns nothing falls back to stock, a refusal stops the run.
-    try:
-        gen_images = fetcher.generate_images(
-            script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
-            size=render_fmt.image_size)
-    except image_providers.ImageProviderUnavailable as e:
-        # The generator that was chosen refused (credentials, quota, policy):
-        # stop with the remedy instead of shipping stock stills (CLAUDE.md #4).
-        logger.error("Generated images failed for channel %s: %s", channel_id, e)
-        events.emit(events.AGENT_FAILED, agent="image_providers", status=events.STATUS_FAILED,
-                    channel_id=channel_id, metadata={"error": str(e), "stage": "images"})
-        raise
-    if gen_images:
-        from modules import image_providers as _img
-        images = list(gen_images) + list(images)
-        costs.add(IMAGE_GENERATIONS, len(gen_images), stage=f"image:{_img.active_provider()}")
-        events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
-                    channel_id=channel_id,
-                    metadata={"generated": len(gen_images), "provider": _img.active_provider()})
     logger.info("Media: %d videos (%d AI-generated), %d images (%d AI-generated)",
                 len(videos), broll.generated, len(images), len(gen_images))
     # The baseline Whisper is about to be loaded on top of, and the number

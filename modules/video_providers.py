@@ -502,6 +502,21 @@ class GenericAsyncVideoClient:
     POLL_RETRIES = 3
     POLL_BACKOFF_CAP_S = 60.0
 
+    @staticmethod
+    def _retry_after(resp) -> Optional[float]:
+        try:
+            value = resp.headers.get("Retry-After")
+            return max(0.0, float(value)) if value not in (None, "") else None
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    def _task_not_found(self, task_id: str) -> VideoModelUnavailable:
+        return VideoModelUnavailable(
+            self.cfg.name, self.cfg.model,
+            "task not found at the provider (expired or wrong endpoint)",
+            f"check the {self.cfg.name} query endpoint settings. If task {task_id} has expired, drop it "
+            "from output/<slug>/provider_tasks.json (or start a new run); it may already have been billed")
+
     def _await(self, task_id: str, *, max_attempts: Optional[int] = None,
                interval: float = 5.0) -> tuple[str, Optional[str], str]:
         """Poll until the job settles: ``(succeeded, url, "")``, ``(failed,
@@ -509,26 +524,48 @@ class GenericAsyncVideoClient:
         when it is still running or we could not tell (kept for a later poll,
         never re-paid).
 
-        A poll the provider refuses for good (401/402/403/404, or the vendor's
-        own auth / quota / not-found code in the body) raises
+        A poll the provider refuses for good (401/402/403, or the vendor's own
+        auth / quota / not-found code in the body) raises
         ``VideoModelUnavailable`` straight away: waiting cannot fix it, and the
-        task id stays in the ledger. A transient failure (429, 5xx, timeout, an
-        unreadable answer) is retried ``POLL_RETRIES`` times with a bounded
-        backoff before the task is left pending. ``max_attempts`` defaults to
-        the provider's own window (``cfg.poll_window_s``)."""
+        task id stays in the ledger. A 404 gets one retry first (a task is
+        sometimes not yet visible right after submit) and is then reported as
+        "task not found". A transient failure (429, 5xx, timeout, an unreadable
+        answer) is retried ``POLL_RETRIES`` times with a bounded backoff (a
+        ``Retry-After`` header is honoured, capped) before the task is left
+        pending.
+
+        The wait is bounded by the clock as well as by the attempt count: no
+        more than the window (``max_attempts`` x ``interval``, by default the
+        provider's ``cfg.poll_window_s``) plus one backoff, however a flapping
+        provider answers. Worst case for a whole video: 2 clips x (window + one
+        backoff), e.g. about 32 min for Veo or Kling, which the queue worker's
+        job deadline (``WORKER_JOB_TIMEOUT_SECONDS``, 3300 s by default) must
+        leave room for; the heartbeat keeps the job alive while it waits."""
         url, params = self._query_url(task_id)
         if max_attempts is None:
             max_attempts = int(self.cfg.poll_window_s / interval) if interval > 0 else 1
+        attempts = max(1, max_attempts)
+        deadline = time.monotonic() + attempts * max(0.0, interval) + self.POLL_BACKOFF_CAP_S
         failures = 0
-        for _ in range(max(1, max_attempts)):
+        retried_404 = False
+        for _ in range(attempts):
+            if time.monotonic() > deadline:
+                break
+            retry_after = None
             try:
                 resp = self.session.get(url, params=params, headers=self._auth_headers(),
                                         timeout=self.timeout)
                 status = resp.status_code
+                retry_after = self._retry_after(resp)
                 try:
                     data = resp.json()
                 except ValueError:
                     data = None
+                if status == 404:
+                    if not retried_404:
+                        retried_404 = True
+                        raise _TransientPoll("HTTP 404")
+                    raise self._task_not_found(task_id)
                 if status in self._POLL_FATAL:
                     category, code, message = self._error_of(data)
                     raise self._reject(status=status, category=category, code=code, message=message)
@@ -537,7 +574,9 @@ class GenericAsyncVideoClient:
                 state, file_url, reason = self._state_of(data)
                 if state == OUTCOME_PENDING:
                     category, code, message = self._error_of(data)
-                    if category in (AUTH, QUOTA, NOT_FOUND):
+                    if category == NOT_FOUND:
+                        raise self._task_not_found(task_id)
+                    if category in (AUTH, QUOTA):
                         raise self._reject(category=category, code=code, message=message)
                     if category in (RATE, UNAVAILABLE):
                         raise _TransientPoll(category)
@@ -551,7 +590,10 @@ class GenericAsyncVideoClient:
                     return OUTCOME_PENDING, None, ""
                 logger.warning("%s poll failed (%s), retry %d of %d", self.cfg.name,
                                type(e).__name__, failures, self.POLL_RETRIES)
-                time.sleep(min(self.POLL_BACKOFF_CAP_S, max(0.0, interval) * 2 ** failures))
+                wait = max(0.0, interval) * 2 ** failures
+                if retry_after is not None:
+                    wait = max(wait, retry_after)
+                time.sleep(min(self.POLL_BACKOFF_CAP_S, wait))
                 continue
             failures = 0
             reason = _clean(reason, self._secrets())

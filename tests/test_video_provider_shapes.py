@@ -702,8 +702,7 @@ class PollClassificationTestCase(unittest.TestCase):
     transient one is retried with backoff; neither loses the ledgered task."""
 
     def test_permanent_statuses_raise_on_the_first_poll(self):
-        for status, needle in ((401, "credentials"), (402, "quota"), (403, "credentials"),
-                               (404, "does not know")):
+        for status, needle in ((401, "credentials"), (402, "quota"), (403, "credentials")):
             with self.subTest(status=status):
                 client = _generic_client()
                 client.session = FakeSession(gets=[FakeResp({}, status=status)])
@@ -712,6 +711,51 @@ class PollClassificationTestCase(unittest.TestCase):
                 self.assertIn(needle, str(ctx.exception))
                 self.assertEqual(len(client.session.calls), 1)   # no retry, no waiting
                 _assert_no_secret(self, ctx.exception)
+
+    def test_a_404_is_retried_once_then_reported_as_task_not_found(self):
+        client = _generic_client()
+        client.session = FakeSession(gets=[FakeResp({}, status=404), FakeResp({}, status=404)])
+        with _no_sleep(), self.assertRaises(VideoModelUnavailable) as ctx:
+            client._await("k-1")
+        self.assertIn("task not found at the provider (expired or wrong endpoint)", str(ctx.exception))
+        self.assertIn("provider_tasks.json", ctx.exception.remedy)
+        self.assertEqual(len(client.session.calls), 2)
+
+    def test_a_404_right_after_submit_that_clears_is_fine(self):
+        ok = FakeResp({"code": 0, "data": {"task_status": "succeed", "task_result": {
+            "videos": [{"url": "https://cdn.test/v.mp4"}]}}})
+        client = _generic_client()
+        client.session = FakeSession(gets=[FakeResp({}, status=404), ok])
+        with _no_sleep():
+            self.assertEqual(client._await("k-1")[0], OUTCOME_SUCCEEDED)
+
+    def test_retry_after_is_honoured_and_capped(self):
+        ok = FakeResp({"code": 0, "data": {"task_status": "succeed", "task_result": {
+            "videos": [{"url": "https://cdn.test/v.mp4"}]}}})
+        for header, expected in (("25", 25.0), ("9999", vp.GenericAsyncVideoClient.POLL_BACKOFF_CAP_S),
+                                 ("1", 10.0)):
+            with self.subTest(header=header):
+                client = _generic_client()
+                client.session = FakeSession(gets=[FakeResp({}, status=429, headers={"Retry-After": header}), ok])
+                sleeps = []
+                with mock.patch("time.sleep", sleeps.append):
+                    self.assertEqual(client._await("k-1", interval=5.0)[0], OUTCOME_SUCCEEDED)
+                self.assertEqual(sleeps, [expected])
+
+    def test_the_poll_is_bounded_by_the_clock_not_only_by_the_attempt_count(self):
+        # A provider that flaps between a good "running" answer and a failure never trips the
+        # 3-in-a-row limit; the deadline (window + one backoff) still ends the wait.
+        running = FakeResp({"code": 0, "data": {"task_status": "processing"}})
+        client = _generic_client()
+        client.session = FakeSession(gets=[running] * 1000)
+        now = [0.0]
+        def tick(seconds):
+            now[0] += seconds + 40          # each sleep costs more than it asked (slow network)
+        with mock.patch("time.monotonic", lambda: now[0]), mock.patch("time.sleep", tick):
+            state = client._await("k-1", max_attempts=100, interval=5.0)[0]
+        self.assertEqual(state, OUTCOME_PENDING)
+        self.assertLess(len(client.session.calls), 100)
+        self.assertLessEqual(now[0], 100 * 5.0 + vp.GenericAsyncVideoClient.POLL_BACKOFF_CAP_S + 45)
 
     def test_a_vendor_quota_code_in_a_200_poll_raises(self):
         client = _generic_client()

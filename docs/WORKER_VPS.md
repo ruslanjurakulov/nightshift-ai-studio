@@ -121,6 +121,9 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # NIGHTSHIFT_EXPECT_TTS=elevenlabs  (run stops at its start if ELEVENLABS_API_KEY is missing, instead of using the free Edge voice)
 # NIGHTSHIFT_RENDER_THREADS=
 # CHRONOS_VIDEO_PROVIDER=  CHRONOS_ENABLE_VIDEO_GEN=
+#   CHRONOS_ENABLE_VIDEO_GEN=true requires the chosen provider's key; with the default provider (minimax)
+#   it also requires CHRONOS_ENABLE_MINIMAX_BROLL. Otherwise the run stops at its start (no silent stock footage).
+#   Poll windows: Veo/Kling 15 min, Seedance/Wan 10 min per clip, max 2 clips: keep the worker job deadline above that.
 # CHRONOS_IMAGE_PROVIDER=  CHRONOS_ENABLE_IMAGE_GEN=
 # MINIMAX_API_KEY= HIGGSFIELD_API_KEY= KLING_API_KEY= VEO_API_KEY= SEEDANCE_API_KEY= WAN_API_KEY=
 # MiniMax go-live: the default model MiniMax-H3 will not start without MINIMAX_V2_QUERY_PATH (unconfirmed);

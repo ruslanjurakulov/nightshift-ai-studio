@@ -103,7 +103,7 @@ def verify_voice(channel=None) -> None:
     agent = channel.agent if channel is not None else None
     provider = agent.tts_provider if agent else TTS_PROVIDER
     if provider != "elevenlabs":
-        _refuse_default_edge()
+        _refuse_default_edge(explicit=getattr(agent, "tts_provider_explicit", False) is True)
         return
 
     voice_id = narrator_voice(agent)
@@ -147,7 +147,7 @@ def verify_voice(channel=None) -> None:
     _verify_characters_left(agent)
 
 
-def _refuse_default_edge() -> None:
+def _refuse_default_edge(*, explicit: bool = False) -> None:
     """The run resolved to the free Edge voice, but ElevenLabs was expected.
 
     ``config.TTS_PROVIDER`` is "edge" whenever the key is empty and nothing set
@@ -156,15 +156,18 @@ def _refuse_default_edge() -> None:
     expects ElevenLabs (``NIGHTSHIFT_EXPECT_TTS=elevenlabs``), or this run was
     given an ElevenLabs voice on the Create page, a missing key stops the run
     at its start rather than narrating in the robot voice (CLAUDE.md #4).
-    An explicit ``TTS_PROVIDER`` (e.g. ``edge`` on purpose) is respected."""
-    if ELEVENLABS_API_KEY or TTS_PROVIDER_EXPLICIT:
+    Edge chosen on purpose is respected: a global ``TTS_PROVIDER`` or the
+    channel's own saved provider (``explicit``)."""
+    if ELEVENLABS_API_KEY or TTS_PROVIDER_EXPLICIT or explicit:
         return
     if EXPECT_TTS_PROVIDER == "elevenlabs" or ELEVENLABS_RUN_VOICE_ID:
         raise VoiceUnavailable(
             "This run expects ElevenLabs narration (NIGHTSHIFT_EXPECT_TTS or a voice chosen for "
             "this run), but ELEVENLABS_API_KEY is empty, so it would fall back to the free Edge "
-            "voice. Add the key to the worker's environment (and redeploy), or set TTS_PROVIDER=edge "
-            "on purpose. Refusing to narrate in a different voice than expected."
+            "voice. Add the key to the worker's environment (and redeploy). If this channel should "
+            "narrate with Edge, set that in the channel's own voice settings; only if the whole "
+            "deployment should, unset NIGHTSHIFT_EXPECT_TTS and set TTS_PROVIDER=edge. "
+            "Refusing to narrate in a different voice than expected."
         )
 
 
@@ -324,9 +327,11 @@ class AudioMixer:
 
     async def _tts_edge(self, text: str, voice: str, out_path: Path):
         communicate = edge_tts.Communicate(text, voice)
-        part = out_path.with_name(out_path.name + ".part")
+        part = out_path.with_name(f"{out_path.name}.{os.getpid()}.part")
         try:
             await communicate.save(str(part))
+            if part.stat().st_size == 0:
+                raise RuntimeError("Edge TTS returned an empty audio stream")
             os.replace(part, out_path)
         finally:
             part.unlink(missing_ok=True)
@@ -335,7 +340,7 @@ class AudioMixer:
         from elevenlabs import ElevenLabs, VoiceSettings  # lazy import
 
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-        part = out_path.with_name(out_path.name + ".part")
+        part = out_path.with_name(f"{out_path.name}.{os.getpid()}.part")
         # eleven_v3 accepts only the stability presets 0.0 / 0.5 / 1.0
         # (creative / natural / robust); the others take any value.
         stability = 0.5 if self.elevenlabs_model == "eleven_v3" else 0.45
@@ -352,6 +357,11 @@ class AudioMixer:
             with open(part, "wb") as f:
                 for chunk in audio:
                     f.write(chunk)
+            if part.stat().st_size == 0:
+                raise VoiceUnavailable(
+                    f"ElevenLabs returned an empty audio stream for voice {voice_id!r}. No segment is "
+                    "cached and no other voice is substituted; re-run, and check the account's status "
+                    "if it repeats.")
             os.replace(part, out_path)
         except Exception as e:
             part.unlink(missing_ok=True)

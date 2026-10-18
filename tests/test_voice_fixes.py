@@ -2,6 +2,7 @@
 free voice, a short account is found before anything is paid, and the TTS cache
 never holds half a segment. No network, no SDK."""
 
+import os
 import sys
 import tempfile
 import unittest
@@ -49,6 +50,28 @@ class ExpectedElevenLabsMissingKey(unittest.TestCase):
     @patch("modules.audio_mixer.EXPECT_TTS_PROVIDER", "elevenlabs")
     def test_an_explicit_tts_provider_is_respected(self):
         verify_voice(channel("edge"))
+
+    @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "")
+    @patch("modules.audio_mixer.TTS_PROVIDER_EXPLICIT", False)
+    @patch("modules.audio_mixer.EXPECT_TTS_PROVIDER", "elevenlabs")
+    def test_a_channel_that_chose_edge_on_purpose_is_not_blocked(self):
+        ctx = channel("edge")
+        ctx.agent.tts_provider_explicit = True
+        verify_voice(ctx)
+
+    @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "")
+    @patch("modules.audio_mixer.TTS_PROVIDER_EXPLICIT", False)
+    @patch("modules.audio_mixer.EXPECT_TTS_PROVIDER", "elevenlabs")
+    def test_the_remedy_does_not_tell_the_operator_to_flip_the_global_provider(self):
+        with self.assertRaises(VoiceUnavailable) as caught:
+            verify_voice(channel("edge"))
+        self.assertIn("channel's own voice settings", str(caught.exception))
+
+    def test_a_channel_row_records_whether_it_named_its_provider(self):
+        from modules.channels import AgentConfig
+        self.assertTrue(AgentConfig.from_dict({"tts_provider": "edge"}).tts_provider_explicit)
+        self.assertFalse(AgentConfig.from_dict({}).tts_provider_explicit)
+        self.assertNotIn("tts_provider_explicit", AgentConfig.from_dict({"tts_provider": "edge"}).to_dict())
 
     @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "")
     @patch("modules.audio_mixer.TTS_PROVIDER_EXPLICIT", False)
@@ -145,7 +168,7 @@ class TtsCacheIsAtomic(unittest.TestCase):
     def test_the_segment_is_written_beside_the_cache_name_and_moved_when_complete(self):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "seg.mp3"
-            part = Path(d) / "seg.mp3.part"
+            part = Path(d) / f"seg.mp3.{os.getpid()}.part"     # pid-suffixed: two workers never share one
             seen = {}
 
             def convert(**kw):
@@ -186,10 +209,23 @@ class TtsCacheIsAtomic(unittest.TestCase):
             with patch.object(AudioMixer, "_tts_elevenlabs", fake_tts):
                 seg = Path(m._render_segment("hello world", "main"))
                 seg.unlink()
-                Path(str(seg) + ".part").write_bytes(b"cut")        # what a kill leaves behind
+                Path(f"{seg}.12345.part").write_bytes(b"cut")       # what a kill leaves behind
                 again = Path(m._render_segment("hello world", "main"))
             self.assertEqual(again.read_bytes(), b"whole")
             self.assertEqual(len(rendered), 2)                      # re-synthesized, not reused
+
+    def test_an_empty_stream_raises_instead_of_caching_a_silent_segment(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "seg.mp3"
+
+            def convert(**kw):
+                return iter(())              # the API answered 200 with no audio
+
+            with _sdk(convert), patch.object(audio_mixer, "ELEVENLABS_API_KEY", "k"):
+                with self.assertRaises(VoiceUnavailable) as caught:
+                    _mixer(d)._tts_elevenlabs("hello", "pNInz6obpgDQGcFmaJgB", out)
+            self.assertIn("empty audio stream", str(caught.exception))
+            self.assertEqual(list(Path(d).iterdir()), [])
 
     def test_an_empty_cache_file_is_deleted_and_rendered_again(self):
         with tempfile.TemporaryDirectory() as d:

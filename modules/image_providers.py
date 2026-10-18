@@ -58,38 +58,92 @@ class ImageProviderUnavailable(RuntimeError):
         super().__init__(f"{provider} ({model or 'no model'}): {reason}. Fix: {remedy}")
 
 
-_QUOTA_WORDS = ("quota", "billing", "insufficient", "credit", "balance", "payment")
-_POLICY_WORDS = ("moderat", "content_policy", "content policy", "safety", "policy violation")
+# Vendor wording, by what it tells us. Only structured / unambiguous phrases
+# count as "the account is out of money": several vendors put a billing
+# pointer at the tail of an ordinary per-minute rate-limit message, so the
+# bare words "quota" or "billing" prove nothing.
+_HARD_QUOTA = ("insufficient_quota", "billing_hard_limit", "exhausted balance", "insufficient balance",
+               "insufficient credit", "insufficient funds", "out of credits", "no credits",
+               "requestsperday", "per day", "perday", "daily")
+_TRANSIENT = ("per minute", "perminute", "retry in", "try again in", "rate limit reached",
+              "requests per", "too many requests", "slow down")
+_POLICY_WORDS = ("moderat", "content_policy", "content policy", "safety system", "safety_violation",
+                 "policy violation")
 
 _REFUSALS = {
     "auth": ("refused the credentials",
              "check the provider's API key on the worker; a key for another account or region is refused"),
-    "quota": ("refused the request for quota or billing",
+    "quota": ("refused the request for quota, balance or billing",
               "top up the provider account (or wait for its limit to reset), then re-run"),
     "policy": ("refused the prompt under its content policy",
-               "reword the section keywords that fed the prompt, then re-run"),
+               "generated stills are optional extras: turn image generation off for this run "
+               "(CHRONOS_ENABLE_IMAGE_GEN), or change the topic wording, then re-run"),
 }
+
+#: The longest a single 429 is waited out (once) before the image is left to stock.
+RETRY_AFTER_CAP_S = 30.0
+
+
+def _body_text(resp) -> str:
+    text = getattr(resp, "text", "")
+    return text[:2000].lower() if isinstance(text, str) else ""
+
+
+def _retry_after(resp) -> Optional[float]:
+    headers = getattr(resp, "headers", None)
+    try:
+        value = headers.get("Retry-After") if headers is not None else None
+        return max(0.0, float(value)) if value not in (None, "") else None
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _is_transient_429(resp) -> bool:
+    """A 429 that waiting fixes: a per-minute limit ("retry in 27s", "try again
+    in 12s") or one that carries ``Retry-After``. A daily / billing form is not."""
+    text = _body_text(resp)
+    if any(w in text for w in _HARD_QUOTA):
+        return False
+    return _retry_after(resp) is not None or any(w in text for w in _TRANSIENT)
 
 
 def refusal_category(error: Exception) -> Optional[str]:
     """``auth`` / ``quota`` / ``policy`` when ``error`` is an HTTP refusal that
-    re-running will not fix, else ``None`` (timeouts, 5xx, odd responses stay
-    soft). Reads the status and, for 400/422/429, a bounded slice of the body."""
+    re-running will not fix, else ``None`` (timeouts, 5xx, per-minute 429s, odd
+    responses stay soft). Reads the status and a bounded slice of the body."""
     resp = getattr(error, "response", None)
     status = getattr(resp, "status_code", None)
     if isinstance(status, bool) or not isinstance(status, int):
         return None
-    if status in (401, 403):
-        return "auth"
+    text = _body_text(resp)
+    if "billing_hard_limit" in text or "insufficient_quota" in text:
+        return "quota"
     if status == 402:
         return "quota"
-    text = getattr(resp, "text", "")
-    text = text[:2000].lower() if isinstance(text, str) else ""
-    if status == 429 and any(w in text for w in _QUOTA_WORDS):
-        return "quota"
+    if status in (401, 403):
+        # fal answers 403 "Exhausted balance"; that is money, not a bad key.
+        return "quota" if any(w in text for w in _HARD_QUOTA) else "auth"
+    if status == 429:
+        if _is_transient_429(resp):
+            return None
+        # "You exceeded your current quota, please check your plan and billing details."
+        if any(w in text for w in _HARD_QUOTA) or ("exceeded your current quota" in text and "billing" in text):
+            return "quota"
+        return None
     if status in (400, 422) and any(w in text for w in _POLICY_WORDS):
         return "policy"
     return None
+
+
+def _post(session, url, **kw):
+    """``session.post`` that waits out one transient 429 (``Retry-After`` or a
+    per-minute message, at most ``RETRY_AFTER_CAP_S``) before giving up on it."""
+    resp = session.post(url, **kw)
+    if getattr(resp, "status_code", None) == 429 and _is_transient_429(resp):
+        wait = _retry_after(resp)
+        time.sleep(min(RETRY_AFTER_CAP_S, wait if wait is not None else 5.0))
+        resp = session.post(url, **kw)
+    return resp
 
 
 def _raise_if_refused(provider: str, model: str, error: Exception) -> None:
@@ -276,7 +330,7 @@ class OpenAIImageClient(_Base):
         body = {"model": self.model, "prompt": prompt.strip(), "n": 1, "size": size,
                 "quality": self.quality, "output_format": "jpeg"}
         try:
-            resp = self.session.post(f"{self.base_url}/images/generations", json=body,
+            resp = _post(self.session, f"{self.base_url}/images/generations", json=body,
                                      headers={"Authorization": f"Bearer {self.api_key}"},
                                      timeout=max(self.timeout, 180))
             resp.raise_for_status()
@@ -317,7 +371,7 @@ class GeminiImageClient(_Base):
             },
         }
         try:
-            resp = self.session.post(f"{self.base_url}/models/{self.model}:generateContent", json=body,
+            resp = _post(self.session, f"{self.base_url}/models/{self.model}:generateContent", json=body,
                                      headers={"x-goog-api-key": self.api_key}, timeout=max(self.timeout, 120))
             resp.raise_for_status()
             data = resp.json()
@@ -353,7 +407,7 @@ class FluxClient(_Base):
         headers = {"x-key": self.api_key, "accept": "application/json"}
         body = {"prompt": prompt.strip(), "width": _round16(width), "height": _round16(height)}
         try:
-            resp = self.session.post(f"{self.base_url}/{self.model}", json=body, headers=headers,
+            resp = _post(self.session, f"{self.base_url}/{self.model}", json=body, headers=headers,
                                      timeout=self.timeout)
             resp.raise_for_status()
             job = resp.json()
@@ -407,7 +461,7 @@ class IdeogramClient(_Base):
                 "aspect_ratio": (None, _aspect(width, height).replace(":", "x")),
                 "rendering_speed": (None, os.getenv("CHRONOS_IDEOGRAM_SPEED", "DEFAULT") or "DEFAULT")}
         try:
-            resp = self.session.post(f"{self.base_url}/v1/ideogram-v3/generate", files=form,
+            resp = _post(self.session, f"{self.base_url}/v1/ideogram-v3/generate", files=form,
                                      headers={"Api-Key": self.api_key}, timeout=max(self.timeout, 120))
             resp.raise_for_status()
             items = resp.json().get("data") or []
@@ -441,7 +495,7 @@ class FalImageClient(_Base):
                 "4:3": "landscape_4_3", "3:4": "portrait_4_3"}.get(aspect, "landscape_16_9")
         body = {"prompt": prompt.strip(), "image_size": size, "num_images": 1}
         try:
-            resp = self.session.post(f"{self.base_url}/{self.model.strip('/')}", json=body,
+            resp = _post(self.session, f"{self.base_url}/{self.model.strip('/')}", json=body,
                                      headers={"Authorization": f"Key {self.api_key}"},
                                      timeout=max(self.timeout, 180))
             resp.raise_for_status()
@@ -484,7 +538,7 @@ class LeonardoClient:
         if self.model_id:
             body["modelId"] = self.model_id
         try:
-            resp = self.session.post(f"{self.base_url}/generations", json=body, timeout=self.timeout)
+            resp = _post(self.session, f"{self.base_url}/generations", json=body, timeout=self.timeout)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
