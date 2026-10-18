@@ -37,12 +37,17 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io").rstrip("/")
 # An empty variable (an unset Actions var expands to "") keeps the default.
+# Go-live: the default MiniMax-H3 refuses to start without MINIMAX_V2_QUERY_PATH (not confirmed
+# by MiniMax's docs); set MINIMAX_H3_MODEL=MiniMax-Hailuo-2.3 (the documented v1 flow) instead.
 MINIMAX_H3_MODEL = os.getenv("MINIMAX_H3_MODEL", "").strip() or "MiniMax-H3"
 MINIMAX_V2_QUERY_PATH = os.getenv("MINIMAX_V2_QUERY_PATH", "").strip()
-MINIMAX_BROLL_ENABLED = (
-    bool(MINIMAX_API_KEY)
-    and os.getenv("CHRONOS_ENABLE_MINIMAX_BROLL", "").strip().lower() in ("1", "true", "yes", "on")
+# The flag on its own (no key needed): "generation was asked for". The router
+# compares it with MINIMAX_BROLL_ENABLED (flag AND key) to tell "requested" from
+# "usable", so a flag with no key stops the run instead of quietly using stock.
+MINIMAX_BROLL_FLAG = (
+    os.getenv("CHRONOS_ENABLE_MINIMAX_BROLL", "").strip().lower() in ("1", "true", "yes", "on")
 )
+MINIMAX_BROLL_ENABLED = bool(MINIMAX_API_KEY) and MINIMAX_BROLL_FLAG
 # How many sections of one video may get a generated clip (cost control); the
 # rest use Pexels stock. A generated clip is billable, so this is deliberately low.
 MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
@@ -214,6 +219,13 @@ VIDEO_DURATION_TARGET = int(os.getenv("VIDEO_DURATION_TARGET", "300"))  # second
 # as "unset" so it falls through to this smart default rather than an empty,
 # broken provider name.
 TTS_PROVIDER = os.getenv("TTS_PROVIDER", "").strip() or ("elevenlabs" if ELEVENLABS_API_KEY else "edge")
+# Set NIGHTSHIFT_EXPECT_TTS=elevenlabs on a deployment that is meant to narrate
+# with ElevenLabs: if the key then fails to arrive, a run whose provider
+# resolved to the free "edge" default stops at its start (audio_mixer.verify_voice)
+# instead of quietly using the robot voice (CLAUDE.md #4). An explicit
+# TTS_PROVIDER still wins, so a channel can choose edge on purpose.
+EXPECT_TTS_PROVIDER = os.getenv("NIGHTSHIFT_EXPECT_TTS", "").strip().lower()
+TTS_PROVIDER_EXPLICIT = bool(os.getenv("TTS_PROVIDER", "").strip())
 # An empty variable (an unset GitHub repo variable expands to "") means "unset".
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "").strip() or "pNInz6obpgDQGcFmaJgB"
 # One run's voice, chosen on the Create page. It beats the channel's own voice

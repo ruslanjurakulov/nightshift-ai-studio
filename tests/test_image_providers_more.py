@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import requests
 import yaml
 
 import config
@@ -30,9 +31,13 @@ class _Resp:
         self._chunks = chunks or []
         self._status = status
 
+    status_code = property(lambda self: self._status or 200)
+    text = ""
+    headers: dict = {}
+
     def raise_for_status(self):
         if self._status:
-            raise RuntimeError(f"HTTP {self._status}")
+            raise requests.HTTPError(f"HTTP {self._status}", response=self)
 
     def json(self):
         return self._payload
@@ -160,8 +165,14 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(s.calls[1][1], "https://api.us.bfl.ai/v1/get_result?id=j1")
         self.assertNoKeyInUrls(s)
 
-    def test_flux_moderated_falls_back(self):
+    def test_flux_moderated_stops_the_run(self):
+        # Changed on purpose (D4): a content-policy block used to fall back to stock silently.
         s = _Session(posts=[_Resp({"polling_url": "https://p"})], gets=[_Resp({"status": "Content Moderated"})])
+        with self.assertRaises(ip.ImageProviderUnavailable):
+            _client(ip.FluxClient, s).generate("a city", self.dest)
+
+    def test_flux_error_status_still_falls_back(self):
+        s = _Session(posts=[_Resp({"polling_url": "https://p"})], gets=[_Resp({"status": "Error"})])
         self.assertIsNone(_client(ip.FluxClient, s).generate("a city", self.dest))
 
     def test_ideogram_sends_a_form_and_downloads(self):
@@ -183,13 +194,28 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(kw["headers"]["Authorization"], "Key k-secret")
         self.assertEqual(kw["json"]["image_size"], "landscape_16_9")
 
-    def test_http_errors_never_raise_and_never_log_the_key(self):
+    def test_server_errors_fall_back_softly_and_never_log_the_key(self):
+        # A 5xx is "the model returned nothing": soft. (401/402/403 refusals raise: test_image_refusals.py.)
         for cls in (ip.OpenAIImageClient, ip.GeminiImageClient, ip.FluxClient, ip.IdeogramClient, ip.FalImageClient):
             with self.subTest(cls=cls.__name__):
-                s = _Session(posts=[_Resp(status=401)])
+                s = _Session(posts=[_Resp(status=500)])
                 with self.assertLogs(ip.logger, level="WARNING") as logs:
                     self.assertIsNone(_client(cls, s).generate("a city", self.dest))
                 self.assertNotIn("k-secret", "\n".join(logs.output))
+
+    def test_a_real_401_response_stops_the_run_without_the_key(self):
+        for cls in (ip.OpenAIImageClient, ip.GeminiImageClient, ip.FluxClient, ip.IdeogramClient, ip.FalImageClient):
+            with self.subTest(cls=cls.__name__):
+                s = _Session(posts=[_Resp(status=401)])
+                with self.assertRaises(ip.ImageProviderUnavailable) as ctx:
+                    _client(cls, s).generate("a city", self.dest)
+                self.assertNotIn("k-secret", str(ctx.exception))
+
+    def test_a_bare_exception_without_a_response_stays_soft(self):
+        s = _Session(posts=[])
+        s.post = mock.Mock(side_effect=RuntimeError("boom k-secret"))
+        with self.assertLogs(ip.logger, level="WARNING"):
+            self.assertIsNone(_client(ip.OpenAIImageClient, s).generate("a city", self.dest))
 
     def test_no_key_or_prompt_makes_no_request(self):
         for cls in (ip.OpenAIImageClient, ip.GeminiImageClient, ip.FluxClient, ip.IdeogramClient, ip.FalImageClient):

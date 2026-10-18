@@ -173,12 +173,9 @@ class HiggsfieldAvatarProvider:
             endpoint=(os.getenv("HIGGSFIELD_AVATAR_ENDPOINT", "").strip() or _HIGGSFIELD_DEFAULT_ENDPOINT).lstrip("/"),
         )
 
-    def generate(self, prompt: str, character_ref: Optional[str], out_path: Path) -> Path:
-        # 1) Safety first — a real-person request never even reaches the network.
-        synthetic_only_guard(character_ref, prompt)
-
-        env = self._env()
-        if not env.configured:
+    def preflight(self) -> None:
+        """Raise ``AvatarUnavailable`` when the credentials are missing. No request."""
+        if not self._env().configured:
             raise AvatarUnavailable(
                 "Higgsfield avatar is not configured. Set HIGGSFIELD_API_KEY_ID and "
                 "HIGGSFIELD_API_KEY_SECRET (the model defaults to Kling 3.0, "
@@ -187,6 +184,13 @@ class HiggsfieldAvatarProvider:
                 "https://api.higgsfield.ai). No presenter is generated until then "
                 "(a blank/wrong avatar is never shipped)."
             )
+
+    def generate(self, prompt: str, character_ref: Optional[str], out_path: Path) -> Path:
+        # 1) Safety first — a real-person request never even reaches the network.
+        synthetic_only_guard(character_ref, prompt)
+
+        self.preflight()
+        env = self._env()
 
         import requests  # local import: this module is usable (config/guard) without it
 
@@ -253,6 +257,20 @@ def avatar_provider(config: AvatarConfig) -> Optional[AvatarProvider]:
     if config.provider == "higgsfield":
         return HiggsfieldAvatarProvider()
     raise AvatarUnavailable(f"Unknown avatar provider {config.provider!r}")
+
+
+def preflight_avatar(config: AvatarConfig) -> None:
+    """Before the run spends anything: when a presenter was requested, raise
+    ``AvatarUnavailable`` / ``UnsafeAvatarRequest`` if it cannot be made (unknown
+    provider, missing credentials, a real-person reference). A no-op when avatars
+    are off. No network request."""
+    if not config.enabled:
+        return
+    provider = avatar_provider(config)
+    synthetic_only_guard(config.character_ref or None, config.character_prompt)
+    check = getattr(provider, "preflight", None)
+    if callable(check):
+        check()
 
 
 # -- pipeline helpers -------------------------------------------------------
@@ -346,9 +364,9 @@ def maybe_generate_presenter(config: AvatarConfig, prompt: str, out_path: Path) 
     * Avatars off (the default) → ``None``: the run renders faceless, unchanged.
     * On → the configured provider generates the clip. There is **no silent
       fallback**: an enabled-but-unconfigured provider raises ``AvatarUnavailable``
-      and an unsafe request raises ``UnsafeAvatarRequest`` — the caller decides
-      what that means (the pipeline logs loudly and continues faceless rather
-      than shipping a blank/wrong presenter; it never quietly substitutes one).
+      and an unsafe request raises ``UnsafeAvatarRequest``. The pipeline lets
+      both stop the run (``main.py`` re-raises after recording the failure): a
+      presenter that was asked for is never quietly dropped for a faceless cut.
     """
     if not config.enabled:
         return None

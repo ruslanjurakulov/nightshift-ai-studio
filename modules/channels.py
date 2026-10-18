@@ -174,6 +174,10 @@ class AgentConfig:
     language: str = field(default_factory=lambda: cfg.SCRIPT_LANGUAGE)
     target_duration_seconds: int = field(default_factory=lambda: cfg.VIDEO_DURATION_TARGET)
     tts_provider: str = field(default_factory=lambda: cfg.TTS_PROVIDER)
+    # True when the channel's own settings named the provider (as opposed to
+    # inheriting config.TTS_PROVIDER). Not stored: audio_mixer uses it so a
+    # channel that chose Edge on purpose is not stopped by NIGHTSHIFT_EXPECT_TTS.
+    tts_provider_explicit: bool = False
     elevenlabs_voice_id: str = field(default_factory=lambda: cfg.ELEVENLABS_VOICE_ID)
     # The voice for the script's [VOICE:secondary] lines (quotes, character
     # speech), picked from the account's voice list like the narrator's — or
@@ -302,6 +306,7 @@ class AgentConfig:
             language=d.get("language") or base.language,
             target_duration_seconds=duration,
             tts_provider=d.get("tts_provider") or base.tts_provider,
+            tts_provider_explicit=bool(d.get("tts_provider")),
             elevenlabs_voice_id=d.get("elevenlabs_voice_id") or base.elevenlabs_voice_id,
             elevenlabs_secondary_voice_id=(str(d.get("elevenlabs_secondary_voice_id") or "").strip()
                                            or base.elevenlabs_secondary_voice_id),
