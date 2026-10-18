@@ -59,12 +59,25 @@ class FakeSync:
 
     enabled = True
 
-    def __init__(self, tables=None, fail=()):
+    def __init__(self, tables=None, fail=(), rpcs=None):
         self.tables = dict(tables or {})
         self.fail = set(fail)
         self.upserts: list = []
         self.claimed: set = set()
         self.reads: list = []
+        #: database functions by name -> the JSON they answer. A name that is not
+        #: here is a function the database does not have yet (PostgREST PGRST202).
+        self.rpcs = dict(rpcs or {})
+        self.rpc_fail: set = set()
+        self.rpc_calls: list = []
+
+    def rpc_strict(self, name, body=None):
+        self.rpc_calls.append((name, dict(body or {})))
+        if name in self.rpc_fail:
+            raise SupabaseReadError(name, 500, "")
+        if name not in self.rpcs:
+            raise SupabaseReadError(name, 404, "PGRST202")
+        return self.rpcs[name]
 
     def select_strict(self, table, params=None):
         self.reads.append((table, dict(params or {})))
@@ -121,8 +134,8 @@ def make_control(session=None, chat=CHAT, admins="") -> TelegramControl:
                            admin_user_ids=admins, session=session or FakeTelegram())
 
 
-def make_ops(tables=None, http=None, cfg=None, now=NOW, fail=(), token=""):
-    sync = FakeSync(tables, fail)
+def make_ops(tables=None, http=None, cfg=None, now=NOW, fail=(), token="", rpcs=None):
+    sync = FakeSync(tables, fail, rpcs)
     cfg = cfg or OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo")
     return OperatorSources(sync, http or FakeHttp(), cfg, now=lambda: now, github_token=token), sync
 

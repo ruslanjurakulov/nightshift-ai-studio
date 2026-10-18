@@ -87,6 +87,9 @@ _KEY_SEP = "\x1f"
 #: PostgREST / Postgres codes for "this table does not exist" — a deployment
 #: where the migration that creates it has not been applied yet.
 _TABLE_MISSING_CODES = ("PGRST205", "42P01")
+#: ... and for "this function does not exist" (PostgREST: not in the schema
+#: cache; Postgres: undefined function).
+_FUNCTION_MISSING_CODES = ("PGRST202", "42883")
 
 
 def _canonical_quantity(value) -> str:
@@ -161,6 +164,10 @@ class SupabaseReadError(RuntimeError):
     @property
     def table_missing(self) -> bool:
         return self.code in _TABLE_MISSING_CODES
+
+    @property
+    def function_missing(self) -> bool:
+        return self.code in _FUNCTION_MISSING_CODES
 
 
 class SupabaseSync:
@@ -351,6 +358,37 @@ class SupabaseSync:
         if not isinstance(data, list):
             raise SupabaseReadError(table, resp.status_code, "not a list")
         return data
+
+    def rpc_strict(self, name: str, body: dict | None = None):
+        """Call one database function with the service key and return its JSON
+        answer. A failure raises ``SupabaseReadError`` (``function_missing`` is
+        true for a function the database does not have yet), so a caller can
+        tell "not applied yet" from "could not find out". Disabled returns None.
+        ``name`` is a code constant, never user input; the body is never logged."""
+        if not self.enabled:
+            return None
+        try:
+            resp = requests.post(
+                f"{self.url}/rest/v1/rpc/{name}",
+                json=body or {},
+                headers=self._headers(),
+                timeout=_TIMEOUT,
+            )
+        except Exception as e:
+            raise SupabaseReadError(name, None, type(e).__name__) from None
+        if resp.status_code >= 300:
+            code = ""
+            try:
+                parsed = resp.json()
+                raw = str(parsed.get("code") or "") if isinstance(parsed, dict) else ""
+                code = raw if raw.isalnum() and len(raw) <= 16 else ""
+            except Exception:
+                pass
+            raise SupabaseReadError(name, resp.status_code, code)
+        try:
+            return resp.json()
+        except Exception:
+            raise SupabaseReadError(name, resp.status_code, "not json") from None
 
     # -- high-level --------------------------------------------------------
 

@@ -364,6 +364,7 @@ class OperatorBot:
                 "users": lambda: views.view_users(self.ops, lang),
                 "deploys": lambda: views.view_deploys(self.ops, lang),
                 "approvals": lambda: views.view_approvals(self.ops, self._held(), lang),
+                "marketing": lambda: views.view_marketing(self.ops, lang),
                 "security": lambda: views.view_security(self.ops, lang),
                 "digest": lambda: alerts_mod.send_digest_reply(self.ops, self._held, lang),
             }[cmd]()

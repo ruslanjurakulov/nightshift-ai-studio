@@ -4,6 +4,12 @@ overdo it.
 Payment problems (a rejected, failed or refunded provider event) are one more
 kind, ``payment``: one alert per event and outcome, ids shortened, no free text.
 
+The brand-channel poster is another, ``marketing``, and INFORMATION ONLY: a
+count of drafts waiting for the owner, a post that ended ``dead`` or ``failed``
+(with the named fix), a post that was sent (its kind and time). Never a post's
+words, link, media or chat id; deciding stays in the app behind the second
+factor, and there is no button here that could (modules/operator_bot/router.py).
+
 Detection is pure over the sources (:func:`detect`). Delivery is
 :class:`AlertEngine`, which is where the restraint lives:
 
@@ -64,6 +70,12 @@ PAYMENT_WINDOW = timedelta(hours=24)
 #: A silent worker whose last word is older than this is gone, not lost
 #: (e.g. an old container id); the table keeps such rows for two weeks.
 WORKER_LOST_MAX_AGE = timedelta(hours=24)
+#: A send result (sent, failed, dead) is news for this long; inside the 48 hours
+#: the store remembers, so it is announced once.
+MARKETING_WINDOW = timedelta(hours=24)
+#: Drafts waiting for the owner are a standing condition: the same count is
+#: repeated once a day while it lasts. A different count is a different alert.
+MARKETING_DRAFT_COOLDOWN = 24 * 60
 
 #: Critical alerts are not subject to quiet hours, mutes of "all" or the normal
 #: hourly budget, but they are not unlimited: a flood of forged or merely noisy
@@ -189,6 +201,10 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     if pay.ok:
         out += _payment_alerts(pay.data, now, lang)
 
+    mk = ops.marketing_summary()
+    if mk.ok:
+        out += _marketing_alerts(mk.data, now, lang)
+
     au = ops.audit(since)
     if au.ok:
         for r in au.data:
@@ -221,6 +237,38 @@ def _payment_alerts(rows, now: datetime, lang: str) -> list[Alert]:
                                    amount=views.money(lang, r.get("amount_minor"), r.get("currency")))))
     except Exception as e:  # noqa: BLE001 - a malformed row must not end the pass
         logger.warning("payment alerts skipped (%s)", type(e).__name__)
+        return []
+    return out
+
+
+def _marketing_alerts(summary, now: datetime, lang: str) -> list[Alert]:
+    """The poster's three kinds of news, from counts and closed codes only. A
+    bug here must not silence the other kinds."""
+    out: list[Alert] = []
+    try:
+        st = analysis.marketing_state(summary)
+        drafts = st["counts"]["draft"]
+        if drafts:
+            out.append(Alert("marketing", f"marketing:drafts:{drafts}", "info",
+                             t(lang, "alert.marketing_draft_one" if drafts == 1 else "alert.marketing_drafts", n=drafts),
+                             None, MARKETING_DRAFT_COOLDOWN))
+        fail = st["failure"]
+        if fail and fail["at"] is not None and now - MARKETING_WINDOW <= fail["at"] <= now + timedelta(minutes=5):
+            stamp = int(fail["at"].timestamp())
+            kind = views.marketing_kind_word(lang, fail["kind"])
+            if fail["status"] == "dead":
+                out.append(Alert("marketing", f"marketing:dead:{stamp}", "warn",
+                                 t(lang, "alert.marketing_dead", kind=kind, when=views.marketing_time(fail["at"]))))
+            else:
+                out.append(Alert("marketing", f"marketing:failed:{stamp}", "warn",
+                                 t(lang, "alert.marketing_failed", kind=kind, code=views.code(fail["code"] or "?"),
+                                   fix=views.marketing_fix(lang, fail["code"]), when=views.marketing_time(fail["at"]))))
+        if st["sent_at"] is not None and now - MARKETING_WINDOW <= st["sent_at"] <= now + timedelta(minutes=5):
+            out.append(Alert("marketing", f"marketing:sent:{int(st['sent_at'].timestamp())}", "info",
+                             t(lang, "alert.marketing_sent", kind=views.marketing_kind_word(lang, st["sent_kind"]),
+                               when=views.marketing_time(st["sent_at"]))))
+    except Exception as e:  # noqa: BLE001 - a malformed answer must not end the pass
+        logger.warning("marketing alerts skipped (%s)", type(e).__name__)
         return []
     return out
 

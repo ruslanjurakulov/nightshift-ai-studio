@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from modules.operator_bot import analysis
@@ -33,14 +33,15 @@ from modules.tg_text import clip, html_escape, safe_id, short_id
 # Alert kinds (short, because callback_data is limited to 64 bytes) and where
 # each one points. The kind ids are stable identifiers (they travel in callback
 # data and in /mute); what the owner reads for each comes from the copy table.
-ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment")
+ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment", "marketing")
 KIND_COMMAND = {
     "run": "errors", "stuck": "queue", "balance": "balance", "deploy": "deploys",
     "worker": "health", "approval": "approvals", "audit": "security", "payment": "payments",
+    "marketing": "marketing",
 }
 KIND_PAGE = {
     "run": "errors", "stuck": "jobs", "balance": "billing", "worker": "integrations",
-    "approval": "approvals", "audit": "audit",
+    "approval": "approvals", "audit": "audit", "marketing": "marketing",
 }
 #: Kinds with no page of their own that fall back to the GitHub Actions link (a
 #: deploy). A kind in neither table has no Open button: a payment has no page
@@ -51,7 +52,7 @@ GITHUB_KINDS = ("deploy",)
 #: from the copy table (``cmddesc.<name>``).
 COMMANDS = tuple((name, f"cmddesc.{name}") for name in (
     "health", "queue", "errors", "balance", "spend", "payments", "today", "users", "deploys",
-    "approvals", "security", "digest", "alerts", "status", "pending"))
+    "approvals", "marketing", "security", "digest", "alerts", "status", "pending"))
 READ_COMMANDS = tuple(name for name, _ in COMMANDS)
 
 
@@ -151,7 +152,7 @@ def github_actions_link(cfg: OperatorConfig, workflow: str = "deploy_web.yml") -
 MENU_GROUPS = (
     ("live", ("health", "queue", "errors")),
     ("money", ("balance", "spend", "payments")),
-    ("activity", ("today", "users", "deploys", "approvals")),
+    ("activity", ("today", "users", "deploys", "approvals", "marketing")),
     ("reports", ("security", "digest", "alerts")),
     ("original", ("status", "channels", "pending")),
 )
@@ -588,6 +589,60 @@ def view_security(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     lines.append(t(lang, "security.footer"))
     return Reply("\n".join(lines), _with_menu(
         lang, [], [open_button(lang, "audit", app_link(cfg, "audit"))], again="security"))
+
+
+# -- /marketing (information only) -------------------------------------------
+
+def marketing_kind_word(lang: str, kind) -> str:
+    """news | showcase | price in the owner's language; an unknown kind is "unknown"."""
+    return t(lang, f"mk.{kind}") if kind in analysis.MARKETING_KINDS else t(lang, "unknown_word")
+
+
+def marketing_fix(lang: str, code) -> Raw:
+    """The named fix for a closed error code (the same sentences the app's page
+    gives); a code outside the closed list gets no invented advice."""
+    return Raw(t(lang, f"mkfix.{code}") if code in analysis.MARKETING_ERROR_CODES else t(lang, "mkfix.unknown"))
+
+
+def marketing_time(at: Optional[datetime]) -> str:
+    """A neutral UTC stamp (``2026-10-18 15:30 UTC``), or ``?`` when unknown."""
+    return at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC") if at else "?"
+
+
+def view_marketing(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
+    """The brand-channel poster, counts only: posts by status, this week against
+    the cap, the switch, the last send. Nothing a post says is shown, and nothing
+    here approves, edits or sends: that is the app's page, behind the second
+    factor. A database without migration 0109 says "not available yet"."""
+    now, cfg = ops.now(), ops.cfg
+    lines = [t(lang, "marketing.title")]
+    sec = ops.marketing_summary()
+    if not sec.ok:
+        lines.append(t(lang, "marketing.not_available") if sec.note == "not set up yet"
+                     else t(lang, "marketing.unknown", why=unknown(lang, sec)))
+    else:
+        st = analysis.marketing_state(sec.data)
+        lines.append(t(lang, "marketing.switch_unknown" if st["enabled"] is None
+                       else "marketing.switch_on" if st["enabled"] else "marketing.switch_off"))
+        lines.append(t(lang, "marketing.week",
+                       used=num(lang, st["used"]) if st["used"] is not None else t(lang, "unknown_word"),
+                       cap=num(lang, st["cap"]) if st["cap"] is not None else t(lang, "unknown_word")))
+        lines.append(t(lang, "marketing.counts", **{
+            k: num(lang, v) if v is not None else t(lang, "unknown_word") for k, v in st["counts"].items()}))
+        last = analysis.marketing_last_result(st)
+        if last is None:
+            lines.append(t(lang, "marketing.last_none"))
+        elif last["status"] == "sent":
+            lines.append(t(lang, "marketing.last_sent", kind=marketing_kind_word(lang, last["kind"]),
+                           when=ago(lang, last["at"], now)))
+        else:
+            lines.append(t(lang, "marketing.last_failed", status=t(lang, f"mkst.{last['status']}"),
+                           code=code(last["code"] or "?"), when=ago(lang, last["at"], now),
+                           fix=marketing_fix(lang, last["code"])))
+    lines.append(t(lang, "marketing.footer"))
+    return Reply("\n".join(lines), _with_menu(
+        lang, [_nav(lang, "approvals")], [open_button(lang, "marketing", app_link(cfg, "marketing"))],
+        again="marketing"))
 
 
 # -- /payments, /status, /pending ------------------------------------------

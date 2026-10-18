@@ -181,3 +181,59 @@ def latest_run(runs: list) -> Optional[dict]:
         if r.get("status") == "completed":
             return r
     return None
+
+
+# -- marketing (information only) -------------------------------------------
+
+#: The closed vocabularies of the poster's table (migration 0108). The summary
+#: function returns nothing else, and this module keeps only these: a value
+#: outside them is dropped, so no free text can reach a message even from a
+#: database function that was changed behind this code's back.
+MARKETING_STATUSES = ("draft", "approved", "sending", "sent", "failed", "dead", "rejected", "expired")
+MARKETING_KINDS = ("news", "showcase", "price")
+MARKETING_ERROR_CODES = ("blocked", "bad_request", "not_configured", "rate_limited", "network", "http_5xx",
+                         "unconfirmed", "expired")
+
+
+def _count(value) -> Optional[int]:
+    """A whole, non-negative count, or None. A missing count is unknown, not zero."""
+    n = _num(value)
+    return int(n) if n is not None and n >= 0 and n == int(n) else None
+
+
+def marketing_state(summary) -> dict:
+    """``operator_marketing_summary()``'s answer, reduced to what the bot may
+    say: counts per status (None for one that is not a number), the week's use
+    against its cap, the switch (None when unknown), the last sent post (kind
+    and time) and the last failure (status, closed code, kind, time)."""
+    s = summary if isinstance(summary, dict) else {}
+    raw = s.get("counts") if isinstance(s.get("counts"), dict) else {}
+    last = s.get("last_failure") if isinstance(s.get("last_failure"), dict) else None
+    failure = None
+    if last and last.get("status") in ("failed", "dead"):
+        code = last.get("last_error_code")
+        kind = last.get("kind")
+        failure = {"status": last["status"], "code": code if code in MARKETING_ERROR_CODES else None,
+                   "kind": kind if kind in MARKETING_KINDS else None, "at": parse_ts(last.get("at"))}
+    kind = s.get("last_sent_kind")
+    enabled = s.get("enabled")
+    return {
+        "counts": {st: _count(raw.get(st)) for st in MARKETING_STATUSES},
+        "used": _count(s.get("used_7d")),
+        "cap": _count(s.get("max_per_7d")),
+        "enabled": enabled if isinstance(enabled, bool) else None,
+        "sent_at": parse_ts(s.get("last_sent_at")),
+        "sent_kind": kind if kind in MARKETING_KINDS else None,
+        "failure": failure,
+    }
+
+
+def marketing_last_result(state: dict) -> Optional[dict]:
+    """The newest outcome of a send, from a :func:`marketing_state`: ``sent`` or
+    the failure, whichever is later. None when nothing has been sent or has failed."""
+    sent = {"status": "sent", "code": None, "kind": state["sent_kind"], "at": state["sent_at"]} \
+        if state["sent_at"] is not None else None
+    fail = state["failure"]
+    if sent and fail and fail["at"] is not None:
+        return fail if fail["at"] > sent["at"] else sent
+    return sent or fail

@@ -30,6 +30,7 @@ Everything below also exists as a button in the main menu (`/menu`, `/start`).
 | `/users` | new sign-ups in 24 h / 7 d / 30 d: counts only, no names, no e-mails |
 | `/deploys` | the last runs of the deploy, tests and frontend workflows on `main` |
 | `/approvals` | publish approvals waiting for a person, runs at human approval, held videos; deep link to the app |
+| `/marketing` | the brand-channel poster, **information only** (`operator_marketing_summary()`, migration 0109): posts by status (draft, approved, sending, sent, failed, dead, rejected, expired), posts this week against the cap, whether the poster switch is on, and the last send result (`sent`, or the closed error code with its named fix) with its age. Counts only: no post text, link, media or chat id. Without 0109 it says "not available yet" |
 | `/security` | recent security-relevant audit events (action and target id; no actor) |
 | `/digest` | the daily summary, now |
 | `/alerts` | quiet hours, digest hour, hourly limit, what is muted, the last alerts sent |
@@ -42,7 +43,7 @@ Everything below also exists as a button in the main menu (`/menu`, `/start`).
 
 Where the app has the page, a message carries an **Open** button straight to it
 (`/{channel}/approvals`, `/errors`, `/jobs`, `/billing`, `/margin`, `/audit`,
-`/integrations`, the GitHub deploy page). Without `OPERATOR_APP_URL` there are no
+`/integrations`, `/marketing`, the GitHub deploy page). Without `OPERATOR_APP_URL` there are no
 links: a link is never guessed.
 
 ## BotFather command list
@@ -66,6 +67,7 @@ today - videos made, published, held
 users - new sign-ups (counts only)
 deploys - last deploys and CI
 approvals - waiting for a person
+marketing - brand-channel posts: counts only, no texts
 security - recent security-relevant events
 digest - the daily summary, now
 alerts - alert settings and mutes
@@ -91,6 +93,7 @@ today - видео: созданные, опубликованные, удерж
 users - новые регистрации (только числа)
 deploys - последние деплои и CI
 approvals - ждёт решения человека
+marketing - посты бренд-канала: только числа, без текстов
 security - недавние события безопасности
 digest - дневная сводка, сейчас
 alerts - настройки оповещений и заглушки
@@ -116,6 +119,7 @@ today - videolar: yaratilgan, chiqarilgan, ushlangan
 users - yangi roʻyxatdan oʻtishlar (faqat sonlar)
 deploys - oxirgi deploylar va CI
 approvals - odam qarorini kutayotganlar
+marketing - brend kanal postlari: faqat sonlar, matnsiz
 security - xavfsizlikka oid soʻnggi hodisalar
 digest - kunlik xulosa, hozir
 alerts - ogohlantirish sozlamalari va jim rejimlar
@@ -172,6 +176,7 @@ same in every language.
 | `/users` | Users | Пользователи | Foydalanuvchilar |
 | `/deploys` | Deploys | Деплои | Deploylar |
 | `/approvals` | Approvals | Согласования | Tasdiqlar |
+| `/marketing` | Marketing | Маркетинг | Marketing |
 | `/security` | Security | Безопасность | Xavfsizlik |
 | `/digest` | Digest | Сводка | Xulosa |
 | `/alerts` | Alerts | Оповещения | Ogohlantirishlar |
@@ -236,6 +241,7 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that kind exists; the bot's own `operator-bot` row is judged on its own); a worker reported FAILED | **critical** | every 3 h while it lasts |
 | `payment` | a payment-provider event the webhook **rejected** (paid but not credited, or a refund not applied: needs a person, **critical**), **failed** (the provider retries, warn), or a refund / chargeback that was applied (warn), received in the last 24 h | critical / warn | once per event and outcome |
 | `approval` | a new pending publish approval | info | once |
+| `marketing` | **information only** (see "Marketing" below): posts waiting for your approval (a count: "2 posts are waiting for your approval"); a post that ended `dead` (unconfirmed: "check the channel, do not resend") or `failed` (with its closed error code and the named fix), in the last 24 h; a post that was sent (its kind and time). Never a post's words, link, media or any chat id | info / warn | the drafts count once a day while it lasts (a different count is a new alert); a result once |
 | `audit` | an operator-level audit event with no channel (see above) | **critical** | once |
 
 Restraint, so it never spams:
@@ -263,7 +269,9 @@ Restraint, so it never spams:
 
 Alert text is ids, counts and fixed words: a failed job is "Render job #123 failed
 — default", never its log. The memory is rows of the existing `alert_events` feed
-(`kind` starts `operator.`), so **there is no migration**. Every such row is written
+(`kind` starts `operator.`), so **the alert memory needs no migration**. (The one
+migration the bot knows about, 0109, only lets `/marketing` and the marketing alerts
+read; see "Marketing".) Every such row is written
 with `channel_id` NULL (only a platform admin or the service key can write those)
 and the bot reads only `channel_id IS NULL` rows, because the table's insert policy
 lets anyone who can see a channel insert rows with that channel and any kind: a
@@ -276,6 +284,33 @@ whole"). Queued and running jobs are read oldest first, separately from the
 recently finished ones, so a stuck job is never the row a cut drops. If the alert
 memory ever exceeds what the bot reads (5,000 rows in 48 hours) it sends nothing
 rather than repeat itself.
+
+## Marketing (information only)
+
+The brand-channel poster (`docs/MARKETING_POSTS.md`, migration 0108) posts to the public
+Telegram channel only after the owner approves exactly the words in the app, behind the
+password and the authenticator code. The bot **tells you** about it and **cannot decide
+for you**: there is no Approve, Edit, Reject, Send or Resend button or command, and no
+code path in the bot writes to the poster (`tests/test_operator_bot_marketing.py` pins
+it). An Approve button in Telegram would turn "password plus authenticator code" into
+"whoever holds the allow-listed Telegram account"; that stays out on purpose.
+
+* **Data.** The poster's tables grant the service key nothing (0108). Migration `0109_operator_marketing_summary.sql`
+  adds ONE function, `operator_marketing_summary()` (`SECURITY DEFINER`, pinned `search_path`, `EXECUTE` for
+  `service_role` only), that returns a small JSON: counts by status, `used_7d` (the week's count the cap uses),
+  `max_per_7d`, the switch, the last sent post (time and kind) and the last failure (status, closed error code,
+  kind, time). No text, link, media or chat id. Rollback: `docs/sql/rollback_0109_operator_marketing_summary.sql`.
+* **Not applied yet?** Then `/marketing` answers "not available yet", the alerts send nothing, and nothing else
+  changes: the bot does not crash and every other command works. An unreadable answer is "unknown (unavailable)",
+  never a zero (a count that is not a number reads "unknown").
+* **Alerts.** Kind `marketing` follows every rule above (de-duplication, the hourly limit, quiet hours, mute, `/alerts`,
+  the language setting). Open goes to `/all-channels/marketing` in the app (the page is not per channel). The fixes
+  named for a failed post are the app page's: `blocked` (add the bot as a channel administrator with only the Post
+  messages right), `not_configured` (replace the bot token), `bad_request` (check the channel setting and the text),
+  `rate_limited` and `network` (the retries ran out: it did not go out, approve a new post), `http_5xx` and
+  `unconfirmed` (check the channel, do not resend), `expired`. Only a post that has ENDED (failed or dead) is announced; one that is
+  still retrying is not. If two posts go out between two passes, the newest is announced.
+* The kind is stable (`marketing`); mute it with `/mute marketing`.
 
 ## Safety
 
@@ -305,7 +340,8 @@ rather than repeat itself.
 ## Go-live: what the owner does
 
 Nothing here is applied until this PR is merged (scheduled workflows run from
-`main`). There is **no SQL**.
+`main`). There is **no SQL** for the bot itself; `/marketing` and the marketing alerts
+need migration 0109 (applied when it merges) and say "not available yet" until it is.
 
 1. **Secrets already in place** (same names as before): `TELEGRAM_BOT_TOKEN`,
    `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`. In a private chat

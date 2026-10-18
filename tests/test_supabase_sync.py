@@ -508,3 +508,52 @@ class MirrorPlannerAndRunsTestCase(unittest.TestCase):
         post.assert_not_called()
         self.assertEqual(counts.get("content_queue"), 0)
         self.assertEqual(counts.get("pipeline_runs"), 0)
+
+
+class RpcStrictTestCase(unittest.TestCase):
+    """rpc_strict: one database function with the service key, for the operator bot's read of the poster (0109)."""
+
+    def _sync(self):
+        return SupabaseSync(url="https://x.supabase.test", service_key="service-key-value")
+
+    def test_it_posts_to_the_function_with_the_service_key_and_returns_the_json(self):
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {"ok": True}
+        with patch("modules.supabase_sync.requests.post", return_value=resp) as post:
+            self.assertEqual(self._sync().rpc_strict("operator_marketing_summary"), {"ok": True})
+        url = post.call_args.args[0]
+        self.assertEqual(url, "https://x.supabase.test/rest/v1/rpc/operator_marketing_summary")
+        self.assertEqual(post.call_args.kwargs["json"], {})
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer service-key-value")
+
+    def test_a_function_the_database_does_not_have_yet_is_told_apart_from_an_outage(self):
+        from modules.supabase_sync import SupabaseReadError
+
+        for status, code, missing in ((404, "PGRST202", True), (404, "42883", True), (500, "XX000", False), (401, "", False)):
+            resp = MagicMock(status_code=status)
+            resp.json.return_value = {"code": code, "message": "service-key-value leaked"}
+            with patch("modules.supabase_sync.requests.post", return_value=resp):
+                with self.assertRaises(SupabaseReadError) as e:
+                    self._sync().rpc_strict("operator_marketing_summary")
+            self.assertEqual(e.exception.function_missing, missing, (status, code))
+            self.assertFalse(e.exception.table_missing)
+            self.assertNotIn("service-key-value", str(e.exception))
+            self.assertNotIn("leaked", str(e.exception))
+
+    def test_a_network_error_or_an_unreadable_answer_raises_a_read_error_without_the_text(self):
+        from modules.supabase_sync import SupabaseReadError
+
+        with patch("modules.supabase_sync.requests.post", side_effect=RuntimeError("https://x.supabase.test?key=service-key-value")):
+            with self.assertRaises(SupabaseReadError) as e:
+                self._sync().rpc_strict("operator_marketing_summary")
+        self.assertNotIn("service-key-value", str(e.exception) + e.exception.detail)
+        resp = MagicMock(status_code=200)
+        resp.json.side_effect = ValueError("not json")
+        with patch("modules.supabase_sync.requests.post", return_value=resp):
+            with self.assertRaises(SupabaseReadError):
+                self._sync().rpc_strict("operator_marketing_summary")
+
+    def test_disabled_makes_no_call(self):
+        with patch("modules.supabase_sync.requests.post") as post:
+            self.assertIsNone(SupabaseSync(url="", service_key="").rpc_strict("operator_marketing_summary"))
+        post.assert_not_called()
