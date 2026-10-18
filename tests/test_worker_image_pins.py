@@ -51,6 +51,15 @@ class WorkerImagePins(unittest.TestCase):
         from modules import subtitle_generator  # noqa: PLC0415
         self.assertEqual(subtitle_generator.WHISPER_MODEL, "base")
 
+    def test_every_workflow_that_installs_requirements_uses_the_constraints(self):
+        seen = 0
+        for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            for line in wf.read_text().splitlines():
+                if re.search(r"pip install .*-r requirements\.txt", line):
+                    seen += 1
+                    self.assertIn("-c constraints.txt", line, wf.name)
+        self.assertGreaterEqual(seen, 6)
+
     def test_constraints_change_triggers_a_deploy(self):
         self.assertIn('- "constraints.txt"', (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text())
 

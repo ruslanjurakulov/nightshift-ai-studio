@@ -70,8 +70,10 @@ now" queues the job for the worker instead of starting a GitHub workflow. Keep
 
 **In the database**
 
-- Migrations applied through the latest one in `supabase/migrations/` (the doctor
-  names any it cannot find; see `docs/MIGRATIONS.md`).
+- Every migration in `supabase/migrations/` applied, in order (`docs/MIGRATIONS.md`).
+  The doctor can only probe a few of them (0012, 0016, 0017, 0020, 0045, 0106,
+  by checking that their tables and columns exist); it cannot tell you the rest
+  are applied, so check the others in the Supabase dashboard yourself.
 - The private Storage bucket `previews` exists (migration `0004`).
 - Prices set in the Command Center under Owner > Prices: `video_minute` and
   `job_minimum`, plus the unit rows `tts_characters`, `video_gen_clips`,
@@ -132,7 +134,8 @@ you asked for with what the worker really has, checks each key for "set" and for
 how it is written, calls a provider only where a free, authenticated check already
 exists in this repository, and checks the database, the worker's heartbeat, disk and
 tools. Anything it cannot prove for free is reported as `UNVERIFIED` rather than
-`PASS`.
+`PASS`; the provider your configuration actually selects counts as a warning,
+so the report never reads "ready" on a key nobody has proven.
 
 On the server (the `dc` shortcut is defined in `docs/DEPLOY_AX42.md`; spelled out it
 is `docker compose --env-file /opt/nightshift/.env.web -f /opt/nightshift/app/deploy/docker-compose.yml`):
@@ -141,7 +144,7 @@ is `docker compose --env-file /opt/nightshift/.env.web -f /opt/nightshift/app/de
 cd /opt/nightshift/app
 dc --profile worker exec worker python tools/doctor.py            # human report
 dc --profile worker exec worker python tools/doctor.py --json     # machine-readable
-dc --profile worker exec worker python tools/doctor.py --offline  # configuration and host only, no network
+dc --profile worker exec worker python tools/doctor.py --offline  # configuration and host only, no network (never "ready")
 # the same thing without compose, using the container name:
 docker exec nightshift-worker-1 python tools/doctor.py
 ```
@@ -165,11 +168,15 @@ READY: NO (2 blocking, 1 warning)
   `UNVERIFIED` is "present but only a real (paid) call can prove it". `SKIP` was not
   checked.
 - Every line that is not a pass ends with the exact next step.
-- Exit code: `0` ready, `1` something blocking, `2` warnings only (or nothing could
-  be checked).
-- `--extended` adds Gemini's free model lookup (it is not otherwise used by the
-  app). `--no-youtube` skips the YouTube token refresh, which is a free request whose
-  result is held in memory and not saved.
+- Exit code: `0` ready, `1` something blocking, `2` warnings only, nothing could be
+  checked, or `--offline` (that run says `CONFIG ONLY` and is not a readiness answer).
+- Gemini is checked with a free model lookup (the key is sent in a header, nothing
+  is generated). `--no-youtube` skips the YouTube token refresh, which is a free
+  request whose result is held in memory and not saved.
+- The narration lines describe the deployment default. A channel can pick its own
+  voice in the Command Center; the doctor does not check per-channel overrides.
+- A variable that holds something it should not (for example a key pasted into
+  `TTS_PROVIDER`) is reported as "an unrecognised value", never repeated.
 - The idle pipeline worker leaves no heartbeat, so with no job in flight the report
   says `UNVERIFIED` for liveness. Check `dc --profile worker ps worker` shows it
   `running`; the smoke run is the proof.
@@ -189,17 +196,23 @@ Without a token it prints `SKIP` and does nothing.
 
 ## 7. Keeping the server healthy
 
-- **Disk.** A run refuses to start under 5 GB free (the helper
-  `modules/disk_guard.py`; the doctor reports the same number). Old finished or held
-  runs can be cleaned by hand, never on a schedule:
+- **Disk.** The doctor reports the free space on the output volume (FAIL under
+  5 GB, WARN under 10 GB). Nothing in the pipeline refuses to start a run on low
+  disk yet: `modules/disk_guard.py` provides the check (`require_free_disk`), but
+  it is not wired into `main.py` in this change. Clean up by hand, never on a
+  schedule:
   ```bash
   dc --profile worker exec worker python -m modules.disk_guard --prune-days 30          # lists only
   dc --profile worker exec worker python -m modules.disk_guard --prune-days 30 --apply  # deletes
   ```
-  It only touches run folders that finished or were rendered and held, untouched for
-  at least that many days (minimum 7), skips any folder containing a file named
-  `.keep`, and never an unfinished run. A held video's master can be needed for a
-  paid download or an approval, so keep the number generous.
+  By default it selects only **published** runs (the upload ledger says uploaded and
+  the run's checkpoint was cleared, which is what the pipeline does after a
+  successful upload), untouched for at least that many days (minimum 7). Held,
+  blocked, awaiting-approval and upload-failed runs are never selected unless you
+  add `--include-held`: their master can still be needed for approval, a re-upload
+  or a paid download. A folder containing a file named `.keep`, a symlink, and any
+  run that has not rendered yet are always skipped. Once a run is pruned its master
+  can no longer be cut into a paid download, so keep the number generous.
 - **Pinned SDKs.** `constraints.txt` pins `elevenlabs`, `google-genai`, `edge-tts`
   and `openai-whisper` to exact versions for the worker image, so a rebuild cannot
   change behaviour by itself. Raise a pin in its own change, after the tests pass.

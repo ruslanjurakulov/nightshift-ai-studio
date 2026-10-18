@@ -6,7 +6,7 @@ Run it where the worker runs, so it sees the environment the worker really has:
     docker compose --env-file /opt/nightshift/.env.web -f deploy/docker-compose.yml \\
         --profile worker exec worker python tools/doctor.py          # human report
     ... exec worker python tools/doctor.py --json                    # machine report
-    ... exec worker python tools/doctor.py --offline                 # no network at all
+    ... exec worker python tools/doctor.py --offline                 # config + host only: never "ready"
     python tools/doctor.py --github                                  # repo-side view (needs a token)
 
 Every line is PASS, WARN or FAIL (plus UNVERIFIED / SKIP for things that cannot
@@ -18,15 +18,20 @@ What it does and does not do
   that is reported as a FAIL here instead of at the end of a paid run.
 * Secrets: only "set" / "missing" and a shape verdict in words. Never a value,
   a prefix, a length or a response body. All output also passes a scrubber.
-* Network: only GET requests, 10 s each, one per provider, no retries, and only
-  on endpoints this repository already calls for free (ElevenLabs subscription
-  and voices, Leonardo /me, Pexels search, Supabase REST). The one POST is the
-  YouTube OAuth token refresh (free, in memory, nothing is saved). Providers
-  with no such endpoint are reported UNVERIFIED, never PASS. ``--extended`` adds
-  Gemini's free ``GET models/{model}`` (not otherwise used in this repository).
+* Network: only GET requests, 10 s each, no retries, redirects never followed.
+  One check per provider (ElevenLabs adds one GET per configured voice; the
+  Supabase checks are a handful of ``limit=0`` reads), only on endpoints that are
+  free: ElevenLabs subscription and voices, Leonardo /me, Pexels search, Gemini's
+  ``GET models/{model}``, Supabase REST. The one POST is the YouTube OAuth token
+  refresh (free, in memory, nothing is saved). Providers with no such endpoint
+  are reported UNVERIFIED, never PASS; the one the config selects counts as WARN.
+* A value read from a free-text variable (provider ids, model names) is echoed
+  only if it is a known id; anything else is "an unrecognised value", so a key
+  pasted into the wrong variable cannot leak through a message.
 * Nothing is written: no file, no database row, no GitHub setting.
 
-Exit code: 0 ready, 1 at least one FAIL, 2 warnings only.
+Exit code: 0 ready, 1 at least one FAIL, 2 warnings only, nothing checked, or
+``--offline`` (config only: the network checks that make "ready" true were skipped).
 ``preflight_summary()`` is the cheap offline subset a run start can call.
 """
 
@@ -114,7 +119,6 @@ class Ctx:
     which: Callable[[str], Optional[str]] = shutil.which
     cache_home: Optional[Path] = None
     preflight_video: Optional[Callable[[], None]] = None
-    extended: bool = False
     youtube: bool = True
 
     def get(self, name: str) -> str:
@@ -185,6 +189,43 @@ def _fix_env(names: str) -> str:
             "switches are Variables), then run Actions > 'Deploy web' so the worker gets it")
 
 
+UNRECOGNISED = "an unrecognised value"
+_MODEL_ID = re.compile(r"(?:MiniMax-[A-Za-z0-9.]{1,20}(?:-[A-Za-z0-9.]{1,12}){0,2}|gemini-[a-z0-9.]{1,20}(?:-[a-z0-9.]{1,12}){0,5})")
+#: Free-text variables whose value is read by the checks. Their values are never
+#: echoed unless they are a known id, and the scrubber removes them from all output.
+FREE_TEXT_VARS = ("CHRONOS_VIDEO_PROVIDER", "CHRONOS_IMAGE_PROVIDER", "TTS_PROVIDER", "MINIMAX_H3_MODEL",
+                  "GEMINI_MODEL", "CHRONOS_IMAGE_MODEL", "ELEVENLABS_MODEL_ID", "WAN_WORKSPACE_ID",
+                  "MINIMAX_V2_QUERY_PATH")
+
+
+def known_id(value: str, allowed: Sequence[str] = ()) -> str:
+    """``value`` if it is one of the known ids (or a model id of a known family),
+    else a fixed phrase. A key pasted into the wrong variable therefore never
+    reaches a message."""
+    if value in allowed or (not allowed and _MODEL_ID.fullmatch(value)):
+        return value
+    return UNRECOGNISED
+
+
+def _exc_summary(e: BaseException) -> str:
+    """The class name and the pipeline's own 'Fix:' sentence, with every quoted
+    string and long token-shaped run masked - never the whole message, which
+    quotes the configured model id verbatim."""
+    text = " ".join(str(e).split())
+    fix = text.split("Fix:", 1)[1].strip() if "Fix:" in text else ""
+    fix = re.sub(r"'[^']*'|\"[^\"]*\"", "<value>", fix)
+    fix = re.sub(r"[A-Za-z0-9_\-.]{24,}", "<value>", fix)[:200]
+    return type(e).__name__ + (f": {fix}" if fix else "")
+
+
+def _load_json(raw: str):
+    """(object, ok). Deeply nested input (RecursionError) is just 'not valid JSON'."""
+    try:
+        return json.loads(raw), True
+    except (ValueError, RecursionError):
+        return None, False
+
+
 # -- layer 1: configuration, no network ---------------------------------------
 
 def shape_problem(name: str, value: str) -> Optional[str]:
@@ -213,13 +254,11 @@ def check_shapes(ctx: Ctx) -> List[Check]:
     for name in JSON_KEYS:
         raw = ctx.env.get(name, "") or ""
         if raw.strip():
-            try:
-                parsed = json.loads(raw)
-            except ValueError:
+            parsed, ok = _load_json(raw)
+            if not ok:
                 bad.append(f"{name} is not valid JSON")
-            else:
-                if not isinstance(parsed, dict):
-                    bad.append(f"{name} is not a JSON object")
+            elif not isinstance(parsed, dict):
+                bad.append(f"{name} is not a JSON object")
     for name in ("ELEVENLABS_VOICE_ID", "ELEVENLABS_SECONDARY_VOICE_ID"):
         v = ctx.get(name)
         if v and not VOICE_ID.fullmatch(v) and not (name.endswith("SECONDARY_VOICE_ID") and v == "narrator"):
@@ -250,7 +289,7 @@ def check_video(ctx: Ctx) -> List[Check]:
     if not requested:
         return [Check(g, n, PASS, "AI video clips are off: runs use Pexels stock footage (as configured)")]
     if provider not in VIDEO_KEYS:
-        return [Check(g, n, FAIL, f"CHRONOS_VIDEO_PROVIDER names an unknown provider '{provider[:40]}': "
+        return [Check(g, n, FAIL, f"CHRONOS_VIDEO_PROVIDER holds {UNRECOGNISED} (not a known provider): "
                                   "every run would silently use stock footage",
                       f"set CHRONOS_VIDEO_PROVIDER to one of {', '.join(sorted(VIDEO_KEYS))}, or clear it "
                       "and CHRONOS_ENABLE_VIDEO_GEN to use stock on purpose, then Deploy web")]
@@ -279,10 +318,9 @@ def check_video(ctx: Ctx) -> List[Check]:
     if hook is not None:
         try:
             hook()
-        except Exception as e:  # VideoModelUnavailable carries our own words, never a key
-            reason = " ".join(str(e).split())[:300]
-            return out + [Check(g, n, FAIL, f"the pipeline's own preflight refuses {provider}: {reason}",
-                                "apply the Fix named in that message, then Deploy web")]
+        except Exception as e:  # its message quotes configured values: summarise, never forward
+            return out + [Check(g, n, FAIL, f"the pipeline's own preflight refuses {provider} ({_exc_summary(e)})",
+                                "apply the Fix named above (the full message is in the run log), then Deploy web")]
     return out + [Check(g, n, PASS, f"{provider} clips: switch on and key set (max 2 clips per video)")]
 
 
@@ -290,14 +328,14 @@ def check_images(ctx: Ctx) -> List[Check]:
     g, n = "config", "ai stills"
     chosen = ctx.get("CHRONOS_IMAGE_PROVIDER").lower()
     flag = ctx.on("CHRONOS_ENABLE_IMAGE_GEN")
-    if not chosen and not flag:
+    if chosen in ("", "pexels") and not flag:
         return [Check(g, n, PASS, "AI stills are off: runs use Pexels photos (as configured)")]
     if chosen in ("", "pexels"):
         return [Check(g, n, WARN, "CHRONOS_ENABLE_IMAGE_GEN is on but no image provider is chosen: stock photos are used",
                       "set the variable CHRONOS_IMAGE_PROVIDER (" + ", ".join(sorted(IMAGE_KEYS)) + ") or switch it off")]
     key = IMAGE_KEYS.get(chosen)
     if key is None:
-        return [Check(g, n, FAIL, f"CHRONOS_IMAGE_PROVIDER names an unknown provider '{chosen[:40]}': stock photos would be used",
+        return [Check(g, n, FAIL, f"CHRONOS_IMAGE_PROVIDER holds {UNRECOGNISED} (not a known provider): stock photos would be used",
                       "use one of " + ", ".join(sorted(IMAGE_KEYS)) + ", then Deploy web")]
     if not flag:
         return [Check(g, n, FAIL, f"{chosen} stills are requested but CHRONOS_ENABLE_IMAGE_GEN is not on: stock photos would be used",
@@ -320,20 +358,21 @@ def check_tts(ctx: Ctx) -> List[Check]:
                       "to use ElevenLabs set the secret ELEVENLABS_API_KEY and the variable TTS_PROVIDER=elevenlabs, "
                       "then Deploy web; to use Edge on purpose set TTS_PROVIDER=edge")]
     if effective != "elevenlabs":
-        return [Check(g, n, FAIL, f"TTS_PROVIDER='{effective[:40]}' is not a known provider",
+        return [Check(g, n, FAIL, f"TTS_PROVIDER holds {UNRECOGNISED} (not elevenlabs or edge)",
                       "set the variable TTS_PROVIDER to elevenlabs or edge, then Deploy web")]
     if not key:
         return [Check(g, n, FAIL, "TTS_PROVIDER=elevenlabs but ELEVENLABS_API_KEY is empty: the run would stop at the voice check",
                       _fix_env("ELEVENLABS_API_KEY"))]
+    scope = " - deployment default (per-channel overrides not checked)"
     out = [Check(g, n, PASS if explicit else WARN,
-                 "ElevenLabs narration" + ("" if explicit else " (by key only: TTS_PROVIDER is unset, so an empty key would fall back to Edge)"),
+                 "ElevenLabs narration" + scope + ("" if explicit else " (by key only: TTS_PROVIDER is unset, so an empty key would fall back to Edge)"),
                  "" if explicit else "set the variable TTS_PROVIDER=elevenlabs so a missing key can never become the Edge voice, then Deploy web")]
     if not ctx.has("ELEVENLABS_VOICE_ID"):
-        out.append(Check(g, "narrator voice", WARN, "ELEVENLABS_VOICE_ID is not set: the built-in library voice is used, which some plans cannot use through the API",
+        out.append(Check(g, "narrator voice", WARN, "ELEVENLABS_VOICE_ID is not set: the built-in library voice is used, which some plans cannot use through the API" + scope,
                          "set the variable ELEVENLABS_VOICE_ID to a voice id from the account's own voice list, then Deploy web"))
     if not ctx.has("ELEVENLABS_SECONDARY_VOICE_ID"):
-        out.append(Check(g, "secondary voice", WARN, "ELEVENLABS_SECONDARY_VOICE_ID is not set (there is no built-in default)",
-                         "set the variable to a 20-character voice id from the account's voice list, or the word narrator, then Deploy web"))
+        out.append(Check(g, "secondary voice", FAIL, "ELEVENLABS_SECONDARY_VOICE_ID is not set (there is no built-in default): the run's voice check refuses to start" + scope,
+                         "set the variable to a 20-character voice id from the account's voice list, or the word narrator (a channel's own choice in the Command Center also satisfies the run), then Deploy web"))
     return out
 
 
@@ -496,10 +535,9 @@ def check_gemini(ctx: Ctx) -> List[Check]:
     if not ctx.has("GEMINI_API_KEY"):
         return []
     model = ctx.get("GEMINI_MODEL") or "gemini-3.6-flash"
-    if not ctx.extended or not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", model):
-        return [Check("providers", "gemini", UNVERIFIED,
-                      f"key present; no free authenticated call to Gemini is used elsewhere in this repository (billing is not readable by key)",
-                      "run `python tools/doctor.py --extended` for the free models.get check; billing is proven only by a real run")]
+    if known_id(model) == UNRECOGNISED:
+        return [Check("providers", "gemini", WARN, f"GEMINI_MODEL holds {UNRECOGNISED} (not a Gemini model id), so the key was not tested",
+                      "set the variable GEMINI_MODEL to a current Gemini model id (or clear it), then Deploy web")]
     r = ctx.http.get(f"https://generativelanguage.googleapis.com/v1beta/models/{model}",
                      headers={"x-goog-api-key": ctx.get("GEMINI_API_KEY")})
     if r.status == 200:
@@ -512,18 +550,43 @@ def check_gemini(ctx: Ctx) -> List[Check]:
     return [Check("providers", "gemini", WARN, f"models check: Gemini {word}", remedy)]
 
 
+#: provider id -> label in UNVERIFIED_PROVIDERS, for the ones the config selects.
+_VIDEO_LABEL = {"minimax": "minimax", "kling": "kling", "veo": "veo", "seedance": "seedance", "wan": "wan", "higgsfield": "higgsfield"}
+_IMAGE_LABEL = {"gpt-image": "openai", "flux": "flux (bfl)", "ideogram": "ideogram", "fal": "fal"}
+
+
+def _selected_labels(ctx: Ctx) -> List[str]:
+    """Unverifiable providers the effective config actually uses (switch on, key set)."""
+    out: List[str] = []
+    video = ctx.get("CHRONOS_VIDEO_PROVIDER").lower() or "minimax"
+    flag = ctx.on("CHRONOS_ENABLE_MINIMAX_BROLL") if video == "minimax" else ctx.on("CHRONOS_ENABLE_VIDEO_GEN")
+    if video in _VIDEO_LABEL and flag and _video_key_set(ctx, video):
+        out.append(_VIDEO_LABEL[video])
+    image = ctx.get("CHRONOS_IMAGE_PROVIDER").lower()
+    if image in _IMAGE_LABEL and ctx.on("CHRONOS_ENABLE_IMAGE_GEN") and ctx.has(IMAGE_KEYS[image]):
+        out.append(_IMAGE_LABEL[image])
+    return out
+
+
 def check_unverified(ctx: Ctx) -> List[Check]:
+    selected = _selected_labels(ctx)
     present, seen = [], set()
     for var, label in UNVERIFIED_PROVIDERS:
-        if ctx.has(var) and label not in seen:
+        if ctx.has(var) and label not in seen and label not in selected:
             seen.add(label)
             present.append(label)
-    if not present:
-        return []
-    return [Check("providers", "other providers", UNVERIFIED,
-                  "key present, no free authenticated endpoint is used in this repository: " + ", ".join(present),
-                  "these are proven only by a paid call: `python tools/probe_models.py --model <id>` (one model at a time), "
-                  "or by the first small real run")]
+    out: List[Check] = []
+    if selected:
+        out.append(Check("providers", "selected provider", WARN,
+                         "the configuration uses " + ", ".join(selected) + ", whose key cannot be proven without a paid call",
+                         "run the 30-second smoke run (docs/VIDEO_GO_LIVE.md, step 5) and check the provider's dashboard, "
+                         "or `python tools/probe_models.py --model <id>` (paid, one model at a time)"))
+    if present:
+        out.append(Check("providers", "other providers", UNVERIFIED,
+                         "key present, no free authenticated endpoint is used in this repository: " + ", ".join(present),
+                         "these are proven only by a paid call: `python tools/probe_models.py --model <id>` (one model at a time), "
+                         "or by the first small real run"))
+    return out
 
 
 # -- Supabase -----------------------------------------------------------------
@@ -672,10 +735,7 @@ def check_liveness(ctx: Ctx) -> List[Check]:
 def _client_pair(ctx: Ctx, token: dict) -> Tuple[str, str]:
     cid, secret = str(token.get("client_id") or ""), str(token.get("client_secret") or "")
     if not (cid and secret):
-        try:
-            doc = json.loads(ctx.get("YOUTUBE_CLIENT_SECRET_JSON") or "{}")
-        except ValueError:
-            doc = {}
+        doc, _ = _load_json(ctx.get("YOUTUBE_CLIENT_SECRET_JSON") or "{}")
         inner = (doc.get("installed") or doc.get("web") or {}) if isinstance(doc, dict) else {}
         if isinstance(inner, dict):
             cid, secret = cid or str(inner.get("client_id") or ""), secret or str(inner.get("client_secret") or "")
@@ -689,9 +749,8 @@ def check_youtube(ctx: Ctx) -> List[Check]:
     if not ctx.has("YOUTUBE_TOKEN_JSON"):
         return [Check(g, n, WARN, "YOUTUBE_TOKEN_JSON is not set: uploads for the operator channel will fail (customer channels use their own connection)",
                       _fix_env("YOUTUBE_TOKEN_JSON, YOUTUBE_CLIENT_SECRET_JSON and YOUTUBE_CHANNEL_ID"))]
-    try:
-        token = json.loads(ctx.get("YOUTUBE_TOKEN_JSON"))
-    except ValueError:
+    token, ok = _load_json(ctx.get("YOUTUBE_TOKEN_JSON"))
+    if not ok:
         return [Check(g, n, FAIL, "YOUTUBE_TOKEN_JSON is not valid JSON", "re-paste the whole youtube_token.json into the secret, then Deploy web")]
     if not isinstance(token, dict) or not token.get("refresh_token"):
         return [Check(g, n, FAIL, "YOUTUBE_TOKEN_JSON has no refresh token", "run the YouTube authorisation again (tools/connect_channel.py) and update the secret")]
@@ -745,20 +804,29 @@ def _looks_secret(name: str) -> bool:
     return bool(re.search(r"(_KEY|_SECRET|_TOKEN|_JSON|^FAL_KEY)$", name))
 
 
-GITHUB_REQUIRED = ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "GEMINI_API_KEY", "PEXELS_API_KEY",
-                   "YOUTUBE_CLIENT_SECRET_JSON", "YOUTUBE_TOKEN_JSON", "YOUTUBE_CHANNEL_ID")
+GITHUB_REQUIRED = ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "GEMINI_API_KEY", "PEXELS_API_KEY")
+#: Missing = a WARN, as in the local check: customer channels upload with their own connection.
+GITHUB_YOUTUBE = ("YOUTUBE_CLIENT_SECRET_JSON", "YOUTUBE_TOKEN_JSON", "YOUTUBE_CHANNEL_ID")
+GH_PAGE_SIZE, GH_MAX_PAGES = 100, 10
 
 
 def _gh_names(ctx: Ctx, path: str, field: str, headers: dict) -> Tuple[Optional[Dict[str, Optional[datetime]]], Resp]:
-    """{name: updated_at} from a GitHub listing - names and timestamps only; a
-    variable's value is in the answer and is dropped here, unread."""
-    r = ctx.http.get("https://api.github.com" + path, headers=headers, params={"per_page": "100"})
-    if r.status != 200 or not isinstance(r.data, dict) or not isinstance(r.data.get(field), list):
-        return None, r
-    out = {}
-    for item in r.data[field]:
-        if isinstance(item, dict) and isinstance(item.get("name"), str):
-            out[item["name"]] = _parse_ts(item.get("updated_at"))
+    """{name: updated_at} from a GitHub listing, all pages (at most GH_MAX_PAGES)
+    - names and timestamps only; a variable's value is in the answer and is
+    dropped here, unread. None when any page could not be read."""
+    out: Dict[str, Optional[datetime]] = {}
+    r = Resp(None)
+    for page in range(1, GH_MAX_PAGES + 1):
+        r = ctx.http.get("https://api.github.com" + path, headers=headers,
+                         params={"per_page": str(GH_PAGE_SIZE), "page": str(page)})
+        if r.status != 200 or not isinstance(r.data, dict) or not isinstance(r.data.get(field), list):
+            return None, r
+        items = r.data[field]
+        for item in items:
+            if isinstance(item, dict) and isinstance(item.get("name"), str):
+                out[item["name"]] = _parse_ts(item.get("updated_at"))
+        if len(items) < GH_PAGE_SIZE:
+            break
     return out, r
 
 
@@ -778,8 +846,18 @@ def github_checks(ctx: Ctx, repo: Optional[str] = None) -> List[Check]:
         word, remedy = _http_words(rs)
         return [Check(g, "github", FAIL, f"GitHub {word} when listing the repository's secrets and variables", remedy)]
     out: List[Check] = []
-    env_s, _ = _gh_names(ctx, f"/repos/{repo}/environments/production/secrets", "secrets", headers)
-    env_v, _ = _gh_names(ctx, f"/repos/{repo}/environments/production/variables", "variables", headers)
+    if secrets is None or variables is None:
+        return [Check(g, "listing", UNVERIFIED, "only one of the secrets / variables listings could be read (the token may lack 'Variables' or 'Secrets' access), so nothing can be concluded about missing names",
+                      "give the token read-only access to both Secrets and Variables")]
+    env_s, res = _gh_names(ctx, f"/repos/{repo}/environments/production/secrets", "secrets", headers)
+    env_v, rev = _gh_names(ctx, f"/repos/{repo}/environments/production/variables", "variables", headers)
+    if env_s is None or env_v is None:
+        bad = [x for x in (res, rev) if x.status != 200]
+        code = f"HTTP {bad[0].status}" if bad and bad[0].status else "no answer"
+        out.append(Check(g, "production environment", UNVERIFIED,
+                         f"the 'production' environment's own secrets/variables could not be read ({code}); only repository-level names were checked",
+                         "give the token access to environments (read-only), or look at Settings > Environments > production by hand; "
+                         "an environment-level value overrides a repository one"))
     all_secrets = {**(secrets or {}), **(env_s or {})}
     all_vars = {**(variables or {}), **(env_v or {})}
     kinds = _kinds_from_workflow(ctx.root)
@@ -790,15 +868,18 @@ def github_checks(ctx: Ctx, repo: Optional[str] = None) -> List[Check]:
     if heuristic:
         out.append(Check(g, "classification", WARN, "deploy_web.yml was not found here: which names are secrets vs variables is guessed from the name",
                          "run the doctor from a repository checkout for the exact mapping"))
-    if secrets is None or variables is None:
-        out.append(Check(g, "listing", UNVERIFIED, "one of the two listings could not be read (the token may lack 'Variables' or 'Secrets' access)",
-                         "give the token read-only access to both"))
     missing_req = [n for n in GITHUB_REQUIRED if n not in all_secrets and n not in all_vars]
     if missing_req:
         out.append(Check(g, "required names", FAIL, "not set anywhere: " + ", ".join(missing_req),
                          "add them as GitHub Secrets (Settings > Secrets and variables > Actions)"))
     else:
         out.append(Check(g, "required names", PASS, "all required names exist: " + ", ".join(GITHUB_REQUIRED)))
+    yt_missing = [n for n in GITHUB_YOUTUBE if n not in all_secrets and n not in all_vars]
+    if yt_missing:
+        out.append(Check(g, "youtube names", WARN, "not set: " + ", ".join(yt_missing) + " (operator-channel uploads will fail; customer channels use their own connection)",
+                         "add them as GitHub Secrets if the operator channel should upload"))
+    else:
+        out.append(Check(g, "youtube names", PASS, "all exist: " + ", ".join(GITHUB_YOUTUBE)))
     wrong = sorted(n for n, k in kinds.items() if k == "secret" and n in all_vars and n not in all_secrets)
     if wrong:
         out.append(Check(g, "secret stored as variable", FAIL, "stored as a Variable but the deploy reads a Secret (the worker gets an empty value): " + ", ".join(wrong),
@@ -807,7 +888,7 @@ def github_checks(ctx: Ctx, repo: Optional[str] = None) -> List[Check]:
     if wrong_v:
         out.append(Check(g, "variable stored as secret", WARN, "stored as a Secret but the deploy reads a Variable (the worker gets an empty value): " + ", ".join(wrong_v),
                          "recreate each as a Variable with the same name, then Deploy web"))
-    optional = [n for n in expected if n not in GITHUB_REQUIRED]
+    optional = [n for n in expected if n not in GITHUB_REQUIRED and n not in GITHUB_YOUTUBE]
     present = sorted(n for n in optional if n in all_secrets or n in all_vars)
     absent = sorted(n for n in optional if n not in all_secrets and n not in all_vars)
     out.append(Check(g, "optional names present", PASS, ", ".join(present) if present else "none"))
@@ -834,51 +915,74 @@ def github_checks(ctx: Ctx, repo: Optional[str] = None) -> List[Check]:
 
 # -- assembling -------------------------------------------------------------------
 
+_KNOWN_IDS = set(VIDEO_KEYS) | set(IMAGE_KEYS) | {"elevenlabs", "edge", "pexels"}
+
+
 def _scrub(text: str, env: Mapping[str, str]) -> str:
+    """The net under every message: secret-named values, free-text variables
+    that are not a known id (a key pasted into the wrong variable), and
+    token-shaped strings, replaced before anything is printed."""
     from modules.log_redaction import redact  # noqa: PLC0415
 
     for name, value in env.items():
-        if value and len(str(value)) >= 8 and re.search(r"KEY|SECRET|TOKEN|JSON|PASSWORD", str(name)):
-            text = text.replace(str(value), "<redacted>")
+        value = str(value or "")
+        if len(value) < 8:
+            continue
+        secretish = re.search(r"KEY|SECRET|TOKEN|JSON|PASSWORD", str(name))
+        freetext = name in FREE_TEXT_VARS and value not in _KNOWN_IDS and not _MODEL_ID.fullmatch(value)
+        if secretish or freetext:
+            text = text.replace(value, "<redacted>")
     text = re.sub(r"\b(?:sk|xi|pk|ghp|gho|github_pat|AIza|eyJ)[A-Za-z0-9_\-.]{16,}", "<redacted>", redact(text))
     return text
 
 
 def run_checks(ctx: Ctx, *, offline: bool = False, github: bool = False, repo: Optional[str] = None) -> List[Check]:
+    def guarded(fn, *a) -> List[Check]:
+        try:
+            return fn(*a)
+        except Exception as e:  # incl. RecursionError: a bug in one check must not hide the others
+            return [Check("doctor", getattr(fn, "__name__", "check"), WARN, f"this check crashed ({type(e).__name__})",
+                          "report it; the other checks are unaffected")]
+
     if github:
-        return github_checks(ctx, repo)
+        return guarded(github_checks, ctx, repo)
     checks: List[Check] = []
-    checks += check_required_keys(ctx) + check_shapes(ctx) + check_video(ctx) + check_images(ctx) + check_tts(ctx)
-    checks += check_host(ctx)
+    for fn in (check_required_keys, check_shapes, check_video, check_images, check_tts, check_host):
+        checks += guarded(fn, ctx)
     if offline:
         return checks
     for fn in (check_elevenlabs, check_pexels, check_leonardo, check_gemini, check_unverified,
                check_supabase, check_youtube):
-        try:
-            checks += fn(ctx)
-        except Exception as e:  # a bug in one check must not hide the others
-            checks.append(Check("doctor", fn.__name__, WARN, f"this check crashed ({type(e).__name__})", "report it; the other checks are unaffected"))
+        checks += guarded(fn, ctx)
     return checks
 
 
-def summarize(checks: Sequence[Check]) -> Dict[str, Any]:
+def summarize(checks: Sequence[Check], offline: bool = False) -> Dict[str, Any]:
+    """``offline``: the network checks that make "ready" true were skipped, so the
+    answer is never ready (exit 2) even when every local check passes."""
     n = {s: sum(1 for c in checks if c.status == s) for s in (PASS, WARN, FAIL, UNVERIFIED, SKIP)}
     checked = n[PASS] + n[WARN] + n[FAIL]
-    code = 1 if n[FAIL] else (2 if n[WARN] or not checked else 0)
-    return {"ready": code == 0, "exit_code": code, "counts": n, "checked": checked}
+    code = 1 if n[FAIL] else (2 if n[WARN] or not checked or offline else 0)
+    return {"ready": code == 0, "exit_code": code, "counts": n, "checked": checked, "config_only": bool(offline)}
 
 
-def to_json(checks: Sequence[Check], env: Mapping[str, str]) -> str:
-    doc = {**summarize(checks), "checks": [asdict(c) for c in checks]}
+def to_json(checks: Sequence[Check], env: Mapping[str, str], offline: bool = False) -> str:
+    doc = {**summarize(checks, offline), "checks": [asdict(c) for c in checks]}
     return _scrub(json.dumps(doc, indent=2), env)
 
 
-def render(checks: Sequence[Check], env: Mapping[str, str]) -> str:
-    s = summarize(checks)
+def render(checks: Sequence[Check], env: Mapping[str, str], offline: bool = False) -> str:
+    s = summarize(checks, offline)
     c = s["counts"]
-    head = "READY: UNKNOWN (nothing could be checked)" if not s["checked"] else "READY: YES" if s["ready"] else f"READY: NO ({c[FAIL]} blocking, {c[WARN]} warning{'s' if c[WARN] != 1 else ''})"
-    if s["ready"] and (c[UNVERIFIED] or c[SKIP]):
-        head += f"  ({c[UNVERIFIED]} unverified)"
+    counts = f"{c[FAIL]} blocking, {c[WARN]} warning{'s' if c[WARN] != 1 else ''}"
+    if not s["checked"]:
+        head = "READY: UNKNOWN (nothing could be checked)"
+    elif offline:
+        head = f"CONFIG ONLY (network checks skipped; {counts}): not a readiness answer, run without --offline"
+    elif s["ready"]:
+        head = "READY: YES" + (f"  ({c[UNVERIFIED]} unverified)" if c[UNVERIFIED] or c[SKIP] else "")
+    else:
+        head = f"READY: NO ({counts})"
     width = max([len(x.name) for x in checks] + [8])
     lines = [head]
     for x in checks:
@@ -916,14 +1020,13 @@ def preflight_summary(env: Optional[Mapping[str, str]] = None, **kw) -> Dict[str
     fmt = lambda c: _scrub(f"{c.name}: {c.detail}" + (f" - next: {c.fix}" if c.fix else ""), scrub_env)  # noqa: E731
     blocking = [fmt(c) for c in checks if c.status == FAIL]
     return {"ready": not blocking, "blocking": blocking,
-            "warnings": [fmt(c) for c in checks if c.status == WARN], "text": render(checks, scrub_env)}
+            "warnings": [fmt(c) for c in checks if c.status == WARN], "text": render(checks, scrub_env, offline=True)}
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Read-only readiness check for the video pipeline (no paid call, no state change).")
     ap.add_argument("--json", action="store_true", help="machine-readable report")
     ap.add_argument("--offline", action="store_true", help="configuration, key shapes and host only; no network")
-    ap.add_argument("--extended", action="store_true", help="also Gemini's free models.get (not otherwise used in this repo)")
     ap.add_argument("--no-youtube", action="store_true", help="skip the YouTube token refresh (a free POST, nothing saved)")
     ap.add_argument("--github", action="store_true", help="repo-side view: secret/variable NAMES via the GitHub API (needs a token already in the environment)")
     ap.add_argument("--repo", default=None, help="owner/name for --github")
@@ -934,10 +1037,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         load_dotenv(ROOT / ".env")
     except Exception:
         pass
-    ctx = default_ctx(extended=args.extended, youtube=not args.no_youtube)
+    ctx = default_ctx(youtube=not args.no_youtube)
     checks = run_checks(ctx, offline=args.offline, github=args.github, repo=args.repo)
-    print(to_json(checks, ctx.env) if args.json else render(checks, ctx.env))
-    return summarize(checks)["exit_code"]
+    offline = args.offline and not args.github
+    print(to_json(checks, ctx.env, offline) if args.json else render(checks, ctx.env, offline))
+    return summarize(checks, offline)["exit_code"]
 
 
 if __name__ == "__main__":

@@ -9,14 +9,22 @@ before spending). Two small, isolated pieces:
   holding ``output/`` has less than :data:`MIN_FREE_BYTES` (5 GB) free. main.py
   can call it at run start; nothing here is wired in by itself.
 * :func:`prune_old_runs` / the CLI (``python -m modules.disk_guard --prune-days
-  30``) - delete the run folders of runs that finished (or rendered and were
-  held) and have not been touched for N days. A dry run unless ``--apply``
-  is given; nothing schedules it.
+  30``) - delete the run folders of runs that were **published** and have not
+  been touched for N days. A dry run unless ``--apply`` is given; nothing
+  schedules it.
 
-Pruning only ever looks at direct children of the output directory that hold a
-``checkpoint.json`` (so it cannot touch a shared folder), never follows a
-symlink, never touches a folder with a ``.keep`` file, and never a run that
-has not rendered yet (that is a resumable run, not a finished one).
+What "published" means is read from state the pipeline really leaves behind
+(main.py, after a successful upload): the run's ``checkpoint.json`` is cleared
+(``run_checkpoint.clear``), and ``upload_attempt.json`` records ``state:
+uploaded`` with a video id (``upload_idempotency``). A folder that has the
+upload record, no checkpoint and a rendered ``.mp4`` is a finished run.
+
+A run that was held, blocked, is awaiting approval or whose upload failed keeps
+its checkpoint (with the render stage) and is **never** selected unless
+``--include-held`` is passed: its master may still be needed for approval, a
+re-upload or a paid download. Pruning also only looks at direct children of the
+output directory, never follows a symlink, never touches a folder with a
+``.keep`` file, and never a run that has not rendered (that is resumable).
 """
 
 from __future__ import annotations
@@ -41,8 +49,9 @@ MIN_FREE_BYTES = 5 * GB
 MIN_PRUNE_DAYS = 7
 DEFAULT_PRUNE_DAYS = 30
 KEEP_MARKER = ".keep"
-CHECKPOINT = "checkpoint.json"
-STAGE_RENDER = "render"
+CHECKPOINT = "checkpoint.json"          # run_checkpoint.CHECKPOINT_FILENAME
+UPLOAD_ATTEMPT = "upload_attempt.json"  # upload_idempotency.ATTEMPT_FILENAME
+STAGE_RENDER = "render"                 # run_checkpoint.STAGE_RENDER
 
 
 class InsufficientDisk(RuntimeError):
@@ -109,25 +118,42 @@ def _size(root: Path) -> int:
     return total
 
 
-def _finished_reason(run: Path) -> Optional[str]:
-    """Why this folder counts as a finished/held run, or None (leave it alone)."""
+def _read_json(path: Path) -> Optional[dict]:
     try:
-        cp = json.loads((run / CHECKPOINT).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
         return None
-    if not isinstance(cp, dict):
-        return None
-    stages = cp.get("stages") if isinstance(cp.get("stages"), dict) else {}
-    if cp.get("completed") is True:
-        return "finished"
-    if STAGE_RENDER in stages:
-        return "rendered, not completed (held)"
+    return data if isinstance(data, dict) else None
+
+
+def _has_render(run: Path) -> bool:
+    try:
+        return any(p.is_file() and not p.is_symlink() for p in run.rglob("*.mp4"))
+    except OSError:
+        return False
+
+
+def classify(run: Path) -> Optional[str]:
+    """``"published"``, ``"held"`` or None (leave it alone), from the state the
+    pipeline leaves in the folder."""
+    attempt = _read_json(run / UPLOAD_ATTEMPT)
+    uploaded = bool(attempt and attempt.get("state") == "uploaded" and attempt.get("video_id"))
+    checkpoint_path = run / CHECKPOINT
+    if uploaded and not checkpoint_path.exists() and _has_render(run):
+        return "published"
+    cp = _read_json(checkpoint_path)
+    if cp is not None and not uploaded:
+        stages = cp.get("stages") if isinstance(cp.get("stages"), dict) else {}
+        if STAGE_RENDER in stages:
+            return "held"  # rendered, never uploaded: held, blocked, awaiting approval, upload failed
     return None
 
 
-def find_prunable(output_dir: Path, older_than_days: float, *, now: Optional[float] = None) -> List[RunDir]:
-    """Run folders under ``output_dir`` that finished/were held and are older than
-    ``older_than_days`` by their newest file. Oldest first."""
+def find_prunable(output_dir: Path, older_than_days: float, *, now: Optional[float] = None,
+                  include_held: bool = False) -> List[RunDir]:
+    """Run folders under ``output_dir`` that were published (and, only with
+    ``include_held``, rendered but never uploaded) and whose newest file is
+    older than ``older_than_days``. Oldest first."""
     if older_than_days < MIN_PRUNE_DAYS:
         raise ValueError(f"refusing to prune runs younger than {MIN_PRUNE_DAYS} days")
     now = time.time() if now is None else now
@@ -140,24 +166,26 @@ def find_prunable(output_dir: Path, older_than_days: float, *, now: Optional[flo
             continue
         if (run / KEEP_MARKER).exists():
             continue
-        reason = _finished_reason(run)
-        if reason is None:
+        kind = classify(run)
+        if kind is None or (kind == "held" and not include_held):
             continue
         try:
             age = (now - _newest_mtime(run)) / 86400.0
         except OSError:
             continue
         if age >= older_than_days:
+            reason = "published" if kind == "published" else "held / not uploaded"
             out.append(RunDir(run, age, _size(run), reason))
     out.sort(key=lambda r: -r.age_days)
     return out
 
 
 def prune_old_runs(output_dir: Path, older_than_days: float, *, apply: bool = False,
-                   now: Optional[float] = None, rmtree: Callable = shutil.rmtree) -> List[RunDir]:
+                   now: Optional[float] = None, include_held: bool = False,
+                   rmtree: Callable = shutil.rmtree) -> List[RunDir]:
     """List (and, with ``apply=True``, delete) the prunable runs. Returns what was
     selected; a folder that cannot be removed is logged and skipped."""
-    chosen = find_prunable(output_dir, older_than_days, now=now)
+    chosen = find_prunable(output_dir, older_than_days, now=now, include_held=include_held)
     if apply:
         kept: List[RunDir] = []
         for r in chosen:
@@ -173,10 +201,13 @@ def prune_old_runs(output_dir: Path, older_than_days: float, *, apply: bool = Fa
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="python -m modules.disk_guard",
-        description="Free-disk check and pruning of old finished/held run folders. Never scheduled.")
+        description="Free-disk check and pruning of old published run folders. Never scheduled.")
     ap.add_argument("--output-dir", default=None, help="default: the pipeline's output/ folder")
     ap.add_argument("--prune-days", type=float, default=None, metavar="N",
-                    help=f"list finished/held runs untouched for N days (N >= {MIN_PRUNE_DAYS})")
+                    help=f"list published runs untouched for N days (N >= {MIN_PRUNE_DAYS})")
+    ap.add_argument("--include-held", action="store_true",
+                    help="ALSO select rendered-but-never-uploaded runs (held, blocked, awaiting approval, "
+                         "upload failed): their master may still be needed")
     ap.add_argument("--apply", action="store_true", help="actually delete (default is a dry run)")
     args = ap.parse_args(argv)
 
@@ -191,7 +222,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.prune_days is None:
         return 0 if free >= MIN_FREE_BYTES else 1
     try:
-        runs = prune_old_runs(out_dir, args.prune_days, apply=args.apply)
+        runs = prune_old_runs(out_dir, args.prune_days, apply=args.apply, include_held=args.include_held)
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
