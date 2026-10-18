@@ -171,6 +171,18 @@ Every decision is emitted as an event carrying the gate's **own reason strings**
 
 ---
 
+### How the ledger reaches the dashboard
+
+The nightly mirror (`modules/supabase_sync.py`) sends the local `video_costs` rows
+to Supabase. Each carries a deterministic `row_key` (migration 0106) and is
+written with ignore-duplicates, so re-sending the whole history every night adds
+nothing (sent in chunks of 2000; the log's count is rows sent, not rows inserted),
+while two charges that really are identical (same flush, same stage,
+same quantity) stay two. A database without the migration refuses the write; the
+mirror then skips the table for that run and says so in its log, because a plain
+insert would duplicate every row. The owner's per-provider spend is read with
+`owner_provider_spend(days)`.
+
 ## 5. Applying the migration
 
 `supabase/migrations/0002_measurement.sql`, run in the Supabase SQL editor.
