@@ -1657,6 +1657,7 @@ class SenderWorkflowTests(unittest.TestCase):
         pay = step("payload")["env"]
         self.assertEqual(pay["WEBENV_NIGHTSHIFT_MARKETING_POSTS"], "${{ vars.NIGHTSHIFT_MARKETING_POSTS }}")
         self.assertEqual(pay["WEBENV_MARKETING_TELEGRAM_CHAT"], "${{ vars.MARKETING_TELEGRAM_CHAT }}")
+        self.assertEqual(pay["WEBENV_NOTIFY_APP_ORIGIN"], "${{ vars.NOTIFY_APP_ORIGIN }}")   # no fallback: empty = APP_ORIGIN
 
     def test_the_compose_services_use_their_own_env_files_and_profiles(self):
         c = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text())["services"]

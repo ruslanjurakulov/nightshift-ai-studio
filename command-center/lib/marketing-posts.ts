@@ -157,20 +157,86 @@ export interface Preview {
   total: number;
   limit: number;
   over: boolean;
+  /** The sender would refuse the words as unsafe (a key, a token or an e-mail address in them). */
+  unsafe: boolean;
 }
 
-/** An origin the way the sender accepts it: https, or http for localhost; no path. Anything else is unknown (null). */
+/**
+ * An origin the way the sender accepts it (modules/notify_telegram.valid_app_origin): https, or http for localhost; no
+ * credentials, path, query or fragment. The result keeps the host exactly as typed, port included (`https://a.example:443`
+ * stays `:443`, as Python's urlsplit netloc does; `new URL().host` would drop it and the count would be 4 units short).
+ */
 export function validOrigin(raw: string | undefined | null): string | null {
   if (!raw) return null;
+  const typed = raw.trim();
+  const m = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)/.exec(typed);
+  if (!m) return null;
   try {
-    const u = new URL(raw.trim());
-    if (u.username || u.password || (u.pathname !== "" && u.pathname !== "/") || u.search || u.hash) return null;
+    const u = new URL(typed);
+    if (u.username || u.password || (u.pathname !== "" && u.pathname !== "/") || u.search || u.hash || !u.hostname) return null;
     const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
     if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) return null;
-    return `${u.protocol}//${u.host}`;
+    return `${m[1].toLowerCase()}://${m[2]}`;
   } catch {
     return null;
   }
+}
+
+// ─── Text the sender refuses as unsafe (a mirror of modules/tg_text.sanitize_outgoing + modules/log_redaction) ───
+
+// Python's \b is Unicode-aware (a Cyrillic letter is a word character), JavaScript's is ASCII-only: build the same boundary.
+const W = "[\\p{L}\\p{N}_]";
+const B = `(?:(?<=${W})(?!${W})|(?<!${W})(?=${W}))`;
+const UNSAFE: RegExp[] = [
+  /bot\d+:[A-Za-z0-9_-]+/u,
+  /hooks\.slack(?:-gov)?\.com\/(?:services|workflows|triggers)\/[^\s'"<>)]+/u,
+  /[?&](?:key|api_key|apikey|access_token|token)=[^&\s'"<>)]+/iu,
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/u,
+  new RegExp(`${B}(?:bearer|basic)\\s+[A-Za-z0-9._~+/=-]{12,}`, "iu"),
+  new RegExp(`${B}eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}`, "u"),
+  new RegExp(`${B}(?:sk|pk|rk|xox[abprs]|gh[pousr]|AIza)[-_A-Za-z0-9]{16,}`, "u"),
+];
+const LONG_TOKEN = new RegExp(`${B}[A-Za-z0-9_-]{48,}${B}`, "gu");
+
+/**
+ * Would the sender replace something in this text with a placeholder (so it REFUSES the post, never altering the words)?
+ * The same rules as tg_text.sanitize_outgoing: a URL-borne credential, an e-mail address, a bearer/basic header, a JWT, a
+ * key with a well-known prefix, or an unbroken run of 48+ key characters that mixes upper case, lower case and digits.
+ * Pinned against the real sanitizer by tests/fixtures/marketing_message_cases.json.
+ */
+export function looksUnsafe(plain: string): boolean {
+  if (UNSAFE.some((re) => re.test(plain))) return true;
+  for (const m of plain.matchAll(LONG_TOKEN)) {
+    if (/[A-Z]/.test(m[0]) && /[a-z]/.test(m[0]) && /[0-9]/.test(m[0])) return true;
+  }
+  return false;
+}
+
+const LINK = /^\/[a-z0-9][a-z0-9/_-]{0,78}$/;
+
+/**
+ * The code the sender would refuse this post with (modules/channel_post.render), or null if it would send it:
+ * bad_texts, bad_link, no_origin, unsafe_text, too_long, in that order. `originUnknownOk` is for the page, which may not
+ * know the site's address although the worker does: it then skips no_origin and checks the rest on the message without the
+ * link, which can only under-count (a post it calls too long is too long).
+ */
+export function senderRefusal(
+  texts: Partial<Record<Lang, unknown>>,
+  link: string | null,
+  origin: string | null,
+  hasMedia: boolean,
+  originUnknownOk = false,
+): string | null {
+  for (const lang of LANGS) {
+    const v = texts[lang];
+    if (typeof v !== "string" || v.trim() === "") return "bad_texts";
+  }
+  if (link && (!LINK.test(link) || link.includes("//") || link.includes(".."))) return "bad_link";
+  if (link && !validOrigin(origin) && !originUnknownOk) return "no_origin";
+  const pv = buildPreview(texts as Texts, link, origin, hasMedia);
+  if (looksUnsafe(pv.plain)) return "unsafe_text";
+  if (pv.over) return "too_long";
+  return null;
 }
 
 /** The one message the worker sends for these texts: three labelled blocks in the fixed order, then the link. */
@@ -183,7 +249,7 @@ export function buildPreview(texts: Texts, link: string | null, origin: string |
   const plain = parts.join("\n\n");
   const limit = hasMedia ? CAPTION_LIMIT : MESSAGE_LIMIT;
   const total = utf16Length(plain);
-  return { blocks, linkUrl, linkUncounted: Boolean(link) && !site, plain, total, limit, over: total > limit };
+  return { blocks, linkUrl, linkUncounted: Boolean(link) && !site, plain, total, limit, over: total > limit, unsafe: looksUnsafe(plain) };
 }
 
 // ─── What the database sends ───────────────────────────────────────────────────────────────────────
@@ -344,8 +410,11 @@ export function mediaKind(path: string | null): "photo" | "video" | "other" | nu
   return "other";
 }
 
-/** A Telegram channel handle as the deploy accepts it (`@name`); anything else is unknown to the page, not guessed. */
+/**
+ * The channel the worker posts to, as the deploy accepts it (deploy/build-service-env.py CHAT): `@name` (5 to 32 characters
+ * after the @) or a numeric chat id. Anything else is unknown to the page, not guessed.
+ */
 export function channelHandle(raw: string | undefined | null): string | null {
   const v = (raw ?? "").trim();
-  return /^@[A-Za-z][A-Za-z0-9_]{3,31}$/.test(v) ? v : null;
+  return /^(@[A-Za-z][A-Za-z0-9_]{4,31}|-?[0-9]{5,20})$/.test(v) ? v : null;
 }

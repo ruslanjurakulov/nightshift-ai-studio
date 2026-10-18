@@ -3,6 +3,7 @@
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { buildPreview, mediaKind, type Texts } from "@/lib/marketing-posts";
+import { unitCount } from "@/lib/marketing-text";
 
 /**
  * Exactly what the Telegram channel will show for these texts: one message, three labelled language blocks in the
@@ -24,7 +25,7 @@ export function TelegramPreview({
   mediaPath: string | null;
   origin: string | null;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const p = t.marketing.preview;
   const pv = buildPreview(texts, link, origin, Boolean(mediaPath));
   const kind = mediaKind(mediaPath);
@@ -54,13 +55,18 @@ export function TelegramPreview({
       </div>
       <ul className="tnum flex flex-col gap-0.5 text-xs text-[var(--color-muted)]" aria-label={p.counts}>
         {pv.blocks.map((b) => (
-          <li key={b.lang}>{fmt(p.perLang, { lang: b.label, n: b.units })}</li>
+          <li key={b.lang}>{fmt(p.perLang, { lang: b.label, count: unitCount(t, locale, b.units) })}</li>
         ))}
         <li className={pv.over ? "font-semibold text-[var(--color-fail)]" : "font-semibold text-[var(--color-fg)]"}>
           {fmt(pv.linkUncounted ? p.totalAtLeast : p.total, { n: pv.total, limit: pv.limit })}
         </li>
         <li>{fmt(mediaPath ? p.limitCaption : p.limitMessage, { limit: pv.limit })}</li>
       </ul>
+      {pv.unsafe && (
+        <p role="alert" className="text-xs font-medium text-[var(--color-fail)]">
+          {p.unsafe}
+        </p>
+      )}
       {pv.over && (
         <p role="alert" className="text-xs font-medium text-[var(--color-fail)]">
           {p.over}

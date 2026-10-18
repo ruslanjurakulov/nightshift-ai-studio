@@ -90,3 +90,21 @@ export function sendNote(
       return null;
   }
 }
+
+/** Which plural form a count takes: Russian has three (1 / 2-4 / 5+, with 11-14 as 5+), English two, Uzbek counts do not change the noun. */
+export function pluralForm(n: number, locale: string): "one" | "few" | "many" {
+  const base = (locale ?? "en").toLowerCase().split(/[-_]/)[0];
+  const i = Math.abs(Math.trunc(n));
+  if (base === "ru") {
+    if (i % 10 === 1 && i % 100 !== 11) return "one";
+    if (i % 10 >= 2 && i % 10 <= 4 && (i % 100 < 12 || i % 100 > 14)) return "few";
+    return "many";
+  }
+  if (base === "uz") return "one";
+  return i === 1 ? "one" : "few";
+}
+
+/** "142 units", "1 единица", "3 единицы", "11 единиц": a count of the unit the limits are counted in (UTF-16 units). */
+export function unitCount(t: Pick<Dictionary, "marketing">, locale: string, n: number): string {
+  return `${n} ${t.marketing.units[pluralForm(n, locale)]}`;
+}

@@ -169,6 +169,7 @@ jobs:
           # shown on the confirm sheet; never the bot token (that secret never reaches the web container).
           WEBENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
+          WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
           WEBENV_DEV_CLI_PAGE: ${{ vars.DEV_CLI_PAGE }}
           WEBENV_MCP_OAUTH_LIVE: ${{ vars.MCP_OAUTH_LIVE }}

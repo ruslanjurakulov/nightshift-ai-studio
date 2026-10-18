@@ -13,13 +13,14 @@ import {
   TEXT_MAX,
   buildPreview,
   lastSettled,
+  senderRefusal,
   sortPosts,
   type MarketingPost,
   type MarketingSettings,
   type PostStatus,
   type Texts,
 } from "@/lib/marketing-posts";
-import { marketingFailureText, refusalMeansStale, sendNote } from "@/lib/marketing-text";
+import { marketingFailureText, refusalMeansStale, sendNote, unitCount } from "@/lib/marketing-text";
 import { useConfirm, type ConfirmOptions } from "@/components/feedback/ConfirmDialog";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { StateBlock } from "@/components/states/StateBlock";
@@ -60,10 +61,13 @@ export function MarketingBoard({
   channel,
   origin,
   nowMs,
+  gateOn = null,
 }: {
   settings: MarketingSettings;
   posts: MarketingPost[];
   truncated: boolean;
+  /** The database's second-factor gate (0107), read only: true, false, or null when it could not be read (never "off"). */
+  gateOn?: boolean | null;
   /** The channel handle from the server's own settings, or null when it is not known (never guessed). */
   channel: string | null;
   origin: string | null;
@@ -82,7 +86,7 @@ export function MarketingBoard({
   return (
     <div className="flex flex-col gap-4" aria-busy={pending}>
       {dialog}
-      <PosterPanel settings={settings} channel={channel} confirm={confirm} refresh={refresh} />
+      <PosterPanel settings={settings} channel={channel} gateOn={gateOn} confirm={confirm} refresh={refresh} />
 
       <section className="panel flex flex-col gap-2 p-4 sm:p-5" aria-labelledby="mk-last-title">
         <h2 id="mk-last-title" className="t-section">
@@ -143,11 +147,13 @@ function LastSend({ post, settings, when }: { post: MarketingPost; settings: Mar
 function PosterPanel({
   settings,
   channel,
+  gateOn,
   confirm,
   refresh,
 }: {
   settings: MarketingSettings;
   channel: string | null;
+  gateOn: boolean | null;
   confirm: Confirm;
   refresh: () => void;
 }) {
@@ -230,6 +236,12 @@ function PosterPanel({
           <dt className="text-[var(--color-muted)]">{m.poster.channel}</dt>
           <dd className="min-w-0 break-words text-right font-semibold text-[var(--color-fg)]">{channel ?? m.poster.channelUnknown}</dd>
         </div>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3 py-2">
+          <dt className="text-[var(--color-muted)]">{m.poster.gate.title}</dt>
+          <dd className="min-w-0 text-right font-semibold text-[var(--color-fg)]" data-gate={gateOn === null ? "unknown" : gateOn ? "on" : "off"}>
+            {gateOn === null ? m.poster.gate.unknown : gateOn ? m.poster.gate.on : m.poster.gate.off}
+          </dd>
+        </div>
         <div className="tnum px-3 py-2 font-semibold text-[var(--color-fg)]">{week}</div>
         <div className="tnum px-3 py-2 text-[var(--color-fg)]">
           {settings.approvedWaiting === null ? m.poster.waitingUnknown : fmt(m.poster.waiting, { n: settings.approvedWaiting })}
@@ -239,6 +251,9 @@ function PosterPanel({
         {settings.enabled ? fmt(m.poster.onNote, { max }) : m.poster.offNote}
       </p>
       <p className="text-xs leading-relaxed text-[var(--color-muted)]">{m.poster.serverNote}</p>
+      <p className={`text-xs leading-relaxed ${gateOn === true ? "text-[var(--color-muted)]" : "text-[var(--color-warn)]"}`}>
+        {gateOn === null ? m.poster.gate.unknownNote : gateOn ? m.poster.gate.onNote : m.poster.gate.offNote}
+      </p>
 
       {settings.enabled ? (
         <button type="button" onClick={() => void stop()} aria-label={m.poster.stopAria} className="btn-danger min-h-11 self-start px-4 text-sm">
@@ -331,7 +346,8 @@ function PostCard({
   };
 
   async function approve() {
-    if (busy.current) return;
+    if (busy.current || post.status !== "draft") return;
+    if (senderRefusal(post.texts, post.link, origin, Boolean(post.mediaPath), true) !== null || channel === null || !settings.enabled) return;
     busy.current = true;
     setMsg(null);
     const pv = buildPreview(post.texts, post.link, origin, Boolean(post.mediaPath));
@@ -345,6 +361,7 @@ function PostCard({
         { label: m.approve.dPublic, value: m.approve.dPublicValue },
         { label: m.approve.dChannel, value: channel ?? m.poster.channelUnknown },
         { label: m.approve.dKind, value: m.kind[post.kind] },
+        ...(post.mediaPath ? [{ label: m.approve.dMedia, value: post.mediaPath }] : []),
         ...LANGS.map((lang) => ({ label: fmt(m.approve.dLang, { lang: LABELS[lang] }), value: post.texts[lang], multiline: true })),
         ...(post.link ? [{ label: m.approve.dLink, value: pv.linkUrl ?? post.link }] : []),
         { label: m.approve.dCount, value: fmt(pv.linkUncounted ? m.preview.totalAtLeast : m.preview.total, { n: pv.total, limit: pv.limit }) },
@@ -420,6 +437,14 @@ function PostCard({
 
   const titleId = `mk-post-${post.id}`;
   const posterOff = !settings.enabled;
+  // Everything that keeps Approve off, each with its reason on the screen. The sender would refuse a post that is too long,
+  // has text shaped like a key or an address, or a bad link; with the channel unknown the sheet could not say where it goes.
+  const refusal = senderRefusal(post.texts, post.link, origin, Boolean(post.mediaPath), true);
+  const blockers: string[] = [
+    ...(posterOff ? [m.approve.needPosterOn] : []),
+    ...(channel === null ? [m.approve.needChannel] : []),
+    ...(refusal === "too_long" ? [m.approve.blockedTooLong] : refusal === "unsafe_text" ? [m.approve.blockedUnsafe] : refusal ? [fmt(m.approve.blockedOther, { code: refusal })] : []),
+  ];
   const dirty = LANGS.some((l) => draft[l].trim() !== post.texts[l]);
   const draftPreview = buildPreview({ uz: draft.uz.trim(), ru: draft.ru.trim(), en: draft.en.trim() }, post.link, origin, Boolean(post.mediaPath));
   const editProblem = LANGS.some((l) => draft[l].trim() === "")
@@ -496,7 +521,7 @@ function PostCard({
                 onChange={(e) => setDraft({ ...draft, [lang]: e.target.value })}
                 className="ns-field min-w-0"
               />
-              <span className="tnum">{fmt(m.edit.count, { n: draft[lang].trim().length })}</span>
+              <span className="tnum">{fmt(m.edit.count, { count: unitCount(t, locale, draft[lang].trim().length) })}</span>
             </label>
           ))}
           <TelegramPreview texts={{ uz: draft.uz.trim(), ru: draft.ru.trim(), en: draft.en.trim() }} link={post.link} mediaPath={post.mediaPath} origin={origin} />
@@ -505,7 +530,7 @@ function PostCard({
               {editProblem}
             </p>
           )}
-          <div className="grid grid-cols-2 gap-3 sm:flex">
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:flex">
             <button type="submit" disabled={Boolean(editProblem) || !dirty} className="btn-primary min-h-11 px-4 text-sm disabled:opacity-55">
               {m.edit.save}
             </button>
@@ -543,7 +568,7 @@ function PostCard({
               <span className="tnum">{fmt(m.poster.reasonCount, { n: charCount(reason.trim()) })}</span>
             </span>
           </label>
-          <div className="grid grid-cols-2 gap-3 sm:flex">
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:flex">
             <button
               type="button"
               onClick={() => void reject()}
@@ -568,12 +593,12 @@ function PostCard({
 
       {open && mode === "view" && (
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-3 sm:flex sm:flex-wrap">
+          <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3 sm:flex sm:flex-wrap">
             {post.status === "draft" && (
               <button
                 type="button"
                 onClick={() => void approve()}
-                disabled={posterOff}
+                disabled={blockers.length > 0}
                 aria-label={fmt(m.approve.aria, { source: post.sourceRef })}
                 className="btn-primary min-h-11 px-4 text-sm disabled:opacity-55"
               >
@@ -604,7 +629,12 @@ function PostCard({
               {m.reject.button}
             </button>
           </div>
-          {post.status === "draft" && posterOff && <p className="text-xs text-[var(--color-warn)]">{m.approve.needPosterOn}</p>}
+          {post.status === "draft" &&
+            blockers.map((b) => (
+              <p key={b} className="text-xs text-[var(--color-warn)]">
+                {b}
+              </p>
+            ))}
         </div>
       )}
       <p className="min-h-4 break-words text-xs" style={{ color: msg?.ok ? "var(--color-ok)" : "var(--color-fail)" }} aria-live="polite">

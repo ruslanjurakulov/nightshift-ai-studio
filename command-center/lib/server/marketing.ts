@@ -29,12 +29,18 @@ export function marketingPostsOn(): boolean {
 }
 
 /**
- * The channel the worker posts to (MARKETING_TELEGRAM_CHAT, the same repository variable, `@name`; a public handle, not a
- * secret) and the site's own origin (APP_ORIGIN), for the preview. Either is `null` when unset or not in the shape the
- * deploy accepts: the page then says it does not know, instead of guessing a channel to ask the owner to confirm.
+ * The channel the worker posts to (MARKETING_TELEGRAM_CHAT, the same repository variable: `@name` or a numeric chat id; a
+ * public handle, not a secret) and the origin links are completed with, for the preview. The origin is read the way the worker
+ * reads it: NOTIFY_APP_ORIGIN when it is set (a set but invalid value is unknown, as the worker would refuse it), else the
+ * site's own APP_ORIGIN (which the deploy derives from the same DOMAIN the worker's default uses). Either is `null` when unset
+ * or not in the shape the deploy accepts: the page then says it does not know, instead of guessing.
  */
 export function marketingTargets(): { channel: string | null; origin: string | null } {
-  return { channel: channelHandle(process.env.MARKETING_TELEGRAM_CHAT), origin: validOrigin(process.env.APP_ORIGIN) };
+  const notify = (process.env.NOTIFY_APP_ORIGIN ?? "").trim();
+  return {
+    channel: channelHandle(process.env.MARKETING_TELEGRAM_CHAT),
+    origin: notify !== "" ? validOrigin(notify) : validOrigin(process.env.APP_ORIGIN),
+  };
 }
 
 export interface MarketingData {

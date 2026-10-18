@@ -167,8 +167,9 @@ to the code page).
 It is the **same repository variable the worker reads**, mapped into the web container as `WEBENV_NIGHTSHIFT_MARKETING_POSTS`
 (`.github/workflows/deploy_web.yml`, `deploy/.env.web.example`), so one variable switches both. Anything else: the page shows an
 "off" note, makes **no database read at all**, and `POST /api/marketing` answers 404. `MARKETING_TELEGRAM_CHAT` (the channel's
-public `@name`, also the worker's variable) is mapped the same way so the confirm sheet can name the channel it publishes to; if
-it is not a valid `@name` the page says the channel is unknown and never guesses.
+public `@name` or numeric chat id, also the worker's variable, validated by the deploy's own rule) and `NOTIFY_APP_ORIGIN` are
+mapped the same way so the confirm sheet can name the channel it publishes to and the preview can count the link. If the channel
+is missing or not valid the page says so, never guesses, and **disables Approve** (the sheet could not say where it goes public).
 
 **Reads** (as the signed-in owner, anon key and cookie session, no service key): `owner_marketing_get()` for the poster state, the
 week's count and the waiting approvals, and the newest 40 `marketing_posts` (`facts` is not read). One unreadable row, a failed
@@ -181,9 +182,11 @@ Telegram will show** (the three language blocks in the fixed order uz, ru, en, t
 count of each language and of the whole message against the limit (4096, 1024 with a photo or video), counted in UTF-16 units.
 The preview is a TypeScript mirror of `modules/channel_post.py` (`lib/marketing-posts.ts` `buildPreview`); it cannot import
 Python, so `tests/fixtures/marketing_message_cases.json` is run through both the real renderer
-(`tests/test_marketing_message_fixture.py`) and the mirror (`command-center/tests/marketing-posts.test.ts`). What the page cannot
-check is the sender's `unsafe_text` refusal (text that looks like a key or an address); the page says so under the preview. The
-site address in the link comes from `APP_ORIGIN`; without it the link is left out of the count and the total reads "at least".
+(`tests/test_marketing_message_fixture.py`) and the mirror (`command-center/tests/marketing-posts.test.ts`), for every refusal code
+the sender can give (`bad_texts`, `bad_link`, `no_origin`, `unsafe_text`, `too_long`), including the key- and e-mail-shaped
+text rule of `modules/tg_text.sanitize_outgoing` and a host's port kept as typed. The links are completed with the origin the
+worker uses: `NOTIFY_APP_ORIGIN` when set (mapped into the web env), else the site's own `APP_ORIGIN`; a set but invalid value, or
+neither, is unknown, and then the link is left out of the count and the total reads "at least".
 
 **What it does**, all through `POST /api/marketing` (one route, an `action`: `edit`, `approve`, `reject`, `kill`; there is no
 other, so no "send now" and no "test post", in any language or in the code):
@@ -191,7 +194,7 @@ other, so no "send now" and no "test post", in any language or in the code):
 | Action | Function | Guard on the screen |
 |---|---|---|
 | Edit the three texts | `owner_marketing_edit(id, texts)` | live counts and preview; Save is off for an empty language or an over-long message; editing an **approved** post asks first, because saving voids the approval |
-| Approve | `owner_marketing_approve(id, content_hash)` | confirm sheet with the channel name, the kind, all three texts, the link, the character count and "this goes public"; a typed word (`publish` / `опубликовать` / `nashr`); sends **the hash this page showed**, so a post that changed is refused with `content_changed` and the page reloads. Disabled, with the reason, while the poster is off (`poster_off`) |
+| Approve | `owner_marketing_approve(id, content_hash)` | confirm sheet with the channel name, the kind, the attached file (when there is one), all three texts, the link, the message size and "this goes public"; a typed word (`publish` / `опубликовать` / `nashr`); sends **the hash this page showed**, so a post that changed is refused with `content_changed` and the page reloads. **Disabled, with the reason on the screen,** while the poster is off (`poster_off`), while the channel is unknown, and while the page's own preview says the sender would refuse the post (too long for a message or, with a photo or video, a caption; key- or address-shaped text; a bad link). Edit and Reject stay available |
 | Reject | `owner_marketing_reject(id, reason)` | reason of 8 to 300 characters, then a confirm sheet; an approved post is withdrawn |
 | Stop the poster | `owner_marketing_kill(true)` | confirm sheet |
 | Switch the poster on | `owner_marketing_kill(false, reason)` | a written reason (8 to 300), a confirm sheet and the typed word |
@@ -199,6 +202,8 @@ other, so no "send now" and no "test post", in any language or in the code):
 Every refusal (`poster_off`, `content_changed`, `cap_full`, `expired`, `facts_stale`, `bad_texts`, `not_draft`, `reason_required`,
 `mfa_required`, `rate_limited` and the route's own) has a sentence in English, Russian and Uzbek, with the figures the database
 sent; the database's own English text is dropped. A page made stale by a refusal reloads when the sheet closes.
+
+**The database's second-factor gate** (0107, `admin_aal2_required`) is shown read only in the poster panel (the same `owner_security_get` read as the Security page): on, off with the risk said (a password-only session can approve a public post), or unknown when it could not be read, never "off" for an unreadable answer. The page has no control for it.
 
 **The guard stack of the route** is the owner routes' own (`handleOwnerPost`, now taking the switch as a parameter): same-origin
 first (403), the switch (404), signed in (401), owner/admin (403), the application second-factor gate (`guardAdminPost`), a capped
@@ -248,7 +253,10 @@ announce it later. After each drafting pass the log says how many new drafts are
 
 **Each loop** (a minute apart): (1) at most once an hour, draft: every `docs/news/*.json` with `"public": true`
 (re-checked: shape, banned claims, not in the future; a file that fails is skipped by reason, never posted) and the
-month's price post; (2) claim **at most one** approved post, send it, settle it.
+month's price post. **Each draft is first run through the sender's own `render`** (`channel_post.preflight`); a draft the sender
+would refuse (`too_long`, `unsafe_text`, `bad_link`, `bad_texts`, or `no_origin` for a link with no usable site origin) is not
+stored, so it never reaches the owner only to fail after approval and use up its key. The log carries the count and the codes,
+never the words; (2) claim **at most one** approved post, send it, settle it.
 
 **Price post.** Built from `plans`, `plan_entitlements` and `entitlement_keys` only: the plan name, credits per month and
 concurrency of each public paid plan, plus the link `/pricing`. **No currency amount, ever** (there is none in the

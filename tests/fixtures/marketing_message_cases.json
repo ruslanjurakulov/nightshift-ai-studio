@@ -137,6 +137,314 @@
    }
   },
   {
+   "name": "the port stays as typed (Python keeps :443, URL.host would drop it)",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "c"
+   },
+   "link": "/pricing",
+   "origin": "https://nightshift-ai.studio:443",
+   "has_media": false,
+   "expect": {
+    "plain": "Oʻzbekcha\na\n\nРусский\nб\n\nEnglish\nc\n\nhttps://nightshift-ai.studio:443/pricing",
+    "utf16": 75,
+    "limit": 4096,
+    "over": false
+   }
+  },
+  {
+   "name": "scheme lower-cased, host kept as typed",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "c"
+   },
+   "link": "/pricing",
+   "origin": "HTTPS://Nightshift-AI.studio/",
+   "has_media": false,
+   "expect": {
+    "plain": "Oʻzbekcha\na\n\nРусский\nб\n\nEnglish\nc\n\nhttps://Nightshift-AI.studio/pricing",
+    "utf16": 71,
+    "limit": 4096,
+    "over": false
+   }
+  },
+  {
+   "name": "an origin with a path is no origin",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "c"
+   },
+   "link": "/pricing",
+   "origin": "https://a.example/x",
+   "has_media": false,
+   "expect": {
+    "refused": "no_origin"
+   }
+  },
+  {
+   "name": "http is only for localhost",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "c"
+   },
+   "link": "/pricing",
+   "origin": "http://a.example",
+   "has_media": false,
+   "expect": {
+    "refused": "no_origin"
+   }
+  },
+  {
+   "name": "a link that is not a path",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "c"
+   },
+   "link": "pricing",
+   "origin": "https://a.example",
+   "has_media": false,
+   "expect": {
+    "refused": "bad_link"
+   }
+  },
+  {
+   "name": "a link with a space and capitals",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "c"
+   },
+   "link": "/Bad Link",
+   "origin": "https://a.example",
+   "has_media": false,
+   "expect": {
+    "refused": "bad_link"
+   }
+  },
+  {
+   "name": "a link with a double slash",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "c"
+   },
+   "link": "/a//b",
+   "origin": "https://a.example",
+   "has_media": false,
+   "expect": {
+    "refused": "bad_link"
+   }
+  },
+  {
+   "name": "a blank language",
+   "texts": {
+    "uz": "a",
+    "ru": "   ",
+    "en": "c"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "bad_texts"
+   }
+  },
+  {
+   "name": "a missing language",
+   "texts": {
+    "uz": "a",
+    "ru": "б"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "bad_texts"
+   }
+  },
+  {
+   "name": "an e-mail address in the words",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "write to someone@example.com"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a bearer header in the words",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "Authorization: Bearer abcdefghijklmnop12"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a JWT in the words",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3OA.SflKxwRJSMeKKF2QT4fw"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a prefixed key in the words",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "key sk-abcdefghijklmnopqrstuvwx"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a prefixed key glued to a Cyrillic letter has no word boundary, so it is safe",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "яsk_abcdefghijklmnopqrst"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "plain": "Oʻzbekcha\na\n\nРусский\nб\n\nEnglish\nяsk_abcdefghijklmnopqrst",
+    "utf16": 56,
+    "limit": 4096,
+    "over": false
+   }
+  },
+  {
+   "name": "the same key after a space is unsafe",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "я sk_abcdefghijklmnopqrst"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a long mixed-case token with digits",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "x aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a long lower-case run is fine",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "x abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "plain": "Oʻzbekcha\na\n\nРусский\nб\n\nEnglish\nx abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc",
+    "utf16": 94,
+    "limit": 4096,
+    "over": false
+   }
+  },
+  {
+   "name": "a 47-character mixed run is fine",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "x aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3ab"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "plain": "Oʻzbekcha\na\n\nРусский\nб\n\nEnglish\nx aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3aB3ab",
+    "utf16": 81,
+    "limit": 4096,
+    "over": false
+   }
+  },
+  {
+   "name": "a bot token in the words",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "bot123456:ABCdef_ghi"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a key in a query string in the words",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "see https://x.example/p?key=abc123def"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
+   "name": "a Slack webhook in the words",
+   "texts": {
+    "uz": "a",
+    "ru": "б",
+    "en": "https://hooks.slack.com/services/T000/B000/XXXX"
+   },
+   "link": null,
+   "origin": null,
+   "has_media": false,
+   "expect": {
+    "refused": "unsafe_text"
+   }
+  },
+  {
    "name": "just inside the caption limit with media",
    "texts": {
     "uz": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu",

@@ -6,6 +6,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { createClient } from "@/lib/supabase/server";
 import { marketingPostsOn, marketingTargets, readMarketing } from "@/lib/server/marketing";
+import { readOwnerSecurity } from "@/lib/server/owner-reads";
 import "../../app-pages-g5.css";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,10 @@ export default async function MarketingPage() {
 
   const supabase = await createClient();
   const read = supabase ? await readMarketing(supabase) : ({ state: "failed" } as const);
+  // Read only: is the database's second-factor gate (0107) on? Approving makes a post public, and with the gate off a
+  // password-only session could. Unreadable is "unknown", never "off" (owner_security_get, the same read as the Security page).
+  const security = supabase && read.state === "ok" ? await readOwnerSecurity(supabase) : null;
+  const gateOn = security && security.state === "ok" ? security.value.gateOn : null;
   const { channel, origin } = marketingTargets();
 
   return (
@@ -60,6 +65,7 @@ export default async function MarketingPage() {
           channel={channel}
           origin={origin}
           nowMs={Date.now()}
+          gateOn={gateOn}
         />
       )}
     </div>

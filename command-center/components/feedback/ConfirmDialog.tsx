@@ -101,7 +101,10 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!open) return;
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    cancelRef.current?.focus();
+    // Focus the safe key WITHOUT scrolling to it: on a long sheet (a post's three texts) the key is at the bottom, and
+    // focusing it the usual way opened the sheet scrolled down past the words and "this goes public". Start at the top.
+    cancelRef.current?.focus({ preventScroll: true });
+    if (panel.current) panel.current.scrollTop = 0;
     // The page behind must not scroll under a modal on a phone.
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";

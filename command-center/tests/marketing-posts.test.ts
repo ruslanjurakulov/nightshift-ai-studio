@@ -28,12 +28,13 @@ import {
   mediaKind,
   parseMarketing,
   parseMarketingFlag,
+  senderRefusal,
   sortPosts,
   validOrigin,
   type MarketingPost,
   type Texts,
 } from "../lib/marketing-posts";
-import { fixText, marketingFailureText, marketingRefusalText, refusalMeansStale, sendNote } from "../lib/marketing-text";
+import { fixText, marketingFailureText, marketingRefusalText, pluralForm, refusalMeansStale, sendNote, unitCount } from "../lib/marketing-text";
 
 const ROOT = join(__dirname, "..", "..");
 const sql = readFileSync(join(ROOT, "supabase", "migrations", "0108_marketing_posts.sql"), "utf8");
@@ -259,19 +260,41 @@ describe("the preview is the message the sender builds", () => {
   });
 
   it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
-    const pv = buildPreview(c.texts, c.link, c.origin, c.has_media);
+    // The TypeScript mirror gives the sender's own verdict, for every refusal code it can give.
+    expect(senderRefusal(c.texts, c.link, c.origin, c.has_media), "senderRefusal").toBe(c.expect.refused ?? null);
     if (c.expect.refused === "no_origin") {
       // The sender refuses a link it cannot complete; the page has no address to complete it with and says so.
+      const pv = buildPreview(c.texts, c.link, validOrigin(c.origin), c.has_media);
       expect(pv.linkUncounted).toBe(true);
       expect(pv.linkUrl).toBeNull();
       expect(pv.plain).not.toContain(c.link ?? "\u0000");
       return;
     }
+    if (c.expect.plain === undefined) return; // refused before a message exists (bad_texts, bad_link, unsafe_text)
+    const pv = buildPreview(c.texts, c.link, c.origin, c.has_media);
     expect(pv.linkUncounted).toBe(false);
     expect(pv.plain).toBe(c.expect.plain);
     expect(pv.total).toBe(c.expect.utf16);
     expect(pv.limit).toBe(c.expect.limit);
     expect(pv.over).toBe(c.expect.over);
+    expect(pv.unsafe).toBe(false);
+  });
+
+  it("covers every refusal code the sender can give", () => {
+    const codes = new Set(cases.map((c) => c.expect.refused).filter(Boolean));
+    for (const code of ["bad_texts", "bad_link", "no_origin", "unsafe_text", "too_long"]) expect(codes.has(code), code).toBe(true);
+  });
+
+  it("the page's own preview flags unsafe words and a message that is too long (what blocks Approve)", () => {
+    expect(buildPreview({ uz: "a", ru: "б", en: "mail me@example.com" }, null, null, false).unsafe).toBe(true);
+    expect(buildPreview({ uz: "😀".repeat(700), ru: "😀".repeat(700), en: "😀".repeat(700) }, null, null, false).over).toBe(true);
+    expect(buildPreview(TEXTS, null, null, false)).toMatchObject({ unsafe: false, over: false });
+  });
+
+  it("with the site's address unknown the page still catches unsafe and too-long words, and does not claim no_origin", () => {
+    expect(senderRefusal({ ...TEXTS, en: "mail me@example.com" }, "/pricing", null, false, true)).toBe("unsafe_text");
+    expect(senderRefusal(TEXTS, "/pricing", null, false, true)).toBeNull();
+    expect(senderRefusal(TEXTS, "/pricing", null, false)).toBe("no_origin");
   });
 
   it("counts emoji as two units each, like the sender, and the limits are 4096 and 1024", () => {
@@ -292,15 +315,22 @@ describe("the preview is the message the sender builds", () => {
     expect(validOrigin("https://nightshift-ai.studio")).toBe("https://nightshift-ai.studio");
     expect(validOrigin("https://nightshift-ai.studio/")).toBe("https://nightshift-ai.studio");
     expect(validOrigin("http://localhost:3000")).toBe("http://localhost:3000");
+    // as Python's urlsplit keeps it: the port as typed, the host's case as typed, the scheme lower-cased
+    expect(validOrigin("https://nightshift-ai.studio:443")).toBe("https://nightshift-ai.studio:443");
+    expect(validOrigin("HTTPS://Nightshift-AI.studio/")).toBe("https://Nightshift-AI.studio");
     for (const bad of [undefined, null, "", "http://evil.example", "https://a.example/path", "https://u:p@a.example", "ftp://a.example", "not a url"]) {
       expect(validOrigin(bad as string | undefined), String(bad)).toBeNull();
     }
   });
 
   it("the channel is a public @name, or unknown: never guessed", () => {
+    // the deploy's own rule (deploy/build-service-env.py CHAT)
     expect(channelHandle("@nightshiftaistudio")).toBe("@nightshiftaistudio");
     expect(channelHandle(" @nightshift_test ")).toBe("@nightshift_test");
-    for (const bad of [undefined, "", "nightshift", "-1001234567890", "@a", "@bad name", "https://t.me/x"]) expect(channelHandle(bad), String(bad)).toBeNull();
+    for (const good of ["@abcde", "@" + "a".repeat(32), "-1001234567890", "123456"]) expect(channelHandle(good), good).toBe(good);
+    for (const bad of [undefined, "", "nightshift", "@a", "@abcd", "@" + "a".repeat(33), "@1abcd", "-100abc", "@bad name", "https://t.me/x"]) {
+      expect(channelHandle(bad), String(bad)).toBeNull();
+    }
   });
 
   it("a file is a photo, a video or something the sender will not send", () => {
@@ -456,6 +486,52 @@ describe("what the page says about a send", () => {
   });
 });
 
+describe("counting in the unit the limit uses, with the right plural", () => {
+  it.each([
+    [0, "many"], [1, "one"], [2, "few"], [3, "few"], [4, "few"], [5, "many"], [11, "many"], [12, "many"], [14, "many"],
+    [21, "one"], [22, "few"], [25, "many"], [101, "one"], [111, "many"], [112, "many"], [122, "few"], [1000, "many"],
+  ])("ru %i takes the %s form", (n, form) => {
+    expect(pluralForm(n, "ru")).toBe(form);
+  });
+
+  it("ru words the count as 1 единица / 2 единицы / 5 единиц / 11 единиц, en as unit(s), uz does not inflect", () => {
+    expect(unitCount(ru, "ru", 1)).toBe("1 единица");
+    expect(unitCount(ru, "ru", 3)).toBe("3 единицы");
+    expect(unitCount(ru, "ru", 5)).toBe("5 единиц");
+    expect(unitCount(ru, "ru", 11)).toBe("11 единиц");
+    expect(unitCount(ru, "ru", 21)).toBe("21 единица");
+    expect(unitCount(en, "en", 1)).toBe("1 unit");
+    expect(unitCount(en, "en", 2)).toBe("2 units");
+    expect(unitCount(en, "en", 0)).toBe("0 units");
+    expect(unitCount(uz, "uz", 1)).toBe("1 birlik");
+    expect(unitCount(uz, "uz", 7)).toBe("7 birlik");
+  });
+});
+
+describe("the wording that must not mislead", () => {
+  it("uz never calls the 'outcome unknown' state 'Tasdiqlanmagan/Tasdiqlanmadi' (that reads as 'not approved')", () => {
+    const m = uz.marketing;
+    for (const text of [m.status.dead, m.lastSend.dead, m.send.unconfirmed, m.fix.unconfirmed, m.fix.http_5xx]) {
+      expect(text).not.toMatch(/Tasdiqlanma(gan|di)/);
+    }
+    expect(m.status.dead).toBe("Holati aniqlanmadi");
+    expect(m.send.unconfirmed).toMatch(/kanalni tekshiring, qayta yubormang/);
+  });
+
+  it("the unconfirmed state keeps its meaning in every language: look at the channel, do not resend", () => {
+    expect(en.marketing.send.unconfirmed).toMatch(/check the channel, do not resend/);
+    expect(ru.marketing.send.unconfirmed).toMatch(/проверьте канал, не отправляйте повторно/);
+    expect(ru.marketing.status.dead).toBe("Исход неизвестен");
+    expect(en.marketing.status.dead).toBe("Outcome unknown");
+  });
+
+  it("the channel-unknown line says 'not valid', not only 'not set'", () => {
+    expect(en.marketing.poster.channelUnknown).toMatch(/not a valid @name/);
+    expect(ru.marketing.poster.channelUnknown).toMatch(/корректным @именем/);
+    expect(uz.marketing.poster.channelUnknown).toMatch(/yaroqli @nom/);
+  });
+});
+
 describe("the words exist in en, ru and uz with the same keys and the same {fillers}", () => {
   const fillers = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
   function leaves(node: unknown, path = ""): [string, string][] {
@@ -476,7 +552,7 @@ describe("the words exist in en, ru and uz with the same keys and the same {fill
 
   it("no ru or uz line is the English line (a pasted-over string)", () => {
     // "Post" is the Uzbek word as well
-    const skip = new Set(["approve.dLang", "lastSend.source"]);
+    const skip = new Set(["approve.dLang", "lastSend.source", "preview.perLang"]);
     for (const loc of ["ru", "uz"] as const) {
       const got = new Map(leaves(dicts[loc].marketing));
       for (const [key, text] of source) {

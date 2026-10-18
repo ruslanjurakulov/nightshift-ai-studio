@@ -21,8 +21,9 @@ class MarketingMessageFixtureTests(unittest.TestCase):
         self.assertGreaterEqual(len(CASES), 8)
         outcomes = {c["expect"].get("refused") for c in CASES}
         self.assertIn(None, outcomes)
-        self.assertIn("too_long", outcomes)
-        self.assertIn("no_origin", outcomes)
+        # every refusal code the sender can give about the words, the link and the length
+        for code in ("bad_texts", "bad_link", "no_origin", "unsafe_text", "too_long"):
+            self.assertIn(code, outcomes)
 
     def test_the_sender_builds_exactly_what_the_fixture_says(self):
         for c in CASES:

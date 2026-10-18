@@ -103,6 +103,17 @@ def render(texts: Any, link: Optional[str], origin: Optional[str], has_media: bo
     return _blocks(texts, link_url, escape=True)
 
 
+def preflight(texts: Any, link: Optional[str], origin: Optional[str], has_media: bool = False) -> Optional[str]:
+    """The refusal code the sender WOULD give this post (``bad_texts``, ``bad_link``, ``no_origin``, ``unsafe_text``,
+    ``too_long``), or None when it would go out. It runs the real :func:`render`, so a draft that fails here can never
+    reach the owner's screen only to be refused after approval (and use up its idempotency key and a weekly slot)."""
+    try:
+        render(texts, link, origin, has_media)
+    except Refused as refusal:
+        return refusal.code
+    return None
+
+
 def media_kind(media_path: str) -> Optional[str]:
     """``photo`` or ``video`` by file extension, or None for a file this sender does not send."""
     low = media_path.lower()
@@ -213,6 +224,11 @@ class ChannelSender:
         self._chat = chat_id
         self._origin = origin
         self._media_base = media_base
+
+    @property
+    def origin(self) -> Optional[str]:
+        """The site origin links are completed with (what the drafting pass checks a draft against)."""
+        return self._origin
 
     def send(self, post: Mapping[str, Any]) -> Completion:
         try:

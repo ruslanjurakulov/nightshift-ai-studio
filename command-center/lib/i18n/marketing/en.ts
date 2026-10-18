@@ -7,6 +7,8 @@
  * is on. There is no "send now" and no "test post" anywhere on this page, by design (a test would be a public post).
  */
 export const marketingEn = {
+  /** The unit the limits are counted in (UTF-16 units, as the sender counts). en has two forms; ru has three. */
+  units: { one: "unit", few: "units", many: "units" },
   title: "Marketing posts",
   subtitle: "Posts for the public Telegram channel. Nothing goes out until you approve it here, and you approve exactly what you see.",
 
@@ -37,7 +39,16 @@ export const marketingEn = {
     serverNote:
       "This is the database switch. The server switch NIGHTSHIFT_MARKETING_POSTS and the worker must be on as well; this page cannot see whether the worker is running.",
     channel: "Channel",
-    channelUnknown: "not known to this page (MARKETING_TELEGRAM_CHAT is not set on this server)",
+    channelUnknown: "unknown: MARKETING_TELEGRAM_CHAT on this server is missing or is not a valid @name or chat id",
+    gate: {
+      title: "Second-factor gate in the database",
+      on: "On",
+      off: "Off",
+      unknown: "Unknown (could not be read)",
+      offNote: "While the gate is off, a password-only admin session can approve a public post. Switch it on first (docs/security/ADMIN_MFA.md); this page cannot switch it.",
+      onNote: "A password-only session cannot approve here.",
+      unknownNote: "This page could not read the gate, so it does not say it is on.",
+    },
     stop: "Stop the poster",
     stopAria: "Stop the poster: no approved post will be sent",
     stopTitle: "Stop the poster?",
@@ -65,7 +76,7 @@ export const marketingEn = {
     none: "Nothing has been sent yet.",
     sent: "Sent {when}.",
     failed: "Failed {when}.",
-    dead: "Not confirmed {when}.",
+    dead: "Outcome unknown {when}.",
     source: "Post: {source}",
   },
 
@@ -75,7 +86,7 @@ export const marketingEn = {
     sending: "Sending",
     sent: "Sent",
     failed: "Failed",
-    dead: "Not confirmed",
+    dead: "Outcome unknown",
     rejected: "Rejected",
     expired: "Expired",
   },
@@ -105,7 +116,7 @@ export const marketingEn = {
     sentOk: "Sent {when}. It is on the channel.",
     // dead: the post may already be on the channel. Never resend.
     unconfirmed:
-      "Not confirmed. It may already be on the channel: check the channel, do not resend. It will not be sent again automatically, and it keeps its place in the week’s count.",
+      "Outcome unknown. It may already be on the channel: check the channel, do not resend. It will not be sent again automatically, and it keeps its place in the week’s count.",
     failedLead: "Not sent.",
     approvalLapsed: "The approval ended before it was sent. Nothing was posted.",
   },
@@ -133,13 +144,14 @@ export const marketingEn = {
     mediaVideo: "video",
     mediaOther: "a file this sender cannot send",
     counts: "Character counts",
-    perLang: "{lang}: {n} characters",
+    perLang: "{lang}: {count}",
     total: "Whole message: {n} of {limit}",
     totalAtLeast: "Whole message: at least {n} of {limit}",
     limitMessage: "Limit for a message: {limit}, counted in UTF-16 units as the sender counts.",
     limitCaption: "Limit with a photo or video: {limit} (a caption), counted in UTF-16 units as the sender counts.",
+    unsafe: "Something here is shaped like a key or an e-mail address. The sender refuses such a post and never changes the words.",
     over: "Too long. The sender refuses a post over the limit and never cuts it. Shorten the text.",
-    note: "The sender also refuses text that looks like a key or an e-mail address, and never changes the words. The counts here are the page’s own.",
+    note: "The sender never changes the words: it refuses a post that is too long, has a bad link, or contains text shaped like a key or an e-mail address. The page checks the same rules, but the sender has the last word.",
   },
 
   edit: {
@@ -147,7 +159,7 @@ export const marketingEn = {
     aria: "Edit the texts of this post: {source}",
     title: "Edit the texts",
     langLabel: "{lang} text",
-    count: "{n} characters",
+    count: "{count}",
     voidsApproval: "This post is approved. Saving moves it back to draft: the approval is void and you approve the new words again.",
     save: "Save",
     saving: "Saving…",
@@ -166,6 +178,11 @@ export const marketingEn = {
     button: "Approve…",
     aria: "Approve this post for publishing: {source}",
     needPosterOn: "Switch the poster on first, then approve.",
+    needChannel: "The channel is not known to this page, so nothing can be approved here. Check MARKETING_TELEGRAM_CHAT (a valid @name or chat id) and deploy again.",
+    blockedTooLong: "This post is too long for one message, so it cannot be approved. Shorten it with Edit first.",
+    blockedUnsafe: "This post contains text shaped like a key or an e-mail address, which the sender refuses, so it cannot be approved. Change it with Edit first.",
+    blockedOther: "The sender would refuse this post ({code}), so it cannot be approved. Change it with Edit first.",
+    dMedia: "Attached file",
     title: "Publish to {channel}?",
     titleUnknown: "Publish to the channel?",
     body:
@@ -176,7 +193,7 @@ export const marketingEn = {
     dChannel: "Channel",
     dKind: "Kind",
     dLink: "Link",
-    dCount: "Characters",
+    dCount: "Message size",
     dLang: "{lang}",
     dPublic: "This goes",
     dPublicValue: "public",

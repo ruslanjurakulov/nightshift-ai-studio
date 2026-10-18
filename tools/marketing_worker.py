@@ -171,8 +171,12 @@ class MarketingStore:
 class MarketingWorker:
     def __init__(self, store: Any, sender: Any, worker_id: str, *, news_dir: Path = mc.NEWS_DIR,
                  now: Callable[[], _dt.datetime] = lambda: _dt.datetime.now(_dt.timezone.utc),
-                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic):
+                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+                 origin: Optional[str] = None):
         self.store, self.sender, self.worker_id = store, sender, worker_id
+        # The origin the sender completes links with: a draft is checked against it before it is stored.
+        given = origin if origin is not None else getattr(sender, "origin", None)
+        self._origin = given if isinstance(given, str) else None
         self._sleep, self._clock = sleep, clock
         self._news_dir = news_dir
         self._now = now
@@ -201,6 +205,14 @@ class MarketingWorker:
         if price is not None:
             drafts.append(price)
         for d in drafts:
+            # The sender's own rules, before the owner is shown anything: a draft it would refuse (too long, text that
+            # looks like a key or an address, a bad link, no site origin) is not stored. Stored, it would be approved on
+            # screen and then fail at send time, using up its key (a news item is drafted once) and a weekly slot's worth
+            # of the owner's attention. Codes only are counted and logged, never the words.
+            refusal = cp.preflight(d.texts, d.link, self._origin, False)
+            if refusal is not None:
+                bump("not_drafted_" + refusal)
+                continue
             try:
                 res = self.store.draft(d)
             except StoreUnavailable as e:
@@ -215,6 +227,10 @@ class MarketingWorker:
                 bump("updated")
             else:
                 bump("unchanged")
+        refused = {k: v for k, v in counts.items() if k.startswith("not_drafted_")}
+        if refused:
+            logger.warning("%d draft(s) the sender would refuse were not stored (%s)", sum(refused.values()),
+                           ", ".join(f"{k[len('not_drafted_'):]}={v}" for k, v in sorted(refused.items())))
         return counts
 
     def _settle(self, post_id: str, completion: cp.Completion, claimed_at: float) -> bool:

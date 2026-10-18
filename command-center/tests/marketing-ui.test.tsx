@@ -93,7 +93,7 @@ describe("the preview", () => {
     expect(text.indexOf("Oʻzbekcha")).toBeLessThan(text.indexOf("Русский"));
     expect(text.indexOf("Русский")).toBeLessThan(text.indexOf("English"));
     expect(text).toContain("https://nightshift-ai.studio/pricing");
-    expect(screen.getByText(/Oʻzbekcha: \d+ characters/)).toBeTruthy();
+    expect(screen.getByText(/Oʻzbekcha: \d+ units?/)).toBeTruthy();
     expect(screen.getByText(/Whole message: \d+ of 4096/)).toBeTruthy();
     expect(screen.getByText(/Limit for a message: 4096/)).toBeTruthy();
   });
@@ -126,6 +126,22 @@ describe("the poster", () => {
     show([row()], { ...SETTINGS, used7d: null, approvedWaiting: null });
     expect(screen.getByText("Posts this week: unknown of 2")).toBeTruthy();
     expect(screen.getByText(m.poster.waitingUnknown)).toBeTruthy();
+  });
+
+  it("shows the database's second-factor gate read only: on, off with the risk said, or unknown (never 'off' for unreadable)", () => {
+    for (const [gate, shown, note] of [
+      [true, m.poster.gate.on, m.poster.gate.onNote],
+      [false, m.poster.gate.off, m.poster.gate.offNote],
+      [null, m.poster.gate.unknown, m.poster.gate.unknownNote],
+    ] as const) {
+      render(<MarketingBoard settings={SETTINGS} posts={[row()]} truncated={false} channel="@nightshift_test" origin={null} nowMs={NOW} gateOn={gate} />);
+      expect(document.querySelector("[data-gate]")!.textContent).toBe(shown);
+      expect(screen.getByText(note)).toBeTruthy();
+      cleanup();
+    }
+    // no control for it
+    show();
+    expect(screen.queryByRole("button", { name: /second|gate|MFA/i })).toBeNull();
   });
 
   it("stopping asks first (nothing is sent), then sends kill:true and reloads", async () => {
@@ -260,11 +276,61 @@ describe("approving", () => {
     expect(h.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("an unknown channel is said, never guessed, in the sheet's title", async () => {
+  it("an unknown channel disables Approve and says why: the sheet could not say where this goes public", async () => {
     show([row()], SETTINGS, null);
-    await open();
-    expect(sheet().textContent).toContain(m.approve.titleUnknown);
-    expect(sheet().textContent).toContain(m.poster.channelUnknown);
+    const button = screen.getByRole("button", { name: /Approve this post for publishing/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(m.approve.needChannel)).toBeTruthy();
+    expect(screen.getByText(m.poster.channelUnknown)).toBeTruthy();
+    await tap(button);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it("a post the sender would refuse as too long cannot be approved, and the reason is on the screen", async () => {
+    show([row({ texts: { uz: "😀".repeat(700), ru: "😀".repeat(700), en: "😀".repeat(700) } })]);
+    const button = screen.getByRole("button", { name: /Approve this post for publishing/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(m.approve.blockedTooLong)).toBeTruthy();
+    await tap(button);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(h.fetch).not.toHaveBeenCalled();
+    // Edit and Reject stay available: the owner can shorten it or throw it away
+    expect((screen.getByRole("button", { name: /Edit the texts/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: /Reject this post/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("a post over the CAPTION limit (media) is blocked too, though it would fit a message", () => {
+    show([row({ kind: "showcase", media_path: "showcase/a.mp4", source_ref: "asset:" + "0".repeat(8) + "-0000-0000-0000-" + "0".repeat(12), texts: { uz: "u".repeat(340), ru: "р".repeat(340), en: "e".repeat(340) } })]);
+    expect((screen.getByRole("button", { name: /Approve this post/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(m.approve.blockedTooLong)).toBeTruthy();
+  });
+
+  it("text shaped like a key or an e-mail address blocks Approve, and the preview says so", () => {
+    show([row({ texts: { uz: "Yangi funksiya.", ru: "Новая функция.", en: "Write to someone@example.com" } })]);
+    expect((screen.getByRole("button", { name: /Approve this post/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(m.approve.blockedUnsafe)).toBeTruthy();
+    expect(screen.getByText(m.preview.unsafe)).toBeTruthy();
+  });
+
+  it("a post that is fine with everything on is approvable (nothing blocks it)", () => {
+    show();
+    expect((screen.getByRole("button", { name: /Approve this post/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText(m.approve.needChannel)).toBeNull();
+    expect(screen.queryByText(m.approve.blockedTooLong)).toBeNull();
+  });
+
+  it("the sheet shows the attached file when the post has one, and no row when it has none", async () => {
+    show([row({ kind: "showcase", media_path: "showcase/a.mp4", source_ref: "asset:" + "0".repeat(8) + "-0000-0000-0000-" + "0".repeat(12) })]);
+    await tap(screen.getByRole("button", { name: /Approve this post for publishing/ }));
+    const dlg = sheet();
+    expect(within(dlg).getByText(m.approve.dMedia)).toBeTruthy();
+    expect(within(dlg).getByText("showcase/a.mp4")).toBeTruthy();
+    await tap(within(dlg).getByRole("button", { name: en.ux.confirmCancel }));
+    cleanup();
+    show();
+    await tap(screen.getByRole("button", { name: /Approve this post for publishing/ }));
+    expect(within(sheet()).queryByText(m.approve.dMedia)).toBeNull();
   });
 
   it("an approved post cannot be approved again, and says whether it will go", () => {
@@ -389,6 +455,39 @@ describe("phone layout, targets and labels", () => {
     for (const b of buttons) expect(b.className, b.textContent ?? "").toMatch(/min-h-11|min-h-12/);
     expect(screen.getAllByRole("button", { name: /pr:#13/ }).length).toBe(3);
     for (const t of document.querySelectorAll("textarea")) expect(t.closest("label"), "a textarea has a label").toBeTruthy();
+  });
+
+  it("button rows stay one column until 420 px so ru and uz labels do not overflow at 390 px", () => {
+    show([row()]);
+    const rows = [...document.querySelectorAll("article .grid")];
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    for (const r of rows) {
+      expect(r.className).toContain("grid-cols-1");
+      expect(r.className).not.toMatch(/(^|\s)grid-cols-[23](\s|$)/);
+      expect(r.className).toMatch(/min-\[420px\]:grid-cols-\d/);
+    }
+    cleanup();
+    show([row()]);
+    // the edit and reject forms follow the same rule
+    fireEvent.click(screen.getByRole("button", { name: /Edit the texts/ }));
+    for (const r of document.querySelectorAll("article .grid")) expect(r.className).not.toMatch(/(^|\s)grid-cols-2(\s|$)/);
+  });
+
+  it("ru and uz count in units with the right plural, and the edit count uses the same unit as the limit", async () => {
+    h.locale = "ru";
+    show([row({ texts: { uz: "a", ru: "😀", en: "abc" } })]);
+    expect(screen.getByText("Русский: 2 единицы")).toBeTruthy();
+    expect(screen.getByText("English: 3 единицы")).toBeTruthy();
+    cleanup();
+    show([row({ texts: { uz: "a".repeat(11), ru: "б", en: "abcde" } })]);
+    expect(screen.getByText("Oʻzbekcha: 11 единиц")).toBeTruthy();
+    expect(screen.getByText("Русский: 1 единица")).toBeTruthy();
+    cleanup();
+    h.locale = "en";
+    show([row()]);
+    await tap(screen.getByRole("button", { name: /Edit the texts/ }));
+    fireEvent.change(screen.getByLabelText(/English text/), { target: { value: "😀" } });
+    expect(screen.getAllByText("2 units").length).toBeGreaterThanOrEqual(1); // an emoji is 2 units, the unit the limit uses
   });
 
   it("no control sends, re-sends or tests a post", () => {

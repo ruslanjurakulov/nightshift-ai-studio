@@ -126,7 +126,7 @@ describe("with the switch on", () => {
     const st = stub();
     s.client = st.client;
     const html = await page();
-    expect(asked(st)).toEqual(new Set(["owner_marketing_get", "marketing_posts"]));
+    expect(asked(st)).toEqual(new Set(["owner_marketing_get", "marketing_posts", "owner_security_get"]));
     expect(has(html, m.poster.title)).toBe(true);
     expect(has(html, "Posts this week: 1 of 2")).toBe(true);
     expect(has(html, "@nightshift_test")).toBe(true);
@@ -195,6 +195,71 @@ describe("with the switch on", () => {
     expect(html).toContain("data-read-error");
     expect(has(html, m.empty.title)).toBe(false);
     expect(has(html, m.poster.title)).toBe(false);
+  });
+
+  it.each([
+    ["on", { ok: true, settings: { admin_aal2_required: true } }, "on"],
+    ["off", { ok: true, settings: { admin_aal2_required: false } }, "off"],
+  ])("shows the database's second-factor gate read only (%s)", async (_n, doc, shown) => {
+    results.owner_security_get = { data: doc, error: null };
+    s.client = stub().client;
+    const html = await page();
+    expect(html).toContain(`data-gate="${shown}"`);
+    expect(has(html, shown === "on" ? m.poster.gate.onNote : m.poster.gate.offNote)).toBe(true);
+  });
+
+  it.each([
+    ["a read that failed", { data: null, error: { code: "XX000", message: "boom" } }],
+    ["a function that is not there", { data: null, error: { code: "42883", message: "does not exist" } }],
+    ["an answer that is not a document", { data: "ok", error: null }],
+  ])("%s: the gate reads unknown, never 'off'", async (_n, res) => {
+    results.owner_security_get = res;
+    s.client = stub().client;
+    const html = await page();
+    expect(html).toContain('data-gate="unknown"');
+    expect(has(html, m.poster.gate.unknownNote)).toBe(true);
+    expect(has(html, m.poster.gate.offNote)).toBe(false);
+  });
+
+  it("the gate is read only when the board is shown (no extra read when the posts could not be read)", async () => {
+    results.marketing_posts = { data: null, error: { code: "XX000", message: "boom" } };
+    const st = stub();
+    s.client = st.client;
+    await page();
+    expect(asked(st).has("owner_security_get")).toBe(false);
+  });
+
+  it("completes the link with NOTIFY_APP_ORIGIN first, as the worker does, and APP_ORIGIN only when it is empty", async () => {
+    vi.stubEnv("NOTIFY_APP_ORIGIN", "https://worker.example");
+    s.client = stub().client;
+    expect(has(await page(), "https://worker.example/pricing")).toBe(true);
+    vi.stubEnv("NOTIFY_APP_ORIGIN", "");
+    expect(has(await page(), "https://nightshift-ai.studio/pricing")).toBe(true);
+  });
+
+  it("a NOTIFY_APP_ORIGIN that is set but invalid is unknown (the worker would refuse it), not replaced by APP_ORIGIN", async () => {
+    vi.stubEnv("NOTIFY_APP_ORIGIN", "http://not-https.example");
+    s.client = stub().client;
+    const html = await page();
+    expect(html).not.toContain("not-https.example");
+    expect(html).not.toContain("nightshift-ai.studio/pricing");
+    expect(html).toContain("Whole message: at least"); // the link is left out of the count and the total says so
+  });
+
+  it("a numeric chat id is a valid channel, shown as it is", async () => {
+    vi.stubEnv("MARKETING_TELEGRAM_CHAT", "-1001234567890");
+    s.client = stub().client;
+    const html = await page();
+    expect(html).toContain("-1001234567890");
+    expect(has(html, m.poster.channelUnknown)).toBe(false);
+  });
+
+  it("a channel with a name too short for the deploy ({4,31}) is unknown, and the unknown line says 'not a valid'", async () => {
+    vi.stubEnv("MARKETING_TELEGRAM_CHAT", "@abcd");
+    s.client = stub().client;
+    const html = await page();
+    expect(has(html, m.poster.channelUnknown)).toBe(true);
+    expect(m.poster.channelUnknown).toMatch(/not a valid @name/);
   });
 
   it("no database client at all is a failure, said", async () => {
