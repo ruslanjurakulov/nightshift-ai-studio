@@ -13,6 +13,10 @@ keeps its state there as rows with ``kind`` starting ``operator.``:
   operator.unmute   title = alert kind or ``all``
   operator.digest   title = the local date the daily digest went out
   operator.language title = the language code the owner picked with /language
+  operator.mail     the owner's e-mail copy of an alert (modules/operator_bot/owner_mail.py):
+                    title = the dedupe key, body = ``<alert kind>:<outcome>`` with the
+                    outcome sent | seen | retry | dead; the row ``mail:baseline`` is the
+                    marker that the first e-mail pass has happened
 
 Why this and not a migration: merging a migration to main applies it to the live
 database automatically. Reusing the feed means this feature adds no SQL at all.
@@ -48,6 +52,9 @@ logger = logging.getLogger(__name__)
 LOOKBACK = timedelta(hours=48)
 MUTE_FOR = timedelta(hours=24)
 KIND_PREFIX = "operator."
+#: The e-mail ledger's rows: the marker of the first pass, and the outcomes a row may carry.
+MAIL_BASELINE = "mail:baseline"
+MAIL_OUTCOMES = ("sent", "seen", "retry", "dead")
 PAGE = 1000
 MAX_PAGES = 5
 
@@ -63,6 +70,22 @@ class AlertState:
     #: would otherwise forget it, and a quiet system would "start for the first
     #: time" again every two days.
     baseline_seen: bool = False
+    #: (at, key, alert kind, outcome, severity) for each operator.mail row: the
+    #: owner's e-mail ledger, kept apart from ``alerts`` so a failed or switched-off
+    #: e-mail never changes what Telegram thinks it has sent.
+    mails: list = field(default_factory=list)
+    #: The e-mail ledger's own first-pass marker, at ANY age (like ``baseline_seen``).
+    mail_baseline_seen: bool = False
+
+    def mails_since(self, since: datetime, critical: bool) -> int:
+        """E-mail attempts (sent or not: a failing sender must not lift the cap)
+        since ``since``, counting only critical alerts when ``critical`` is true. The
+        marker, the "on" mail and the digest (keys ``mail:*`` and ``digest:*``) are not
+        alerts and do not use the budget; the digest has its own bound (one per day, a
+        few attempts)."""
+        return sum(1 for at, key, _kind, outcome, sev in self.mails
+                   if outcome in ("sent", "retry", "dead") and at >= since and (sev == "critical") == critical
+                   and not key.startswith(("mail:", "digest:")))
 
     def last_seen(self, key: str) -> Optional[datetime]:
         times = [a[0] for a in self.alerts if a[1] == key]
@@ -94,6 +117,7 @@ class AlertStore(Protocol):
     def record_mute(self, kind: str, until: datetime) -> bool: ...
     def record_unmute(self, kind: str) -> bool: ...
     def record_digest(self, date: str) -> bool: ...
+    def record_mail(self, key: str, kind: str, outcome: str, severity: str = "info") -> bool: ...
     def load_language(self) -> Optional[str]: ...
     def record_language(self, code: str) -> bool: ...
 
@@ -125,13 +149,13 @@ def pick_language(rows: list, now: Optional[datetime] = None) -> Optional[str]:
     return best[1] if best else None
 
 
-def replay(rows: list, now: datetime, baseline_seen: bool = False) -> AlertState:
+def replay(rows: list, now: datetime, baseline_seen: bool = False, mail_baseline_seen: bool = False) -> AlertState:
     """Build the state from alert_events rows (any order).
 
     Defensive about what the table may hold: a row that carries a channel is not
     the bot's and is skipped; a timestamp in the future counts as now; a mute
     lasts at most 24 hours from when it was written, whatever its body says."""
-    state = AlertState(baseline_seen=baseline_seen)
+    state = AlertState(baseline_seen=baseline_seen, mail_baseline_seen=mail_baseline_seen)
     mutes: dict = {}
     for row in sorted(rows, key=lambda r: str(r.get("at") or "")):
         if row.get("channel_id") not in (None, ""):
@@ -152,6 +176,12 @@ def replay(rows: list, now: datetime, baseline_seen: bool = False) -> AlertState
             mutes.pop(title, None)
         elif kind == "operator.digest":
             state.digest_dates.add(title)
+        elif kind == "operator.mail" and at:
+            alert_kind, _, outcome = str(row.get("body") or "").rpartition(":")
+            if outcome in MAIL_OUTCOMES:
+                state.mails.append((at, title, alert_kind, outcome, str(row.get("severity") or "")))
+                if title == MAIL_BASELINE:
+                    state.mail_baseline_seen = True
     state.mutes = {k: v for k, v in mutes.items() if v > now}
     return state
 
@@ -193,13 +223,17 @@ class SupabaseAlertStore:
                 "select": "at", "kind": "eq.operator.alert", "title": "eq.baseline",
                 "channel_id": "is.null", "limit": "1",
             })
+            mail_marker = self.sync.select_strict("alert_events", {
+                "select": "at", "kind": "eq.operator.mail", "title": f"eq.{MAIL_BASELINE}",
+                "channel_id": "is.null", "limit": "1",
+            })
         except SupabaseReadError as e:
             logger.warning("operator alert state unreadable (%s)", e.detail)
             return None
         except Exception as e:
             logger.warning("operator alert state unreadable (%s)", type(e).__name__)
             return None
-        return replay(rows, now, baseline_seen=bool(marker))
+        return replay(rows, now, baseline_seen=bool(marker), mail_baseline_seen=bool(mail_marker))
 
     def load_language(self) -> Optional[str]:
         """The chosen language (the newest channel-less row, at any age), or None
@@ -248,6 +282,10 @@ class SupabaseAlertStore:
     def record_digest(self, date) -> bool:
         return self._write("operator.digest", date)
 
+    def record_mail(self, key, kind, outcome, severity="info") -> bool:
+        return outcome in MAIL_OUTCOMES and self._write("operator.mail", key, f"{kind}:{outcome}", severity,
+                                                         outcome == "sent")
+
 
 class MemoryAlertStore:
     """In-memory store for tests and for a dry run with no database."""
@@ -281,6 +319,9 @@ class MemoryAlertStore:
 
     def record_digest(self, date) -> bool:
         return self._add("operator.digest", date)
+
+    def record_mail(self, key, kind, outcome, severity="info") -> bool:
+        return outcome in MAIL_OUTCOMES and self._add("operator.mail", key, f"{kind}:{outcome}", outcome == "sent", severity)
 
     def load_language(self):
         return None if self.fail_load else pick_language(self.rows, self._now())

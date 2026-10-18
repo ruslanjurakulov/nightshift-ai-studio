@@ -50,6 +50,8 @@ OPTIONAL: Dict[str, frozenset] = {
         "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
         "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
         "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
+        # The owner's e-mail copy (docs/OWNER_EMAIL.md): off while NIGHTSHIFT_OWNER_EMAIL is empty.
+        "NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM",
     }),
     # Empty = the worker idles. The deploy never needs the poster's own switch to succeed.
     "marketing": frozenset({"NIGHTSHIFT_MARKETING_POSTS"}),

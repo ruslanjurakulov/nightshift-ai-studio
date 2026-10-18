@@ -385,6 +385,13 @@ jobs:
           OPERATORENV_OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
           OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          # The owner's e-mail copy (docs/OWNER_EMAIL.md), all optional and OFF while the variable
+          # NIGHTSHIFT_OWNER_EMAIL is not exactly `on`. The mail key and sender are the customer
+          # e-mail worker's own secret and variable, so there is nothing new to create.
+          OPERATORENV_NIGHTSHIFT_OWNER_EMAIL: ${{ vars.NIGHTSHIFT_OWNER_EMAIL }}
+          OPERATORENV_OWNER_EMAIL_KINDS: ${{ vars.OWNER_EMAIL_KINDS }}
+          OPERATORENV_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          OPERATORENV_NIGHTSHIFT_EMAIL_FROM: ${{ vars.NIGHTSHIFT_EMAIL_FROM }}
         run: python3 deploy/build-service-env.py operator "$PAYLOAD"
 
       # The brand channel's poster (docs/MARKETING_POSTS.md), only while

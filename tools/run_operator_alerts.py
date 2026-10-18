@@ -18,6 +18,10 @@ TELEGRAM_CHAT_ID, SUPABASE_URL, SUPABASE_SERVICE_KEY, GITHUB_TOKEN /
 GITHUB_REPOSITORY (supplied by Actions), ELEVENLABS_LOW_CREDITS and the optional
 OPERATOR_APP_URL, OPERATOR_TZ, OPERATOR_QUIET_HOURS, OPERATOR_DIGEST_HOUR,
 OPERATOR_STUCK_MINUTES, OPERATOR_ALERT_MAX_PER_HOUR.
+
+The owner's e-mail copy (docs/OWNER_EMAIL.md) is off unless NIGHTSHIFT_OWNER_EMAIL
+is exactly `on`; it also needs RESEND_API_KEY and NIGHTSHIFT_EMAIL_FROM, and takes
+the optional OWNER_EMAIL_KINDS. It rides this pass: no pass, no e-mail.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ logger = logging.getLogger("run_operator_alerts")
 from modules import log_redaction
 from modules.operator_bot.alerts import AlertEngine, send_digest_reply
 from modules.operator_bot.config import OperatorConfig
+from modules.operator_bot.owner_mail import OwnerMail
 from modules.operator_bot.sources import OperatorSources, default_http_get
 from modules.operator_bot.store import SupabaseAlertStore
 from modules.supabase_sync import SupabaseSync
@@ -47,7 +52,10 @@ def build_engine(control, sync) -> AlertEngine:
     (tools/operator_bot_service.py), which runs ``tick()`` on its own timer."""
     cfg = OperatorConfig.from_env()
     ops = OperatorSources(sync, default_http_get, cfg, github_token=os.getenv("GITHUB_TOKEN", ""))
-    return AlertEngine(ops, SupabaseAlertStore(sync), control, cfg)
+    store = SupabaseAlertStore(sync)
+    # The e-mail copy for the owner (docs/OWNER_EMAIL.md): None unless NIGHTSHIFT_OWNER_EMAIL is exactly `on`.
+    owner_mail = OwnerMail.from_env(ops, store, sync, cfg, os.environ)
+    return AlertEngine(ops, store, control, cfg, owner_mail=owner_mail)
 
 
 def main(argv=None) -> int:

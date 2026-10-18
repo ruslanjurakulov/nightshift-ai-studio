@@ -285,6 +285,17 @@ recently finished ones, so a stuck job is never the row a cut drops. If the aler
 memory ever exceeds what the bot reads (5,000 rows in 48 hours) it sends nothing
 rather than repeat itself.
 
+### E-mail copy for the owner (off by default)
+
+The same alert pass can also e-mail the owner's own address (confirmed platform
+owners and admins only), plus payments received, new accounts and a daily digest:
+`NIGHTSHIFT_OWNER_EMAIL=on` (with `RESEND_API_KEY` and `NIGHTSHIFT_EMAIL_FROM` for the
+sender, the optional `OWNER_EMAIL_KINDS`, and for local runs `NIGHTSHIFT_EMAIL_TRANSPORT=fake` with
+`NIGHTSHIFT_EMAIL_FAKE_DIR`). It has its own ledger (`operator.mail` rows, so a
+failed e-mail is retried a bounded number of times and a sent one never repeats)
+and obeys the same mute, quiet hours, digest hour, language and hourly figure.
+Design, settings and the phone steps: `docs/OWNER_EMAIL.md`.
+
 ## Marketing (information only)
 
 The brand-channel poster (`docs/MARKETING_POSTS.md`, migration 0108) posts to the public

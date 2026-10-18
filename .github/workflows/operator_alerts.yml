@@ -80,6 +80,11 @@ jobs:
           OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
           OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          # The owner's e-mail copy (docs/OWNER_EMAIL.md): off unless NIGHTSHIFT_OWNER_EMAIL is exactly `on`.
+          NIGHTSHIFT_OWNER_EMAIL: ${{ vars.NIGHTSHIFT_OWNER_EMAIL }}
+          OWNER_EMAIL_KINDS: ${{ vars.OWNER_EMAIL_KINDS }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NIGHTSHIFT_EMAIL_FROM: ${{ vars.NIGHTSHIFT_EMAIL_FROM }}
           DIGEST_NOW: ${{ inputs.digest_now }}
         run: |
           if [ "$DIGEST_NOW" = "true" ]; then
