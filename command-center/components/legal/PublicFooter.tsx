@@ -6,6 +6,7 @@ import { Wordmark } from "@/components/site/Wordmark";
 import { devFor } from "@/lib/i18n/dev";
 import { devPagesEnabled } from "@/lib/dev-pages";
 import { ViewModeControl } from "@/components/view-mode/ViewModeToggle";
+import { SocialIcons } from "@/components/site/SocialIcons";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
@@ -20,6 +21,7 @@ type FooterLink = { href: string; label: string; external?: boolean };
  * none is set. Google's verification checks that the homepage links the
  * Privacy Policy; Paddle's that pricing is one click away.
  *
+ * The brand block ends with the Telegram and Instagram icon links (lib/site/social.ts).
  * /login keeps the compact LegalFooter; this one is for the marketing frame.
  */
 export function PublicFooter({ t }: { t: Dictionary }) {
@@ -90,6 +92,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
               {LEGAL.contactEmail}
             </a>
           )}
+          <SocialIcons t={t} />
         </div>
         <div className="st-footer-cols">
           {columns.map((col) => (

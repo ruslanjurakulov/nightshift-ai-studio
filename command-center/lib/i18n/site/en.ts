@@ -466,6 +466,9 @@ export const siteEn = {
     signIn: "Sign in",
     cookies: "Cookies and storage",
     note: "Made in the small hours. Published when you say.",
+    social: "Our channels",
+    telegram: "Telegram channel",
+    instagram: "Instagram",
   },
   solutions: {
     meta: {

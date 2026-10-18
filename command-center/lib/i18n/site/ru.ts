@@ -455,6 +455,9 @@ export const siteRu: SiteDictionary = {
     signIn: "Войти",
     cookies: "Cookie и хранилище",
     note: "Сделано глубокой ночью. Публикуется, когда скажете.",
+    social: "Мы в соцсетях",
+    telegram: "Telegram-канал",
+    instagram: "Instagram",
   },
   solutions: {
     meta: {
