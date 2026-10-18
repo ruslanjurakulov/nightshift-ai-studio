@@ -178,7 +178,7 @@ def _connect_failed(exc: BaseException) -> bool:
 
 
 class TelegramClient:
-    """sendMessage to the customer bot. ``session`` is anything with a
+    """sendMessage (and, for the brand channel, other methods) over the Bot API. ``session`` is anything with a
     ``post(url, json=..., timeout=...)`` returning an object with
     ``status_code`` and ``json()``: ``requests`` in the worker, a fake in tests.
     The token only ever appears inside the URL handed to the session."""
@@ -192,14 +192,23 @@ class TelegramClient:
         self._timeout = timeout
 
     def send_message(self, payload: Dict[str, Any]) -> SendResult:
-        url = f"{self._base}/bot{self._token}/sendMessage"
+        return self.call("sendMessage", payload)
+
+    def call(self, method: str, payload: Dict[str, Any],
+             classify: Optional[Callable[[int, Dict[str, Any]], SendResult]] = None) -> SendResult:
+        """POST ``payload`` to a Bot API ``method`` and classify the answer.
+
+        ``classify`` defaults to :func:`classify_response`. The brand channel
+        (modules/channel_post.py) passes its own, which keeps every answer but
+        treats "Telegram may have posted it" as final instead of retryable."""
+        url = f"{self._base}/bot{self._token}/{method}"
         try:
             resp = self._session.post(url, json=payload, timeout=self._timeout)
         except Exception as exc:  # noqa: BLE001 - classified below, never logged whole (the URL holds the token)
             if _connect_failed(exc):
                 return SendResult("retry", "network")
             return SendResult("dead", "unconfirmed")
-        return classify_response(resp.status_code, _safe_json(resp))
+        return (classify or classify_response)(resp.status_code, _safe_json(resp))
 
 
 def _safe_json(resp: Any) -> Dict[str, Any]:
