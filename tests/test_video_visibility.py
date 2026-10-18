@@ -186,16 +186,33 @@ class HeldPreviewIsNotOrphaned(unittest.TestCase):
             _record(r, video_id=held_video_id("news", "the-lost-city"))
         self.assertNotIn([HELD_OBJECT], _storage_deletes(fake))
 
-    def test_the_merged_away_held_row_takes_its_object_with_it(self):
+    def test_the_merged_away_held_row_hands_its_object_on_and_it_goes_only_after_the_new_preview(self):
         fake = FakeSupabase()
         with _patched(fake):
             self._hold(fake)
             fake.rows["dQw4w9WgXcQ"] = {"video_id": "dQw4w9WgXcQ", "channel_id": "news"}  # the mirror got there first
             self.assertTrue(self._promote())
-        self.assertNotIn(held_video_id("news", "the-lost-city"), fake.rows)
+            # N3: the stand-in is gone but its object is NOT deleted yet: the surviving row points at it.
+            self.assertNotIn(held_video_id("news", "the-lost-city"), fake.rows)
+            self.assertEqual(fake.rows["dQw4w9WgXcQ"]["preview_path"], HELD_OBJECT)
+            self.assertEqual(_storage_deletes(fake), [])
+            _record(_review())
+        self.assertEqual(fake.rows["dQw4w9WgXcQ"]["preview_path"], "news/dQw4w9WgXcQ.mp4")
         self.assertIn([HELD_OBJECT], _storage_deletes(fake))
 
-    def test_prune_keeps_two_held_and_five_uploaded(self):
+    def test_a_previous_preview_that_is_not_a_held_object_is_never_deleted(self):
+        # N6: the guard previous.startswith("<channel>/run-"): an uploaded video's own object stays.
+        fake = FakeSupabase()
+        r = _review()
+        r.upload_preview = mock.MagicMock(return_value="news/other.mp4")
+        with _patched(fake):
+            fake.rows["dQw4w9WgXcQ"] = {"video_id": "dQw4w9WgXcQ", "channel_id": "news",
+                                        "preview_path": "news/dQw4w9WgXcQ.mp4"}
+            _record(r)
+        self.assertEqual(fake.rows["dQw4w9WgXcQ"]["preview_path"], "news/other.mp4")
+        self.assertEqual(_storage_deletes(fake), [])
+
+    def test_prune_keeps_five_held_and_five_uploaded(self):
         offsets = {}
 
         def get(url, params=None, headers=None, timeout=None):
@@ -204,7 +221,7 @@ class HeldPreviewIsNotOrphaned(unittest.TestCase):
 
         with mock.patch("requests.get", get):
             VideoReview(url=URL, service_key=KEY).prune("news")
-        self.assertEqual(offsets, {"not.is.null": "5", "is.null": "2"})
+        self.assertEqual(offsets, {"not.is.null": "5", "is.null": "5"})
 
 
 class RepairedRowShowsTheRepairedCut(unittest.TestCase):

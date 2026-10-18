@@ -122,7 +122,7 @@ export function parseCreateVideo(
   if (!b) return { ok: false, result: bad("invalid_body", "Send a JSON object.") };
   // Blank ('' or null) is what a client that always sent the field sends: ignored for one release. Anything
   // else is refused. Route level only: the SQL entry points still accept the params from a direct caller.
-  const blank = (v: unknown) => v == null || v === "";
+  const blank = (v: unknown) => v == null || (typeof v === "string" && v.trim() === "");
   if (PROVIDER_FIELDS.some((k) => k in b && !blank(b[k])))
     return {
       ok: false,
@@ -243,7 +243,9 @@ export function withPublicJobError(result: ApiResult): ApiResult {
   if (!result.ok) return result;
   const data = obj(result.data);
   if (!data || !("error" in data)) return result;
-  const raw = typeof data.error === "string" && data.error !== "" ? data.error : null;
+  // Only a failed job has a failure to explain. The worker also writes `error` on a re-queue ("worker stopping
+  // before the run started"): operator text that says nothing the caller needs.
+  const raw = data.status === "failed" && typeof data.error === "string" && data.error !== "" ? data.error : null;
   if (raw === null) return { ...result, data: { ...data, error: null, error_code: null } };
   const code = parseJobError(raw).code ?? "unknown";
   return { ...result, data: { ...data, error: en.create.jobError[code], error_code: code } };

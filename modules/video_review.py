@@ -60,9 +60,9 @@ MAX_BYTES = 45 * 1024 * 1024
 # channel is the difference between a working review queue and a quota that
 # fills up silently.
 KEEP_PER_CHANNEL = 5
-# Held runs (not uploaded: no YouTube copy to fall back on) are kept apart and fewer, so the per-channel ceiling
-# stays at 5 uploaded + 2 held review copies.
-KEEP_HELD_PER_CHANNEL = 2
+# Held runs (not uploaded: no YouTube copy to fall back on) are ranked apart from uploaded ones, and keep as many:
+# a held video still awaiting review must not lose its only copy to newer holds. Ceiling: 5 uploaded + 5 held.
+KEEP_HELD_PER_CHANNEL = 5
 
 
 def _ffmpeg_exe() -> str | None:

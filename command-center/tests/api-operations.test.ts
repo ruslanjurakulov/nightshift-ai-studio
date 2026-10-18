@@ -86,11 +86,11 @@ describe("POST /videos", () => {
 
   it("F9: a blank provider ('' or null) is tolerated and ignored, never forwarded", async () => {
     const { c, calls } = caller({ ok: true, status: 201, data: { job_id: 1 } });
-    for (const blank of ["", null]) {
+    for (const blank of ["", null, "  "]) {
       const r = await createVideo(c, { channel_id: "c", video_provider: blank, image_provider: blank, topic: "Rome" });
       expect(r).toMatchObject({ ok: true });
     }
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     for (const call of calls) expect(call.args.p_params).toEqual({ topic: "Rome" });
   });
 
@@ -137,6 +137,13 @@ describe("F2: a job's error is a code and a sentence, never the worker log", () 
       data: { error_code: "unknown", error: en.create.jobError.unknown },
     });
     expect(await getJob(caller(job(null)).c, "5")).toMatchObject({ data: { error: null, error_code: null } });
+  });
+
+  it("N1: only a FAILED job's error is explained; a re-queued or running job's operator text is dropped", async () => {
+    for (const status of ["queued", "running", "cancelled", "succeeded"]) {
+      const r = await getJob(caller({ ok: true, status: 200, data: { id: 5, status, error: "worker stopping before the run started" } }).c, "5");
+      expect(r, status).toMatchObject({ ok: true, data: { status, error: null, error_code: null } });
+    }
   });
 
   it("refusals pass through untouched", async () => {

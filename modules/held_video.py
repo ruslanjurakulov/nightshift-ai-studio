@@ -293,14 +293,14 @@ class HeldVideos:
                     # A row for this YouTube id already exists (the mirror got
                     # there first). One run, one row: drop the stand-in; the
                     # review record that follows the upload refills the scenes.
-                    # Its preview object would be orphaned: remove it with the row.
+                    # Its preview object must not be orphaned, and must not go before the new
+                    # preview exists: hand the pointer to the surviving row (when it has none), so
+                    # the review record that follows the upload deletes it after recording the new one.
                     old_preview = self._preview_path(held_id)
-                    gone = self._delete(filters)
-                    if gone and old_preview:
-                        from modules.video_review import VideoReview
-
-                        VideoReview(url=self.url, service_key=self.service_key).delete_objects([old_preview])
-                    return gone
+                    if old_preview and self._preview_path(youtube_id) is None:
+                        self._send("patch", {"video_id": f"eq.{youtube_id}", "channel_id": f"eq.{channel_id}"},
+                                   {"preview_path": old_preview}, "return=minimal")
+                    return self._delete(filters)
                 if not _is_missing_column(resp):
                     logger.warning("Could not promote held row %s (HTTP %s)", held_id, resp.status_code)
                     return False

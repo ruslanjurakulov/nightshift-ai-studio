@@ -80,7 +80,7 @@ Real limits, discovered the hard way. Check against these before designing.
 | Ceiling | Value | Consequence |
 | :-- | :-- | :-- |
 | Supabase free tier, per object | **50 MB** | The previews bucket holds a 480p review copy, never the master render |
-| Supabase free tier, total storage | 1 GB | Review copies per channel, pruned: 5 uploaded + 2 held (not uploaded) |
+| Supabase free tier, total storage | 1 GB | Review copies per channel, pruned: 5 uploaded + 5 held (not uploaded) |
 | YouTube Data API | 10,000 units/day | `videos.insert` ~1600, `captions.insert` ~400 — count what you add |
 | GitHub Actions runner | 2 cores, ~7.9 GB | One render at a time (`max-parallel: 1`); the render has died at `exit 143` here |
 | Actions cache | evicted after 7 days unused | `history/` is not durable storage |
