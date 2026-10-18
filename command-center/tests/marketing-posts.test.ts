@@ -18,6 +18,7 @@ import {
   MARKETING_REFUSALS,
   MESSAGE_LIMIT,
   POST_COLUMNS,
+  POST_STATUSES,
   buildPreview,
   channelHandle,
   coerceListedPost,
@@ -724,6 +725,14 @@ describe("a post this page version does not know is listed, never dropped and ne
     expect(cols).toContain("target");
     expect(cols).not.toContain("delivery");
     expect(cols).not.toContain("payload");
+  });
+
+  it("POST_STATUSES is the status CHECK list of migration 0108, word for word", () => {
+    const m = /add constraint marketing_posts_status_check\s+check \(status in \(([^)]*)\)\)/.exec(sql);
+    expect(m, "the status CHECK of 0108 was not found: the regex needs updating").not.toBeNull();
+    const inSql = [...m![1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+    expect(inSql.length).toBeGreaterThan(0);
+    expect([...inSql].sort()).toEqual([...POST_STATUSES].sort());
   });
 
   it("extra fields in the settings document are ignored", () => {

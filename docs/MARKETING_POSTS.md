@@ -232,13 +232,18 @@ and by `next build`, not by a browser.
 
 ### Rows this page version does not know (tolerance)
 
-A database may hold a post whose `kind`, `target` or `delivery` this page was built before (a later migration adds them). The page
-lists it as **Other kind / Other target / Other delivery: <code>** (the code only if it is `[a-z_]{1,24}`, else `unknown`), with its
+A database may hold a post whose `kind` or `target` this page was built before (a later migration adds them). The page
+lists it as **Other kind / Other target: <code>** (the code only if it is `[a-z_]{1,24}`, else `unknown`), with its
 status and age, and its words only if they have the known three-language shape (else "preview unavailable"). It is never dropped
 and never counted as 0. It cannot be approved, edited or rejected here: Approve is disabled with "this page version cannot approve
-this kind: update the app". Extra JSON fields and unknown error codes are ignored or shown as a closed code, never as free text.
-The operator bot names such a kind `other` (counts per status already cover every kind). Deploy this before any migration that
-adds a kind.
+this kind: the page needs updating (a new deploy)". Extra JSON fields and unknown error codes are ignored or shown as a closed code, never as free text.
+The operator bot names such a kind `other` (counts per status already cover every kind).
+
+**Deploy order.** Any migration that adds a status, kind or target, or widens a column the approval page validates, needs a page
+deploy FIRST: the page fails closed on a status it does not know (the whole list reads "could not read"), and it can only list an
+unknown kind or target as Other once this tolerance is deployed. Tolerance for `delivery` is NOT implemented yet: the page does not
+select the `delivery` column (`POST_COLUMNS`), so it cannot see or list a post by its delivery. The delivery migration must ship
+together with, or after, a page change that reads `delivery`.
 
 ## The worker (slices 3 to 5)
 

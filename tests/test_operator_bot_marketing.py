@@ -725,7 +725,7 @@ class UnknownKindTestCase(unittest.TestCase):
         self.assertEqual((st["failure"]["code"], st["failure"]["kind"]), (None, "other"))
 
     def test_the_command_says_other_for_the_last_send_and_does_not_crash(self):
-        expect = {"en": "newer-kind", "ru": "другое", "uz": "boshqa"}
+        expect = {"en": "newer-kind", "ru": "новый вид", "uz": "yangi tur"}
         for lang in LANGUAGES:
             ops, _ = ops_with(summary(minutes_ago_sent=30, sent_kind="promo", enabled=True, used=1, draft=2))
             text = views.view_marketing(ops, lang).text

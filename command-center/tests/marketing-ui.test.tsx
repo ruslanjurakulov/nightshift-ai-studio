@@ -549,7 +549,7 @@ describe("a post of a kind this page version does not know", () => {
     const approve = screen.getByRole("button", { name: /Approve/ }) as HTMLButtonElement;
     expect(approve.disabled).toBe(true);
     expect(screen.getByText(m.other.cannotApprove)).toBeTruthy();
-    expect(m.other.cannotApprove).toBe("This page version cannot approve this kind: update the app.");
+    expect(m.other.cannotApprove).toBe("This page version cannot approve this kind: the page needs updating (a new deploy).");
     expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Reject/ })).toBeNull();
     await tap(approve);
@@ -575,6 +575,21 @@ describe("a post of a kind this page version does not know", () => {
     expect(screen.getByText("Error code: unknown")).toBeTruthy();
     expect(document.body.innerHTML).not.toContain("onerror");
     expect(document.body.innerHTML).not.toContain("Secret");
+  });
+
+  it("markup in the words and in source_ref is printed as text: no element is created from it", () => {
+    const bad = '<img src=x onerror=alert(1)><b id="evil">bold</b>';
+    show([
+      other({
+        texts: { uz: `uz ${bad}`, ru: `ru ${bad}`, en: `en ${bad}` },
+        source_ref: '<script id="evil-src">alert(2)</script>',
+      }),
+    ]);
+    const card = screen.getByRole("article");
+    expect(card.querySelector("img, b, script, [id^='evil']")).toBeNull();
+    expect(document.body.querySelector("#evil, #evil-src")).toBeNull();
+    expect(within(card).getByText(`en ${bad}`)).toBeTruthy();
+    expect(within(card).getByText(/<script id="evil-src">alert\(2\)<\/script>/)).toBeTruthy();
   });
 
   it("a mixed list keeps the known post, with its working Approve, next to the unknown one", async () => {

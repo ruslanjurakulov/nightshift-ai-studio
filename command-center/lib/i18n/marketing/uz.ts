@@ -91,7 +91,7 @@ export const marketingUz: MarketingDictionary = {
     price: "Tariflar",
   },
 
-  // Bu sahifa versiyasi tanimaydigan turdagi, maqsadli yoki yetkazib berishli post (yangiroq baza). Koʻrinadi, lekin bu yerda tasdiqlab boʻlmaydi.
+  // Bu sahifa versiyasi tanimaydigan turdagi yoki maqsadli post (yangiroq baza). Koʻrinadi, lekin bu yerda tasdiqlab boʻlmaydi.
   other: {
     titleKind: "Boshqa tur: {code}",
     titleTarget: "Boshqa maqsad: {code}",
@@ -100,12 +100,12 @@ export const marketingUz: MarketingDictionary = {
     targetLine: "Maqsad: {code}",
     deliveryLine: "Yetkazish: {code}",
     errorLine: "Xato kodi: {code}",
-    cannotApprove: "Sahifaning bu versiyasi bu turdagi postni tasdiqlay olmaydi: ilovani yangilang.",
+    cannotApprove: "Sahifaning bu versiyasi bu turdagi postni tasdiqlay olmaydi: sahifani yangilash (yangi deploy) kerak.",
     noActions: "Sahifaning bu versiyasi uni tahrirlay yoki rad eta ham olmaydi.",
     wordsTitle: "Matn saqlanganidek",
     wordsNote: "Saqlanganidek koʻrsatilgan, birorta kanal koʻrsatadigandek emas.",
     noPreview: "Koʻrib chiqish mavjud emas: sahifaning bu versiyasi bu postning matnini oʻqiy olmaydi.",
-    notice: "Bu sahifa versiyasi tanimaydigan turdagi, maqsadli yoki yetkazishli postlar «Boshqa» sifatida koʻrsatilgan ({n}). Ularni bu yerda tasdiqlab boʻlmaydi.",
+    notice: "Tanilmagan tur yoki maqsadli postlar «Boshqa tur» yoki «Boshqa maqsad» sifatida koʻrsatilgan ({n}). Ularni bu yerda tasdiqlab boʻlmaydi.",
     lastSend: "{title}. Holat bazada qanday boʻlsa shunday; bu sahifa u qayerga ketganini bilmaydi.",
   },
 

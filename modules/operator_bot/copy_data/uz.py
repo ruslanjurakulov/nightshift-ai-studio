@@ -385,7 +385,7 @@ TABLE = {
     "mk.news": "yangilik",
     "mk.showcase": "vitrina",
     "mk.price": "narx",
-    "mk.other": "boshqa",
+    "mk.other": "yangi tur",
     "mkst.failed": "yuborilmadi",
     "mkst.dead": "tasdiqlanmagan",
     "mkfix.blocked": "bot kanal administratori emas: uni faqat «Xabar yuborish» huquqi bilan qoʻshing",
