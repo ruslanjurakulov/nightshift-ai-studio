@@ -459,6 +459,7 @@ export const siteUz: SiteDictionary = {
     telegram: "Telegram kanali",
     instagram: "Instagram",
     x: "X",
+    youtube: "YouTube",
   },
   solutions: {
     meta: {
