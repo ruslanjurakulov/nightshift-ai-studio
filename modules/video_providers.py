@@ -13,7 +13,9 @@ Guarantees, matching the rest of the pipeline
   ``is_enabled()`` is exactly ``config.MINIMAX_BROLL_ENABLED``.
 * **Others are opt-in and off by default.** Another provider runs only when its
   key is set AND the operator turned generation on (``CHRONOS_ENABLE_VIDEO_GEN``).
-  With neither, ``is_enabled()`` is False and b-roll comes from Pexels stock.
+  With neither asked for, ``is_enabled()`` is False and b-roll comes from Pexels
+  stock. Asked for but not usable (unknown provider id, missing key, MiniMax
+  without its flag) is NOT a quiet switch to stock: ``preflight()`` raises.
 * **No silent substitute** (CLAUDE.md #4). The router never falls through to a
   provider the operator did not choose, and a client whose request is refused
   raises :class:`~modules.minimax_broll.VideoModelUnavailable` with the remedy
@@ -66,6 +68,10 @@ from modules.provider_tasks import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _TransientPoll(Exception):
+    """One poll that could not be read but may succeed on the next try."""
 
 
 def _first(d: dict, keys: Sequence[str]) -> Optional[object]:
@@ -152,6 +158,11 @@ class VideoProviderConfig:
     key_hint: str = "the provider's API key"
     #: Set when the configuration itself is unusable; ``preflight`` raises it.
     config_problem: str = ""
+    #: How long ``resume`` keeps polling one task before leaving it in the
+    #: ledger as "still running". Text-to-video takes minutes, and the queue
+    #: worker's heartbeat keeps the job alive while it waits, so the slower
+    #: services get a longer window than the 5 minutes everyone used to share.
+    poll_window_s: int = 300
 
 
 #: Frames each dialect's API is known to take for text-to-video — the
@@ -484,23 +495,65 @@ class GenericAsyncVideoClient:
             return f"{self.cfg.base_url}{self.cfg.query_path.format(id=task_id)}", {}
         return f"{self.cfg.base_url}{self.cfg.query_path}", {self.cfg.query_id_param: task_id}
 
-    def _await(self, task_id: str, *, max_attempts: int = 60,
+    #: HTTP statuses on a poll that mean "this will not get better by waiting".
+    _POLL_FATAL = (401, 402, 403, 404)
+    #: Consecutive transient poll failures (429, 5xx, timeouts, unreadable
+    #: answers) tolerated before the task is left pending in the ledger.
+    POLL_RETRIES = 3
+    POLL_BACKOFF_CAP_S = 60.0
+
+    def _await(self, task_id: str, *, max_attempts: Optional[int] = None,
                interval: float = 5.0) -> tuple[str, Optional[str], str]:
         """Poll until the job settles: ``(succeeded, url, "")``, ``(failed,
         None, reason)`` when the provider says so, or ``(pending, None, "")``
         when it is still running or we could not tell (kept for a later poll,
-        never re-paid)."""
+        never re-paid).
+
+        A poll the provider refuses for good (401/402/403/404, or the vendor's
+        own auth / quota / not-found code in the body) raises
+        ``VideoModelUnavailable`` straight away: waiting cannot fix it, and the
+        task id stays in the ledger. A transient failure (429, 5xx, timeout, an
+        unreadable answer) is retried ``POLL_RETRIES`` times with a bounded
+        backoff before the task is left pending. ``max_attempts`` defaults to
+        the provider's own window (``cfg.poll_window_s``)."""
         url, params = self._query_url(task_id)
+        if max_attempts is None:
+            max_attempts = int(self.cfg.poll_window_s / interval) if interval > 0 else 1
+        failures = 0
         for _ in range(max(1, max_attempts)):
             try:
                 resp = self.session.get(url, params=params, headers=self._auth_headers(),
                                         timeout=self.timeout)
-                resp.raise_for_status()
-                data = resp.json()
-            except Exception as e:
-                logger.warning("%s poll failed (%s)", self.cfg.name, type(e).__name__)
-                return OUTCOME_PENDING, None, ""
-            state, file_url, reason = self._state_of(data)
+                status = resp.status_code
+                try:
+                    data = resp.json()
+                except ValueError:
+                    data = None
+                if status in self._POLL_FATAL:
+                    category, code, message = self._error_of(data)
+                    raise self._reject(status=status, category=category, code=code, message=message)
+                if status >= 400 or data is None:   # 429, 5xx and the rest: worth another try
+                    raise _TransientPoll(f"HTTP {status}" if status >= 400 else "unreadable answer")
+                state, file_url, reason = self._state_of(data)
+                if state == OUTCOME_PENDING:
+                    category, code, message = self._error_of(data)
+                    if category in (AUTH, QUOTA, NOT_FOUND):
+                        raise self._reject(category=category, code=code, message=message)
+                    if category in (RATE, UNAVAILABLE):
+                        raise _TransientPoll(category)
+            except VideoModelUnavailable:
+                raise
+            except (requests.RequestException, OSError, _TransientPoll) as e:
+                failures += 1
+                if failures > self.POLL_RETRIES:
+                    logger.warning("%s poll still failing (%s); leaving task %s pending in the ledger",
+                                   self.cfg.name, type(e).__name__, task_id)
+                    return OUTCOME_PENDING, None, ""
+                logger.warning("%s poll failed (%s), retry %d of %d", self.cfg.name,
+                               type(e).__name__, failures, self.POLL_RETRIES)
+                time.sleep(min(self.POLL_BACKOFF_CAP_S, max(0.0, interval) * 2 ** failures))
+                continue
+            failures = 0
             reason = _clean(reason, self._secrets())
             if state == OUTCOME_FAILED:
                 logger.warning("%s job %s failed: %s", self.cfg.name, task_id, reason)
@@ -594,6 +647,7 @@ def _higgsfield_config() -> VideoProviderConfig:
         submit_path=getattr(config, "HIGGSFIELD_SUBMIT_PATH", "/v1/text2video"),
         query_path=getattr(config, "HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}"),
         key_hint="HIGGSFIELD_API_KEY",
+        poll_window_s=300,
     )
 
 
@@ -632,6 +686,7 @@ def _kling_config() -> VideoProviderConfig:
         query_path=getattr(config, "KLING_QUERY_PATH", "/v1/videos/text2video/{id}"),
         dialect=KLING,
         key_hint="KLING_API_KEY (a console API key), or KLING_ACCESS_KEY and KLING_SECRET_KEY",
+        poll_window_s=900,
     )
 
 
@@ -648,6 +703,7 @@ def _seedance_config() -> VideoProviderConfig:
         resolution=getattr(config, "SEEDANCE_RESOLUTION", "720p"),
         key_hint="SEEDANCE_API_KEY (a BytePlus ModelArk API key), and that the model is activated "
                  "in the ModelArk console",
+        poll_window_s=600,
     )
 
 
@@ -683,6 +739,7 @@ def _wan_config() -> VideoProviderConfig:
         resolution=getattr(config, "WAN_RESOLUTION", "720P"),
         key_hint="WAN_API_KEY (keys are region-specific: use an international Model Studio key)",
         config_problem=problem,
+        poll_window_s=600,
     )
 
 
@@ -716,6 +773,7 @@ def _veo_config() -> VideoProviderConfig:
         resolution=getattr(config, "VEO_RESOLUTION", ""),
         key_hint="VEO_API_KEY (a Gemini API key with Veo access on a paid tier)",
         config_problem=problem,
+        poll_window_s=900,
     )
 
 
@@ -774,17 +832,48 @@ def get_client(provider: Optional[str] = None):
     return GenericAsyncVideoClient(cfg) if cfg.api_key else None
 
 
+def requested() -> bool:
+    """True when the operator (or this run's parameters) asked for generated
+    b-roll, whether or not it can actually run. ``is_enabled`` is the
+    "usable" half; the difference between the two is what ``preflight`` turns
+    into a stop instead of a silent switch to stock footage.
+
+    Asked for means ``CHRONOS_ENABLE_VIDEO_GEN`` (a run's ``video_provider``
+    parameter sets it), or, for MiniMax, its own ``CHRONOS_ENABLE_MINIMAX_BROLL``
+    flag even without a key. A provider id on its own, with no flag, is dormant."""
+    if getattr(config, "VIDEO_GEN_OPT_IN", False):
+        return True
+    return active_provider() == "minimax" and bool(
+        getattr(config, "MINIMAX_BROLL_FLAG", False) or getattr(config, "MINIMAX_BROLL_ENABLED", False))
+
+
 def preflight() -> None:
-    """Before the run spends anything: when generated b-roll is on, raise
-    ``VideoModelUnavailable`` if the selected provider's configuration cannot
-    produce a clip (unknown model family, a required path not set, a malformed
-    workspace id). Makes no network request; a no-op when b-roll is off."""
-    if not is_enabled():
+    """Before the run spends anything: when generated b-roll was asked for,
+    raise ``VideoModelUnavailable`` unless it is usable, and when it is,
+    unless the selected provider's configuration can produce a clip (unknown
+    model family, a required path not set, a malformed workspace id).
+
+    Requested but unusable is never a quiet switch to Pexels stock
+    (CLAUDE.md #4): an unknown provider id, a missing key, or MiniMax chosen
+    for a run without ``CHRONOS_ENABLE_MINIMAX_BROLL`` (the deployment-wide
+    spend guard for MiniMax) all stop the run with the fix. Makes no network
+    request; a no-op when b-roll was not asked for."""
+    if not requested():
         return
+    provider = active_provider()
+    if provider != "minimax" and provider not in _GENERIC_BUILDERS:
+        known = ", ".join(("minimax",) + tuple(_GENERIC_BUILDERS))
+        raise VideoModelUnavailable(provider, "", "is not a known video provider",
+                                    f"set CHRONOS_VIDEO_PROVIDER to one of: {known}")
     client = get_client()
     if client is None:
-        raise VideoModelUnavailable(active_provider(), active_model(), "no API key is configured",
+        raise VideoModelUnavailable(provider, active_model(), "no API key is configured",
                                     "set the provider's API key, or turn generated b-roll off")
+    if provider == "minimax" and not is_enabled():
+        raise VideoModelUnavailable(
+            provider, active_model(), "MiniMax b-roll is not switched on for this deployment",
+            "set CHRONOS_ENABLE_MINIMAX_BROLL=true on the worker (it is the spend guard for MiniMax), "
+            "or choose another provider")
     check = getattr(client, "preflight", None)
     if callable(check):
         check()

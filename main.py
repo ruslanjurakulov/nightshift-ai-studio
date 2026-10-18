@@ -37,7 +37,8 @@ from modules import video_qc
 from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
-    AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, resolve_avatar_config,
+    AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, preflight_avatar,
+    resolve_avatar_config,
 )
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
@@ -59,6 +60,7 @@ from modules import held_video
 from modules.fact_checker import fact_check_claims
 from modules.media_fetcher import MediaFetcher
 from modules import video_providers
+from modules import image_providers
 from modules import dna_render
 from modules.minimax_broll import VideoModelUnavailable
 from modules import pinned_comment
@@ -551,6 +553,20 @@ def run(
                     channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
         raise
 
+    # ── Stage 0c': image generator and presenter, same reasoning
+    # An image generator or a presenter that was asked for but cannot be used
+    # (unknown provider, missing key/credentials) stops the run here, before the
+    # script is paid for, instead of quietly becoming stock stills / a faceless
+    # cut (CLAUDE.md #4). Config only: no request is made.
+    try:
+        image_providers.preflight()
+        preflight_avatar(resolve_avatar_config(ctx, series_obj))
+    except (image_providers.ImageProviderUnavailable, AvatarUnavailable, UnsafeAvatarRequest) as e:
+        logger.error("Generated pictures or presenter not usable for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="media_preflight", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}", "stage": "preflight"})
+        raise
+
     # ── Stage 0d: Channel DNA's style kit and characters
     # Read now, before anything is paid for: a kit or character the generated
     # pictures could not carry stops the run here with the remedy, never
@@ -908,10 +924,18 @@ def run(
                     channel_id=channel_id, metadata=broll.to_dict())
     # Optional: generate on-topic stills with the selected image provider
     # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
-    # are set; a failure falls back to stock and never breaks the render.
-    gen_images = fetcher.generate_images(
-        script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
-        size=render_fmt.image_size)
+    # are set; a model that returns nothing falls back to stock, a refusal stops the run.
+    try:
+        gen_images = fetcher.generate_images(
+            script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
+            size=render_fmt.image_size)
+    except image_providers.ImageProviderUnavailable as e:
+        # The generator that was chosen refused (credentials, quota, policy):
+        # stop with the remedy instead of shipping stock stills (CLAUDE.md #4).
+        logger.error("Generated images failed for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="image_providers", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "images"})
+        raise
     if gen_images:
         from modules import image_providers as _img
         images = list(gen_images) + list(images)
@@ -998,9 +1022,10 @@ def run(
     # A synthetic on-camera character composited into a corner of the video.
     # Nightshift is faceless unless a channel/series enables this; when off,
     # presenter_path stays None and the render below is byte-for-byte the same.
-    # No silent fallback: an enabled-but-unconfigured or unsafe request is logged
-    # loudly and the run continues faceless — a blank/wrong presenter is never
-    # shipped, and the publish gate below still decides every upload.
+    # No silent fallback: an enabled-but-unconfigured or unsafe request stops the
+    # run with the reason — a blank/wrong presenter is never shipped, a faceless
+    # cut is not substituted for the presenter that was asked for, and the
+    # publish gate below still decides every upload.
     presenter_path = None
     avatar_cfg = resolve_avatar_config(ctx, series_obj)
     if avatar_cfg.enabled:
@@ -1014,11 +1039,14 @@ def run(
                         channel_id=channel_id, metadata={"presenter_path": str(presenter_path)})
             logger.info("Presenter generated: %s", presenter_path)
         except (AvatarUnavailable, UnsafeAvatarRequest) as e:
-            presenter_path = None
-            logger.error("Presenter unavailable (%s: %s) — rendering faceless this run",
+            # A presenter was asked for: the run stops (CLAUDE.md #4) instead of
+            # quietly going out faceless. The generated pieces stay in the
+            # checkpoint, so the re-run after the fix does not repeat them.
+            logger.error("Presenter unavailable (%s: %s) — stopping; the run was set up with a presenter",
                          type(e).__name__, e)
             events.emit(events.AVATAR_FAILED, agent="avatar", status=events.STATUS_FAILED,
                         channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}"})
+            raise
     else:
         events.emit(events.AVATAR_SKIPPED, agent="avatar", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata={"reason": "avatar not enabled"})

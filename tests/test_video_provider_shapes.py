@@ -690,13 +690,180 @@ class RouterPreflightTestCase(unittest.TestCase):
             vp.preflight()
 
 
+def _generic_client(provider="Kling", dialect=vp.KLING, **cfg_kw):
+    cfg = vp.VideoProviderConfig(name=provider, api_key=KEY, base_url="https://api.test",
+                                 model="m", submit_path="/s", query_path="/j/{id}",
+                                 dialect=dialect, **cfg_kw)
+    return vp.GenericAsyncVideoClient(cfg)
+
+
+class PollClassificationTestCase(unittest.TestCase):
+    """D6: a poll the provider refuses for good stops the run at once; a
+    transient one is retried with backoff; neither loses the ledgered task."""
+
+    def test_permanent_statuses_raise_on_the_first_poll(self):
+        for status, needle in ((401, "credentials"), (402, "quota"), (403, "credentials"),
+                               (404, "does not know")):
+            with self.subTest(status=status):
+                client = _generic_client()
+                client.session = FakeSession(gets=[FakeResp({}, status=status)])
+                with _no_sleep(), self.assertRaises(VideoModelUnavailable) as ctx:
+                    client._await("k-1")
+                self.assertIn(needle, str(ctx.exception))
+                self.assertEqual(len(client.session.calls), 1)   # no retry, no waiting
+                _assert_no_secret(self, ctx.exception)
+
+    def test_a_vendor_quota_code_in_a_200_poll_raises(self):
+        client = _generic_client()
+        client.session = FakeSession(gets=[FakeResp({"code": 1102, "message": "balance"})])
+        with _no_sleep(), self.assertRaises(VideoModelUnavailable) as ctx:
+            client._await("k-1")
+        self.assertIn("quota", str(ctx.exception))
+
+    def test_transient_failures_are_retried_with_backoff_then_succeed(self):
+        ok = FakeResp({"code": 0, "data": {"task_status": "succeed", "task_result": {
+            "videos": [{"url": "https://cdn.test/v.mp4"}]}}})
+        for first in (FakeResp({}, status=429), FakeResp({}, status=503),
+                      FakeResp(None, status=200), requests.ConnectionError("reset"),
+                      requests.Timeout("slow")):
+            with self.subTest(first=type(first).__name__):
+                client = _generic_client()
+                client.session = FakeSession(gets=[first, FakeResp({}, status=502), ok])
+                sleeps = []
+                with mock.patch("time.sleep", sleeps.append):
+                    state, url, _ = client._await("k-1", interval=5.0)
+                self.assertEqual((state, url), (OUTCOME_SUCCEEDED, "https://cdn.test/v.mp4"))
+                self.assertEqual(sleeps, [10.0, 20.0])   # bounded exponential backoff
+
+    def test_persistent_transient_failures_leave_the_task_pending_after_bounded_retries(self):
+        client = _generic_client()
+        client.session = FakeSession(gets=[FakeResp({}, status=503)] * 10)
+        sleeps = []
+        with mock.patch("time.sleep", sleeps.append):
+            state, url, _ = client._await("k-1", interval=5.0)
+        self.assertEqual((state, url), (OUTCOME_PENDING, None))
+        self.assertEqual(len(client.session.calls), vp.GenericAsyncVideoClient.POLL_RETRIES + 1)
+        self.assertLessEqual(max(sleeps), vp.GenericAsyncVideoClient.POLL_BACKOFF_CAP_S)
+
+    def test_a_good_poll_resets_the_failure_count(self):
+        running = FakeResp({"code": 0, "data": {"task_status": "processing"}})
+        ok = FakeResp({"code": 0, "data": {"task_status": "succeed", "task_result": {
+            "videos": [{"url": "https://cdn.test/v.mp4"}]}}})
+        bad = FakeResp({}, status=503)
+        client = _generic_client()
+        client.session = FakeSession(gets=[bad, bad, bad, running, bad, bad, bad, ok])
+        with _no_sleep():
+            state, _, _ = client._await("k-1")
+        self.assertEqual(state, OUTCOME_SUCCEEDED)
+
+    def test_resume_surfaces_a_refused_poll_instead_of_reporting_pending(self):
+        client = _generic_client()
+        client.session = FakeSession(gets=[FakeResp({}, status=401)])
+        with _no_sleep(), self.assertRaises(VideoModelUnavailable):
+            client.resume("k-1", "/tmp/none.mp4")
+
+    def test_each_provider_has_its_own_poll_window(self):
+        windows = {name: builder().poll_window_s for name, builder in vp._GENERIC_BUILDERS.items()}
+        self.assertGreaterEqual(windows["veo"], 900)
+        self.assertGreaterEqual(windows["kling"], 900)
+        self.assertGreater(windows["seedance"], 300)
+        self.assertGreater(windows["wan"], 300)
+        self.assertGreaterEqual(min(windows.values()), 300)
+
+    def test_the_default_window_comes_from_the_provider_config(self):
+        client = _generic_client(poll_window_s=60)
+        running = FakeResp({"code": 0, "data": {"task_status": "processing"}})
+        client.session = FakeSession(gets=[running] * 50)
+        with _no_sleep():
+            self.assertEqual(client._await("k-1", interval=5.0)[0], OUTCOME_PENDING)
+        self.assertEqual(len(client.session.calls), 12)   # 60 s / 5 s
+
+
+class RequestedVersusUsableTestCase(unittest.TestCase):
+    """D4: asked-for-but-unusable b-roll stops the run; it never becomes stock.
+    The four silent cases the audit reproduced, now loud."""
+
+    def _cfg(self, **over):
+        base = dict(VIDEO_PROVIDER="minimax", VIDEO_GEN_OPT_IN=False, MINIMAX_BROLL_FLAG=False,
+                    MINIMAX_BROLL_ENABLED=False, MINIMAX_API_KEY="", VEO_API_KEY="",
+                    MINIMAX_H3_MODEL="MiniMax-Hailuo-2.3")
+        base.update(over)
+        stack = mock.patch.multiple(config, create=True, **base)
+        return stack
+
+    def test_nothing_asked_for_stays_quiet(self):
+        for provider in ("minimax", "veo", "veoo"):
+            with self.subTest(provider=provider), self._cfg(VIDEO_PROVIDER=provider):
+                vp.preflight()    # a provider id alone is dormant, not a request
+
+    def test_an_unknown_provider_id_with_generation_on_raises(self):
+        with self._cfg(VIDEO_PROVIDER="veoo", VIDEO_GEN_OPT_IN=True):
+            with self.assertRaises(VideoModelUnavailable) as ctx:
+                vp.preflight()
+        self.assertIn("veoo", str(ctx.exception))
+        self.assertIn("CHRONOS_VIDEO_PROVIDER", ctx.exception.remedy)
+
+    def test_generation_on_without_a_key_raises_for_every_generic_provider(self):
+        for provider in vp._GENERIC_BUILDERS:
+            with self.subTest(provider=provider), self._cfg(VIDEO_PROVIDER=provider, VIDEO_GEN_OPT_IN=True):
+                with self.assertRaises(VideoModelUnavailable) as ctx:
+                    vp.preflight()
+                self.assertIn("no API key", str(ctx.exception))
+
+    def test_minimax_flag_without_a_key_raises(self):
+        with self._cfg(MINIMAX_BROLL_FLAG=True):
+            with self.assertRaises(VideoModelUnavailable) as ctx:
+                vp.preflight()
+        self.assertIn("no API key", str(ctx.exception))
+
+    def test_minimax_chosen_for_a_run_without_its_flag_raises(self):
+        # run_request.build_run_env sets the provider and CHRONOS_ENABLE_VIDEO_GEN, not the MiniMax flag.
+        with self._cfg(VIDEO_GEN_OPT_IN=True, MINIMAX_API_KEY=KEY):
+            self.assertFalse(vp.is_enabled())
+            with self.assertRaises(VideoModelUnavailable) as ctx:
+                vp.preflight()
+        self.assertIn("CHRONOS_ENABLE_MINIMAX_BROLL", ctx.exception.remedy)
+        _assert_no_secret(self, ctx.exception)
+
+    def test_a_usable_provider_passes(self):
+        with self._cfg(VIDEO_PROVIDER="veo", VIDEO_GEN_OPT_IN=True, VEO_API_KEY=KEY):
+            vp.preflight()
+        with self._cfg(MINIMAX_BROLL_FLAG=True, MINIMAX_BROLL_ENABLED=True, MINIMAX_API_KEY=KEY):
+            vp.preflight()
+
+    def test_generate_broll_stops_instead_of_returning_an_empty_result(self):
+        from modules.media_fetcher import MediaFetcher
+        fetcher = MediaFetcher.__new__(MediaFetcher)
+        with self._cfg(VIDEO_PROVIDER="kling", VIDEO_GEN_OPT_IN=True):
+            with self.assertRaises(VideoModelUnavailable):
+                fetcher.generate_broll([], "Rome")
+
+
+class KlingErrorMapDriftTestCase(unittest.TestCase):
+    """modules/capabilities/video.py keeps its own copy of the Kling business-code
+    map (and of the Seedance / Wan ones). They are not shared (different enums),
+    so this pins that they still agree on every documented range."""
+
+    def test_pipeline_and_creative_kling_maps_agree(self):
+        from modules.capabilities import base
+        from modules.capabilities.video import KlingAdapter
+        translate = {vp.AUTH: base.E_AUTH, vp.QUOTA: base.E_QUOTA, vp.RATE: base.E_RATE_LIMITED,
+                     vp.NOT_FOUND: base.E_NOT_FOUND, vp.INVALID: base.E_BAD_REQUEST,
+                     vp.POLICY: base.E_POLICY, vp.UNAVAILABLE: base.E_UNAVAILABLE, None: None}
+        for code in (0, 1000, 1003, 1004, 1100, 1102, 1103, 1199, 1200, 1203, 1250, 1300, 1301,
+                     1302, 1304, 5000, 5001):
+            with self.subTest(code=code):
+                self.assertEqual(translate[vp._kling_code_category(code)], KlingAdapter.code_for(code))
+
+
 class NoLeakInLogsTestCase(unittest.TestCase):
     def test_generic_poll_failure_logs_no_key(self):
         cfg = vp.VideoProviderConfig(name="T", api_key=KEY, base_url="https://api.test",
                                      model="m", submit_path="/s", query_path="/j/{id}")
         client = vp.GenericAsyncVideoClient(cfg)
-        client.session = FakeSession(gets=[requests.ConnectionError(f"reset {KEY}")])
-        with self.assertLogs("modules.video_providers", level=logging.WARNING) as logs:
+        # A transient failure is retried (POLL_RETRIES), so give it enough to exhaust.
+        client.session = FakeSession(gets=[requests.ConnectionError(f"reset {KEY}")] * 4)
+        with _no_sleep(), self.assertLogs("modules.video_providers", level=logging.WARNING) as logs:
             client.resume("j-1", "/tmp/none.mp4")
         _assert_no_secret(self, *logs.output)
 

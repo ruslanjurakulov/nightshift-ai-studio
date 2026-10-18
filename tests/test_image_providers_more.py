@@ -160,8 +160,14 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(s.calls[1][1], "https://api.us.bfl.ai/v1/get_result?id=j1")
         self.assertNoKeyInUrls(s)
 
-    def test_flux_moderated_falls_back(self):
+    def test_flux_moderated_stops_the_run(self):
+        # Changed on purpose (D4): a content-policy block used to fall back to stock silently.
         s = _Session(posts=[_Resp({"polling_url": "https://p"})], gets=[_Resp({"status": "Content Moderated"})])
+        with self.assertRaises(ip.ImageProviderUnavailable):
+            _client(ip.FluxClient, s).generate("a city", self.dest)
+
+    def test_flux_error_status_still_falls_back(self):
+        s = _Session(posts=[_Resp({"polling_url": "https://p"})], gets=[_Resp({"status": "Error"})])
         self.assertIsNone(_client(ip.FluxClient, s).generate("a city", self.dest))
 
     def test_ideogram_sends_a_form_and_downloads(self):
@@ -183,7 +189,9 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(kw["headers"]["Authorization"], "Key k-secret")
         self.assertEqual(kw["json"]["image_size"], "landscape_16_9")
 
-    def test_http_errors_never_raise_and_never_log_the_key(self):
+    def test_unclassified_errors_never_raise_and_never_log_the_key(self):
+        # A bare exception with no HTTP response is "the model returned nothing":
+        # soft. Real 401/402/403 refusals raise (tests/test_image_refusals.py).
         for cls in (ip.OpenAIImageClient, ip.GeminiImageClient, ip.FluxClient, ip.IdeogramClient, ip.FalImageClient):
             with self.subTest(cls=cls.__name__):
                 s = _Session(posts=[_Resp(status=401)])

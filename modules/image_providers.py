@@ -13,9 +13,13 @@ for a few sections instead of the nearest stock match. It mirrors the b-roll vid
   image ("Nano Banana"), Black Forest Labs FLUX.2, Ideogram 3, and fal.ai (any of
   its text-to-image models by id). ``CHRONOS_IMAGE_MODEL`` picks a model for the
   selected one; empty means ``DEFAULT_MODELS``.
-* **Never breaks a render.** Every failure (auth, quota, a job that never
-  finishes, an odd response) is caught, logged without the key, and returns
-  ``None`` for that one image — the section falls back to stock.
+* **Soft only when the model returned nothing.** A job that never finishes, a
+  network blip or an odd/empty response is logged without the key and returns
+  ``None`` for that one image — the section falls back to stock. A refusal that
+  re-running will not fix (credentials, quota or billing, a content-policy
+  block) raises :class:`ImageProviderUnavailable` instead: the generator was
+  chosen on purpose, so the run stops with the remedy rather than quietly
+  shipping stock images while the customer is charged (CLAUDE.md #4).
 * **A key is never logged**, and endpoints/model are env-overridable so they can
   be pinned to Leonardo's current API without a code change.
 """
@@ -39,6 +43,61 @@ _ID_KEYS = ("generationId", "id", "sdGenerationJobId")
 _STATUS_KEYS = ("status", "state")
 _SUCCESS = {"complete", "completed", "finished", "done", "ready", "success"}
 _FAILURE = {"failed", "error", "canceled", "cancelled"}
+
+
+class ImageProviderUnavailable(RuntimeError):
+    """The selected image generator refused the request (bad credentials, no
+    quota, or a content-policy block) or cannot be used at all. Nothing else is
+    substituted. The message names the remedy and never carries a key."""
+
+    def __init__(self, provider: str, model: str, reason: str, remedy: str):
+        self.provider = provider
+        self.model = model
+        self.reason = reason
+        self.remedy = remedy
+        super().__init__(f"{provider} ({model or 'no model'}): {reason}. Fix: {remedy}")
+
+
+_QUOTA_WORDS = ("quota", "billing", "insufficient", "credit", "balance", "payment")
+_POLICY_WORDS = ("moderat", "content_policy", "content policy", "safety", "policy violation")
+
+_REFUSALS = {
+    "auth": ("refused the credentials",
+             "check the provider's API key on the worker; a key for another account or region is refused"),
+    "quota": ("refused the request for quota or billing",
+              "top up the provider account (or wait for its limit to reset), then re-run"),
+    "policy": ("refused the prompt under its content policy",
+               "reword the section keywords that fed the prompt, then re-run"),
+}
+
+
+def refusal_category(error: Exception) -> Optional[str]:
+    """``auth`` / ``quota`` / ``policy`` when ``error`` is an HTTP refusal that
+    re-running will not fix, else ``None`` (timeouts, 5xx, odd responses stay
+    soft). Reads the status and, for 400/422/429, a bounded slice of the body."""
+    resp = getattr(error, "response", None)
+    status = getattr(resp, "status_code", None)
+    if isinstance(status, bool) or not isinstance(status, int):
+        return None
+    if status in (401, 403):
+        return "auth"
+    if status == 402:
+        return "quota"
+    text = getattr(resp, "text", "")
+    text = text[:2000].lower() if isinstance(text, str) else ""
+    if status == 429 and any(w in text for w in _QUOTA_WORDS):
+        return "quota"
+    if status in (400, 422) and any(w in text for w in _POLICY_WORDS):
+        return "policy"
+    return None
+
+
+def _raise_if_refused(provider: str, model: str, error: Exception) -> None:
+    category = refusal_category(error)
+    if category:
+        what, remedy = _REFUSALS[category]
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        raise ImageProviderUnavailable(provider, model, f"{what} (HTTP {status})", remedy) from None
 
 
 def _first(d: dict, keys: Sequence[str]) -> Optional[object]:
@@ -87,6 +146,25 @@ def is_enabled() -> bool:
     if provider not in KEY_ATTRS:
         return False
     return bool(_key(provider)) and bool(getattr(config, "IMAGE_GEN_OPT_IN", False))
+
+
+def preflight() -> None:
+    """Before the run spends anything: when image generation was asked for
+    (``CHRONOS_ENABLE_IMAGE_GEN`` with a generator selected), raise
+    ``ImageProviderUnavailable`` if the provider id is unknown or its key is
+    missing, instead of letting every section quietly use stock. A no-op when
+    generation is off or the provider is the default ``pexels``. No request."""
+    provider = active_provider()
+    if not getattr(config, "IMAGE_GEN_OPT_IN", False) or provider == "pexels":
+        return
+    if provider not in KEY_ATTRS:
+        raise ImageProviderUnavailable(
+            provider, "", "is not a known image provider",
+            "set CHRONOS_IMAGE_PROVIDER to one of: " + ", ".join(PROVIDERS))
+    if not _key(provider):
+        raise ImageProviderUnavailable(
+            provider, active_model(), "image generation is on but no API key is configured",
+            f"set {KEY_ATTRS[provider]} on the worker, or turn image generation off")
 
 
 def active_model() -> str:
@@ -138,7 +216,11 @@ class _Base:
 
     provider_id = ""
 
-    def _warn(self, what: str, e: Exception) -> None:
+    def _warn(self, what: str, e: Exception, *, api: bool = True) -> None:
+        # ``api`` is False for a fetch from the result CDN, whose 403 is an
+        # expired link rather than a refusal of our credentials.
+        if api:
+            _raise_if_refused(self.name, self.model, e)
         # The exception text of requests never carries our header values; the
         # key is only ever in headers.
         logger.warning("%s %s failed (%s: %s) — using stock image instead",
@@ -154,7 +236,7 @@ class _Base:
                         if chunk:
                             fh.write(chunk)
         except Exception as e:
-            self._warn("download", e)
+            self._warn("download", e, api=False)
             return None
         return dest if dest.exists() and dest.stat().st_size > 0 else None
 
@@ -162,7 +244,7 @@ class _Base:
         try:
             raw = base64.b64decode(data, validate=False)
         except Exception as e:
-            self._warn("decode", e)
+            self._warn("decode", e, api=False)
             return None
         if not raw:
             return None
@@ -296,7 +378,10 @@ class FluxClient(_Base):
             if status == "Ready":
                 sample = (data.get("result") or {}).get("sample")
                 return self._download(sample, Path(out_path)) if sample else None
-            if status in ("Error", "Failed", "Content Moderated", "Request Moderated", "Task not found"):
+            if status in ("Content Moderated", "Request Moderated"):
+                what, remedy = _REFUSALS["policy"]
+                raise ImageProviderUnavailable(self.name, self.model, f"{what} ({status})", remedy)
+            if status in ("Error", "Failed", "Task not found"):
                 logger.warning("FLUX generation ended with status %r", status)
                 return None
             time.sleep(max(0.0, interval))
@@ -403,6 +488,7 @@ class LeonardoClient:
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
+            _raise_if_refused("Leonardo", self.model_id, e)
             logger.warning("Leonardo submit failed (%s: %s) — using stock image instead",
                            type(e).__name__, e)
             return None
@@ -418,6 +504,7 @@ class LeonardoClient:
                 resp.raise_for_status()
                 data = resp.json()
             except Exception as e:
+                _raise_if_refused("Leonardo", self.model_id, e)
                 logger.warning("Leonardo poll failed (%s: %s)", type(e).__name__, e)
                 return None
             # Result nests under `generations_by_pk`.
