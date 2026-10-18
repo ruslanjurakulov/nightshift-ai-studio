@@ -27,6 +27,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+class CredentialsMissing(RuntimeError):
+    """A key the run cannot do without is not configured. Raised by main.py at
+    the top of the run, before anything is spent (CLAUDE.md rule 6)."""
+
+
 OK = "ok"
 MISSING = "missing"
 UNKNOWN = "unknown"

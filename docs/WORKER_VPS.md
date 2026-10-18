@@ -131,6 +131,7 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # WORKER_POLL_SECONDS=15
 # WORKER_STALE_MINUTES=10
 # WORKER_STOP_GRACE_SECONDS=3300
+# WORKER_JOB_TIMEOUT_SECONDS=3300   # shu vaqtdan keyin ham tugamagan ish to'xtatiladi, topshiriq xato bilan tugaydi (hold qaytariladi)
 
 # Izohlar qutisi (migration 0081, modules/comment_replies.py). DEFAULT: O'CHIQ.
 # NIGHTSHIFT_COMMENT_INBOX=on           # faqat "on" bo'lsa ishlaydi (0081 qo'llanganidan keyin)

@@ -21,8 +21,10 @@ import os
 import re
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -30,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from modules import credits  # noqa: E402
+from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
 from modules.credits import CreditRefused, CreditsUnavailable, Hold, Price  # noqa: E402
 from tools import credits_settle  # noqa: E402
 from tools import queue_worker as qw  # noqa: E402
@@ -220,12 +223,63 @@ class SettleHold(unittest.TestCase):
 
     def test_unreachable_api_is_reported_not_guessed(self):
         self.assertIsNone(credits.settle_hold(FakeCredits(down=True), self.HOLD, succeeded=True,
-                                              channel_id="news", since=None, ledger=lambda *_: []))
+                                              channel_id="news", since=None, ledger=lambda *_: [],
+                                              sleep=lambda _s: None))
+
+    # D7: one blip must not leave the hold open for the 24 h sweep to release.
+    def test_a_transient_failure_is_retried_and_the_capture_goes_through(self):
+        class Flaky(FakeCredits):
+            fails = 2
+
+            def capture(self, ref, amount):
+                if self.fails:
+                    self.fails -= 1
+                    raise CreditsUnavailable("capture_credits: ReadTimeout")
+                return super().capture(ref, amount)
+
+        c, naps = Flaky(), []
+        note = credits.settle_hold(c, self.HOLD, succeeded=True, channel_id="news", since=None,
+                                   ledger=lambda *_: [entry("tts_characters", 3000)], sleep=naps.append)
+        self.assertIn("metered", note)
+        self.assertEqual(c.settled(), [("capture", "r1", 3.0)])
+        self.assertEqual(naps, [2.0, 4.0])  # backs off between tries
+
+    def test_a_transient_release_failure_is_retried(self):
+        class Flaky(FakeCredits):
+            fails = 1
+
+            def release(self, ref):
+                if self.fails:
+                    self.fails -= 1
+                    raise CreditsUnavailable("release_credits: ReadTimeout")
+                return super().release(ref)
+
+        c = Flaky()
+        credits.settle_hold(c, self.HOLD, succeeded=False, channel_id="news", since=None,
+                            sleep=lambda _s: None)
+        self.assertEqual(c.settled(), [("release", "r1")])
+
+    def test_gives_up_after_three_tries(self):
+        c, naps = FakeCredits(down=True), []
+        self.assertIsNone(credits.settle_hold(c, self.HOLD, succeeded=False, channel_id="news", since=None,
+                                              sleep=naps.append))
+        self.assertEqual(len(naps), credits.SETTLE_TRIES - 1)
 
 
 # ── the worker ────────────────────────────────────────────────────────────
 
-FAKE_MAIN = "import os, sys\nopen('report.out', 'w').write('ran')\nsys.exit(int(os.environ.get('FAKE_RC', '0')))\n"
+# Like the real main.py, a run that exits 0 leaves a video and tells the worker
+# so (NIGHTSHIFT_RUN_RESULT_FILE); FAKE_NO_VIDEO plays "exited 0 with nothing".
+FAKE_MAIN = (
+    "import json, os, sys, time\n"
+    "open('report.out', 'w').write('ran')\n"
+    "rf = os.environ.get('NIGHTSHIFT_RUN_RESULT_FILE')\n"
+    "if rf and not os.environ.get('FAKE_NO_VIDEO'):\n"
+    "    open('final_video.mp4', 'wb').write(b'video')\n"
+    "    json.dump({'slug': 's', 'video_path': os.path.abspath('final_video.mp4')}, open(rf, 'w'))\n"
+    "time.sleep(float(os.environ.get('FAKE_SLEEP', '0')))\n"
+    "sys.exit(int(os.environ.get('FAKE_RC', '0')))\n"
+)
 
 
 class FakeQueue:
@@ -272,14 +326,14 @@ class WorkerCredits(unittest.TestCase):
         self.ledger_calls.append((channel_id, since))
         return self.entries
 
-    def run_one(self, j, fake, entries=()):
+    def run_one(self, j, fake, entries=(), **worker_kw):
         self.entries = list(entries)
-        q = FakeQueue([j])
-        w = qw.Worker(q, worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
-                      resolve_channel=lambda cid: {"channel_id": cid, "is_default": False,
-                                                   "token_secret": "CHRONOS_YT_TOKEN_NEWS"},
-                      heartbeat_seconds=0.05, out=io.StringIO(), credits=fake,
-                      ledger_reader=self.ledger)
+        q = self.queue = FakeQueue([j])
+        w = self.worker = qw.Worker(q, worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                                    resolve_channel=lambda cid: {"channel_id": cid, "is_default": False,
+                                                                 "token_secret": "CHRONOS_YT_TOKEN_NEWS"},
+                                    heartbeat_seconds=0.05, out=io.StringIO(), credits=fake,
+                                    ledger_reader=self.ledger, **worker_kw)
         w.run_forever(once=True)
         return q.ends
 
@@ -316,6 +370,116 @@ class WorkerCredits(unittest.TestCase):
         fake = FakeCredits()
         ends = self.run_one(job(), fake, [entry("tts_characters", 5000)])
         self.assertEqual(ends[0][0], "failed")
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
+
+    # -- D7: what a charge is for ------------------------------------------
+
+    def test_exit_0_without_a_video_releases_the_hold_instead_of_capturing_it(self):
+        # Used to capture the whole hold ("no_ledger"): a black cut, a budget
+        # stop, anything that exited 0 with nothing to show was charged.
+        self.env["FAKE_NO_VIDEO"] = "1"
+        fake = FakeCredits()
+        self.run_one(job(), fake)
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
+
+    def test_only_a_non_empty_video_the_result_file_names_counts(self):
+        w = qw.Worker(FakeQueue([]), worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                      credits=FakeCredits())
+        video, result = self.repo / "final_video.mp4", self.repo / "r.json"
+        result.write_text(json.dumps({"video_path": str(video)}))
+        self.assertFalse(w._run_made_video(result))        # named, but not on disk
+        video.write_bytes(b"")
+        self.assertFalse(w._run_made_video(result))        # an empty file is not a video
+        video.write_bytes(b"v")
+        self.assertTrue(w._run_made_video(result))
+        self.assertFalse(w._run_made_video(self.repo / "missing.json"))
+        result.write_text("not json")
+        self.assertFalse(w._run_made_video(result))
+
+    def test_budget_stop_exit_fails_the_job_and_releases_the_hold(self):
+        self.env["FAKE_RC"] = str(BUDGET_STOP_EXIT)
+        self.env["FAKE_NO_VIDEO"] = "1"
+        fake = FakeCredits()
+        ends = self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("spend ceiling", ends[0][1])
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
+
+    def test_the_hold_is_settled_before_the_job_row_is_finished(self):
+        # A kill between "succeeded" and the settlement left a delivered video
+        # with an open hold, which the 24 h sweep then released.
+        order = []
+        fake = FakeCredits()
+        fake.capture = lambda ref, amount: order.append("capture") or amount
+        real_finish = FakeQueue.finish
+
+        def finish(self_q, job_id, worker_id, status, error):
+            order.append("finish")
+            return real_finish(self_q, job_id, worker_id, status, error)
+        with mock.patch.object(FakeQueue, "finish", finish):
+            self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(order, ["capture", "finish"])
+
+    def test_a_failed_run_is_released_before_its_row_is_failed_too(self):
+        self.env["FAKE_RC"] = "2"
+        order = []
+        fake = FakeCredits()
+        fake.release = lambda ref: order.append("release") or 40.0
+        real_finish = FakeQueue.finish
+
+        def finish(self_q, job_id, worker_id, status, error):
+            order.append("finish")
+            return real_finish(self_q, job_id, worker_id, status, error)
+        with mock.patch.object(FakeQueue, "finish", finish):
+            self.run_one(job(), fake)
+        self.assertEqual(order, ["release", "finish"])
+
+    def test_a_settlement_that_cannot_reach_the_api_is_kept_and_retried(self):
+        class Down(FakeCredits):
+            broken = False
+
+            def capture(self, ref, amount):
+                if self.broken:
+                    raise CreditsUnavailable("capture_credits: ReadTimeout")
+                return super().capture(ref, amount)
+
+        fake = Down()
+        fake.broken = True
+        with mock.patch.object(credits, "SETTLE_BACKOFF_SECONDS", 0.0):
+            ends = self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(ends, [("succeeded", None)])  # the delivered video stays delivered
+        self.assertEqual(fake.settled(), [])
+        marker = self.repo / "output" / qw.PENDING_SETTLEMENTS_FILE
+        rows = json.loads(marker.read_text())
+        self.assertEqual([(r["job_ref"], r["charge"]) for r in rows], [("rj-abc", True)])
+
+        # The API is back: the loop's retry settles it from the marker and clears it.
+        fake.broken = False
+        self.worker._last_pending_retry = None
+        self.worker._retry_pending_settlements()
+        self.assertEqual(fake.settled(), [("capture", "rj-abc", 5.0)])
+        self.assertFalse(marker.exists())
+
+    def test_a_pending_settlement_still_down_stays_pending(self):
+        w = qw.Worker(FakeQueue([]), worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                      credits=FakeCredits(down=True))
+        w._save_pending([{"job_id": 1, "job_ref": "rj-x", "org_id": CUSTOMER_ORG, "amount": 40.0,
+                          "charge": False, "channel_id": "news", "since": None, "at": qw._now()}])
+        with mock.patch.object(credits, "SETTLE_BACKOFF_SECONDS", 0.0):
+            w._retry_pending_settlements()
+        self.assertEqual(len(w._load_pending()), 1)
+
+    # -- D3: a hung run ends the job and gives the credits back --------------
+
+    def test_a_run_past_the_job_timeout_is_stopped_failed_and_released(self):
+        self.env["FAKE_SLEEP"] = "60"
+        fake = FakeCredits()
+        started = time.monotonic()
+        ends = self.run_one(job(), fake, job_timeout_seconds=1, kill_after_seconds=2)
+        self.assertLess(time.monotonic() - started, 30)
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("timed out", ends[0][1])
+        self.assertIn("WORKER_JOB_TIMEOUT_SECONDS", ends[0][1])
         self.assertEqual(fake.settled(), [("release", "rj-abc")])
 
     def test_enforced_job_without_a_hold_fails_without_running(self):

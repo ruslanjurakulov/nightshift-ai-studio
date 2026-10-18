@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Mapping, Optional, Tuple
@@ -454,14 +455,36 @@ def open_queue_hold(client, *, job_ref: Optional[str], channel_id: str,
         raise CreditRefused(f"credits are unavailable ({e})") from None
 
 
+#: A settlement is a few RPCs to Supabase; one blip must not leave a hold open
+#: (the 24 h expiry would then RELEASE it: a delivered video for free, or a
+#: failed run's credits locked for a day).
+SETTLE_TRIES = 3
+SETTLE_BACKOFF_SECONDS = 2.0
+
+
+def _with_backoff(fn, *args, sleep=time.sleep):
+    """Call ``fn`` up to SETTLE_TRIES times, backing off between tries, while
+    the credits API is unavailable. The last CreditsUnavailable is re-raised.
+    Safe to repeat: capture/release on a hold that is no longer open return its
+    recorded outcome and move no credits (migration 0020)."""
+    for attempt in range(SETTLE_TRIES):
+        try:
+            return fn(*args)
+        except CreditsUnavailable:
+            if attempt + 1 >= SETTLE_TRIES:
+                raise
+            sleep(SETTLE_BACKOFF_SECONDS * (attempt + 1))
+
+
 def settle_hold(client, hold: Hold, *, succeeded: bool, channel_id: str, since,
-                ledger=local_run_entries) -> Optional[str]:
+                ledger=local_run_entries, sleep=time.sleep) -> Optional[str]:
     """After the run: capture on success, release on failure. Returns a one-line
     description of what happened, or None when the credits API could not be
-    reached (the hold then stays open and expires; logged as an error)."""
+    reached after SETTLE_TRIES tries (the hold then stays open; logged as an
+    error, and the queue worker keeps a pending-settlement marker to try again)."""
     try:
         if not succeeded:
-            released = client.release(hold.job_ref)
+            released = _with_backoff(client.release, hold.job_ref, sleep=sleep)
             return f"released {float(released or 0):.2f} credits (run did not complete)"
         try:
             entries = ledger(channel_id, since)
@@ -470,16 +493,16 @@ def settle_hold(client, hold: Hold, *, succeeded: bool, channel_id: str, since,
                            type(e).__name__)
             entries = []
         try:
-            prices = client.prices()
+            prices = _with_backoff(client.prices, sleep=sleep)
         except CreditsUnavailable as e:
             logger.warning("credits: prices unavailable (%s) — every entry counts as unpriced", e)
             prices = {}
         s = settle_amount(hold.amount, entries, prices)
-        client.capture(hold.job_ref, s.amount)
+        _with_backoff(client.capture, hold.job_ref, s.amount, sleep=sleep)
         return "captured " + s.describe()
     except CreditsUnavailable as e:
         logger.error("credits: could not settle reservation %s (%s) — it stays open until it "
-                     "expires; settle it by hand if this persists", hold.job_ref, e)
+                     "is retried or expires; settle it by hand if this persists", hold.job_ref, e)
         return None
 
 

@@ -25,6 +25,16 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+#: main.py's exit code for "the spend ceiling stopped the run before it spent
+#: anything" (EX_CONFIG). Not a success: no video exists, so the queue worker
+#: fails the job and RELEASES its credit hold instead of capturing it, and the
+#: Actions step treats it like a pause (green, hold released).
+BUDGET_STOP_EXIT = 78
+
+
+class BudgetStop(Exception):
+    """The run was stopped by the channel's spend ceiling, before spending."""
+
 
 @dataclass(frozen=True)
 class BudgetStatus:

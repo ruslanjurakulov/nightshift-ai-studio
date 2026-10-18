@@ -87,6 +87,14 @@ priced for (``params.duration``, frozen when it was queued — migration 0041),
 is failed without running, whatever ``NIGHTSHIFT_CREDITS_ENFORCE`` says: rows
 can be inserted from a browser, so the button is not the only way in, and the
 run uses that frozen length, never the channel's target as it is by then.
+
+The settlement is retried (3 tries, backing off) and happens BEFORE the job row
+is finished; one that still cannot reach the credits API is kept in
+``output/.pending_settlements.json`` and retried by the loop. A video run is
+charged only when main.py reports a rendered video that is still on disk
+(``NIGHTSHIFT_RUN_RESULT_FILE``): an exit 0 with nothing made, and the spend-
+ceiling stop (exit 78), release the hold. A run still going after
+``WORKER_JOB_TIMEOUT_SECONDS`` (default 3300) is terminated and the job fails.
 """
 
 from __future__ import annotations
@@ -114,6 +122,7 @@ from modules import channel_credentials, channel_tokens  # noqa: E402
 from modules import comment_replies  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
+from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
@@ -132,6 +141,18 @@ DEFAULT_STALE_MINUTES = 10
 # A video job takes minutes to tens of minutes; the workflow's own timeout is
 # 60. Pair this with `docker run --stop-timeout 3600` (docs/WORKER_VPS.md).
 DEFAULT_GRACE_SECONDS = 3300
+#: Wall-clock limit of one job's run (WORKER_JOB_TIMEOUT_SECONDS): the Actions
+#: workflow's 60 minutes less a margin. The heartbeat thread keeps a job "alive"
+#: whatever its child does, so without this a hung ffmpeg / Whisper / provider
+#: socket holds the only worker, and the channel's slot, until the host reboots.
+DEFAULT_JOB_TIMEOUT_SECONDS = 3300
+#: Settlements that could not reach the credits API, kept under output/ (a
+#: volume) and retried by the loop until they go through.
+PENDING_SETTLEMENTS_FILE = ".pending_settlements.json"
+PENDING_RETRY_SECONDS = 60.0
+#: Past this a pending settlement is dropped with an error: the reservation is
+#: long gone (expired at 24 h) and retrying forever helps nobody.
+PENDING_GIVE_UP_HOURS = 72
 #: After SIGTERM to the run's process group, how long before SIGKILL.
 KILL_AFTER_SECONDS = 30
 
@@ -564,6 +585,7 @@ class Worker:
         poll_seconds: float = DEFAULT_POLL_SECONDS,
         heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
         grace_seconds: float = DEFAULT_GRACE_SECONDS,
+        job_timeout_seconds: float = DEFAULT_JOB_TIMEOUT_SECONDS,
         stale_minutes: int = DEFAULT_STALE_MINUTES,
         kill_after_seconds: float = KILL_AFTER_SECONDS,
         out=None,
@@ -588,6 +610,8 @@ class Worker:
         self.poll_seconds = poll_seconds
         self.heartbeat_seconds = heartbeat_seconds
         self.grace_seconds = grace_seconds
+        self.job_timeout_seconds = job_timeout_seconds if job_timeout_seconds and job_timeout_seconds > 0 \
+            else DEFAULT_JOB_TIMEOUT_SECONDS
         self.stale_minutes = stale_minutes
         self.kill_after_seconds = kill_after_seconds
         self.out = out or sys.stdout
@@ -616,6 +640,7 @@ class Worker:
         self.credits = credits
         self.ledger_reader = ledger_reader or credit_rules.local_run_entries
         self._last_sweep: Optional[float] = None
+        self._last_pending_retry: Optional[float] = None
 
     # -- signals ----------------------------------------------------------
 
@@ -644,6 +669,7 @@ class Worker:
     def run_forever(self, *, once: bool = False) -> int:
         while not self.stop_requested.is_set():
             self._sweep_credit_holds()
+            self._retry_pending_settlements()
             published = self._publish_one()
             published = self._download_one() or published
             published = self._repurpose_one() or published
@@ -746,21 +772,133 @@ class Worker:
         except credit_rules.CreditRefused as e:
             return self._finish(job, "failed", f"credits: {e} (nothing was run)")
 
-        outcome = self._execute(job, argv, run_env, channel_row)
-        # "paused": the run stopped at its storyboard (modules/storyboard_review)
-        # and waits for a person. Released in full like a failed run — planning
-        # is never charged on its own; the render is paid by the hold placed
-        # when the storyboard is approved.
-        if hold is not None and outcome in ("succeeded", "failed", "paused"):
-            note = credit_rules.settle_hold(self.credits, hold, succeeded=outcome == "succeeded",
-                                            channel_id=channel_id, since=run_started,
-                                            ledger=self.ledger_reader)
-            if note:
-                logger.info("job %s: %s", job_id, note)
+        # The settlement happens INSIDE _execute, before the queue row is
+        # finished: a kill between the two used to leave a "succeeded" job with
+        # an open hold, which the 24 h sweep then released (a free video).
+        # A video run is charged only if its render stage left a video behind.
+        result_file: Optional[Path] = None
+        if hold is not None and job.get("kind") == "daily":
+            result_file = self.repo_dir / f".run_result_{job_id}.json"
+            result_file.unlink(missing_ok=True)
+            run_env = dict(run_env, **{run_request.RESULT_FILE_ENV: str(result_file)})
+        settled = {"done": False}
+
+        def settle(succeeded: bool) -> None:
+            if settled["done"]:
+                return
+            settled["done"] = True
+            charge = succeeded
+            if charge and result_file is not None and not self._run_made_video(result_file):
+                logger.warning("job %s: the run exited 0 but its render stage left no video — "
+                               "releasing the hold instead of charging it", job_id)
+                charge = False
+            self._settle_job(job, hold, charge=charge, channel_id=channel_id, since=run_started)
+
+        try:
+            outcome = self._execute(job, argv, run_env, channel_row,
+                                    settle=settle if hold is not None else None)
+            # "paused": the run stopped at its storyboard (modules/storyboard_review)
+            # and waits for a person. Released in full like a failed run — planning
+            # is never charged on its own; the render is paid by the hold placed
+            # when the storyboard is approved. (Safety net: _execute settles each
+            # of these itself, before it finishes the job.)
+            if hold is not None and outcome in ("succeeded", "failed", "paused"):
+                settle(outcome == "succeeded")
+        finally:
+            if result_file is not None:
+                result_file.unlink(missing_ok=True)
         # "released" (re-queued) keeps its hold for the next attempt; "lost"
         # belongs to whoever took the job. A job failed on its last attempt by
         # the stale sweep is released by expire_credit_reservations.
         return outcome
+
+    @staticmethod
+    def _run_made_video(result_file: Path) -> bool:
+        """True when main.py wrote its result file after the render stage and
+        the video it names is still on disk and not empty."""
+        try:
+            info = json.loads(result_file.read_text(encoding="utf-8"))
+            video = Path(str(info.get("video_path") or ""))
+            return video.is_file() and video.stat().st_size > 0
+        except (OSError, ValueError, AttributeError):
+            return False
+
+    # -- credit settlement ------------------------------------------------
+
+    def _settle_job(self, job: Mapping, hold, *, charge: bool, channel_id: str, since: str) -> None:
+        """Capture (``charge``) or release the job's hold, retrying a few times
+        (credit_rules.settle_hold). If the credits API stays unreachable, keep a
+        marker under output/ and let the loop retry it: the hold would otherwise
+        sit open until the sweep releases it. Never raises."""
+        try:
+            note = credit_rules.settle_hold(self.credits, hold, succeeded=charge, channel_id=channel_id,
+                                            since=since, ledger=self.ledger_reader)
+        except Exception as e:  # noqa: BLE001 — a settlement bug must not strand the job row
+            logger.error("job %s: settlement failed unexpectedly (%s)", job["id"], type(e).__name__)
+            note = None
+        if note:
+            logger.info("job %s: %s", job["id"], note)
+            return
+        self._save_pending(self._load_pending() + [{
+            "job_id": job["id"], "job_ref": hold.job_ref, "org_id": hold.org_id, "amount": hold.amount,
+            "charge": bool(charge), "channel_id": channel_id, "since": since, "at": _now(),
+        }])
+        logger.error("job %s: settlement of reservation %s is pending — the worker retries it every "
+                     "%ds", job["id"], hold.job_ref, int(PENDING_RETRY_SECONDS))
+
+    def _pending_path(self) -> Path:
+        return self.output_dir / PENDING_SETTLEMENTS_FILE
+
+    def _load_pending(self) -> List[dict]:
+        try:
+            rows = json.loads(self._pending_path().read_text(encoding="utf-8"))
+            return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def _save_pending(self, rows: List[dict]) -> None:
+        path = self._pending_path()
+        try:
+            if not rows:
+                path.unlink(missing_ok=True)
+                return
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(rows), encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError as e:
+            logger.error("could not write the pending-settlements file (%s)", type(e).__name__)
+
+    def _retry_pending_settlements(self) -> None:
+        if self.credits is None:
+            return
+        if self._last_pending_retry is not None and \
+                time.monotonic() - self._last_pending_retry < PENDING_RETRY_SECONDS:
+            return
+        self._last_pending_retry = time.monotonic()
+        rows = self._load_pending()
+        if not rows:
+            return
+        keep: List[dict] = []
+        for row in rows:
+            at = _parse_ts(row.get("at"))
+            if at is not None and datetime.now(timezone.utc) - at > timedelta(hours=PENDING_GIVE_UP_HOURS):
+                logger.error("credits: giving up on settling reservation %s (pending for over %dh) — "
+                             "settle it by hand", row.get("job_ref"), PENDING_GIVE_UP_HOURS)
+                continue
+            try:
+                hold = credit_rules.Hold(str(row["job_ref"]), str(row["org_id"]), float(row["amount"]))
+                note = credit_rules.settle_hold(self.credits, hold, succeeded=bool(row.get("charge")),
+                                                channel_id=str(row.get("channel_id") or ""),
+                                                since=row.get("since"), ledger=self.ledger_reader)
+            except Exception as e:  # noqa: BLE001 — a bad row must not stop the loop
+                logger.error("credits: pending settlement row unreadable (%s) — dropped", type(e).__name__)
+                continue
+            if note:
+                logger.info("job %s: %s (retried)", row.get("job_id"), note)
+            else:
+                keep.append(row)
+        self._save_pending(keep)
 
     def _process_regeneration(self, job: Mapping, channel_id: str, clean: Mapping,
                               channel_row: Mapping, regen_id: str) -> str:
@@ -926,8 +1064,23 @@ class Worker:
             logger.info("credits: lot expiry skipped (%s)", e)
 
     def _execute(self, job: Mapping, argv: List[str], run_env: Mapping[str, str],
-                 channel_row: Mapping) -> str:
+                 channel_row: Mapping, settle: Optional[Callable[[bool], None]] = None) -> str:
         job_id = job["id"]
+
+        def end(status: str, error: Optional[str], charge: bool = False) -> str:
+            # Settle the job's hold (when it has one) BEFORE the queue row ends.
+            return self._finish(job, status, error,
+                                before=(lambda: settle(charge)) if settle is not None else None)
+
+        def ended_early(how: str, tail: List[str]) -> str:
+            if how == "timeout":
+                minutes = max(1, int(self.job_timeout_seconds // 60))
+                return end("failed", format_error(
+                    f"timed out: the run was stopped after {minutes} minutes "
+                    f"(WORKER_JOB_TIMEOUT_SECONDS={int(self.job_timeout_seconds)}); nothing was charged",
+                    tail, self._secrets))
+            return self._interrupted(job, how)
+
         lost = threading.Event()
         done = threading.Event()
         hb = threading.Thread(target=self._heartbeat_loop, args=(job_id, lost, done), daemon=True)
@@ -937,7 +1090,7 @@ class Worker:
                 child_env = prepare_credentials(channel_row, run_env, self.repo_dir,
                                                 token_client=self.token_client)
             except channel_tokens.ChannelTokenError as e:
-                return self._finish(job, "failed", f"channel token unavailable (nothing was run): {e}")
+                return end("failed", f"channel token unavailable (nothing was run): {e}")
             # A Vault token was never in this worker's env, so the scrubber
             # built at start-up does not know it: add this run's credentials.
             # A customer's token is a file, not an env var (BR-L-080): its strings
@@ -953,27 +1106,33 @@ class Worker:
                     pass
             self._secrets = sorted(set(self._base_secrets) | set(secret_values(child_env)) | set(from_file),
                                    key=len, reverse=True)
+            # One deadline for the whole job (prelude and run): see DEFAULT_JOB_TIMEOUT_SECONDS.
+            deadline = time.monotonic() + self.job_timeout_seconds
             for cmd in self.prelude:
-                rc, tail, how = self._run(cmd, child_env, lost)
+                rc, tail, how = self._run(cmd, child_env, lost, deadline)
                 if how != "exited":
-                    return self._interrupted(job, how)
+                    return ended_early(how, tail)
                 if rc != 0:
-                    return self._finish(job, "failed",
-                                        format_error(f"{Path(cmd[-1]).name} exited with code {rc}",
-                                                     tail, self._secrets))
-            rc, tail, how = self._run([self.python, self.main_script, *argv], child_env, lost)
+                    return end("failed", format_error(f"{Path(cmd[-1]).name} exited with code {rc}",
+                                                      tail, self._secrets))
+            rc, tail, how = self._run([self.python, self.main_script, *argv], child_env, lost, deadline)
             if how != "exited":
-                return self._interrupted(job, how)
+                return ended_early(how, tail)
             if rc == 0:
-                return self._finish(job, "succeeded", None)
+                return end("succeeded", None, charge=True)
             if rc == STORYBOARD_PAUSED_EXIT:
                 # The job did what it was asked: the run is planned and waits
                 # at "Storyboard ready". Not a failure, and not a finished
-                # video — the caller releases its hold.
-                self._finish(job, "succeeded", None)
+                # video — its hold is released.
+                end("succeeded", None)
                 return "paused"
-            return self._finish(job, "failed",
-                                format_error(f"main.py exited with code {rc}", tail, self._secrets))
+            if rc == BUDGET_STOP_EXIT:
+                # The channel's spend ceiling stopped the run before it spent
+                # anything: no video, so the job fails and the hold is released.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: the channel's spend ceiling stopped the run "
+                    "before anything was spent; nothing was charged", tail, self._secrets))
+            return end("failed", format_error(f"main.py exited with code {rc}", tail, self._secrets))
         finally:
             done.set()
             hb.join(timeout=5)
@@ -991,10 +1150,11 @@ class Worker:
                 lost.set()
                 return
 
-    def _run(self, cmd: List[str], env: Mapping[str, str],
-             lost: threading.Event) -> Tuple[Optional[int], List[str], str]:
+    def _run(self, cmd: List[str], env: Mapping[str, str], lost: threading.Event,
+             deadline: Optional[float] = None) -> Tuple[Optional[int], List[str], str]:
         """Run ``cmd`` in its own process group, streaming scrubbed output.
-        Returns (exit code, output tail, how) where how is exited | lost | stopped."""
+        Returns (exit code, output tail, how) where how is exited | lost | stopped
+        | timeout (past ``deadline``, a ``time.monotonic()`` instant)."""
         tail: collections.deque = collections.deque(maxlen=TAIL_LINES)
         proc = subprocess.Popen(
             cmd, cwd=str(self.repo_dir), env=dict(env),
@@ -1027,6 +1187,8 @@ class Worker:
                 how = "lost"
             elif self._must_interrupt():
                 how = "stopped"
+            elif deadline is not None and time.monotonic() >= deadline:
+                how = "timeout"
             else:
                 continue
             self._terminate(proc)
@@ -1073,7 +1235,14 @@ class Worker:
         logger.info("job %s: released (%s): %s", job["id"], status, why)
         return "released"
 
-    def _finish(self, job: Mapping, status: str, error: Optional[str]) -> str:
+    def _finish(self, job: Mapping, status: str, error: Optional[str],
+                before: Optional[Callable[[], None]] = None) -> str:
+        if before is not None:
+            # The hold's settlement, ahead of the row: never raises past here.
+            try:
+                before()
+            except Exception as e:  # noqa: BLE001
+                logger.error("job %s: settlement step failed (%s)", job["id"], type(e).__name__)
         if error:
             error = format_error(error, [], self._secrets)
         self._with_retries(lambda: self.client.finish(job["id"], self.worker_id, status, error))
@@ -1139,6 +1308,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--grace-seconds", type=float,
                         default=_int_env("WORKER_STOP_GRACE_SECONDS", DEFAULT_GRACE_SECONDS),
                         help="On SIGTERM, how long the current run may keep going")
+    parser.add_argument("--job-timeout-seconds", type=float,
+                        default=_int_env("WORKER_JOB_TIMEOUT_SECONDS", DEFAULT_JOB_TIMEOUT_SECONDS),
+                        help="Stop a run that has not ended after this long and fail the job")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, stream=sys.stdout,
@@ -1165,7 +1337,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         comments = _comment_inbox(url, key, args.worker_id, token_client)
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
-                    grace_seconds=args.grace_seconds,
+                    grace_seconds=args.grace_seconds, job_timeout_seconds=args.job_timeout_seconds,
                     credits=credit_rules.CreditsRest(url, key),
                     token_client=token_client,
                     publisher=social_publish.SocialPublisher(
