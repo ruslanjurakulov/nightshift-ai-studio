@@ -16,6 +16,7 @@ import re
 import unittest
 from datetime import timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from modules.operator_bot import alerts, analysis, router, views
 from modules.operator_bot.config import OperatorConfig
@@ -122,6 +123,27 @@ class SourceTestCase(unittest.TestCase):
         ops.sync = None
         self.assertEqual(ops.marketing_summary().note, "not configured")
 
+    def test_the_bot_calls_only_its_allow_listed_read_functions(self):
+        from modules.operator_bot.sources import _READ_FUNCTIONS
+
+        self.assertEqual(_READ_FUNCTIONS, {FN})
+        ops, sync = ops_with(summary())
+        sync.rpcs["owner_marketing_kill"] = {"ok": True}
+        for name in ("owner_marketing_kill", "claim_marketing_post", "x/../y", ""):
+            sec = ops._rpc(name)
+            self.assertEqual((sec.ok, sec.note), (False, "unavailable"), name)
+        self.assertEqual(sync.rpc_calls, [])                         # refused before any request
+
+    def test_the_client_refuses_a_function_name_that_is_not_a_plain_name(self):
+        from modules.supabase_sync import SupabaseSync
+
+        sync = SupabaseSync(url="https://x.supabase.test", service_key="service-key-value")
+        with patch("modules.supabase_sync.requests.post") as post:
+            for name in ("", "A", "a-b", "a/b", "../x", "a b", "a?x=1", "1a", None):
+                with self.assertRaises(ValueError, msg=name):
+                    sync.rpc_strict(name)
+        post.assert_not_called()
+
     def test_the_client_names_a_missing_function_and_never_logs_a_body(self):
         from modules.supabase_sync import SupabaseReadError
 
@@ -174,7 +196,7 @@ class CommandTestCase(unittest.TestCase):
         self.assertEqual(r.text.split("\n"), [
             "<b>Marketing posts</b>",
             "Poster switch: on",
-            "Posts this week: 1 of 2",
+            "Posts in the last 7 days: 1 of 2",
             "draft 2 · approved 1 · sending 0 · sent 3 · failed 0 · dead 1 · rejected 0 · expired 4",
             "Last result: <code>sent</code> (price) · 2h 5m ago",
             "Counts only: no texts, links or channel ids. Deciding happens in the app; nothing here approves, edits or sends."])
@@ -195,7 +217,7 @@ class CommandTestCase(unittest.TestCase):
         bad["enabled"], bad["used_7d"], bad["max_per_7d"], bad["counts"]["sent"] = None, None, None, "n/a"
         text = self.view(bad).text
         self.assertIn("Poster switch: unknown", text)
-        self.assertIn("Posts this week: unknown of unknown", text)
+        self.assertIn("Posts in the last 7 days: unknown of unknown", text)
         self.assertIn("sent unknown", text)
 
     def test_without_the_migration_it_says_not_available_yet(self):
@@ -221,8 +243,8 @@ class CommandTestCase(unittest.TestCase):
                 self.assertNotRegex(text, r"\b(marketing|mk|mkfix|mkst)\.[a-z_0-9]+")
                 self.assertLessEqual(len(text), 4096)
         ru = self.view(answer, "ru").text
-        self.assertIn("Постов за эту неделю: 2 из 2", ru)
-        self.assertIn("Telegram отклонил пост", ru)
+        self.assertIn("Постов за последние 7 дней: 2 из 2", ru)
+        self.assertIn("Пост отклонён", ru)
         self.assertIn("Marketing postlari", self.view(answer, "uz").text)
 
     def test_it_is_in_help_the_menu_buttons_and_the_alert_kinds(self):
@@ -272,20 +294,19 @@ class AlertDetectionTestCase(unittest.TestCase):
         (two,) = detect(summary(draft=2))
         self.assertEqual(two.line, "2 posts are waiting for your approval — decide in the app")
         self.assertEqual(two.key, "marketing:drafts:2")
-        self.assertGreater(two.cooldown_min, 0)
+        self.assertEqual(two.cooldown_min, 0)           # the engine's rising-count gate decides, not a timer
 
     def test_a_dead_post_says_check_the_channel_and_do_not_resend(self):
         (a,) = detect(summary(failure=failure("dead", "unconfirmed", "price", minutes_ago=20)))
-        self.assertEqual((a.kind, a.severity), ("marketing", "warn"))
+        self.assertEqual((a.kind, a.severity), ("marketing", "critical"))   # may be live: quiet hours must not hold it
         self.assertTrue(a.key.startswith("marketing:dead:"))
         self.assertEqual(a.line, f"A price post ended unconfirmed ({views.marketing_time(NOW - timedelta(minutes=20))}): "
                                  "check the channel, do not resend")
 
     def test_a_failed_post_names_its_closed_code_and_the_fix(self):
-        fixes = {"blocked": "not an administrator", "bad_request": "check the channel setting and the text",
+        fixes = {"blocked": "not an administrator", "bad_request": "The post was refused: check the channel setting and the text",
                  "not_configured": "replace it in the server settings", "rate_limited": "retries ran out",
-                 "network": "retries ran out", "http_5xx": "do not resend", "unconfirmed": "do not resend",
-                 "expired": "approve a new post"}
+                 "network": "retries ran out", "http_5xx": "do not resend", "unconfirmed": "do not resend"}
         self.assertEqual(set(fixes), set(analysis.MARKETING_ERROR_CODES))
         for code, words in fixes.items():
             (a,) = detect(summary(failure=failure("failed", code, "news", 15)))
@@ -327,6 +348,12 @@ class AlertDetectionTestCase(unittest.TestCase):
 
 
 class AlertDeliveryTestCase(unittest.TestCase):
+    def tick_with(self, engine, ops, clock, n, minutes=10):
+        clock.advance(minutes=minutes)
+        heartbeat(ops, clock)
+        ops.sync.rpcs[FN] = summary(draft=n)
+        return engine.tick()
+
     def test_drafts_waiting_go_out_once_with_an_open_button_to_the_app_page(self):
         engine, store, tg, ops, clock = engine_with(None)
         arm(engine)
@@ -338,18 +365,75 @@ class AlertDeliveryTestCase(unittest.TestCase):
         row = tg.sent()[-1]["reply_markup"]["inline_keyboard"][0]
         self.assertEqual([b.get("url") or b.get("callback_data") for b in row],
                          ["https://app.example.test/all-channels/marketing", "a:mute:marketing", "d:marketing"])
-        # not again next pass; a different count is a new alert; the same count repeats after a day, not before
+
+    def test_the_same_count_is_not_repeated_however_long_it_stands(self):
+        engine, store, tg, ops, clock = engine_with(None)
+        arm(engine)
+        self.assertEqual(self.tick_with(engine, ops, clock, 2).sent, 1)
+        for _ in range(5):
+            self.assertEqual(self.tick_with(engine, ops, clock, 2, minutes=30 * 60 // 5).sent, 0)
+        self.assertEqual(len(tg.texts()), 2)                         # the arming note and the one alert
+
+    def test_a_fall_is_the_owners_own_action_and_says_nothing(self):
+        engine, store, tg, ops, clock = engine_with(None)
+        arm(engine)
+        self.assertEqual(self.tick_with(engine, ops, clock, 2).sent, 1)
+        self.assertEqual(self.tick_with(engine, ops, clock, 1).sent, 0)        # approved one of two
+        self.assertEqual(len(tg.texts()), 2)
+        # ... but the next NEW draft (1 -> 2) is news, because the fall was remembered
+        self.assertEqual(self.tick_with(engine, ops, clock, 2).sent, 1)
+        self.assertIn("2 posts are waiting", tg.texts()[-1])
+
+    def test_zero_clears_the_memory_so_a_new_draft_within_a_day_is_announced(self):
+        engine, store, tg, ops, clock = engine_with(None)
+        arm(engine)
+        self.assertEqual(self.tick_with(engine, ops, clock, 1).sent, 1)
+        self.assertEqual(self.tick_with(engine, ops, clock, 0).sent, 0)
+        self.assertEqual(self.tick_with(engine, ops, clock, 1).sent, 1)        # 1 -> 0 -> 1 inside 24 hours
+        self.assertIn("1 post is waiting", tg.texts()[-1])
+        self.assertEqual(self.tick_with(engine, ops, clock, 1).sent, 0)
+
+    def test_zero_to_one_and_one_to_three_are_announced(self):
+        engine, store, tg, ops, clock = engine_with(None)
+        arm(engine)
+        self.assertEqual(self.tick_with(engine, ops, clock, 0).sent, 0)
+        self.assertEqual(self.tick_with(engine, ops, clock, 1).sent, 1)
+        self.assertEqual(self.tick_with(engine, ops, clock, 3).sent, 1)
+        self.assertIn("3 posts are waiting", tg.texts()[-1])
+
+    def test_an_unreadable_summary_neither_announces_nor_forgets(self):
+        engine, store, tg, ops, clock = engine_with(None)
+        arm(engine)
+        self.assertEqual(self.tick_with(engine, ops, clock, 2).sent, 1)
+        ops.sync.rpc_fail.add(FN)
         clock.advance(minutes=10)
         heartbeat(ops, clock)
         self.assertEqual(engine.tick().sent, 0)
-        ops.sync.rpcs[FN] = summary(draft=3)
-        self.assertEqual(engine.tick().sent, 1)
-        clock.advance(hours=23)
-        heartbeat(ops, clock)
-        self.assertEqual(engine.tick().sent, 0)
-        clock.advance(hours=2)
-        heartbeat(ops, clock)
-        self.assertEqual(engine.tick().sent, 1)
+        ops.sync.rpc_fail.clear()
+        self.assertEqual(self.tick_with(engine, ops, clock, 2).sent, 0)        # the count is still the one announced
+
+    def test_a_muted_rise_is_remembered_and_not_replayed_when_the_mute_ends(self):
+        engine, store, tg, ops, clock = engine_with(None)
+        arm(engine)
+        alerts.mute(store, "marketing", clock())
+        rep = self.tick_with(engine, ops, clock, 2)
+        self.assertEqual((rep.sent, rep.muted), (0, 1))
+        clock.advance(hours=25)
+        self.assertEqual(self.tick_with(engine, ops, clock, 2).sent, 0)
+
+    def test_a_rise_held_by_quiet_hours_goes_out_after_them_unless_it_fell_back(self):
+        cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", quiet_hours=(10, 14))
+        engine, store, tg, ops, clock = engine_with(None, cfg=cfg)
+        arm(engine)
+        rep = self.tick_with(engine, ops, clock, 1)
+        self.assertEqual((rep.sent, rep.quiet_held), (0, 1))
+        self.assertEqual(self.tick_with(engine, ops, clock, 1, minutes=180).sent, 1)
+
+    def test_the_count_that_exists_when_the_bot_is_first_switched_on_is_the_baseline(self):
+        engine, store, tg, ops, clock = engine_with(summary(draft=2))
+        self.assertTrue(engine.tick().baseline)
+        self.assertEqual(self.tick_with(engine, ops, clock, 2).sent, 0)
+        self.assertEqual(self.tick_with(engine, ops, clock, 3).sent, 1)
 
     def test_a_result_is_announced_once(self):
         engine, store, tg, ops, clock = engine_with(None)
@@ -377,7 +461,7 @@ class AlertDeliveryTestCase(unittest.TestCase):
         clock.advance(hours=25)
         heartbeat(ops, clock)
         ops.sync.rpcs[FN] = summary(draft=1, minutes_ago_sent=60 * 22)
-        self.assertEqual(engine.tick().sent, 1)                    # the standing draft count comes back after a day, once
+        self.assertEqual(engine.tick().sent, 0)                    # the muted count is remembered: nothing replayed
         self.assertEqual(engine.tick().sent, 0)
 
     def test_quiet_hours_hold_it_and_the_hourly_limit_applies(self):
@@ -390,6 +474,23 @@ class AlertDeliveryTestCase(unittest.TestCase):
         clock.advance(hours=3)                                     # the window is over: it goes out, once
         heartbeat(ops, clock)
         self.assertEqual(engine.tick().sent, 1)
+
+    def test_a_dead_post_is_not_held_by_quiet_hours_or_a_mute_of_all(self):
+        cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", quiet_hours=(10, 14))
+        engine, store, tg, ops, clock = engine_with(None, cfg=cfg)
+        arm(engine)
+        alerts.mute(store, "all", clock())
+        ops.sync.rpcs[FN] = summary(draft=1, failure=failure("dead", "unconfirmed", minutes_ago=2))
+        rep = engine.tick()
+        self.assertEqual(rep.sent, 1)
+        self.assertIn("do not resend", tg.texts()[-1])
+        self.assertIn("CRITICAL", tg.texts()[-1])
+        # a failed one is only a warning: held by the quiet window, muted by "all"
+        engine, store, tg, ops, clock = engine_with(None, cfg=cfg)
+        arm(engine)
+        ops.sync.rpcs[FN] = summary(failure=failure("failed", "blocked", minutes_ago=2))
+        rep = engine.tick()
+        self.assertEqual((rep.sent, rep.quiet_held), (0, 1))
 
     def test_the_alerts_page_lists_a_mute_button_for_the_kind(self):
         bot, tg, sync, store = bot_with(summary())

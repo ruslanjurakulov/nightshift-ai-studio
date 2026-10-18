@@ -30,7 +30,7 @@ Everything below also exists as a button in the main menu (`/menu`, `/start`).
 | `/users` | new sign-ups in 24 h / 7 d / 30 d: counts only, no names, no e-mails |
 | `/deploys` | the last runs of the deploy, tests and frontend workflows on `main` |
 | `/approvals` | publish approvals waiting for a person, runs at human approval, held videos; deep link to the app |
-| `/marketing` | the brand-channel poster, **information only** (`operator_marketing_summary()`, migration 0109): posts by status (draft, approved, sending, sent, failed, dead, rejected, expired), posts this week against the cap, whether the poster switch is on, and the last send result (`sent`, or the closed error code with its named fix) with its age. Counts only: no post text, link, media or chat id. Without 0109 it says "not available yet" |
+| `/marketing` | the brand-channel poster, **information only** (`operator_marketing_summary()`, migration 0109): posts by status (draft, approved, sending, sent, failed, dead, rejected, expired), posts in the last 7 days against the cap (the rolling window the cap uses), whether the poster switch is on, and the last send result (`sent`, or the closed error code with its named fix) with its age. Counts only: no post text, link, media or chat id. Without 0109 it says "not available yet" |
 | `/security` | recent security-relevant audit events (action and target id; no actor) |
 | `/digest` | the daily summary, now |
 | `/alerts` | quiet hours, digest hour, hourly limit, what is muted, the last alerts sent |
@@ -241,7 +241,7 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that kind exists; the bot's own `operator-bot` row is judged on its own); a worker reported FAILED | **critical** | every 3 h while it lasts |
 | `payment` | a payment-provider event the webhook **rejected** (paid but not credited, or a refund not applied: needs a person, **critical**), **failed** (the provider retries, warn), or a refund / chargeback that was applied (warn), received in the last 24 h | critical / warn | once per event and outcome |
 | `approval` | a new pending publish approval | info | once |
-| `marketing` | **information only** (see "Marketing" below): posts waiting for your approval (a count: "2 posts are waiting for your approval"); a post that ended `dead` (unconfirmed: "check the channel, do not resend") or `failed` (with its closed error code and the named fix), in the last 24 h; a post that was sent (its kind and time). Never a post's words, link, media or any chat id | info / warn | the drafts count once a day while it lasts (a different count is a new alert); a result once |
+| `marketing` | **information only** (see "Marketing" below): posts waiting for your approval (a count: "2 posts are waiting for your approval"); a post that ended `dead` (unconfirmed: "check the channel, do not resend") or `failed` (with its closed error code and the named fix), in the last 24 h; a post that was sent (its kind and time). Never a post's words, link, media or any chat id | info (drafts, sent) / warn (failed) / **critical** (dead) | drafts: when the waiting count RISES above the last count seen (a fall, such as you approving one of two, is noted silently, and 0 clears the memory); a result once |
 | `audit` | an operator-level audit event with no channel (see above) | **critical** | once |
 
 Restraint, so it never spams:
@@ -308,8 +308,13 @@ it). An Approve button in Telegram would turn "password plus authenticator code"
   named for a failed post are the app page's: `blocked` (add the bot as a channel administrator with only the Post
   messages right), `not_configured` (replace the bot token), `bad_request` (check the channel setting and the text),
   `rate_limited` and `network` (the retries ran out: it did not go out, approve a new post), `http_5xx` and
-  `unconfirmed` (check the channel, do not resend), `expired`. Only a post that has ENDED (failed or dead) is announced; one that is
-  still retrying is not. If two posts go out between two passes, the newest is announced.
+  `unconfirmed` (check the channel, do not resend). Only a post that has ENDED (failed or dead) is announced; one that is
+  still retrying is not. A `dead` post is **critical**: it may be on the channel and could be sent again by mistake, so quiet hours
+  and `/mute all` do not hold it (the hourly limit of 20 critical alerts still applies). If two posts go out between two passes,
+  the newest is announced.
+* **Drafts waiting** are announced when the count rises above the last count the bot saw, not once a day: approving one of two
+  drafts is your own action and says nothing, 0 clears the memory (so 1 then 0 then 1 announces the new one), and the same count
+  is not repeated. `/marketing` and `/approvals` show what waits.
 * The kind is stable (`marketing`); mute it with `/mute marketing`.
 
 ## Safety

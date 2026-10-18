@@ -553,6 +553,13 @@ class RpcStrictTestCase(unittest.TestCase):
             with self.assertRaises(SupabaseReadError):
                 self._sync().rpc_strict("operator_marketing_summary")
 
+    def test_a_name_that_is_not_a_plain_function_name_is_refused_before_any_request(self):
+        for name in ("", "Op", "a-b", "a/b", "../rest/v1/x", "a?b=1", "1a", None):
+            with patch("modules.supabase_sync.requests.post") as post:
+                with self.assertRaises(ValueError, msg=name):
+                    self._sync().rpc_strict(name)
+            post.assert_not_called()
+
     def test_disabled_makes_no_call(self):
         with patch("modules.supabase_sync.requests.post") as post:
             self.assertIsNone(SupabaseSync(url="", service_key="").rpc_strict("operator_marketing_summary"))

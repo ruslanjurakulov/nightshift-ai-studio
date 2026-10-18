@@ -40,7 +40,7 @@ An alert's text is built from ids, counts and fixed words only: a failed job is
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 
@@ -73,9 +73,9 @@ WORKER_LOST_MAX_AGE = timedelta(hours=24)
 #: A send result (sent, failed, dead) is news for this long; inside the 48 hours
 #: the store remembers, so it is announced once.
 MARKETING_WINDOW = timedelta(hours=24)
-#: Drafts waiting for the owner are a standing condition: the same count is
-#: repeated once a day while it lasts. A different count is a different alert.
-MARKETING_DRAFT_COOLDOWN = 24 * 60
+#: Dedupe-key prefix of the drafts-waiting alert and of its silent markers
+#: (``marketing:drafts:<count>[:<epoch>]``); see ``AlertEngine._gate_marketing_drafts``.
+MARKETING_DRAFTS = "marketing:drafts:"
 
 #: Critical alerts are not subject to quiet hours, mutes of "all" or the normal
 #: hourly budget, but they are not unlimited: a flood of forged or merely noisy
@@ -250,14 +250,15 @@ def _marketing_alerts(summary, now: datetime, lang: str) -> list[Alert]:
         drafts = st["counts"]["draft"]
         if drafts:
             out.append(Alert("marketing", f"marketing:drafts:{drafts}", "info",
-                             t(lang, "alert.marketing_draft_one" if drafts == 1 else "alert.marketing_drafts", n=drafts),
-                             None, MARKETING_DRAFT_COOLDOWN))
+                             t(lang, "alert.marketing_draft_one" if drafts == 1 else "alert.marketing_drafts", n=drafts)))
         fail = st["failure"]
         if fail and fail["at"] is not None and now - MARKETING_WINDOW <= fail["at"] <= now + timedelta(minutes=5):
             stamp = int(fail["at"].timestamp())
             kind = views.marketing_kind_word(lang, fail["kind"])
             if fail["status"] == "dead":
-                out.append(Alert("marketing", f"marketing:dead:{stamp}", "warn",
+                # CRITICAL: a post that may be live on the channel and could be sent again by mistake must not wait
+                # for quiet hours or the hourly budget (the hourly cap of critical alerts still applies).
+                out.append(Alert("marketing", f"marketing:dead:{stamp}", "critical",
                                  t(lang, "alert.marketing_dead", kind=kind, when=views.marketing_time(fail["at"]))))
             else:
                 out.append(Alert("marketing", f"marketing:failed:{stamp}", "warn",
@@ -271,6 +272,20 @@ def _marketing_alerts(summary, now: datetime, lang: str) -> list[Alert]:
         logger.warning("marketing alerts skipped (%s)", type(e).__name__)
         return []
     return out
+
+
+def last_draft_count(state: AlertState) -> int:
+    """The drafts-waiting count last seen (announced, muted or silently noted), 0 when none or after a zero."""
+    best, count = None, 0
+    for at, key, _kind, _delivered, _sev in state.alerts:
+        if key.startswith(MARKETING_DRAFTS):
+            try:
+                n = int(key[len(MARKETING_DRAFTS):].split(":")[0])
+            except ValueError:
+                continue
+            if best is None or at >= best:
+                best, count = at, n
+    return count
 
 
 # -- composition -----------------------------------------------------------
@@ -349,6 +364,7 @@ class AlertEngine:
 
         if not state.armed:
             return self._baseline(found, rep, lang, now)
+        found = self._gate_marketing_drafts(found, state, now)
 
         quiet = self.cfg.in_quiet_hours(now)
         fresh = []
@@ -399,6 +415,30 @@ class AlertEngine:
 
         self._maybe_digest(state, now, quiet, rep, lang)
         return rep
+
+    def _gate_marketing_drafts(self, found: list, state: AlertState, now: datetime) -> list:
+        """Announce drafts waiting only when their count RISES above the last count seen.
+
+        A key per count with a cooldown would swallow a NEW draft after 1 -> 0 -> 1 within a day, and would announce
+        "1 post is waiting" because the owner approved one of two (their own action). So the memory is the count: every
+        change is recorded (silently when it does not rise), 0 clears it, and a rise is announced under a fresh key.
+        Nothing is repeated while the count stays the same; /marketing and /approvals show what waits."""
+        mk = self.ops.marketing_summary()
+        if not mk.ok:
+            return found
+        n = analysis.marketing_state(mk.data)["counts"]["draft"]
+        if n is None:
+            return found
+        last = last_draft_count(state)
+        rest = [a for a in found if not a.key.startswith(MARKETING_DRAFTS)]
+        if n == last:
+            return rest
+        stamped = f"{MARKETING_DRAFTS}{n}:{int(now.timestamp())}"
+        if n > last:
+            mine = [a for a in found if a.key == f"{MARKETING_DRAFTS}{n}"]
+            return rest + [replace(a, key=stamped) for a in mine]
+        self._record(Alert("marketing", stamped, "info", ""), False, now)      # fell: remember it, say nothing
+        return rest
 
     def _language(self) -> str:
         """The owner's chosen language, else the configured default."""

@@ -185,14 +185,15 @@ def latest_run(runs: list) -> Optional[dict]:
 
 # -- marketing (information only) -------------------------------------------
 
-#: The closed vocabularies of the poster's table (migration 0108). The summary
+#: The closed vocabularies of the poster's table (migration 0108). Error codes: only those a post that ENDED as failed or
+#: dead can carry (``expired`` belongs to an approval that lapsed, a status the bot never announces). The summary
 #: function returns nothing else, and this module keeps only these: a value
 #: outside them is dropped, so no free text can reach a message even from a
 #: database function that was changed behind this code's back.
 MARKETING_STATUSES = ("draft", "approved", "sending", "sent", "failed", "dead", "rejected", "expired")
 MARKETING_KINDS = ("news", "showcase", "price")
 MARKETING_ERROR_CODES = ("blocked", "bad_request", "not_configured", "rate_limited", "network", "http_5xx",
-                         "unconfirmed", "expired")
+                         "unconfirmed")
 
 
 def _count(value) -> Optional[int]:

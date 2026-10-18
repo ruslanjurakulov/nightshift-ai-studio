@@ -33,6 +33,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 from decimal import Decimal
 
 import requests
@@ -90,6 +91,8 @@ _TABLE_MISSING_CODES = ("PGRST205", "42P01")
 #: ... and for "this function does not exist" (PostgREST: not in the schema
 #: cache; Postgres: undefined function).
 _FUNCTION_MISSING_CODES = ("PGRST202", "42883")
+#: What a function name may look like when it is put in a URL path.
+_FUNCTION_NAME = re.compile(r"[a-z_][a-z0-9_]*")
 
 
 def _canonical_quantity(value) -> str:
@@ -365,6 +368,8 @@ class SupabaseSync:
         true for a function the database does not have yet), so a caller can
         tell "not applied yet" from "could not find out". Disabled returns None.
         ``name`` is a code constant, never user input; the body is never logged."""
+        if not _FUNCTION_NAME.fullmatch(name or ""):
+            raise ValueError("rpc_strict needs a plain function name")
         if not self.enabled:
             return None
         try:
