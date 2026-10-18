@@ -19,8 +19,9 @@ THE BRAND CHANNEL BOT ONLY. Its own token, ``TELEGRAM_CHANNEL_BOT_TOKEN`` (never
                                          no draft, no claim, no request to Telegram
     NOTIFY_TELEGRAM_API_BASE             optional, local runs only: tools/fake_telegram.py instead of Telegram
 
-Per loop it (1) drafts, at most once an hour: the public items of docs/news/ and, from the database's plans and
-entitlements only, the month's price post; then (2) claims AT MOST ONE approved post and sends it. What it
+Per loop it (1) drafts, at most once an hour: the public items of docs/news/, the public, unexpired and evidenced
+files of docs/promo/ (migration 0110) and, from the database's plans and entitlements only, the month's price
+post; then (2) claims AT MOST ONE approved post and sends it. What it
 never does: send anything the database did not hand over (the cap, the kill switch, the approval and the hash
 are all checked there), send a post again after the answer was lost (a lost lease ends as dead/unconfirmed in
 the database), overwrite words a person edited (the SQL refuses), put a currency amount in a price post, or log
@@ -99,7 +100,7 @@ class MarketingStore:
         except Exception as e:  # noqa: BLE001
             raise StoreUnavailable(f"{name}: {log_redaction.describe_http_error(e)}") from None
         if r.status_code >= 300:
-            raise StoreUnavailable(f"{name}: HTTP {r.status_code} (is migration 0108 applied?)")
+            raise StoreUnavailable(f"{name}: HTTP {r.status_code} (is migration {'0110' if name.endswith('_v2') else '0108'} applied?)")
         try:
             return r.json()
         except ValueError:
@@ -121,7 +122,9 @@ class MarketingStore:
         return rows
 
     def draft(self, d: mc.Draft) -> Dict[str, Any]:
-        out = self._rpc("marketing_draft_upsert", {
+        # promo goes through the 0110 function (service_role only, same arguments); news and price keep calling
+        # the 0108 function they always called.
+        out = self._rpc("marketing_draft_upsert_v2" if d.kind == "promo" else "marketing_draft_upsert", {
             "p_idempotency_key": d.key, "p_kind": d.kind, "p_texts": d.texts, "p_source_ref": d.source_ref,
             "p_facts": d.facts, "p_facts_as_of": d.facts_as_of, "p_media_path": None, "p_target": "telegram",
             "p_link": d.link})
@@ -170,7 +173,7 @@ class MarketingStore:
 
 class MarketingWorker:
     def __init__(self, store: Any, sender: Any, worker_id: str, *, news_dir: Path = mc.NEWS_DIR,
-                 now: Callable[[], _dt.datetime] = lambda: _dt.datetime.now(_dt.timezone.utc),
+                 promo_dir: Optional[Path] = None, now: Callable[[], _dt.datetime] = lambda: _dt.datetime.now(_dt.timezone.utc),
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
                  origin: Optional[str] = None):
         self.store, self.sender, self.worker_id = store, sender, worker_id
@@ -179,11 +182,13 @@ class MarketingWorker:
         self._origin = given if isinstance(given, str) else None
         self._sleep, self._clock = sleep, clock
         self._news_dir = news_dir
+        self._promo_dir = promo_dir if promo_dir is not None else mc.PROMO_DIR
         self._now = now
 
     def draft_pass(self) -> Dict[str, int]:
-        """Draft the public news items and the month's price post. Idempotent: the database refuses a second
-        draft of the same key and leaves a draft a person edited alone. Counts by outcome."""
+        """Draft the public news items, the public promo files and the month's price post. Idempotent: the database
+        refuses a second draft of the same key and leaves a draft a person edited alone. Counts by outcome. Drafting
+        is not capped (the 2 posts per 7 days cap is on sending), and nothing here approves or sends anything."""
         counts: Dict[str, int] = {}
 
         def bump(k: str, n: int = 1) -> None:
@@ -200,6 +205,18 @@ class MarketingWorker:
             logger.info("%d public news item(s) shipped more than %d days ago were not drafted "
                         "(edit their date to announce them)", skipped["too_old"], mc.NEWS_MAX_AGE_DAYS)
         drafts = list(news)
+        try:
+            promos, promo_skipped, promo_notes = mc.load_promo(self._promo_dir, self._now().date(), self._news_dir)
+        except OSError:
+            promos, promo_skipped, promo_notes = [], {"promo_dir_unreadable": 1}, []
+        for reason, n in promo_skipped.items():
+            if reason != "not_public":
+                bump("promo_skipped_" + reason, n)
+        for slug, reason, detail in promo_notes:
+            # The slug is a file name in this repository and the detail is a list of rule ids: codes, never the words.
+            log = logger.info if reason == "expired" else logger.warning
+            log("promo %s not drafted: %s%s", slug, reason, f" ({detail})" if detail else "")
+        drafts.extend(promos)
         plans = self.store.price_plans()
         price = mc.price_draft(plans, self._now(), self._news_dir) if plans else None
         if price is not None:
@@ -212,6 +229,8 @@ class MarketingWorker:
             refusal = cp.preflight(d.texts, d.link, self._origin, False)
             if refusal is not None:
                 bump("not_drafted_" + refusal)
+                if d.kind == "promo":
+                    logger.warning("promo %s not drafted: the sender would refuse it (%s)", d.source_ref[len("promo:"):], refusal)
                 continue
             try:
                 res = self.store.draft(d)
@@ -225,6 +244,12 @@ class MarketingWorker:
                 bump("created")
             elif res.get("updated"):
                 bump("updated")
+            elif d.kind == "promo":
+                # Nothing changed: a promo key is permanent, so a rejected or expired promo is never redrafted. Say so.
+                status = res.get("status")
+                status = status if isinstance(status, str) and re.fullmatch(r"[a-z_]{1,20}", status) else "unknown"
+                logger.info("promo %s already exists (status %s)", d.source_ref[len("promo:"):], status)
+                bump("promo_exists_" + status)
             else:
                 bump("unchanged")
         refused = {k: v for k, v in counts.items() if k.startswith("not_drafted_")}

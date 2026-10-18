@@ -61,9 +61,10 @@ on:
       - "modules/**"
       - "tools/**"
       - "schemas/**"
-      # The marketing worker reads docs/news/*.json and banned-claims.json from its image
-      # (docs/MARKETING_POSTS.md): a merged news item must rebuild it.
+      # The marketing worker reads docs/news/*.json, banned-claims.json and docs/promo/*.json from its
+      # image (docs/MARKETING_POSTS.md): a merged news item or promo file must rebuild it.
       - "docs/news/**"
+      - "docs/promo/**"
   workflow_dispatch:
 
 # One deploy at a time, and never cancelled halfway: an interrupted

@@ -153,7 +153,8 @@ class WorkflowMappingTests(unittest.TestCase):
         self.assertNotIn("pull_request_target", on)
         self.assertEqual(on["push"]["branches"], ["main"])
         self.assertIn("workflow_dispatch", on)
-        for path in ("command-center/**", "deploy/**", ".github/workflows/deploy_web.yml", "docs/news/**"):
+        for path in ("command-center/**", "deploy/**", ".github/workflows/deploy_web.yml", "docs/news/**",
+                     "docs/promo/**"):
             self.assertIn(path, on["push"]["paths"])
 
     def test_one_deploy_at_a_time_and_never_cancelled_halfway(self):

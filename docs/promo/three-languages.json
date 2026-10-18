@@ -1,0 +1,38 @@
+{
+  "slug": "three-languages",
+  "public": true,
+  "link": "/studio",
+  "texts": {
+    "uz": "Nightshift oʻzbek, rus va ingliz tillarida ishlaydi. Butun ilova shu uch tilda mavjud, kanal ssenariylari uchun esa ulardan istalganini tanlash mumkin. Ilova tilini istalgan payt almashtirishingiz mumkin.",
+    "ru": "Nightshift работает на узбекском, русском и английском. Всё приложение доступно на этих трёх языках, а языком сценариев канала можно выбрать любой из них. Язык приложения можно сменить в любой момент.",
+    "en": "Nightshift works in Uzbek, Russian and English. The whole app is available in all three, and you can pick any of them as the language of a channel's scripts. Switch the app language whenever you like."
+  },
+  "evidence": [
+    {
+      "claim": "The app interface exists in exactly three locales: English, Russian and Uzbek.",
+      "source": "command-center/lib/i18n/core.ts"
+    },
+    {
+      "claim": "The Home composer offers Uzbek, Russian and English as the script language.",
+      "source": "command-center/lib/home.ts"
+    },
+    {
+      "claim": "A channel's saved language (its DNA) can be Uzbek, Russian or English.",
+      "source": "command-center/lib/channel-dna.ts"
+    },
+    {
+      "claim": "The script is written in the channel's language (the run's language setting reaches the script prompt).",
+      "source": "modules/script_engine.py"
+    },
+    {
+      "claim": "The language menu switches the whole interface between English, Russian and Uzbek.",
+      "source": "command-center/components/LanguageSelector.tsx"
+    },
+    {
+      "claim": "The public Studio page states that the app is in Uzbek, Russian and English and that a channel is set to one of the three.",
+      "source": "command-center/lib/i18n/studio-page/en.ts"
+    }
+  ],
+  "valid_until": "2026-12-17",
+  "ai_media": false
+}

@@ -14,6 +14,9 @@
 # The news items the channel poster may announce (docs/news/README.md): words and a schema, no credentials.
 # Without this line the blanket rule above hides every one of them (the 0105 wording files had the same problem).
 !docs/news/*.json
+# The promo posts the channel poster may draft (docs/MARKETING_POSTS.md, "Promo posts"): words and evidence, no credentials.
+# Same reason as the line above; tests/test_promo_format.py fails if this line goes.
+!docs/promo/*.json
 # The cases the owner page's message preview and the sender's renderer are both checked against
 # (tests/test_marketing_message_fixture.py): made-up words and counts, no credentials.
 !tests/fixtures/marketing_message_cases.json

@@ -1,0 +1,38 @@
+{
+  "slug": "faceless-video-from-topic",
+  "public": true,
+  "link": "/pricing",
+  "texts": {
+    "uz": "Kameraga tushmasdan, bitta mavzudan video yarating. Mavzuni yozasiz, Nightshift esa ssenariy yozadi, diktor ovozini qoʻshadi, tasvirlarni jamlaydi va subtitrlar tayyorlaydi, hammasi bir joyda. Ish boshlanishidan oldin narxni kreditlarda koʻrasiz.",
+    "ru": "Сделайте видео по одной теме, не показывая лицо. Вы вводите тему, а Nightshift пишет сценарий, добавляет озвучку, собирает видеоряд и делает субтитры, и всё это в одном месте. Цену в кредитах вы видите до начала работы.",
+    "en": "Make a faceless video from just a topic. Type the topic and Nightshift writes the script, adds a voiceover, puts the visuals together and makes the captions, all in one place. You see the price in credits before anything starts."
+  },
+  "evidence": [
+    {
+      "claim": "The public site says Nightshift writes, voices and edits a YouTube video from a topic, then waits for the owner's OK.",
+      "source": "command-center/lib/i18n/site/en.ts"
+    },
+    {
+      "claim": "One pipeline run produces the script, the narration, the visuals and the captions of a video.",
+      "source": "main.py"
+    },
+    {
+      "claim": "The narration is rendered by the audio mixer, in the channel's configured voice.",
+      "source": "modules/audio_mixer.py"
+    },
+    {
+      "claim": "The captions are generated word by word by the subtitle generator.",
+      "source": "modules/subtitle_generator.py"
+    },
+    {
+      "claim": "The Create page takes a topic and the run's controls, and asks for confirmation with the price shown before anything is spent.",
+      "source": "command-center/components/create/CreateStudio.tsx"
+    },
+    {
+      "claim": "The Pricing page is public and lists credits and plans.",
+      "source": "command-center/app/pricing/page.tsx"
+    }
+  ],
+  "valid_until": "2026-12-17",
+  "ai_media": false
+}
