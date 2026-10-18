@@ -198,7 +198,7 @@ class MarketingPostsMigration(unittest.TestCase):
     def test_nothing_in_the_application_uses_it_but_the_poster_worker_and_the_owner_page(self):
         # The app, the edge functions and the workflows never touch the marketing tables or functions, with two exceptions:
         # the brand-channel worker and its two modules (docs/MARKETING_POSTS.md, slices 3 to 5), and the owner page and its
-        # route (slice 6), which call the four owner functions and read the posts as the signed-in owner, never with a
+        # route (slice 6, and the "New post" form of 0110), which call the five owner functions and read the posts as the signed-in owner, never with a
         # service key (command-center/tests/marketing-posts.test.ts pins that). Both are off by default. Anything else
         # that starts to call these objects is a change that widens this list on purpose.
         poster = {"tools/marketing_worker.py", "modules/channel_post.py", "modules/marketing_content.py"}
@@ -206,6 +206,7 @@ class MarketingPostsMigration(unittest.TestCase):
             "command-center/app/(app)/[channel]/marketing/page.tsx",
             "command-center/app/api/marketing/route.ts",
             "command-center/components/marketing/MarketingBoard.tsx",
+            "command-center/components/marketing/NewPostPanel.tsx",
             "command-center/lib/marketing-posts.ts",
             "command-center/lib/server/marketing.ts",
         }

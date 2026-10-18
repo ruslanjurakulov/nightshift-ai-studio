@@ -380,6 +380,8 @@ TABLE = {
     "mk.news": "новость",
     "mk.showcase": "витрина",
     "mk.price": "цены",
+    "mk.promo": "акция",
+    "mk.custom": "свой пост",
     "mk.other": "новый вид",
     "mkst.failed": "не отправлен",
     "mkst.dead": "неподтверждён",

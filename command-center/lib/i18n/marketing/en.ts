@@ -20,7 +20,7 @@ export const marketingEn = {
   failed: "The posts could not be read, so nothing is shown rather than a guess. Try again.",
   empty: {
     title: "No posts yet",
-    body: "A draft appears here when the marketing worker drafts a news item or the month’s plans post. Nothing is created from this page.",
+    body: "A draft appears here when the marketing worker drafts a news item, a promo or the month’s plans post, or when you write one with New post. A draft is never public until you approve it.",
   },
   refreshing: "Updating…",
   truncated: "Showing the newest {n} posts. Older ones are not listed here.",
@@ -94,6 +94,8 @@ export const marketingEn = {
     news: "News",
     showcase: "Video showcase",
     price: "Plans",
+    promo: "Promo",
+    custom: "Custom post",
   },
 
   // A post of a kind or target this page version does not know (a newer database). Listed, never approved here.
@@ -192,6 +194,65 @@ export const marketingEn = {
     langTooLong: "One language may have at most 1000 characters.",
   },
 
+  // The "New post" form (migration 0110): the owner types a custom post. It makes a DRAFT, never an approval.
+  newPost: {
+    button: "New post…",
+    aria: "Write a new post for the channel",
+    title: "New post",
+    intro:
+      "Write the same post in three languages. Saving makes a draft only: nothing is public until you read it on its card and approve it there.",
+    langLabel: "{lang} text",
+    count: "{chars} of {max} characters · {units}",
+    linkLabel: "Link (optional)",
+    linkNone: "No link",
+    linkOther: "Another page…",
+    linkOtherLabel: "Path on our site",
+    linkOtherPh: "/pricing",
+    linkHint: "A page on our own site. The channel shows the full address.",
+    linkBad: "A link is a path on our own site: it starts with / and uses lower-case letters, digits, - and _ (for example /pricing).",
+    problem: {
+      empty: "Each language needs a text.",
+      badChars: "A text holds a control, invisible or direction-changing character (a zero-width mark pasted from elsewhere, for example). Retype that part.",
+      langTooLong: "One language may have at most 1000 characters.",
+    },
+    banned: {
+      title: "Wording to check",
+      lead:
+        "The database cannot check banned wording, so this page checks your three texts against the list in docs/news/banned-claims.json. These words are on it. This does not stop you from saving: you decide.",
+      none: "Nothing on the banned-wording list was found. The list is blunt; it does not promise that every claim in your text is true.",
+      found: "{lang}: “{text}”",
+      provider: "Names an AI model or provider ({name}). A name may be used only after a real call through its adapter has succeeded.",
+      unknownRule: "A rule this page has no sentence for ({id}).",
+      rules: {
+        free: "Says “free”. The only no-cost entry is the one-time welcome grant of 100 credits: say that instead.",
+        unlimited: "Says “unlimited”. Every plan has a credit budget and concurrency limits.",
+        guarantee: "Promises or guarantees something. Nothing about quality, uptime or results is guaranteed.",
+        superlative: "Says “best”, “fastest”, “number one” or the like. We have not measured those comparisons.",
+        income: "Promises income, profit or getting rich.",
+        views: "Promises views, reach, subscribers or going viral.",
+        certainty: "Uses an absolute word such as “forever”, “100%” or “risk-free”.",
+        endorsement: "Implies that YouTube, Google, Telegram, Instagram or TikTok approves, certifies or partners with us.",
+      },
+    },
+    draftNote: "Saving makes a draft. It is not public and not approved.",
+    create: "Create draft…",
+    cancel: "Cancel",
+    confirmTitle: "Create draft?",
+    confirmBody:
+      "This saves a draft only. Nothing is public and nothing is approved: you read it on its card below and approve it there. If you tap twice or retry, this screen still makes one post.",
+    confirmButton: "Create draft",
+    dKind: "Kind",
+    dLink: "Link",
+    dCount: "Message size",
+    dBanned: "Banned wording",
+    dBannedNone: "none found",
+    created: "Draft created. It is not public. Read it on its card and approve it there.",
+    existing: "This screen already made this draft (a retry or a double tap). Nothing new was created.",
+    existingDifferent:
+      "This screen already made a draft with different words. Nothing was changed: open that draft and use Edit if you want these words.",
+    showDraft: "Go to the draft",
+  },
+
   approve: {
     button: "Approve…",
     aria: "Approve this post for publishing: {source}",
@@ -241,6 +302,10 @@ export const marketingEn = {
     not_editable: "Only a draft or an approved post can be edited. Reload the page. Nothing was changed.",
     bad_texts:
       "Each language needs a text with no control, invisible or direction-changing characters, and the three together must fit one message. Nothing was changed.",
+    bad_link: "The link must be a path on our own site, such as /pricing. Nothing was created.",
+    bad_request_id: "The New post screen lost its id. Close it, open New post again and retry. Nothing was created.",
+    bad_kind: "Only a custom post can be created here. Nothing was created.",
+    key_reused: "This screen’s id already belongs to a different post. Close New post, open it again and retry. Nothing was created.",
     content_hash_required: "The page could not tell which version you saw. Reload the page and read the post again. Nothing was changed.",
     expired: "That approval has ended and the post is expired. Ask for a new draft. Nothing was posted.",
     not_draft: "Only a draft can be approved. Reload the page. Nothing was changed.",

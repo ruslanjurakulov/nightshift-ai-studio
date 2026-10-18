@@ -181,15 +181,20 @@ class MarketingPromoCustomMigration(unittest.TestCase):
         self.assertIn("check (kind in ('news', 'showcase', 'price'))", ROLLBACK)
         self.assertNotRegex(re.sub(r"--[^\n]*", "", ROLLBACK), r"(?im)^\s*(delete|truncate|drop table)\b")
 
-    def test_nothing_in_the_application_uses_the_two_new_functions_yet(self):
+    def test_only_the_new_post_form_calls_owner_marketing_create_and_nothing_calls_the_worker_function_yet(self):
         # The existing allow-lists (tests/test_marketing_posts_migration.py and tests/security/test_sec_marketing_posts.py)
-        # match owner_marketing_ and marketing_draft_upsert, which the two new names contain, so they already cover these
-        # and needed no change. This one pins the stricter fact for 0110 alone: NO file outside this PR's own tests and
-        # docs mentions the new names. The change that adds the "New post" form (owner_marketing_create) or the promo
-        # drafting (marketing_draft_upsert_v2) widens this on purpose.
-        names = re.compile(r"owner_marketing_create|marketing_draft_upsert_v2")
+        # match owner_marketing_ and marketing_draft_upsert, which the two new names contain. This one pins the stricter
+        # fact for 0110 alone. owner_marketing_create is called by the owner page's "New post" form and nowhere else (the
+        # route's own comment, the request parser, the form, and the page's tests). marketing_draft_upsert_v2 is called by
+        # NOTHING yet: the promo drafting slice widens this on purpose.
+        create_users = {
+            "command-center/app/api/marketing/route.ts",
+            "command-center/lib/marketing-posts.ts",
+            "command-center/components/marketing/NewPostPanel.tsx",
+            "command-center/components/marketing/MarketingBoard.tsx",
+        }
         skip = {"node_modules", ".next", "__pycache__", ".git"}
-        offenders = []
+        create, upsert_v2 = [], []
         for root in ("command-center", "modules", "tools", "supabase/functions", ".github", "main.py"):
             base = REPO / root
             if not base.exists():
@@ -197,9 +202,18 @@ class MarketingPromoCustomMigration(unittest.TestCase):
             files = [base] if base.is_file() else base.rglob("*")
             for p in files:
                 if p.is_file() and not skip & set(p.parts) and p.suffix in (".ts", ".tsx", ".py", ".js", ".yml", ".yaml", ".sql", ".json"):
-                    if names.search(p.read_text(encoding="utf-8", errors="ignore")):
-                        offenders.append(str(p.relative_to(REPO)))
-        self.assertEqual(offenders, [])
+                    text = p.read_text(encoding="utf-8", errors="ignore")
+                    rel = str(p.relative_to(REPO))
+                    if "owner_marketing_create" in text:
+                        create.append(rel)
+                    if "marketing_draft_upsert_v2" in text:
+                        upsert_v2.append(rel)
+        # the page's own tests (command-center/tests/marketing-*) name the function they pin; nothing else may
+        stray = [f for f in create if f not in create_users and not f.startswith("command-center/tests/marketing-")]
+        self.assertEqual(stray, [])
+        self.assertEqual([f for f in upsert_v2 if not f.startswith("command-center/tests/marketing-")], [])
+        # and the form really is a caller (the guard above would pass vacuously if it were removed)
+        self.assertIn("command-center/lib/marketing-posts.ts", create)
 
 
 def body_of(text, name):

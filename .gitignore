@@ -17,6 +17,7 @@
 # The cases the owner page's message preview and the sender's renderer are both checked against
 # (tests/test_marketing_message_fixture.py): made-up words and counts, no credentials.
 !tests/fixtures/marketing_message_cases.json
+!tests/fixtures/marketing_banned_cases.json
 # Command Center (Next.js app) config — no credentials, and Vercel needs the
 # lockfile for reproducible `npm ci` builds.
 !command-center/tsconfig.json

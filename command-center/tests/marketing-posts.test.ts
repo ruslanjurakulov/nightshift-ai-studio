@@ -17,7 +17,9 @@ import {
   CAPTION_LIMIT,
   MARKETING_REFUSALS,
   MESSAGE_LIMIT,
+  LINK_CHOICES,
   POST_COLUMNS,
+  POST_KINDS,
   POST_STATUSES,
   buildPreview,
   channelHandle,
@@ -28,12 +30,15 @@ import {
   isMarketingRefusal,
   isOtherPost,
   lastSettled,
+  linkOk,
   mediaKind,
+  newRequestId,
   parseMarketing,
   parseMarketingFlag,
   safeCode,
   senderRefusal,
   sortPosts,
+  textsProblem,
   validOrigin,
   type MarketingPost,
   type Texts,
@@ -42,6 +47,7 @@ import { fixText, marketingFailureText, marketingRefusalText, pluralForm, refusa
 
 const ROOT = join(__dirname, "..", "..");
 const sql = readFileSync(join(ROOT, "supabase", "migrations", "0108_marketing_posts.sql"), "utf8");
+const sql0110 = readFileSync(join(ROOT, "supabase", "migrations", "0110_marketing_promo_custom.sql"), "utf8");
 const dicts = { en, ru, uz } as const;
 const ID = "11111111-2222-3333-4444-555555555555";
 const HASH = "a".repeat(64);
@@ -151,7 +157,7 @@ describe("marketingFailureText", () => {
   });
 });
 
-describe("parseMarketing: the four moves and nothing else", () => {
+describe("parseMarketing: the five moves and nothing else", () => {
   it("edit: the id and the three trimmed texts, as named in owner_marketing_edit", () => {
     const r = parseMarketing({ action: "edit", id: ID, texts: { uz: "  a ", ru: "б\n", en: " c" }, p_id: "x", service_key: "x" });
     expect(r).toEqual({ ok: true, call: { fn: "owner_marketing_edit", args: { p_id: ID, p_texts: { uz: "a", ru: "б", en: "c" } } } });
@@ -209,6 +215,163 @@ describe("parseMarketing: the four moves and nothing else", () => {
     const ok = parseMarketing({ action: "edit", id: ID, texts: { uz: "😀".repeat(1000), ru: "б", en: "c" } });
     expect(ok.ok).toBe(true);
     expect(parseMarketing({ action: "edit", id: ID, texts: { uz: "😀".repeat(1001), ru: "б", en: "c" } }).ok).toBe(false);
+  });
+});
+
+describe("parseMarketing: create, a custom draft the owner typed (owner_marketing_create, migration 0110)", () => {
+  const RID = "0123456789abcdef0123456789abcdef";
+  const body = (over: Record<string, unknown> = {}) => ({ action: "create", requestId: RID, texts: TEXTS, link: "/pricing", ...over });
+
+  it("sends the request id, the three trimmed texts, the link and kind custom, as named in owner_marketing_create", () => {
+    const r = parseMarketing(body({ texts: { uz: " a ", ru: "б\n", en: " c" }, kind: "promo", p_kind: "promo", service_key: "x" }));
+    expect(r).toEqual({
+      ok: true,
+      call: { fn: "owner_marketing_create", args: { p_request_id: RID, p_texts: { uz: "a", ru: "б", en: "c" }, p_link: "/pricing", p_kind: "custom" } },
+    });
+  });
+
+  it("a person can only make a custom post: a kind in the body is never forwarded", () => {
+    for (const kind of ["promo", "news", "showcase", "price", "custom", "x"]) {
+      const r = parseMarketing(body({ kind, p_kind: kind }));
+      expect(r.ok && r.call.args.p_kind, kind).toBe("custom");
+    }
+  });
+
+  it("no link, a null link and an empty link are all 'no link' (SQL null), never an empty string", () => {
+    for (const link of [undefined, null, "", "   "]) {
+      const r = parseMarketing(body({ link }));
+      expect(r.ok && r.call.args.p_link, JSON.stringify(link)).toBeNull();
+    }
+  });
+
+  it("the call never approves, sends or names an id of a post", () => {
+    const r = parseMarketing(body());
+    expect(r.ok && Object.keys(r.call.args).sort()).toEqual(["p_kind", "p_link", "p_request_id", "p_texts"]);
+  });
+
+  it.each([
+    [{ requestId: undefined }, "bad_request_id"],
+    [{ requestId: "" }, "bad_request_id"],
+    [{ requestId: "short" }, "bad_request_id"],
+    [{ requestId: "a".repeat(15) }, "bad_request_id"],
+    [{ requestId: "a".repeat(65) }, "bad_request_id"],
+    [{ requestId: "has space 0123456789" }, "bad_request_id"],
+    [{ requestId: "0123456789abcdef!" }, "bad_request_id"],
+    [{ requestId: 12345678901234567 }, "bad_request_id"],
+    [{ texts: { uz: "a", ru: "b" } }, "bad_texts"],
+    [{ texts: { uz: "a", ru: "b", en: "  " } }, "bad_texts"],
+    [{ texts: { uz: "a", ru: "b", en: "c", de: "d" } }, "bad_texts"],
+    [{ texts: { uz: "a", ru: "b", en: 3 } }, "bad_texts"],
+    [{ texts: { uz: "a", ru: "b", en: "x".repeat(1001) } }, "bad_texts"],
+    [{ texts: { uz: "a\u200bb", ru: "b", en: "c" } }, "bad_texts"],
+    [{ texts: { uz: "a\u202eb", ru: "b", en: "c" } }, "bad_texts"],
+    [{ texts: { uz: "a\u0007b", ru: "b", en: "c" } }, "bad_texts"],
+    [{ link: "pricing" }, "bad_link"],
+    [{ link: "/Pricing" }, "bad_link"],
+    [{ link: "/a//b" }, "bad_link"],
+    [{ link: "/a/../b" }, "bad_link"],
+    [{ link: "/pricing?x=1" }, "bad_link"],
+    [{ link: "https://evil.example/pricing" }, "bad_link"],
+    [{ link: "//evil.example" }, "bad_link"],
+    [{ link: "/" + "a".repeat(80) }, "bad_link"],
+    [{ link: 5 }, "bad_link"],
+    [{ link: ["/pricing"] }, "bad_link"],
+  ])("%j is refused with %s and reaches no database function", (over, error) => {
+    expect(parseMarketing(body(over))).toEqual({ ok: false, error });
+  });
+
+  it("1000 characters in each language is accepted (three of them, plus the labels, are under the database's 4096)", () => {
+    expect(parseMarketing(body({ texts: { uz: "x".repeat(1000), ru: "x".repeat(1000), en: "x".repeat(1000) } })).ok).toBe(true);
+  });
+
+  it("the longest link the database accepts (80 characters) is accepted", () => {
+    expect(parseMarketing(body({ link: "/" + "a".repeat(79) })).ok).toBe(true);
+  });
+
+  it("a new line inside a text is allowed, a carriage return is not (the database allows 0x0a only)", () => {
+    expect(parseMarketing(body({ texts: { uz: "a\nb", ru: "b", en: "c" } })).ok).toBe(true);
+    expect(parseMarketing(body({ texts: { uz: "a\rb", ru: "b", en: "c" } })).ok).toBe(false);
+  });
+});
+
+describe("the request id of a New post screen", () => {
+  it("is 32 hex characters, inside what the database accepts, and different every time", () => {
+    const ids = new Set(Array.from({ length: 50 }, () => newRequestId()));
+    expect(ids.size).toBe(50);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(/^[A-Za-z0-9_-]{16,64}$/.test([...ids][0])).toBe(true);
+  });
+});
+
+describe("textsProblem and linkOk: what the form checks before the database does", () => {
+  const T = (over: Partial<Texts> = {}): Texts => ({ ...TEXTS, ...over });
+  it("a fine post has no problem", () => {
+    expect(textsProblem(T())).toBeNull();
+  });
+  it("names the first problem, in the database's order of checks", () => {
+    expect(textsProblem(T({ en: "" }))).toBe("empty");
+    expect(textsProblem(T({ en: "a\u200bb" }))).toBe("bad_chars");
+    expect(textsProblem(T({ en: "x".repeat(1001) }))).toBe("lang_too_long");
+  });
+  it("counts code points as the database does: 1000 emoji is one language of 1000 characters", () => {
+    expect(textsProblem(T({ en: "😀".repeat(1000) }))).toBeNull();
+    expect(textsProblem(T({ en: "😀".repeat(1001) }))).toBe("lang_too_long");
+  });
+  it("the offered links are all valid links", () => {
+    for (const link of LINK_CHOICES) expect(linkOk(link), link).toBe(true);
+    expect(linkOk("/pricing")).toBe(true);
+    expect(linkOk("pricing")).toBe(false);
+  });
+});
+
+describe("migration 0110 and this page agree (owner_marketing_create)", () => {
+  const body0110 = (() => {
+    const from = sql0110.indexOf("create or replace function public.owner_marketing_create");
+    const to = sql0110.indexOf("create or replace function public.marketing_draft_upsert_v2");
+    expect(from).toBeGreaterThan(0);
+    expect(to).toBeGreaterThan(from);
+    return sql0110.slice(from, to);
+  })();
+
+  it("every refusal owner_marketing_create can give is one the page can word, and the five we lean on are among them", () => {
+    const used = new Set([...body0110.matchAll(/owner_err\(\s*'([a-z_0-9]+)'/g)].map((m) => m[1]));
+    const missing = [...used].filter((c) => !isMarketingRefusal(c));
+    expect(missing, `add these to MARKETING_REFUSALS and lib/i18n/marketing: ${missing.join(", ")}`).toEqual([]);
+    for (const code of ["bad_texts", "bad_link", "bad_request_id", "bad_kind", "key_reused"]) expect(used.has(code), code).toBe(true);
+  });
+
+  it("the arguments the route sends are the ones the function declares", () => {
+    const m = /create or replace function public\.owner_marketing_create\(([\s\S]*?)\)\s*returns/.exec(sql0110);
+    expect(m).toBeTruthy();
+    const declared = [...m![1].matchAll(/\b(p_[a-z0-9_]+)\s+[a-z]/g)].map((x) => x[1]).sort();
+    const r = parseMarketing({ action: "create", requestId: "0123456789abcdef0123456789abcdef", texts: TEXTS, link: null });
+    expect(r.ok && Object.keys(r.call.args).sort()).toEqual(declared);
+  });
+
+  it("the request id and link shapes are the function's own", () => {
+    expect(body0110).toContain("'^[A-Za-z0-9_-]{16,64}$'");
+    expect(body0110).toContain("'^/[a-z0-9][a-z0-9/_-]{0,78}$'");
+  });
+
+  it("POST_KINDS is the kind CHECK list of migration 0110, word for word", () => {
+    const m = /add constraint marketing_posts_kind_check\s+check \(kind in \(([^)]*)\)\)/.exec(sql0110);
+    expect(m, "the kind CHECK of 0110 was not found: the regex needs updating").not.toBeNull();
+    const inSql = [...m![1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+    expect([...inSql].sort()).toEqual([...POST_KINDS].sort());
+  });
+
+  it("every kind has a label in every language, and promo and custom are not the English label", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      for (const kind of POST_KINDS) expect((dicts[loc].marketing.kind as Record<string, string>)[kind], `${loc}.kind.${kind}`).toBeTruthy();
+    }
+    for (const loc of ["ru", "uz"] as const) {
+      expect(dicts[loc].marketing.kind.custom).not.toBe(en.marketing.kind.custom);
+    }
+  });
+
+  it("the audit action the function writes is one the audit list allows", () => {
+    expect(body0110).toContain("'marketing.create'");
+    expect(sql0110).toMatch(/audit_action_allowed[\s\S]*'marketing\.create'/);
   });
 });
 
@@ -374,6 +537,32 @@ describe("reading what the database sent: an unknown is not a number", () => {
 
   it("a good row is read whole", () => {
     expect(coercePost(row())).toMatchObject({ id: ID, kind: "news", status: "draft", contentHash: HASH, link: "/pricing", attempts: 0 });
+  });
+
+  it("promo and custom (migration 0110) are known kinds: normal Telegram posts with a hash to approve, not Other rows", () => {
+    const owner = "owner:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const promo = coercePost(row({ kind: "promo", source_ref: "promo:welcome" }));
+    const custom = coercePost(row({ kind: "custom", source_ref: owner }));
+    expect(promo).toMatchObject({ kind: "promo", status: "draft", contentHash: HASH, sourceRef: "promo:welcome" });
+    expect(custom).toMatchObject({ kind: "custom", status: "draft", contentHash: HASH, sourceRef: owner });
+    for (const kind of ["promo", "custom"]) {
+      const listed = coerceListedPost(row({ kind, source_ref: kind === "promo" ? "promo:welcome" : owner }));
+      expect(listed && isOtherPost(listed), kind).toBe(false);
+    }
+  });
+
+  it("a promo or custom row on another target, or with another delivery, is still Other (never approved as Telegram)", () => {
+    for (const kind of ["promo", "custom"]) {
+      expect(coercePost(row({ kind, target: "instagram" }))).toBeNull();
+      expect(coerceListedPost(row({ kind, target: "instagram" }))).toMatchObject({ other: true, reason: "target", kindCode: kind });
+      expect(coerceListedPost(row({ kind, delivery: "manual" }))).toMatchObject({ other: true, reason: "delivery", kindCode: kind });
+    }
+  });
+
+  it("a kind that is truly unknown is still an Other row beside a custom post, not 'could not read'", () => {
+    const list = coercePosts([row({ kind: "custom", source_ref: "owner:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }), row({ id: "2".repeat(8) + "-2222-3333-4444-555555555555", kind: "banner" })]);
+    expect(list).toHaveLength(2);
+    expect(list!.map((p) => (isOtherPost(p) ? `other:${p.kindCode}` : p.kind))).toEqual(["custom", "other:banner"]);
   });
 
   it.each([
@@ -556,7 +745,7 @@ describe("the words exist in en, ru and uz with the same keys and the same {fill
 
   it("no ru or uz line is the English line (a pasted-over string)", () => {
     // "Post" is the Uzbek word as well
-    const skip = new Set(["approve.dLang", "lastSend.source", "preview.perLang"]);
+    const skip = new Set(["approve.dLang", "lastSend.source", "preview.perLang", "newPost.banned.found"]);
     for (const loc of ["ru", "uz"] as const) {
       const got = new Map(leaves(dicts[loc].marketing));
       for (const [key, text] of source) {
@@ -588,7 +777,9 @@ describe("the new files hold no service key and no control that sends or tests",
     "app/api/marketing/route.ts",
     "app/(app)/[channel]/marketing/page.tsx",
     "components/marketing/MarketingBoard.tsx",
+    "components/marketing/NewPostPanel.tsx",
     "components/marketing/TelegramPreview.tsx",
+    "lib/marketing-banned.ts",
   ];
   const read = (f: string) => readFileSync(join(__dirname, "..", f), "utf8");
 
@@ -613,15 +804,15 @@ describe("the new files hold no service key and no control that sends or tests",
   });
 
   it("the route and the board never name an action that sends", () => {
-    const board = read("components/marketing/MarketingBoard.tsx");
+    const board = read("components/marketing/MarketingBoard.tsx") + read("components/marketing/NewPostPanel.tsx");
     const actions = [...board.matchAll(/action:\s*"([a-z_]+)"/g)].map((m) => m[1]);
-    expect(new Set(actions)).toEqual(new Set(["kill", "approve", "edit", "reject"]));
+    expect(new Set(actions)).toEqual(new Set(["kill", "approve", "edit", "reject", "create"]));
   });
 
   it("every file in the new folders is one of the ones checked above", () => {
     const dir = join(__dirname, "..", "components", "marketing");
     const found = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
-    expect(found.sort()).toEqual(["MarketingBoard.tsx", "TelegramPreview.tsx"]);
+    expect(found.sort()).toEqual(["MarketingBoard.tsx", "NewPostPanel.tsx", "TelegramPreview.tsx"]);
   });
 });
 
@@ -642,9 +833,9 @@ describe("a post this page version does not know is listed, never dropped and ne
   const ID2 = "22222222-2222-3333-4444-555555555555";
 
   it("an unknown kind is an Other row with a sanitized code, its status and its age, not a failed read", () => {
-    const p = coerceListedPost(row({ kind: "promo", target: "instagram", delivery: "manual", payload: { hashtags: ["a"] }, brand_new: 1 }));
+    const p = coerceListedPost(row({ kind: "banner", target: "instagram", delivery: "manual", payload: { hashtags: ["a"] }, brand_new: 1 }));
     expect(p && isOtherPost(p)).toBe(true);
-    expect(p).toMatchObject({ other: true, id: ID, status: "draft", reason: "kind", kindCode: "promo", targetCode: "instagram", deliveryCode: "manual", createdAt: "2026-10-17T10:00:00Z" });
+    expect(p).toMatchObject({ other: true, id: ID, status: "draft", reason: "kind", kindCode: "banner", targetCode: "instagram", deliveryCode: "manual", createdAt: "2026-10-17T10:00:00Z" });
   });
 
   it("the code is [a-z_]{1,24}, anything else is 'unknown': markup, case, a long word, digits, a non-string", () => {
@@ -675,28 +866,28 @@ describe("a post this page version does not know is listed, never dropped and ne
   });
 
   it("its words are kept only if they have the known three-language shape", () => {
-    expect(coerceListedPost(row({ kind: "promo" }))).toMatchObject({ texts: TEXTS });
+    expect(coerceListedPost(row({ kind: "banner" }))).toMatchObject({ texts: TEXTS });
     for (const texts of [{ uz: "a", ru: "b" }, { uz: "a", ru: "", en: "c" }, "x", null, { uz: "a", ru: "b", en: "x".repeat(1001) }, { uz: 1, ru: "b", en: "c" }]) {
-      expect(coerceListedPost(row({ kind: "promo", texts })), JSON.stringify(texts)).toMatchObject({ other: true, texts: null });
+      expect(coerceListedPost(row({ kind: "banner", texts })), JSON.stringify(texts)).toMatchObject({ other: true, texts: null });
     }
     // extra languages are ignored, not copied
-    const extra = coerceListedPost(row({ kind: "promo", texts: { ...TEXTS, de: "Hallo" } }));
+    const extra = coerceListedPost(row({ kind: "banner", texts: { ...TEXTS, de: "Hallo" } }));
     expect(extra && isOtherPost(extra) && extra.texts).toEqual(TEXTS);
   });
 
   it("only a uuid and a known status are required of an Other row; a missing hash, source or texts do not fail the read", () => {
-    expect(coerceListedPost({ id: ID, kind: "promo", status: "approved" })).toMatchObject({ other: true, texts: null, sourceRef: null });
-    expect(coerceListedPost({ id: "nope", kind: "promo", status: "draft" })).toBeNull();
-    expect(coerceListedPost({ id: ID, kind: "promo", status: "teleported" })).toBeNull();
+    expect(coerceListedPost({ id: ID, kind: "banner", status: "approved" })).toMatchObject({ other: true, texts: null, sourceRef: null });
+    expect(coerceListedPost({ id: "nope", kind: "banner", status: "draft" })).toBeNull();
+    expect(coerceListedPost({ id: ID, kind: "banner", status: "teleported" })).toBeNull();
     expect(coerceListedPost(null)).toBeNull();
     expect(coerceListedPost([])).toBeNull();
   });
 
   it("an unknown error code is shown as the closed code it is, or 'unknown'", () => {
-    expect(coerceListedPost(row({ kind: "promo", last_error_code: "token_expired" }))).toMatchObject({ lastErrorCode: "token_expired" });
-    expect(coerceListedPost(row({ kind: "promo", last_error_code: "http_5xx" }))).toMatchObject({ lastErrorCode: "http_5xx" });
-    expect(coerceListedPost(row({ kind: "promo", last_error_code: "sk-abc Secret words" }))).toMatchObject({ lastErrorCode: "unknown" });
-    expect(coerceListedPost(row({ kind: "promo", last_error_code: null }))).toMatchObject({ lastErrorCode: null });
+    expect(coerceListedPost(row({ kind: "banner", last_error_code: "token_expired" }))).toMatchObject({ lastErrorCode: "token_expired" });
+    expect(coerceListedPost(row({ kind: "banner", last_error_code: "http_5xx" }))).toMatchObject({ lastErrorCode: "http_5xx" });
+    expect(coerceListedPost(row({ kind: "banner", last_error_code: "sk-abc Secret words" }))).toMatchObject({ lastErrorCode: "unknown" });
+    expect(coerceListedPost(row({ kind: "banner", last_error_code: null }))).toMatchObject({ lastErrorCode: null });
     expect(fixText(en, "token_expired")).toContain("token_expired");
     expect(fixText(en, "<b>x</b> Secret")).toContain("(unknown)");
     expect(fixText(en, "<b>x</b> Secret")).not.toContain("Secret");
@@ -707,16 +898,16 @@ describe("a post this page version does not know is listed, never dropped and ne
   });
 
   it("a mixed list keeps the known posts and the unknown ones, in one list, in order", () => {
-    const list = coercePosts([row(), row({ id: ID2, kind: "promo", target: "instagram", created_at: "2026-10-18T08:00:00Z" })]);
+    const list = coercePosts([row(), row({ id: ID2, kind: "banner", target: "instagram", created_at: "2026-10-18T08:00:00Z" })]);
     expect(list).toHaveLength(2);
     expect(list!.map((p) => isOtherPost(p))).toEqual([false, true]);
     // the same sorting and 'last send' rules apply to both
     const sorted = sortPosts(list!);
     expect(sorted.map((p) => p.id)).toEqual([ID2, ID]);
-    const settled = coercePosts([row({ status: "sent", sent_at: "2026-10-17T11:00:00Z" }), row({ id: ID2, kind: "promo", status: "sent", sent_at: "2026-10-18T11:00:00Z" })])!;
+    const settled = coercePosts([row({ status: "sent", sent_at: "2026-10-17T11:00:00Z" }), row({ id: ID2, kind: "banner", status: "sent", sent_at: "2026-10-18T11:00:00Z" })])!;
     expect(lastSettled(settled)!.id).toBe(ID2);
     // a row that is unreadable even as Other still fails the whole list (it is never silently dropped)
-    expect(coercePosts([row(), row({ id: ID2, kind: "promo", status: "?" })])).toBeNull();
+    expect(coercePosts([row(), row({ id: ID2, kind: "banner", status: "?" })])).toBeNull();
     expect(coercePosts([row(), row({ status: "?" })])).toBeNull();
   });
 

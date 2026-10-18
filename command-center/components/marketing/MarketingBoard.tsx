@@ -28,6 +28,7 @@ import { useConfirm, type ConfirmOptions } from "@/components/feedback/ConfirmDi
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { StateBlock } from "@/components/states/StateBlock";
 import { TelegramPreview } from "@/components/marketing/TelegramPreview";
+import { NewPostPanel } from "@/components/marketing/NewPostPanel";
 
 const ENDPOINT = "/api/marketing";
 const TONE: Record<PostStatus, LampTone> = {
@@ -49,6 +50,8 @@ type Confirm = (opts: ConfirmOptions) => Promise<boolean>;
  * What it does and does not do:
  *  - It shows each post as the channel will show it, edits the three texts, approves, rejects, and stops or re-arms the
  *    poster. Every one of those goes through /api/marketing -> owner_marketing_* as the signed-in user.
+ *  - "New post" (NewPostPanel) types a custom post: it makes a DRAFT through owner_marketing_create and never approves it; the
+ *    owner approves it on its card like any other.
  *  - Approving sends the hash of the post THIS page showed. If the post changed since, the database refuses
  *    (`content_changed`) and the page reloads: the owner can only approve what they saw.
  *  - Approving is only the owner's yes. The worker posts later, and only while the poster is on. There is no "send now" and no
@@ -91,6 +94,8 @@ export function MarketingBoard({
     <div className="flex flex-col gap-4" aria-busy={pending}>
       {dialog}
       <PosterPanel settings={settings} channel={channel} gateOn={gateOn} confirm={confirm} refresh={refresh} />
+
+      <NewPostPanel origin={origin} confirm={confirm} refresh={refresh} />
 
       <section className="panel flex flex-col gap-2 p-4 sm:p-5" aria-labelledby="mk-last-title">
         <h2 id="mk-last-title" className="t-section">

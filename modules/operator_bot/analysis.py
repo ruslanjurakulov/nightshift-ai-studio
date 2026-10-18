@@ -192,7 +192,7 @@ def latest_run(runs: list) -> Optional[dict]:
 #: outside them is dropped, so no free text can reach a message even from a
 #: database function that was changed behind this code's back.
 MARKETING_STATUSES = ("draft", "approved", "sending", "sent", "failed", "dead", "rejected", "expired")
-MARKETING_KINDS = ("news", "showcase", "price")
+MARKETING_KINDS = ("news", "showcase", "price", "promo", "custom")
 #: What the bot calls a kind it does not know (see :func:`marketing_kind`); counts per status already include every kind.
 MARKETING_OTHER_KIND = "other"
 MARKETING_ERROR_CODES = ("blocked", "bad_request", "not_configured", "rate_limited", "network", "http_5xx",
@@ -209,7 +209,7 @@ _KIND_CODE = re.compile(r"[a-z_]{1,24}")
 
 
 def marketing_kind(value) -> Optional[str]:
-    """A post kind the bot may name: one of the three it knows, ``other`` for a
+    """A post kind the bot may name: one of the five it knows (migration 0110 added promo and custom), ``other`` for a
     clean closed code it does not know yet (a newer database adds kinds before
     this code does), else None (unknown). The word itself is never kept, so a
     kind that is not a plain lower-case code (free text, markup) cannot reach a
