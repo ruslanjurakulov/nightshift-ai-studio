@@ -1,0 +1,15 @@
+{
+  "pr": 467,
+  "shipped": "2026-10-14",
+  "kind": "feature",
+  "public": true,
+  "text": {
+    "uz": "Muharrirda subtitrlar uchun 10 ta tayyor animatsion uslub paydo boʻldi: soʻzma-soʻz, sakrab chiqish, yozuv mashinkasi va boshqalar. Subtitrni yozing yoki SRT/VTT fayl yuklang, keyin uslub va rangni tanlang.",
+    "ru": "В редакторе появились 10 готовых анимированных стилей субтитров: по словам, с подпрыгиванием, печатная машинка и другие. Напишите субтитры или загрузите файл SRT или VTT, затем выберите стиль и цвета.",
+    "en": "The editor now has 10 ready-made animated caption styles, like word by word, bounce in and typewriter. Type your captions or import an SRT or VTT file, then pick a style and colours."
+  },
+  "link": "/studio",
+  "media": {
+    "hint": "A short screen recording: import a caption file in the editor, then switch between two or three styles."
+  }
+}
