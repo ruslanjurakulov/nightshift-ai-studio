@@ -67,6 +67,12 @@ STATE_HELD = "held"                              # gate passed, auto-publish off
 STATE_REPAIRED = "repaired_awaiting_review"      # a scene repair's new cut
 STATE_UPLOADED = "uploaded"                      # promoted after a real upload
 
+#: Fixed words for ``hold_detail.cause`` (the Command Center shows a sentence
+#: for each): "upload_failed" = the cut is finished and passed the gate but the
+#: YouTube upload raised, usually an expired channel connection.
+CAUSE_UPLOAD_FAILED = "upload_failed"
+HOLD_CAUSES = (CAUSE_UPLOAD_FAILED,)
+
 HELD_STATES = (STATE_BLOCKED, STATE_AWAITING_APPROVAL, STATE_HELD, STATE_REPAIRED)
 ALL_STATES = HELD_STATES + (STATE_UPLOADED,)
 
@@ -96,6 +102,12 @@ def gate_detail(reason: str, gate_meta: Optional[Mapping] = None) -> dict:
     bulky QC/rights reports stay in the gate event."""
     detail: dict = {"reason": str(reason)}
     if isinstance(gate_meta, Mapping):
+        # Why a gate-passed run is held anyway. Only a fixed word from
+        # HOLD_CAUSES is kept — never free text such as an exception message,
+        # which could carry a token or a URL.
+        cause = gate_meta.get("reason")
+        if cause in HOLD_CAUSES:
+            detail["cause"] = cause
         detail["gate"] = {
             "allowed": bool(gate_meta.get("allowed")),
             "blocks": [str(b) for b in (gate_meta.get("blocks") or [])],

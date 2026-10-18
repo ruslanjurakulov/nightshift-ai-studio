@@ -89,8 +89,9 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
   written to `app_audit_log` with the key's id (never any part of the key).
 * **Same validation as the site.** `POST /videos` accepts exactly the params
   0019's insert policy lets a browser queue (topic, niche, duration, language,
-  visual_style, video_provider, image_provider), checked by the same
-  `render_job_params_valid()`; the channel must be in the key's organization and
+  visual_style), checked by the same `render_job_params_valid()`.
+  `video_provider` / `image_provider` are refused (`unknown_parameter`): the API
+  price is flat per minute, so the platform chooses the providers; the channel must be in the key's organization and
   ACTIVE. Privacy is never a parameter: runs are private and the channel's own
   publish rules apply.
 * **Entry points return, never raise,** so the rate counter's increment and the

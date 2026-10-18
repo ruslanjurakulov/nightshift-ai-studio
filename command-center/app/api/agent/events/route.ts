@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getChannelScope } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import type { SystemEventRow } from "@/lib/types";
-import { resolveRunBackend, toQueueJob, type QueueJob } from "@/lib/runBackend";
+import { isOperator } from "@/lib/auth/org-roles";
+import { forCustomer, resolveRunBackend, toQueueJob, withCreditsReturned, type QueueJob } from "@/lib/runBackend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +52,39 @@ export async function GET() {
       .eq("channel_id", selection)
       .order("created_at", { ascending: false })
       .limit(5);
-    if (!jr.error && Array.isArray(jr.data)) jobs = jr.data.map((r) => toQueueJob(r as Record<string, unknown>));
+    if (!jr.error && Array.isArray(jr.data)) {
+      jobs = jr.data.map((r) => toQueueJob(r as Record<string, unknown>));
+      jobs = await markCreditsReturned(supabase, jobs);
+      // The log tail names vendors and operator remedies: it is the operator's. A customer gets the code (a plain
+      // sentence on the page) and whether their credits came back.
+      if (!(await isOperator())) jobs = jobs.map(forCustomer);
+    }
   }
   return NextResponse.json({ events: rows, backend, jobs });
+}
+
+/**
+ * Best effort, read with the caller's own session: which FAILED jobs had their hold released. Any read that fails
+ * leaves the jobs as they were (creditsReturned null = not known), never a guess.
+ */
+async function markCreditsReturned(
+  supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
+  jobs: QueueJob[],
+): Promise<QueueJob[]> {
+  const failed = jobs.filter((j) => j.status === "failed").map((j) => j.id);
+  if (failed.length === 0) return jobs;
+  try {
+    const refs = await supabase.from("render_jobs").select("id,credit_ref").in("id", failed);
+    if (refs.error || !Array.isArray(refs.data)) return jobs;
+    const held = (refs.data as { id: number; credit_ref: string | null }[]).filter((r) => r.credit_ref);
+    if (held.length === 0) return jobs;
+    const res = await supabase
+      .from("credit_reservations")
+      .select("job_id,status")
+      .in("job_id", held.map((r) => r.credit_ref as string));
+    if (res.error || !Array.isArray(res.data)) return jobs;
+    return withCreditsReturned(jobs, held, res.data as { job_id: string; status: string }[]);
+  } catch {
+    return jobs;
+  }
 }

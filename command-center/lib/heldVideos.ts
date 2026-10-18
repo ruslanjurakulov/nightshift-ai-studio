@@ -66,6 +66,13 @@ export function heldGate(
   return { allowed: gate.allowed === true, blocks: strings(gate.blocks), warnings: strings(gate.warnings) };
 }
 
+/** Why a gate-passed run is held anyway (hold_detail.cause, a fixed word from modules/held_video.py). Only
+ *  "upload_failed" exists: the cut is finished but the YouTube upload raised. Anything else reads null. */
+export function heldCause(v: { hold_detail?: unknown } | null | undefined): "upload_failed" | null {
+  const cause = (v?.hold_detail as { cause?: unknown } | null | undefined)?.cause;
+  return cause === "upload_failed" ? cause : null;
+}
+
 /** Restrict a `videos` query to uploaded rows. Structurally typed like
  *  scopeQuery, so it composes with it without TS2589. */
 export function uploadedOnly<Q extends object>(query: Q): Q {
@@ -83,13 +90,17 @@ export function heldOnly<Q extends object>(query: Q): Q {
 export function heldStateLabel(
   state: HeldState | "unknown",
   h: {
+    stateUploadFailed?: string;
     stateBlocked: string;
     stateAwaitingApproval: string;
     stateHeld: string;
     stateRepaired: string;
     stateUnknown: string;
   },
+  cause?: "upload_failed" | null,
 ): string {
+  // The upload failing is the real reason, whatever the state column says.
+  if (cause === "upload_failed" && h.stateUploadFailed) return h.stateUploadFailed;
   switch (state) {
     case "blocked":
       return h.stateBlocked;

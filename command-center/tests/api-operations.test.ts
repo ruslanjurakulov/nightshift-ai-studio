@@ -69,7 +69,12 @@ describe("POST /videos", () => {
     [{ channel_id: "c", tts_model: "eleven_v3" }, "unknown_parameter"],
     [{ channel_id: "c", duration: 29 }, "invalid_params"],
     [{ channel_id: "c", duration: 90.5 }, "invalid_params"],
-    [{ channel_id: "c", video_provider: "sora" }, "invalid_params"],
+    // D8: the platform chooses providers; the flat API price cannot cover a caller's pick.
+    [{ channel_id: "c", video_provider: "sora" }, "unknown_parameter"],
+    [{ channel_id: "c", video_provider: "kling" }, "unknown_parameter"],
+    [{ channel_id: "c", image_provider: "leonardo" }, "unknown_parameter"],
+    [{ channel_id: "c", image_provider: "" }, "unknown_parameter"],
+    [{ channel_id: "c", video_provider: null }, "unknown_parameter"],
     [{ channel_id: "c", topic: "x".repeat(301) }, "invalid_params"],
     [[], "invalid_body"],
   ])("refuses %j with %s and never calls the database", async (body, code) => {
@@ -98,10 +103,10 @@ describe("POST /videos", () => {
   });
 
   it("keeps the site's bounds", () => {
-    expect(parseCreateVideo({ channel_id: "c", duration: 3600, image_provider: "PEXELS" })).toEqual({
+    expect(parseCreateVideo({ channel_id: "c", duration: 3600 })).toEqual({
       ok: true,
       channelId: "c",
-      params: { duration: 3600, image_provider: "pexels" },
+      params: { duration: 3600 },
     });
   });
 });

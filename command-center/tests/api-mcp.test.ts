@@ -152,6 +152,21 @@ describe("MCP endpoint", () => {
     expect(state.calls).toEqual([]);
   });
 
+  it.each(["video_provider", "image_provider"])("refuses %s on create_video, never dropping it silently", async (field) => {
+    const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "create_video", arguments: { channel_id: "c", [field]: "kling" } } }));
+    const body = (await res.json()) as { result?: { isError?: boolean }; error?: unknown };
+    expect(body.error ?? body.result?.isError).toBeTruthy();
+    expect(state.calls).toEqual([]);
+  });
+
+  it("does not offer a provider choice in create_video's schema", async () => {
+    const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 2, method: "tools/list" }));
+    const tools = ((await res.json()) as { result: { tools: { name: string; inputSchema: { properties: object } }[] } }).result.tools;
+    const props = Object.keys(tools.find((t) => t.name === "create_video")!.inputSchema.properties);
+    expect(props).not.toContain("video_provider");
+    expect(props).not.toContain("image_provider");
+  });
+
   it("rejects bad tool arguments before any database call", async () => {
     const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "create_video", arguments: { channel_id: "c", duration: 5 } } }));
     const body = (await res.json()) as { result?: { isError?: boolean }; error?: unknown };

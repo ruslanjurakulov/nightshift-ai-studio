@@ -9,7 +9,7 @@
  * Pure apart from the injected `rpc`, so it is unit-tested with a fake one.
  */
 
-import { VIDEO_PROVIDERS, IMAGE_PROVIDERS, type RunBackend } from "@/lib/runBackend";
+import type { RunBackend } from "@/lib/runBackend";
 import { API_KEY_PREFIX, hashApiKey, parseBearer, sha256Hex } from "@/lib/api/keys";
 import { apiError, fromRpcResult, type ApiResult } from "@/lib/api/http";
 import { parseGenerationInput } from "@/lib/creative/operations";
@@ -96,9 +96,15 @@ export const CREATE_VIDEO_FIELDS = [
   "duration",
   "language",
   "visual_style",
-  "video_provider",
-  "image_provider",
 ] as const;
+
+/**
+ * Not selectable through the API or MCP. A provider is the platform's choice:
+ * the API price is flat per minute (api_video_price), so letting a caller pick
+ * Veo or Kling would spend a funded key at a price that does not cover it.
+ * The operator's own Create form (and the worker's env) still choose providers.
+ */
+const PROVIDER_FIELDS = ["video_provider", "image_provider"] as const;
 
 const TEXT_LIMITS: Record<string, number> = { topic: 300, niche: 120, language: 40, visual_style: 300 };
 
@@ -113,6 +119,11 @@ export function parseCreateVideo(
 ): { ok: true; channelId: string; params: Record<string, string | number> } | { ok: false; result: ApiResult } {
   const b = obj(body);
   if (!b) return { ok: false, result: bad("invalid_body", "Send a JSON object.") };
+  if (PROVIDER_FIELDS.some((k) => k in b))
+    return {
+      ok: false,
+      result: bad("unknown_parameter", "video_provider and image_provider cannot be set through the API: the platform chooses the providers."),
+    };
   const unknown = Object.keys(b).filter((k) => !(CREATE_VIDEO_FIELDS as readonly string[]).includes(k));
   if (unknown.length) return { ok: false, result: bad("unknown_parameter", `Unknown field(s): ${unknown.join(", ")}.`) };
   const channelId = typeof b.channel_id === "string" ? b.channel_id.trim() : "";
@@ -134,16 +145,6 @@ export function parseCreateVideo(
     if (typeof d !== "number" || !Number.isInteger(d) || d < 30 || d > 3600)
       return { ok: false, result: bad("invalid_params", "duration is whole seconds between 30 and 3600.") };
     params.duration = d;
-  }
-  for (const [k, list] of [
-    ["video_provider", VIDEO_PROVIDERS],
-    ["image_provider", IMAGE_PROVIDERS],
-  ] as const) {
-    const v = b[k];
-    if (v == null || v === "") continue;
-    if (typeof v !== "string" || !(list as readonly string[]).includes(v.trim().toLowerCase()))
-      return { ok: false, result: bad("invalid_params", `${k} must be one of: ${list.join(", ")}.`) };
-    params[k] = v.trim().toLowerCase();
   }
   return { ok: true, channelId, params };
 }

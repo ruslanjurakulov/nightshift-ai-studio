@@ -190,24 +190,31 @@ class VideoReview:
         """Delete all but the newest KEEP_PER_CHANNEL previews for one channel."""
         if not self.enabled:
             return 0
-        try:
-            rows = requests.get(
-                f"{self.url}/rest/v1/videos",
-                params={
-                    "select": "video_id,preview_path,published_at",
-                    "channel_id": f"eq.{channel_id}",
-                    "preview_path": "not.is.null",
-                    "order": "published_at.desc",
-                    "offset": str(KEEP_PER_CHANNEL),
-                },
-                headers=self._headers(),
-                timeout=30,
-            )
-            rows.raise_for_status()
-            stale = [r for r in rows.json() if r.get("preview_path")]
-        except Exception as e:
-            logger.warning("Could not list old previews (%s: %s)", type(e).__name__, e)
-            return 0
+        # Uploaded and held videos are ranked separately: a held run has no
+        # published_at (NULL sorts first when descending), so one shared list
+        # would rank every held preview above the real uploads and prune those.
+        stale: list = []
+        for published, order in (("not.is.null", "published_at.desc"), ("is.null", "held_at.desc")):
+            try:
+                rows = requests.get(
+                    f"{self.url}/rest/v1/videos",
+                    params={
+                        "select": "video_id,preview_path,published_at",
+                        "channel_id": f"eq.{channel_id}",
+                        "preview_path": "not.is.null",
+                        "published_at": published,
+                        "order": order,
+                        "offset": str(KEEP_PER_CHANNEL),
+                    },
+                    headers=self._headers(),
+                    timeout=30,
+                )
+                rows.raise_for_status()
+                stale += [r for r in rows.json() if r.get("preview_path")]
+            except Exception as e:
+                logger.warning("Could not list old previews (%s: %s)", type(e).__name__, e)
+                if published == "not.is.null":
+                    return 0
         if not stale:
             return 0
 

@@ -104,6 +104,24 @@ export function buildRenderJobInsert(
 
 export type QueueJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
+/** Why a render job failed, in the closed set modules/render_error.py writes. */
+export const JOB_ERROR_CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "unknown"] as const;
+export type JobErrorCode = (typeof JOB_ERROR_CODES)[number];
+
+/**
+ * `render_jobs.error` is operator text behind a stable prefix, `[code:voice] main.py exited with code 1\n<log tail>`
+ * (the worker adds it, modules/render_error.py; the column is plain text so no migration is needed). Returns the code
+ * and the text without the prefix. A failure written before codes existed has no prefix: `code` is null; a prefix this
+ * build does not know reads "unknown". Pure.
+ */
+export function parseJobError(error: string | null | undefined): { code: JobErrorCode | null; text: string | null } {
+  if (typeof error !== "string" || error === "") return { code: null, text: null };
+  const m = /^\[code:([a-z_]+)\][ \t]?/.exec(error);
+  if (!m) return { code: null, text: error };
+  const code = (JOB_ERROR_CODES as readonly string[]).includes(m[1]) ? (m[1] as JobErrorCode) : "unknown";
+  return { code, text: error.slice(m[0].length) || null };
+}
+
 export type QueueJob = {
   id: number;
   kind: string;
@@ -113,7 +131,12 @@ export type QueueJob = {
   started_at: string | null;
   heartbeat_at: string | null;
   finished_at: string | null;
+  /** The operator's text (header and log tail), without the code prefix. The events route sends it to the operator only. */
   error: string | null;
+  /** Why it failed, for a plain sentence; null when the job did not fail or failed before codes. */
+  errorCode: JobErrorCode | null;
+  /** Failed and its credit hold was released (read from the organization's own reservation); null = not known / no hold. */
+  creditsReturned: boolean | null;
 };
 
 const STATUSES: readonly string[] = ["queued", "running", "succeeded", "failed", "cancelled"];
@@ -123,6 +146,7 @@ const STATUSES: readonly string[] = ["queued", "running", "succeeded", "failed",
 export function toQueueJob(row: Record<string, unknown>): QueueJob {
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
   const status = typeof row.status === "string" && STATUSES.includes(row.status) ? row.status : "unknown";
+  const parsed = parseJobError(str(row.error));
   return {
     id: typeof row.id === "number" ? row.id : Number(row.id ?? 0),
     kind: typeof row.kind === "string" ? row.kind : "daily",
@@ -132,6 +156,33 @@ export function toQueueJob(row: Record<string, unknown>): QueueJob {
     started_at: str(row.started_at),
     heartbeat_at: str(row.heartbeat_at),
     finished_at: str(row.finished_at),
-    error: str(row.error),
+    error: parsed.text,
+    errorCode: parsed.code,
+    creditsReturned: null,
   };
+}
+
+/**
+ * Mark each FAILED job whose credit hold was released ("your credits were returned"). `refs` is render_jobs.credit_ref
+ * per job id, `reservations` the organization's own credit_reservations rows (RLS shows members their own). Only a
+ * reservation read as `released` says yes: an open or captured one, a missing row or an unreadable table leaves null,
+ * so the page never claims a refund it did not see. Pure.
+ */
+export function withCreditsReturned(
+  jobs: QueueJob[],
+  refs: { id: number; credit_ref: string | null }[],
+  reservations: { job_id: string; status: string }[],
+): QueueJob[] {
+  const refOf = new Map(refs.map((r) => [Number(r.id), r.credit_ref]));
+  const statusOf = new Map(reservations.map((r) => [r.job_id, r.status]));
+  return jobs.map((j) => {
+    const ref = j.status === "failed" ? refOf.get(j.id) : null;
+    const status = ref ? statusOf.get(ref) : undefined;
+    return status === undefined ? j : { ...j, creditsReturned: status === "released" };
+  });
+}
+
+/** What a customer may be sent about a job: the code and the refund fact, never the operator's log text. */
+export function forCustomer(job: QueueJob): QueueJob {
+  return { ...job, error: null };
 }

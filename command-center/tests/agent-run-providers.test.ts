@@ -1,0 +1,91 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * POST /api/agent/run: a customer cannot choose the paid video/image generator.
+ *
+ * What would break without this: a customer organization's run is priced per
+ * minute whatever the footage source, so a body carrying video_provider=veo
+ * turned on a funded Veo key at a price that does not cover it. The operator's
+ * own organization (credit-exempt) keeps the choice.
+ */
+
+vi.mock("server-only", () => ({}));
+
+const DEFAULT_ORG = (await import("../lib/orgs")).DEFAULT_ORG_ID;
+
+const h = {
+  org: "org-customer" as string,
+  insert: vi.fn(),
+  reserve: vi.fn(),
+};
+
+vi.mock("@/lib/supabase/server", () => ({
+  getUser: async () => ({ id: "u-me" }),
+  createClient: async () => ({
+    from: () => ({ insert: (row: unknown) => ({ select: () => ({ single: async () => h.insert(row) }) }) }),
+    rpc: async () => ({ data: null, error: null }),
+  }),
+}));
+vi.mock("@/lib/auth/org-roles", () => ({
+  requireOrgRole: async () => ({ ok: true, role: "admin", orgId: h.org, source: "org" }),
+  isOperator: async () => false,
+  isPlatformAdmin: async () => false,
+}));
+vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ current: null }) }));
+vi.mock("@/lib/server/audit", () => ({ logAudit: async () => undefined }));
+vi.mock("@/lib/connectedAccounts", () => ({ readConnectedAccounts: async () => [] }));
+vi.mock("@/lib/server/github-secrets", () => ({ dispatchDailyVideo: async () => undefined, isGithubConfigured: true }));
+vi.mock("@/lib/server/credits", async () => {
+  const actual = await vi.importActual<typeof import("../lib/server/credits")>("../lib/server/credits");
+  return { ...actual, creditsEnforced: true, reserveRunCredits: (...a: unknown[]) => h.reserve(...a) };
+});
+
+const route = await import("../app/api/agent/run/route");
+const post = (body: Record<string, unknown>) =>
+  route.POST(
+    new Request("http://test.local/api/agent/run", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://test.local" },
+      body: JSON.stringify({ channel_id: "ch-a", ...body }),
+    }),
+  );
+
+beforeEach(() => {
+  process.env.NIGHTSHIFT_RUN_BACKEND = "queue";
+  h.org = "org-customer";
+  h.insert.mockReset().mockResolvedValue({ data: { id: 7 }, error: null, status: 201 });
+  h.reserve.mockReset().mockResolvedValue({ ok: true, creditRef: "rj-ref", estimate: { credits: 36 }, exempt: false, durationS: 180 });
+});
+
+describe("provider choice on the customer path", () => {
+  it.each([{ video_provider: "veo" }, { image_provider: "leonardo" }, { video_provider: "kling", image_provider: "flux" }])(
+    "refuses %j before any hold or job exists",
+    async (extra) => {
+      const res = await post(extra);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "provider_not_allowed" });
+      expect(h.reserve).not.toHaveBeenCalled();
+      expect(h.insert).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a customer run without a provider is unchanged", async () => {
+    const res = await post({ topic: "Rome" });
+    expect(res.status).toBe(200);
+    expect(h.insert).toHaveBeenCalledTimes(1);
+    expect(h.insert.mock.calls[0][0].params).not.toHaveProperty("video_provider");
+  });
+
+  it("blank selects (the form's 'automatic') are not a choice", async () => {
+    const res = await post({ video_provider: "  ", image_provider: "" });
+    expect(res.status).toBe(200);
+  });
+
+  it("the operator's own organization keeps the choice", async () => {
+    h.org = DEFAULT_ORG;
+    h.reserve.mockResolvedValue({ ok: true, creditRef: null, estimate: null, exempt: true, durationS: null });
+    const res = await post({ video_provider: "veo", image_provider: "leonardo" });
+    expect(res.status).toBe(200);
+    expect(h.insert.mock.calls[0][0].params).toMatchObject({ video_provider: "veo", image_provider: "leonardo" });
+  });
+});

@@ -329,18 +329,32 @@ class MainWiring(unittest.TestCase):
             self.assertIn(f"_record_held_run(held_video.{state}", src)
 
     def test_the_held_row_is_recorded_outside_the_upload_branch(self):
-        """The upload `if` must never contain a held-row write: a run that
-        uploaded is not held."""
+        """The upload `if` must never write a held row on the success path: a
+        run that uploaded is not held. The one allowed call is in the `except`
+        (the upload raised, so there is no YouTube id), guarded on video_id."""
         tree = ast.parse(_src())
         for node in ast.walk(tree):
             if isinstance(node, ast.If) and "UPLOAD_STARTED" in ast.unparse(node.body[0]):
+                nodes = [m for stmt in node.body for m in ast.walk(stmt)]  # not the elif branches
+                handler_calls = set()
+                for h in (n for n in nodes if isinstance(n, ast.ExceptHandler)):
+                    handler_calls.update(id(c) for c in ast.walk(h) if isinstance(c, ast.Call))
+                held_calls = [c for c in nodes if isinstance(c, ast.Call)
+                              and ast.unparse(c.func) in ("_record_held_run", "held_video.record_held")]
+                for c in held_calls:
+                    self.assertIn(id(c), handler_calls, "held row written outside an except handler")
                 body = "\n".join(ast.unparse(n) for n in node.body)
-                self.assertNotIn("_record_held_run", body)
-                self.assertNotIn("record_held(", body)
                 self.assertIn("held_video.promote(", body)
                 break
         else:
             self.fail("upload branch not found")
+
+    def test_upload_failure_records_a_held_row_only_without_a_youtube_id(self):
+        src = _src()
+        i = src.index('"reason": "upload_failed"')
+        guard = src.rfind("if video_id is None:", 0, i)
+        self.assertGreater(guard, src.index("YouTube upload failed ("))
+        self.assertIn("_record_held_run(held_video.STATE_HELD", src[guard:i])
 
     def test_promote_follows_the_recorded_upload_and_precedes_the_review_patch(self):
         src = _src()

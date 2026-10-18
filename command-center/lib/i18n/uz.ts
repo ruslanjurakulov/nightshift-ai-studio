@@ -579,6 +579,8 @@ export const uz: Dictionary = {
     stateHeld: "Koʻrib chiqishni kutmoqda — avto nashr oʻchiq",
     stateRepaired: "Tuzatildi — koʻrib chiqishni kutmoqda",
     stateUnknown: "Yuklanmagan (sababi yozilmagan)",
+    stateUploadFailed: "Tayyor, lekin yuklash muvaffaqiyatsiz: YouTube’ni qayta ulang",
+    uploadFailedNote: "Video tayyor, uni pastda koʻrishingiz mumkin. YouTube’ga yuklash muvaffaqiyatsiz boʻlgani uchun yuklanmadi, koʻpincha kanal ulanishi muddati tugagani sabab: bu kanal uchun YouTube’ni qayta ulang va yana urinib koʻring.",
   },
   /** Video sahifasida "Klipllarga boʻlish" (0080-migratsiya, components/videos/RepurposePanel). */
   repurpose: {
@@ -917,6 +919,17 @@ export const uz: Dictionary = {
     queueTitle: "Navbatdagi vazifalar",
     queueJob: "Vazifa",
     queueAttempt: "urinish",
+    /** Muvaffaqiyatsiz render vazifasi, bitta oddiy gap bilan (kodni modules/render_error.py qoʻyadi). */
+    jobError: {
+      credits: "Bu videoni yaratish uchun kreditlar yetarli emas.",
+      voice: "Ovozli matnni yaratib boʻlmadi, shuning uchun video yaratilmadi.",
+      provider_quota: "Video yaratishda qatnashadigan xizmatlardan biri chegarasiga yetdi. Keyinroq urinib koʻring.",
+      media: "Bu video uchun tasvirlar va suratlarni yigʻib boʻlmadi, shuning uchun video yaratilmadi.",
+      render: "Videoni yigʻib boʻlmadi.",
+      timeout: "Video juda uzoq yaratildi va toʻxtatildi.",
+      unknown: "Nimadir xato ketdi va video yaratilmadi.",
+    },
+    creditsReturned: "Kreditlaringiz qaytarildi.",
     queueStatus: {
       queued: "navbatda — worker kutilmoqda",
       running: "ishlamoqda",

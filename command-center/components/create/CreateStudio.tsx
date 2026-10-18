@@ -812,8 +812,16 @@ export function CreateStudio({
                           {t.create.queueAttempt} {j.attempts}
                         </span>
                       )}
-                      {j.error && (
-                        <span className="min-w-0 flex-1 truncate text-[var(--color-fail)]" title={j.error}>
+                      {/* A failure is one plain sentence for everyone (no vendor, no remedy). The operator's
+                          own log header and tail stay available to the operator only. */}
+                      {j.status === "failed" && (
+                        <span className="min-w-0 flex-1 text-[var(--color-fail)]">
+                          {t.create.jobError[j.errorCode ?? "unknown"]}
+                          {j.creditsReturned === true && <> {t.create.creditsReturned}</>}
+                        </span>
+                      )}
+                      {operator && j.error && (
+                        <span className="min-w-0 flex-1 truncate text-[var(--color-muted)]" title={j.error}>
                           {j.error.split("\n")[0]}
                         </span>
                       )}
