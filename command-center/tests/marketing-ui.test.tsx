@@ -13,7 +13,7 @@ import { jsonRes } from "./helpers/response";
 import { en } from "../lib/i18n/en";
 import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
-import { coercePost, type MarketingPost, type MarketingSettings } from "../lib/marketing-posts";
+import { coerceListedPost, coercePost, type ListedPost, type MarketingPost, type MarketingSettings } from "../lib/marketing-posts";
 
 const h = vi.hoisted(() => ({ fetch: vi.fn(), refresh: vi.fn(), toast: vi.fn(), locale: "en" as "en" | "ru" | "uz" }));
 
@@ -57,7 +57,7 @@ const row = (over: Record<string, unknown> = {}): MarketingPost =>
     ...over,
   })!;
 
-const show = (posts: MarketingPost[] = [row()], settings: MarketingSettings = SETTINGS, channel: string | null = "@nightshift_test") =>
+const show = (posts: ListedPost[] = [row()], settings: MarketingSettings = SETTINGS, channel: string | null = "@nightshift_test") =>
   render(<MarketingBoard settings={settings} posts={posts} truncated={false} channel={channel} origin="https://nightshift-ai.studio" nowMs={NOW} />);
 
 const sheet = () => screen.getByRole("alertdialog");
@@ -510,5 +510,102 @@ describe("phone layout, targets and labels", () => {
     show([]);
     expect(screen.getByText(m.empty.title)).toBeTruthy();
     expect(screen.getByText(m.poster.title)).toBeTruthy();
+  });
+});
+
+describe("a post of a kind this page version does not know", () => {
+  const ID2 = "22222222-2222-3333-4444-555555555555";
+  const other = (over: Record<string, unknown> = {}): ListedPost =>
+    coerceListedPost({
+      id: ID2,
+      kind: "promo",
+      target: "instagram",
+      delivery: "manual",
+      payload: { hashtags: ["a"] },
+      status: "draft",
+      texts: { uz: "Promo uz matn.", ru: "Промо ру текст.", en: "Promo en words." },
+      source_ref: "promo:launch",
+      content_hash: "cd".repeat(32),
+      created_at: "2026-10-18T08:00:00Z",
+      updated_at: "2026-10-18T08:00:00Z",
+      some_future_field: { a: 1 },
+      ...over,
+    })!;
+
+  it("shows a labelled row with its status and age, and the words only as stored", () => {
+    show([other()]);
+    const card = screen.getByRole("article");
+    expect(within(card).getByRole("heading", { name: "Other kind: promo" })).toBeTruthy();
+    expect(within(card).getByText(m.status.draft)).toBeTruthy();
+    expect(within(card).getByText(/Created/)).toBeTruthy();
+    expect(within(card).getByText("Promo en words.")).toBeTruthy();
+    expect(within(card).getByText("Kind: promo · Target: instagram · Delivery: manual")).toBeTruthy();
+    expect(card.querySelector("[data-telegram-preview]")).toBeNull(); // not drawn as a Telegram message
+    expect(screen.getByRole("note").textContent).toContain("(1)");
+  });
+
+  it("cannot be approved: Approve is disabled with the plain reason, and Edit and Reject are not offered", async () => {
+    show([other()]);
+    const approve = screen.getByRole("button", { name: /Approve/ }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(screen.getByText(m.other.cannotApprove)).toBeTruthy();
+    expect(m.other.cannotApprove).toBe("This page version cannot approve this kind: update the app.");
+    expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Reject/ })).toBeNull();
+    await tap(approve);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it("an unknown target on a known kind is the same: labelled Other target, no approval", () => {
+    show([other({ kind: "news", target: "youtube", delivery: undefined })]);
+    expect(screen.getByRole("heading", { name: "Other target: youtube" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: /Approve/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("words that are not the three-language shape give 'preview unavailable', never a partial preview", () => {
+    show([other({ texts: { uz: "only one" } })]);
+    expect(screen.getByText(m.other.noPreview)).toBeTruthy();
+    expect(screen.queryByText("only one")).toBeNull();
+  });
+
+  it("a hostile kind or error code is printed as 'unknown', never as it came", () => {
+    show([other({ kind: "<img src=x onerror=alert(1)>", status: "failed", last_error_code: "sk-Secret words" })]);
+    expect(screen.getByRole("heading", { name: "Other kind: unknown" })).toBeTruthy();
+    expect(screen.getByText("Error code: unknown")).toBeTruthy();
+    expect(document.body.innerHTML).not.toContain("onerror");
+    expect(document.body.innerHTML).not.toContain("Secret");
+  });
+
+  it("a mixed list keeps the known post, with its working Approve, next to the unknown one", async () => {
+    show([row(), other()]);
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: m.kind.news })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Other kind: promo" })).toBeTruthy();
+    const approve = screen.getByRole("button", { name: /Approve this post for publishing: pr:#12/ }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(false);
+    await tap(approve);
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+  });
+
+  it("an unknown row that settled shows as the last send with its status, and claims nothing about a channel", () => {
+    show([other({ status: "sent", sent_at: "2026-10-18T08:30:00Z" })]);
+    expect(screen.queryByText(m.lastSend.none)).toBeNull();
+    expect(screen.queryByText(/It is on the channel/)).toBeNull();
+    expect(screen.getAllByText(m.status.sent).length).toBeGreaterThan(0);
+  });
+
+  it("no unknown row, no notice", () => {
+    show([row()]);
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it.each(["ru", "uz"] as const)("renders in %s with its own words", (loc) => {
+    h.locale = loc;
+    const d = loc === "ru" ? ru : uz;
+    show([other()]);
+    expect(screen.getByRole("heading", { name: d.marketing.other.titleKind.replace("{code}", "promo") })).toBeTruthy();
+    expect(screen.getByText(d.marketing.other.cannotApprove)).toBeTruthy();
+    expect(d.marketing.other.cannotApprove).not.toBe(en.marketing.other.cannotApprove);
   });
 });

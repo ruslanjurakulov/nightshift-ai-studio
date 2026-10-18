@@ -230,6 +230,16 @@ post name the fix for their code: `blocked` (the bot is not a channel administra
 Not verified here: the page has not been opened on a phone or against a live database; it is covered by unit and component tests
 and by `next build`, not by a browser.
 
+### Rows this page version does not know (tolerance)
+
+A database may hold a post whose `kind`, `target` or `delivery` this page was built before (a later migration adds them). The page
+lists it as **Other kind / Other target / Other delivery: <code>** (the code only if it is `[a-z_]{1,24}`, else `unknown`), with its
+status and age, and its words only if they have the known three-language shape (else "preview unavailable"). It is never dropped
+and never counted as 0. It cannot be approved, edited or rejected here: Approve is disabled with "this page version cannot approve
+this kind: update the app". Extra JSON fields and unknown error codes are ignored or shown as a closed code, never as free text.
+The operator bot names such a kind `other` (counts per status already cover every kind). Deploy this before any migration that
+adds a kind.
+
 ## The worker (slices 3 to 5)
 
 `tools/marketing_worker.py`, compose service `marketing-worker` (profile `marketing`, its own env file

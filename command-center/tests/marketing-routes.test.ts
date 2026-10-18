@@ -190,6 +190,17 @@ describe("with the switch on", () => {
     });
   });
 
+  it("a refusal code this build does not know, and fields it does not know, pass through as an answer (nothing is dropped or fails)", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: false, error: "target_off", message: "English", future_field: { a: 1 }, used_7d: 1 }, error: null });
+    const res = await route(post({ action: "approve", id: ID, contentHash: HASH }));
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ ok: false, error: "target_off", future_field: { a: 1 }, used_7d: 1 });
+    h.rpc.mockResolvedValue({ data: { ok: true, id: ID, status: "approved", delivery: "manual", payload: {}, next_thing: 1 }, error: null });
+    const ok = await route(post({ action: "approve", id: ID, contentHash: HASH }));
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ ok: true, id: ID, delivery: "manual" });
+  });
+
   describe("a database error is an answer, never the database's own text", () => {
     it.each([
       [{ code: "42501", message: "only a platform owner or admin may do this" }, 403, "forbidden"],

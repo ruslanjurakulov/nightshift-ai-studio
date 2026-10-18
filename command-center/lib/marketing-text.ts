@@ -1,6 +1,6 @@
 import { fmt } from "@/lib/i18n";
 import type { Dictionary } from "@/lib/i18n";
-import { isMarketingRefusal, type MarketingPost } from "@/lib/marketing-posts";
+import { isMarketingRefusal, safeCode, type MarketingPost } from "@/lib/marketing-posts";
 import type { OperatorResult } from "@/lib/operator-post";
 import { operatorFailureText } from "@/lib/setup-errors";
 
@@ -21,7 +21,8 @@ export function marketingRefusalText(t: Text, data: Record<string, unknown> | un
   const e = t.marketing.err;
   const d = data ?? {};
   const code = typeof d.error === "string" ? d.error : "";
-  if (!isMarketingRefusal(code)) return fmt(e.unknown, { code: code || "?" });
+  // A code from a newer database is shown as the closed code it is, or "unknown": never free text from the server.
+  if (!isMarketingRefusal(code)) return fmt(e.unknown, { code: code === "" ? "?" : safeCode(code, 40, true) });
   if (code === "cap_full") {
     const f = (v: unknown) => {
       const n = num(v);
@@ -57,7 +58,7 @@ export function refusalMeansStale(code: unknown): boolean {
 /** The named fix for the code a failed or lost send left on a post (the closed list of 0108). */
 export function fixText(t: Pick<Dictionary, "marketing">, code: string): string {
   const fix = t.marketing.fix as Record<string, string>;
-  return Object.prototype.hasOwnProperty.call(fix, code) && code !== "unknown" ? fix[code] : fmt(fix.unknown, { code });
+  return Object.prototype.hasOwnProperty.call(fix, code) && code !== "unknown" ? fix[code] : fmt(fix.unknown, { code: code === "?" ? code : safeCode(code, 40, true) });
 }
 
 /** What the page says about how a post went (or is going) out. Null when there is nothing to say yet. */
