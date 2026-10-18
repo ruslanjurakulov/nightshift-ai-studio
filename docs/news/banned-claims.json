@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "about": "Wording a public post must not contain. Each pattern is a regular expression, matched case-insensitively against every language of a news text after lower-casing, mapping the Uzbek apostrophes to ' and e-dieresis to e. The list is deliberately blunt: a false positive costs one rewording, a false negative is a public claim we cannot back. docs/news/README.md explains each rule.",
+  "rules": [
+    {
+      "id": "free",
+      "why": "The only no-cost entry is a one-time welcome grant of 100 credits. Say that, never 'free'.",
+      "patterns": ["\\bfree\\b", "\\bfreebie", "бесплатн\\w*", "\\bдаром\\b", "\\bbepul\\w*", "\\btekin\\b"]
+    },
+    {
+      "id": "unlimited",
+      "why": "Every plan has a credit budget and concurrency limits.",
+      "patterns": ["\\bunlimited\\b", "\\bno limits?\\b", "безлимит\\w*", "неограничен\\w*", "без\\s+огранич\\w*", "\\bcheksiz\\w*", "\\bchegarasiz\\w*"]
+    },
+    {
+      "id": "guarantee",
+      "why": "Nothing about output quality, uptime or results is guaranteed.",
+      "patterns": ["\\bguarant\\w*", "гарант\\w*", "\\bkafolat\\w*"]
+    },
+    {
+      "id": "superlative",
+      "why": "'Best', 'fastest', 'number one' are comparisons we have not measured.",
+      "patterns": ["\\bbest\\b", "\\bnumber one\\b", "\\bno\\.? ?1\\b", "#1", "\\bleading\\b", "\\btop-?rated\\b", "\\bfastest\\b", "\\bcheapest\\b", "\\bunbeatable\\b", "лучш\\w*", "номер\\s+один", "№\\s*1", "быстрейш\\w*", "дешевейш\\w*", "\\beng\\s+(yaxshi|zo'r|tez|arzon|kuchli)\\w*", "\\b1-raqam\\w*"]
+    },
+    {
+      "id": "income",
+      "why": "No promise of income, profit or getting rich.",
+      "patterns": ["\\bearn\\w*", "\\bincome\\b", "\\bget rich\\b", "\\bmake money\\b", "\\bprofit\\w*", "доход\\w*", "заработ\\w*", "прибыл\\w*", "разбогат\\w*", "\\bdaromad\\w*", "\\bpul\\s+(ishla|top)\\w*", "\\bboyib\\w*", "\\bboy\\s+bo'l\\w*"]
+    },
+    {
+      "id": "views",
+      "why": "No promise of views, reach, subscribers or going viral.",
+      "patterns": ["\\bviral\\b", "\\bmore views\\b", "\\bget views\\b", "\\bmillions? of views\\b", "\\bboost (your )?(views|reach|subscribers|followers)\\b", "\\bgrow your (audience|channel)\\b", "вирусн\\w*", "больше\\s+просмотр\\w*", "накрут\\w*", "миллион\\w*\\s+просмотр\\w*", "\\bko'proq\\s+ko'rish\\w*", "\\bmillion\\w*\\s+ko'rish\\w*"]
+    },
+    {
+      "id": "certainty",
+      "why": "Absolute words ('forever', '100%', 'risk-free') are claims we cannot back.",
+      "patterns": ["\\bforever\\b", "\\blifetime\\b", "\\b100\\s?%", "\\brisk-free\\b", "\\bno risk\\b", "навсегда", "пожизненн\\w*", "без\\s+риска", "\\babadiy\\w*", "\\bumrbod\\w*", "\\briskiz\\b"]
+    },
+    {
+      "id": "endorsement",
+      "why": "Never imply that YouTube, Google, Telegram, Instagram or TikTok approves, certifies or partners with us.",
+      "patterns": ["\\b(official|certified|approved|endorsed)\\b[^.]{0,40}\\b(youtube|google|telegram|instagram|tiktok)\\b", "\\b(youtube|google|telegram|instagram|tiktok)\\b[^.]{0,40}\\b(partner|approved|endorsed|certified)\\b", "официальн\\w*[^.]{0,40}(youtube|ютуб|google|гугл)", "партнер\\w*\\s+(youtube|ютуб|google|гугл)", "\\brasmiy\\w*[^.]{0,40}(youtube|google)"]
+    }
+  ],
+  "provider_names": {
+    "why": "A model or provider may be named only after a real call through its adapter has succeeded (CLAUDE.md, Definition of Done). Until a human removes a name from this list in the same pull request that announces it, none may appear in a public text.",
+    "names": ["openai", "chatgpt", "gpt", "sora", "veo", "kling", "runway", "luma", "pika", "elevenlabs", "eleven labs", "midjourney", "flux", "seedance", "seedream", "hailuo", "minimax", "gemini", "imagen", "claude", "anthropic", "wan", "higgsfield", "krea", "stable diffusion", "stability ai", "dall-e", "dalle", "whisper", "suno", "udio", "heygen", "synthesia", "pexels", "pixabay"]
+  }
+}

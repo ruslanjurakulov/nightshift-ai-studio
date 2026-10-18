@@ -1,0 +1,14 @@
+{
+  "pr": 484,
+  "shipped": "2026-10-15",
+  "kind": "feature",
+  "public": false,
+  "text": {
+    "uz": "Faqat namuna, e'lon qilinmaydi: video muharririda endi shakllar, stikerlar va jarayon chizig'i bor.",
+    "ru": "Только пример, не публикуется: в видеоредакторе теперь есть фигуры, стикеры и полоса прогресса.",
+    "en": "Example only, never posted: the video editor now has shapes, stickers and a progress bar."
+  },
+  "media": {
+    "hint": "A short screen recording of a shape and a sticker placed on a clip in the editor."
+  }
+}

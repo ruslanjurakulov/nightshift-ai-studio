@@ -543,3 +543,8 @@ sec_provider_spend_0106.extend(TABLES, FUNCTIONS)
 import sec_owner_safety_0107  # noqa: E402
 
 sec_owner_safety_0107.extend(TABLES, FUNCTIONS)
+
+# Migration 0108 (the brand-channel poster: posts, settings, showcase assets): tests/security/sec_marketing_0108.py
+import sec_marketing_0108  # noqa: E402
+
+sec_marketing_0108.extend(TABLES, FUNCTIONS)
