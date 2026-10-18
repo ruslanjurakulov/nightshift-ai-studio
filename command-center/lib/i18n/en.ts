@@ -3,6 +3,7 @@ import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ownerSafetyEn } from "./owner-safety/en";
+import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
 import { marketingEn } from "./marketing/en";
 import { ownerTruthEn } from "./owner-truth/en";
@@ -34,6 +35,7 @@ export const en = {
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
   ownerSafety: ownerSafetyEn,
+  confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,
   marketing: marketingEn,
   ownerTruth: ownerTruthEn,

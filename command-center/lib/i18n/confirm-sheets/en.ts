@@ -1,0 +1,103 @@
+/**
+ * The confirm sheets for the one-tap owner actions that used to act on a single press: channel switches, extra
+ * credits, publish approvals, the review panel, API access and limits, and claiming the team. Each says what will
+ * happen and what it costs or lets go, in plain words; the ones that are hard to undo or that spend ask for a word
+ * to be typed. English is the source of truth; ru.ts and uz.ts are typed against it. `{name}` style fillers are
+ * filled with fmt().
+ */
+export const confirmSheetsEn = {
+  // Shared detail labels
+  dChannel: "Channel",
+  dNow: "Now",
+  dAfter: "After",
+  dVideo: "Video",
+  dRequestedBy: "Requested by",
+  dAccount: "Account",
+  dRole: "Role",
+  dKey: "API key",
+  dEffect: "Effect",
+  dPrivacy: "Privacy now",
+  dGate: "Publish gate",
+  dAutoPublish: "Auto publish",
+  dExtraBalance: "Extra credits you hold",
+
+  // Channel: auto publish
+  autoOnTitle: "Turn on auto publish for “{name}”?",
+  autoOnBody:
+    "Videos publish without asking you. Once a video passes the publish gate it goes public on its own and nobody approves it first. The gate still runs, but it is the only check left.",
+  autoOnConfirm: "Turn on auto publish",
+  autoOnWord: "PUBLISH",
+  autoModeAsk: "Asks you first",
+  autoModeSelf: "Publishes by itself",
+
+  // Channel: pause and resume
+  pauseTitle: "Pause “{name}”?",
+  pauseBody: "The scheduler skips this channel until you resume it, so no new videos are made. Its videos and history stay.",
+  pauseConfirm: "Pause channel",
+  resumeTitle: "Resume “{name}”?",
+  resumeBody:
+    "The scheduler starts making videos for this channel again, on its schedule. Each run it starts uses credits or provider usage.",
+  resumeConfirm: "Resume channel",
+  resumeAutoOn: "Auto publish is on for this channel, so what it makes can go public without asking you.",
+
+  // Channel: storyboard review
+  reviewOffTitle: "Turn off storyboard review for “{name}”?",
+  reviewOffBody:
+    "Runs go straight from the plan to the render. You are no longer asked to approve the price before the render is paid for.",
+  reviewOffConfirm: "Turn off review",
+
+  // Usage: extra credits
+  extraOnTitle: "Spend your extra credits?",
+  extraOnBody:
+    "When your plan credits run out, new runs keep going on the credits you bought instead of being refused. This spends credits you paid for.",
+  extraOnConfirm: "Turn on extra credits",
+  extraOnWord: "SPEND",
+
+  // Publish approvals
+  approveTitle: "Approve “{video}”?",
+  approveBody:
+    "This lets the video go public. The publish gate still runs in front of it.",
+  approveConfirm: "Approve",
+  rejectTitle: "Reject “{video}”?",
+  rejectBody:
+    "The video is not approved to go public. The request is closed as rejected, and a new request is needed to ask again.",
+  rejectConfirm: "Reject",
+
+  // The review panel on a video
+  rvApproveTitle: "Approve and publish “{title}”?",
+  rvApproveBody:
+    "This asks the pipeline to take the video public on its next run. The publish gate still runs first, and a video it blocks does not go out.",
+  rvApproveConfirm: "Approve and publish",
+  rvRegenTitle: "Render “{title}” again?",
+  rvRegenBody: "The next run renders this video again from the start. That costs a new render.",
+  rvRegenConfirm: "Render it again",
+  rvScriptTitle: "New script for “{title}”?",
+  rvScriptBody:
+    "The next run writes a new script and renders a new video from it. That costs a new script and a new render.",
+  rvScriptConfirm: "New script, new video",
+
+  // API access and limits
+  apiActivateTitle: "Activate the API?",
+  apiActivateBody:
+    "You can then create API keys. A program that holds a key can spend your prepaid API balance, up to the limits you set. You accept the API terms.",
+  apiActivateConfirm: "Activate API",
+  limitOrgTitle: "Change the monthly API limit?",
+  limitKeyTitle: "Change the monthly limit of “{name}”?",
+  limitBody: "API calls are refused once this month's API spending reaches the new limit.",
+  limitConfirm: "Change limit",
+  limitNone: "No limit",
+  limitPlanCeiling: "None set, the plan ceiling of {cap} applies",
+  limitUp: "Higher: more can be spent through the API each month.",
+  limitDown: "Lower: calls are refused sooner.",
+  limitSame: "The same as now: nothing changes.",
+  limitRemoved: "Limit removed: this key is held back only by the limits of the account.",
+  limitSet: "A limit is added: this key stops when it is reached.",
+
+  // Team: claiming ownership
+  claimTitle: "Make yourself the owner?",
+  claimBody:
+    "You become the owner of this workspace, with full access to keys, providers, credits and the team. Your own role cannot be changed from here afterwards: only another owner can do that.",
+  claimConfirm: "Become the owner",
+};
+
+export type ConfirmSheetsDictionary = typeof confirmSheetsEn;

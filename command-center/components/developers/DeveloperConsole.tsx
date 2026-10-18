@@ -9,6 +9,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { StatusPill } from "@/components/ui";
 import { ErrorState } from "@/components/ReadError";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
+import { limitEffect, type LimitEffect } from "@/lib/limit-change";
 import { resolvedTheme } from "@/lib/theme";
 import { paddleLocale, type PaddleEnvironment } from "@/lib/paddle";
 import { ensurePaddle, type PaddleEventData } from "@/lib/paddle-client";
@@ -433,6 +434,22 @@ export function DeveloperConsole({
   );
 }
 
+/** The sheet's words for a limit: "No limit" for a key without one; an org without one is held by the plan ceiling. */
+function limitWords(
+  cents: number | null,
+  d: { limitNone: string; limitPlanCeiling: string },
+  locale: string,
+  fmt: (tpl: string, vars: Record<string, string | number>) => string,
+  ceiling?: number | null,
+): string {
+  if (cents !== null) return formatUsd(cents, locale);
+  return ceiling === undefined || ceiling === null ? d.limitNone : fmt(d.limitPlanCeiling, { cap: formatUsd(ceiling, locale) });
+}
+
+function effectText(effect: LimitEffect, d: { limitUp: string; limitDown: string; limitSame: string; limitRemoved: string; limitSet: string }): string {
+  return { up: d.limitUp, down: d.limitDown, same: d.limitSame, removed: d.limitRemoved, set: d.limitSet }[effect];
+}
+
 function Activate({
   orgId,
   info,
@@ -449,6 +466,27 @@ function Activate({
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
+  const asking = useRef(false);
+
+  /** Switching the API on is what lets a program spend the prepaid balance: say so before the press. */
+  async function ask() {
+    if (!accepted || busy || asking.current) return;
+    asking.current = true;
+    try {
+      const cs = t.confirmSheets;
+      const ok = await confirm({
+        title: cs.apiActivateTitle,
+        message: cs.apiActivateBody,
+        confirmLabel: cs.apiActivateConfirm,
+        tone: "primary",
+      });
+      if (!ok) return;
+      await activate();
+    } finally {
+      asking.current = false;
+    }
+  }
 
   async function activate() {
     const supabase = createClient();
@@ -489,7 +527,7 @@ function Activate({
           <div>
             <button
               type="button"
-              onClick={activate}
+              onClick={() => void ask()}
               disabled={!accepted || busy}
               className="btn-sky is-solid pill px-5 text-sm disabled:opacity-40"
             >
@@ -499,6 +537,7 @@ function Activate({
         </>
       )}
       {error && <p className="text-sm text-[var(--color-fail)]">{error}</p>}
+      {dialog}
     </div>
   );
 }
@@ -705,6 +744,21 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
       setError(d.limitInvalid);
       return;
     }
+    // Old -> new and what it does, before the number is written (never on a typed-but-unchanged limit's behalf).
+    const cs = t.confirmSheets;
+    const ok = await confirm({
+      title: fmt(cs.limitKeyTitle, { name: k.name }),
+      message: cs.limitBody,
+      confirmLabel: cs.limitConfirm,
+      tone: "primary",
+      details: [
+        { label: cs.dKey, value: k.name },
+        { label: cs.dNow, value: limitWords(k.monthly_limit_cents, cs, locale, fmt) },
+        { label: cs.dAfter, value: limitWords(limit.cents, cs, locale, fmt) },
+        { label: cs.dEffect, value: effectText(limitEffect(k.monthly_limit_cents, limit.cents), cs), multiline: true },
+      ],
+    });
+    if (!ok) return;
     const { error: e } = await supabase.rpc("set_api_key_limit", { p_key_id: k.id, p_cents: limit.cents });
     setError(e ? d.saveFailed : null);
     await load();
@@ -1073,18 +1127,42 @@ function Limits({ orgId, info, onSaved }: { orgId: string; info: Console; onSave
   const d = t.developers;
   const [text, setText] = useState(info.monthly_limit_cents === null ? "" : String(info.monthly_limit_cents / 100));
   const [msg, setMsg] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
+  const asking = useRef(false);
 
   async function save() {
     const supabase = createClient();
     const limit = parseLimitDollars(text);
-    if (!supabase) return;
+    if (!supabase || asking.current) return;
     if (!limit.ok) {
       setMsg(d.limitInvalid);
       return;
     }
-    const { error } = await supabase.rpc("api_set_monthly_limit", { p_org: orgId, p_cents: limit.cents });
-    setMsg(error ? d.saveFailed : d.saved);
-    if (!error) onSaved();
+    // The account without a limit of its own is held by the plan's ceiling, so that is what "none" is compared as.
+    const cap = info.tier_cap_cents;
+    const before = info.monthly_limit_cents ?? cap;
+    const after = limit.cents ?? cap;
+    asking.current = true;
+    try {
+      const cs = t.confirmSheets;
+      const ok = await confirm({
+        title: cs.limitOrgTitle,
+        message: cs.limitBody,
+        confirmLabel: cs.limitConfirm,
+        tone: "primary",
+        details: [
+          { label: cs.dNow, value: limitWords(info.monthly_limit_cents, cs, locale, fmt, cap) },
+          { label: cs.dAfter, value: limitWords(limit.cents, cs, locale, fmt, cap) },
+          { label: cs.dEffect, value: effectText(limitEffect(before, after), cs), multiline: true },
+        ],
+      });
+      if (!ok) return;
+      const { error } = await supabase.rpc("api_set_monthly_limit", { p_org: orgId, p_cents: limit.cents });
+      setMsg(error ? d.saveFailed : d.saved);
+      if (!error) onSaved();
+    } finally {
+      asking.current = false;
+    }
   }
 
   if (!info.activated_at) return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.activateFirst}</div>;
@@ -1111,6 +1189,7 @@ function Limits({ orgId, info, onSaved }: { orgId: string; info: Console; onSave
         </div>
       )}
       {msg && <p className="text-sm">{msg}</p>}
+      {dialog}
     </div>
   );
 }

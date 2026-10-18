@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { fmt as fill } from "@/lib/i18n";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { formatOwnerTime } from "@/lib/owner-time";
 import { StatusPill, EmptyState } from "@/components/ui";
 import { ErrorState } from "@/components/ReadError";
@@ -70,6 +72,10 @@ export function ApprovalsBoard({
   const [error, setError] = useState<string | null>(null);
 
   const canReq = canRequest(myRole);
+  const { confirm, dialog } = useConfirm();
+  // Locked synchronously while a sheet is open or the decision is being written: a second tap on any row's key must
+  // not open a second sheet or send a second decision.
+  const deciding = useRef(false);
 
   async function load() {
     const supabase = createClient();
@@ -148,6 +154,35 @@ export function ApprovalsBoard({
     await load();
   }
 
+  /**
+   * Approve or reject asks first, then makes the same call as before (decide). Approving is what lets the video go
+   * public, so the sheet names the video and the channel and says so; the database's two-person rule is unchanged.
+   */
+  async function ask(row: Approval, status: "approved" | "rejected") {
+    if (busy || deciding.current) return;
+    deciding.current = true;
+    try {
+      const cs = t.confirmSheets;
+      const video = row.video_ref || t.approvals.noVideoRef;
+      const approve = status === "approved";
+      const ok = await confirm({
+        title: fill(approve ? cs.approveTitle : cs.rejectTitle, { video }),
+        message: approve ? cs.approveBody : cs.rejectBody,
+        confirmLabel: approve ? cs.approveConfirm : cs.rejectConfirm,
+        tone: approve ? "danger" : "primary",
+        details: [
+          { label: cs.dVideo, value: video },
+          { label: cs.dChannel, value: channelId },
+          { label: cs.dRequestedBy, value: who(row.requested_by) },
+        ],
+      });
+      if (!ok) return;
+      await decide(row, status);
+    } finally {
+      deciding.current = false;
+    }
+  }
+
   const statusLabel: Record<ApprovalStatus, string> = {
     pending: t.approvals.pending,
     approved: t.approvals.approved,
@@ -156,6 +191,7 @@ export function ApprovalsBoard({
 
   return (
     <div className="rhythm">
+      {dialog}
       {/* Open a request (editor+) */}
       {canReq && (
         <section aria-labelledby="g3-ask-h" className="g3-section">
@@ -222,17 +258,17 @@ export function ApprovalsBoard({
                     <div className="g3-ask-act">
                       <button
                         type="button"
-                        onClick={() => decide(row, "approved")}
+                        onClick={() => void ask(row, "approved")}
                         disabled={busy}
-                        className="btn-sky pill px-4 py-2 text-sm disabled:opacity-40"
+                        className="btn-sky pill min-h-11 px-4 py-2 text-sm disabled:opacity-40"
                       >
                         {t.approvals.approve}
                       </button>
                       <button
                         type="button"
-                        onClick={() => decide(row, "rejected")}
+                        onClick={() => void ask(row, "rejected")}
                         disabled={busy}
-                        className="btn-sky is-quiet pill px-4 py-2 text-sm disabled:opacity-40"
+                        className="btn-sky is-quiet pill min-h-11 px-4 py-2 text-sm disabled:opacity-40"
                       >
                         {t.approvals.reject}
                       </button>

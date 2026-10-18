@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition, type ReactNode } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { isChannelVerified } from "@/lib/channels";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +13,7 @@ import { relativeTime } from "@/lib/format";
 import type { ChannelHealth } from "@/lib/channels";
 import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
 import { ChannelTokenPanel, type ChannelTokenPanelProps } from "@/components/channels/ChannelTokenPanel";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 
 /**
  * One channel: identity, configuration, credential status and health.
@@ -67,6 +68,11 @@ export function ChannelCard({
   const [auto, setAuto] = useState(Boolean(channel.auto_publish));
   const [review, setReview] = useState(channel.agent_config?.storyboard_review === true);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const { confirm, dialog } = useConfirm();
+  const cs = t.confirmSheets;
+  // One question or write at a time, locked synchronously: state alone lags a render, and a second tap during the
+  // sheet or the write must not open a second sheet or send a second write.
+  const asking = useRef(false);
 
   const agent = channel.agent_config ?? {};
   const schedule = channel.schedule_config ?? {};
@@ -169,6 +175,73 @@ export function ChannelCard({
     startTransition(() => router.refresh());
   }
 
+  /** Runs `go` after the person has agreed, once at a time. No sheet (`ask` null) is the safe direction: one tap. */
+  async function guarded(ask: Parameters<typeof confirm>[0] | null, go: () => Promise<void>) {
+    if (asking.current) return;
+    asking.current = true;
+    try {
+      if (ask && !(await confirm(ask))) return;
+      await go();
+    } finally {
+      asking.current = false;
+    }
+  }
+
+  // Auto publish ON removes the human step before a video goes public, so it asks and needs a word typed. OFF is the
+  // safe direction and stays one tap.
+  const askAuto = () =>
+    guarded(
+      auto
+        ? null
+        : {
+            title: fmt(cs.autoOnTitle, { name: channel.name }),
+            message: cs.autoOnBody,
+            confirmLabel: cs.autoOnConfirm,
+            typeToConfirm: cs.autoOnWord,
+            details: [
+              { label: cs.dChannel, value: channel.name },
+              { label: cs.dNow, value: cs.autoModeAsk },
+              { label: cs.dAfter, value: cs.autoModeSelf },
+            ],
+          },
+      toggleAuto,
+    );
+
+  // Pausing stops new videos; resuming starts runs that spend. Both say so, neither needs a word: both are undone by
+  // the opposite press.
+  const askStatus = () =>
+    guarded(
+      active
+        ? {
+            title: fmt(cs.pauseTitle, { name: channel.name }),
+            message: cs.pauseBody,
+            confirmLabel: cs.pauseConfirm,
+            tone: "primary",
+          }
+        : {
+            title: fmt(cs.resumeTitle, { name: channel.name }),
+            message: auto ? `${cs.resumeBody} ${cs.resumeAutoOn}` : cs.resumeBody,
+            confirmLabel: cs.resumeConfirm,
+            tone: "primary",
+            details: [{ label: cs.dAutoPublish, value: auto ? t.channels.autoOn : t.channels.autoOff }],
+          },
+      toggleStatus,
+    );
+
+  // Storyboard review ON adds a checkpoint (one tap). OFF removes the checkpoint before the render is paid for.
+  const askReview = () =>
+    guarded(
+      review
+        ? {
+            title: fmt(cs.reviewOffTitle, { name: channel.name }),
+            message: cs.reviewOffBody,
+            confirmLabel: cs.reviewOffConfirm,
+            tone: "primary",
+          }
+        : null,
+      toggleReview,
+    );
+
   const credentialLamp = credential
     ? { tone: credentialTone(credential.status), label: credentialLabel(credential.status, t) }
     : { tone: "idle" as const, label: t.channels.notConnected };
@@ -209,7 +282,7 @@ export function ChannelCard({
           />
           <button
             type="button"
-            onClick={toggleStatus}
+            onClick={askStatus}
             disabled={busy || pending || (!active && !verified)}
             title={!active && !verified ? t.channels.verifyRequired : undefined}
             className="btn-quiet disabled:opacity-50"
@@ -231,7 +304,7 @@ export function ChannelCard({
             hint={auto ? t.channels.autoOnHint : t.channels.autoOffHint}
             on={auto}
             word={autoBusy ? t.channels.saving : auto ? t.channels.autoOn : t.channels.autoOff}
-            onClick={toggleAuto}
+            onClick={askAuto}
             disabled={autoBusy || pending || !canControl}
             title={canControl ? undefined : t.channels.adminOnly}
           />
@@ -243,7 +316,7 @@ export function ChannelCard({
             hint={review ? t.storyboardReview.toggleOnHint : t.storyboardReview.toggleOffHint}
             on={review}
             word={reviewBusy ? t.channels.saving : review ? t.storyboardReview.toggleOn : t.storyboardReview.toggleOff}
-            onClick={toggleReview}
+            onClick={askReview}
             disabled={reviewBusy || pending || !canControl}
             title={canControl ? undefined : t.channels.adminOnly}
           />
@@ -367,6 +440,7 @@ export function ChannelCard({
       >
         {t.channels.videos} →
       </Link>
+      {dialog}
     </section>
   );
 }

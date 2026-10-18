@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Coins } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -22,6 +22,7 @@ import {
 import { Chip } from "@/components/ui/Chip";
 import { Meter } from "@/components/ui/Meter";
 import { Timecode } from "@/components/ui/Timecode";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { entitlementText } from "@/components/pricing/PlanMatrix";
 import { pluralForm } from "@/components/credits/Equivalents";
 import { useDay } from "@/components/usage/useDay";
@@ -399,6 +400,9 @@ function ExtraCredits({
   const [on, setOn] = useState(summary.extraEnabled);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const { confirm, dialog } = useConfirm();
+  // Locked synchronously while the sheet is open: a second tap must not open a second sheet.
+  const asking = useRef(false);
   // A refresh brings the saved value back: the page is the database's, not ours.
   useEffect(() => setOn(summary.extraEnabled), [summary.extraEnabled]);
 
@@ -418,6 +422,40 @@ function ExtraCredits({
       return;
     }
     router.refresh();
+  }
+
+  /**
+   * Turning extra credits ON lets runs spend credits that were bought, so it asks first and a word is typed. Turning
+   * it OFF protects the packs and stays one tap.
+   */
+  async function press() {
+    if (busy || !canChange || asking.current) return;
+    if (!on) {
+      asking.current = true;
+      try {
+        const cs = t.confirmSheets;
+        const ok = await confirm({
+          title: cs.extraOnTitle,
+          message: cs.extraOnBody,
+          confirmLabel: cs.extraOnConfirm,
+          tone: "primary",
+          typeToConfirm: cs.extraOnWord,
+          details: [
+            {
+              label: cs.dExtraBalance,
+              value: fmt(u.extra.balanceValue, {
+                n: formatCredits(summary.extra.available, locale),
+                unit: unitOf(summary.extra.available, locale, forms),
+              }),
+            },
+          ],
+        });
+        if (!ok) return;
+      } finally {
+        asking.current = false;
+      }
+    }
+    await flip();
   }
 
   const day = useDay();
@@ -440,7 +478,7 @@ function ExtraCredits({
           aria-checked={on}
           aria-labelledby={labelId}
           aria-describedby={hintId}
-          onClick={flip}
+          onClick={press}
           // Not `disabled` while saving: a disabled button drops keyboard focus, and the person is left
           // at the top of the page. flip() ignores a second press until the first has been saved.
           disabled={!canChange}
@@ -498,6 +536,7 @@ function ExtraCredits({
           )}
         </div>
       )}
+      {dialog}
     </section>
   );
 }
