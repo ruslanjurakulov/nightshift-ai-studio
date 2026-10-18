@@ -33,11 +33,11 @@ from modules.tg_text import clip, html_escape, safe_id, short_id
 # Alert kinds (short, because callback_data is limited to 64 bytes) and where
 # each one points. The kind ids are stable identifiers (they travel in callback
 # data and in /mute); what the owner reads for each comes from the copy table.
-ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment", "marketing")
+ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment", "marketing", "email")
 KIND_COMMAND = {
     "run": "errors", "stuck": "queue", "balance": "balance", "deploy": "deploys",
     "worker": "health", "approval": "approvals", "audit": "security", "payment": "payments",
-    "marketing": "marketing",
+    "marketing": "marketing", "email": "alerts",
 }
 KIND_PAGE = {
     "run": "errors", "stuck": "jobs", "balance": "billing", "worker": "integrations",
@@ -881,6 +881,11 @@ def view_alerts(cfg: OperatorConfig, state, now: datetime, lang: str = DEFAULT_L
                 lines.append(t(lang, "alerts.muted", kind=kind_label(lang, kind), until=local, tz=str(cfg.tz)))
         else:
             lines.append(t(lang, "alerts.muted_none"))
+        health = state.mail_health()
+        if health is not None:
+            status, code_, at, n = health
+            lines.append(t(lang, "alerts.mail_failing", code=safe_id(code_, 40) or "?", n=n, when=ago(lang, at, now))
+                         if status == "failing" else t(lang, "alerts.mail_ok", when=ago(lang, at, now)))
         recent = [a for a in sorted(state.alerts, key=lambda a: a[0], reverse=True) if a[3]][:5]
         if recent:
             lines.append(t(lang, "alerts.last_sent"))

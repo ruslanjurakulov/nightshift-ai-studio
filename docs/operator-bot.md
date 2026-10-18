@@ -242,6 +242,7 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `payment` | a payment-provider event the webhook **rejected** (paid but not credited, or a refund not applied: needs a person, **critical**), **failed** (the provider retries, warn), or a refund / chargeback that was applied (warn), received in the last 24 h | critical / warn | once per event and outcome |
 | `approval` | a new pending publish approval | info | once |
 | `marketing` | **information only** (see "Marketing" below): posts waiting for your approval (a count: "2 posts are waiting for your approval"); a post that ended `dead` (unconfirmed: "check the channel, do not resend") or `failed` (with its closed error code and the named fix), in the last 24 h; a post that was sent (its kind and time). Never a post's words, link, media or any chat id | info (drafts, sent) / warn (failed) / **critical** (dead) | drafts: when the waiting count RISES above the last count seen (a fall, such as you approving one of two, is noted silently, and 0 clears the memory); a result once |
+| `email` | the owner e-mail copy is failing (two failed deliveries in a row), once per day, info only | info | once a day while it lasts |
 | `audit` | an operator-level audit event with no channel (see above) | **critical** | once |
 
 Restraint, so it never spams:
@@ -284,6 +285,17 @@ whole"). Queued and running jobs are read oldest first, separately from the
 recently finished ones, so a stuck job is never the row a cut drops. If the alert
 memory ever exceeds what the bot reads (5,000 rows in 48 hours) it sends nothing
 rather than repeat itself.
+
+### E-mail copy for the owner (off by default)
+
+The same alert pass can also e-mail the owner's own address (confirmed platform
+owners and admins only), plus payments received, new accounts and a daily digest:
+`NIGHTSHIFT_OWNER_EMAIL=on` (with `RESEND_API_KEY`, fed from the secret `OPERATOR_RESEND_API_KEY`, and `NIGHTSHIFT_EMAIL_FROM` for the
+sender, the optional `OWNER_EMAIL_KINDS`, and for local runs `NIGHTSHIFT_EMAIL_TRANSPORT=fake` with
+`NIGHTSHIFT_EMAIL_FAKE_DIR`). It has its own ledger (`operator.mail` rows, so a
+failed e-mail is retried a bounded number of times and a sent one never repeats)
+and obeys the same mute, quiet hours, digest hour, language and hourly figure.
+Design, settings and the phone steps: `docs/OWNER_EMAIL.md`.
 
 ## Marketing (information only)
 
@@ -457,8 +469,9 @@ What the deploy reads (the same secrets and variables the workflows use):
 |---|---|---|
 | Secret | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | required |
 | Secret | `TELEGRAM_ADMIN_USER_IDS` | optional, group chats only |
+| Secret | `OPERATOR_RESEND_API_KEY` | optional: a restricted Resend "Sending access" key for your one domain, for the owner e-mail copy only (`docs/OWNER_EMAIL.md`). It becomes `RESEND_API_KEY` in the container and is passed **only while the variable `NIGHTSHIFT_OWNER_EMAIL` is exactly `on`**; never the customer e-mail worker's key. |
 | Secret | `OPERATOR_GITHUB_TOKEN` | optional: a fine-grained, **read-only** token for this repository with only *Actions: read*. It becomes `GITHUB_TOKEN` in the container (GitHub reserves that name for secrets) and feeds `/deploys`, `/health` and the failed-deploy alert. The server has no job token, so without it the public API is used anonymously (rate-limited, the alert pass slows to 10 minutes) and a refused answer shows "unavailable" for that line only. Never reuse `GH_SECRETS_TOKEN`, which can write secrets. |
-| Variable | `OPERATOR_LANGUAGE`, `OPERATOR_TZ`, `OPERATOR_QUIET_HOURS`, `OPERATOR_DIGEST_HOUR`, `OPERATOR_STUCK_MINUTES`, `OPERATOR_ALERT_MAX_PER_HOUR`, `OPERATOR_APP_URL`, `ELEVENLABS_LOW_CREDITS` | optional, as above |
+| Variable | `NIGHTSHIFT_OWNER_EMAIL`, `OWNER_EMAIL_KINDS`, `NIGHTSHIFT_EMAIL_FROM`, `OPERATOR_LANGUAGE`, `OPERATOR_TZ`, `OPERATOR_QUIET_HOURS`, `OPERATOR_DIGEST_HOUR`, `OPERATOR_STUCK_MINUTES`, `OPERATOR_ALERT_MAX_PER_HOUR`, `OPERATOR_APP_URL`, `ELEVENLABS_LOW_CREDITS` | optional, as above |
 
 ### One-time order
 

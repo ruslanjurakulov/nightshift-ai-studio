@@ -366,7 +366,11 @@ services:
   # names in deploy/.env.operator.example: the bot token and chat id, the
   # Supabase URL and service key (all its state lives in alert_events
   # operator.* rows and telegram_updates), optionally a read-only GitHub token
-  # and the OPERATOR_* settings. Never a pipeline provider key.
+  # and the OPERATOR_* settings. Never a pipeline provider key. The one mail key it can
+  # hold is its OWN restricted Resend "Sending access" key (repository secret
+  # OPERATOR_RESEND_API_KEY, passed as RESEND_API_KEY) and only while the variable
+  # NIGHTSHIFT_OWNER_EMAIL is `on`: the owner's e-mail copy of the alerts,
+  # docs/OWNER_EMAIL.md. It is not the customer e-mail worker's key.
   # It listens on no port and Caddy does not know it: it only calls out
   # (api.telegram.org, Supabase, api.github.com). A refused poll (409: a
   # webhook or a second consumer; 401: a bad token) ends the process with

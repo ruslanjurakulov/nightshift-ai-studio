@@ -328,14 +328,20 @@ class TickReport:
     rate_held: int = 0
     digest_sent: bool = False
     send_failed: int = 0
+    #: The owner e-mail sink's pass (modules/operator_bot/owner_mail.py), None while it is off.
+    mail: Optional[object] = None
 
 
 class AlertEngine:
     def __init__(self, ops: OperatorSources, store: AlertStore, control, cfg: OperatorConfig,
-                 low_credits: Optional[float] = None, held_fn: Optional[Callable[[], list]] = None):
+                 low_credits: Optional[float] = None, held_fn: Optional[Callable[[], list]] = None,
+                 owner_mail=None):
         self.ops, self.store, self.control, self.cfg = ops, store, control, cfg
         self.low_credits = low_credits
         self.held_fn = held_fn
+        #: The e-mail sink beside Telegram (owner_mail.OwnerMail), or None: off. It sees the same
+        #: detected events and the same alert state, and has a ledger of its own.
+        self.owner_mail = owner_mail
         # What this process sent or marked whose row the store did not take (a
         # failed write). The store is the memory of record, but a write that
         # fails must not make the next pass send the same alert again and again,
@@ -351,7 +357,7 @@ class AlertEngine:
             rep.state = "not_configured"
             return rep
         now = self.ops.now()
-        state = self.store.load(now)
+        state = self.store.load(now, mail=True) if self.owner_mail is not None else self.store.load(now)
         if state is None:
             rep.state = "no_state"
             return rep
@@ -360,8 +366,20 @@ class AlertEngine:
         self.ops.reset()
         lang = self._language()
         found = detect(self.ops, self.low_credits, lang)
+        if self.owner_mail is not None:
+            # One info note per day while the owner's e-mail is failing, through the same restraint as any alert.
+            found = found + self.owner_mail.outage_alerts(state, now, lang)
         rep.detected = len(found)
 
+        try:
+            return self._telegram(found, state, rep, lang, now)
+        finally:
+            # The e-mail copy runs after Telegram (a slow mail provider must not delay a ping) and on its own
+            # ledger: it neither waits for Telegram's baseline nor changes what Telegram records. It never raises.
+            if self.owner_mail is not None:
+                rep.mail = self.owner_mail.run(found, state, now, lang)
+
+    def _telegram(self, found: list, state: AlertState, rep: TickReport, lang: str, now: datetime) -> TickReport:
         if not state.armed:
             return self._baseline(found, rep, lang, now)
         found = self._gate_marketing_drafts(found, state, now)

@@ -1972,6 +1972,8 @@ OPERATOR_OPTIONAL = [
     "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
     "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
     "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
+    # The owner's e-mail copy (docs/OWNER_EMAIL.md): off unless NIGHTSHIFT_OWNER_EMAIL is exactly `on`.
+    "NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM",
 ]
 # Everything the pipeline worker holds that the operator bot must never see.
 PIPELINE_KEYS = (
@@ -2001,6 +2003,8 @@ class OperatorWorkflowTests(unittest.TestCase):
             "GITHUB_TOKEN": "secrets.OPERATOR_GITHUB_TOKEN",
             "GITHUB_REPOSITORY": "github.repository",
             "ELEVENLABS_LOW_CREDITS": "vars.ELEVENLABS_LOW_CREDITS",
+            # The owner e-mail's OWN restricted Resend key, mapped only while its switch is exactly `on`.
+            "RESEND_API_KEY": "vars.NIGHTSHIFT_OWNER_EMAIL == 'on' && secrets.OPERATOR_RESEND_API_KEY || ''",
         }
         for key in OPERATOR_OPTIONAL:
             expected.setdefault(key, f"vars.{key}")
@@ -2018,8 +2022,15 @@ class OperatorWorkflowTests(unittest.TestCase):
         dump = yaml.safe_dump(s)
         for key in _example_keys_of(OPERATOR_EXAMPLE):
             if CREDENTIAL.search(key):
-                self.assertTrue(str(s["env"]["OPERATORENV_" + key]).startswith("${{ secrets."), key)
+                value = str(s["env"]["OPERATORENV_" + key])
+                gated = key == "RESEND_API_KEY"      # a secret behind its feature switch, see the owner e-mail test
+                self.assertTrue(value.startswith("${{ secrets.") or (gated and "secrets.OPERATOR_RESEND_API_KEY" in value), key)
+        # RESEND_API_KEY is the ONE name of that list the operator bot now holds, and only for the owner's e-mail
+        # copy (docs/OWNER_EMAIL.md); the line is the allow-list, so nothing else may follow it in here.
         for name in PIPELINE_KEYS:
+            if name == "RESEND_API_KEY":
+                self.assertNotIn("secrets.RESEND_API_KEY", dump)       # the customer worker's secret is not reused
+                continue
             self.assertNotIn(name, dump)
             self.assertNotRegex(OPERATOR_EXAMPLE.read_text(), rf"(?m)^{name}=")
         self.assertNotIn("toJSON", dump)
@@ -2030,6 +2041,34 @@ class OperatorWorkflowTests(unittest.TestCase):
         self.assertNotIn("TELEGRAM_BOT_TOKEN", yaml.safe_dump(step(name="Build the worker env")))
         self.assertNotIn("TELEGRAM_BOT_TOKEN", yaml.safe_dump(step("payload")))
         self.assertNotIn("TELEGRAM_BOT_TOKEN", yaml.safe_dump(step(name="Build the notify env")))
+
+    GATED_KEY = "${{ vars.NIGHTSHIFT_OWNER_EMAIL == 'on' && secrets.OPERATOR_RESEND_API_KEY || '' }}"
+
+    def test_the_owner_email_switch_is_a_variable_its_key_its_own_secret_behind_the_switch(self):
+        env = step(name=OPERATOR_STEP)["env"]
+        self.assertEqual(env["OPERATORENV_NIGHTSHIFT_OWNER_EMAIL"], "${{ vars.NIGHTSHIFT_OWNER_EMAIL }}")
+        self.assertEqual(env["OPERATORENV_OWNER_EMAIL_KINDS"], "${{ vars.OWNER_EMAIL_KINDS }}")
+        self.assertEqual(env["OPERATORENV_NIGHTSHIFT_EMAIL_FROM"], "${{ vars.NIGHTSHIFT_EMAIL_FROM }}")
+        # the key: a dedicated secret, evaluated against the switch, exactly `on`; never the customer worker's secret
+        self.assertEqual(env["OPERATORENV_RESEND_API_KEY"], self.GATED_KEY)
+        self.assertIn("vars.NIGHTSHIFT_OWNER_EMAIL == 'on'", env["OPERATORENV_RESEND_API_KEY"])
+        self.assertNotIn("secrets.RESEND_API_KEY", yaml.safe_dump(step(name=OPERATOR_STEP)))
+        # the fallback workflow (the bot's service is off) maps the very same names, the key behind the same switch
+        alerts = yaml.safe_load(ALERTS_WORKFLOW.read_text())["jobs"]["alerts"]["steps"]
+        wf_env = next(st["env"] for st in alerts if st.get("name") == "Operator alerts")
+        for name, expr in (("NIGHTSHIFT_OWNER_EMAIL", "${{ vars.NIGHTSHIFT_OWNER_EMAIL }}"), ("OWNER_EMAIL_KINDS", "${{ vars.OWNER_EMAIL_KINDS }}"),
+                           ("NIGHTSHIFT_EMAIL_FROM", "${{ vars.NIGHTSHIFT_EMAIL_FROM }}"), ("RESEND_API_KEY", self.GATED_KEY)):
+            self.assertEqual(wf_env[name], expr, name)
+        self.assertNotIn("secrets.RESEND_API_KEY", ALERTS_WORKFLOW.read_text())
+        # the switch and the dedicated secret exist nowhere in the web, worker, notify, e-mail or marketing environments
+        for other in ("payload", "Build the worker env", "Build the notify env", "Build the e-mail env", "Build the marketing env"):
+            dumped = yaml.safe_dump(step(other) if other == "payload" else step(name=other))
+            for name in ("NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "OPERATOR_RESEND_API_KEY"):
+                self.assertNotIn(name, dumped, (other, name))
+        # all four may be empty: the default deploy (nothing set) builds the same env as before, with the switch off
+        for key in ("NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM"):
+            self.assertIn(key, OPERATOR_OPTIONAL)
+            self.assertRegex(OPERATOR_EXAMPLE.read_text(), rf"(?m)^{key}=$")
 
     def test_runs_only_while_the_switch_is_on_and_sits_between_the_web_env_and_ssh(self):
         s = step(name=OPERATOR_STEP)
@@ -2120,7 +2159,7 @@ class BuildOperatorEnvTests(unittest.TestCase):
 
     def build(self, **over):
         return self.mod.build(self.env(**over), OPERATOR_EXAMPLE.read_text(), "OPERATORENV_", OPERATOR_EXAMPLE.name,
-                              self.mod.OPTIONAL["operator"])
+                              self.mod.OPTIONAL["operator"], self.mod.GATED["operator"])
 
     def test_the_optional_set_is_exactly_the_documented_one(self):
         self.assertEqual(sorted(self.mod.OPTIONAL["operator"]), sorted(OPERATOR_OPTIONAL))
@@ -2134,6 +2173,32 @@ class BuildOperatorEnvTests(unittest.TestCase):
         self.assertEqual([l.split("=", 1)[0] for l in lines], _example_keys_of(OPERATOR_EXAMPLE))
         self.assertIn("GITHUB_TOKEN=", lines)
         self.assertIn("TELEGRAM_CHAT_ID=-1001234567890", lines)
+
+    def test_the_mail_key_is_written_empty_unless_the_switch_is_exactly_on_whatever_the_workflow_mapped(self):
+        fake = "re_fake_key_must_not_appear_0123456789"
+        for switch in ("", "off", "ON", "true", " on x"):
+            with self.subTest(switch=switch):
+                lines, errors = self.build(RESEND_API_KEY=fake, NIGHTSHIFT_OWNER_EMAIL=switch)
+                self.assertEqual(errors, [])
+                self.assertIn("RESEND_API_KEY=", lines)
+                self.assertNotIn(fake, "\n".join(lines))
+        lines, errors = self.build(RESEND_API_KEY=fake, NIGHTSHIFT_OWNER_EMAIL="on")
+        self.assertEqual(errors, [])
+        self.assertIn(f"RESEND_API_KEY={fake}", lines)
+
+    def test_the_command_line_tool_never_writes_the_mail_key_with_the_switch_empty(self):
+        import subprocess, tempfile
+        fake = "re_fake_key_must_not_appear_0123456789"
+        for switch, expect in (("", False), ("on", True)):
+            with self.subTest(switch=switch), tempfile.TemporaryDirectory() as tmp:
+                payload = Path(tmp) / "payload"
+                env = {k: v for k, v in os.environ.items() if not k.startswith("OPERATORENV_")}
+                env.update(self.env(RESEND_API_KEY=fake, NIGHTSHIFT_OWNER_EMAIL=switch))
+                proc = subprocess.run([sys.executable, str(ROOT / "deploy" / "build-service-env.py"), "operator", str(payload)],
+                                      env=env, capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertEqual(fake in payload.read_text(), expect)
+                self.assertNotIn(fake, proc.stdout + proc.stderr)
 
     def test_each_required_key_empty_fails_by_name(self):
         for key in OPERATOR_REQUIRED:

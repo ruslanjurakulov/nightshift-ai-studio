@@ -50,9 +50,17 @@ OPTIONAL: Dict[str, frozenset] = {
         "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
         "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
         "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
+        # The owner's e-mail copy (docs/OWNER_EMAIL.md): off while NIGHTSHIFT_OWNER_EMAIL is empty.
+        "NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM",
     }),
     # Empty = the worker idles. The deploy never needs the poster's own switch to succeed.
     "marketing": frozenset({"NIGHTSHIFT_MARKETING_POSTS"}),
+}
+# service -> {key: switch key that must be exactly `on` for the key to be written; otherwise it is written empty}.
+# A secret that belongs to an optional feature never reaches the container while the feature is off, even if the
+# workflow mapped it by mistake (docs/OWNER_EMAIL.md).
+GATED: Dict[str, Dict[str, str]] = {
+    "operator": {"RESEND_API_KEY": "NIGHTSHIFT_OWNER_EMAIL"},
 }
 ORIGIN_KEYS = ("NOTIFY_APP_ORIGIN", "APP_ORIGIN")
 CHAT_KEYS = ("MARKETING_TELEGRAM_CHAT",)
@@ -89,7 +97,7 @@ def clean(key: str, raw: str, optional: bool = False) -> Tuple[str, List[str]]:
 
 
 def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: str,
-          optional: frozenset = frozenset()) -> Tuple[List[str], List[str]]:
+          optional: frozenset = frozenset(), gated: Mapping[str, str] = {}) -> Tuple[List[str], List[str]]:
     lines: List[str] = []
     errors: List[str] = []
     keys = example_keys(example_text)
@@ -100,6 +108,8 @@ def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: 
             errors.append(f"{key} is in deploy/{example_name} but not mapped in deploy_web.yml")
             continue
         value, problems = clean(key, env[prefix + key], key in optional)
+        if key in gated and env.get(prefix + gated[key], "").strip() != "on":
+            value = ""
         errors.extend(problems)
         lines.append(f"{key}={value}")
     return lines, errors
@@ -111,7 +121,7 @@ def main(argv: List[str]) -> int:
         return 2
     marker, example_name, prefix, switch = SERVICES[argv[1]]
     lines, errors = build(os.environ, (HERE / example_name).read_text(encoding="utf-8"), prefix, example_name,
-                          OPTIONAL.get(argv[1], frozenset()))
+                          OPTIONAL.get(argv[1], frozenset()), GATED.get(argv[1], {}))
     if errors:
         for e in errors:
             print(f"::error::{e}")
