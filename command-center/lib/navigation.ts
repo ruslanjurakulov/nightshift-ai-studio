@@ -113,6 +113,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/members", key: "members" },
       { href: "/security", key: "security" },
       { href: "/approvals", key: "approvals" },
+      // The brand channel's posts, approved here by the owner; the page is off unless NIGHTSHIFT_MARKETING_POSTS is on.
+      { href: "/marketing", key: "marketing" },
       { href: "/alerts", key: "alerts" },
       { href: "/audit", key: "audit" },
       { href: "/time-machine", key: "timeMachine" },

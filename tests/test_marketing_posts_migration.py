@@ -195,11 +195,20 @@ class MarketingPostsMigration(unittest.TestCase):
         self.assertRegex(rollback, r"(?m)^begin;$")
         self.assertRegex(rollback, r"(?m)^commit;$")
 
-    def test_nothing_in_the_application_uses_it_but_the_poster_worker(self):
-        # The app, the edge functions and the workflows still never touch the marketing tables or functions.
-        # The only callers are the brand-channel worker and its two modules (docs/MARKETING_POSTS.md, slices 3 to 5),
-        # switched off by default; the owner page (slice 6) is a later change that widens this list on purpose.
+    def test_nothing_in_the_application_uses_it_but_the_poster_worker_and_the_owner_page(self):
+        # The app, the edge functions and the workflows never touch the marketing tables or functions, with two exceptions:
+        # the brand-channel worker and its two modules (docs/MARKETING_POSTS.md, slices 3 to 5), and the owner page and its
+        # route (slice 6), which call the four owner functions and read the posts as the signed-in owner, never with a
+        # service key (command-center/tests/marketing-posts.test.ts pins that). Both are off by default. Anything else
+        # that starts to call these objects is a change that widens this list on purpose.
         poster = {"tools/marketing_worker.py", "modules/channel_post.py", "modules/marketing_content.py"}
+        owner_page = {
+            "command-center/app/(app)/[channel]/marketing/page.tsx",
+            "command-center/app/api/marketing/route.ts",
+            "command-center/components/marketing/MarketingBoard.tsx",
+            "command-center/lib/marketing-posts.ts",
+            "command-center/lib/server/marketing.ts",
+        }
         names = re.compile(r"marketing_posts|marketing_settings|showcase_assets|owner_marketing_|claim_marketing_post|"
                            r"complete_marketing_post|marketing_draft_upsert")
         skip = {"node_modules", ".next", "__pycache__"}
@@ -212,7 +221,7 @@ class MarketingPostsMigration(unittest.TestCase):
                 if p.is_file() and not skip & set(p.parts) and p.suffix in (".ts", ".tsx", ".py", ".js", ".yml", ".yaml", ".sql"):
                     if names.search(p.read_text(encoding="utf-8", errors="ignore")):
                         offenders.append(str(p.relative_to(REPO)))
-        self.assertEqual(sorted(set(offenders) - poster), [])
+        self.assertEqual(sorted(set(offenders) - poster - owner_page), [])
 
 
 if __name__ == "__main__":

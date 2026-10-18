@@ -92,7 +92,8 @@ policy, grant, trigger or function touched except the audit action list, which o
 0107 pattern: new tables and functions only, every switch off, no existing policy, grant, trigger or function touched
 except the audit action list, which only gained eight names (0107's list is copied verbatim; a test compares the two).
 `tests/test_marketing_posts_migration.py` fails if that ever stops being true, and fails if anything in the application
-starts to call the new objects before a reviewed change wires them.
+starts to call the new objects other than the poster worker and, since the owner page, `/{channel}/marketing` with
+`POST /api/marketing` (behind `NIGHTSHIFT_MARKETING_POSTS`, off by default; `docs/MARKETING_POSTS.md`).
 
 - **Is it off?** `select enabled from public.marketing_settings;` must read `false`. While it is false,
   `claim_marketing_post()` hands out nothing, however much is approved.

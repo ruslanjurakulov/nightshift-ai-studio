@@ -1649,7 +1649,14 @@ class SenderWorkflowTests(unittest.TestCase):
         for other in steps():
             if other.get("name") != "Build the marketing env":
                 self.assertNotIn("TELEGRAM_CHANNEL_BOT_TOKEN", yaml.safe_dump(other))
-        self.assertNotIn("NIGHTSHIFT_MARKETING", yaml.safe_dump(step("payload")))
+        # The web container carries the page's switch (the SAME repository variable the worker reads, so one switch controls
+        # both) and the channel's public @name for the confirm sheet; it never carries the worker's deploy switch or the token.
+        dumped = yaml.safe_dump(step("payload"))
+        self.assertNotIn("NIGHTSHIFT_MARKETING_WORKER", dumped)
+        self.assertNotIn("TELEGRAM_CHANNEL_BOT_TOKEN", dumped)
+        pay = step("payload")["env"]
+        self.assertEqual(pay["WEBENV_NIGHTSHIFT_MARKETING_POSTS"], "${{ vars.NIGHTSHIFT_MARKETING_POSTS }}")
+        self.assertEqual(pay["WEBENV_MARKETING_TELEGRAM_CHAT"], "${{ vars.MARKETING_TELEGRAM_CHAT }}")
 
     def test_the_compose_services_use_their_own_env_files_and_profiles(self):
         c = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text())["services"]
@@ -2427,8 +2434,12 @@ class RemoteDeployMarketingTests(_RemoteDeployFixture):
         self.assertIn("TELEGRAM_CHANNEL_BOT_TOKEN=456:chan\n", text)
         self.assertNotIn("NIGHTSHIFT_MARKETING_ENV", text)
         for other in (self.env_file, self.worker_env_file, self.notify_env_file, self.email_env_file, self.operator_env_file):
-            self.assertFalse(other.exists() and ("TELEGRAM_CHANNEL_BOT_TOKEN" in other.read_text()
-                                                  or "NIGHTSHIFT_MARKETING" in other.read_text()))
+            self.assertFalse(other.exists() and "TELEGRAM_CHANNEL_BOT_TOKEN" in other.read_text())
+            # The web file carries the owner page's switch (the same variable the worker reads) but never the worker's
+            # deploy switch; the other services' files carry neither.
+            self.assertFalse(other.exists() and "NIGHTSHIFT_MARKETING_WORKER" in other.read_text())
+            if other is not self.env_file:
+                self.assertFalse(other.exists() and "NIGHTSHIFT_MARKETING" in other.read_text())
         calls = self.docker_calls()
         web_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --remove-orphans web caddy")]
         up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --no-deps marketing-worker")]

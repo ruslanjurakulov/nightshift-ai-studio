@@ -12,6 +12,11 @@ import { useToast } from "@/components/feedback/ToastProvider";
 export interface ConfirmDetail {
   label: string;
   value: string;
+  /**
+   * Words to be read, not a figure: shown on their own line, left-aligned, with their line breaks kept (a post's text
+   * in a language the owner reads). The default is a short value set right beside its label.
+   */
+  multiline?: boolean;
 }
 
 export interface ConfirmOptions {
@@ -180,7 +185,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        className="sheet-enter relative w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[var(--shadow-elevated)]"
+        className="sheet-enter relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[var(--shadow-elevated)]"
       >
         <div className="flex items-start gap-3">
           <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0" style={{ color: danger ? "var(--color-fail)" : "var(--color-warn)" }} />
@@ -198,7 +203,15 @@ export function ConfirmDialog({
             {options.details.map((d) => (
               <div key={d.label} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3 py-2">
                 <dt className="text-[var(--color-muted)]">{d.label}</dt>
-                <dd className="tnum min-w-0 break-words text-right font-semibold text-[var(--color-fg)]">{d.value}</dd>
+                <dd
+                  className={
+                    d.multiline
+                      ? "min-w-0 basis-full whitespace-pre-wrap break-words text-left font-normal text-[var(--color-fg)]"
+                      : "tnum min-w-0 break-words text-right font-semibold text-[var(--color-fg)]"
+                  }
+                >
+                  {d.value}
+                </dd>
               </div>
             ))}
           </dl>

@@ -4,6 +4,7 @@ import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
+import { marketingUz } from "./marketing/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
@@ -26,6 +27,7 @@ export const uz: Dictionary = {
   ownerShell: ownerShellUz,
   ownerSafety: ownerSafetyUz,
   ownerRpc: ownerRpcUz,
+  marketing: marketingUz,
   ownerTruth: ownerTruthUz,
   connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,
@@ -89,6 +91,7 @@ export const uz: Dictionary = {
     security: "Xavfsizlik",
     onboarding: "Ishni boshlash",
     approvals: "Tasdiqlashlar",
+    marketing: "Marketing",
     alerts: "Ogohlantirishlar",
     audit: "Audit jurnali",
     developers: "Dasturchilar",

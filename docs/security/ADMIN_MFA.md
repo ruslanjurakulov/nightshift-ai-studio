@@ -568,6 +568,11 @@ limits, second-factor test and audit trail apply. The database's refusals (`owne
 back as a code plus figures; the screens word every one of them in English, Russian and Uzbek
 (`lib/i18n/owner-rpc`), and an unknown future code is shown as "refused (code)", never as success.
 
+The brand-channel owner page (`docs/MARKETING_POSTS.md`) reuses this exact stack for `POST /api/marketing` (same helper, the
+same order of checks), gated by its own switch `NIGHTSHIFT_MARKETING_POSTS` (exactly `on`) instead of `NIGHTSHIFT_OWNER_RPC`. The
+two switches are independent. Because approving a post makes it public, re-arm the poster (`owner_marketing_kill(false, reason)`)
+only after the database gate (`enable_admin_mfa()`) is on.
+
 What it deliberately does **not** do: there is no button that switches the database gate
 (`enable_admin_mfa`); the browser can still write `credit_prices`, `app_members` and call
 `grant_credits` directly (the 0107 triggers observe those writes, they do not block them); and with

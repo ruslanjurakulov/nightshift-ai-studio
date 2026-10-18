@@ -420,7 +420,7 @@ describe("the order of the route's checks", () => {
     };
     const order = [
       at("rejectCrossOrigin(request)"),
-      at("if (!ownerRpcOn())"),
+      at("if (!flagOn())"),
       at("await getUser()"),
       at('await requireRole("admin")'),
       at("await guardAdminPost(request, user)"),

@@ -52,6 +52,7 @@ const NAV: { href: string; key: NavKey; hotkey?: string }[] = [
   { href: "/getting-started", key: "onboarding" },
   { href: "/organization", key: "organization" },
   { href: "/members", key: "members" },
+  { href: "/marketing", key: "marketing" },
   { href: "/alerts", key: "alerts" },
   { href: "/audit", key: "audit" },
 ];

@@ -163,6 +163,12 @@ jobs:
           # Off unless the repository variable is exactly `on`: the owner pages use the server-side owner functions
           # of migration 0107 (docs/security/ADMIN_MFA.md). Empty = today's behaviour.
           WEBENV_NIGHTSHIFT_OWNER_RPC: ${{ vars.NIGHTSHIFT_OWNER_RPC }}
+          # The brand channel's owner page (docs/MARKETING_POSTS.md): the SAME repository variables the marketing worker
+          # reads, so one switch controls both. Off unless NIGHTSHIFT_MARKETING_POSTS is exactly `on` (empty = the page
+          # shows an "off" note and /api/marketing answers 404). MARKETING_TELEGRAM_CHAT is the channel's public @name,
+          # shown on the confirm sheet; never the bot token (that secret never reaches the web container).
+          WEBENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
+          WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
           WEBENV_DEV_CLI_PAGE: ${{ vars.DEV_CLI_PAGE }}
           WEBENV_MCP_OAUTH_LIVE: ${{ vars.MCP_OAUTH_LIVE }}

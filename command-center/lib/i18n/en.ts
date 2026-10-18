@@ -4,6 +4,7 @@ import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ownerSafetyEn } from "./owner-safety/en";
 import { ownerRpcEn } from "./owner-rpc/en";
+import { marketingEn } from "./marketing/en";
 import { ownerTruthEn } from "./owner-truth/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
@@ -34,6 +35,7 @@ export const en = {
   ownerShell: ownerShellEn,
   ownerSafety: ownerSafetyEn,
   ownerRpc: ownerRpcEn,
+  marketing: marketingEn,
   ownerTruth: ownerTruthEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
@@ -97,6 +99,7 @@ export const en = {
     security: "Security",
     onboarding: "Getting Started",
     approvals: "Approvals",
+    marketing: "Marketing",
     alerts: "Alerts",
     audit: "Audit Trail",
     developers: "Developers",
