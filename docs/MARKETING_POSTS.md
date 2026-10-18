@@ -44,8 +44,10 @@ marketing worker ◄── claim_marketing_post (one post, under a lock) ◄─�
 One file per announceable change in `docs/news/`, added in the pull request that ships it
 ([format and rules](news/README.md)). Claude drafts the three texts in that pull request and the owner merges it,
 so every claim is a reviewed diff line. The worker image contains the deployed commit's `docs/` (the Dockerfile
-copies the repository and `.dockerignore` does not exclude `docs/`; that every merge rebuilds the image is
-unverified), so only what is deployed can be announced. `public: true` is a human decision per file; security work
+copies the repository and `.dockerignore` does not exclude `docs/`). `deploy_web.yml` runs on a push to `main` that
+touches `docs/news/**` (as well as `modules/**`, `tools/**`, `deploy/**` and the rest), and `remote-deploy.sh` starts the
+marketing worker with `up -d --build` while it is switched on, so a merged news file reaches the worker's image on
+that deploy. Only what is deployed can be announced. `public: true` is a human decision per file; security work
 is never news by default. **No language model in phase 1**: templates plus Claude-written pull request text remove a
 whole class of invented claims. Mechanical checks (`tests/test_news_format.py`): three languages, a short paragraph
 each in its own script, the same numbers in all three, no placeholder or URL, and the banned-claims list.
@@ -164,12 +166,16 @@ approval is the owner functions of 0108 (`owner_marketing_approve`), which the a
 | Switch | Where | Off means |
 |---|---|---|
 | `NIGHTSHIFT_MARKETING_WORKER` | GitHub variable, read by `deploy_web.yml` | no container, no env file, no secret needed |
-| `NIGHTSHIFT_MARKETING_POSTS` | GitHub variable, in the worker's env file | anything but `on`: the worker idles. No draft, no claim, no request to Telegram. It reports `running` with the detail "off" to `worker_status` (kind `other`) so `/health` shows it |
+| `NIGHTSHIFT_MARKETING_POSTS` | GitHub variable, in the worker's env file | anything but `on`: the worker idles. No draft, no claim, no request to Telegram. It still calls `report_worker_status` about once a minute (`running`, detail "off", kind `other`) so `/health` shows it |
 | `marketing_settings.enabled` | the database (0108) | `claim_marketing_post` hands out nothing |
 
 The worker cannot read the database switch (every API role's grant on the marketing tables is revoked, by design), so
 with the database switch off it still drafts, and claims return nothing. A draft left untouched for 30 days expires and
 its key is used up, so re-arm the database switch soon after the environment switch (the hand steps below do).
+To keep a first start from drafting a backlog, **a news item whose `shipped` date is more than 30 days old is not
+drafted** (`NEWS_MAX_AGE_DAYS` in `modules/marketing_content.py`; the log says how many were left out). Flip an item to
+`public: true` within 30 days of shipping, or edit its `shipped` date (and the file name's date, which must agree) to
+announce it later. After each drafting pass the log says how many new drafts are waiting for approval.
 
 **Each loop** (a minute apart): (1) at most once an hour, draft: every `docs/news/*.json` with `"public": true`
 (re-checked: shape, banned claims, not in the future; a file that fails is skipped by reason, never posted) and the
@@ -181,6 +187,12 @@ database, and rule 5 of `CLAUDE.md` forbids typing one). If any read fails, any 
 not an enforced entitlement, no price post is made (no default). The key is `price:<plan ids>:<yyyy-mm>`: at most one per
 month per plan set. The Uzbek and Russian wording of the template is a machine draft; the owner reads all three before
 approving.
+
+**Settling.** After a send, `complete_marketing_post` is retried up to three more times (0.5, 1 and 2 seconds apart, and
+not after 90 seconds from the claim, inside the 120-second lease) if the database does not answer. Only the settle is
+repeated, never the send. If every try fails, the lease runs out and the database ends the post as `dead` /
+`unconfirmed`; it is not sent again. At start the log names the origin host in use (host only) and whether the chat is a
+channel name or a numeric id, never the token or the chat itself.
 
 **What the message is.** One message, three labelled blocks in the fixed order (Oʻzbekcha, Русский, English), then
 `<site origin><link>`. The texts are the approved plain texts, only HTML-escaped (`& < >`). 4096 characters for a message,

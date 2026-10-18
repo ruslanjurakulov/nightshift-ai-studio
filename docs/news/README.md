@@ -9,7 +9,9 @@ agree). The slug becomes the post's idempotency key (`news:<slug>`), so it is un
 reused. The whole feature is described in [`docs/MARKETING_POSTS.md`](../MARKETING_POSTS.md).
 
 Nothing here is posted by itself. A file is only the *source text*. A person approves every
-post, one by one, on the owner page (which is a later change). Today nothing reads these files.
+post, one by one, on the owner page (which is a later change). The marketing worker (off by default) reads these files
+and drafts the `public: true` ones, but **only while `shipped` is at most 30 days old**: set `public: true` within 30 days of
+shipping, or edit the date (and the file name) to announce it later.
 
 ## The file
 

@@ -82,6 +82,8 @@ class FakeStore:
         self.completions = []
         self.lease_lost = False
         self.complete_raises = None
+        self.complete_fail_first = 0
+        self.complete_tries = 0
         self.claim_many = False
 
     def price_plans(self):
@@ -106,8 +108,11 @@ class FakeStore:
         return [self.approved.pop(0)]
 
     def complete(self, post_id, worker_id, c):
+        self.complete_tries += 1
         if self.complete_raises:
             raise self.complete_raises
+        if self.complete_tries <= self.complete_fail_first:
+            raise mw.StoreUnavailable("complete_marketing_post: HTTP 503")
         self.completions.append((post_id, c))
         if self.lease_lost:
             return False
@@ -131,7 +136,7 @@ class Reporter:
 def worker_for(store, base, chat="@nightshift_test", timeout=5.0, media_base=SUPABASE):
     client = nt.TelegramClient(TOKEN, base, session(), timeout=timeout)
     return mw.MarketingWorker(store, cp.ChannelSender(client, chat, ORIGIN, media_base), "marketing-test",
-                              news_dir=NEWS, now=lambda: NOW)
+                              news_dir=NEWS, now=lambda: NOW, sleep=lambda s: None)
 
 
 class Capture(logging.Handler):
@@ -233,6 +238,29 @@ class SwitchedOff(unittest.TestCase):
         self.assertIn("SUPABASE_SERVICE_KEY", box["text"])
 
 
+class StartupLog(unittest.TestCase):
+    def test_switched_on_it_says_which_origin_host_and_chat_kind_but_no_secret(self):
+        for chat, kind in (("@nightshift_test", "a channel name"), ("-1001234567890", "a numeric id")):
+            with self.subTest(chat=chat):
+                with captured() as box:
+                    mw.main(["--once"], env=env(NOTIFY_APP_ORIGIN="https://typo.example.test", MARKETING_TELEGRAM_CHAT=chat),
+                            store_factory=lambda: FakeStore(), session_factory=lambda: session(),
+                            reporter_factory=lambda w: Reporter(), install_signals=False)
+                text = box["text"]
+                self.assertIn("origin host typo.example.test", text)
+                self.assertIn(kind, text)
+                for secret in (TOKEN, SECRET_PART, SERVICE_KEY, SUPABASE, "proj.supabase", chat, "https://typo"):
+                    self.assertNotIn(secret, text)
+
+
+class ChatNames(unittest.TestCase):
+    def test_telegram_usernames_are_5_to_32_characters(self):
+        for good in ("@abcde", "@Test_chan1", "@" + "a" * 32, "-1001234567890", "12345"):
+            self.assertEqual(mw.missing_settings(env(MARKETING_TELEGRAM_CHAT=good)), [], good)
+        for bad in ("@abcd", "@" + "a" * 33, "@1abcde", "@ab cde", "abcde", "-100abc", "1234"):
+            self.assertEqual(len(mw.missing_settings(env(MARKETING_TELEGRAM_CHAT=bad))), 1, bad)
+
+
 class SwitchedOnButNotConfigured(unittest.TestCase):
     def test_it_names_what_is_missing_claims_nothing_and_says_failed(self):
         cases = {"TELEGRAM_CHANNEL_BOT_TOKEN": {"TELEGRAM_CHANNEL_BOT_TOKEN": ""},
@@ -308,6 +336,15 @@ class NewsDrafting(unittest.TestCase):
         self.assertEqual([d.key for d in drafts], ["news:good"])
         self.assertEqual(skipped, {"banned_claim": 2, "bad_text": 2, "bad_shipped": 2, "bad_link": 1, "bad_pr": 1,
                                    "bad_kind": 1, "unreadable": 1})
+
+    def test_an_item_shipped_more_than_30_days_ago_is_not_drafted(self):
+        self.assertEqual(mc.NEWS_MAX_AGE_DAYS, 30)
+        self.put("2026-09-18-edge.json", self.item(shipped="2026-09-18"))       # exactly 30 days before 2026-10-18
+        self.put("2026-09-17-old.json", self.item(shipped="2026-09-17"))        # 31 days
+        self.put("2026-01-02-ancient.json", self.item(shipped="2026-01-02"))
+        drafts, skipped = self.load()
+        self.assertEqual([d.key for d in drafts], ["news:edge"])
+        self.assertEqual(skipped, {"too_old": 2})
 
     def test_without_the_banned_list_nothing_is_drafted(self):
         self.put("2026-10-15-good.json", self.item())
@@ -634,6 +671,50 @@ class Sending(unittest.TestCase):
             w.send_pass()
         self.assertEqual(len(self.srv.fake.calls), 1)
         self.assertIn("will not be sent again", box["text"])
+
+    def test_a_settle_that_fails_at_first_is_retried_and_the_post_ends_sent_without_a_second_send(self):
+        store = FakeStore(approved=[post_row()])
+        store.complete_fail_first = 3
+        naps = []
+        w = worker_for(store, self.srv.base)
+        w._sleep = naps.append
+        with captured() as box:
+            c, _ = w.send_pass()
+        self.assertEqual(c.outcome, "sent")
+        self.assertEqual(store.complete_tries, 4)
+        self.assertEqual([x[0] for x in store.completions], [POST_ID])
+        self.assertEqual(naps, [0.5, 1.0, 2.0], "short backoff, well inside the 120 s lease")
+        self.assertEqual(len(self.srv.fake.calls), 1, "only the settle is repeated, never the send")
+        self.assertIn("trying again", box["text"])
+
+    def test_when_every_settle_fails_it_is_logged_and_the_post_is_not_sent_again(self):
+        store = FakeStore(approved=[post_row()])
+        store.complete_fail_first = 99
+        w = worker_for(store, self.srv.base)
+        with captured() as box:
+            w.send_pass()
+            w.send_pass()
+        self.assertEqual(store.complete_tries, 4)
+        self.assertEqual(len(self.srv.fake.calls), 1)
+        self.assertIn("after 4 tries", box["text"])
+        self.assertIn("will not be sent again", box["text"])
+
+    def test_settling_gives_up_early_when_the_lease_is_nearly_over(self):
+        store = FakeStore(approved=[post_row()])
+        store.complete_fail_first = 99
+        ticks = iter([0.0, 95.0, 96.0, 97.0, 98.0])
+        w = worker_for(store, self.srv.base)
+        w._clock = lambda: next(ticks)
+        with captured():
+            w.send_pass()
+        self.assertEqual(store.complete_tries, 1)
+
+    def test_a_lost_lease_answer_is_not_retried(self):
+        store = FakeStore(approved=[post_row()])
+        store.lease_lost = True
+        with captured():
+            worker_for(store, self.srv.base).send_pass()
+        self.assertEqual(store.complete_tries, 1)
 
     def test_the_log_carries_codes_not_words(self):
         _, _, _, text = self.one("@nightshift_test")

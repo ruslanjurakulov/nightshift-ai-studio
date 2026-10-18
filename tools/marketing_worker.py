@@ -41,6 +41,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from urllib.parse import urlsplit
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
@@ -56,6 +57,10 @@ logger = logging.getLogger("marketing_worker")
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 LEASE_SECONDS = 120
+#: After a send, settling is retried on a short backoff (the post is never sent again), and abandoned this
+#: many seconds after the claim: well inside the lease, so a late settle cannot race the database's own.
+SETTLE_BACKOFF_SECONDS = (0.5, 1.0, 2.0)
+SETTLE_GIVE_UP_AFTER_SECONDS = 90.0
 IDLE_SECONDS = 60.0
 DRAFT_EVERY_SECONDS = 3600.0
 #: A refused bot token is nobody's post's fault: the whole worker stops asking for this long.
@@ -65,7 +70,7 @@ REPORT_EVERY_SECONDS = 30.0
 #: The Bot API's timeout for a media post: Telegram fetches the file from our storage itself.
 SEND_TIMEOUT_SECONDS = 30.0
 
-_CHAT = re.compile(r"^(@[A-Za-z][A-Za-z0-9_]{3,31}|-?[0-9]{5,20})$")
+_CHAT = re.compile(r"^(@[A-Za-z][A-Za-z0-9_]{4,31}|-?[0-9]{5,20})$")
 
 
 class StoreUnavailable(RuntimeError):
@@ -165,8 +170,10 @@ class MarketingStore:
 
 class MarketingWorker:
     def __init__(self, store: Any, sender: Any, worker_id: str, *, news_dir: Path = mc.NEWS_DIR,
-                 now: Callable[[], _dt.datetime] = lambda: _dt.datetime.now(_dt.timezone.utc)):
+                 now: Callable[[], _dt.datetime] = lambda: _dt.datetime.now(_dt.timezone.utc),
+                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic):
         self.store, self.sender, self.worker_id = store, sender, worker_id
+        self._sleep, self._clock = sleep, clock
         self._news_dir = news_dir
         self._now = now
 
@@ -185,6 +192,9 @@ class MarketingWorker:
         for reason, n in skipped.items():
             if reason != "not_public":
                 bump("news_skipped_" + reason, n)
+        if skipped.get("too_old"):
+            logger.info("%d public news item(s) shipped more than %d days ago were not drafted "
+                        "(edit their date to announce them)", skipped["too_old"], mc.NEWS_MAX_AGE_DAYS)
         drafts = list(news)
         plans = self.store.price_plans()
         price = mc.price_draft(plans, self._now(), self._news_dir) if plans else None
@@ -207,24 +217,36 @@ class MarketingWorker:
                 bump("unchanged")
         return counts
 
+    def _settle(self, post_id: str, completion: cp.Completion, claimed_at: float) -> bool:
+        """Tell the database what happened, retrying a database that did not answer. Only the SETTLE is
+        repeated, never the send. False means the database said the lease was lost; True otherwise, including
+        when every try failed (the lease then runs out and the post ends as dead/unconfirmed, not resent)."""
+        for attempt in range(len(SETTLE_BACKOFF_SECONDS) + 1):
+            try:
+                return self.store.complete(post_id, self.worker_id, completion)
+            except StoreUnavailable as e:
+                last = attempt == len(SETTLE_BACKOFF_SECONDS)
+                if last or self._clock() - claimed_at > SETTLE_GIVE_UP_AFTER_SECONDS:
+                    logger.warning("could not settle post %s (%s) after %d tries; it will not be sent again",
+                                   post_id[:8], e, attempt + 1)
+                    return True
+                logger.warning("could not settle post %s (%s); trying again", post_id[:8], e)
+                self._sleep(SETTLE_BACKOFF_SECONDS[attempt])
+        return True
+
     def send_pass(self) -> Tuple[Optional[cp.Completion], float]:
         """Claim at most ONE approved post, send it, settle it. Returns (what was reported or None when nothing
         was due, seconds the whole worker should wait)."""
         rows = self.store.claim(self.worker_id)
         if not rows:
             return None, 0.0
+        claimed_at = self._clock()
         post = rows[0]                                  # one post per loop, whatever the database returned
         post_id = str(post.get("post_id") or "")
         completion = self.sender.send(post)
         if completion.refused:
             logger.warning("post %s was not sent: %s", post_id[:8], completion.refused)
-        try:
-            settled = self.store.complete(post_id, self.worker_id, completion)
-        except StoreUnavailable as e:
-            # Sent (maybe) but not settled: the lease runs out and the post ends as dead/unconfirmed. It is
-            # NOT sent again.
-            logger.warning("could not settle post %s (%s); it will not be sent again", post_id[:8], e)
-            settled = True
+        settled = self._settle(post_id, completion, claimed_at)
         if not settled:
             logger.warning("post %s: the lease was lost before it was settled; the database ends it as "
                            "unconfirmed and it is not sent again", post_id[:8])
@@ -357,6 +379,12 @@ def main(argv: Optional[List[str]] = None, *, env: Optional[Mapping[str, str]] =
     store = store_factory() if store_factory else MarketingStore(url, key)
     sender = build_sender(env, session_factory() if session_factory else requests.Session())
     worker = MarketingWorker(store, sender, worker_id)
+    chat = (env.get("MARKETING_TELEGRAM_CHAT") or "").strip()
+    # Host only: a mistyped NOTIFY_APP_ORIGIN shows here before a post carries it. Never the token, the chat
+    # id, or the Supabase URL (a repository secret).
+    logger.info("marketing posts are ON: links use the origin host %s; the chat is %s",
+                urlsplit(nt.valid_app_origin(env.get("NOTIFY_APP_ORIGIN")) or "").netloc,
+                "a channel name" if chat.startswith("@") else "a numeric id")
     next_draft = -1e9
     while not stop.is_set():
         pause = 0.0
@@ -371,6 +399,8 @@ def main(argv: Optional[List[str]] = None, *, env: Optional[Mapping[str, str]] =
             next_draft = time.monotonic() + DRAFT_EVERY_SECONDS
             if counts:
                 logger.info("drafting: %s", ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+            if counts.get("created"):
+                logger.info("%d new draft(s) waiting for approval", counts["created"])
         try:
             completion, pause = worker.send_pass()
             if completion is not None and completion.error_code == "not_configured":

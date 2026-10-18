@@ -28,6 +28,11 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 NEWS_DIR = REPO_DIR / "docs" / "news"
 
 LANGS = ("uz", "ru", "en")
+#: A news item whose `shipped` date is older than this is not drafted. The worker cannot see the database
+#: switch, and a draft nobody approves expires after 30 days and uses up its key for good, so drafting a
+#: backlog at the first start would burn it. Flip an item to `public: true` within this many days of
+#: shipping, or edit its date (docs/MARKETING_POSTS.md).
+NEWS_MAX_AGE_DAYS = 30
 TEXT_MIN, TEXT_MAX = 20, 260
 _FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.json$")
 _LINK = re.compile(r"^/[a-z0-9][a-z0-9/_-]{0,78}$")
@@ -126,6 +131,9 @@ def load_news(news_dir: Path = NEWS_DIR, today: Optional[_dt.date] = None) -> Tu
         problem = _news_problem(item, m.group(1), today)
         if problem:
             skip(problem)
+            continue
+        if (today - _dt.date.fromisoformat(item["shipped"])).days > NEWS_MAX_AGE_DAYS:
+            skip("too_old")
             continue
         try:
             joined = "\n".join(item["text"][lang] for lang in LANGS)

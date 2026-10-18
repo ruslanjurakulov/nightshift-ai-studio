@@ -153,7 +153,7 @@ class WorkflowMappingTests(unittest.TestCase):
         self.assertNotIn("pull_request_target", on)
         self.assertEqual(on["push"]["branches"], ["main"])
         self.assertIn("workflow_dispatch", on)
-        for path in ("command-center/**", "deploy/**", ".github/workflows/deploy_web.yml"):
+        for path in ("command-center/**", "deploy/**", ".github/workflows/deploy_web.yml", "docs/news/**"):
             self.assertIn(path, on["push"]["paths"])
 
     def test_one_deploy_at_a_time_and_never_cancelled_halfway(self):
@@ -1723,10 +1723,10 @@ class BuildServiceEnvTests(unittest.TestCase):
         self.assertIn("NIGHTSHIFT_MARKETING_POSTS is in deploy/.env.marketing.example but not mapped", "\n".join(errors))
 
     def test_the_marketing_chat_is_a_channel_name_or_a_numeric_id(self):
-        for good in ("@nightshiftaistudio", "@Test_chan1", "-1001234567890", "123456"):
+        for good in ("@nightshiftaistudio", "@Test_chan1", "@abcde", "@" + "a" * 32, "-1001234567890", "123456"):
             _, errors = self.build("marketing", MARKETING_TELEGRAM_CHAT=good)
             self.assertEqual(errors, [], good)
-        for bad in ("nightshift", "@a", "https://t.me/nightshift", "@night shift", "-100abc", "@1abcd"):
+        for bad in ("nightshift", "@a", "@abcd", "@" + "a" * 33, "https://t.me/nightshift", "@night shift", "-100abc", "@1abcd"):
             _, errors = self.build("marketing", MARKETING_TELEGRAM_CHAT=bad)
             self.assertIn("MARKETING_TELEGRAM_CHAT must be @channelname", "\n".join(errors), bad)
         _, errors = self.build("marketing", NOTIFY_APP_ORIGIN="http://app.example.com")

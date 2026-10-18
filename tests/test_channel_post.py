@@ -73,6 +73,10 @@ def sized_texts(total, link_url=ORIGIN + "/pricing"):
 
 
 class MessageBuilder(unittest.TestCase):
+    def test_the_limits_are_telegrams_as_literals(self):
+        self.assertEqual(cp.MESSAGE_LIMIT, 4096)
+        self.assertEqual(cp.CAPTION_LIMIT, 1024)
+
     def test_one_message_three_labelled_blocks_in_the_fixed_order_then_the_link(self):
         out = cp.build_outgoing("@chan_test", {"texts": TEXTS, "link": "/pricing", "media_path": None}, ORIGIN, MEDIA_BASE)
         self.assertEqual(out.method, "sendMessage")
@@ -238,6 +242,11 @@ class Classification(unittest.TestCase):
         for status in (400, 413, 409):
             c = self.done(status, {"ok": False, "description": "Bad Request: wrong HTTP URL specified"})
             self.assertEqual((c.outcome, c.error_code), ("failed", "bad_request"), status)
+
+    def test_a_500_is_dead_not_retry_straight_from_the_classifier(self):
+        r = cp.classify_channel_response(500, {})
+        self.assertEqual((r.outcome, r.error_code), ("dead", "http_5xx"))
+        self.assertNotEqual(r.outcome, "retry")
 
     def test_a_5xx_is_final_even_though_the_customer_sender_retries_it(self):
         self.assertEqual(nt.classify_response(500, {}).outcome, "retry", "the shared classifier calls a 5xx retryable")

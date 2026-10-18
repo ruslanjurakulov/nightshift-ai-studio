@@ -56,7 +56,7 @@ OPTIONAL: Dict[str, frozenset] = {
 }
 ORIGIN_KEYS = ("NOTIFY_APP_ORIGIN", "APP_ORIGIN")
 CHAT_KEYS = ("MARKETING_TELEGRAM_CHAT",)
-CHAT = re.compile(r"^(@[A-Za-z][A-Za-z0-9_]{3,31}|-?[0-9]{5,20})$")
+CHAT = re.compile(r"^(@[A-Za-z][A-Za-z0-9_]{4,31}|-?[0-9]{5,20})$")
 ORIGIN = re.compile(r"^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$")
 
 
