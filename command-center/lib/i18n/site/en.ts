@@ -470,6 +470,7 @@ export const siteEn = {
     telegram: "Telegram channel",
     instagram: "Instagram",
     x: "X",
+    youtube: "YouTube",
   },
   solutions: {
     meta: {

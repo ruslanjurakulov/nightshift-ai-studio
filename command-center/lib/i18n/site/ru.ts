@@ -459,6 +459,7 @@ export const siteRu: SiteDictionary = {
     telegram: "Telegram-канал",
     instagram: "Instagram",
     x: "X",
+    youtube: "YouTube",
   },
   solutions: {
     meta: {
