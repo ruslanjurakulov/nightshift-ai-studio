@@ -1145,6 +1145,20 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   color: var(--ns-text);
 }
 .st-footer nav a:hover { color: var(--st-act-ink); }
+/* The brand block's platforms: 44px icon buttons (a phone tap target), the footer's own colours, the studio's focus ring. */
+.st-footer .st-social { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; margin-left: -11px; }
+.st-footer .st-social a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--ns-text-dim);
+  transition: color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
+}
+.st-footer .st-social a:hover { color: var(--st-act-ink); background: var(--ns-hover); }
+.st-footer .st-social a:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 /* The footer's image credits: collapsed, one line each from lib/site/media.ts. */
 .st-credits { border-top: 1px solid color-mix(in srgb, var(--ns-rule) 40%, var(--ns-rule-strong)); }
 .st-credits summary { display: flex; align-items: center; min-height: 44px; font-size: 14px; font-weight: 600; color: var(--ns-text-dim); cursor: pointer; }

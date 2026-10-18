@@ -455,6 +455,9 @@ export const siteUz: SiteDictionary = {
     signIn: "Kirish",
     cookies: "Cookie va xotira",
     note: "Tun yarmida yaratilgan. Siz aytganda nashr qilinadi.",
+    social: "Ijtimoiy tarmoqlar",
+    telegram: "Telegram kanali",
+    instagram: "Instagram",
   },
   solutions: {
     meta: {
