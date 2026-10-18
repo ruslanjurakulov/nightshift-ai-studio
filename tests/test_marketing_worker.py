@@ -362,7 +362,7 @@ class NewsDrafting(unittest.TestCase):
 
 class Drafting(unittest.TestCase):
     def worker(self, store, news_dir):
-        return mw.MarketingWorker(store, mock.Mock(), "marketing-test", news_dir=news_dir, now=lambda: NOW)
+        return mw.MarketingWorker(store, mock.Mock(), "marketing-test", news_dir=news_dir, now=lambda: NOW, origin=ORIGIN)
 
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())
@@ -407,9 +407,65 @@ class Drafting(unittest.TestCase):
     def test_the_drafting_pass_only_drafts_it_cannot_approve_or_send(self):
         store = FakeStore(plans=PLANS)
         sender = mock.Mock()
-        mw.MarketingWorker(store, sender, "marketing-test", news_dir=self.dir, now=lambda: NOW).draft_pass()
+        mw.MarketingWorker(store, sender, "marketing-test", news_dir=self.dir, now=lambda: NOW, origin=ORIGIN).draft_pass()
         sender.send.assert_not_called()
         self.assertEqual((store.claims, store.completions), (0, []))
+
+
+class DraftsTheSenderWouldRefuse(unittest.TestCase):
+    """A draft the sender would refuse must never reach the owner's screen: approved there, it would fail at send time
+    and use up its key and a slot. The drafting pass runs the sender's own render over each draft first."""
+
+    GOOD = mc.Draft(key="news:good", kind="news", texts=dict(TEXTS), source_ref="pr:#1", link="/editor")
+
+    def draft(self, key, texts=None, link="/editor"):
+        return mc.Draft(key=f"news:{key}", kind="news", texts=texts if texts is not None else dict(TEXTS),
+                        source_ref="pr:#2", link=link)
+
+    def run_pass(self, drafts, origin=ORIGIN):
+        store = FakeStore(plans=None)
+        w = mw.MarketingWorker(store, mock.Mock(), "marketing-test", news_dir=NEWS, now=lambda: NOW, origin=origin)
+        with mock.patch.object(mc, "load_news", return_value=(list(drafts), {})), self.assertLogs(mw.logger, "WARNING") as logs:
+            mw.logger.warning("marker")  # assertLogs needs one record even when nothing is refused
+            counts = w.draft_pass()
+        return store, counts, "\n".join(logs.output)
+
+    def test_every_refusal_code_of_the_sender_keeps_the_draft_out_and_is_counted(self):
+        long = {l: "x" * 1400 for l in ("uz", "ru", "en")}
+        email = dict(TEXTS, en="Write to someone@example.com for the shapes.")
+        cases = {
+            "too_long": self.draft("long", long),
+            "unsafe_text": self.draft("email", email),
+            "bad_link": self.draft("link", link="/Bad Link"),
+            "bad_texts": self.draft("texts", {"uz": TEXTS["uz"], "ru": TEXTS["ru"]}),
+        }
+        for code, bad in cases.items():
+            with self.subTest(code):
+                store, counts, _ = self.run_pass([bad, self.GOOD])
+                self.assertEqual(counts, {"not_drafted_" + code: 1, "created": 1})
+                self.assertEqual(sorted(store.drafts), ["news:good"])
+
+    def test_without_a_site_origin_a_post_with_a_link_is_not_drafted_either(self):
+        store, counts, _ = self.run_pass([self.GOOD, self.draft("nolink", link=None)], origin=None)
+        self.assertEqual(counts, {"not_drafted_no_origin": 1, "created": 1})
+        self.assertEqual(sorted(store.drafts), ["news:nolink"])
+
+    def test_the_log_carries_the_count_and_the_codes_never_the_words(self):
+        email = dict(TEXTS, en="Write to someone@example.com for the shapes.")
+        _, _, log = self.run_pass([self.draft("email", email), self.GOOD])
+        self.assertIn("1 draft(s) the sender would refuse were not stored (unsafe_text=1)", log)
+        self.assertNotIn("someone@example.com", log)
+        self.assertNotIn(TEXTS["en"], log)
+
+    def test_the_decision_is_the_senders_own_render(self):
+        for texts, link, origin, media in ((TEXTS, "/editor", ORIGIN, False), ({l: "x" * 400 for l in TEXTS}, None, ORIGIN, True),
+                                           ({l: "x" * 340 for l in TEXTS}, None, ORIGIN, True)):
+            try:
+                cp.render(texts, link, origin, media)
+                expected = None
+            except cp.Refused as e:
+                expected = e.code
+            self.assertEqual(cp.preflight(texts, link, origin, media), expected)
 
 
 class PricePost(unittest.TestCase):

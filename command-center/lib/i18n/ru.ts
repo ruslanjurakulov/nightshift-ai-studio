@@ -4,6 +4,7 @@ import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
+import { marketingRu } from "./marketing/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
@@ -26,6 +27,7 @@ export const ru: Dictionary = {
   ownerShell: ownerShellRu,
   ownerSafety: ownerSafetyRu,
   ownerRpc: ownerRpcRu,
+  marketing: marketingRu,
   ownerTruth: ownerTruthRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
@@ -89,6 +91,7 @@ export const ru: Dictionary = {
     security: "Безопасность",
     onboarding: "С чего начать",
     approvals: "Согласования",
+    marketing: "Маркетинг",
     alerts: "Оповещения",
     audit: "Журнал аудита",
     developers: "Разработчикам",

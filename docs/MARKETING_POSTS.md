@@ -1,7 +1,8 @@
 # Marketing posts: the brand channel (Telegram first)
 
-Status: **designed; slices 1 to 5 are built and everything is OFF** (migration 0108, `docs/news/`, the sender and the
-worker). Nothing posts anything today: the worker is not deployed until the owner switches it on. "(unverified)" marks a fact that was not confirmed in the repository or in the official
+Status: **designed; slices 1 to 6 are built and everything is OFF** (migration 0108, `docs/news/`, the sender, the
+worker and the owner page). Nothing posts anything today: the worker is not deployed and the page shows only an "off" note
+until the owner switches them on. "(unverified)" marks a fact that was not confirmed in the repository or in the official
 documentation.
 
 ## What the owner decided
@@ -31,7 +32,7 @@ documentation.
 ```
 docs/news/<date>-<slug>.json ──► marketing worker ──► marketing_draft_upsert ──► marketing_posts (draft)
 plans / plan_entitlements   ──►  (tools/marketing_worker.py)                           │
-                                                                              owner page (later)
+                                                                              owner page /{channel}/marketing
                                               owner_marketing_edit / approve / reject / kill
                                                                                        │ approved
 marketing worker ◄── claim_marketing_post (one post, under a lock) ◄──────────────────┘
@@ -123,7 +124,7 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
   is false, a password-only admin session passes `owner_guard()` and could approve a public post
   (`docs/security/ADMIN_MFA.md`).
 - **No auto-publish.** The database allows `sending` only from `approved` with a matching hash and a live approval.
-  `marketing_settings.enabled` is false until the owner re-arms it. Later, the app and the worker add their own
+  `marketing_settings.enabled` is false until the owner re-arms it. The app (the owner page) and the worker share one more
   switch (`NIGHTSHIFT_MARKETING_POSTS`, default off); both must be on.
 - **Unknown is not a number.** Prices and limits come only from `plans` / `plan_entitlements` at draft time; facts
   carry `facts_as_of`; a failed read produces no draft, not a default. The free entry is "a one-time welcome grant
@@ -148,13 +149,86 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
 | 3 | Telegram sender: `modules/channel_post.py` (`sendMessage`, `sendPhoto`, `sendVideo`), the fake server | built, unused until the worker is switched on |
 | 4 | `tools/marketing_worker.py`, compose service `marketing-worker` (profile `marketing`), `deploy/.env.marketing.example`, deploy wiring | built, **off by default** |
 | 5 | News drafting from `docs/news`, price template from the database (`modules/marketing_content.py`) | built, off with the worker |
-| 6 | Owner page `/{channel}/marketing`, APIs, en/ru/uz strings, confirm sheet, all states, 390 px | not started |
+| 6 | Owner page `/{channel}/marketing`, `POST /api/marketing`, en/ru/uz strings, confirm sheets, all states, 390 px (below) | built, **off by default** (`NIGHTSHIFT_MARKETING_POSTS`) |
 | 7 | Operator-bot alert kind `marketing` (a count and a link only) | not started |
 | 8 | Showcase mark/revoke, public bucket, showcase posts (the biggest unknown: where a finished video file lives and how to export it) | not started |
 | 9 | A currency amount in price posts (a timestamped capture); Instagram | not decided |
 
-Until slice 6 there is no screen to approve anything, so no draft can reach the channel even with every switch on:
-approval is the owner functions of 0108 (`owner_marketing_approve`), which the app does not call yet.
+Approval is the owner functions of 0108 (`owner_marketing_approve`), and the only screen that calls them is the owner
+page below. A draft reaches the channel only after a person approved exactly the words on the screen, with every switch on.
+
+## The owner page (slice 6)
+
+`/{channel}/marketing`, in the operator's navigation (System group) and in All sections on a phone. Behind
+`guardOperatorPage()` like every operator page (signed out goes to `/login`, anyone else gets 404, a missing second step goes
+to the code page).
+
+**The switch.** `NIGHTSHIFT_MARKETING_POSTS`, read per request, exactly `on` (surrounding spaces ignored, as the worker does).
+It is the **same repository variable the worker reads**, mapped into the web container as `WEBENV_NIGHTSHIFT_MARKETING_POSTS`
+(`.github/workflows/deploy_web.yml`, `deploy/.env.web.example`), so one variable switches both. Anything else: the page shows an
+"off" note, makes **no database read at all**, and `POST /api/marketing` answers 404. `MARKETING_TELEGRAM_CHAT` (the channel's
+public `@name` or numeric chat id, also the worker's variable, validated by the deploy's own rule) and `NOTIFY_APP_ORIGIN` are
+mapped the same way so the confirm sheet can name the channel it publishes to and the preview can count the link. If the channel
+is missing or not valid the page says so, never guesses, and **disables Approve** (the sheet could not say where it goes public).
+
+**Reads** (as the signed-in owner, anon key and cookie session, no service key): `owner_marketing_get()` for the poster state, the
+week's count and the waiting approvals, and the newest 40 `marketing_posts` (`facts` is not read). One unreadable row, a failed
+read or a settings answer without `enabled` makes the whole page "could not read, Retry": never an empty list, never "0 of 2".
+Migration 0108 not applied shows "not installed yet".
+
+**What it shows.** The poster state (on, or off), the channel, "posts this week: n of 2" and how many approved posts wait; the
+last send; then each post, drafts and approvals first: kind, status, source (`pr:#N`), age, and the **preview of exactly what
+Telegram will show** (the three language blocks in the fixed order uz, ru, en, then the link and the media) with the character
+count of each language and of the whole message against the limit (4096, 1024 with a photo or video), counted in UTF-16 units.
+The preview is a TypeScript mirror of `modules/channel_post.py` (`lib/marketing-posts.ts` `buildPreview`); it cannot import
+Python, so `tests/fixtures/marketing_message_cases.json` is run through both the real renderer
+(`tests/test_marketing_message_fixture.py`) and the mirror (`command-center/tests/marketing-posts.test.ts`), for every refusal code
+the sender can give (`bad_texts`, `bad_link`, `no_origin`, `unsafe_text`, `too_long`), including the key- and e-mail-shaped
+text rule of `modules/tg_text.sanitize_outgoing` and a host's port kept as typed. The links are completed with the origin the
+worker uses: `NOTIFY_APP_ORIGIN` when set (mapped into the web env), else the site's own `APP_ORIGIN`; a set but invalid value, or
+neither, is unknown, and then the link is left out of the count and the total reads "at least".
+
+**What it does**, all through `POST /api/marketing` (one route, an `action`: `edit`, `approve`, `reject`, `kill`; there is no
+other, so no "send now" and no "test post", in any language or in the code):
+
+| Action | Function | Guard on the screen |
+|---|---|---|
+| Edit the three texts | `owner_marketing_edit(id, texts)` | live counts and preview; Save is off for an empty language or an over-long message; editing an **approved** post asks first, because saving voids the approval |
+| Approve | `owner_marketing_approve(id, content_hash)` | confirm sheet with the channel name, the kind, the attached file (when there is one), all three texts, the link, the message size and "this goes public"; a typed word (`publish` / `опубликовать` / `nashr`); sends **the hash this page showed**, so a post that changed is refused with `content_changed` and the page reloads. **Disabled, with the reason on the screen,** while the poster is off (`poster_off`), while the channel is unknown, and while the page's own preview says the sender would refuse the post (too long for a message or, with a photo or video, a caption; key- or address-shaped text; a bad link). Edit and Reject stay available |
+| Reject | `owner_marketing_reject(id, reason)` | reason of 8 to 300 characters, then a confirm sheet; an approved post is withdrawn |
+| Stop the poster | `owner_marketing_kill(true)` | confirm sheet |
+| Switch the poster on | `owner_marketing_kill(false, reason)` | a written reason (8 to 300), a confirm sheet and the typed word |
+
+Every refusal (`poster_off`, `content_changed`, `cap_full`, `expired`, `facts_stale`, `bad_texts`, `not_draft`, `reason_required`,
+`mfa_required`, `rate_limited` and the route's own) has a sentence in English, Russian and Uzbek, with the figures the database
+sent; the database's own English text is dropped. A page made stale by a refusal reloads when the sheet closes.
+
+**The database's second-factor gate** (0107, `admin_aal2_required`) is shown read only in the poster panel (the same `owner_security_get` read as the Security page): on, off with the risk said (a password-only session can approve a public post), or unknown when it could not be read, never "off" for an unreadable answer. The page has no control for it.
+
+**The guard stack of the route** is the owner routes' own (`handleOwnerPost`, now taking the switch as a parameter): same-origin
+first (403), the switch (404), signed in (401), owner/admin (403), the application second-factor gate (`guardAdminPost`), a capped
+JSON body validated by `parseMarketing` (400 with a code), then **one** rpc as the signed-in user. The database repeats the checks
+(`owner_guard()`: platform admin, `admin_aal_ok()`, a rate limit) and writes the audit trail.
+
+**How a send looks afterwards.** `sent`: when. `dead` (unconfirmed, or a 5xx): **"check the channel, do not resend"**; the post
+keeps its slot for the week and is never sent again by itself, and the page offers no resend. `failed` and a retrying `approved`
+post name the fix for their code: `blocked` (the bot is not a channel administrator: add it with only "Post messages"),
+`not_configured` (Telegram refused the token: replace `TELEGRAM_CHANNEL_BOT_TOKEN`, a secret that is never typed on this page),
+`bad_request` (check `MARKETING_TELEGRAM_CHAT` and the text), `rate_limited` and `network` (it retries by itself), `expired`.
+
+**How to approve, in this order** (the poster is off until you do step 2, and the page will not let you approve before it):
+
+1. Switch the worker on: the variables `NIGHTSHIFT_MARKETING_WORKER` and `NIGHTSHIFT_MARKETING_POSTS` = `on`, then run Deploy web
+   (this also turns the page on). Point `MARKETING_TELEGRAM_CHAT` at the **test** channel first.
+2. Re-arm the database switch: on the page, "Switch the poster on", with a reason, the confirm sheet and the typed word (or
+   `owner_marketing_kill(false, '<reason>')` in the SQL editor). Check first that the 0107 second-factor gate is on
+   (`docs/security/ADMIN_MFA.md`): until it is, a password-only admin session passes `owner_guard()`.
+3. Only then open a draft, read the preview in all three languages (the Russian and Uzbek wording is a machine draft), and
+   **Approve**. Nothing is sent by the tap: the worker posts it within a few minutes, while the poster is on, inside the week's
+   two slots. Look at the channel.
+
+Not verified here: the page has not been opened on a phone or against a live database; it is covered by unit and component tests
+and by `next build`, not by a browser.
 
 ## The worker (slices 3 to 5)
 
@@ -179,7 +253,10 @@ announce it later. After each drafting pass the log says how many new drafts are
 
 **Each loop** (a minute apart): (1) at most once an hour, draft: every `docs/news/*.json` with `"public": true`
 (re-checked: shape, banned claims, not in the future; a file that fails is skipped by reason, never posted) and the
-month's price post; (2) claim **at most one** approved post, send it, settle it.
+month's price post. **Each draft is first run through the sender's own `render`** (`channel_post.preflight`); a draft the sender
+would refuse (`too_long`, `unsafe_text`, `bad_link`, `bad_texts`, or `no_origin` for a link with no usable site origin) is not
+stored, so it never reaches the owner only to fail after approval and use up its key. The log carries the count and the codes,
+never the words; (2) claim **at most one** approved post, send it, settle it.
 
 **Price post.** Built from `plans`, `plan_entitlements` and `entitlement_keys` only: the plan name, credits per month and
 concurrency of each public paid plan, plus the link `/pricing`. **No currency amount, ever** (there is none in the
@@ -240,9 +317,9 @@ and asserts no fragment of it appears in any log line, report, result or excepti
    The log ends with `marketing-worker after 20s: state=running`. (With only the first variable on, the container
    exists and idles; with neither, there is no container and no env file.)
 5. Check the 0107 second-factor gate is on (`select admin_aal2_required from public.owner_security_settings;`).
-   Then re-arm the database switch (`owner_marketing_kill(false, '<reason>')`, later the Marketing page) **before**
-   approving anything: approving is refused while the poster is off.
-6. Approve a draft (`owner_marketing_approve`; the owner page is slice 6) and watch it arrive in the **test channel**.
+   Then re-arm the database switch (the Marketing page, "Switch the poster on", or `owner_marketing_kill(false, '<reason>')`)
+   **before** approving anything: approving is refused while the poster is off.
+6. Approve a draft on the Marketing page (the order is spelled out in "The owner page") and watch it arrive in the **test channel**.
    Check all three blocks, the link and the escaping. Only then change `MARKETING_TELEGRAM_CHAT` to
    `@nightshiftaistudio` and re-run Deploy web. There is deliberately **no "send test" button** (a test would be a
    public post) and no second chat variable in the database contract: the test channel is the same variable pointed

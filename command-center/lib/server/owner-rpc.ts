@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/auth/roles";
 import { guardAdminPost } from "@/lib/server/admin-post-guard";
 import { rejectCrossOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
-import { ownerReplyToHttp, ownerRpcErrorToHttp, parseOwnerRpcFlag, type OwnerHttp, type OwnerParse } from "@/lib/owner-rpc";
+import { ownerReplyToHttp, ownerRpcErrorToHttp, parseOwnerRpcFlag, type OwnerCall, type OwnerHttp } from "@/lib/owner-rpc";
 
 /**
  * NIGHTSHIFT_OWNER_RPC — a server env var, `on` or `off` (default off).
@@ -45,10 +45,18 @@ const reply = (status: number, body: Record<string, unknown>) => NextResponse.js
  *
  * Nothing here spends, publishes or renders: it changes credits, prices and the roster, which the database audits.
  */
-export async function handleOwnerPost(request: Request, parse: (body: unknown) => OwnerParse): Promise<Response> {
+export async function handleOwnerPost(
+  request: Request,
+  parse: (body: unknown) => { ok: true; call: OwnerCall } | { ok: false; error: string },
+  /**
+   * Which switch gates the route. The owner routes use NIGHTSHIFT_OWNER_RPC; the marketing route passes its own
+   * (NIGHTSHIFT_MARKETING_POSTS) and gets the identical stack of checks in the identical order.
+   */
+  flagOn: () => boolean = ownerRpcOn,
+): Promise<Response> {
   const crossOrigin = rejectCrossOrigin(request);
   if (crossOrigin) return crossOrigin;
-  if (!ownerRpcOn()) return reply(404, { error: "not_found" });
+  if (!flagOn()) return reply(404, { error: "not_found" });
 
   const user = await getUser();
   if (!user) return reply(401, { error: "unauthorized" });
