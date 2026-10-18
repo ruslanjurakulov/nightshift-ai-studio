@@ -167,13 +167,13 @@ describe("with the switch on", () => {
 
   it("a post of a kind this page does not know is listed as Other next to the known one, not 'could not read'", async () => {
     results.marketing_posts = {
-      data: [post(), post({ id: "22222222-2222-3333-4444-555555555555", kind: "promo", target: "instagram", future_field: 1 })],
+      data: [post(), post({ id: "22222222-2222-3333-4444-555555555555", kind: "banner", target: "instagram", future_field: 1 })],
       error: null,
     };
     s.client = stub().client;
     const html = await page();
     expect(has(html, m.failed)).toBe(false);
-    expect(has(html, "Other kind: promo")).toBe(true);
+    expect(has(html, "Other kind: banner")).toBe(true);
     expect(has(html, "A new feature.")).toBe(true);
     expect(has(html, m.other.cannotApprove)).toBe(true);
   });

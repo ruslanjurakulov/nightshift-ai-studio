@@ -594,7 +594,7 @@ def view_security(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
 # -- /marketing (information only) -------------------------------------------
 
 def marketing_kind_word(lang: str, kind) -> str:
-    """news | showcase | price in the owner's language; a kind this code does not
+    """news | showcase | price | promo | custom in the owner's language; a kind this code does not
     know yet is "other" (it is still a post, never hidden); no kind is "unknown"."""
     if kind in analysis.MARKETING_KINDS or kind == analysis.MARKETING_OTHER_KIND:
         return t(lang, f"mk.{kind}")

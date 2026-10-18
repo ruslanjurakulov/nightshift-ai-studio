@@ -1378,6 +1378,7 @@ def test_nothing_in_the_repository_calls_the_new_objects_but_the_poster_and_the_
         "command-center/app/(app)/[channel]/marketing/page.tsx",
         "command-center/app/api/marketing/route.ts",
         "command-center/components/marketing/MarketingBoard.tsx",
+        "command-center/components/marketing/NewPostPanel.tsx",
         "command-center/lib/marketing-posts.ts",
         "command-center/lib/server/marketing.ts",
     }

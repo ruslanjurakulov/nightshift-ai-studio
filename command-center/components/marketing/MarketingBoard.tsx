@@ -28,6 +28,7 @@ import { useConfirm, type ConfirmOptions } from "@/components/feedback/ConfirmDi
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { StateBlock } from "@/components/states/StateBlock";
 import { TelegramPreview } from "@/components/marketing/TelegramPreview";
+import { NewPostPanel } from "@/components/marketing/NewPostPanel";
 
 const ENDPOINT = "/api/marketing";
 const TONE: Record<PostStatus, LampTone> = {
@@ -49,6 +50,8 @@ type Confirm = (opts: ConfirmOptions) => Promise<boolean>;
  * What it does and does not do:
  *  - It shows each post as the channel will show it, edits the three texts, approves, rejects, and stops or re-arms the
  *    poster. Every one of those goes through /api/marketing -> owner_marketing_* as the signed-in user.
+ *  - "New post" (NewPostPanel) types a custom post: it makes a DRAFT through owner_marketing_create and never approves it; the
+ *    owner approves it on its card like any other.
  *  - Approving sends the hash of the post THIS page showed. If the post changed since, the database refuses
  *    (`content_changed`) and the page reloads: the owner can only approve what they saw.
  *  - Approving is only the owner's yes. The worker posts later, and only while the poster is on. There is no "send now" and no
@@ -91,6 +94,8 @@ export function MarketingBoard({
     <div className="flex flex-col gap-4" aria-busy={pending}>
       {dialog}
       <PosterPanel settings={settings} channel={channel} gateOn={gateOn} confirm={confirm} refresh={refresh} />
+
+      <NewPostPanel origin={origin} confirm={confirm} refresh={refresh} />
 
       <section className="panel flex flex-col gap-2 p-4 sm:p-5" aria-labelledby="mk-last-title">
         <h2 id="mk-last-title" className="t-section">
@@ -470,6 +475,8 @@ function PostCard({
   }
 
   const titleId = `mk-post-${post.id}`;
+  // What a button's name calls this post. A custom post's source is the owner's user id (owner:<uuid>): the kind reads better.
+  const ariaName = post.kind === "custom" ? m.kind.custom : post.sourceRef;
   const posterOff = !settings.enabled;
   // Everything that keeps Approve off, each with its reason on the screen. The sender would refuse a post that is too long,
   // has text shaped like a key or an address, or a bad link; with the channel unknown the sheet could not say where it goes.
@@ -633,7 +640,7 @@ function PostCard({
                 type="button"
                 onClick={() => void approve()}
                 disabled={blockers.length > 0}
-                aria-label={fmt(m.approve.aria, { source: post.sourceRef })}
+                aria-label={fmt(m.approve.aria, { source: ariaName })}
                 className="btn-primary min-h-11 px-4 text-sm disabled:opacity-55"
               >
                 {m.approve.button}
@@ -646,7 +653,7 @@ function PostCard({
                 setMode("edit");
                 setMsg(null);
               }}
-              aria-label={fmt(m.edit.aria, { source: post.sourceRef })}
+              aria-label={fmt(m.edit.aria, { source: ariaName })}
               className="btn-quiet min-h-11 px-4 text-sm"
             >
               {m.edit.button}
@@ -657,7 +664,7 @@ function PostCard({
                 setMode("reject");
                 setMsg(null);
               }}
-              aria-label={fmt(m.reject.aria, { source: post.sourceRef })}
+              aria-label={fmt(m.reject.aria, { source: ariaName })}
               className="btn-quiet min-h-11 px-4 text-sm"
             >
               {m.reject.button}

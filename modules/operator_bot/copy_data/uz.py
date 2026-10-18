@@ -385,6 +385,8 @@ TABLE = {
     "mk.news": "yangilik",
     "mk.showcase": "vitrina",
     "mk.price": "narx",
+    "mk.promo": "aksiya",
+    "mk.custom": "oʻz posti",
     "mk.other": "yangi tur",
     "mkst.failed": "yuborilmadi",
     "mkst.dead": "tasdiqlanmagan",

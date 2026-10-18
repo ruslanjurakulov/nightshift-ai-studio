@@ -386,6 +386,8 @@ TABLE = {
     "mk.news": "news",
     "mk.showcase": "showcase",
     "mk.price": "price",
+    "mk.promo": "promo",
+    "mk.custom": "custom",
     "mk.other": "newer-kind",
     "mkst.failed": "failed",
     "mkst.dead": "dead",

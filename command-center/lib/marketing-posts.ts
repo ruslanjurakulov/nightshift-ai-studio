@@ -11,8 +11,9 @@
  *  - the message Telegram will show, mirrored from modules/channel_post.py and pinned against the same fixture
  *    (tests/fixtures/marketing_message_cases.json) by a Python test and a vitest.
  *
- * Nothing in here sends, tests or publishes anything. The only things this page can ask the database for are the four
- * owner functions; the post itself goes out by the worker, after an approval, only while the poster is switched on.
+ * Nothing in here sends, tests or publishes anything. The only things this page can ask the database for are the owner
+ * functions (edit, approve, reject, kill and, since migration 0110, create: a DRAFT the owner typed); the post itself goes
+ * out by the worker, after an approval, only while the poster is switched on.
  */
 import { charCount, reasonOk, type OwnerCall } from "@/lib/owner-rpc";
 
@@ -32,6 +33,11 @@ export const MARKETING_REFUSALS = [
   "no_such_post",
   "not_editable",
   "bad_texts",
+  // owner_marketing_create (0110)
+  "bad_link",
+  "bad_request_id",
+  "bad_kind",
+  "key_reused",
   "content_hash_required",
   "expired",
   "not_draft",
@@ -67,6 +73,16 @@ export type MarketingParse = { ok: true; call: OwnerCall } | { ok: false; error:
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
+/** The request id of a "New post" screen (owner_marketing_create): 16 to 64 letters, digits, - or _. */
+const REQUEST_ID = /^[A-Za-z0-9_-]{16,64}$/;
+/** A link is a path on our own site (modules/marketing_content._LINK, the database's own check). */
+const LINK = /^\/[a-z0-9][a-z0-9/_-]{0,78}$/;
+export const linkOk = (link: string): boolean => LINK.test(link) && !link.includes("//") && !link.includes("..");
+/**
+ * What the database refuses inside a text (marketing_texts_ok, and Postgres itself for NUL): control characters (a new line is allowed), the C1 controls, soft
+ * hyphen, zero-width and direction-changing characters, line and paragraph separators, the byte order mark.
+ */
+const BAD_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
 /** Each language is at most this many characters (code points), as marketing_texts_ok demands. */
 export const TEXT_MAX = 1000;
 export const LANGS = ["uz", "ru", "en"] as const;
@@ -78,13 +94,19 @@ const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
 /**
- * The one body the route accepts: `{action, ...}` with exactly four actions. There is deliberately no action that sends,
+ * The one body the route accepts: `{action, ...}` with exactly five actions. There is deliberately no action that sends,
  * re-sends or tests a post: the only way a post reaches the channel is the worker, after an approval.
  *
+ *   create  {requestId, texts:{uz,ru,en}, link|null}
+ *                                      -> owner_marketing_create(p_request_id, p_texts, p_link, p_kind)   a DRAFT, kind custom
  *   edit    {id, texts:{uz,ru,en}}     -> owner_marketing_edit(p_id, p_texts)
  *   approve {id, contentHash}          -> owner_marketing_approve(p_id, p_content_hash)   the hash the owner SAW
  *   reject  {id, reason}               -> owner_marketing_reject(p_id, p_reason)
  *   kill    {kill, reason?}            -> owner_marketing_kill(p_kill, p_reason)          kill:false needs a reason
+ *
+ * `create` never approves: the owner approves on the card, as for every other kind. The page makes the requestId ONCE per
+ * "New post" screen, so a double tap or a retry names the same post. `p_kind` is always `custom`: a person cannot make a
+ * `promo` post (the database refuses any other kind).
  *
  * The database checks everything again; these checks exist so a malformed request is a 400 with a code a person can
  * read, not a Postgres error. Extra fields are dropped, never forwarded.
@@ -101,6 +123,18 @@ export function parseMarketing(body: unknown): MarketingParse {
     if (!reasonOk(b.reason)) return bad("reason_required");
     return { ok: true, call: { fn: "owner_marketing_kill", args: { p_kill: false, p_reason: (b.reason as string).trim() } } };
   }
+  if (action === "create") {
+    const requestId = str(b.requestId);
+    if (!requestId || !REQUEST_ID.test(requestId)) return bad("bad_request_id");
+    const texts = parseTexts(b.texts);
+    if (!texts || textsProblem(texts) !== null) return bad("bad_texts");
+    // Absent, null or empty is "no link"; anything else must be a path on our own site.
+    const raw = b.link;
+    if (raw !== undefined && raw !== null && typeof raw !== "string") return bad("bad_link");
+    const link = typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
+    if (link !== null && !linkOk(link)) return bad("bad_link");
+    return { ok: true, call: { fn: "owner_marketing_create", args: { p_request_id: requestId, p_texts: texts, p_link: link, p_kind: "custom" } } };
+  }
   const id = str(b.id);
   if (action !== "edit" && action !== "approve" && action !== "reject") return bad("bad_request");
   if (!id || !UUID.test(id)) return bad("no_such_post");
@@ -113,19 +147,62 @@ export function parseMarketing(body: unknown): MarketingParse {
     if (!reasonOk(b.reason)) return bad("reason_required");
     return { ok: true, call: { fn: "owner_marketing_reject", args: { p_id: id, p_reason: (b.reason as string).trim() } } };
   }
-  const t = obj(b.texts);
-  if (!t || Object.keys(t).length !== 3) return bad("bad_texts");
+  const texts = parseTexts(b.texts);
+  if (!texts) return bad("bad_texts");
+  return { ok: true, call: { fn: "owner_marketing_edit", args: { p_id: id, p_texts: texts } } };
+}
+
+/** Exactly the keys uz, ru, en, each a string of 1 to 1000 characters (code points) once trimmed; the trimmed texts, or null. */
+function parseTexts(v: unknown): Texts | null {
+  const t = obj(v);
+  if (!t || Object.keys(t).length !== 3) return null;
   const out: Partial<Texts> = {};
   for (const lang of LANGS) {
-    const v = str(t[lang]);
-    if (v === null) return bad("bad_texts");
-    const trimmed = v.trim();
+    const x = str(t[lang]);
+    if (x === null) return null;
+    const trimmed = x.trim();
     const n = charCount(trimmed);
-    if (n < 1 || n > TEXT_MAX) return bad("bad_texts");
+    if (n < 1 || n > TEXT_MAX) return null;
     out[lang] = trimmed;
   }
-  return { ok: true, call: { fn: "owner_marketing_edit", args: { p_id: id, p_texts: { uz: out.uz, ru: out.ru, en: out.en } } } };
+  return { uz: out.uz!, ru: out.ru!, en: out.en! };
 }
+
+/**
+ * Why the database would refuse these (already trimmed) texts as a new post, or null: an empty language, a character it never
+ * allows, or a language over 1000 characters, counted in code points as the database counts. (marketing_texts_ok also caps the
+ * three together at 4096 less 160, which three texts of 1000 can never reach; the message the SENDER builds is the tighter limit,
+ * in UTF-16 units, and the form checks it with buildPreview.)
+ */
+export type TextsProblem = "empty" | "bad_chars" | "lang_too_long";
+/** A lone surrogate half (a broken emoji): Postgres refuses it (22P05) as it refuses a NUL, so the page does before the call. */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+/** The same check for one language's (already trimmed) text. */
+export function textProblem(text: string): TextsProblem | null {
+  if (text.trim() === "") return "empty";
+  if (BAD_CHARS.test(text) || LONE_SURROGATE.test(text)) return "bad_chars";
+  if (charCount(text) > TEXT_MAX) return "lang_too_long";
+  return null;
+}
+export function textsProblem(texts: Texts): TextsProblem | null {
+  const all = LANGS.map((l) => textProblem(texts[l]));
+  return all.includes("empty") ? "empty" : all.includes("bad_chars") ? "bad_chars" : all.includes("lang_too_long") ? "lang_too_long" : null;
+}
+
+/**
+ * A new id for one "New post" screen: 32 hex characters from the browser's random source (16 to 64 of [A-Za-z0-9_-] is what
+ * the database accepts). The screen makes it ONCE and sends it with every attempt, so a double tap or a retry is one post.
+ */
+export function newRequestId(): string {
+  const bytes = new Uint8Array(16);
+  const c = typeof globalThis.crypto !== "undefined" ? globalThis.crypto : undefined;
+  if (c && typeof c.getRandomValues === "function") c.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Own-site pages the New post form offers as a link (any other path of the same shape can be typed). All are public pages. */
+export const LINK_CHOICES = ["/pricing", "/solutions", "/studio", "/mcp", "/docs/api", "/signup"] as const;
 
 // ─── The message Telegram will show (a mirror of modules/channel_post.py render) ─────────────────────
 
@@ -212,8 +289,6 @@ export function looksUnsafe(plain: string): boolean {
   return false;
 }
 
-const LINK = /^\/[a-z0-9][a-z0-9/_-]{0,78}$/;
-
 /**
  * The code the sender would refuse this post with (modules/channel_post.render), or null if it would send it:
  * bad_texts, bad_link, no_origin, unsafe_text, too_long, in that order. `originUnknownOk` is for the page, which may not
@@ -231,7 +306,7 @@ export function senderRefusal(
     const v = texts[lang];
     if (typeof v !== "string" || v.trim() === "") return "bad_texts";
   }
-  if (link && (!LINK.test(link) || link.includes("//") || link.includes(".."))) return "bad_link";
+  if (link && !linkOk(link)) return "bad_link";
   if (link && !validOrigin(origin) && !originUnknownOk) return "no_origin";
   const pv = buildPreview(texts as Texts, link, origin, hasMedia);
   if (looksUnsafe(pv.plain)) return "unsafe_text";
@@ -263,7 +338,11 @@ function fin(v: unknown): number | null {
 
 export const POST_STATUSES = ["draft", "approved", "sending", "sent", "failed", "dead", "rejected", "expired"] as const;
 export type PostStatus = (typeof POST_STATUSES)[number];
-export const POST_KINDS = ["news", "showcase", "price"] as const;
+/**
+ * The kinds this page can show, edit, reject and approve as a Telegram post. `promo` (drafted by the worker from a reviewed
+ * file) and `custom` (typed by the owner on this page) came with migration 0110. A kind not in this list is an OtherPost.
+ */
+export const POST_KINDS = ["news", "showcase", "price", "promo", "custom"] as const;
 export type PostKind = (typeof POST_KINDS)[number];
 /** The one target and delivery this page version can approve (the worker's Telegram path). Anything else is shown, never approved. */
 export const KNOWN_TARGET = "telegram";
@@ -375,8 +454,8 @@ export function coercePost(data: unknown): MarketingPost | null {
 }
 
 /**
- * A row this page version does not know how to act on: a kind, target or delivery from a newer version of the app (migration
- * 0110/0111 will add some). It is LISTED, with its status and age, so it is never dropped and never counted as 0, but it
+ * A row this page version does not know how to act on: a kind, target or delivery from a newer version of the app (a later
+ * migration adds some). It is LISTED, with its status and age, so it is never dropped and never counted as 0, but it
  * carries no hash to approve, and its words appear only if they have the known three-language shape.
  */
 export interface OtherPost {

@@ -363,7 +363,8 @@ kill switch, run `update public.marketing_settings set enabled = false where id;
 ## Promo and custom posts (migration `0110_marketing_promo_custom.sql`, Telegram only, dormant)
 
 Two more kinds, `promo` (drafted by the worker from a reviewed repository file, a later slice) and `custom` (typed by the
-owner on the page, a later slice). Only the database half exists: **nothing calls either new function yet**.
+owner on the page: the "New post" form, below). The page's **New post** form calls `owner_marketing_create`; **nothing calls
+`marketing_draft_upsert_v2` yet** (the worker half of `promo` is a later slice).
 
 - **Same life as news.** Draft, the owner's approval of the exact words (`approved_hash`), the 72 hour expiry, the kill
   switch, the claim. No 0108 function, trigger or the status machine is redefined; the live worker keeps calling the same
@@ -383,6 +384,23 @@ owner on the page, a later slice). Only the database half exists: **nothing call
   edited is never overwritten). `showcase` and `custom` are refused.
 - **Not checked by the database:** `docs/news/banned-claims.json` (a repository file SQL cannot read). The page warns for a
   custom post; the worker blocks for a promo post.
+- **The "New post" form (the owner's page).** A button above the posts opens three text boxes (uz, ru, en) with live counters
+  (characters of 1000 as the database counts them, UTF-16 units as the sender counts them), an optional link (one of our own
+  pages, or another path like `/pricing`), and the same `TelegramPreview` every card uses. Saving goes through a "Create draft?"
+  sheet, then `POST /api/marketing` `{action: "create", requestId, texts, link}` -> `owner_marketing_create(..., 'custom')`,
+  behind the same switch, same-origin, signed-in owner and second-factor checks as approve and edit. It makes a **draft only**:
+  the owner approves on the card, with the hash the page showed, exactly as for news. The `requestId` is made once when the form
+  opens and sent with every attempt, so a double tap or a retry is one post (`created: false`); closing the form and opening it
+  again is a new post. `promo` and `custom` are known kinds on the card (title, Approve, Edit, Reject); a kind the page does not
+  know is still listed as "Other".
+- **Banned wording on the page.** The Next app cannot read `docs/news/banned-claims.json`, so `command-center/lib/marketing-banned.ts`
+  holds a copy of the rules and provider names (translated to JavaScript regular expressions with a Unicode word boundary).
+  `command-center/tests/marketing-banned.test.ts` fails if the copy differs from the JSON by one pattern, and both it and
+  `tests/test_marketing_banned_fixture.py` run `tests/fixtures/marketing_banned_cases.json` (made by the Python checker), so the
+  two dialects cannot drift apart. The form shows the hits (the rule, in the person's language, and the words found) and repeats
+  them in the sheet; it does not block, because the owner decides. A clean result means this list found nothing, not that every
+  claim is true. When the JSON changes, copy the change into `lib/marketing-banned.ts`, add a word of copy for a new rule id in
+  `lib/i18n/marketing/{en,ru,uz}.ts` (`newPost.banned.rules`), and regenerate the fixture.
 - **Merge order.** After 0110 is applied a row of an unknown kind may exist. The page and the operator bot must be tolerant
   of an unknown kind (separate PR) and deployed BEFORE this migration merges: a page that rejects one unknown kind reads the
   whole list as "could not read".

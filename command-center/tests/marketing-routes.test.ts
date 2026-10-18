@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * POST /api/marketing: the owner's four moves on the brand channel's posts, behind NIGHTSHIFT_MARKETING_POSTS.
+ * POST /api/marketing: the owner's moves on the brand channel's posts (create a draft, edit, approve, reject, stop or re-arm the poster), behind NIGHTSHIFT_MARKETING_POSTS.
  *
  * What would break without these: the route answering while the switch is not exactly `on`, a request from another site
  * reaching the session, a customer or a signed-out caller reaching the database function, a call made with anything but
@@ -36,6 +36,7 @@ const ID = "11111111-2222-3333-4444-555555555555";
 const HASH = "ab".repeat(32);
 const TEXTS = { uz: "Yangi funksiya.", ru: "Новая функция.", en: "A new feature." };
 const REASON = "the channel is checked and the bot is admin";
+const RID = "0123456789abcdef0123456789abcdef";
 
 const post = (body: unknown, headers: Record<string, string> = { origin: ORIGIN }) =>
   new Request(`${ORIGIN}/api/marketing`, {
@@ -49,6 +50,7 @@ const BODIES = [
   { action: "approve", id: ID, contentHash: HASH },
   { action: "reject", id: ID, reason: REASON },
   { action: "kill", kill: false, reason: REASON },
+  { action: "create", requestId: RID, texts: TEXTS, link: "/pricing" },
 ] as const;
 
 beforeEach(() => {
@@ -163,6 +165,64 @@ describe("with the switch on", () => {
     await route(post({ action: "kill", kill: false, reason: REASON }));
     expect(h.rpc).toHaveBeenLastCalledWith("owner_marketing_kill", { p_kill: false, p_reason: REASON });
     expect(h.rpc).toHaveBeenCalledTimes(4);
+  });
+
+  it("create calls owner_marketing_create with the request id, the trimmed texts, the link and kind custom, as the signed-in user", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: true, id: ID, status: "draft", kind: "custom", created: true, content_hash: HASH }, error: null });
+    const res = await route(post({ action: "create", requestId: RID, texts: { uz: " a ", ru: "б", en: "c" }, link: "/pricing", kind: "promo", p_kind: "promo", service_key: "x" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, id: ID, status: "draft", created: true });
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+    expect(h.rpc).toHaveBeenCalledWith("owner_marketing_create", {
+      p_request_id: RID,
+      p_texts: { uz: "a", ru: "б", en: "c" },
+      p_link: "/pricing",
+      p_kind: "custom",
+    });
+  });
+
+  it("create without a link sends SQL null, and a retry of the same request id is the same call (the database makes it one post)", async () => {
+    await route(post({ action: "create", requestId: RID, texts: TEXTS, link: null }));
+    await route(post({ action: "create", requestId: RID, texts: TEXTS, link: "" }));
+    expect(h.rpc.mock.calls.map((c) => c[1].p_request_id)).toEqual([RID, RID]);
+    expect(h.rpc.mock.calls.map((c) => c[1].p_link)).toEqual([null, null]);
+  });
+
+  it.each([
+    [{ requestId: "short" }, "bad_request_id"],
+    [{ texts: { uz: "a", ru: "b" } }, "bad_texts"],
+    [{ texts: { uz: "a\u202eb", ru: "b", en: "c" } }, "bad_texts"],
+    [{ link: "https://evil.example/x" }, "bad_link"],
+    [{ link: "/a/../b" }, "bad_link"],
+  ])("create %j is a 400 %s and never reaches the database", async (over, error) => {
+    const res = await route(post({ action: "create", requestId: RID, texts: TEXTS, link: null, ...over }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error });
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["bad_texts", 422],
+    ["bad_link", 422],
+    ["bad_request_id", 422],
+    ["bad_kind", 422],
+    ["key_reused", 422],
+    ["rate_limited", 429],
+    ["mfa_required", 401],
+  ])("create: the database's refusal %s reaches the browser as a code, without its English sentence", async (code, status) => {
+    h.rpc.mockResolvedValue({ data: { ok: false, error: code, message: "English sentence from the database" }, error: null });
+    const res = await route(post(BODIES[4]));
+    expect(res.status).toBe(status);
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({ ok: false, error: code });
+    expect(text).not.toContain("English sentence");
+  });
+
+  it("create: a caller the function refuses (42501: not an owner, or no second step) is a 403 without the database's words", async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "only a platform owner or admin may do this" } });
+    const res = await route(post(BODIES[4]));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: "forbidden" });
   });
 
   describe("every refusal of the database reaches the browser as a code with its figures", () => {

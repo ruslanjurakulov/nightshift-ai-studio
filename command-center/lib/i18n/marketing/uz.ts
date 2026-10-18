@@ -15,7 +15,7 @@ export const marketingUz: MarketingDictionary = {
   failed: "Postlarni oʻqib boʻlmadi, shuning uchun taxmin emas, hech narsa koʻrsatilmaydi. Qayta urinib koʻring.",
   empty: {
     title: "Hozircha post yoʻq",
-    body: "Marketing ishchisi yangilik yoki oyning tariflar postini tayyorlaganda, qoralama shu yerda paydo boʻladi. Bu sahifadan hech narsa yaratilmaydi.",
+    body: "Marketing ishchisi yangilik, aksiya yoki oyning tariflar postini tayyorlaganda yoki siz “Yangi post” orqali yozganingizda, qoralama shu yerda paydo boʻladi. Siz tasdiqlamaguningizcha qoralama ommaga chiqmaydi.",
   },
   refreshing: "Yangilanmoqda…",
   truncated: "Eng yangi {n} ta post koʻrsatilgan. Eskilari bu yerda yoʻq.",
@@ -89,6 +89,8 @@ export const marketingUz: MarketingDictionary = {
     news: "Yangilik",
     showcase: "Video vitrina",
     price: "Tariflar",
+    promo: "Aksiya",
+    custom: "Oʻz posti",
   },
 
   // Bu sahifa versiyasi tanimaydigan turdagi yoki maqsadli post (yangiroq baza). Koʻrinadi, lekin bu yerda tasdiqlab boʻlmaydi.
@@ -185,6 +187,65 @@ export const marketingUz: MarketingDictionary = {
     langTooLong: "Bitta tilda koʻpi bilan 1000 belgi boʻlishi mumkin.",
   },
 
+  // «Yangi post» shakli (0110-migratsiya): inson oʻz postini yozadi. U QORALAMA yaratadi, tasdiqni emas.
+  newPost: {
+    button: "Yangi post…",
+    aria: "Kanal uchun yangi post yozish",
+    title: "Yangi post",
+    intro:
+      "Bir xil postni uch tilda yozing. Saqlash faqat qoralama yaratadi: uni oʻz kartochkasida oʻqib, shu yerda tasdiqlamaguningizcha hech narsa ommaga chiqmaydi.",
+    langLabel: "Matn: {lang}",
+    count: "{chars} / {max} belgi · {units}",
+    linkLabel: "Havola (ixtiyoriy)",
+    linkNone: "Havolasiz",
+    linkOther: "Boshqa sahifa…",
+    linkOtherLabel: "Saytimizdagi yoʻl",
+    linkOtherPh: "/pricing",
+    linkHint: "Oʻz saytimizdagi sahifa. Kanalda toʻliq manzil koʻrinadi.",
+    linkBad: "Havola — saytimizdagi yoʻl: u / bilan boshlanadi va kichik lotin harflari, raqamlar, - va _ dan iborat (masalan, /pricing).",
+    problem: {
+      empty: "Har bir til uchun matn kerak.",
+      badChars: "Matnda boshqaruv, koʻrinmas yoki yoʻnalishni oʻzgartiruvchi belgi bor (masalan, boshqa joydan qoʻyilgan koʻrinmas belgi). Shu qismni qaytadan yozing.",
+      langTooLong: "Bitta tilda koʻpi bilan 1000 belgi boʻlishi mumkin.",
+    },
+    banned: {
+      title: "Tekshirish kerak boʻlgan soʻzlar",
+      lead:
+        "Maʼlumotlar bazasi taqiqlangan soʻzlarni tekshirmaydi, shuning uchun bu sahifa uchala matnni bizning taqiqlangan soʻzlar roʻyxatimiz bilan solishtiradi. Bu soʻzlar oʻsha roʻyxatda bor. Bu saqlashga toʻsqinlik qilmaydi: qaror sizniki.",
+      none: "Taqiqlangan soʻzlar roʻyxatidan hech narsa topilmadi. Roʻyxat qoʻpol: u matndagi har bir daʼvo toʻgʻriligiga kafolat bermaydi.",
+      found: "{lang}: “{text}”",
+      provider: "Sunʼiy intellekt modeli yoki provayder ({name}) nomi keltirilgan. Nomni faqat uning adapteri orqali haqiqiy chaqiruv muvaffaqiyatli boʻlgandan keyin ishlatish mumkin.",
+      unknownRule: "Bu sahifada izohi yoʻq qoida ({id}).",
+      rules: {
+        free: "“Bepul” deydi. Toʻlovsiz yagona kirish — bir martalik 100 kreditlik xush kelibsiz hadyasi: shuni ayting.",
+        unlimited: "“Cheksiz” deydi. Har bir tarifda kredit byudjeti va bir vaqtdagi ishlar chegarasi bor.",
+        guarantee: "Nimadir vaʼda qiladi yoki kafolatlaydi. Sifat, uzluksizlik va natija kafolatlanmaydi.",
+        superlative: "“Eng yaxshi”, “eng tez”, “birinchi raqam” va shunga oʻxshash deydi. Bunday taqqoslashlarni oʻlchamaganmiz.",
+        income: "Daromad, foyda yoki boyib ketishni vaʼda qiladi.",
+        views: "Koʻrishlar, qamrov, obunachilar yoki “viral” boʻlishni vaʼda qiladi.",
+        certainty: "“Abadiy”, “100%” yoki “xavfsiz” kabi mutlaq soʻzni ishlatadi.",
+        endorsement: "YouTube, Google, Telegram, Instagram yoki TikTok bizni maʼqullaydi, sertifikatlaydi yoki bizning hamkorimiz, degan maʼnoni beradi.",
+      },
+    },
+    draftNote: "Saqlash qoralama yaratadi. U ommaga chiqmagan va tasdiqlanmagan.",
+    create: "Qoralama yaratish…",
+    cancel: "Bekor qilish",
+    confirmTitle: "Qoralama yaratilsinmi?",
+    confirmBody:
+      "Bu faqat qoralamani saqlaydi. Hech narsa ommaga chiqmaydi va tasdiqlanmaydi: uni quyidagi oʻz kartochkasida oʻqib, shu yerda tasdiqlaysiz. Ikki marta bossangiz yoki qayta urinsangiz ham, bu ekran bitta post yaratadi.",
+    confirmButton: "Qoralama yaratish",
+    dKind: "Turi",
+    dLink: "Havola",
+    dCount: "Xabar hajmi",
+    dBanned: "Taqiqlangan soʻzlar",
+    dBannedNone: "topilmadi",
+    created: "Qoralama yaratildi. U ommaga chiqmagan. Uni oʻz kartochkasida oʻqing va shu yerda tasdiqlang.",
+    existing: "Bu ekran bu qoralamani allaqachon yaratgan (qayta urinish yoki ikki marta bosish). Yangi hech narsa yaratilmadi.",
+    existingDifferent:
+      "Bu ekran boshqa soʻzlar bilan qoralamani allaqachon yaratgan. Hech narsa oʻzgarmadi: shu soʻzlar kerak boʻlsa, oʻsha qoralamani oching va “Tahrirlash” dan foydalaning.",
+    showDraft: "Qoralamaga oʻtish",
+  },
+
   approve: {
     button: "Tasdiqlash…",
     aria: "Bu postni nashr uchun tasdiqlash: {source}",
@@ -234,6 +295,10 @@ export const marketingUz: MarketingDictionary = {
     not_editable: "Faqat qoralama yoki tasdiqlangan postni tahrirlash mumkin. Sahifani yangilang. Hech narsa oʻzgarmadi.",
     bad_texts:
       "Har bir til uchun boshqaruv, koʻrinmas yoki yoʻnalishni oʻzgartiruvchi belgilarsiz matn kerak, uchalasi birgalikda bitta xabarga sigʻishi shart. Hech narsa oʻzgarmadi.",
+    bad_link: "Havola saytimizdagi yoʻl boʻlishi kerak, masalan /pricing. Hech narsa yaratilmadi.",
+    bad_request_id: "“Yangi post” ekrani oʻz identifikatorini yoʻqotdi. Uni yoping, “Yangi post”ni qaytadan oching va takrorlang. Hech narsa yaratilmadi.",
+    bad_kind: "Bu yerda faqat oʻz postingizni yaratish mumkin. Hech narsa yaratilmadi.",
+    key_reused: "Bu ekranning identifikatori allaqachon boshqa postga tegishli. “Yangi post”ni yoping, qaytadan oching va takrorlang. Hech narsa yaratilmadi.",
     content_hash_required: "Sahifa qaysi versiyani koʻrganingizni aniqlay olmadi. Sahifani yangilang va postni qaytadan oʻqing. Hech narsa oʻzgarmadi.",
     expired: "Bu tasdiq tugagan va postning muddati oʻtgan. Yangi qoralama soʻrang. Hech narsa nashr qilinmadi.",
     not_draft: "Faqat qoralamani tasdiqlash mumkin. Sahifani yangilang. Hech narsa oʻzgarmadi.",

@@ -518,7 +518,7 @@ describe("a post of a kind this page version does not know", () => {
   const other = (over: Record<string, unknown> = {}): ListedPost =>
     coerceListedPost({
       id: ID2,
-      kind: "promo",
+      kind: "banner",
       target: "instagram",
       delivery: "manual",
       payload: { hashtags: ["a"] },
@@ -535,11 +535,11 @@ describe("a post of a kind this page version does not know", () => {
   it("shows a labelled row with its status and age, and the words only as stored", () => {
     show([other()]);
     const card = screen.getByRole("article");
-    expect(within(card).getByRole("heading", { name: "Other kind: promo" })).toBeTruthy();
+    expect(within(card).getByRole("heading", { name: "Other kind: banner" })).toBeTruthy();
     expect(within(card).getByText(m.status.draft)).toBeTruthy();
     expect(within(card).getByText(/Created/)).toBeTruthy();
     expect(within(card).getByText("Promo en words.")).toBeTruthy();
-    expect(within(card).getByText("Kind: promo · Target: instagram · Delivery: manual")).toBeTruthy();
+    expect(within(card).getByText("Kind: banner · Target: instagram · Delivery: manual")).toBeTruthy();
     expect(card.querySelector("[data-telegram-preview]")).toBeNull(); // not drawn as a Telegram message
     expect(screen.getByRole("note").textContent).toContain("(1)");
   });
@@ -596,7 +596,7 @@ describe("a post of a kind this page version does not know", () => {
     show([row(), other()]);
     expect(screen.getAllByRole("article")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: m.kind.news })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Other kind: promo" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Other kind: banner" })).toBeTruthy();
     const approve = screen.getByRole("button", { name: /Approve this post for publishing: pr:#12/ }) as HTMLButtonElement;
     expect(approve.disabled).toBe(false);
     await tap(approve);
@@ -619,7 +619,7 @@ describe("a post of a kind this page version does not know", () => {
     h.locale = loc;
     const d = loc === "ru" ? ru : uz;
     show([other()]);
-    expect(screen.getByRole("heading", { name: d.marketing.other.titleKind.replace("{code}", "promo") })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: d.marketing.other.titleKind.replace("{code}", "banner") })).toBeTruthy();
     expect(screen.getByText(d.marketing.other.cannotApprove)).toBeTruthy();
     expect(d.marketing.other.cannotApprove).not.toBe(en.marketing.other.cannotApprove);
   });

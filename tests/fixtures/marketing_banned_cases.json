@@ -1,0 +1,401 @@
+{
+ "about": "Pinned by tests/test_marketing_banned_fixture.py (modules/marketing_content.banned_hits) and command-center/tests/marketing-banned.test.ts (lib/marketing-banned.ts). Regenerate by running the Python checker, never by hand.",
+ "cases": [
+  {
+   "text": "Make a video in minutes.",
+   "hits": []
+  },
+  {
+   "text": "It is free to try",
+   "hits": [
+    "free"
+   ]
+  },
+  {
+   "text": "Free!",
+   "hits": [
+    "free"
+   ]
+  },
+  {
+   "text": "freedom of choice",
+   "hits": []
+  },
+  {
+   "text": "a freebie for you",
+   "hits": [
+    "free"
+   ]
+  },
+  {
+   "text": "Попробуйте бесплатно",
+   "hits": [
+    "free"
+   ]
+  },
+  {
+   "text": "Это даром",
+   "hits": [
+    "free"
+   ]
+  },
+  {
+   "text": "дарованный шанс",
+   "hits": []
+  },
+  {
+   "text": "Bepul sinab koʻring",
+   "hits": [
+    "free"
+   ]
+  },
+  {
+   "text": "tekin emas",
+   "hits": [
+    "free"
+   ]
+  },
+  {
+   "text": "Unlimited videos",
+   "hits": [
+    "unlimited"
+   ]
+  },
+  {
+   "text": "No limit here, no limits there",
+   "hits": [
+    "unlimited"
+   ]
+  },
+  {
+   "text": "Безлимитные видео",
+   "hits": [
+    "unlimited"
+   ]
+  },
+  {
+   "text": "Без ограничений",
+   "hits": [
+    "unlimited"
+   ]
+  },
+  {
+   "text": "cheksiz imkoniyat",
+   "hits": [
+    "unlimited"
+   ]
+  },
+  {
+   "text": "We guarantee results",
+   "hits": [
+    "guarantee"
+   ]
+  },
+  {
+   "text": "Гарантия качества",
+   "hits": [
+    "guarantee"
+   ]
+  },
+  {
+   "text": "kafolat beramiz",
+   "hits": [
+    "guarantee"
+   ]
+  },
+  {
+   "text": "The best editor",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "the bestseller shelf",
+   "hits": []
+  },
+  {
+   "text": "Number one choice",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "No. 1 in the world",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "#1 pick",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "Лучший монтаж",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "Номер один",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "№ 1 по скорости",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "eng yaxshi muharrir",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "Eng zo‘r xizmat",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "Eng zo'r xizmat",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "1-raqamli",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "Earn money fast",
+   "hits": [
+    "income"
+   ]
+  },
+  {
+   "text": "your earnings",
+   "hits": [
+    "income"
+   ]
+  },
+  {
+   "text": "Заработайте больше",
+   "hits": [
+    "income"
+   ]
+  },
+  {
+   "text": "доходы растут",
+   "hits": [
+    "income"
+   ]
+  },
+  {
+   "text": "pul ishlang",
+   "hits": [
+    "income"
+   ]
+  },
+  {
+   "text": "boy boʻling",
+   "hits": [
+    "income"
+   ]
+  },
+  {
+   "text": "go viral",
+   "hits": [
+    "views"
+   ]
+  },
+  {
+   "text": "Больше просмотров",
+   "hits": [
+    "views"
+   ]
+  },
+  {
+   "text": "накрутка",
+   "hits": [
+    "views"
+   ]
+  },
+  {
+   "text": "boost your reach",
+   "hits": [
+    "views"
+   ]
+  },
+  {
+   "text": "grow your channel",
+   "hits": [
+    "views"
+   ]
+  },
+  {
+   "text": "forever yours",
+   "hits": [
+    "certainty"
+   ]
+  },
+  {
+   "text": "100% sure",
+   "hits": [
+    "certainty"
+   ]
+  },
+  {
+   "text": "100 % sure",
+   "hits": [
+    "certainty"
+   ]
+  },
+  {
+   "text": "Навсегда",
+   "hits": [
+    "certainty"
+   ]
+  },
+  {
+   "text": "без риска",
+   "hits": [
+    "certainty"
+   ]
+  },
+  {
+   "text": "riskiz tanlov",
+   "hits": [
+    "certainty"
+   ]
+  },
+  {
+   "text": "Official YouTube partner",
+   "hits": [
+    "endorsement"
+   ]
+  },
+  {
+   "text": "Google certified tool",
+   "hits": [
+    "endorsement"
+   ]
+  },
+  {
+   "text": "Официальный партнёр YouTube",
+   "hits": [
+    "endorsement"
+   ]
+  },
+  {
+   "text": "партнер ютуб",
+   "hits": [
+    "endorsement"
+   ]
+  },
+  {
+   "text": "rasmiy YouTube hamkori",
+   "hits": [
+    "endorsement"
+   ]
+  },
+  {
+   "text": "Made with OpenAI",
+   "hits": [
+    "provider:openai"
+   ]
+  },
+  {
+   "text": "Powered by GPT",
+   "hits": [
+    "provider:gpt"
+   ]
+  },
+  {
+   "text": "gpt-4 is gone",
+   "hits": []
+  },
+  {
+   "text": "Dall-E images",
+   "hits": [
+    "provider:dall-e"
+   ]
+  },
+  {
+   "text": "wanted: more time",
+   "hits": []
+  },
+  {
+   "text": "wan-der lust",
+   "hits": []
+  },
+  {
+   "text": "A wan smile",
+   "hits": [
+    "provider:wan"
+   ]
+  },
+  {
+   "text": "Claude's idea",
+   "hits": [
+    "provider:claude"
+   ]
+  },
+  {
+   "text": "stable diffusion style",
+   "hits": [
+    "provider:stable diffusion"
+   ]
+  },
+  {
+   "text": "Pexels clips",
+   "hits": [
+    "provider:pexels"
+   ]
+  },
+  {
+   "text": "Ёлка и ёж",
+   "hits": []
+  },
+  {
+   "text": "Лучшее, ёмкое",
+   "hits": [
+    "superlative"
+   ]
+  },
+  {
+   "text": "Fast and simple. Try it today.",
+   "hits": []
+  },
+  {
+   "text": "Три языка, один пост.",
+   "hits": []
+  },
+  {
+   "text": "Uchta tilda bitta post.",
+   "hits": []
+  },
+  {
+   "text": "Big proﬁts ahead",
+   "hits": [
+    "income"
+   ]
+  },
+  {
+   "text": "A ﬁrst look, no claims here",
+   "hits": []
+  },
+  {
+   "text": "Telegram channel is official and google is far away. Partner later",
+   "hits": [
+    "endorsement"
+   ]
+  }
+ ]
+}
