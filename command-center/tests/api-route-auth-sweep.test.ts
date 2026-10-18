@@ -28,6 +28,7 @@ const AUTH_CALLS = [
   "creativeSession(",    // the creative routes' session helper
   "workflowSession(",    // the workflow routes' session helper
   "callInbox(",          // the comment inbox routes' helper (lib/server/comment-inbox): getUser, then one database function as that person
+  "handleOwnerPost(",    // the owner routes' helper (lib/server/owner-rpc): same origin, the flag, getUser, owner/admin, then one database function as that person
   "startSocialConnect(", // social connect: getUser + org role inside
   "finishSocialConnect(",
   "runApi(",             // the public API: a bearer key, checked by api_auth

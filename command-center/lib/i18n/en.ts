@@ -3,6 +3,7 @@ import { notifyChannelsEn } from "./notify-channels/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ownerSafetyEn } from "./owner-safety/en";
+import { ownerRpcEn } from "./owner-rpc/en";
 import { ownerTruthEn } from "./owner-truth/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
@@ -32,6 +33,7 @@ export const en = {
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
   ownerSafety: ownerSafetyEn,
+  ownerRpc: ownerRpcEn,
   ownerTruth: ownerTruthEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,

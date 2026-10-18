@@ -6,6 +6,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
+import { ownerRpcOn } from "@/lib/server/owner-rpc";
+import { readOwnerSecurity } from "@/lib/server/owner-reads";
 import Link from "next/link";
 import { StateBlock } from "@/components/states/StateBlock";
 import "../../app-pages-g5.css";
@@ -69,11 +71,17 @@ export default async function MembersPage() {
     );
   }
 
+  // NIGHTSHIFT_OWNER_RPC=on moves the team changes behind the server's functions (migration 0107). Off, or 0107 not
+  // applied yet, the board writes the roster as it always did. Only an owner/admin ever sees a write control.
+  const mayManage = role === "owner" || role === "admin";
+  const supabase = user && mayManage && ownerRpcOn() ? await createClient() : null;
+  const ownerRpc = supabase ? (await readOwnerSecurity(supabase)).state !== "unsupported" : false;
+
   return (
     <div className="rhythm ns-open g5-page">
       <PageHeader icon="members" title={t.members.title} subtitle={t.members.subtitle} />
       {user ? (
-        <MembersBoard myRole={role} myEmail={user.email ?? ""} myUserId={user.id} />
+        <MembersBoard myRole={role} myEmail={user.email ?? ""} myUserId={user.id} ownerRpc={ownerRpc} />
       ) : (
         <section className="panel">
           <StateBlock
