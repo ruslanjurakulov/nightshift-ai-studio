@@ -3,6 +3,7 @@ import { notifyChannelsUz } from "./notify-channels/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
+import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
 import { marketingUz } from "./marketing/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
@@ -26,6 +27,7 @@ export const uz: Dictionary = {
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
   ownerSafety: ownerSafetyUz,
+  confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
   marketing: marketingUz,
   ownerTruth: ownerTruthUz,

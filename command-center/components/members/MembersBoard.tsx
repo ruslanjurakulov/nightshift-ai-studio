@@ -93,19 +93,37 @@ export function MembersBoard({
 
   async function claim() {
     const supabase = createClient();
-    if (!supabase || busy) return;
-    setBusy(true);
-    setError(null);
-    const { error: e } = await supabase
-      .from("app_members")
-      .insert({ email: myEmail, user_id: myUserId, role: "owner" });
-    setBusy(false);
-    if (e) {
-      setError(t.members.saveFailed);
-      return;
+    if (!supabase || busy || acting.current) return;
+    // Claiming makes this account the owner and locks its own role: say so before the first owner row is written.
+    acting.current = true;
+    try {
+      const cs = t.confirmSheets;
+      const ok = await confirm({
+        title: cs.claimTitle,
+        message: cs.claimBody,
+        confirmLabel: cs.claimConfirm,
+        tone: "primary",
+        details: [
+          { label: cs.dAccount, value: myEmail || t.common.dash },
+          { label: cs.dRole, value: t.members.roleOwner },
+        ],
+      });
+      if (!ok) return;
+      setBusy(true);
+      setError(null);
+      const { error: e } = await supabase
+        .from("app_members")
+        .insert({ email: myEmail, user_id: myUserId, role: "owner" });
+      setBusy(false);
+      if (e) {
+        setError(t.members.saveFailed);
+        return;
+      }
+      await load();
+      router.refresh();
+    } finally {
+      acting.current = false;
     }
-    await load();
-    router.refresh();
   }
 
   async function add() {

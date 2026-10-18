@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 
 /**
@@ -44,6 +45,9 @@ export function ReviewPanel({
   const [filed, setFiled] = useState<string | null>(pendingIntent?.action ?? null);
   const [error, setError] = useState<string | null>(null);
   const [showScript, setShowScript] = useState(false);
+  const { confirm, dialog } = useConfirm();
+  // Locked synchronously while a sheet is open: a second tap must not open a second sheet or file a second intent.
+  const asking = useRef(false);
 
   // A signed URL, minted on the client with the anon key against the storage
   // read policy. It expires in an hour; nothing durable is handed out.
@@ -85,6 +89,64 @@ export function ReviewPanel({
   }
 
   const waiting = video.review_state === "pending" && !autoPublish;
+
+  /** What the sheet was about, as a comparable string: a different gate verdict is a different question. */
+  const gateKey = gate ? `${gate.allowed}:${gate.flagged}:${gate.reasons.join("|")}` : "none";
+  // The newest props, read after the person has answered: the sheet may have been open while the page refreshed.
+  const latest = useRef({ waiting, gateKey, filed });
+  latest.current = { waiting, gateKey, filed };
+
+  /**
+   * Each decision asks first, in words: approve is what lets the video go public, the other two start a new render.
+   * Then the same intent row is filed as before; the sheet changes nothing about what the pipeline does with it.
+   * If what the sheet showed (still waiting, the same gate verdict, nothing filed yet) is no longer true when it is
+   * answered, nothing is sent: the server would decide anyway, but the person agreed to a different question.
+   */
+  async function ask(action: ReviewIntentRow["action"]) {
+    if (busy !== null || asking.current) return;
+    asking.current = true;
+    try {
+      const cs = t.confirmSheets;
+      const name = video.title ?? video.video_id;
+      const privacy = video.privacy
+        ? (t.review.privacyValue as Record<string, string>)[video.privacy] ?? video.privacy
+        : t.common.dash;
+      // "No gate decision was recorded" is said as unknown, never as a pass.
+      const gateLine = gate ? (gate.allowed ? t.review.gatePassed : t.review.gateBlocked) : t.review.gateUnknown;
+      const copy =
+        action === "approve"
+          ? { title: cs.rvApproveTitle, message: cs.rvApproveBody, confirmLabel: t.review.approve }
+          : action === "regenerate_script"
+            ? { title: cs.rvScriptTitle, message: cs.rvScriptBody, confirmLabel: t.review.regenerateScript }
+            : { title: cs.rvRegenTitle, message: cs.rvRegenBody, confirmLabel: t.review.regenerate };
+      const shownGate = gateKey;
+      const ok = await confirm({
+        title: fmt(copy.title, { title: name }),
+        message: copy.message,
+        confirmLabel: copy.confirmLabel,
+        tone: action === "approve" ? "danger" : "primary",
+        details: [
+          { label: cs.dVideo, value: name },
+          { label: cs.dChannel, value: video.channel_id },
+          ...(action === "approve"
+            ? [
+                { label: t.review.privacy, value: privacy },
+                { label: t.review.gate, value: gateLine, multiline: true },
+              ]
+            : []),
+        ],
+      });
+      if (!ok) return;
+      const now = latest.current;
+      if (now.filed !== null || now.gateKey !== shownGate || (action === "approve" && !now.waiting)) {
+        setError(cs.staleSheet);
+        return;
+      }
+      await file(action);
+    } finally {
+      asking.current = false;
+    }
+  }
 
   return (
     <section className="section-card flex flex-col gap-6">
@@ -219,7 +281,7 @@ export function ReviewPanel({
           <button
             type="button"
             disabled={!waiting || busy !== null}
-            onClick={() => file("approve")}
+            onClick={() => void ask("approve")}
             className="btn-sky is-solid pill px-[30px] py-3.5 text-sm disabled:opacity-40"
           >
             {busy === "approve" ? t.review.filing : t.review.approve}
@@ -227,7 +289,7 @@ export function ReviewPanel({
           <button
             type="button"
             disabled={busy !== null}
-            onClick={() => file("regenerate")}
+            onClick={() => void ask("regenerate")}
             className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
           >
             {busy === "regenerate" ? t.review.filing : t.review.regenerate}
@@ -235,7 +297,7 @@ export function ReviewPanel({
           <button
             type="button"
             disabled={busy !== null}
-            onClick={() => file("regenerate_script")}
+            onClick={() => void ask("regenerate_script")}
             className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
           >
             {busy === "regenerate_script" ? t.review.filing : t.review.regenerateScript}
@@ -245,6 +307,7 @@ export function ReviewPanel({
           </span>
         </div>
       )}
+      {dialog}
     </section>
   );
 }

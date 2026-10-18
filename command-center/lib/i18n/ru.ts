@@ -3,6 +3,7 @@ import { notifyChannelsRu } from "./notify-channels/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
+import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
 import { marketingRu } from "./marketing/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
@@ -26,6 +27,7 @@ export const ru: Dictionary = {
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
   ownerSafety: ownerSafetyRu,
+  confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
   marketing: marketingRu,
   ownerTruth: ownerTruthRu,
