@@ -277,6 +277,19 @@ def decide_for(agent, signals: Signals) -> Decision:
     return decide(s["mode"], sig, language=s["language"], line_enabled=s["line_enabled"], custom_text=s["custom_text"])
 
 
+def for_run(agent, *, generated_clips, generated_stills, presenter) -> tuple:
+    """``(Decision, Signals)`` for a run that has just built its cut: the counts
+    are what the run itself generated (clips, stills, a presenter), the voice is
+    the channel's declaration. Counts that are not whole numbers read as 0."""
+
+    def count(v):
+        return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
+
+    signals = Signals(known=True, generated_clips=count(generated_clips), generated_stills=count(generated_stills),
+                      presenter=bool(presenter), voice=normalize_voice(getattr(agent, "ai_disclosure_voice", None)))
+    return decide_for(agent, signals), signals
+
+
 def append_line(text: str, line: str, *, limit: int, measure=len) -> str:
     """``text`` + a blank line + ``line``, only when it fits ``limit`` (by
     ``measure``) and the line is not already there; otherwise ``text`` unchanged.

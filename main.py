@@ -30,6 +30,7 @@ Path("output").mkdir(exist_ok=True)
 
 import config
 from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
+from modules import ai_disclosure
 from modules import event_log as events
 from modules import run_slug
 from modules import log_redaction
@@ -253,6 +254,7 @@ def _publish_short(
     privacy: str,
     timeline: list,
     costs,
+    ai_decision=None,
 ):
     """Cut and publish a vertical Short from the video that just went out.
 
@@ -298,6 +300,8 @@ def _publish_short(
             title_override=shorts.short_title(script.title),
             description_override=shorts.short_description(
                 script.title, parent_url, hook=getattr(script, "hook_sentence", "")),
+            # The Short is cut from the long video's own frames: same media, same answer.
+            ai_disclosure=ai_decision,
         )
         try:
             costs.add(UPLOAD_BYTES, float(short_path.stat().st_size), stage="short_upload")
@@ -1400,8 +1404,13 @@ def run(
                 except Exception as e:
                     logger.warning("Watch-next lookup failed (%s: %s) — no link this run",
                                    type(e).__name__, e)
+            # The label for THIS cut, from what the run actually generated (not from the best-effort IR).
+            ai_decision, ai_signals = ai_disclosure.for_run(
+                ctx.agent, generated_clips=getattr(broll, "generated", 0),
+                generated_stills=len(gen_images or []), presenter=presenter_path is not None)
             uploaded = uploader.upload(
                 video_path, script, thumbnail_path=chosen_thumb, privacy=privacy,
+                ai_disclosure=ai_decision,
                 title_override=chosen_title or None,
                 # Both are metadata this run already produced: the Whisper .srt
                 # and the mixer's own section timings, which become the
@@ -1463,6 +1472,12 @@ def run(
                 events.emit(events.VIDEO_PUBLISHED, video_id=video_id, agent="youtube_uploader",
                             status=events.STATUS_COMPLETED, channel_id=channel_id,
                             metadata={"title": published_title, "url": video_url, "privacy": privacy}, store=store)
+                # What the video was labelled with, and why: read back by the review panel and by the
+                # Instagram / TikTok cross-post, which must give the same answer for the same cut.
+                events.emit(ai_disclosure.EVENT, video_id=video_id, agent="ai_disclosure",
+                            status=events.STATUS_COMPLETED, channel_id=channel_id,
+                            metadata=ai_decision.to_metadata(getattr(ctx.agent, "language", ""), ai_signals),
+                            store=store)
 
             # The upload actually succeeded — advance this run's queue entry (if
             # any) to "published". Only here, at real upload success, never at
@@ -1596,6 +1611,7 @@ def run(
                 privacy=privacy,
                 timeline=timeline,
                 costs=costs,
+                ai_decision=ai_decision,
             )
     elif not gate.allowed:
         # Already reported above. The run is not uploaded, so it gets a held

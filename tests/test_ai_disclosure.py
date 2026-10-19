@@ -198,6 +198,27 @@ class ChannelSettings(unittest.TestCase):
         self.assertFalse(ad.decide_for(agent, sig(generated_clips=3)).label)
 
 
+class ForRun(unittest.TestCase):
+    def test_a_run_with_only_stock_media_is_clean(self):
+        d, s = ad.for_run(AgentConfig.from_dict({}), generated_clips=0, generated_stills=0, presenter=False)
+        self.assertFalse(d.label)
+        self.assertTrue(s.known)
+
+    def test_generated_clips_from_the_run_label_it(self):
+        d, s = ad.for_run(AgentConfig.from_dict({"language": "russian"}), generated_clips=3, generated_stills=0,
+                          presenter=False)
+        self.assertEqual((d.label, d.reasons, d.line), (True, (ad.R_GENERATED_VIDEO,), ad.STANDARD_LINES["ru"]))
+        self.assertEqual(s.generated_clips, 3)
+
+    def test_junk_counts_read_as_zero(self):
+        _, s = ad.for_run(None, generated_clips=None, generated_stills="2", presenter=0)
+        self.assertEqual((s.generated_clips, s.generated_stills, s.presenter), (0, 0, False))
+
+    def test_no_agent_means_defaults(self):
+        d, _ = ad.for_run(None, generated_clips=1, generated_stills=0, presenter=False)
+        self.assertEqual((d.label, d.mode), (True, "auto"))
+
+
 class Metadata(unittest.TestCase):
     def test_metadata_has_facts_not_prompts(self):
         s = sig(generated_clips=1)

@@ -556,6 +556,7 @@ class YouTubeUploader:
         section_timeline: list[dict] | None = None,
         description_suffix: str | None = None,
         attempt=None,
+        ai_disclosure=None,
     ) -> dict:
         """Upload one video.
 
@@ -584,6 +585,14 @@ class YouTubeUploader:
         (see modules/upload_idempotency.py). None keeps the old single-shot
         upload exactly.
 
+        `ai_disclosure` (a ``modules.ai_disclosure.Decision``) is the channel's
+        answer to "does this video contain realistic synthetic media". When its
+        label is true the body carries ``status.containsSyntheticMedia: true``
+        and the description gets the disclosure line (placed before the
+        watch-next block, so the line wins when only one fits). A false label
+        or None sends nothing at all: the body is exactly what it was before
+        this parameter existed. Neither changes privacy or who may publish.
+
         Quota: videos.insert is ~1600 units of the 10,000/day; a caption track
         adds ~400. Chapters are description text and cost nothing. A marker
         lookup is ~3 units.
@@ -599,6 +608,19 @@ class YouTubeUploader:
             description = compose_description(
                 description, build_chapters(section_timeline, script.sections)
             )
+        if ai_disclosure is not None and getattr(ai_disclosure, "label", False):
+            from modules import ai_disclosure as ad
+
+            # Bytes, not characters: YouTube's 5000 is a byte limit and a Russian
+            # or Uzbek description is two bytes a letter. The flag below is the
+            # declaration; a line that does not fit is the one thing dropped.
+            line = getattr(ai_disclosure, "line", "") or ""
+            with_line = ad.append_line(description, line, limit=MAX_DESCRIPTION,
+                                       measure=lambda t: len(t.encode("utf-8")))
+            if line and line not in with_line:
+                logger.warning("%sThe AI-disclosure line did not fit the description; the "
+                               "containsSyntheticMedia flag is still sent", self._label)
+            description = with_line
         if description_suffix:
             from modules import watch_next
             description = watch_next.append_watch_next(description, description_suffix)
@@ -615,6 +637,11 @@ class YouTubeUploader:
                 "selfDeclaredMadeForKids": False,
             },
         }
+
+        if ai_disclosure is not None and getattr(ai_disclosure, "label", False):
+            # Only ever true: a body without the field is what every upload has
+            # always sent, and YouTube reads the absence as "no".
+            body["status"]["containsSyntheticMedia"] = True
 
         # Labelled from the channel's real language, never a constant; an
         # unknown language sends no field rather than a wrong one.
