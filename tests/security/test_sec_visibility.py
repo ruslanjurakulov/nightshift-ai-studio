@@ -321,6 +321,10 @@ def test_the_grants_split_the_browser_from_the_worker(conn):
         for sig in persons | worker:
             assert su.value("select prosecdef from pg_proc where oid = %s::regprocedure", [f"public.{sig}"]) is True
             assert "search_path=public, pg_temp" in su.value("select proconfig::text from pg_proc where oid = %s::regprocedure", [f"public.{sig}"])
+        # the browser roles' column list (0086) does not name the switch: the privilege is absent, not only the trigger's refusal
+        assert su.value("select has_column_privilege('authenticated', 'public.channels', 'publish_on_approve', 'UPDATE')") is False
+        assert su.value("select has_column_privilege('authenticated', 'public.channels', 'publish_on_approve', 'INSERT')") is False
+        assert su.value("select has_column_privilege('anon', 'public.channels', 'publish_on_approve', 'UPDATE')") is False
         for tbl in ("video_visibility_requests", "youtube_quota_ledger"):
             for role in ("anon", "authenticated", "service_role"):
                 for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE"):
@@ -482,6 +486,14 @@ def test_applied_needs_a_read_back_that_said_public_and_the_mirror_follows_the_r
         assert "video.visibility_applied" in audits(su)
         detail = su.value("select detail from public.app_audit_log where action = 'video.visibility_applied' and target = %s", [VID])
         assert detail["after"] == "public" and detail["units"] == 53 and detail["status"] == "applied"
+        # the table itself says applied needs a public read-back, whoever writes (the function's own refusal is the first defence)
+        out = su.run("update public.video_visibility_requests set after_privacy = 'private' where id = %s", [rid])
+        assert not out.ok and out.sqlstate in ("23514", "42501"), out
+        with su.conn.transaction():
+            su.conn.execute("alter table public.video_visibility_requests disable trigger video_visibility_requests_guard")
+            out = su.run("update public.video_visibility_requests set after_privacy = 'private' where id = %s", [rid])
+            su.conn.execute("alter table public.video_visibility_requests enable trigger video_visibility_requests_guard")
+        assert not out.ok and out.sqlstate == "23514", out
         # the answer is final: no second finish, no change by the owner either
         assert finish(conn, rid, "w1", "refused", reason="platform_kept_private", after="private").rows[0][0]["error"] == "not_holder"
         for q in ("update public.video_visibility_requests set status = 'queued', finished_at = null",
