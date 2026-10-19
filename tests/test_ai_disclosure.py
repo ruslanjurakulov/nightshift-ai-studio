@@ -2,7 +2,9 @@
 content" label for every platform. The 'auto' decision table is pinned row by
 row: a row that flips is a change in what the channel tells its audience."""
 
+import re
 import unittest
+from pathlib import Path
 
 from modules import ai_disclosure as ad
 from modules.channels import AgentConfig
@@ -217,6 +219,22 @@ class ForRun(unittest.TestCase):
     def test_no_agent_means_defaults(self):
         d, _ = ad.for_run(None, generated_clips=1, generated_stills=0, presenter=False)
         self.assertEqual((d.label, d.mode), (True, "auto"))
+
+
+class DashboardAgrees(unittest.TestCase):
+    """The review panel reads the event this module's words are written into (command-center/lib/aiDisclosure.ts):
+    the event name and the closed reason list must be the same on both sides."""
+
+    TS = (Path(__file__).resolve().parent.parent / "command-center" / "lib" / "aiDisclosure.ts").read_text(encoding="utf-8")
+
+    def test_event_name(self):
+        self.assertIn(f'AI_DISCLOSURE_EVENT = "{ad.EVENT}"', self.TS)
+
+    def test_reason_words_and_modes(self):
+        listed = re.search(r"AI_REASONS = \[(.*?)\] as const", self.TS, re.S).group(1)
+        self.assertEqual(sorted(re.findall(r'"([a-z_]+)"', listed)), sorted(ad.REASONS))
+        modes = re.search(r"AI_MODES = \[(.*?)\] as const", self.TS, re.S).group(1)
+        self.assertEqual(sorted(re.findall(r'"([a-z]+)"', modes)), sorted(ad.MODES))
 
 
 class Metadata(unittest.TestCase):
