@@ -1,0 +1,181 @@
+"""The scheduled readiness check (tools/doctor_report.py, .github/workflows/doctor_scheduled.yml): what it records,
+that it records no value, that its workflow holds no secret the daily run does not, and that the operator bot reads
+what it wrote. Fakes only: no network, no provider."""
+
+import re
+import unittest
+from datetime import datetime, timezone
+from pathlib import Path
+
+import yaml
+
+from modules.operator_bot import alerts
+from tests.operator_bot_fakes import FakeSync
+from tests.test_reliability_alerts import iso, make
+from tools import doctor, doctor_report
+
+ROOT = Path(__file__).resolve().parent.parent
+WORKFLOWS = ROOT / ".github" / "workflows"
+NOW = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+
+
+def check(group, name, status, detail="", fix=""):
+    return doctor.Check(group, name, status, detail, fix)
+
+
+class RowTestCase(unittest.TestCase):
+    def test_only_failures_outside_the_host_group_are_named(self):
+        checks = [check("keys", "GEMINI_API_KEY", doctor.FAIL), check("keys", "PEXELS_API_KEY", doctor.PASS),
+                  check("host", "ffmpeg", doctor.FAIL), check("host", "free disk", doctor.FAIL),
+                  check("providers", "elevenlabs", doctor.WARN), check("youtube", "operator channel token", doctor.FAIL),
+                  check("config", "key shapes", doctor.UNVERIFIED)]
+        self.assertEqual(doctor_report.failing_names(checks), ["keys/GEMINI_API_KEY", "youtube/operator channel token"])
+
+    def test_the_row_is_ok_or_fail_with_names_only_and_no_channel(self):
+        ok = doctor_report.build_row([check("keys", "GEMINI_API_KEY", doctor.PASS)])
+        self.assertEqual((ok["kind"], ok["title"], ok["body"]), ("operator.doctor", "ok", ""))
+        bad = doctor_report.build_row([check("providers", "pexels", doctor.FAIL, "search check: Pexels refused the key",
+                                             "update PEXELS_API_KEY")])
+        self.assertEqual((bad["title"], bad["body"]), ("fail", "providers/pexels"))
+        self.assertNotIn("channel_id", bad)
+        self.assertNotIn("refused", str(bad))                    # the detail line never goes into the row
+
+    def test_a_host_only_failure_is_an_ok_verdict(self):
+        row = doctor_report.build_row([check("host", "ffmpeg", doctor.FAIL)])
+        self.assertEqual(row["title"], "ok")
+
+    def test_names_are_made_safe_and_whole(self):
+        names = [check("keys", f"KEY_{i:02d}_" + "X" * 30, doctor.FAIL) for i in range(12)]
+        row = doctor_report.build_row(names)
+        self.assertLessEqual(len(row["body"]), doctor_report.MAX_BODY)
+        self.assertTrue(all(len(n) == len("keys/KEY_00_" + "X" * 30) for n in row["body"].split(",")))
+        odd = doctor_report.failing_names([check("keys", "a,b <script>$TOKEN", doctor.FAIL)])
+        self.assertEqual(odd, ["keys/ab scriptTOKEN"])
+
+
+class MainTestCase(unittest.TestCase):
+    def run_main(self, checks, sync, env=None, raising=False):
+        out = []
+
+        def run():
+            if raising:
+                raise RuntimeError("boom")
+            return checks
+
+        rc = doctor_report.main(env=env or {}, run=run, sync=sync, out=out.append)
+        return rc, "\n".join(out)
+
+    def test_a_failure_is_recorded_and_the_job_stays_green(self):
+        sync = FakeSync()
+        rc, text = self.run_main([check("youtube", "operator channel token", doctor.FAIL, "expired", "re-authorise")], sync)
+        self.assertEqual(rc, 0)
+        (table, rows), = sync.upserts
+        self.assertEqual((table, rows[0]["kind"], rows[0]["title"]), ("alert_events", "operator.doctor", "fail"))
+        self.assertIn("recorded: fail", text)
+
+    def test_no_secret_value_reaches_the_log_or_the_row(self):
+        secret = "sk-this-is-a-fake-provider-key-1234567890"
+        env = {"GEMINI_API_KEY": secret}
+        checks = [check("keys", "GEMINI_API_KEY", doctor.FAIL, f"refused {secret}", "rotate it")]
+        sync = FakeSync()
+        rc, text = self.run_main(checks, sync, env=env)
+        self.assertNotIn(secret, text)
+        self.assertNotIn(secret, str(sync.upserts))
+
+    def test_without_supabase_nothing_can_be_told_so_the_job_goes_red(self):
+        class Off:
+            enabled = False
+
+        rc, text = self.run_main([], Off())
+        self.assertEqual(rc, 1)
+        self.assertIn("not configured", text)
+
+    def test_a_refused_or_failed_write_goes_red(self):
+        class Refuses(FakeSync):
+            def upsert(self, *a, **k):
+                return 0
+
+        class Raises(FakeSync):
+            def upsert(self, *a, **k):
+                raise RuntimeError("down")
+
+        self.assertEqual(self.run_main([], Refuses())[0], 1)
+        self.assertEqual(self.run_main([], Raises())[0], 1)
+
+    def test_a_check_that_could_not_run_records_nothing(self):
+        sync = FakeSync()
+        rc, text = self.run_main([], sync, raising=True)
+        self.assertEqual((rc, sync.upserts), (1, []))
+        self.assertIn("could not run", text)
+
+    def test_the_bot_reads_what_the_report_wrote(self):
+        sync = FakeSync()
+        self.run_main([check("providers", "elevenlabs", doctor.FAIL)], sync)
+        row = dict(sync.upserts[0][1][0], at=iso(NOW), channel_id=None)
+        engine, _, _, ops, _ = make(now=NOW, channels=[], tables={"alert_events": [row]})
+        found = [a for a in alerts.detect(ops, 15000) if a.kind == "health"]
+        self.assertEqual([a.key for a in found], ["doctor:check:providers-elevenlabs:2026-10-14"])
+
+
+class WorkflowTestCase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = yaml.safe_load((WORKFLOWS / "doctor_scheduled.yml").read_text())
+        cls.daily = yaml.safe_load((WORKFLOWS / "daily_video.yml").read_text())
+        cls.job = cls.doc["jobs"]["doctor"]
+        cls.step = next(s for s in cls.job["steps"] if s.get("name") == "Readiness check")
+        # Everything the daily video job hands to any of its steps: the run step and the token-restore steps.
+        cls.daily_env = {}
+        for s in cls.daily["jobs"]["make-video"]["steps"]:
+            for k, v in (s.get("env") or {}).items():
+                cls.daily_env[k] = f"{cls.daily_env.get(k, '')} {v}"
+
+    def refs(self, expr):
+        return set(re.findall(r"(?:secrets|vars)\.[A-Z0-9_]+", str(expr)))
+
+    def test_it_runs_on_a_schedule_and_by_hand_with_least_privilege(self):
+        on = self.doc.get("on") or self.doc.get(True)
+        self.assertIn("schedule", on)
+        self.assertIn("workflow_dispatch", on)
+        self.assertEqual(self.doc["permissions"], {"contents": "read"})
+        checkout = next(s for s in self.job["steps"] if str(s.get("uses", "")).startswith("actions/checkout"))
+        self.assertIs(checkout["with"]["persist-credentials"], False)
+
+    def test_it_holds_no_secret_or_variable_the_daily_run_does_not(self):
+        daily_refs = set()
+        for expr in self.daily_env.values():
+            daily_refs |= self.refs(expr)
+        for name, expr in self.step["env"].items():
+            self.assertIn(name, self.daily_env, f"{name} is not passed to the daily run")
+            self.assertTrue(self.refs(expr) <= self.refs(self.daily_env[name]),
+                            f"{name} reads a source the daily run does not use for it")
+        mine = set()
+        for expr in self.step["env"].values():
+            mine |= self.refs(expr)
+        self.assertTrue(mine <= daily_refs, mine - daily_refs)
+
+    def test_every_secret_the_doctor_judges_is_passed_to_it(self):
+        wanted = set()
+        for alts in doctor.VIDEO_KEYS.values():
+            for alt in alts:
+                wanted |= set(alt)
+        wanted |= set(doctor.IMAGE_KEYS.values())
+        wanted |= {"GEMINI_API_KEY", "PEXELS_API_KEY", "ELEVENLABS_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_KEY",
+                   "YOUTUBE_TOKEN_JSON", "YOUTUBE_CLIENT_SECRET_JSON", "YOUTUBE_CHANNEL_ID", "VIDIQ_ACCESS_TOKEN"}
+        self.assertEqual(sorted(wanted - set(self.step["env"])), [])
+
+    def test_no_expression_is_spliced_into_the_shell_and_nothing_is_dumped(self):
+        script = self.step["run"]
+        self.assertNotIn("${{", script)
+        self.assertIn("tools/doctor_report.py", script)
+        for forbidden in ("printenv", "set -x", "env |", "export -p"):
+            self.assertNotIn(forbidden, script)
+
+    def test_it_never_starts_a_video_run_or_calls_the_api(self):
+        text = (WORKFLOWS / "doctor_scheduled.yml").read_text()
+        for forbidden in ("main.py", "daily_video", "queue_worker", "gh api", "curl ", "workflow_run", "pull_request"):
+            self.assertNotIn(forbidden, "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#")))
+
+
+if __name__ == "__main__":
+    unittest.main()

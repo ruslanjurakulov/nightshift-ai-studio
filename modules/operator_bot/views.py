@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from modules.operator_bot import analysis
+from modules.operator_bot import analysis, reliability
 from modules.operator_bot.config import OperatorConfig, STUCK_HEARTBEAT_MINUTES
 from modules.operator_bot.i18n import DEFAULT_LANGUAGE, LANGUAGES, Raw, has, t
 from modules.operator_bot.sources import OperatorSources, Section, age_label, parse_ts
@@ -33,15 +33,17 @@ from modules.tg_text import clip, html_escape, safe_id, short_id
 # Alert kinds (short, because callback_data is limited to 64 bytes) and where
 # each one points. The kind ids are stable identifiers (they travel in callback
 # data and in /mute); what the owner reads for each comes from the copy table.
-ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment", "marketing", "email")
+ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment", "marketing", "email",
+               "pipeline", "health")
 KIND_COMMAND = {
     "run": "errors", "stuck": "queue", "balance": "balance", "deploy": "deploys",
     "worker": "health", "approval": "approvals", "audit": "security", "payment": "payments",
-    "marketing": "marketing", "email": "alerts",
+    "marketing": "marketing", "email": "alerts", "pipeline": "today", "health": "health",
 }
 KIND_PAGE = {
     "run": "errors", "stuck": "jobs", "balance": "billing", "worker": "integrations",
-    "approval": "approvals", "audit": "audit", "marketing": "marketing",
+    "approval": "approvals", "audit": "audit", "marketing": "marketing", "pipeline": "errors",
+    "health": "integrations",
 }
 #: Kinds with no page of their own that fall back to the GitHub Actions link (a
 #: deploy). A kind in neither table has no Open button: a payment has no page
@@ -472,6 +474,7 @@ def view_today(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
         lines.append(t(lang, "today.videos", made=c.get("render.completed", 0), published=c.get("video.published", 0),
                        held=c.get("publish.held", 0), blocked=c.get("publish.blocked", 0),
                        failed=c.get("render.failed", 0) + c.get("upload.failed", 0), cut=cut(lang, ev)))
+    lines += reliability.digest_lines(ops, lang)
     rj = ops.render_jobs(day)
     if rj.ok:
         c = analysis.classify_render_jobs(rj.data, now, cfg)
@@ -827,6 +830,7 @@ def view_digest(ops: OperatorSources, held: Optional[list] = None, lang: str = D
         c = analysis.event_counts(ev.data)
         lines.append(t(lang, "digest.videos", made=c.get("render.completed", 0),
                        published=c.get("video.published", 0), held=c.get("publish.held", 0)))
+    lines += reliability.digest_lines(ops, lang)
     su = ops.signups(since24)
     lines.append(t(lang, "digest.accounts", n=len(su.data)) if su.ok
                  else t(lang, "today.accounts_unknown", why=unknown(lang, su)))

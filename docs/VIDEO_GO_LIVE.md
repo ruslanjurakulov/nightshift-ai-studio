@@ -153,6 +153,15 @@ It must run inside the worker container: that is the only place that sees the
 environment the worker really has. It exists in the image once the change that adds
 `tools/doctor.py` has been deployed.
 
+**Scheduled too.** `.github/workflows/doctor_scheduled.yml` runs the same read-only
+checks every 6 hours (`tools/doctor_report.py`) and reports the failing ones to the
+operator bot, so a rejected YouTube refresh token or a dead provider key arrives as an
+alert instead of as a day with no video (docs/operator-bot.md, "Reliability
+alerts"). It sees the configuration GitHub holds (the secrets and variables the daily
+run is given), not the worker container's own environment, which is refreshed by each
+deploy; the `host` checks (disk, ffmpeg) belong to the machine and are not judged
+there. Run the doctor in the container, as above, after a deploy.
+
 Reading the report:
 
 ```

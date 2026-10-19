@@ -10,6 +10,12 @@ count of drafts waiting for the owner, a post that ended ``dead`` or ``failed``
 words, link, media or chat id; deciding stays in the app behind the second
 factor, and there is no button here that could (modules/operator_bot/router.py).
 
+The reliability alerts are one more family (modules/operator_bot/reliability.py): the dead-man switch
+(a scheduled operator channel with no video by its publish hour + grace), a failed daily workflow run, a blocked
+or failed-upload video, the scheduled readiness check and stale provider balances, kinds ``pipeline`` and
+``health``. Their keys end in the UTC date (one alert per cause per channel per day) and the engine follows a
+delivered one that has cleared with a single "recovered" note (:meth:`AlertEngine._recovered`).
+
 Detection is pure over the sources (:func:`detect`). Delivery is
 :class:`AlertEngine`, which is where the restraint lives:
 
@@ -44,7 +50,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 
-from modules.operator_bot import analysis
+from modules.operator_bot import analysis, reliability
 from modules.operator_bot.config import OperatorConfig
 from modules.operator_bot.i18n import DEFAULT_LANGUAGE, t
 from modules.operator_bot.sources import BOT_WORKER_ID, OperatorSources, age_label, parse_ts
@@ -100,10 +106,12 @@ class Alert:
 
 # -- detection -------------------------------------------------------------
 
-def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str = DEFAULT_LANGUAGE) -> list[Alert]:
+def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str = DEFAULT_LANGUAGE,
+           verdicts: Optional[reliability.Verdicts] = None) -> list[Alert]:
     """Every alert that applies right now, worded in ``lang``. A source that
     cannot answer yields nothing: an unreadable table is not an incident, and
-    `/health` says so. The dedupe keys never depend on the language."""
+    `/health` says so. The dedupe keys never depend on the language. ``verdicts``
+    collects what the reliability detectors could judge, for the "recovered" notes."""
     now, cfg = ops.now(), ops.cfg
     if low_credits is None:
         from modules import provider_balance
@@ -212,6 +220,10 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
             out.append(Alert("audit", f"audit:{safe_id(r.get('id'), 40)}", "critical",
                              t(lang, "alert.security", action=safe_id(r.get("action"), 40), target=tgt),
                              safe_id(r.get("channel_id")) or None))
+
+    # Silence and readiness: the dead-man switch, the daily workflow, per-video events, the scheduled doctor,
+    # provider freshness. Guarded detector by detector inside (modules/operator_bot/reliability.py).
+    out += reliability.detect(ops, now, low_credits, lang, verdicts if verdicts is not None else reliability.Verdicts())
     return out
 
 
@@ -365,7 +377,9 @@ class AlertEngine:
         self._merge_unrecorded(state, now)
         self.ops.reset()
         lang = self._language()
-        found = detect(self.ops, self.low_credits, lang)
+        verdicts = reliability.Verdicts()
+        found = detect(self.ops, self.low_credits, lang, verdicts)
+        found = found + self._recovered(state, verdicts)
         if self.owner_mail is not None:
             # One info note per day while the owner's e-mail is failing, through the same restraint as any alert.
             found = found + self.owner_mail.outage_alerts(state, now, lang)
@@ -378,6 +392,14 @@ class AlertEngine:
             # ledger: it neither waits for Telegram's baseline nor changes what Telegram records. It never raises.
             if self.owner_mail is not None:
                 rep.mail = self.owner_mail.run(found, state, now, lang)
+
+    def _recovered(self, state: AlertState, verdicts: reliability.Verdicts) -> list:
+        """The "recovered" notes: an information alert for each delivered reliability alert that has cleared."""
+        try:
+            return reliability.recoveries(state, verdicts)
+        except Exception as e:  # noqa: BLE001 - a bug here must not stop the alerts themselves
+            logger.warning("recovered notes skipped (%s)", type(e).__name__)
+            return []
 
     def _telegram(self, found: list, state: AlertState, rep: TickReport, lang: str, now: datetime) -> TickReport:
         if not state.armed:

@@ -39,6 +39,13 @@ WORKER_STALE_SECONDS = 300
 
 DEFAULT_STUCK_MINUTES = 30
 DEFAULT_MAX_ALERTS_PER_HOUR = 6
+#: Hours after a channel's publish hour (UTC) by which its video must exist, or
+#: the dead-man alert fires (modules/operator_bot/reliability.py). One run is at
+#: most an hour of render plus queueing behind another channel, and GitHub's
+#: hourly schedule is observed to fire late, so three hours separates "late"
+#: from "not coming" without waiting until the next day.
+DEFAULT_DEADMAN_HOURS = 3
+MAX_DEADMAN_HOURS = 12
 
 _APP_URL = re.compile(r"^https://[A-Za-z0-9](?:[A-Za-z0-9.\-]*[A-Za-z0-9])?(?::\d{1,5})?$")
 _QUIET = re.compile(r"^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*$")
@@ -89,6 +96,14 @@ def parse_quiet_hours(raw: Optional[str]) -> Optional[tuple[int, int]]:
     return start, end
 
 
+def parse_deadman_hours(raw: Optional[str]) -> Optional[int]:
+    """``"3"`` -> 3; ``"off"`` -> None (switched off); empty or malformed -> the default."""
+    text = str(raw or "").strip().lower()
+    if text == "off":
+        return None
+    return _int(text, DEFAULT_DEADMAN_HOURS, 1, MAX_DEADMAN_HOURS) if text else DEFAULT_DEADMAN_HOURS
+
+
 @dataclass(frozen=True)
 class OperatorConfig:
     app_url: Optional[str] = None
@@ -98,6 +113,10 @@ class OperatorConfig:
     stuck_minutes: int = DEFAULT_STUCK_MINUTES
     max_alerts_per_hour: int = DEFAULT_MAX_ALERTS_PER_HOUR
     github_repo: str = ""
+    #: The dead-man grace in hours (OPERATOR_DEADMAN_HOURS), or None when the owner switched
+    #: it off with the value ``off``. A malformed value keeps the default: a typo must not
+    #: silence the one alert that fires on silence.
+    deadman_hours: Optional[int] = DEFAULT_DEADMAN_HOURS
     #: The language the bot speaks until the owner picks one with /language
     #: (OPERATOR_LANGUAGE; an unknown code falls back to the default).
     language: str = DEFAULT_LANGUAGE
@@ -115,6 +134,7 @@ class OperatorConfig:
             stuck_minutes=_int(env.get("OPERATOR_STUCK_MINUTES"), DEFAULT_STUCK_MINUTES, 5, 24 * 60),
             max_alerts_per_hour=_int(env.get("OPERATOR_ALERT_MAX_PER_HOUR"), DEFAULT_MAX_ALERTS_PER_HOUR, 1, 60),
             language=normalize_language(env.get("OPERATOR_LANGUAGE")),
+            deadman_hours=parse_deadman_hours(env.get("OPERATOR_DEADMAN_HOURS")),
             github_repo=repo if re.fullmatch(r"[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+", repo) else "",
         )
 

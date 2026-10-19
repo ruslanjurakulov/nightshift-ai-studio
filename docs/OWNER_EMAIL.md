@@ -15,6 +15,8 @@ accounts, system problems and a daily digest. **Off by default.** No migration. 
 | Failed / stuck jobs | a render job failed, a job stuck, an error burst | `run`, `stuck` | ids and channel ids, as the bot |
 | Worker problem | a worker heartbeat gone stale, a worker `failed` | `worker` | critical |
 | Deploy or CI failed | the latest `deploy` / `tests` / `frontend` run on `main` failed | `deploy` | needs the bot's `GITHUB_*` settings, as the bot |
+| Video pipeline | no video for a scheduled operator channel by its publish hour + grace (the dead-man switch), a failed daily workflow run, a blocked video, a failed upload, and a short "recovered" note when one clears | `pipeline` | channel ids, UTC times, run numbers, workflow job and step names; never a title or a log (docs/operator-bot.md, "Reliability alerts") |
+| Readiness | the scheduled readiness check is failing a check or has stopped reporting, a provider balance snapshot stopped refreshing | `health` | the doctor's check names only; never a value |
 | Poster problem | a brand-channel post `failed` or ended `dead` | `marketing` | status and closed codes only, **never a post's text**; "drafts waiting" and "post sent" are not e-mailed |
 | Daily digest | once a day from `OPERATOR_DIGEST_HOUR`, owner's time zone | | yesterday's payments total, new accounts, videos made / published / held / failed, provider cost estimate, what needs attention |
 
@@ -124,7 +126,7 @@ Same rules as the bot, applied to the e-mail with a **ledger of its own** (`oper
 | `NIGHTSHIFT_OWNER_EMAIL` | variable | the master switch: **exactly `on`**. Anything else, including `ON`, `true`, ` on`, unset: off. |
 | `OPERATOR_RESEND_API_KEY` | secret | a **restricted Resend "Sending access" key** for your one domain, created for this and used by nothing else; the deploy passes it to the container as `RESEND_API_KEY` and only while the switch is `on` |
 | `NIGHTSHIFT_EMAIL_FROM` | variable | the sender, e.g. `Nightshift <alerts@your-domain>`; the same variable as the customer e-mail worker (a non-secret) |
-| `OWNER_EMAIL_KINDS` | variable | which kinds, comma-separated (see above). Empty: payment, signup, run, stuck, worker, deploy, marketing. This is the permanent per-kind opt-out; it needs a redeploy. |
+| `OWNER_EMAIL_KINDS` | variable | which kinds, comma-separated (see above). Empty: payment, signup, run, stuck, worker, deploy, marketing, pipeline, health. This is the permanent per-kind opt-out; it needs a redeploy. |
 | `OPERATOR_*` | variables | existing: `OPERATOR_APP_URL` (links), `OPERATOR_TZ`, `OPERATOR_QUIET_HOURS`, `OPERATOR_DIGEST_HOUR`, `OPERATOR_ALERT_MAX_PER_HOUR`, `OPERATOR_LANGUAGE` |
 
 Deploy wiring follows the other workers: `deploy/.env.operator.example` (the four names, optional),
