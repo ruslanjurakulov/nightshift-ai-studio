@@ -81,6 +81,7 @@ from typing import Callable, Mapping, Optional
 
 from modules import ai_disclosure
 from modules import social_captions
+from modules import social_probe
 from modules import social_tokens
 
 logger = logging.getLogger(__name__)
@@ -779,7 +780,8 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
                     worker_id: str, output_dir: Path, http=None, env: Optional[Mapping[str, str]] = None,
                     sleep: Callable[[float], None] = time.sleep,
                     probe_fn: Callable[[Path], VideoInfo] = probe,
-                    youtube: Optional[YoutubeAdapter] = None) -> str:
+                    youtube: Optional[YoutubeAdapter] = None,
+                    media_fn: Callable[[Path], social_probe.MediaFacts] = social_probe.read_facts) -> str:
     """Carry one claimed request to published | failed | refused. Never raises."""
     rid = req.get("id")
     platform = str(req.get("platform") or "")
@@ -837,6 +839,11 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
                          max_seconds=tt_info.get("max_video_post_duration_sec") or None)
         else:
             check_format(platform, info, short_id=short_id)
+        # Codec, frame rate, size and file layout, from the file itself: refused here, not after a staged upload.
+        try:
+            social_probe.check_media(platform, media_fn(path))
+        except social_probe.ProbeRefusal as e:
+            raise refused(e.reason, e.detail) from None
 
         channel = None
         try:

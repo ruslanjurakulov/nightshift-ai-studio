@@ -135,6 +135,31 @@ describe("TikTok: the unaudited-app error", () => {
   });
 });
 
+describe("the pre-upload file checks", () => {
+  const WORDS = ["unreadable_video", "bad_codec", "bad_audio", "bad_framerate", "too_wide", "bad_resolution", "not_faststart"] as const;
+  const KEY: Record<(typeof WORDS)[number], Record<Locale, RegExp>> = {
+    unreadable_video: { en: /could not be read/, ru: /не удалось прочитать/, uz: /oʻqib boʻlmadi/ },
+    bad_codec: { en: /picture format/, ru: /формат изображения/, uz: /tasvir formatini/ },
+    bad_audio: { en: /AAC/, ru: /AAC/, uz: /AAC/ },
+    bad_framerate: { en: /23 to 60/, ru: /23–60/, uz: /23–60/ },
+    too_wide: { en: /1920/, ru: /1920/, uz: /1920/ },
+    bad_resolution: { en: /360 to 4096/, ru: /360 до 4096/, uz: /360 dan 4096/ },
+    not_faststart: { en: /index/, ru: /индекс/, uz: /indeks/ },
+  };
+
+  it.each(LOCALES)("%s: a refusal shows its own sentence and the worker's detail, as a refusal", (locale) => {
+    for (const word of WORDS) {
+      cleanup();
+      const detail = `the file says ${word}`;
+      panel(locale, { requests: [request({ platform: "instagram", status: "refused", reason: word, error: detail })] });
+      const sentence = (dictionaries[locale].publish.reasons as Record<string, string>)[word];
+      expect(sentence, word).toMatch(KEY[word][locale]);
+      expect(screen.getByText(`${sentence} — ${detail}`), word).toBeTruthy();
+      expect(screen.getByText(dictionaries[locale].publish.status.refused), word).toBeTruthy();
+    }
+  });
+});
+
 describe("the Channels page note", () => {
   it.each(LOCALES)("%s: names the private-account requirement", (locale) => {
     const note = dictionaries[locale].socialAccounts.tiktokPrivateNote;

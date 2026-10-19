@@ -9,6 +9,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from modules import social_probe as pr
 from modules import social_publish as sp
 from modules import social_tokens as st
 
@@ -134,11 +135,16 @@ class Base(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_req(self, store, tokens, platform="instagram", info=None, http=None):
+    #: What a compositor master reads as: H.264 + AAC, 30 fps, vertical, index first (tests/test_social_guards.py
+    #: covers the files that fail).
+    GOOD_FACTS = pr.MediaFacts("h264", "aac", True, 1080, 1920, 30.0, True)
+
+    def run_req(self, store, tokens, platform="instagram", info=None, http=None, facts=None):
         info = info or sp.VideoInfo(60.0, 1080, 1920, 2048)
+        facts = facts or self.GOOD_FACTS
         return sp.process_request(req(platform), store=store, tokens=tokens, worker_id="w1",
                                   output_dir=self.out, http=http or store.http(), env={},
-                                  sleep=lambda s: None, probe_fn=lambda p: info)
+                                  sleep=lambda s: None, probe_fn=lambda p: info, media_fn=lambda p: facts)
 
 
 class GateTests(Base):
