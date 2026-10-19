@@ -568,3 +568,8 @@ sec_video_safety_0111.extend(TABLES, FUNCTIONS)
 import sec_approve_video_0112  # noqa: E402
 
 sec_approve_video_0112.extend(TABLES, FUNCTIONS)
+
+# Migration 0113 (publish when approved: the switch, the queue, the quota ledger): tests/security/sec_visibility_0113.py
+import sec_visibility_0113  # noqa: E402
+
+sec_visibility_0113.extend(TABLES, FUNCTIONS)
