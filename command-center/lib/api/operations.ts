@@ -237,12 +237,16 @@ export async function getJob(caller: ApiCaller, jobId: string): Promise<ApiResul
 /**
  * api_get_job returns render_jobs.error verbatim: the operator's header and log tail, with vendor names and
  * remedies. The API sends a code and one fixed sentence instead (the same ones the Create page shows), never the
- * text. TypeScript only; the SQL function itself is unchanged.
+ * text. Since migration 0111 api_get_job / oauth_get_job do this themselves (render_job_public_error) and answer with
+ * `error_code` already present; that answer is passed through untouched, because the sentence it carries has no
+ * `[code:]` prefix and would otherwise read as an uncoded failure. A database without 0111 still sends the raw text
+ * and is mapped here, so either order of deploy is safe.
  */
 export function withPublicJobError(result: ApiResult): ApiResult {
   if (!result.ok) return result;
   const data = obj(result.data);
   if (!data || !("error" in data)) return result;
+  if ("error_code" in data) return result;
   // Only a failed job has a failure to explain. The worker also writes `error` on a re-queue ("worker stopping
   // before the run started"): operator text that says nothing the caller needs.
   const raw = data.status === "failed" && typeof data.error === "string" && data.error !== "" ? data.error : null;

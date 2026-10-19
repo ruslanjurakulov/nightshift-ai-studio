@@ -146,6 +146,13 @@ describe("F2: a job's error is a code and a sentence, never the worker log", () 
     }
   });
 
+  it("0111: an answer the database already coded (error_code present) is passed through, not re-read as uncoded", async () => {
+    const coded = { id: 5, status: "failed", error: en.create.jobError.voice, error_code: "voice", charge: null };
+    expect(await getJob(caller({ ok: true, status: 200, data: coded }).c, "5")).toMatchObject({ ok: true, data: coded });
+    const none = { id: 5, status: "running", error: null, error_code: null, charge: null };
+    expect(await getJob(caller({ ok: true, status: 200, data: none }).c, "5")).toMatchObject({ ok: true, data: none });
+  });
+
   it("refusals pass through untouched", async () => {
     expect(await getJob(caller({ ok: false, status: 404, error: { code: "job_not_found", message: "x" } }).c, "5")).toMatchObject({ ok: false, status: 404 });
   });

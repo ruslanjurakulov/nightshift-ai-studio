@@ -558,3 +558,8 @@ sec_marketing_summary_0109.extend(TABLES, FUNCTIONS)
 import sec_marketing_0110  # noqa: E402
 
 sec_marketing_0110.extend(TABLES, FUNCTIONS)
+
+# Migration 0111 (video safety: provider choice, coded job errors, the hold sweep): tests/security/sec_video_safety_0111.py
+import sec_video_safety_0111  # noqa: E402
+
+sec_video_safety_0111.extend(TABLES, FUNCTIONS)
