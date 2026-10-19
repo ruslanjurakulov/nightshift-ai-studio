@@ -729,6 +729,28 @@ class PollClassificationTestCase(unittest.TestCase):
         with _no_sleep():
             self.assertEqual(client._await("k-1")[0], OUTCOME_SUCCEEDED)
 
+    def test_the_404_allowance_renews_after_a_good_poll(self):
+        # A task that answered ("processing") and is then briefly invisible again is a flap, not an expired
+        # task: it gets its own single retry, like the transient counter, instead of being reported
+        # "task not found" on the second 404 of the whole wait.
+        running = FakeResp({"code": 0, "data": {"task_status": "processing"}})
+        ok = FakeResp({"code": 0, "data": {"task_status": "succeed", "task_result": {
+            "videos": [{"url": "https://cdn.test/v.mp4"}]}}})
+        client = _generic_client()
+        client.session = FakeSession(gets=[FakeResp({}, status=404), running, FakeResp({}, status=404), ok])
+        with _no_sleep():
+            self.assertEqual(client._await("k-1")[0], OUTCOME_SUCCEEDED)
+        self.assertEqual(len(client.session.calls), 4)
+
+    def test_two_404s_in_a_row_are_still_task_not_found_after_a_good_poll(self):
+        running = FakeResp({"code": 0, "data": {"task_status": "processing"}})
+        client = _generic_client()
+        client.session = FakeSession(gets=[running, FakeResp({}, status=404), FakeResp({}, status=404)])
+        with _no_sleep(), self.assertRaises(VideoModelUnavailable) as ctx:
+            client._await("k-1")
+        self.assertIn("task not found", str(ctx.exception))
+        self.assertEqual(len(client.session.calls), 3)
+
     def test_retry_after_is_honoured_and_capped(self):
         ok = FakeResp({"code": 0, "data": {"task_status": "succeed", "task_result": {
             "videos": [{"url": "https://cdn.test/v.mp4"}]}}})

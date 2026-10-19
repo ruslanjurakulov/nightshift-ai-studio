@@ -172,6 +172,12 @@ other line of every body is the old text, which `tests/test_video_safety_migrati
   acts on `open` (lab test: a capture mid-flight makes the sweep wait, then it finds the hold captured and releases nothing). The one
   consequence worth knowing: a hold that was never started is released 3 hours after it was reserved even if its job is still queued
   because the worker is down, so that job later fails "reservation not open" and the customer is charged nothing.
+- **pg_cron is NOT installed on the live project, so the D15 schedule is skipped there.** Applying 0111 on the live project therefore
+  prints the NOTICE and creates no cron job: the only sweep is the worker's own (`tools/queue_worker.py`, while it runs). To enable the
+  10-minute sweep, install the extension first (Supabase > Database > Extensions > pg_cron), then run once in the SQL editor:
+  `select cron.schedule('nightshift-expire-credit-reservations','*/10 * * * *','select public.expire_credit_reservations()');`
+  (re-running 0111 after the extension is on does the same, with an unschedule first). Check it with the `cron.job` query under
+  "Is it working?". This note is about the live project's state, not the file: the migration is unchanged.
 - **Is it off?** No, there is no switch: the refusal and the new job answer are live on apply. Both are no-ops for every request the app
   sends today (no screen or route sends a provider for a customer; the job answer is what the TypeScript layer produced anyway).
 - **Is it working?** The verify block at the bottom of the file (every column true), and, if pg_cron is on,

@@ -349,7 +349,9 @@ def child(code, env, *args):
     proc = subprocess.run([sys.executable, "-I", "-c", code, str(ROOT), *args], capture_output=True, text=True,
                           timeout=300, cwd=tempfile.gettempdir(),
                           env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key", "PEXELS_API_KEY": "not-a-real-key",
-                               "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"), **env})
+                               "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"),
+                               # these runs are about the spend caps, not the host's free disk (main._preflight_disk)
+                               "NIGHTSHIFT_MIN_FREE_DISK_GB": "0", **env})
     line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
     assert line is not None, proc.stderr[-3000:]
     return json.loads(line[len("RESULT "):])

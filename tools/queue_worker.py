@@ -172,6 +172,11 @@ PENDING_RETRY_SECONDS = 60.0
 #: Past this a pending settlement is dropped with an error: the reservation is
 #: long gone (expired at 24 h) and retrying forever helps nobody.
 PENDING_GIVE_UP_HOURS = 72
+#: A run's result file (.run_result_<job>.json, repo dir) is kept while its queue row is unconfirmed; one
+#: this old belongs to a job that is long over (the stale sweep re-queues within minutes), and is swept at
+#: start-up. At most RESULT_SWEEP_MAX files a start, so a directory full of them cannot stall the worker.
+RESULT_FILE_MAX_AGE_DAYS = 3
+RESULT_SWEEP_MAX = 200
 #: After SIGTERM to the run's process group, how long before SIGKILL.
 KILL_AFTER_SECONDS = 30
 
@@ -670,6 +675,10 @@ class Worker:
         self._stop_at: Optional[float] = None
         self._base_secrets = secret_values(self.env)
         self._secrets = self._base_secrets
+        # Did the last _finish fail to reach the queue (no answer after its retries)? Then the row is
+        # still "running", the stale sweep will re-queue it, and the run's result file is the only
+        # proof the next attempt has that a video was made and its credits already taken.
+        self._row_unconfirmed = False
         # Reads a customer channel's Vault token (migration 0022) with the
         # service key; None = only the env/GitHub-secret path, as before.
         self.token_client = token_client
@@ -723,7 +732,30 @@ class Worker:
 
     # -- loop -------------------------------------------------------------
 
+    def _sweep_old_result_files(self) -> int:
+        """Delete result files older than RESULT_FILE_MAX_AGE_DAYS from the repo dir. Plain files named
+        exactly ``.run_result_<id>.json`` only (never a symlink, never a directory); never raises."""
+        removed = 0
+        try:
+            cutoff = time.time() - RESULT_FILE_MAX_AGE_DAYS * 86400
+            for path in sorted(Path(self.repo_dir).glob(".run_result_*.json")):
+                if removed >= RESULT_SWEEP_MAX:
+                    break
+                try:
+                    if path.is_symlink() or not path.is_file() or path.stat().st_mtime >= cutoff:
+                        continue
+                    path.unlink()
+                    removed += 1
+                except OSError:
+                    continue
+        except OSError as e:
+            logger.warning("result file sweep skipped (%s)", type(e).__name__)
+        if removed:
+            logger.info("removed %d result file(s) older than %d days", removed, RESULT_FILE_MAX_AGE_DAYS)
+        return removed
+
     def run_forever(self, *, once: bool = False) -> int:
+        self._sweep_old_result_files()
         while not self.stop_requested.is_set():
             self._sweep_credit_holds()
             self._retry_pending_settlements()
@@ -801,6 +833,7 @@ class Worker:
         succeeded | failed | paused | released | lost."""
         job_id = job["id"]
         channel_id = str(job.get("channel_id") or "")
+        self._row_unconfirmed = False
         logger.info("job %s: claimed (channel %s, kind %s, attempt %s/%s)", job_id, channel_id,
                     job.get("kind"), job.get("attempts"), job.get("max_attempts"))
 
@@ -839,8 +872,17 @@ class Worker:
             hold = self._open_credit_hold(job, channel_id, clean)
         except credit_rules.CreditRefused as e:
             if self._already_delivered_and_charged(job):
-                return self._finish(job, "succeeded", None)
-            return self._finish(job, "failed", f"credits: {e} (nothing was run)")
+                status = self._finish(job, "succeeded", None)
+                # Only once the row is finished: if this write is lost too, the next attempt still
+                # needs the file to see that the video exists (else it fails a charged job).
+                if not self._row_unconfirmed:
+                    self._result_path(job_id).unlink(missing_ok=True)
+                return status
+            status = self._finish(job, "failed", f"credits: {e} (nothing was run)")
+            # A file kept for this re-queued attempt has done its job once the attempt is refused for good.
+            if not self._row_unconfirmed:
+                self._result_path(job_id).unlink(missing_ok=True)
+            return status
 
         # The settlement happens INSIDE _execute, before the queue row is
         # finished: a kill between the two used to leave a "succeeded" job with
@@ -874,8 +916,16 @@ class Worker:
             if hold is not None and outcome in ("succeeded", "failed", "paused"):
                 settle(outcome == "succeeded")
         finally:
+            # Not before the queue row is finished. A video that was made and charged, whose row could
+            # not be finished (Supabase down for the retries), is re-queued by the stale sweep; its next
+            # attempt finds the hold captured and decides from THIS file (_already_delivered_and_charged).
+            # Deleting it here made that attempt fail a job the customer had already paid for.
             if result_file is not None:
-                result_file.unlink(missing_ok=True)
+                if self._row_unconfirmed:
+                    logger.warning("job %s: its queue row could not be finished, so %s is kept for the "
+                                   "re-queued attempt", job_id, result_file.name)
+                else:
+                    result_file.unlink(missing_ok=True)
         # Bookkeeping only, AFTER the job is finished and its hold settled: a slow or
         # failing Supabase can neither delay nor change either (it never raises).
         self._mirror_costs(run_started)
@@ -935,7 +985,6 @@ class Worker:
             return False
         logger.warning("job %s: its credits were already captured and its video is on disk — "
                        "finishing it as succeeded instead of failing it", job["id"])
-        self._result_path(job["id"]).unlink(missing_ok=True)
         return True
 
     # -- credit settlement ------------------------------------------------
@@ -1412,7 +1461,11 @@ class Worker:
                 # the header and log tail that follow it.
                 lines = error.splitlines()
                 error = render_error.tag(render_error.classify(lines[0], lines[1:]), error)
-        self._with_retries(lambda: self.client.finish(job["id"], self.worker_id, status, error))
+        # Confirmed only by an explicit True (the row is terminal and ours). None (no answer) and False
+        # ("no longer ours": a stale sweep re-queued it while this worker was cut off) both leave the
+        # result file in place: the re-queued attempt may need it to see that this run was paid for.
+        self._row_unconfirmed = self._with_retries(
+            lambda: self.client.finish(job["id"], self.worker_id, status, error)) is not True
         logger.info("job %s: %s%s", job["id"], status, f" — {error.splitlines()[0]}" if error else "")
         return status
 

@@ -97,6 +97,8 @@ jobs:
           TTS_PROVIDER: edge
           SCRIPT_LANGUAGE: English
           YOUTUBE_PRIVACY: private
+          # GB of free disk the run needs before it starts (modules/disk_guard.py). Blank = the 5 GB default.
+          NIGHTSHIFT_MIN_FREE_DISK_GB: ${{ vars.NIGHTSHIFT_MIN_FREE_DISK_GB }}
           # Free stock footage when the secret exists; empty otherwise.
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           # Without the secret this is the documented colour-placeholder run: say so

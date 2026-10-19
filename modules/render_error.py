@@ -63,11 +63,13 @@ _BY_CLASS = {
     "RenderTimeout": TIMEOUT,
     "TimeoutExpired": TIMEOUT,
     "CreditRefused": CREDITS,
+    # The run refused to start on a full output volume (main._preflight_disk): nothing was made.
+    "InsufficientDisk": RENDER,
 }
 
 #: A traceback's last line: `pkg.mod.ClassName: message`, or a bare `ClassName` (no message). A log line that merely
 #: mentions a class (`INFO falling back after VoiceUnavailable: nope`) does not start like this.
-_EXC_LINE = re.compile(r"^(?:[A-Za-z_]\w*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout))\b(?::[ \t]?(.*))?$")
+_EXC_LINE = re.compile(r"^(?:[A-Za-z_]\w*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout|Disk))\b(?::[ \t]?(.*))?$")
 # A vendor's own "out of quota" answer. The 429 is anchored to an HTTP-looking phrase, never a bare number.
 _QUOTA_TEXT = re.compile(
     r"RESOURCE_EXHAUSTED|insufficient[_ ]quota|quota[_ ]exceeded|\bquota\b|too many requests"

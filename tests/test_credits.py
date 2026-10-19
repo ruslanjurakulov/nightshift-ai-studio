@@ -221,6 +221,37 @@ class SettleHold(unittest.TestCase):
         credits.settle_hold(c, self.HOLD, succeeded=True, channel_id="news", since=None, ledger=broken)
         self.assertEqual(c.settled(), [("capture", "r1", 40.0)])
 
+    # A prices() outage at settlement: the whole run is planned as unpriced, once (documented in modules/credits.py).
+    class PricesDown(FakeCredits):
+        def prices(self):
+            self.calls.append(("prices",))
+            raise CreditsUnavailable("credit_prices: ReadTimeout")
+
+    def test_a_prices_outage_charges_the_whole_hold_after_its_retries_never_a_guess(self):
+        c, naps = self.PricesDown(), []
+        with self.assertLogs("modules.credits", level="WARNING") as logs:
+            note = credits.settle_hold(c, self.HOLD, succeeded=True, channel_id="news", since=None,
+                                       ledger=lambda *_: [entry("tts_characters", 3000)], sleep=naps.append)
+        self.assertEqual(c.settled(), [("capture", "r1", 40.0)])       # not the 3.0 the ledger would meter
+        self.assertIn("unpriced", note)
+        self.assertEqual([x for x in c.calls if x[0] == "prices"], [("prices",)] * credits.SETTLE_TRIES)
+        self.assertEqual(naps, [2.0, 4.0])
+        self.assertTrue(any("whole hold of 40.00 credits" in m for m in logs.output))
+
+    def test_a_prices_outage_never_turns_a_failed_run_into_a_charge(self):
+        c = self.PricesDown()
+        credits.settle_hold(c, self.HOLD, succeeded=False, channel_id="news", since=None,
+                            ledger=lambda *_: [entry("tts_characters", 3000)], sleep=lambda _s: None)
+        self.assertEqual(c.settled(), [("release", "r1")])
+        self.assertNotIn(("prices",), c.calls)                          # a release never reads the prices
+
+    def test_a_prices_outage_decision_is_the_hold_even_when_the_capture_must_wait(self):
+        # Both calls fail (the same database): the plan that is kept for the replay already says 40.0.
+        c = FakeCredits(down=True)
+        plan = credits.plan_settlement(c, self.HOLD, succeeded=True, channel_id="news", since=None,
+                                       ledger=lambda *_: [entry("tts_characters", 3000)], sleep=lambda _s: None)
+        self.assertEqual((plan.action, plan.amount), ("capture", 40.0))
+
     def test_unreachable_api_is_reported_not_guessed(self):
         self.assertIsNone(credits.settle_hold(FakeCredits(down=True), self.HOLD, succeeded=True,
                                               channel_id="news", since=None, ledger=lambda *_: [],
@@ -614,6 +645,131 @@ class WorkerCredits(unittest.TestCase):
                 _, ends = self.requeued(**kw)
                 self.assertEqual(ends[0][0], "failed")
                 self.assertIn("not open", ends[0][1])
+
+    # -- the result file outlives a queue row that could not be finished ---------
+
+    def result_path(self):
+        return self.repo / ".run_result_9.json"
+
+    def test_the_result_file_is_removed_once_the_row_is_finished(self):
+        ends = self.run_one(job(), FakeCredits(), [entry("tts_characters", 5000)])
+        self.assertEqual(ends, [("succeeded", None)])
+        self.assertFalse(self.result_path().exists())
+
+    def test_a_charged_run_whose_row_could_not_be_finished_keeps_its_result_file_and_is_not_failed_on_requeue(self):
+        # Attempt 1: the video is made, the hold is captured, and the queue never answers the finish (down for all
+        # its retries). The row stays "running" and the stale sweep re-queues it.
+        fake = FakeCredits()
+        with mock.patch.object(FakeQueue, "finish", lambda *a, **k: None), \
+                mock.patch.object(qw.time, "sleep", lambda _s: None):
+            self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(fake.settled(), [("capture", "rj-abc", 5.0)])
+        self.assertTrue(self.result_path().exists(), "the only proof the video exists was deleted")
+        (self.repo / "report.out").unlink()
+
+        # Attempt 2: its hold is no longer open (captured). The kept file is what finishes it as delivered.
+        class Taken(FakeCredits):
+            def reservation(self, ref):
+                return {"status": "captured", "captured": 5}
+        again = Taken(hold=None)
+        ends = self.run_one(job(attempts=2), again)
+        self.assertEqual(ends, [("succeeded", None)])
+        self.assertFalse(self.ran())                    # nothing was run twice
+        self.assertEqual(again.settled(), [])           # and nothing was charged twice
+        self.assertFalse(self.result_path().exists())   # finished for real this time: now it goes
+
+    def test_a_delivered_requeue_whose_own_finish_is_lost_keeps_the_file_for_the_next_attempt(self):
+        class Taken(FakeCredits):
+            def reservation(self, ref):
+                return {"status": "captured", "captured": 5}
+        (self.repo / "final_video.mp4").write_bytes(b"v")
+        self.result_path().write_text(json.dumps({"video_path": "final_video.mp4"}))
+        with mock.patch.object(FakeQueue, "finish", lambda *a, **k: None), \
+                mock.patch.object(qw.time, "sleep", lambda _s: None):
+            self.run_one(job(attempts=2), Taken(hold=None))
+        self.assertTrue(self.result_path().exists())
+
+    def test_a_finish_answer_of_not_ours_keeps_the_file_too(self):
+        # finish() answers False when the row is no longer this worker's (the stale sweep re-queued it while
+        # the worker was cut off). The run was still captured by this worker, so the file is not deleted on
+        # that answer either: only an explicit True (terminal and ours) releases it.
+        fake = FakeCredits()
+        with mock.patch.object(FakeQueue, "finish", lambda *a, **k: False):
+            self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(fake.settled(), [("capture", "rj-abc", 5.0)])
+        self.assertTrue(self.result_path().exists())
+        (self.repo / "report.out").unlink()
+
+        class Taken(FakeCredits):
+            def reservation(self, ref):
+                return {"status": "captured", "captured": 5}
+        ends = self.run_one(job(attempts=2), Taken(hold=None))
+        self.assertEqual(ends, [("succeeded", None)])
+        self.assertFalse(self.ran())
+
+    def test_a_requeued_attempt_that_is_refused_for_good_removes_the_kept_file(self):
+        _, ends = self.requeued(status="released")          # not delivered: the hold was released
+        self.assertEqual(ends[0][0], "failed")
+        self.assertFalse(self.result_path().exists())
+
+    def test_a_refused_requeue_whose_own_finish_is_lost_keeps_the_file(self):
+        with mock.patch.object(FakeQueue, "finish", lambda *a, **k: None), \
+                mock.patch.object(qw.time, "sleep", lambda _s: None):
+            self.requeued(status="released")
+        self.assertTrue(self.result_path().exists())
+
+    def test_a_stale_unconfirmed_flag_from_an_earlier_job_does_not_keep_this_jobs_file(self):
+        # A path that never calls _finish (the job is no longer ours mid-run) must not inherit the previous
+        # job's "row unconfirmed": process() starts every job with the flag cleared.
+        self.env["FAKE_SLEEP"] = "60"
+        self.entries = []
+        q = FakeQueue([])
+        q.heartbeat = lambda job_id, worker_id: not self.result_path().exists()   # lost once the file is written
+        w = qw.Worker(q, worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                      resolve_channel=lambda cid: {"channel_id": cid, "is_default": False,
+                                                   "token_secret": "CHRONOS_YT_TOKEN_NEWS"},
+                      heartbeat_seconds=0.05, out=io.StringIO(), credits=FakeCredits(),
+                      ledger_reader=self.ledger, kill_after_seconds=1)
+        w._row_unconfirmed = True
+        self.assertEqual(w.process(job()), "lost")
+        self.assertEqual(q.ends, [])                        # no finish was ever sent
+        self.assertFalse(self.result_path().exists())
+
+    # -- old result files are swept at start-up -----------------------------
+
+    def aged(self, name, days):
+        p = self.repo / name
+        p.write_text("{}")
+        t = time.time() - days * 86400
+        os.utime(p, (t, t))
+        return p
+
+    def sweeper(self):
+        return qw.Worker(FakeQueue([]), worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                         credits=FakeCredits(), out=io.StringIO())
+
+    def test_start_up_sweeps_only_old_result_files(self):
+        old = self.aged(".run_result_1.json", qw.RESULT_FILE_MAX_AGE_DAYS + 1)
+        fresh = self.aged(".run_result_2.json", 0)
+        other = self.aged("keep_me.json", 30)
+        decoy = self.aged(".run_result_3.json.bak", 30)
+        link = self.repo / ".run_result_4.json"
+        link.symlink_to(other)
+        os.utime(link, (time.time() - 30 * 86400,) * 2, follow_symlinks=False)
+        self.assertEqual(self.sweeper()._sweep_old_result_files(), 1)
+        self.assertFalse(old.exists())
+        for kept in (fresh, other, decoy):
+            self.assertTrue(kept.exists(), kept.name)
+        self.assertTrue(link.is_symlink() and other.exists())
+
+    def test_the_sweep_is_bounded_and_runs_when_the_worker_starts(self):
+        for i in range(5):
+            self.aged(f".run_result_{i}.json", 10)
+        with mock.patch.object(qw, "RESULT_SWEEP_MAX", 2):
+            self.assertEqual(self.sweeper()._sweep_old_result_files(), 2)
+        self.assertEqual(len(list(self.repo.glob(".run_result_*.json"))), 3)
+        self.sweeper().run_forever(once=True)                # start-up sweeps the rest
+        self.assertEqual(list(self.repo.glob(".run_result_*.json")), [])
 
     # -- D3: a hung run ends the job and gives the credits back --------------
 
