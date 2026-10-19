@@ -22,18 +22,37 @@ def event(**signals):
     return {"event": ad.EVENT, "ts": "2026-10-19T10:00:00", "metadata": {"signals": base}}
 
 
-class DStore(FakeStore):
-    """A store whose channel carries an agent_config and whose event record is scripted."""
+CLEAN = [event()]  # a recorded "stock only, generic voice": what an upload of a clean video leaves behind
 
-    def __init__(self, *, agent_config=None, events=(), **kw):
+
+class DStore(FakeStore):
+    """A store whose channel carries an agent_config and whose event records are scripted: ``events`` for the
+    video, ``parent`` / ``parent_events`` for the long video a Short was cut from (``parent_exc`` makes reading it
+    fail)."""
+
+    def __init__(self, *, agent_config=None, events=(), parent=None, parent_events=(), parent_exc=None, **kw):
         super().__init__(**kw)
         self._agent = agent_config or {}
         self._events = list(events)
+        self._parent = parent
+        self._parent_events = list(parent_events)
+        self._parent_exc = parent_exc
+        self.event_reads = []
 
     def channel(self, channel_id):
         return {"channel_id": channel_id, "niche": "history", "agent_config": self._agent}
 
+    def video(self, video_id):
+        if self._parent is not None and video_id == self._parent.get("video_id"):
+            if self._parent_exc:
+                raise self._parent_exc
+            return self._parent
+        return super().video(video_id)
+
     def disclosure_events(self, video_id):
+        self.event_reads.append(video_id)
+        if self._parent is not None and video_id == self._parent.get("video_id"):
+            return list(self._parent_events)
         return list(self._events)
 
 
@@ -82,7 +101,7 @@ class InstagramLabel(Base):
         self.assertIn(ad.STANDARD_LINES["en"], store.updates[0]["caption"])  # what the row records is what was sent
 
     def test_stock_only_sends_no_field_and_no_line(self):
-        out, data, _ = self.run_ig(STOCK)
+        out, data, _ = self.run_ig(STOCK, events=CLEAN)
         self.assertEqual(out, "published")
         self.assertNotIn("is_ai_generated", data)
         self.assertNotIn(ad.STANDARD_LINES["en"], data["caption"])
@@ -120,7 +139,7 @@ class InstagramLabel(Base):
         self.assertEqual(data["is_ai_generated"], "true")
 
     def test_an_unlabelled_post_is_the_post_it_always_was(self):
-        _, data, _ = self.run_ig(STOCK)
+        _, data, _ = self.run_ig(STOCK, events=CLEAN)
         self.assertEqual(sorted(data), ["access_token", "caption", "media_type", "share_to_feed", "video_url"])
 
 
@@ -142,7 +161,7 @@ class TiktokLabel(Base):
         self.assertIn(ad.STANDARD_LINES["en"], post["title"])
 
     def test_stock_only_sends_no_is_aigc(self):
-        _, post, _ = self.run_tt(STOCK)
+        _, post, _ = self.run_tt(STOCK, events=CLEAN)
         self.assertNotIn("is_aigc", post)
         self.assertEqual(sorted(post), ["disable_comment", "disable_duet", "disable_stitch", "privacy_level",
                                         "title"])
@@ -158,7 +177,7 @@ class TiktokLabel(Base):
         self.assertIs(post["is_aigc"], True)
 
     def test_own_voice_clone_does_not(self):
-        _, post, _ = self.run_tt(STOCK, agent_config={"ai_disclosure_voice": "own_clone"})
+        _, post, _ = self.run_tt(STOCK, events=CLEAN, agent_config={"ai_disclosure_voice": "own_clone"})
         self.assertNotIn("is_aigc", post)
 
 
@@ -183,7 +202,7 @@ class YoutubeTargetLabel(YoutubeFlowTests):
         self.assertIn(ad.STANDARD_LINES["en"], store.updates[0]["caption"])
 
     def test_unlabelled_upload_calls_the_uploader_exactly_as_before(self):
-        out, up, _ = self.run_yt(STOCK)
+        out, up, _ = self.run_yt(STOCK, events=CLEAN)
         self.assertEqual(out, "published")
         self.assertEqual(up.kwargs, {})
         self.assertNotIn(ad.STANDARD_LINES["en"], up.calls[0][1].description)
@@ -224,11 +243,101 @@ class RecordedEvents(unittest.TestCase):
         self.assertIn("agent_config", h.calls[0][1]["params"]["select"])
 
 
+class ManifestOnly(Base):
+    """Older videos have no recorded event. A manifest cannot show an AI presenter, so it is never enough to say
+    "clean": it labels, with provenance_unknown (plus whatever generated media it does show)."""
+
+    def run_ig(self, manifest, **kw):
+        self.video["manifest"] = manifest
+        http = ig_http()
+        store = DStore(video=self.video, http=http, **kw)
+        out = self.run_req(store, FakeTokens("instagram"), http=http)
+        create = next(c for c in http.calls if c[1].endswith("/media"))
+        return out, create[2]["data"]
+
+    def test_a_stock_only_manifest_without_a_record_is_labelled_because_a_presenter_is_invisible_there(self):
+        out, data = self.run_ig(STOCK)
+        self.assertEqual((out, data["is_ai_generated"]), ("published", "true"))
+        d, basis = sp.disclosure_for({"manifest": STOCK}, {})
+        self.assertEqual((d.reasons, basis), ((ad.R_PROVENANCE_UNKNOWN,), "manifest_presenter_unseen"))
+
+    def test_generated_media_in_the_manifest_is_named_next_to_the_unknown(self):
+        d, _ = sp.disclosure_for({"manifest": GEN_VIDEO}, {})
+        self.assertEqual(d.reasons, (ad.R_PROVENANCE_UNKNOWN, ad.R_GENERATED_VIDEO))
+
+    def test_never_still_wins_over_a_manifest_only_answer(self):
+        d, _ = sp.disclosure_for({"manifest": STOCK}, {"agent_config": {"ai_disclosure": "never"}})
+        self.assertFalse(d.label)
+
+
+class Shorts(Base):
+    """A Short is cut from the long video's own frames: it has no manifest and, for the ones published before this
+    change, no record. It must not read as "provenance unknown" while its parent is on record."""
+
+    def short(self, **over):
+        v = dict(self.video, video_id="short1", video_format="short", parent_video_id="parent1", manifest=None)
+        v.update(over)
+        return v
+
+    PARENT = {"video_id": "parent1", "channel_id": "news", "manifest": None}
+
+    def run_ig(self, video, **kw):
+        http = ig_http()
+        store = DStore(video=video, http=http, **kw)
+        out = self.run_req(store, FakeTokens("instagram"), http=http)
+        create = next(c for c in http.calls if c[1].endswith("/media"))
+        return out, create[2]["data"], store
+
+    def test_a_short_of_a_stock_only_parent_is_not_labelled(self):
+        out, data, store = self.run_ig(self.short(), parent=self.PARENT, parent_events=CLEAN)
+        self.assertEqual(out, "published")
+        self.assertNotIn("is_ai_generated", data)
+        self.assertNotIn(ad.STANDARD_LINES["en"], data["caption"])
+        self.assertEqual(store.event_reads, ["short1", "parent1"])
+
+    def test_a_short_of_a_parent_labelled_generated_video_is_labelled(self):
+        _, data, _ = self.run_ig(self.short(), parent=self.PARENT, parent_events=[event(generated_clips=3)])
+        self.assertEqual(data["is_ai_generated"], "true")
+        self.assertIn(ad.STANDARD_LINES["en"], data["caption"])
+
+    def test_the_shorts_own_record_wins_and_the_parent_is_not_even_read(self):
+        _, data, store = self.run_ig(self.short(), events=CLEAN, parent=self.PARENT,
+                                     parent_events=[event(generated_clips=3)])
+        self.assertNotIn("is_ai_generated", data)
+        self.assertEqual(store.event_reads, ["short1"])
+
+    def test_a_parent_without_a_record_falls_back_to_its_manifest_not_to_the_shorts_empty_one(self):
+        parent = dict(self.PARENT, manifest=GEN_VIDEO)
+        d, basis = sp.disclosure_for(self.short(), {}, [], parent, [])
+        self.assertEqual(basis, "parent_manifest_presenter_unseen")
+        self.assertIn(ad.R_GENERATED_VIDEO, d.reasons)
+
+    def test_a_short_whose_parent_cannot_be_read_is_labelled_not_assumed_clean(self):
+        _, data, _ = self.run_ig(self.short(), parent=self.PARENT, parent_exc=RuntimeError("down"))
+        self.assertEqual(data["is_ai_generated"], "true")
+
+    def test_a_short_with_no_parent_id_is_unknown(self):
+        d, basis = sp.disclosure_for(self.short(parent_video_id=""), {})
+        self.assertEqual((basis, d.reasons), ("unknown", (ad.R_PROVENANCE_UNKNOWN,)))
+
+    def test_a_long_video_never_reads_a_parent(self):
+        # No record of its own, and a parent_video_id on the row: only a Short follows its parent.
+        _, data, store = self.run_ig(dict(self.video, parent_video_id="parent1"), parent=self.PARENT,
+                                     parent_events=CLEAN)
+        self.assertEqual(store.event_reads, ["vid1"])
+        self.assertEqual(data["is_ai_generated"], "true")  # a manifest alone is not enough to call it clean
+
+    def test_the_channel_settings_still_apply_to_a_shorts_parent_record(self):
+        _, data, _ = self.run_ig(self.short(), parent=self.PARENT, parent_events=[event(generated_clips=3)],
+                                 agent_config={"ai_disclosure": "never"})
+        self.assertNotIn("is_ai_generated", data)
+
+
 class DisclosureFor(unittest.TestCase):
     def test_basis_event_manifest_unknown(self):
         video = {"video_id": "v", "manifest": GEN_VIDEO}
         self.assertEqual(sp.disclosure_for(video, {}, [event()])[1], "event")
-        self.assertEqual(sp.disclosure_for(video, {})[1], "manifest")
+        self.assertEqual(sp.disclosure_for(video, {})[1], "manifest_presenter_unseen")
         d, basis = sp.disclosure_for({"video_id": "v"}, {})
         self.assertEqual((basis, d.reasons), ("unknown", (ad.R_PROVENANCE_UNKNOWN,)))
 

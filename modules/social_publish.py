@@ -66,6 +66,7 @@ Platform references (official docs):
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import os
@@ -380,23 +381,44 @@ def load_source_meta(video: Mapping, channel: Optional[Mapping], output_dir: Pat
     )
 
 
-def disclosure_for(video: Mapping, channel: Optional[Mapping], events=()) -> tuple:
+def disclosure_for(video: Mapping, channel: Optional[Mapping], events=(), parent: Optional[Mapping] = None,
+                   parent_events=()) -> tuple:
     """``(Decision, basis)`` for a cross-post: the same rule the upload used
     (modules/ai_disclosure.py), applied with the video's own channel's settings.
 
-    The facts come from the ``video.ai_disclosure`` event the run recorded at
-    upload (it knows about an AI presenter, which the manifest does not), else
-    from the stored manifest's generated assets, else ``known=False``, which
-    labels. ``basis`` is ``event`` | ``manifest`` | ``unknown`` for the log."""
+    Where the facts come from, first that exists:
+
+    1. the ``video.ai_disclosure`` event the run recorded for THIS video at upload
+       (it knows about an AI presenter, which no manifest does);
+    2. for a Short, the same event of its PARENT video: a Short is cut from the
+       long video's own frames, so the answer is the parent's (older Shorts have no
+       record of their own);
+    3. the stored manifest's generated assets (the video's, else the Short's
+       parent's). A manifest cannot show an AI presenter, so a manifest-only
+       answer is never "known": it labels, with ``provenance_unknown``, next to
+       any generated media it does show (a presenter would be missed otherwise);
+    4. nothing: ``known=False``, which labels.
+
+    ``basis`` names the source for the log."""
     from modules.channels import AgentConfig  # noqa: PLC0415
 
     cfg = channel.get("agent_config") if isinstance(channel, Mapping) else None
     agent = AgentConfig.from_dict(cfg if isinstance(cfg, Mapping) else None)
     signals = ai_disclosure.signals_from_events(events)
     basis = "event"
+    if signals is None and parent is not None:
+        signals = ai_disclosure.signals_from_events(parent_events)
+        basis = "parent_event"
     if signals is None:
-        signals = ai_disclosure.signals_from_manifest(video.get("manifest"), voice=agent.ai_disclosure_voice)
-        basis = "manifest" if signals.known else "unknown"
+        manifest, basis = video.get("manifest"), "manifest"
+        if not isinstance(manifest, Mapping) and isinstance(parent, Mapping):
+            manifest, basis = parent.get("manifest"), "parent_manifest"
+        signals = ai_disclosure.signals_from_manifest(manifest, voice=agent.ai_disclosure_voice)
+        if signals.known:
+            signals = dataclasses.replace(signals, known=False)  # the presenter cannot be seen in a manifest
+            basis += "_presenter_unseen"
+        else:
+            basis = "unknown"
     return ai_disclosure.decide_for(agent, signals), basis
 
 
@@ -721,11 +743,22 @@ def _now() -> str:
 
 
 def _decide_disclosure(store, video: Mapping, channel: Optional[Mapping], rid) -> ai_disclosure.Decision:
-    """The AI-disclosure decision for this request. Reading the recorded event
-    is best-effort (``disclosure_events`` never raises); the decision itself is
-    logged as words only."""
-    events = store.disclosure_events(str(video.get("video_id") or "")) if hasattr(store, "disclosure_events") else []
-    decision, basis = disclosure_for(video, channel, events)
+    """The AI-disclosure decision for this request. Reading the recorded events
+    (and, for a Short with no record of its own, its parent video and that
+    video's events) is best-effort: nothing here raises, and a missing record
+    falls back as ``disclosure_for`` says. The decision is logged as words only."""
+    read = getattr(store, "disclosure_events", None)
+    events = read(str(video.get("video_id") or "")) if read else []
+    parent, parent_events = None, []
+    parent_id = str(video.get("parent_video_id") or "")
+    if (str(video.get("video_format") or "") == "short" and parent_id
+            and ai_disclosure.signals_from_events(events) is None):
+        try:
+            parent = store.video(parent_id) or {"video_id": parent_id}
+        except Exception:
+            parent = {"video_id": parent_id}
+        parent_events = read(parent_id) if read else []
+    decision, basis = disclosure_for(video, channel, events, parent, parent_events)
     logger.info("publish request %s: AI label %s (%s, from %s)", rid, "on" if decision.label else "off",
                 ",".join(decision.reasons), basis)
     return decision

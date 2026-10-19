@@ -74,6 +74,10 @@ class FakeStore:
     def short_of(self, video_id):
         return self._short
 
+    def disclosure_events(self, video_id):
+        return [{"event": "video.ai_disclosure", "ts": "2026-10-19T10:00:00", "metadata": {"signals": {
+            "known": True, "generated_clips": 0, "generated_stills": 0, "presenter": False, "voice": "generic"}}}]
+
     def update(self, rid, worker_id, values):
         self.updates.append(values)
 
@@ -128,8 +132,9 @@ class Base(unittest.TestCase):
             "title": "The Fall of Rome", "description": "Why it fell.", "tags": ["ancient rome", "history"]}))
         self.video = {"video_id": "vid1", "channel_id": "news", "title": "The Fall of Rome",
                       "slug": "fall-of-rome", "local_path": str(self.master), "video_format": "long",
-                      # Stock footage only: an unlabelled video (a missing manifest would be labelled, see
-                      # tests/test_social_disclosure.py).
+                      # A manifest alone never reads as "clean" (it cannot show a presenter); the store below
+                      # returns the recorded "stock only" event, as an upload leaves it. See
+                      # tests/test_social_disclosure.py for the cases with and without a record.
                       "manifest": {"assets": [{"id": "a1", "kind": "video", "source": "stock"}]}}
 
     def tearDown(self):
