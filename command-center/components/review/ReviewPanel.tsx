@@ -15,6 +15,12 @@ import {
   studioUrl,
   type ApproveAccess,
 } from "@/lib/videoApproval";
+import {
+  knownRetryError,
+  knownVisibilityReason,
+  visibilityView,
+  type VisibilityRequestRow,
+} from "@/lib/visibilityRequest";
 import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 
 /**
@@ -25,9 +31,11 @@ import type { ReviewIntentRow, VideoRow } from "@/lib/types";
  * 1. **It never publishes.** Approving calls the database function `approve_video_publish` (migration 0112), which
  *    RECORDS who approved which exact cut (its checksum), until when (24 hours) and with what acknowledgement. Every
  *    video is uploaded as private and stays private until a person makes it public on YouTube (unless the channel's auto-publish
- *    switch is on); nothing in a browser can
- *    take a video public, re-render one, or spend a token. Phase 1b (a worker that makes an approved video public) is not
- *    built, and after an approval the panel says so, and where to do it today.
+ *    switch is on); nothing in a browser can take a video public, re-render one, or spend a token. On a channel whose
+ *    administrators ALSO switched "publish when approved" on (migration 0113, default off), approving queues one request that a
+ *    worker carries out, and the panel then says what the database recorded: queued, refused with the reason in words, expired,
+ *    or published, and "published" only for a request whose read-back said public (lib/visibilityRequest.ts). The button then
+ *    reads "Approve and publish"; on every other channel it reads "Approve" and says it does not make the video public.
  * 2. **It never claims a verdict it was not given.** The gate line below the player is the verdict the pipeline stored
  *    with the cut (`videos.gate_verdict`), else the recorded gate event, else the held run's own. When none exists the
  *    panel says so rather than implying the video passed, and the video cannot be approved.
@@ -44,6 +52,8 @@ export function ReviewPanel({
   staleRequest,
   access,
   channelName,
+  publishOnApprove = false,
+  request = null,
 }: {
   video: VideoRow;
   autoPublish: boolean;
@@ -54,6 +64,10 @@ export function ReviewPanel({
   /** Whether this person may approve here (lib/videoApproval.approveAccess); the database decides again. */
   access: ApproveAccess;
   channelName?: string;
+  /** The channel's "publish when approved" switch (migration 0113). False when it is off, and when 0113 is not applied. */
+  publishOnApprove?: boolean;
+  /** This video's newest publish-when-approved request (migration 0113), or null. */
+  request?: VisibilityRequestRow | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -94,6 +108,55 @@ export function ReviewPanel({
   const state = approvalState(video, { autoPublish, access, nowMs });
   const pressable = canPressApprove(state);
   const studio = studioUrl(video.video_id);
+  // The label says "publish" ONLY on a channel whose switch is on; everywhere else it records a decision and says so.
+  const publishing = publishOnApprove && !autoPublish;
+  // A request that exists is shown whatever the switch says now (turned off since: it reads "not published, switched off").
+  const vis = visibilityView(request, video, nowMs);
+  const publishCopy = publishing || vis.kind !== "none";
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  // While a request waits for the worker the page asks again, so "queued" does not outlive the answer.
+  const waiting = vis.kind === "queued";
+  useEffect(() => {
+    if (!waiting) return;
+    const id = setInterval(() => router.refresh(), 15_000);
+    return () => clearInterval(id);
+  }, [waiting, router]);
+
+  /** "Try again" on a failed request: the database re-queues it only for the same approval, while it holds. */
+  async function retry() {
+    if (retrying || !request) return;
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const supabase = createClient();
+      if (!supabase) {
+        setRetryError(t.review.visibility.retryErrors.failed);
+        return;
+      }
+      const { data, error: e } = await supabase.rpc("retry_video_visibility", { p_request_id: request.id });
+      if (e) {
+        setRetryError(
+          e.code === "42501"
+            ? t.review.visibility.retryErrors.forbidden
+            : e.code === "P0002"
+              ? t.review.visibility.retryErrors.not_found
+              : t.review.visibility.retryErrors.failed,
+        );
+        return;
+      }
+      const out = (data ?? null) as { ok?: unknown; error?: unknown } | null;
+      if (!out || out.ok !== true) {
+        const word = knownRetryError(out?.error);
+        setRetryError(word ? t.review.visibility.retryErrors[word] : t.review.visibility.retryErrors.failed);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   /** What the sheet was about, as a comparable string: a different gate verdict or cut is a different question. */
   const gateKey = gate ? `${gate.allowed}:${gate.flagged}:${gate.reasons.join("|")}` : "none";
@@ -129,8 +192,8 @@ export function ReviewPanel({
       const cut = video.cut_sha256;
       const ok = await confirm({
         title: fmt(cs.rvApproveTitle, { title: name }),
-        message: cs.rvApproveBody,
-        confirmLabel: t.review.approve,
+        message: publishing ? cs.rvApprovePublishBody : cs.rvApproveBody,
+        confirmLabel: publishing ? t.review.approvePublish : t.review.approve,
         tone: "primary",
         acknowledge: cs.rvApproveAck,
         details: [
@@ -139,6 +202,7 @@ export function ReviewPanel({
           { label: cs.dVersion, value: shortHash(cut) },
           { label: t.review.privacy, value: privacy },
           { label: t.review.gate, value: gateLine, multiline: true },
+          ...(publishing ? [{ label: cs.dEffect, value: cs.rvApprovePublishEffect }] : []),
         ],
         run: async () => {
           if (!latest.current.pressable || latest.current.questionKey !== shownQuestion) return cs.staleSheet;
@@ -307,11 +371,24 @@ export function ReviewPanel({
           style={{ borderColor: "color-mix(in srgb, var(--color-ok) 35%, transparent)" }}
         >
           <p className="m-0 text-sm font-medium text-[var(--color-ok)]">
-            {who ? fmt(t.review.approvedBy, { who, when: at }) : fmt(t.review.approvedAnon, { when: at })}
+            {publishCopy
+              ? who
+                ? fmt(t.review.approvedByPublish, { who, when: at })
+                : fmt(t.review.approvedAnonPublish, { when: at })
+              : who
+                ? fmt(t.review.approvedBy, { who, when: at })
+                : fmt(t.review.approvedAnon, { when: at })}
           </p>
           <p className="m-0 text-sm text-[var(--color-muted)]">{fmt(t.review.approvedHolds, { until })}</p>
-          <div className="t-label mt-2">{t.review.makePublicTitle}</div>
-          <p className="m-0 text-sm text-[var(--color-fg)]">{t.review.makePublicBody}</p>
+          {publishCopy ? (
+            vis.kind !== "published" &&
+            vis.kind !== "queued" && <p className="m-0 text-sm text-[var(--color-fg)]">{t.review.makePublicFallbackBody}</p>
+          ) : (
+            <>
+              <div className="t-label mt-2">{t.review.makePublicTitle}</div>
+              <p className="m-0 text-sm text-[var(--color-fg)]">{t.review.makePublicBody}</p>
+            </>
+          )}
           {studio && (
             <a
               href={studio}
@@ -326,8 +403,84 @@ export function ReviewPanel({
       )}
       {state.view.kind === "expired" && (
         <p data-testid="expired" className="m-0 text-sm text-[var(--color-warn)]">
-          {who ? fmt(t.review.expiredBy, { who, when: at }) : fmt(t.review.expiredAnon, { when: at })}
+          {publishCopy
+            ? who
+              ? fmt(t.review.expiredByPublish, { who, when: at })
+              : fmt(t.review.expiredAnonPublish, { when: at })
+            : who
+              ? fmt(t.review.expiredBy, { who, when: at })
+              : fmt(t.review.expiredAnon, { when: at })}
         </p>
+      )}
+
+      {/* ── what happened to the request (only on a channel whose switch is on) ───────────────────────── */}
+      {vis.kind !== "none" && (
+        <div
+          data-testid="visibility"
+          data-state={vis.kind}
+          className="stack gap-2 rounded-[16px] border p-4"
+          style={{
+            borderColor:
+              vis.kind === "published"
+                ? "color-mix(in srgb, var(--color-ok) 35%, transparent)"
+                : vis.kind === "queued"
+                  ? "var(--color-border)"
+                  : "color-mix(in srgb, var(--color-warn) 40%, transparent)",
+          }}
+        >
+          <div className="t-label">{t.review.visibility.title}</div>
+          {vis.kind === "queued" && (
+            <>
+              <p className="m-0 text-sm text-[var(--color-fg)]">{fmt(t.review.visibility.queued, { when: dayTime(vis.since) })}</p>
+              {vis.lastReason && (
+                <p className="m-0 text-sm text-[var(--color-muted)]">
+                  {fmt(t.review.visibility.queuedLast, { reason: t.review.visibility.reasons[vis.lastReason] })}
+                </p>
+              )}
+              <p className="m-0 text-sm text-[var(--color-muted)]">{t.review.visibility.queuedHint}</p>
+            </>
+          )}
+          {vis.kind === "published" && (
+            <p className="m-0 text-sm font-medium text-[var(--color-ok)]">
+              {vis.at ? fmt(t.review.visibility.published, { when: dayTime(vis.at) }) : t.review.visibility.publishedNoTime}
+            </p>
+          )}
+          {vis.kind === "refused" && (
+            <p className="m-0 text-sm text-[var(--color-fg)]">
+              {fmt(t.review.visibility.refused, {
+                reason: t.review.visibility.reasons[knownVisibilityReason(vis.reason) ?? "worker_error"],
+              })}
+            </p>
+          )}
+          {vis.kind === "failed" && (
+            <>
+              <p className="m-0 text-sm text-[var(--color-fg)]">
+                {fmt(t.review.visibility.failed, {
+                  reason: t.review.visibility.reasons[knownVisibilityReason(vis.reason) ?? "worker_error"],
+                })}
+              </p>
+              {access === "ok" && vis.retryable && request && (
+                <div className="stack gap-2">
+                  <p className="m-0 text-xs text-[var(--color-muted)]">{t.review.visibility.failedHint}</p>
+                  <button
+                    type="button"
+                    disabled={retrying}
+                    onClick={() => void retry()}
+                    className="btn-sky is-quiet pill self-start px-5 py-2.5 text-sm disabled:opacity-40"
+                  >
+                    {retrying ? t.review.visibility.retrying : t.review.visibility.tryAgain}
+                  </button>
+                  {retryError && (
+                    <p role="alert" data-testid="retry-error" className="m-0 text-xs text-[var(--color-fail)]">
+                      {retryError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          {vis.kind === "expired" && <p className="m-0 text-sm text-[var(--color-warn)]">{t.review.visibility.expired}</p>}
+        </div>
       )}
 
       {/* ── the decision ───────────────────────────────────────────────── */}
@@ -341,14 +494,16 @@ export function ReviewPanel({
               aria-describedby="review-approve-note"
               className="btn-sky is-solid pill px-[30px] py-3.5 text-sm disabled:opacity-40"
             >
-              {t.review.approve}
+              {publishing ? t.review.approvePublish : t.review.approve}
             </button>
             <span id="review-approve-note" data-testid="approve-note" className="text-xs leading-relaxed text-[var(--color-muted)]">
               {state.view.kind === "auto"
                 ? t.review.autoHint
                 : state.blocker
                   ? t.review.blocker[state.blocker]
-                  : t.review.queueHint}
+                  : publishing
+                    ? t.review.queueHintPublish
+                    : t.review.queueHint}
             </span>
           </div>
         )}

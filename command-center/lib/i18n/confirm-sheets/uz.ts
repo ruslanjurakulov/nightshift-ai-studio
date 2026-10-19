@@ -54,6 +54,14 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
   rvApproveBody:
     "Bu videoning aynan shu versiyasini tasdiqlaganingizni yozib qoʻyadi. Video bundan ommaviy boʻlmaydi: u shaxsiy holda yuklangan va siz uni YouTube’da ommaviy qilmaguningizcha shaxsiy qoladi. Tasdiq 24 soat amal qiladi va video qayta renderlansa yoki tuzatilsa, tugaydi.",
   rvApproveAck: "Huquqlar va sunʼiy intellekt kontenti belgilarini tekshirdim.",
+  rvApprovePublishBody: "Bu videoning aynan shu versiyasini tasdiqlaganingizni yozib qoʻyadi, bu kanalda esa “Tasdiqdan keyin nashr qilish” yoqilgan. Shundan keyin ishchi dastur hamma narsani yana tekshiradi va YouTube’dan videoni ommaviy qilishni soʻraydi, 24 soat ichida. YouTube uni baribir shaxsiy qoldirishi mumkin, bu sahifa esa YouTube xabar qilgan holatni koʻrsatadi. Video qayta renderlansa yoki tuzatilsa, tasdiq tugaydi. Bu sozlamani kanal uchun istalgan payt oʻchirib qoʻyish mumkin.",
+  rvApprovePublishEffect: "Videoni ommaviy qilish soʻrovini navbatga qoʻyadi",
+  publishOnTitle: "“{name}” uchun “Tasdiqdan keyin nashr qilish” yoqilsinmi?",
+  publishOnBody: "Siz yoki jamoadoshingiz bu kanaldagi videoni tasdiqlaganda, ishchi dastur uni yana tekshiradi va YouTube’dan shu videoni ommaviy qilishni soʻraydi — qoʻshimcha qadamsiz. Tasdiq baribir aynan koʻrilgan versiyaga bogʻlanadi va 24 soat amal qiladi; nashr darvozasi va boshqa tekshiruvlar baribir oʻtishi kerak. YouTube videoni baribir shaxsiy qoldirishi mumkin, har bir video sahifasi esa YouTube xabar qilgan holatni koʻrsatadi. Standart boʻyicha oʻchiq va uni istalgan payt oʻchirib qoʻyish mumkin.",
+  publishOnConfirm: "Yoqish",
+  publishOnWord: "NASHR",
+  publishOnModeRecord: "Faqat qaroringizni yozib qoʻyadi",
+  publishOnModePublish: "Videoni nashr uchun navbatga qoʻyadi",
   dVersion: "Versiya",
   staleSheet: "Savol ochiq turganda bu oʻzgardi, shuning uchun hech narsa yuborilmadi. Uni qayta oching va tekshiring.",
 

@@ -66,6 +66,14 @@ export const confirmSheetsEn = {
   rvApproveBody:
     "This records that you approve this exact version of the video. It does not make it public: the video was uploaded as private and stays private until you make it public on YouTube. The approval holds for 24 hours and ends if the video is rendered or repaired again.",
   rvApproveAck: "I checked rights and AI-content labels.",
+  rvApprovePublishBody: "This records that you approve this exact version of the video, and this channel has “Publish when approved” switched on. A worker will then check everything again and ask YouTube to make the video public, within 24 hours. YouTube may still keep it private, and this page will say what YouTube reports. The approval ends if the video is rendered or repaired again. You can switch the setting off for the channel at any time.",
+  rvApprovePublishEffect: "Queues a request to make it public",
+  publishOnTitle: "Turn on “Publish when approved” for “{name}”?",
+  publishOnBody: "When you or a teammate approves a video on this channel, a worker will check it again and ask YouTube to make that video public, with no further step. The approval still binds to the exact version that was watched and ends after 24 hours; the publish gate and the other checks still have to pass. YouTube may still keep a video private, and each video page shows what YouTube reports. It is off by default and you can switch it off at any time.",
+  publishOnConfirm: "Turn on",
+  publishOnWord: "PUBLISH",
+  publishOnModeRecord: "Records your decision only",
+  publishOnModePublish: "Queues the video to be made public",
   dVersion: "Version",
   staleSheet: "This changed while the question was open, so nothing was sent. Open it again and check.",
 

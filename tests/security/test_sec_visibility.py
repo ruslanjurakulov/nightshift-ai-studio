@@ -439,9 +439,23 @@ def test_the_request_level_recheck_says_no_for_each_thing_that_can_change_after_
         rid = queued(su, bob)
         activate(su, bob.channel)
         su.rows("update public.videos set approval_expires_at = now() - interval '1 second' where video_id = %s returning 1", [VID])
-        su.rows("update public.video_visibility_requests set status = status where id = %s returning 1", [rid])
-        # video-level: expired; request-level: its own expiry is the same instant, set when it was queued
+        # video-level: expired
         assert svc_value(conn, "select public.video_publish_refusal(%s, %s)", [VID, CUT]) == "approval_expired"
+    with as_superuser(conn, commit=False) as su:
+        # request-level: the request's own end (set when it was queued) has passed, the video's approval columns are untouched
+        rid = queued(su, bob)
+        activate(su, bob.channel)
+        su.conn.execute("alter table public.video_visibility_requests disable trigger video_visibility_requests_guard")
+        su.rows("update public.video_visibility_requests set expires_at = now() - interval '1 second' where id = %s returning 1", [rid])
+        su.conn.execute("alter table public.video_visibility_requests enable trigger video_visibility_requests_guard")
+        assert refusal(conn, rid) == "approval_expired"
+    with as_superuser(conn, commit=False) as su:
+        # the same decision time but another cut: the approval this request was queued for is not the one that stands
+        rid = queued(su, bob)
+        activate(su, bob.channel)
+        assert refusal(conn, rid) is None
+        su.rows("update public.videos set approved_cut_sha256 = %s where video_id = %s returning 1", [OTHER, VID])
+        assert refusal(conn, rid) == "approval_superseded"
     with as_superuser(conn, commit=False) as su:
         queued(su, bob)
         su.rows("update public.videos set privacy = 'public' where video_id = %s returning 1", [VID])
