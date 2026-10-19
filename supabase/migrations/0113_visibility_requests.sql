@@ -37,7 +37,8 @@
 --       mark_visibility_submitting (the LAST check and the marker "the write may be sent", in one transaction under row locks:
 --       the channel row FOR SHARE, the request FOR UPDATE, the video FOR SHARE; it returns 'ok' or the closed word that says no),
 --       finish_visibility_request (the only writer of a result; mirrors videos.privacy from the read-back only; accepts a
---       request whose write was marked even if the switch was turned off meanwhile), youtube_quota_take. The video-level
+--       request whose write was marked even if the switch was turned off meanwhile), youtube_quota_take and youtube_quota_refund
+--       (units taken for a write that was never sent, because the marker refused). The video-level
 --       re-check is 0112's video_publish_refusal(video_id, cut_sha256), which the worker calls with the cut hash recorded at
 --       approval, early (a cheap filter) and again inside mark_visibility_submitting (the one that counts).
 --  6. retry_video_visibility()    an administrator re-queues a FAILED request (token reconnected, quota back) while the same
@@ -478,7 +479,8 @@ $$;
 create or replace function public.claim_visibility_request(p_worker text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  r public.video_visibility_requests;
+  r       public.video_visibility_requests;
+  v_final boolean;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may claim a visibility request' using errcode = '42501';
@@ -511,7 +513,11 @@ begin
       return null;
     end if;
     -- Three claims are all a request gets in a round, six in its lifetime: a crash loop ends here instead of going round for ever.
-    if r.attempts >= 3 or r.lifetime_attempts >= 6 then
+    -- EXCEPT a request whose write was marked: it gets ONE more claim, READ-ONLY ('read_only': the worker reads YouTube and records
+    -- what it finds, and never writes; mark_visibility_submitting refuses it too), so a request that used up its claims while a
+    -- write may have landed is not ended as "failed" without anyone having looked at the video one last time.
+    v_final := r.attempts >= 3 or r.lifetime_attempts >= 6;
+    if v_final and not (r.submitting_at is not null and r.attempts < 4 and r.lifetime_attempts < 7) then
       update public.video_visibility_requests
          set status = 'failed', reason = coalesce(r.reason, 'interrupted'), finished_at = now(), updated_at = now(),
              claimed_by = null, lease_until = null
@@ -532,7 +538,9 @@ begin
       'approved_cut_sha256', r.approved_cut_sha256, 'decided_at', r.decided_at, 'expires_at', r.expires_at,
       'attempts', r.attempts + 1,
       -- the previous worker got as far as sending the write (or may have): the new one reads YouTube first
-      'reconcile', r.submitting_at is not null);
+      'reconcile', r.submitting_at is not null,
+      -- the claims are used up: this one only reads
+      'read_only', v_final);
   end loop;
 end
 $$;
@@ -544,8 +552,11 @@ $$;
 -- cut change, a repair, an expiry, a privacy change or a switch turned off between the worker's earlier check and this marker is
 -- caught here, not after. Answers 'ok' (the marker is set: the worker may send the one write), 'not_holder' (this worker no
 -- longer holds the request) or the closed word of the refusal (the worker ends the request with it; nothing was sent).
--- (an earlier draft of this file returned a boolean here and took three arguments in the quota function: a database that has
--- that draft gets the new shapes, a fresh one does nothing)
+-- (The two "drop function if exists" statements in this file, here and before youtube_quota_take, only keep this file from
+-- failing on a function of the same name and another shape. THIS FILE SUPPORTS FRESH DATABASES ONLY: an earlier draft of it created
+-- youtube_quota_ledger without org_id and video_visibility_requests without lifetime_attempts, and "create table if not exists"
+-- does not alter a table that exists. A scratch database that took that draft must be rebuilt, or have
+-- docs/sql/rollback_0113_visibility_requests.sql run and those two tables dropped, before this file is applied.)
 drop function if exists public.mark_visibility_submitting(bigint, text);
 create or replace function public.mark_visibility_submitting(p_request_id bigint, p_worker text) returns text
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -564,6 +575,11 @@ begin
   select * into r from public.video_visibility_requests where id = p_request_id for update;
   if r.status <> 'queued' or r.claimed_by is distinct from p_worker then
     return 'not_holder';
+  end if;
+  -- The extra claim a marked request gets after its claims are used up (attempts 4 or lifetime 7: a normal claim never gets
+  -- there) reads and never writes.
+  if r.attempts > 3 or r.lifetime_attempts > 6 then
+    return 'interrupted';
   end if;
   perform 1 from public.videos v where v.video_id = r.video_id and v.channel_id = r.channel_id for share;
   why := public.video_publish_refusal(r.video_id, r.approved_cut_sha256);
@@ -696,6 +712,29 @@ begin
   values (v_day, p_project, 'visibility', p_org, p_units)
   on conflict (day, project, source, org_id) do update set units = l.units + p_units, updated_at = now();
   delete from public.youtube_quota_ledger where day < v_day - 14;
+  return true;
+end
+$$;
+
+-- Give back units that were taken and then not used: the marker refused (or the worker no longer held the request), so the write
+-- the 50 units were for was never sent. Today's rows, both of them (the whole day and the organization); never below zero.
+create or replace function public.youtube_quota_refund(p_project text, p_units integer, p_org uuid) returns boolean
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_day date := (now() at time zone 'America/Los_Angeles')::date;
+  v_all constant uuid := '00000000-0000-0000-0000-000000000000';
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'only the platform may refund quota' using errcode = '42501';
+  end if;
+  if coalesce(p_project, '') !~ '^[a-z0-9._-]{1,64}$' or p_units is null or p_units not between 1 and 200
+     or p_org is null or p_org = v_all then
+    raise exception 'invalid quota request' using errcode = '22023';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('youtube_quota:' || p_project, 0));
+  update public.youtube_quota_ledger l
+     set units = greatest(l.units - p_units, 0), updated_at = now()
+   where l.day = v_day and l.project = p_project and l.source = 'visibility' and l.org_id in (v_all, p_org);
   return true;
 end
 $$;
@@ -854,11 +893,13 @@ revoke all on function public.mark_visibility_submitting(bigint, text) from publ
 revoke all on function public.finish_visibility_request(bigint, text, text, text, text, text, integer, integer)
   from public, anon, authenticated, service_role;
 revoke all on function public.youtube_quota_take(text, integer, integer, uuid, integer) from public, anon, authenticated, service_role;
+revoke all on function public.youtube_quota_refund(text, integer, uuid) from public, anon, authenticated, service_role;
 grant execute on function public.visibility_request_refusal(bigint) to service_role;
 grant execute on function public.claim_visibility_request(text) to service_role;
 grant execute on function public.mark_visibility_submitting(bigint, text) to service_role;
 grant execute on function public.finish_visibility_request(bigint, text, text, text, text, text, integer, integer) to service_role;
 grant execute on function public.youtube_quota_take(text, integer, integer, uuid, integer) to service_role;
+grant execute on function public.youtube_quota_refund(text, integer, uuid) to service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Verify (run as the SQL editor; every column should read true)

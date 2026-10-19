@@ -72,10 +72,18 @@ function channel(over: Partial<ChannelRow> = {}): ChannelRow {
   };
 }
 
-function card(over: Partial<ChannelRow> = {}, opts: { canControl?: boolean; locale?: Locale } = {}) {
+function card(over: Partial<ChannelRow> = {}, opts: { canControl?: boolean; locale?: Locale; released?: boolean } = {}) {
   return render(
     <I18nProvider locale={opts.locale ?? "en"}>
-      <ChannelCard channel={channel(over)} slug="chronos" health={HEALTH} queued={0} videos={3} canControl={opts.canControl ?? true} />
+      <ChannelCard
+        channel={channel(over)}
+        slug="chronos"
+        health={HEALTH}
+        queued={0}
+        videos={3}
+        canControl={opts.canControl ?? true}
+        publishReleased={opts.released ?? true}
+      />
     </I18nProvider>,
   );
 }
@@ -94,6 +102,37 @@ async function settle() {
     await Promise.resolve();
   });
 }
+
+describe("not released (the server flag is off)", () => {
+  it("a channel whose switch is OFF has no switch at all: nothing offers to turn it on, and no typed-word sheet can open", () => {
+    card({ publish_on_approve: false }, { released: false });
+    expect(screen.queryByRole("switch", { name: new RegExp(en.channels.publishOnLabel) })).toBeNull();
+    expect(document.body.textContent).not.toContain(en.channels.publishOnLabel);
+    expect(document.body.textContent).not.toContain(en.channels.publishOnHintOff);
+  });
+
+  it("a channel whose switch is ON shows it truthfully, and it can be turned OFF in one tap (no sheet)", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: true, channel_id: "UC-chronos", publish_on_approve: false, changed: true }, error: null });
+    card({ publish_on_approve: true }, { released: false });
+    expect(publishSwitch().getAttribute("aria-checked")).toBe("true");
+    expect(document.body.textContent).toContain(en.channels.publishOnHintOn);
+    fireEvent.click(publishSwitch());
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("set_channel_publish_on_approve", { p_channel_id: "UC-chronos", p_on: false }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // and once it is off the control is gone: there is never a control to turn it back on
+    await waitFor(() => expect(screen.queryByRole("switch", { name: new RegExp(en.channels.publishOnLabel) })).toBeNull());
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("the default of the prop is not released: a caller that forgets it does not expose the feature", () => {
+    render(
+      <I18nProvider locale="en">
+        <ChannelCard channel={channel({ publish_on_approve: false })} slug="chronos" health={HEALTH} queued={0} videos={3} canControl />
+      </I18nProvider>,
+    );
+    expect(screen.queryByRole("switch", { name: new RegExp(en.channels.publishOnLabel) })).toBeNull();
+  });
+});
 
 describe("the switch", () => {
   it("is not shown before migration 0113 is applied (the column is absent): nothing is offered that is not there", () => {

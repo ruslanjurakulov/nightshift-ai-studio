@@ -39,6 +39,7 @@ export function ChannelCard({
   vault,
   dna,
   canControl = false,
+  publishReleased = false,
 }: {
   channel: ChannelRow;
   /** The channel's URL segment — its name, not its internal id. */
@@ -58,6 +59,12 @@ export function ChannelCard({
    * this the switches are shown but disabled.
    */
   canControl?: boolean;
+  /**
+   * Is "Publish when approved" released to customers (the server flag, lib/server/release-flags.ts)? Not released: the switch is
+   * drawn only while it is ON, so an administrator can still turn it OFF, and nothing offers to turn it ON. Default false: a
+   * caller that forgets the prop does not expose the feature.
+   */
+  publishReleased?: boolean;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -69,8 +76,10 @@ export function ChannelCard({
   const [review, setReview] = useState(channel.agent_config?.storyboard_review === true);
   const [reviewBusy, setReviewBusy] = useState(false);
   // "Publish when approved" (migration 0113). Absent before that migration is applied: then there is no switch to show.
-  const publishKnown = typeof channel.publish_on_approve === "boolean";
   const [publishOn, setPublishOn] = useState(channel.publish_on_approve === true);
+  // Released: shown whenever the column exists. Not released: shown only while it is on (the way to turn it off), and it is gone
+  // again the moment it is off, so there is never a control to turn it on.
+  const showPublishSwitch = typeof channel.publish_on_approve === "boolean" && (publishReleased || publishOn);
   const [publishBusy, setPublishBusy] = useState(false);
   const { confirm, dialog } = useConfirm();
   const cs = t.confirmSheets;
@@ -168,6 +177,7 @@ export function ChannelCard({
   async function togglePublishOn() {
     const supabase = createClient();
     if (!supabase) return;
+    if (!publishOn && !publishReleased) return;      // not released: this can only turn it off
     setPublishBusy(true);
     setError(null);
     const next = !publishOn;
@@ -379,7 +389,7 @@ export function ChannelCard({
           />
           {/* Publish when approved (migration 0113). Off is the default; on queues an approved video to be made public by a
               worker, which YouTube may still refuse. Only shown once the migration is applied. */}
-          {publishKnown && (
+          {showPublishSwitch && (
             <SwitchRow
               id={`${titleId}-publish-on-approve`}
               label={t.channels.publishOnLabel}

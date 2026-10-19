@@ -19,7 +19,7 @@
 --        - older ones stay queued as a record (nothing can finish them once the functions below are dropped): the file prints
 --          how many, and each is to be checked in YouTube Studio by a person.
 --   2. Drops set_channel_publish_on_approve, retry_video_visibility, claim_visibility_request, mark_visibility_submitting,
---      finish_visibility_request, visibility_request_refusal, visibility_channel_connected and youtube_quota_take: no API role
+--      finish_visibility_request, visibility_request_refusal, visibility_channel_connected, youtube_quota_take and youtube_quota_refund: no API role
 --      can write the queue, change the switch or spend quota any more.
 --   3. Puts approve_video_publish(text, text, jsonb) back to 0112's body, byte for byte, with the grant 0112 gave it: it queues nothing.
 --   4. Puts audit_action_allowed(text) back to 0112's body (the seven 0113 action names become unknown again).
@@ -68,6 +68,7 @@ drop function if exists public.mark_visibility_submitting(bigint, text);
 drop function if exists public.finish_visibility_request(bigint, text, text, text, text, text, integer, integer);
 drop function if exists public.visibility_request_refusal(bigint);
 drop function if exists public.youtube_quota_take(text, integer, integer, uuid, integer);
+drop function if exists public.youtube_quota_refund(text, integer, uuid);
 drop function if exists public.youtube_quota_take(text, integer, integer);
 drop function if exists public.visibility_channel_connected(text);
 

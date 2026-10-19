@@ -1,15 +1,16 @@
 /**
- * "Publish when approved" is hidden from customers until the owner releases it (server flag PUBLISH_ON_APPROVE_RELEASED, default
- * off). Calls the REAL pages with their data layer scripted (the way create-page-no-channel.test.tsx does) and reads what they hand
- * to the browser:
+ * "Publish when approved" before release (server flag PUBLISH_ON_APPROVE_RELEASED, default off). Calls the REAL pages with their data
+ * layer scripted (the way create-page-no-channel.test.tsx does) and reads what they hand to the browser. The flag hides the ENTRY
+ * POINTS that turn the feature on, never the truth about a channel that already has the switch on:
  *
- *   flag off  ->  the Channels page draws no "Publish when approved" switch (the channel's value is not even in the props), and the
- *                 video page's review panel is told "no switch, no request": the key reads "Approve" everywhere, there is no
- *                 "Approve and publish" and no request status, even for a channel whose switch IS on and a request that exists;
- *   flag on   ->  both are shown as before.
+ *   flag off, DB switch off  ->  nothing of it is visible: the Channels card gets no switch, the video panel says "Approve" and
+ *                                carries no request;
+ *   flag off, DB switch ON   ->  truthful: the video panel says "Approve and publish" and shows the request's state; the Channels
+ *                                card shows the switch (it can be turned OFF, never ON);
+ *   flag on                  ->  everything, as released.
  *
- * What would break: the feature visible by default (an unset, empty or odd value, or a NEXT_PUBLIC_ name baked in at build),
- * the switch's value leaking to the browser while hidden, the label "Approve and publish" before release.
+ * What would break: the feature visible by default, "Approve" over a button that publishes, an administrator with no way to turn the
+ * switch off, a control that turns it on before release, the label "Approve and publish" on a channel whose switch is off.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -82,7 +83,7 @@ vi.mock("@/lib/server/channel-dna", () => ({ loadDnaCharacters: async () => ({ b
 
 import ChannelsPage from "@/app/(app)/[channel]/channels/page";
 import VideoDetail from "@/app/(app)/[channel]/videos/[id]/page";
-import { PUBLISH_ON_APPROVE_FLAG, publishOnApproveReleased, withoutPublishSwitch } from "@/lib/server/release-flags";
+import { PUBLISH_ON_APPROVE_FLAG, publishOnApproveReleased, publishSwitchForCard } from "@/lib/server/release-flags";
 
 const CUT = "ab".repeat(32);
 const DECIDED = "2026-10-19T10:00:00.000Z";
@@ -156,51 +157,92 @@ describe("the flag", () => {
     }
   });
 
-  it("strips the switch from a channel without touching anything else", () => {
-    expect(withoutPublishSwitch({ channel_id: "c", publish_on_approve: true, name: "N" })).toEqual({ channel_id: "c", name: "N" });
-    expect("publish_on_approve" in withoutPublishSwitch({ publish_on_approve: false })).toBe(false);
+  it("hands the card the switch's value when released or when it is on, and drops an off switch otherwise", () => {
+    const on = { channel_id: "c", publish_on_approve: true, name: "N" };
+    const off = { channel_id: "c", publish_on_approve: false, name: "N" };
+    expect(publishSwitchForCard(on, false)).toBe(on);
+    expect(publishSwitchForCard(on, true)).toBe(on);
+    expect(publishSwitchForCard(off, true)).toBe(off);
+    expect(publishSwitchForCard(off, false)).toEqual({ channel_id: "c", name: "N" });
+    expect("publish_on_approve" in publishSwitchForCard({ publish_on_approve: undefined }, false)).toBe(false);
   });
 });
 
-describe("flag OFF (the default): nothing of the feature is visible", () => {
-  it("the Channels page hands the cards no switch at all, even for a channel whose switch is on", async () => {
+const hasSwitch = (card: ReactElement<Record<string, unknown>>) => "publish_on_approve" in (card.props.channel as object);
+
+describe("flag OFF and the channel's database switch OFF: nothing of the feature is visible", () => {
+  it("the Channels page hands the card no switch and says it is not released", async () => {
     arrange();
+    h.channels[0].publish_on_approve = false;
     const cards = await channelCards();
     expect(cards).toHaveLength(1);
-    const channel = cards[0].props.channel as Record<string, unknown>;
-    expect("publish_on_approve" in channel).toBe(false);
+    expect(hasSwitch(cards[0])).toBe(false);
     expect(JSON.stringify(cards[0].props)).not.toContain("publish_on_approve");
-    expect(channel.channel_id).toBe("chronos");
+    expect(cards[0].props.publishReleased).toBe(false);
   });
 
-  it("the video page tells the review panel: no switch, no request (the key stays 'Approve')", async () => {
+  it("the video page tells the review panel: no switch, no request (the key stays 'Approve'), even if an old request exists", async () => {
     arrange();
+    h.switchOn = false;
     const props = await reviewPanel();
     expect(props.publishOnApprove).toBe(false);
     expect(props.request).toBeNull();
-    // and it did not even read the two things: nothing about the feature is fetched for a customer who must not see it
-    expect(h.reads.filter((r) => r === "channels:publish_on_approve" || r.startsWith("video_visibility_requests:"))).toEqual([]);
   });
 
-  it("an empty or odd value is off too", async () => {
+  it("an empty or odd flag value is off too", async () => {
     arrange();
+    h.switchOn = false;
+    h.channels[0].publish_on_approve = false;
     for (const v of ["", "off", "0", "perhaps"]) {
       vi.stubEnv(PUBLISH_ON_APPROVE_FLAG, v);
-      expect((await reviewPanel()).publishOnApprove, v).toBe(false);
-      expect("publish_on_approve" in ((await channelCards())[0].props.channel as object), v).toBe(false);
+      const props = await reviewPanel();
+      expect([props.publishOnApprove, props.request], v).toEqual([false, null]);
+      expect(hasSwitch((await channelCards())[0]), v).toBe(false);
+    }
+  });
+});
+
+describe("flag OFF but the channel's database switch is ON: the truth, and the way to turn it off", () => {
+  it("the video page still reads the switch and the request on the server and passes them on: 'Approve and publish' and the request's state", async () => {
+    arrange();
+    h.switchOn = true;
+    const props = await reviewPanel();
+    expect(props.publishOnApprove).toBe(true);
+    expect((props.request as { id: number }).id).toBe(41);
+    expect(h.reads).toContain("channels:publish_on_approve");
+    expect(h.reads.some((r) => r.startsWith("video_visibility_requests:"))).toBe(true);
+  });
+
+  it("the Channels card gets the switch (on) and is told the feature is not released, so it can turn it off and never on", async () => {
+    arrange();
+    h.channels[0].publish_on_approve = true;
+    const cards = await channelCards();
+    expect((cards[0].props.channel as Record<string, unknown>).publish_on_approve).toBe(true);
+    expect(cards[0].props.publishReleased).toBe(false);
+  });
+
+  it("the label rule: 'Approve and publish' exactly when the channel's database switch is on", async () => {
+    arrange();
+    for (const on of [true, false]) {
+      h.switchOn = on;
+      expect((await reviewPanel()).publishOnApprove, String(on)).toBe(on);
     }
   });
 });
 
 describe("flag ON: as released", () => {
-  it("the Channels page keeps the switch's value for the card (the card draws the switch from it)", async () => {
+  it("the Channels page keeps the switch whatever its value and says it is released", async () => {
     arrange();
     vi.stubEnv(PUBLISH_ON_APPROVE_FLAG, "on");
-    const cards = await channelCards();
-    expect((cards[0].props.channel as Record<string, unknown>).publish_on_approve).toBe(true);
+    for (const v of [true, false]) {
+      h.channels[0].publish_on_approve = v;
+      const cards = await channelCards();
+      expect((cards[0].props.channel as Record<string, unknown>).publish_on_approve).toBe(v);
+      expect(cards[0].props.publishReleased).toBe(true);
+    }
   });
 
-  it("the video page passes the switch and the request on; an off switch stays off", async () => {
+  it("the video page passes the switch and the request on; an off switch stays off, and a request is still shown (switched off since)", async () => {
     arrange();
     vi.stubEnv(PUBLISH_ON_APPROVE_FLAG, "on");
     let props = await reviewPanel();
@@ -209,5 +251,6 @@ describe("flag ON: as released", () => {
     h.switchOn = false;
     props = await reviewPanel();
     expect(props.publishOnApprove).toBe(false);
+    expect((props.request as { id: number }).id).toBe(41);
   });
 });

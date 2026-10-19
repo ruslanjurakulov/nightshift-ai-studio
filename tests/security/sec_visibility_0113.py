@@ -11,7 +11,7 @@ Two tables, neither writable by any API role (the service key included):
 
   video_visibility_requests  Channel: members read their organization's rows (RLS, without the worker's own columns);
                              every write is one of the functions below. own_insert is False, so the lab proves the refusal.
-  youtube_quota_ledger       Platform: a platform admin may SELECT; written only by youtube_quota_take().
+  youtube_quota_ledger       Platform: a platform admin may SELECT; written only by youtube_quota_take() / youtube_quota_refund().
 
 Every new function is declared: the two person-facing ones are USER (a signed-in caller; the function itself raises 42501 for
 anyone who is not an administrator and a real member of the channel's organization, which test_sec_visibility.py proves), the
@@ -43,6 +43,7 @@ def extend(tables: dict, functions: dict) -> None:
         "finish_visibility_request": SERVICE,
         "visibility_request_refusal": SERVICE,
         "youtube_quota_take": SERVICE,
+        "youtube_quota_refund": SERVICE,
         # internal: the one list of closed words; no API role
         "visibility_reason_words": SERVICE,
         "visibility_channel_connected": SERVICE,

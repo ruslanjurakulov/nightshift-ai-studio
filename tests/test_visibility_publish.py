@@ -132,6 +132,7 @@ class MemoryStore:
         self.used_org = 0
         self.ceiling_units = ceiling_units
         self.org_units = org_units
+        self.refund_fails = False
         self.mirror = None                               # videos.privacy as the database would have it
         self.on_mark = None                              # something that happens right after the marker is set
         self.calls = []
@@ -157,7 +158,7 @@ class MemoryStore:
         r["claimed"] = True
         return {"id": r["id"], "video_id": r["video_id"], "channel_id": r["channel_id"], "org_id": r["org_id"],
                 "approved_cut_sha256": r["approved_cut_sha256"], "attempts": r["attempts"],
-                "reconcile": r["submitting_at"] is not None}
+                "reconcile": r["submitting_at"] is not None, "read_only": bool(r.get("read_only"))}
 
     def video_refusal(self, video_id, cut):
         self.calls.append(("video_refusal", video_id, cut))
@@ -187,6 +188,14 @@ class MemoryStore:
             return False
         self.used += units
         self.used_org += units
+        return True
+
+    def quota_refund(self, project, units, org):
+        self.calls.append(("refund", units, org))
+        if self.refund_fails:
+            raise RuntimeError("youtube_quota_refund: HTTP 503")
+        self.used = max(self.used - units, 0)
+        self.used_org = max(self.used_org - units, 0)
         return True
 
     def finish(self, rid, worker, status, reason, before, after, units, retry):
@@ -358,6 +367,12 @@ class TheDatabaseSaysNo(unittest.TestCase):
             self.assertGreaterEqual(yt.lists, 1)
             self.assertIn("mark_submitting", [c[0] for c in store.calls])
             self.assertIsNone(store.request["submitting_at"], word)      # nothing was marked: no write may be on its way
+            # the 50 units taken for the write that will not be sent were given back: the refusal cost the budget the 2 reads only
+            self.assertEqual((store.used, store.used_org), (2, 2), word)
+            self.assertEqual([c[:2] for c in store.calls if c[0] == "refund"], [("refund", 50)], word)
+            self.assertEqual(store.finishes[-1][4], 2, word)
+            names = [c[0] for c in store.calls]
+            self.assertLess(names.index("quota", names.index("quota") + 1), names.index("mark_submitting"))   # still taken BEFORE the marker
         # a word the worker does not know is ours, never the text it came in
         store, yt = MemoryStore(gap="drop table;"), wrap()
         out, _ = run(store, yt)
@@ -741,6 +756,66 @@ class TheSwitchIsTurnedOffWhileTheWriteIsOnItsWay(unittest.TestCase):
         self.assertEqual((out, yt.lists, built), ("refused", 0, []))
 
 
+class TheLastLookOfAMarkedRequest(unittest.TestCase):
+    def last_claim(self, store):
+        store.request.update(submitting_at="then", claimed_by=None, read_only=True)
+        req = store.claim("w9")
+        self.assertTrue(req["read_only"] and req["reconcile"])
+        return req
+
+    def go(self, store, yt, req):
+        return vp.process_request(req, store=store, credentials=good_credentials, service_factory=lambda t, c: yt, worker_id="w9",
+                                  sleep=lambda s: None)
+
+    def test_it_records_public_as_applied(self):
+        store, yt = MemoryStore(), wrap(privacy="public")
+        self.assertEqual(self.go(store, yt, self.last_claim(store)), "applied")
+        self.assertEqual((yt.updates, store.mirror), ([], "public"))
+
+    def test_it_never_writes_whatever_it_finds_and_ends_the_request_as_interrupted(self):
+        store, yt = MemoryStore(), wrap()                    # private: a normal claim would write here
+        req = self.last_claim(store)
+        self.assertEqual(self.go(store, yt, req), "failed")
+        self.assertEqual(store.finishes[-1][:2], ("failed", "interrupted"))
+        self.assertEqual(yt.updates, [])
+        self.assertNotIn("mark_submitting", [c[0] for c in store.calls])
+        # the database's own word for it, when it has one, stands
+        store, yt = MemoryStore(request_refusals=["not_enabled"]), wrap()
+        self.assertEqual(self.go(store, yt, self.last_claim(store)), "refused")
+        self.assertEqual((store.finishes[-1][1], yt.updates), ("not_enabled", []))
+
+    def test_a_read_that_fails_is_not_a_final_answer_either(self):
+        store, yt = MemoryStore(), wrap(list_errors=[HttpError(503)])
+        self.assertEqual(self.go(store, yt, self.last_claim(store)), "queued")
+        self.assertEqual(yt.updates, [])
+
+
+class TheBudgetIsGivenBackWhenTheWriteIsNotSent(unittest.TestCase):
+    def test_a_refusing_marker_costs_only_the_reads_and_a_lost_lease_too(self):
+        store, yt = MemoryStore(gap="cut_changed"), wrap()
+        out, _ = run(store, yt)
+        self.assertEqual((out, store.used), ("refused", 2))
+        store, yt = MemoryStore(), wrap()
+        store.mark_submitting = lambda rid, worker: "not_holder"
+        self.assertEqual(run(store, yt)[0], "queued")
+        self.assertEqual(store.used, 2)
+        self.assertEqual([c[1] for c in store.calls if c[0] == "refund"], [50])
+
+    def test_a_refund_that_fails_does_not_hide_the_refusal(self):
+        store, yt = MemoryStore(gap="cut_changed"), wrap()
+        store.refund_fails = True
+        with self.assertLogs("modules.visibility_publish", level="WARNING") as logs:
+            out, _ = run(store, yt)
+        self.assertEqual((out, store.finishes[-1][:2]), ("refused", ("refused", "cut_changed")))
+        self.assertTrue(any("could not give the quota back" in m for m in logs.output))
+        self.assertEqual(store.finishes[-1][4], 52)           # what was spent is still what is recorded
+
+    def test_a_successful_write_is_never_refunded(self):
+        store, yt = MemoryStore(), wrap()
+        self.assertEqual(run(store, yt)[0], "applied")
+        self.assertNotIn("refund", [c[0] for c in store.calls])
+
+
 class StatusFieldsArePreserved(unittest.TestCase):
     def test_a_read_without_the_made_for_kids_declaration_is_never_written_over(self):
         store, yt = MemoryStore(), wrap(drop_status=("selfDeclaredMadeForKids",))
@@ -924,6 +999,10 @@ class Rest(unittest.TestCase):
         for odd in (None, True, "", 5):                 # anything that is not a word is not an "ok"
             s._http = Session(Resp(200, odd))
             self.assertEqual(s.mark_submitting(3, "w1"), "worker_error")
+        s._http = Session(Resp(200, True))
+        self.assertTrue(s.quota_refund("p", 50, ORG))
+        self.assertEqual(calls[-1][0], "https://x.supabase.co/rest/v1/rpc/youtube_quota_refund")
+        self.assertEqual(calls[-1][1], {"p_project": "p", "p_units": 50, "p_org": ORG})
         s._http = Session(Resp(200, True))
         self.assertTrue(s.quota_take("p", 50, 1000, ORG, 500))
         self.assertEqual(calls[-1][1], {"p_project": "p", "p_units": 50, "p_ceiling": 1000, "p_org": ORG, "p_org_ceiling": 500})

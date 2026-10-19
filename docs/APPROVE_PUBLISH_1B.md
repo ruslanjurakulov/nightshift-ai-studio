@@ -56,6 +56,15 @@ A request nobody carries out stays `queued` until its approval ends (24 hours) a
 * **Attempts.** A round is three claims; "Try again" (`retry_video_visibility`) starts a new round but the request's
   `lifetime_attempts` never resets: **six claims in all**, then the request stays `failed` and "Try again" answers `retry_limit` (the panel
   stops offering it). A person then checks YouTube Studio or approves again.
+* **A marked request gets one last look.** When the claims of a request whose write was marked are used up (a worker died after
+  marking, three or six times), the next claim is **read-only** (`read_only`): the worker reads YouTube and records public as
+  `applied`; anything else ends the request as it would have ended (`failed / interrupted` unless the database has a word of its
+  own). The database refuses that claim the marker (`mark_visibility_submitting` answers `interrupted`), so it can never write. A
+  request that was never marked gets no such claim: there is no write to look for. (If that last read itself fails the request ends
+  `failed` with that reason and "check the video in YouTube Studio" is the honest next step.)
+* **The budget of a refused write.** The worker takes the 50 units before the marker (the budget is checked before any write) and
+  gives them back (`youtube_quota_refund`) when the marker refuses or the lease was lost, so a refusal costs the day's budget the
+  two reads only. A write that was sent is never refunded.
 
 ## The switch turned off while a write may be on its way
 
@@ -81,13 +90,22 @@ old organization is refused (`not_enabled`) by the re-check.
 
 ## Releasing it
 
-Hidden until released, on purpose: the legal pages and the Google consent text still say Nightshift never edits an existing video.
-The Command Center shows **nothing** of the feature until the server flag `PUBLISH_ON_APPROVE_RELEASED` is on (default off; an unset,
-empty or odd value is off; it is a server variable read per request, **not** `NEXT_PUBLIC_`, so no build can leave it on). With it off
-the Channels page draws no switch (the channel's value is not even sent to the browser), the video page's key reads "Approve"
-everywhere, there is no "Approve and publish" and no request status. The database functions stay callable (an administrator who
-calls the RPC by hand can still switch a channel on; the worker then still has its own switch): the flag hides the doors, it does not
-lock them. Release, in this order, each step only after the one before:
+Entry points hidden until released, on purpose: the legal pages and the Google consent text still say Nightshift never edits an
+existing video. The Command Center reads the server flag `PUBLISH_ON_APPROVE_RELEASED` (default off; an unset, empty or odd value is
+off; a server variable read per request, **not** `NEXT_PUBLIC_`, so no build can leave it on). **The flag hides the doors that turn
+the feature on; it never hides the truth about a channel whose switch is already on:**
+
+| | flag off, channel switch off | flag off, channel switch ON | flag on |
+| :-- | :-- | :-- | :-- |
+| Channels page | no switch, no typed-word sheet | the switch is shown (on) and can only be turned **off**, in one tap; once off it disappears | the switch, both directions |
+| Video page key | "Approve", no request status | "Approve and publish" and the request's state (read on the server from the database) | the same as the previous column |
+
+The label rule is one line: **"Approve and publish" exactly when the channel's database switch is on**, whatever the flag says. The
+channel rows reach the browser with the switch's value either way (a member may read it anyway); what the flag hides is the control
+and the copy, not the value. The database functions stay callable (an administrator who calls the RPC by hand can still switch a
+channel on; the worker then still has its own switch): the flag hides the entry points, it does not lock them.
+
+Release, in this order, each step only after the one before:
 
 1. Owner approves the CLAUDE.md rule 2/3 amendment (`docs/proposals/claude-md-rules-2-3-phase-1b.patch`) and merges.
 2. Legal text and Google consent text changed (the section above) and, if Google asks, the OAuth app re-verified.
@@ -97,26 +115,14 @@ lock them. Release, in this order, each step only after the one before:
    `deploy_web.yml`; a restart is enough, it is read per request).
 6. Only then tell customers; each channel's administrators still opt in per channel.
 
-To take it away again: unset the web variable (the UI disappears), unset the worker variable, switch channels off.
+**Undo, in the opposite order of what matters most: switches first, then the worker, then the web flag.**
 
-## Deploy order and undo
-
-Apply 0113, deploy the app and the worker of the same commit, leave both switches off. Details and the replay rules:
-`docs/MIGRATIONS.md` ("Publish when approved (0113)"). Undo for behaviour: switch the channel off (its queued requests are refused
-at once) or unset the worker variable. Undo for the objects: `docs/sql/rollback_0113_visibility_requests.sql` (before rolling back 0112).
-
-## Where the merged code and the design document differ (the merged code wins)
-
-* 0112's `approve_video_publish` creates no request row and its replay returns `already: true`; 0113 adds the request in a block after
-  its audit write (unique per `(video, cut, decided_at)`), so a replay never queues twice. The design's `intent_id unique` was not used.
-* 0112's `video_publish_refusal` does not contain the design's `channel_not_connected`, `not_enabled`, `awaiting_two_person`: those
-  checks are in `visibility_request_refusal` (two-person is not re-checked; the product dropped it).
-* The status vocabulary is `queued | applied | refused | failed | expired` (no `applying`, no `cancelled`): a lease on a queued row
-  replaces `applying`; a repair is caught by the worker's re-check (`not_approved` / `approval_superseded`), so
-  `finish_scene_regeneration` is not touched again.
-* A `failed` request (token expired, quota, scope, channel not connected, ...) can be re-queued by an admin
-  (`retry_video_visibility`), because 0112's replay would otherwise leave an approved video with no way to try again.
-* `publish_channel_connected` (0029) arrived by a later edit, so 0113 carries `visibility_channel_connected` (same rule).
+1. **Switch the channels off** (Channels page, one tap each, or the SQL in "Is it off?" of `docs/MIGRATIONS.md`): from that moment
+   nothing new is queued and waiting requests are refused. Do this first, while the worker is still running, so a request whose
+   write was already marked is still read back and recorded.
+2. Then unset `NIGHTSHIFT_VISIBILITY_PUBLISH` on the worker (and restart it).
+3. Only then unset the web flag. Even with it unset the Channels page keeps showing the switch of any channel that is still on, so
+   it can always be turned off, and the video page keeps saying "Approve and publish" and showing the request for such a channel.
 
 ## The YouTube scope question
 

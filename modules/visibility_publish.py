@@ -32,7 +32,10 @@ the one change this feature exists for: ``videos.update`` with ``status.privacyS
    locked private) is ``refused`` with ``platform_kept_private``. ``videos.privacy`` follows the read-back and nothing else
    (``finish_visibility_request`` writes it). The database's answer to that write is checked too: a request the database
    did not record (not the holder any more, or unreachable) is logged loudly and never logged as applied.
-7. A request whose write was marked (``reconcile``) is the one case where YouTube is READ even after the database says no
+7. A request whose write was marked and whose claims ran out gets one more claim, READ-ONLY (``read_only``): it reads YouTube
+   and records public as applied, anything else ends it as it would have ended; the database refuses the marker to it, so
+   it can never write.
+8. A request whose write was marked (``reconcile``) is the one case where YouTube is READ even after the database says no
    (the switch was turned off, the approval ran out): the write may have landed, and the database must say what YouTube
    says. Public on that read is ``applied`` (the read-back is the truth, whoever made it public: a person who did it by
    hand in the same minutes is indistinguishable); anything else ends with the database's own word. YouTube is never
@@ -200,6 +203,10 @@ class VisibilityStore:
         out = self._rpc("mark_visibility_submitting", {"p_request_id": request_id, "p_worker": worker_id})
         return out if isinstance(out, str) and out else "worker_error"
 
+    def quota_refund(self, project: str, units: int, org: str) -> bool:
+        """Give back units that were taken for a write the marker then refused (the write was never sent)."""
+        return self._rpc("youtube_quota_refund", {"p_project": project, "p_units": units, "p_org": org}) is True
+
     def quota_take(self, project: str, units: int, ceiling: int, org: str, org_ceiling: int) -> bool:
         return self._rpc("youtube_quota_take", {"p_project": project, "p_units": units, "p_ceiling": ceiling,
                                                 "p_org": org, "p_org_ceiling": org_ceiling}) is True
@@ -350,7 +357,8 @@ def process_request(
     channel_id = str(req.get("channel_id") or "")
     org = str(req.get("org_id") or "")
     attempts = int(req.get("attempts") or 1)
-    reconcile = bool(req.get("reconcile"))
+    read_only = bool(req.get("read_only"))       # the extra claim a marked request gets when its claims are used up: it never writes
+    reconcile = bool(req.get("reconcile")) or read_only
     org_limit = org_share(ceiling) if org_ceiling is None else org_ceiling
     ctx = Context()
     # A request whose write was marked, and which the database now says no to (the switch was turned off, the approval ran out):
@@ -406,6 +414,8 @@ def process_request(
             if not reconcile:
                 raise
             pending = stop
+        if read_only and pending is None:
+            pending = failed("interrupted")     # the last look: public is recorded, anything else ends it as it would have ended
 
         # The channel's own token, in memory; the scopes it was granted, read from the token itself.
         from modules import channel_tokens  # noqa: PLC0415
@@ -469,10 +479,17 @@ def process_request(
         if not spend(UNITS_UPDATE, ceiling, org_limit):
             raise failed("quota_exceeded")
         marked = store.mark_submitting(rid, worker_id)
-        if marked == "not_holder":
-            logger.info("visibility request %s: lease lost before the write; leaving it", rid)
-            return "queued"
         if marked != "ok":
+            # The write the 50 units were for will not be sent (the database says no, or another worker holds the request): give
+            # them back, so a refusal does not cost the day's budget. The budget was still taken BEFORE the marker and the write.
+            try:
+                if store.quota_refund(project, UNITS_UPDATE, org):
+                    ctx.units -= UNITS_UPDATE
+            except Exception as e:
+                logger.warning("visibility request %s: could not give the quota back (%s)", rid, type(e).__name__)
+            if marked == "not_holder":
+                logger.info("visibility request %s: lease lost before the write; leaving it", rid)
+                return "queued"
             raise Stop(marked)             # a closed word: nothing was sent
         update_error = None
         try:

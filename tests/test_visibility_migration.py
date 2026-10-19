@@ -19,7 +19,7 @@ ROLLBACK = (REPO / "docs" / "sql" / "rollback_0113_visibility_requests.sql").rea
 REPLACED = {"approve_video_publish": "0112_approve_video_publish.sql", "audit_action_allowed": "0112_approve_video_publish.sql"}
 PERSON = {"set_channel_publish_on_approve", "retry_video_visibility"}
 WORKER = {"claim_visibility_request", "mark_visibility_submitting", "finish_visibility_request", "visibility_request_refusal",
-          "youtube_quota_take"}
+          "youtube_quota_take", "youtube_quota_refund"}
 TRIGGER_FNS = {"channels_publish_switch_guard", "video_visibility_requests_guard"}
 NEW = PERSON | WORKER | TRIGGER_FNS | {"visibility_reason_words", "visibility_channel_connected"}
 NEW_ACTIONS = ["channel.publish_on_approve", "video.publish_queued", "video.visibility_applied", "video.visibility_refused",
@@ -150,8 +150,10 @@ class OffByDefaultAndAdditive(unittest.TestCase):
                           "disable row level security", "create view", "create materialized", "create extension", "alter table public.videos",
                           "alter table public.review_intents", "update public."):
             self.assertNotIn(forbidden, top, forbidden)
-        # the only drops: the two functions whose shape an earlier draft of this file had (mark_visibility_submitting returned a
-        # boolean, youtube_quota_take had three arguments), dropped by signature so a database with that draft gets the new ones
+        # the only drops: two functions of the same name and another shape (an earlier draft), dropped by signature so this file
+        # does not fail on them. The file says plainly that it supports fresh databases only: the draft's two TABLES differ and
+        # "create table if not exists" does not alter them.
+        self.assertIn("THIS FILE SUPPORTS FRESH DATABASES ONLY", SQL)
         self.assertEqual(sorted(re.findall(r"(?m)^drop function if exists (public\.\w+\([^)]*\));", top)),
                          ["public.mark_visibility_submitting(bigint, text)", "public.youtube_quota_take(text, integer, integer)"])
         self.assertEqual(sorted(re.findall(r"(?m)^alter table (public\.\w+) ", top)),
@@ -220,6 +222,7 @@ class WhoMayDoWhat(unittest.TestCase):
             self.assertIn(f"grant execute on function public.{fn}{sig} to authenticated;", TOP)
         for fn, sig in (("visibility_request_refusal", "(bigint)"), ("claim_visibility_request", "(text)"),
                         ("mark_visibility_submitting", "(bigint, text)"), ("youtube_quota_take", "(text, integer, integer, uuid, integer)"),
+                        ("youtube_quota_refund", "(text, integer, uuid)"),
                         ("finish_visibility_request", "(bigint, text, text, text, text, text, integer, integer)")):
             self.assertRegex(TOP, rf"revoke all on function public\.{fn}{re.escape(sig)}\s+from public, anon, authenticated, service_role;")
             self.assertRegex(TOP, rf"grant execute on function public\.{fn}{re.escape(sig)} to service_role;")
@@ -260,13 +263,28 @@ class WhoMayDoWhat(unittest.TestCase):
         self.assertIn("if v_status = 'queued' and r.attempts >= 3 then", f)
         c = code(NEW_BODIES["claim_visibility_request"])
         # three claims in a round, six in a request's lifetime (try again resets the first, never the second)
-        self.assertIn("if r.attempts >= 3 or r.lifetime_attempts >= 6 then", c)
+        self.assertIn("v_final := r.attempts >= 3 or r.lifetime_attempts >= 6;", c)
         self.assertIn("lifetime_attempts = lifetime_attempts + 1", c)
         # the sweep ends an approval that ran out, but not a request whose write was marked: that one is read by the worker
         self.assertIn("expires_at <= now() and submitting_at is null", c)
         self.assertIn("for update skip locked", c)
         # organizations are served in turn: the one served longest ago first
         self.assertIn("order by (select max(y.claimed_at) from public.video_visibility_requests y where y.org_id = x.org_id) asc nulls first", c)
+
+    def test_a_marked_request_gets_one_read_only_claim_before_it_is_failed_and_the_marker_refuses_that_claim(self):
+        c = code(NEW_BODIES["claim_visibility_request"])
+        self.assertIn("v_final := r.attempts >= 3 or r.lifetime_attempts >= 6;", c)
+        self.assertIn("if v_final and not (r.submitting_at is not null and r.attempts < 4 and r.lifetime_attempts < 7) then", c)
+        self.assertIn("'read_only', v_final", c)
+        m = code(NEW_BODIES["mark_visibility_submitting"])
+        self.assertIn("if r.attempts > 3 or r.lifetime_attempts > 6 then\n    return 'interrupted';", m)
+
+    def test_units_taken_for_a_write_that_was_never_sent_can_be_given_back_by_the_service_key_alone(self):
+        f = code(NEW_BODIES["youtube_quota_refund"])
+        self.assertIn("pg_advisory_xact_lock", f)
+        self.assertIn("greatest(l.units - p_units, 0)", f)
+        self.assertIn("l.org_id in (v_all, p_org)", f)
+        self.assertIn("credits_trusted_caller()", f)
 
     def test_the_last_check_and_the_marker_are_one_step_under_row_locks_in_the_order_try_again_uses(self):
         m = code(NEW_BODIES["mark_visibility_submitting"])
@@ -282,7 +300,7 @@ class WhoMayDoWhat(unittest.TestCase):
         self.assertLess(vid, ask)
         self.assertLess(ask, ask2)
         self.assertLess(ask2, mark)                      # the marker is the last statement that writes, after both questions
-        self.assertEqual(re.findall(r"return '?(\w+)'?;", m), ["not_holder", "not_holder", "why", "ok"])
+        self.assertEqual(re.findall(r"return '?(\w+)'?;", m), ["not_holder", "not_holder", "interrupted", "why", "ok"])
         # retry takes the same order (request, then video), so the two cannot deadlock; the switch takes the channel FOR UPDATE
         rt = code(NEW_BODIES["retry_video_visibility"])
         self.assertLess(rt.index("video_visibility_requests where id = p_request_id for update"), rt.index("public.videos where video_id = r.video_id"))
@@ -333,7 +351,7 @@ class TheRollbackIsTheExactOldText(unittest.TestCase):
         top = outside_bodies(ROLLBACK)
         for fn in ("set_channel_publish_on_approve(text, boolean)", "retry_video_visibility(bigint)", "claim_visibility_request(text)",
                    "mark_visibility_submitting(bigint, text)", "visibility_request_refusal(bigint)", "youtube_quota_take(text, integer, integer, uuid, integer)",
-                   "visibility_channel_connected(text)",
+                   "youtube_quota_refund(text, integer, uuid)", "visibility_channel_connected(text)",
                    "finish_visibility_request(bigint, text, text, text, text, text, integer, integer)"):
             self.assertIn(f"drop function if exists public.{fn};", top)
         for kept in ("channels_publish_switch_guard", "video_visibility_requests_guard", "visibility_reason_words"):
