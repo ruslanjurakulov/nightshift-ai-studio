@@ -102,6 +102,10 @@ TT_MAX_BYTES = 4 * 1024 * 1024 * 1024
 TT_SINGLE_CHUNK_MAX = 64 * 1024 * 1024
 TT_CHUNK = 10 * 1024 * 1024
 TT_PRIVACY = "SELF_ONLY"
+#: TikTok's error code (HTTP 403, /video/init/) for an unaudited app posting to a non-private account, and the
+#: closed reason word the panel has a sentence for.
+TT_UNAUDITED_CODE = "unaudited_client_can_only_post_to_private_accounts"
+TT_UNAUDITED_REASON = "tiktok_unaudited"
 YT_PRIVACY = "private"
 YT_WATCH = "https://www.youtube.com/watch?v="
 _YT_QUOTA = {"quotaExceeded", "dailyLimitExceeded", "uploadLimitExceeded"}
@@ -490,8 +494,14 @@ def _tt_error(what: str, r) -> PublishStop:
     reason = ("token_expired" if code in ("access_token_invalid", "scope_not_authorized")
               else "rate_limited" if code in ("rate_limit_exceeded", "spam_risk_too_many_posts",
                                               "spam_risk_user_banned_from_posting")
+              else TT_UNAUDITED_REASON if code == TT_UNAUDITED_CODE
               else "platform_error")
-    return failed(reason, f"tiktok {what}: HTTP {getattr(r, 'status_code', 0)}" + (f", {code}" if code else ""))
+    detail = f"tiktok {what}: HTTP {getattr(r, 'status_code', 0)}" + (f", {code}" if code else "")
+    if reason == TT_UNAUDITED_REASON:
+        # Not retried and not a bug: TikTok (HTTP 403 on /video/init/) takes posts from an unaudited app only for a
+        # PRIVATE account. We already ask for SELF_ONLY; the account itself has to be private as well.
+        detail += " - make the TikTok account private until the app is audited"
+    return failed(reason, detail)
 
 
 def _tt_ok(r) -> bool:

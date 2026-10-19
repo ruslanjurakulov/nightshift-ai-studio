@@ -2247,7 +2247,7 @@ export const en = {
     noAccounts: "No Instagram or TikTok account is connected.",
     connectAccounts: "Connect one on the Channels page",
     reconnect: "Needs reconnecting on the Channels page.",
-    tiktokPrivate: "Posted as private (only you) until the TikTok app passes TikTok's audit.",
+    tiktokPrivate: "Posted as private (only you) until the TikTok app passes TikTok's audit. While the app is unaudited TikTok also wants the TikTok account itself to be private; if it is not, the post fails and says so.",
     privateOnTiktok: "private (only you)",
     openPost: "Open post",
     status: {
@@ -2281,6 +2281,7 @@ export const en = {
       upload_failed: "Failed: the upload did not go through.",
       processing_failed: "Failed: the platform could not process the video.",
       platform_error: "Failed: the platform refused the request.",
+      tiktok_unaudited: "Failed: until its app is audited, TikTok only accepts posts from a private TikTok account. Make your TikTok account private in TikTok's privacy settings, then send again.",
       timeout: "Failed: the platform took too long to process the video.",
       interrupted: "Failed: the worker stopped during the upload.",
       worker_error: "Failed.",
@@ -2316,7 +2317,7 @@ export const en = {
     disconnectedNotice: "Disconnected — the stored token was destroyed. Also remove Nightshift's access on the platform's side:",
     disconnectFailed: "Could not disconnect ({error}). Nothing was changed.",
     since: "Connected {when}",
-    tiktokPrivateNote: "Until the TikTok app passes TikTok's audit, posts can only be private (SELF_ONLY).",
+    tiktokPrivateNote: "Until the TikTok app passes TikTok's audit, posts can only be private (SELF_ONLY), and TikTok only accepts them from a private TikTok account: make the account private in TikTok.",
     results: {
       connected: "{platform} connected — the token was encrypted into Supabase Vault.",
       denied: "{platform} access was declined. Nothing was stored.",

@@ -175,6 +175,7 @@ export const PUBLISH_REASONS = [
   "upload_failed",
   "processing_failed",
   "platform_error",
+  "tiktok_unaudited",
   "timeout",
   "interrupted",
   "worker_error",

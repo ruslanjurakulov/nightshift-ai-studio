@@ -2235,7 +2235,7 @@ export const uz: Dictionary = {
     noAccounts: "Instagram yoki TikTok akkaunti ulanmagan.",
     connectAccounts: "Channels sahifasida ulang",
     reconnect: "Channels sahifasida qayta ulash kerak.",
-    tiktokPrivate: "TikTok ilovasi auditdan oʻtmaguncha shaxsiy (faqat siz) sifatida joylanadi.",
+    tiktokPrivate: "TikTok ilovasi auditdan oʻtmaguncha shaxsiy (faqat siz) sifatida joylanadi. Ilova auditdan oʻtmaguncha TikTok akkauntning oʻzi ham shaxsiy boʻlishini talab qiladi; aks holda post oʻtmaydi va sababi koʻrsatiladi.",
     privateOnTiktok: "shaxsiy (faqat siz)",
     openPost: "Postni ochish",
     status: {
@@ -2269,6 +2269,7 @@ export const uz: Dictionary = {
       upload_failed: "Xato: yuklash amalga oshmadi.",
       processing_failed: "Xato: platforma videoni qayta ishlay olmadi.",
       platform_error: "Xato: platforma soʻrovni rad etdi.",
+      tiktok_unaudited: "Xato: ilova auditdan oʻtmaguncha TikTok postlarni faqat shaxsiy (private) akkauntdan qabul qiladi. TikTok akkauntingizni TikTok maxfiylik sozlamalarida shaxsiy qiling, soʻng qayta yuboring.",
       timeout: "Xato: platforma videoni juda uzoq qayta ishladi.",
       interrupted: "Xato: yuklash paytida worker toʻxtab qoldi.",
       worker_error: "Xato.",
@@ -2304,7 +2305,7 @@ export const uz: Dictionary = {
     disconnectedNotice: "Uzildi — saqlangan token yoʻq qilindi. Platforma tomonida ham Nightshift ruxsatini olib tashlang:",
     disconnectFailed: "Uzib boʻlmadi ({error}). Hech narsa oʻzgarmadi.",
     since: "Ulangan: {when}",
-    tiktokPrivateNote: "TikTok ilovasi TikTok auditidan oʻtmaguncha postlar faqat shaxsiy (SELF_ONLY) boʻladi.",
+    tiktokPrivateNote: "TikTok ilovasi TikTok auditidan oʻtmaguncha postlar faqat shaxsiy (SELF_ONLY) boʻladi va TikTok ularni faqat shaxsiy akkauntdan qabul qiladi: akkauntni TikTok’da shaxsiy qiling.",
     results: {
       connected: "{platform} ulandi — token Supabase Vault ichida shifrlandi.",
       denied: "{platform} ruxsati rad etildi. Hech narsa saqlanmadi.",
