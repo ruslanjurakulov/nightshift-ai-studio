@@ -500,6 +500,11 @@ class Compositor:
                 # slower. NIGHTSHIFT_RENDER_THREADS can drop it to 1 on a
                 # memory-starved runner without a code change.
                 threads=threads,
+                # moov first: Instagram (and the social probe's not_faststart
+                # check) refuses an MP4 whose index sits at the end. The hash
+                # in held_video.cut_sha256 is taken after this write, so it
+                # covers the file as it ships.
+                ffmpeg_params=["-movflags", "+faststart"],
                 verbose=False,
                 logger=None,
             )
