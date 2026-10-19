@@ -127,18 +127,28 @@ async function reviewPanel() {
 }
 
 describe("the flag", () => {
-  it("is off unless it is exactly on / 1 / true / yes, whatever else is set", () => {
-    expect(publishOnApproveReleased({})).toBe(false);
-    for (const v of ["", "off", "0", "false", "no", "maybe", "onn", " "]) expect(publishOnApproveReleased({ [PUBLISH_ON_APPROVE_FLAG]: v }), v).toBe(false);
-    for (const v of ["on", "ON", " on ", "1", "true", "Yes"]) expect(publishOnApproveReleased({ [PUBLISH_ON_APPROVE_FLAG]: v }), v).toBe(true);
-    expect(publishOnApproveReleased({ NEXT_PUBLIC_PUBLISH_ON_APPROVE_RELEASED: "on" })).toBe(false);   // a browser-bundled name counts for nothing
+  it("is off unless it is on / 1 / true / yes, whatever else is set", () => {
+    expect(publishOnApproveReleased(undefined)).toBe(false);
+    for (const v of ["", "off", "0", "false", "no", "maybe", "onn", " "]) expect(publishOnApproveReleased(v), v).toBe(false);
+    for (const v of ["on", "ON", " on ", "1", "true", "Yes"]) expect(publishOnApproveReleased(v), v).toBe(true);
   });
 
-  it("is read on the server at request time: not a NEXT_PUBLIC variable, not baked in", () => {
+  it("with no argument it reads the server's environment when it is called, and a browser-bundled name counts for nothing", () => {
+    expect(publishOnApproveReleased()).toBe(false);
+    vi.stubEnv("NEXT_PUBLIC_PUBLISH_ON_APPROVE_RELEASED", "on");
+    expect(publishOnApproveReleased()).toBe(false);
+    vi.stubEnv(PUBLISH_ON_APPROVE_FLAG, "on");
+    expect(publishOnApproveReleased()).toBe(true);
+    vi.stubEnv(PUBLISH_ON_APPROVE_FLAG, "off");
+    expect(publishOnApproveReleased()).toBe(false);
+  });
+
+  it("is a server-only module and not a NEXT_PUBLIC variable, not baked in", () => {
     const src = readFileSync(join(__dirname, "..", "lib", "server", "release-flags.ts"), "utf8");
     expect(src).toMatch(/import "server-only";/);
     expect(PUBLISH_ON_APPROVE_FLAG).not.toMatch(/NEXT_PUBLIC/);
-    expect(src).toContain("env: Record<string, string | undefined> = process.env");   // the default argument is read when called
+    expect(src).toContain("process.env.PUBLISH_ON_APPROVE_RELEASED");
+    expect(src).not.toMatch(/process\.env\.NEXT_PUBLIC/);
     for (const page of ["app/(app)/[channel]/channels/page.tsx", "app/(app)/[channel]/videos/[id]/page.tsx"]) {
       const text = readFileSync(join(__dirname, "..", page), "utf8");
       expect(text, page).toContain("publishOnApproveReleased()");

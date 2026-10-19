@@ -17,8 +17,8 @@ import "server-only";
  */
 export const PUBLISH_ON_APPROVE_FLAG = "PUBLISH_ON_APPROVE_RELEASED";
 
-export function publishOnApproveReleased(env: Record<string, string | undefined> = process.env): boolean {
-  return ["on", "1", "true", "yes"].includes(String(env[PUBLISH_ON_APPROVE_FLAG] ?? "").trim().toLowerCase());
+export function publishOnApproveReleased(raw: string | undefined = process.env.PUBLISH_ON_APPROVE_RELEASED): boolean {
+  return ["on", "1", "true", "yes"].includes(String(raw ?? "").trim().toLowerCase());
 }
 
 /** A channel row as the page hands it to the browser when the feature is not released: without its switch. */

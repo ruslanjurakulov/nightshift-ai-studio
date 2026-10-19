@@ -876,6 +876,16 @@ def test_the_last_check_waits_for_a_switch_or_an_approval_in_flight_and_then_see
                 assert mark(c2, first) == "55P03"                              # lock_not_available: it did not race the switch
             # the switch committed and refused the request that was never marked: the marker finds it ended, sets nothing
             assert mark(c2, first) == "not_holder"
+            # the marker takes the channel row FOR SHARE on its own account (not only by running into the request row the switch
+            # function also holds): a transaction that holds the channel row and has not touched the requests yet is waited for too
+            with as_superuser(c1, commit=True) as su:
+                third = queued(su, bob, vid="ddddddddddd")
+                activate(su, bob.channel)
+            assert svc_value(c2, "select public.claim_visibility_request('w1')")["id"] == third
+            with as_superuser(c1, commit=True) as su:
+                su.rows("select 1 from public.channels where channel_id = %s for update", [bob.channel])
+                assert mark(c2, third) == "55P03"
+            assert mark(c2, third) == "ok"
             with as_superuser(c1, commit=False) as su:
                 assert su.rows("select status, reason, submitting_at is null from public.video_visibility_requests where id = %s", [first]) == [("refused", "not_enabled", True)]
             # a repair (or a new cut) is being written to the video: the marker waits, and when it commits the marker says no
