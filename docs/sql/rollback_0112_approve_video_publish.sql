@@ -6,8 +6,8 @@
 -- what a repair clears. Without this file the cheapest undo of the feature is in the app (the panel stops calling the RPC).
 --
 -- WHAT IT DOES, in one transaction:
---   1. Drops approve_video_publish(text, text, jsonb), video_approve_access(text), video_publish_refusal(text, text) and
---      video_approve_refusal(text, text).
+--   1. Drops approve_video_publish(text, text, jsonb), video_approve_access(text), video_real_member(uuid, text),
+--      video_publish_refusal(text, text) and video_approve_refusal(text, text).
 --   2. Puts review_intents_insert back to 0033's policy (an editor may insert an approve intent directly again; nothing reads it).
 --   3. Puts finish_scene_regeneration(...) back to 0085's body, byte for byte, with the grants 0085 gave it.
 --   4. Puts audit_action_allowed(text) back to 0110's body (video.approve becomes unknown again).
@@ -29,6 +29,7 @@ set local lock_timeout = '5s';
 
 drop function if exists public.approve_video_publish(text, text, jsonb);
 drop function if exists public.video_approve_access(text);
+drop function if exists public.video_real_member(uuid, text);
 drop function if exists public.video_publish_refusal(text, text);
 drop function if exists public.video_approve_refusal(text, text);
 

@@ -16,7 +16,7 @@ SQL = (MIGRATIONS / FILE).read_text(encoding="utf-8")
 ROLLBACK = (REPO / "docs" / "sql" / "rollback_0112_approve_video_publish.sql").read_text(encoding="utf-8")
 
 REPLACED = {"finish_scene_regeneration": "0085_scene_regen_followups.sql", "audit_action_allowed": "0110_marketing_promo_custom.sql"}
-NEW = {"approve_video_publish", "video_approve_access", "video_publish_refusal", "video_approve_refusal"}
+NEW = {"approve_video_publish", "video_approve_access", "video_real_member", "video_publish_refusal", "video_approve_refusal"}
 
 
 def code(text):
@@ -53,7 +53,7 @@ def outside_bodies(text):
 
 
 class BuiltOnTheLatestBodies(unittest.TestCase):
-    def test_it_defines_exactly_the_two_functions_it_replaces_and_four_new_ones(self):
+    def test_it_defines_exactly_the_two_functions_it_replaces_and_five_new_ones(self):
         self.assertEqual(sorted(NEW_BODIES), sorted([*REPLACED, *NEW]))
         self.assertEqual(sorted(re.findall(r"create or replace function public\.(\w+)", CODE)), sorted([*REPLACED, *NEW]))
 
@@ -129,11 +129,13 @@ class AdditiveAndSafeToApplyLive(unittest.TestCase):
         self.assertIn("set local lock_timeout = '5s';", SQL)
         self.assertLess(SQL.index("set local lock_timeout"), SQL.index("alter table public.videos"))
         guard = SQL[SQL.index("do $$"):SQL.index("-- 1. The columns")]
-        for needed in ("public.videos", "public.review_intents", "videos.publish_state", "public.inbox_real_member(uuid, text)",
+        for needed in ("public.videos", "public.review_intents", "videos.publish_state", "public.default_org_id()",
                        "public.take_web_rate(text, integer, integer)", "public.audit_action_allowed(text)",
                        "public.finish_scene_regeneration(uuid, bigint, boolean, text, text, jsonb)", "public.my_confirmed_email()"):
             self.assertIn(needed, guard, needed)
-        self.assertGreaterEqual(guard.count("raise exception"), 6)
+        self.assertGreaterEqual(guard.count("raise exception"), 5)
+        # nothing in the file depends on an object 0081 gained by an edit after it was merged
+        self.assertNotIn("inbox_real_member", CODE)
 
     def test_every_function_is_a_definer_with_a_pinned_search_path(self):
         for name in [*NEW, *REPLACED]:
@@ -147,6 +149,8 @@ class AdditiveAndSafeToApplyLive(unittest.TestCase):
         top = outside_bodies(SQL)
         self.assertIn("revoke all on function public.approve_video_publish(text, text, jsonb) from public, anon, authenticated, service_role;", top)
         self.assertIn("grant execute on function public.approve_video_publish(text, text, jsonb) to authenticated;", top)
+        self.assertIn("revoke all on function public.video_real_member(uuid, text) from public, anon, authenticated, service_role;", top)
+        self.assertNotIn("grant execute on function public.video_real_member", top)
         self.assertIn("revoke all on function public.video_approve_access(text) from public, anon, authenticated, service_role;", top)
         self.assertIn("grant execute on function public.video_approve_access(text) to authenticated;", top)
         self.assertIn("revoke all on function public.video_publish_refusal(text, text) from public, anon, authenticated, service_role;", top)
@@ -175,7 +179,7 @@ class TheApprovalRpc(unittest.TestCase):
     def test_the_access_word_is_one_function_in_a_fixed_order_and_the_rpc_asks_it(self):
         a = code(NEW_BODIES["video_approve_access"])
         order = [a.index(s) for s in ("auth.uid() is null", "public.channel_org(v_channel)", "is_org_member(org)", "is_org_member(org, 'admin')",
-                                      "inbox_real_member(org, 'admin')")]
+                                      "video_real_member(org, 'admin')")]
         self.assertEqual(order, sorted(order))
         self.assertEqual(set(re.findall(r"return '(\w+)';", a)), {"not_found", "not_admin", "not_member", "ok"})
         self.assertIn("language plpgsql stable security definer", NEW_BODIES["video_approve_access"])
@@ -184,7 +188,7 @@ class TheApprovalRpc(unittest.TestCase):
             self.assertNotIn(forbidden, a)
         # the RPC has no copy of the checks: it only maps the word
         self.assertNotIn("is_org_member", self.body)
-        self.assertNotIn("inbox_real_member", self.body)
+        self.assertNotIn("real_member", self.body)
 
     def test_the_channel_comes_from_the_video_row_never_from_an_argument(self):
         sig = re.search(r"create or replace function public\.approve_video_publish\((.*?)\) returns", CODE, re.S).group(1)
@@ -228,7 +232,7 @@ class TheRollbackIsTheExactOldText(unittest.TestCase):
 
     def test_it_drops_the_three_functions_keeps_the_columns_and_runs_in_one_transaction(self):
         top = outside_bodies(ROLLBACK)
-        for fn in ("approve_video_publish(text, text, jsonb)", "video_approve_access(text)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
+        for fn in ("approve_video_publish(text, text, jsonb)", "video_approve_access(text)", "video_real_member(uuid, text)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
             self.assertIn(f"drop function if exists public.{fn};", top)
         for forbidden in ("drop column", "delete from", "truncate", "drop table", "update public"):
             self.assertNotIn(forbidden, top.lower(), forbidden)

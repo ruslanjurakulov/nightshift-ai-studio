@@ -189,16 +189,17 @@ other line of every body is the old text, which `tests/test_video_safety_migrati
 0112 (`0112_approve_video_publish.sql`: Phase 1a of the approve-and-publish design) is NOT dormant: it takes effect the moment it is
 applied, but it publishes nothing and calls nothing outside the database. It adds nullable columns to `videos` (`cut_sha256`,
 `gate_verdict`, `approved_cut_sha256`, `decided_by`, `decided_by_email`, `decided_at`, `approval_expires_at`) and one to `review_intents`
-(`approved_cut_sha256`), three functions, and changes one policy, two function bodies and the audit list.
+(`approved_cut_sha256`), five functions, and changes one policy, two function bodies and the audit list.
 
 - **`approve_video_publish(video_id, cut_sha256, ack)`** (signed-in only, not anon, not the service key). The organization comes from the
   video row. Needs an administrator of the channel's organization; a platform owner/admin acting on a CUSTOMER channel must also be a real,
-  bound member of that organization (`inbox_real_member`, 0081), in the operator's own organization any platform owner/admin may. 20 calls
+  bound member of that organization (`video_real_member`, 0112: `inbox_real_member`'s rule under its own name, because a database built from 0081 as first merged may lack that function), in the operator's own organization any platform owner/admin may. 20 calls
   per person per 10 minutes. The reviewer's checksum must equal the stored cut (`cut_changed` otherwise), the video must be uploaded, have a
   preview and a stored, passing gate verdict (`gate_blocked` / `gate_unknown` / `not_uploaded` / `no_preview` / `cut_unknown` / `rejected`),
   and the acknowledgement `{"rights_and_labels": true}` must be given. It then sets `review_state = 'approved'` with who/when/until (24 hours),
   writes one consumed `review_intents` row and one `video.approve` audit row, and closes the stuck `approve` intents of the dead button as
   `superseded_by_approval`. The same call again while the approval is valid returns `{ok, already: true}` and writes nothing.
+- **`video_approve_access(video_id)`** (signed-in) answers `ok | not_admin | not_member | not_found` for the caller and the video; the RPC maps it and the panel asks it to decide whether to offer the key.
 - **`video_publish_refusal(video_id, cut_sha256)`** (service role only) is the rule a Phase 1b worker applies before it acts on an approval
   (eligibility, `already_public`, `not_approved`, `cut_changed`, `approval_expired`). Nothing calls it yet. `video_approve_refusal` is its
   internal eligibility half (no API role).

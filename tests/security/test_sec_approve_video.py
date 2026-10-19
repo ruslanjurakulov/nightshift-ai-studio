@@ -424,11 +424,12 @@ def test_the_grants_are_what_the_file_says(conn):
             return [su.value("select has_function_privilege(%s, %s::regprocedure, 'EXECUTE')", [r, sig]) for r in ("anon", "authenticated", "service_role")]
         assert priv("public.approve_video_publish(text, text, jsonb)") == [False, True, False]
         assert priv("public.video_approve_access(text)") == [False, True, False]
+        assert priv("public.video_real_member(uuid, text)") == [False, False, False]
         assert priv("public.video_publish_refusal(text, text)") == [False, False, True]
         assert priv("public.video_approve_refusal(text, text)") == [False, False, False]
         assert priv("public.audit_action_allowed(text)") == [False, False, False]
         assert priv("public.finish_scene_regeneration(uuid, bigint, boolean, text, text, jsonb)") == [False, False, True]
-        for sig in ("approve_video_publish(text, text, jsonb)", "video_approve_access(text)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
+        for sig in ("approve_video_publish(text, text, jsonb)", "video_approve_access(text)", "video_real_member(uuid, text)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
             assert su.value("select prosecdef from pg_proc where oid = %s::regprocedure", [f"public.{sig}"]) is True
             assert "search_path=public, pg_temp" in su.value("select proconfig::text from pg_proc where oid = %s::regprocedure", [f"public.{sig}"])
 

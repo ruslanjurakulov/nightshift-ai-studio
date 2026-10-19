@@ -26,7 +26,8 @@
 --       * the video is read, and its organization derived, from the VIDEO row (never from the caller);
 --       * a caller who cannot see the video gets not_found, as approve_reply does (no answer about other tenants);
 --       * role: admin or owner of THE CHANNEL'S ORGANIZATION. A platform owner/admin acting on a CUSTOMER channel must be a
---         real, bound member of that organization (inbox_real_member, 0081): public speech under a customer's name is the
+--         real, bound member of that organization (video_real_member below, the rule of inbox_real_member, 0081, which a database built
+--         from 0081 as first merged may lack): public speech under a customer's name is the
 --         customer's team's. In the operator's own organization the old rule stays (any platform owner/admin).
 --         All three are one function, video_approve_access(), which the panel also asks so that its key is disabled with a
 --         reason for exactly the people the function would refuse (the page may not read org_members itself).
@@ -47,6 +48,7 @@
 --       already_public, not_approved, cut_changed (the approval was for another cut) and approval_expired. Returns a closed
 --       word or NULL. Nothing calls it yet.
 --     video_approve_refusal(p_video_id, p_cut_sha256)   internal (no API role): the eligibility half both use.
+--  3a. video_real_member(org, role)   internal (no API role): inbox_real_member's rule under its own name.
 --  3b. video_approve_access(p_video_id)   SIGNED-IN. A word for the caller and THIS video: ok | not_admin | not_member | not_found.
 --       Read-only; approve_video_publish() calls it, the panel calls it to decide whether to offer the key.
 --  4. review_intents insert policy: 0033's policy with ONE more condition, action <> 'approve'. A browser can no longer
@@ -65,7 +67,7 @@
 -- latest migration that defines each), drop policy / create policy, revoke then grant. Rollback:
 -- docs/sql/rollback_0112_approve_video_publish.sql.
 -- REQUIRES 0004 (videos.review_state, review_intents), 0016 (videos.publish_state), 0033 (the insert policy this narrows),
--- 0081 (inbox_real_member), 0085 (finish_scene_regeneration), 0087 (take_web_rate, the audit stamp), 0110 (the audit list).
+-- 0085 (finish_scene_regeneration), 0087 (take_web_rate, the audit stamp), 0110 (the audit list).
 
 set local lock_timeout = '5s';
 
@@ -78,9 +80,6 @@ begin
                   where table_schema = 'public' and table_name = 'videos' and column_name = 'publish_state') then
     raise exception '0112 needs videos.publish_state: apply 0016_held_videos.sql first';
   end if;
-  if to_regprocedure('public.inbox_real_member(uuid, text)') is null then
-    raise exception '0112 needs 0081_comment_inbox.sql (inbox_real_member): apply it first';
-  end if;
   if to_regprocedure('public.take_web_rate(text, integer, integer)') is null
      or to_regprocedure('public.audit_action_allowed(text)') is null then
     raise exception '0112 needs 0087_audit_and_rate_hardening.sql (take_web_rate, audit_action_allowed): apply it first';
@@ -89,7 +88,8 @@ begin
     raise exception '0112 needs 0085_scene_regen_followups.sql (finish_scene_regeneration): apply it first';
   end if;
   if to_regprocedure('public.is_org_member(uuid, text)') is null or to_regprocedure('public.channel_org(text)') is null
-     or to_regprocedure('public.accessible_channel_ids(text)') is null or to_regprocedure('public.my_confirmed_email()') is null then
+     or to_regprocedure('public.accessible_channel_ids(text)') is null or to_regprocedure('public.my_confirmed_email()') is null
+     or to_regprocedure('public.default_org_id()') is null or to_regprocedure('public.app_role_rank(text)') is null then
     raise exception '0112 needs 0018_organizations.sql and 0043_invites_accept.sql (is_org_member, channel_org, my_confirmed_email): apply them first';
   end if;
 end $$;
@@ -225,10 +225,27 @@ $$;
 -- 3. THE approval
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- Is the caller a REAL member of the organization (an org_members row bound to their user id, of at least this role)? Platform
+-- owners and admins are members of every organization through accessible_org_ids, which is right for support and wrong for
+-- public speech under a customer's name. The rule of inbox_real_member (0081), copied under its own name because a
+-- migration may not rely on an object an earlier one gained only by an edit after it was merged (tests/test_migration_prerequisites.py).
+create or replace function public.video_real_member(p_org uuid, p_min text) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select case
+    when p_org = public.default_org_id() then public.is_org_member(p_org, p_min)
+    else exists (
+      select 1 from public.org_members m
+       where m.org_id = p_org
+         -- Bound membership only (0043): an unbound e-mail invite is an offer, and an e-mail claim in a token grants nothing.
+         and m.user_id = auth.uid()
+         and public.app_role_rank(m.role) >= public.app_role_rank(p_min))
+  end
+$$;
+
 -- May the caller approve THIS video? The organization comes from the video's channel, never from an argument. A caller who
 -- cannot see the video (another organization's, or none) gets the answer a missing one gets. A platform owner/admin is an
 -- administrator of every organization for support (is_org_member), but approves in a customer's organization only as a real
--- member of it (inbox_real_member); in the operator's own organization the old rule stays.
+-- member of it (video_real_member); in the operator's own organization the old rule stays.
 create or replace function public.video_approve_access(p_video_id text) returns text
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
@@ -248,7 +265,7 @@ begin
   if not public.is_org_member(org, 'admin') then
     return 'not_admin';
   end if;
-  if not public.inbox_real_member(org, 'admin') then
+  if not public.video_real_member(org, 'admin') then
     return 'not_member';
   end if;
   return 'ok';
@@ -490,6 +507,7 @@ grant execute on function public.video_approve_access(text) to authenticated;
 revoke all on function public.video_publish_refusal(text, text) from public, anon, authenticated, service_role;
 grant execute on function public.video_publish_refusal(text, text) to service_role;
 revoke all on function public.video_approve_refusal(text, text) from public, anon, authenticated, service_role;
+revoke all on function public.video_real_member(uuid, text) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Verify (run as the SQL editor; every column should read true)
@@ -509,7 +527,7 @@ revoke all on function public.video_approve_refusal(text, text) from public, ano
 --       as functions_scoped,
 --     (select bool_and(p.prosecdef and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
 --        from pg_proc p where p.pronamespace = 'public'::regnamespace
---         and p.proname in ('approve_video_publish', 'video_publish_refusal', 'video_approve_refusal', 'video_approve_access')) as definers_pin_search_path,
+--         and p.proname in ('approve_video_publish', 'video_publish_refusal', 'video_approve_refusal', 'video_approve_access', 'video_real_member')) as definers_pin_search_path,
 --     (select pg_get_expr(polwithcheck, polrelid) like '%''approve''%' from pg_policy
 --       where polrelid = 'public.review_intents'::regclass and polname = 'review_intents_insert') as direct_approve_closed,
 --     public.audit_action_allowed('video.approve') and public.audit_action_allowed('marketing.create') as audit_list,
