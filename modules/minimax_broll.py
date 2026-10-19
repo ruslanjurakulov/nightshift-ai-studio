@@ -153,7 +153,8 @@ def rejection(provider: str, model: str, *, status: Optional[int] = None,
     }[category]
     remedy = {
         AUTH: f"check {key_hint}; a key issued for one region or console is refused by another",
-        QUOTA: f"top up the {provider} account, or lower CHRONOS_MINIMAX_BROLL_MAX_CLIPS, then re-run",
+        QUOTA: f"top up the {provider} account, or lower the repository variable CHRONOS_MINIMAX_BROLL_MAX_CLIPS "
+               "and run Deploy web so the worker gets it, then re-run",
         RATE: "wait and re-run; clips already made are reused from the task ledger, not paid for again",
         NOT_FOUND: f"check the model id {model!r} and the endpoint settings against the {provider} docs",
         INVALID: f"check the model id {model!r} and its settings; retrying the same request will not help",

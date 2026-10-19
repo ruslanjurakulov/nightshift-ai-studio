@@ -397,9 +397,12 @@ class SupabaseSync:
 
     # -- high-level --------------------------------------------------------
 
-    def mirror_from_store(self, store, events_limit: int = 500) -> dict:
+    def mirror_from_store(self, store, events_limit: int = 500, is_operator=None) -> dict:
         """Mirror the current local state into Supabase and return per-table
         counts. Reads through the given StateStore. Never raises.
+
+        ``is_operator(channel_id)`` decides whose provider USD the cost mirror
+        sends (see ``mirror_costs``); without it no cost row carries USD.
 
         Stateful tables are upserted on their natural keys (idempotent).
         Append-only system_events are upserted on a synthetic `event_key` built
@@ -442,7 +445,7 @@ class SupabaseSync:
 
         # -- costs (append-only; keyed so a re-sent row is ignored) --
         try:
-            counts["video_costs"] = self._mirror_video_costs(store)
+            counts["video_costs"] = self._mirror_video_costs(store, usd_visible=self._usd_policy(is_operator))
         except Exception as e:
             logger.warning("Failed mirroring video_costs (%s: %s)", type(e).__name__, e)
 
@@ -638,7 +641,59 @@ class SupabaseSync:
             "channel_id": d.get("channel_id") or "default",
         }
 
-    def _mirror_video_costs(self, store) -> int:
+    def mirror_costs(self, store, since_iso: str | None = None, is_operator=None) -> int:
+        """Mirror ONLY the local cost ledger (``video_costs``) — what the queue
+        worker calls after each job so the VPS's ``history/chronos.db`` reaches
+        Supabase (the Billing page, ``owner_provider_spend``). Not
+        ``mirror_from_store``: that also upserts videos, topic performance and
+        the rest from this machine's database, which on the worker is not the
+        freshest copy of those and must not overwrite the Actions poll's.
+
+        Idempotent (rows carry a deterministic ``row_key`` and are sent with
+        ignore-duplicates), so a repeated or overlapping send adds nothing.
+        ``since_iso`` limits the send to rows recorded at or after it; a whole
+        ``recorded_at`` group is always in or out together, so row keys do not
+        change.
+
+        Privacy: what a provider charged is the operator's margin, not a
+        customer's business (see ``_usd_policy``). ``is_operator(channel_id)``
+        says which channels are the operator's own: True keeps the USD, False
+        sends the row with ``estimated_usd`` None (units, quantities and stages
+        are kept), and a channel it cannot decide (it raises or answers None)
+        has its rows SKIPPED this time, because ignore-duplicates would lock a
+        wrongly-nulled row in for good; the next job sends them. With no
+        ``is_operator`` every row is sent without USD. The ``row_key`` does not
+        include the USD, so keys are unaffected.
+
+        Returns the rows sent; 0 when disabled or on any failure. Never raises."""
+        if not self.enabled:
+            return 0
+
+        try:
+            return self._mirror_video_costs(store, since_iso=since_iso, usd_visible=self._usd_policy(is_operator))
+        except Exception as e:
+            logger.warning("video_costs mirror failed (%s) — the local ledger is intact; the next job retries",
+                           type(e).__name__)
+            return 0
+
+    @staticmethod
+    def _usd_policy(is_operator):
+        """``channel_id -> True | False | None`` for the cost mirror: True = the
+        operator's own channel (USD is sent), False = anyone else's (sent with
+        USD None), None = could not be decided (row not sent now). No test
+        given = nobody's USD is sent."""
+        def policy(channel_id):
+            if is_operator is None:
+                return False
+            try:
+                verdict = is_operator(str(channel_id or ""))
+            except Exception:
+                return None
+            return None if verdict is None else bool(verdict)
+
+        return policy
+
+    def _mirror_video_costs(self, store, since_iso: str | None = None, usd_visible=None) -> int:
         """Send every local video_costs row with its ``row_key``, in chunks,
         ignoring the ones Supabase already has (so the nightly re-send of history
         adds nothing). Returns the number of rows SENT successfully; the count is
@@ -649,7 +704,20 @@ class SupabaseSync:
         fallback to a plain insert: that is the old behaviour and it would store
         every row once more. Ignore-duplicates makes the next run's re-send of
         the same chunks harmless, and the local DB keeps every row meanwhile."""
-        rows = video_cost_rows_with_keys(store.list_video_costs(limit=100000))
+        local = store.list_video_costs(limit=100000)
+        if since_iso:
+            local = [r for r in local if str(r.get("recorded_at") or "") >= since_iso]
+        # Default-deny: with no policy, no row carries a USD figure (what a provider
+        # charged is the operator's, never a customer's); undecidable channels wait.
+        policy = usd_visible if usd_visible is not None else self._usd_policy(None)
+        decided = []
+        for r in local:
+            verdict = policy(r.get("channel_id"))
+            if verdict is None:
+                continue
+            decided.append(r if verdict else {**r, "estimated_usd": None})
+        local = decided
+        rows = video_cost_rows_with_keys(local)
         sent = 0
         for i in range(0, len(rows), _VIDEO_COSTS_CHUNK):
             chunk = rows[i:i + _VIDEO_COSTS_CHUNK]

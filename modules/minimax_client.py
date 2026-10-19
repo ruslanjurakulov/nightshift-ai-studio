@@ -153,6 +153,10 @@ class MiniMaxClient:
     def preflight(self) -> None:
         """Raise ``VideoModelUnavailable`` when this configuration cannot
         produce a clip, before the run spends anything. Makes no request."""
+        if not self.base_url.lower().startswith("https://"):
+            raise VideoModelUnavailable(
+                PROVIDER, self.model, "MINIMAX_BASE_URL is not an https:// URL, so the key would travel unencrypted",
+                "set MINIMAX_BASE_URL to https://api.minimax.io (global keys) or https://api.minimaxi.com (mainland China)")
         if self.flow is None:
             raise VideoModelUnavailable(
                 PROVIDER, self.model,

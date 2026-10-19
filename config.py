@@ -16,6 +16,36 @@ for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
 
 BASE_DIR = Path(__file__).parent
 
+def _clamp_int(raw, default, lo, hi):
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        v = default
+    return max(lo, min(hi, v))
+
+
+def _count_env(name, default, hi=50):
+    """A small non-negative count (how many clips / stills one video may buy)
+    from an env var. Empty = the default. Text that is not a whole number, or a
+    negative one, falls back to the default WITH a warning: these names are
+    deployable now, and a typo must neither crash the worker at import nor turn
+    the cost brake into a negative number."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        value = -1
+    if value < 0:
+        import warnings
+
+        warnings.warn(f"{name} is not a whole number >= 0 - using the default {default}", stacklevel=2)
+        return default
+    return _clamp_int(value, default, 0, hi)
+
+
+
 # API Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
@@ -35,7 +65,7 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 # The host must match the key's region: api.minimax.io (global) or
 # api.minimaxi.com (mainland China).
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
-MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io").rstrip("/")
+MINIMAX_BASE_URL = (os.getenv("MINIMAX_BASE_URL") or "https://api.minimax.io").rstrip("/")
 # An empty variable (an unset Actions var expands to "") keeps the default.
 # Go-live: the default MiniMax-H3 refuses to start without MINIMAX_V2_QUERY_PATH (not confirmed
 # by MiniMax's docs); set MINIMAX_H3_MODEL=MiniMax-Hailuo-2.3 (the documented v1 flow) instead.
@@ -50,7 +80,7 @@ MINIMAX_BROLL_FLAG = (
 MINIMAX_BROLL_ENABLED = bool(MINIMAX_API_KEY) and MINIMAX_BROLL_FLAG
 # How many sections of one video may get a generated clip (cost control); the
 # rest use Pexels stock. A generated clip is billable, so this is deliberately low.
-MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
+MINIMAX_BROLL_MAX_CLIPS = _count_env("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", 2)
 
 # ── AI b-roll: which video-generation provider (Track 4) ──────────────────────
 # Nightshift is provider-agnostic (modules/providers.py). This selects which
@@ -68,10 +98,10 @@ VIDEO_PROVIDER = os.getenv("CHRONOS_VIDEO_PROVIDER", "").strip().lower() or "min
 VIDEO_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_VIDEO_GEN", "").strip().lower() in ("1", "true", "yes", "on")
 # Higgsfield (https://higgsfield.ai) — text-to-video, async submit → poll → fetch.
 HIGGSFIELD_API_KEY = os.getenv("HIGGSFIELD_API_KEY", "")
-HIGGSFIELD_BASE_URL = os.getenv("HIGGSFIELD_BASE_URL", "https://platform.higgsfield.ai").rstrip("/")
-HIGGSFIELD_MODEL = os.getenv("HIGGSFIELD_MODEL", "higgsfield-dop")
-HIGGSFIELD_SUBMIT_PATH = os.getenv("HIGGSFIELD_SUBMIT_PATH", "/v1/text2video")
-HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
+HIGGSFIELD_BASE_URL = (os.getenv("HIGGSFIELD_BASE_URL") or "https://platform.higgsfield.ai").rstrip("/")
+HIGGSFIELD_MODEL = (os.getenv("HIGGSFIELD_MODEL") or "higgsfield-dop")
+HIGGSFIELD_SUBMIT_PATH = (os.getenv("HIGGSFIELD_SUBMIT_PATH") or "/v1/text2video")
+HIGGSFIELD_QUERY_PATH = (os.getenv("HIGGSFIELD_QUERY_PATH") or "/v1/jobs/{id}")
 # Kling (international) — the api-singapore host. Either a console API key
 # (KLING_API_KEY, sent as Bearer) or an access key + secret key pair
 # (KLING_ACCESS_KEY + KLING_SECRET_KEY, or KLING_API_KEY as "access:secret"),
@@ -81,18 +111,18 @@ HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
 KLING_API_KEY = os.getenv("KLING_API_KEY", "")
 KLING_ACCESS_KEY = os.getenv("KLING_ACCESS_KEY", "")
 KLING_SECRET_KEY = os.getenv("KLING_SECRET_KEY", "")
-KLING_BASE_URL = os.getenv("KLING_BASE_URL", "https://api-singapore.klingai.com").rstrip("/")
-KLING_MODEL = os.getenv("KLING_MODEL", "kling-v2-6")
-KLING_SUBMIT_PATH = os.getenv("KLING_SUBMIT_PATH", "/v1/videos/text2video")
-KLING_QUERY_PATH = os.getenv("KLING_QUERY_PATH", "/v1/videos/text2video/{id}")
+KLING_BASE_URL = (os.getenv("KLING_BASE_URL") or "https://api-singapore.klingai.com").rstrip("/")
+KLING_MODEL = (os.getenv("KLING_MODEL") or "kling-v2-6")
+KLING_SUBMIT_PATH = (os.getenv("KLING_SUBMIT_PATH") or "/v1/videos/text2video")
+KLING_QUERY_PATH = (os.getenv("KLING_QUERY_PATH") or "/v1/videos/text2video/{id}")
 # Seedance (ByteDance) on BytePlus ModelArk, international region — Bearer
 # ARK API key; the model is a dated id (or an ep-… endpoint id).
 SEEDANCE_API_KEY = os.getenv("SEEDANCE_API_KEY", "")
-SEEDANCE_BASE_URL = os.getenv("SEEDANCE_BASE_URL", "https://ark.ap-southeast.bytepluses.com").rstrip("/")
-SEEDANCE_MODEL = os.getenv("SEEDANCE_MODEL", "seedance-1-0-pro-250528")
-SEEDANCE_RESOLUTION = os.getenv("SEEDANCE_RESOLUTION", "720p")
-SEEDANCE_SUBMIT_PATH = os.getenv("SEEDANCE_SUBMIT_PATH", "/api/v3/contents/generations/tasks")
-SEEDANCE_QUERY_PATH = os.getenv("SEEDANCE_QUERY_PATH", "/api/v3/contents/generations/tasks/{id}")
+SEEDANCE_BASE_URL = (os.getenv("SEEDANCE_BASE_URL") or "https://ark.ap-southeast.bytepluses.com").rstrip("/")
+SEEDANCE_MODEL = (os.getenv("SEEDANCE_MODEL") or "seedance-1-0-pro-250528")
+SEEDANCE_RESOLUTION = (os.getenv("SEEDANCE_RESOLUTION") or "720p")
+SEEDANCE_SUBMIT_PATH = (os.getenv("SEEDANCE_SUBMIT_PATH") or "/api/v3/contents/generations/tasks")
+SEEDANCE_QUERY_PATH = (os.getenv("SEEDANCE_QUERY_PATH") or "/api/v3/contents/generations/tasks/{id}")
 # Wan (Alibaba Model Studio, international) — Bearer key. The shared
 # dashscope-intl host is in maintenance mode from 2026-09-30 (still served, no
 # new models); set WAN_WORKSPACE_ID to use the workspace host
@@ -101,20 +131,20 @@ SEEDANCE_QUERY_PATH = os.getenv("SEEDANCE_QUERY_PATH", "/api/v3/contents/generat
 WAN_API_KEY = os.getenv("WAN_API_KEY", "")
 WAN_WORKSPACE_ID = os.getenv("WAN_WORKSPACE_ID", "").strip()
 WAN_BASE_URL = os.getenv("WAN_BASE_URL", "").strip().rstrip("/")
-WAN_MODEL = os.getenv("WAN_MODEL", "wan2.7-t2v")
-WAN_RESOLUTION = os.getenv("WAN_RESOLUTION", "720P")
-WAN_SUBMIT_PATH = os.getenv("WAN_SUBMIT_PATH", "/api/v1/services/aigc/video-generation/video-synthesis")
-WAN_QUERY_PATH = os.getenv("WAN_QUERY_PATH", "/api/v1/tasks/{id}")
+WAN_MODEL = (os.getenv("WAN_MODEL") or "wan2.7-t2v")
+WAN_RESOLUTION = (os.getenv("WAN_RESOLUTION") or "720P")
+WAN_SUBMIT_PATH = (os.getenv("WAN_SUBMIT_PATH") or "/api/v1/services/aigc/video-generation/video-synthesis")
+WAN_QUERY_PATH = (os.getenv("WAN_QUERY_PATH") or "/api/v1/tasks/{id}")
 # Google Veo (Gemini API) — key in the x-goog-api-key header (no Bearer prefix).
 # veo-3.0-generate-preview (the old default) was shut down on 2025-11-12;
 # the 3.1 family is current: veo-3.1-generate-preview, -fast-, -lite-.
 # "{model}" in the submit path is replaced by VEO_MODEL.
 VEO_API_KEY = os.getenv("VEO_API_KEY", "")
-VEO_BASE_URL = os.getenv("VEO_BASE_URL", "https://generativelanguage.googleapis.com").rstrip("/")
+VEO_BASE_URL = (os.getenv("VEO_BASE_URL") or "https://generativelanguage.googleapis.com").rstrip("/")
 VEO_MODEL = os.getenv("VEO_MODEL", "").strip() or "veo-3.1-generate-preview"
 VEO_RESOLUTION = os.getenv("VEO_RESOLUTION", "").strip()          # "720p" / "1080p"; empty = Google's default
 VEO_SUBMIT_PATH = os.getenv("VEO_SUBMIT_PATH", "").strip() or "/v1beta/models/{model}:predictLongRunning"
-VEO_QUERY_PATH = os.getenv("VEO_QUERY_PATH", "/v1beta/{id}")
+VEO_QUERY_PATH = (os.getenv("VEO_QUERY_PATH") or "/v1beta/{id}")
 
 # ── Agent / Autopilot (modules/agent_planner.py) ──────────────────────────────
 # When on, a run with no explicit topic asks the agent planner for the day's
@@ -136,12 +166,12 @@ IMAGE_PROVIDER = os.getenv("CHRONOS_IMAGE_PROVIDER", "").strip().lower() or "pex
 IMAGE_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_IMAGE_GEN", "").strip().lower() in ("1", "true", "yes", "on")
 # Leonardo.Ai (https://leonardo.ai) — text-to-image, async submit → poll → fetch.
 LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY", "")
-LEONARDO_BASE_URL = os.getenv("LEONARDO_BASE_URL", "https://cloud.leonardo.ai/api/rest/v1").rstrip("/")
+LEONARDO_BASE_URL = (os.getenv("LEONARDO_BASE_URL") or "https://cloud.leonardo.ai/api/rest/v1").rstrip("/")
 # Default model id is Leonardo's "Leonardo Kino XL" (cinematic). Override per docs.
-LEONARDO_MODEL_ID = os.getenv("LEONARDO_MODEL_ID", "aa77f04e-3eec-4034-9c07-d0f619684628")
+LEONARDO_MODEL_ID = (os.getenv("LEONARDO_MODEL_ID") or "aa77f04e-3eec-4034-9c07-d0f619684628")
 # How many sections of one video may get a generated still (cost control).
 # Applies to every image provider below, despite the name.
-LEONARDO_MAX_IMAGES = int(os.getenv("CHRONOS_LEONARDO_MAX_IMAGES", "2") or 2)
+LEONARDO_MAX_IMAGES = _count_env("CHRONOS_LEONARDO_MAX_IMAGES", 2)
 # The other generators (modules/image_providers.py). Each runs only when it is
 # the selected CHRONOS_IMAGE_PROVIDER, its key is set, and the opt-in flag is on.
 #   gpt-image    OpenAI GPT Image (reuses OPENAI_API_KEY)
@@ -191,7 +221,7 @@ TOPIC_HISTORY_FILE = HISTORY_DIR / "topics.json"
 # longer available. Please update your code to use models/gemini-3.6-flash" —
 # so a run set to 2.0 dies at the first script call, before it renders anything.
 # Override with the GEMINI_MODEL env var when Google ships the next one.
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or "gemini-3.6-flash")
 # Transient 503/429 retries. Daily-quota 429s are not retried — see gemini_client.
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "5"))
 GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "60"))
@@ -248,7 +278,7 @@ ELEVENLABS_MODELS = ("eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5",
 ELEVENLABS_MODEL_ID = (os.getenv("ELEVENLABS_MODEL_ID", "").strip() or "eleven_multilingual_v2")
 if ELEVENLABS_MODEL_ID not in ELEVENLABS_MODELS:
     ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
-EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-ChristopherNeural")
+EDGE_TTS_VOICE = (os.getenv("EDGE_TTS_VOICE") or "en-US-ChristopherNeural")
 
 # Audio
 MUSIC_VOLUME = float(os.getenv("MUSIC_VOLUME", "0.08"))
@@ -279,13 +309,6 @@ SUBTITLE_POSITION = ("center", 0.80)
 # each with a distinct on-brand look (modules/thumbnail_generator.py). Clamped
 # to the 2..4 the generator has real styles for — a bad env value never crashes
 # a render or silently produces clone thumbnails.
-def _clamp_int(raw, default, lo, hi):
-    try:
-        v = int(raw)
-    except (TypeError, ValueError):
-        v = default
-    return max(lo, min(hi, v))
-
 THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"), 2, 2, 4)
 
 # Render backend (roadmap #49). "moviepy" (default) keeps the current
@@ -298,7 +321,7 @@ THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"
 # libass; the .srt when there are no word timestamps or no libass). Opt-in so
 # the default render is unchanged; any ffmpeg failure falls back to the MoviePy
 # compositor (modules/render_dispatch.py).
-RENDER_BACKEND = os.getenv("CHRONOS_RENDER_BACKEND", "moviepy").strip().lower()
+RENDER_BACKEND = os.getenv("CHRONOS_RENDER_BACKEND", "").strip().lower() or "moviepy"
 # Scene-level render + render cache (roadmap PR 1.3, modules/scene_render.py):
 # CHRONOS_SCENE_RENDER=1 renders each Video IR scene to output/<slug>/scenes/
 # (reused when its content key is unchanged) and assembles the final video from

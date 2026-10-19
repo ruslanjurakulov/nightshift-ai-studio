@@ -83,7 +83,7 @@ def unit_price(unit: str) -> Optional[float]:
             _PRICE_ENV_PREFIX, unit.upper(), raw,
         )
         return None
-    return price if price >= 0 else None
+    return price if 0 <= price < float("inf") else None
 
 
 @dataclass
@@ -117,6 +117,11 @@ class CostLedger:
     channel_id: str = "default"
     slug: str = ""
     entries: list = field(default_factory=list)
+    #: How many entries have been handed to a store already. A second flush (the
+    #: ``finally`` of a run that already flushed on its normal path, or a run
+    #: that flushed early at its storyboard) writes only what was added since, so
+    #: nothing is recorded twice.
+    flushed: int = 0
 
     def add(self, unit: str, quantity, stage: str = "") -> None:
         """Record one quantity. Never raises; a bad value is dropped with a
@@ -171,14 +176,35 @@ class CostLedger:
             return None
         return round(sum(e.estimated_usd or 0.0 for e in self.entries), 6)
 
+    def pending(self) -> list:
+        """Entries not yet handed to a store."""
+        return self.entries[self.flushed:]
+
+    def priced_usd(self, pending_only: bool = False) -> float:
+        """Sum of the entries that HAVE a USD estimate — a floor, never the
+        run's cost (unpriced entries add nothing here). The spend guard
+        (modules/spend_guard.py) uses it; unlike ``total_usd`` it does not go
+        unknown when one unit has no rate, because a guard that switched itself
+        off for a single unpriced unit would protect nothing."""
+        rows = self.pending() if pending_only else self.entries
+        return round(sum(e.estimated_usd for e in rows if e.estimated_usd is not None), 6)
+
+    def unpriced_units(self) -> list:
+        """Names of the units recorded without a USD rate, sorted, no repeats."""
+        return sorted({e.unit for e in self.entries if e.estimated_usd is None})
+
     def flush(self, store, video_id: Optional[str] = None) -> int:
-        """Persist every entry. Returns how many rows were written (0 on any
-        failure). Never raises."""
-        if not self.entries:
+        """Persist every entry not yet persisted. Returns how many rows were
+        written (0 on any failure). Never raises. Each entry is attempted once:
+        a row that failed is not retried by a later flush (a retry could write a
+        row twice when the failure came after the write)."""
+        pending = self.pending()
+        if not pending:
             return 0
+        self.flushed = len(self.entries)
         recorded_at = datetime.now(timezone.utc).isoformat()
         written = 0
-        for entry in self.entries:
+        for entry in pending:
             try:
                 store.record_video_cost(
                     video_id=video_id or "",
@@ -198,7 +224,7 @@ class CostLedger:
                 )
         logger.info(
             "Cost ledger: %d/%d entr(ies) recorded for %s%s",
-            written, len(self.entries), video_id or self.slug,
+            written, len(pending), video_id or self.slug,
             f" (~${self.total_usd()})" if self.total_usd() is not None else " (unpriced)",
         )
         return written
