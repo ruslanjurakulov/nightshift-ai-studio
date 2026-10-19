@@ -3,9 +3,9 @@
   "public": true,
   "link": "/pricing",
   "texts": {
-    "uz": "Sukut boʻyicha Nightshift yaratgan hech narsa oʻzi ommaga chiqmaydi. Nashr tekshiruvidan oʻtgan tayyor video YouTube kanalingizga shaxsiy video sifatida yuklanadi. Videoni, uning ssenariysini va tekshiruv natijasini ilovada koʻrishingiz mumkin. Avtomatik nashr har bir kanal uchun alohida sozlanadi va siz yoqmaguningizcha oʻchiq turadi.",
-    "ru": "По умолчанию ничто из созданного в Nightshift не становится публичным само. Готовое видео, прошедшее проверку перед публикацией, загружается на ваш YouTube-канал как приватное. В приложении можно посмотреть ролик, прочитать сценарий и увидеть результат проверки. Автопубликация включается отдельно для каждого канала и выключена, пока вы её не включите.",
-    "en": "By default, nothing Nightshift makes goes public on its own. A finished video that passes the publish check is uploaded to your YouTube channel as private. You can watch it, read its script and see the check result in the app. Auto-publish is a switch for each channel and stays off until you turn it on."
+    "uz": "Sukut boʻyicha Nightshift yaratgan hech narsa oʻzi ommaga chiqmaydi. Nashr tekshiruvidan oʻtgan tayyor video shaxsiy holda qoladi: u YouTube kanalingizga shaxsiy video sifatida yuklanadi yoki sizning koʻrib chiqishingizni kutadi. Videoni, uning ssenariysini va tekshiruv natijasini ilovada koʻrishingiz mumkin. Avtomatik nashr har bir kanal uchun alohida sozlanadi va siz yoqmaguningizcha oʻchiq turadi.",
+    "ru": "По умолчанию ничто из созданного в Nightshift не становится публичным само. Готовое видео, прошедшее проверку перед публикацией, остаётся приватным: оно загружается на ваш YouTube-канал как приватное либо ждёт вашей проверки. В приложении можно посмотреть ролик, прочитать сценарий и увидеть результат проверки. Автопубликация включается отдельно для каждого канала и выключена, пока вы её не включите.",
+    "en": "By default, nothing Nightshift makes goes public on its own. A finished video that passes the publish check is kept private: it is uploaded to your YouTube channel as private, or held for your review. You can watch it, read its script and see the check result in the app. Auto-publish is a switch for each channel and stays off until you turn it on."
   },
   "evidence": [
     {
@@ -25,7 +25,7 @@
       "source": "modules/publish_gate.py"
     },
     {
-      "claim": "The pipeline evaluates the publish gate before the upload and does not upload a blocked video.",
+      "claim": "In main.py run(), a video that passed the publish gate is uploaded only if the agent's auto_publish is on; otherwise it is held on disk for review (the 'Auto-publish OFF - gate passed, holding for review' branch). A blocked video is not uploaded.",
       "source": "main.py"
     },
     {
