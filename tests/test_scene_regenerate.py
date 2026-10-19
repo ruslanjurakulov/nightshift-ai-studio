@@ -224,7 +224,10 @@ class SameGenerator(RunWithGeneratedScene):
     def test_the_approval_of_the_previous_cut_is_voided(self):
         self.cli(env(), client=FakeGenerator())
         self.assertIn(("videos", {"channel_id": f"eq.{self.CHANNEL}", "slug": f"eq.{self.slug}",
-                                  "review_state": "eq.approved"}, {"review_state": "pending"}),
+                                  "review_state": "eq.approved"},
+                                 # 0112: the approval's hash, person and times are cleared with its state
+                                 {"review_state": "pending", "approved_cut_sha256": None, "decided_by": None,
+                                  "decided_by_email": None, "decided_at": None, "approval_expires_at": None}),
                       self.sync.updates)
         self.assertIsNotNone(scene_repair.repaired_at(self.slug, self.root))
 

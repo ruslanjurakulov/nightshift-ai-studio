@@ -575,10 +575,13 @@ def invalidate_approvals(channel_id: str, slug: str, scene_ids: Iterable[str], *
         result["video_rows"] = len(vids)
         if not vids:
             return result
-        result["videos_reset"] = client.update(
-            "videos",
-            {"channel_id": f"eq.{channel_id}", "slug": f"eq.{slug}", "review_state": "eq.approved"},
-            {"review_state": "pending"})
+        # The approval's hash, person and times go with its state (migration 0112). A database without those columns
+        # refuses the whole patch, so the state alone is sent again: the approval is void either way.
+        from modules.video_review import NO_APPROVAL
+
+        where = {"channel_id": f"eq.{channel_id}", "slug": f"eq.{slug}", "review_state": "eq.approved"}
+        result["videos_reset"] = (client.update("videos", where, {"review_state": "pending", **NO_APPROVAL})
+                                  or client.update("videos", where, {"review_state": "pending"}))
         now = _now_iso()
         in_videos = "in.(" + ",".join(vids) + ")"
         result["approve_intents_consumed"] = client.update(

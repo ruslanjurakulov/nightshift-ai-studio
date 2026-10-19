@@ -341,7 +341,9 @@ class Repair(Base):
         at = scene_repair.repaired_at(self.slug, self.root)
         self.assertIsNotNone(at)
         tables = [(t, v) for t, _, v in self.sync.updates]
-        self.assertIn(("videos", {"review_state": "pending"}), tables)
+        # 0112: the approval's hash, person and times are cleared with its state
+        self.assertIn(("videos", {"review_state": "pending", "approved_cut_sha256": None, "decided_by": None,
+                                  "decided_by_email": None, "decided_at": None, "approval_expires_at": None}), tables)
         filters = {t + ":" + f.get("action", ""): f for t, f, _ in self.sync.updates}
         self.assertEqual(filters["videos:"]["review_state"], "eq.approved")
         self.assertEqual(filters["review_intents:eq.approve"]["consumed_at"], "is.null")

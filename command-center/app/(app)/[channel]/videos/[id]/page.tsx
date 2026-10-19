@@ -9,6 +9,7 @@ import { loadPublishPanel } from "@/lib/server/publish";
 import { loadDownloads } from "@/lib/server/downloads";
 import { getOrgContext } from "@/lib/orgs-server";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { accessFromWord, storedGate, type ApproveAccess } from "@/lib/videoApproval";
 import { CopyButton } from "@/components/feedback/CopyButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -81,6 +82,10 @@ export default async function VideoDetail({
   let topicPerf: TopicPerformanceRow[] = [];
   let autoPublish = false;
   let pendingIntent: ReviewIntentRow | null = null;
+  // May this person approve here? The database's own word (video_approve_access, migration 0112): the same function
+  // approve_video_publish asks, so the key is offered to exactly the people it would accept. An error (0112 not applied)
+  // reads as "no".
+  let access: ApproveAccess = "not_admin";
   let retentionPoints: RetentionPointRow[] = [];
   let sceneRegens: RegenRow[] = [];
   let channelName = "";
@@ -133,8 +138,8 @@ export default async function VideoDetail({
       // on its own, and whether a request is already waiting on this video.
       const [ch, intent, regens] = await Promise.all([
         supabase.from("channels").select("auto_publish, name").eq("channel_id", video.channel_id).maybeSingle(),
-        // The panel's own decisions only: a per-scene request (below) must not
-        // read as the video's approve/regenerate decision.
+        // The panel's own old requests only: a per-scene request (below) must not read as the video's. Approving is
+        // now a database function (0112) that consumes these, so what is still waiting here was never carried out.
         supabase
           .from("review_intents")
           .select("*")
@@ -156,6 +161,8 @@ export default async function VideoDetail({
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
       channelName = (ch.data as { name?: string } | null)?.name || video.channel_id;
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
+      const word = await supabase.rpc("video_approve_access", { p_video_id: video.video_id });
+      access = word.error ? "not_admin" : accessFromWord(word.data);
       sceneRegens = regens.error ? [] : parseRegenRows(regens.data);
       if (!isRepurposedClip(video)) {
         // This video's repurpose requests and their clips, through RLS with the
@@ -247,15 +254,21 @@ export default async function VideoDetail({
   // gate's own words, never a guessed pass.
   const held = isHeldVideo(video);
   const heldVerdict = held ? heldGate(video) : null;
-  const gate = gateMeta
-    ? {
-        allowed: Boolean(gateMeta.allowed),
-        reasons: [...(gateMeta.blocks ?? []), ...(gateMeta.warnings ?? [])],
-        flagged: typeof flaggedRaw === "number" ? flaggedRaw : null,
-      }
-    : heldVerdict
-      ? { allowed: heldVerdict.allowed, reasons: [...heldVerdict.blocks, ...heldVerdict.warnings], flagged: null }
-      : null;
+  // The verdict the pipeline stored WITH the cut (migration 0112) is the one an approval binds to, so it comes first; the
+  // gate's events do not name an uploaded video (they are emitted before it exists), then the held run's own.
+  const cutVerdict = storedGate(video);
+  const flagged = typeof flaggedRaw === "number" ? flaggedRaw : null;
+  const gate = cutVerdict
+    ? { allowed: cutVerdict.allowed && cutVerdict.blocks.length === 0, reasons: [...cutVerdict.blocks, ...cutVerdict.warnings], flagged }
+    : gateMeta
+      ? {
+          allowed: Boolean(gateMeta.allowed),
+          reasons: [...(gateMeta.blocks ?? []), ...(gateMeta.warnings ?? [])],
+          flagged,
+        }
+      : heldVerdict
+        ? { allowed: heldVerdict.allowed, reasons: [...heldVerdict.blocks, ...heldVerdict.warnings], flagged: null }
+        : null;
 
   // "Publish to platforms": the organization's Instagram / TikTok accounts,
   // its YouTube channels and this video's requests (migrations 0028/0029),
@@ -273,7 +286,9 @@ export default async function VideoDetail({
         video={video}
         autoPublish={autoPublish}
         gate={gate}
-        pendingIntent={pendingIntent}
+        staleRequest={pendingIntent}
+        access={access}
+        channelName={channelName || video.channel_id}
       />
       {video.preview_path && atLeast(orgRole, "admin") && <ShareReviewLink videoId={video.video_id} />}
       <PublishPanel

@@ -33,6 +33,11 @@ export interface ConfirmOptions {
   /** Tier 3: this text must be typed (case, spaces and ʻ ignored) before the key works. */
   typeToConfirm?: string;
   /**
+   * A statement the person must tick before the key works ("I checked rights and AI-content labels"). Unticked on
+   * every new question; the key stays disabled until it is ticked.
+   */
+  acknowledge?: string;
+  /**
    * The work itself. With it the sheet stays open while it runs: both keys lock
    * (a second tap does nothing), the key shows a spinner, and a failure — `false`,
    * a returned message or a throw — is shown in the sheet with the keys live
@@ -68,12 +73,14 @@ export function ConfirmDialog({
   const { t } = useI18n();
   const titleId = useId();
   const bodyId = useId();
+  const ackHintId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
   // Set synchronously on the first tap: state alone lags a render, so a fast
   // second tap would still see "not busy" and run the action twice.
   const lock = useRef(false);
@@ -91,6 +98,7 @@ export function ConfirmDialog({
     setBusy(false);
     setFailure(null);
     setTyped("");
+    setAcknowledged(false);
   }, [options]);
 
   // A failed attempt disabled the keys for a moment: put focus back on the safe one.
@@ -120,6 +128,7 @@ export function ConfirmDialog({
   async function go() {
     if (lock.current || !options) return;
     if (options.typeToConfirm && !typedMatches(typed, options.typeToConfirm)) return;
+    if (options.acknowledge && !acknowledged) return;
     if (!options.run) {
       onResolve(true);
       return;
@@ -173,7 +182,7 @@ export function ConfirmDialog({
 
   const danger = (options.tone ?? "danger") === "danger";
   const needsWord = Boolean(options.typeToConfirm);
-  const wordOk = !needsWord || typedMatches(typed, options.typeToConfirm ?? "");
+  const wordOk = (!needsWord || typedMatches(typed, options.typeToConfirm ?? "")) && (!options.acknowledge || acknowledged);
 
   return createPortal(
     <div className="fixed inset-0 z-[130] flex items-end justify-center p-4 sm:items-center" onKeyDown={onKeyDown}>
@@ -244,6 +253,23 @@ export function ConfirmDialog({
             />
           </label>
         )}
+        {options.acknowledge && (
+          <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-[var(--color-fg)]">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              disabled={busy}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="mt-0.5 size-5 shrink-0 accent-[var(--color-primary)]"
+            />
+            <span className="min-w-0 break-words">{options.acknowledge}</span>
+          </label>
+        )}
+        {options.acknowledge && !acknowledged && (
+          <p id={ackHintId} className="mt-1.5 pl-8 text-xs text-[var(--color-muted)]">
+            {t.ux.confirmAckHint}
+          </p>
+        )}
         {/* Always mounted, so a screen reader hears a failure that appears later. */}
         <p role="alert" className={failure ? "mt-3 break-words text-sm font-medium text-[var(--color-fail)]" : "sr-only"}>
           {failure}
@@ -263,6 +289,7 @@ export function ConfirmDialog({
             onClick={() => void go()}
             disabled={busy || !wordOk}
             aria-busy={busy}
+            aria-describedby={options.acknowledge && !acknowledged ? ackHintId : undefined}
             className={`${danger ? "btn-danger" : "btn-primary"} min-h-12 px-4 text-sm disabled:opacity-55`}
           >
             {busy && <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />}

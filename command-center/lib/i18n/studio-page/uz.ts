@@ -5,7 +5,7 @@ export const studioPageUz: StudioPageDictionary = {
   meta: {
     title: "Nimalar yaratish va tahrirlash mumkin · Nightshift",
     description:
-      "Video yaratilishidan oldin rejani oʻqing, oʻz videolaringizni tahrirlang, yuklashlarni tasdiqlaguningizcha shaxsiy saqlang va sarfdan oldin narxni koʻring.",
+      "Video yaratilishidan oldin rejani oʻqing, oʻz videolaringizni tahrirlang, yuklashlarni ommaviy qilmaguningizcha shaxsiy saqlang va sarfdan oldin narxni koʻring.",
   },
   hero: {
     label: "Studiya",
@@ -86,7 +86,7 @@ export const studioPageUz: StudioPageDictionary = {
     items: [
       { id: "private", title: "YouTube’ga yuklamalar shaxsiy", body: "Tayyor video kanalingizga shaxsiy video sifatida yuboriladi: ommaviy boʻlguncha uni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi." },
       { id: "check", title: "Avval nashr tekshiruvi", body: "Har bir video tekshiruvdan oʻtadi, hukm esa video sahifasida koʻrinadi: oʻtdi yoki bloklandi va nima uchun." },
-      { id: "approve", title: "Ommaviy qilish — sizning tugmangiz", body: "Siz videoni koʻrasiz va «Tasdiqlash va nashr qilish»ni bosasiz — bu keyingi ishga tushirish bajaradigan soʻrov yuboradi. Avtomatik nashr har bir kanalda alohida yoqiladi va siz yoqmaguningizcha oʻchiq turadi." },
+      { id: "approve", title: "Ommaviy qilish — sizning qaroringiz", body: "Siz videoni koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Ommaviy qilish YouTube’da bajariladi. Avtomatik nashr har bir kanalda alohida yoqiladi va siz yoqmaguningizcha oʻchiq turadi." },
     ],
     figure: "Ommaviy boʻlishdan oldingi video holati tasviri: shaxsiy holda yuklangan, nashr tekshiruvi oʻtgan, tasdigʻingizni kutmoqda. Koʻrsatilgan hamma narsa — namuna.",
     figureTitle: "Nashr pulti",
@@ -131,7 +131,7 @@ export const studioPageUz: StudioPageDictionary = {
       {
         id: "private",
         q: "Shaxsiy yuklash nima?",
-        a: "YouTube’da shaxsiy videoni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi. Nightshift har bir tayyor videoni avval kanalingizga shunday yuboradi va u faqat siz tasdiqlaganingizdan keyin ommaviy boʻladi.",
+        a: "YouTube’da shaxsiy videoni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi. Nightshift har bir tayyor videoni avval kanalingizga shunday yuboradi va u faqat siz ommaviy qilganingizdan keyin ommaviy boʻladi.",
       },
       {
         id: "data",
@@ -149,7 +149,7 @@ export const studioPageUz: StudioPageDictionary = {
   caveat: "Baʼzi vositalarni avval shu oʻrnatmada sozlash kerak. Masalan, avto-subtitrlar faqat nutqni matnga aylantirish sozlangan va narxlangan joyda taklif qilinadi; u boʻlmasa, ilova buni aytadi.",
   final: {
     title: "Mavzudan boshlang.",
-    lead: "Bepul boshlang. Har bir ishga tushirishdan oldin narxni koʻrasiz, har bir videoni ommaviy boʻlishidan oldin oʻzingiz tasdiqlaysiz.",
+    lead: "Bepul boshlang. Har bir ishga tushirishdan oldin narxni koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",
     cta: "Bepul boshlash",
   },
 };

@@ -64,6 +64,16 @@ KEEP_PER_CHANNEL = 5
 # a held video still awaiting review must not lose its only copy to newer holds. Ceiling: 5 uploaded + 5 held.
 KEEP_HELD_PER_CHANNEL = 5
 
+# Migration 0112: a person's approval (videos.approved_cut_sha256 and who/when/until) is for one cut. Recording a cut
+# clears it, whatever the review state is set to; the database function approve_video_publish is the only writer of it.
+NO_APPROVAL = {
+    "approved_cut_sha256": None,
+    "decided_by": None,
+    "decided_by_email": None,
+    "decided_at": None,
+    "approval_expires_at": None,
+}
+
 
 def _ffmpeg_exe() -> str | None:
     """The ffmpeg the render already depends on, or whatever is on PATH."""
@@ -374,6 +384,7 @@ class VideoReview:
         title: str | None = None,
         topic: str | None = None,
         slug: str | None = None,
+        gate_verdict: dict | None = None,
     ) -> None:
         """Upload the preview and attach the script to the row.
 
@@ -408,7 +419,16 @@ class VideoReview:
         later upsert, so the two writers agree. ``published_at`` matters: a
         row without it (and without ``privacy``) reads as a *held* run in the
         Command Center. Nothing is ever sent as NULL except ``script_text``
-        when there is no narration (as before), and ``privacy`` is never sent.
+        when there is no narration (as before) and the migration 0112 columns
+        (see below, where NULL means "unknown" or "no approval"); ``privacy``
+        is never sent.
+
+        ``gate_verdict`` is the publish gate's verdict for THIS cut (``held_video.gate_verdict``), and the row also gets
+        ``cut_sha256``, the hash of ``video_path`` (migration 0112). A person's approval binds to that hash; the
+        verdict is stored with it because the gate's events are emitted before the video exists and do not carry its
+        id. Both are written whatever the review state, and the previous approval's columns are cleared: this call
+        is a new cut being recorded, and it sets ``review_state`` back to pending for a channel that does not publish
+        on its own. A verdict that is not known is sent as NULL, which reads "unknown", never "passed".
 
         Idempotent (same key, same values), and never raises.
         """
@@ -431,6 +451,12 @@ class VideoReview:
             if preview_path:
                 row["preview_path"] = preview_path
             row["review_state"] = "approved" if auto_publish else "pending"
+            # 0112: the cut and what was decided about it; any earlier person's approval is for a cut that may be gone.
+            from modules import held_video
+
+            row["cut_sha256"] = held_video.cut_sha256(video_path)
+            row["gate_verdict"] = gate_verdict if isinstance(gate_verdict, dict) else None
+            row.update(NO_APPROVAL)
             if manifest:
                 from modules import video_ir
 
@@ -439,11 +465,20 @@ class VideoReview:
             if scenes:
                 row["scenes"] = scenes
             ok = self._upsert_video(row)
-            if not ok and "manifest" in row:
-                # An un-migrated database (no `manifest` column) rejects the whole
-                # write; retry without the new column so the preview/script still land.
-                row.pop("manifest", None)
-                ok = self._upsert_video(row)
+            if not ok:
+                # An un-migrated database (no `manifest` column, or no 0112 columns) rejects the whole
+                # write; retry without the missing columns so the preview/script still land.
+                from modules.held_video import COLUMNS_0112
+
+                no_manifest = {k: v for k, v in row.items() if k != "manifest"}
+                no_new = {k: v for k, v in row.items() if k not in COLUMNS_0112 + tuple(NO_APPROVAL)}
+                for attempt in (no_manifest, no_new, {k: v for k, v in no_new.items() if k != "manifest"}):
+                    if attempt == row or not attempt:
+                        continue
+                    ok = self._upsert_video(attempt)
+                    if ok:
+                        row = attempt
+                        break
             if preview_path:
                 from modules.held_video import HELD_ID_PREFIX
 

@@ -10,7 +10,7 @@ export const studioPageEn = {
   meta: {
     title: "What you can make and edit · Nightshift",
     description:
-      "Read the plan before a video is made, cut your own videos in the editor, keep uploads private until you approve, and see the price before anything is spent.",
+      "Read the plan before a video is made, cut your own videos in the editor, keep uploads private until you publish, and see the price before anything is spent.",
   },
   hero: {
     label: "Studio",
@@ -91,7 +91,7 @@ export const studioPageEn = {
     items: [
       { id: "private", title: "Uploads go to YouTube as private", body: "A finished video is sent to your channel as a private video, which only you and the people you share it with can watch, until it is made public." },
       { id: "check", title: "A publish check runs first", body: "Every video passes a publish check, and the verdict is shown on the video’s page: passed, or blocked and why." },
-      { id: "approve", title: "Going public is your button", body: "You watch the video and press Approve and publish, which files a request the next run carries out. Auto-publish is a switch per channel, and it stays off until you turn it on." },
+      { id: "approve", title: "Going public is your decision", body: "You watch the video and record your decision in the app. Making it public is done on YouTube. Auto-publish is a switch per channel, and it stays off until you turn it on." },
     ],
     figure: "Illustration of a video’s state before it goes public: uploaded as private, the publish check passed, waiting for your approval. Everything shown is an example.",
     figureTitle: "Publish desk",
@@ -136,7 +136,7 @@ export const studioPageEn = {
       {
         id: "private",
         q: "What is a private upload?",
-        a: "On YouTube, a private video can be watched only by you and the people you share it with. Nightshift sends every finished video to your channel that way first, and it becomes public only when you approve it.",
+        a: "On YouTube, a private video can be watched only by you and the people you share it with. Nightshift sends every finished video to your channel that way first, and it becomes public only when you make it public.",
       },
       {
         id: "data",
@@ -154,7 +154,7 @@ export const studioPageEn = {
   caveat: "Some tools need setting up on this deployment first. For example, auto-captions are offered only where a transcription is set up and priced, and the app says so when one is not.",
   final: {
     title: "Start with a topic.",
-    lead: "Start free. See the price before every run, and approve every video before it goes public.",
+    lead: "Start free. See the price before every run, and every video stays private until you make it public.",
     cta: "Start free",
   },
 };

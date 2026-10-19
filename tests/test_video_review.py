@@ -142,7 +142,11 @@ class ReviewStateFollowsTheChannel(unittest.TestCase):
         self.r.record(video_id="v", channel_id="c", video_path=Path("/x.mp4"),
                       script_text="x", auto_publish=False)
         keys = set(self.r._upsert_video.call_args[0][0])
-        self.assertEqual(keys, {"video_id", "channel_id", "script_text", "review_state"})
+        # 0112 adds the cut's hash, the gate's verdict for it, and the cleared approval: still only review facts
+        self.assertEqual(keys, {"video_id", "channel_id", "script_text", "review_state", "cut_sha256", "gate_verdict",
+                                "approved_cut_sha256", "decided_by", "decided_by_email", "decided_at", "approval_expires_at"})
+        for banned in ("privacy", "publish_state", "published_at"):
+            self.assertNotIn(banned, keys)
 
 
 if __name__ == "__main__":

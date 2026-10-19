@@ -6,47 +6,63 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
+import { useDayTime } from "@/components/usage/useDay";
+import {
+  approvalState,
+  canPressApprove,
+  knownApproveReason,
+  shortHash,
+  studioUrl,
+  type ApproveAccess,
+} from "@/lib/videoApproval";
 import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 
 /**
  * Watch the video, read what it is going out as, then decide.
  *
- * Two things this deliberately does NOT do:
+ * Three things this deliberately does NOT do:
  *
- * 1. **It never publishes.** A button writes a row to `review_intents` and
- *    stops. The next pipeline run reads that row and acts. Nothing in a
- *    browser can take a video public, re-render one, or spend a token —
- *    approving is a request, and the request is the record of who asked.
- * 2. **It never claims a verdict it was not given.** The gate line below the
- *    player is built from the recorded gate event. When no gate event exists
- *    the panel says so rather than implying the video passed.
+ * 1. **It never publishes.** Approving calls the database function `approve_video_publish` (migration 0112), which
+ *    RECORDS who approved which exact cut (its checksum), until when (24 hours) and with what acknowledgement. Every
+ *    video is uploaded as private and stays private until a person makes it public on YouTube (unless the channel's auto-publish
+ *    switch is on); nothing in a browser can
+ *    take a video public, re-render one, or spend a token. Phase 1b (a worker that makes an approved video public) is not
+ *    built, and after an approval the panel says so, and where to do it today.
+ * 2. **It never claims a verdict it was not given.** The gate line below the player is the verdict the pipeline stored
+ *    with the cut (`videos.gate_verdict`), else the recorded gate event, else the held run's own. When none exists the
+ *    panel says so rather than implying the video passed, and the video cannot be approved.
+ * 3. **It does not file the two re-render requests.** "Render it again" and "New script, new video" spend credits and no
+ *    run reads them yet, so they are shown as unavailable and write nothing.
  *
- * The preview plays from a private bucket through a signed URL minted here and
- * good for an hour. The path is never rendered as a link, and the bucket is not
- * public, so the video is reachable only by someone already signed in.
+ * The preview plays from a private bucket through a signed URL minted here and good for an hour. The path is never
+ * rendered as a link, and the bucket is not public, so the video is reachable only by someone already signed in.
  */
 export function ReviewPanel({
   video,
   autoPublish,
   gate,
-  pendingIntent,
+  staleRequest,
+  access,
+  channelName,
 }: {
   video: VideoRow;
   autoPublish: boolean;
   /** The recorded gate decision, or null when none was recorded. */
   gate: { allowed: boolean; reasons: string[]; flagged: number | null } | null;
-  pendingIntent: ReviewIntentRow | null;
+  /** The newest request of the old buttons that nothing ever carried out (shown as superseded), or null. */
+  staleRequest: ReviewIntentRow | null;
+  /** Whether this person may approve here (lib/videoApproval.approveAccess); the database decides again. */
+  access: ApproveAccess;
+  channelName?: string;
 }) {
   const { t } = useI18n();
   const router = useRouter();
+  const dayTime = useDayTime();
   const [src, setSrc] = useState<string | null>(null);
   const [srcError, setSrcError] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [filed, setFiled] = useState<string | null>(pendingIntent?.action ?? null);
-  const [error, setError] = useState<string | null>(null);
   const [showScript, setShowScript] = useState(false);
   const { confirm, dialog } = useConfirm();
-  // Locked synchronously while a sheet is open: a second tap must not open a second sheet or file a second intent.
+  // Locked synchronously while a sheet is open: a second tap must not open a second sheet.
   const asking = useRef(false);
 
   // A signed URL, minted on the client with the anon key against the storage
@@ -69,41 +85,37 @@ export function ReviewPanel({
     };
   }, [video.preview_path]);
 
-  async function file(action: ReviewIntentRow["action"]) {
-    const supabase = createClient();
-    if (!supabase) return;
-    setBusy(action);
-    setError(null);
-    const { error: e } = await supabase.from("review_intents").insert({
-      channel_id: video.channel_id,
-      video_id: video.video_id,
-      action,
-    });
-    setBusy(null);
-    if (e) {
-      setError(e.message);
-      return;
-    }
-    setFiled(action);
-    router.refresh();
+  // The clock ticks, so a panel left open flips from approved to expired by itself (the approval ends while someone reads).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const state = approvalState(video, { autoPublish, access, nowMs });
+  const pressable = canPressApprove(state);
+  const studio = studioUrl(video.video_id);
+
+  /** What the sheet was about, as a comparable string: a different gate verdict or cut is a different question. */
+  const gateKey = gate ? `${gate.allowed}:${gate.flagged}:${gate.reasons.join("|")}` : "none";
+  const questionKey = `${video.cut_sha256 ?? ""}|${gateKey}`;
+  // The newest props, read after the person has answered: the sheet may have been open while the page refreshed.
+  const latest = useRef({ pressable, questionKey });
+  latest.current = { pressable, questionKey };
+
+  /** The words for a refusal: a closed set from the database, anything else is a generic failure. */
+  function reasonText(raw: unknown): string {
+    const word = knownApproveReason(raw);
+    return word ? t.review.reasons[word] : t.review.reasons.failed;
   }
 
-  const waiting = video.review_state === "pending" && !autoPublish;
-
-  /** What the sheet was about, as a comparable string: a different gate verdict is a different question. */
-  const gateKey = gate ? `${gate.allowed}:${gate.flagged}:${gate.reasons.join("|")}` : "none";
-  // The newest props, read after the person has answered: the sheet may have been open while the page refreshed.
-  const latest = useRef({ waiting, gateKey, filed });
-  latest.current = { waiting, gateKey, filed };
-
   /**
-   * Each decision asks first, in words: approve is what lets the video go public, the other two start a new render.
-   * Then the same intent row is filed as before; the sheet changes nothing about what the pipeline does with it.
-   * If what the sheet showed (still waiting, the same gate verdict, nothing filed yet) is no longer true when it is
-   * answered, nothing is sent: the server would decide anyway, but the person agreed to a different question.
+   * Approve asks first, in words: what is recorded, that it does not publish, the exact version, the gate verdict, and a
+   * tick that rights and AI-content labels were checked. The function is called from the sheet itself, so a refusal is
+   * shown in the sheet. If what the sheet showed (still approvable, the same version and gate verdict) is no longer true
+   * when it is answered, nothing is sent: the database would decide anyway, but the person agreed to a different question.
    */
-  async function ask(action: ReviewIntentRow["action"]) {
-    if (busy !== null || asking.current) return;
+  async function ask() {
+    if (asking.current || !pressable || !video.cut_sha256) return;
     asking.current = true;
     try {
       const cs = t.confirmSheets;
@@ -113,40 +125,51 @@ export function ReviewPanel({
         : t.common.dash;
       // "No gate decision was recorded" is said as unknown, never as a pass.
       const gateLine = gate ? (gate.allowed ? t.review.gatePassed : t.review.gateBlocked) : t.review.gateUnknown;
-      const copy =
-        action === "approve"
-          ? { title: cs.rvApproveTitle, message: cs.rvApproveBody, confirmLabel: t.review.approve }
-          : action === "regenerate_script"
-            ? { title: cs.rvScriptTitle, message: cs.rvScriptBody, confirmLabel: t.review.regenerateScript }
-            : { title: cs.rvRegenTitle, message: cs.rvRegenBody, confirmLabel: t.review.regenerate };
-      const shownGate = gateKey;
+      const shownQuestion = questionKey;
+      const cut = video.cut_sha256;
       const ok = await confirm({
-        title: fmt(copy.title, { title: name }),
-        message: copy.message,
-        confirmLabel: copy.confirmLabel,
-        tone: action === "approve" ? "danger" : "primary",
+        title: fmt(cs.rvApproveTitle, { title: name }),
+        message: cs.rvApproveBody,
+        confirmLabel: t.review.approve,
+        tone: "primary",
+        acknowledge: cs.rvApproveAck,
         details: [
           { label: cs.dVideo, value: name },
-          { label: cs.dChannel, value: video.channel_id },
-          ...(action === "approve"
-            ? [
-                { label: t.review.privacy, value: privacy },
-                { label: t.review.gate, value: gateLine, multiline: true },
-              ]
-            : []),
+          { label: cs.dChannel, value: channelName || video.channel_id },
+          { label: cs.dVersion, value: shortHash(cut) },
+          { label: t.review.privacy, value: privacy },
+          { label: t.review.gate, value: gateLine, multiline: true },
         ],
+        run: async () => {
+          if (!latest.current.pressable || latest.current.questionKey !== shownQuestion) return cs.staleSheet;
+          const supabase = createClient();
+          if (!supabase) return t.review.reasons.failed;
+          const { data, error: e } = await supabase.rpc("approve_video_publish", {
+            p_video_id: video.video_id,
+            p_cut_sha256: cut,
+            p_ack: { rights_and_labels: true },
+          });
+          if (e) {
+            // 42501 = not allowed (role, or a platform admin on a customer's channel), P0002 = not visible to this person.
+            if (e.code === "42501") return t.review.reasons.forbidden;
+            if (e.code === "P0002") return t.review.reasons.not_found;
+            return t.review.reasons.failed;
+          }
+          const out = (data ?? null) as { ok?: unknown; error?: unknown } | null;
+          if (!out || out.ok !== true) return reasonText(out?.error);
+          return true;
+        },
       });
-      if (!ok) return;
-      const now = latest.current;
-      if (now.filed !== null || now.gateKey !== shownGate || (action === "approve" && !now.waiting)) {
-        setError(cs.staleSheet);
-        return;
-      }
-      await file(action);
+      if (ok) router.refresh();
     } finally {
       asking.current = false;
     }
   }
+
+  const decided = state.view.kind === "approved" || state.view.kind === "expired" ? state.view : null;
+  const who = decided?.by ?? null;
+  const at = decided ? dayTime(decided.at) : "";
+  const until = state.view.kind === "approved" ? dayTime(state.view.expiresAt) : "";
 
   return (
     <section className="section-card flex flex-col gap-6">
@@ -269,44 +292,94 @@ export function ReviewPanel({
         )}
       </div>
 
-      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
-
-      {/* ── the decision ───────────────────────────────────────────────── */}
-      {filed ? (
-        <p className="text-sm text-[var(--color-ok)]">
-          {fmt(t.review.filed, { action: t.review[filed as "approve"] ?? filed })}
+      {/* An old request of the dead buttons: shown as what it is, and it blocks nothing. */}
+      {staleRequest && (
+        <p data-testid="stale-request" className="m-0 text-sm text-[var(--color-muted)]">
+          {staleRequest.action === "approve" ? t.review.staleApprove : t.review.staleRender}
         </p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-3 border-t border-[var(--color-border)] pt-5">
-          <button
-            type="button"
-            disabled={!waiting || busy !== null}
-            onClick={() => void ask("approve")}
-            className="btn-sky is-solid pill px-[30px] py-3.5 text-sm disabled:opacity-40"
-          >
-            {busy === "approve" ? t.review.filing : t.review.approve}
-          </button>
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void ask("regenerate")}
-            className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
-          >
-            {busy === "regenerate" ? t.review.filing : t.review.regenerate}
-          </button>
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void ask("regenerate_script")}
-            className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
-          >
-            {busy === "regenerate_script" ? t.review.filing : t.review.regenerateScript}
-          </button>
-          <span className="max-w-[46ch] text-xs leading-relaxed text-[var(--color-muted)]">
-            {autoPublish ? t.review.autoHint : t.review.queueHint}
-          </span>
+      )}
+
+      {/* ── what was decided ───────────────────────────────────────────── */}
+      {state.view.kind === "approved" && (
+        <div
+          data-testid="approved"
+          className="stack gap-2 rounded-[16px] border p-4"
+          style={{ borderColor: "color-mix(in srgb, var(--color-ok) 35%, transparent)" }}
+        >
+          <p className="m-0 text-sm font-medium text-[var(--color-ok)]">
+            {who ? fmt(t.review.approvedBy, { who, when: at }) : fmt(t.review.approvedAnon, { when: at })}
+          </p>
+          <p className="m-0 text-sm text-[var(--color-muted)]">{fmt(t.review.approvedHolds, { until })}</p>
+          <div className="t-label mt-2">{t.review.makePublicTitle}</div>
+          <p className="m-0 text-sm text-[var(--color-fg)]">{t.review.makePublicBody}</p>
+          {studio && (
+            <a
+              href={studio}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tap-link text-sm text-[var(--color-primary)] hover:underline"
+            >
+              {t.review.studioLink}
+            </a>
+          )}
         </div>
       )}
+      {state.view.kind === "expired" && (
+        <p data-testid="expired" className="m-0 text-sm text-[var(--color-warn)]">
+          {who ? fmt(t.review.expiredBy, { who, when: at }) : fmt(t.review.expiredAnon, { when: at })}
+        </p>
+      )}
+
+      {/* ── the decision ───────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start gap-3 border-t border-[var(--color-border)] pt-5">
+        {state.view.kind !== "approved" && (
+          <div className="stack max-w-[46ch] gap-2">
+            <button
+              type="button"
+              disabled={!pressable}
+              onClick={() => void ask()}
+              aria-describedby="review-approve-note"
+              className="btn-sky is-solid pill px-[30px] py-3.5 text-sm disabled:opacity-40"
+            >
+              {t.review.approve}
+            </button>
+            <span id="review-approve-note" data-testid="approve-note" className="text-xs leading-relaxed text-[var(--color-muted)]">
+              {state.view.kind === "auto"
+                ? t.review.autoHint
+                : state.blocker
+                  ? t.review.blocker[state.blocker]
+                  : t.review.queueHint}
+            </span>
+          </div>
+        )}
+        {/* The two re-render requests spend credits and nothing reads them yet: shown, never filed. */}
+        <div className="stack max-w-[30ch] gap-2">
+          <button
+            type="button"
+            disabled
+            aria-describedby="review-regenerate-note"
+            className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
+          >
+            {t.review.regenerate}
+          </button>
+          <span id="review-regenerate-note" className="text-xs leading-relaxed text-[var(--color-muted)]">
+            {t.review.notAvailableYet}
+          </span>
+        </div>
+        <div className="stack max-w-[30ch] gap-2">
+          <button
+            type="button"
+            disabled
+            aria-describedby="review-script-note"
+            className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
+          >
+            {t.review.regenerateScript}
+          </button>
+          <span id="review-script-note" className="text-xs leading-relaxed text-[var(--color-muted)]">
+            {t.review.notAvailableYet}
+          </span>
+        </div>
+      </div>
       {dialog}
     </section>
   );
