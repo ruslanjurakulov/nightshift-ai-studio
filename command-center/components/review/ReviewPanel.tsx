@@ -14,9 +14,12 @@ import type { ReviewIntentRow, VideoRow } from "@/lib/types";
  * Two things this deliberately does NOT do:
  *
  * 1. **It never publishes.** A button writes a row to `review_intents` and
- *    stops. The next pipeline run reads that row and acts. Nothing in a
- *    browser can take a video public, re-render one, or spend a token —
- *    approving is a request, and the request is the record of who asked.
+ *    stops. Nothing in a browser can take a video public, re-render one, or
+ *    spend a token — the row is the record of who asked. Known gap: nothing
+ *    reads these rows yet (only scene repair reads its own `regenerate_scene`
+ *    rows), so approving records a decision and does not make the video
+ *    public; that is done on YouTube. The copy around the buttons says so.
+ *    See docs/product/APPROVE_PUBLISH_DESIGN.md.
  * 2. **It never claims a verdict it was not given.** The gate line below the
  *    player is built from the recorded gate event. When no gate event exists
  *    the panel says so rather than implying the video passed.
@@ -97,7 +100,7 @@ export function ReviewPanel({
   latest.current = { waiting, gateKey, filed };
 
   /**
-   * Each decision asks first, in words: approve is what lets the video go public, the other two start a new render.
+   * Each decision asks first, in words: all three only record a decision today (nothing acts on the row yet).
    * Then the same intent row is filed as before; the sheet changes nothing about what the pipeline does with it.
    * If what the sheet showed (still waiting, the same gate verdict, nothing filed yet) is no longer true when it is
    * answered, nothing is sent: the server would decide anyway, but the person agreed to a different question.

@@ -18,7 +18,7 @@ import { EmbedBridge } from "@/components/view-mode/EmbedBridge";
 
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
-  description: "Nightshift makes finished YouTube videos for your channel, shows the price before every run, and waits for your approval before anything goes public.",
+  description: "Nightshift makes finished YouTube videos for your channel, shows the price before every run, and nothing goes public without you.",
   // Explicit, though app/manifest.ts alone would be linked: the root layout is where the head is read, and the link
   // is then one line a test can hold.
   manifest: "/manifest.webmanifest",

@@ -50,15 +50,15 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
     "Video ommaviy boʻlishga tasdiqlanmadi. Soʻrov rad etilgan sifatida yopiladi, qayta soʻrash uchun yangi soʻrov kerak.",
   rejectConfirm: "Rad etish",
 
-  rvApproveTitle: "«{title}» tasdiqlanib, nashr qilinsinmi?",
+  rvApproveTitle: "«{title}» uchun tasdigʻingiz yozib qoʻyilsinmi?",
   rvApproveBody:
-    "Siz konveyerdan videoni keyingi ishga tushirishda ommaviy qilishni soʻraysiz. Nashr darvozasi birinchi ishlaydi, u toʻxtatgan video chiqmaydi.",
+    "Bu videoni tasdiqlaganingizni yozib qoʻyadi. U nashr qilinmaydi: video shaxsiy holda yuklangan va siz uni YouTube’da ommaviy qilmaguningizcha shaxsiy qoladi. Hozircha hech narsa avtomatik bajarilmaydi.",
   rvRegenTitle: "«{title}» qaytadan renderlansinmi?",
   rvRegenBody:
-    "Keyingi ishga tushirish bu videoni boshidan qayta renderlaydi. Bu yangi renderga tushadi. Narxni bu sahifa koʻrsata olmaydi: u faqat ishga tushganda maʼlum boʻladi.",
+    "Bu videoni qayta renderlash soʻrovingizni yozib qoʻyadi. Hozircha hech narsa renderlanmaydi: hech bir ishga tushirish bu soʻrovni olmaydi, shuning uchun hech narsa sarflanmaydi va video oʻz holicha qoladi.",
   rvScriptTitle: "«{title}» uchun yangi ssenariy yozilsinmi?",
   rvScriptBody:
-    "Keyingi ishga tushirish yangi ssenariy yozadi va u boʻyicha yangi video renderlaydi. Bu yangi ssenariy va yangi renderga tushadi. Narxni bu sahifa koʻrsata olmaydi: u faqat ishga tushganda maʼlum boʻladi.",
+    "Bu yangi ssenariy va yangi video soʻrovingizni yozib qoʻyadi. Hozircha hech narsa yozilmaydi va renderlanmaydi: hech bir ishga tushirish bu soʻrovni olmaydi, shuning uchun hech narsa sarflanmaydi va video oʻz holicha qoladi.",
   staleSheet: "Savol ochiq turganda bu oʻzgardi, shuning uchun hech narsa yuborilmadi. Uni qayta oching va tekshiring.",
 
   apiActivateTitle: "API yoqilsinmi?",

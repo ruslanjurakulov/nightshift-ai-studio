@@ -30,9 +30,12 @@ Auto publish is a per-channel switch that defaults to off, and the publish gate
 make the bot publish more autonomously, on any path, by any default.
 
 **3. Nothing in a browser may publish, re-render, or spend.**
-A dashboard button writes a row to `review_intents` and stops; the next
-pipeline run reads it and acts. That row is also the record of *who asked*,
-which is why intents can be inserted and read but never edited or deleted. The
+A dashboard button writes a row to `review_intents` and stops. That row is
+also the record of *who asked*, which is why intents can be inserted and read but
+never edited or deleted. Today only scene repair reads its own `regenerate_scene`
+rows; nothing reads `approve`, `regenerate` or `regenerate_script` rows, so those
+buttons record a decision and do nothing else. Known gap: the Approve and publish
+button is not wired yet (see `docs/product/APPROVE_PUBLISH_DESIGN.md`). The
 dashboard uses the Supabase ANON key only — never the service key.
 
 **4. No silent quality fallback.**

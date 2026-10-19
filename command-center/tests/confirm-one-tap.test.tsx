@@ -489,7 +489,11 @@ describe("video review panel", () => {
     expect(text).toContain("The fall of Rome");
     expect(text).toContain("private");
     expect(text).toContain(en.review.gatePassed);
-    expect(text).toContain("take the video public");
+    // The button only records a decision today: the sheet must say it does not publish and where that is done.
+    expect(text).toContain(cs.rvApproveBody);
+    expect(text).toContain("does not publish it");
+    expect(text).toContain("make it public on YouTube");
+    expect(text).not.toContain("take the video public");
     expect(h.writes).toEqual([]);
   });
 
@@ -554,10 +558,14 @@ describe("video review panel", () => {
     expect(screen.getByText(cs.staleSheet)).toBeTruthy();
   });
 
-  it("render again and new script say that the price is not shown here", () => {
+  it("render again and new script say that nothing is rendered or spent yet (no run picks the request up)", () => {
     review();
     fireEvent.click(screen.getByRole("button", { name: en.review.regenerate }));
-    expect(screen.getByRole("alertdialog").textContent).toContain("cannot show the price");
+    expect(screen.getByRole("alertdialog").textContent).toContain("nothing is spent");
+    cleanup();
+    review();
+    fireEvent.click(screen.getByRole("button", { name: en.review.regenerateScript }));
+    expect(screen.getByRole("alertdialog").textContent).toContain("nothing is spent");
   });
 
   it("render again and new script each ask, and file their own action", async () => {
