@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Iterable, NewType, Optional
 
 import config as cfg
+from modules import ai_disclosure
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +268,15 @@ class AgentConfig:
     # this same agent_config blob, so it costs no migration. A tuple because
     # AgentConfig is frozen; see modules/elements.py for how they are applied.
     elements: tuple = field(default_factory=tuple)
+    # The "altered or synthetic content" label (modules/ai_disclosure.py,
+    # docs/AI_DISCLOSURE.md): auto | always | never. auto follows the platforms'
+    # rule conservatively; a value that is not one of the three words reads as
+    # auto, never as never. The voice, line and wording settings are read the
+    # same defensive way. Stored in this same agent_config blob — no migration.
+    ai_disclosure: str = "auto"
+    ai_disclosure_voice: str = "generic"
+    ai_disclosure_line: bool = True
+    ai_disclosure_text: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -290,6 +300,10 @@ class AgentConfig:
             "require_two_person_publish": self.require_two_person_publish,
             "storyboard_review": self.storyboard_review,
             "elements": [dict(e) for e in self.elements],
+            "ai_disclosure": self.ai_disclosure,
+            "ai_disclosure_voice": self.ai_disclosure_voice,
+            "ai_disclosure_line": self.ai_disclosure_line,
+            "ai_disclosure_text": self.ai_disclosure_text,
         }
 
     @staticmethod
@@ -336,6 +350,10 @@ class AgentConfig:
             # Opt-in like two-person publish: only an explicit true pauses runs.
             storyboard_review=(True if d.get("storyboard_review") is True else False),
             elements=_clean_elements(d.get("elements")),
+            ai_disclosure=ai_disclosure.normalize_mode(d.get("ai_disclosure")),
+            ai_disclosure_voice=ai_disclosure.normalize_voice(d.get("ai_disclosure_voice")),
+            ai_disclosure_line=ai_disclosure.normalize_line_flag(d.get("ai_disclosure_line")),
+            ai_disclosure_text=ai_disclosure.normalize_text(d.get("ai_disclosure_text")),
         )
 
 
