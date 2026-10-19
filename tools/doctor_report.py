@@ -15,8 +15,12 @@ What it does and does not do
   (nothing saved). It starts, retries and changes no run, publishes nothing, spends nothing.
 * The one write is that row, with the service key the daily workflow already holds, and no channel (the bot
   trusts only rows without one).
-* It prints the doctor's scrubbed report to the job log and summary, which already says only ``set`` / ``missing``
-  for a secret. The row carries names, never a value.
+* Locally it prints the doctor's scrubbed report. In CI (``GITHUB_ACTIONS=true``) the repository may be public and the
+  job log and summary are readable by anyone, so it prints only ``group/name`` and PASS / WARN / FAIL: no
+  balance, plan, model or voice detail, which the full report carries. The row carries names, never a value.
+* A FAIL that looks like the provider's own hiccup (rate-limited, unreachable, HTTP 5xx) is marked ``~`` in the row;
+  the bot says it only when the next check fails the same way, while a refused key, a revoked token or a missing
+  secret is said at once.
 * The ``host`` group (free disk, ffmpeg, the whisper cache) describes the machine the check runs on, which is not
   the machine a video renders on, so it is not judged here. Every other FAIL is.
 * Exit 0 whenever a verdict was recorded, FAIL or not: the alert is the bot's job, and a red job would be a second
@@ -40,31 +44,50 @@ from tools import doctor  # noqa: E402
 IGNORED_GROUPS = ("host",)
 KIND = "operator.doctor"
 MAX_BODY = 280
+#: Names kept in a row (each cut to NAME_MAX characters); the rest are counted as ``+N``, so a long list can
+#: never make a failing check disappear: the verdict stays ``fail`` and the bot names "more-checks".
+MAX_NAMES = 6
+NAME_MAX = 40
 _SAFE = re.compile(r"[^A-Za-z0-9 _./-]")
+#: The doctor's own words for a provider that did not give a verdict (tools/doctor._http_words, Supabase).
+_TRANSIENT = re.compile(r"unreachable|rate-limited|answered HTTP (?:429|5\d\d)|did not answer")
 
 
-def failing_names(checks: Sequence[doctor.Check]) -> list:
-    """``group/name`` of every FAIL outside the ignored groups, safe to store: the doctor's fixed words only."""
-    out = []
+def failing(checks: Sequence[doctor.Check]) -> list:
+    """(``group/name``, transient) of every FAIL outside the ignored groups, safe to store: the doctor's fixed
+    words only."""
+    out, seen = [], set()
     for c in checks:
         if c.status == doctor.FAIL and c.group not in IGNORED_GROUPS:
-            name = _SAFE.sub("", f"{c.group}/{c.name}").strip()[:60]
-            if name and name not in out:
-                out.append(name)
+            name = _SAFE.sub("", f"{c.group}/{c.name}").strip()[:NAME_MAX]
+            if name and name not in seen:
+                seen.add(name)
+                out.append((name, bool(_TRANSIENT.search(c.detail or ""))))
     return out
 
 
+def failing_names(checks: Sequence[doctor.Check]) -> list:
+    return [n for n, _t in failing(checks)]
+
+
 def build_row(checks: Sequence[doctor.Check]) -> dict:
-    names = failing_names(checks)
-    body = ",".join(names)
-    while len(body) > MAX_BODY and names:      # whole names only: a cut name would read as a different check
-        names.pop()
-        body = ",".join(names)
-    return {"kind": KIND, "severity": "info", "title": "fail" if failing_names(checks) else "ok",
-            "body": body, "delivered": False}
+    found = failing(checks)
+    shown = [("~" if transient else "") + name for name, transient in found[:MAX_NAMES]]
+    if len(found) > MAX_NAMES:
+        shown.append(f"+{len(found) - MAX_NAMES}")
+    return {"kind": KIND, "severity": "info", "title": "fail" if found else "ok",
+            "body": ",".join(shown)[:MAX_BODY], "delivered": False}
+
+
+def ci_summary(checks: Sequence[doctor.Check]) -> str:
+    """What a public job log may show: each check's name and its verdict word, nothing the check found."""
+    lines = [f"[{c.status}] {_SAFE.sub('', f'{c.group}/{c.name}').strip()}" for c in checks]
+    return "readiness check (names and verdicts only in CI)\n" + "\n".join(lines)
 
 
 def summary(checks: Sequence[doctor.Check], env: Mapping[str, str]) -> str:
+    if str(env.get("GITHUB_ACTIONS", "")).lower() == "true":
+        return ci_summary(checks)
     return doctor.render(list(checks), env)
 
 

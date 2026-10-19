@@ -48,8 +48,9 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Optional
 
 from modules.operator_bot import analysis
+from modules.operator_bot.config import DEFAULT_DEADMAN_HOURS
 from modules.operator_bot.i18n import Raw, t
-from modules.operator_bot.sources import OperatorSources, Section, age_label, parse_ts
+from modules.operator_bot.sources import RUNS_PER_PAGE, OperatorSources, Section, age_label, parse_ts
 from modules.tg_text import safe_id
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,8 @@ EVENT_WINDOW = timedelta(hours=12)
 #: A run that has been "in progress" longer than a channel's whole job timeout (60 minutes) plus a second
 #: channel queued behind it is hung, not working: it no longer excuses silence.
 INPROGRESS_MAX = timedelta(hours=4)
-#: How many failed runs get their jobs looked up in one pass.
-MAX_JOB_LOOKUPS = 3
+#: A source that stays unreadable this long is said once a day: the dead-man switch is blind, not quiet.
+BLIND_AFTER_HOURS = 6
 #: The scheduled readiness check reports every six hours; this long without a report is a dead check.
 DOCTOR_STALE = timedelta(hours=30)
 DOCTOR_WINDOW = timedelta(days=7)
@@ -144,6 +145,7 @@ class Verdicts:
 
     fine: dict = field(default_factory=dict)       # key -> (kind, channel_id, note line)
     sweeps: list = field(default_factory=list)     # of Sweep
+    blind: list = field(default_factory=list)      # names of the sources the dead-man could not read this pass
 
 
 def recoveries(state, verdicts: Verdicts) -> list:
@@ -188,11 +190,15 @@ def scheduled_channels(rows) -> list:
     judgement itself is the registry's (ChannelContext.is_runnable and is_operators), so the dead-man and the
     schedule cannot disagree about what is scheduled. A row the registry would skip is skipped.
 
-    One deliberate difference: with NO channel rows the scheduler falls back to the default channel; here
-    there is nothing to judge, because an empty table is an unknown, not a schedule."""
-    from modules.channels import ChannelContext  # noqa: PLC0415
+    The registry always has the default channel (modules/channels.py ``_load``): when the table has rows and none is
+    ``default``, the scheduler runs a synthesized one (ACTIVE, hour 15), so it is expected here too. One deliberate
+    difference: a table with NO rows is an unknown here, not a schedule (the scheduler would fall back to the
+    default channel; an empty table on a live platform means the read, not the schedule, is wrong)."""
+    from modules.channels import DEFAULT_CHANNEL_ID, ChannelContext  # noqa: PLC0415
 
     out = []
+    if rows and not any(isinstance(r, dict) and r.get("channel_id") == str(DEFAULT_CHANNEL_ID) for r in rows):
+        out.append(Scheduled(str(DEFAULT_CHANNEL_ID), DEFAULT_HOUR_UTC, None, None))
     for row in rows or []:
         try:
             ctx = ChannelContext.from_dict(dict(row))
@@ -223,6 +229,15 @@ def _utc(now: datetime) -> datetime:
 
 # -- one pass's reads, shared by every detector ---------------------------------------------
 
+def is_master(row: dict) -> bool:
+    """A channel's own video, not a repurposed Short (migration 0080 stores up to 20 per master as rows of their
+    own, held, with ``parent_video_id`` set) and not a scene repair's re-hold (state ``repaired_awaiting_review``:
+    it moves ``held_at`` of a video made earlier). Neither is the slot's product, and neither may raise a
+    "held" alert."""
+    return ((row.get("video_format") or "long") == "long" and not row.get("parent_video_id")
+            and row.get("publish_state") != "repaired_awaiting_review")
+
+
 class Evidence:
     """The reads the dead-man, the per-video alerts and the digest line share, taken once per pass.
 
@@ -232,20 +247,28 @@ class Evidence:
     can rescue a verdict but never prove a run did not happen).
 
     ``known`` is False when evidence cannot be proven absent: a source failed, or a read hit its row limit
-    and the oldest rows (the ones nearest a slot) may have been cut. Then "no evidence" means "unknown"."""
+    and the oldest rows (the ones nearest a slot) may have been cut. Then "no evidence" means "unknown", and
+    ``blind`` names the sources responsible."""
 
     def __init__(self, ops: OperatorSources, now: datetime):
         self.ops, self.now = ops, now
         self.channels = ops.channels()
         self.sched = scheduled_channels(self.channels.data) if self.channels.ok else []
+        #: Every channel of the operator's own organization, scheduled or not: the only ids an alert may name.
+        self.operator_ids = ({str(r.get("channel_id")) for r in self.channels.data or [] if isinstance(r, dict)}
+                             if self.channels.ok else set())
         ids = [c.channel_id for c in self.sched]
         since = now - LOOKBACK
         empty = Section(True, [])
         self.videos: Section = ops.recent_videos(since, ids) if ids else empty
         self.storyboards: Section = ops.recent_storyboards(since, ids) if ids else empty
         self.events: Section = ops.run_events(since, ids) if ids else empty
+        self.masters: list = [r for r in (self.videos.data or []) if is_master(r)] if self.videos.ok else []
         self._runs: Optional[Section] = None
-        self.known = bool(self.channels.ok and all(s.ok and not s.cap for s in (self.videos, self.storyboards, self.events)))
+        self.blind = [name for name, sec in (("channels", self.channels), ("videos", self.videos),
+                                             ("storyboards", self.storyboards), ("events", self.events))
+                      if not sec.ok or sec.cap]
+        self.known = not self.blind
 
     @property
     def runs(self) -> Section:
@@ -254,24 +277,25 @@ class Evidence:
             self._runs = self.ops.daily_video_runs()
         return self._runs
 
-    def _times(self, sec: Section, channel_id: str, *fields: str) -> list:
+    @staticmethod
+    def _times(rows, ok: bool, channel_id: str, *fields: str) -> list:
         out = []
-        for r in (sec.data or []) if sec.ok else []:
+        for r in (rows or []) if ok else []:
             if r.get("channel_id") == channel_id:
                 out += [x for x in (parse_ts(r.get(f)) for f in fields) if x]
         return out
 
     def made(self, channel_id: str) -> list:
         """When a video was made, held or blocked (a row of its own): the slot's product."""
-        return self._times(self.videos, channel_id, "published_at", "held_at")
+        return self._times(self.masters, self.videos.ok, channel_id, "published_at", "held_at")
 
     def produced(self, channel_id: str) -> list:
         """When the slot was visibly worked: a video row, or a storyboard waiting for a person."""
-        return self.made(channel_id) + self._times(self.storyboards, channel_id, "created_at")
+        return self.made(channel_id) + self._times(self.storyboards.data, self.storyboards.ok, channel_id, "created_at")
 
     def stamps(self, channel_id: str) -> list:
         """Every sign of life: produced, plus the run's own events (late as they are)."""
-        return self.produced(channel_id) + self._times(self.events, channel_id, "ts")
+        return self.produced(channel_id) + self._times(self.events.data, self.events.ok, channel_id, "ts")
 
 
 def due(ch: "Scheduled", start: datetime, stamps: list) -> bool:
@@ -281,29 +305,35 @@ def due(ch: "Scheduled", start: datetime, stamps: list) -> bool:
 
 
 def _run_view(runs: Section, start: datetime, now: datetime) -> tuple:
-    """(state, run) of the daily workflow since a slot: ``unknown`` (could not read), ``none`` (no run
-    started), ``live`` (a job is running), ``waiting`` (queued, nothing running), ``failed``, ``empty`` (it
-    ended without failing). Only scheduled runs and dispatches count; a run on a feature branch that someone
-    dispatched is a run too, which is the point."""
+    """(state, run) of the daily workflow for one slot: ``unknown`` (could not read), ``old`` (the run list does
+    not reach back to the slot, so nothing can be said), ``none`` (no run started), ``live`` (a job is running),
+    ``failed``, ``waiting`` (queued in the slot's hour, nothing running), ``empty`` (it ended without failing).
+    Only scheduled runs and dispatches count. The order is the order of usefulness: a live run excuses
+    everything, a failed run since the slot is the explanation, then a run that is queued, then the rest."""
     if not runs.ok:
         return "unknown", None
-    mine = []
-    for r in runs.data or []:
-        made = parse_ts(r.get("created_at"))
-        if r.get("event") in RUN_EVENTS_OK and made is not None and made >= start - timedelta(minutes=5):
-            mine.append((made, r))
-    if not mine:
-        return "none", None
-    mine.sort(key=lambda x: x[0], reverse=True)
+    rows = [(parse_ts(r.get("created_at")), r) for r in runs.data or []]
+    rows = [(m, r) for m, r in rows if m is not None]
+    mine = sorted([(m, r) for m, r in rows if r.get("event") in RUN_EVENTS_OK and m >= start - timedelta(minutes=5)],
+                  key=lambda x: x[0], reverse=True)
     live = [r for _m, r in mine if r.get("status") in RUN_LIVE
             and now - (parse_ts(r.get("started_at")) or now) < INPROGRESS_MAX]
     if live:
         return "live", live[0]
-    waiting = [r for _m, r in mine if r.get("status") in RUN_WAITING]
+    failed = [r for _m, r in mine if r.get("status") == "completed" and r.get("conclusion") in RUN_FAILED]
+    if failed:
+        return "failed", failed[0]
+    waiting = [r for m, r in mine if r.get("status") in RUN_WAITING and m < start + timedelta(hours=1)]
     if waiting:
         return "waiting", waiting[0]
-    latest = mine[0][1]
-    return ("failed" if latest.get("conclusion") in RUN_FAILED else "empty"), latest
+    # Neither a live, a failed nor a queued run: "it ended with nothing" and "the schedule did not fire" are both
+    # claims about EVERY run since the slot, which a full list that starts after the slot cannot support.
+    if len(runs.data or []) >= RUNS_PER_PAGE and rows and min(m for m, _r in rows) > start:
+        return "old", None
+    done = [r for _m, r in mine if r.get("status") == "completed"]
+    if done:
+        return "empty", done[0]
+    return "none", None
 
 
 # -- the dead-man switch --------------------------------------------------------------------
@@ -349,40 +379,50 @@ def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Ver
 # -- the daily workflow ---------------------------------------------------------------------
 
 def workflow_failures(ev: Evidence, lang: str) -> list:
+    """The daily workflow's failures in the last 12 h as ONE alert for the UTC day: an hourly schedule that is
+    broken fails 24 times a day, and the owner needs to hear it once, with how many. The line is the newest
+    failure: which jobs failed and at which step (the workflow's own names, never a log). A channel is named only
+    if it is one of the operator's own (a job named after any other is "a customer channel")."""
     if not ev.runs.ok:
         return []
-    now, out, lookups = _utc(ev.now), [], 0
+    now = _utc(ev.now)
     failed = []
     for r in ev.runs.data or []:
         done = parse_ts(r.get("updated_at"))
         if (r.get("event") in RUN_EVENTS_OK and r.get("status") == "completed" and r.get("conclusion") in RUN_FAILED
                 and done is not None and now - EVENT_WINDOW <= done <= now + timedelta(minutes=5)):
-            failed.append(r)
-    for r in sorted(failed, key=lambda x: str(x.get("created_at")), reverse=True):
-        rid = safe_id(r.get("id"), 20)
-        if not rid:
-            continue
-        where, chans, step = [], [], None
-        if lookups < MAX_JOB_LOOKUPS:
-            lookups += 1
-            jobs = ev.ops.run_jobs(r.get("id"))
-            if jobs.ok:
-                for j in jobs.data or []:
-                    if j.get("conclusion") in ("failure", "timed_out"):
-                        m = _JOB_CHANNEL.match(str(j.get("name") or ""))
-                        if m:
-                            chans.append(m.group(1))
-                        where.append(m.group(1) if m else words(j.get("name"), 24) or "?")
-                        step = step or words(j.get("step"), 60) or None
-        common = dict(number=safe_id(r.get("number"), 12) or rid, event=safe_id(r.get("event"), 20),
-                      conclusion=safe_id(r.get("conclusion"), 20), sha=safe_id(r.get("sha"), 7))
-        if where:
-            line = t(lang, "alert.run_failed", jobs=", ".join(dict.fromkeys(where)), step=step or "?", **common)
-        else:
-            line = t(lang, "alert.run_failed_nojobs", **common)
-        out.append(_alert("pipeline", f"wf:daily:{rid}", "warn", line,
-                          chans[0] if len(set(chans)) == 1 and len(where) == 1 else None))
-    return out
+            failed.append((done, r))
+    if not failed:
+        return []
+    failed.sort(key=lambda x: x[0], reverse=True)
+    done, r = failed[0]
+    rid = safe_id(r.get("id"), 20)
+    if not rid:
+        return []
+    where, chans, step = [], [], None
+    jobs = ev.ops.run_jobs(r.get("id"))
+    if jobs.ok:
+        for j in jobs.data or []:
+            if j.get("conclusion") in ("failure", "timed_out"):
+                m = _JOB_CHANNEL.match(str(j.get("name") or ""))
+                if m and m.group(1) in ev.operator_ids:
+                    chans.append(m.group(1))
+                    where.append(m.group(1))
+                elif m:
+                    where.append(t(lang, "alert.customer_channel"))
+                else:
+                    where.append(words(j.get("name"), 24) or "?")
+                step = step or words(j.get("step"), 60) or None
+    common = dict(number=safe_id(r.get("number"), 12) or rid, event=safe_id(r.get("event"), 20),
+                  conclusion=safe_id(r.get("conclusion"), 20), sha=safe_id(r.get("sha"), 7))
+    if where:
+        line = t(lang, "alert.run_failed", jobs=", ".join(dict.fromkeys(where)), step=step or "?", **common)
+    else:
+        line = t(lang, "alert.run_failed_nojobs", **common)
+    if len(failed) > 1:
+        line += " " + t(lang, "alert.run_failed_more", n=len(failed) - 1)
+    return [_alert("pipeline", f"wf:daily:{done.date().isoformat()}", "warn", line,
+                   chans[0] if len(set(chans)) == 1 and len(where) == 1 else None)]
 
 
 def words(value, limit: int) -> str:
@@ -403,14 +443,14 @@ def video_alerts(ev: Evidence, lang: str) -> list:
         return []
     mine = {c.channel_id for c in ev.sched}
     now, out = _utc(ev.now), []
-    for r in ev.videos.data or []:
+    for r in ev.masters:
         ch, state, held = r.get("channel_id"), r.get("publish_state"), parse_ts(r.get("held_at"))
         vid = safe_id(r.get("video_id"), 24)
         if ch not in mine or not vid or held is None or parse_ts(r.get("published_at")) is not None:
             continue
         if not now - EVENT_WINDOW <= held <= now + timedelta(minutes=5):
             continue
-        stamp = f"{vid}:{int(held.timestamp())}"
+        stamp = vid                      # keyed on the video, not on when it was last held: a re-hold is not news
         if state == "blocked":
             out.append(_alert("pipeline", f"video:blocked:{stamp}", "warn",
                               t(lang, "alert.video_blocked", channel=safe_id(ch), video=vid), ch))
@@ -430,6 +470,22 @@ def check_slug(name: str) -> str:
     return _SLUG.sub("-", str(name or "").lower()).strip("-")[:48]
 
 
+def _failing(row) -> list:
+    """(slug, transient) of every failing check a doctor row names. A leading ``~`` marks a failure that looks like
+    the provider's own hiccup (tools/doctor_report.py); ``+N`` says N more failed than the row had room for."""
+    if str((row or {}).get("title") or "").lower() != "fail":
+        return []
+    out = []
+    for raw in str(row.get("body") or "").split(","):
+        raw = raw.strip()
+        transient = raw.startswith("~")
+        name = raw.lstrip("~").strip()
+        slug = "more-checks" if name.startswith("+") else check_slug(name)
+        if slug and slug not in [x for x, _t in out]:
+            out.append((slug, transient))
+    return out[:10]
+
+
 def doctor_alerts(ops: OperatorSources, now: datetime, lang: str, verdicts: Verdicts) -> list:
     sec = ops.doctor_results(now - DOCTOR_WINDOW)
     rows = [(parse_ts(r.get("at")), r) for r in (sec.data or [])] if sec.ok else []
@@ -446,14 +502,16 @@ def doctor_alerts(ops: OperatorSources, now: datetime, lang: str, verdicts: Verd
         verdicts.sweeps.append(Sweep("doctor:stale:", "health", stale_note, {family(stale_key)}))
         return out                       # an old verdict says nothing about today
     verdicts.sweeps.append(Sweep("doctor:stale:", "health", stale_note))
-    failing = []
-    if str(latest.get("title") or "").lower() == "fail":
-        failing = [check_slug(x) for x in str(latest.get("body") or "").split(",")]
-        failing = [x for x in dict.fromkeys(failing) if x][:10]
+    # A failure that looks like a provider's own hiccup (a 429, a 5xx, a timeout) is said only when the check before
+    # it failed too: one bad minute must not page anybody. A permanent one (a refused key, a revoked token, a
+    # missing secret) is said at once.
+    before = {slug for slug, _t in _failing(rows[1][1])} if len(rows) > 1 else set()
     bad = set()
-    for slug in failing:
+    for slug, transient in _failing(latest):
         key = f"doctor:check:{slug}:{today}"
         bad.add(family(key))
+        if transient and slug not in before:
+            continue
         out.append(_alert("health", key, "warn", t(lang, "alert.doctor_fail", check=slug)))
     verdicts.sweeps.append(Sweep("doctor:check:", "health", lambda k: t(
         lang, "alert.doctor_ok", check=family(k).split(":")[2]), bad))
@@ -501,6 +559,26 @@ def provider_alerts(ops: OperatorSources, now: datetime, low_credits: float, lan
     return out
 
 
+# -- a dead-man switch that cannot see ------------------------------------------------------
+
+def blind_alerts(state, blind: list, now: datetime, lang: str) -> tuple:
+    """(markers, alerts) for the sources the dead-man could not read. A marker is a silent row, one per source per
+    hour of continuous trouble; BLIND_AFTER_HOURS markers in a row mean the switch has been blind that long, and the
+    owner is told once a day (a switch that cannot see is not a quiet system). A source that reads again breaks
+    the run of hours, so a flicker says nothing."""
+    hour = int(now.timestamp() // 3600)
+    have = {a[1] for a in state.alerts}
+    markers, alerts = [], []
+    for name in blind:
+        keys = [f"blindmark:{name}:{hour - i}" for i in range(BLIND_AFTER_HOURS)]
+        if keys[0] not in have:
+            markers.append(_alert("health", keys[0], "info", ""))
+        if all(k in have or k == keys[0] for k in keys):
+            alerts.append(_alert("health", f"blind:{name}:{_utc(now).date().isoformat()}", "info",
+                                 t(lang, "alert.deadman_blind", source=name)))
+    return markers, alerts
+
+
 # -- the entry point detect() calls ---------------------------------------------------------
 
 def detect(ops: OperatorSources, now: datetime, low_credits: float, lang: str, verdicts: Verdicts) -> list:
@@ -508,6 +586,7 @@ def detect(ops: OperatorSources, now: datetime, low_credits: float, lang: str, v
     out: list = []
     ev = _guard("evidence", Evidence, ops, now)
     if isinstance(ev, Evidence):
+        verdicts.blind = list(ev.blind)
         out += _guard("deadman", deadman, ev, ops.cfg.deadman_hours, lang, verdicts)
         out += _guard("workflow", workflow_failures, ev, lang)
         out += _guard("videos", video_alerts, ev, lang)
@@ -520,7 +599,9 @@ def detect(ops: OperatorSources, now: datetime, low_credits: float, lang: str, v
 
 def digest_lines(ops: OperatorSources, lang: str) -> list:
     """One line per scheduled channel: videos made against the one a day it is scheduled for, for yesterday
-    and today (UTC, the day a slot belongs to). [] when nothing is scheduled; an unknown is said as unknown."""
+    and today (UTC, the day a slot belongs to). [] when nothing is scheduled; an unknown is said as unknown.
+    With the dead-man switch off (``OPERATOR_DEADMAN_HOURS=off``) no cell says MISSING: the count is shown
+    without a verdict."""
     try:
         now = _utc(ops.now())
         ev = Evidence(ops, now)
@@ -528,12 +609,14 @@ def digest_lines(ops: OperatorSources, lang: str) -> list:
             return [t(lang, "digest.expected_unknown", why=_why(lang, ev.channels))]
         if not ev.sched:
             return []
-        if not (ev.videos.ok and ev.events.ok):
-            return [t(lang, "digest.expected_unknown", why=_why(lang, ev.videos if not ev.videos.ok else ev.events))]
-        grace = ops.cfg.deadman_hours if ops.cfg.deadman_hours is not None else 3
+        for sec in (ev.videos, ev.storyboards, ev.events):
+            if not sec.ok:
+                return [t(lang, "digest.expected_unknown", why=_why(lang, sec))]
+        judge = ops.cfg.deadman_hours is not None
+        grace = ops.cfg.deadman_hours if judge else DEFAULT_DEADMAN_HOURS
         out = []
         for ch in ev.sched:
-            cells = [_cell(lang, ev, ch, day, now, ch.grace_h or grace)
+            cells = [_cell(lang, ev, ch, day, now, ch.grace_h or grace, judge)
                      for day in (now.date() - timedelta(days=1), now.date())]
             out.append(t(lang, "digest.expected", channel=safe_id(ch.channel_id), yesterday=Raw(cells[0]),
                          today=Raw(cells[1])))
@@ -549,12 +632,12 @@ def _why(lang: str, sec: Section) -> Raw:
     return views.unknown(lang, sec)
 
 
-def _cell(lang: str, ev: Evidence, ch: Scheduled, day: date, now: datetime, grace: int) -> str:
+def _cell(lang: str, ev: Evidence, ch: Scheduled, day: date, now: datetime, grace: int, judge: bool = True) -> str:
     """One day's verdict for one channel. The day is the SLOT's day: from the slot to the next one."""
     start = slot_start(day, ch.hour)
     end = start + timedelta(days=1)
     in_slot = lambda s: s is not None and start <= s < end  # noqa: E731
-    made = {r.get("video_id") for r in (ev.videos.data or [])
+    made = {r.get("video_id") for r in ev.masters
             if r.get("channel_id") == ch.channel_id
             and any(in_slot(s) for s in (parse_ts(r.get("published_at")), parse_ts(r.get("held_at"))))}
     stamps = ev.stamps(ch.channel_id)             # a storyboard or a run event is a run, not a video
@@ -567,4 +650,6 @@ def _cell(lang: str, ev: Evidence, ch: Scheduled, day: date, now: datetime, grac
         return t(lang, "rel.cell_due", made=0, want=want, hour=f"{ch.hour:02d}")
     if any(in_slot(s) for s in stamps):
         return t(lang, "rel.cell_ran", made=0, want=want)
-    return t(lang, "rel.cell_missing", made=0, want=want) if ev.known else t(lang, "rel.cell_unknown")
+    if not ev.known:
+        return t(lang, "rel.cell_unknown")
+    return t(lang, "rel.cell_missing", made=0, want=want) if judge else t(lang, "rel.cell", made=0, want=want)

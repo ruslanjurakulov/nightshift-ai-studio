@@ -42,10 +42,11 @@ def channel(cid="default", hour=15, status="ACTIVE", enabled=True, verified=True
             "created_at": created, "updated_at": updated}
 
 
-def video(vid="vid1", cid="default", state="held", held=None, published=None, detail=None):
-    return {"video_id": vid, "channel_id": cid, "publish_state": state,
+def video(vid="vid1", cid="default", state="held", held=None, published=None, detail=None, fmt="long", parent=None):
+    """A videos row as the server answers the bot's select: the hold's cause is the one word the path select returns."""
+    return {"video_id": vid, "channel_id": cid, "publish_state": state, "video_format": fmt, "parent_video_id": parent,
             "held_at": iso(held) if held else None, "published_at": iso(published) if published else None,
-            "hold_detail": detail}
+            "hold_cause": (detail or {}).get("cause")}
 
 
 def storyboard(when, cid="default", sid="sb1"):
@@ -80,8 +81,10 @@ def made(vid, when, cid="default"):
 YESTERDAY_OK = [video("old", held=at(13, 15, 30))]
 
 
-def make(now=T, channels=None, videos=None, events=None, http=None, tables=None, cfg=None):
+def make(now=T, channels=None, videos=None, events=None, http=None, tables=None, cfg=None, synth_default=False):
     clock = Clock(now)
+    if channels and not synth_default and not any(c["channel_id"] == "default" for c in channels):
+        channels = channels + [channel(status="PAUSED")]       # a default row that is not scheduled (see F9 tests)
     t = {"channels": [channel()] if channels is None else channels,
          "videos": YESTERDAY_OK + (videos or []), "system_events": events or [], "storyboards": []}
     t.update(tables or {})
@@ -228,6 +231,17 @@ class WhoIsExpectedTestCase(unittest.TestCase):
         theirs = channel("other", org="11111111-1111-1111-1111-111111111111")
         self.assertEqual(self.silent(channels=[theirs]), [])
 
+    def test_a_default_channel_with_no_row_is_synthesized_like_the_registry_does(self):
+        other = [channel("other")]
+        engine, _, _, ops, _ = make(channels=other, videos=[], synth_default=True)
+        found = [k for k in keys(alerts.detect(ops, 15000)) if k.endswith("2026-10-14")]
+        self.assertEqual(sorted(found), ["deadman:default:2026-10-14", "deadman:other:2026-10-14"])
+
+    def test_a_paused_default_row_is_not_synthesized_over_and_an_empty_table_is_unknown(self):
+        engine, _, _, ops, _ = make(channels=[channel(status="PAUSED")], videos=[], synth_default=True)
+        self.assertEqual(keys(alerts.detect(ops, 15000), "deadman:default:2026-10-14"), [])
+        self.assertEqual(reliability.scheduled_channels([]), [])
+
     def test_the_default_channel_needs_no_verification_like_the_scheduler(self):
         self.assertEqual(len(self.silent(channels=[channel(verified=False)])), 1)
 
@@ -287,6 +301,34 @@ class InProgressAndCauseTestCase(unittest.TestCase):
         unknown = self.line({})[0].line
         self.assertIn("could not be read", unknown)
 
+    def test_a_failed_run_since_the_slot_beats_a_queued_one_as_the_explanation(self):
+        runs = [gh_run(1, status="queued", conclusion=None, created=at(14, 15, 20)),
+                gh_run(2, conclusion="failure", created=at(14, 15, 2), number=77)]
+        line = self.line(daily(*runs))[0].line
+        self.assertIn("#77", line)
+
+    def test_a_run_queued_long_after_the_slot_hour_is_not_the_slots_waiting_run(self):
+        late_queue = gh_run(3, status="queued", conclusion=None, created=at(14, 18, 30))
+        self.assertIn("did not fire", self.line(daily(late_queue))[0].line)
+
+    def test_a_run_list_that_does_not_reach_the_slot_says_it_cannot_tell(self):
+        from modules.operator_bot.sources import RUNS_PER_PAGE
+        runs = [gh_run(1000 + i, created=at(14, 18, 0) - timedelta(minutes=i)) for i in range(RUNS_PER_PAGE)]
+        runs = [r for r in runs if True]
+        for r in runs:
+            r["created_at"] = iso(at(14, 18, 0) - timedelta(seconds=int(r["id"]) - 1000))     # all after 15:00
+        line = self.line(daily(*runs))[0].line
+        self.assertIn("does not reach back", line)
+        self.assertNotIn("did not fire", line)
+        short = self.line(daily(gh_run(1, created=at(13, 18, 0))))[0].line                    # a short list covers its history
+        self.assertIn("did not fire", short)
+
+    def test_the_run_list_asks_for_a_hundred_runs(self):
+        engine, _, _, ops, _ = make(videos=[], http=daily())
+        alerts.detect(ops, 15000)
+        urls = [u for u, _h in ops.http_get.calls if "daily_video.yml" in u]
+        self.assertTrue(urls and urls[0].endswith("per_page=100"))
+
     def test_a_manual_dispatch_counts_as_a_run_and_a_pull_request_does_not(self):
         manual = self.line(daily(gh_run(5, event_="workflow_dispatch", conclusion="failure")))[0].line
         self.assertIn("failure", manual)
@@ -323,10 +365,73 @@ class UnknownIsNotSilenceTestCase(unittest.TestCase):
         self.assertEqual(read["select"], "event,ts,channel_id")
         vids = [p for tbl, p in ops.sync.reads if tbl == "videos"][0]
         self.assertEqual(vids["channel_id"], "in.(default)")
-        self.assertEqual(vids["select"], "video_id,channel_id,publish_state,published_at,held_at,hold_detail")
+        self.assertEqual(vids["select"], "video_id,channel_id,publish_state,published_at,held_at,video_format,"
+                                         "parent_video_id,hold_cause:hold_detail->>cause")
+        self.assertEqual(vids["parent_video_id"], "is.null")              # no repurposed Short is even fetched
         boards = [p for tbl, p in ops.sync.reads if tbl == "storyboards"][0]
         self.assertEqual(boards["select"], "id,channel_id,status,created_at")        # no scenes, no script, no title
         self.assertEqual(boards["channel_id"], "in.(default)")
+
+
+class BlindTestCase(unittest.TestCase):
+    """A dead-man switch that cannot read its evidence says so once a day after six continuous hours."""
+
+    def run_hours(self, hours, fail=("storyboards",), start=at(14, 4, 0), flicker=None):
+        engine, store, tg, ops, clock = make(now=start, videos=[])
+        engine.tick()                                                         # baseline
+        sent = []
+        for step in range(hours * 6 + 1):                                     # a pass every 10 minutes
+            clock.now = start + timedelta(minutes=10 * step)
+            heartbeat(ops, clock)
+            hour = step // 6
+            ops.sync.fail = set(fail) if not (flicker and hour in flicker) else set()
+            sent.append(engine.tick())
+        return tg, sent
+
+    def test_nothing_is_said_before_six_hours_of_unknown(self):
+        tg, _ = self.run_hours(4)
+        self.assertFalse([t for t in tg.texts() if "cannot judge" in t])
+
+    def test_after_six_hours_it_is_said_once_and_names_the_source(self):
+        tg, _ = self.run_hours(9)
+        said = [t for t in tg.texts() if "cannot judge" in t]
+        self.assertEqual(len(said), 1)
+        self.assertIn("storyboards", said[0])
+        self.assertIn("INFO — tokens and providers", said[0])
+
+    def test_a_source_that_reads_again_breaks_the_run_of_hours(self):
+        tg, _ = self.run_hours(9, flicker={5})
+        self.assertFalse([t for t in tg.texts() if "cannot judge" in t])
+
+    def test_it_is_said_again_the_next_day_if_it_lasts(self):
+        tg, _ = self.run_hours(32)
+        self.assertEqual(len([t for t in tg.texts() if "cannot judge" in t]), 2)
+
+    def test_the_markers_are_silent_and_the_first_pass_records_none(self):
+        engine, store, tg, ops, clock = make(now=at(14, 4, 0), videos=[])
+        ops.sync.fail = {"storyboards"}
+        engine.tick()                                                         # baseline: armed marker only
+        self.assertFalse([r for r in store.rows if r["title"].startswith("blindmark:")])
+        clock.now = at(14, 4, 10)
+        heartbeat(ops, clock)
+        engine.tick()
+        marks = [r for r in store.rows if r["title"].startswith("blindmark:")]
+        self.assertEqual(len(marks), 1)
+        self.assertFalse(marks[0]["delivered"])
+
+    def test_blind_sources_are_named_by_the_evidence(self):
+        engine, _, _, ops, _ = make(videos=[])
+        ops.sync.fail = {"storyboards", "system_events"}
+        ev = reliability.Evidence(ops, T)
+        self.assertEqual(ev.blind, ["storyboards", "events"])
+        self.assertFalse(ev.known)
+
+    def test_the_digest_says_unknown_when_storyboards_cannot_be_read(self):
+        engine, _, _, ops, _ = make(now=at(14, 19, 0), videos=[])
+        ops.sync.fail = {"storyboards"}
+        text = reliability.digest_lines(ops, "en")[0]
+        self.assertIn("unknown", text)
+        self.assertNotIn("default:", text)                                    # one honest line, not a per-channel guess
 
 
 class RestraintTestCase(unittest.TestCase):
@@ -540,7 +645,7 @@ class WorkflowFailureTestCase(unittest.TestCase):
                                   {"name": "Run Chronos bot", "conclusion": "failure"}]})}
         found = self.failed(http, now=at(14, 16, 0))
         self.assertEqual([(a.kind, a.key, a.severity, a.channel_id) for a in found],
-                         [("pipeline", "wf:daily:90", "warn", "default")])
+                         [("pipeline", "wf:daily:2026-10-14", "warn", "default")])
         self.assertIn("#57", found[0].line)
         self.assertIn("(schedule)", found[0].line)
         self.assertIn("default", found[0].line)
@@ -576,22 +681,52 @@ class WorkflowFailureTestCase(unittest.TestCase):
         line = self.failed(http, now=at(14, 16, 0))[0].line
         self.assertNotIn("<script>", line)
 
-    def test_the_failed_run_alert_is_one_per_run(self):
+    def test_a_run_that_failed_before_the_bot_was_armed_is_history_and_a_new_day_is_a_new_alert(self):
         engine, store, tg, ops, clock = make(now=at(14, 14, 0), channels=[],
                                              http=daily(gh_run(94, conclusion="failure", created=at(14, 13, 1),
                                                                updated=at(14, 13, 20))))
         engine.tick()
         clock.now = at(14, 14, 30)
         heartbeat(ops, clock)
-        self.assertEqual(engine.tick().sent, 0)                                # a run before arming is history
+        self.assertEqual(engine.tick().sent, 0)
         ops.http_get = FakeHttp({**site_ok(), **github_ok(), **daily(
-            gh_run(95, conclusion="failure", created=at(14, 14, 31), updated=at(14, 14, 45)))})
-        clock.now = at(14, 14, 50)
+            gh_run(95, conclusion="failure", created=at(15, 9, 31), updated=at(15, 9, 45)))})
+        clock.now = at(15, 9, 50)
         heartbeat(ops, clock)
         self.assertEqual(engine.tick().sent, 1)
-        clock.now = at(14, 15, 0)
+        clock.now = at(15, 10, 0)
         heartbeat(ops, clock)
         self.assertEqual(engine.tick().sent, 0)
+
+    def test_eleven_failed_runs_are_one_alert_that_counts_them(self):
+        runs = [gh_run(100 + i, conclusion="failure", created=at(14, 4, 1) + timedelta(hours=i),
+                       updated=at(14, 4, 20) + timedelta(hours=i)) for i in range(11)]
+        found = self.failed(daily(*runs), now=at(14, 15, 0))
+        self.assertEqual([a.key for a in found], ["wf:daily:2026-10-14"])
+        self.assertIn("+10 more failed runs", found[0].line)
+
+    def test_a_broken_hourly_schedule_does_not_page_every_hour(self):
+        engine, store, tg, ops, clock = make(now=at(14, 4, 0), channels=[])
+        engine.tick()
+        sent = 0
+        for hour in range(5, 20):
+            runs = [gh_run(200 + h, conclusion="failure", created=at(14, h, 1), updated=at(14, h, 20))
+                    for h in range(5, hour)]
+            ops.http_get = FakeHttp({**site_ok(), **github_ok(), **daily(*runs)})
+            ops._cache.clear()
+            clock.now = at(14, hour, 30)
+            heartbeat(ops, clock)
+            sent += engine.tick().sent
+        self.assertEqual(sent, 1)
+
+    def test_a_channel_that_is_not_the_operators_is_named_only_as_a_customer_channel(self):
+        http = {**daily(gh_run(96, conclusion="failure", updated=at(14, 15, 40))),
+                **jobs(96, {"name": "make-video (their-channel)", "conclusion": "failure",
+                            "steps": [{"name": "Run Chronos bot", "conclusion": "failure"}]})}
+        found = self.failed(http, now=at(14, 16, 0))
+        self.assertIn("a customer channel", found[0].line)
+        self.assertNotIn("their-channel", found[0].line)
+        self.assertIsNone(found[0].channel_id)
 
 
 class VideoEventsTestCase(unittest.TestCase):
@@ -629,15 +764,71 @@ class VideoEventsTestCase(unittest.TestCase):
         from modules.operator_bot import sources
         self.assertEqual(sources.HOLD_CAUSES, held_video.HOLD_CAUSES)
 
-    def test_only_the_cause_of_a_hold_is_kept_never_the_gate_verdict(self):
+    def test_only_a_fixed_word_survives_as_the_cause_of_a_hold(self):
         engine, _, _, ops, _ = make(now=at(14, 16, 0))
-        row = video("run-hhhh", state="held", held=at(14, 15, 30),
-                    detail={"cause": "<b>free text</b>", "gate": {"blocks": ["SECRET GATE NAME"]}})
-        ops.sync.tables["videos"].append(row)
-        kept = [r for r in ops.recent_videos(at(14, 0, 0), ["default"]).data if r["video_id"] == "run-hhhh"][0]
-        self.assertNotIn("hold_detail", kept)
-        self.assertIsNone(kept["hold_cause"])                                     # not a fixed word: dropped
-        self.assertNotIn("SECRET", str(kept))
+        ops.sync.tables["videos"].append(video("run-hhhh", state="held", held=at(14, 15, 30),
+                                               detail={"cause": "<b>free text</b>"}))
+        ops.sync.tables["videos"].append(video("run-iiii", state="held", held=at(14, 15, 31),
+                                               detail={"cause": "upload_failed"}))
+        rows = {r["video_id"]: r for r in ops.recent_videos(at(14, 0, 0), ["default"]).data}
+        self.assertIsNone(rows["run-hhhh"]["hold_cause"])                        # not a fixed word: dropped
+        self.assertEqual(rows["run-iiii"]["hold_cause"], "upload_failed")
+        self.assertNotIn("hold_detail", rows["run-hhhh"])
+
+    def test_the_gate_verdict_is_never_selected_and_a_refused_path_select_costs_only_the_cause(self):
+        class RefusesPaths(FakeSync):
+            def select_strict(self, table, params=None):
+                if "->>" in str((params or {}).get("select", "")):
+                    from modules.supabase_sync import SupabaseReadError
+                    raise SupabaseReadError(table, 400, "bad select")
+                return super().select_strict(table, params)
+
+        sync = RefusesPaths({"videos": [video("run-jjjj", state="held", held=at(14, 15, 30),
+                                              detail={"cause": "upload_failed"})]})
+        from modules.operator_bot.sources import OperatorSources
+        ops = OperatorSources(sync, FakeHttp(), OperatorConfig(), now=lambda: T)
+        sec = ops.recent_videos(at(14, 0, 0), ["default"])
+        self.assertTrue(sec.ok)                                                   # the evidence still reads
+        self.assertEqual(sec.data[0]["video_id"], "run-jjjj")
+        for _table, params in sync.reads:
+            self.assertNotIn("hold_detail,", params["select"] + ",")             # the whole JSON is never asked for
+            self.assertNotIn("hold_detail", params["select"].replace("hold_detail->>cause", ""))
+
+    def test_repurposed_shorts_are_neither_alerts_nor_slot_evidence(self):
+        shorts = [video(f"short{i}", state="held", held=at(14, 15, 30), fmt="short", parent="master1") for i in range(20)]
+        shorts.append(video("short-up", state="uploaded", published=at(14, 15, 40), fmt="short", parent="master1"))
+        # a Short whose parent link is missing is still a Short by its format
+        shorts.append(video("short-orphan", state="held", held=at(14, 15, 41), fmt="short"))
+        self.assertEqual(self.found(videos=shorts), [])
+        found = run_detect(videos=shorts, now=at(14, 19, 0))[0]
+        self.assertEqual(keys(found, "deadman:default:2026-10-14"), ["deadman:default:2026-10-14"])   # still no master
+        self.assertEqual(keys(found, "video:"), [])
+
+    def test_a_row_with_a_parent_is_not_a_master_whatever_its_format_says(self):
+        self.assertFalse(reliability.is_master(video("x", fmt="long", parent="m")))
+        self.assertFalse(reliability.is_master(video("x", fmt="short")))
+        self.assertTrue(reliability.is_master(video("x", fmt=None)))                    # a row from before 0003
+        self.assertTrue(reliability.is_master(video("x", fmt="long")))
+        a_long_row_with_a_parent = video("y", state="held", held=at(14, 15, 30), fmt="long", parent="m")
+        self.assertEqual(self.found(videos=[a_long_row_with_a_parent]), [])
+
+    def test_a_scene_repair_re_hold_is_not_a_held_alert_nor_slot_evidence(self):
+        repaired = video("run-rrrr", state="repaired_awaiting_review", held=at(14, 15, 30))
+        self.assertEqual(self.found(videos=[repaired]), [])
+        found = run_detect(videos=[repaired], now=at(14, 19, 0))[0]
+        self.assertEqual(keys(found, "deadman:default:2026-10-14"), ["deadman:default:2026-10-14"])
+
+    def test_a_video_is_announced_once_however_often_it_is_held_again(self):
+        engine, store, tg, ops, clock = make(now=at(14, 14, 0))
+        engine.tick()
+        ops.sync.tables["videos"].append(video("run-kkkk", state="held", held=at(14, 14, 10)))
+        clock.now = at(14, 14, 20)
+        heartbeat(ops, clock)
+        self.assertEqual(engine.tick().sent, 1)
+        ops.sync.tables["videos"][-1]["held_at"] = iso(at(14, 14, 40))         # the resumed run holds it again
+        clock.now = at(14, 14, 50)
+        heartbeat(ops, clock)
+        self.assertEqual(engine.tick().sent, 0)
 
     def test_a_video_already_uploaded_is_not_still_held(self):
         done = video("run-cccc", state="held", held=at(14, 15, 30), published=at(14, 15, 50))
@@ -645,18 +836,17 @@ class VideoEventsTestCase(unittest.TestCase):
 
     def test_only_the_operators_channels_are_announced(self):
         theirs = video("run-dddd", cid="their-channel", state="blocked", held=at(14, 15, 30))
-        ev = event("upload.failed", at(14, 15, 45), cid="their-channel")
-        self.assertEqual(self.found(videos=[theirs], events=[ev]), [])
+        self.assertEqual(self.found(videos=[theirs]), [])
 
     def test_the_event_log_is_not_the_source_of_a_video_alert(self):
         # the log is mirrored a day late; a failed upload is announced from the video's own row
         self.assertEqual(self.found(events=[event("upload.failed", at(14, 15, 45))]), [])
 
-    def test_old_events_are_not_news(self):
+    def test_old_rows_are_not_news(self):
         old = video("run-eeee", state="blocked", held=at(14, 2, 0))
         self.assertEqual(self.found(videos=[old]), [])
 
-    def test_a_held_video_is_not_in_the_digest_of_mail_kinds(self):
+    def test_a_held_video_is_not_in_the_mail_kinds(self):
         from modules.operator_bot import owner_mail
         held = [a for a in self.found(videos=[video("run-ffff", state="held", held=at(14, 15, 30))])][0]
         self.assertEqual(held.kind, "approval")
@@ -690,6 +880,29 @@ class DoctorTestCase(unittest.TestCase):
                           "doctor:check:youtube-operator-channel-token:2026-10-14"])
         self.assertTrue(all((a.kind, a.severity) == ("health", "warn") for a in found))
         self.assertIn("youtube-operator-channel-token", " ".join(a.line for a in found))
+
+    def test_one_transient_failure_is_not_an_alert_but_two_in_a_row_are(self):
+        self.assertEqual(self.found(self.rows((1, "fail", "~providers/elevenlabs"))), [])
+        self.assertEqual(self.found(self.rows((1, "fail", "~providers/elevenlabs"), (7, "ok", ""))), [])
+        again = self.found(self.rows((1, "fail", "~providers/elevenlabs"), (7, "fail", "~providers/elevenlabs")))
+        self.assertEqual([a.key for a in again], ["doctor:check:providers-elevenlabs:2026-10-14"])
+
+    def test_a_permanent_failure_is_said_at_once(self):
+        found = self.found(self.rows((1, "fail", "youtube/operator channel token")))
+        self.assertEqual(len(found), 1)
+
+    def test_a_transient_failure_after_a_clean_check_stays_quiet_and_is_never_recovered(self):
+        engine, store, tg, ops, clock = make(now=self.NOW, channels=[], tables={"alert_events": []})
+        engine.tick()
+        ops.sync.tables["alert_events"] = self.rows((1, "fail", "~providers/pexels"), (7, "ok", ""))
+        self.assertEqual(engine.tick().sent, 0)
+        ops.sync.tables["alert_events"] = [{"at": iso(clock.now), "title": "ok", "body": "", "kind": "operator.doctor",
+                                            "channel_id": None}]
+        self.assertEqual(engine.tick().sent, 0)                                # nothing was said, so nothing recovers
+
+    def test_failures_that_did_not_fit_the_row_still_count(self):
+        found = self.found(self.rows((1, "fail", "keys/GEMINI_API_KEY,+3")))
+        self.assertEqual(sorted(a.key.split(":")[2] for a in found), ["keys-gemini-api-key", "more-checks"])
 
     def test_a_passing_check_is_silent_and_so_is_a_check_that_never_reported(self):
         self.assertEqual(self.found(self.rows((1, "ok", ""))), [])
@@ -826,6 +1039,13 @@ class DigestTestCase(unittest.TestCase):
         self.assertIn("today 1/1", done[0])
         self.assertNotIn("MISSING", done[0])
 
+    def test_with_the_switch_off_no_cell_says_missing(self):
+        off = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo", deadman_hours=None)
+        engine, _, _, ops, _ = make(now=at(14, 19, 0), videos=[], cfg=off)
+        text = reliability.digest_lines(ops, "en")[0]
+        self.assertNotIn("MISSING", text)
+        self.assertIn("0/1", text)
+
     def test_a_run_without_a_video_is_not_missing_but_not_made(self):
         lines = self.lines(at(14, 19, 0), videos=[], events=[event("system.started", at(14, 15, 5))])
         self.assertIn("a run started, no video", lines[0])
@@ -897,10 +1117,23 @@ class ReadOnlyTestCase(unittest.TestCase):
             self.assertTrue(url.startswith(("https://api.github.com/repos/owner/repo/actions/", "https://app.example.test")), url)
 
 
+class MailKindsTestCase(unittest.TestCase):
+    def test_problems_are_e_mailed_but_recovered_and_blind_notes_stay_in_telegram(self):
+        from modules.operator_bot import owner_mail
+        from modules.operator_bot.alerts import Alert
+        wants = owner_mail.OwnerMail.wants
+        sink = type("S", (), {"kinds": frozenset(owner_mail.DEFAULT_KINDS)})()
+        self.assertTrue(wants(sink, Alert("pipeline", "deadman:x:d", "warn", "l")))
+        self.assertTrue(wants(sink, Alert("health", "doctor:check:x:d", "warn", "l")))
+        self.assertFalse(wants(sink, Alert("pipeline", "ok:deadman:x:d", "info", "l")))
+        self.assertFalse(wants(sink, Alert("health", "blind:videos:d", "info", "l")))
+        self.assertTrue(wants(sink, Alert("payment", "payment:x:paid", "info", "l")))
+
+
 class CopyTestCase(unittest.TestCase):
     def test_the_hint_family_and_the_kinds_exist_in_every_language(self):
         for lang in LANGUAGES:
-            for state in ("none", "waiting", "failed", "empty", "unknown"):
+            for state in ("none", "waiting", "failed", "empty", "unknown", "old"):
                 self.assertIn(f"alert.deadman_hint_{state}", table(lang), (lang, state))
             for kind in ("pipeline", "health"):
                 self.assertIn(f"kind.{kind}", table(lang))
@@ -910,7 +1143,7 @@ class CopyTestCase(unittest.TestCase):
             self.assertIn(views.KIND_COMMAND[kind], dict(views.COMMANDS))
 
     def test_every_state_the_detector_can_name_has_a_hint(self):
-        for state in ("none", "waiting", "failed", "empty", "unknown"):
+        for state in ("none", "waiting", "failed", "empty", "unknown", "old"):
             self.assertNotEqual(table("en")[f"alert.deadman_hint_{state}"], "")
         runs = reliability.Section(False)
         self.assertEqual(reliability._run_view(runs, T, T)[0], "unknown")

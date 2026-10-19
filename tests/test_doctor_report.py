@@ -44,13 +44,31 @@ class RowTestCase(unittest.TestCase):
         row = doctor_report.build_row([check("host", "ffmpeg", doctor.FAIL)])
         self.assertEqual(row["title"], "ok")
 
-    def test_names_are_made_safe_and_whole(self):
+    def test_names_are_cut_capped_and_the_overflow_is_counted_not_dropped(self):
         names = [check("keys", f"KEY_{i:02d}_" + "X" * 30, doctor.FAIL) for i in range(12)]
         row = doctor_report.build_row(names)
+        self.assertEqual(row["title"], "fail")
         self.assertLessEqual(len(row["body"]), doctor_report.MAX_BODY)
-        self.assertTrue(all(len(n) == len("keys/KEY_00_" + "X" * 30) for n in row["body"].split(",")))
+        parts = row["body"].split(",")
+        self.assertEqual(parts[-1], "+6")                                    # six more failed than the row holds
+        self.assertTrue(all(len(n) <= doctor_report.NAME_MAX for n in parts[:-1]))
         odd = doctor_report.failing_names([check("keys", "a,b <script>$TOKEN", doctor.FAIL)])
         self.assertEqual(odd, ["keys/ab scriptTOKEN"])
+
+    def test_a_providers_own_hiccup_is_marked_transient_and_a_refusal_is_not(self):
+        checks = [check("providers", "elevenlabs", doctor.FAIL, "subscription check: ElevenLabs rate-limited the check"),
+                  check("providers", "pexels", doctor.FAIL, "search check: Pexels answered HTTP 503"),
+                  check("providers", "leonardo", doctor.FAIL, "account check: Leonardo unreachable"),
+                  check("providers", "gemini", doctor.FAIL, "Gemini refused the key"),
+                  check("youtube", "operator channel token", doctor.FAIL, "Google says the refresh token is expired (invalid_grant)"),
+                  check("keys", "GEMINI_API_KEY", doctor.FAIL, "missing - needed for script"),
+                  check("providers", "x", doctor.FAIL, "answered HTTP 401")]
+        self.assertEqual([(n, t) for n, t in doctor_report.failing(checks)],
+                         [("providers/elevenlabs", True), ("providers/pexels", True), ("providers/leonardo", True),
+                          ("providers/gemini", False), ("youtube/operator channel token", False),
+                          ("keys/GEMINI_API_KEY", False), ("providers/x", False)])
+        body = doctor_report.build_row(checks)["body"]
+        self.assertTrue(body.startswith("~providers/elevenlabs,~providers/pexels,~providers/leonardo,providers/gemini"))
 
 
 class MainTestCase(unittest.TestCase):
@@ -72,6 +90,20 @@ class MainTestCase(unittest.TestCase):
         (table, rows), = sync.upserts
         self.assertEqual((table, rows[0]["kind"], rows[0]["title"]), ("alert_events", "operator.doctor", "fail"))
         self.assertIn("recorded: fail", text)
+
+    def test_in_ci_only_names_and_verdicts_reach_the_log(self):
+        detail = "key accepted, 8123 characters left (about 9 minutes of narration), plan status active, model gemini-2.5-pro"
+        checks = [check("providers", "elevenlabs", doctor.PASS, detail),
+                  check("providers", "gemini", doctor.FAIL, "Gemini has no model gemini-9-secret-preview", "set GEMINI_MODEL"),
+                  check("host", "free disk", doctor.WARN, "4.5 GB free on the output volume")]
+        rc, text = self.run_main(checks, FakeSync(), env={"GITHUB_ACTIONS": "true"})
+        self.assertEqual(rc, 0)
+        self.assertIn("[PASS] providers/elevenlabs", text)
+        self.assertIn("[FAIL] providers/gemini", text)
+        for leaked in ("8123", "characters", "plan status", "gemini-2.5", "gemini-9", "GEMINI_MODEL", "4.5 GB", "narration"):
+            self.assertNotIn(leaked, text)
+        local = self.run_main(checks, FakeSync(), env={})[1]
+        self.assertIn("8123 characters left", local)                         # the full report stays for a local run
 
     def test_no_secret_value_reaches_the_log_or_the_row(self):
         secret = "sk-this-is-a-fake-provider-key-1234567890"
@@ -168,6 +200,8 @@ class WorkflowTestCase(unittest.TestCase):
         script = self.step["run"]
         self.assertNotIn("${{", script)
         self.assertIn("tools/doctor_report.py", script)
+        lines = [l.strip() for l in script.splitlines() if l.strip() and not l.strip().startswith("#")]
+        self.assertEqual(lines[0], "set -o pipefail")                        # else tee swallows a failed report
         for forbidden in ("printenv", "set -x", "env |", "export -p"):
             self.assertNotIn(forbidden, script)
 

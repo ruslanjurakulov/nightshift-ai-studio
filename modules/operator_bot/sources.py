@@ -79,6 +79,9 @@ GITHUB_WORKFLOWS = (("deploy_web.yml", "deploy"), ("tests.yml", "tests"), ("fron
 #: The daily video workflow, read separately from the three above: its runs are about production, not code, and
 #: they are listed on every branch and for every event (a manual dispatch is a run too).
 DAILY_VIDEO_WORKFLOW = "daily_video.yml"
+#: How many runs of it are listed (the API's maximum): the hourly schedule makes ~24 a day, so this reaches back
+#: about four days; a slot older than the list says "cannot tell" (reliability._run_view).
+RUNS_PER_PAGE = 100
 #: system_events that prove a run began or ended for a channel (modules/event_log.py). Nothing else counts:
 #: the intelligence poll also writes per-channel events, and those are not a video.
 RUN_EVENTS = ("system.started", "render.completed", "upload.completed", "video.published", "publish.held",
@@ -398,31 +401,39 @@ class OperatorSources:
         })
 
     def recent_videos(self, since: datetime, channel_ids: list) -> Section:
-        """The named channels' videos made or held since ``since`` (a day of slack is read and the caller
-        filters exactly: the two time columns are text and timestamptz and do not compare alike). Ids,
-        channel, state, times: no title, no topic, no hold detail. The channel list is part of the query, so
-        other organizations' videos never fill the row limit."""
+        """The named channels' own videos (masters: no repurposed Short, which migration 0080 stores as a row of
+        its own with ``parent_video_id`` set) made or held since ``since``. A day of slack is read and the caller
+        filters exactly: the two time columns are text and timestamptz and do not compare alike. Ids, channel,
+        state, format, times and the cause of a hold: no title, no topic, no gate verdict. The channel list is
+        part of the query, so other organizations' videos never fill the row limit."""
         ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
         if not ids:
             return Section(True, [])
-        sel = "video_id,channel_id,publish_state,published_at,held_at,hold_detail"
+        base = "video_id,channel_id,publish_state,published_at,held_at,video_format,parent_video_id"
         slack, chans = iso(since - timedelta(days=1)), f"in.({','.join(ids)})"
-        pub = self._read("videos", {"select": sel, "channel_id": chans, "published_at": f"gte.{slack}",
-                                    "order": "published_at.desc", "limit": "300"})
-        held = self._read("videos", {"select": sel, "channel_id": chans, "held_at": f"gte.{slack}",
-                                     "order": "held_at.desc", "limit": "300"})
+
+        def read(select: str):
+            common = {"select": select, "channel_id": chans, "parent_video_id": "is.null"}
+            return (self._read("videos", {**common, "published_at": f"gte.{slack}",
+                                          "order": "published_at.desc", "limit": "300"}),
+                    self._read("videos", {**common, "held_at": f"gte.{slack}",
+                                          "order": "held_at.desc", "limit": "300"}))
+
+        # The cause of a hold is ONE fixed word inside the hold_detail JSON; PostgREST's path select hands back
+        # just that word, so the gate verdict next to it is never read. If a server refuses the path syntax the
+        # read is repeated without it: the evidence (the dead-man's whole job) must not depend on it, and only
+        # the "upload failed" alert is lost.
+        pub, held = read(base + ",hold_cause:hold_detail->>cause")
+        if not pub.ok or not held.ok:
+            pub, held = read(base)
         if not pub.ok or not held.ok:
             return pub if not pub.ok else held
         seen, rows = set(), []
         for r in list(pub.data or []) + list(held.data or []):
             if r.get("video_id") not in seen:
                 seen.add(r.get("video_id"))
-                # `hold_detail` is read for ONE fixed word, the cause of a hold (a failed upload), and dropped
-                # at once: its gate verdict and everything else stay out of memory and out of every message.
-                detail = r.get("hold_detail") if isinstance(r.get("hold_detail"), dict) else {}
-                cause = detail.get("cause")
-                rows.append({**{k: v for k, v in r.items() if k != "hold_detail"},
-                             "hold_cause": cause if cause in HOLD_CAUSES else None})
+                cause = r.get("hold_cause")
+                rows.append({**r, "hold_cause": cause if cause in HOLD_CAUSES else None})
         return Section(True, rows, cap=pub.cap or held.cap)
 
     def recent_storyboards(self, since: datetime, channel_ids: list) -> Section:
@@ -480,7 +491,7 @@ class OperatorSources:
         if key in self._cache:
             return self._cache[key]
         status, body = self._github_get(
-            f"https://api.github.com/repos/{repo}/actions/workflows/{DAILY_VIDEO_WORKFLOW}/runs?per_page=30")
+            f"https://api.github.com/repos/{repo}/actions/workflows/{DAILY_VIDEO_WORKFLOW}/runs?per_page={RUNS_PER_PAGE}")
         runs = (body or {}).get("workflow_runs") if isinstance(body, dict) else None
         if status != 200 or not isinstance(runs, list):
             out = Section.fail("unavailable")

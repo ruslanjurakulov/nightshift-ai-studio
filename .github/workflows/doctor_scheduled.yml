@@ -96,6 +96,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
         run: |
+          # First line, on purpose: without it the pipe below returns tee's status and a doctor_report that
+          # could not record its verdict (exit 1) would leave a green job and an operator who hears nothing.
+          set -o pipefail
           # The doctor's report is already scrubbed (a secret is only ever "set" or "missing"); it goes to
           # the log and to the job summary. Exit 0 whenever a verdict was recorded, FAIL or not: the alert
           # is the operator bot's, and a red job here would be a second one for the same fact.

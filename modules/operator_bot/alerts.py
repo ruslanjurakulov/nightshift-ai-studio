@@ -379,7 +379,7 @@ class AlertEngine:
         lang = self._language()
         verdicts = reliability.Verdicts()
         found = detect(self.ops, self.low_credits, lang, verdicts)
-        found = found + self._recovered(state, verdicts)
+        found = found + self._recovered(state, verdicts) + self._blind(state, verdicts, now, lang)
         if self.owner_mail is not None:
             # One info note per day while the owner's e-mail is failing, through the same restraint as any alert.
             found = found + self.owner_mail.outage_alerts(state, now, lang)
@@ -399,6 +399,20 @@ class AlertEngine:
             return reliability.recoveries(state, verdicts)
         except Exception as e:  # noqa: BLE001 - a bug here must not stop the alerts themselves
             logger.warning("recovered notes skipped (%s)", type(e).__name__)
+            return []
+
+    def _blind(self, state: AlertState, verdicts: reliability.Verdicts, now: datetime, lang: str) -> list:
+        """"The dead-man switch cannot judge": a silent marker per hour while a source stays unreadable, and one
+        information alert a day once that has lasted BLIND_AFTER_HOURS. Not before the first (baseline) pass."""
+        try:
+            if not state.armed or not verdicts.blind:
+                return []
+            markers, found = reliability.blind_alerts(state, verdicts.blind, now, lang)
+            for m in markers:
+                self._record(m, False, now)
+            return found
+        except Exception as e:  # noqa: BLE001
+            logger.warning("blind-source notes skipped (%s)", type(e).__name__)
             return []
 
     def _telegram(self, found: list, state: AlertState, rep: TickReport, lang: str, now: datetime) -> TickReport:

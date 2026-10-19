@@ -74,8 +74,9 @@ MAIL_KINDS = ("payment", "signup", "run", "stuck", "worker", "deploy", "marketin
 #: system problems). Balances, audit events and approvals are opt-in by name.
 DEFAULT_KINDS = ("payment", "signup", "run", "stuck", "worker", "deploy", "marketing", "pipeline", "health")
 #: Kinds whose INFO-severity alerts are wanted as news (a payment received, a new
-#: account). Any other info alert (a draft waiting, a post sent) is not e-mailed.
-INFO_KINDS = ("payment", "signup", "pipeline", "health")
+#: account). Any other info alert (a draft waiting, a post sent, a "recovered" note, "the dead-man switch cannot
+#: judge") is not e-mailed: those stay in Telegram.
+INFO_KINDS = ("payment", "signup")
 
 MAX_ATTEMPTS = 3
 #: Per alert: attempts are spaced this far apart, at most MAX_ATTEMPTS inside one window, and a window is the
