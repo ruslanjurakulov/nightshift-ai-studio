@@ -623,7 +623,14 @@ class YouTubeUploader:
             description = with_line
         if description_suffix:
             from modules import watch_next
-            description = watch_next.append_watch_next(description, description_suffix)
+            with_wn = watch_next.append_watch_next(description, description_suffix)
+            # append_watch_next counts characters; YouTube's 5000 is bytes, and a Russian or Uzbek description is two
+            # bytes a letter. Keep the block only if the result still fits, as the disclosure line is held to.
+            if with_wn == description or len(with_wn.encode("utf-8")) <= MAX_DESCRIPTION:
+                description = with_wn
+            else:
+                logger.warning("%sThe watch-next block was dropped: the description would exceed %d bytes",
+                               self._label, MAX_DESCRIPTION)
 
         body = {
             "snippet": {

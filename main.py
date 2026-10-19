@@ -255,6 +255,7 @@ def _publish_short(
     timeline: list,
     costs,
     ai_decision=None,
+    ai_signals=None,
 ):
     """Cut and publish a vertical Short from the video that just went out.
 
@@ -328,6 +329,13 @@ def _publish_short(
                         channel_id=channel_id, video_id=uploaded["id"],
                         metadata={"url": uploaded["url"], "parent_video_id": parent_video_id},
                         store=store)
+            # The Short is its own video row, and an Instagram / TikTok post of it reads ITS record: without one it
+            # would read as "provenance unknown" and be labelled whatever the long video contains.
+            if ai_decision is not None and ai_signals is not None:
+                events.emit(ai_disclosure.EVENT, video_id=uploaded["id"], agent="ai_disclosure",
+                            status=events.STATUS_COMPLETED, channel_id=channel_id,
+                            metadata=ai_decision.to_metadata(getattr(ctx.agent, "language", ""), ai_signals),
+                            store=store)
         logger.info("[channel: %s] Short published: %s", channel_id, uploaded["url"])
         print(f"\n✓ Short published: {uploaded['url']}")
     except Exception as e:
@@ -1612,6 +1620,7 @@ def run(
                 timeline=timeline,
                 costs=costs,
                 ai_decision=ai_decision,
+                ai_signals=ai_signals,
             )
     elif not gate.allowed:
         # Already reported above. The run is not uploaded, so it gets a held
