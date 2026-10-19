@@ -3,9 +3,9 @@
   "public": true,
   "link": "/pricing",
   "texts": {
-    "uz": "Kameraga tushmasdan, bitta mavzudan video yarating. Mavzuni yozasiz, Nightshift esa ssenariy yozadi, diktor ovozini qoʻshadi, tasvirlarni jamlaydi va subtitrlar tayyorlaydi, hammasi bir joyda. Ish boshlanishidan oldin narxni kreditlarda koʻrasiz.",
-    "ru": "Сделайте видео по одной теме, не показывая лицо. Вы вводите тему, а Nightshift пишет сценарий, добавляет озвучку, собирает видеоряд и делает субтитры, и всё это в одном месте. Цену в кредитах вы видите до начала работы.",
-    "en": "Make a faceless video from just a topic. Type the topic and Nightshift writes the script, adds a voiceover, puts the visuals together and makes the captions, all in one place. You see the price in credits before anything starts."
+    "uz": "Kameraga tushmasdan, bitta mavzudan video yarating. Mavzuni yozasiz, Nightshift esa ssenariy yozadi, diktor ovozini qoʻshadi, tasvirlarni jamlaydi va subtitrlar tayyorlaydi, hammasi bir joyda. Ish boshlanishidan oldin taxminiy narxni kreditlarda koʻrasiz.",
+    "ru": "Сделайте видео по теме, не показываясь в кадре. Вы вводите тему, а Nightshift пишет сценарий, добавляет озвучку, собирает видеоряд и делает субтитры, и всё это в одном месте. Примерную цену в кредитах вы видите до начала работы.",
+    "en": "Make a faceless video from just a topic. Type the topic and Nightshift writes the script, adds a voiceover, puts the visuals together and makes the captions, all in one place. You see the estimated price in credits before anything starts."
   },
   "evidence": [
     {
@@ -25,7 +25,7 @@
       "source": "modules/subtitle_generator.py"
     },
     {
-      "claim": "The Create page takes a topic and the run's controls, and asks for confirmation with the price shown before anything is spent.",
+      "claim": "The Create page takes a topic and the run's controls, and asks for confirmation with the estimated price shown before anything is spent.",
       "source": "command-center/components/create/CreateStudio.tsx"
     },
     {

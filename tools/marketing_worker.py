@@ -196,7 +196,7 @@ class MarketingWorker:
 
         try:
             news, skipped = mc.load_news(self._news_dir, self._now().date())
-        except OSError:
+        except (OSError, RecursionError):
             news, skipped = [], {"news_dir_unreadable": 1}
         for reason, n in skipped.items():
             if reason != "not_public":
@@ -207,7 +207,7 @@ class MarketingWorker:
         drafts = list(news)
         try:
             promos, promo_skipped, promo_notes = mc.load_promo(self._promo_dir, self._now().date(), self._news_dir)
-        except OSError:
+        except (OSError, RecursionError):
             promos, promo_skipped, promo_notes = [], {"promo_dir_unreadable": 1}, []
         for reason, n in promo_skipped.items():
             if reason != "not_public":
@@ -221,7 +221,10 @@ class MarketingWorker:
         price = mc.price_draft(plans, self._now(), self._news_dir) if plans else None
         if price is not None:
             drafts.append(price)
+        down: set = set()                 # sources whose database call failed this pass; the others still go on
         for d in drafts:
+            if d.kind in down:
+                continue
             # The sender's own rules, before the owner is shown anything: a draft it would refuse (too long, text that
             # looks like a key or an address, a bad link, no site origin) is not stored. Stored, it would be approved on
             # screen and then fail at send time, using up its key (a news item is drafted once) and a weekly slot's worth
@@ -235,9 +238,11 @@ class MarketingWorker:
             try:
                 res = self.store.draft(d)
             except StoreUnavailable as e:
-                logger.warning("drafting stopped: %s", e)
+                # One source failing (news, promo or price) must not keep the next one from being tried.
+                logger.warning("drafting %s stopped: %s", d.kind, e)
                 bump("store_unavailable")
-                break
+                down.add(d.kind)
+                continue
             if res.get("ok") is not True:
                 bump("refused_" + str(res.get("error") or "unknown")[:40].replace(" ", "_"))
             elif res.get("created"):

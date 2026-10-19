@@ -466,6 +466,108 @@ class IdleSafe(Base):
         self.assertNotIn(SERVICE_KEY, text)
 
 
+class HostileFiles(Base):
+    """A file in docs/news or docs/promo is reviewed, but the image is built from a commit, not from a green CI run:
+    whatever it holds, the drafting pass must go on with the other files and the price post."""
+
+    def news(self, name, item):
+        (self.news_dir / name).write_text(item if isinstance(item, str) else json.dumps(item, ensure_ascii=False), encoding="utf-8")
+
+    def test_deeply_nested_json_is_skipped_in_promo_and_in_news_and_the_pass_goes_on(self):
+        deep_array = "[" * 5000 + "]" * 5000
+        deep_object = '{"a":' * 5000 + "1" + "}" * 5000
+        self.put("a-array", deep_array)
+        self.put("b-object", deep_object)
+        self.put("c-good", promo("c-good"))
+        self.news("2026-10-15-deep-array.json", deep_array)
+        self.news("2026-10-15-deep-object.json", deep_object)
+        self.news("2026-10-15-good.json", {"pr": 484, "shipped": "2026-10-15", "kind": "feature", "public": True, "text": TEXTS})
+        store = FakeStore(plans=PLANS)
+        counts = self.worker(store).draft_pass()
+        self.assertEqual(counts, {"created": 3, "promo_skipped_unreadable": 2, "news_skipped_unreadable": 2})
+        self.assertEqual(sorted(store.drafts), ["news:good", "price:creator,pro,studio:2026-10", "promo:c-good:telegram"])
+
+    def test_a_loader_that_still_raises_a_recursion_error_does_not_kill_the_pass(self):
+        store = FakeStore(plans=PLANS)
+        with mock.patch.object(mc, "load_promo", side_effect=RecursionError), \
+                mock.patch.object(mc, "load_news", side_effect=RecursionError):
+            counts = self.worker(store).draft_pass()
+        self.assertEqual(counts, {"news_skipped_news_dir_unreadable": 1, "promo_skipped_promo_dir_unreadable": 1, "created": 1})
+        self.assertEqual(list(store.drafts), ["price:creator,pro,studio:2026-10"])
+
+    def test_a_file_over_64_kb_is_never_read(self):
+        big = json.dumps(promo("big", texts=dict(PROMO_TEXTS, en="x" * (mc.MAX_FILE_BYTES + 10))))
+        self.put("big", big)
+        self.news("2026-10-15-big.json", big)
+        self.put("ok", promo("ok"))
+        real = Path.read_text
+
+        def guard(path, *a, **k):
+            assert "big" not in path.name, "a large file was read"
+            return real(path, *a, **k)
+
+        with mock.patch.object(Path, "read_text", guard):
+            drafts, skipped, _ = mc.load_promo(self.promo_dir, dt.date(2026, 10, 18), self.news_dir)
+            self.assertEqual((len(drafts), skipped), (1, {"too_large": 1}))
+            drafts, skipped = mc.load_news(self.news_dir, dt.date(2026, 10, 18))
+            self.assertEqual((drafts, skipped), ([], {"too_large": 1}))
+
+    def test_a_repeated_key_is_refused_because_the_last_one_would_silently_win(self):
+        good = json.dumps(promo("dup"), ensure_ascii=False)
+        self.put("dup", good.replace('"public": true', '"public": false, "public": true'))
+        self.put("dup2", good.replace('"slug": "dup"', '"slug": "dup2"').replace('"en": ', '"en": "x", "en": '))
+        self.news("2026-10-15-dup.json", '{"pr": 1, "pr": 2, "shipped": "2026-10-15"}')
+        drafts, skipped, _ = mc.load_promo(self.promo_dir, dt.date(2026, 10, 18), self.news_dir)
+        self.assertEqual((drafts, skipped), ([], {"unreadable": 2}))
+        self.assertEqual(mc.load_news(self.news_dir, dt.date(2026, 10, 18)), ([], {"unreadable": 1}))
+
+    def test_a_symlinked_file_is_skipped(self):
+        outside = self.dir / "outside.json"
+        outside.write_text(json.dumps(promo("linked")), encoding="utf-8")
+        (self.promo_dir / "linked.json").symlink_to(outside)
+        (self.news_dir / "2026-10-15-linked.json").symlink_to(outside)
+        self.put("real", promo("real"))
+        drafts, skipped, notes = mc.load_promo(self.promo_dir, dt.date(2026, 10, 18), self.news_dir)
+        self.assertEqual(([d.key for d in drafts], skipped), (["promo:real:telegram"], {"symlink": 1}))
+        self.assertEqual(mc.load_news(self.news_dir, dt.date(2026, 10, 18)), ([], {"symlink": 1}))
+
+    def test_a_database_failure_while_drafting_promo_does_not_skip_the_price_post_or_news(self):
+        self.news("2026-10-15-good.json", {"pr": 484, "shipped": "2026-10-15", "kind": "feature", "public": True, "text": TEXTS})
+        self.put("a-one", promo("a-one"))
+        self.put("b-two", promo("b-two"))
+        store = FakeStore(plans=PLANS)
+        original = store.draft
+        calls = []
+
+        def draft(d):
+            calls.append(d.key)
+            if d.kind == "promo":
+                raise mw.StoreUnavailable("marketing_draft_upsert_v2: HTTP 503")
+            return original(d)
+
+        store.draft = draft
+        counts, log = self.run_pass(self.worker(store))
+        self.assertEqual(counts, {"created": 2, "store_unavailable": 1})
+        self.assertEqual(sorted(store.drafts), ["news:good", "price:creator,pro,studio:2026-10"])
+        self.assertEqual([k for k in calls if k.startswith("promo:")], ["promo:a-one:telegram"])     # not retried per file
+        self.assertIn("drafting promo stopped", log)
+
+    def test_a_database_failure_on_news_does_not_skip_promo_or_price(self):
+        self.news("2026-10-15-good.json", {"pr": 484, "shipped": "2026-10-15", "kind": "feature", "public": True, "text": TEXTS})
+        self.put("a-one", promo("a-one"))
+        store = FakeStore(plans=PLANS)
+        original = store.draft
+
+        def draft(d):
+            if d.kind == "news":
+                raise mw.StoreUnavailable("marketing_draft_upsert: HTTP 503")
+            return original(d)
+
+        store.draft = draft
+        counts = self.worker(store).draft_pass()
+        self.assertEqual(counts, {"created": 2, "store_unavailable": 1})
+
+
 class TheFilesInTheRepository(unittest.TestCase):
     def test_the_real_promo_folder_drafts_through_the_real_banned_list(self):
         drafts, skipped, notes = mc.load_promo(mc.PROMO_DIR, dt.date(2026, 10, 18), NEWS)
