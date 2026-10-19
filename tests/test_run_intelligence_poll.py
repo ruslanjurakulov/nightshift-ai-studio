@@ -12,6 +12,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from dataclasses import replace as _dc_replace
+
+from modules.channels import ChannelRegistry, legacy_default_channel
 from modules.comment_intelligence import CommentClassification
 from modules.content_opportunity import ContentOpportunity
 from modules.content_planner import ContentPlanner
@@ -448,9 +451,26 @@ class MirrorToSupabaseCostPrivacyTestCase(unittest.TestCase):
             reg.return_value.list.return_value = self.channels()
             ours = mod._operator_test()
         self.assertTrue(ours("news"))
-        self.assertTrue(ours(mod.DEFAULT_CHANNEL_ID))
         self.assertFalse(ours("cust"))
         self.assertFalse(ours("never-heard-of-it"))
+        # Not special-cased by name: the registry did not list "default" here, so it is not the operator's.
+        self.assertFalse(ours(mod.DEFAULT_CHANNEL_ID))
+
+    def test_the_default_channel_is_the_operators_through_the_real_registry(self):
+        # ChannelRegistry always lists it (the legacy one belongs to the operator's organization), so
+        # nothing has to add it by hand for the Actions poll's own channel to keep its USD.
+        with patch.object(mod, "ChannelRegistry", lambda: ChannelRegistry([], sync=MagicMock(enabled=False))):
+            ours = mod._operator_test()
+        self.assertTrue(ours(mod.DEFAULT_CHANNEL_ID))
+        self.assertFalse(ours("cust"))
+
+    def test_a_default_id_channel_owned_by_a_customer_organization_is_not_the_operators(self):
+        # A source (the channels table) may define the "default" row; its organization decides, not its name.
+        theirs = _dc_replace(legacy_default_channel(), org_id="11111111-1111-1111-1111-111111111111")
+        self.assertFalse(theirs.is_operators)
+        with patch.object(mod, "ChannelRegistry", lambda: ChannelRegistry([theirs])):
+            ours = mod._operator_test()
+        self.assertFalse(ours(mod.DEFAULT_CHANNEL_ID))
 
     def test_an_unreadable_registry_makes_every_channel_undecidable_not_a_customer(self):
         with patch.object(mod, "ChannelRegistry", side_effect=RuntimeError("down")):

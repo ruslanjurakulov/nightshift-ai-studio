@@ -291,6 +291,22 @@ class VideoCostsIdempotentTestCase(unittest.TestCase):
         self._costs_only(table)
         self.assertEqual([r["estimated_usd"] for r in table.rows], [None])
 
+    def test_mirror_video_costs_itself_is_default_deny_with_no_policy(self):
+        # The private sender is the one place a USD figure leaves the machine. Called with no policy at all (a
+        # future caller that forgets one) it must still send units and stages but never a provider's price, and
+        # a channel-less row (blank channel_id) is not "the operator's" by omission either.
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        self._cost(unit="tts_characters", quantity=300, estimated_usd=2.0, channel_id="")
+        table = FakeCostsTable()
+        with patch("modules.supabase_sync.requests.post", side_effect=table.post):
+            sent = self.sync._mirror_video_costs(self.store)
+        self.assertEqual(sent, 2)
+        self.assertEqual(len(table.rows), 2)
+        self.assertEqual({r["estimated_usd"] for r in table.rows}, {None})
+        self.assertEqual({r["unit"] for r in table.rows}, {"gemini_input_tokens", "tts_characters"})
+        # the local ledger keeps what was paid
+        self.assertEqual(sorted(r["estimated_usd"] for r in self.store.list_video_costs()), [1.0, 2.0])
+
     def test_a_channel_that_cannot_be_looked_up_is_skipped_not_sent_without_usd(self):
         # ignore-duplicates would lock a wrongly-NULL row in forever: wait until it can be decided
         self._cost(estimated_usd=1.0, channel_id="ours")
