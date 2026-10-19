@@ -55,6 +55,21 @@ PLANS = [
 ]
 
 
+_NO_PROMO = tempfile.mkdtemp()
+_PROMO_PATCH = mock.patch.object(mc, "PROMO_DIR", Path(_NO_PROMO))
+
+
+def setUpModule():
+    # The news and price tests below are about the news and price paths: the repository's own docs/promo/ files
+    # (tests/test_marketing_promo_worker.py covers those) must not add drafts to their counts.
+    _PROMO_PATCH.start()
+
+
+def tearDownModule():
+    _PROMO_PATCH.stop()
+    shutil.rmtree(_NO_PROMO, True)
+
+
 def env(**over):
     base = {"SUPABASE_URL": SUPABASE, "SUPABASE_SERVICE_KEY": SERVICE_KEY, "TELEGRAM_CHANNEL_BOT_TOKEN": TOKEN,
             "MARKETING_TELEGRAM_CHAT": "@nightshift_test", "NOTIFY_APP_ORIGIN": ORIGIN, "NIGHTSHIFT_MARKETING_POSTS": "on"}

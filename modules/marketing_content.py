@@ -1,10 +1,13 @@
-"""What the marketing worker may draft (docs/MARKETING_POSTS.md): news from reviewed files, and the price post.
+"""What the marketing worker may draft (docs/MARKETING_POSTS.md): news and promo from reviewed files, and the price post.
 
-Pure functions, no I/O except reading ``docs/news/*.json``. Two sources, and only two:
+Pure functions, no I/O except reading ``docs/news/*.json`` and ``docs/promo/*.json``. Three sources, and only these:
 
 * ``docs/news/<yyyy-mm-dd>-<slug>.json`` with ``"public": true``: words a person wrote and reviewed in a pull
   request. The worker re-checks the shape and the banned-claims list at runtime because the image it runs in is
   built from a commit, not from a green CI run.
+* ``docs/promo/<slug>.json`` with ``"public": true`` (migration 0110): a promo post, words a person wrote and
+  reviewed in a pull request, each with the evidence (a file or page in this repository) that proves what it says.
+  Same re-check at runtime, plus: not past ``valid_until``, no AI media flag, every figure named in an evidence claim.
 * The plans the database holds (names, credits per month, concurrency). **No currency amount, ever**: the
   database has none, and a figure typed from memory is exactly what rule 5 of CLAUDE.md forbids. If any fact is
   missing or unreadable the price post is NOT produced; there is no default.
@@ -26,6 +29,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 NEWS_DIR = REPO_DIR / "docs" / "news"
+PROMO_DIR = REPO_DIR / "docs" / "promo"
 
 LANGS = ("uz", "ru", "en")
 #: A news item whose `shipped` date is older than this is not drafted. The worker cannot see the database
@@ -149,6 +153,146 @@ def load_news(news_dir: Path = NEWS_DIR, today: Optional[_dt.date] = None) -> Tu
             source_ref=f"pr:#{item['pr']}", link=item.get("link"),
             facts={"file": path.name, "shipped": item["shipped"], "item_kind": item["kind"]}))
     return drafts, skipped
+
+
+# ── promo: docs/promo/<slug>.json (migration 0110) ──────────────────────────
+
+PROMO_KEYS = ("slug", "public", "link", "texts", "evidence", "valid_until", "ai_media")
+PROMO_TEXT_MIN, PROMO_TEXT_MAX = 20, 700
+EVIDENCE_MAX, CLAIM_MIN, CLAIM_MAX = 10, 10, 300
+#: marketing_posts.facts holds at most 8192 bytes; the worker keeps clear of it.
+PROMO_FACTS_MAX_BYTES = 8000
+PROMO_FILE = re.compile(r"^([a-z0-9-]{1,60})\.json$")
+#: A repository path (no leading slash, no ``..``; the brackets and parentheses of Next.js route folders are allowed)
+#: or an https URL.
+_EVIDENCE_PATH = re.compile(r"^[A-Za-z0-9._/\[\]()@+-]{1,200}$")
+_EVIDENCE_URL = re.compile(r"^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/%?&=#:@+-]*)?$")
+_HIDDEN = re.compile("[​-‏ -‮⁠-⁤⁦-⁩﻿­]")
+_CONTROL_NO_NEWLINE = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f]")
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def evidence_source_ok(source: Any) -> bool:
+    """A path in this repository (shape only; CI checks that it exists) or an https URL."""
+    if not isinstance(source, str) or len(source) > 200:
+        return False
+    if _EVIDENCE_URL.match(source):
+        return True
+    return bool(_EVIDENCE_PATH.match(source)) and not source.startswith("/") and ".." not in source and "//" not in source
+
+
+def promo_problem(item: Any, stem: str, today: _dt.date) -> Optional[str]:
+    """The reason code a promo file is refused for (``bad_*``, ``expired``, ``numbers_differ``), or None.
+
+    ``stem`` is the file name without ``.json``: it must equal ``slug``. ``public`` is the caller's concern (a file
+    that is not ``public: true`` is not a candidate at all). Does NOT check the banned-claims list (the caller does,
+    against the list it was given) and does NOT check that an evidence path exists (the image holds no command-center/;
+    tests/test_promo_format.py checks the paths in CI)."""
+    if not isinstance(item, dict):
+        return "not_an_object"
+    if set(item) != set(PROMO_KEYS):
+        return "bad_keys"
+    slug = item["slug"]
+    if not isinstance(slug, str) or not PROMO_FILE.match(slug + ".json") or slug != stem:
+        return "bad_slug"
+    if not isinstance(item["public"], bool):
+        return "bad_public"
+    link = item["link"]
+    if link is not None and (not isinstance(link, str) or not _LINK.match(link) or "//" in link or ".." in link):
+        return "bad_link"
+    if item["ai_media"] is not False:
+        return "bad_ai_media"       # no promo carries media in this slice: a flag that says otherwise is a mistake
+    until = item["valid_until"]
+    if until is not None:
+        try:
+            if not isinstance(until, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", until):
+                raise ValueError
+            last_day = _dt.date.fromisoformat(until)
+        except ValueError:
+            return "bad_valid_until"
+        if today > last_day:
+            return "expired"
+    texts = item["texts"]
+    if not isinstance(texts, dict) or set(texts) != set(LANGS):
+        return "bad_texts"
+    for lang in LANGS:
+        v = texts[lang]
+        if (not isinstance(v, str) or v != v.strip() or not (PROMO_TEXT_MIN <= len(v) <= PROMO_TEXT_MAX)
+                or _CONTROL_NO_NEWLINE.search(v) or _HIDDEN.search(v)):
+            return "bad_texts"
+    evidence = item["evidence"]
+    if not isinstance(evidence, list) or not (1 <= len(evidence) <= EVIDENCE_MAX):
+        return "bad_evidence"
+    for e in evidence:
+        if (not isinstance(e, dict) or set(e) != {"claim", "source"} or not isinstance(e["claim"], str)
+                or e["claim"] != e["claim"].strip() or not (CLAIM_MIN <= len(e["claim"]) <= CLAIM_MAX)
+                or not evidence_source_ok(e["source"])):
+            return "bad_evidence"
+    # A figure must be the same in every language, and be named in an evidence claim (which is what proves it).
+    figures = {lang: sorted(_NUMBER.findall(texts[lang])) for lang in LANGS}
+    if len({tuple(v) for v in figures.values()}) != 1:
+        return "numbers_differ"
+    claimed = "\n".join(e["claim"] for e in evidence)
+    if any(n not in _NUMBER.findall(claimed) for n in figures["en"]):
+        return "bad_evidence"
+    facts = _promo_facts(item, stem)
+    if len(json.dumps(facts, ensure_ascii=False).encode("utf-8")) > PROMO_FACTS_MAX_BYTES:
+        return "bad_evidence"
+    return None
+
+
+def _promo_facts(item: Mapping[str, Any], stem: str) -> Dict[str, Any]:
+    """What is stored beside the words so the owner can see what backs them. Deterministic: the same file gives the
+    same facts, so a second pass changes nothing."""
+    return {"file": stem + ".json", "valid_until": item["valid_until"],
+            "evidence": [{"claim": e["claim"], "source": e["source"]} for e in item["evidence"]]}
+
+
+def load_promo(promo_dir: Path = PROMO_DIR, today: Optional[_dt.date] = None,
+               news_dir: Path = NEWS_DIR) -> Tuple[List[Draft], Dict[str, int], List[Tuple[str, str, str]]]:
+    """Every ``public: true`` promo file that passes the runtime checks, a count of what was skipped and why, and
+    ``(slug, reason, detail)`` notes for the log (detail: the banned rule ids, otherwise empty; never the words).
+
+    ``public`` must be the JSON value ``true``. One bad file never stops the others. The banned list is read from
+    ``news_dir`` (one list for every kind of post); if it cannot be read nothing is drafted."""
+    today = today or _dt.datetime.now(_dt.timezone.utc).date()
+    drafts: List[Draft] = []
+    skipped: Dict[str, int] = {}
+    notes: List[Tuple[str, str, str]] = []
+
+    def skip(slug: str, reason: str, detail: str = "") -> None:
+        skipped[reason] = skipped.get(reason, 0) + 1
+        notes.append((slug, reason, detail))
+
+    for path in sorted(promo_dir.glob("*.json")):
+        m = PROMO_FILE.match(path.name)
+        if not m:
+            continue
+        stem = m.group(1)
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            skip(stem, "unreadable")
+            continue
+        if not isinstance(item, dict) or item.get("public") is not True:
+            skipped["not_public"] = skipped.get("not_public", 0) + 1
+            continue
+        problem = promo_problem(item, stem, today)
+        if problem:
+            skip(stem, problem)
+            continue
+        try:
+            hits = banned_hits("\n".join(item["texts"][lang] for lang in LANGS), news_dir)
+        except (OSError, ValueError, KeyError):
+            skip(stem, "banned_list_unreadable")
+            continue
+        if hits:
+            skip(stem, "banned_claim", ",".join(hits))
+            continue
+        drafts.append(Draft(
+            key=f"promo:{stem}:telegram", kind="promo", texts={lang: item["texts"][lang] for lang in LANGS},
+            source_ref=f"promo:{stem}", link=item["link"], facts=_promo_facts(item, stem)))
+    return drafts, skipped, notes
 
 
 # ── the price post: plans and entitlements, and nothing else ────────────────

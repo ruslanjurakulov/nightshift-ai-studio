@@ -1,7 +1,8 @@
 -- rollback_0110_marketing_promo_custom.sql — takes migration 0110 out again. OWNER-APPLY: paste into the Supabase
 -- SQL editor. Nothing in the app runs it. It is the same transaction a forward "undo" migration would be.
 --
--- WHEN YOU NEED IT. Almost never: 0110 is dormant (nothing calls owner_marketing_create or marketing_draft_upsert_v2).
+-- WHEN YOU NEED IT. Almost never: 0110 is dormant (only the owner's New post form calls owner_marketing_create, and only
+-- tools/marketing_worker.py, while NIGHTSHIFT_MARKETING_POSTS is on, calls marketing_draft_upsert_v2).
 -- To stop posting WITHOUT this file:  update public.marketing_settings set enabled = false where id;
 --
 -- WHAT IT DOES.

@@ -1,7 +1,7 @@
 # Marketing posts: the brand channel (Telegram first)
 
-Status: **designed; slices 1 to 6 are built and everything is OFF** (migration 0108, `docs/news/`, the sender, the
-worker and the owner page). Nothing posts anything today: the worker is not deployed and the page shows only an "off" note
+Status: **designed; slices 1 to 6 are built, and so is the promo half of the worker (below), and everything is OFF** (migration 0108,
+`docs/news/`, `docs/promo/`, the sender, the worker and the owner page). Nothing posts anything today: the worker is not deployed and the page shows only an "off" note
 until the owner switches them on. "(unverified)" marks a fact that was not confirmed in the repository or in the official
 documentation.
 
@@ -31,6 +31,7 @@ documentation.
 
 ```
 docs/news/<date>-<slug>.json ──► marketing worker ──► marketing_draft_upsert ──► marketing_posts (draft)
+docs/promo/<slug>.json      ──►  (promo: marketing_draft_upsert_v2, migration 0110)
 plans / plan_entitlements   ──►  (tools/marketing_worker.py)                           │
                                                                               owner page /{channel}/marketing
                                               owner_marketing_edit / approve / reject / kill
@@ -46,7 +47,7 @@ One file per announceable change in `docs/news/`, added in the pull request that
 ([format and rules](news/README.md)). Claude drafts the three texts in that pull request and the owner merges it,
 so every claim is a reviewed diff line. The worker image contains the deployed commit's `docs/` (the Dockerfile
 copies the repository and `.dockerignore` does not exclude `docs/`). `deploy_web.yml` runs on a push to `main` that
-touches `docs/news/**` (as well as `modules/**`, `tools/**`, `deploy/**` and the rest), and `remote-deploy.sh` starts the
+touches `docs/news/**` or `docs/promo/**` (as well as `modules/**`, `tools/**`, `deploy/**` and the rest), and `remote-deploy.sh` starts the
 marketing worker with `up -d --build` while it is switched on, so a merged news file reaches the worker's image on
 that deploy. Only what is deployed can be announced. `public: true` is a human decision per file; security work
 is never news by default. **No language model in phase 1**: templates plus Claude-written pull request text remove a
@@ -149,6 +150,7 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
 | 3 | Telegram sender: `modules/channel_post.py` (`sendMessage`, `sendPhoto`, `sendVideo`), the fake server | built, unused until the worker is switched on |
 | 4 | `tools/marketing_worker.py`, compose service `marketing-worker` (profile `marketing`), `deploy/.env.marketing.example`, deploy wiring | built, **off by default** |
 | 5 | News drafting from `docs/news`, price template from the database (`modules/marketing_content.py`) | built, off with the worker |
+| 5b | Promo drafting from `docs/promo/*.json` through `marketing_draft_upsert_v2` (0110), three first files, CI validator `tests/test_promo_format.py` | built, off with the worker |
 | 6 | Owner page `/{channel}/marketing`, `POST /api/marketing`, en/ru/uz strings, confirm sheets, all states, 390 px (below) | built, **off by default** (`NIGHTSHIFT_MARKETING_POSTS`) |
 | 7 | Operator-bot alert kind `marketing` and `/marketing` (counts, kinds and closed codes only; no text, no approve) through migration 0109 `operator_marketing_summary()` | built, information only |
 | 8 | Showcase mark/revoke, public bucket, showcase posts (the biggest unknown: where a finished video file lives and how to export it) | not started |
@@ -267,8 +269,8 @@ drafted** (`NEWS_MAX_AGE_DAYS` in `modules/marketing_content.py`; the log says h
 announce it later. After each drafting pass the log says how many new drafts are waiting for approval.
 
 **Each loop** (a minute apart): (1) at most once an hour, draft: every `docs/news/*.json` with `"public": true`
-(re-checked: shape, banned claims, not in the future; a file that fails is skipped by reason, never posted) and the
-month's price post. **Each draft is first run through the sender's own `render`** (`channel_post.preflight`); a draft the sender
+(re-checked: shape, banned claims, not in the future; a file that fails is skipped by reason, never posted), every
+`docs/promo/*.json` that passes the promo rules (below) and the month's price post. **Each draft is first run through the sender's own `render`** (`channel_post.preflight`); a draft the sender
 would refuse (`too_long`, `unsafe_text`, `bad_link`, `bad_texts`, or `no_origin` for a link with no usable site origin) is not
 stored, so it never reaches the owner only to fail after approval and use up its key. The log carries the count and the codes,
 never the words; (2) claim **at most one** approved post, send it, settle it.
@@ -362,9 +364,9 @@ kill switch, run `update public.marketing_settings set enabled = false where id;
 
 ## Promo and custom posts (migration `0110_marketing_promo_custom.sql`, Telegram only, dormant)
 
-Two more kinds, `promo` (drafted by the worker from a reviewed repository file, a later slice) and `custom` (typed by the
-owner on the page: the "New post" form, below). The page's **New post** form calls `owner_marketing_create`; **nothing calls
-`marketing_draft_upsert_v2` yet** (the worker half of `promo` is a later slice).
+Two more kinds, `promo` (drafted by the worker from a reviewed repository file in `docs/promo/`) and `custom` (typed by the
+owner on the page: the "New post" form, below). The page's **New post** form calls `owner_marketing_create`; the worker calls
+`marketing_draft_upsert_v2` for `promo` ("Promo files", below) and for nothing else.
 
 - **Same life as news.** Draft, the owner's approval of the exact words (`approved_hash`), the 72 hour expiry, the kill
   switch, the claim. No 0108 function, trigger or the status machine is redefined; the live worker keeps calling the same
@@ -393,6 +395,59 @@ owner on the page: the "New post" form, below). The page's **New post** form cal
   opens and sent with every attempt, so a double tap or a retry is one post (`created: false`); closing the form and opening it
   again is a new post. `promo` and `custom` are known kinds on the card (title, Approve, Edit, Reject); a kind the page does not
   know is still listed as "Other".
+- **Promo files (the worker half of `promo`).** `docs/promo/<slug>.json`, one file per post, added in a pull request the
+  owner merges (the same trust chain as `docs/news`). The slug is `[a-z0-9-]{1,60}` and equals the file name; it becomes
+  the key `promo:<slug>:telegram` and the source `promo:<slug>`.
+
+  ```json
+  {
+    "slug": "faceless-video-from-topic",
+    "public": true,
+    "link": "/pricing",
+    "texts": { "uz": "...", "ru": "...", "en": "..." },
+    "evidence": [ { "claim": "What is being claimed, as a sentence.", "source": "main.py" } ],
+    "valid_until": "2026-12-17",
+    "ai_media": false
+  }
+  ```
+
+  Every key is required. The worker drafts a file only if **all** of this holds (`modules/marketing_content.py`
+  `load_promo`, re-checked at runtime because the image is built from a commit, not from a green CI run); any other file is
+  skipped by a reason code that is counted and logged (`promo <slug> not drafted: <reason>`, never the words):
+
+  | Rule | Reason code when it fails |
+  |---|---|
+  | `public` is the JSON `true` (anything else is silently not a candidate) | (none) |
+  | exactly the seven keys; `slug` equals the file name | `bad_keys`, `bad_slug` |
+  | `valid_until` is a real date or `null`, and today (UTC) is not after it | `bad_valid_until`, `expired` |
+  | `texts` has `uz`, `ru` and `en` and nothing else; each 20 to 700 characters, trimmed, no control (a new line is allowed), invisible or direction-changing character | `bad_texts` |
+  | `evidence`: 1 to 10 entries `{claim, source}`; `source` is a repository path or an `https://` URL; every number in the texts is the same in all three languages and appears in an evidence claim | `bad_evidence`, `numbers_differ` |
+  | `link` is `null` or a path the database accepts (`^/[a-z0-9][a-z0-9/_-]{0,78}$`, no `//`, no `..`; so `/` alone is not allowed) | `bad_link` |
+  | `ai_media` is `false` (no promo carries media in this slice; a flag that says otherwise is a mistake) | `bad_ai_media` |
+  | no banned wording (`docs/news/banned-claims.json`, the same `banned_hits` as news, provider names included) | `banned_claim` (the rule ids are logged) |
+  | the sender's own `render` accepts it (4096 / 1024 UTF-16 limits, HTML escaping, nothing key- or e-mail-shaped, a link needs a site origin) | counted as `not_drafted_<code>` |
+
+  "At least one evidence entry per factual claim" is a rule for the author and the reviewer: a program cannot tell which
+  sentences are factual. What it checks is that evidence exists, has the right shape, names every figure, and (in CI,
+  `tests/test_promo_format.py`) that each repository path exists. Pick evidence a reader can open: a route, a component, a
+  migration, the public page that says it.
+
+  The draft goes to `marketing_draft_upsert_v2` with the arguments of the 0108 function (`p_kind 'promo'`, `p_media_path`
+  and `p_facts_as_of` null, `p_facts` = the file name, `valid_until` and the evidence: the record of what backs the words; the owner page does not
+  read `facts` yet, so it is for the SQL editor and the audit trail). It is a **draft**: the worker never approves, claims or sends from this path. Drafting is not capped (any number of
+  files may be drafted); sending is, by the shared 2 posts per rolling 7 days. The result:
+
+  - `created: true`: a new draft waits for the owner.
+  - `created: false, updated: true`: the draft nobody edited followed a change to the reviewed file.
+  - `created: false, updated: false`: **the post already exists**; the worker logs `promo <slug> already exists (status X)`
+    and counts `promo_exists_<status>`. A promo key is permanent: a rejected or expired promo is never redrafted, and a draft
+    the owner edited is never overwritten (the SQL refuses). To say something again, publish it as a new file with a new slug.
+
+  A promo file also expires on its own: past `valid_until` nothing new is drafted from it (a draft that already exists is
+  untouched). Keep `valid_until` about 60 days out. The repository plumbing: `.gitignore` re-includes `docs/promo/*.json`
+  (the blanket `*.json` rule would hide them), `deploy_web.yml` rebuilds the worker when `docs/promo/**` changes, and
+  `.dockerignore` leaves `docs/` in the image. `tests/test_promo_format.py` fails the pull request on a bad file, a missing
+  evidence path or a removed plumbing line. The Uzbek and Russian wording is a draft until a native reader has seen it.
 - **Banned wording on the page.** The Next app cannot read `docs/news/banned-claims.json`, so `command-center/lib/marketing-banned.ts`
   holds a copy of the rules and provider names (translated to JavaScript regular expressions with a Unicode word boundary).
   `command-center/tests/marketing-banned.test.ts` fails if the copy differs from the JSON by one pattern, and both it and

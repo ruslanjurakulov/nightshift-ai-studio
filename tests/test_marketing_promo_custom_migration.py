@@ -181,7 +181,7 @@ class MarketingPromoCustomMigration(unittest.TestCase):
         self.assertIn("check (kind in ('news', 'showcase', 'price'))", ROLLBACK)
         self.assertNotRegex(re.sub(r"--[^\n]*", "", ROLLBACK), r"(?im)^\s*(delete|truncate|drop table)\b")
 
-    def test_only_the_new_post_form_calls_owner_marketing_create_and_nothing_calls_the_worker_function_yet(self):
+    def test_only_the_new_post_form_calls_owner_marketing_create_and_only_the_worker_calls_the_promo_function(self):
         # The existing allow-lists (tests/test_marketing_posts_migration.py and tests/security/test_sec_marketing_posts.py)
         # match owner_marketing_ and marketing_draft_upsert, which the two new names contain. This one pins the stricter
         # fact for 0110 alone. owner_marketing_create is called by the owner page's "New post" form and nowhere else (the
@@ -211,7 +211,9 @@ class MarketingPromoCustomMigration(unittest.TestCase):
         # the page's own tests (command-center/tests/marketing-*) name the function they pin; nothing else may
         stray = [f for f in create if f not in create_users and not f.startswith("command-center/tests/marketing-")]
         self.assertEqual(stray, [])
-        self.assertEqual([f for f in upsert_v2 if not f.startswith("command-center/tests/marketing-")], [])
+        # The poster worker (slice 4) is the one caller of the promo function; no page, route or bot calls it.
+        self.assertEqual([f for f in upsert_v2 if not f.startswith("command-center/tests/marketing-")],
+                         ["tools/marketing_worker.py"])
         # and the form really is a caller (the guard above would pass vacuously if it were removed)
         self.assertIn("command-center/lib/marketing-posts.ts", create)
 
