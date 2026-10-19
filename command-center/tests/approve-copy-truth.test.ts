@@ -291,8 +291,12 @@ describe("CLAUDE.md rule 3 tells the truth", () => {
   it("no longer says the next pipeline run reads the dashboard's row and acts", () => {
     expect(rules).not.toMatch(/the next\s+pipeline run reads it and acts/i);
   });
-  it("says what is read, what Approve records, and that Phase 1b is not built", () => {
+  it("says what is read, what Approve records, and that publishing on approval is per channel, off by default and read back", () => {
     expect(rules).toMatch(/approve_video_publish/);
-    expect(rules).toMatch(/Phase 1b \(the bot flips privacy\) is not built yet/);
+    expect(rules).not.toMatch(/Phase 1b \(the bot flips privacy\) is not built yet/);
+    expect(rules).toMatch(/"publish when approved" \(migration 0113/);
+    expect(rules).toMatch(/second per-channel switch, off by default/);
+    expect(rules).toMatch(/`modules\/visibility_publish\.py` is the only code\s+that may change an existing video's privacy/);
+    expect(rules).toMatch(/only for a request whose read-back of YouTube said public/);
   });
 });
