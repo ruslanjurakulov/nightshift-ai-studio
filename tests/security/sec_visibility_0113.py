@@ -59,5 +59,5 @@ def seed(conn, sc) -> None:
                 "expires_at, status, reason, finished_at) "
                 "values (%s, %s, %s, %s, now(), now() + interval '24 hours', 'refused', 'not_enabled', now()) returning 1",
                 [t.org, t.channel, t.video, hashlib.sha256(f"seed-{t.key}".encode()).hexdigest()])
-        s.rows("insert into public.youtube_quota_ledger (day, project, source, units) "
-               "values (current_date, 'seed', 'visibility', 50) returning 1")
+        s.rows("insert into public.youtube_quota_ledger (day, project, source, org_id, units) "
+               "values (current_date, 'seed', 'visibility', '00000000-0000-0000-0000-000000000000', 50) returning 1")

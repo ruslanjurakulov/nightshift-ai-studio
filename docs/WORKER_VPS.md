@@ -147,6 +147,7 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # "Tasdiqdan keyin nashr qilish" (migration 0113, modules/visibility_publish.py). DEFAULT: O'CHIQ.
 # NIGHTSHIFT_VISIBILITY_PUBLISH=on          # faqat "on" bo'lsa ishlaydi (0113 qo'llanganidan keyin)
 # NIGHTSHIFT_VISIBILITY_DAILY_UNITS=1000    # bu funksiyaning kunlik YouTube kvotasi (videos.update = 50 birlik)
+# NIGHTSHIFT_VISIBILITY_ORG_PERCENT=50      # bitta tashkilotning shu kvotadagi ulushi, foiz 1-100 (sukut bo'yicha 50)
 # NIGHTSHIFT_YT_QUOTA_PROJECT=default       # Google Cloud loyihasining belgisi (kvota jurnali uchun)
 ```
 

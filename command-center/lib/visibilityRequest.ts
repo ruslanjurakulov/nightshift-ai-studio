@@ -18,7 +18,7 @@ export const VISIBILITY_REASONS = [
   "not_enabled", "approval_superseded", "channel_not_connected",
   "scope_missing", "token_expired", "quota_exceeded", "rate_limited", "video_not_found_on_youtube", "channel_mismatch",
   "still_processing", "rejected_by_youtube", "privacy_changed", "platform_refused", "platform_kept_private",
-  "platform_error", "readback_failed",
+  "platform_error", "readback_failed", "status_unreadable",
   "interrupted", "worker_error",
 ] as const;
 export type VisibilityReason = (typeof VISIBILITY_REASONS)[number];
@@ -28,7 +28,9 @@ export function knownVisibilityReason(raw: unknown): VisibilityReason | null {
 }
 
 /** What `retry_video_visibility` answers with besides success (`{ ok: false, error }`), plus the two it raises. */
-export const RETRY_ERRORS = ["rate_limited", "not_retryable", "approval_expired", "approval_superseded", "not_enabled", "forbidden", "not_found"] as const;
+export const RETRY_ERRORS = [
+  "rate_limited", "not_retryable", "approval_expired", "approval_superseded", "not_enabled", "retry_limit", "forbidden", "not_found",
+] as const;
 export type RetryError = (typeof RETRY_ERRORS)[number];
 
 export function knownRetryError(raw: unknown): RetryError | null {
@@ -37,7 +39,10 @@ export function knownRetryError(raw: unknown): RetryError | null {
 
 /** The columns a member may read (the worker's own columns are not granted to them). */
 export const VISIBILITY_COLUMNS =
-  "id,status,reason,attempts,approved_cut_sha256,decided_at,expires_at,next_attempt_at,before_privacy,after_privacy,finished_at,created_at";
+  "id,status,reason,attempts,lifetime_attempts,approved_cut_sha256,decided_at,expires_at,next_attempt_at,before_privacy,after_privacy,finished_at,created_at";
+
+/** The database stops carrying a request out after this many claims over its lifetime (migration 0113). */
+export const MAX_LIFETIME_ATTEMPTS = 6;
 
 export const VISIBILITY_STATUSES = ["queued", "applied", "refused", "failed", "expired"] as const;
 export type VisibilityStatus = (typeof VISIBILITY_STATUSES)[number];
@@ -47,6 +52,8 @@ export interface VisibilityRequestRow {
   status: VisibilityStatus;
   reason: VisibilityReason | null;
   attempts: number;
+  /** Every claim ever made of this request: "try again" is offered while it is under {@link MAX_LIFETIME_ATTEMPTS}. */
+  lifetime_attempts: number;
   approved_cut_sha256: string;
   decided_at: string;
   expires_at: string;
@@ -71,6 +78,7 @@ export function parseVisibilityRow(raw: unknown): VisibilityRequestRow | null {
     status: status as VisibilityStatus,
     reason: knownVisibilityReason(r.reason),
     attempts: typeof r.attempts === "number" ? r.attempts : 0,
+    lifetime_attempts: typeof r.lifetime_attempts === "number" ? r.lifetime_attempts : 0,
     approved_cut_sha256: typeof r.approved_cut_sha256 === "string" ? r.approved_cut_sha256 : "",
     decided_at: r.decided_at,
     expires_at: r.expires_at,
@@ -137,7 +145,9 @@ export function visibilityView(request: VisibilityRequestRow | null, video: Appr
     case "refused":
       return request.reason === "approval_expired" ? { kind: "expired" } : { kind: "refused", reason: request.reason ?? "worker_error" };
     case "failed":
-      return ended ? { kind: "expired" } : { kind: "failed", reason: request.reason ?? "worker_error", retryable: true };
+      return ended
+        ? { kind: "expired" }
+        : { kind: "failed", reason: request.reason ?? "worker_error", retryable: request.lifetime_attempts < MAX_LIFETIME_ATTEMPTS };
     default:
       return { kind: "none" };
   }

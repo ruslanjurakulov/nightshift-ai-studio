@@ -2176,6 +2176,7 @@ export const uz: Dictionary = {
         not_enabled: "Bu kanal uchun “Tasdiqdan keyin nashr qilish” oʻchirilgan.",
         forbidden: "Buni qilishga ruxsatingiz yoʻq.",
         not_found: "Soʻrov topilmadi.",
+        retry_limit: "Bu soʻrov ruxsat etilgan darajada koʻp urinib koʻrildi. Videoni YouTube Studio’da tekshiring yoki qaytadan tasdiqlang.",
         failed: "Qayta urinib boʻlmadi. Hech narsa oʻzgarmadi.",
       },
       reasons: {
@@ -2206,6 +2207,7 @@ export const uz: Dictionary = {
         platform_kept_private: "YouTube soʻrovni qabul qildi, lekin video hamon shaxsiy. YouTube auditidan oʻtmagan ilovaning videolarini shaxsiy bilan cheklashi mumkin. Uni YouTube Studio’da ommaviy qiling.",
         platform_error: "YouTube tomonida xatolik yuz berdi.",
         readback_failed: "Oʻzgarish amalga oshgan boʻlishi mumkin, lekin tasdiqlab boʻlmadi. Videoni YouTube Studio’da tekshiring.",
+        status_unreadable: "YouTube videoning toʻliq sozlamalarini qaytarmadi, shuning uchun hech narsa oʻzgartirilmadi. Videoni YouTube Studio’da ommaviy qiling.",
         interrupted: "Ishchi dastur tugatmasdan toʻxtadi.",
         worker_error: "Ishchi dastur xatoga uchradi. Biror narsa oʻzgargani maʼlum emas.",
       },

@@ -13,12 +13,18 @@ queue worker) lets a worker act on that decision, **only on a channel whose admi
 2. A person (admin of that workspace, a real member of it) watches the video and presses **Approve and publish** (the label says
    publish only on such a channel; everywhere else it is "Approve"). `approve_video_publish` records the decision as in 0112 and,
    because the switch is on, queues one `video_visibility_requests` row for this approval act.
-3. The queue worker (`NIGHTSHIFT_VISIBILITY_PUBLISH=on`, off by default) claims the row and, before and again immediately before the
-   write, asks the database: `video_publish_refusal(video_id, cut_sha256)` with the hash recorded at approval (uploaded, gate verdict
-   stored and allowed, same cut, approved by a person, not expired, not public already) and `visibility_request_refusal` (switch still
-   on, still THE approval, channel connected). Any word ends the request without a YouTube call.
-4. It checks the token's scopes, the day's quota budget (`youtube_quota_ledger`, write = 50 units), reads the video from YouTube
-   (right channel, processed, private), sends `videos.update(part="status")` once, then **reads the privacy back**.
+3. The queue worker (`NIGHTSHIFT_VISIBILITY_PUBLISH=on`, off by default) claims the row (organizations are served in turn) and asks the
+   database: `video_publish_refusal(video_id, cut_sha256)` with the hash recorded at approval (uploaded, gate verdict stored and
+   allowed, same cut, approved by a person, not expired, not public already) and `visibility_request_refusal` (switch still on, still
+   THE approval, channel still in the organization it was queued for, channel connected). That early pair is a cheap filter. The
+   check that counts is the last one: `mark_visibility_submitting` asks the same two questions again **inside the transaction that
+   sets the "the write may be sent" marker**, under row locks (the channel row FOR SHARE, the request FOR UPDATE, the video FOR
+   SHARE), so a cut change, a repair, an expiry, a privacy change or a switch turned off between the early check and the marker is
+   caught there and nothing is sent. Any word ends the request without a YouTube write.
+4. It checks the token's scopes (and that it knows which YouTube channel the token must reach), the quota budgets (the day's and the
+   organization's share; write = 50 units), reads the video from YouTube (right channel, processed, private, **and the read contains the
+   made-for-kids declaration and the privacy**, else `status_unreadable` and nothing is sent: `part=status` replaces the whole part),
+   sends `videos.update(part="status")` once, then **reads the privacy back**.
 5. The row ends as `applied` only if YouTube then says `public`; `refused` with `platform_kept_private` if the call succeeded and the
    video is still private; otherwise another closed word. `videos.privacy` follows the read-back alone. The panel says
    Queued / Published (only from that read-back) / Not published (reason in words) / Expired.
@@ -32,9 +38,66 @@ Every failure leaves the video private, which is the safe state.
 | `channels.publish_on_approve` | per channel, admin-only RPC | **off** |
 | `NIGHTSHIFT_VISIBILITY_PUBLISH` | the worker step itself (`on` / `1` / `true` / `yes`) | **off** |
 | `NIGHTSHIFT_VISIBILITY_DAILY_UNITS` | this feature's YouTube units per Pacific day, 0-10000 | 1000 (about 19 flips) |
+| `NIGHTSHIFT_VISIBILITY_ORG_PERCENT` | one organization's share of that day, percent 1-100 (100 = no per-organization cap) | **50** (about 9 flips a day per organization) |
 | `NIGHTSHIFT_YT_QUOTA_PROJECT` | label of the Google Cloud project in the ledger | `default` |
+| `PUBLISH_ON_APPROVE_RELEASED` (the Command Center's server, a repository variable) | shows customers the Channels switch and "Approve and publish" | **off** (empty) |
 
 A request nobody carries out stays `queued` until its approval ends (24 hours) and becomes `expired`.
+
+## Fairness and bounds
+
+* **Quota.** The ledger holds the project's whole day and, per organization, its spend (`youtube_quota_ledger.org_id`; the all-zero id is
+  the whole day). A take passes only if both ceilings hold, serialized per project, and a refused take records nothing. One tenant can
+  therefore use at most `NIGHTSHIFT_VISIBILITY_ORG_PERCENT` of the day (default 50%: with the default 1000 units that is about 9 flips a
+  day per organization; the rest of its requests end `failed / quota_exceeded` and an administrator tries again later). A read-back is
+  recorded against the organization even past its share (it is never withheld: the read-back is the truth).
+* **Order.** `claim_visibility_request` serves the organization served longest ago first, so one tenant's pile of requests does not
+  keep another's waiting.
+* **Attempts.** A round is three claims; "Try again" (`retry_video_visibility`) starts a new round but the request's
+  `lifetime_attempts` never resets: **six claims in all**, then the request stays `failed` and "Try again" answers `retry_limit` (the panel
+  stops offering it). A person then checks YouTube Studio or approves again.
+
+## The switch turned off while a write may be on its way
+
+Turning the channel off refuses every waiting request at once, **except one whose write was already marked** (`submitting_at` set):
+refusing it could leave the database saying "not published" about a video that is public. That request stays `queued`; the worker
+reads YouTube back and `finish_visibility_request` (which never looks at the switch) records what YouTube says: `applied` with
+`after_privacy = 'public'`, `videos.privacy` mirrored, an audit row (`write_marked: true`). The expiry sweep leaves a marked request
+alone for the same reason. If the worker died, the next claim (told to `reconcile`) READS YouTube first even when the database now says
+no (switch off, approval expired): public means `applied`, anything else ends with the database's own word, and YouTube is never written
+to on that path. If that read fails (token, quota, 5xx) the request goes back to the queue rather than ending as "not published".
+The worker checks the database's answer to its own finish: a request the database did not record is logged at ERROR for `applied`
+(YouTube said public, the request does not) and at WARNING otherwise, and is never logged as applied.
+
+`platform_kept_private` means: the write was accepted and **two** reads (a few seconds apart) both said private. A slower propagation than
+that would read the same and is not corrected afterwards (the request is final); check Studio if in doubt.
+
+**Reconcile cannot tell who made the video public.** After a crash, public on that first read is recorded as `applied`, whether our write
+landed or a person made it public in Studio in the same minutes. The audit row says the write was marked (`write_marked`), nothing
+more; the read-back is the truth being recorded, not the cause.
+
+A channel moved to another organization comes out switched off (the trigger resets it whoever moves it), and a request queued for the
+old organization is refused (`not_enabled`) by the re-check.
+
+## Releasing it
+
+Hidden until released, on purpose: the legal pages and the Google consent text still say Nightshift never edits an existing video.
+The Command Center shows **nothing** of the feature until the server flag `PUBLISH_ON_APPROVE_RELEASED` is on (default off; an unset,
+empty or odd value is off; it is a server variable read per request, **not** `NEXT_PUBLIC_`, so no build can leave it on). With it off
+the Channels page draws no switch (the channel's value is not even sent to the browser), the video page's key reads "Approve"
+everywhere, there is no "Approve and publish" and no request status. The database functions stay callable (an administrator who
+calls the RPC by hand can still switch a channel on; the worker then still has its own switch): the flag hides the doors, it does not
+lock them. Release, in this order, each step only after the one before:
+
+1. Owner approves the CLAUDE.md rule 2/3 amendment (`docs/proposals/claude-md-rules-2-3-phase-1b.patch`) and merges.
+2. Legal text and Google consent text changed (the section above) and, if Google asks, the OAuth app re-verified.
+3. The live test below passed on a disposable channel (the three unverified answers recorded).
+4. Worker: `NIGHTSHIFT_VISIBILITY_PUBLISH=on` (+ ceiling and organization share if the defaults are wrong).
+5. Web: repository variable `PUBLISH_ON_APPROVE_RELEASED=on`, then deploy web (it is a key of `deploy/.env.web.example`, mapped in
+   `deploy_web.yml`; a restart is enough, it is read per request).
+6. Only then tell customers; each channel's administrators still opt in per channel.
+
+To take it away again: unset the web variable (the UI disappears), unset the worker variable, switch channels off.
 
 ## Deploy order and undo
 

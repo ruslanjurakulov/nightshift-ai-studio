@@ -207,7 +207,9 @@ describe("publish when approved (migration 0113): no copy claims publishing unle
     expect(panel).toContain("const publishing = publishOnApprove && !autoPublish;");
     // the page hands over the switch as read from the channel row: true only for an explicit true, false on any error
     const page = SRC("app/(app)/[channel]/videos/[id]/page.tsx");
-    expect(page).toContain("publishOnApprove = !sw.error && (sw.data as { publish_on_approve?: unknown } | null)?.publish_on_approve === true;");
+    // ... and only once the owner has released the feature (server flag, default off): lib/server/release-flags.ts
+    expect(page).toContain("publishOnApprove = released && !sw.error && (sw.data as { publish_on_approve?: unknown } | null)?.publish_on_approve === true;");
+    expect(page).toContain("const released = publishOnApproveReleased();");
     // no other component or page names the label
     const others = [...walk("components"), ...walk("app")].filter((f) => !/ReviewPanel\.tsx$/.test(f) && /\bapprovePublish\b/.test(SRC(f)));
     expect(others).toEqual([]);

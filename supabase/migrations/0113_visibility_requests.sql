@@ -15,24 +15,31 @@
 --       set_channel_publish_on_approve(), which an administrator of the channel's organization (a real member of it, as for
 --       approving) calls; it audits the change. No browser UPDATE: the browser roles' column grants (0086) do not name the
 --       column and stay as they are, and a trigger refuses the API roles (anon, authenticated and the SERVICE KEY) a write
---       outside that function. Turning it off at once refuses the channel's queued requests (not_enabled).
+--       outside that function. Turning it off at once refuses the channel's queued requests (not_enabled) EXCEPT one whose
+--       write may already be on its way (submitting_at set): that one stays, and the worker records what YouTube reports.
+--       A channel moved to another organization comes out switched off (the same trigger).
 --  2. video_visibility_requests   one row per approval act: unique (video_id, approved_cut_sha256, decided_at), so a replay
 --       never queues twice. status is closed: queued | applied | refused | failed | expired. reason is a closed WORD
 --       (visibility_reason_words()), never a provider's text. 'applied' is only possible with after_privacy = 'public', which
 --       the worker records from a read-back of YouTube after its call, never from the call's own answer (a CHECK and a trigger
 --       keep it so). A finished row is final, except that a person may re-queue a FAILED one (retry_video_visibility) while
---       the approval still holds. Members read their organization's channels' rows (RLS, columns without worker internals);
+--       the approval still holds, at most twice over a request's lifetime (lifetime_attempts, six claims in all). Members read their organization's channels' rows (RLS, columns without worker internals);
 --       NOBODY writes it from an API role, the service key included: every write is one of the functions below.
---  3. youtube_quota_ledger        the YouTube units this feature spent, per Pacific-time day (YouTube's quota day) and project,
---       with a ceiling the worker passes (youtube_quota_take). videos.update costs 50 units.
+--  3. youtube_quota_ledger        the YouTube units this feature spent, per Pacific-time day (YouTube's quota day), project and
+--       organization, with two ceilings the worker passes (youtube_quota_take): the whole day's, and one organization's share of
+--       it, so a single tenant cannot use the day up. The claim hands requests out organization by organization (the one served
+--       longest ago first). videos.update costs 50 units.
 --  4. approve_video_publish()     0112's body verbatim plus ONE block after its audit write: when the channel's switch is on it
 --       queues one request for that approval act and writes one 'video.publish_queued' audit row, and the answer gains
 --       queued/request_id. With the switch off the function is byte-identical in effect to 0112 (same writes, same answer).
 --  5. the worker's functions, SERVICE KEY ONLY: claim_visibility_request (lease, backoff, three attempts, expiry sweep),
 --       visibility_request_refusal (the request-level re-check: switch, same approval act, expiry, channel connected),
---       mark_visibility_submitting (set right before the one YouTube write), finish_visibility_request (the only writer of a
---       result; mirrors videos.privacy from the read-back only), youtube_quota_take. The video-level re-check is 0112's
---       video_publish_refusal(video_id, cut_sha256), which the worker calls with the cut hash recorded at approval.
+--       mark_visibility_submitting (the LAST check and the marker "the write may be sent", in one transaction under row locks:
+--       the channel row FOR SHARE, the request FOR UPDATE, the video FOR SHARE; it returns 'ok' or the closed word that says no),
+--       finish_visibility_request (the only writer of a result; mirrors videos.privacy from the read-back only; accepts a
+--       request whose write was marked even if the switch was turned off meanwhile), youtube_quota_take. The video-level
+--       re-check is 0112's video_publish_refusal(video_id, cut_sha256), which the worker calls with the cut hash recorded at
+--       approval, early (a cheap filter) and again inside mark_visibility_submitting (the one that counts).
 --  6. retry_video_visibility()    an administrator re-queues a FAILED request (token reconnected, quota back) while the same
 --       approval still holds; never a refused, applied or expired one, never a different approval.
 --  7. audit_action_allowed()      0112's list verbatim plus channel.publish_on_approve, video.publish_queued,
@@ -92,6 +99,12 @@ comment on column public.channels.publish_on_approve is
 create or replace function public.channels_publish_switch_guard() returns trigger
   language plpgsql set search_path = public, pg_temp as $$
 begin
+  -- A channel that moves to another organization leaves its switch behind: the new organization's administrators have not
+  -- chosen it. Whoever moves it (the move itself is guarded by 0018), the switch comes out off.
+  if tg_op = 'UPDATE' and new.org_id is distinct from old.org_id then
+    new.publish_on_approve := false;
+    return new;
+  end if;
   if current_user not in ('anon', 'authenticated', 'service_role') then
     return new;
   end if;
@@ -110,7 +123,7 @@ $$;
 
 drop trigger if exists channels_publish_switch_guard on public.channels;
 create trigger channels_publish_switch_guard
-  before insert or update of publish_on_approve on public.channels
+  before insert or update of publish_on_approve, org_id on public.channels
   for each row execute function public.channels_publish_switch_guard();
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -130,7 +143,7 @@ create or replace function public.visibility_reason_words() returns text[]
     -- YouTube and the token
     'scope_missing', 'token_expired', 'quota_exceeded', 'rate_limited', 'video_not_found_on_youtube', 'channel_mismatch',
     'still_processing', 'rejected_by_youtube', 'privacy_changed', 'platform_refused', 'platform_kept_private',
-    'platform_error', 'readback_failed',
+    'platform_error', 'readback_failed', 'status_unreadable',
     -- ours
     'interrupted', 'worker_error'
   ]::text[]
@@ -149,6 +162,8 @@ create table if not exists public.video_visibility_requests (
   status              text not null default 'queued' check (status in ('queued', 'applied', 'refused', 'failed', 'expired')),
   reason              text,
   attempts            integer not null default 0 check (attempts between 0 and 10),
+  -- every claim ever made of this request: "try again" resets attempts, never this. Six in all (two rounds of three).
+  lifetime_attempts   integer not null default 0 check (lifetime_attempts between 0 and 10),
   next_attempt_at     timestamptz not null default now(),
   claimed_by          text check (claimed_by is null or claimed_by ~ '^[A-Za-z0-9._:-]{1,80}$'),
   claimed_at          timestamptz,
@@ -175,6 +190,8 @@ comment on table public.video_visibility_requests is
 
 create index if not exists video_visibility_requests_claim_idx
   on public.video_visibility_requests (next_attempt_at, id) where status = 'queued';
+create index if not exists video_visibility_requests_org_served_idx
+  on public.video_visibility_requests (org_id, claimed_at desc);
 create index if not exists video_visibility_requests_video_idx
   on public.video_visibility_requests (video_id, created_at desc);
 create index if not exists video_visibility_requests_channel_idx
@@ -211,18 +228,20 @@ create trigger video_visibility_requests_guard
   before update or delete on public.video_visibility_requests
   for each row execute function public.video_visibility_requests_guard();
 
--- The YouTube units this feature spent, per Pacific-time day (YouTube's quota day resets at midnight Pacific) and project.
+-- The YouTube units this feature spent, per Pacific-time day (YouTube's quota day resets at midnight Pacific), project and
+-- organization. The row with the all-zero org_id is the project's whole day; the others are one organization's share of it.
 create table if not exists public.youtube_quota_ledger (
   day         date not null,
   project     text not null check (project ~ '^[a-z0-9._-]{1,64}$'),
   source      text not null check (source in ('visibility')),
+  org_id      uuid not null,
   units       integer not null default 0 check (units >= 0),
   updated_at  timestamptz not null default now(),
-  primary key (day, project, source)
+  primary key (day, project, source, org_id)
 );
 
 comment on table public.youtube_quota_ledger is
-  'Publish when approved (migration 0113): YouTube quota units this feature spent, per Pacific-time day and Google Cloud project. Written only by youtube_quota_take(); read by a platform admin.';
+  'Publish when approved (migration 0113): YouTube quota units this feature spent, per Pacific-time day, Google Cloud project and organization (the all-zero org_id row is the whole day). Written only by youtube_quota_take(); read by a platform admin.';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. The switch: the one place it is written
@@ -265,12 +284,16 @@ begin
     insert into public.app_audit_log (actor_user_id, action, target, detail, channel_id)
     values (uid, 'channel.publish_on_approve', p_channel_id,
             jsonb_build_object('channel_id', p_channel_id, 'from', coalesce(was, false), 'to', p_on), p_channel_id);
-    -- Off means off now: what is waiting is refused here, and the worker asks again before it acts anyway.
+    -- Off means off now: what is waiting is refused here, and the worker asks again before it acts anyway. NOT a request whose
+    -- write was marked (submitting_at set): the write may be on its way or have landed, and refusing it would leave the database
+    -- saying "not published" about a video that is public. That one stays queued; the worker (or the next claim, which reads
+    -- YouTube first) records what YouTube reports. The channel row is locked FOR UPDATE above, and mark_visibility_submitting
+    -- takes it FOR SHARE, so a request is either marked before this statement or refused by it, never both.
     if p_on is false then
       update public.video_visibility_requests
          set status = 'refused', reason = 'not_enabled', finished_at = now(), updated_at = now(),
              claimed_by = null, lease_until = null
-       where channel_id = p_channel_id and status = 'queued';
+       where channel_id = p_channel_id and status = 'queued' and submitting_at is null;
     end if;
   end if;
   return jsonb_build_object('ok', true, 'channel_id', p_channel_id, 'publish_on_approve', p_on,
@@ -426,7 +449,9 @@ begin
     raise exception 'not_found' using errcode = 'P0002';
   end if;
   select * into ch from public.channels where channel_id = r.channel_id;
-  if not found or ch.publish_on_approve is not true then
+  -- A channel that moved to another organization since the request was queued is not the channel it was queued for (its switch
+  -- was reset by the move as well).
+  if not found or ch.publish_on_approve is not true or ch.org_id is distinct from r.org_id then
     return 'not_enabled';
   end if;
   select * into v from public.videos where video_id = r.video_id and channel_id = r.channel_id;
@@ -445,7 +470,11 @@ end
 $$;
 
 -- The next request to act on, leased to this worker. Waits for its backoff, is taken again after a lease runs out (the worker
--- died), and ends after three claims. Requests whose approval has run out are ended here, as expired, never acted on.
+-- died), and ends after three claims (six over its lifetime, counting the rounds "try again" starts). Requests whose approval has
+-- run out are ended here, as expired, never acted on, EXCEPT one whose write was marked (submitting_at set): that one is handed
+-- out again so the worker reads YouTube and records the truth, whatever the clock says.
+-- Fair between organizations: the organization served longest ago goes first (never served: first of all), so one tenant's
+-- pile of requests cannot keep the others waiting behind it.
 create or replace function public.claim_visibility_request(p_worker text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -459,7 +488,7 @@ begin
   end if;
   for r in
     select * from public.video_visibility_requests
-     where status = 'queued' and expires_at <= now() order by id for update skip locked
+     where status = 'queued' and expires_at <= now() and submitting_at is null order by id for update skip locked
   loop
     update public.video_visibility_requests
        set status = 'expired', reason = 'approval_expired', finished_at = now(), updated_at = now(),
@@ -474,14 +503,15 @@ begin
   loop
     select * into r from public.video_visibility_requests x
      where x.status = 'queued' and x.next_attempt_at <= now() and (x.lease_until is null or x.lease_until < now())
-     order by x.next_attempt_at, x.id
+     order by (select max(y.claimed_at) from public.video_visibility_requests y where y.org_id = x.org_id) asc nulls first,
+              x.next_attempt_at, x.id
      limit 1
      for update skip locked;
     if not found then
       return null;
     end if;
-    -- Three claims are all a request gets: a crash loop ends here instead of going round for ever.
-    if r.attempts >= 3 then
+    -- Three claims are all a request gets in a round, six in its lifetime: a crash loop ends here instead of going round for ever.
+    if r.attempts >= 3 or r.lifetime_attempts >= 6 then
       update public.video_visibility_requests
          set status = 'failed', reason = coalesce(r.reason, 'interrupted'), finished_at = now(), updated_at = now(),
              claimed_by = null, lease_until = null
@@ -495,7 +525,7 @@ begin
     end if;
     update public.video_visibility_requests
        set claimed_by = p_worker, claimed_at = now(), lease_until = now() + interval '10 minutes',
-           attempts = attempts + 1, updated_at = now()
+           attempts = attempts + 1, lifetime_attempts = lifetime_attempts + 1, updated_at = now()
      where id = r.id;
     return jsonb_build_object(
       'id', r.id, 'org_id', r.org_id, 'channel_id', r.channel_id, 'video_id', r.video_id,
@@ -507,26 +537,56 @@ begin
 end
 $$;
 
--- Marked right before the one YouTube call that can change a video's privacy. False when this worker no longer holds the request.
-create or replace function public.mark_visibility_submitting(p_request_id bigint, p_worker text) returns boolean
+-- The LAST check, and the marker "the write may be sent", in one transaction. Under row locks, in this order (the same order
+-- retry_video_visibility takes, so the two cannot deadlock): the channel row FOR SHARE (the switch function holds it FOR UPDATE,
+-- so a switch turned off is either seen here or waits until the marker is set), the request FOR UPDATE, the video FOR SHARE (an
+-- approval or a repair of the cut waits behind this transaction). Inside the locks it asks the two refusal functions again, so a
+-- cut change, a repair, an expiry, a privacy change or a switch turned off between the worker's earlier check and this marker is
+-- caught here, not after. Answers 'ok' (the marker is set: the worker may send the one write), 'not_holder' (this worker no
+-- longer holds the request) or the closed word of the refusal (the worker ends the request with it; nothing was sent).
+-- (an earlier draft of this file returned a boolean here and took three arguments in the quota function: a database that has
+-- that draft gets the new shapes, a fresh one does nothing)
+drop function if exists public.mark_visibility_submitting(bigint, text);
+create or replace function public.mark_visibility_submitting(p_request_id bigint, p_worker text) returns text
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  n integer;
+  r   public.video_visibility_requests;
+  why text;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may mark a visibility request' using errcode = '42501';
   end if;
+  select * into r from public.video_visibility_requests where id = p_request_id;
+  if not found then
+    return 'not_holder';
+  end if;
+  perform 1 from public.channels c where c.channel_id = r.channel_id for share;
+  select * into r from public.video_visibility_requests where id = p_request_id for update;
+  if r.status <> 'queued' or r.claimed_by is distinct from p_worker then
+    return 'not_holder';
+  end if;
+  perform 1 from public.videos v where v.video_id = r.video_id and v.channel_id = r.channel_id for share;
+  why := public.video_publish_refusal(r.video_id, r.approved_cut_sha256);
+  if why is null then
+    why := public.visibility_request_refusal(r.id);
+  end if;
+  if why is not null then
+    return why;
+  end if;
   update public.video_visibility_requests
      set submitting_at = now(), lease_until = now() + interval '10 minutes', updated_at = now()
-   where id = p_request_id and status = 'queued' and claimed_by = p_worker;
-  get diagnostics n = row_count;
-  return n = 1;
+   where id = r.id;
+  return 'ok';
 end
 $$;
 
 -- The only writer of a result. p_status: applied | refused | failed | expired | queued (a retry after p_retry_seconds, until the
 -- third claim). p_before / p_after are what YouTube reported before and after (the read-back); videos.privacy follows p_after
--- and nothing else. 'applied' without a read-back that said public is refused by the table itself.
+-- and nothing else. 'applied' without a read-back that said public is refused by the table itself. It does NOT look at the
+-- channel's switch: a request whose write was marked (submitting_at set) records what YouTube reports even when an administrator
+-- switched the channel off after the marker (the video is public or it is not; the database must say which). The audit row says
+-- whether the write was marked ('write_marked'): an applied row with it false never happens, since mark_visibility_submitting
+-- precedes the write, and one with it true after a crash is the read-back's finding, not necessarily our write's result.
 create or replace function public.finish_visibility_request(
   p_request_id bigint, p_worker text, p_status text, p_reason text, p_before text, p_after text,
   p_units integer, p_retry_seconds integer
@@ -593,45 +653,55 @@ begin
   values (null, v_action, r.video_id,
           jsonb_build_object('request_id', r.id, 'video_id', r.video_id, 'cut_sha256', r.approved_cut_sha256,
                              'status', v_status, 'reason', v_reason, 'before', v_before, 'after', v_after,
-                             'units', r.quota_units + greatest(coalesce(p_units, 0), 0), 'attempts', r.attempts),
+                             'units', r.quota_units + greatest(coalesce(p_units, 0), 0), 'attempts', r.attempts,
+                             'write_marked', r.submitting_at is not null),
           r.channel_id);
   return jsonb_build_object('ok', true, 'status', v_status, 'reason', v_reason);
 end
 $$;
 
--- Take p_units of the day's budget, or answer false when that would pass p_ceiling. The day is Pacific time (YouTube's).
-create or replace function public.youtube_quota_take(p_project text, p_units integer, p_ceiling integer) returns boolean
+-- Take p_units of the day's budget, or answer false when that would pass p_ceiling (the whole day) or p_org_ceiling (this
+-- organization's share of it). The day is Pacific time (YouTube's). Serialized per project, so two workers cannot both pass a ceiling.
+drop function if exists public.youtube_quota_take(text, integer, integer);
+create or replace function public.youtube_quota_take(
+  p_project text, p_units integer, p_ceiling integer, p_org uuid, p_org_ceiling integer
+) returns boolean
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  v_day  date := (now() at time zone 'America/Los_Angeles')::date;
-  v_used integer;
+  v_day   date := (now() at time zone 'America/Los_Angeles')::date;
+  v_all   constant uuid := '00000000-0000-0000-0000-000000000000';
+  v_total integer;
+  v_org   integer;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may spend quota' using errcode = '42501';
   end if;
   if coalesce(p_project, '') !~ '^[a-z0-9._-]{1,64}$' or p_units is null or p_units not between 1 and 200
-     or p_ceiling is null or p_ceiling not between 0 and 10000 then
+     or p_ceiling is null or p_ceiling not between 0 and 10000
+     or p_org is null or p_org = v_all or p_org_ceiling is null or p_org_ceiling not between 0 and 10000 then
     raise exception 'invalid quota request' using errcode = '22023';
   end if;
-  if p_units > p_ceiling then
+  perform pg_advisory_xact_lock(hashtextextended('youtube_quota:' || p_project, 0));
+  select coalesce(max(l.units) filter (where l.org_id = v_all), 0), coalesce(max(l.units) filter (where l.org_id = p_org), 0)
+    into v_total, v_org
+    from public.youtube_quota_ledger l
+   where l.day = v_day and l.project = p_project and l.source = 'visibility';
+  if v_total + p_units > p_ceiling or v_org + p_units > p_org_ceiling then
     return false;
   end if;
-  insert into public.youtube_quota_ledger as l (day, project, source, units)
-  values (v_day, p_project, 'visibility', p_units)
-  on conflict (day, project, source) do update
-     set units = l.units + p_units, updated_at = now()
-   where l.units + p_units <= p_ceiling
-  returning l.units into v_used;
-  if v_used is null then
-    return false;
-  end if;
+  insert into public.youtube_quota_ledger as l (day, project, source, org_id, units)
+  values (v_day, p_project, 'visibility', v_all, p_units)
+  on conflict (day, project, source, org_id) do update set units = l.units + p_units, updated_at = now();
+  insert into public.youtube_quota_ledger as l (day, project, source, org_id, units)
+  values (v_day, p_project, 'visibility', p_org, p_units)
+  on conflict (day, project, source, org_id) do update set units = l.units + p_units, updated_at = now();
   delete from public.youtube_quota_ledger where day < v_day - 14;
   return true;
 end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 6. Try again: an administrator re-queues a FAILED request while the same approval holds
+-- 6. Try again: an administrator re-queues a FAILED request while the same approval holds (and the lifetime cap allows)
 -- ───────────────────────────────────────────────────────────────────────────
 
 create or replace function public.retry_video_visibility(p_request_id bigint) returns jsonb
@@ -670,6 +740,10 @@ begin
   end if;
   if r.expires_at <= now() then
     return jsonb_build_object('ok', false, 'error', 'approval_expired');
+  end if;
+  -- A request is carried out at most twice over (two rounds of three claims): "try again" is not a way round that.
+  if r.lifetime_attempts >= 6 then
+    return jsonb_build_object('ok', false, 'error', 'retry_limit');
   end if;
   select * into v from public.videos where video_id = r.video_id and channel_id = r.channel_id for update;
   if not found or v.decided_at is distinct from r.decided_at or v.approved_cut_sha256 is distinct from r.approved_cut_sha256 then
@@ -740,10 +814,12 @@ alter table public.youtube_quota_ledger enable row level security;
 -- No API role writes either table, the service key included: every write is one of the functions above.
 revoke all on public.video_visibility_requests from public, anon, authenticated, service_role;
 revoke all on public.youtube_quota_ledger from public, anon, authenticated, service_role;
+-- The queue's own sequence: nobody advances it from an API role (0020 does the same for its ledger's).
+revoke all on sequence public.video_visibility_requests_id_seq from public, anon, authenticated, service_role;
 
 -- Members read their organization's rows, without the worker's own columns (who holds it, the lease, the submit marker).
 grant select (id, org_id, channel_id, video_id, intent_id, approved_cut_sha256, decided_by, decided_at, expires_at, status, reason,
-              attempts, next_attempt_at, before_privacy, after_privacy, quota_units, finished_at, created_at, updated_at)
+              attempts, lifetime_attempts, next_attempt_at, before_privacy, after_privacy, quota_units, finished_at, created_at, updated_at)
   on public.video_visibility_requests to authenticated;
 grant select on public.youtube_quota_ledger to authenticated;
 
@@ -777,12 +853,12 @@ revoke all on function public.claim_visibility_request(text) from public, anon, 
 revoke all on function public.mark_visibility_submitting(bigint, text) from public, anon, authenticated, service_role;
 revoke all on function public.finish_visibility_request(bigint, text, text, text, text, text, integer, integer)
   from public, anon, authenticated, service_role;
-revoke all on function public.youtube_quota_take(text, integer, integer) from public, anon, authenticated, service_role;
+revoke all on function public.youtube_quota_take(text, integer, integer, uuid, integer) from public, anon, authenticated, service_role;
 grant execute on function public.visibility_request_refusal(bigint) to service_role;
 grant execute on function public.claim_visibility_request(text) to service_role;
 grant execute on function public.mark_visibility_submitting(bigint, text) to service_role;
 grant execute on function public.finish_visibility_request(bigint, text, text, text, text, text, integer, integer) to service_role;
-grant execute on function public.youtube_quota_take(text, integer, integer) to service_role;
+grant execute on function public.youtube_quota_take(text, integer, integer, uuid, integer) to service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Verify (run as the SQL editor; every column should read true)

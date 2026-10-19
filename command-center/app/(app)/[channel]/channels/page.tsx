@@ -32,6 +32,7 @@ import { loadStyleContext } from "@/lib/server/style-kits";
 import { loadDnaCharacters } from "@/lib/server/channel-dna";
 import { dnaFromChannel } from "@/lib/channel-dna";
 import { atLeast } from "@/lib/auth/roles";
+import { publishOnApproveReleased, withoutPublishSwitch } from "@/lib/server/release-flags";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -110,6 +111,10 @@ export default async function ChannelsPage({
   // the Edit button from someone it would refuse.
   const canEditDna = atLeast(orgRole, "editor");
 
+  // "Publish when approved" is shown only once released (server flag, default off): until then the switch is not drawn and the
+  // channel's value is not sent to the browser at all.
+  const released = publishOnApproveReleased();
+
   const thumbnails = Object.fromEntries(channels.map((c) => [c.channel_id, c.credential_ref?.youtube_thumbnail ?? null]));
 
   return (
@@ -169,7 +174,7 @@ export default async function ChannelsPage({
             {channels.map((channel) => (
               <ChannelCard
                 key={channel.channel_id}
-                channel={channel}
+                channel={released ? channel : withoutPublishSwitch(channel)}
                 slug={channelSlug(channel, channels)}
                 credential={credentials.find(
                   (c) => c.channel_id === channel.channel_id && c.provider === "youtube",

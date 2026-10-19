@@ -87,6 +87,7 @@ function request(over: Partial<VisibilityRequestRow> = {}): VisibilityRequestRow
     status: "queued",
     reason: null,
     attempts: 0,
+    lifetime_attempts: 0,
     approved_cut_sha256: CUT,
     decided_at: DECIDED,
     expires_at: "2026-10-20T10:00:00.000Z",
@@ -320,6 +321,18 @@ describe("try again", () => {
     cleanup();
     panel({ on: true, v: APPROVED, req: request({ status: "refused", reason: "gate_blocked", finished_at: DECIDED }) });
     expect(screen.queryByRole("button", { name: en.review.visibility.tryAgain })).toBeNull();
+  });
+
+  it("is not offered once the request has been carried out as often as the database allows, and the database's refusal is read out", async () => {
+    panel({ on: true, v: APPROVED, req: request({ status: "failed", reason: "token_expired", attempts: 3, lifetime_attempts: 6, finished_at: DECIDED }) });
+    expect(visBlock()?.textContent).toContain("Not published yet.");
+    expect(screen.queryByRole("button", { name: en.review.visibility.tryAgain })).toBeNull();
+    cleanup();
+    h.rpc.mockResolvedValue({ data: { ok: false, error: "retry_limit" }, error: null });
+    panel({ on: true, v: APPROVED, req: request({ status: "failed", reason: "token_expired", attempts: 3, lifetime_attempts: 5, finished_at: DECIDED }) });
+    fireEvent.click(screen.getByRole("button", { name: en.review.visibility.tryAgain }));
+    await waitFor(() => expect(screen.getByTestId("retry-error").textContent).toBe(en.review.visibility.retryErrors.retry_limit));
+    await settle();
   });
 
   it("a refusal is read out in words, a transport error is a generic failure, never the raw message", async () => {

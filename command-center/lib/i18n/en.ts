@@ -2188,6 +2188,7 @@ export const en = {
         not_enabled: "“Publish when approved” is switched off for this channel.",
         forbidden: "You are not allowed to do this.",
         not_found: "That request was not found.",
+        retry_limit: "This request has been tried as often as it will be. Check the video in YouTube Studio, or approve it again.",
         failed: "Could not try again. Nothing was changed.",
       },
       reasons: {
@@ -2218,6 +2219,7 @@ export const en = {
         platform_kept_private: "YouTube accepted the request, but the video is still private. YouTube can limit videos from an app that has not passed its audit to private. Make it public in YouTube Studio.",
         platform_error: "YouTube had a problem on its side.",
         readback_failed: "The change may have gone through but could not be confirmed. Check the video in YouTube Studio.",
+        status_unreadable: "YouTube did not return the video's full settings, so nothing was changed. Make it public in YouTube Studio.",
         interrupted: "The worker stopped before it finished.",
         worker_error: "The worker hit an error. Nothing is known to have changed.",
       },

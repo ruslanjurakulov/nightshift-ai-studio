@@ -238,30 +238,35 @@ applied, and the worker that reads the queue (`tools/queue_worker.py`, `modules/
   administrator of the channel's organization who is a real member of it (a platform admin on a customer's channel is not), 30 calls per
   10 minutes, audited as `channel.publish_on_approve`. The browser roles' column grants (0086) are not widened, so a direct UPDATE is
   refused; a trigger refuses `anon`, `authenticated` and the SERVICE KEY outside that function (the owner of the database, the SQL editor,
-  can: that is the documented undo). Turning it off refuses the channel's queued requests at once (`not_enabled`).
+  can: that is the documented undo). Turning it off refuses the channel's queued requests at once (`not_enabled`), except one whose write was
+  marked (`submitting_at` set): that stays queued and the worker records what YouTube reports. A channel moved to another organization comes out off.
 - **`video_visibility_requests`**: one row per approval act, unique `(video_id, approved_cut_sha256, decided_at)`, status
   `queued | applied | refused | failed | expired`, `reason` a closed word (`visibility_reason_words()`), never a provider's text. A CHECK says
   `applied` needs `after_privacy = 'public'`: the worker records that from a read-back of YouTube after its call, never from the call's own
   answer. A finished row is final (a trigger), except that a FAILED one may go back to `queued` (`retry_video_visibility`). Members read their
   organization's channels' rows without the worker's columns; no API role writes it, the service key included: every write is one of the functions.
-- **`youtube_quota_ledger`**: the YouTube units this feature spent per Pacific-time day and project (`youtube_quota_take`, with the ceiling the
-  worker passes; `videos.update` = 50 units). A platform admin reads it.
+- **`youtube_quota_ledger`**: the YouTube units this feature spent per Pacific-time day, project and organization (`youtube_quota_take`, with the
+  day's ceiling and the organization's share that the worker passes; the all-zero `org_id` row is the whole day; `videos.update` = 50 units).
+  A platform admin reads it. The claim serves organizations in turn; a request has a lifetime cap of six claims.
 - **`approve_video_publish`** is 0112's body verbatim plus one block after its audit write: when the channel's switch is on, one request is queued
   for that approval act and one `video.publish_queued` audit row is written, and the answer gains `queued` and `request_id`. With the switch off
   the function does exactly what it did in 0112 (same writes, same answer): `tests/test_visibility_migration.py` pins the diff.
 - **`audit_action_allowed`** is 0112's list plus `channel.publish_on_approve`, `video.publish_queued`, `video.visibility_applied`,
   `video.visibility_refused`, `video.visibility_failed`, `video.visibility_expired`, `video.visibility_retry`.
-- **The worker's functions (service key only):** `claim_visibility_request` (a lease, backoff, three claims, the expiry sweep),
-  `visibility_request_refusal` (the switch is still on, this is still THE approval, not expired, the channel is connected),
-  `mark_visibility_submitting`, `finish_visibility_request` (the only writer of a result; `videos.privacy` follows the read-back alone),
-  `youtube_quota_take`. The video-level re-check is 0112's `video_publish_refusal`, called with the cut hash recorded at approval.
+- **The worker's functions (service key only):** `claim_visibility_request` (a lease, backoff, three claims a round and six in all, organizations
+  in turn, the expiry sweep that leaves a marked request alone), `visibility_request_refusal` (the switch is still on, the channel is still in the
+  request's organization, this is still THE approval, not expired, the channel is connected),
+  `mark_visibility_submitting` (the LAST check and the marker in one transaction under row locks: channel FOR SHARE, request FOR UPDATE, video
+  FOR SHARE; answers `ok`, `not_holder` or a closed word), `finish_visibility_request` (the only writer of a result; `videos.privacy` follows the
+  read-back alone; it does not look at the switch), `youtube_quota_take`. The video-level re-check is 0112's `video_publish_refusal`, called with the cut hash recorded at approval.
   `visibility_channel_connected` is `publish_channel_connected`'s rule under its own name (that function arrived in 0029 by a later edit).
 - **Order of merge and deploy.** Apply 0113, then deploy the app (the panel and the Channels page read the new objects and degrade to the
   Phase 1a panel when they are missing). The worker needs the new code and `NIGHTSHIFT_VISIBILITY_PUBLISH=on`; nothing publishes before an
   administrator also switches a channel on. Do the live test on a disposable channel first (`docs/APPROVE_PUBLISH_1B.md`).
 - **Is it off?** `select count(*) from public.channels where publish_on_approve;` must read `0`; the verify block at the bottom of the file.
 - **Undo.** The switch is the undo for behaviour. To remove the objects: `docs/sql/rollback_0113_visibility_requests.sql` (owner-applied; run it
-  BEFORE rollback 0112): it refuses every queued request, switches every channel off, drops the callable functions, puts 0112's
+  BEFORE rollback 0112): it refuses every queued request that was never marked for a write (it stops with an error while a write may be in flight,
+  and leaves an older marked one queued with a notice: check those videos in YouTube Studio), switches every channel off, drops the callable functions, puts 0112's
   `approve_video_publish` and `audit_action_allowed` back byte for byte, and KEEPS the two tables, the column and the three internal functions
   they need (a record of what was asked and what YouTube reported). The lab applies it to a database built from 0001-0112, compares the
   two restored functions, then re-applies 0113.

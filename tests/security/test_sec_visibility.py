@@ -34,6 +34,7 @@ from sec_scenario import DEFAULT_ORG
 from test_sec_approve_video import (ACK, CUT, MIGRATION, MIGRATION_0113, OTHER, ROLLBACK, ROLLBACK_0113, VID, acting,
                                     answer, approve, member, snapshot, uploaded)
 
+ALL = "00000000-0000-0000-0000-000000000000"      # the ledger's row for a project's whole day
 REQ = ("id, status, reason, attempts, approved_cut_sha256, decided_at, expires_at, intent_id, org_id, channel_id, before_privacy, "
        "after_privacy, quota_units, finished_at")
 
@@ -306,7 +307,7 @@ def test_the_grants_split_the_browser_from_the_worker(conn):
     persons = {"set_channel_publish_on_approve(text, boolean)", "retry_video_visibility(bigint)", "approve_video_publish(text, text, jsonb)"}
     worker = {"claim_visibility_request(text)", "mark_visibility_submitting(bigint, text)",
               "finish_visibility_request(bigint, text, text, text, text, text, integer, integer)",
-              "visibility_request_refusal(bigint)", "youtube_quota_take(text, integer, integer)"}
+              "visibility_request_refusal(bigint)", "youtube_quota_take(text, integer, integer, uuid, integer)"}
     internal = {"visibility_reason_words()", "visibility_channel_connected(text)", "audit_action_allowed(text)"}
     with as_superuser(conn, commit=False) as su:
         def priv(sig):
@@ -325,6 +326,10 @@ def test_the_grants_split_the_browser_from_the_worker(conn):
         assert su.value("select has_column_privilege('authenticated', 'public.channels', 'publish_on_approve', 'UPDATE')") is False
         assert su.value("select has_column_privilege('authenticated', 'public.channels', 'publish_on_approve', 'INSERT')") is False
         assert su.value("select has_column_privilege('anon', 'public.channels', 'publish_on_approve', 'UPDATE')") is False
+        # the queue's own id sequence is not advanced from an API role either (0020 does the same for its ledger's)
+        for role in ("anon", "authenticated", "service_role"):
+            for p in ("USAGE", "SELECT", "UPDATE"):
+                assert su.value("select has_sequence_privilege(%s, 'public.video_visibility_requests_id_seq', %s)", [role, p]) is False, (role, p)
         for tbl in ("video_visibility_requests", "youtube_quota_ledger"):
             for role in ("anon", "authenticated", "service_role"):
                 for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE"):
@@ -338,13 +343,14 @@ def test_a_claim_leases_the_request_and_a_dead_worker_is_replaced_by_one_that_re
     bob = sc.bob
     with as_superuser(conn, commit=False) as su:
         rid = queued(su, bob)
+        activate(su, bob.channel)
         first = svc_value(conn, "select public.claim_visibility_request('w1')")
         assert first["id"] == rid and first["attempts"] == 1 and first["reconcile"] is False
         assert first["video_id"] == VID and first["approved_cut_sha256"] == CUT and first["channel_id"] == bob.channel
         # leased: nobody else gets it
         assert svc_value(conn, "select public.claim_visibility_request('w2')") is None
-        assert svc_run(conn, "select public.mark_visibility_submitting(%s, 'w2')", [rid]).rows[0][0] is False   # not its holder
-        assert svc_value(conn, "select public.mark_visibility_submitting(%s, 'w1')", [rid]) is True
+        assert svc_run(conn, "select public.mark_visibility_submitting(%s, 'w2')", [rid]).rows[0][0] == "not_holder"   # not its holder
+        assert svc_value(conn, "select public.mark_visibility_submitting(%s, 'w1')", [rid]) == "ok"
         # w1 dies after it marked the write: the lease runs out, w2 is told to reconcile (read YouTube first)
         su.rows("update public.video_visibility_requests set lease_until = now() - interval '1 minute' returning 1")
         second = svc_value(conn, "select public.claim_visibility_request('w2')")
@@ -395,7 +401,8 @@ def test_the_claim_is_the_service_keys_alone(conn, sc):
         for who in (bob.actor, ANON):
             with acting(conn, who) as s:
                 for q in ("select public.claim_visibility_request('w1')", "select public.mark_visibility_submitting(1, 'w1')",
-                          "select public.visibility_request_refusal(1)", "select public.youtube_quota_take('p', 1, 10)",
+                          "select public.visibility_request_refusal(1)",
+                          "select public.youtube_quota_take('p', 1, 10, '11111111-1111-1111-1111-111111111111', 10)",
                           "select public.finish_visibility_request(1, 'w1', 'refused', 'not_enabled', null, null, 0, 0)"):
                     out = s.run(q)
                     assert not out.ok and out.sqlstate == "42501", (who.name, q, out)
@@ -545,31 +552,56 @@ def test_no_provider_text_can_reach_a_member_readable_column(conn, sc):
 
 def test_the_quota_ledger_holds_the_ceiling_per_pacific_day_and_only_the_service_key_spends_it(conn):
     with as_superuser(conn, commit=False) as su:
-        take = lambda units, ceiling: svc_value(conn, "select public.youtube_quota_take('proj-1', %s, %s)", [units, ceiling])
+        org = uuid.uuid4()
+        take = lambda units, ceiling, org=org, share=10000: svc_value(
+            conn, "select public.youtube_quota_take('proj-1', %s, %s, %s, %s)", [units, ceiling, org, share])
         assert take(50, 100) is True and take(50, 100) is True
         assert take(1, 100) is False                               # exactly at the ceiling: the next unit is refused
-        assert su.value("select units from public.youtube_quota_ledger where project = 'proj-1' and day = (now() at time zone 'America/Los_Angeles')::date") == 100
+        assert su.value("select units from public.youtube_quota_ledger where project = 'proj-1' and org_id = %s "
+                        "and day = (now() at time zone 'America/Los_Angeles')::date", [ALL]) == 100
         assert take(101, 100) is False                              # more than the whole ceiling, even on a fresh project
-        assert svc_value(conn, "select public.youtube_quota_take('proj-2', 50, 40)") is False
+        assert svc_value(conn, "select public.youtube_quota_take('proj-2', 50, 40, %s, 40)", [org]) is False
         assert su.value("select count(*) from public.youtube_quota_ledger where project = 'proj-2'") == 0
-        assert svc_value(conn, "select public.youtube_quota_take('proj-2', 50, 10000)") is True   # a separate project has its own day
+        assert svc_value(conn, "select public.youtube_quota_take('proj-2', 50, 10000, %s, 10000)", [org]) is True   # a separate project has its own day
         # yesterday's spend is not today's
-        su.rows("insert into public.youtube_quota_ledger (day, project, source, units) "
-                "values ((now() at time zone 'America/Los_Angeles')::date - 1, 'proj-3', 'visibility', 9999) returning 1")
-        assert svc_value(conn, "select public.youtube_quota_take('proj-3', 50, 100)") is True
+        su.rows("insert into public.youtube_quota_ledger (day, project, source, org_id, units) "
+                "values ((now() at time zone 'America/Los_Angeles')::date - 1, 'proj-3', 'visibility', %s, 9999) returning 1", [ALL])
+        assert svc_value(conn, "select public.youtube_quota_take('proj-3', 50, 100, %s, 100)", [org]) is True
         # old days are pruned
-        su.rows("insert into public.youtube_quota_ledger (day, project, source, units) values (current_date - 30, 'proj-old', 'visibility', 5) returning 1")
-        svc_value(conn, "select public.youtube_quota_take('proj-3', 1, 100)")
+        su.rows("insert into public.youtube_quota_ledger (day, project, source, org_id, units) values (current_date - 30, 'proj-old', 'visibility', %s, 5) returning 1", [ALL])
+        svc_value(conn, "select public.youtube_quota_take('proj-3', 1, 100, %s, 100)", [org])
         assert su.value("select count(*) from public.youtube_quota_ledger where project = 'proj-old'") == 0
-        for bad in ("select public.youtube_quota_take('Bad Project', 1, 10)", "select public.youtube_quota_take('p', 0, 10)",
-                    "select public.youtube_quota_take('p', 201, 10)", "select public.youtube_quota_take('p', 1, 10001)",
-                    "select public.youtube_quota_take('p', 1, -1)", "select public.youtube_quota_take('p', null, 10)"):
-            assert svc_run(conn, bad).sqlstate == "22023", bad
+        for bad in ("select public.youtube_quota_take('Bad Project', 1, 10, %s, 10)", "select public.youtube_quota_take('p', 0, 10, %s, 10)",
+                    "select public.youtube_quota_take('p', 201, 10, %s, 10)", "select public.youtube_quota_take('p', 1, 10001, %s, 10)",
+                    "select public.youtube_quota_take('p', 1, -1, %s, 10)", "select public.youtube_quota_take('p', null, 10, %s, 10)",
+                    "select public.youtube_quota_take('p', 1, 10, null, 10)", "select public.youtube_quota_take('p', 1, 10, %s, null)",
+                    "select public.youtube_quota_take('p', 1, 10, %s, 10001)", "select public.youtube_quota_take('p', 1, 10, '00000000-0000-0000-0000-000000000000', 10)"):
+            assert svc_run(conn, bad, [org] if "%s" in bad else None).sqlstate == "22023", bad
+
+
+def test_one_organization_cannot_use_up_the_days_quota_and_the_ledger_counts_both(conn):
+    with as_superuser(conn, commit=False) as su:
+        a, b = uuid.uuid4(), uuid.uuid4()
+        take = lambda org, units, ceiling=1000, share=300: svc_value(
+            conn, "select public.youtube_quota_take('proj-fair', %s, %s, %s, %s)", [units, ceiling, org, share])
+        # A takes its share (300) in 50s; the next unit is refused for A although the day has 700 left
+        assert [take(a, 50) for _ in range(6)] == [True] * 6
+        assert take(a, 1) is False
+        # B is not behind A: it has its own share of the same day
+        assert take(b, 50) is True
+        assert su.value("select units from public.youtube_quota_ledger where project = 'proj-fair' and org_id = %s", [ALL]) == 350
+        assert su.value("select units from public.youtube_quota_ledger where project = 'proj-fair' and org_id = %s", [a]) == 300
+        assert su.value("select units from public.youtube_quota_ledger where project = 'proj-fair' and org_id = %s", [b]) == 50
+        # a refused take records nothing at all (neither row moves)
+        assert take(a, 50) is False
+        assert su.value("select units from public.youtube_quota_ledger where project = 'proj-fair' and org_id = %s", [ALL]) == 350
+        # the whole day's ceiling still holds for everyone
+        assert take(b, 50, ceiling=400, share=1000) is True and take(b, 1, ceiling=400, share=1000) is False
 
 
 def test_a_customer_does_not_read_the_ledger_a_platform_admin_does(conn, sc):
     with as_superuser(conn, commit=False) as su:
-        su.rows("insert into public.youtube_quota_ledger (day, project, source, units) values (current_date, 'proj-x', 'visibility', 5) returning 1")
+        su.rows("insert into public.youtube_quota_ledger (day, project, source, org_id, units) values (current_date, 'proj-x', 'visibility', %s, 5) returning 1", [ALL])
         with acting(conn, sc.bob.actor) as s:
             assert s.value("select count(*) from public.youtube_quota_ledger") == 0
         with acting(conn, sc.operator) as s:
@@ -643,6 +675,222 @@ def test_try_again_never_revives_a_refused_applied_or_expired_request_or_another
         su.conn.execute("alter table public.video_visibility_requests enable trigger video_visibility_requests_guard")
         with acting(conn, bob.actor) as s:
             assert answer(retry(s, rid)) == {"ok": False, "error": "approval_expired"}
+
+
+# ── the switch turned off while a write may be on its way ────────────────────
+
+def marked(conn, su, bob, vid=VID, worker="w1"):
+    """A queued request that a worker holds and has marked 'the write may be sent' (the channel connected, everything allowed)."""
+    rid = queued(su, bob, vid=vid)
+    activate(su, bob.channel)
+    claimed = svc_value(conn, "select public.claim_visibility_request(%s)", [worker])
+    assert claimed["id"] == rid
+    assert svc_value(conn, "select public.mark_visibility_submitting(%s, %s)", [rid, worker]) == "ok"
+    return rid
+
+
+def test_switching_off_does_not_refuse_a_request_whose_write_was_marked_and_the_truth_is_still_recorded(conn, sc):
+    bob = sc.bob
+    with as_superuser(conn, commit=False) as su:
+        sent = marked(conn, su, bob)
+        waiting = queued(su, bob, vid="bbbbbbbbbbb")                   # approved on the same channel, never claimed
+        with acting(conn, bob.actor) as s:
+            assert answer(flip(s, bob.channel, False))["changed"] is True
+        # what was waiting is refused at once; what may already be on its way to YouTube is not
+        assert su.rows("select status, reason from public.video_visibility_requests where id = %s", [waiting]) == [("refused", "not_enabled")]
+        assert su.rows("select status, reason, submitting_at is not null from public.video_visibility_requests where id = %s", [sent]) == [("queued", None, True)]
+        # YouTube made the video public after the switch went off: the database says so, the mirror follows the read-back, it is audited
+        assert su.value("select privacy from public.videos where video_id = %s", [VID]) == "private"
+        out = finish(conn, sent, "w1", "applied", before="private", after="public", units=53).rows[0][0]
+        assert out == {"ok": True, "status": "applied", "reason": None}
+        row = su.rows(f"select {REQ} from public.video_visibility_requests where id = %s", [sent])[0]
+        assert row[1:3] == ("applied", None) and row[10:13] == ("private", "public", 53) and row[13] is not None
+        assert su.value("select privacy from public.videos where video_id = %s", [VID]) == "public"
+        detail = su.value("select detail from public.app_audit_log where action = 'video.visibility_applied' and target = %s", [VID])
+        assert detail["after"] == "public" and detail["write_marked"] is True and detail["request_id"] == sent
+        # and the channel is still switched off for everything new
+        assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is False
+
+
+def test_the_expiry_sweep_leaves_a_marked_request_to_the_worker_which_reads_youtube_and_records_it(conn, sc):
+    bob = sc.bob
+    with as_superuser(conn, commit=False) as su:
+        sent = marked(conn, su, bob)
+        su.conn.execute("alter table public.video_visibility_requests disable trigger video_visibility_requests_guard")
+        su.rows("update public.video_visibility_requests set expires_at = now() - interval '1 second', lease_until = now() - interval '1 minute' returning 1")
+        su.conn.execute("alter table public.video_visibility_requests enable trigger video_visibility_requests_guard")
+        # an unmarked one whose approval ended is expired by the sweep; the marked one is handed out again, told to read first
+        late = queued(su, bob, vid="bbbbbbbbbbb")
+        su.conn.execute("alter table public.video_visibility_requests disable trigger video_visibility_requests_guard")
+        su.rows("update public.video_visibility_requests set expires_at = now() - interval '1 second' where id = %s returning 1", [late])
+        su.conn.execute("alter table public.video_visibility_requests enable trigger video_visibility_requests_guard")
+        again = svc_value(conn, "select public.claim_visibility_request('w2')")
+        assert again["id"] == sent and again["reconcile"] is True
+        assert su.rows("select status, reason from public.video_visibility_requests where id = %s", [late]) == [("expired", "approval_expired")]
+        assert su.rows("select status from public.video_visibility_requests where id = %s", [sent]) == [("queued",)]
+        out = finish(conn, sent, "w2", "applied", after="public", units=2).rows[0][0]
+        assert out["status"] == "applied"
+        assert su.value("select privacy from public.videos where video_id = %s", [VID]) == "public"
+
+
+def test_the_rollback_waits_for_a_write_in_flight_and_keeps_an_old_marked_request_queued(conn, sc):
+    bob = sc.bob
+    body = "\n".join(ln for ln in ROLLBACK_0113.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
+    with as_superuser(conn, commit=False) as su:
+        sent = marked(conn, su, bob)
+        out = su.run(body)
+        assert not out.ok and out.sqlstate == "55000" and "in flight" in out.error, out
+    with as_superuser(conn, commit=False) as su:
+        sent = marked(conn, su, bob)
+        su.conn.execute("alter table public.video_visibility_requests disable trigger video_visibility_requests_guard")
+        su.rows("update public.video_visibility_requests set submitting_at = now() - interval '1 hour' returning 1")
+        su.conn.execute("alter table public.video_visibility_requests enable trigger video_visibility_requests_guard")
+        waiting = queued(su, bob, vid="bbbbbbbbbbb")
+        su.conn.execute(body)
+        # the marked one stays queued (nothing could finish it any more, and "refused" would be a claim about YouTube we cannot make);
+        # the unmarked one is refused; the switch is off everywhere
+        assert su.rows("select status, reason from public.video_visibility_requests where id = %s", [sent]) == [("queued", None)]
+        assert su.rows("select status, reason from public.video_visibility_requests where id = %s", [waiting]) == [("refused", "not_enabled")]
+        assert su.value("select count(*) from public.channels where publish_on_approve") == 0
+
+
+# ── the last check and the marker are one step ───────────────────────────────
+
+def test_the_marker_is_set_only_when_everything_is_asked_again_inside_the_locks(conn, sc):
+    bob, alice = sc.bob, sc.alice
+    gaps = {
+        "cut_changed": "update public.videos set cut_sha256 = '%s' where video_id = '%s'" % (OTHER, VID),
+        "not_approved": "update public.videos set approved_cut_sha256 = null, decided_at = null, approval_expires_at = null, review_state = 'pending' where video_id = '%s'" % VID,
+        "approval_expired": "update public.videos set approval_expires_at = now() - interval '1 second' where video_id = '%s'" % VID,
+        "already_public": "update public.videos set privacy = 'public' where video_id = '%s'" % VID,
+        "gate_blocked": "update public.videos set gate_verdict = '{\"allowed\": false, \"blocks\": [\"rights\"], \"warnings\": []}'::jsonb where video_id = '%s'" % VID,
+        "approval_superseded": "update public.videos set decided_at = decided_at + interval '1 second' where video_id = '%s'" % VID,
+        "not_enabled": "update public.channels set publish_on_approve = false where channel_id = '%s'" % bob.channel,
+        "channel_not_connected": "update public.channels set status = 'PAUSED' where channel_id = '%s'" % bob.channel,
+    }
+    for word, gap in gaps.items():
+        with as_superuser(conn, commit=False) as su:
+            rid = queued(su, bob)
+            activate(su, bob.channel)
+            assert svc_value(conn, "select public.claim_visibility_request('w1')")["id"] == rid
+            su.rows(gap + " returning 1")            # the change that lands between the worker's early check and the marker
+            assert svc_value(conn, "select public.mark_visibility_submitting(%s, 'w1')", [rid]) == word, word
+            assert su.value("select submitting_at is null from public.video_visibility_requests where id = %s", [rid]) is True, word
+    with as_superuser(conn, commit=False) as su:
+        rid = queued(su, bob)
+        activate(su, bob.channel)
+        svc_value(conn, "select public.claim_visibility_request('w1')")
+        # a request that is not there, or that another worker holds, is not_holder: nothing is marked
+        assert svc_value(conn, "select public.mark_visibility_submitting(999999999, 'w1')") == "not_holder"
+        assert svc_value(conn, "select public.mark_visibility_submitting(%s, 'w2')", [rid]) == "not_holder"
+        assert su.value("select submitting_at is null from public.video_visibility_requests where id = %s", [rid]) is True
+        assert svc_value(conn, "select public.mark_visibility_submitting(%s, 'w1')", [rid]) == "ok"
+        assert su.value("select submitting_at is not null from public.video_visibility_requests where id = %s", [rid]) is True
+
+
+def test_a_request_of_a_channel_that_moved_to_another_organization_is_refused_and_its_switch_is_reset(conn, sc):
+    bob, alice = sc.bob, sc.alice
+    with as_superuser(conn, commit=False) as su:
+        rid = queued(su, bob)
+        activate(su, bob.channel)
+        assert refusal(conn, rid) is None
+        su.rows("update public.channels set org_id = %s where channel_id = %s returning 1", [alice.org, bob.channel])
+        assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is False
+        assert refusal(conn, rid) == "not_enabled"
+        # even if somebody switches it on again in its new organization, this request was queued for the old one
+        switch(su, bob.channel, True)
+        assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is True
+        assert refusal(conn, rid) == "not_enabled"
+        # an API role cannot set the switch while moving a channel either: it comes out off
+        with acting(conn, SERVICE) as s:
+            s.rows("update public.channels set org_id = %s, publish_on_approve = true where channel_id = %s returning 1", [bob.org, bob.channel])
+        assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is False
+
+
+def test_the_claim_serves_organizations_in_turn(conn, sc):
+    bob, alice = sc.bob, sc.alice
+    with as_superuser(conn, commit=False) as su:
+        b1 = queued(su, bob, vid="aaaaaaaaaaa")
+        b2 = queued(su, bob, vid="bbbbbbbbbbb")
+        a1 = queued(su, alice, vid="ccccccccccc")
+        order = [svc_value(conn, "select public.claim_visibility_request('w1')")["id"] for _ in range(3)]
+        # one organization's pile does not go first: bob, then alice, then bob's second
+        assert order == [b1, a1, b2], order
+
+
+def test_a_request_is_carried_out_at_most_six_times_whatever_try_again_does(conn, sc):
+    bob = sc.bob
+    with as_superuser(conn, commit=False) as su:
+        rid = queued(su, bob)
+        for n in range(1, 7):
+            claimed = svc_value(conn, "select public.claim_visibility_request('w1')")
+            assert claimed["id"] == rid and claimed["attempts"] == 1, n          # try again gives a fresh round
+            assert su.value("select lifetime_attempts from public.video_visibility_requests where id = %s", [rid]) == n
+            finish(conn, rid, "w1", "failed", reason="token_expired", units=1)
+            with acting(conn, bob.actor) as s:
+                out = answer(retry(s, rid))
+            if n < 6:
+                assert out["ok"] is True, (n, out)
+        assert out == {"ok": False, "error": "retry_limit"}
+        assert requests(su)[0][1:3] == ("failed", "token_expired")
+    with as_superuser(conn, commit=False) as su:
+        # a crash loop that "try again" restarted ends at the same bound: the next claim past six ends it
+        rid = failed_request(conn, su, bob)
+        su.conn.execute("alter table public.video_visibility_requests disable trigger video_visibility_requests_guard")
+        su.rows("update public.video_visibility_requests set lifetime_attempts = 5 returning 1")
+        su.conn.execute("alter table public.video_visibility_requests enable trigger video_visibility_requests_guard")
+        with acting(conn, bob.actor) as s:
+            assert answer(retry(s, rid))["ok"] is True
+        assert svc_value(conn, "select public.claim_visibility_request('w1')")["id"] == rid        # the sixth
+        su.rows("update public.video_visibility_requests set lease_until = now() - interval '1 minute' returning 1")
+        assert svc_value(conn, "select public.claim_visibility_request('w2')") is None
+        assert requests(su)[0][1:3] == ("failed", "interrupted")
+
+
+def test_the_last_check_waits_for_a_switch_or_an_approval_in_flight_and_then_sees_it(conn):
+    """Two real sessions on a database of their own (the shared lab is one rolled-back transaction, which a second session cannot
+    see): the marker's transaction takes the channel row FOR SHARE and the video row FOR SHARE, so a switch being turned off or a
+    cut being replaced in another transaction is waited for, not raced."""
+    from sec_scenario import build_scenario
+
+    admin = sec_db.admin_dsn()
+    name = f"ns_visibility_lock_{uuid.uuid4().hex[:8]}"
+    dsn = sec_db.build(admin, name)
+
+    def mark(c, rid, ms=400):
+        with acting(c, SERVICE) as s:
+            c.execute(f"set local lock_timeout = '{ms}ms'")
+            out = s.run("select public.mark_visibility_submitting(%s, 'w1')", [rid])
+        return out.rows[0][0] if out.ok else out.sqlstate
+
+    try:
+        with psycopg.connect(dsn, autocommit=True) as c1, psycopg.connect(dsn, autocommit=True) as c2:
+            bob = build_scenario(c1).bob
+            with as_superuser(c1, commit=True) as su:
+                first = queued(su, bob)
+                activate(su, bob.channel)
+            assert svc_value(c2, "select public.claim_visibility_request('w1')")["id"] == first
+            # an administrator is turning the switch off (the function holds the channel row until it commits): the marker waits
+            with acting(c1, bob.actor) as s1:
+                assert answer(flip(s1, bob.channel, False))["changed"] is True
+                assert mark(c2, first) == "55P03"                              # lock_not_available: it did not race the switch
+            # the switch committed and refused the request that was never marked: the marker finds it ended, sets nothing
+            assert mark(c2, first) == "not_holder"
+            with as_superuser(c1, commit=False) as su:
+                assert su.rows("select status, reason, submitting_at is null from public.video_visibility_requests where id = %s", [first]) == [("refused", "not_enabled", True)]
+            # a repair (or a new cut) is being written to the video: the marker waits, and when it commits the marker says no
+            with as_superuser(c1, commit=True) as su:
+                second = queued(su, bob, vid="bbbbbbbbbbb")
+                activate(su, bob.channel)
+            assert svc_value(c2, "select public.claim_visibility_request('w1')")["id"] == second
+            with as_superuser(c1, commit=True) as su:
+                su.rows("update public.videos set cut_sha256 = %s where video_id = 'bbbbbbbbbbb' returning 1", [OTHER])
+                assert mark(c2, second) == "55P03"                             # waiting for the video row, not reading around it
+            assert mark(c2, second) == "cut_changed"
+            with as_superuser(c1, commit=False) as su:
+                assert su.value("select submitting_at is null from public.video_visibility_requests where id = %s", [second]) is True
+    finally:
+        sec_db.drop_database(admin, name)
 
 
 # ── audit list ───────────────────────────────────────────────────────────────

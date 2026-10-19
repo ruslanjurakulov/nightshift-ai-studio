@@ -250,7 +250,7 @@ describe("the component never writes the switch itself", () => {
       .filter((f) => !/(^|\/)i18n\//.test(f))
       .filter((f) => /publish_on_approve/.test(readFileSync(join(__dirname, "..", f), "utf8")))
       .sort();
-    expect(named).toEqual(["app/(app)/[channel]/videos/[id]/page.tsx", "components/channels/ChannelCard.tsx", "lib/types.ts"]);
+    expect(named).toEqual(["app/(app)/[channel]/videos/[id]/page.tsx", "components/channels/ChannelCard.tsx", "lib/server/release-flags.ts", "lib/types.ts"]);
     const page = readFileSync(join(__dirname, "..", "app/(app)/[channel]/videos/[id]/page.tsx"), "utf8");
     expect(page).not.toMatch(/publish_on_approve[^\n]*\.(update|insert|upsert|delete)\(/);
   });

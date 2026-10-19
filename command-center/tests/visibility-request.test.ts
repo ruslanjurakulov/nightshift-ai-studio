@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   knownRetryError,
   knownVisibilityReason,
+  MAX_LIFETIME_ATTEMPTS,
   parseVisibilityRow,
   RETRY_ERRORS,
   visibilityView,
@@ -26,7 +27,7 @@ const VIDEO = { approved_cut_sha256: CUT, decided_at: "2026-10-19T10:00:00+00:00
 
 function row(over: Partial<VisibilityRequestRow> = {}): VisibilityRequestRow {
   return {
-    id: 1, status: "queued", reason: null, attempts: 0, approved_cut_sha256: CUT, decided_at: DECIDED,
+    id: 1, status: "queued", reason: null, attempts: 0, lifetime_attempts: 0, approved_cut_sha256: CUT, decided_at: DECIDED,
     expires_at: "2026-10-20T10:00:00.000Z", next_attempt_at: DECIDED, before_privacy: null, after_privacy: null,
     finished_at: null, created_at: DECIDED, ...over,
   };
@@ -78,6 +79,11 @@ describe("visibilityView", () => {
       .toEqual({ kind: "refused", reason: "platform_kept_private" });
     expect(visibilityView(row({ status: "failed", reason: "token_expired", finished_at: DECIDED }), VIDEO, NOW))
       .toEqual({ kind: "failed", reason: "token_expired", retryable: true });
+    // "try again" is offered while the request is under the database's lifetime cap (migration 0113), not after it
+    expect(visibilityView(row({ status: "failed", reason: "token_expired", finished_at: DECIDED, lifetime_attempts: MAX_LIFETIME_ATTEMPTS - 1 }), VIDEO, NOW))
+      .toEqual({ kind: "failed", reason: "token_expired", retryable: true });
+    expect(visibilityView(row({ status: "failed", reason: "token_expired", finished_at: DECIDED, lifetime_attempts: MAX_LIFETIME_ATTEMPTS }), VIDEO, NOW))
+      .toEqual({ kind: "failed", reason: "token_expired", retryable: false });
     // a refusal with no known word is the worker's generic one, never a raw string
     expect(visibilityView(row({ status: "refused", reason: null, finished_at: DECIDED }), VIDEO, NOW))
       .toEqual({ kind: "refused", reason: "worker_error" });

@@ -9,12 +9,18 @@
 -- 0112's text, and rollback_0112 restores the versions before 0112.
 --
 -- WHAT IT DOES, in one transaction:
---   1. Refuses every request that is still queued (reason not_enabled) and switches every channel's publish_on_approve off, so
---      nothing can be acted on after this file, whatever is applied again later. (The switch's guard trigger stays; this file
---      runs as the database owner, which it lets through.)
+--   1. Refuses every request that is still queued and was never marked for a write (reason not_enabled) and switches every
+--      channel's publish_on_approve off, so nothing can be acted on after this file, whatever is applied again later. (The
+--      switch's guard trigger stays; this file runs as the database owner, which it lets through.)
+--      A request whose write was MARKED (submitting_at set: a YouTube write may be on its way or have landed) is NOT refused,
+--      because refusing it would leave the database saying "not published" about a video that may be public:
+--        - if such a write may be in flight right now (marked within the last 10 minutes) the file stops with an error and
+--          changes nothing: wait ten minutes and run it again, so the worker can record what YouTube reports first;
+--        - older ones stay queued as a record (nothing can finish them once the functions below are dropped): the file prints
+--          how many, and each is to be checked in YouTube Studio by a person.
 --   2. Drops set_channel_publish_on_approve, retry_video_visibility, claim_visibility_request, mark_visibility_submitting,
---      finish_visibility_request, visibility_request_refusal, visibility_channel_connected and youtube_quota_take: no API role can write the queue, change the
---      switch or spend quota any more.
+--      finish_visibility_request, visibility_request_refusal, visibility_channel_connected and youtube_quota_take: no API role
+--      can write the queue, change the switch or spend quota any more.
 --   3. Puts approve_video_publish(text, text, jsonb) back to 0112's body, byte for byte, with the grant 0112 gave it: it queues nothing.
 --   4. Puts audit_action_allowed(text) back to 0112's body (the seven 0113 action names become unknown again).
 --
@@ -34,9 +40,25 @@
 begin;
 set local lock_timeout = '5s';
 
-update public.video_visibility_requests
-   set status = 'refused', reason = 'not_enabled', finished_at = now(), updated_at = now(), claimed_by = null, lease_until = null
- where status = 'queued';
+do $$
+declare
+  n_flight integer;
+  n_marked integer;
+begin
+  select count(*) into n_flight from public.video_visibility_requests
+   where status = 'queued' and submitting_at is not null and submitting_at > now() - interval '10 minutes';
+  if n_flight > 0 then
+    raise exception 'rollback 0113: % request(s) have a YouTube write that may be in flight (marked in the last 10 minutes); wait and run this again, so the worker can record what YouTube reports', n_flight
+      using errcode = '55000';
+  end if;
+  update public.video_visibility_requests
+     set status = 'refused', reason = 'not_enabled', finished_at = now(), updated_at = now(), claimed_by = null, lease_until = null
+   where status = 'queued' and submitting_at is null;
+  select count(*) into n_marked from public.video_visibility_requests where status = 'queued' and submitting_at is not null;
+  if n_marked > 0 then
+    raise notice 'rollback 0113: % request(s) stay queued because a write was marked for them: check those videos in YouTube Studio', n_marked;
+  end if;
+end $$;
 update public.channels set publish_on_approve = false where publish_on_approve;
 
 drop function if exists public.set_channel_publish_on_approve(text, boolean);
@@ -45,6 +67,7 @@ drop function if exists public.claim_visibility_request(text);
 drop function if exists public.mark_visibility_submitting(bigint, text);
 drop function if exists public.finish_visibility_request(bigint, text, text, text, text, text, integer, integer);
 drop function if exists public.visibility_request_refusal(bigint);
+drop function if exists public.youtube_quota_take(text, integer, integer, uuid, integer);
 drop function if exists public.youtube_quota_take(text, integer, integer);
 drop function if exists public.visibility_channel_connected(text);
 

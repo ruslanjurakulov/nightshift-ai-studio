@@ -5,7 +5,11 @@ What would break without these:
 
   * the worker acts on a request the database would now refuse (the cut changed after the approval, the approval ran out, the
     channel's switch was turned off, the gate verdict is not an allowed one): it must ask again, with the cut hash recorded at
-    approval, BEFORE any YouTube call and once more IMMEDIATELY before the write, and a word ends the request;
+    approval, BEFORE any YouTube call, and the database asks once more, for good, in the step that sets the marker right before
+    the write (mark_visibility_submitting); a word ends the request;
+  * the switch is turned off while the write may be on its way and the worker records nothing, or records "applied" in its log
+    when the database did not take it;
+  * the update is sent from a read that lacked the made-for-kids declaration (it would reset it);
   * "applied" is recorded on the strength of the write's own answer: it is recorded only when a read-back says public, and a
     call that succeeded while YouTube kept the video private is refused with platform_kept_private;
   * a retry sends a second write blindly, or a crash after the write sent is not recognised (the next claim reads first);
@@ -34,6 +38,7 @@ TOKEN = "ya29.A0ARrdaM-this-is-a-secret-access-token-value"
 REFRESH = "1//0g-this-is-a-secret-refresh-token-value-xyz"
 FORCE_SSL = "https://www.googleapis.com/auth/youtube.force-ssl"
 UPLOAD = "https://www.googleapis.com/auth/youtube.upload"
+ORG = "11111111-1111-4111-8111-111111111111"
 
 
 def token_json(scopes=(UPLOAD, FORCE_SSL)):
@@ -58,12 +63,14 @@ class FakeYouTube:
     video stays private: an API project that has not passed YouTube's audit); ``update_errors`` are raised in order (None = succeed)."""
 
     def __init__(self, *, privacy="private", upload_status="processed", channel=YT_CHANNEL, status_extra=None,
-                 update="ok", update_errors=(), list_errors=(), found=True, lands_on_error=False):
+                 update="ok", update_errors=(), list_errors=(), found=True, lands_on_error=False, drop_status=()):
         self.privacy = privacy
         self.upload_status = upload_status
         self.channel = channel
         self.extra = {"embeddable": True, "license": "youtube", "publicStatsViewable": True, "selfDeclaredMadeForKids": False,
                       "madeForKids": False, **(status_extra or {})}
+        for k in drop_status:
+            self.extra.pop(k, None)
         self.mode = update
         self.update_errors = list(update_errors)
         self.list_errors = list(list_errors)
@@ -117,13 +124,18 @@ def wrap(**kw):
 class MemoryStore:
     """The database's side of the contract, in memory: the same rules the SQL functions of 0113 enforce."""
 
-    def __init__(self, *, video_refusals=(), request_refusals=(), ceiling_units=None):
+    def __init__(self, *, video_refusals=(), request_refusals=(), ceiling_units=None, gap=None, org_units=None):
         self.video_refusals = list(video_refusals)       # one answer per call; the last repeats
         self.request_refusals = list(request_refusals)
+        self.gap = gap                                   # what changed between the early check and the marker (mark's answer)
         self.used = 0
+        self.used_org = 0
         self.ceiling_units = ceiling_units
+        self.org_units = org_units
+        self.mirror = None                               # videos.privacy as the database would have it
+        self.on_mark = None                              # something that happens right after the marker is set
         self.calls = []
-        self.request = {"id": 7, "video_id": VID, "channel_id": "chan", "approved_cut_sha256": CUT, "attempts": 1, "reconcile": False,
+        self.request = {"id": 7, "video_id": VID, "channel_id": "chan", "org_id": ORG, "approved_cut_sha256": CUT, "attempts": 1, "reconcile": False,
                         "status": "queued", "reason": None, "claimed_by": "w1", "submitting_at": None, "units": 0,
                         "before": None, "after": None, "next_attempt": None}
         self.finishes = []
@@ -143,8 +155,9 @@ class MemoryStore:
         if r.get("claimed"):
             r["attempts"] += 1
         r["claimed"] = True
-        return {"id": r["id"], "video_id": r["video_id"], "channel_id": r["channel_id"], "approved_cut_sha256": r["approved_cut_sha256"],
-                "attempts": r["attempts"], "reconcile": r["submitting_at"] is not None}
+        return {"id": r["id"], "video_id": r["video_id"], "channel_id": r["channel_id"], "org_id": r["org_id"],
+                "approved_cut_sha256": r["approved_cut_sha256"], "attempts": r["attempts"],
+                "reconcile": r["submitting_at"] is not None}
 
     def video_refusal(self, video_id, cut):
         self.calls.append(("video_refusal", video_id, cut))
@@ -155,18 +168,25 @@ class MemoryStore:
         return self._answer(self.request_refusals)
 
     def mark_submitting(self, rid, worker):
+        """The database's last check and the marker in one step: 'ok', 'not_holder', or the closed word that says no."""
         self.calls.append(("mark_submitting", rid))
         if self.request["claimed_by"] != worker or self.request["status"] != "queued":
-            return False
+            return "not_holder"
+        if self.gap:
+            return self.gap
         self.request["submitting_at"] = "now"
-        return True
+        if self.on_mark:
+            self.on_mark()
+        return "ok"
 
-    def quota_take(self, project, units, ceiling):
-        self.calls.append(("quota", units, ceiling))
+    def quota_take(self, project, units, ceiling, org, org_ceiling):
+        self.calls.append(("quota", units, ceiling, org, org_ceiling))
         cap = ceiling if self.ceiling_units is None else min(ceiling, self.ceiling_units)
-        if units > cap or self.used + units > cap:
+        ocap = org_ceiling if self.org_units is None else min(org_ceiling, self.org_units)
+        if units > cap or self.used + units > cap or self.used_org + units > ocap:
             return False
         self.used += units
+        self.used_org += units
         return True
 
     def finish(self, rid, worker, status, reason, before, after, units, retry):
@@ -185,6 +205,8 @@ class MemoryStore:
             status = "failed"
         r["units"] += units
         r["before"] = before or r["before"]
+        if after in ("private", "unlisted", "public"):
+            self.mirror = after
         if status == "queued":
             r.update(reason=reason, claimed_by=None, next_attempt=retry)
             return {"ok": True, "status": "queued", "reason": reason}
@@ -230,21 +252,24 @@ class HappyPath(unittest.TestCase):
         # the 1 + 1 + 50 + 1 units are what the ledger was asked for (the day's budget for the write came first)
         self.assertEqual([c[1] for c in store.calls if c[0] == "quota"], [2, 50, 1])
         self.assertEqual(store.request["status"], "applied")
+        self.assertEqual(store.mirror, "public")
 
-    def test_the_database_is_asked_twice_with_the_cut_recorded_at_approval_and_the_second_time_is_right_before_the_write(self):
+    def test_the_database_is_asked_early_with_the_cut_recorded_at_approval_and_the_last_check_is_the_marker_itself(self):
         store, yt = MemoryStore(), wrap()
         run(store, yt)
         names = [c[0] for c in store.calls]
-        # re-check pair, ... YouTube read ..., re-check pair, budget for the write, marker, write
-        self.assertEqual(names.count("video_refusal"), 2)
-        self.assertEqual(names.count("request_refusal"), 2)
+        # early (a cheap filter): the video-level and request-level questions once, before YouTube is touched ...
+        self.assertEqual(names.count("video_refusal"), 1)
+        self.assertEqual(names.count("request_refusal"), 1)
         for c in store.calls:
             if c[0] == "video_refusal":
                 self.assertEqual(c[1:], (VID, CUT))
-        last_check = max(i for i, n in enumerate(names) if n in ("video_refusal", "request_refusal"))
-        self.assertLess(last_check, names.index("mark_submitting"))
-        self.assertEqual(names.index("mark_submitting") - last_check, 2)     # check, quota(50), mark: nothing in between
-        self.assertEqual(names[last_check + 1], "quota")
+        # ... and the last check is not a call of the worker's at all: it is the database's, inside the marker's own step, so
+        # nothing sits between "asked again" and "marked": budget for the write, then the marker, then the write
+        self.assertEqual(names[names.index("mark_submitting") - 1], "quota")
+        self.assertEqual([c[1] for c in store.calls if c[0] == "quota"], [2, 50, 1])
+        self.assertLess(max(i for i, n in enumerate(names) if n in ("video_refusal", "request_refusal")), names.index("mark_submitting"))
+        self.assertEqual(len(yt.updates), 1)
 
 
 class ReadBackTruth(unittest.TestCase):
@@ -321,20 +346,25 @@ class TheDatabaseSaysNo(unittest.TestCase):
         store, yt = MemoryStore(request_refusals=["channel_not_connected"]), wrap()
         self.assert_not_called(yt, store, run(store, yt)[0], "failed", "channel_not_connected")
 
-    def test_a_change_between_the_first_check_and_the_write_stops_the_write(self):
-        # the first pair of checks passes; YouTube is read; the video changed meanwhile: the check right before the write says no
-        store, yt = MemoryStore(video_refusals=[None, "cut_changed"]), wrap()
+    def test_a_change_between_the_early_check_and_the_marker_stops_the_write_because_the_marker_asks_again(self):
+        # the early pair passes; YouTube is read; the video changed meanwhile: the database's answer in the marker's own step says no
+        for word, end_status in (("cut_changed", "refused"), ("not_approved", "refused"), ("not_enabled", "refused"),
+                                 ("approval_superseded", "refused"), ("already_public", "refused"), ("gate_blocked", "refused"),
+                                 ("approval_expired", "expired"), ("channel_not_connected", "failed")):
+            store, yt = MemoryStore(gap=word), wrap()
+            out, _ = run(store, yt)
+            self.assertEqual((out, store.finishes[-1][:2]), (end_status, (end_status, word)), word)
+            self.assertEqual(yt.updates, [], word)
+            self.assertGreaterEqual(yt.lists, 1)
+            self.assertIn("mark_submitting", [c[0] for c in store.calls])
+            self.assertIsNone(store.request["submitting_at"], word)      # nothing was marked: no write may be on its way
+        # a word the worker does not know is ours, never the text it came in
+        store, yt = MemoryStore(gap="drop table;"), wrap()
         out, _ = run(store, yt)
-        self.assertEqual((out, store.finishes[-1][:2]), ("refused", ("refused", "cut_changed")))
-        self.assertEqual(yt.updates, [])
-        self.assertGreaterEqual(yt.lists, 1)
-        self.assertNotIn("mark_submitting", [c[0] for c in store.calls])
-        store, yt = MemoryStore(request_refusals=[None, "not_enabled"]), wrap()
-        out, _ = run(store, yt)
-        self.assertEqual((out, yt.updates), ("refused", []))
-        store, yt = MemoryStore(video_refusals=[None, "approval_expired"]), wrap()
-        out, _ = run(store, yt)
-        self.assertEqual((out, yt.updates), ("expired", []))
+        self.assertEqual((out, store.finishes[-1][:2], yt.updates), ("failed", ("failed", "worker_error"), []))
+        # the early checks still end it before YouTube is read
+        store, yt = MemoryStore(request_refusals=[None]), wrap()
+        self.assertEqual(run(store, yt)[0], "applied")
 
     def test_a_malformed_request_is_refused_before_anything_is_asked(self):
         store, yt = MemoryStore(), wrap()
@@ -569,8 +599,10 @@ class ReplayAndCrash(unittest.TestCase):
     def test_a_crash_after_the_write_was_sent_is_recognised_by_the_next_claim_and_not_repeated(self):
         store, yt = MemoryStore(), wrap()
         store.fail_finish = True              # the process dies (the database cannot be reached) after the write landed
-        out, _ = run(store, yt)
-        self.assertEqual(out, "queued")
+        with self.assertLogs("modules.visibility_publish", level="WARNING") as logs:
+            out, _ = run(store, yt)
+        self.assertEqual(out, "unrecorded")             # the database did not take it: nothing says "applied"
+        self.assertTrue(any("did NOT record applied" in m for m in logs.output), logs.output)
         self.assertEqual(len(yt.updates), 1)
         self.assertEqual(yt.privacy, "public")
         self.assertEqual(store.request["status"], "queued")
@@ -601,9 +633,189 @@ class ReplayAndCrash(unittest.TestCase):
 
     def test_losing_the_lease_before_the_write_means_no_write(self):
         store, yt = MemoryStore(), wrap()
-        store.mark_submitting = lambda rid, worker: False               # another worker holds it now
+        store.mark_submitting = lambda rid, worker: "not_holder"        # another worker holds it now
         out, _ = run(store, yt)
         self.assertEqual((out, yt.updates, store.finishes), ("queued", [], []))
+
+
+class TheSwitchIsTurnedOffWhileTheWriteIsOnItsWay(unittest.TestCase):
+    """Claim -> marker -> an administrator switches the channel off -> YouTube makes the video public -> the worker finishes.
+    The database must say what YouTube says (the switch is not a reason to leave a public video recorded as not published)."""
+
+    def switch_off(self, store):
+        store.request_refusals[:] = ["not_enabled"]
+        store.video_refusals[:] = [None]
+
+    def test_the_read_back_is_recorded_as_applied_with_the_mirror_even_though_the_switch_is_off_now(self):
+        store, yt = MemoryStore(), wrap()
+        store.on_mark = lambda: self.switch_off(store)
+        with self.assertLogs("modules.visibility_publish", level="INFO") as logs:
+            out, _ = run(store, yt)
+        self.assertEqual(out, "applied")
+        self.assertEqual(store.finishes[-1][:2], ("applied", None))
+        self.assertEqual((store.request["status"], store.request["after"], store.mirror), ("applied", "public", "public"))
+        self.assertTrue(any("applied" in m and "did NOT" not in m for m in logs.output))
+
+    def test_nothing_is_logged_as_applied_when_the_database_says_it_did_not_take_it(self):
+        # the lease went to another worker (or the switch ended the request before the marker) while YouTube was being written
+        store, yt = MemoryStore(), wrap()
+
+        def lose():
+            store.request["claimed_by"] = "w2"
+
+        store.on_mark = lose
+        with self.assertLogs("modules.visibility_publish", level="INFO") as logs:
+            out, _ = run(store, yt)
+        self.assertEqual(out, "unrecorded")
+        self.assertEqual(store.request["status"], "queued")
+        self.assertEqual(yt.privacy, "public")           # it IS public: that is why the log must be loud, not quiet
+        text = "\n".join(logs.output)
+        self.assertIn("did NOT record applied", text)
+        self.assertIn("not_holder", text)
+        self.assertIn("ERROR", logs.output[-1])
+        self.assertNotIn("INFO:modules.visibility_publish:visibility request 7: applied", text)
+        # an answer that is not an ok is not a record either, whatever its shape
+        for odd in (None, {"ok": False, "error": "not_holder"}, {"status": "applied"}, "ok"):
+            store, yt = MemoryStore(), wrap()
+            store.finish = lambda *a, odd=odd: odd
+            with self.assertLogs("modules.visibility_publish", level="WARNING") as logs:
+                self.assertEqual(run(store, yt)[0], "unrecorded")
+            self.assertTrue(any("did NOT record applied" in m for m in logs.output))
+
+    def test_a_refusal_the_database_does_not_take_is_logged_too_but_less_loudly(self):
+        store, yt = MemoryStore(video_refusals=["cut_changed"]), wrap()
+        store.finish = lambda *a: {"ok": False, "error": "not_holder", "status": "refused"}
+        with self.assertLogs("modules.visibility_publish", level="WARNING") as logs:
+            out, _ = run(store, yt)
+        self.assertEqual(out, "unrecorded")
+        self.assertIn("WARNING", logs.output[0])
+        self.assertIn("did NOT record refused (cut_changed)", logs.output[0])
+
+    def test_the_next_claim_after_a_crash_reads_youtube_even_though_the_database_now_says_no(self):
+        # w1 marked, wrote, died. Meanwhile: the switch was turned off (not_enabled) / the approval ran out (approval_expired).
+        for refusal_kind, words in (("request", ["not_enabled"]), ("video", ["approval_expired"]), ("video", ["cut_changed"])):
+            store = MemoryStore(**{f"{refusal_kind}_refusals": words})
+            store.request.update(submitting_at="then", claimed_by=None)
+            req = store.claim("w2")
+            self.assertTrue(req["reconcile"])
+            # YouTube says public: the write landed (or a person did it): that is recorded, whatever the database says now
+            yt = wrap(privacy="public")
+            out = vp.process_request(req, store=store, credentials=good_credentials, service_factory=lambda t, c: yt, worker_id="w2",
+                                     sleep=lambda s: None)
+            self.assertEqual((out, store.request["status"], store.mirror), ("applied", "applied", "public"), words)
+            self.assertEqual(yt.updates, [])
+            # YouTube says private: the write did not land, and the database's word stands; YouTube is never written to
+            store = MemoryStore(**{f"{refusal_kind}_refusals": words})
+            store.request.update(submitting_at="then", claimed_by=None)
+            req = store.claim("w2")
+            yt = wrap()
+            out = vp.process_request(req, store=store, credentials=good_credentials, service_factory=lambda t, c: yt, worker_id="w2",
+                                     sleep=lambda s: None)
+            self.assertEqual(out, vp.status_of(words[0]))
+            self.assertEqual(store.finishes[-1][1], words[0])
+            self.assertEqual(yt.updates, [])
+            self.assertNotEqual(store.request["status"], "applied")
+
+    def test_a_read_that_fails_on_that_claim_is_a_retry_not_a_refusal(self):
+        # nothing is known about what YouTube says: ending the request as "not published" could be a lie
+        for kw in (dict(list_errors=[HttpError(503)]), dict(list_errors=[HttpError(401, "authError")])):
+            store = MemoryStore(request_refusals=["not_enabled"])
+            store.request.update(submitting_at="then", claimed_by=None)
+            req = store.claim("w2")
+            yt = wrap(**kw)
+            out = vp.process_request(req, store=store, credentials=good_credentials, service_factory=lambda t, c: yt, worker_id="w2",
+                                     sleep=lambda s: None)
+            self.assertEqual(out, "queued", kw)
+            self.assertEqual(store.request["status"], "queued")
+            self.assertEqual(yt.updates, [])
+        store = MemoryStore(request_refusals=["not_enabled"])
+        store.request.update(submitting_at="then", claimed_by=None)
+        req = store.claim("w2")
+        out = vp.process_request(req, store=store, credentials=lambda cid: ("", None), service_factory=lambda t, c: wrap(), worker_id="w2",
+                                 sleep=lambda s: None)
+        self.assertEqual((out, store.request["status"]), ("queued", "queued"))
+
+    def test_without_a_marker_the_database_says_no_and_youtube_is_not_even_read(self):
+        store, yt = MemoryStore(request_refusals=["not_enabled"]), wrap()
+        out, built = run(store, yt)
+        self.assertEqual((out, yt.lists, built), ("refused", 0, []))
+
+
+class StatusFieldsArePreserved(unittest.TestCase):
+    def test_a_read_without_the_made_for_kids_declaration_is_never_written_over(self):
+        store, yt = MemoryStore(), wrap(drop_status=("selfDeclaredMadeForKids",))
+        out, _ = run(store, yt)
+        self.assertEqual((out, store.finishes[-1][:2], yt.updates), ("refused", ("refused", "status_unreadable"), []))
+        self.assertNotIn("mark_submitting", [c[0] for c in store.calls])      # nothing was marked: nothing was sent
+        # a value that is not a yes/no is not a declaration either
+        for bad in (None, "false", 0):
+            store, yt = MemoryStore(), wrap(status_extra={"selfDeclaredMadeForKids": bad})
+            out, _ = run(store, yt)
+            self.assertEqual((out, store.finishes[-1][1], yt.updates), ("refused", "status_unreadable", []), bad)
+
+    def test_the_declaration_and_the_other_fields_that_were_read_go_back_and_the_ones_that_were_not_read_are_not_invented(self):
+        store, yt = MemoryStore(), wrap(drop_status=("embeddable", "license", "publicStatsViewable"), status_extra={"selfDeclaredMadeForKids": True})
+        self.assertEqual(run(store, yt)[0], "applied")
+        self.assertEqual(yt.updates[0]["body"]["status"], {"selfDeclaredMadeForKids": True, "privacyStatus": "public"})
+
+    def test_the_body_builder_itself_refuses_an_unread_status(self):
+        with self.assertRaises(ValueError):
+            vp.writable_status({"privacyStatus": "private", "embeddable": True})
+        with self.assertRaises(ValueError):
+            vp.writable_status({"selfDeclaredMadeForKids": False})
+        with self.assertRaises(ValueError):
+            vp.writable_status(None)
+        self.assertEqual(vp.writable_status({"privacyStatus": "private", "selfDeclaredMadeForKids": False, "publishAt": "x", "madeForKids": False}),
+                         {"selfDeclaredMadeForKids": False, "privacyStatus": "public"})
+
+
+class ChannelIdentityAndFairness(unittest.TestCase):
+    def test_a_token_whose_channel_cannot_be_compared_is_not_a_yes(self):
+        store, yt = MemoryStore(), wrap()
+        ctx = SimpleNamespace(credential=SimpleNamespace(youtube_channel_id=""))
+        out, built = run(store, yt, credentials=lambda cid: (token_json(), ctx))
+        self.assertEqual((out, store.finishes[-1][:2], yt.updates, built), ("failed", ("failed", "channel_not_connected"), [], []))
+        for ctx in (SimpleNamespace(credential=None), SimpleNamespace(), None):
+            store, yt = MemoryStore(), wrap()
+            out, _ = run(store, yt, credentials=lambda cid, c=ctx: (token_json(), c))
+            self.assertEqual((out, store.finishes[-1][1], yt.updates), ("failed", "channel_not_connected", []))
+
+    def test_every_spend_is_booked_to_the_requests_organization_with_its_share_of_the_day(self):
+        store, yt = MemoryStore(), wrap()
+        out, _ = run(store, yt, ceiling=1000)
+        self.assertEqual(out, "applied")
+        quota = [c for c in store.calls if c[0] == "quota"]
+        self.assertEqual([c[1] for c in quota], [2, 50, 1])
+        # the checks and the write are held to the organization's share (default 50%); the read-back is recorded, never withheld
+        self.assertEqual([(c[3], c[4]) for c in quota], [(ORG, 500), (ORG, 500), (ORG, vp.PROJECT_POOL)])
+        self.assertEqual([c[2] for c in quota], [1000, 1000, vp.PROJECT_POOL])
+
+    def test_one_organization_that_has_used_its_share_is_stopped_while_the_day_has_room(self):
+        store, yt = MemoryStore(org_units=51), wrap()      # 2 for the checks, then 50 more would pass the organization's 51
+        out, _ = run(store, yt, ceiling=1000)
+        self.assertEqual((out, store.finishes[-1][1], yt.updates), ("failed", "quota_exceeded", []))
+        self.assertNotIn("mark_submitting", [c[0] for c in store.calls])
+        store, yt = MemoryStore(), wrap()
+        out, _ = run(store, yt, ceiling=1000, org_ceiling=40)
+        self.assertEqual((out, store.finishes[-1][1]), ("failed", "quota_exceeded"))
+
+    def test_the_share_is_a_bounded_percent_of_the_ceiling_and_the_default_is_half(self):
+        self.assertEqual(vp.DEFAULT_ORG_PERCENT, 50)
+        self.assertEqual((vp.org_share(1000), vp.org_share(1001), vp.org_share(0), vp.org_share(1000, 100), vp.org_share(1000, 10)),
+                         (500, 501, 0, 1000, 100))
+        self.assertEqual([vp._org_percent(x) for x in ("", "x", "0", "-4", "150", "25", " 75 ")], [50, 50, 1, 1, 100, 25, 75])
+        store, yt = MemoryStore(), wrap()
+        svc = vp.VisibilityService("u", "k", worker_id="w1", credentials=good_credentials, service_factory=lambda t, c: yt, store=store,
+                                   project="p", env={"NIGHTSHIFT_VISIBILITY_DAILY_UNITS": "400", "NIGHTSHIFT_VISIBILITY_ORG_PERCENT": "25"})
+        self.assertTrue(svc.run_once())
+        self.assertEqual([c[4] for c in store.calls if c[0] == "quota"][:2], [100, 100])
+
+    def test_a_request_without_an_organization_is_not_acted_on(self):
+        store, yt = MemoryStore(), wrap()
+        req = dict(store.claim("w1"), org_id="")
+        out = vp.process_request(req, store=store, credentials=good_credentials, service_factory=lambda t, c: yt, worker_id="w1",
+                                 sleep=lambda s: None)
+        self.assertEqual((out, yt.updates, store.finishes[-1][:2]), ("failed", [], ("failed", "worker_error")))
 
 
 class NothingSecretIsLoggedOrStored(unittest.TestCase):
@@ -705,17 +917,30 @@ class Rest(unittest.TestCase):
         s._http = Session(Resp(200, None))
         self.assertIsNone(s.video_refusal(VID, CUT))
         self.assertIsNone(s.request_refusal(3))
+        s._http = Session(Resp(200, "ok"))
+        self.assertEqual(s.mark_submitting(3, "w1"), "ok")
+        s._http = Session(Resp(200, "cut_changed"))
+        self.assertEqual(s.mark_submitting(3, "w1"), "cut_changed")
+        for odd in (None, True, "", 5):                 # anything that is not a word is not an "ok"
+            s._http = Session(Resp(200, odd))
+            self.assertEqual(s.mark_submitting(3, "w1"), "worker_error")
         s._http = Session(Resp(200, True))
-        self.assertTrue(s.mark_submitting(3, "w1"))
-        self.assertTrue(s.quota_take("p", 50, 1000))
+        self.assertTrue(s.quota_take("p", 50, 1000, ORG, 500))
+        self.assertEqual(calls[-1][1], {"p_project": "p", "p_units": 50, "p_ceiling": 1000, "p_org": ORG, "p_org_ceiling": 500})
         s._http = Session(Resp(200, False))
-        self.assertFalse(s.quota_take("p", 50, 1000))
+        self.assertFalse(s.quota_take("p", 50, 1000, ORG, 500))
         s._http = Session(Resp(200, {"ok": True, "status": "applied"}))
         self.assertEqual(s.finish(3, "w1", "applied", None, "private", "public", 53, None)["status"], "applied")
         self.assertEqual(calls[-1][1], {"p_request_id": 3, "p_worker": "w1", "p_status": "applied", "p_reason": None,
                                         "p_before": "private", "p_after": "public", "p_units": 53, "p_retry_seconds": None})
-        s._http = Session(Resp(404, {"message": "no function"}))
-        self.assertIsNone(s.claim("w1"))                      # 0113 not applied: nothing to do
+        s._http = Session(Resp(404, {"message": f"no function {TOKEN}"}))
+        with self.assertLogs("modules.visibility_publish", level="WARNING") as logs:
+            self.assertIsNone(s.claim("w1"))                  # 0113 not applied: nothing to do, and not silently
+            self.assertIsNone(s.claim("w1"))
+        self.assertEqual(len(logs.output), 1)                 # once per function, so the loop does not fill the log
+        self.assertIn("claim_visibility_request", logs.output[0])
+        self.assertIn("404", logs.output[0])
+        self.assertNotIn(TOKEN, logs.output[0])
         s._http = Session(Resp(500, {"message": f"secret {TOKEN}"}))
         with self.assertRaises(RuntimeError) as ctx:
             s.claim("w1")

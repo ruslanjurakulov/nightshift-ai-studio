@@ -146,10 +146,14 @@ class OffByDefaultAndAdditive(unittest.TestCase):
 
     def test_it_changes_no_existing_row_policy_or_trigger_and_removes_nothing(self):
         top = TOP.lower()
-        for forbidden in ("drop table", "drop column", "truncate", "delete from", "drop function", "alter table public.render_jobs",
+        for forbidden in ("drop table", "drop column", "truncate", "delete from", "alter table public.render_jobs",
                           "disable row level security", "create view", "create materialized", "create extension", "alter table public.videos",
                           "alter table public.review_intents", "update public."):
             self.assertNotIn(forbidden, top, forbidden)
+        # the only drops: the two functions whose shape an earlier draft of this file had (mark_visibility_submitting returned a
+        # boolean, youtube_quota_take had three arguments), dropped by signature so a database with that draft gets the new ones
+        self.assertEqual(sorted(re.findall(r"(?m)^drop function if exists (public\.\w+\([^)]*\));", top)),
+                         ["public.mark_visibility_submitting(bigint, text)", "public.youtube_quota_take(text, integer, integer)"])
         self.assertEqual(sorted(re.findall(r"(?m)^alter table (public\.\w+) ", top)),
                          ["public.channels", "public.video_visibility_requests", "public.youtube_quota_ledger"])
         self.assertEqual(sorted(re.findall(r"(?m)^(?:create|drop) policy (?:if exists )?(\w+)", top)),
@@ -215,7 +219,7 @@ class WhoMayDoWhat(unittest.TestCase):
             self.assertIn(f"revoke all on function public.{fn}{sig} from public, anon, authenticated, service_role;", TOP)
             self.assertIn(f"grant execute on function public.{fn}{sig} to authenticated;", TOP)
         for fn, sig in (("visibility_request_refusal", "(bigint)"), ("claim_visibility_request", "(text)"),
-                        ("mark_visibility_submitting", "(bigint, text)"), ("youtube_quota_take", "(text, integer, integer)"),
+                        ("mark_visibility_submitting", "(bigint, text)"), ("youtube_quota_take", "(text, integer, integer, uuid, integer)"),
                         ("finish_visibility_request", "(bigint, text, text, text, text, text, integer, integer)")):
             self.assertRegex(TOP, rf"revoke all on function public\.{fn}{re.escape(sig)}\s+from public, anon, authenticated, service_role;")
             self.assertRegex(TOP, rf"grant execute on function public\.{fn}{re.escape(sig)} to service_role;")
@@ -255,9 +259,58 @@ class WhoMayDoWhat(unittest.TestCase):
         # a retry is bounded: the third claim was the last
         self.assertIn("if v_status = 'queued' and r.attempts >= 3 then", f)
         c = code(NEW_BODIES["claim_visibility_request"])
-        self.assertIn("if r.attempts >= 3 then", c)
-        self.assertIn("expires_at <= now()", c)
+        # three claims in a round, six in a request's lifetime (try again resets the first, never the second)
+        self.assertIn("if r.attempts >= 3 or r.lifetime_attempts >= 6 then", c)
+        self.assertIn("lifetime_attempts = lifetime_attempts + 1", c)
+        # the sweep ends an approval that ran out, but not a request whose write was marked: that one is read by the worker
+        self.assertIn("expires_at <= now() and submitting_at is null", c)
         self.assertIn("for update skip locked", c)
+        # organizations are served in turn: the one served longest ago first
+        self.assertIn("order by (select max(y.claimed_at) from public.video_visibility_requests y where y.org_id = x.org_id) asc nulls first", c)
+
+    def test_the_last_check_and_the_marker_are_one_step_under_row_locks_in_the_order_try_again_uses(self):
+        m = code(NEW_BODIES["mark_visibility_submitting"])
+        self.assertIn("returns text", NEW_BODIES["mark_visibility_submitting"].split("$$")[0])
+        chan = m.index("from public.channels c where c.channel_id = r.channel_id for share")
+        req = m.index("from public.video_visibility_requests where id = p_request_id for update")
+        vid = m.index("from public.videos v where v.video_id = r.video_id and v.channel_id = r.channel_id for share")
+        ask = m.index("public.video_publish_refusal(r.video_id, r.approved_cut_sha256)")
+        ask2 = m.index("public.visibility_request_refusal(r.id)")
+        mark = m.index("set submitting_at = now()")
+        self.assertLess(chan, req)
+        self.assertLess(req, vid)
+        self.assertLess(vid, ask)
+        self.assertLess(ask, ask2)
+        self.assertLess(ask2, mark)                      # the marker is the last statement that writes, after both questions
+        self.assertEqual(re.findall(r"return '?(\w+)'?;", m), ["not_holder", "not_holder", "why", "ok"])
+        # retry takes the same order (request, then video), so the two cannot deadlock; the switch takes the channel FOR UPDATE
+        rt = code(NEW_BODIES["retry_video_visibility"])
+        self.assertLess(rt.index("video_visibility_requests where id = p_request_id for update"), rt.index("public.videos where video_id = r.video_id"))
+        self.assertIn("from public.channels c where c.channel_id = p_channel_id for update", code(NEW_BODIES["set_channel_publish_on_approve"]))
+
+    def test_switching_off_does_not_refuse_a_request_whose_write_was_marked_and_finish_does_not_look_at_the_switch(self):
+        s = code(NEW_BODIES["set_channel_publish_on_approve"])
+        self.assertIn("where channel_id = p_channel_id and status = 'queued' and submitting_at is null;", s)
+        f = code(NEW_BODIES["finish_visibility_request"])
+        self.assertNotIn("publish_on_approve", f)
+        self.assertNotIn("public.channels", f)
+        self.assertIn("'write_marked', r.submitting_at is not null", f)
+        self.assertIn("if r.status <> 'queued' or r.claimed_by is distinct from p_worker then", f)
+
+    def test_a_lifetime_cap_a_per_organization_quota_and_a_closed_sequence(self):
+        rt = code(NEW_BODIES["retry_video_visibility"])
+        self.assertIn("if r.lifetime_attempts >= 6 then", rt)
+        self.assertIn("'retry_limit'", rt)
+        self.assertNotIn("lifetime_attempts = 0", rt)
+        q = code(NEW_BODIES["youtube_quota_take"])
+        self.assertIn("v_total + p_units > p_ceiling or v_org + p_units > p_org_ceiling", q)
+        self.assertIn("pg_advisory_xact_lock", q)
+        self.assertIn("revoke all on sequence public.video_visibility_requests_id_seq from public, anon, authenticated, service_role;", TOP)
+        g = code(NEW_BODIES["channels_publish_switch_guard"])
+        self.assertIn("new.publish_on_approve := false;", g)
+        self.assertIn("before insert or update of publish_on_approve, org_id on public.channels", TOP)
+        r = code(NEW_BODIES["visibility_request_refusal"])
+        self.assertIn("ch.org_id is distinct from r.org_id", r)
 
     def test_the_request_level_recheck_asks_for_the_switch_the_same_approval_and_the_channel(self):
         r = code(NEW_BODIES["visibility_request_refusal"])
@@ -279,7 +332,7 @@ class TheRollbackIsTheExactOldText(unittest.TestCase):
     def test_it_stops_everything_keeps_the_record_and_runs_in_one_transaction(self):
         top = outside_bodies(ROLLBACK)
         for fn in ("set_channel_publish_on_approve(text, boolean)", "retry_video_visibility(bigint)", "claim_visibility_request(text)",
-                   "mark_visibility_submitting(bigint, text)", "visibility_request_refusal(bigint)", "youtube_quota_take(text, integer, integer)",
+                   "mark_visibility_submitting(bigint, text)", "visibility_request_refusal(bigint)", "youtube_quota_take(text, integer, integer, uuid, integer)",
                    "visibility_channel_connected(text)",
                    "finish_visibility_request(bigint, text, text, text, text, text, integer, integer)"):
             self.assertIn(f"drop function if exists public.{fn};", top)
@@ -288,7 +341,9 @@ class TheRollbackIsTheExactOldText(unittest.TestCase):
         for forbidden in ("drop table", "drop column", "delete from", "truncate"):
             self.assertNotIn(forbidden, top.lower(), forbidden)
         # nothing can be acted on after it: the waiting requests are refused and every switch goes off
-        self.assertIn("set status = 'refused', reason = 'not_enabled'", top)
+        self.assertIn("set status = 'refused', reason = 'not_enabled'", ROLLBACK)
+        self.assertIn("where status = 'queued' and submitting_at is null;", ROLLBACK)       # never one whose write was marked
+        self.assertIn("55000", ROLLBACK)                                                       # a write in flight stops the rollback
         self.assertIn("update public.channels set publish_on_approve = false where publish_on_approve;", top)
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")
         self.assertRegex(ROLLBACK, r"(?m)^commit;$")

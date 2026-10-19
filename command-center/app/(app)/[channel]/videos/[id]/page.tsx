@@ -11,6 +11,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { accessFromWord, storedGate, type ApproveAccess } from "@/lib/videoApproval";
 import { parseVisibilityRow, VISIBILITY_COLUMNS, type VisibilityRequestRow } from "@/lib/visibilityRequest";
+import { publishOnApproveReleased } from "@/lib/server/release-flags";
 import { CopyButton } from "@/components/feedback/CopyButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -76,6 +77,9 @@ export default async function VideoDetail({
   const path = await getChannelPath();
 
   const supabase = await createClient();
+  // "Publish when approved" is shown only once the owner has released it (server flag, default off): until then the key reads
+  // "Approve", no request status is shown and the two reads below are not even made.
+  const released = publishOnApproveReleased();
   let video: VideoRow | null = null;
   let snapshots: MetricsSnapshotRow[] = [];
   let events: SystemEventRow[] = [];
@@ -163,17 +167,21 @@ export default async function VideoDetail({
         // "Publish when approved" (migration 0113): the channel's switch and this video's newest request, through RLS. Read
         // apart from the channel's other columns, so a database that has not applied 0113 yet answers with an error here and
         // nowhere else: that reads as "switch off, no request".
-        supabase.from("channels").select("publish_on_approve").eq("channel_id", video.channel_id).maybeSingle(),
-        supabase
-          .from("video_visibility_requests")
-          .select(VISIBILITY_COLUMNS)
-          .eq("video_id", id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+        released
+          ? supabase.from("channels").select("publish_on_approve").eq("channel_id", video.channel_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        released
+          ? supabase
+              .from("video_visibility_requests")
+              .select(VISIBILITY_COLUMNS)
+              .eq("video_id", id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
-      publishOnApprove = !sw.error && (sw.data as { publish_on_approve?: unknown } | null)?.publish_on_approve === true;
-      visibilityRequest = vreq.error ? null : parseVisibilityRow(vreq.data);
+      publishOnApprove = released && !sw.error && (sw.data as { publish_on_approve?: unknown } | null)?.publish_on_approve === true;
+      visibilityRequest = released && !vreq.error ? parseVisibilityRow(vreq.data) : null;
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
       channelName = (ch.data as { name?: string } | null)?.name || video.channel_id;
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
