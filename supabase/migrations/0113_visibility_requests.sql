@@ -638,8 +638,11 @@ begin
     raise exception 'applied_needs_readback' using errcode = '22023',
       detail = 'a request is applied only when YouTube reported the video public';
   end if;
-  -- A retry is bounded: the third claim was the last.
-  if v_status = 'queued' and r.attempts >= 3 then
+  -- A retry is bounded: the third claim was the last. EXCEPT a request whose write was marked: its retryable outcome (an ambiguous
+  -- write and a read-back that could not be read) goes back to the queue so the one READ-ONLY claim it is owed (see
+  -- claim_visibility_request) can look at the video before anything is failed; that claim's own retry then ends it.
+  if v_status = 'queued' and r.attempts >= 3
+     and not (r.submitting_at is not null and r.attempts < 4 and r.lifetime_attempts < 7) then
     v_status := 'failed';
   end if;
 
@@ -717,12 +720,15 @@ end
 $$;
 
 -- Give back units that were taken and then not used: the marker refused (or the worker no longer held the request), so the write
--- the 50 units were for was never sent. Today's rows, both of them (the whole day and the organization); never below zero.
+-- the 50 units were for was never sent. Today's rows, both of them (the whole day and the organization). The amount is clamped to
+-- what the ORGANIZATION's row holds now and the same clamped amount leaves both rows, so the two never disagree and a second refund
+-- of the same units (or a refund of units never taken) cannot mint budget: an organization with nothing recorded gives back nothing.
 create or replace function public.youtube_quota_refund(p_project text, p_units integer, p_org uuid) returns boolean
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  v_day date := (now() at time zone 'America/Los_Angeles')::date;
-  v_all constant uuid := '00000000-0000-0000-0000-000000000000';
+  v_day    date := (now() at time zone 'America/Los_Angeles')::date;
+  v_all    constant uuid := '00000000-0000-0000-0000-000000000000';
+  v_refund integer;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may refund quota' using errcode = '42501';
@@ -732,9 +738,14 @@ begin
     raise exception 'invalid quota request' using errcode = '22023';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('youtube_quota:' || p_project, 0));
-  update public.youtube_quota_ledger l
-     set units = greatest(l.units - p_units, 0), updated_at = now()
-   where l.day = v_day and l.project = p_project and l.source = 'visibility' and l.org_id in (v_all, p_org);
+  select least(p_units, coalesce(max(l.units), 0)) into v_refund
+    from public.youtube_quota_ledger l
+   where l.day = v_day and l.project = p_project and l.source = 'visibility' and l.org_id = p_org;
+  if v_refund > 0 then
+    update public.youtube_quota_ledger l
+       set units = greatest(l.units - v_refund, 0), updated_at = now()
+     where l.day = v_day and l.project = p_project and l.source = 'visibility' and l.org_id in (v_all, p_org);
+  end if;
   return true;
 end
 $$;

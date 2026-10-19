@@ -264,7 +264,7 @@ applied, and the worker that reads the queue (`tools/queue_worker.py`, `modules/
   request's organization, this is still THE approval, not expired, the channel is connected),
   `mark_visibility_submitting` (the LAST check and the marker in one transaction under row locks: channel FOR SHARE, request FOR UPDATE, video
   FOR SHARE; answers `ok`, `not_holder` or a closed word; refuses the read-only claim a marked request gets after its claims are used up), `finish_visibility_request` (the only writer of a result; `videos.privacy` follows the
-  read-back alone; it does not look at the switch), `youtube_quota_take` and `youtube_quota_refund` (units given back when the marker refused).
+  read-back alone; it does not look at the switch), `youtube_quota_take` and `youtube_quota_refund` (units given back when the marker refused, clamped to the organization's own row and taken off both rows alike, so a repeat refund mints nothing).
   **The file supports fresh databases only**: a scratch database that took an earlier draft (different `youtube_quota_ledger` and
   `video_visibility_requests` columns) must be rebuilt, or have the rollback run and those two tables dropped, first. The video-level re-check is 0112's `video_publish_refusal`, called with the cut hash recorded at approval.
   `visibility_channel_connected` is `publish_channel_connected`'s rule under its own name (that function arrived in 0029 by a later edit).

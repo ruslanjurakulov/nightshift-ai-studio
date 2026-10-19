@@ -260,7 +260,7 @@ class WhoMayDoWhat(unittest.TestCase):
         # the only writer of videos.privacy in the file, and it takes the read-back value
         self.assertEqual(len(re.findall(r"set privacy\b", CODE)), 1)
         # a retry is bounded: the third claim was the last
-        self.assertIn("if v_status = 'queued' and r.attempts >= 3 then", f)
+        self.assertIn("if v_status = 'queued' and r.attempts >= 3\n     and not (r.submitting_at is not null and r.attempts < 4 and r.lifetime_attempts < 7) then", f)
         c = code(NEW_BODIES["claim_visibility_request"])
         # three claims in a round, six in a request's lifetime (try again resets the first, never the second)
         self.assertIn("v_final := r.attempts >= 3 or r.lifetime_attempts >= 6;", c)
@@ -282,7 +282,11 @@ class WhoMayDoWhat(unittest.TestCase):
     def test_units_taken_for_a_write_that_was_never_sent_can_be_given_back_by_the_service_key_alone(self):
         f = code(NEW_BODIES["youtube_quota_refund"])
         self.assertIn("pg_advisory_xact_lock", f)
-        self.assertIn("greatest(l.units - p_units, 0)", f)
+        # the amount is clamped to the organization's own row and the SAME amount leaves both rows
+        self.assertIn("select least(p_units, coalesce(max(l.units), 0)) into v_refund", f)
+        self.assertIn("if v_refund > 0 then", f)
+        self.assertIn("greatest(l.units - v_refund, 0)", f)
+        self.assertNotIn("p_units, 0)", f.replace("least(p_units, coalesce(max(l.units), 0))", ""))
         self.assertIn("l.org_id in (v_all, p_org)", f)
         self.assertIn("credits_trusted_caller()", f)
 

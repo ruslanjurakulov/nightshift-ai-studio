@@ -376,6 +376,33 @@ def test_a_claim_leases_the_request_and_a_dead_worker_is_replaced_by_one_that_re
         assert "video.visibility_failed" in audits(su)
 
 
+def test_a_marked_request_whose_last_retry_is_retryable_goes_back_to_the_queue_for_its_read_only_look(conn, sc):
+    bob = sc.bob
+    with as_superuser(conn, commit=False) as su:
+        rid = marked(conn, su, bob)                                  # claim 1, marked
+        for who in ("w2", "w3"):
+            su.rows("update public.video_visibility_requests set lease_until = now() - interval '1 minute' returning 1")
+            assert svc_value(conn, "select public.claim_visibility_request(%s)", [who]) is not None
+        # the third claim ends with a retryable outcome (ambiguous write, read-back unreadable): NOT failed, back to the queue
+        out = finish(conn, rid, "w3", "queued", reason="readback_failed", units=3, retry=5).rows[0][0]
+        assert out == {"ok": True, "status": "queued", "reason": "readback_failed"}
+        su.rows("update public.video_visibility_requests set next_attempt_at = now() - interval '1 second' returning 1")
+        last = svc_value(conn, "select public.claim_visibility_request('w4')")
+        assert last["id"] == rid and last["read_only"] is True and last["attempts"] == 4
+        # the read-only claim's own retryable outcome ends it
+        out = finish(conn, rid, "w4", "queued", reason="readback_failed", units=1, retry=5).rows[0][0]
+        assert out["status"] == "failed" and out["reason"] == "readback_failed"
+    with as_superuser(conn, commit=False) as su:
+        # never marked: as before, the third claim's retry is the end
+        rid = queued(su, bob)
+        activate(su, bob.channel)
+        for who in ("w1", "w2", "w3"):
+            su.rows("update public.video_visibility_requests set lease_until = now() - interval '1 minute' returning 1")
+            assert svc_value(conn, "select public.claim_visibility_request(%s)", [who]) is not None
+        out = finish(conn, rid, "w3", "queued", reason="platform_error", retry=5).rows[0][0]
+        assert out["status"] == "failed"
+
+
 def test_the_read_only_claim_records_what_it_finds_and_an_unmarked_request_never_gets_one(conn, sc):
     bob = sc.bob
     with as_superuser(conn, commit=False) as su:
@@ -621,8 +648,20 @@ def test_units_taken_for_a_write_that_was_never_sent_are_given_back_without_goin
         assert svc_value(conn, "select public.youtube_quota_take('proj-ref', 50, 1000, %s, 500)", [other]) is True
         assert svc_value(conn, "select public.youtube_quota_refund('proj-ref', 50, %s)", [org]) is True
         assert (units(ALL), units(org), units(other)) == (50, 0, 50)
-        assert svc_value(conn, "select public.youtube_quota_refund('proj-ref', 200, %s)", [org]) is True      # never below zero
-        assert (units(ALL), units(org)) == (0, 0)
+        # a second refund of the same units mints nothing: the organization has nothing recorded, so the whole day is left alone
+        assert svc_value(conn, "select public.youtube_quota_refund('proj-ref', 50, %s)", [org]) is True
+        assert (units(ALL), units(org), units(other)) == (50, 0, 50)
+        # a refund larger than was taken is clamped to what the organization holds, and the SAME amount leaves the whole day
+        assert svc_value(conn, "select public.youtube_quota_take('proj-ref', 30, 1000, %s, 500)", [org]) is True
+        assert (units(ALL), units(org)) == (80, 30)
+        assert svc_value(conn, "select public.youtube_quota_refund('proj-ref', 200, %s)", [org]) is True
+        assert (units(ALL), units(org), units(other)) == (50, 0, 50)
+        # an organization that never took anything gives back nothing and leaves the whole-day row untouched
+        stranger = uuid.uuid4()
+        assert svc_value(conn, "select public.youtube_quota_refund('proj-ref', 50, %s)", [stranger]) is True
+        assert (units(ALL), units(other), units(stranger)) == (50, 50, None)
+        assert svc_value(conn, "select public.youtube_quota_refund('proj-never', 50, %s)", [org]) is True
+        assert su.value("select count(*) from public.youtube_quota_ledger where project = 'proj-never'") == 0
         for who in (ANON,):
             with acting(conn, who) as s:
                 assert s.run("select public.youtube_quota_refund('proj-ref', 1, %s)", [org]).sqlstate == "42501"
@@ -670,6 +709,48 @@ def test_the_quota_ceiling_holds_when_many_sessions_take_at_once(conn):
     finally:
         with as_superuser(conn, commit=True) as su:
             su.rows("delete from public.youtube_quota_ledger where project like 'conc-%' returning 1")
+
+
+def test_the_refund_holds_when_many_sessions_refund_at_once(conn):
+    """Threads, one committed transaction each. Two organizations hold 50 units each (the whole day holds 100) and ten sessions
+    refund organization A's 50 at the same moment. Exactly 50 may leave: A ends at 0 and the whole day at 50. Without the
+    per-project lock two sessions both read A's 50 and both take it off the whole day, which then ends below 50."""
+    import threading
+
+    dsn = psycopg.conninfo.make_conninfo(conn.info.dsn, password=conn.info.password)
+    rounds, workers = 12, 10
+    a, b = uuid.uuid4(), uuid.uuid4()
+    day = "(now() at time zone 'America/Los_Angeles')::date"
+    projects = [f"refc-{uuid.uuid4().hex[:8]}" for _ in range(rounds)]
+    try:
+        for project in projects:
+            for o in (a, b):
+                assert svc_value(conn, "select public.youtube_quota_take(%s, 50, 1000, %s, 500)", [project, o]) is True
+            conns = [psycopg.connect(dsn, autocommit=True) for _ in range(workers)]
+            gate, errors = threading.Barrier(workers), []
+
+            def refund(c):
+                try:
+                    gate.wait(timeout=20)
+                    with sec_db.acting(c, SERVICE, commit=True) as s:
+                        s.value("select public.youtube_quota_refund(%s, 50, %s)", [project, a])
+                except Exception as e:  # noqa: BLE001
+                    errors.append(repr(e))
+
+            threads = [threading.Thread(target=refund, args=(c,)) for c in conns]
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join(timeout=60)
+            for c in conns:
+                c.close()
+            assert errors == [], errors
+            with as_superuser(conn, commit=False) as su:
+                got = {r[0]: r[1] for r in su.rows(f"select org_id::text, units from public.youtube_quota_ledger where project = %s and day = {day}", [project])}
+            assert got == {ALL: 50, str(a): 0, str(b): 50}, (project, got)
+    finally:
+        with as_superuser(conn, commit=True) as su:
+            su.rows("delete from public.youtube_quota_ledger where project like 'refc-%' returning 1")
 
 
 def test_one_organization_cannot_use_up_the_days_quota_and_the_ledger_counts_both(conn):
