@@ -41,9 +41,24 @@ class ConfiguredThreshold(unittest.TestCase):
         self.assertEqual(dg.configured_min_bytes({self.ENV: "12"}), 12 * GB)
         self.assertEqual(dg.configured_min_bytes({self.ENV: " 2.5 "}), int(2.5 * GB))
 
-    def test_zero_turns_it_off_on_purpose(self):
-        self.assertEqual(dg.configured_min_bytes({self.ENV: "0"}), 0)
+    def test_a_plain_zero_turns_it_off_on_purpose(self):
+        for zero in ("0", "0.0", "00", " 0 ", "0."):
+            with self.subTest(zero=zero):
+                self.assertEqual(dg.configured_min_bytes({self.ENV: zero}), 0)
         self.assertEqual(dg.require_free_disk(Path("/out"), 0, free_fn=lambda p: 0), 0)
+
+    def test_only_a_plain_zero_disables_it_never_something_that_merely_rounds_to_zero(self):
+        # -0 parses to zero, 1e-400 underflows to zero, 1e-12 GB is under one byte: none is "off on purpose".
+        for tiny in ("-0", "-0.0", "1e-400", "1e-12", "+0", "0e0", "0x0"):
+            with self.subTest(tiny=tiny), self.assertLogs("modules.disk_guard", level="WARNING"):
+                self.assertEqual(dg.configured_min_bytes({self.ENV: tiny}), dg.MIN_FREE_BYTES)
+
+    def test_a_value_too_big_to_be_a_disk_or_to_convert_falls_back(self):
+        cap = dg.MAX_MIN_FREE_GB
+        self.assertEqual(dg.configured_min_bytes({self.ENV: str(cap)}), cap * GB)           # the cap itself is fine
+        for huge in (str(cap + 1), "1e7", "1e308", "1.7976931348623157e308"):
+            with self.subTest(huge=huge), self.assertLogs("modules.disk_guard", level="WARNING"):
+                self.assertEqual(dg.configured_min_bytes({self.ENV: huge}), dg.MIN_FREE_BYTES)
 
     def test_a_typo_never_disables_the_guard_and_is_not_echoed(self):
         for bad in ("five", "-1", "nan", "inf", "5GB", "1e999"):
@@ -63,6 +78,13 @@ class ConfiguredThreshold(unittest.TestCase):
         flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text()
         self.assertIn(f"\n{self.ENV}=", example)
         self.assertIn(f"WORKERENV_{self.ENV}: ${{{{ vars.{self.ENV} }}}}", flow)
+
+    def test_the_actions_runs_forward_it_and_an_unset_variable_is_the_default(self):
+        # An unset repository variable reaches the step as an EMPTY string: that must read as the default.
+        for name in ("daily_video.yml", "render_benchmark.yml"):
+            text = (ROOT / ".github" / "workflows" / name).read_text()
+            self.assertIn(f"          {self.ENV}: ${{{{ vars.{self.ENV} }}}}\n", text, name)
+        self.assertEqual(dg.configured_min_bytes({self.ENV: ""}), dg.MIN_FREE_BYTES)
 
 
 class MainPreflightDisk(unittest.TestCase):

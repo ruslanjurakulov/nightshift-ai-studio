@@ -689,6 +689,88 @@ class WorkerCredits(unittest.TestCase):
             self.run_one(job(attempts=2), Taken(hold=None))
         self.assertTrue(self.result_path().exists())
 
+    def test_a_finish_answer_of_not_ours_keeps_the_file_too(self):
+        # finish() answers False when the row is no longer this worker's (the stale sweep re-queued it while
+        # the worker was cut off). The run was still captured by this worker, so the file is not deleted on
+        # that answer either: only an explicit True (terminal and ours) releases it.
+        fake = FakeCredits()
+        with mock.patch.object(FakeQueue, "finish", lambda *a, **k: False):
+            self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(fake.settled(), [("capture", "rj-abc", 5.0)])
+        self.assertTrue(self.result_path().exists())
+        (self.repo / "report.out").unlink()
+
+        class Taken(FakeCredits):
+            def reservation(self, ref):
+                return {"status": "captured", "captured": 5}
+        ends = self.run_one(job(attempts=2), Taken(hold=None))
+        self.assertEqual(ends, [("succeeded", None)])
+        self.assertFalse(self.ran())
+
+    def test_a_requeued_attempt_that_is_refused_for_good_removes_the_kept_file(self):
+        _, ends = self.requeued(status="released")          # not delivered: the hold was released
+        self.assertEqual(ends[0][0], "failed")
+        self.assertFalse(self.result_path().exists())
+
+    def test_a_refused_requeue_whose_own_finish_is_lost_keeps_the_file(self):
+        with mock.patch.object(FakeQueue, "finish", lambda *a, **k: None), \
+                mock.patch.object(qw.time, "sleep", lambda _s: None):
+            self.requeued(status="released")
+        self.assertTrue(self.result_path().exists())
+
+    def test_a_stale_unconfirmed_flag_from_an_earlier_job_does_not_keep_this_jobs_file(self):
+        # A path that never calls _finish (the job is no longer ours mid-run) must not inherit the previous
+        # job's "row unconfirmed": process() starts every job with the flag cleared.
+        self.env["FAKE_SLEEP"] = "60"
+        self.entries = []
+        q = FakeQueue([])
+        q.heartbeat = lambda job_id, worker_id: not self.result_path().exists()   # lost once the file is written
+        w = qw.Worker(q, worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                      resolve_channel=lambda cid: {"channel_id": cid, "is_default": False,
+                                                   "token_secret": "CHRONOS_YT_TOKEN_NEWS"},
+                      heartbeat_seconds=0.05, out=io.StringIO(), credits=FakeCredits(),
+                      ledger_reader=self.ledger, kill_after_seconds=1)
+        w._row_unconfirmed = True
+        self.assertEqual(w.process(job()), "lost")
+        self.assertEqual(q.ends, [])                        # no finish was ever sent
+        self.assertFalse(self.result_path().exists())
+
+    # -- old result files are swept at start-up -----------------------------
+
+    def aged(self, name, days):
+        p = self.repo / name
+        p.write_text("{}")
+        t = time.time() - days * 86400
+        os.utime(p, (t, t))
+        return p
+
+    def sweeper(self):
+        return qw.Worker(FakeQueue([]), worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
+                         credits=FakeCredits(), out=io.StringIO())
+
+    def test_start_up_sweeps_only_old_result_files(self):
+        old = self.aged(".run_result_1.json", qw.RESULT_FILE_MAX_AGE_DAYS + 1)
+        fresh = self.aged(".run_result_2.json", 0)
+        other = self.aged("keep_me.json", 30)
+        decoy = self.aged(".run_result_3.json.bak", 30)
+        link = self.repo / ".run_result_4.json"
+        link.symlink_to(other)
+        os.utime(link, (time.time() - 30 * 86400,) * 2, follow_symlinks=False)
+        self.assertEqual(self.sweeper()._sweep_old_result_files(), 1)
+        self.assertFalse(old.exists())
+        for kept in (fresh, other, decoy):
+            self.assertTrue(kept.exists(), kept.name)
+        self.assertTrue(link.is_symlink() and other.exists())
+
+    def test_the_sweep_is_bounded_and_runs_when_the_worker_starts(self):
+        for i in range(5):
+            self.aged(f".run_result_{i}.json", 10)
+        with mock.patch.object(qw, "RESULT_SWEEP_MAX", 2):
+            self.assertEqual(self.sweeper()._sweep_old_result_files(), 2)
+        self.assertEqual(len(list(self.repo.glob(".run_result_*.json"))), 3)
+        self.sweeper().run_forever(once=True)                # start-up sweeps the rest
+        self.assertEqual(list(self.repo.glob(".run_result_*.json")), [])
+
     # -- D3: a hung run ends the job and gives the credits back --------------
 
     def test_a_run_past_the_job_timeout_is_stopped_failed_and_released(self):

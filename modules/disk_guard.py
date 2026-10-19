@@ -36,6 +36,7 @@ import json
 import logging
 import math
 import os
+import re
 import shutil
 import sys
 import time
@@ -49,8 +50,12 @@ GB = 1024 ** 3
 #: A run is refused below this much free space on the output volume.
 MIN_FREE_BYTES = 5 * GB
 #: Overrides the threshold above, in GB (a number, fractions allowed). Unset or blank is the default;
-#: ``0`` turns the check off on purpose; anything unreadable (a word, a negative number) is the default.
+#: a plain ``0`` turns the check off on purpose; anything unusable (a word, a negative number, -0, a value
+#: that rounds to zero bytes or is absurdly large) is the default.
 MIN_FREE_ENV = "NIGHTSHIFT_MIN_FREE_DISK_GB"
+#: The largest threshold taken as written (10 TB): above it the setting is a typo, and honouring it would
+#: refuse every run.
+MAX_MIN_FREE_GB = 10 * 1024
 #: --prune-days below this is refused: a held video can wait for approval and a
 #: paid download is cut from the master in its run folder.
 MIN_PRUNE_DAYS = 7
@@ -88,20 +93,27 @@ def free_bytes(path: Path) -> int:
 def configured_min_bytes(environ=None) -> int:
     """The free space a run needs: ``NIGHTSHIFT_MIN_FREE_DISK_GB`` in bytes, else :data:`MIN_FREE_BYTES`.
 
-    A typo must not silently disable the guard, so only an explicit ``0`` does that: a non-number,
-    a negative number or ``nan``/``inf`` is logged (the value is never echoed) and the default applies."""
+    A typo must not silently disable the guard, so only a plain zero (``0``, ``0.0``, ``00``) turns it
+    off. Everything else that is not a usable size is logged (the value is never echoed) and the default
+    applies: a non-number, ``nan``/``inf``, a negative number (``-0`` included), a positive number that
+    rounds to zero bytes (``1e-400``), one too big to be a disk (over :data:`MAX_MIN_FREE_GB`, which
+    would refuse every run) and one that overflows when turned into bytes (``1e308``)."""
     raw = str((os.environ if environ is None else environ).get(MIN_FREE_ENV, "") or "").strip()
     if not raw:
         return MIN_FREE_BYTES
+    if re.fullmatch(r"0+(?:\.0*)?", raw):
+        return 0
     try:
         gb = float(raw)
-    except ValueError:
-        gb = math.nan
-    if not math.isfinite(gb) or gb < 0:
-        logger.warning("%s is not a non-negative number of GB - using the default of %d GB", MIN_FREE_ENV,
-                       MIN_FREE_BYTES // GB)
+        size = gb * GB
+        usable = math.isfinite(gb) and math.isfinite(size) and 0 < gb <= MAX_MIN_FREE_GB and int(size) > 0
+    except (ValueError, OverflowError):
+        usable = False
+    if not usable:
+        logger.warning("%s is not a usable number of GB (a positive size up to %d, or 0 for off) - using the "
+                       "default of %d GB", MIN_FREE_ENV, MAX_MIN_FREE_GB, MIN_FREE_BYTES // GB)
         return MIN_FREE_BYTES
-    return int(gb * GB)
+    return int(size)
 
 
 def require_free_disk(path: Path, min_bytes: int = MIN_FREE_BYTES,

@@ -201,10 +201,14 @@ Without a token it prints `SKIP` and does nothing.
   it spends anything: `main.py` calls `modules/disk_guard.py`'s `require_free_disk`
   right after the credential check, and the job fails with the sizes and the fix
   (the customer reads "The video could not be put together", nothing is charged).
-  Set the Variable `NIGHTSHIFT_MIN_FREE_DISK_GB` (then Deploy web) to change the bar:
-  a number of GB, `0` turns the check off, a word or a negative number is ignored
-  (the default applies). On the daily GitHub workflow the variable is not forwarded,
-  so a runner uses the 5 GB default. Clean up by hand, never on a schedule:
+  Set the Variable `NIGHTSHIFT_MIN_FREE_DISK_GB` (then Deploy web for the server
+  worker; the daily workflow and the render benchmark read it directly) to change the
+  bar: a number of GB (fractions allowed, up to 10240). Blank or unset is the 5 GB
+  default. Only a plain `0` turns the check off; a word, a negative number, `-0`, a
+  value that rounds to zero bytes or an absurdly large one is ignored (the default
+  applies, with a warning in the log). The check looks only at the volume that holds
+  `output/`. On a full disk every claimed job fails at once and is released, and
+  nothing is charged. Clean up by hand, never on a schedule:
   ```bash
   dc --profile worker exec worker python -m modules.disk_guard --prune-days 30          # lists only
   dc --profile worker exec worker python -m modules.disk_guard --prune-days 30 --apply  # deletes

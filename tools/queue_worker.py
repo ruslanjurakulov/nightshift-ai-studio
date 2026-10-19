@@ -162,6 +162,11 @@ PENDING_RETRY_SECONDS = 60.0
 #: Past this a pending settlement is dropped with an error: the reservation is
 #: long gone (expired at 24 h) and retrying forever helps nobody.
 PENDING_GIVE_UP_HOURS = 72
+#: A run's result file (.run_result_<job>.json, repo dir) is kept while its queue row is unconfirmed; one
+#: this old belongs to a job that is long over (the stale sweep re-queues within minutes), and is swept at
+#: start-up. At most RESULT_SWEEP_MAX files a start, so a directory full of them cannot stall the worker.
+RESULT_FILE_MAX_AGE_DAYS = 3
+RESULT_SWEEP_MAX = 200
 #: After SIGTERM to the run's process group, how long before SIGKILL.
 KILL_AFTER_SECONDS = 30
 
@@ -713,7 +718,30 @@ class Worker:
 
     # -- loop -------------------------------------------------------------
 
+    def _sweep_old_result_files(self) -> int:
+        """Delete result files older than RESULT_FILE_MAX_AGE_DAYS from the repo dir. Plain files named
+        exactly ``.run_result_<id>.json`` only (never a symlink, never a directory); never raises."""
+        removed = 0
+        try:
+            cutoff = time.time() - RESULT_FILE_MAX_AGE_DAYS * 86400
+            for path in sorted(Path(self.repo_dir).glob(".run_result_*.json")):
+                if removed >= RESULT_SWEEP_MAX:
+                    break
+                try:
+                    if path.is_symlink() or not path.is_file() or path.stat().st_mtime >= cutoff:
+                        continue
+                    path.unlink()
+                    removed += 1
+                except OSError:
+                    continue
+        except OSError as e:
+            logger.warning("result file sweep skipped (%s)", type(e).__name__)
+        if removed:
+            logger.info("removed %d result file(s) older than %d days", removed, RESULT_FILE_MAX_AGE_DAYS)
+        return removed
+
     def run_forever(self, *, once: bool = False) -> int:
+        self._sweep_old_result_files()
         while not self.stop_requested.is_set():
             self._sweep_credit_holds()
             self._retry_pending_settlements()
@@ -825,7 +853,11 @@ class Worker:
                 if not self._row_unconfirmed:
                     self._result_path(job_id).unlink(missing_ok=True)
                 return status
-            return self._finish(job, "failed", f"credits: {e} (nothing was run)")
+            status = self._finish(job, "failed", f"credits: {e} (nothing was run)")
+            # A file kept for this re-queued attempt has done its job once the attempt is refused for good.
+            if not self._row_unconfirmed:
+                self._result_path(job_id).unlink(missing_ok=True)
+            return status
 
         # The settlement happens INSIDE _execute, before the queue row is
         # finished: a kill between the two used to leave a "succeeded" job with
@@ -1404,8 +1436,11 @@ class Worker:
                 # the header and log tail that follow it.
                 lines = error.splitlines()
                 error = render_error.tag(render_error.classify(lines[0], lines[1:]), error)
+        # Confirmed only by an explicit True (the row is terminal and ours). None (no answer) and False
+        # ("no longer ours": a stale sweep re-queued it while this worker was cut off) both leave the
+        # result file in place: the re-queued attempt may need it to see that this run was paid for.
         self._row_unconfirmed = self._with_retries(
-            lambda: self.client.finish(job["id"], self.worker_id, status, error)) is None
+            lambda: self.client.finish(job["id"], self.worker_id, status, error)) is not True
         logger.info("job %s: %s%s", job["id"], status, f" — {error.splitlines()[0]}" if error else "")
         return status
 
