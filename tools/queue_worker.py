@@ -659,6 +659,10 @@ class Worker:
         self._stop_at: Optional[float] = None
         self._base_secrets = secret_values(self.env)
         self._secrets = self._base_secrets
+        # Did the last _finish fail to reach the queue (no answer after its retries)? Then the row is
+        # still "running", the stale sweep will re-queue it, and the run's result file is the only
+        # proof the next attempt has that a video was made and its credits already taken.
+        self._row_unconfirmed = False
         # Reads a customer channel's Vault token (migration 0022) with the
         # service key; None = only the env/GitHub-secret path, as before.
         self.token_client = token_client
@@ -776,6 +780,7 @@ class Worker:
         succeeded | failed | paused | released | lost."""
         job_id = job["id"]
         channel_id = str(job.get("channel_id") or "")
+        self._row_unconfirmed = False
         logger.info("job %s: claimed (channel %s, kind %s, attempt %s/%s)", job_id, channel_id,
                     job.get("kind"), job.get("attempts"), job.get("max_attempts"))
 
@@ -814,7 +819,12 @@ class Worker:
             hold = self._open_credit_hold(job, channel_id, clean)
         except credit_rules.CreditRefused as e:
             if self._already_delivered_and_charged(job):
-                return self._finish(job, "succeeded", None)
+                status = self._finish(job, "succeeded", None)
+                # Only once the row is finished: if this write is lost too, the next attempt still
+                # needs the file to see that the video exists (else it fails a charged job).
+                if not self._row_unconfirmed:
+                    self._result_path(job_id).unlink(missing_ok=True)
+                return status
             return self._finish(job, "failed", f"credits: {e} (nothing was run)")
 
         # The settlement happens INSIDE _execute, before the queue row is
@@ -849,8 +859,16 @@ class Worker:
             if hold is not None and outcome in ("succeeded", "failed", "paused"):
                 settle(outcome == "succeeded")
         finally:
+            # Not before the queue row is finished. A video that was made and charged, whose row could
+            # not be finished (Supabase down for the retries), is re-queued by the stale sweep; its next
+            # attempt finds the hold captured and decides from THIS file (_already_delivered_and_charged).
+            # Deleting it here made that attempt fail a job the customer had already paid for.
             if result_file is not None:
-                result_file.unlink(missing_ok=True)
+                if self._row_unconfirmed:
+                    logger.warning("job %s: its queue row could not be finished, so %s is kept for the "
+                                   "re-queued attempt", job_id, result_file.name)
+                else:
+                    result_file.unlink(missing_ok=True)
         # Bookkeeping only, AFTER the job is finished and its hold settled: a slow or
         # failing Supabase can neither delay nor change either (it never raises).
         self._mirror_costs(run_started)
@@ -910,7 +928,6 @@ class Worker:
             return False
         logger.warning("job %s: its credits were already captured and its video is on disk — "
                        "finishing it as succeeded instead of failing it", job["id"])
-        self._result_path(job["id"]).unlink(missing_ok=True)
         return True
 
     # -- credit settlement ------------------------------------------------
@@ -1387,7 +1404,8 @@ class Worker:
                 # the header and log tail that follow it.
                 lines = error.splitlines()
                 error = render_error.tag(render_error.classify(lines[0], lines[1:]), error)
-        self._with_retries(lambda: self.client.finish(job["id"], self.worker_id, status, error))
+        self._row_unconfirmed = self._with_retries(
+            lambda: self.client.finish(job["id"], self.worker_id, status, error)) is None
         logger.info("job %s: %s%s", job["id"], status, f" — {error.splitlines()[0]}" if error else "")
         return status
 

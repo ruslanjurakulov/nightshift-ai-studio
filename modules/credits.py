@@ -22,6 +22,16 @@ priced.** So a settlement is exactly one of:
   run stopped before it); charge the hold, for the same reason. Unknown is not
   zero.
 
+The prices come from the same database as the capture. When ``credit_prices``
+cannot be read at settlement (3 tries, backing off) the whole run is planned as
+``unpriced``: no entry can be priced, so the hold is charged in full rather
+than a guess. That is decided once, together with the rest of the plan, and a
+capture that then cannot be sent is kept with THAT amount (the worker's pending
+marker replays the decision, it never re-reads prices), so a customer can be
+charged the full hold for a run that metered less when the database was down at
+the end of it. The alternatives are worse: a guess undercharges silently, and
+releasing a delivered video's hold hands it out for free.
+
 A failed run is released in full: the platform, not the customer, pays for a
 run that produced nothing.
 
@@ -508,7 +518,8 @@ def plan_settlement(client, hold: Hold, *, succeeded: bool, channel_id: str, sin
     try:
         prices = _with_backoff(client.prices, sleep=sleep)
     except CreditsUnavailable as e:
-        logger.warning("credits: prices unavailable (%s) — every entry counts as unpriced", e)
+        logger.warning("credits: prices unavailable (%s) — every entry counts as unpriced, so the whole "
+                       "hold of %.2f credits is the charge", e, hold.amount)
         prices = {}
     s = settle_amount(hold.amount, entries, prices)
     return SettlePlan("capture", float(s.amount), s.describe())
