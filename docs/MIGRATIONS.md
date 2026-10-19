@@ -142,3 +142,44 @@ source_ref), adds one (key_shape) and adds `marketing.create` to the audit list.
 - **Promo keys are permanent.** `promo:<slug>:telegram` is never freed: a rejected or expired promo cannot be redrafted, and
   `marketing_draft_upsert_v2` returns the old row (`created: false`, `updated: false`). The worker slice must log
   "already exists (status X)" rather than treat it as an error.
+
+## Video safety: provider choice, coded job errors, the hold sweep (0111)
+
+0111 (`0111_video_safety.sql`: the database half of three follow-ups of the paid-API video pipeline audit) is NOT dormant: it takes
+effect the moment it is applied. It creates no table, column, policy, trigger or audit action. It redefines three functions from the
+latest migration that defines each (`render_jobs_payment_guard` from 0076, `api_get_job` from 0042, `oauth_get_job` from 0093; every
+other line of every body is the old text, which `tests/test_video_safety_migration.py` compares), adds one pure helper,
+`render_job_public_error(status, error)`, and schedules one pg_cron job.
+
+- **D8, a customer's job never names a provider.** For an organization that pays (not `credits_exempt`), `render_jobs_payment_guard`
+  now refuses an insert whose params carry a non-blank `video_provider` or `image_provider` (SQLSTATE 42501, "render job refused:
+  video_provider and image_provider cannot be set for this organization"). The one before-insert trigger covers the browser, the
+  service key, `api_create_video` and `oauth_create_video`; the routes already refuse the fields earlier (#535). The operator's own
+  organization is unaffected. Blank and null pass the trigger as the REST route tolerates them (the params CHECK still refuses a blank
+  as a provider id, as before). Insert only: a queued job's params are frozen by `render_jobs_terms_frozen`, and a job queued with a
+  provider before 0111 is still claimed and finished. A direct database caller of `api_create_video` / `oauth_create_video` that names
+  a provider is answered 500 `internal_error` with nothing created or charged (their exception block rolls the hold back).
+- **D12, the API and MCP job answer.** `api_get_job` and `oauth_get_job` return `error` as one fixed sentence and a new `error_code`
+  (`credits | voice | provider_quota | media | render | timeout | unknown`) read from the worker's `[code:xxx] ` prefix, for a FAILED job
+  only; anything else reads `null` / `null`. The sentences are the Create page's (`lib/i18n/en.ts` `create.jobError`; a test compares
+  them). `withPublicJobError` (`lib/api/operations.ts`) already mapped the same way and now passes an answer that already has
+  `error_code` through untouched. **Deploy order:** merge and apply together. An app older than this commit, run against an applied
+  0111, answers `unknown` for every failure (never the log); a database without 0111 under the new app is mapped in TypeScript as before.
+- **D15, the sweep.** When pg_cron is installed (`cron.schedule` and `cron.job` exist), `expire_credit_reservations()` runs every 10
+  minutes as the job `nightshift-expire-credit-reservations` (unscheduled first, so a replay leaves one). Without pg_cron the file still
+  applies and says so in a NOTICE; the worker's own sweep keeps working. The function is not changed. It is safe beside a settlement:
+  capture, release and start take the account lock first and the hold row second, and the sweep re-reads the hold under both and only
+  acts on `open` (lab test: a capture mid-flight makes the sweep wait, then it finds the hold captured and releases nothing). The one
+  consequence worth knowing: a hold that was never started is released 3 hours after it was reserved even if its job is still queued
+  because the worker is down, so that job later fails "reservation not open" and the customer is charged nothing.
+- **Is it off?** No, there is no switch: the refusal and the new job answer are live on apply. Both are no-ops for every request the app
+  sends today (no screen or route sends a provider for a customer; the job answer is what the TypeScript layer produced anyway).
+- **Is it working?** The verify block at the bottom of the file (every column true), and, if pg_cron is on,
+  `select jobname, schedule from cron.job where jobname = 'nightshift-expire-credit-reservations';`.
+- **Undo.** `docs/sql/rollback_0111_video_safety.sql` (owner-applied; the lab applies it to a database built from 0001-0110 and compares the
+  three functions with it byte for byte, then re-applies 0111). It puts the three functions and their grants back, drops the helper and
+  unschedules the job. To stop only the sweep: `select cron.unschedule('nightshift-expire-credit-reservations');`.
+  `tests/security/test_sec_video_safety.py` is the lab test.
+- **Replay.** `create or replace` plus revoke then grant for the functions, unschedule-then-schedule for the job: a replay leaves the same
+  definitions, the same privileges and one cron job. Re-running 0076, 0042 or 0093 afterwards would put the old body back (the refusal
+  gone, the raw error returned): re-apply 0111 after it.
