@@ -15,7 +15,7 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { AiDisclosureNote } from "@/components/review/AiDisclosureNote";
-import { AI_DISCLOSURE_EVENT, AI_MODES, AI_REASONS, aiDisclosureFromEvents, type AiDisclosureView } from "@/lib/aiDisclosure";
+import { AI_DISCLOSURE_EVENT, AI_MODES, AI_OVERRIDES, AI_REASONS, aiDisclosureFromEvents, type AiDisclosureView } from "@/lib/aiDisclosure";
 
 const LOCALES: Locale[] = ["en", "ru", "uz"];
 
@@ -35,7 +35,7 @@ describe("aiDisclosureFromEvents", () => {
       ev(rec({ reasons: ["generated_images"] }), "2026-10-01T00:00:00"),
       ev(rec({ reasons: ["ai_presenter", "generated_video"] }), "2026-10-02T00:00:00"),
     ]);
-    expect(view).toEqual({ label: true, mode: "auto", reasons: ["ai_presenter", "generated_video"], line: true });
+    expect(view).toEqual({ label: true, mode: "auto", reasons: ["ai_presenter", "generated_video"], line: true, overrides: [] });
   });
 
   it("reads a clean video's record as a real 'not labelled'", () => {
@@ -44,6 +44,7 @@ describe("aiDisclosureFromEvents", () => {
       mode: "auto",
       reasons: ["no_synthetic_media"],
       line: false,
+      overrides: [],
     });
   });
 
@@ -69,6 +70,12 @@ describe("aiDisclosureFromEvents", () => {
     expect(aiDisclosureFromEvents([ev(null)])).toBeNull();
   });
 
+  it("reads the settings that lowered the label, ignoring words it does not know", () => {
+    const view = aiDisclosureFromEvents([ev(rec({ label: false, mode: "never", reasons: ["mode_never"], line: false, overrides: ["mode_never", "voice_own_clone", "something"] }))]);
+    expect(view?.overrides).toEqual(["mode_never", "voice_own_clone"]);
+    expect(aiDisclosureFromEvents([ev(rec({ overrides: "mode_never" }))])?.overrides).toEqual([]);
+  });
+
   it("an unreadable newer record does not hide an older readable one", () => {
     const view = aiDisclosureFromEvents([ev(rec({ mode: "x" }), "2026-10-02"), ev(rec(), "2026-10-01")]);
     expect(view?.label).toBe(true);
@@ -80,7 +87,8 @@ describe("the words", () => {
     const ai = dictionaries[locale].review.ai;
     expect(Object.keys(ai.reasons).sort()).toEqual([...AI_REASONS].sort());
     expect(Object.keys(ai.mode).sort()).toEqual([...AI_MODES].sort());
-    for (const s of [...Object.values(ai.reasons), ...Object.values(ai.mode), ai.title, ai.on, ai.off, ai.unknown, ai.notYet, ai.lineOn, ai.lineOff, ai.note])
+    expect(Object.keys(ai.overrides).sort()).toEqual([...AI_OVERRIDES].sort());
+    for (const s of [...Object.values(ai.reasons), ...Object.values(ai.mode), ...Object.values(ai.overrides), ai.offNever, ai.title, ai.on, ai.off, ai.unknown, ai.notYet, ai.lineOn, ai.lineOff, ai.note])
       expect(s.trim().length).toBeGreaterThan(5);
   });
 
@@ -88,8 +96,9 @@ describe("the words", () => {
     const en = dictionaries.en.review.ai;
     for (const locale of ["ru", "uz"] as const) {
       const ai = dictionaries[locale].review.ai;
-      for (const key of ["title", "on", "off", "unknown", "notYet", "lineOn", "lineOff", "note"] as const) expect(ai[key], `${locale}.${key}`).not.toBe(en[key]);
+      for (const key of ["title", "on", "off", "offNever", "unknown", "notYet", "lineOn", "lineOff", "note"] as const) expect(ai[key], `${locale}.${key}`).not.toBe(en[key]);
       for (const r of AI_REASONS) expect(ai.reasons[r], `${locale}.${r}`).not.toBe(en.reasons[r]);
+      for (const o of AI_OVERRIDES) expect(ai.overrides[o], `${locale}.${o}`).not.toBe(en.overrides[o]);
     }
   });
 });
@@ -107,7 +116,7 @@ afterEach(cleanup);
 describe("the note on the review section", () => {
   it.each(LOCALES)("%s: a labelled video says so, why, the setting and that a line was added", (locale) => {
     const ai = dictionaries[locale].review.ai;
-    panel(locale, { label: true, mode: "auto", reasons: ["generated_video", "ai_presenter"], line: true });
+    panel(locale, { label: true, mode: "auto", reasons: ["generated_video", "ai_presenter"], line: true, overrides: [] });
     const box = within(screen.getByTestId("ai-disclosure"));
     expect(box.getByText(ai.title)).toBeTruthy();
     expect(box.getByText(ai.on)).toBeTruthy();
@@ -118,19 +127,47 @@ describe("the note on the review section", () => {
     expect(box.queryByText(ai.off)).toBeNull();
   });
 
-  it.each(LOCALES)("%s: a recorded 'not labelled' says why, with no description line mentioned", (locale) => {
+  it.each(LOCALES)("%s: a recorded 'not labelled' from the content says why", (locale) => {
     const ai = dictionaries[locale].review.ai;
-    panel(locale, { label: false, mode: "never", reasons: ["mode_never"], line: false });
+    panel(locale, { label: false, mode: "auto", reasons: ["no_synthetic_media"], line: false, overrides: [] });
     const box = within(screen.getByTestId("ai-disclosure"));
     expect(box.getByText(ai.off)).toBeTruthy();
-    expect(box.getByText(`— ${ai.reasons.mode_never}`)).toBeTruthy();
-    expect(box.getByText(ai.mode.never)).toBeTruthy();
+    expect(box.queryByText(ai.offNever)).toBeNull();
+    expect(box.getByText(`— ${ai.reasons.no_synthetic_media}`)).toBeTruthy();
+    expect(box.getByText(ai.mode.auto)).toBeTruthy();
     expect(box.queryByText(ai.lineOn)).toBeNull();
+  });
+
+  it.each(LOCALES)("%s: 'never' is not worded as 'nothing needs the label', and says a person chose it", (locale) => {
+    const ai = dictionaries[locale].review.ai;
+    panel(locale, { label: false, mode: "never", reasons: ["mode_never"], line: false, overrides: ["mode_never"] });
+    const box = within(screen.getByTestId("ai-disclosure"));
+    expect(box.getByText(ai.offNever)).toBeTruthy();
+    expect(box.queryByText(ai.off)).toBeNull();
+    expect(box.getByText(`— ${ai.reasons.mode_never}`)).toBeTruthy();
+    expect(box.getByText(ai.overrides.mode_never)).toBeTruthy();
+    expect(box.getByText(ai.mode.never)).toBeTruthy();
+  });
+
+  it.each(LOCALES)("%s: an own-voice-clone declaration is shown as the channel's claim", (locale) => {
+    const ai = dictionaries[locale].review.ai;
+    panel(locale, { label: false, mode: "auto", reasons: ["no_synthetic_media"], line: false, overrides: ["voice_own_clone"] });
+    const box = within(screen.getByTestId("ai-disclosure"));
+    expect(box.getByText(ai.overrides.voice_own_clone)).toBeTruthy();
+    expect(box.getByText(ai.off)).toBeTruthy();
+  });
+
+  it("the sentence for 'never' does not claim the content was found clean, in any language", () => {
+    for (const locale of LOCALES) {
+      const ai = dictionaries[locale].review.ai;
+      expect(ai.offNever, locale).not.toBe(ai.off);
+    }
+    expect(dictionaries.en.review.ai.offNever).toMatch(/not checked/);
   });
 
   it.each(LOCALES)("%s: a labelled video whose line was left out says so", (locale) => {
     const ai = dictionaries[locale].review.ai;
-    panel(locale, { label: true, mode: "always", reasons: ["mode_always"], line: false });
+    panel(locale, { label: true, mode: "always", reasons: ["mode_always"], line: false, overrides: [] });
     expect(screen.getByText(`${ai.mode.always} · ${ai.lineOff}`)).toBeTruthy();
   });
 

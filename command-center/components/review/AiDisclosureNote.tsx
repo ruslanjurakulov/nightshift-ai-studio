@@ -21,7 +21,9 @@ export function AiDisclosureNote({ view, uploaded }: { view: AiDisclosureView | 
       </h2>
       {view ? (
         <>
-          <p className="m-0 text-sm font-medium">{view.label ? ai.on : ai.off}</p>
+          <p className="m-0 text-sm font-medium">
+            {view.label ? ai.on : view.reasons.length === 1 && view.reasons[0] === "mode_never" ? ai.offNever : ai.off}
+          </p>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {view.reasons.map((r) => (
               <li key={r} className="text-sm text-[var(--color-muted)]">
@@ -33,6 +35,11 @@ export function AiDisclosureNote({ view, uploaded }: { view: AiDisclosureView | 
             {ai.mode[view.mode]}
             {view.label ? ` · ${view.line ? ai.lineOn : ai.lineOff}` : ""}
           </p>
+          {view.overrides.map((o) => (
+            <p key={o} className="m-0 text-xs text-[var(--color-warn)]">
+              {ai.overrides[o]}
+            </p>
+          ))}
           <p className="m-0 text-xs text-[var(--color-muted)]">{ai.note}</p>
         </>
       ) : (

@@ -221,6 +221,42 @@ class ForRun(unittest.TestCase):
         self.assertEqual((d.label, d.mode), (True, "auto"))
 
 
+class Overrides(unittest.TestCase):
+    """Until an admin lock exists, a setting that lowers what 'auto' declares must at least be visible: in the
+    recorded event and in the log."""
+
+    def meta(self, agent, **kw):
+        d, s = ad.for_run(AgentConfig.from_dict(agent), generated_clips=kw.get("clips", 0), generated_stills=0,
+                          presenter=False)
+        return d.to_metadata("english", s)
+
+    def test_never_is_marked_in_the_record(self):
+        self.assertEqual(self.meta({"ai_disclosure": "never"}, clips=2)["overrides"], ["mode_never"])
+
+    def test_own_voice_clone_is_marked_in_the_record(self):
+        self.assertEqual(self.meta({"ai_disclosure_voice": "own_clone"})["overrides"], ["voice_own_clone"])
+
+    def test_both_and_neither(self):
+        self.assertEqual(self.meta({"ai_disclosure": "never", "ai_disclosure_voice": "own_clone"})["overrides"],
+                         ["mode_never", "voice_own_clone"])
+        for agent in ({}, {"ai_disclosure": "always"}, {"ai_disclosure_voice": "real_person"}):
+            self.assertEqual(self.meta(agent)["overrides"], [], agent)
+
+    def test_the_log_says_so_for_never_and_own_clone(self):
+        for agent in ({"ai_disclosure": "never"}, {"ai_disclosure_voice": "own_clone"}):
+            with self.assertLogs("modules.ai_disclosure", level="WARNING") as cm:
+                ad.for_run(AgentConfig.from_dict(agent), generated_clips=1, generated_stills=0, presenter=False)
+            self.assertIn("channel settings", cm.output[0])
+
+    def test_the_default_logs_nothing(self):
+        with self.assertNoLogs("modules.ai_disclosure", level="WARNING"):
+            ad.for_run(AgentConfig.from_dict({}), generated_clips=1, generated_stills=0, presenter=False)
+
+    def test_the_dashboard_still_reads_a_record_with_overrides(self):
+        # the TypeScript parser ignores unknown keys; the key names are pinned here so the two sides stay aligned
+        self.assertIn("overrides", self.meta({"ai_disclosure": "never"}))
+
+
 class DashboardAgrees(unittest.TestCase):
     """The review panel reads the event this module's words are written into (command-center/lib/aiDisclosure.ts):
     the event name and the closed reason list must be the same on both sides."""
@@ -233,6 +269,8 @@ class DashboardAgrees(unittest.TestCase):
     def test_reason_words_and_modes(self):
         listed = re.search(r"AI_REASONS = \[(.*?)\] as const", self.TS, re.S).group(1)
         self.assertEqual(sorted(re.findall(r'"([a-z_]+)"', listed)), sorted(ad.REASONS))
+        overrides = re.search(r"AI_OVERRIDES = \[(.*?)\] as const", self.TS, re.S).group(1)
+        self.assertEqual(sorted(re.findall(r'"([a-z_]+)"', overrides)), ["mode_never", "voice_own_clone"])
         modes = re.search(r"AI_MODES = \[(.*?)\] as const", self.TS, re.S).group(1)
         self.assertEqual(sorted(re.findall(r'"([a-z]+)"', modes)), sorted(ad.MODES))
 

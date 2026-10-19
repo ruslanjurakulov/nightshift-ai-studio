@@ -61,7 +61,7 @@ survive). A value that is not one of the allowed words reads as the conservative
 | `generated_images` | at least one AI-generated still (`gen_images`; manifest asset `kind=image, source=generated`) | **label** | Same reasoning for stills. |
 | `ai_presenter` | an AI presenter clip was generated (`presenter_path`) | **label** | A realistic synthetic person on screen is a realistic scene that did not occur. |
 | `real_person_voice` | channel setting `ai_disclosure_voice: real_person` (or an unreadable value) | **label** | "Makes a real person appear to say or do something they didn't do." |
-| `provenance_unknown` | no readable record and no manifest (only a video that predates the manifest, migration 0013, being cross-posted) | **label** | CLAUDE.md rule 5: an unknown is not a measured "no". The page says undisclosed realistic AI content can be labelled by YouTube itself; over-labelling costs a label. |
+| `provenance_unknown` | no recorded event for the video (nor, for a Short, for its parent video), so only a stored manifest or nothing: a manifest cannot show an AI presenter, so a manifest-only answer is never "known" (only a video uploaded before this change, or a failed read, gets here) | **label** | CLAUDE.md rule 5: an unknown is not a measured "no". The page says undisclosed realistic AI content can be labelled by YouTube itself; over-labelling costs a label. |
 | `no_synthetic_media` | none of the above: stock footage and stock stills only, generic voice | no label | Nothing in the page's four categories. |
 | (no row) | `ai_disclosure_voice: own_clone` | no label | The page lists "Cloning one's own voice to create voice overs or dubs" as not requiring disclosure. |
 | (no row) | the script, title, thumbnail or outline was written with a model | no label | The page exempts "create or improve a video outline, script, thumbnail, title, or infographic". |
@@ -113,10 +113,28 @@ event, and shows it in its own "AI-content label" note right under the review pa
 "decided at upload" while held), never as "not labelled". The event reaches Supabase with the other events (the
 intelligence poll mirrors them), so the panel can say "unknown" for a few minutes after an upload.
 
-Cross-posts read the same event (newest wins) and fall back to the stored `videos.manifest`, then to
-`provenance_unknown`. The channel's *current* settings are applied to the recorded facts (a setting changed since the
+Cross-posts resolve the facts in this order, first that exists: (1) the video's own event (newest wins); (2) for a
+Short (`video_format = short` with a `parent_video_id`) the same event of its **parent** video, because a Short is cut
+from the long video's own frames and the Shorts uploaded before this change have no record of their own; (3) the stored
+`videos.manifest` (the video's, else the Short's parent's), which can show generated clips and stills but **not an AI
+presenter**, so a manifest-only answer is never "known": it labels with `provenance_unknown` next to whatever generated
+media it does show; (4) nothing, which labels. New Shorts get their own event at upload (same facts as the long video). The channel's *current* settings are applied to the recorded facts (a setting changed since the
 upload applies to the next post). The video's **own** channel's settings are used for every cross-post, including a
 YouTube target, because the label describes the content.
+
+## Settings that lower the label are visible (interim, until an owner decision on an admin lock)
+
+`ai_disclosure: never` and `ai_disclosure_voice: own_clone` reduce what the pipeline would declare, and today any
+editor who can write `agent_config` can set them. Until the owner decides whether they become admin-only (a migration,
+not in this PR), every use is visible: `main.py` logs a warning ("channel settings (...) are in effect for this video"),
+the recorded event carries `overrides: ["mode_never", "voice_own_clone"]`, and the review note says that a person chose
+it (and, for `never`, that the content was not checked: it does not say "nothing in this video needs the label").
+
+## The default voice is an assumption
+
+`ai_disclosure_voice` defaults to `generic`, i.e. "the narrator is not a real person's voice". The pipeline cannot hear
+or classify a voice: a cloned or celebrity-sounding ElevenLabs voice picked from the account's list is **not detected**
+and is not labelled unless the channel sets `real_person`. This is an owner decision (below), not a measurement.
 
 ## Interaction with the visibility worker (PR #543, not touched here)
 
@@ -184,5 +202,7 @@ TikTok account private until the app is audited. The post is still requested as 
    can honour (the page's "not realistic" exemption).
 5. Instagram refusal for `not_faststart`: keep it (honest, but blocks every Instagram post until the compositor
    writes `+faststart`), or ship the follow-up first.
-6. `AAC` on TikTok and `moov` first on TikTok are not enforced (the official page is silent). Say so if you want them
+6. The default voice `generic` is an assumption (a cloned or celebrity ElevenLabs voice is not detected). Should the voice
+   picker record a category, or should the default be `real_person` for non-stock voices?
+7. `AAC` on TikTok and `moov` first on TikTok are not enforced (the official page is silent). Say so if you want them
    enforced anyway.

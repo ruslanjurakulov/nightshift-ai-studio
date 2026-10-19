@@ -47,9 +47,12 @@ Pure: no network, no disk, never raises on bad input.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Optional
+
+logger = logging.getLogger(__name__)
 
 MODE_AUTO = "auto"
 MODE_ALWAYS = "always"
@@ -175,12 +178,27 @@ class Decision:
 
     def to_metadata(self, language="", signals: Optional[Signals] = None) -> dict:
         """The event's metadata: the decision and the facts it was made from
-        (counts and words only; never a prompt, a path or a key)."""
+        (counts and words only; never a prompt, a path or a key). ``overrides``
+        names the channel settings that reduced what ``auto`` would have said,
+        so a reader of the record can see that a person chose it."""
         out = {"label": self.label, "mode": self.mode, "reasons": list(self.reasons),
-               "line": bool(self.line), "language": language_code(language)}
+               "line": bool(self.line), "language": language_code(language),
+               "overrides": overrides_of(self.mode, signals)}
         if signals is not None:
             out["signals"] = signals.to_dict()
         return out
+
+
+def overrides_of(mode, signals: Optional[Signals]) -> list:
+    """The settings that make a video less labelled than ``auto`` would: ``mode_never`` and
+    ``voice_own_clone`` (a declaration that the narrator is the owner's own cloned voice, which the
+    pipeline cannot check)."""
+    out = []
+    if normalize_mode(mode) == MODE_NEVER:
+        out.append("mode_never")
+    if signals is not None and normalize_voice(signals.voice) == VOICE_OWN_CLONE:
+        out.append("voice_own_clone")
+    return out
 
 
 def decide(mode, signals: Signals, *, language="", line_enabled: bool = True, custom_text: str = "") -> Decision:
@@ -287,7 +305,13 @@ def for_run(agent, *, generated_clips, generated_stills, presenter) -> tuple:
 
     signals = Signals(known=True, generated_clips=count(generated_clips), generated_stills=count(generated_stills),
                       presenter=bool(presenter), voice=normalize_voice(getattr(agent, "ai_disclosure_voice", None)))
-    return decide_for(agent, signals), signals
+    decision = decide_for(agent, signals)
+    flags = overrides_of(decision.mode, signals)
+    if flags:
+        # A person's setting is lowering what the pipeline would have declared to the platforms: say so in the log.
+        logger.warning("AI disclosure: channel settings (%s) are in effect for this video (label %s)",
+                       ",".join(flags), "on" if decision.label else "off")
+    return decision, signals
 
 
 def append_line(text: str, line: str, *, limit: int, measure=len) -> str:

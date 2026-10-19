@@ -25,6 +25,10 @@ export type AiReason = (typeof AI_REASONS)[number];
 export const AI_MODES = ["auto", "always", "never"] as const;
 export type AiMode = (typeof AI_MODES)[number];
 
+/** Channel settings that lowered what "auto" would have declared (modules/ai_disclosure.overrides_of). */
+export const AI_OVERRIDES = ["mode_never", "voice_own_clone"] as const;
+export type AiOverride = (typeof AI_OVERRIDES)[number];
+
 export interface AiDisclosureView {
   /** True: sent to the platform as "contains altered or synthetic content". */
   label: boolean;
@@ -32,6 +36,8 @@ export interface AiDisclosureView {
   reasons: AiReason[];
   /** A disclosure line was added to the description / caption. */
   line: boolean;
+  /** Settings a person chose that lowered the label (empty on a record written before this field existed). */
+  overrides: AiOverride[];
 }
 
 interface EventLike {
@@ -55,11 +61,12 @@ export function aiDisclosureFromEvents(events: readonly EventLike[] | null | und
 
 function parse(meta: Record<string, unknown> | null): AiDisclosureView | null {
   if (!meta || typeof meta !== "object") return null;
-  const { label, mode, reasons, line } = meta as Record<string, unknown>;
+  const { label, mode, reasons, line, overrides } = meta as Record<string, unknown>;
   if (typeof label !== "boolean" || typeof line !== "boolean") return null;
   if (!(AI_MODES as readonly unknown[]).includes(mode)) return null;
   if (!Array.isArray(reasons) || reasons.length === 0) return null;
   if (!reasons.every((r) => (AI_REASONS as readonly unknown[]).includes(r))) return null;
   if ((mode === "never" && label) || (mode === "always" && !label)) return null;
-  return { label, mode: mode as AiMode, reasons: reasons as AiReason[], line };
+  const known = Array.isArray(overrides) ? overrides.filter((o): o is AiOverride => (AI_OVERRIDES as readonly unknown[]).includes(o)) : [];
+  return { label, mode: mode as AiMode, reasons: reasons as AiReason[], line, overrides: known };
 }
