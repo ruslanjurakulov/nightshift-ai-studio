@@ -226,6 +226,8 @@ FAKE_MAIN = textwrap.dedent("""
     with open("report.out", "w") as fh:
         json.dump(report, fh)
     print("running with key " + os.environ.get("GEMINI_API_KEY", ""), flush=True)
+    if os.environ.get("FAKE_TRACE"):
+        print(os.environ["FAKE_TRACE"], flush=True)
     time.sleep(float(os.environ.get("FAKE_SLEEP", "0")))
     sys.exit(int(os.environ.get("FAKE_RC", "0")))
 """)
@@ -342,9 +344,45 @@ class WorkerCase(unittest.TestCase):
         self.worker(q).run_forever(once=True)
         (_, _, status, error), = q.ends()
         self.assertEqual(status, "failed")
-        self.assertTrue(error.startswith("main.py exited with code 3"))
+        # D12: the stored text now opens with a coded prefix (no traceback here: unknown).
+        self.assertTrue(error.startswith("[code:unknown] main.py exited with code 3"))
         self.assertIn("running with key [redacted]", error)
         self.assertNotIn("gemini-secret-value-123", error)
+
+    def test_failed_run_is_coded_from_its_last_exception(self):
+        self.env["FAKE_RC"] = "1"
+        self.env["FAKE_TRACE"] = ("Traceback (most recent call last):\n"
+                                  "  File \"main.py\", line 1, in <module>\n"
+                                  "modules.audio_mixer.VoiceUnavailable: the voice account is out of characters")
+        q = FakeQueue([job()])
+        self.worker(q).run_forever(once=True)
+        (_, _, status, error), = q.ends()
+        self.assertEqual(status, "failed")
+        self.assertTrue(error.startswith("[code:voice] main.py exited with code 1\n"))
+        # The operator keeps the log tail after the prefix.
+        self.assertIn("out of characters", error)
+
+    def test_a_full_length_failure_still_fits_the_column_with_its_code(self):
+        # B1: format_error fills 2000 characters; the prefix must not push the write over CHECK (length <= 2000).
+        lines = [f"log {i:02d} " + "z" * 140 for i in range(60)] + ["modules.audio_mixer.VoiceUnavailable: nope"]
+        full = qw.format_error("main.py exited with code 1", lines, [])
+        self.assertEqual(len(full), qw.MAX_ERROR_CHARS)
+        w = self.worker(FakeQueue())
+        w._finish({"id": 1}, "failed", full)
+        stored = w.client.calls[-1][3]
+        self.assertLessEqual(len(stored), 2000)
+        self.assertTrue(stored.startswith("[code:voice] main.py exited with code 1\n"))
+        self.assertTrue(stored.endswith("VoiceUnavailable: nope"))
+
+    def test_credit_refusal_is_coded_credits(self):
+        w = self.worker(FakeQueue())
+        w._finish({"id": 1}, "failed", "credits: not enough credits (nothing was run)")
+        self.assertTrue(w.client.calls[-1][3].startswith("[code:credits] "))
+
+    def test_a_succeeded_job_carries_no_code(self):
+        q = FakeQueue([job()])
+        self.worker(q).run_forever(once=True)
+        self.assertEqual(q.ends(), [("finish", 7, "succeeded", None)])
 
     # -- the cost ledger reaches Supabase after every job -------------------
 

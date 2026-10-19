@@ -7,7 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
 import { AttemptsFullError, createAttempt } from "@/lib/create-attempt";
-import { formatCredits } from "@/lib/credits";
+import { formatCredits, isCreditExempt } from "@/lib/credits";
 import { fmt } from "@/lib/i18n";
 import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { clearDraft, draftStore, readDraft, writeDraft, type DraftScope } from "@/lib/create-draft";
@@ -166,6 +166,9 @@ export function CreateStudio({
   const statusRef = useRef<HTMLParagraphElement>(null);
 
   const blocked = !channelId || !githubConfigured || !canRun;
+  // The route's rule (app/api/agent/run): a customer organization's run may not choose a provider, even when the person
+  // looking is the platform operator viewing it. Only the operator's own organization (or none) shows the selects.
+  const providerChoice = operator && !(orgId && !isCreditExempt(orgId));
 
   async function loadEvents() {
     try {
@@ -266,8 +269,8 @@ export function CreateStudio({
       ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
       ...(language ? { language } : {}),
       ...(style.trim() ? { visual_style: style.trim() } : {}),
-      ...(videoProvider ? { video_provider: videoProvider } : {}),
-      ...(imageProvider ? { image_provider: imageProvider } : {}),
+      ...(providerChoice && videoProvider ? { video_provider: videoProvider } : {}),
+      ...(providerChoice && imageProvider ? { image_provider: imageProvider } : {}),
       ...(ttsModel ? { tts_model: ttsModel } : {}),
       ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
       ...(target ? { publish_hint: target } : {}),
@@ -634,7 +637,7 @@ export function CreateStudio({
 
             {/* Provider-level routing is the platform operator's: a customer's run uses the
                 channel's own setup, and customer screens never name a provider. */}
-            {operator && (
+            {providerChoice && (
               <>
                 <label className="fl-field">
                   <span>{t.create.videoModel}</span>
@@ -816,8 +819,16 @@ export function CreateStudio({
                           {t.create.queueAttempt} {j.attempts}
                         </span>
                       )}
-                      {j.error && (
-                        <span className="min-w-0 flex-1 truncate text-[var(--color-fail)]" title={j.error}>
+                      {/* A failure is one plain sentence for everyone (no vendor, no remedy). The operator's
+                          own log header and tail stay available to the operator only. */}
+                      {j.status === "failed" && (
+                        <span className="min-w-0 flex-1 text-[var(--color-fail)]">
+                          {t.create.jobError[j.errorCode ?? "unknown"]}
+                          {j.creditsReturned === true && <> {t.create.creditsReturned}</>}
+                        </span>
+                      )}
+                      {operator && j.error && (
+                        <span className="min-w-0 flex-1 truncate text-[var(--color-muted)]" title={j.error}>
                           {j.error.split("\n")[0]}
                         </span>
                       )}

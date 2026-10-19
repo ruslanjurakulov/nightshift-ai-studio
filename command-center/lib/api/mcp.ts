@@ -9,7 +9,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { IMAGE_PROVIDERS, VIDEO_PROVIDERS } from "@/lib/runBackend";
 import {
   createVideo,
   getBalance,
@@ -119,17 +118,17 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
         : "Queue a new video on a channel. Charges the prepaid API balance: the price for the requested length is held now, " +
           "charged when the job succeeds and released if it fails. Returns a job_id for get_job_status. The video is " +
           "rendered private; the channel's own publish rules and review apply.",
-      inputSchema: {
+      // strict: a field this tool does not offer (video_provider, image_provider: the platform chooses
+      // the providers) is refused, never silently dropped.
+      inputSchema: z.object({
         channel_id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).describe("A channel id from list_channels."),
         topic: z.string().max(300).optional().describe("What the video is about. Omit to let the channel's AI pick."),
         niche: z.string().max(120).optional(),
         duration: z.number().int().min(30).max(3600).optional().describe("Length in seconds; defaults to the channel's target. The price is based on it."),
         language: z.string().max(40).optional(),
         visual_style: z.string().max(300).optional(),
-        video_provider: z.enum(VIDEO_PROVIDERS).optional(),
-        image_provider: z.enum(IMAGE_PROVIDERS).optional(),
         idempotency_key: idempotency,
-      },
+      }).strict(),
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async ({ idempotency_key, ...body }) => done(await createVideo(caller, body, idempotency_key ?? null)),
@@ -140,8 +139,8 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     {
       title: "Get job status",
       description: oauth
-        ? "A video job's status (queued, running, succeeded, failed, cancelled), its error if any, and the credits it holds or was charged."
-        : "A video job's status (queued, running, succeeded, failed, cancelled), its error if any, and what it was charged.",
+        ? "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, and the credits it holds or was charged."
+        : "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, and what it was charged.",
       inputSchema: { job_id: z.number().int().positive() },
       annotations: { readOnlyHint: true },
     },

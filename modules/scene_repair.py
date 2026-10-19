@@ -825,7 +825,7 @@ def _record_repaired_row(plan: RepairPlan, result: RepairResult) -> None:
                     "scenes": script.scene_plan()}
         except Exception as e:
             logger.info("Repair: saved script not reloaded for the held row (%s)", type(e).__name__)
-        held_video.record_held(
+        held_id = held_video.record_held(
             channel_id=plan.channel_id,
             slug=plan.slug,
             state=held_video.STATE_REPAIRED,
@@ -836,6 +836,12 @@ def _record_repaired_row(plan: RepairPlan, result: RepairResult) -> None:
                     "repaired_at": result.repaired_at},
             fill_if_new=fill,
         )
+        if held_id:
+            # The row now says "repaired": its preview must be the repaired cut, never the one before (or none).
+            from modules.video_review import VideoReview
+
+            VideoReview().refresh_preview(video_id=held_id, channel_id=plan.channel_id,
+                                          video_path=result.video_path)
     except Exception as e:
         logger.warning("Repair: could not record the held row (%s: %s)", type(e).__name__, e)
 

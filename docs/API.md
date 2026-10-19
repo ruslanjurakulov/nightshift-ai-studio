@@ -89,8 +89,11 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
   written to `app_audit_log` with the key's id (never any part of the key).
 * **Same validation as the site.** `POST /videos` accepts exactly the params
   0019's insert policy lets a browser queue (topic, niche, duration, language,
-  visual_style, video_provider, image_provider), checked by the same
-  `render_job_params_valid()`; the channel must be in the key's organization and
+  visual_style), checked by the same `render_job_params_valid()`.
+  `video_provider` / `image_provider` are refused (`unknown_parameter`): the API
+  price is flat per minute, so the platform chooses the providers. A blank value
+  (`""` or `null`) is ignored for one release so existing clients keep working.
+  This is enforced in the route/MCP layer only: the SQL entry points are unchanged; the channel must be in the key's organization and
   ACTIVE. Privacy is never a parameter: runs are private and the channel's own
   publish rules apply.
 * **Entry points return, never raise,** so the rate counter's increment and the
@@ -135,7 +138,7 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
 | POST | `/videos/{id}/downloads` | order a 720p / 1080p download |
 | GET | `/downloads/{id}` | download status |
 | GET | `/downloads/{id}/file` | the MP4 |
-| GET | `/jobs/{id}` | job status + charge |
+| GET | `/jobs/{id}` | job status + charge; a failed job carries `error_code` (credits, voice, provider_quota, media, render, timeout, unknown) and one plain `error` sentence, never the worker log |
 | POST | `/creative/quote` | the price of one generation, in credits |
 | POST | `/creative/jobs` | start a generation (hold the quote) |
 | GET | `/creative/jobs/{id}` | a generation this key started |

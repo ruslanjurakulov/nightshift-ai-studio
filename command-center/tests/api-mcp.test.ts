@@ -152,6 +152,30 @@ describe("MCP endpoint", () => {
     expect(state.calls).toEqual([]);
   });
 
+  it("get_job_status sends the sentence and code, not the worker log", async () => {
+    state.answer = { ok: true, status: 200, data: { id: 7, status: "failed", error: "[code:voice] main.py exited with code 1\nVoiceUnavailable: top up ElevenLabs" } };
+    const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "get_job_status", arguments: { job_id: 7 } } }));
+    const text = JSON.stringify(await res.json());
+    expect(text).toContain("error_code");
+    expect(text).toContain("voice");
+    expect(text).not.toMatch(/ElevenLabs|exited with code/);
+  });
+
+  it.each(["video_provider", "image_provider"])("refuses %s on create_video, never dropping it silently", async (field) => {
+    const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "create_video", arguments: { channel_id: "c", [field]: "kling" } } }));
+    const body = (await res.json()) as { result?: { isError?: boolean }; error?: unknown };
+    expect(body.error ?? body.result?.isError).toBeTruthy();
+    expect(state.calls).toEqual([]);
+  });
+
+  it("does not offer a provider choice in create_video's schema", async () => {
+    const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 2, method: "tools/list" }));
+    const tools = ((await res.json()) as { result: { tools: { name: string; inputSchema: { properties: object } }[] } }).result.tools;
+    const props = Object.keys(tools.find((t) => t.name === "create_video")!.inputSchema.properties);
+    expect(props).not.toContain("video_provider");
+    expect(props).not.toContain("image_provider");
+  });
+
   it("rejects bad tool arguments before any database call", async () => {
     const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "create_video", arguments: { channel_id: "c", duration: 5 } } }));
     const body = (await res.json()) as { result?: { isError?: boolean }; error?: unknown };

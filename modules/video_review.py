@@ -60,6 +60,9 @@ MAX_BYTES = 45 * 1024 * 1024
 # channel is the difference between a working review queue and a quota that
 # fills up silently.
 KEEP_PER_CHANNEL = 5
+# Held runs (not uploaded: no YouTube copy to fall back on) are ranked apart from uploaded ones, and keep as many:
+# a held video still awaiting review must not lose its only copy to newer holds. Ceiling: 5 uploaded + 5 held.
+KEEP_HELD_PER_CHANNEL = 5
 
 
 def _ffmpeg_exe() -> str | None:
@@ -190,24 +193,32 @@ class VideoReview:
         """Delete all but the newest KEEP_PER_CHANNEL previews for one channel."""
         if not self.enabled:
             return 0
-        try:
-            rows = requests.get(
-                f"{self.url}/rest/v1/videos",
-                params={
-                    "select": "video_id,preview_path,published_at",
-                    "channel_id": f"eq.{channel_id}",
-                    "preview_path": "not.is.null",
-                    "order": "published_at.desc",
-                    "offset": str(KEEP_PER_CHANNEL),
-                },
-                headers=self._headers(),
-                timeout=30,
-            )
-            rows.raise_for_status()
-            stale = [r for r in rows.json() if r.get("preview_path")]
-        except Exception as e:
-            logger.warning("Could not list old previews (%s: %s)", type(e).__name__, e)
-            return 0
+        # Uploaded and held videos are ranked separately: a held run has no
+        # published_at (NULL sorts first when descending), so one shared list
+        # would rank every held preview above the real uploads and prune those.
+        stale: list = []
+        for published, order, keep in (("not.is.null", "published_at.desc", KEEP_PER_CHANNEL),
+                                       ("is.null", "held_at.desc", KEEP_HELD_PER_CHANNEL)):
+            try:
+                rows = requests.get(
+                    f"{self.url}/rest/v1/videos",
+                    params={
+                        "select": "video_id,preview_path,published_at",
+                        "channel_id": f"eq.{channel_id}",
+                        "preview_path": "not.is.null",
+                        "published_at": published,
+                        "order": order,
+                        "offset": str(keep),
+                    },
+                    headers=self._headers(),
+                    timeout=30,
+                )
+                rows.raise_for_status()
+                stale += [r for r in rows.json() if r.get("preview_path")]
+            except Exception as e:
+                logger.warning("Could not list old previews (%s: %s)", type(e).__name__, e)
+                if published == "not.is.null":
+                    return 0
         if not stale:
             return 0
 
@@ -231,6 +242,52 @@ class VideoReview:
             self._patch_video(r["video_id"], {"preview_path": None})
         logger.info("Pruned %d old preview(s) for channel %s", len(stale), channel_id)
         return len(stale)
+
+    def delete_objects(self, paths: list) -> bool:
+        """Best-effort removal of preview objects from the bucket. Never raises."""
+        paths = [p for p in paths if p]
+        if not self.enabled or not paths:
+            return False
+        try:
+            resp = requests.delete(
+                f"{self.url}/storage/v1/object/{BUCKET}",
+                json={"prefixes": paths},
+                headers=self._headers({"Content-Type": "application/json"}),
+                timeout=60,
+            )
+            return resp.status_code < 300
+        except Exception as e:
+            logger.warning("Could not delete preview object(s) (%s)", type(e).__name__)
+            return False
+
+    def preview_of(self, video_id: str) -> str | None:
+        """The preview object a row currently points at, or None (also when the lookup fails)."""
+        if not self.enabled:
+            return None
+        try:
+            resp = requests.get(
+                f"{self.url}/rest/v1/videos",
+                params={"select": "preview_path", "video_id": f"eq.{video_id}", "limit": "1"},
+                headers=self._headers(),
+                timeout=15,
+            )
+            rows = resp.json() if resp.status_code < 300 else []
+            path = rows[0].get("preview_path") if isinstance(rows, list) and rows else None
+            return path if isinstance(path, str) and path else None
+        except Exception:
+            return None
+
+    def refresh_preview(self, *, video_id: str, channel_id: str, video_path: Path) -> None:
+        """Replace a row's preview with one of ``video_path`` and nothing else (a repaired cut replaces the held
+        one). When no new copy can be made the pointer is cleared: a pre-repair cut must never stay playable
+        beside a row that says it was repaired. Never raises."""
+        if not self.enabled:
+            return
+        try:
+            path = self.upload_preview(video_path, channel_id, video_id)
+            self._upsert_video({"video_id": video_id, "channel_id": channel_id, "preview_path": path})
+        except Exception as e:
+            logger.warning("Could not refresh the preview for %s (%s: %s)", video_id, type(e).__name__, e)
 
     def fetch_auto_publish(self, channel_id: str) -> bool:
         """Does this channel publish without being asked?
@@ -358,6 +415,9 @@ class VideoReview:
         if not self.enabled:
             return
         try:
+            # An uploaded run's row may still point at its HELD preview (held_video.promote re-keys the row but keeps
+            # the pointer): read it before it is replaced, delete that object after the new one is recorded.
+            previous = self.preview_of(video_id)
             preview_path = self.upload_preview(video_path, channel_id, video_id)
             row: dict = {
                 "video_id": video_id,
@@ -383,8 +443,12 @@ class VideoReview:
                 # An un-migrated database (no `manifest` column) rejects the whole
                 # write; retry without the new column so the preview/script still land.
                 row.pop("manifest", None)
-                self._upsert_video(row)
+                ok = self._upsert_video(row)
             if preview_path:
+                from modules.held_video import HELD_ID_PREFIX
+
+                if ok and previous and previous != preview_path and previous.startswith(f"{channel_id}/{HELD_ID_PREFIX}"):
+                    self.delete_objects([previous])
                 self.prune(channel_id)
         except Exception as e:
             logger.warning("Could not record the review row for %s (%s: %s) — the run is unaffected",

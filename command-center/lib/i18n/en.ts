@@ -590,6 +590,9 @@ export const en = {
     stateHeld: "Held for review — auto-publish off",
     stateRepaired: "Repaired — awaiting review",
     stateUnknown: "Not uploaded (reason not recorded)",
+    stateUploadFailed: "Finished, but the upload did not complete",
+    uploadFailedNote: "The video is finished but was not uploaded: the upload to YouTube did not complete, most often because of an expired channel connection. Reconnect YouTube for this channel and try again.",
+    uploadFailedWatch: "You can watch it below.",
   },
   /** "Repurpose into clips" on a video page (migration 0080, components/videos/RepurposePanel). */
   repurpose: {
@@ -928,6 +931,17 @@ export const en = {
     queueTitle: "Queue jobs",
     queueJob: "Job",
     queueAttempt: "attempt",
+    /** A failed render job, in one plain sentence (the code is set by modules/render_error.py). No vendor names, no remedies for the operator. */
+    jobError: {
+      credits: "Your credits could not be reserved, so the video was not started. Nothing was charged.",
+      voice: "The narration could not be produced, so the video was not made.",
+      provider_quota: "A service that helps make the video has reached its limit. Try again later.",
+      media: "The footage and pictures for this video could not be gathered, so it was not made.",
+      render: "The video could not be put together.",
+      timeout: "The video took too long to make and was stopped.",
+      unknown: "Something went wrong and the video was not made.",
+    },
+    creditsReturned: "Your credits were returned.",
     queueStatus: {
       queued: "queued — waiting for the worker",
       running: "running",

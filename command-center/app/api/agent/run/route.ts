@@ -184,6 +184,10 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // workflow's choice lists; a bad value is simply dropped).
   const videoProvider = typeof body.video_provider === "string" ? body.video_provider.trim() : "";
   const imageProvider = typeof body.image_provider === "string" ? body.image_provider.trim() : "";
+  // A customer's run is priced per minute whatever the footage source, so the choice of a paid generator is the
+  // platform's, not theirs (the Create form hides the selects from them). The operator's own organization keeps it.
+  if (customerRun && (videoProvider || imageProvider))
+    return NextResponse.json({ error: "provider_not_allowed" }, { status: 403 });
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
 

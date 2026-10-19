@@ -67,6 +67,12 @@ STATE_HELD = "held"                              # gate passed, auto-publish off
 STATE_REPAIRED = "repaired_awaiting_review"      # a scene repair's new cut
 STATE_UPLOADED = "uploaded"                      # promoted after a real upload
 
+#: Fixed words for ``hold_detail.cause`` (the Command Center shows a sentence
+#: for each): "upload_failed" = the cut is finished and passed the gate but the
+#: YouTube upload raised, usually an expired channel connection.
+CAUSE_UPLOAD_FAILED = "upload_failed"
+HOLD_CAUSES = (CAUSE_UPLOAD_FAILED,)
+
 HELD_STATES = (STATE_BLOCKED, STATE_AWAITING_APPROVAL, STATE_HELD, STATE_REPAIRED)
 ALL_STATES = HELD_STATES + (STATE_UPLOADED,)
 
@@ -96,6 +102,12 @@ def gate_detail(reason: str, gate_meta: Optional[Mapping] = None) -> dict:
     bulky QC/rights reports stay in the gate event."""
     detail: dict = {"reason": str(reason)}
     if isinstance(gate_meta, Mapping):
+        # Why a gate-passed run is held anyway. Only a fixed word from
+        # HOLD_CAUSES is kept — never free text such as an exception message,
+        # which could carry a token or a URL.
+        cause = gate_meta.get("reason")
+        if cause in HOLD_CAUSES:
+            detail["cause"] = cause
         detail["gate"] = {
             "allowed": bool(gate_meta.get("allowed")),
             "blocks": [str(b) for b in (gate_meta.get("blocks") or [])],
@@ -281,6 +293,13 @@ class HeldVideos:
                     # A row for this YouTube id already exists (the mirror got
                     # there first). One run, one row: drop the stand-in; the
                     # review record that follows the upload refills the scenes.
+                    # Its preview object must not be orphaned, and must not go before the new
+                    # preview exists: hand the pointer to the surviving row (when it has none), so
+                    # the review record that follows the upload deletes it after recording the new one.
+                    old_preview = self._preview_path(held_id)
+                    if old_preview and self._preview_path(youtube_id) is None:
+                        self._send("patch", {"video_id": f"eq.{youtube_id}", "channel_id": f"eq.{channel_id}"},
+                                   {"preview_path": old_preview}, "return=minimal")
                     return self._delete(filters)
                 if not _is_missing_column(resp):
                     logger.warning("Could not promote held row %s (HTTP %s)", held_id, resp.status_code)
@@ -290,6 +309,14 @@ class HeldVideos:
             logger.warning("Could not promote the held row (%s: %s) — the upload is unaffected",
                            type(e).__name__, e)
             return False
+
+    def _preview_path(self, video_id: str) -> Optional[str]:
+        resp = self._send("get", {"video_id": f"eq.{video_id}", "select": "preview_path"}, None, "")
+        if resp is None or resp.status_code >= 300:
+            return None
+        rows = _json_list(resp)
+        path = rows[0].get("preview_path") if rows and isinstance(rows[0], dict) else None
+        return path if isinstance(path, str) and path else None
 
     def _delete(self, filters: dict) -> bool:
         resp = self._send("delete", filters, None, "return=minimal")

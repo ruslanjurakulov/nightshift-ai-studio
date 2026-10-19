@@ -1329,6 +1329,18 @@ def run(
                 local_path=str(video_path),
                 detail=held_video.gate_detail(state, gate_meta),
             )
+            # The finished cut must be watchable, not only listed: put the 480p
+            # review copy and the script where the Command Center reads them,
+            # exactly as an uploaded video's does. Same stand-in id as the row
+            # above, so it merges into it; review_state stays "pending".
+            VideoReview().record(
+                video_id=held_video.held_video_id(channel_id, slug),
+                channel_id=channel_id,
+                video_path=video_path,
+                script_text=script.full_narration(),
+                auto_publish=False,
+                slug=slug,
+            )
         except Exception as e:
             logger.warning("Could not record the held run (%s: %s) — the run is unaffected",
                            type(e).__name__, e)
@@ -1523,6 +1535,15 @@ def run(
             events.emit(events.UPLOAD_FAILED, agent="youtube_uploader", status=events.STATUS_FAILED,
                         channel_id=channel_id,
                         metadata={"operation": "upload", "error": f"{type(e).__name__}: {e}"})
+            # The render exists, so the customer must be able to see it: give
+            # the run a held row (with its preview) saying the upload failed.
+            # Only when no YouTube id came back — a failure after a real upload
+            # (playlist, comment) must not turn a live video into a held one.
+            # The reason is our own fixed word; the exception text stays in the
+            # log/event above and is never stored on the row.
+            if video_id is None:
+                _record_held_run(held_video.STATE_HELD,
+                                 gate_meta={**gate.to_metadata(), "reason": "upload_failed"})
         else:
             # ── Stage 9: Short
             # Strictly downstream of a video that actually published: the gate

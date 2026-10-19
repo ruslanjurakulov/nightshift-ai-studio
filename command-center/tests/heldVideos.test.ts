@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   HELD_STATES,
   UPLOADED_FILTER,
+  heldCause,
   heldGate,
   heldOnly,
   heldState,
@@ -113,6 +114,41 @@ describe("query helpers", () => {
       ["published_at", null],
       ["privacy", null],
     ]);
+  });
+});
+
+describe("D1: an upload that failed is shown as that, with the fixed cause", () => {
+  // What modules/held_video.py writes when the YouTube upload raised on a run that passed the gate.
+  const failedUpload = {
+    ...heldRow,
+    publish_state: "held",
+    hold_detail: { reason: "held", cause: "upload_failed", gate: { allowed: true, blocks: [], warnings: [], checks_run: [] } },
+  };
+
+  it("heldCause reads only the fixed word", () => {
+    expect(heldCause(failedUpload)).toBe("upload_failed");
+    expect(heldCause(heldRow)).toBeNull();
+    expect(heldCause({ hold_detail: { cause: "HttpError: invalid_grant ya29.secret" } })).toBeNull();
+    expect(heldCause({ hold_detail: "upload_failed" })).toBeNull();
+    expect(heldCause(null)).toBeNull();
+  });
+
+  it("the label says upload failed + reconnect YouTube in every language, instead of 'auto-publish off'", () => {
+    for (const d of [en, ru, uz]) {
+      const label = heldStateLabel(heldState(failedUpload), d.held, heldCause(failedUpload));
+      expect(label).toBe(d.held.stateUploadFailed);
+      expect(label).not.toBe(d.held.stateHeld);
+      expect(d.held.uploadFailedNote.length).toBeGreaterThan(20);
+    }
+    expect(en.held.stateUploadFailed).toBe("Finished, but the upload did not complete");
+    expect(en.held.uploadFailedNote).toMatch(/expired channel connection/);
+    // The note itself makes no claim about a preview: that sentence is shown separately, only when one exists.
+    expect(en.held.uploadFailedNote).not.toMatch(/watch/i);
+  });
+
+  it("without the cause the label is unchanged", () => {
+    expect(heldStateLabel("held", en.held, null)).toBe(en.held.stateHeld);
+    expect(heldStateLabel("held", en.held)).toBe(en.held.stateHeld);
   });
 });
 

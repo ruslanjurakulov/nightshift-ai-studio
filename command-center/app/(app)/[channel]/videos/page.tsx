@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { getChannelPath } from "@/lib/channels-path-server";
-import { heldOnly, heldState, heldStateLabel, uploadedOnly } from "@/lib/heldVideos";
+import { heldCause, heldOnly, heldState, heldStateLabel, uploadedOnly } from "@/lib/heldVideos";
 import { listWaitingStoryboards } from "@/lib/server/storyboards";
 import { minutesLabel, type StoryboardView } from "@/lib/storyboardReview";
 import { fmt } from "@/lib/i18n";
@@ -183,7 +183,7 @@ export default async function VideoLibrary() {
                       </span>
                     </td>
                     <td className="px-4 py-2 text-[var(--color-muted)]">{v.topic ?? t.common.na}</td>
-                    <td className="px-4 py-2 text-[var(--color-fg)]">{heldStateLabel(heldState(v), t.held)}</td>
+                    <td className="px-4 py-2 text-[var(--color-fg)]">{heldStateLabel(heldState(v), t.held, heldCause(v))}</td>
                     <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                       {v.held_at ? relativeTime(v.held_at, locale) : t.common.na}
                     </td>

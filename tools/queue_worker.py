@@ -131,6 +131,7 @@ from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
+from modules import render_error  # noqa: E402
 from modules import repurpose  # noqa: E402
 from modules.storyboard_review import PAUSED_EXIT as STORYBOARD_PAUSED_EXIT  # noqa: E402
 
@@ -1380,6 +1381,12 @@ class Worker:
                 logger.error("job %s: settlement step failed (%s)", job["id"], type(e).__name__)
         if error:
             error = format_error(error, [], self._secrets)
+            if status == "failed":
+                # A coded prefix the Command Center parses (modules/render_error.py):
+                # the customer reads a sentence for the code, the operator keeps
+                # the header and log tail that follow it.
+                lines = error.splitlines()
+                error = render_error.tag(render_error.classify(lines[0], lines[1:]), error)
         self._with_retries(lambda: self.client.finish(job["id"], self.worker_id, status, error))
         logger.info("job %s: %s%s", job["id"], status, f" — {error.splitlines()[0]}" if error else "")
         return status
