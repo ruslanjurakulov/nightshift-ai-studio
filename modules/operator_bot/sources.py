@@ -401,11 +401,13 @@ class OperatorSources:
         })
 
     def recent_videos(self, since: datetime, channel_ids: list) -> Section:
-        """The named channels' own videos (masters: no repurposed Short, which migration 0080 stores as a row of
-        its own with ``parent_video_id`` set) made or held since ``since``. A day of slack is read and the caller
-        filters exactly: the two time columns are text and timestamptz and do not compare alike. Ids, channel,
-        state, format, times and the cause of a hold: no title, no topic, no gate verdict. The channel list is
-        part of the query, so other organizations' videos never fill the row limit."""
+        """The named channels' videos made or held since ``since``, repurposed Shorts included (migration 0080
+        stores each as a row of its own): the caller keeps the masters (``reliability.is_master``). There is no
+        server-side ``parent_video_id`` filter on purpose: the daily mirror upserts that column as an empty string,
+        not NULL, and ``is.null`` would match none of the masters; at most 20 Shorts per master fit the row limit.
+        A day of slack is read and the caller filters exactly: the two time columns are text and timestamptz and do
+        not compare alike. Ids, channel, state, format, times and the cause of a hold: no title, no topic, no gate
+        verdict. The channel list is part of the query, so other organizations' videos never fill the row limit."""
         ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
         if not ids:
             return Section(True, [])
@@ -413,7 +415,7 @@ class OperatorSources:
         slack, chans = iso(since - timedelta(days=1)), f"in.({','.join(ids)})"
 
         def read(select: str):
-            common = {"select": select, "channel_id": chans, "parent_video_id": "is.null"}
+            common = {"select": select, "channel_id": chans}
             return (self._read("videos", {**common, "published_at": f"gte.{slack}",
                                           "order": "published_at.desc", "limit": "300"}),
                     self._read("videos", {**common, "held_at": f"gte.{slack}",
@@ -435,6 +437,16 @@ class OperatorSources:
                 cause = r.get("hold_cause")
                 rows.append({**r, "hold_cause": cause if cause in HOLD_CAUSES else None})
         return Section(True, rows, cap=pub.cap or held.cap)
+
+    def channel_named(self, channel_id: str) -> Section:
+        """Whether a ``channels`` row with this id exists in ANY organization (the id is the table's primary key):
+        the id and nothing else. The registry's default channel is the operator's only when no row owns the id."""
+        if not _CHANNEL_ID.fullmatch(channel_id or ""):
+            return Section(True, [])
+        sec = self._read("channels", {"select": "channel_id", "channel_id": f"eq.{channel_id}", "limit": "1"})
+        if not sec.ok:
+            return sec
+        return Section(True, [r for r in sec.data or [] if r.get("channel_id") == channel_id])
 
     def recent_storyboards(self, since: datetime, channel_ids: list) -> Section:
         """Storyboards (migration 0057) the named channels' runs stopped at since ``since``: a run that planned a

@@ -237,6 +237,32 @@ class WhoIsExpectedTestCase(unittest.TestCase):
         found = [k for k in keys(alerts.detect(ops, 15000)) if k.endswith("2026-10-14")]
         self.assertEqual(sorted(found), ["deadman:default:2026-10-14", "deadman:other:2026-10-14"])
 
+    def test_a_default_id_owned_by_another_organization_is_not_synthesized(self):
+        # channel_id is the primary key: a customer's 'default' row means the scheduler skips it and never synthesizes
+        theirs = channel("default", org="11111111-1111-1111-1111-111111111111")
+        engine, _, _, ops, _ = make(channels=[channel("other"), theirs], videos=[], synth_default=True)
+        self.assertEqual(keys(alerts.detect(ops, 15000), "deadman:default:2026-10-14"), [])
+
+    def test_the_default_check_asks_for_the_id_only_and_an_unreadable_answer_is_not_a_schedule(self):
+        engine, _, _, ops, _ = make(channels=[channel("other")], videos=[], synth_default=True)
+        ev = reliability.Evidence(ops, T)
+        read = [p for tbl, p in ops.sync.reads if tbl == "channels" and p.get("channel_id") == "eq.default"]
+        self.assertEqual((read[0]["select"], read[0]["limit"]), ("channel_id", "1"))
+        self.assertIn("default", [c.channel_id for c in ev.sched])
+        engine, _, _, ops, _ = make(channels=[channel("other")], videos=[], synth_default=True)
+        real = ops.sync.select_strict
+
+        def refuse(table, params=None):
+            if table == "channels" and (params or {}).get("channel_id") == "eq.default":
+                from modules.supabase_sync import SupabaseReadError
+                raise SupabaseReadError(table, 500, "")
+            return real(table, params)
+
+        ops.sync.select_strict = refuse
+        ev = reliability.Evidence(ops, T)
+        self.assertNotIn("default", [c.channel_id for c in ev.sched])
+        self.assertIn("channels", ev.blind)
+
     def test_a_paused_default_row_is_not_synthesized_over_and_an_empty_table_is_unknown(self):
         engine, _, _, ops, _ = make(channels=[channel(status="PAUSED")], videos=[], synth_default=True)
         self.assertEqual(keys(alerts.detect(ops, 15000), "deadman:default:2026-10-14"), [])
@@ -367,7 +393,8 @@ class UnknownIsNotSilenceTestCase(unittest.TestCase):
         self.assertEqual(vids["channel_id"], "in.(default)")
         self.assertEqual(vids["select"], "video_id,channel_id,publish_state,published_at,held_at,video_format,"
                                          "parent_video_id,hold_cause:hold_detail->>cause")
-        self.assertEqual(vids["parent_video_id"], "is.null")              # no repurposed Short is even fetched
+        # no server-side parent filter: the mirror writes '' not NULL, and is.null would drop every master
+        self.assertNotIn("parent_video_id", vids)
         boards = [p for tbl, p in ops.sync.reads if tbl == "storyboards"][0]
         self.assertEqual(boards["select"], "id,channel_id,status,created_at")        # no scenes, no script, no title
         self.assertEqual(boards["channel_id"], "in.(default)")
@@ -645,7 +672,7 @@ class WorkflowFailureTestCase(unittest.TestCase):
                                   {"name": "Run Chronos bot", "conclusion": "failure"}]})}
         found = self.failed(http, now=at(14, 16, 0))
         self.assertEqual([(a.kind, a.key, a.severity, a.channel_id) for a in found],
-                         [("pipeline", "wf:daily:2026-10-14", "warn", "default")])
+                         [("pipeline", "wf:daily:2026-10-14:make-video-run-chronos-bot", "warn", "default")])
         self.assertIn("#57", found[0].line)
         self.assertIn("(schedule)", found[0].line)
         self.assertIn("default", found[0].line)
@@ -702,8 +729,40 @@ class WorkflowFailureTestCase(unittest.TestCase):
         runs = [gh_run(100 + i, conclusion="failure", created=at(14, 4, 1) + timedelta(hours=i),
                        updated=at(14, 4, 20) + timedelta(hours=i)) for i in range(11)]
         found = self.failed(daily(*runs), now=at(14, 15, 0))
-        self.assertEqual([a.key for a in found], ["wf:daily:2026-10-14"])
+        self.assertEqual([a.key for a in found], ["wf:daily:2026-10-14:run"])
         self.assertIn("+10 more failed runs", found[0].line)
+
+    def test_eleven_identical_failures_with_a_job_list_are_still_one_alert(self):
+        runs = [gh_run(300 + i, conclusion="failure", created=at(14, 4, 1) + timedelta(hours=i),
+                       updated=at(14, 4, 20) + timedelta(hours=i)) for i in range(11)]
+        http = daily(*runs)
+        for r in runs:
+            http.update(jobs(r["id"], {"name": "make-video (default)", "conclusion": "failure",
+                                       "steps": [{"name": "Run Chronos bot", "conclusion": "failure"}]}))
+        found = self.failed(http, now=at(14, 15, 0))
+        self.assertEqual([a.key for a in found], ["wf:daily:2026-10-14:make-video-run-chronos-bot"])
+        self.assertIn("+10 more", found[0].line)
+
+    def test_a_different_failure_later_the_same_day_is_its_own_alert(self):
+        glitch = gh_run(400, conclusion="failure", created=at(14, 10, 1), updated=at(14, 10, 20))
+        other = gh_run(401, conclusion="failure", created=at(14, 19, 1), updated=at(14, 19, 20))
+        http = {**daily(other, glitch),
+                **jobs(400, {"name": "make-video (default)", "conclusion": "failure",
+                             "steps": [{"name": "Install system dependencies", "conclusion": "failure"}]}),
+                **jobs(401, {"name": "make-video (default)", "conclusion": "failure",
+                             "steps": [{"name": "Run Chronos bot", "conclusion": "failure"}]})}
+        engine, store, tg, ops, clock = make(now=at(14, 10, 30), channels=[], http=http)
+        found_1 = alerts.detect(ops, 15000)
+        self.assertEqual(keys(found_1, "wf:daily:"), ["wf:daily:2026-10-14:make-video-install-system-dependenc"])
+        engine.tick()                                                          # armed with the glitch seen
+        clock.now = at(14, 19, 30)
+        heartbeat(ops, clock)
+        ops._cache.clear()
+        found_2 = alerts.detect(ops, 15000)
+        self.assertEqual(sorted(keys(found_2, "wf:daily:")),
+                         ["wf:daily:2026-10-14:make-video-install-system-dependenc",
+                          "wf:daily:2026-10-14:make-video-run-chronos-bot"])
+        self.assertEqual(engine.tick().sent, 1)                                # only the new cause is new
 
     def test_a_broken_hourly_schedule_does_not_page_every_hour(self):
         engine, store, tg, ops, clock = make(now=at(14, 4, 0), channels=[])
@@ -812,11 +871,25 @@ class VideoEventsTestCase(unittest.TestCase):
         a_long_row_with_a_parent = video("y", state="held", held=at(14, 15, 30), fmt="long", parent="m")
         self.assertEqual(self.found(videos=[a_long_row_with_a_parent]), [])
 
-    def test_a_scene_repair_re_hold_is_not_a_held_alert_nor_slot_evidence(self):
+    def test_a_scene_repair_updates_the_masters_row_in_place_so_it_stays_slot_evidence_but_is_not_announced(self):
         repaired = video("run-rrrr", state="repaired_awaiting_review", held=at(14, 15, 30))
-        self.assertEqual(self.found(videos=[repaired]), [])
+        self.assertEqual(self.found(videos=[repaired]), [])                      # no held / blocked alert
         found = run_detect(videos=[repaired], now=at(14, 19, 0))[0]
-        self.assertEqual(keys(found, "deadman:default:2026-10-14"), ["deadman:default:2026-10-14"])
+        self.assertEqual(keys(found, "deadman:default:2026-10-14"), [])          # and no false "No video"
+        self.assertTrue(reliability.is_master(repaired))
+
+    def test_masters_whose_parent_is_an_empty_string_still_count(self):
+        # StateStore.record_video defaults parent_video_id to '' and the daily mirror upserts it over NULL
+        masters = [video("m1", state="uploaded", published=at(14, 15, 30), parent=""),
+                   video("m2", state="held", held=at(14, 15, 31), parent="")]
+        self.assertTrue(all(reliability.is_master(m) for m in masters))
+        found = run_detect(videos=masters, now=at(14, 19, 0))[0]
+        self.assertEqual(keys(found, "deadman:default:2026-10-14"), [])
+        self.assertEqual(sorted(a.key for a in found if a.key.startswith("video:")), ["video:held:m2"])
+
+    def test_a_format_other_than_short_is_a_master(self):
+        self.assertTrue(reliability.is_master(video("x", fmt="shorts_compilation")))
+        self.assertFalse(reliability.is_master(video("x", fmt="short")))
 
     def test_a_video_is_announced_once_however_often_it_is_held_again(self):
         engine, store, tg, ops, clock = make(now=at(14, 14, 0))

@@ -331,10 +331,15 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   channel that is PAUSED, schedule-disabled or unverified is not expected; a channel
   that never produced anything and was created or edited after the slot began was
   not due (its first slot is the next one). Repurposed Shorts (migration 0080: rows of
-  their own, `parent_video_id` set) and a scene repair's re-hold (`repaired_awaiting_review`)
-  are neither slot evidence nor "held" alerts. The default channel is expected even
-  without a `channels` row once the table has any row (the registry synthesizes it);
-  an entirely empty table is an unknown, not a schedule.
+  their own, `parent_video_id` set, `video_format` short) are neither slot evidence nor
+  alerts; they are filtered in the bot, not by the query, because the daily mirror
+  stores a missing parent as an empty string, which `is.null` would not match. A scene
+  repair updates its video's row in place (`repaired_awaiting_review`): that row stays
+  slot evidence, but is never announced as held. The default channel is expected
+  without a `channels` row once the table has any row AND no organization owns the id
+  `default` (the registry synthesizes it only then; one extra read of the id, and an
+  unreadable answer is "blind", not a schedule); an entirely empty table is an
+  unknown, not a schedule.
   A source that stays unreadable for 6 continuous hours is said once a day as an
   information alert in kind `health` ("the dead-man switch cannot judge: <source>",
   key `blind:<source>:<date>`, from silent hourly `blindmark:` rows): a switch that
@@ -344,8 +349,11 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   run (scheduled or manual dispatch, any branch) that ended `failure`, `timed_out`
   or `startup_failure` within 12 h: which jobs failed and at which step (the
   workflow's own names, never a log). An hourly schedule that is broken fails every
-  hour, so all failures in the window are ONE alert for the UTC day, about the newest
-  and counting the rest (key `wf:daily:<date>`). A channel is named only if it is one
+  hour, so identical failures in the window are ONE alert per cause per UTC day, about
+  the newest and counting the rest; a different failure the same day (another job or
+  step) is its own alert (key `wf:daily:<date>:<first failing job>-<first failing step>`,
+  `run` when the jobs cannot be read; up to 6 runs' jobs are looked up per pass, the
+  rest join the newest cause). A channel is named only if it is one
   of the operator's own; any other job is "a customer channel". Read through the
   token the bot already uses for `/deploys` (`GITHUB_TOKEN`, Actions: read; up to
   100 runs, so a slot older than the list says "cannot tell", not "did not fire").
@@ -409,6 +417,12 @@ Known trade-offs, accepted on purpose:
   the run writes itself, are the evidence.
 * The doctor window is 7 days: only rows from the last 7 days are read, and a doctor
   that has never reported in that window is silent (not set up), not "stale".
+* A scene repair of an OLDER video that happens after a slot began moves that row's
+  `held_at` and so counts as that slot's evidence; the day's real video is then not
+  required by the dead-man switch. A repair is rare and manual, so this is accepted.
+* At most 6 failing checks are named per readiness row, a transient failure waits for
+  a second row, and a doctor failure on the runner that is not a failure on the worker
+  host is not seen (the `host` group is ignored).
 * Moving a channel's `publish_hour_utc` mid-day can give one false MISSING (or one
   missed alert) for the day of the change, because the slot is read from the current
   setting.

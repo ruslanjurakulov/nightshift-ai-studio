@@ -65,6 +65,9 @@ EVENT_WINDOW = timedelta(hours=12)
 #: A run that has been "in progress" longer than a channel's whole job timeout (60 minutes) plus a second
 #: channel queued behind it is hung, not working: it no longer excuses silence.
 INPROGRESS_MAX = timedelta(hours=4)
+#: Fresh job lookups per pass when grouping a day's failed runs by cause (a finished run's jobs never change, so
+#: each is asked for once per process); runs beyond it join the newest run's cause.
+MAX_JOB_LOOKUPS = 6
 #: A source that stays unreadable this long is said once a day: the dead-man switch is blind, not quiet.
 BLIND_AFTER_HOURS = 6
 #: The scheduled readiness check reports every six hours; this long without a report is a dead check.
@@ -185,19 +188,20 @@ class Scheduled:
     anchor: Optional[datetime]           # when the row was created or last edited
 
 
-def scheduled_channels(rows) -> list:
+def scheduled_channels(rows, synth_default: bool = False) -> list:
     """The channels the scheduler would run: ``tools/list_channels.due_channels`` without the fallback. The
     judgement itself is the registry's (ChannelContext.is_runnable and is_operators), so the dead-man and the
     schedule cannot disagree about what is scheduled. A row the registry would skip is skipped.
 
-    The registry always has the default channel (modules/channels.py ``_load``): when the table has rows and none is
-    ``default``, the scheduler runs a synthesized one (ACTIVE, hour 15), so it is expected here too. One deliberate
-    difference: a table with NO rows is an unknown here, not a schedule (the scheduler would fall back to the
-    default channel; an empty table on a live platform means the read, not the schedule, is wrong)."""
+    The registry always has the default channel (modules/channels.py ``_load``): when the table has rows and no row
+    owns the id ``default`` in ANY organization, the scheduler runs a synthesized one (ACTIVE, hour 15), so it is
+    expected here too (``synth_default``, decided by :class:`Evidence`, which asks). One deliberate difference: a
+    table with NO rows is an unknown here, not a schedule (the scheduler would fall back to the default channel; an
+    empty table on a live platform means the read, not the schedule, is wrong)."""
     from modules.channels import DEFAULT_CHANNEL_ID, ChannelContext  # noqa: PLC0415
 
     out = []
-    if rows and not any(isinstance(r, dict) and r.get("channel_id") == str(DEFAULT_CHANNEL_ID) for r in rows):
+    if synth_default:
         out.append(Scheduled(str(DEFAULT_CHANNEL_ID), DEFAULT_HOUR_UTC, None, None))
     for row in rows or []:
         try:
@@ -231,11 +235,10 @@ def _utc(now: datetime) -> datetime:
 
 def is_master(row: dict) -> bool:
     """A channel's own video, not a repurposed Short (migration 0080 stores up to 20 per master as rows of their
-    own, held, with ``parent_video_id`` set) and not a scene repair's re-hold (state ``repaired_awaiting_review``:
-    it moves ``held_at`` of a video made earlier). Neither is the slot's product, and neither may raise a
-    "held" alert."""
-    return ((row.get("video_format") or "long") == "long" and not row.get("parent_video_id")
-            and row.get("publish_state") != "repaired_awaiting_review")
+    own, held, with ``parent_video_id`` set). The mirror writes a missing parent as an empty string, which is
+    falsy here like NULL. A scene repair's row (``repaired_awaiting_review``) IS a master: the repair updates the
+    video's row in place, so it stays slot evidence (``video_alerts`` is what refuses to announce it)."""
+    return (row.get("video_format") or "long") != "short" and not row.get("parent_video_id")
 
 
 class Evidence:
@@ -253,7 +256,12 @@ class Evidence:
     def __init__(self, ops: OperatorSources, now: datetime):
         self.ops, self.now = ops, now
         self.channels = ops.channels()
-        self.sched = scheduled_channels(self.channels.data) if self.channels.ok else []
+        synth, named = False, None
+        rows = self.channels.data if self.channels.ok else []
+        if rows and not any(isinstance(r, dict) and r.get("channel_id") == "default" for r in rows):
+            named = ops.channel_named("default")
+            synth = named.ok and not named.data              # no organization owns it: the registry synthesizes one
+        self.sched = scheduled_channels(rows, synth) if self.channels.ok else []
         #: Every channel of the operator's own organization, scheduled or not: the only ids an alert may name.
         self.operator_ids = ({str(r.get("channel_id")) for r in self.channels.data or [] if isinstance(r, dict)}
                              if self.channels.ok else set())
@@ -265,9 +273,11 @@ class Evidence:
         self.events: Section = ops.run_events(since, ids) if ids else empty
         self.masters: list = [r for r in (self.videos.data or []) if is_master(r)] if self.videos.ok else []
         self._runs: Optional[Section] = None
-        self.blind = [name for name, sec in (("channels", self.channels), ("videos", self.videos),
-                                             ("storyboards", self.storyboards), ("events", self.events))
+        self.blind = [name for name, sec in (("channels", self.channels), ("channels", named or empty),
+                                             ("videos", self.videos), ("storyboards", self.storyboards),
+                                             ("events", self.events))
                       if not sec.ok or sec.cap]
+        self.blind = list(dict.fromkeys(self.blind))
         self.known = not self.blind
 
     @property
@@ -378,11 +388,37 @@ def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Ver
 
 # -- the daily workflow ---------------------------------------------------------------------
 
+def _cause(ev: Evidence, run: dict, lang: str):
+    """(jobs shown, operator channels, step, slug) for one failed run, or None when its jobs cannot be read. The
+    slug (first failing job, first failing step) is what makes two failures "the same cause"; the channel is not
+    in it, so a failure that hits every channel is one cause."""
+    jobs = ev.ops.run_jobs(run.get("id"))
+    if not jobs.ok:
+        return None
+    where, chans, step, job_slug = [], [], None, None
+    for j in jobs.data or []:
+        if j.get("conclusion") in ("failure", "timed_out"):
+            m = _JOB_CHANNEL.match(str(j.get("name") or ""))
+            if m and m.group(1) in ev.operator_ids:
+                chans.append(m.group(1))
+                where.append(m.group(1))
+            elif m:
+                where.append(t(lang, "alert.customer_channel"))
+            else:
+                where.append(words(j.get("name"), 24) or "?")
+            job_slug = job_slug or ("make-video" if m else check_slug(j.get("name"))[:24] or "job")
+            step = step or words(j.get("step"), 60) or None
+    if not where:
+        return None
+    return where, chans, step, f"{job_slug}-{check_slug(step)[:24] or 'step'}"
+
+
 def workflow_failures(ev: Evidence, lang: str) -> list:
-    """The daily workflow's failures in the last 12 h as ONE alert for the UTC day: an hourly schedule that is
-    broken fails 24 times a day, and the owner needs to hear it once, with how many. The line is the newest
-    failure: which jobs failed and at which step (the workflow's own names, never a log). A channel is named only
-    if it is one of the operator's own (a job named after any other is "a customer channel")."""
+    """The daily workflow's failures in the last 12 h, ONE alert per CAUSE per UTC day: an hourly schedule that is
+    broken fails 24 times a day and the owner needs to hear it once, with how many, but a different failure later
+    the same day is a different problem and gets its own alert. The cause is the first failing job and step (the
+    workflow's own names, never a log). A channel is named only if it is one of the operator's own (a job named
+    after any other is "a customer channel")."""
     if not ev.runs.ok:
         return []
     now = _utc(ev.now)
@@ -390,39 +426,36 @@ def workflow_failures(ev: Evidence, lang: str) -> list:
     for r in ev.runs.data or []:
         done = parse_ts(r.get("updated_at"))
         if (r.get("event") in RUN_EVENTS_OK and r.get("status") == "completed" and r.get("conclusion") in RUN_FAILED
-                and done is not None and now - EVENT_WINDOW <= done <= now + timedelta(minutes=5)):
+                and done is not None and now - EVENT_WINDOW <= done <= now + timedelta(minutes=5) and safe_id(r.get("id"), 20)):
             failed.append((done, r))
-    if not failed:
-        return []
     failed.sort(key=lambda x: x[0], reverse=True)
-    done, r = failed[0]
-    rid = safe_id(r.get("id"), 20)
-    if not rid:
-        return []
-    where, chans, step = [], [], None
-    jobs = ev.ops.run_jobs(r.get("id"))
-    if jobs.ok:
-        for j in jobs.data or []:
-            if j.get("conclusion") in ("failure", "timed_out"):
-                m = _JOB_CHANNEL.match(str(j.get("name") or ""))
-                if m and m.group(1) in ev.operator_ids:
-                    chans.append(m.group(1))
-                    where.append(m.group(1))
-                elif m:
-                    where.append(t(lang, "alert.customer_channel"))
-                else:
-                    where.append(words(j.get("name"), 24) or "?")
-                step = step or words(j.get("step"), 60) or None
-    common = dict(number=safe_id(r.get("number"), 12) or rid, event=safe_id(r.get("event"), 20),
-                  conclusion=safe_id(r.get("conclusion"), 20), sha=safe_id(r.get("sha"), 7))
-    if where:
-        line = t(lang, "alert.run_failed", jobs=", ".join(dict.fromkeys(where)), step=step or "?", **common)
-    else:
-        line = t(lang, "alert.run_failed_nojobs", **common)
-    if len(failed) > 1:
-        line += " " + t(lang, "alert.run_failed_more", n=len(failed) - 1)
-    return [_alert("pipeline", f"wf:daily:{done.date().isoformat()}", "warn", line,
-                   chans[0] if len(set(chans)) == 1 and len(where) == 1 else None)]
+    groups: dict = {}                    # slug -> [newest done, newest run, cause or None, count]
+    newest_slug, lookups = None, 0
+    for done, r in failed:
+        cause = None
+        if lookups < MAX_JOB_LOOKUPS:
+            lookups += 1
+            cause = _cause(ev, r, lang)
+        slug = cause[3] if cause else (newest_slug or "run")
+        newest_slug = newest_slug or slug
+        if slug in groups:
+            groups[slug][3] += 1
+        else:
+            groups[slug] = [done, r, cause, 1]
+    out = []
+    for slug, (done, r, cause, count) in groups.items():
+        common = dict(number=safe_id(r.get("number"), 12) or safe_id(r.get("id"), 20), event=safe_id(r.get("event"), 20),
+                      conclusion=safe_id(r.get("conclusion"), 20), sha=safe_id(r.get("sha"), 7))
+        where, chans, step = (cause[0], cause[1], cause[2]) if cause else ([], [], None)
+        if where:
+            line = t(lang, "alert.run_failed", jobs=", ".join(dict.fromkeys(where)), step=step or "?", **common)
+        else:
+            line = t(lang, "alert.run_failed_nojobs", **common)
+        if count > 1:
+            line += " " + t(lang, "alert.run_failed_more", n=count - 1)
+        out.append(_alert("pipeline", f"wf:daily:{done.date().isoformat()}:{slug}", "warn", line,
+                          chans[0] if len(set(chans)) == 1 and len(where) == 1 else None))
+    return out
 
 
 def words(value, limit: int) -> str:
