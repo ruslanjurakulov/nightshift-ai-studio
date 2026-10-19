@@ -52,6 +52,15 @@ it. Instagram / TikTok tokens come from Supabase Vault (0028); a YouTube
 channel's token is resolved exactly as for a render run of that channel
 (``channel_token``), in memory. None is ever printed.
 
+Publish when approved (migration 0113, ``modules/visibility_publish.py``): between render jobs the worker also claims at most
+one ``video_visibility_requests`` row (queued when a person approved one exact cut of an uploaded, private video on a channel
+whose administrators switched "publish when approved" on) and makes that video public with ``videos.update`` on the channel's own
+token (``youtube_publish_credentials``), in memory. It asks the database again before and immediately before the write
+(``video_publish_refusal`` with the cut hash recorded at approval, the channel's switch, the expiry), keeps to the day's quota
+ledger, reads the privacy BACK from YouTube, and records only what YouTube reports: ``applied`` when it is public, ``refused`` with a
+closed word when it is not. The step is OFF unless ``NIGHTSHIFT_VISIBILITY_PUBLISH=on`` (it is the only code in this repository that
+changes an existing video's privacy; a channel's own switch, default off, is the second lock).
+
 Paid downloads (migration 0030, ``modules/paid_downloads.py``): between render
 jobs the worker also keeps ``download_masters`` in step with the masters under
 ``output/``, prepares at most one queued 720p / 1080p download into
@@ -130,6 +139,7 @@ from modules import log_redaction  # noqa: E402
 from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
+from modules import visibility_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
 from modules import render_error  # noqa: E402
 from modules import repurpose  # noqa: E402
@@ -634,6 +644,7 @@ class Worker:
         downloads=None,
         repurposer=None,
         comments=None,
+        visibility=None,
         cost_mirror: Optional[Callable[[str], object]] = None,
     ):
         self.client = client
@@ -673,6 +684,9 @@ class Worker:
         # paid for) and post (only what a person approved), between render
         # jobs. None = off.
         self.comments = comments
+        # Publish when approved (migration 0113): makes an approved video public on a channel that switched it on, between
+        # render jobs. None = off (the default: NIGHTSHIFT_VISIBILITY_PUBLISH).
+        self.visibility = visibility
         # The service-key credits client and where a finished run's ledger is
         # read from. None = the worker cannot tell who pays for a job, so it
         # runs none (migration 0041: no unpaid fallback).
@@ -717,6 +731,7 @@ class Worker:
             published = self._download_one() or published
             published = self._repurpose_one() or published
             published = self._comments_one() or published
+            published = self._visibility_one() or published
             job = self.client.claim(self.worker_id, self.stale_minutes)
             if job is None:
                 if once:
@@ -739,6 +754,16 @@ class Worker:
             return bool(self.publisher.run_once())
         except Exception as e:
             logger.warning("publish request handling failed (%s)", type(e).__name__)
+            return False
+
+    def _visibility_one(self) -> bool:
+        """At most one publish-when-approved request between render jobs; never raises."""
+        if self.visibility is None:
+            return False
+        try:
+            return bool(self.visibility.run_once())
+        except Exception as e:
+            logger.warning("visibility request handling failed (%s)", type(e).__name__)
             return False
 
     def _comments_one(self) -> bool:
@@ -1481,6 +1506,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     # turned it on (and applied migration 0081).
     if os.environ.get("NIGHTSHIFT_COMMENT_INBOX", "off").strip().lower() in ("on", "1", "true", "yes"):
         comments = _comment_inbox(url, key, args.worker_id, token_client)
+    visibility = None
+    # OFF by default: this is the one step that changes an existing video's privacy. A channel's own switch (default off,
+    # set by its administrators) is the second lock; migration 0113 must be applied.
+    if visibility_publish.enabled():
+        visibility = visibility_publish.VisibilityService(
+            url, key, worker_id=args.worker_id,
+            credentials=lambda cid: youtube_publish_credentials(cid, os.environ, token_client))
+        logger.info("publish when approved: ON (ceiling %s YouTube units a day)", visibility.ceiling)
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds, job_timeout_seconds=args.job_timeout_seconds,
@@ -1494,7 +1527,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     cost_mirror=_cost_mirror(url, key),
                     repurposer=repurpose.RepurposeService(url, key, output_dir=REPO_DIR / "output",
                                                           worker_id=args.worker_id),
-                    comments=comments)
+                    comments=comments,
+                    visibility=visibility)
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, job limit %ss; a customer "
                 "organization's job runs only on its own open hold)",
