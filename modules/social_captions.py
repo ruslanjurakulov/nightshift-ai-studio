@@ -157,14 +157,19 @@ def _limit_mentions(text: str, max_mentions: int) -> str:
     return _MENTION.sub(repl, text)
 
 
-def _compose(head: str, body: str, tags: List[str], limit: int, measure) -> str:
-    """head + blank line + body + blank line + tags, within ``limit``: the BODY
-    is trimmed first, then tags are dropped from the end, then the head is
-    trimmed."""
+def _compose(head: str, body: str, tags: List[str], limit: int, measure, note: str = "") -> str:
+    """head + blank line + body + blank line + note + blank line + tags, within
+    ``limit``: the BODY is trimmed first, then tags are dropped from the end,
+    then the head is trimmed. ``note`` is the AI-disclosure line: it is never
+    trimmed or dropped, the creator's own words give way to it. A note too long
+    for any head to share the limit with is left out (the platform flag still
+    carries the declaration)."""
 
     def join(h: str, b: str, t: Sequence[str]) -> str:
-        return "\n\n".join(p for p in (h, b, " ".join(t)) if p)
+        return "\n\n".join(p for p in (h, b, note, " ".join(t)) if p)
 
+    if note and measure(note) > limit:
+        note = ""
     full = join(head, body, tags)
     if measure(full) <= limit:
         return full
@@ -174,12 +179,14 @@ def _compose(head: str, body: str, tags: List[str], limit: int, measure) -> str:
             text = join(head, trim(body, room, measure), tags)
             if measure(text) <= limit:
                 return text
-    kept = list(tags)
-    while kept:
-        text = join(head, "", kept)
+    # Tags go from the end; the last try has none.
+    for n in range(len(tags), -1, -1):
+        text = join(head, "", tags[:n])
         if measure(text) <= limit:
             return text
-        kept.pop()
+    if note:
+        room = limit - measure(note) - measure("\n\n")
+        return join(trim(head, room, measure) if room > 0 else "", "", [])
     return trim(head, limit, measure)
 
 
@@ -209,16 +216,26 @@ def youtube_tags(tags: Iterable[str], budget: int = YT_TAGS_MAX_CHARS) -> List[s
     return out
 
 
-def youtube_metadata(meta: SourceMeta, *, fallback_title: str = "") -> YouTubeMeta:
+def youtube_metadata(meta: SourceMeta, *, fallback_title: str = "", disclosure: str = "") -> YouTubeMeta:
     """Title (≤ 100 characters, never empty when ``fallback_title`` is given),
     description (≤ 5000 UTF-8 bytes) and tags (≤ 500 characters) within
     YouTube's limits. Angle brackets are removed first, then text is trimmed at
-    a word boundary — so the same video always gets the same metadata."""
+    a word boundary — so the same video always gets the same metadata.
+
+    ``disclosure`` (the AI-disclosure line, when the video is labelled) is
+    appended to the description after the description is trimmed to leave it
+    room: the line stays, the creator's words give way."""
     title = trim(_no_angles(_clean(meta.title or meta.topic).replace("\n", " ")), YT_TITLE_MAX)
     if not title:
         title = trim(_no_angles(_clean(fallback_title).replace("\n", " ")), YT_TITLE_MAX)
-    desc = trim(_no_angles(_clean(meta.description)), YT_DESCRIPTION_MAX_BYTES,
-                lambda s: len(s.encode("utf-8")))
+    size = lambda s: len(s.encode("utf-8"))  # noqa: E731
+    line = _no_angles(_clean(disclosure).replace("\n", " "))
+    if line and size(line) > YT_DESCRIPTION_MAX_BYTES:
+        line = ""
+    room = YT_DESCRIPTION_MAX_BYTES - ((size(line) + 2) if line else 0)
+    desc = trim(_no_angles(_clean(meta.description)), room, size)
+    if line:
+        desc = f"{desc}\n\n{line}" if desc else line
     return YouTubeMeta(title=title, description=desc, tags=youtube_tags(meta.tags))
 
 
@@ -231,7 +248,7 @@ def youtube_record(y: YouTubeMeta) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
-def instagram_caption(meta: SourceMeta, *, max_hashtags: int = IG_HASHTAGS_DEFAULT) -> str:
+def instagram_caption(meta: SourceMeta, *, max_hashtags: int = IG_HASHTAGS_DEFAULT, disclosure: str = "") -> str:
     """Title, the description, then hashtags from the tags and niche.
     ≤ 2200 characters, ≤ 30 hashtags, ≤ 20 @-mentions."""
     max_hashtags = max(0, min(max_hashtags, IG_HASHTAGS_MAX))
@@ -240,21 +257,27 @@ def instagram_caption(meta: SourceMeta, *, max_hashtags: int = IG_HASHTAGS_DEFAU
     body = _strip_inline_hashtags(_clean(meta.description))
     body = _limit_mentions(body, IG_MENTIONS_MAX - len(_MENTION.findall(head)))
     tags = hashtags(_tag_sources(meta), max_hashtags)
-    return _compose(head, body, tags, IG_CAPTION_MAX, len)
+    return _compose(head, body, tags, IG_CAPTION_MAX, len, _plain_line(disclosure))
 
 
-def tiktok_caption(meta: SourceMeta, *, max_hashtags: int = TT_HASHTAGS_DEFAULT) -> str:
+def tiktok_caption(meta: SourceMeta, *, max_hashtags: int = TT_HASHTAGS_DEFAULT, disclosure: str = "") -> str:
     """Title, a short description, a few hashtags. ≤ 2200 UTF-16 code units."""
     head = _strip_inline_hashtags(_clean(meta.title or meta.topic).replace("\n", " "))
     body = _strip_inline_hashtags(_clean(meta.description)).split("\n\n", 1)[0]
     body = trim(body, TT_DESCRIPTION_MAX)
     tags = hashtags(_tag_sources(meta), max(0, max_hashtags))
-    return _compose(head, body, tags, TT_CAPTION_MAX_UTF16, utf16_len)
+    return _compose(head, body, tags, TT_CAPTION_MAX_UTF16, utf16_len, _plain_line(disclosure))
 
 
-def caption_for(platform: str, meta: SourceMeta) -> str:
+def _plain_line(text: str) -> str:
+    """The disclosure line as one clean line (no hashtags or @-mentions are
+    added or counted by it)."""
+    return _WS.sub(" ", (text or "").replace("\r", " ").replace("\n", " ")).strip()
+
+
+def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str:
     if platform == "instagram":
-        return instagram_caption(meta)
+        return instagram_caption(meta, disclosure=disclosure)
     if platform == "tiktok":
-        return tiktok_caption(meta)
+        return tiktok_caption(meta, disclosure=disclosure)
     raise ValueError("unknown platform")

@@ -126,7 +126,10 @@ class Base(unittest.TestCase):
         (self.out / "fall-of-rome" / "script.json").write_text(json.dumps({
             "title": "The Fall of Rome", "description": "Why it fell.", "tags": ["ancient rome", "history"]}))
         self.video = {"video_id": "vid1", "channel_id": "news", "title": "The Fall of Rome",
-                      "slug": "fall-of-rome", "local_path": str(self.master), "video_format": "long"}
+                      "slug": "fall-of-rome", "local_path": str(self.master), "video_format": "long",
+                      # Stock footage only: an unlabelled video (a missing manifest would be labelled, see
+                      # tests/test_social_disclosure.py).
+                      "manifest": {"assets": [{"id": "a1", "kind": "video", "source": "stock"}]}}
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -291,8 +294,9 @@ class FakeUploader:
         self.exc = exc
         self.calls = []
 
-    def upload(self, path, script, privacy=None):
+    def upload(self, path, script, privacy=None, **kwargs):
         self.calls.append((path, script, privacy))
+        self.kwargs = kwargs
         if self.exc:
             raise self.exc
         return {"id": "dQw4w9WgXcQ", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
