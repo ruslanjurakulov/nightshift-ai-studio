@@ -101,6 +101,9 @@ Har bir scope uchun Google'ga **ingliz tilida** yoziladigan asoslash (nusxa olib
 > Nightshift produces videos for a YouTube channel the user connects and uploads them to that
 > channel with videos.insert, then sets the custom thumbnail with thumbnails.set. Uploads are
 > private by default. Uploading is the core feature of the app and cannot work without this scope.
+> A private upload becomes public only if the user makes it public on YouTube, if the channel's own
+> auto-publish switch (off by default) is on, or through "Publish when approved", described under
+> youtube.force-ssl below (off by default, per channel, enabled by a workspace administrator).
 
 **`https://www.googleapis.com/auth/youtube.readonly`**
 > Used to read the connected channel's identity (channels.list, mine=true) so the user can confirm
@@ -109,12 +112,23 @@ Har bir scope uchun Google'ga **ingliz tilida** yoziladigan asoslash (nusxa olib
 > of the channel's own videos for the user's dashboard.
 
 **`https://www.googleapis.com/auth/youtube.force-ssl`**
-> Required by three write calls that youtube.upload does not cover: captions.insert (adding the
+> Required by four write calls that youtube.upload does not cover: captions.insert (adding the
 > caption track Nightshift generated to a video it uploaded), playlistItems.insert (adding a
-> published video to the user's series playlist) and commentThreads.insert (posting one question to
-> viewers from the channel under a video Nightshift published). It is also used to read comments on
+> published video to the user's series playlist), commentThreads.insert (posting one question to
+> viewers from the channel under a video Nightshift published) and videos.update (changing the
+> visibility of a video Nightshift uploaded from private to public). videos.update is called only
+> when BOTH hold: (1) an administrator of the user's workspace has switched on the opt-in setting
+> "Publish when approved" for that one channel (it is off by default for every channel, switching it
+> on requires typing a confirmation word, and it can be switched off at any time), and (2) a person
+> has approved that exact version of that private video in the app. A worker then asks YouTube once
+> (status.privacyStatus = public, sent together with the video's other status fields exactly as
+> YouTube returned them) and reads the video back, recording only what YouTube reports. This call
+> never changes a video's title, description, tags or thumbnail. videos.update requires one of the
+> scopes youtube, youtube.force-ssl or youtubepartner; youtube.force-ssl, which the app already
+> requests, is the narrowest of the three that fits. The scope is also used to read comments on
 > the channel's own videos (commentThreads.list) to show the user which topics their audience asks
-> for. Nightshift never deletes or edits existing videos, playlists or comments.
+> for. Nightshift never deletes anything, and never edits any video, playlist or comment except for
+> that single, approved visibility change to a video it uploaded.
 
 **`https://www.googleapis.com/auth/yt-analytics.readonly`**
 > Reads YouTube Analytics reports (views, watch time, average view duration/percentage, likes,
@@ -127,10 +141,36 @@ tomonida `CHRONOS_ENABLE_REVENUE=1` bilan). Uni yoqmoqchi bo'lsangiz, avval siyo
 bu ro'yxatni yangilang, keyin arizaga qo'shing.
 
 `youtube.force-ssl` keng scope (videoni o'chirishga ham ruxsat beradi). Google "tor
-scope yetmaydimi?" deb so'rasa, javob: captions/playlist/comment yozish uchun boshqa
-scope yo'q. Muqobil — uni olib tashlash (`config.py`dagi izohga qarang): shunda subtitr,
-pleylist va izoh funksiyalari yo'qoladi, yuklash ishlayveradi. Bu holda siyosat
-jadvalidan ham qatorni olib tashlang.
+scope yetmaydimi?" deb so'rasa, javob: captions/playlist/comment yozish va
+`videos.update` (ommaviy qilish) uchun boshqa tor scope yo'q (`videos.update` faqat
+`youtube`, `youtube.force-ssl` yoki `youtubepartner`ni qabul qiladi; `youtube.upload`
+yetmaydi). Muqobil — uni olib tashlash (`config.py`dagi izohga qarang): shunda subtitr,
+pleylist, izoh va "Tasdiqdan keyin nashr qilish" funksiyalari yo'qoladi, yuklash
+ishlayveradi. Bu holda siyosat jadvalidan ham qatorni olib tashlang.
+
+**"Tasdiqdan keyin nashr qilish" (publish when approved) — yangi ishlatilish, yangi scope emas.**
+`youtube.force-ssl` so'rovimizda allaqachon bor, shuning uchun yangi scope qo'shilmaydi.
+Lekin scope'ning *ishlatilishi* o'zgaradi: avval asoslash "mavjud videolarni tahrirlamaydi"
+degan edi, endi "faqat tasdiqlangan bitta videoning ko'rinishini private -> public qiladi"
+deydi. Shu sababli `/privacy` va `/terms` (`lib/legal-docs`), yuqoridagi asoslash matni
+va demo video **birga** yangilanadi; bittasi ham eskirgan bo'lib qolmasin. Funksiya
+standart holatda hamma joyda o'chiq (kanal sozlamasi, ishchi dastur o'zgaruvchisi va web
+bayrog'i — `docs/APPROVE_PUBLISH_1B.md`), shuning uchun bu matnlar funksiya
+**chiqarilgunga qadar** birlashtirilmaydi.
+
+Google'ga qayta yuborish kerakmi? Ma'lum: Google yordam sahifasiga ko'ra yangi scope
+qo'shish tekshiruvni talab qiladi va alohida xavfsizlik auditini qaytadan talab qilmaydi;
+brending (nom, logo, redirect URI, bosh sahifa yoki maxfiylik havolasi) o'zgarsa brend
+tekshiruvi qayta o'tadi; scope'lar o'zgarmasa qo'shimcha asoslash so'ralmaydi
+(support.google.com/cloud/answer/13464018). Noma'lum (tekshirib ko'rish kerak):
+**allaqachon tasdiqlangan scope'ning ishlatilish tavsifi o'zgarsa, Google qayta
+topshirishni yoki xabar berishni talab qiladimi** — bu aniq hech bir sahifada yozilmagan.
+Google Cloud console → Google Auth Platform → **Verification Center** va **Data access**
+ni oching: (a) ilova hali "Testing"da bo'lsa, hech narsa topshirilmaydi, matn
+birinchi topshirishga kiradi; (b) ilova tasdiqlangan bo'lsa, asoslash maydonini
+yangilash "Submit for verification"ni taklif qiladimi, qarang; taklif qilsa —
+yangilangan asoslash va yangi demo video bilan topshiring; (c) shubha bo'lsa, Google
+yordamiga (Verification Center'dagi yozishuv) savol bering va javobni shu faylga yozib qo'ying.
 
 ## 5. Demo video
 
@@ -147,7 +187,15 @@ Google YouTube'ga yuklangan (unlisted) video havolasini so'raydi. Talablar:
   5. Har bir scope ishlatilishini ko'rsating: video yuklanishi (YouTube Studio'da
      *private* video va uning muqovasi), subtitr yo'lagi, pleylistga qo'shilishi, kanal
      izohi, izohlar asosidagi mavzular va Analytics raqamlari panelda.
-  6. `https://myaccount.google.com/permissions` da ruxsatni bekor qilish.
+  6. **Publish when approved** (`videos.update`), aynan shu tartibda, hammasi ingliz
+     tilida va faqat sinov kanalida: (i) Channels sahifasida kanal sozlamasi **Off**
+     (standart); (ii) administrator sozlamani **On** qiladi — tasdiq oynasi matni va
+     yozilgan so'z ko'rinsin; (iii) video sahifasida shu aniq versiyani tasdiqlash;
+     (iv) "Queued" holati; (v) YouTube Studio'da video *Private*dan *Public*ga
+     o'tgani va nomi, tavsifi, teglari, muqovasi o'zgarmagani; (vi) video sahifasida
+     "Published" (YouTube xabar qilgan holat); (vii) sozlamani yana **Off** qilish.
+     Bu videoni funksiya jonli sinovdan o'tgandan **keyin** yozing (`docs/APPROVE_PUBLISH_1B.md`).
+  7. `https://myaccount.google.com/permissions` da ruxsatni bekor qilish.
 - [ ] Reviewer uchun test akkaunt (email/parol) arizaning izoh maydoniga — kirish taklif
       orqali, ro'yxatdan o'tish sahifasi yo'q.
 
@@ -159,6 +207,13 @@ Google YouTube'ga yuklangan (unlisted) video havolasini so'raydi. Talablar:
 - [ ] Kvota 10 000 birlik/kun yetmasa, alohida **YouTube API Services audit and quota
       extension** formasi to'ldiriladi — u YouTube API Developer Policies'ga moslikni
       tekshiradi (YouTube ToS va Google Privacy Policy havolalari siyosatda bor).
+      "Publish when approved" bu qadamni dolzarb qiladi: `videos.update` 50 birlik turadi
+      (bitta ommaviy qilish ~53 birlik, `docs/APPROVE_PUBLISH_1B.md`), va tekshiruvdan
+      o'tmagan loyihaning videolarini YouTube private bilan cheklashi mumkin — jonli
+      sinovda shu `platform_kept_private` bo'lsa, funksiya audit o'tmaguncha hech kimga
+      yoqilmaydi. Auditdan keyin kod YouTube API'dan qanday foydalanishini o'zgartirsa
+      (masalan, yangi yozuvchi chaqiruv), audit formasini yangilash kerakmi — shuni ham
+      Google'dan aniqlang (bu yerda tasdiqlanmagan).
 - [ ] Kod qaysi API chaqiruvlarini yoki provayderlarni ishlatishini o'zgartirsa,
       `command-center/lib/legal-docs/{en,ru,uz}.ts` ni ham yangilang — Google siyosatni
       ilova xatti-harakati bilan solishtiradi. `tests/legal-docs.test.ts` kod so'raydigan

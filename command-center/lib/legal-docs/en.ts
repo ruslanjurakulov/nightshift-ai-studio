@@ -29,7 +29,7 @@ export const en: LegalTexts = {
           {
             list: [
               "Account information: your email address and a password, handled by our authentication provider (Supabase Auth). We never see or store your password in readable form.",
-              "Configuration you enter: channel names, niche, language, voice and style choices, schedules, series, and your review decisions (for example, approving a video), which are recorded with your user id as an audit trail.",
+              "Configuration you enter: channel names, niche, language, voice and style choices, schedules, series, and your review decisions (for example, approving a video and, where “Publish when approved” is switched on for the channel, the request that follows and what YouTube reported back), which are recorded with your user id as an audit trail.",
               "API keys you enter for third-party services: they are encrypted in our server the moment they arrive, written to our pipeline's encrypted secret store (GitHub Actions secrets), and discarded. They are never saved in our database, shown back to you, or logged.",
               "Telegram notifications, only if you connect a chat: the Telegram chat id and the first name or @username Telegram gives us for it, the language you chose for the messages, which notifications you switched on and when the last message was delivered. You can pause or disconnect the chat in Settings at any time; disconnecting deletes this data.",
               "Google user data you authorise us to access, described in section 3.",
@@ -50,7 +50,7 @@ export const en: LegalTexts = {
               rows: [
                 [
                   "`youtube.upload`",
-                  "Uploads the videos Nightshift produced for your channel, and sets their thumbnail. Uploads are private unless you choose otherwise for that channel — for example, by turning on auto-publish, which is off by default.",
+                  "Uploads the videos Nightshift produced for your channel, and sets their thumbnail. Uploads are private unless you choose otherwise for that channel — for example, by turning on auto-publish, which is off by default. A private upload can also be made public after you approve it, only where “Publish when approved” is switched on for that channel (off by default; see section 4).",
                 ],
                 [
                   "`youtube.readonly`",
@@ -58,7 +58,7 @@ export const en: LegalTexts = {
                 ],
                 [
                   "`youtube.force-ssl`",
-                  "Adds a caption track to videos Nightshift uploaded; adds a published video to your series playlist; posts one comment from your channel (a question to viewers) under a video Nightshift published; and reads the comments on your channel’s videos to find topics your audience asks for. This scope also technically permits editing and deleting videos — Nightshift never deletes anything and never edits your existing videos, playlists or comments; it only adds the items listed here.",
+                  "Adds a caption track to videos Nightshift uploaded; adds a published video to your series playlist; posts one comment from your channel (a question to viewers) under a video Nightshift published; reads the comments on your channel’s videos to find topics your audience asks for; and, only where an administrator of your workspace has switched on “Publish when approved” for that channel (off by default) and a person has approved that exact video, changes the visibility of that one video from private to public and reads the video back to confirm (see section 4). This scope also technically permits editing and deleting videos. Nightshift never deletes anything, and it never edits your existing videos, playlists or comments except for that one visibility change to a video you approved: that change does not touch the video’s title, description, tags or thumbnail, and apart from it Nightshift only adds the items listed here.",
                 ],
                 [
                   "`yt-analytics.readonly`",
@@ -78,7 +78,8 @@ export const en: LegalTexts = {
         id: "how-we-use-google-data",
         heading: "4. How we use Google user data",
         body: [
-          "Google user data is used only to provide and improve the user-facing features you see in the Service: uploading and captioning your videos, adding them to your playlists, posting the engagement comment, preventing duplicate uploads, showing your channel’s performance in your dashboard, and choosing future topics from what performed well and what your audience asked for.",
+          "Google user data is used only to provide and improve the user-facing features you see in the Service: uploading and captioning your videos, adding them to your playlists, posting the engagement comment, preventing duplicate uploads, showing your channel’s performance in your dashboard, choosing future topics from what performed well and what your audience asked for, and, only where you have switched it on, making a video you approved public.",
+          "“Publish when approved”. This is the only case in which Nightshift changes a video that is already on YouTube. It is off by default for every channel. An administrator of your workspace can switch it on for one channel, which requires typing a confirmation word, and can switch it off again at any time on the Channels page. When it is on and a person approves one exact version of a video that Nightshift already uploaded as private, a worker checks again that the approval still stands (it lasts 24 hours and ends if the video is rendered or repaired again) and then asks YouTube once to change that video’s visibility from private to public. The request repeats the video’s other status settings as YouTube reported them, so that they stay as they were. Nightshift then reads the video back and records only what YouTube reports; YouTube may still keep the video private. Nightshift does not change the video’s title, description, tags or thumbnail, does not delete anything, and does not edit any other video, playlist or comment.",
           "To produce those insights, the text of comments on your videos and your videos’ performance figures may be sent to our AI text provider (Google’s Gemini API) to be classified and summarised for your channel. We store the result — for example, a topic your audience requested and how often — not the comment text itself.",
         ],
       },
@@ -268,6 +269,7 @@ export const en: LegalTexts = {
         heading: "4. Your YouTube channel and Google account",
         body: [
           "You may connect only channels you own or are authorised to manage. By connecting one, you authorise Nightshift to act on it within the permissions you grant on Google’s consent screen, as described in the Privacy Policy. You remain responsible for your channel and must comply with the [YouTube Terms of Service](https://www.youtube.com/t/terms) and YouTube’s [Community Guidelines](https://www.youtube.com/howyoutubeworks/policies/community-guidelines/). Google’s handling of your data is governed by the [Google Privacy Policy](https://policies.google.com/privacy).",
+          "Making an approved video public. Nightshift uploads videos as private. Where an administrator of your workspace has switched on “Publish when approved” for a channel (off by default, and it can be switched off at any time), approving one exact version of a video on that channel asks YouTube to change that video from private to public. Nothing is made public this way unless that setting is on and a person has approved that version; the approval ends after 24 hours, or if the video is rendered or repaired again. YouTube may still keep the video private. A video made public this way is content published under settings you chose, and section 5 applies to it. This change does not touch the video’s title, description, tags or thumbnail, and deletes nothing.",
           "You can revoke access at any time at [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions); the Service then stops acting on that channel.",
         ],
       },
