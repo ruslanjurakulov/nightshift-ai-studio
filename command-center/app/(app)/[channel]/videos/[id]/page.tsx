@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { PublishPanel } from "@/components/videos/PublishPanel";
@@ -9,6 +9,8 @@ import { loadPublishPanel } from "@/lib/server/publish";
 import { loadDownloads } from "@/lib/server/downloads";
 import { getOrgContext } from "@/lib/orgs-server";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { approveAccess, storedGate, type ApproveAccess } from "@/lib/videoApproval";
+import type { Role } from "@/lib/auth/roles-shared";
 import { CopyButton } from "@/components/feedback/CopyButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -81,6 +83,10 @@ export default async function VideoDetail({
   let topicPerf: TopicPerformanceRow[] = [];
   let autoPublish = false;
   let pendingIntent: ReviewIntentRow | null = null;
+  // The organization that owns the video's channel, and this person's own membership row in it (null when they have none:
+  // a platform admin reading a customer's channel). Only for deciding whether the Approve key is offered.
+  let channelOrgId: string | null = null;
+  let memberRole: Role | null = null;
   let retentionPoints: RetentionPointRow[] = [];
   let sceneRegens: RegenRow[] = [];
   let channelName = "";
@@ -132,9 +138,9 @@ export default async function VideoDetail({
       // The review panel needs two more facts: whether this channel publishes
       // on its own, and whether a request is already waiting on this video.
       const [ch, intent, regens] = await Promise.all([
-        supabase.from("channels").select("auto_publish, name").eq("channel_id", video.channel_id).maybeSingle(),
-        // The panel's own decisions only: a per-scene request (below) must not
-        // read as the video's approve/regenerate decision.
+        supabase.from("channels").select("auto_publish, name, org_id").eq("channel_id", video.channel_id).maybeSingle(),
+        // The panel's own old requests only: a per-scene request (below) must not read as the video's. Approving is
+        // now a database function (0112) that consumes these, so what is still waiting here was never carried out.
         supabase
           .from("review_intents")
           .select("*")
@@ -155,7 +161,19 @@ export default async function VideoDetail({
       ]);
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
       channelName = (ch.data as { name?: string } | null)?.name || video.channel_id;
+      channelOrgId = (ch.data as { org_id?: string | null } | null)?.org_id ?? null;
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
+      const me = await getUser();
+      if (me && channelOrgId) {
+        const mine = await supabase
+          .from("org_members")
+          .select("role")
+          .eq("org_id", channelOrgId)
+          .eq("user_id", me.id)
+          .maybeSingle();
+        const r = (mine.data as { role?: string } | null)?.role;
+        memberRole = r === "owner" || r === "admin" || r === "editor" || r === "viewer" ? r : null;
+      }
       sceneRegens = regens.error ? [] : parseRegenRows(regens.data);
       if (!isRepurposedClip(video)) {
         // This video's repurpose requests and their clips, through RLS with the
@@ -247,15 +265,21 @@ export default async function VideoDetail({
   // gate's own words, never a guessed pass.
   const held = isHeldVideo(video);
   const heldVerdict = held ? heldGate(video) : null;
-  const gate = gateMeta
-    ? {
-        allowed: Boolean(gateMeta.allowed),
-        reasons: [...(gateMeta.blocks ?? []), ...(gateMeta.warnings ?? [])],
-        flagged: typeof flaggedRaw === "number" ? flaggedRaw : null,
-      }
-    : heldVerdict
-      ? { allowed: heldVerdict.allowed, reasons: [...heldVerdict.blocks, ...heldVerdict.warnings], flagged: null }
-      : null;
+  // The verdict the pipeline stored WITH the cut (migration 0112) is the one an approval binds to, so it comes first; the
+  // gate's events do not name an uploaded video (they are emitted before it exists), then the held run's own.
+  const cutVerdict = storedGate(video);
+  const flagged = typeof flaggedRaw === "number" ? flaggedRaw : null;
+  const gate = cutVerdict
+    ? { allowed: cutVerdict.allowed && cutVerdict.blocks.length === 0, reasons: [...cutVerdict.blocks, ...cutVerdict.warnings], flagged }
+    : gateMeta
+      ? {
+          allowed: Boolean(gateMeta.allowed),
+          reasons: [...(gateMeta.blocks ?? []), ...(gateMeta.warnings ?? [])],
+          flagged,
+        }
+      : heldVerdict
+        ? { allowed: heldVerdict.allowed, reasons: [...heldVerdict.blocks, ...heldVerdict.warnings], flagged: null }
+        : null;
 
   // "Publish to platforms": the organization's Instagram / TikTok accounts,
   // its YouTube channels and this video's requests (migrations 0028/0029),
@@ -267,13 +291,18 @@ export default async function VideoDetail({
     loadDownloads(video.video_id, video.channel_id),
   ]);
 
+  // Presentation only: approve_video_publish checks the organization, the role and real membership again.
+  const access: ApproveAccess = approveAccess({ channelOrgId, orgRole, memberRole });
+
   return (
     <div className="flex flex-col gap-4">
       <ReviewPanel
         video={video}
         autoPublish={autoPublish}
         gate={gate}
-        pendingIntent={pendingIntent}
+        staleRequest={pendingIntent}
+        access={access}
+        channelName={channelName || video.channel_id}
       />
       {video.preview_path && atLeast(orgRole, "admin") && <ShareReviewLink videoId={video.video_id} />}
       <PublishPanel

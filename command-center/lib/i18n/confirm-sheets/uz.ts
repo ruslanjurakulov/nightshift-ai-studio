@@ -50,15 +50,11 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
     "Video ommaviy boʻlishga tasdiqlanmadi. Soʻrov rad etilgan sifatida yopiladi, qayta soʻrash uchun yangi soʻrov kerak.",
   rejectConfirm: "Rad etish",
 
-  rvApproveTitle: "«{title}» tasdiqlanib, nashr qilinsinmi?",
+  rvApproveTitle: "«{title}» tasdiqlansinmi?",
   rvApproveBody:
-    "Siz konveyerdan videoni keyingi ishga tushirishda ommaviy qilishni soʻraysiz. Nashr darvozasi birinchi ishlaydi, u toʻxtatgan video chiqmaydi.",
-  rvRegenTitle: "«{title}» qaytadan renderlansinmi?",
-  rvRegenBody:
-    "Keyingi ishga tushirish bu videoni boshidan qayta renderlaydi. Bu yangi renderga tushadi. Narxni bu sahifa koʻrsata olmaydi: u faqat ishga tushganda maʼlum boʻladi.",
-  rvScriptTitle: "«{title}» uchun yangi ssenariy yozilsinmi?",
-  rvScriptBody:
-    "Keyingi ishga tushirish yangi ssenariy yozadi va u boʻyicha yangi video renderlaydi. Bu yangi ssenariy va yangi renderga tushadi. Narxni bu sahifa koʻrsata olmaydi: u faqat ishga tushganda maʼlum boʻladi.",
+    "Bu videoning aynan shu versiyasini tasdiqlaganingizni yozib qoʻyadi. Video bundan ommaviy boʻlmaydi: u shaxsiy holda yuklangan va siz uni YouTube’da ommaviy qilmaguningizcha shaxsiy qoladi. Tasdiq 24 soat amal qiladi va video qayta renderlansa yoki tuzatilsa, tugaydi.",
+  rvApproveAck: "Huquqlar va sunʼiy intellekt kontenti belgilarini tekshirdim.",
+  dVersion: "Versiya",
   staleSheet: "Savol ochiq turganda bu oʻzgardi, shuning uchun hech narsa yuborilmadi. Uni qayta oching va tekshiring.",
 
   apiActivateTitle: "API yoqilsinmi?",

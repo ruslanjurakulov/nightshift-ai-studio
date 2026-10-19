@@ -67,6 +67,15 @@ export interface VideoRow {
   held_at?: string | null;
   /** Why it is held: the reason and the gate's own verdict (0016). Free-form jsonb. */
   hold_detail?: unknown;
+  /** Migration 0112: sha256 of the master as it was recorded. An approval binds to it; null on older rows. */
+  cut_sha256?: string | null;
+  /** Migration 0112: the gate's verdict for that cut ({allowed, blocks, warnings, checks_run}). Null = unknown. */
+  gate_verdict?: unknown;
+  /** Migration 0112: the cut a person approved, who, when, and until when (24 hours). */
+  approved_cut_sha256?: string | null;
+  decided_by_email?: string | null;
+  decided_at?: string | null;
+  approval_expires_at?: string | null;
 }
 
 /** A reviewer's request, waiting for the next run to pick it up. */

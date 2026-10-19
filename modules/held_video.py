@@ -79,6 +79,9 @@ ALL_STATES = HELD_STATES + (STATE_UPLOADED,)
 # Columns migration 0016 adds. A database without it rejects any write that
 # names one; the write is then retried without them (see _is_missing_column).
 _COLUMNS_0016 = ("publish_state", "held_at", "hold_detail")
+# Migration 0112: the cut's hash and the gate's verdict for it. Dropped FIRST when a database does not have them
+# yet, so the state and the hold detail (0016) still land.
+COLUMNS_0112 = ("cut_sha256", "gate_verdict")
 # Older optional columns (0011 scenes, 0013 manifest), dropped next if a write
 # is still refused, so the row itself lands on the oldest supported schema.
 _COLUMNS_OPTIONAL = ("manifest", "scenes")
@@ -115,6 +118,29 @@ def gate_detail(reason: str, gate_meta: Optional[Mapping] = None) -> dict:
             "checks_run": [str(c) for c in (gate_meta.get("checks_run") or [])],
         }
     return detail
+
+
+def gate_verdict(gate_meta: Optional[Mapping]) -> Optional[dict]:
+    """The publish gate's verdict as ``videos.gate_verdict`` keeps it (migration 0112): allowed, the block and warning
+    names, the checks that ran. ``None`` when there is no verdict: a row with no verdict reads as unknown, never as a
+    pass (CLAUDE.md rule 5), so a cut nobody gated is never offered for approval."""
+    if not isinstance(gate_meta, Mapping) or not isinstance(gate_meta.get("allowed"), bool):
+        return None
+    return {
+        "allowed": gate_meta["allowed"],
+        "blocks": [str(b) for b in (gate_meta.get("blocks") or [])],
+        "warnings": [str(w) for w in (gate_meta.get("warnings") or [])],
+        "checks_run": [str(c) for c in (gate_meta.get("checks_run") or [])],
+    }
+
+
+def cut_sha256(path) -> Optional[str]:
+    """sha256 of the final master at ``path`` (the cut a person approves), or None when it cannot be read."""
+    if not path:
+        return None
+    from modules import video_ir
+
+    return video_ir.file_sha256(path)
 
 
 class HeldVideos:
@@ -186,6 +212,10 @@ class HeldVideos:
             }
             if detail:
                 row["hold_detail"] = detail
+            # 0112: the verdict and the hash of THIS cut. A hold that carries no gate (a repair's new cut) writes
+            # NULL, which reads "unknown": the previous cut's verdict does not judge this one.
+            row["gate_verdict"] = gate_verdict((detail or {}).get("gate"))
+            row["cut_sha256"] = cut_sha256(local_path)
             if fill_if_new and self._exists(video_id) is False:
                 title = title or fill_if_new.get("title")
                 script_text = script_text or fill_if_new.get("script_text")
@@ -220,7 +250,9 @@ class HeldVideos:
 
     def _upsert(self, row: dict) -> bool:
         attempts = [row]
-        without_0016 = {k: v for k, v in row.items() if k not in _COLUMNS_0016}
+        without_0112 = {k: v for k, v in row.items() if k not in COLUMNS_0112}
+        attempts.append(without_0112)
+        without_0016 = {k: v for k, v in without_0112.items() if k not in _COLUMNS_0016}
         attempts.append(without_0016)
         attempts.append({k: v for k, v in without_0016.items() if k not in _COLUMNS_OPTIONAL})
         for i, body in enumerate(attempts):
@@ -279,8 +311,14 @@ class HeldVideos:
                                ("title_variant", title_variant)):
                 if value:
                     patch[key] = value
+            # 0112: the row is now an uploaded video, and what the hold knew about the cut is not about THIS upload.
+            # The hash is the master that was just uploaded; the verdict is cleared (unknown) until the review record
+            # that follows writes the gate's verdict for it, so a failure there can only leave "unknown", never a stale pass.
+            patch["cut_sha256"] = cut_sha256(local_path)
+            patch["gate_verdict"] = None
             filters = {"video_id": f"eq.{held_id}", "channel_id": f"eq.{channel_id}"}
-            for body in (patch, {k: v for k, v in patch.items() if k not in _COLUMNS_0016}):
+            without_0112 = {k: v for k, v in patch.items() if k not in COLUMNS_0112}
+            for body in (patch, without_0112, {k: v for k, v in without_0112.items() if k not in _COLUMNS_0016}):
                 resp = self._send("patch", filters, body, "return=representation")
                 if resp is None:
                     return False

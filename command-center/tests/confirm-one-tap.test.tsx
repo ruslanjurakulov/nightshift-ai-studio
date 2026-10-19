@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 /**
- * The one-tap owner actions that now ask first: channel switches, extra credits, publish approvals, the video review
- * panel, API activation and limits, and claiming the team.
+ * The one-tap owner actions that now ask first: channel switches, extra credits, publish approvals, API activation and
+ * limits, and claiming the team. (The video review panel's Approve is a database function with its own sheet: review-approve.test.tsx.)
  *
  * What would break: a stolen unlocked phone (or one stray thumb) turning auto publish on, spending bought credits,
- * approving a video to go public, activating the API or changing a limit with a single tap. For each action: the first
+ * approving a publish request, activating the API or changing a limit with a single tap. For each action: the first
  * tap writes nothing, the write happens after the sheet is confirmed (and the word typed where one is asked), Cancel,
  * Escape and a wrong word write nothing, and a second tap on the confirm key writes once. The server's own rules (RLS,
  * the publish gate, the two-person rule) are not touched here: the same call is made after the sheet.
@@ -63,11 +63,10 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { ChannelCard } from "@/components/channels/ChannelCard";
 import { UsageView } from "@/components/usage/UsageView";
 import { ApprovalsBoard } from "@/components/approvals/ApprovalsBoard";
-import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { MembersBoard } from "@/components/members/MembersBoard";
 import { coerceUsageSummary, type UsageSummary } from "@/lib/usage";
 import type { ChannelHealth } from "@/lib/channels";
-import type { ChannelRow, VideoRow } from "@/lib/types";
+import type { ChannelRow } from "@/lib/types";
 
 const en = dictionaries.en;
 const cs = en.confirmSheets;
@@ -458,124 +457,6 @@ describe("publish approvals", () => {
     approvals();
     const key = await screen.findByRole("button", { name: en.approvals.approve });
     expect(key.className).toContain("min-h-11");
-  });
-});
-
-// ---------------------------------------------------------------------------------------------------------------------
-// The review panel on a video
-// ---------------------------------------------------------------------------------------------------------------------
-
-function video(over: Partial<VideoRow> = {}): VideoRow {
-  return {
-    video_id: "vid-1",
-    channel_id: "chronos",
-    title: "The fall of Rome",
-    privacy: "private",
-    review_state: "pending",
-    preview_path: null,
-    script_text: null,
-    ...over,
-  } as unknown as VideoRow;
-}
-function review(gate: { allowed: boolean; reasons: string[]; flagged: number | null } | null = null) {
-  return wrap(<ReviewPanel video={video()} autoPublish={false} gate={gate} pendingIntent={null} />);
-}
-
-describe("video review panel", () => {
-  it("Approve and publish names the video, its privacy and the gate, and files nothing on the first tap", () => {
-    review({ allowed: true, reasons: [], flagged: null });
-    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    const text = screen.getByRole("alertdialog").textContent ?? "";
-    expect(text).toContain("The fall of Rome");
-    expect(text).toContain("private");
-    expect(text).toContain(en.review.gatePassed);
-    expect(text).toContain("take the video public");
-    expect(h.writes).toEqual([]);
-  });
-
-  it("a video with no recorded gate decision reads as unknown, never as passed", () => {
-    review(null);
-    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    const text = screen.getByRole("alertdialog").textContent ?? "";
-    expect(text).toContain(en.review.gateUnknown);
-    expect(text).not.toContain(en.review.gatePassed);
-  });
-
-  it("files the same intent once after the sheet, and none after Cancel", async () => {
-    review();
-    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: en.ux.confirmCancel }));
-    await settle();
-    expect(h.writes).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    const key = confirmKey(en.review.approve);
-    fireEvent.click(key);
-    fireEvent.click(key);
-    await waitFor(() => expect(h.writes.length).toBe(1));
-    await settle();
-    expect(h.writes[0]).toMatchObject({ table: "review_intents", op: "insert", args: [{ channel_id: "chronos", video_id: "vid-1", action: "approve" }] });
-    expect(h.writes.length).toBe(1);
-  });
-
-  it("the sheet uses the same words as the page: button names, Privacy and the Publish gate", () => {
-    review({ allowed: true, reasons: [], flagged: null });
-    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    const dlg = screen.getByRole("alertdialog");
-    expect(within(dlg).getByRole("button", { name: en.review.approve })).toBeTruthy();
-    expect(dlg.textContent).toContain(en.review.privacy);
-    expect(dlg.textContent).toContain(en.review.gate);
-  });
-
-  it("if the gate verdict changes while the sheet is open, nothing is filed and the person is told", async () => {
-    const view = wrap(<ReviewPanel video={video()} autoPublish={false} gate={{ allowed: true, reasons: [], flagged: null }} pendingIntent={null} />);
-    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    view.rerender(
-      <I18nProvider locale="en">
-        <ReviewPanel video={video()} autoPublish={false} gate={{ allowed: false, reasons: ["claim flagged"], flagged: 2 }} pendingIntent={null} />
-      </I18nProvider>,
-    );
-    fireEvent.click(confirmKey(en.review.approve));
-    await settle();
-    expect(h.writes).toEqual([]);
-    expect(screen.getByText(cs.staleSheet)).toBeTruthy();
-  });
-
-  it("if the video is no longer waiting when Approve is answered, nothing is filed", async () => {
-    const view = review({ allowed: true, reasons: [], flagged: null });
-    fireEvent.click(screen.getByRole("button", { name: en.review.approve }));
-    view.rerender(
-      <I18nProvider locale="en">
-        <ReviewPanel video={video({ review_state: "approved" } as Partial<VideoRow>)} autoPublish={false} gate={{ allowed: true, reasons: [], flagged: null }} pendingIntent={null} />
-      </I18nProvider>,
-    );
-    fireEvent.click(confirmKey(en.review.approve));
-    await settle();
-    expect(h.writes).toEqual([]);
-    expect(screen.getByText(cs.staleSheet)).toBeTruthy();
-  });
-
-  it("render again and new script say that the price is not shown here", () => {
-    review();
-    fireEvent.click(screen.getByRole("button", { name: en.review.regenerate }));
-    expect(screen.getByRole("alertdialog").textContent).toContain("cannot show the price");
-  });
-
-  it("render again and new script each ask, and file their own action", async () => {
-    review();
-    fireEvent.click(screen.getByRole("button", { name: en.review.regenerate }));
-    expect(h.writes).toEqual([]);
-    expect(screen.getByRole("alertdialog").textContent).toContain(cs.rvRegenBody);
-    fireEvent.click(confirmKey(en.review.regenerate));
-    await waitFor(() => expect(h.writes.length).toBe(1));
-    expect((h.writes[0].args[0] as Record<string, unknown>).action).toBe("regenerate");
-    cleanup();
-    h.writes.length = 0;
-    review();
-    fireEvent.click(screen.getByRole("button", { name: en.review.regenerateScript }));
-    expect(h.writes).toEqual([]);
-    fireEvent.click(confirmKey(en.review.regenerateScript));
-    await waitFor(() => expect(h.writes.length).toBe(1));
-    expect((h.writes[0].args[0] as Record<string, unknown>).action).toBe("regenerate_script");
   });
 });
 

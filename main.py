@@ -1340,6 +1340,7 @@ def run(
                 script_text=script.full_narration(),
                 auto_publish=False,
                 slug=slug,
+                gate_verdict=held_video.gate_verdict(gate_meta),
             )
         except Exception as e:
             logger.warning("Could not record the held run (%s: %s) — the run is unaffected",
@@ -1523,6 +1524,9 @@ def run(
                     title=published_title,
                     topic=topic,
                     slug=slug,
+                    # What the gate decided about THIS cut, stored with its hash: an approval binds to both
+                    # (migration 0112). Uploads happen only when it allowed.
+                    gate_verdict=held_video.gate_verdict(gate.to_metadata()),
                 )
             except Exception as e:
                 logger.warning("Could not record the review preview (%s: %s)",

@@ -59,8 +59,8 @@ export const siteEn = {
     steps: [
       { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "Why the Silk Road ran through Samarkand", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
       { id: "plan", tab: "Plan", title: "Check what it will make", body: "Script, voice, visuals and captions, in your channel’s language.", items: [{ name: "Script", detail: "Researched and checked" }, { name: "Voice", detail: "The channel’s own" }, { name: "Visuals", detail: "In the channel’s look" }, { name: "Captions", detail: "In the channel’s language" }], priceNote: "The price is on the button before you start", key: "Start" },
-      { id: "approve", tab: "Approve", title: "Watch it, then decide", body: "It waits on YouTube as private. Nothing is public yet.", lamp: "Private on YouTube", check: "Publish check passed", key: "Approve and publish", waiting: "Waiting for you" },
-      { id: "live", tab: "Live", title: "Public when you say so", body: "You pressed publish, so now it airs.", lamp: "Public on YouTube", sub: "Published by you" },
+      { id: "approve", tab: "Approve", title: "Watch it, then decide", body: "It waits on YouTube as private. Nothing is public yet.", lamp: "Private on YouTube", check: "Publish check passed", key: "Approve", waiting: "Waiting for you" },
+      { id: "live", tab: "Live", title: "Public when you say so", body: "You made it public on YouTube, so now it airs.", lamp: "Public on YouTube", sub: "Published by you" },
     ],
   },
   try: {
@@ -87,7 +87,7 @@ export const siteEn = {
       { id: "shots", name: "Shot list", items: [{ k: "Opening", v: "A wide shot that sets the scene for “{topic}”." }, { k: "Middle", v: "Close details that carry each point." }, { k: "Ending", v: "A calm pull-back under the closing line." }] },
       { id: "thumb", name: "Thumbnail brief", items: [{ k: "Subject", v: "One clear subject from “{topic}”." }, { k: "Words", v: "Three words or fewer on the picture." }, { k: "Colour", v: "High contrast, one warm accent." }] },
     ],
-    real: "In the real thing the plan is researched and checked, the price is on the button, and nothing is published without your approval.",
+    real: "In the real thing the plan is researched and checked, the price is on the button, and nothing goes public without you.",
     cta: "Make this for real",
     ctaNote: "{n} free credits, once. No card.",
   },
@@ -229,7 +229,7 @@ export const siteEn = {
         id: "approvals",
         pill: "Approvals",
         title: "Nothing airs until you say so.",
-        body: "Finished videos upload to YouTube as private and pass a publish check first. Nothing goes public until you approve it.",
+        body: "Finished videos upload to YouTube as private and pass a publish check first. Nothing goes public until you say so.",
         cta: "See how approval works",
         bubble: "Hold this one until I have watched it.",
         reply: "is holding the video",
@@ -269,7 +269,7 @@ export const siteEn = {
       {
         id: "approval",
         title: "Nothing goes public without you",
-        body: "Finished videos upload to YouTube as private and pass a publish check first. Going public is your button. Auto-publish is a per-channel switch, and it stays off until you turn it on.",
+        body: "Finished videos upload to YouTube as private and pass a publish check first. Going public is your decision, made on YouTube. Auto-publish is a per-channel switch, and it stays off until you turn it on.",
         state: "Waiting",
         lines: ["Uploaded as private", "Publish check passed", "Waiting for your approval"],
       },
@@ -285,12 +285,12 @@ export const siteEn = {
       steps: [
         { id: "topic", title: "Give it a topic", body: "Type a line, or let your channel pick its next topic from its niche. Nightshift writes the script, the voice, the visuals and the captions." },
         { id: "price", title: "Start it at a price you have seen", body: "The price is on the button before anything starts. If a run fails, the credits come back on their own." },
-        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private. You watch it and press Approve and publish. Only then does it go public." },
+        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private. You watch it and record your decision in the app. Making it public is done on YouTube; until then it stays private." },
       ],
     },
     shotTag: "Screenshot",
     shotTitle: "The app’s real approval screen.",
-    shotBody: "A finished video waits on its own page: the preview, the title it goes out under, private on YouTube, the publish check's verdict, and the keys. With auto-publish off, nothing goes public until someone presses Approve.",
+    shotBody: "A finished video waits on its own page: the preview, the title it goes out under, private on YouTube, the publish check's verdict, and the keys. The keys record your decision; making a video public is done on YouTube.",
     shotCaption: "A real screen from the app. Everything on it is sample data: the channel, the video, the balance and the account.",
     shotAlt: "Screenshot of the Command Center: the video “Why the Moon always shows us the same face” waiting for approval — private, auto-publish off, the publish gate passed every check — with the Approve and publish button. Everything shown is sample data.",
     steps: [
@@ -299,7 +299,7 @@ export const siteEn = {
       { id: "script", title: "Script", body: "Researched and written for the length you chose, in the channel’s language, and checked before it moves on." },
       { id: "video", title: "Video", body: "Narration, visuals, captions and the edit come together in the voice and look the channel is set to. If that voice is unavailable, the run stops instead of using a worse one." },
       { id: "approval", title: "Your approval", body: "The video waits on YouTube as private. You watch it and decide." },
-      { id: "youtube", title: "YouTube", body: "It goes public when you press Publish — or on its own only where you have switched auto-publish on for that channel." },
+      { id: "youtube", title: "YouTube", body: "It goes public when you make it public on YouTube — or on its own only where you have switched auto-publish on for that channel." },
     ],
   },
   /** /pricing: the month planner (minutes of finished video, the credits it takes at the published rate, the pack that covers it). */
@@ -445,7 +445,7 @@ export const siteEn = {
   studioPage: studioPageEn,
   final: {
     title: "Put your next video on the night shift.",
-    lead: "Start free. See the price before every run, and approve every video before it airs.",
+    lead: "Start free. See the price before every run, and every video stays private until you make it public.",
     cta: "Start free",
     secondary: "Talk to us",
     try: "Try the example first",
@@ -491,7 +491,7 @@ export const siteEn = {
     secondary: "See pricing",
     pictures: {
       signoff: {
-        figure: "Illustration of one finished video at the publish desk: it waits on YouTube as private, the publish check has passed, and your approval is the last step before it goes public.",
+        figure: "Illustration of one finished video at the publish desk: it waits on YouTube as private, the publish check has passed, and your decision is recorded before you make it public on YouTube.",
         title: "Publish desk",
         channel: "Your channel",
         tag: "Illustration",
@@ -501,7 +501,7 @@ export const siteEn = {
         checkState: "Passed",
         first: "Your approval",
         firstState: "Waiting for you",
-        air: "It goes public only when you approve it.",
+        air: "It goes public only when you make it public on YouTube.",
       },
       composer: {
         figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate button that carries its price.",
@@ -539,7 +539,7 @@ export const siteEn = {
         what: [
           { title: "Topic to finished video", body: "Script, narration, visuals, captions and the edit, made for the length you choose." },
           { title: "A channel that stays itself", body: "Language, voice, visual style and schedule are set per channel and never leak into another." },
-          { title: "Private until approved", body: "Every video uploads as private and passes a publish check. You watch it, then publish." },
+          { title: "Private until you publish", body: "Every video uploads as private and passes a publish check. You watch it, then make it public on YouTube." },
           { title: "Your channel’s numbers", body: "Views and analytics for the connected channel, read with the access you granted, shown only to you." },
         ],
         not: [
@@ -596,7 +596,7 @@ export const siteEn = {
     signInSub: "Your channels, videos and credits are where you left them.",
     asideTitle: "What you can count on.",
     asideTitleSignup: "What you can count on.",
-    asideItems: ["The price is shown before every run.", "A failed run returns its credits.", "Nothing goes public without your approval."],
+    asideItems: ["The price is shown before every run.", "A failed run returns its credits.", "Nothing goes public without you."],
     asideLamp: "On air only when you say",
     back: "Back to the homepage",
     welcomeNote: "{n} free credits once, when you create an account.",

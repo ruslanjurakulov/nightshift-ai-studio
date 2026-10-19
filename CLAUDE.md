@@ -30,10 +30,18 @@ Auto publish is a per-channel switch that defaults to off, and the publish gate
 make the bot publish more autonomously, on any path, by any default.
 
 **3. Nothing in a browser may publish, re-render, or spend.**
-A dashboard button writes a row to `review_intents` and stops; the next
-pipeline run reads it and acts. That row is also the record of *who asked*,
-which is why intents can be inserted and read but never edited or deleted. The
-dashboard uses the Supabase ANON key only — never the service key.
+A dashboard button writes a row and stops. Today only scene repair reads
+`review_intents` rows, its own `regenerate_scene` ones; no run reads `approve`,
+`regenerate` or `regenerate_script`. "Approve" on a video is the database function
+`approve_video_publish` (migration 0112): it records who approved which exact cut
+(its sha256), until when (24 hours) and with what acknowledgement, and it does NOT
+change the video's privacy. Every upload is private and stays private until a person
+makes it public on YouTube. Phase 1b (the bot flips privacy) is not built yet, and
+it needs the owner's amendment of rule 2 first. The two re-render buttons stay
+disabled until a priced consumer exists. An intent row is the record of *who asked*,
+which is why intents can be read but never edited or deleted, and why a browser can
+no longer insert an `approve` one. The dashboard uses the Supabase ANON key only —
+never the service key.
 
 **4. No silent quality fallback.**
 When a channel is configured for a particular voice, model or source and that

@@ -62,15 +62,11 @@ export const confirmSheetsEn = {
   rejectConfirm: "Reject",
 
   // The review panel on a video
-  rvApproveTitle: "Approve and publish “{title}”?",
+  rvApproveTitle: "Approve “{title}”?",
   rvApproveBody:
-    "This asks the pipeline to take the video public on its next run. The publish gate still runs first, and a video it blocks does not go out.",
-  rvRegenTitle: "Render “{title}” again?",
-  rvRegenBody:
-    "The next run renders this video again from the start. That costs a new render. This page cannot show the price: it is only known when the run starts.",
-  rvScriptTitle: "New script for “{title}”?",
-  rvScriptBody:
-    "The next run writes a new script and renders a new video from it. That costs a new script and a new render. This page cannot show the price: it is only known when the run starts.",
+    "This records that you approve this exact version of the video. It does not make it public: the video was uploaded as private and stays private until you make it public on YouTube. The approval holds for 24 hours and ends if the video is rendered or repaired again.",
+  rvApproveAck: "I checked rights and AI-content labels.",
+  dVersion: "Version",
   staleSheet: "This changed while the question was open, so nothing was sent. Open it again and check.",
 
   // API access and limits

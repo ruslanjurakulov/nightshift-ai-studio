@@ -46,7 +46,7 @@ describe("confirmSheets parity", () => {
       const c = dicts[loc].confirmSheets;
       for (const k of ["autoOnTitle", "pauseTitle", "resumeTitle", "reviewOffTitle", "limitKeyTitle"] as const) expect(c[k], `${loc}.${k}`).toContain("{name}");
       for (const k of ["approveTitle", "rejectTitle"] as const) expect(c[k], `${loc}.${k}`).toContain("{video}");
-      for (const k of ["rvApproveTitle", "rvRegenTitle", "rvScriptTitle"] as const) expect(c[k], `${loc}.${k}`).toContain("{title}");
+      for (const k of ["rvApproveTitle"] as const) expect(c[k], `${loc}.${k}`).toContain("{title}");
       expect(c.limitPlanCeiling).toContain("{cap}");
     }
   });

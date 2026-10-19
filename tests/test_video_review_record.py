@@ -203,7 +203,11 @@ class RowMissing(unittest.TestCase):
         body = [c for c in fake.calls if c[0] == "post" and "/rest/v1/videos" in c[1]][0][3]
         for key in ("privacy", "publish_state", "held_at", "hold_detail", "category_id"):
             self.assertNotIn(key, body)
-        self.assertNotIn(None, [v for k, v in body.items() if k != "script_text"])
+        # NULL is sent for script_text (no narration) and, since 0112, for the cut/verdict/approval columns: there
+        # NULL is the point ("unknown", "no approval"), tests/test_cut_recording.py pins them.
+        from modules.video_review import NO_APPROVAL
+        self.assertNotIn(None, [v for k, v in body.items()
+                                if k not in ("script_text", "cut_sha256", "gate_verdict", *NO_APPROVAL)])
 
     def test_recording_twice_is_idempotent(self):
         fake = FakeSupabase()

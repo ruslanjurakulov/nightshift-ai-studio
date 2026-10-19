@@ -51,8 +51,8 @@ export const siteUz: SiteDictionary = {
     steps: [
       { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
       { id: "plan", tab: "Reja", title: "Nima tayyorlanishini koʻring", body: "Ssenariy, ovoz, tasvir va subtitrlar — kanalingiz tilida.", items: [{ name: "Ssenariy", detail: "Oʻrganiladi va tekshiriladi" }, { name: "Ovoz", detail: "Kanalning oʻz ovozi" }, { name: "Tasvir", detail: "Kanal uslubida" }, { name: "Subtitrlar", detail: "Kanal tilida" }], priceNote: "Narx boshlashdan oldin tugmada koʻrinadi", key: "Boshlash" },
-      { id: "approve", tab: "Tasdiq", title: "Koʻring, keyin qaror qiling", body: "Video YouTube’da shaxsiy holda kutadi. Hozircha hech narsa ommaviy emas.", lamp: "YouTube’da shaxsiy", check: "Nashr tekshiruvidan oʻtdi", key: "Tasdiqlash va nashr qilish", waiting: "Sizni kutmoqda" },
-      { id: "live", tab: "Efirda", title: "Siz aytganda ommaviy", body: "Siz nashr qilishni bosdingiz, endi video efirda.", lamp: "YouTube’da ommaviy", sub: "Siz nashr qildingiz" },
+      { id: "approve", tab: "Tasdiq", title: "Koʻring, keyin qaror qiling", body: "Video YouTube’da shaxsiy holda kutadi. Hozircha hech narsa ommaviy emas.", lamp: "YouTube’da shaxsiy", check: "Nashr tekshiruvidan oʻtdi", key: "Tasdiqlash", waiting: "Sizni kutmoqda" },
+      { id: "live", tab: "Efirda", title: "Siz aytganda ommaviy", body: "Siz videoni YouTube’da ommaviy qildingiz, endi u efirda.", lamp: "YouTube’da ommaviy", sub: "Siz nashr qildingiz" },
     ],
   },
   try: {
@@ -79,7 +79,7 @@ export const siteUz: SiteDictionary = {
       { id: "shots", name: "Kadrlar roʻyxati", items: [{ k: "Boshlanish", v: "“{topic}” mavzusiga kirish uchun umumiy reja." }, { k: "Oʻrtasi", v: "Har bir fikrni qoʻllab turadigan yaqin tafsilotlar." }, { k: "Oxiri", v: "Yakuniy gap ostida sokin uzoqlashish." }] },
       { id: "thumb", name: "Muqova topshirigʻi", items: [{ k: "Obyekt", v: "“{topic}” mavzusidan bitta aniq obyekt." }, { k: "Soʻzlar", v: "Rasmda uch soʻzdan oshmasin." }, { k: "Rang", v: "Yuqori kontrast va bitta iliq urgʻu." }] },
     ],
-    real: "Haqiqiy ishda reja oʻrganish asosida tuziladi va tekshiriladi, narx tugmada turadi, roziligingizsiz esa hech narsa nashr qilinmaydi.",
+    real: "Haqiqiy ishda reja oʻrganish asosida tuziladi va tekshiriladi, narx tugmada turadi, sizsiz esa hech narsa ommaga chiqmaydi.",
     cta: "Buni haqiqatan yaratish",
     ctaNote: "Bir marta {n} bepul kredit. Karta kerak emas.",
   },
@@ -221,7 +221,7 @@ export const siteUz: SiteDictionary = {
         id: "approvals",
         pill: "Tasdiq",
         title: "Siz aytmaguningizcha efirga chiqmaydi.",
-        body: "Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Siz tasdiqlamaguningizcha hech narsa ommaviy boʻlmaydi.",
+        body: "Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Siz aytmaguningizcha hech narsa ommaviy boʻlmaydi.",
         cta: "Tasdiq qanday ishlaydi",
         bubble: "Bu videoni men koʻrib chiqmagunimcha ushlab tur.",
         reply: "videoni ushlab turibdi",
@@ -261,7 +261,7 @@ export const siteUz: SiteDictionary = {
       {
         id: "approval",
         title: "Sizsiz hech narsa ommaviy boʻlmaydi",
-        body: "Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Ommaviy qilishni siz bosasiz. Avtomatik nashr har bir kanalda alohida, va siz yoqmaguningizcha oʻchiq turadi.",
+        body: "Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Ommaviy qilishni siz hal qilasiz, YouTube’da. Avtomatik nashr har bir kanalda alohida, va siz yoqmaguningizcha oʻchiq turadi.",
         state: "Kutmoqda",
         lines: ["Shaxsiy holda yuklandi", "Nashr tekshiruvidan oʻtdi", "Tasdigʻingizni kutmoqda"],
       },
@@ -277,12 +277,12 @@ export const siteUz: SiteDictionary = {
       steps: [
         { id: "topic", title: "Mavzu bering", body: "Bir qator yozing yoki kanal oʻz yoʻnalishidan keyingi mavzuni tanlasin. Nightshift ssenariy, ovoz, tasvir va subtitrlarni tayyorlaydi." },
         { id: "price", title: "Narxini koʻrib boshlang", body: "Narx boshlashdan oldin tugmada turadi. Ish xato bilan tugasa, kreditlar oʻzi qaytadi." },
-        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va «Tasdiqlash va nashr qilish»ni bosasiz. Shundan keyingina u ommaviy boʻladi." },
+        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Ommaviy qilish YouTube’da bajariladi; shu paytgacha u shaxsiy qoladi." },
       ],
     },
     shotTag: "Skrinshot",
     shotTitle: "Ilovaning haqiqiy tasdiqlash ekrani.",
-    shotBody: "Tayyor video oʻz sahifasida kutadi: koʻrib chiqish nusxasi, qaysi nom bilan chiqishi, YouTube’da yopiq holati, nashr tekshiruvining xulosasi va tugmalar. Avtomatik nashr oʻchiq boʻlsa, kimdir «Tasdiqlash»ni bosmaguncha hech narsa ochiq boʻlmaydi.",
+    shotBody: "Tayyor video oʻz sahifasida kutadi: koʻrib chiqish nusxasi, qaysi nom bilan chiqishi, YouTube’da yopiq holati, nashr tekshiruvining xulosasi va tugmalar. Tugmalar qaroringizni yozib qoʻyadi; videoni ommaviy qilish YouTube’da bajariladi.",
     shotCaption: "Ilovaning haqiqiy ekrani. Undagi hamma narsa namuna: kanal, video, balans va akkaunt.",
     shotAlt: "Boshqaruv markazi skrinshoti: “Nega Oy bizga doim bir tomoni bilan qaraydi” videosi tasdiqni kutmoqda — yopiq, avtomatik nashr oʻchiq, nashr tekshiruvidan oʻtgan — “Tasdiqlash va nashr qilish” tugmasi bilan. Undagi barcha maʼlumotlar namuna.",
     steps: [
@@ -291,7 +291,7 @@ export const siteUz: SiteDictionary = {
       { id: "script", title: "Ssenariy", body: "Siz tanlagan uzunlikka, kanal tilida oʻrganiladi, yoziladi va keyingi bosqichga oʻtishdan oldin tekshiriladi." },
       { id: "video", title: "Video", body: "Ovoz, vizual, subtitrlar va montaj kanal uchun belgilangan ovoz va uslubda yigʻiladi. Bu ovoz mavjud boʻlmasa, ishga tushirish yomonroq ovozni olmaydi — toʻxtaydi." },
       { id: "approval", title: "Sizning tasdigʻingiz", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaror qilasiz." },
-      { id: "youtube", title: "YouTube", body: "Video siz «Nashr qilish»ni bosganingizda ommaviy boʻladi — oʻz-oʻzidan esa faqat avtonashrni yoqqan kanalingizda." },
+      { id: "youtube", title: "YouTube", body: "Video siz uni YouTube’da ommaviy qilganingizda ommaviy boʻladi — oʻz-oʻzidan esa faqat avtonashrni yoqqan kanalingizda." },
     ],
   },
   planner: {
@@ -434,7 +434,7 @@ export const siteUz: SiteDictionary = {
   studioPage: studioPageUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
-    lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir videoni efirdan oldin tasdiqlaysiz.",
+    lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",
     cta: "Bepul boshlash",
     secondary: "Biz bilan bogʻlaning",
     try: "Avval namunani sinab koʻring",
@@ -480,7 +480,7 @@ export const siteUz: SiteDictionary = {
     secondary: "Narxlarni koʻrish",
     pictures: {
       signoff: {
-        figure: "Tasvir: nashr pultidagi tayyor video. U YouTube’da shaxsiy holda kutmoqda, nashr tekshiruvi oʻtgan, ommaga chiqishdan oldingi oxirgi qadam — sizning tasdigʻingiz.",
+        figure: "Tasvir: nashr pultidagi tayyor video. U YouTube’da shaxsiy holda kutmoqda, nashr tekshiruvi oʻtgan, qaroringiz yozib qoʻyiladi, shundan keyin videoni YouTube’da ommaviy qilasiz.",
         title: "Nashr pulti",
         channel: "Kanalingiz",
         tag: "Tasvir",
@@ -490,7 +490,7 @@ export const siteUz: SiteDictionary = {
         checkState: "Oʻtdi",
         first: "Sizning tasdigʻingiz",
         firstState: "Sizni kutmoqda",
-        air: "Siz tasdiqlagandagina efirga chiqadi.",
+        air: "Faqat siz YouTube’da ommaviy qilgandagina efirga chiqadi.",
       },
       composer: {
         figure: "Studiya konstruktori rasmi: tavsif, tanlangan 16:9 shakli, uslublaringizdan biri va narxi ustida koʻrsatilgan «Yaratish» tugmasi.",
@@ -528,7 +528,7 @@ export const siteUz: SiteDictionary = {
         what: [
           { title: "Mavzudan tayyor videogacha", body: "Ssenariy, ovoz, vizual, subtitrlar va montaj — siz tanlagan uzunlikda." },
           { title: "Kanal oʻzligicha qoladi", body: "Til, ovoz, vizual uslub va jadval har bir kanal uchun belgilanadi va boshqasiga oʻtmaydi." },
-          { title: "Tasdiqlanguncha shaxsiy", body: "Har bir video shaxsiy holda yuklanadi va nashr tekshiruvidan oʻtadi. Koʻrasiz, soʻng nashr qilasiz." },
+          { title: "Nashr qilmaguningizcha shaxsiy", body: "Har bir video shaxsiy holda yuklanadi va nashr tekshiruvidan oʻtadi. Koʻrasiz, soʻng YouTube’da oʻzingiz ommaviy qilasiz." },
           { title: "Kanalingiz raqamlari", body: "Ulangan kanalning koʻrishlari va tahlili — siz bergan ruxsat bilan va faqat sizga." },
         ],
         not: [
@@ -585,7 +585,7 @@ export const siteUz: SiteDictionary = {
     signInSub: "Kanallaringiz, videolaringiz va kreditlaringiz qoldirgan joyingizda.",
     asideTitle: "Nimaga tayanishingiz mumkin.",
     asideTitleSignup: "Nimaga tayanishingiz mumkin.",
-    asideItems: ["Har bir ishga tushirishdan oldin narx koʻrinadi.", "Muvaffaqiyatsiz ishga tushirish kreditlarini qaytaradi.", "Tasdigʻingizsiz hech narsa ommaviy boʻlmaydi."],
+    asideItems: ["Har bir ishga tushirishdan oldin narx koʻrinadi.", "Muvaffaqiyatsiz ishga tushirish kreditlarini qaytaradi.", "Sizsiz hech narsa ommaviy boʻlmaydi."],
     asideLamp: "Efirga — faqat siz aytganda",
     back: "Bosh sahifaga",
     welcomeNote: "Hisob yaratganingizda bir marta {n} bepul kredit.",
