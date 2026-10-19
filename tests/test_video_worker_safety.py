@@ -110,6 +110,10 @@ class MainRunBehaviour(unittest.TestCase):
         os.chdir(self.tmp.name)  # run() makes ./logs
         from modules.channels import ChannelContext  # noqa: PLC0415
         self.ctx = ChannelContext(channel_id="default", name="X", niche="h")
+        # What these runs pin is the order of the early stops, not the disk of the machine that runs the test.
+        spacious = mock.patch.object(main.disk_guard, "free_bytes", lambda _p: 100 * 1024 ** 3)
+        spacious.start()
+        self.addCleanup(spacious.stop)
 
     def tearDown(self):
         os.chdir(self.cwd)

@@ -227,6 +227,59 @@ class TtsCacheIsAtomic(unittest.TestCase):
             self.assertIn("empty audio stream", str(caught.exception))
             self.assertEqual(list(Path(d).iterdir()), [])
 
+    # -- the Edge voice writes the same way: a pid-suffixed .part, then os.replace -------
+
+    @staticmethod
+    def _edge(save):
+        """audio_mixer.edge_tts with a Communicate whose save() is ``save(path)``."""
+        async def _save(path):
+            save(Path(path))
+        communicate = MagicMock()
+        communicate.save = _save
+        return patch.object(audio_mixer.edge_tts, "Communicate", return_value=communicate)
+
+    def test_an_edge_segment_is_written_to_a_pid_suffixed_part_and_moved_when_complete(self):
+        import asyncio
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "seg.mp3"
+            part = Path(d) / f"seg.mp3.{os.getpid()}.part"      # pid-suffixed: two workers never share one
+            seen = {}
+
+            def save(path):
+                seen["path"] = path
+                path.write_bytes(b"abc")
+                seen["out_exists"] = out.exists()               # mid-write: not yet under the cache name
+
+            with self._edge(save):
+                asyncio.run(_mixer(d)._tts_edge("hello", "en-US-AriaNeural", out))
+            self.assertEqual(seen["path"], part)
+            self.assertFalse(seen["out_exists"])
+            self.assertEqual(out.read_bytes(), b"abc")
+            self.assertFalse(part.exists())
+
+    def test_an_empty_edge_stream_is_refused_and_leaves_nothing_behind(self):
+        import asyncio
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "seg.mp3"
+            with self._edge(lambda path: path.write_bytes(b"")):
+                with self.assertRaises(RuntimeError):
+                    asyncio.run(_mixer(d)._tts_edge("hello", "en-US-AriaNeural", out))
+            self.assertEqual(list(Path(d).iterdir()), [])        # no short segment, no stray .part
+
+    def test_an_edge_write_that_dies_mid_stream_leaves_no_cache_file(self):
+        import asyncio
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "seg.mp3"
+
+            def save(path):
+                path.write_bytes(b"abc")
+                raise ConnectionError("stream cut")
+
+            with self._edge(save):
+                with self.assertRaises(ConnectionError):
+                    asyncio.run(_mixer(d)._tts_edge("hello", "en-US-AriaNeural", out))
+            self.assertEqual(list(Path(d).iterdir()), [])
+
     def test_an_empty_cache_file_is_deleted_and_rendered_again(self):
         with tempfile.TemporaryDirectory() as d:
             m = _mixer(d)

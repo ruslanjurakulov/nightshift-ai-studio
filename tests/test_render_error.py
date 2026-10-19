@@ -25,6 +25,9 @@ class Classify(unittest.TestCase):
             ("modules.scene_render.SceneRenderError: bad scene", "render"),
             ("modules.render_backend.RenderTimeout: ffmpeg took too long", "timeout"),
             ("subprocess.TimeoutExpired: Command 'ffmpeg' timed out after 900 seconds", "timeout"),
+            # main._preflight_disk: refused to start on a full volume; the remedy text must not be read as a quota
+            ("modules.disk_guard.InsufficientDisk: only 2.3 GB free on the volume holding /app/output (a run needs "
+             "at least 5 GB). Fix: free space with `python -m modules.disk_guard --prune-days 30`", "render"),
         ]:
             with self.subTest(last=last):
                 self.assertEqual(re_.classify("main.py exited with code 1", tb(last)), code)

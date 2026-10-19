@@ -15,8 +15,11 @@ const DEFAULT_ORG = (await import("../lib/orgs")).DEFAULT_ORG_ID;
 
 const h = {
   org: "org-customer" as string,
+  /** The caller is a platform owner/admin (they hold that role in every organization). */
+  admin: false,
   insert: vi.fn(),
   reserve: vi.fn(),
+  dispatch: vi.fn(),
 };
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -28,13 +31,13 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/auth/org-roles", () => ({
   requireOrgRole: async () => ({ ok: true, role: "admin", orgId: h.org, source: "org" }),
-  isOperator: async () => false,
-  isPlatformAdmin: async () => false,
+  isOperator: async () => h.admin,
+  isPlatformAdmin: async () => h.admin,
 }));
 vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ current: null }) }));
 vi.mock("@/lib/server/audit", () => ({ logAudit: async () => undefined }));
 vi.mock("@/lib/connectedAccounts", () => ({ readConnectedAccounts: async () => [] }));
-vi.mock("@/lib/server/github-secrets", () => ({ dispatchDailyVideo: async () => undefined, isGithubConfigured: true }));
+vi.mock("@/lib/server/github-secrets", () => ({ dispatchDailyVideo: (...a: unknown[]) => h.dispatch(...a), isGithubConfigured: true }));
 vi.mock("@/lib/server/credits", async () => {
   const actual = await vi.importActual<typeof import("../lib/server/credits")>("../lib/server/credits");
   return { ...actual, creditsEnforced: true, reserveRunCredits: (...a: unknown[]) => h.reserve(...a) };
@@ -53,6 +56,8 @@ const post = (body: Record<string, unknown>) =>
 beforeEach(() => {
   process.env.NIGHTSHIFT_RUN_BACKEND = "queue";
   h.org = "org-customer";
+  h.admin = false;
+  h.dispatch.mockReset().mockResolvedValue(undefined);
   h.insert.mockReset().mockResolvedValue({ data: { id: 7 }, error: null, status: 201 });
   h.reserve.mockReset().mockResolvedValue({ ok: true, creditRef: "rj-ref", estimate: { credits: 36 }, exempt: false, durationS: 180 });
 });
@@ -87,5 +92,31 @@ describe("provider choice on the customer path", () => {
     const res = await post({ video_provider: "veo", image_provider: "leonardo" });
     expect(res.status).toBe(200);
     expect(h.insert.mock.calls[0][0].params).toMatchObject({ video_provider: "veo", image_provider: "leonardo" });
+  });
+
+  // The refusal keys on WHOSE organization the channel is, never on who is asking. A platform admin holds owner in every
+  // organization, so "the operator may choose" must not follow them onto a customer's channel: migration 0111's trigger
+  // (render_jobs_payment_guard) refuses the same job for a paying organization whoever inserts it, and without this
+  // gate the insert would come back as a 502 with an open three-hour credit hold behind it.
+  it.each([
+    ["queue", { video_provider: "veo" }],
+    ["queue", { image_provider: "leonardo" }],
+    ["actions", { video_provider: "kling", image_provider: "flux" }],
+  ])("a platform admin on a customer's channel (%s backend) cannot pass %j either", async (backend, extra) => {
+    process.env.NIGHTSHIFT_RUN_BACKEND = backend;
+    h.admin = true;
+    const res = await post(extra);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "provider_not_allowed" });
+    expect(h.reserve).not.toHaveBeenCalled();
+    expect(h.insert).not.toHaveBeenCalled();
+    expect(h.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("a platform admin's plain run of a customer's channel still goes through", async () => {
+    h.admin = true;
+    const res = await post({ topic: "Rome" });
+    expect(res.status).toBe(200);
+    expect(h.insert.mock.calls[0][0].params).not.toHaveProperty("video_provider");
   });
 });

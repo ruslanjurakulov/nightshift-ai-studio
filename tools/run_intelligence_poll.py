@@ -521,8 +521,11 @@ def _operator_test():
             raise RuntimeError("channel registry unavailable")
 
         return unknown
+    # No name is added by hand: the registry always lists the default channel (a source's own row
+    # wins, else the legacy one, which belongs to the operator's organization), so its flag decides
+    # like any other channel's. Adding it here would send the USD of a "default" channel that a
+    # database row hands to a customer's organization.
     ours = {str(c.channel_id) for c in registry if getattr(c, "is_operators", False)}
-    ours.add(DEFAULT_CHANNEL_ID)
     return lambda channel_id: channel_id in ours
 
 

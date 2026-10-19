@@ -52,6 +52,7 @@ from modules.cost_ledger import (
     UPLOAD_BYTES, VIDEO_GEN_CLIPS,
 )
 from modules import budget
+from modules import disk_guard
 from modules import spend_guard
 from modules import shorts
 from modules.claim_extractor import extract_section_claims
@@ -434,6 +435,26 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
     return allowed
 
 
+def _preflight_disk(channel_id, free_fn=None) -> None:
+    """Refuse the run, before it spends anything, when the volume holding ``output/`` is nearly full.
+
+    A render writes several GB there and dies mid-way ("No space left on device") after the script and the
+    voice were paid for. The message names the sizes and the fix; ``NIGHTSHIFT_MIN_FREE_DISK_GB`` sets the
+    threshold (default 5 GB, ``0`` is off). A volume that cannot be measured is not a refusal: the guard is a
+    precheck, and an unreadable answer is logged, not turned into "full"."""
+    try:
+        disk_guard.require_free_disk(OUTPUT_DIR, disk_guard.configured_min_bytes(),
+                                     free_fn or disk_guard.free_bytes)
+    except disk_guard.InsufficientDisk as e:
+        logger.error("[channel: %s] Not enough free disk to start a run: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="disk_guard", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}", "stage": "preflight"})
+        raise
+    except OSError as e:
+        logger.warning("[channel: %s] Free disk could not be measured (%s) - continuing without the check",
+                       channel_id, type(e).__name__)
+
+
 def _preflight_pictures(ctx, series_obj, channel_id) -> None:
     """Raise (after recording the failure) when generated stills or a presenter
     were asked for but cannot be made. Makes no request."""
@@ -564,6 +585,9 @@ def run(
         raise CredentialsMissing(
             "Run stopped before spending anything: required credential(s) not configured — "
             + "; ".join(f"{c.name}: {c.detail or 'missing'}" for c in health.blocking))
+    # Disk — a full volume kills the render after the script and the voice are paid for.
+    # Checked here, right after the credentials and before the first spend (CLAUDE.md #6).
+    _preflight_disk(channel_id)
     # Spend ceiling — a hard stop BEFORE the run spends anything. Off unless this
     # channel set a ceiling; then a run that would push its known monthly spend
     # at or past the ceiling does not start. It halts spending, never the publish
