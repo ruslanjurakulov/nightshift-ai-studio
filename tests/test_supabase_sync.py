@@ -224,6 +224,116 @@ class VideoCostsIdempotentTestCase(unittest.TestCase):
         self._mirror(table)
         self.assertEqual(len(table.rows), 2)
 
+    # -- mirror_costs: what the queue worker sends after each job --
+
+    def _costs_only(self, table, **kw):
+        with patch("modules.supabase_sync.requests.post", side_effect=table.post):
+            return self.sync.mirror_costs(self.store, **kw)
+
+    def test_mirror_costs_sends_only_the_cost_table(self):
+        # mirror_from_store would also upsert videos/topic rows from the worker's db
+        # over the Actions poll's fresher copy; the worker must not do that.
+        self.store.record_video(video_id="v1", title="T", topic="rome")
+        self._cost()
+        table = FakeCostsTable()
+        self.assertEqual(self._costs_only(table), 1)
+        self.assertEqual([p["url"].rsplit("/", 1)[-1] for p in table.posts], ["video_costs"])
+
+    def test_mirror_costs_twice_and_overlapping_windows_add_nothing(self):
+        self._cost(recorded_at="2026-09-01T10:00:00+00:00")
+        self._cost(unit="video_gen_clips", quantity=1, stage="broll:kling", recorded_at="2026-09-02T10:00:00+00:00")
+        self._cost(unit="video_gen_clips", quantity=1, stage="broll:kling", recorded_at="2026-09-02T10:00:00+00:00")
+        table = FakeCostsTable()
+        self._costs_only(table)
+        self._costs_only(table, since_iso="2026-09-02T00:00:00+00:00")   # overlaps: same keys
+        self._costs_only(table)
+        self.assertEqual(len(table.rows), 3)
+        self.assertEqual(len({r["row_key"] for r in table.rows}), 3)
+
+    def test_since_sends_only_newer_rows_and_keeps_a_group_whole(self):
+        self._cost(recorded_at="2026-09-01T10:00:00+00:00")
+        self._cost(unit="video_gen_clips", quantity=1, stage="broll:kling", recorded_at="2026-09-02T10:00:00+00:00")
+        self._cost(unit="video_gen_clips", quantity=1, stage="broll:kling", recorded_at="2026-09-02T10:00:00+00:00")
+        table = FakeCostsTable()
+        self.assertEqual(self._costs_only(table, since_iso="2026-09-02T00:00:00+00:00"), 2)
+        self.assertEqual(len(table.rows), 2)
+
+    def test_mirror_costs_never_raises_and_a_later_call_catches_up(self):
+        self._cost()
+        down = FakeCostsTable(fail_after=0)
+        self.assertEqual(self._costs_only(down), 0)
+        unmigrated = FakeCostsTable(migrated=False)
+        self.assertEqual(self._costs_only(unmigrated), 0)
+        self.assertEqual(unmigrated.rows, [])           # nothing inserted without its row_key
+        broken = MagicMock()
+        broken.list_video_costs.side_effect = RuntimeError("disk gone")
+        self.assertEqual(self.sync.mirror_costs(broken), 0)
+        table = FakeCostsTable()
+        self.assertEqual(self._costs_only(table), 1)
+
+    def test_customer_channels_rows_carry_no_usd_but_keep_units_and_stage(self):
+        self._cost(unit="tts_characters", quantity=500, channel_id="ours", estimated_usd=0.5)
+        self._cost(unit="video_gen_clips", quantity=2, channel_id="theirs", estimated_usd=3.2, stage="broll:kling")
+        table = FakeCostsTable()
+        self._costs_only(table, is_operator=lambda cid: cid == "ours")
+        by_channel = {r["channel_id"]: r for r in table.rows}
+        self.assertEqual(by_channel["ours"]["estimated_usd"], 0.5)
+        self.assertIsNone(by_channel["theirs"]["estimated_usd"])
+        self.assertEqual((by_channel["theirs"]["unit"], by_channel["theirs"]["quantity"], by_channel["theirs"]["stage"]),
+                         ("video_gen_clips", 2, "broll:kling"))
+        # the local ledger is untouched
+        self.assertEqual({r["channel_id"]: r["estimated_usd"] for r in self.store.list_video_costs()},
+                         {"ours": 0.5, "theirs": 3.2})
+
+    def test_without_an_operator_test_no_usd_is_sent(self):
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        table = FakeCostsTable()
+        self._costs_only(table)
+        self.assertEqual([r["estimated_usd"] for r in table.rows], [None])
+
+    def test_a_channel_that_cannot_be_looked_up_is_skipped_not_sent_without_usd(self):
+        # ignore-duplicates would lock a wrongly-NULL row in forever: wait until it can be decided
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        self._cost(unit="tts_characters", estimated_usd=2.0, channel_id="theirs")
+        registry_up = {"ok": False}
+
+        def is_operator(cid):
+            if not registry_up["ok"]:
+                raise RuntimeError("registry down")
+            return cid == "ours"
+
+        table = FakeCostsTable()
+        self.assertEqual(self._costs_only(table, is_operator=is_operator), 0)
+        self.assertEqual(table.rows, [])
+        registry_up["ok"] = True
+        self._costs_only(table, is_operator=is_operator)
+        self.assertEqual(sorted((r["channel_id"], r["estimated_usd"]) for r in table.rows),
+                         [("ours", 1.0), ("theirs", None)])
+
+    def test_mirror_from_store_the_actions_path_also_hides_customer_usd(self):
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        self._cost(unit="tts_characters", estimated_usd=2.0, channel_id="theirs")
+        table = FakeCostsTable()
+        with patch("modules.supabase_sync.requests.post", side_effect=table.post):
+            self.sync.mirror_from_store(self.store, is_operator=lambda cid: cid == "ours")
+        self.assertEqual(sorted((r["channel_id"], r["estimated_usd"]) for r in table.rows),
+                         [("ours", 1.0), ("theirs", None)])
+        table = FakeCostsTable()
+        with patch("modules.supabase_sync.requests.post", side_effect=table.post):
+            self.sync.mirror_from_store(self.store)             # no test given: nobody's USD
+        self.assertEqual({r["estimated_usd"] for r in table.rows}, {None})
+
+    def test_hiding_the_usd_does_not_change_the_row_keys(self):
+        self._cost(estimated_usd=1.0, channel_id="ours")
+        shown, hidden = FakeCostsTable(), FakeCostsTable()
+        self._costs_only(shown, is_operator=lambda cid: True)
+        self._costs_only(hidden)
+        self.assertEqual([r["row_key"] for r in shown.rows], [r["row_key"] for r in hidden.rows])
+
+    def test_mirror_costs_is_off_without_credentials(self):
+        self._cost()
+        self.assertEqual(SupabaseSync(url="", service_key="").mirror_costs(self.store), 0)
+
     def test_two_genuinely_identical_rows_stay_two_across_runs(self):
         # one flush of the ledger can record two equal entries (two clips, same stage)
         self._cost(unit="video_gen_clips", quantity=1, stage="broll:minimax")

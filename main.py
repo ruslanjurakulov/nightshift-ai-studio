@@ -17,6 +17,9 @@ import logging
 import re
 import sys
 import time
+import functools
+import signal
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -49,6 +52,7 @@ from modules.cost_ledger import (
     UPLOAD_BYTES, VIDEO_GEN_CLIPS,
 )
 from modules import budget
+from modules import spend_guard
 from modules import shorts
 from modules.claim_extractor import extract_section_claims
 from modules import claim_scenes
@@ -354,6 +358,69 @@ def _flush_costs(costs, slug: str | None = None) -> None:
                        type(e).__name__, e)
 
 
+#: The running pipeline's cost ledger, so ``_flush_costs_on_exit`` can record
+#: what a run that died part-way had already bought (one run per process).
+_RUN_COSTS: list = []
+
+
+def _exit_on_sigterm(signum, _frame):
+    """SIGTERM (docker stop, the worker's timeout) as an exit that unwinds, so the
+    ``finally`` of ``_flush_costs_on_exit`` runs; the default action would kill
+    the process (exit 143) without recording what the run had bought."""
+    raise SystemExit(128 + signum)
+
+
+def _flush_costs_on_exit(fn):
+    """Wrap ``run``: whatever the run bought is recorded even when it raises
+    (a failed render, a refused clip, a spend-guard stop) or is terminated with
+    SIGTERM. Entries already flushed on the normal path are not written twice
+    (CostLedger.flushed). Nothing in the finally can replace the run's own
+    exception."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        _RUN_COSTS.clear()
+        previous = None
+        installed = False
+        if threading.current_thread() is threading.main_thread():
+            try:
+                previous = signal.signal(signal.SIGTERM, _exit_on_sigterm)
+                installed = True
+            except (ValueError, OSError):
+                pass
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            if installed:
+                # A second SIGTERM (the worker repeats it) must not abort the flush.
+                try:
+                    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                except (ValueError, OSError):
+                    pass
+            try:
+                ledgers = list(_RUN_COSTS)
+                _RUN_COSTS.clear()
+                for ledger in ledgers:
+                    if ledger.pending():
+                        _flush_costs(ledger)
+            except Exception as e:
+                logger.warning("Could not record costs on exit (%s) — the run's own outcome is unchanged",
+                               type(e).__name__)
+            finally:
+                if installed:
+                    try:
+                        signal.signal(signal.SIGTERM, previous if previous is not None else signal.SIG_DFL)
+                    except (ValueError, OSError):
+                        pass
+    return wrapper
+
+
+def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
+    """Stop the run, loudly, before ``stage`` buys anything if the ledger so far
+    is over CHRONOS_MAX_RUN_USD (or, for the operator's own organisation, the
+    day is over CHRONOS_MAX_DAILY_USD). See modules/spend_guard.py."""
+    spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned)
+
+
 def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
     """The privacy this run may upload with. If the channel's Command Center
     auto-publish switch is not ON (and the source carries one at all), anything
@@ -380,6 +447,7 @@ def _preflight_pictures(ctx, series_obj, channel_id) -> None:
         raise
 
 
+@_flush_costs_on_exit
 def run(
     niche: str | None = None,
     topic: str | None = None,
@@ -529,6 +597,9 @@ def run(
     # What this run consumes. Recorded whether or not it ends in an upload —
     # a render that is later blocked still cost real money.
     costs = CostLedger(channel_id=channel_id)
+    _RUN_COSTS[:] = [costs]
+    # An exhausted daily cap stops the run before any paid planning (topic, research, script).
+    _guard_spend(ctx, costs, "the topic")
     # Observability events (event_log.emit never raises and never alters the
     # pipeline — see modules/event_log.py). They feed the Command Center's live
     # activity feed and per-video pipeline timeline.
@@ -741,6 +812,7 @@ def run(
         costs.add_gemini_usage(engine.last_response, stage="script")
 
     slug = _run_slug(topic, ctx)
+    costs.slug = slug
     logger.info("Script: '%s'", script.title)
     events.emit(events.SCRIPT_COMPLETED, agent="script_engine", status=events.STATUS_COMPLETED,
                 channel_id=channel_id, metadata={"title": script.title})
@@ -847,6 +919,7 @@ def run(
     keyword_map = ScriptEngine.extract_visual_keywords(script)
 
     # ── Stage 3: Audio
+    _guard_spend(ctx, costs, "the voice")
     events.emit(events.VOICE_STARTED, agent="audio_mixer", status=events.STATUS_RUNNING, channel_id=channel_id)
     mixer = AudioMixer(slug, channel=ctx)
     audio_path, timeline = mixer.build(script)
@@ -918,6 +991,8 @@ def run(
     # Optional: generate on-topic stills with the selected image provider
     # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
     # are set; a model that returns nothing falls back to stock, a refusal stops the run.
+    _guard_spend(ctx, costs, "generating stills", planned=(
+        [(IMAGE_GENERATIONS, config.LEONARDO_MAX_IMAGES)] if image_providers.is_enabled() else None))
     try:
         gen_images = fetcher.generate_images(
             script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
@@ -944,6 +1019,8 @@ def run(
     # Character-Bible consistency directive (whichever are present).
     # When generated b-roll is on, a clip the configured model did not produce
     # stops the run with the remedy — it is never quietly replaced by stock.
+    _guard_spend(ctx, costs, "generating b-roll clips", planned=(
+        [(VIDEO_GEN_CLIPS, config.MINIMAX_BROLL_MAX_CLIPS)] if video_providers.is_enabled() else None))
     try:
         broll = fetcher.generate_broll(
             script.sections, topic, style_for=_scene_style,
@@ -1058,6 +1135,8 @@ def run(
     presenter_path = None
     avatar_cfg = resolve_avatar_config(ctx, series_obj)
     if avatar_cfg.enabled:
+        # The presenter clip is not in the cost ledger (no unit), so this only stops on what was spent before it.
+        _guard_spend(ctx, costs, "generating the presenter")
         events.emit(events.AVATAR_STARTED, agent="avatar", status=events.STATUS_RUNNING,
                     channel_id=channel_id, metadata={"provider": avatar_cfg.provider})
         try:

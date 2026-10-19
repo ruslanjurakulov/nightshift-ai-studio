@@ -320,6 +320,10 @@ class GenericAsyncVideoClient:
         if self.cfg.config_problem:
             raise VideoModelUnavailable(self.cfg.name, self.cfg.model, "the configuration is unusable",
                                         self.cfg.config_problem)
+        if not str(self.cfg.base_url).lower().startswith("https://"):
+            raise VideoModelUnavailable(
+                self.cfg.name, self.cfg.model, "the API host is not an https:// URL, so the key would travel unencrypted",
+                "set the provider's *_BASE_URL variable to an https:// URL")
 
     # -- request shapes ----------------------------------------------------------
 

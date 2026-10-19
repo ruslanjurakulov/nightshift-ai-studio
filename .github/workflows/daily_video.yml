@@ -560,6 +560,19 @@ jobs:
           # Advisory AI critic on rendered frames (Gemini vision; one or two
           # paid calls per video). Off unless this variable is set to 1.
           CHRONOS_AI_CRITIC: ${{ vars.CHRONOS_AI_CRITIC }}
+          # Unit prices (USD per single unit) and the hard USD caps per run / per
+          # day (modules/cost_ledger.py, modules/spend_guard.py); empty = unpriced / default.
+          CHRONOS_PRICE_GEMINI_INPUT_TOKENS: ${{ vars.CHRONOS_PRICE_GEMINI_INPUT_TOKENS }}
+          CHRONOS_PRICE_GEMINI_OUTPUT_TOKENS: ${{ vars.CHRONOS_PRICE_GEMINI_OUTPUT_TOKENS }}
+          CHRONOS_PRICE_TTS_CHARACTERS: ${{ vars.CHRONOS_PRICE_TTS_CHARACTERS }}
+          CHRONOS_PRICE_RENDER_SECONDS: ${{ vars.CHRONOS_PRICE_RENDER_SECONDS }}
+          CHRONOS_PRICE_PEXELS_REQUESTS: ${{ vars.CHRONOS_PRICE_PEXELS_REQUESTS }}
+          CHRONOS_PRICE_UPLOAD_BYTES: ${{ vars.CHRONOS_PRICE_UPLOAD_BYTES }}
+          CHRONOS_PRICE_VIDEO_GEN_CLIPS: ${{ vars.CHRONOS_PRICE_VIDEO_GEN_CLIPS }}
+          CHRONOS_PRICE_IMAGE_GENERATIONS: ${{ vars.CHRONOS_PRICE_IMAGE_GENERATIONS }}
+          CHRONOS_PRICE_VISION_CALLS: ${{ vars.CHRONOS_PRICE_VISION_CALLS }}
+          CHRONOS_MAX_RUN_USD: ${{ vars.CHRONOS_MAX_RUN_USD }}
+          CHRONOS_MAX_DAILY_USD: ${{ vars.CHRONOS_MAX_DAILY_USD }}
           # --- Per-channel publishing tokens -------------------------------
           # GitHub Actions secrets cannot be enumerated at runtime, so each
           # channel's token secret is listed here explicitly — one line per

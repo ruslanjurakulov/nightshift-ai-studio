@@ -324,6 +324,35 @@ class QueueClient:
         return self._patch_mine(job_id, worker_id, values)
 
 
+def _cost_mirror(url: str, key: str, resolve_channel: Callable[[str], Mapping] = None) -> Callable[[str], object]:
+    """The worker's after-job send of history/chronos.db's video_costs to
+    Supabase (SupabaseSync.mirror_costs: idempotent, never raises). A channel's
+    USD is sent only when it is one of the operator's own (``is_operators``);
+    a channel that does not exist counts as a customer's, and one that cannot be looked up right now is skipped until it can."""
+    resolve = resolve_channel or _default_resolve_channel
+
+    def mirror(since_iso: str):
+        from modules.state_store import StateStore  # noqa: PLC0415 — only the real worker needs it
+        from modules.supabase_sync import SupabaseSync  # noqa: PLC0415
+
+        known: Dict[str, bool] = {}
+
+        def is_operator(channel_id: str) -> bool:
+            if channel_id not in known:
+                try:
+                    known[channel_id] = resolve(channel_id).get("is_operators") is True
+                except (KeyError, ValueError):
+                    known[channel_id] = False      # no such confirmed channel: not the operator's
+                # any other failure (registry down) propagates: the mirror skips the
+                # channel's rows this time instead of sending them without USD for good
+            return known[channel_id]
+
+        with StateStore() as store:
+            return SupabaseSync(url, key).mirror_costs(store, since_iso=since_iso, is_operator=is_operator)
+
+    return mirror
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -605,6 +634,7 @@ class Worker:
         downloads=None,
         repurposer=None,
         comments=None,
+        cost_mirror: Optional[Callable[[str], object]] = None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -648,6 +678,10 @@ class Worker:
         # runs none (migration 0041: no unpaid fallback).
         self.credits = credits
         self.ledger_reader = ledger_reader or credit_rules.local_run_entries
+        # Called with an ISO time after every job: sends this machine's cost
+        # ledger (history/chronos.db) to Supabase video_costs, where the Billing
+        # page reads it. None = not mirrored. Must never fail a job.
+        self.cost_mirror = cost_mirror
         self._last_sweep: Optional[float] = None
         self._last_pending_retry: Optional[float] = None
 
@@ -817,10 +851,31 @@ class Worker:
         finally:
             if result_file is not None:
                 result_file.unlink(missing_ok=True)
+        # Bookkeeping only, AFTER the job is finished and its hold settled: a slow or
+        # failing Supabase can neither delay nor change either (it never raises).
+        self._mirror_costs(run_started)
         # "released" (re-queued) keeps its hold for the next attempt; "lost"
         # belongs to whoever took the job. A job failed on its last attempt by
         # the stale sweep is released by expire_credit_reservations.
         return outcome
+
+    #: How far back each job's cost mirror reaches: a send that failed (Supabase
+    #: down, migration 0106 not applied yet) is retried by the next jobs for this
+    #: long. Re-sending rows Supabase already has is free (ignore-duplicates).
+    #: (Two days is a judgement call: long enough to ride out an outage of a
+    #: day or so, short enough that each job sends a handful of rows, not the history.)
+    COST_MIRROR_WINDOW = timedelta(days=2)
+
+    def _mirror_costs(self, run_started: str) -> None:
+        """Mirror the cost ledger after a job, whatever its outcome: a failed run
+        spent money too. Bookkeeping only — any failure is logged and swallowed."""
+        if self.cost_mirror is None:
+            return
+        try:
+            since = (datetime.fromisoformat(run_started) - self.COST_MIRROR_WINDOW).isoformat()
+            self.cost_mirror(since)
+        except Exception as e:
+            logger.warning("cost ledger mirror skipped (%s) — the local ledger is intact", type(e).__name__)
 
     def _result_path(self, job_id) -> Path:
         return self.repo_dir / f".run_result_{job_id}.json"
@@ -1436,6 +1491,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         youtube_credentials=lambda cid: youtube_publish_credentials(
                             cid, os.environ, token_client)),
                     downloads=downloads,
+                    cost_mirror=_cost_mirror(url, key),
                     repurposer=repurpose.RepurposeService(url, key, output_dir=REPO_DIR / "output",
                                                           worker_id=args.worker_id),
                     comments=comments)

@@ -384,6 +384,56 @@ class WorkerCase(unittest.TestCase):
         self.worker(q).run_forever(once=True)
         self.assertEqual(q.ends(), [("finish", 7, "succeeded", None)])
 
+    # -- the cost ledger reaches Supabase after every job -------------------
+
+    def test_the_cost_ledger_is_mirrored_after_a_success_and_after_a_failure(self):
+        for rc, status in (("0", "succeeded"), ("3", "failed")):
+            with self.subTest(rc=rc):
+                self.env["FAKE_RC"] = rc
+                sent = []
+                q = FakeQueue([job()])
+                self.worker(q, cost_mirror=sent.append).run_forever(once=True)
+                self.assertEqual(q.ends()[-1][2], status)
+                self.assertEqual(len(sent), 1)          # a failed run spent money too
+                # a window that starts before the job did, so an earlier failed send is retried
+                self.assertLess(datetime.fromisoformat(sent[0]), datetime.now(timezone.utc) - timedelta(hours=24))
+
+    def test_a_cost_mirror_that_raises_never_fails_the_job(self):
+        def boom(_since):
+            raise RuntimeError("supabase is down")
+
+        q = FakeQueue([job()])
+        self.worker(q, cost_mirror=boom).run_forever(once=True)
+        self.assertEqual(q.ends(), [("finish", 7, "succeeded", None)])
+
+    def test_the_default_cost_mirror_shows_usd_only_for_the_operators_own_channels(self):
+        from unittest.mock import patch
+
+        seen = {}
+
+        def fake_mirror(self, store, since_iso=None, is_operator=None):
+            seen.update(since=since_iso, ours=is_operator("news"), theirs=is_operator("cust"),
+                        gone=is_operator("gone"))
+            try:
+                is_operator("flaky")
+            except RuntimeError:
+                seen["flaky"] = "undecidable"       # the mirror skips this channel's rows
+            return 0
+
+        rows = {"news": {"is_operators": True}, "cust": {"is_operators": False}}
+
+        def resolve(cid):
+            if cid == "flaky":
+                raise RuntimeError("registry down")
+            return rows[cid]            # KeyError for "gone"
+
+        with patch("modules.supabase_sync.SupabaseSync.mirror_costs", fake_mirror), \
+                patch("modules.state_store.StateStore") as store:
+            store.return_value.__enter__.return_value = object()
+            qw._cost_mirror("https://x.supabase.co", "k", resolve)("2026-10-01T00:00:00+00:00")
+        self.assertEqual(seen, {"since": "2026-10-01T00:00:00+00:00", "ours": True, "theirs": False, "gone": False,
+                                "flaky": "undecidable"})
+
     def test_invalid_job_fails_without_running_anything(self):
         q = FakeQueue([job(params={"no_upload": True})])
         self.worker(q).run_forever(once=True)
