@@ -22,6 +22,7 @@ import hashlib
 import json
 import math
 import re
+import stat as stat_mod
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -60,6 +61,37 @@ def banned_hits(text: str, news_dir: Path = NEWS_DIR) -> List[str]:
         if re.search(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])", t, re.I):
             hits.append("provider:" + name)
     return hits
+
+
+#: A reviewed file is a few hundred bytes to a few kilobytes; anything bigger is not read at all.
+MAX_FILE_BYTES = 64 * 1024
+
+
+class _DuplicateKey(ValueError):
+    pass
+
+
+def _no_duplicate_keys(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise _DuplicateKey(k)           # the last of two equal keys silently winning is how a review is bypassed
+        out[k] = v
+    return out
+
+
+def _read_json(path: Path) -> Tuple[Any, Optional[str]]:
+    """(parsed value, None) or (None, reason): ``symlink`` (a link may point outside the folder), ``too_large``,
+    ``unreadable`` (cannot be read, not JSON, a repeated key, or nested so deeply that parsing gives up). Never raises."""
+    try:
+        st = path.lstat()
+        if not stat_mod.S_ISREG(st.st_mode):
+            return None, "symlink" if stat_mod.S_ISLNK(st.st_mode) else "unreadable"
+        if st.st_size > MAX_FILE_BYTES:
+            return None, "too_large"
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicate_keys), None
+    except (OSError, ValueError, RecursionError):
+        return None, "unreadable"
 
 
 # ── a draft, as marketing_draft_upsert takes it ─────────────────────────────
@@ -124,10 +156,9 @@ def load_news(news_dir: Path = NEWS_DIR, today: Optional[_dt.date] = None) -> Tu
         m = _FILE.match(path.name)
         if not m:
             continue                         # schema.json, banned-claims.json
-        try:
-            item = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            skip("unreadable")
+        item, bad = _read_json(path)
+        if bad:
+            skip(bad)
             continue
         if not isinstance(item, dict) or item.get("public") is not True:
             skip("not_public")
@@ -144,7 +175,7 @@ def load_news(news_dir: Path = NEWS_DIR, today: Optional[_dt.date] = None) -> Tu
             if banned_hits(joined, news_dir):
                 skip("banned_claim")
                 continue
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError, RecursionError):
             skip("banned_list_unreadable")
             continue
         slug = m.group(2)
@@ -269,10 +300,9 @@ def load_promo(promo_dir: Path = PROMO_DIR, today: Optional[_dt.date] = None,
         if not m:
             continue
         stem = m.group(1)
-        try:
-            item = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            skip(stem, "unreadable")
+        item, bad = _read_json(path)
+        if bad:
+            skip(stem, bad)
             continue
         if not isinstance(item, dict) or item.get("public") is not True:
             skipped["not_public"] = skipped.get("not_public", 0) + 1
@@ -283,7 +313,7 @@ def load_promo(promo_dir: Path = PROMO_DIR, today: Optional[_dt.date] = None,
             continue
         try:
             hits = banned_hits("\n".join(item["texts"][lang] for lang in LANGS), news_dir)
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError, RecursionError):
             skip(stem, "banned_list_unreadable")
             continue
         if hits:

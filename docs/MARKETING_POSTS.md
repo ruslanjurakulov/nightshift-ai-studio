@@ -427,6 +427,11 @@ owner on the page: the "New post" form, below). The page's **New post** form cal
   | no banned wording (`docs/news/banned-claims.json`, the same `banned_hits` as news, provider names included) | `banned_claim` (the rule ids are logged) |
   | the sender's own `render` accepts it (4096 / 1024 UTF-16 limits, HTML escaping, nothing key- or e-mail-shaped, a link needs a site origin) | counted as `not_drafted_<code>` |
 
+  A file in `docs/news/` or `docs/promo/` is also skipped (reason `unreadable`, `too_large` or `symlink`) when it is a symbolic
+  link, larger than 64 KB (it is not even read), not JSON, nested so deeply that parsing gives up (a `RecursionError` is caught,
+  it never stops the loop), or repeats a key (the last of two equal keys would silently win). Each source (news, promo, price)
+  fails on its own: a database error while drafting one does not keep the next from being tried.
+
   "At least one evidence entry per factual claim" is a rule for the author and the reviewer: a program cannot tell which
   sentences are factual. What it checks is that evidence exists, has the right shape, names every figure, and (in CI,
   `tests/test_promo_format.py`) that each repository path exists. Pick evidence a reader can open: a route, a component, a
