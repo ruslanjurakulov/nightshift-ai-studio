@@ -197,10 +197,14 @@ Without a token it prints `SKIP` and does nothing.
 ## 7. Keeping the server healthy
 
 - **Disk.** The doctor reports the free space on the output volume (FAIL under
-  5 GB, WARN under 10 GB). Nothing in the pipeline refuses to start a run on low
-  disk yet: `modules/disk_guard.py` provides the check (`require_free_disk`), but
-  it is not wired into `main.py` in this change. Clean up by hand, never on a
-  schedule:
+  5 GB, WARN under 10 GB). A run now refuses to start under the same 5 GB, before
+  it spends anything: `main.py` calls `modules/disk_guard.py`'s `require_free_disk`
+  right after the credential check, and the job fails with the sizes and the fix
+  (the customer reads "The video could not be put together", nothing is charged).
+  Set the Variable `NIGHTSHIFT_MIN_FREE_DISK_GB` (then Deploy web) to change the bar:
+  a number of GB, `0` turns the check off, a word or a negative number is ignored
+  (the default applies). On the daily GitHub workflow the variable is not forwarded,
+  so a runner uses the 5 GB default. Clean up by hand, never on a schedule:
   ```bash
   dc --profile worker exec worker python -m modules.disk_guard --prune-days 30          # lists only
   dc --profile worker exec worker python -m modules.disk_guard --prune-days 30 --apply  # deletes

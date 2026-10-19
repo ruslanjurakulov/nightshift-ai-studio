@@ -7,7 +7,9 @@ before spending). Two small, isolated pieces:
 
 * :func:`require_free_disk` - raise :class:`InsufficientDisk` when the volume
   holding ``output/`` has less than :data:`MIN_FREE_BYTES` (5 GB) free. main.py
-  can call it at run start; nothing here is wired in by itself.
+  calls it at the start of every video run (``_preflight_disk``), before anything
+  is spent, with the threshold :func:`configured_min_bytes` reads from
+  ``NIGHTSHIFT_MIN_FREE_DISK_GB``.
 * :func:`prune_old_runs` / the CLI (``python -m modules.disk_guard --prune-days
   30``) - delete the run folders of runs that were **published** and have not
   been touched for N days. A dry run unless ``--apply`` is given; nothing
@@ -32,6 +34,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
+import os
 import shutil
 import sys
 import time
@@ -44,6 +48,9 @@ logger = logging.getLogger(__name__)
 GB = 1024 ** 3
 #: A run is refused below this much free space on the output volume.
 MIN_FREE_BYTES = 5 * GB
+#: Overrides the threshold above, in GB (a number, fractions allowed). Unset or blank is the default;
+#: ``0`` turns the check off on purpose; anything unreadable (a word, a negative number) is the default.
+MIN_FREE_ENV = "NIGHTSHIFT_MIN_FREE_DISK_GB"
 #: --prune-days below this is refused: a held video can wait for approval and a
 #: paid download is cut from the master in its run folder.
 MIN_PRUNE_DAYS = 7
@@ -64,7 +71,7 @@ class InsufficientDisk(RuntimeError):
         self.path = Path(path)
         super().__init__(
             f"only {free / GB:.1f} GB free on the volume holding {self.path} "
-            f"(a run needs at least {needed / GB:.0f} GB). Fix: free space with "
+            f"(a run needs at least {needed / GB:g} GB). Fix: free space with "
             f"`python -m modules.disk_guard --prune-days {DEFAULT_PRUNE_DAYS}` (dry run; add "
             f"--apply to delete) or `docker system prune`, then start the run again"
         )
@@ -76,6 +83,25 @@ def free_bytes(path: Path) -> int:
     while not p.exists() and p != p.parent:
         p = p.parent
     return shutil.disk_usage(p).free
+
+
+def configured_min_bytes(environ=None) -> int:
+    """The free space a run needs: ``NIGHTSHIFT_MIN_FREE_DISK_GB`` in bytes, else :data:`MIN_FREE_BYTES`.
+
+    A typo must not silently disable the guard, so only an explicit ``0`` does that: a non-number,
+    a negative number or ``nan``/``inf`` is logged (the value is never echoed) and the default applies."""
+    raw = str((os.environ if environ is None else environ).get(MIN_FREE_ENV, "") or "").strip()
+    if not raw:
+        return MIN_FREE_BYTES
+    try:
+        gb = float(raw)
+    except ValueError:
+        gb = math.nan
+    if not math.isfinite(gb) or gb < 0:
+        logger.warning("%s is not a non-negative number of GB - using the default of %d GB", MIN_FREE_ENV,
+                       MIN_FREE_BYTES // GB)
+        return MIN_FREE_BYTES
+    return int(gb * GB)
 
 
 def require_free_disk(path: Path, min_bytes: int = MIN_FREE_BYTES,
