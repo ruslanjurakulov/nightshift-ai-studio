@@ -533,7 +533,8 @@ class GenericAsyncVideoClient:
         ``VideoModelUnavailable`` straight away: waiting cannot fix it, and the
         task id stays in the ledger. A 404 gets one retry first (a task is
         sometimes not yet visible right after submit) and is then reported as
-        "task not found". A transient failure (429, 5xx, timeout, an unreadable
+        "task not found" (the allowance renews after every good poll, like the transient
+        counter below). A transient failure (429, 5xx, timeout, an unreadable
         answer) is retried ``POLL_RETRIES`` times with a bounded backoff (a
         ``Retry-After`` header is honoured, capped) before the task is left
         pending.
@@ -599,7 +600,10 @@ class GenericAsyncVideoClient:
                     wait = max(wait, retry_after)
                 time.sleep(min(self.POLL_BACKOFF_CAP_S, wait))
                 continue
+            # A good poll ends the episode: the next 404 gets its own single retry, as the next transient
+            # failure gets its own three (a task seen once and then briefly invisible is not "expired").
             failures = 0
+            retried_404 = False
             reason = _clean(reason, self._secrets())
             if state == OUTCOME_FAILED:
                 logger.warning("%s job %s failed: %s", self.cfg.name, task_id, reason)

@@ -299,7 +299,13 @@ class MainStagePreflight(unittest.TestCase):
 
     def test_run_calls_it_before_the_script_is_paid_for(self):
         src = (Path(__file__).resolve().parent.parent / "main.py").read_text()
-        self.assertLess(src.index("_preflight_pictures(ctx, series_obj, channel_id)"), src.index("fetcher.generate_images("))
+        # Anchored on the CALL (an indented statement of its own): the bare text
+        # `_preflight_pictures(ctx, series_obj, channel_id)` also begins the `def` line far above
+        # run(), so an index of it passes whatever order the stages are in.
+        call = src.index("\n    _preflight_pictures(ctx, series_obj, channel_id)\n")
+        self.assertGreater(call, src.index("def run("))
+        self.assertLess(call, src.index("engine.generate(topic"), "the script is paid for before the check")
+        self.assertLess(call, src.index("fetcher.generate_images("))
 
     def test_stills_are_generated_before_clips_are_paid_for(self):
         src = (Path(__file__).resolve().parent.parent / "main.py").read_text()
