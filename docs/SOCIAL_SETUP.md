@@ -217,7 +217,25 @@ xabarlarda ko'rinmaydi.
      paytidagidek olinadi (Vault ulanishi yoki `CHRONOS_YT_TOKEN_<REF>`,
      standart kanal uchun `YOUTUBE_TOKEN_JSON`). YouTube API kvotasi
      tugasa — `quota_exceeded` (har yuklash ~1600 birlik, kuniga 10 000).
-   - TikTok'ga har doim **SELF_ONLY (shaxsiy)** joylanadi.
+   - TikTok'ga har doim **SELF_ONLY (shaxsiy)** joylanadi. Audit'dan o'tmagan
+     ilova uchun TikTok postni faqat **shaxsiy (private) TikTok akkauntdan**
+     qabul qiladi; akkaunt ochiq bo'lsa, so'rov `tiktok_unaudited` sababi
+     bilan "XATO" bo'ladi va panelda akkauntni shaxsiy qilish aytiladi.
+   - **AI-kontent belgisi.** Video haqiqiy ko'rinishdagi sun'iy intellekt
+     materiali (AI klip/rasm, AI boshlovchi, boshqa odamning ovoziga
+     o'xshash ovoz) bo'lsa, Instagram'ga `is_ai_generated=true`, TikTok'ga
+     `is_aigc=true` yuboriladi va izohga qator qo'shiladi (YouTube'da —
+     `containsSyntheticMedia`). Qoida kanal sozlamasi `ai_disclosure`
+     (`auto` / `always` / `never`) bilan boshqariladi; hammasi
+     `docs/AI_DISCLOSURE.md` da.
+   - **Fayl tekshiruvi.** Yuklashdan oldin worker faylni o'qiydi (kodek,
+     kadr chastotasi, o'lcham, indeks boshida ekani) va platforma rad
+     etadigan faylni darhol "RAD ETILDI" qiladi (`bad_codec`, `bad_audio`,
+     `bad_framerate`, `too_wide`, `bad_resolution`, `not_faststart`,
+     `unreadable_video`). Fayl qayta kodlanmaydi. Diqqat: render fayli hozircha
+     `moov` indeksini oxirida yozadi, shuning uchun Instagram'ga barcha
+     postlar `not_faststart` bilan rad etiladi, to'g'rilanmaguncha
+     (`docs/AI_DISCLOSURE.md`, "Known consequence").
    - Kredit yechilmaydi (platformalarga yuklash bepul).
 5. Cheklovlar:
    - Worker to'liq sifatli (master) faylni o'z diskida (`output/`) topishi

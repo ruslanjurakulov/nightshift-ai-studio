@@ -66,6 +66,7 @@ Platform references (official docs):
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import os
@@ -79,7 +80,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable, Mapping, Optional
 
+from modules import ai_disclosure
 from modules import social_captions
+from modules import social_probe
 from modules import social_tokens
 
 logger = logging.getLogger(__name__)
@@ -101,6 +104,10 @@ TT_MAX_BYTES = 4 * 1024 * 1024 * 1024
 TT_SINGLE_CHUNK_MAX = 64 * 1024 * 1024
 TT_CHUNK = 10 * 1024 * 1024
 TT_PRIVACY = "SELF_ONLY"
+#: TikTok's error code (HTTP 403, /video/init/) for an unaudited app posting to a non-private account, and the
+#: closed reason word the panel has a sentence for.
+TT_UNAUDITED_CODE = "unaudited_client_can_only_post_to_private_accounts"
+TT_UNAUDITED_REASON = "tiktok_unaudited"
 YT_PRIVACY = "private"
 YT_WATCH = "https://www.youtube.com/watch?v="
 _YT_QUOTA = {"quotaExceeded", "dailyLimitExceeded", "uploadLimitExceeded"}
@@ -187,7 +194,21 @@ class PublishStore:
                                           "parent_video_id,scenes,manifest", video_id=video_id)
 
     def channel(self, channel_id: str) -> Optional[dict]:
-        return self._select_one("channels", "channel_id,niche,status", channel_id=channel_id)
+        return self._select_one("channels", "channel_id,niche,status,agent_config", channel_id=channel_id)
+
+    def disclosure_events(self, video_id: str) -> list:
+        """The video's recorded ``video.ai_disclosure`` events (newest first), or
+        [] when they cannot be read: a missing record falls back to the manifest
+        and must never stop a publish."""
+        try:
+            r = self.http().get(f"{self.url}/rest/v1/system_events", params={
+                "select": "event,ts,metadata", "video_id": f"eq.{video_id}",
+                "event": f"eq.{ai_disclosure.EVENT}", "order": "ts.desc", "limit": "5"},
+                headers=self._h(), timeout=self._timeout)
+            rows = r.json() if r.status_code < 300 else []
+            return rows if isinstance(rows, list) else []
+        except Exception:
+            return []
 
     def channel_connected(self, channel_id: str) -> bool:
         """publish_channel_connected — the rule the insert trigger used."""
@@ -360,6 +381,47 @@ def load_source_meta(video: Mapping, channel: Optional[Mapping], output_dir: Pat
     )
 
 
+def disclosure_for(video: Mapping, channel: Optional[Mapping], events=(), parent: Optional[Mapping] = None,
+                   parent_events=()) -> tuple:
+    """``(Decision, basis)`` for a cross-post: the same rule the upload used
+    (modules/ai_disclosure.py), applied with the video's own channel's settings.
+
+    Where the facts come from, first that exists:
+
+    1. the ``video.ai_disclosure`` event the run recorded for THIS video at upload
+       (it knows about an AI presenter, which no manifest does);
+    2. for a Short, the same event of its PARENT video: a Short is cut from the
+       long video's own frames, so the answer is the parent's (older Shorts have no
+       record of their own);
+    3. the stored manifest's generated assets (the video's, else the Short's
+       parent's). A manifest cannot show an AI presenter, so a manifest-only
+       answer is never "known": it labels, with ``provenance_unknown``, next to
+       any generated media it does show (a presenter would be missed otherwise);
+    4. nothing: ``known=False``, which labels.
+
+    ``basis`` names the source for the log."""
+    from modules.channels import AgentConfig  # noqa: PLC0415
+
+    cfg = channel.get("agent_config") if isinstance(channel, Mapping) else None
+    agent = AgentConfig.from_dict(cfg if isinstance(cfg, Mapping) else None)
+    signals = ai_disclosure.signals_from_events(events)
+    basis = "event"
+    if signals is None and parent is not None:
+        signals = ai_disclosure.signals_from_events(parent_events)
+        basis = "parent_event"
+    if signals is None:
+        manifest, basis = video.get("manifest"), "manifest"
+        if not isinstance(manifest, Mapping) and isinstance(parent, Mapping):
+            manifest, basis = parent.get("manifest"), "parent_manifest"
+        signals = ai_disclosure.signals_from_manifest(manifest, voice=agent.ai_disclosure_voice)
+        if signals.known:
+            signals = dataclasses.replace(signals, known=False)  # the presenter cannot be seen in a manifest
+            basis += "_presenter_unseen"
+        else:
+            basis = "unknown"
+    return ai_disclosure.decide_for(agent, signals), basis
+
+
 # ── platform adapters ────────────────────────────────────────────────────────
 
 
@@ -391,14 +453,20 @@ class InstagramAdapter:
         self.http, self.store, self.sleep, self.heartbeat = http, store, sleep, heartbeat
         self.poll_seconds, self.max_wait = poll_seconds, max_wait
 
-    def publish(self, tok: social_tokens.SocialToken, path: Path, caption: str, staging_name: str) -> dict:
+    def publish(self, tok: social_tokens.SocialToken, path: Path, caption: str, staging_name: str,
+                ai_generated: bool = False) -> dict:
         self.store.stage(path, staging_name)
         try:
             video_url = self.store.sign(staging_name)
-            r = self.http.post(f"{IG_GRAPH}/{tok.external_id}/media", data={
+            data = {
                 "media_type": "REELS", "video_url": video_url, "caption": caption,
                 "share_to_feed": "true", "access_token": tok.access_token,
-            }, timeout=60)
+            }
+            if ai_generated:
+                # Instagram's self-disclosure of AI use (an optional container parameter). Sent only when the
+                # label is true: an absent field is the unlabelled post every Reel has always been.
+                data["is_ai_generated"] = "true"
+            r = self.http.post(f"{IG_GRAPH}/{tok.external_id}/media", data=data, timeout=60)
             if r.status_code >= 300:
                 raise _ig_error("create container", r)
             container = str(_json(r).get("id") or "")
@@ -449,8 +517,14 @@ def _tt_error(what: str, r) -> PublishStop:
     reason = ("token_expired" if code in ("access_token_invalid", "scope_not_authorized")
               else "rate_limited" if code in ("rate_limit_exceeded", "spam_risk_too_many_posts",
                                               "spam_risk_user_banned_from_posting")
+              else TT_UNAUDITED_REASON if code == TT_UNAUDITED_CODE
               else "platform_error")
-    return failed(reason, f"tiktok {what}: HTTP {getattr(r, 'status_code', 0)}" + (f", {code}" if code else ""))
+    detail = f"tiktok {what}: HTTP {getattr(r, 'status_code', 0)}" + (f", {code}" if code else "")
+    if reason == TT_UNAUDITED_REASON:
+        # Not retried and not a bug: TikTok (HTTP 403 on /video/init/) takes posts from an unaudited app only for a
+        # PRIVATE account. We already ask for SELF_ONLY; the account itself has to be private as well.
+        detail += " - make the TikTok account private until the app is audited"
+    return failed(reason, detail)
 
 
 def _tt_ok(r) -> bool:
@@ -483,20 +557,24 @@ class TiktokAdapter:
             raise _tt_error("creator info", r)
         return _json(r).get("data") or {}
 
-    def publish(self, tok, path: Path, caption: str, info: dict) -> dict:
+    def publish(self, tok, path: Path, caption: str, info: dict, ai_generated: bool = False) -> dict:
         options = info.get("privacy_level_options") or []
         if options and TT_PRIVACY not in options:
             raise refused("privacy_unavailable", "this TikTok account does not offer private (SELF_ONLY) posts")
         size = path.stat().st_size
         chunk, total = tiktok_chunks(size)
+        post_info = {
+            "title": caption,
+            "privacy_level": TT_PRIVACY,
+            "disable_comment": bool(info.get("comment_disabled")),
+            "disable_duet": bool(info.get("duet_disabled")),
+            "disable_stitch": bool(info.get("stitch_disabled")),
+        }
+        if ai_generated:
+            # Direct Post's "is_aigc": TikTok adds its "Creator labeled as AI-generated" tag. Only sent when true.
+            post_info["is_aigc"] = True
         r = self.http.post(f"{TT_API}/video/init/", headers=self._h(tok), json={
-            "post_info": {
-                "title": caption,
-                "privacy_level": TT_PRIVACY,
-                "disable_comment": bool(info.get("comment_disabled")),
-                "disable_duet": bool(info.get("duet_disabled")),
-                "disable_stitch": bool(info.get("stitch_disabled")),
-            },
+            "post_info": post_info,
             "source_info": {"source": "FILE_UPLOAD", "video_size": size,
                             "chunk_size": chunk, "total_chunk_count": total},
         }, timeout=60)
@@ -607,7 +685,8 @@ class YoutubeAdapter:
 
         return YouTubeUploader.from_token_json
 
-    def publish(self, channel_id: str, path: Path, meta: social_captions.YouTubeMeta) -> dict:
+    def publish(self, channel_id: str, path: Path, meta: social_captions.YouTubeMeta,
+                decision: Optional[ai_disclosure.Decision] = None) -> dict:
         from modules import channel_tokens  # noqa: PLC0415
 
         try:
@@ -641,7 +720,10 @@ class YoutubeAdapter:
         t = threading.Thread(target=beat, daemon=True)
         t.start()
         try:
-            out = uploader.upload(path, script, privacy=YT_PRIVACY)
+            # The decision rides along only when it labels the video: an unlabelled upload calls the
+            # uploader exactly as before. The line is already in meta.description (youtube_metadata).
+            extra = {"ai_disclosure": decision} if decision is not None and decision.label else {}
+            out = uploader.upload(path, script, privacy=YT_PRIVACY, **extra)
         except Exception as e:
             raise _yt_error("upload", e) from None
         finally:
@@ -658,6 +740,28 @@ class YoutubeAdapter:
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _decide_disclosure(store, video: Mapping, channel: Optional[Mapping], rid) -> ai_disclosure.Decision:
+    """The AI-disclosure decision for this request. Reading the recorded events
+    (and, for a Short with no record of its own, its parent video and that
+    video's events) is best-effort: nothing here raises, and a missing record
+    falls back as ``disclosure_for`` says. The decision is logged as words only."""
+    read = getattr(store, "disclosure_events", None)
+    events = read(str(video.get("video_id") or "")) if read else []
+    parent, parent_events = None, []
+    parent_id = str(video.get("parent_video_id") or "")
+    if (str(video.get("video_format") or "") == "short" and parent_id
+            and ai_disclosure.signals_from_events(events) is None):
+        try:
+            parent = store.video(parent_id) or {"video_id": parent_id}
+        except Exception:
+            parent = {"video_id": parent_id}
+        parent_events = read(parent_id) if read else []
+    decision, basis = disclosure_for(video, channel, events, parent, parent_events)
+    logger.info("publish request %s: AI label %s (%s, from %s)", rid, "on" if decision.label else "off",
+                ",".join(decision.reasons), basis)
+    return decision
 
 
 def _process_youtube(req: Mapping, video: Mapping, target: str, *, store: PublishStore, worker_id: str,
@@ -688,12 +792,14 @@ def _process_youtube(req: Mapping, video: Mapping, target: str, *, store: Publis
         source = store.channel(str(video.get("channel_id") or ""))
     except Exception:
         source = None
+    decision = _decide_disclosure(store, video, source, rid)
     meta = social_captions.youtube_metadata(load_source_meta(video, source, output_dir),
-                                            fallback_title=str(video.get("video_id") or ""))
+                                            fallback_title=str(video.get("video_id") or ""),
+                                            disclosure=decision.line)
     store.update(rid, worker_id, {"status": "processing", "caption": social_captions.youtube_record(meta),
                                   "privacy": YT_PRIVACY})
     youtube.heartbeat = heartbeat
-    result = youtube.publish(target, path, meta)
+    result = youtube.publish(target, path, meta, decision)
     store.update(rid, worker_id, {
         "status": "published", "reason": None, "error": None,
         "result_id": result.get("result_id"), "result_url": result.get("result_url"),
@@ -707,7 +813,8 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
                     worker_id: str, output_dir: Path, http=None, env: Optional[Mapping[str, str]] = None,
                     sleep: Callable[[float], None] = time.sleep,
                     probe_fn: Callable[[Path], VideoInfo] = probe,
-                    youtube: Optional[YoutubeAdapter] = None) -> str:
+                    youtube: Optional[YoutubeAdapter] = None,
+                    media_fn: Callable[[Path], social_probe.MediaFacts] = social_probe.read_facts) -> str:
     """Carry one claimed request to published | failed | refused. Never raises."""
     rid = req.get("id")
     platform = str(req.get("platform") or "")
@@ -765,20 +872,28 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
                          max_seconds=tt_info.get("max_video_post_duration_sec") or None)
         else:
             check_format(platform, info, short_id=short_id)
+        # Codec, frame rate, size and file layout, from the file itself: refused here, not after a staged upload.
+        try:
+            social_probe.check_media(platform, media_fn(path))
+        except social_probe.ProbeRefusal as e:
+            raise refused(e.reason, e.detail) from None
 
         channel = None
         try:
             channel = store.channel(str(video.get("channel_id") or ""))
         except Exception:
             channel = None
-        caption = social_captions.caption_for(platform, load_source_meta(video, channel, output_dir))
+        decision = _decide_disclosure(store, video, channel, rid)
+        caption = social_captions.caption_for(platform, load_source_meta(video, channel, output_dir),
+                                              disclosure=decision.line)
         store.update(rid, worker_id, {"status": "processing", "caption": caption})
 
         if platform == "instagram":
             staging = f"{req.get('org_id') or 'org'}/{rid}.mp4"
-            result = InstagramAdapter(http, store, sleep=sleep, heartbeat=heartbeat).publish(tok, path, caption, staging)
+            result = InstagramAdapter(http, store, sleep=sleep, heartbeat=heartbeat).publish(
+                tok, path, caption, staging, ai_generated=decision.label)
         else:
-            result = tiktok.publish(tok, path, caption, tt_info)
+            result = tiktok.publish(tok, path, caption, tt_info, ai_generated=decision.label)
 
         store.update(rid, worker_id, {
             "status": "published", "reason": None, "error": None,

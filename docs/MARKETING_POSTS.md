@@ -132,8 +132,10 @@ platform owner/admin, the second factor (`admin_aal_ok()`), a per-person rate li
   of 100 credits" (migration 0027), never "free".
 - **No claims we cannot back**: `docs/news/banned-claims.json` (free, unlimited, guaranteed, best, income or views
   promises, certainty words, endorsement, provider and model names). Showcase posts must say the video is a sample
-  made with the product and must not imply endorsement by YouTube or any provider. Whether local law or YouTube
-  requires an AI-disclosure label is not defined in the repository: ask the owner.
+  made with the product and must not imply endorsement by YouTube or any provider. YouTube's own rule for videos
+  with realistic AI-generated media, and how the pipeline applies it (the `ai_disclosure` channel setting), are in
+  `docs/AI_DISCLOSURE.md`; whether local law requires more, and the wording for these marketing posts, are still the
+  owner's to define.
 - **Secrets.** A dedicated bot token that appears only inside the request URL held by `TelegramClient`; logs carry
   codes and counts only; a test sends a fake token through every failure path. Never reuse the
   operator bot's or the customer bot's token: the customer bot would give the customer notify worker the power to
@@ -479,7 +481,9 @@ reposters. The `target` column keeps the model channel-neutral.
 
 1. Is "rolling 7 days" right, or the calendar week in `Asia/Tashkent`? (Built as rolling.)
 2. Should a price post ever carry a dollar figure, and from which source? May promo discounts be advertised?
-3. Required AI-disclosure wording for videos in public marketing (YouTube, local law).
+3. Required AI-disclosure wording for videos in public marketing (YouTube, local law). Partly answered for the
+   platform labels by `docs/AI_DISCLOSURE.md` (default line, per-channel override); the marketing posts' own wording and
+   local law are still open.
 4. Who reads the Russian and Uzbek wording? (The existing notification wording is a machine draft too.)
 5. ~~Private test channel first?~~ Answered by the hand steps above: point `MARKETING_TELEGRAM_CHAT` at a private channel
    first (no second variable, no change to the database contract).

@@ -21,6 +21,8 @@ import { RepurposePanel } from "@/components/videos/RepurposePanel";
 import { IntelligenceTrace } from "@/components/intel/IntelligenceTrace";
 import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
+import { aiDisclosureFromEvents } from "@/lib/aiDisclosure";
+import { AiDisclosureNote } from "@/components/review/AiDisclosureNote";
 import { summarizeSceneRetention } from "@/lib/sceneRetention";
 import {
   CLIP_COLUMNS,
@@ -291,6 +293,8 @@ export default async function VideoDetail({
         channelName={channelName || video.channel_id}
       />
       {video.preview_path && atLeast(orgRole, "admin") && <ShareReviewLink videoId={video.video_id} />}
+      {/* The AI-content label, from the event the upload recorded; no record reads "unknown", never "not labelled". */}
+      <AiDisclosureNote view={aiDisclosureFromEvents(events)} uploaded={Boolean(video.published_at)} />
       <PublishPanel
         video={video}
         channelName={channelName || video.channel_id}

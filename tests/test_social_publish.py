@@ -9,6 +9,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from modules import social_probe as pr
 from modules import social_publish as sp
 from modules import social_tokens as st
 
@@ -73,6 +74,10 @@ class FakeStore:
     def short_of(self, video_id):
         return self._short
 
+    def disclosure_events(self, video_id):
+        return [{"event": "video.ai_disclosure", "ts": "2026-10-19T10:00:00", "metadata": {"signals": {
+            "known": True, "generated_clips": 0, "generated_stills": 0, "presenter": False, "voice": "generic"}}}]
+
     def update(self, rid, worker_id, values):
         self.updates.append(values)
 
@@ -126,16 +131,25 @@ class Base(unittest.TestCase):
         (self.out / "fall-of-rome" / "script.json").write_text(json.dumps({
             "title": "The Fall of Rome", "description": "Why it fell.", "tags": ["ancient rome", "history"]}))
         self.video = {"video_id": "vid1", "channel_id": "news", "title": "The Fall of Rome",
-                      "slug": "fall-of-rome", "local_path": str(self.master), "video_format": "long"}
+                      "slug": "fall-of-rome", "local_path": str(self.master), "video_format": "long",
+                      # A manifest alone never reads as "clean" (it cannot show a presenter); the store below
+                      # returns the recorded "stock only" event, as an upload leaves it. See
+                      # tests/test_social_disclosure.py for the cases with and without a record.
+                      "manifest": {"assets": [{"id": "a1", "kind": "video", "source": "stock"}]}}
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_req(self, store, tokens, platform="instagram", info=None, http=None):
+    #: What a compositor master reads as: H.264 + AAC, 30 fps, vertical, index first (tests/test_social_guards.py
+    #: covers the files that fail).
+    GOOD_FACTS = pr.MediaFacts("h264", "aac", True, 1080, 1920, 30.0, True)
+
+    def run_req(self, store, tokens, platform="instagram", info=None, http=None, facts=None):
         info = info or sp.VideoInfo(60.0, 1080, 1920, 2048)
+        facts = facts or self.GOOD_FACTS
         return sp.process_request(req(platform), store=store, tokens=tokens, worker_id="w1",
                                   output_dir=self.out, http=http or store.http(), env={},
-                                  sleep=lambda s: None, probe_fn=lambda p: info)
+                                  sleep=lambda s: None, probe_fn=lambda p: info, media_fn=lambda p: facts)
 
 
 class GateTests(Base):
@@ -291,8 +305,9 @@ class FakeUploader:
         self.exc = exc
         self.calls = []
 
-    def upload(self, path, script, privacy=None):
+    def upload(self, path, script, privacy=None, **kwargs):
         self.calls.append((path, script, privacy))
+        self.kwargs = kwargs
         if self.exc:
             raise self.exc
         return {"id": "dQw4w9WgXcQ", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
