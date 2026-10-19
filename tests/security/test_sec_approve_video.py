@@ -239,6 +239,12 @@ def test_a_browser_can_no_longer_insert_an_approve_intent_directly(conn, sc):
             assert not out.ok and out.sqlstate == "42501", out
         # everything else the policy allowed, it still allows
         assert all(o.ok for o in still) and scene.ok, (still, scene)
+        # nobody writes the approval's hash by hand, on any row: only the function does
+        for action in ("regenerate", "regenerate_script"):
+            with acting(conn, bob.actor) as s2:
+                forged = s2.run("insert into public.review_intents (channel_id, video_id, action, approved_cut_sha256) values (%s, %s, %s, %s)",
+                                [bob.channel, VID, action, CUT])
+            assert not forged.ok and forged.sqlstate == "42501", forged
         assert state(su)[0] == "pending"
 
 
@@ -279,6 +285,7 @@ def test_what_cannot_be_approved_says_why(conn, sc):
         "no_preview": dict(preview_path=None),
         "cut_unknown": dict(cut_sha256=None),
         "rejected": dict(review_state="rejected"),
+        "already_public": dict(privacy="public"),
     }
     for want, over in cases.items():
         with as_superuser(conn, commit=False) as su:

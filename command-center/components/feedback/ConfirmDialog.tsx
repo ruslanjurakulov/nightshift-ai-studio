@@ -73,6 +73,7 @@ export function ConfirmDialog({
   const { t } = useI18n();
   const titleId = useId();
   const bodyId = useId();
+  const ackHintId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -264,6 +265,11 @@ export function ConfirmDialog({
             <span className="min-w-0 break-words">{options.acknowledge}</span>
           </label>
         )}
+        {options.acknowledge && !acknowledged && (
+          <p id={ackHintId} className="mt-1.5 pl-8 text-xs text-[var(--color-muted)]">
+            {t.ux.confirmAckHint}
+          </p>
+        )}
         {/* Always mounted, so a screen reader hears a failure that appears later. */}
         <p role="alert" className={failure ? "mt-3 break-words text-sm font-medium text-[var(--color-fail)]" : "sr-only"}>
           {failure}
@@ -283,6 +289,7 @@ export function ConfirmDialog({
             onClick={() => void go()}
             disabled={busy || !wordOk}
             aria-busy={busy}
+            aria-describedby={options.acknowledge && !acknowledged ? ackHintId : undefined}
             className={`${danger ? "btn-danger" : "btn-primary"} min-h-12 px-4 text-sm disabled:opacity-55`}
           >
             {busy && <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />}

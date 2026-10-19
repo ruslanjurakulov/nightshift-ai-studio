@@ -34,7 +34,7 @@
 --       * a per-person rate limit (take_web_rate, 20 per 10 minutes, the owner_guard pattern);
 --       * the acknowledgement {"rights_and_labels": true} is required and goes into the audit row;
 --       * video_approve_refusal() must return NULL: the video is uploaded (a YouTube id, published), has a preview, a stored
---         gate verdict that is allowed with no blocks, is not rejected, has a recorded cut, and the cut the reviewer saw
+--         gate verdict that is allowed with no blocks, is not rejected, is not already public (privacy), has a recorded cut, and the cut the reviewer saw
 --         (p_cut_sha256) is the stored one. A held, blocked or never-uploaded run is refused with its own word.
 --       * on success, in one transaction under a row lock: videos.review_state = 'approved', approved_cut_sha256, decided_by,
 --         decided_by_email, decided_at, approval_expires_at (24 hours); one review_intents row (action 'approve', consumed
@@ -45,14 +45,15 @@
 --       * answers: {ok: true, ...} or {ok: false, error: <closed word>}. Authorization failures raise (42501 / P0002).
 --  3. video_publish_refusal(p_video_id, p_cut_sha256)   SERVICE ONLY. The one rule for "may this approval be acted on now",
 --       for the visibility worker of Phase 1b (not built): the eligibility words of video_approve_refusal() plus
---       already_public, not_approved, cut_changed (the approval was for another cut) and approval_expired. Returns a closed
+--       not_approved, cut_changed (the approval was for another cut) and approval_expired. Returns a closed
 --       word or NULL. Nothing calls it yet.
 --     video_approve_refusal(p_video_id, p_cut_sha256)   internal (no API role): the eligibility half both use.
 --  3a. video_real_member(org, role)   internal (no API role): inbox_real_member's rule under its own name.
 --  3b. video_approve_access(p_video_id)   SIGNED-IN. A word for the caller and THIS video: ok | not_admin | not_member | not_found.
 --       Read-only; approve_video_publish() calls it, the panel calls it to decide whether to offer the key.
---  4. review_intents insert policy: 0033's policy with ONE more condition, action <> 'approve'. A browser can no longer
---     insert an approve intent directly; regenerate, regenerate_script and regenerate_scene are exactly as they were.
+--  4. review_intents insert policy: 0033's policy with TWO more conditions, action <> 'approve' and approved_cut_sha256 is null. A browser can no longer
+--     insert an approve intent directly, nor write approved_cut_sha256 on any row (only the function does); regenerate,
+--     regenerate_script and regenerate_scene are exactly as they were.
 --  5. finish_scene_regeneration()   0085's body verbatim except the statement that returns an approved video to pending also
 --     clears the approval's columns (hash, who, when, expiry): a repaired cut is not the cut that was approved.
 --  6. audit_action_allowed()   0110's list verbatim plus video.approve.
@@ -179,6 +180,11 @@ begin
   if v.review_state = 'rejected' then
     return 'rejected';
   end if;
+  -- The mirror says it is public already (an auto-publish channel, or a person made it public on YouTube): there is
+  -- nothing left to approve, and an approval must not be recorded as if it had let the video out.
+  if v.privacy = 'public' then
+    return 'already_public';
+  end if;
   if v.preview_path is null or btrim(v.preview_path) = '' then
     return 'no_preview';
   end if;
@@ -205,9 +211,6 @@ begin
     return why;
   end if;
   select * into v from public.videos where video_id = p_video_id;
-  if v.privacy = 'public' then
-    return 'already_public';
-  end if;
   if v.review_state is distinct from 'approved' or v.approved_cut_sha256 is null then
     return 'not_approved';
   end if;
@@ -368,6 +371,7 @@ create policy review_intents_insert on public.review_intents
   with check (
     channel_id in (select public.accessible_channel_ids('editor'))
     and action <> 'approve'
+    and approved_cut_sha256 is null
     and (video_id is null
          or exists (select 1 from public.videos v
                      where v.video_id = review_intents.video_id

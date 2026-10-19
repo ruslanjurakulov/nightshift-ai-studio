@@ -95,7 +95,8 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         old_policy = re.search(r"create policy review_intents_insert on public\.review_intents.*?;\n", old, re.S).group(0)
         new_policy = re.search(r"create policy review_intents_insert on public\.review_intents.*?;\n", SQL, re.S).group(0)
         self.assertEqual(new_policy, old_policy.replace("    channel_id in (select public.accessible_channel_ids('editor'))\n",
-                                                        "    channel_id in (select public.accessible_channel_ids('editor'))\n    and action <> 'approve'\n"))
+                                                        "    channel_id in (select public.accessible_channel_ids('editor'))\n    and action <> 'approve'\n"
+                                                        "    and approved_cut_sha256 is null\n"))
         # no later migration touched the policy since 0033
         for f in sorted(MIGRATIONS.glob("*.sql")):
             if "0033" < f.name[:4] < "0112":
@@ -214,10 +215,10 @@ class TheApprovalRpc(unittest.TestCase):
 
     def test_the_closed_vocabulary_of_the_refusals(self):
         words = set(re.findall(r"return '(\w+)';", code(NEW_BODIES["video_approve_refusal"])))
-        self.assertEqual(words, {"video_not_found", "not_uploaded", "gate_blocked", "gate_unknown", "rejected", "no_preview",
-                                 "cut_unknown", "cut_changed"})
+        self.assertEqual(words, {"video_not_found", "not_uploaded", "gate_blocked", "gate_unknown", "rejected", "already_public",
+                                 "no_preview", "cut_unknown", "cut_changed"})
         more = set(re.findall(r"return '(\w+)';", code(NEW_BODIES["video_publish_refusal"])))
-        self.assertEqual(more, {"already_public", "not_approved", "cut_changed", "approval_expired"})
+        self.assertEqual(more, {"not_approved", "cut_changed", "approval_expired"})
         rpc = set(re.findall(r"'error', '(\w+)'", self.body))
         self.assertEqual(rpc, {"rate_limited", "bad_hash", "ack_required", "already_approved"})
 

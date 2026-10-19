@@ -70,6 +70,11 @@ describe("what the Approve key offers", () => {
     expect(approvalState(video({ cut_sha256: null }), open).blocker).toBe("cut_unknown");
   });
 
+  it("already public cannot be approved (the database refuses it too)", () => {
+    expect(approvalState(video({ privacy: "public" }), open).blocker).toBe("already_public");
+    expect(canPressApprove(approvalState(video({ privacy: "public" }), open))).toBe(false);
+  });
+
   it("rejected, no preview", () => {
     expect(approvalState(video({ review_state: "rejected" }), open).blocker).toBe("rejected");
     expect(approvalState(video({ preview_path: null }), open).blocker).toBe("no_preview");

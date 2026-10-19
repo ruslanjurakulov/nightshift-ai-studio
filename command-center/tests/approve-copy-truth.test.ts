@@ -115,8 +115,9 @@ describe("no copy says the Approve button publishes", () => {
 describe("what the review panel says is what the code does", () => {
   it.each(["en", "ru", "uz"] as const)("%s: after an approval it still says the video is private and points at YouTube", (loc) => {
     const d = dicts[loc];
+    // The banner states what is known (it was uploaded as private), never a present fact about YouTube it cannot know.
     for (const s of [d.review.approvedBy, d.review.approvedAnon, d.review.expiredBy, d.review.expiredAnon]) {
-      expect(s, `${loc}: ${s}`).toMatch(/YouTube/);
+      expect(s, `${loc}: ${s}`).not.toMatch(/still private|по-прежнему приватн|hamon shaxsiy/i);
     }
     for (const s of [d.review.queueHint, d.confirmSheets.rvApproveBody, d.review.makePublicBody]) {
       expect(s, `${loc}: ${s}`).toMatch(/YouTube/);
@@ -132,8 +133,9 @@ describe("what the review panel says is what the code does", () => {
     expect(b).toContain("make it public on YouTube");
     expect(b).toContain("24 hours");
     expect(b).toContain("exact version");
-    expect(en.review.approvedBy).toContain("The video is still private on YouTube.");
-    expect(en.review.approvedAnon).toContain("The video is still private on YouTube.");
+    expect(en.review.approvedBy).toContain("The video was uploaded as private; approving does not make it public.");
+    expect(en.review.approvedAnon).toContain("The video was uploaded as private; approving does not make it public.");
+    expect(en.review.expiredBy).toContain("was uploaded as private");
   });
 
   it("the key is called Approve, not Approve and publish: it records a decision; the bot does not make the video public", () => {
@@ -154,7 +156,7 @@ describe("what the review panel says is what the code does", () => {
 });
 
 describe("the reasons and blockers exist in all three languages", () => {
-  const blockers: ApprovalBlocker[] = ["held", "rejected", "gate_blocked", "gate_unknown", "no_preview", "cut_unknown", "not_admin", "not_member"];
+  const blockers: ApprovalBlocker[] = ["held", "rejected", "already_public", "gate_blocked", "gate_unknown", "no_preview", "cut_unknown", "not_admin", "not_member"];
 
   it.each(["en", "ru", "uz"] as const)("%s has a sentence for every blocker and every reason word the database can answer", (loc) => {
     const r = dicts[loc].review;

@@ -36,7 +36,7 @@ A dashboard button writes a row and stops. Today only scene repair reads
 `approve_video_publish` (migration 0112): it records who approved which exact cut
 (its sha256), until when (24 hours) and with what acknowledgement, and it does NOT
 change the video's privacy. Every upload is private and stays private until a person
-makes it public on YouTube. Phase 1b (the bot flips privacy) is not built yet, and
+makes it public on YouTube, unless the channel's auto-publish switch is on. Phase 1b (the bot flips privacy) is not built yet, and
 it needs the owner's amendment of rule 2 first. The two re-render buttons stay
 disabled until a priced consumer exists. An intent row is the record of *who asked*,
 which is why intents can be read but never edited or deleted, and why a browser can

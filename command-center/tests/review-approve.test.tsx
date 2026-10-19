@@ -136,6 +136,16 @@ describe("the sheet", () => {
     expect(sheetKey().disabled).toBe(false);
   });
 
+  it("the dead confirm key points at the visible reason, and the reason goes away once the box is ticked", () => {
+    panel();
+    fireEvent.click(approveKey());
+    const hint = within(screen.getByRole("alertdialog")).getByText(en.ux.confirmAckHint);
+    expect(sheetKey().getAttribute("aria-describedby")).toBe(hint.id);
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("checkbox"));
+    expect(screen.queryByText(en.ux.confirmAckHint)).toBeNull();
+    expect(sheetKey().getAttribute("aria-describedby")).toBeNull();
+  });
+
   it("calls the function once with the exact version the sheet named and the acknowledgement, never writing a row", async () => {
     panel();
     fireEvent.click(approveKey());
@@ -227,6 +237,7 @@ describe("when the key is dead, it says why", () => {
     ["a viewer or editor", {}, { access: "not_admin" }, "not_admin"],
     ["a platform admin on a customer's channel", {}, { access: "not_member" }, "not_member"],
     ["rejected", { review_state: "rejected" }, {}, "rejected"],
+    ["already public on YouTube", { privacy: "public" } as Partial<VideoRow>, {}, "already_public"],
     ["a channel that publishes on its own", {}, { autoPublish: true }, "autoHint"],
   ];
   it.each(cases)("%s", (_name, over, props, key) => {
@@ -257,11 +268,12 @@ describe("after the decision", () => {
       ...over,
     }) as Partial<VideoRow>;
 
-  it("says who approved, that the video is STILL PRIVATE on YouTube, and how to make it public today", () => {
+  it("says who approved, that it was uploaded as private (not a present fact it cannot know), and how to make it public today", () => {
     panel(approved());
     const box = screen.getByTestId("approved");
     expect(box.textContent).toContain("Approved by anna@example.com");
-    expect(box.textContent).toContain("The video is still private on YouTube.");
+    expect(box.textContent).toContain("The video was uploaded as private; approving does not make it public.");
+    expect(box.textContent).not.toContain("still private");
     expect(box.textContent).toContain(en.review.makePublicBody);
     const link = within(box).getByRole("link", { name: en.review.studioLink }) as HTMLAnchorElement;
     expect(link.href).toBe("https://studio.youtube.com/video/dQw4w9WgXcQ/edit");
@@ -280,6 +292,23 @@ describe("after the decision", () => {
     panel(approved({ approved_cut_sha256: "e".repeat(64) }));
     expect(screen.queryByTestId("approved")).toBeNull();
     expect(approveKey().disabled).toBe(false);
+  });
+
+  it("a panel left open flips from approved to expired when the approval runs out", async () => {
+    vi.useFakeTimers();
+    try {
+      panel(approved({ approval_expires_at: new Date(Date.now() + 45_000).toISOString() }));
+      expect(screen.queryByTestId("approved")).not.toBeNull();
+      expect(screen.queryByTestId("expired")).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(61_000);
+      });
+      expect(screen.queryByTestId("approved")).toBeNull();
+      expect(screen.getByTestId("expired")).toBeTruthy();
+      expect(approveKey().disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("nothing on the page says the video was published", () => {

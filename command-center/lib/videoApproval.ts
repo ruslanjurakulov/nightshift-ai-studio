@@ -5,7 +5,7 @@ import { isHeldVideo } from "@/lib/heldVideos";
  *
  * Approving RECORDS a decision: which person looked at which exact cut (its sha256), until when (24 hours), with the rights
  * and AI-label acknowledgement in the audit trail. It does not make anything public. Every video is uploaded as private and
- * stays private until someone makes it public on YouTube (Phase 1b, a worker that does it for an approved video, is not
+ * stays private until someone makes it public on YouTube, unless the channel's auto-publish switch is on (Phase 1b, a worker that does it for an approved video, is not
  * built). The database decides everything below; this file only saves a press that would come back refused, and says why.
  *
  * Pure and client-safe, so it is unit-tested directly and the panel and the page agree.
@@ -25,6 +25,7 @@ export const APPROVE_REASONS = [
   "gate_blocked",
   "gate_unknown",
   "rejected",
+  "already_public",
   "no_preview",
   "cut_unknown",
   "cut_changed",
@@ -55,6 +56,7 @@ export interface ApprovalFields {
 export type ApprovalBlocker =
   | "held"
   | "rejected"
+  | "already_public"
   | "gate_blocked"
   | "gate_unknown"
   | "no_preview"
@@ -135,6 +137,7 @@ export function approvalState(
   const gate = storedGate(video);
   if (isHeldVideo(video)) blocker = "held";
   else if (video.review_state === "rejected") blocker = "rejected";
+  else if (video.privacy === "public") blocker = "already_public";
   else if (gate && (!gate.allowed || gate.blocks.length > 0)) blocker = "gate_blocked";
   else if (!gate) blocker = "gate_unknown";
   else if (!video.preview_path) blocker = "no_preview";

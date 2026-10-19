@@ -24,7 +24,8 @@ import type { ReviewIntentRow, VideoRow } from "@/lib/types";
  *
  * 1. **It never publishes.** Approving calls the database function `approve_video_publish` (migration 0112), which
  *    RECORDS who approved which exact cut (its checksum), until when (24 hours) and with what acknowledgement. Every
- *    video is uploaded as private and stays private until a person makes it public on YouTube; nothing in a browser can
+ *    video is uploaded as private and stays private until a person makes it public on YouTube (unless the channel's auto-publish
+ *    switch is on); nothing in a browser can
  *    take a video public, re-render one, or spend a token. Phase 1b (a worker that makes an approved video public) is not
  *    built, and after an approval the panel says so, and where to do it today.
  * 2. **It never claims a verdict it was not given.** The gate line below the player is the verdict the pipeline stored
@@ -84,8 +85,12 @@ export function ReviewPanel({
     };
   }, [video.preview_path]);
 
-  // The moment is read when the page renders; a refresh after approving re-reads it.
-  const [nowMs] = useState(() => Date.now());
+  // The clock ticks, so a panel left open flips from approved to expired by itself (the approval ends while someone reads).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const state = approvalState(video, { autoPublish, access, nowMs });
   const pressable = canPressApprove(state);
   const studio = studioUrl(video.video_id);
