@@ -28,6 +28,8 @@
 --       * role: admin or owner of THE CHANNEL'S ORGANIZATION. A platform owner/admin acting on a CUSTOMER channel must be a
 --         real, bound member of that organization (inbox_real_member, 0081): public speech under a customer's name is the
 --         customer's team's. In the operator's own organization the old rule stays (any platform owner/admin).
+--         All three are one function, video_approve_access(), which the panel also asks so that its key is disabled with a
+--         reason for exactly the people the function would refuse (the page may not read org_members itself).
 --       * a per-person rate limit (take_web_rate, 20 per 10 minutes, the owner_guard pattern);
 --       * the acknowledgement {"rights_and_labels": true} is required and goes into the audit row;
 --       * video_approve_refusal() must return NULL: the video is uploaded (a YouTube id, published), has a preview, a stored
@@ -45,6 +47,8 @@
 --       already_public, not_approved, cut_changed (the approval was for another cut) and approval_expired. Returns a closed
 --       word or NULL. Nothing calls it yet.
 --     video_approve_refusal(p_video_id, p_cut_sha256)   internal (no API role): the eligibility half both use.
+--  3b. video_approve_access(p_video_id)   SIGNED-IN. A word for the caller and THIS video: ok | not_admin | not_member | not_found.
+--       Read-only; approve_video_publish() calls it, the panel calls it to decide whether to offer the key.
 --  4. review_intents insert policy: 0033's policy with ONE more condition, action <> 'approve'. A browser can no longer
 --     insert an approve intent directly; regenerate, regenerate_script and regenerate_scene are exactly as they were.
 --  5. finish_scene_regeneration()   0085's body verbatim except the statement that returns an approved video to pending also
@@ -221,12 +225,42 @@ $$;
 -- 3. THE approval
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- May the caller approve THIS video? The organization comes from the video's channel, never from an argument. A caller who
+-- cannot see the video (another organization's, or none) gets the answer a missing one gets. A platform owner/admin is an
+-- administrator of every organization for support (is_org_member), but approves in a customer's organization only as a real
+-- member of it (inbox_real_member); in the operator's own organization the old rule stays.
+create or replace function public.video_approve_access(p_video_id text) returns text
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_channel text;
+  org       uuid;
+begin
+  if auth.uid() is null or p_video_id is null or p_video_id !~ '^[A-Za-z0-9_-]{1,64}$' then
+    return 'not_found';
+  end if;
+  select v.channel_id into v_channel from public.videos v where v.video_id = p_video_id;
+  if found then
+    org := public.channel_org(v_channel);
+  end if;
+  if not found or org is null or not public.is_org_member(org) then
+    return 'not_found';
+  end if;
+  if not public.is_org_member(org, 'admin') then
+    return 'not_admin';
+  end if;
+  if not public.inbox_real_member(org, 'admin') then
+    return 'not_member';
+  end if;
+  return 'ok';
+end
+$$;
+
 create or replace function public.approve_video_publish(p_video_id text, p_cut_sha256 text, p_ack jsonb) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   uid    uuid := auth.uid();
   v      public.videos;
-  org    uuid;
+  access text;
   why    text;
   v_exp  timestamptz := now() + interval '24 hours';
   v_mail text;
@@ -238,23 +272,19 @@ begin
   if p_video_id is null or p_video_id !~ '^[A-Za-z0-9_-]{1,64}$' then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  -- The channel, and with it the organization, come from the VIDEO row. A caller who cannot see the video gets
-  -- the answer a missing one gets.
-  select * into v from public.videos where video_id = p_video_id;
-  if found then
-    org := public.channel_org(v.channel_id);
-  end if;
-  if not found or org is null or not public.is_org_member(org) then
+  -- The channel, and with it the organization, come from the VIDEO row. A caller who cannot see the video gets the answer a
+  -- missing one gets; a member who is not an administrator, or a platform admin who is not a real member of a customer's
+  -- organization, is refused.
+  access := public.video_approve_access(p_video_id);
+  if access = 'not_found' then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  if not public.is_org_member(org, 'admin') then
-    raise exception 'forbidden' using errcode = '42501';
-  end if;
-  -- Public speech under a customer's name: a real member of that organization (a platform admin who is not one reads
-  -- and supports, but does not approve). In the operator's own organization the old rule stays.
-  if not public.inbox_real_member(org, 'admin') then
+  if access = 'not_member' then
     raise exception 'forbidden' using errcode = '42501',
       detail = 'a video is approved by a member of the channel''s organization';
+  end if;
+  if access <> 'ok' then
+    raise exception 'forbidden' using errcode = '42501';
   end if;
   if not public.take_web_rate('video_approve', 20, 600) then
     return jsonb_build_object('ok', false, 'error', 'rate_limited');
@@ -268,6 +298,9 @@ begin
 
   -- Locked only once the caller is known to be allowed; the decision below is read under the lock.
   select * into v from public.videos where video_id = p_video_id for update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
 
   -- Replay: the same cut, approved and not yet expired. Nothing is written twice.
   if v.review_state = 'approved' and v.approved_cut_sha256 is not distinct from p_cut_sha256
@@ -449,6 +482,10 @@ grant execute on function public.finish_scene_regeneration(uuid, bigint, boolean
 revoke all on function public.approve_video_publish(text, text, jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.approve_video_publish(text, text, jsonb) to authenticated;
 
+-- The panel asks it too (read-only; a caller learns only their own standing for a video they can see).
+revoke all on function public.video_approve_access(text) from public, anon, authenticated, service_role;
+grant execute on function public.video_approve_access(text) to authenticated;
+
 -- The worker's rule (Phase 1b): the service key only. The eligibility half is internal to the definer functions.
 revoke all on function public.video_publish_refusal(text, text) from public, anon, authenticated, service_role;
 grant execute on function public.video_publish_refusal(text, text) to service_role;
@@ -464,13 +501,15 @@ revoke all on function public.video_approve_refusal(text, text) from public, ano
 --     has_function_privilege('authenticated', 'public.approve_video_publish(text,text,jsonb)', 'EXECUTE')
 --       and not has_function_privilege('anon', 'public.approve_video_publish(text,text,jsonb)', 'EXECUTE')
 --       and not has_function_privilege('service_role', 'public.approve_video_publish(text,text,jsonb)', 'EXECUTE')
+--       and has_function_privilege('authenticated', 'public.video_approve_access(text)', 'EXECUTE')
+--       and not has_function_privilege('anon', 'public.video_approve_access(text)', 'EXECUTE')
 --       and has_function_privilege('service_role', 'public.video_publish_refusal(text,text)', 'EXECUTE')
 --       and not has_function_privilege('authenticated', 'public.video_publish_refusal(text,text)', 'EXECUTE')
 --       and not has_function_privilege('authenticated', 'public.video_approve_refusal(text,text)', 'EXECUTE')
 --       as functions_scoped,
 --     (select bool_and(p.prosecdef and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
 --        from pg_proc p where p.pronamespace = 'public'::regnamespace
---         and p.proname in ('approve_video_publish', 'video_publish_refusal', 'video_approve_refusal')) as definers_pin_search_path,
+--         and p.proname in ('approve_video_publish', 'video_publish_refusal', 'video_approve_refusal', 'video_approve_access')) as definers_pin_search_path,
 --     (select pg_get_expr(polwithcheck, polrelid) like '%''approve''%' from pg_policy
 --       where polrelid = 'public.review_intents'::regclass and polname = 'review_intents_insert') as direct_approve_closed,
 --     public.audit_action_allowed('video.approve') and public.audit_action_allowed('marketing.create') as audit_list,

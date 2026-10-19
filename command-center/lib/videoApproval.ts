@@ -1,5 +1,3 @@
-import { DEFAULT_ORG_ID } from "@/lib/orgs";
-import { atLeast, type Role } from "@/lib/auth/roles-shared";
 import { isHeldVideo } from "@/lib/heldVideos";
 
 /**
@@ -64,7 +62,7 @@ export type ApprovalBlocker =
   | "not_admin"
   | "not_member";
 
-/** Who may press, as lib/server/videoApprovalAccess decides it from the person's roles. */
+/** Who may press: the word video_approve_access answers with (see accessFromWord). */
 export type ApproveAccess = "ok" | "not_admin" | "not_member";
 
 export type ApprovalView =
@@ -152,20 +150,13 @@ export function canPressApprove(s: ApprovalState): boolean {
 }
 
 /**
- * Who may approve, from what the page can read: the person's role in the organization being viewed, and (for another
- * organization than the operator's own) their own membership row in the channel's organization. A platform owner/admin is
- * an administrator everywhere for support, but approves for a customer only as a real member of that customer's team
- * (inbox_real_member in the database). Presentation only: the function checks again.
+ * The database's word for "may this person approve this video" (video_approve_access, migration 0112) as the panel uses it.
+ * ok: an administrator of the channel's organization (a real member of it, for a customer's); not_admin: a member who is
+ * not; not_member: a platform owner/admin on a customer's channel; anything else (not found, an error, no such function
+ * yet) reads as not_admin, so a key is never offered on a guess. Presentation only: approve_video_publish asks again.
  */
-export function approveAccess(args: {
-  channelOrgId: string | null | undefined;
-  orgRole: Role;
-  memberRole: Role | null;
-}): ApproveAccess {
-  const { channelOrgId, orgRole, memberRole } = args;
-  if (!channelOrgId || channelOrgId === DEFAULT_ORG_ID) return atLeast(orgRole, "admin") ? "ok" : "not_admin";
-  if (!memberRole) return "not_member";
-  return atLeast(memberRole, "admin") ? "ok" : "not_admin";
+export function accessFromWord(word: unknown): ApproveAccess {
+  return word === "ok" || word === "not_member" ? word : "not_admin";
 }
 
 /** The YouTube Studio page of a video, where a person makes it public today; null when the id is not a YouTube id. */

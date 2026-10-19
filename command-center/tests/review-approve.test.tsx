@@ -46,7 +46,8 @@ import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 const en = dictionaries.en;
 const cs = en.confirmSheets;
 const CUT = "c0ffee".repeat(10) + "abcd"; // 64 hex characters
-const PASS = { allowed: true, reasons: [], flagged: null };
+type Gate = { allowed: boolean; reasons: string[]; flagged: number | null };
+const PASS: Gate = { allowed: true, reasons: [], flagged: null };
 
 function wrap(node: ReactNode, locale: Locale = "en") {
   return render(<I18nProvider locale={locale}>{node}</I18nProvider>);
@@ -71,7 +72,7 @@ function video(over: Partial<VideoRow> = {}): VideoRow {
 
 function panel(
   over: Partial<VideoRow> = {},
-  props: { autoPublish?: boolean; access?: ApproveAccess; gate?: typeof PASS | null; staleRequest?: ReviewIntentRow | null } = {},
+  props: { autoPublish?: boolean; access?: ApproveAccess; gate?: Gate | null; staleRequest?: ReviewIntentRow | null } = {},
   locale: Locale = "en",
 ) {
   return wrap(

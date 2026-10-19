@@ -59,7 +59,7 @@ export const siteEn = {
     steps: [
       { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "Why the Silk Road ran through Samarkand", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
       { id: "plan", tab: "Plan", title: "Check what it will make", body: "Script, voice, visuals and captions, in your channel’s language.", items: [{ name: "Script", detail: "Researched and checked" }, { name: "Voice", detail: "The channel’s own" }, { name: "Visuals", detail: "In the channel’s look" }, { name: "Captions", detail: "In the channel’s language" }], priceNote: "The price is on the button before you start", key: "Start" },
-      { id: "approve", tab: "Approve", title: "Watch it, then decide", body: "It waits on YouTube as private. Nothing is public yet.", lamp: "Private on YouTube", check: "Publish check passed", key: "Approve", waiting: "Waiting for you" },
+      { id: "approve", tab: "Approve", title: "Watch it, then decide", body: "It waits on YouTube as private. Nothing is public yet.", lamp: "Private on YouTube", check: "Publish check passed", key: "Approve the video", waiting: "Waiting for you" },
       { id: "live", tab: "Live", title: "Public when you say so", body: "You made it public on YouTube, so now it airs.", lamp: "Public on YouTube", sub: "Published by you" },
     ],
   },

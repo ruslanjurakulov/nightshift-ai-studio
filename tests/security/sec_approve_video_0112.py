@@ -4,8 +4,10 @@ Wired in at the bottom of sec_expectations.py, like the other per-migration file
 
     import sec_approve_video_0112; sec_approve_video_0112.extend(TABLES, FUNCTIONS)
 
-No new table. Three new functions:
+No new table. Four new functions:
 
+  video_approve_access     USER: a signed-in caller gets one word for a video they can see (ok | not_admin | not_member | not_found),
+                           read-only; the panel asks it to decide whether to offer the key, approve_video_publish asks it first.
   approve_video_publish    USER: a signed-in caller; the function reads the organization from the VIDEO row and requires an
                            administrator of that organization who is a real member of it (a platform admin is not one of a
                            customer's). anon and the service key may not call it.
@@ -26,6 +28,7 @@ def extend(tables: dict, functions: dict) -> None:
 
     functions.update({
         "approve_video_publish": USER,
+        "video_approve_access": USER,
         "video_publish_refusal": SERVICE,
         "video_approve_refusal": SERVICE,
     })

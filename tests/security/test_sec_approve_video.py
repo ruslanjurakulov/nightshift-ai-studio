@@ -196,6 +196,32 @@ def test_anon_and_the_service_key_cannot_call_it_and_the_worker_rule_is_the_work
         assert su.value("select has_function_privilege('service_role', 'public.approve_video_publish(text,text,jsonb)', 'EXECUTE')") is False
 
 
+def test_the_access_word_tells_each_person_where_they_stand_and_reveals_nothing_about_other_tenants(conn, sc):
+    bob, alice, op = sc.bob, sc.alice, sc.operator
+    with as_superuser(conn, commit=False) as su:
+        uploaded(su, bob.channel)
+        editor, viewer, admin = (member(su, bob.org, r) for r in ("editor", "viewer", "admin"))
+        uploaded(su, "default", vid="Op3dEf6hIjK")
+
+        def word(who, vid=VID):
+            with acting(conn, who) as s:
+                return s.value("select public.video_approve_access(%s)", [vid])
+
+        assert word(bob.actor) == "ok" and word(admin) == "ok"
+        assert word(editor) == "not_admin" and word(viewer) == "not_admin"
+        assert word(op) == "not_member"                      # a platform owner reading a customer's channel
+        assert word(op, "Op3dEf6hIjK") == "ok"               # but in the operator's own organization the old rule stays
+        # another organization, a missing video and a malformed id are all the same answer
+        assert word(alice.actor) == word(bob.actor, "NoSuchVid12") == word(bob.actor, "x; drop table videos") == "not_found"
+        # and approve_video_publish refuses exactly where the word is not ok
+        for who, state_ in ((editor, "42501"), (viewer, "42501"), (op, "42501"), (alice.actor, "P0002")):
+            with acting(conn, who) as s:
+                out = approve(s)
+            assert not out.ok and out.sqlstate == state_, (who.name, out)
+        with acting(conn, ANON) as s:
+            assert not s.run("select public.video_approve_access(%s)", [VID]).ok
+
+
 # ── the old write is closed ─────────────────────────────────────────────────
 
 def test_a_browser_can_no_longer_insert_an_approve_intent_directly(conn, sc):
@@ -397,11 +423,12 @@ def test_the_grants_are_what_the_file_says(conn):
         def priv(sig):
             return [su.value("select has_function_privilege(%s, %s::regprocedure, 'EXECUTE')", [r, sig]) for r in ("anon", "authenticated", "service_role")]
         assert priv("public.approve_video_publish(text, text, jsonb)") == [False, True, False]
+        assert priv("public.video_approve_access(text)") == [False, True, False]
         assert priv("public.video_publish_refusal(text, text)") == [False, False, True]
         assert priv("public.video_approve_refusal(text, text)") == [False, False, False]
         assert priv("public.audit_action_allowed(text)") == [False, False, False]
         assert priv("public.finish_scene_regeneration(uuid, bigint, boolean, text, text, jsonb)") == [False, False, True]
-        for sig in ("approve_video_publish(text, text, jsonb)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
+        for sig in ("approve_video_publish(text, text, jsonb)", "video_approve_access(text)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
             assert su.value("select prosecdef from pg_proc where oid = %s::regprocedure", [f"public.{sig}"]) is True
             assert "search_path=public, pg_temp" in su.value("select proconfig::text from pg_proc where oid = %s::regprocedure", [f"public.{sig}"])
 

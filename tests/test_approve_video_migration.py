@@ -16,7 +16,7 @@ SQL = (MIGRATIONS / FILE).read_text(encoding="utf-8")
 ROLLBACK = (REPO / "docs" / "sql" / "rollback_0112_approve_video_publish.sql").read_text(encoding="utf-8")
 
 REPLACED = {"finish_scene_regeneration": "0085_scene_regen_followups.sql", "audit_action_allowed": "0110_marketing_promo_custom.sql"}
-NEW = {"approve_video_publish", "video_publish_refusal", "video_approve_refusal"}
+NEW = {"approve_video_publish", "video_approve_access", "video_publish_refusal", "video_approve_refusal"}
 
 
 def code(text):
@@ -53,7 +53,7 @@ def outside_bodies(text):
 
 
 class BuiltOnTheLatestBodies(unittest.TestCase):
-    def test_it_defines_exactly_the_two_functions_it_replaces_and_three_new_ones(self):
+    def test_it_defines_exactly_the_two_functions_it_replaces_and_four_new_ones(self):
         self.assertEqual(sorted(NEW_BODIES), sorted([*REPLACED, *NEW]))
         self.assertEqual(sorted(re.findall(r"create or replace function public\.(\w+)", CODE)), sorted([*REPLACED, *NEW]))
 
@@ -147,6 +147,8 @@ class AdditiveAndSafeToApplyLive(unittest.TestCase):
         top = outside_bodies(SQL)
         self.assertIn("revoke all on function public.approve_video_publish(text, text, jsonb) from public, anon, authenticated, service_role;", top)
         self.assertIn("grant execute on function public.approve_video_publish(text, text, jsonb) to authenticated;", top)
+        self.assertIn("revoke all on function public.video_approve_access(text) from public, anon, authenticated, service_role;", top)
+        self.assertIn("grant execute on function public.video_approve_access(text) to authenticated;", top)
         self.assertIn("revoke all on function public.video_publish_refusal(text, text) from public, anon, authenticated, service_role;", top)
         self.assertIn("grant execute on function public.video_publish_refusal(text, text) to service_role;", top)
         self.assertIn("revoke all on function public.video_approve_refusal(text, text) from public, anon, authenticated, service_role;", top)
@@ -162,14 +164,27 @@ class TheApprovalRpc(unittest.TestCase):
 
     def test_authorization_comes_before_anything_is_locked_or_written(self):
         b = self.body
-        order = [b.index(s) for s in ("auth.uid()", "channel_org(v.channel_id)", "is_org_member(org, 'admin')",
-                                      "inbox_real_member(org, 'admin')", "take_web_rate('video_approve', 20, 600)",
+        order = [b.index(s) for s in ("auth.uid()", "video_approve_access(p_video_id)", "take_web_rate('video_approve', 20, 600)",
                                       "for update", "video_approve_refusal(", "update public.videos", "insert into public.review_intents",
                                       "insert into public.app_audit_log")]
         self.assertEqual(order, sorted(order))
         # a caller who cannot see the video gets the answer a missing one gets
-        self.assertEqual(b.count("errcode = 'P0002'"), 2)
+        self.assertEqual(b.count("errcode = 'P0002'"), 3)
         self.assertEqual(b.count("errcode = '42501'"), 3)
+
+    def test_the_access_word_is_one_function_in_a_fixed_order_and_the_rpc_asks_it(self):
+        a = code(NEW_BODIES["video_approve_access"])
+        order = [a.index(s) for s in ("auth.uid() is null", "public.channel_org(v_channel)", "is_org_member(org)", "is_org_member(org, 'admin')",
+                                      "inbox_real_member(org, 'admin')")]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(set(re.findall(r"return '(\w+)';", a)), {"not_found", "not_admin", "not_member", "ok"})
+        self.assertIn("language plpgsql stable security definer", NEW_BODIES["video_approve_access"])
+        # read-only: it writes nothing
+        for forbidden in ("insert ", "update ", "delete "):
+            self.assertNotIn(forbidden, a)
+        # the RPC has no copy of the checks: it only maps the word
+        self.assertNotIn("is_org_member", self.body)
+        self.assertNotIn("inbox_real_member", self.body)
 
     def test_the_channel_comes_from_the_video_row_never_from_an_argument(self):
         sig = re.search(r"create or replace function public\.approve_video_publish\((.*?)\) returns", CODE, re.S).group(1)
@@ -213,7 +228,7 @@ class TheRollbackIsTheExactOldText(unittest.TestCase):
 
     def test_it_drops_the_three_functions_keeps_the_columns_and_runs_in_one_transaction(self):
         top = outside_bodies(ROLLBACK)
-        for fn in ("approve_video_publish(text, text, jsonb)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
+        for fn in ("approve_video_publish(text, text, jsonb)", "video_approve_access(text)", "video_publish_refusal(text, text)", "video_approve_refusal(text, text)"):
             self.assertIn(f"drop function if exists public.{fn};", top)
         for forbidden in ("drop column", "delete from", "truncate", "drop table", "update public"):
             self.assertNotIn(forbidden, top.lower(), forbidden)

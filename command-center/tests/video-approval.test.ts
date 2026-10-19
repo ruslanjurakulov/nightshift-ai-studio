@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   APPROVE_REASONS,
   approvalState,
-  approveAccess,
+  accessFromWord,
   canPressApprove,
   knownApproveReason,
   shortHash,
@@ -17,7 +17,6 @@ import {
   type ApprovalFields,
 } from "@/lib/videoApproval";
 import { publishBlocker } from "@/lib/publish";
-import { DEFAULT_ORG_ID } from "@/lib/orgs";
 
 const CUT = "a".repeat(64);
 const OTHER = "b".repeat(64);
@@ -134,24 +133,11 @@ describe("what an approval shows", () => {
 });
 
 describe("who may press", () => {
-  const CUSTOMER_ORG = "11111111-1111-1111-1111-111111111111";
-  it("in the operator's own organization the role in it decides", () => {
-    expect(approveAccess({ channelOrgId: DEFAULT_ORG_ID, orgRole: "admin", memberRole: null })).toBe("ok");
-    expect(approveAccess({ channelOrgId: DEFAULT_ORG_ID, orgRole: "owner", memberRole: null })).toBe("ok");
-    expect(approveAccess({ channelOrgId: DEFAULT_ORG_ID, orgRole: "editor", memberRole: null })).toBe("not_admin");
-    expect(approveAccess({ channelOrgId: DEFAULT_ORG_ID, orgRole: "viewer", memberRole: null })).toBe("not_admin");
-  });
-  it("in a customer's organization only a real member who administers it", () => {
-    expect(approveAccess({ channelOrgId: CUSTOMER_ORG, orgRole: "owner", memberRole: "owner" })).toBe("ok");
-    expect(approveAccess({ channelOrgId: CUSTOMER_ORG, orgRole: "admin", memberRole: "admin" })).toBe("ok");
-    expect(approveAccess({ channelOrgId: CUSTOMER_ORG, orgRole: "editor", memberRole: "editor" })).toBe("not_admin");
-    expect(approveAccess({ channelOrgId: CUSTOMER_ORG, orgRole: "viewer", memberRole: "viewer" })).toBe("not_admin");
-    // a platform owner is an owner everywhere for support, and approves for a customer only as a real member
-    expect(approveAccess({ channelOrgId: CUSTOMER_ORG, orgRole: "owner", memberRole: null })).toBe("not_member");
-  });
-  it("before organizations exist the platform role decides", () => {
-    expect(approveAccess({ channelOrgId: null, orgRole: "admin", memberRole: null })).toBe("ok");
-    expect(approveAccess({ channelOrgId: null, orgRole: "editor", memberRole: null })).toBe("not_admin");
+  it("is the database's word, and anything else is no", () => {
+    expect(accessFromWord("ok")).toBe("ok");
+    expect(accessFromWord("not_member")).toBe("not_member");
+    expect(accessFromWord("not_admin")).toBe("not_admin");
+    for (const odd of ["not_found", "", null, undefined, 1, {}, "OK", "ok "]) expect(accessFromWord(odd), String(odd)).toBe("not_admin");
   });
 });
 

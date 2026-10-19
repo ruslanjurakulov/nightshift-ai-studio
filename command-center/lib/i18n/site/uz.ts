@@ -51,7 +51,7 @@ export const siteUz: SiteDictionary = {
     steps: [
       { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
       { id: "plan", tab: "Reja", title: "Nima tayyorlanishini koʻring", body: "Ssenariy, ovoz, tasvir va subtitrlar — kanalingiz tilida.", items: [{ name: "Ssenariy", detail: "Oʻrganiladi va tekshiriladi" }, { name: "Ovoz", detail: "Kanalning oʻz ovozi" }, { name: "Tasvir", detail: "Kanal uslubida" }, { name: "Subtitrlar", detail: "Kanal tilida" }], priceNote: "Narx boshlashdan oldin tugmada koʻrinadi", key: "Boshlash" },
-      { id: "approve", tab: "Tasdiq", title: "Koʻring, keyin qaror qiling", body: "Video YouTube’da shaxsiy holda kutadi. Hozircha hech narsa ommaviy emas.", lamp: "YouTube’da shaxsiy", check: "Nashr tekshiruvidan oʻtdi", key: "Tasdiqlash", waiting: "Sizni kutmoqda" },
+      { id: "approve", tab: "Tasdiq", title: "Koʻring, keyin qaror qiling", body: "Video YouTube’da shaxsiy holda kutadi. Hozircha hech narsa ommaviy emas.", lamp: "YouTube’da shaxsiy", check: "Nashr tekshiruvidan oʻtdi", key: "Videoni tasdiqlash", waiting: "Sizni kutmoqda" },
       { id: "live", tab: "Efirda", title: "Siz aytganda ommaviy", body: "Siz videoni YouTube’da ommaviy qildingiz, endi u efirda.", lamp: "YouTube’da ommaviy", sub: "Siz nashr qildingiz" },
     ],
   },

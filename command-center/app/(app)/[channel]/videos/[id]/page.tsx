@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { PublishPanel } from "@/components/videos/PublishPanel";
@@ -9,8 +9,7 @@ import { loadPublishPanel } from "@/lib/server/publish";
 import { loadDownloads } from "@/lib/server/downloads";
 import { getOrgContext } from "@/lib/orgs-server";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
-import { approveAccess, storedGate, type ApproveAccess } from "@/lib/videoApproval";
-import type { Role } from "@/lib/auth/roles-shared";
+import { accessFromWord, storedGate, type ApproveAccess } from "@/lib/videoApproval";
 import { CopyButton } from "@/components/feedback/CopyButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -83,10 +82,10 @@ export default async function VideoDetail({
   let topicPerf: TopicPerformanceRow[] = [];
   let autoPublish = false;
   let pendingIntent: ReviewIntentRow | null = null;
-  // The organization that owns the video's channel, and this person's own membership row in it (null when they have none:
-  // a platform admin reading a customer's channel). Only for deciding whether the Approve key is offered.
-  let channelOrgId: string | null = null;
-  let memberRole: Role | null = null;
+  // May this person approve here? The database's own word (video_approve_access, migration 0112): the same function
+  // approve_video_publish asks, so the key is offered to exactly the people it would accept. An error (0112 not applied)
+  // reads as "no".
+  let access: ApproveAccess = "not_admin";
   let retentionPoints: RetentionPointRow[] = [];
   let sceneRegens: RegenRow[] = [];
   let channelName = "";
@@ -138,7 +137,7 @@ export default async function VideoDetail({
       // The review panel needs two more facts: whether this channel publishes
       // on its own, and whether a request is already waiting on this video.
       const [ch, intent, regens] = await Promise.all([
-        supabase.from("channels").select("auto_publish, name, org_id").eq("channel_id", video.channel_id).maybeSingle(),
+        supabase.from("channels").select("auto_publish, name").eq("channel_id", video.channel_id).maybeSingle(),
         // The panel's own old requests only: a per-scene request (below) must not read as the video's. Approving is
         // now a database function (0112) that consumes these, so what is still waiting here was never carried out.
         supabase
@@ -161,19 +160,9 @@ export default async function VideoDetail({
       ]);
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
       channelName = (ch.data as { name?: string } | null)?.name || video.channel_id;
-      channelOrgId = (ch.data as { org_id?: string | null } | null)?.org_id ?? null;
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
-      const me = await getUser();
-      if (me && channelOrgId) {
-        const mine = await supabase
-          .from("org_members")
-          .select("role")
-          .eq("org_id", channelOrgId)
-          .eq("user_id", me.id)
-          .maybeSingle();
-        const r = (mine.data as { role?: string } | null)?.role;
-        memberRole = r === "owner" || r === "admin" || r === "editor" || r === "viewer" ? r : null;
-      }
+      const word = await supabase.rpc("video_approve_access", { p_video_id: video.video_id });
+      access = word.error ? "not_admin" : accessFromWord(word.data);
       sceneRegens = regens.error ? [] : parseRegenRows(regens.data);
       if (!isRepurposedClip(video)) {
         // This video's repurpose requests and their clips, through RLS with the
@@ -290,9 +279,6 @@ export default async function VideoDetail({
     resolveCurrentOrgRole(),
     loadDownloads(video.video_id, video.channel_id),
   ]);
-
-  // Presentation only: approve_video_publish checks the organization, the role and real membership again.
-  const access: ApproveAccess = approveAccess({ channelOrgId, orgRole, memberRole });
 
   return (
     <div className="flex flex-col gap-4">
