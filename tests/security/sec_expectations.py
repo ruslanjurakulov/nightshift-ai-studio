@@ -563,3 +563,8 @@ sec_marketing_0110.extend(TABLES, FUNCTIONS)
 import sec_video_safety_0111  # noqa: E402
 
 sec_video_safety_0111.extend(TABLES, FUNCTIONS)
+
+# Migration 0112 (Approve is a decision bound to the cut): tests/security/sec_approve_video_0112.py
+import sec_approve_video_0112  # noqa: E402
+
+sec_approve_video_0112.extend(TABLES, FUNCTIONS)

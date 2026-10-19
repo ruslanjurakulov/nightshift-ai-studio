@@ -305,6 +305,10 @@ def test_a_finished_regeneration_captures_the_quote_and_voids_the_approval(conn,
         before = available(su, sc.bob.org)
         su.rows("insert into public.review_intents (channel_id, video_id, action) values (%s, %s, 'approve') "
                 "returning 1", [sc.bob.channel, vid])
+        # 0112: a person's approval of the cut that is about to be replaced
+        su.rows("update public.videos set approved_cut_sha256 = %s, decided_by = %s, decided_by_email = 'b@b.test', "
+                "decided_at = now(), approval_expires_at = now() + interval '1 hour' where video_id = %s returning 1",
+                ["a" * 64, sc.bob.actor.uid, vid])
         with acting(conn, sc.bob.actor) as s:
             body = press(s, vid).rows[0][0]
             become(s, SERVICE)
@@ -315,6 +319,8 @@ def test_a_finished_regeneration_captures_the_quote_and_voids_the_approval(conn,
             h = holds(o, sc.bob.org)
             after = available(o, sc.bob.org)
             state = o.value("select review_state from public.videos where video_id = %s", [vid])
+            approval = o.rows("select approved_cut_sha256, decided_by, decided_by_email, decided_at, approval_expires_at "
+                              "from public.videos where video_id = %s", [vid])[0]
             waiting = o.value("select count(*) from public.review_intents where video_id = %s "
                               "and action = 'approve' and consumed_at is null", [vid])
     assert done["status"] == "succeeded" and float(done["charged_credits"]) == GEN
@@ -322,6 +328,8 @@ def test_a_finished_regeneration_captures_the_quote_and_voids_the_approval(conn,
     assert float(before) - float(after) == GEN
     # Re-approval goes through the normal review; nothing here published.
     assert state == "pending" and waiting == 0
+    # 0112: the hash, the person and the times of the approval go with its state
+    assert approval == (None, None, None, None, None), approval
 
 
 def test_a_lost_job_is_failed_and_released_by_the_sweep(conn, sc):

@@ -148,7 +148,9 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
             ("insert into public.channel_topic_performance (channel_id, topic, score, videos_analyzed, updated_at) values (%s, 'topic', 0.5, 1, '2026-09-01')", [ch]),
             ("insert into public.channel_credentials (channel_id, provider, status) values (%s, 'youtube', 'connected')", [ch]),
             ("insert into public.content_series (series_id, channel_id, name) values (%s, %s, %s)", [f"series-{k}", ch, f"Series {k}"]),
-            ("insert into public.review_intents (channel_id, video_id, action, created_by) values (%s, %s, 'approve', %s)", [ch, vid, uid]),
+            # 0112 closed the browser's direct insert of an approve intent, so the seeded row (which the isolation tests clone
+            # through the browser's own policy) is another request of the same panel.
+            ("insert into public.review_intents (channel_id, video_id, action, created_by) values (%s, %s, 'regenerate', %s)", [ch, vid, uid]),
             ("insert into public.publish_approvals (channel_id, video_ref, requested_by) values (%s, %s, %s)", [ch, f"slug-{k}", uid]),
             ("insert into public.learnings (channel_id, kind, dedup_key, observation) values (%s, 'hook', %s, 'obs')", [ch, f"dk-{k}"]),
             ("insert into public.alert_events (kind, severity, channel_id, title) values ('run_failed', 'warn', %s, 'alert')", [ch]),

@@ -95,7 +95,7 @@ def test_current_app_role_has_no_default_for_people_off_the_roster(conn, sc):
 
 
 def test_review_intent_must_name_a_video_on_its_own_channel(conn, sc):
-    q = "insert into public.review_intents (channel_id, video_id, action) values (%s, %s, 'approve')"
+    q = "insert into public.review_intents (channel_id, video_id, action) values (%s, %s, 'regenerate')"
     with acting(conn, sc.bob.actor) as s:
         control = s.run(q, [sc.bob.channel, sc.bob.video])
         foreign = s.run(q, [sc.bob.channel, sc.alice.video])
