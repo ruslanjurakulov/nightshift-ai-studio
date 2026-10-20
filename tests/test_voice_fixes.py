@@ -305,7 +305,10 @@ class TtsCacheIsAtomic(unittest.TestCase):
                 rendered.append(out)
                 Path(out).write_bytes(b"whole")
 
-            with patch.object(AudioMixer, "_tts_elevenlabs", fake_tts):
+            # b"whole" is not audio: say what the decoder would, so this test pins reuse
+            # of a good segment on any machine, with or without ffmpeg.
+            with patch.object(AudioMixer, "_tts_elevenlabs", fake_tts), \
+                    patch.object(AudioMixer, "_segment_seconds", return_value=5.0):
                 m._render_segment("hello", "main")
                 m._render_segment("hello", "main")
             self.assertEqual(len(rendered), 1)
