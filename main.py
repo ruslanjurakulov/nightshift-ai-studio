@@ -435,15 +435,20 @@ def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
 
 
 def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
-    """The privacy this run may upload with. If the channel's Command Center
-    auto-publish switch is not ON (and the source carries one at all), anything
-    other than private is clamped to private with a one-line warning; see
-    modules.channels.effective_privacy. ON or no switch: unchanged."""
+    """The privacy this run may upload with. Unless the channel's Command Center
+    auto-publish switch is plainly ON, anything other than private is clamped to
+    private with a one-line warning; see modules.channels.effective_privacy. A
+    switch that could not be read (None) clamps too: unknown is not a yes."""
     allowed = effective_privacy(privacy, ctx.ui_auto_publish)
     if str(privacy or "").strip().lower() not in ("", "private") and allowed != privacy:
-        logger.warning(
-            "[channel: %s] Auto publish is not ON for this channel: %r requested, uploading "
-            "private instead (the switch means never public)", ctx.channel_id, privacy)
+        if ctx.ui_auto_publish is None:
+            logger.warning(
+                "[channel: %s] No auto-publish switch could be read for this channel: %r requested, "
+                "uploading private instead (unknown is treated as off)", ctx.channel_id, privacy)
+        else:
+            logger.warning(
+                "[channel: %s] Auto publish is not ON for this channel: %r requested, uploading "
+                "private instead (the switch means never public)", ctx.channel_id, privacy)
     return allowed
 
 
