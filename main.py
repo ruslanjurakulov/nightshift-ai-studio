@@ -545,6 +545,10 @@ def run(
     # its style/cadence shape the run below. See modules/series.py; resolution
     # never raises.
     series_obj = resolve_series(series)
+    # effective_niche ends in "history mysteries"; remember whether the channel,
+    # the series or the caller actually named a niche, so topic selection stops
+    # for a channel that has none instead of quietly making history videos.
+    niche_chosen = bool(niche or (series_obj and series_obj.niche) or ctx.niche)
     niche = effective_niche(niche, series_obj, ctx.niche)
     # A series carries more than a niche: its look (biases b-roll and, with the
     # avatar on, the presenter), its narration style (a recorded hint), and its
@@ -779,8 +783,16 @@ def run(
     else:
         if topic is None and getattr(config, "AGENT_AUTOPILOT", False):
             topic = _agent_pick_topic(channel_id, video_provider=_active_video_provider())
+            # The planner ranks trending titles with no memory of what this
+            # channel already made: without this, one strong trend is the day's
+            # video every day.
+            repeat = topic_mgr.find_repeat(topic) if topic else None
+            if repeat:
+                logger.warning("Autopilot topic %r repeats this channel's own %r — using the topic manager",
+                               topic, repeat)
+                topic = None
         if topic is None:
-            topic = topic_mgr.pick_topic(niche)
+            topic = topic_mgr.pick_topic(niche if niche_chosen else None)
         logger.info("Topic: %s", topic)
     events.emit(events.TOPIC_SELECTED, agent="topic_manager", status=events.STATUS_COMPLETED,
                 channel_id=channel_id,

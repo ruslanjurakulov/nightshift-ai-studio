@@ -258,14 +258,17 @@ different representative phrasings per run).
 
 ### JSON flat-files (under `history/`)
 - **`topics.json`** — `TopicManager` history: `used_topics` exclusion list and a
-  `sessions` log (topic, date, video path, video id/url).
+  `sessions` log (topic, channel id, date, video path, video id/url). Dedup is
+  per channel over the last 200 topics / 365 days (`modules/topic_dedup.py`);
+  rows from before the channel id was recorded count for every channel.
 - **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
   `CalendarEntry` records (`queued`/`published`/`skipped`). A write-through JSON
   store, explicitly a placeholder rather than a `state_store` table.
 - **`pipeline_runs.json`** — `PipelineStateMachine`'s per-run stage history and
   `human_approved` flag (tracking only; see §2). Also a placeholder store.
 - **`topic_vectors.npz`** — `OriginalityEngine`'s flat numpy vector store of
-  topic embeddings (path overridable via `CHRONOS_TOPIC_VECTORS`).
+  topic embeddings (path overridable via `CHRONOS_TOPIC_VECTORS`). The default
+  channel uses this file; every other channel gets `topic_vectors.<channel>.npz`.
 
 Per-video artifacts (script JSON, fact-check JSON, media, subtitles, thumbnails,
 final MP4) live under `output/<slug>/`.
