@@ -22,6 +22,7 @@ Fixed (patch-breach7, now ordinary tests):
     every member reads (RegenerationRefusalReachesMembers below pins the contract).
 """
 
+import collections
 import io
 import re
 import tempfile
@@ -294,6 +295,26 @@ class HyphenCollidingIds(unittest.TestCase):
             for m in re.finditer(r"secrets\[matrix\.\w+\]", body):
                 head = body[:m.start()].rsplit("- name:", 1)[1]
                 self.assertIn("matrix.is_operators", head, f"{path.name}: {m.group(0)} is not gated")
+
+    def test_every_dynamic_secret_index_in_every_workflow_is_a_known_shape(self):
+        # A computed `secrets[...]` index reads whichever secret a job output or matrix value names. The
+        # test above only knows the matrix form, so this one lists EVERY non-literal index in
+        # .github/workflows (comments included) and requires the set to be exactly the known shapes: a
+        # new dynamic index anywhere else, or a changed expression, fails until a person allow-lists it.
+        # The doctor's six slots are prefix-guarded in the expression itself (a name that is not a
+        # CHRONOS_YT_TOKEN_ secret indexes DOCTOR_NO_SUCH_SECRET instead).
+        slot = ("secrets[startsWith(needs.resolve.outputs.name{n}, 'CHRONOS_YT_TOKEN_') && "
+                "needs.resolve.outputs.name{n} || 'DOCTOR_NO_SUCH_SECRET']")
+        allowed = collections.Counter({("daily_video.yml", "secrets[matrix.token_secret]"): 1})
+        allowed.update({("doctor_scheduled.yml", slot.format(n=n)): 1 for n in range(6)})
+        found = collections.Counter()
+        for path in sorted((Path(__file__).resolve().parent.parent / ".github" / "workflows").glob("*.yml")):
+            for m in re.finditer(r"secrets\s*\[([^\]]*)\]", path.read_text()):
+                index = " ".join(m.group(1).split())
+                if re.fullmatch(r"'[^']*'", index):          # secrets['NAME']: a fixed name, not a lookup
+                    continue
+                found[(path.name, "secrets[" + index + "]")] += 1
+        self.assertEqual(found, allowed)
 
 
 class RegenerationRefusalReachesMembers(unittest.TestCase):

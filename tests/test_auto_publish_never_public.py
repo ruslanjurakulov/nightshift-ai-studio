@@ -11,9 +11,10 @@ today), does not change ``ctx.auto_publish`` / ``agent_config.auto_publish``,
 does not touch video_review, and ON does not make anything public by itself
 (the publish gate and approvals still decide what a requested privacy may do).
 
-An absent column (channels.json, the legacy default channel, a database from
-before 0004, a context built in code) is unrestricted, exactly as before. A
-column that is present and not exactly True (False, NULL, "true", 1) is off.
+An absent column (channels.json, the legacy default channel synthesized when the
+registry is unreadable, a database from before 0004, a context built in code) is
+unknown, and unknown is private (audit H7; it used to be unrestricted). A column
+that is present and not exactly True (False, NULL, "true", 1) is off.
 
 Synthetic data only: no network, no Supabase, no YouTube.
 """
@@ -68,9 +69,11 @@ class EffectivePrivacyTestCase(unittest.TestCase):
         for asked in ("public", "unlisted", "private"):
             self.assertEqual(effective_privacy(asked, True), asked)
 
-    def test_no_switch_is_unrestricted_as_today(self):
+    def test_no_switch_could_be_read_fails_closed(self):
+        # Was "unrestricted as today" (audit H7): an unknown is not a yes. The full table is
+        # tests/test_effective_privacy_fail_closed.py.
         for asked in ("public", "unlisted", "private"):
-            self.assertEqual(effective_privacy(asked, None), asked)
+            self.assertEqual(effective_privacy(asked, None), "private")
 
 
 class ColumnReaderTestCase(unittest.TestCase):
@@ -106,9 +109,10 @@ class ContextFromDictTestCase(unittest.TestCase):
         self.assertNotIn("auto_publish", off.to_dict())
         self.assertTrue(off.to_dict()["agent_config"]["auto_publish"])
 
-    def test_code_built_contexts_are_unrestricted(self):
+    def test_code_built_contexts_carry_no_switch(self):
         c = ChannelContext(channel_id="default", name="X", niche="h")
         self.assertIsNone(c.ui_auto_publish)
+        self.assertEqual(effective_privacy("public", c.ui_auto_publish), "private")
 
 
 class ChannelsJsonTestCase(unittest.TestCase):
@@ -126,7 +130,7 @@ class ChannelsJsonTestCase(unittest.TestCase):
             with self.subTest(stray=stray), self.assertLogs("modules.channels", level="WARNING") as logs:
                 c = self.registry([_row("news", column=stray)]).get("news")
                 self.assertIsNone(c.ui_auto_publish)
-                self.assertEqual(effective_privacy("public", c.ui_auto_publish), "public")
+                self.assertEqual(effective_privacy("public", c.ui_auto_publish), "private")
             self.assertTrue(any("auto_publish" in m for m in logs.output))
 
     def test_clean_file_row_has_no_switch(self):
@@ -219,8 +223,14 @@ print("RESULT " + json.dumps(seen))
         self.assertEqual(self.drive(_row(column=True), "public"), "public")
         self.assertEqual(self.last_warnings, [])
 
-    def test_absent_column_and_public_is_unchanged(self):
-        self.assertEqual(self.drive(_row(), "public"), "public")
+    def test_absent_column_and_public_uploads_private_and_says_why(self):
+        # Was "unchanged": a switch that could not be read is not a yes (audit H7).
+        self.assertEqual(self.drive(_row(), "public"), "private")
+        self.assertEqual(len(self.last_warnings), 1)
+        self.assertIn("No auto-publish switch could be read", self.last_warnings[0])
+
+    def test_absent_column_and_private_is_quiet(self):
+        self.assertEqual(self.drive(_row(), "private"), "private")
         self.assertEqual(self.last_warnings, [])
 
     def test_run_uses_the_clamped_value_everywhere(self):

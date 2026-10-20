@@ -11,8 +11,8 @@ turns each failing check into an alert through its usual dedupe, rate limit, qui
 check recovers or when the check itself stops reporting.
 
 What it does and does not do
-* Read-only against every provider: the doctor's own free GETs, and its one in-memory YouTube token refresh
-  (nothing saved). It starts, retries and changes no run, publishes nothing, spends nothing.
+* Read-only against every provider: the doctor's own free GETs, and its in-memory YouTube token refreshes
+  (the default channel's, and each other scheduled operator channel's, as ``token/<channel id>``; nothing saved). It starts, retries and changes no run, publishes nothing, spends nothing.
 * The one write is that row, with the service key the daily workflow already holds, and no channel (the bot
   trusts only rows without one).
 * Locally it prints the doctor's scrubbed report. In CI (``GITHUB_ACTIONS=true``) the repository may be public and the

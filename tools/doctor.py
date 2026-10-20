@@ -23,7 +23,8 @@ What it does and does not do
   Supabase checks are a handful of ``limit=0`` reads), only on endpoints that are
   free: ElevenLabs subscription and voices, Leonardo /me, Pexels search, Gemini's
   ``GET models/{model}``, Supabase REST. The one POST is the YouTube OAuth token
-  refresh (free, in memory, nothing is saved). Providers with no such endpoint
+  refresh (free, in memory, nothing is saved), made once for the default channel's
+  token and once for each other scheduled operator channel's. Providers with no such endpoint
   are reported UNVERIFIED, never PASS; the one the config selects counts as WARN.
 * A value read from a free-text variable (provider ids, model names) is echoed
   only if it is a known id; anything else is "an unrecognised value", so a key
@@ -60,6 +61,12 @@ _TRUE = ("1", "true", "yes", "on")
 CHARS_PER_MINUTE = 15 * 60
 MIN_FREE_GB = 5
 YOUTUBE_TOKEN_URI = "https://oauth2.googleapis.com/token"  # fixed: never the URI inside a secret
+#: How many scheduled channels' tokens the scheduled workflow hands the doctor (DOCTOR_CHANNEL_TOKEN_0..N-1, named
+#: by the resolver job): Actions cannot enumerate secrets, so each is read by an explicit name. The workflow's
+#: slot count and `--token-slots` are pinned to this number by a test; a channel beyond it is reported unchecked.
+CHANNEL_TOKEN_SLOTS = 6
+CHANNEL_TOKEN_ROWS_ENV = "DOCTOR_CHANNEL_TOKEN_ROWS"
+_TOKEN_SECRET_NAME = re.compile(r"CHRONOS_YT_TOKEN_[A-Z0-9_]+")
 
 
 @dataclass
@@ -120,6 +127,9 @@ class Ctx:
     cache_home: Optional[Path] = None
     preflight_video: Optional[Callable[[], None]] = None
     youtube: bool = True
+    #: The scheduled operator channels whose token the doctor proves: a callable returning
+    #: ``[{"channel_id", "token_secret"}, ...]`` (tools/list_channels.token_rows). None = not asked.
+    channel_rows: Optional[Callable[[], List[dict]]] = None
 
     def get(self, name: str) -> str:
         return str(self.env.get(name, "") or "").strip()
@@ -781,6 +791,93 @@ def check_youtube(ctx: Ctx) -> List[Check]:
     return out + [Check(g, n, WARN, f"token refresh answered HTTP {r.status}" + (f" ({err})" if err else ""), "run the doctor again")]
 
 
+def _channel_token_rows(ctx: Ctx) -> Tuple[Optional[List[Tuple[dict, str]]], Optional[Check]]:
+    """(rows with the token each one holds, None) or (None, the warning that says they could not be listed).
+
+    CI mode (the scheduled workflow, ``DOCTOR_CHANNEL_TOKEN_ROWS`` present): the resolver job listed the
+    channels and the workflow handed over the first N secrets by position; the registry is not read here. Env
+    mode (a worker or a person at a terminal): the registry hook lists them and each token is the environment
+    variable of the same name."""
+    g = "token"
+    if CHANNEL_TOKEN_ROWS_ENV in ctx.env:
+        raw = ctx.get(CHANNEL_TOKEN_ROWS_ENV)
+        rows, ok = _load_json(raw) if raw else (None, False)
+        if not ok or not isinstance(rows, list):
+            return None, Check(g, "scheduled channels", WARN,
+                               "the list of scheduled channels could not be read, so their tokens were not checked",
+                               "open the doctor_scheduled run's 'resolve' job: the channel registry was unreadable")
+        return [(r, ctx.get(f"DOCTOR_CHANNEL_TOKEN_{i}") if i < CHANNEL_TOKEN_SLOTS else None)
+                for i, r in enumerate(rows) if isinstance(r, dict)], None
+    if ctx.channel_rows is None:
+        return [], None
+    try:
+        rows = list(ctx.channel_rows())
+    except Exception as e:
+        return None, Check(g, "scheduled channels", WARN,
+                           f"the list of scheduled channels could not be read ({type(e).__name__}), so their tokens were not checked",
+                           "run the doctor again once Supabase answers")
+    return [(r, ctx.get(str(r.get("token_secret") or ""))) for r in rows if isinstance(r, dict)], None
+
+
+def check_channel_tokens(ctx: Ctx) -> List[Check]:
+    """Every scheduled operator channel's YouTube token, one free in-memory refresh each (nothing saved).
+
+    The default channel is ``check_youtube``'s. Here: a channel whose secret is not set is a FAIL naming the
+    channel (it would be scheduled, rendered and paid for, then fail at the upload); a refused refresh token is a
+    FAIL; a Google that does not answer is a WARN (an unknown is not a no). Names are ``token/<channel id>`` so a
+    public CI log and the alert row carry the channel id and a verdict, nothing the check found."""
+    from modules.youtube_token_check import DEAD, LIVE, verdict_from_response  # noqa: PLC0415
+
+    g = "token"
+    rows, problem = _channel_token_rows(ctx)
+    if problem is not None:
+        return [problem]
+    out: List[Check] = []
+    for row, value in rows:
+        cid, secret_name = str(row.get("channel_id") or ""), str(row.get("token_secret") or "")
+        if not cid:
+            continue
+        if not _TOKEN_SECRET_NAME.fullmatch(secret_name) or value is None:
+            why = ("this channel is beyond the " + str(CHANNEL_TOKEN_SLOTS) + " tokens the workflow hands the doctor"
+                   if value is None else "its token secret name is not a CHRONOS_YT_TOKEN_<REF> name")
+            out.append(Check(g, cid, WARN, f"not checked: {why}",
+                             "check this channel's token by hand with tools/doctor.py on the worker"
+                             if value is None else "fix the channel's credential reference"))
+            continue
+        if not value:
+            out.append(Check(g, cid, FAIL, "no token secret for this scheduled channel: its upload would fail after the render is paid for",
+                             f"add the GitHub Actions secret {secret_name} (the channel's token JSON), or pause the channel"))
+            continue
+        token, ok = _load_json(value)
+        if not ok or not isinstance(token, dict) or not str(token.get("refresh_token") or "").strip():
+            out.append(Check(g, cid, FAIL, "its token secret is not a token document with a refresh token",
+                             f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}"))
+            continue
+        # The client pair comes from the token file alone, as the run reads it (youtube_token_check._read_token):
+        # no YOUTUBE_CLIENT_SECRET_JSON / GOOGLE_OAUTH_* fallback, so the doctor cannot pass a file the run refuses.
+        cid_, csecret = (str(token.get(k) or "").strip() for k in ("client_id", "client_secret"))
+        if not (cid_ and csecret):
+            out.append(Check(g, cid, FAIL, "its token has no OAuth client id/secret to refresh it with",
+                             f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}"))
+            continue
+        if not ctx.youtube:
+            out.append(Check(g, cid, SKIP, "token refresh skipped (--no-youtube)"))
+            continue
+        r = ctx.http.post_form(YOUTUBE_TOKEN_URI, {"client_id": cid_, "client_secret": csecret,
+                                                   "refresh_token": str(token["refresh_token"]), "grant_type": "refresh_token"})
+        verdict = verdict_from_response(r.status, r.data)
+        if verdict.status == LIVE:
+            out.append(Check(g, cid, PASS, "Google accepted the refresh token (checked in memory, nothing saved)"))
+        elif verdict.status == DEAD:
+            out.append(Check(g, cid, FAIL, f"Google refused this channel's token ({verdict.reason})",
+                             f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}; "
+                             "a Google OAuth app left in 'Testing' expires its tokens after 7 days"))
+        else:
+            out.append(Check(g, cid, WARN, "could not get an answer from Google" if r.status is None
+                             else f"token refresh answered HTTP {r.status}", "run the doctor again"))
+    return out
+
+
 # -- GitHub (repo side) ---------------------------------------------------------
 
 def _example_names(root: Path) -> List[str]:
@@ -952,7 +1049,7 @@ def run_checks(ctx: Ctx, *, offline: bool = False, github: bool = False, repo: O
     if offline:
         return checks
     for fn in (check_elevenlabs, check_pexels, check_leonardo, check_gemini, check_unverified,
-               check_supabase, check_youtube):
+               check_supabase, check_youtube, check_channel_tokens):
         checks += guarded(fn, ctx)
     return checks
 
@@ -1000,8 +1097,14 @@ def default_ctx(env: Optional[Mapping[str, str]] = None, **kw) -> Ctx:
         from modules import video_providers  # noqa: PLC0415
         video_providers.preflight()
 
+    def channel_rows() -> List[dict]:
+        from tools import list_channels  # noqa: PLC0415 - imports the registry; only a live run needs it
+
+        return list_channels.token_rows()
+
     return Ctx(env=env, http=kw.pop("http", None) or Http(), now=kw.pop("now", None) or datetime.now(timezone.utc),
-               preflight_video=kw.pop("preflight_video", video_preflight if live else None), **kw)
+               preflight_video=kw.pop("preflight_video", video_preflight if live else None),
+               channel_rows=kw.pop("channel_rows", channel_rows if live else None), **kw)
 
 
 def preflight_summary(env: Optional[Mapping[str, str]] = None, **kw) -> Dict[str, Any]:

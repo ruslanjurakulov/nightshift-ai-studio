@@ -475,6 +475,15 @@ def words(value, limit: int) -> str:
 
 # -- one video ------------------------------------------------------------------------------
 
+#: The alert sentence for each reason a finished video was not uploaded (held_video.HOLD_CAUSES).
+_HOLD_ALERT_COPY = {
+    "upload_failed": "alert.video_upload_failed",
+    "quota_exceeded": "alert.video_quota_exceeded",
+    "upload_limit_exceeded": "alert.video_upload_limit_exceeded",
+    "token_expired": "alert.video_token_expired",
+}
+
+
 def video_alerts(ev: Evidence, lang: str) -> list:
     """A video the publish gate blocked, one whose upload failed, one held for review: operator channels only
     (the registry the scheduler uses). All three come from the video's own row, which the run writes the moment
@@ -501,9 +510,11 @@ def video_alerts(ev: Evidence, lang: str) -> list:
         elif state == "blocked":
             out.append(_alert("pipeline", f"video:blocked:{stamp}", "warn",
                               t(lang, "alert.video_blocked", channel=safe_id(ch), video=vid), ch))
-        elif state == "held" and r.get("hold_cause") == "upload_failed":
-            out.append(_alert("pipeline", f"video:upload_failed:{stamp}", "warn",
-                              t(lang, "alert.video_upload_failed", channel=safe_id(ch), video=vid), ch))
+        elif state == "held" and r.get("hold_cause") in _HOLD_ALERT_COPY:
+            # One word per cause (modules/held_video.HOLD_CAUSES): "out of quota today" is not "broken token".
+            cause = r["hold_cause"]
+            out.append(_alert("pipeline", f"video:{cause}:{stamp}", "warn",
+                              t(lang, _HOLD_ALERT_COPY[cause], channel=safe_id(ch), video=vid), ch))
         elif state == "held":
             out.append(_alert("approval", f"video:held:{stamp}", "info",
                               t(lang, "alert.video_held", channel=safe_id(ch), video=vid), ch))
