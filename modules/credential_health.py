@@ -9,10 +9,12 @@ skip a doomed run and a human can see exactly what to fix.
 What it does NOT do
 -------------------
 * It never prints a secret — only presence/absence and our own detail strings.
-* It never makes a network call — presence here means "a key is configured",
-  not "the key is valid" (verify_voice already does the one live TTS probe; a
-  live check of every service would itself cost quota). An unknown is reported
-  as unknown, never as a pass.
+* ``check_run_credentials`` never makes a network call — presence here means "a key
+  is configured", not "the key is valid" (verify_voice already does the one live TTS
+  probe; a live check of every service would itself cost quota). An unknown is
+  reported as unknown, never as a pass. The one exception is opt-in and separate:
+  :func:`with_live_youtube_check` asks Google's OAuth endpoint whether the channel's
+  YouTube token still refreshes (free, nothing saved), for a run that will upload.
 * It is advisory by default: it reports and emits an event; whether a run aborts
   on a missing credential is the caller's decision, exactly as the pipeline
   already tolerates a missing publish token by skipping the upload.
@@ -206,3 +208,59 @@ def _youtube_check(channel) -> CredentialCheck:
             name="youtube_token", required_for_publish=True, status=UNKNOWN,
             detail=f"Could not evaluate: {type(e).__name__}.",
         )
+
+
+#: The sentence for each way a token can be dead. Fixed words only: nothing the token file or Google's reply
+#: contains is ever copied in. ``{channel}`` is the channel id.
+_DEAD_DETAIL = {
+    "invalid_grant": (
+        "Google says channel {channel}'s YouTube refresh token is expired or revoked (invalid_grant), so its upload "
+        "would fail. Authorise the channel again (tools/connect_channel.py) and update its token secret; a Google "
+        "OAuth app left in 'Testing' expires tokens after 7 days. The run stopped before anything was spent."),
+    "invalid_client": (
+        "Google refused the OAuth client behind channel {channel}'s YouTube token (invalid_client), so its upload "
+        "would fail. The client id and secret must be the pair that minted the token. The run stopped before "
+        "anything was spent."),
+    "unauthorized_client": (
+        "Google refused the OAuth client behind channel {channel}'s YouTube token (unauthorized_client), so its "
+        "upload would fail. The client id and secret must be the pair that minted the token. The run stopped "
+        "before anything was spent."),
+    "malformed": (
+        "Channel {channel}'s YouTube token is not a usable authorized-user document (a refresh token, client id or "
+        "client secret is missing), so its upload would fail. Authorise the channel again "
+        "(tools/connect_channel.py) and update its token secret. The run stopped before anything was spent."),
+}
+
+
+def with_live_youtube_check(report: HealthReport, channel, *, check=None) -> HealthReport:
+    """``report`` plus one ``youtube_token_live`` check: does the channel's YouTube token still refresh?
+
+    For a run that will upload, asked before the first paid step (CLAUDE.md rule 6). A DEAD token is a
+    required, missing credential, so the run stops through the same path as any other
+    (``HealthReport.blocking`` -> ``CredentialsMissing``, credits released by the runner). An UNKNOWN (Google did
+    not answer, even after one retry) blocks nothing: an unknown is not a no, and a network blip must not stall
+    a day's video. No token file adds nothing here (``youtube_token`` already says so). Never raises."""
+    channel_id = str(getattr(channel, "channel_id", None) or report.channel_id)
+    try:
+        from modules import youtube_token_check as ytc  # noqa: PLC0415
+
+        verdict = (check or ytc.check_channel_token)(channel)
+        if verdict.status == ytc.ABSENT:
+            return report
+        if verdict.status == ytc.DEAD:
+            new = CredentialCheck(
+                name="youtube_token_live", required=True, status=MISSING,
+                detail=_DEAD_DETAIL.get(verdict.reason, _DEAD_DETAIL["invalid_grant"]).format(channel=channel_id))
+        elif verdict.status == ytc.LIVE:
+            new = CredentialCheck(name="youtube_token_live", required_for_publish=True, status=OK)
+        else:
+            logger.warning("[channel: %s] YouTube token could not be checked before the run (%s) — "
+                           "continuing: an unknown is not a no", channel_id, verdict.reason or "no answer")
+            new = CredentialCheck(
+                name="youtube_token_live", required_for_publish=True, status=UNKNOWN,
+                detail=f"Google did not answer the token check for channel {channel_id} (after one retry); "
+                       "the run goes on — an unknown is not a no. If the token is dead the upload will fail.")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("YouTube token liveness check failed (%s) — continuing", type(e).__name__)
+        return report
+    return HealthReport(channel_id=report.channel_id, checks=report.checks + (new,))

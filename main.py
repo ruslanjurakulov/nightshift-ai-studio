@@ -47,7 +47,8 @@ from modules.avatar import (
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, effective_privacy, resolve_channel
-from modules.credential_health import CredentialsMissing, check_run_credentials, placeholder_media_allowed
+from modules.credential_health import (
+    CredentialsMissing, check_run_credentials, placeholder_media_allowed, with_live_youtube_check)
 from modules.cost_ledger import (
     CostLedger, IMAGE_GENERATIONS, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS,
     UPLOAD_BYTES, VIDEO_GEN_CLIPS,
@@ -631,6 +632,13 @@ def run(
     health = None
     try:
         health = check_run_credentials(ctx)
+        # A run that will upload asks Google, for free and before the first paid step, whether this
+        # channel's YouTube token still refreshes: a revoked or expired one used to be found only at
+        # the upload, after the script, the voice and the render were paid for. A dead token joins the
+        # blocking list below (the same early stop as a missing key); an unknown goes on. A run that
+        # will not upload (--no-upload, auto-publish off) needs no token and is not asked.
+        if not skip_upload and ctx.auto_publish:
+            health = with_live_youtube_check(health, ctx)
         if health.blocking:
             logger.error("[channel: %s] Credential preflight — MISSING required: %s",
                          channel_id, ", ".join(c.name for c in health.blocking))
