@@ -381,6 +381,11 @@ class MediaFetcher:
         import config
         from modules import cost_ledger, image_providers
 
+        # What the run's record needs to tell "generated" from "asked for": a scene
+        # whose still the model returned nothing for falls back to stock, by design,
+        # and that must not read as a generated one (CLAUDE.md #5).
+        self.images_attempted = 0
+        self.images_missing: list = []
         if not image_providers.is_enabled():
             if client is None:
                 image_providers.preflight()   # asked for but unusable: raise, don't go stock
@@ -412,6 +417,7 @@ class MediaFetcher:
         model = _safe_call(image_providers.active_model)
         image_price = _unit_price(cost_ledger.IMAGE_GENERATIONS)
         paths: list[Path] = []
+        self.images_attempted = len(eligible[:cap])
         for i, kws in eligible[:cap]:
             subject = ", ".join(dict.fromkeys(k.strip() for k in kws if k.strip())) or (topic or "").strip()
             prompt = f"{subject} — {topic}. Cinematic, high-detail, dramatic lighting.".strip(" —")
@@ -426,6 +432,8 @@ class MediaFetcher:
                 logger.warning("Image generation error for section %d (%s: %s)",
                                i, type(e).__name__, e)
                 path = None
+            if path is None:
+                self.images_missing.append(i)
             if path is not None:
                 paths.append(path)
                 # The provider receives the prompt stripped (image_providers).
