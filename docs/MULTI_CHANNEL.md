@@ -258,10 +258,18 @@ the workflow file.
   never cancels another channel's video.
 - `max-parallel: 1` — one ffmpeg render at a time on a 2-core runner.
 - A PAUSED channel is never returned, so pausing in the Command Center is what
-  actually stops it being scheduled.
-- `tools/list_channels.py` **cannot fail open**: an unloadable registry falls
+  actually stops it being scheduled. When every operator channel is paused
+  (Chronos, id `default`, included) the matrix is empty on purpose and the video
+  job is skipped.
+- `tools/list_channels.py` **fails open** when the registry raises: it falls
   back to the default channel rather than emitting an empty matrix that would
-  silently stop production.
+  silently stop production, loudly (warning plus a `::warning::` annotation).
+  In practice `ChannelRegistry` swallows a Supabase outage and synthesizes
+  `default` as ACTIVE, so a scheduler preflight reads `channels` strictly to make
+  the outage visible; while Supabase is down a channel pause cannot be seen.
+- `NIGHTSHIFT_PIPELINE_PAUSED` (repo Variable) pauses the scheduled operator
+  runs and works without Supabase; see `docs/VIDEO_GO_LIVE.md` section 8 for the
+  values, what it does not stop, and how to resume.
 
 With only the default channel configured, exactly one video job runs per day at
 15:00 UTC — unchanged.

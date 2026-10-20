@@ -228,3 +228,60 @@ Without a token it prints `SKIP` and does nothing.
   first video no longer waits for it after the script and voice are paid.
 - **First week.** Watch ElevenLabs characters, the Gemini billing page, each AI
   provider's dashboard, and `docker system df`.
+
+## 8. Pausing the scheduled operator runs
+
+`NIGHTSHIFT_PIPELINE_PAUSED` pauses the **scheduled operator runs** of
+`daily_video.yml`. It is not a stop-everything button: read "What it does not stop"
+below before relying on it.
+
+**Pause.** Set the repository **Variable** `NIGHTSHIFT_PIPELINE_PAUSED` to `true`
+(Settings > Secrets and variables > Actions > Variables). From the next hourly run,
+`daily_video.yml` resolves to an empty matrix and the `make-video` job is skipped; the
+run is green and the "Pick due channels" step logs
+`pipeline paused by NIGHTSHIFT_PIPELINE_PAUSED`. Read that step in the next hourly run
+to confirm.
+
+**The value fails closed.** Only an empty value, `0`, `false`, `no` or `off` (any case,
+spaces and one pair of quotes ignored) means "run". Anything else pauses: `1`, `true`,
+`yes`, `on`, and also a typo such as `ture`. A value that is not one of the accepted words
+logs `warning: NIGHTSHIFT_PIPELINE_PAUSED has an unrecognised value - treating as
+PAUSED` and a GitHub `::warning::` annotation (the value is never printed). The reason:
+whoever set it meant to stop something, and no video is the better failure.
+It is a Variable, not a secret and not a database flag, so it also works when Supabase
+is down.
+
+**Resume.** Delete the variable or set it to `false`. The next hourly run schedules
+channels again, each at its own `publish_hour_utc`. An hour that passed while paused is
+not made up.
+
+**Pause one channel.** Pausing a channel (or switching its schedule off) in the Command
+Center still works, and now it also works for the operator's test channel Chronos (id
+`default`). When every operator channel is paused the scheduler emits an empty matrix and
+the log says `all operator channels paused`. Before this change that case re-added
+`default` at the 15:00 UTC slot, so Chronos could not be paused.
+
+**While Supabase is down, a channel pause is invisible.** The channel registry never
+raises on a Supabase outage: it reads no rows, then synthesizes `default` as ACTIVE. The
+scheduler now does a strict read of the `channels` table first and, if it fails, prints
+`channel registry UNREADABLE (<type>) - FALLING BACK to the legacy default channel` plus a
+`::warning::` annotation, then keeps the existing fail-open behaviour (it still schedules
+`default`, so a database blip does not silently stop production). A channel pause stored
+in the database cannot be read in that state; only `NIGHTSHIFT_PIPELINE_PAUSED` stops it.
+Making that outage fail closed instead is an owner decision and is not made here.
+
+**What it does not stop**
+
+- A run already in progress. Cancel it in Actions.
+- A manual dispatch that names a channel (`--only`). A dispatch with the channel left
+  empty ("every active channel") does follow the pause and resolves to nothing.
+- Command Center "Run now", storyboard approval, `/api/agent/run`, and customer-paid API
+  or MCP `create_video` runs, which create `render_jobs`.
+- `render_jobs` and the queue worker or VPS workers (`NIGHTSHIFT_RUN_BACKEND=queue`):
+  they only run jobs somebody asked for, and nothing schedules them, so there is nothing
+  to pause there.
+- Spend from those paid or manual runs. A runaway there needs a different stop (a
+  follow-up, not part of this switch).
+
+Disabling the `Daily YouTube Video` workflow in the GitHub Actions UI is the
+GitHub-native way to stop the schedule altogether (it also stops the hourly resolver).
