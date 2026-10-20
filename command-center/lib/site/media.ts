@@ -43,24 +43,10 @@ export const MEDIA = {
   floating: { pexelsId: "39181590", kind: "video", creator: "Matheus Bertelli", creatorUrl: "https://www.pexels.com/@bertellifotografia/", sourceUrl: "https://www.pexels.com/video/floating-lanterns-on-water-at-night-39181590/", used: "/pricing (clip)" },
   loom: { pexelsId: "32655899", kind: "video", creator: "Magda Ehlers", creatorUrl: "https://www.pexels.com/@magda-ehlers-pexels/", sourceUrl: "https://www.pexels.com/video/artisan-weaving-on-traditional-loom-32655899/", used: "/solutions, creative studio (clip)" },
   desert: { pexelsId: "28638937", kind: "photo", creator: "Stephen Leonardi", creatorUrl: "https://www.pexels.com/@stephen-leonardi-587681991/", sourceUrl: "https://www.pexels.com/photo/golden-desert-sunrise-with-dramatic-sky-28638937/", used: "/login" },
-  peak: { pexelsId: "34033024", kind: "photo", creator: "Shashank Brahmavar", creatorUrl: "https://www.pexels.com/@shashank-brahmavar-737732917/", sourceUrl: "https://www.pexels.com/photo/golden-sunset-over-mount-cook-new-zealand-34033024/", used: "Landing, capability wall: Image" },
-  waterfall: { pexelsId: "8780358", kind: "photo", creator: "SpotwizardLee", creatorUrl: "https://www.pexels.com/@spotwizardlee-35777904/", sourceUrl: "https://www.pexels.com/photo/long-exposure-photography-of-the-shifen-waterfall-in-taiwan-8780358/", used: "Landing, capability wall: Video clip" },
-  mic: { pexelsId: "26280295", kind: "photo", creator: "Clement Lepetit", creatorUrl: "https://www.pexels.com/@clemlep/", sourceUrl: "https://www.pexels.com/photo/condenser-microphone-in-close-up-26280295/", used: "Landing, capability wall: Voice" },
-  reel: { pexelsId: "34084909", kind: "photo", creator: "Sami TÜRK", creatorUrl: "https://www.pexels.com/@trksami/", sourceUrl: "https://www.pexels.com/photo/close-up-of-vintage-film-reel-in-soft-light-34084909/", used: "Landing, capability wall: Edit" },
-  trails: { pexelsId: "36504036", kind: "photo", creator: "Catarina Kåsa", creatorUrl: "https://www.pexels.com/@catarina-kasa-2737553/", sourceUrl: "https://www.pexels.com/photo/vibrant-abstract-light-trails-at-night-36504036/", used: "Landing, capability wall: Animate" },
-  fibres: { pexelsId: "37955302", kind: "photo", creator: "Валерий Линк", creatorUrl: "https://www.pexels.com/@167691936/", sourceUrl: "https://www.pexels.com/photo/close-up-macro-shot-of-tan-wool-fibers-texture-37955302/", used: "Landing, capability wall: Upscale" },
-  paper: { pexelsId: "34051927", kind: "photo", creator: "Landiva Weber", creatorUrl: "https://www.pexels.com/@diva/", sourceUrl: "https://www.pexels.com/photo/colorful-abstract-paper-art-composition-34051927/", used: "Landing, capability wall: Cut out" },
-  paint: { pexelsId: "1208949", kind: "photo", creator: "Steve A Johnson", creatorUrl: "https://www.pexels.com/@steve/", sourceUrl: "https://www.pexels.com/photo/blue-and-orange-abstract-painting-1208949/", used: "Landing, capability wall: Styles" },
 } as const satisfies Record<string, MediaItem>;
 
 export type MediaId = keyof typeof MEDIA;
 
-/**
- * The capability wall on the landing: one stock photograph per tool, by the tool's id in `site.studio.tools`. They stand for the
- * tool, they are not what the tool made; the wall says so (`site.wall`). These pictures come as one 448 px file each.
- */
-export const TILE_FOR_TOOL = { image: "peak", video: "waterfall", voice: "mic", edit: "reel", animate: "trails", upscale: "fibres", cutout: "paper", styles: "paint" } as const satisfies Record<string, MediaId>;
-export const TILE_IDS = Object.values(TILE_FOR_TOOL);
 export const MEDIA_IDS = Object.keys(MEDIA) as MediaId[];
 
 /** "Photo: Tom Fisk / Pexels" from the dictionary's template ({name}). */

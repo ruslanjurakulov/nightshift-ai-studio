@@ -169,10 +169,13 @@ describe("the landing page's reasons to stay", () => {
     const section = container.querySelector("#try") as HTMLElement;
     // Drawn, not a still: the topic's own words, set on the stage (BrandArt ThumbArt), and the same topic always the same drawing.
     const thumb = () => [...section.querySelectorAll(".nx-try-thumb svg[data-art='thumb'] text")].map((x) => x.textContent);
-    expect(section.querySelector(".nx-try-thumb img")).toBeNull();
+    // The sample topic (the first) also has an AI-generated picture behind its words, with its own alt and a caption that says so; any other topic is the drawing alone.
+    expect(section.querySelector(".nx-try-thumb img")?.getAttribute("alt")).toBe(dictionaries.en.site.art.alts["thumb-silkroad"]);
+    expect(section.querySelector(".nx-try-thumb figcaption")?.textContent).toBe(`${t.thumbNote} ${t.thumbArtNote}`);
     const first = thumb();
     expect(first.length).toBeGreaterThan(0);
     fireEvent.click(within(section).getByRole("button", { name: t.topics[1] }));
+    expect(section.querySelector(".nx-try-thumb img")).toBeNull();
     expect(thumb()).not.toEqual(first);
     expect(thumb()).toEqual(thumbWords(t.topics[1]));
     expect(section.querySelector(".nx-try-thumb .nx-result-badge")?.textContent).toBe(t.tag);

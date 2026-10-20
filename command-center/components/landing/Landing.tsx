@@ -17,6 +17,8 @@ import { HeroFx } from "@/components/site/HeroFx";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
 import { SlotImg, slotSample } from "@/components/site/samples";
+import { ArtImg, HeroBackdrop } from "@/components/site/art";
+import { STEP_ART } from "@/lib/site/art";
 import { creditLine } from "@/lib/site/media";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
@@ -90,6 +92,7 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
     : null;
   return (
     <section aria-labelledby="hero-title" className="nx-hero">
+      <HeroBackdrop />
       <HeroFx />
       <div className="nx-wrap nx-hero-in nx-hero-grid">
         <div className="nx-hero-copy">
@@ -139,7 +142,7 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
   );
 }
 
-/** Three steps in a strip: a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a wall of eight stock photographs, one per tool. */
+/** Three steps in a strip: an illustration, a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a wall of eight illustrations, one per tool. The pictures are AI-generated drawings, not screenshots (lib/site/art.ts). */
 function How({ t }: { t: Dictionary }) {
   const h = t.site.how.simple;
   return (
@@ -151,6 +154,7 @@ function How({ t }: { t: Dictionary }) {
         <ol className="nx-strip" aria-label={t.site.how.slug}>
           {h.steps.map((s, i) => (
             <li key={s.id} className="nx-strip-step">
+              {s.id in STEP_ART && <ArtImg id={STEP_ART[s.id as keyof typeof STEP_ART]} alt={t.site.art.alts[STEP_ART[s.id as keyof typeof STEP_ART]]} className="nx-strip-pic" />}
               <span className="nx-strip-no" aria-hidden>
                 {i + 1}
               </span>
@@ -176,7 +180,7 @@ function Try({ t, locale }: { t: Dictionary; locale: Locale }) {
           {c.title}
         </h2>
         <p className="nx-sub">{c.lead}</p>
-        <TryDemo copy={c} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
+        <TryDemo copy={c} art={t.site.art.alts} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
       </div>
     </section>
   );

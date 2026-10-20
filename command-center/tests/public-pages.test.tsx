@@ -87,17 +87,21 @@ describe("public landing page", () => {
   it("uses only the labelled example stills for pictures: same-origin, described, and none of them a video or a real result", () => {
     const { container } = renderLanding({ kind: "announced" });
     const imgs = [...container.querySelectorAll("img")];
-    // The hero's frame (once in the phone's picture panel, once in the desktop's card), the two showcases, the closing panel's photograph and the capability wall's eight tiles.
-    expect(imgs.length).toBe(13);
+    // The hero's frame (once in the phone's picture panel, once in the desktop's card), the two showcases, the closing panel's photograph (stock stills, each with a data-sample),
+    // and the AI-generated illustrations (each with a data-art-id): the desktop hero's backdrop, the three steps, the capability wall's eight tiles and the sample thumbnail.
+    expect(imgs.length).toBe(18);
     for (const img of imgs) {
-      expect(img.getAttribute("data-sample")).toBeTruthy();
+      expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
     }
-    expect(container.querySelectorAll("video, audio, picture")).toHaveLength(0);
-    // The first screen's still is the only eager one (a phone's panel and a desktop's card each print it; the browser fetches the one it shows, the other's smallest file).
+    expect(imgs.filter((i) => i.getAttribute("data-sample"))).toHaveLength(5);
+    // The one <picture> is the hero's backdrop (it only fetches from 1024 px up).
+    expect(container.querySelectorAll("video, audio")).toHaveLength(0);
+    expect(container.querySelectorAll("picture")).toHaveLength(1);
+    // The first screen's stills are the eager ones (a phone's panel and a desktop's card each print the cloud still; the browser fetches the one it shows, the other's smallest file), and the desktop hero's backdrop.
     const eager = imgs.filter((i) => i.getAttribute("loading") === "eager");
-    expect(eager).toHaveLength(2);
-    expect(new Set(eager.map((i) => i.getAttribute("data-sample")))).toEqual(new Set(["cloud"]));
+    expect(eager).toHaveLength(3);
+    expect(new Set(eager.map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-art-id")))).toEqual(new Set(["cloud", "hero-night"]));
     expect(container.querySelector("figure.nx-chat img")?.getAttribute("loading")).toBe("eager");
     expect(container.querySelector(".nx-hero-bleed img")?.getAttribute("loading")).toBe("eager");
   });

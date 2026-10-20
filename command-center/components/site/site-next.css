@@ -1203,7 +1203,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-wall-label { margin: 6px 0 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
 .nx-wall-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; margin: 12px 0 0; padding: 0; list-style: none; }
 .nx-wall-tile { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px; min-width: 0; }
-.nx-wall-frame { display: block; aspect-ratio: 2 / 1; margin-bottom: 6px; border-radius: 16px; overflow: hidden; background: #12151c; }
+.nx-wall-frame { display: block; aspect-ratio: 4 / 3; margin-bottom: 6px; border-radius: 16px; overflow: hidden; background: #0b0a1c; }
 .nx-wall-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
 .nx-wall-name { font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.2; color: var(--ns-text); }
 .nx-wall-body { font-size: 15px; line-height: 1.35; color: var(--ns-text); }
@@ -1214,7 +1214,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-wall-editor b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
 .nx-wall-editor small { font-size: 14px; color: var(--ns-text-dim); }
 .nx-wall-note { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
-@media (min-width: 640px) { .nx-wall-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 16px; } .nx-wall-frame { aspect-ratio: 4 / 3; } }
+@media (min-width: 640px) { .nx-wall-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 16px; } }
 /* On the sign-in and sign-up stages the key is drawn, not a button: dashed, unfilled, and gone from the phone where it would sit above the real one. */
 .nx-fcard .nx-chat-key { border-style: dashed; }
 .nx-flow-rows li[data-s="approve"] .nx-chat-key { border-style: dashed; background: transparent; }
@@ -1336,3 +1336,34 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-bleed .nx-clip-pause { top: 12px; right: 12px; bottom: auto; z-index: 3; }
 /* Focus on a picture: the stage amber (the public site's focus colour; the light theme's darker amber would be lost on a photograph) outside a dark gap, so it reads against any footage. The tokens have literal fallbacks: /mcp's header is outside .nx, where they are undefined, and an unresolved var() in `outline` drops the whole ring. */
 .nx-clip-pause:focus-visible { outline: 3px solid var(--nx-stage-amber, #ffa940); outline-offset: 2px; box-shadow: 0 0 0 2px rgba(8, 8, 8, 0.9); }
+
+/* ── The illustrations (lib/site/art.ts, made with AI and said so on the page): the steps' pictures, the tool tiles' (above), the sample thumbnail's background and the desktop hero's backdrop ── */
+/* The pictures are dark in both themes, so each sits in a rounded dark box of its own (never inverted, never on the page's light ground): a light page shows a dark card. */
+.nx-strip-pic { display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 20px; background: #0b0a1c; object-fit: cover; }
+@media (max-width: 859px) {
+  /* A phone: the picture is a small square at the left of the step; the numeral drops to a small label above the title. */
+  .nx-strip-step:has(.nx-strip-pic) { grid-template-columns: 88px minmax(0, 1fr); column-gap: 16px; }
+  .nx-strip-step:has(.nx-strip-pic) .nx-strip-pic { grid-column: 1; grid-row: 1 / span 3; width: 88px; border-radius: 16px; }
+  .nx-strip-step:has(.nx-strip-pic) .nx-strip-no { grid-column: 2; grid-row: 1; font-size: 22px; letter-spacing: 0; }
+}
+@media (min-width: 860px) {
+  .nx-strip-pic { margin-bottom: 20px; }
+}
+/* The tallest step sets the row; the others keep their numeral under their picture instead of stretching the rows apart. */
+.nx-strip-step { align-content: start; }
+/* The Silk Road example's thumbnail: the picture fills the box (cover), a scrim from the left keeps the words, which sit on the left, over its dark and mid tones. */
+.nx-try-thumb-bg { object-fit: cover; object-position: 70% 50%; }
+.nx-try-thumb-scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6, 6, 12, 0.86) 0%, rgba(6, 6, 12, 0.78) 55%, rgba(6, 6, 12, 0.3) 100%); }
+/* The hero's backdrop (components/site/art.tsx HeroBackdrop) is wanted from 1024 px up only; the phone panel below that has its own footage. The hero is dark in both themes there,
+   like the phone panel, the showcases and the closing panel, so its words are white on a dark base whatever the page's theme: the copy column re-binds the text tokens (the chat card,
+   a sibling, keeps the theme's own). The picture's left 40% is empty on purpose; the scrim only deepens it where a plant or the window reaches under the headline. */
+.nx-hero-bg { display: none; }
+@media (min-width: 1024px) {
+  .nx-hero { background: #0b0a09; border-radius: 0 0 28px 28px; }
+  .nx-hero-bg { display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+  .nx-hero-bg img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 100% 50%; }
+  .nx-hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6, 6, 12, 0.5) 0%, rgba(6, 6, 12, 0.44) 50%, rgba(6, 6, 12, 0) 78%); }
+  .nx-hero .nx-fx { display: none; }
+  .nx-hero-copy { --ns-text: #fff; --ns-text-dim: rgba(255, 255, 255, 0.88); --ns-rule-strong: rgba(255, 255, 255, 0.4); --ns-console: rgba(8, 8, 8, 0.66); --st-act-ink: #b3acff; --ns-go: #5ee0a0; color: #fff; }
+  .nx-hero-copy .nx-h1 { text-shadow: 0 1px 24px rgba(0, 0, 0, 0.35); }
+}
