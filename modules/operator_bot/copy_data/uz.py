@@ -365,6 +365,7 @@ TABLE = {
     "status.videos_unknown": "Videolar: {why}",
     "status.held": "Tekshiruvga ushlangan: {n}{cut}",
     "status.blocked": "Darvoza bloklagan va saqlangan: {n}",
+    "status.held_early": "Video yaratilishidan oldin toʻxtatilgan (tayyor video yoʻq): {n}",
     "status.published_unknown": "Chiqarilgan videolar: {why}",
     "status.published": "Chiqarilgan: 24 soatda {day}, 7 kunda {week}{cut}",
     "status.footer": "Faqat sonlar, bazadan. Bu yerdan hech narsa chiqarilmaydi va tasdiqlanmaydi.",
@@ -375,6 +376,7 @@ TABLE = {
     "pending.v_line": "• {id} · {channel} · {state} · {age}",
     "pending.v_more": "yana {n} ta",
     "pending.v_blocked": "Darvoza bloklagan va saqlangan: {n}",
+    "pending.v_held_early": "Video yaratilishidan oldin toʻxtatilgan (tayyor video yoʻq): {n}",
     "pending.v_footer": "Faqat id, sarlavhasiz. Qarorni ilovada qabul qiling: bu yerdan hech narsa chiqarilmaydi.",
 
     # -- marketing: faqat axborot (sonlar va yopiq kodlar, postning soʻzlari hech qachon) --
@@ -491,6 +493,7 @@ TABLE = {
     "alert.deadman_hint_old": "GitHub ishga tushirishlar roʻyxati bu slotgacha yetmaydi, sababni aytib boʻlmaydi.",
     "alert.run_failed_nojobs": "Kunlik video ishga tushirilishi #{number} ({event}) tugadi: {conclusion} — {sha}",
     "alert.video_blocked": "Nashr filtri videoni toʻxtatdi — kanal {channel}, video {video}",
+    "alert.video_held_early": "Ssenariy video yaratilishidan oldin toʻxtatildi (tayyor video yoʻq) — kanal {channel}, video {video}",
     "alert.video_held": "Video koʻrib chiqishni kutmoqda — kanal {channel}, video {video}",
     "alert.video_upload_failed": "Yuklash amalga oshmadi — kanal {channel}, video {video}",
     "alert.video_quota_exceeded": "Yuklash kechiktirildi: YouTube API kunlik kvotasi tugadi — kanal {channel}, video {video}. Kvota oʻzi tiklanadi; videoni ertaga qayta yuboring.",

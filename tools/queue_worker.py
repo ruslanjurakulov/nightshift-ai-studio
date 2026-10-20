@@ -128,6 +128,7 @@ from modules import comment_replies  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
 from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
+from modules.publish_gate import HELD_BEFORE_RENDER_EXIT  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
@@ -1313,6 +1314,13 @@ class Worker:
                 return end("failed", format_error(
                     f"main.py exited with code {rc}: the channel's spend ceiling stopped the run "
                     "before anything was spent; nothing was charged", tail, self._secrets))
+            if rc == HELD_BEFORE_RENDER_EXIT:
+                # The fact-check would block the publish gate: the run stopped before
+                # the voice and the render were bought. No video, so the job fails
+                # and the hold is released; the held row says why.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: the fact-check held the script before the video "
+                    "was made; nothing was charged", tail, self._secrets))
             return end("failed", format_error(f"main.py exited with code {rc}", tail, self._secrets))
         finally:
             done.set()

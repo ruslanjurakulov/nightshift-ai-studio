@@ -366,6 +366,7 @@ TABLE = {
     "status.videos_unknown": "Videos: {why}",
     "status.held": "Held for review: {n}{cut}",
     "status.blocked": "Blocked by the gate and kept: {n}",
+    "status.held_early": "Held before the video was made (no cut exists): {n}",
     "status.published_unknown": "Published videos: {why}",
     "status.published": "Published: {day} in 24 hours, {week} in 7 days{cut}",
     "status.footer": "Counts only, from the database. Nothing here publishes or approves.",
@@ -376,6 +377,7 @@ TABLE = {
     "pending.v_line": "• {id} · {channel} · {state} · {age}",
     "pending.v_more": "+{n} more",
     "pending.v_blocked": "Blocked by the gate and kept: {n}",
+    "pending.v_held_early": "Held before the video was made (no cut exists): {n}",
     "pending.v_footer": "Ids only, no titles. Decide in the app: nothing here publishes.",
 
     # -- marketing: information only (counts and closed codes, never a post's words) --
@@ -492,6 +494,7 @@ TABLE = {
     "alert.deadman_hint_old": "The GitHub run list does not reach back to that slot, so the cause cannot be told.",
     "alert.run_failed_nojobs": "Daily video run #{number} ({event}) ended {conclusion} — {sha}",
     "alert.video_blocked": "The publish gate blocked a video — channel {channel}, video {video}",
+    "alert.video_held_early": "A script was held before its video was made (no cut exists) — channel {channel}, video {video}",
     "alert.video_held": "Video held for review — channel {channel}, video {video}",
     "alert.video_upload_failed": "Upload failed — channel {channel}, video {video}",
     "alert.video_quota_exceeded": "Upload held: the daily YouTube API quota is used up — channel {channel}, video {video}. The quota resets by itself; send the video again tomorrow.",

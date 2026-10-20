@@ -265,8 +265,10 @@ It is a Variable, not a secret and not a database flag, so it also works when Su
 is down.
 
 **Resume.** Delete the variable or set it to `false`. The next hourly run schedules
-channels again, each at its own `publish_hour_utc`. An hour that passed while paused is
-not made up.
+channels again, each at its own `publish_hour_utc`. A slot that passed while paused is
+made up only if you resume within the catch-up window (section 9) of that slot, and only
+if the slot has no run recorded; set `NIGHTSHIFT_CATCHUP_HOURS=0` if you want a resume to
+never start a past slot.
 
 **Pause one channel.** Pausing a channel (or switching its schedule off) in the Command
 Center still works, and now it also works for the operator's test channel Chronos (id
@@ -298,3 +300,87 @@ Making that outage fail closed instead is an owner decision and is not made here
 
 Disabling the `Daily YouTube Video` workflow in the GitHub Actions UI is the
 GitHub-native way to stop the schedule altogether (it also stops the hourly resolver).
+
+## 9. A late or repeated schedule: catch-up, once per slot, topic memory
+
+GitHub's cron is best effort: an hourly run can start late, or be dropped. Before this,
+`daily_video.yml` ran only the channels whose `publish_hour_utc` equals the current UTC hour,
+so a run delayed past the top of the hour skipped that channel's whole day, and nothing
+noticed except the dead-man alert (`docs/operator-bot.md`). Everything below is reliability
+only: it adds no publishing power, the schedule still passes `--privacy private`, and a run it
+starts is the same run the exact hour would have started.
+
+**Catch-up window.** A channel is due when its slot hour passed within the last
+`NIGHTSHIFT_CATCHUP_HOURS` hours and its slot has no run recorded. Set it as a repository
+**Variable** (like `NIGHTSHIFT_PIPELINE_PAUSED`): unset = 1, `0` (or `off`) = no catch-up,
+1-6 = that many hours, above 6 = 6. A value that is not a whole number is the default (1)
+with a `::warning::` that never echoes it. One hour is what a late or dropped cron needs (the next
+hourly run is the catch-up); a wider window only buys more paid retries of a run that died without
+writing a row (see "A failed run" below), so widen it deliberately. The log line is
+`<channel> missed its <slot> UTC slot (<n>h ago) - catching up`.
+
+**What counts as "a run was recorded".** The dead-man switch's own evidence, read from
+Supabase through the same helpers (`modules/operator_bot/reliability.py`): a video row
+(uploaded, held or blocked), a storyboard waiting for a person, or a run event, for that
+channel since the slot began and before the next slot. One definition, so the alarm and the
+catch-up cannot disagree. A slot that has any of it is not scheduled again, **at its exact
+hour either** (for example after a manual run at 15:00:30). A named manual dispatch of the same
+channel that finishes after the slot began counts as that slot's evidence too: a manual video at
+15:20 means the 15:00 slot is not run again.
+
+**Fail safe.** If that evidence cannot be read (Supabase down, a source cut at its row
+limit, the channel not in the `channels` table) it is an unknown, and an unknown never starts
+a paid run: the exact hour runs exactly as it always did, a catch-up does not happen, and a
+`::warning::` names the channel. A registry that could not be read (the existing default-channel
+fallback) also gets no catch-up. A channel that was created or edited after the slot began and
+has produced nothing was never due for that slot (the dead-man's rule), so changing a channel's
+hour or switching it on at 15:30 does not start the 14:00 slot.
+
+**It can never run when paused.** The global switch `NIGHTSHIFT_PIPELINE_PAUSED` returns
+before any of this; the candidates are only the channels the scheduler already allows
+(ACTIVE, schedule on, verified, the operator's own), so a paused channel, a channel whose
+schedule is off and a customer's channel are never caught up. The one thing to know: the
+variable has no history, so if you pause and then resume inside the window, the slot that
+passed during the pause is eligible. Set the window to 0 before resuming if you do not want that.
+
+**One scheduled run per channel and slot.** The `make-video` job has a `concurrency` group for
+scheduled runs only: `nightshift-slot-<channel>-<slot date>`, `cancel-in-progress: false`, so a late
+cron and a catch-up queue instead of rendering twice at once and racing on the history cache. Nothing
+running is ever cancelled. GitHub keeps one *pending* job per group, so a newer pending scheduled job
+replaces an older one (it shows as cancelled); that is harmless, the next hour asks again. **Every
+manual dispatch** (a named channel, a Command Center "Run now" that carries a credit hold, an
+all-channels run) gets a group of its own (`nightshift-manual-<channel>-<run id>`), so it is never
+queued behind or replaced by anything and behaves exactly as before this change; in particular a paid
+run can never be cancelled before it claims its credit hold. The group is per channel, so it does not
+change `max-parallel: 1` (which only limits how many of one run's channels render at once). A manual
+run and a scheduled run of the same channel can therefore overlap in time; do not dispatch near the
+cron hour unless you want that.
+
+**The run asks again.** A scheduled job that waited in the group can start up to an hour after the
+resolver chose it, so before it spends anything it re-checks (`tools/slot_guard.py`, first thing in
+the "Run Chronos bot" step): is `NIGHTSHIFT_PIPELINE_PAUSED` on, is the channel still ACTIVE, schedule on,
+verified and the operator's own, and does the slot still have no run. The run ahead of it has finished by
+then and its video row exists, so the queued job stops with a green step and a log line saying why
+(the step's `skipped` output is written but nothing reads it). This is the "already ran today" guard in
+the run itself. A **manual dispatch that names a channel always runs** (it is an explicit instruction and
+ignores the pause, as before). If the guard itself fails or cannot read, an exact-hour run goes ahead as
+before and a catch-up does not. Known cost: a skipped job has already run checkout, `pip install` and the
+token steps before the guard, and saves an (unchanged) history cache entry; the install order is not
+changed here.
+
+**A failed run does not count as "worked", and is retried.** The evidence is a video, held or blocked
+row, a storyboard or a run event. A run that dies before it writes any of them (an OOM or timeout at
+render, a provider outage) leaves no evidence, so the next hourly run inside the window runs the slot
+again, up to the window (default 1, so one retry). That is a retry of paid work: the per-run and daily USD
+caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`) only bite when the `CHRONOS_PRICE_*` prices are set,
+and with none set the unpriced spend is not capped. The dead-man alert is the signal for a run that failed;
+`NIGHTSHIFT_CATCHUP_HOURS=0` switches the retry off. Follow-up idea, not in this change: have the run write a
+direct "slot claimed" row when it starts, so a started-and-failed run is distinguishable from a never-started one.
+
+**Topic memory survives a lost cache.** `history/topics.json` is only an Actions cache (evicted
+after 7 days). When a channel has no topics of its own locally, the run now rebuilds them from
+that channel's `videos` rows (uploaded, held and blocked; the last 200 topics of the last 365 days,
+the same window the dedup uses) before it picks a topic, in the file's existing format. It only
+reads; if Supabase cannot be read the run goes on with whatever local history exists and logs a
+warning. Titles are never logged, only counts. The semantic duplicate store
+(`topic_vectors*.npz`) is refilled from them too when it is empty.

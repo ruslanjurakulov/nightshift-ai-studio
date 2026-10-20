@@ -46,7 +46,7 @@ def video(vid="vid1", cid="default", state="held", held=None, published=None, de
     """A videos row as the server answers the bot's select: the hold's cause is the one word the path select returns."""
     return {"video_id": vid, "channel_id": cid, "publish_state": state, "video_format": fmt, "parent_video_id": parent,
             "held_at": iso(held) if held else None, "published_at": iso(published) if published else None,
-            "hold_cause": (detail or {}).get("cause")}
+            "hold_cause": (detail or {}).get("cause"), "hold_stage": (detail or {}).get("stage")}
 
 
 def storyboard(when, cid="default", sid="sb1"):
@@ -392,7 +392,7 @@ class UnknownIsNotSilenceTestCase(unittest.TestCase):
         vids = [p for tbl, p in ops.sync.reads if tbl == "videos"][0]
         self.assertEqual(vids["channel_id"], "in.(default)")
         self.assertEqual(vids["select"], "video_id,channel_id,publish_state,published_at,held_at,video_format,"
-                                         "parent_video_id,hold_cause:hold_detail->>cause")
+                                         "parent_video_id,hold_cause:hold_detail->>cause,hold_stage:hold_detail->>stage")
         # no server-side parent filter: the mirror writes '' not NULL, and is.null would drop every master
         self.assertNotIn("parent_video_id", vids)
         boards = [p for tbl, p in ops.sync.reads if tbl == "storyboards"][0]
@@ -872,7 +872,7 @@ class VideoEventsTestCase(unittest.TestCase):
         self.assertEqual(sec.data[0]["video_id"], "run-jjjj")
         for _table, params in sync.reads:
             self.assertNotIn("hold_detail,", params["select"] + ",")             # the whole JSON is never asked for
-            self.assertNotIn("hold_detail", params["select"].replace("hold_detail->>cause", ""))
+            self.assertNotIn("hold_detail", params["select"].replace("hold_detail->>cause", "").replace("hold_detail->>stage", ""))
 
     def test_repurposed_shorts_are_neither_alerts_nor_slot_evidence(self):
         shorts = [video(f"short{i}", state="held", held=at(14, 15, 30), fmt="short", parent="master1") for i in range(20)]

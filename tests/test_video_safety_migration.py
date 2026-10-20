@@ -19,7 +19,13 @@ ROLLBACK = (REPO / "docs" / "sql" / "rollback_0111_video_safety.sql").read_text(
 REPLACED = {"render_jobs_payment_guard": "0076_scene_regenerate.sql", "api_get_job": "0042_web_api_hardening.sql",
             "oauth_get_job": "0093_mcp_oauth.sql"}
 NEW = {"render_job_public_error"}
-CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "unknown"]
+CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "held", "unknown"]
+#: Codes the worker and the web app know that migration 0111's SQL helper does not yet list. `held` (the accuracy check
+#: held the script before any video was made) arrived with a PR that may add no migration, so the public API and MCP
+#: callers (api_get_job, oauth_get_job) read a `[code:held]` job as `unknown` until a follow-up migration adds it to
+#: render_job_public_error. The web app's own mapping (parseJobError, create.jobError) already has it. Remove the code
+#: from this tuple when that migration lands and the parity below must hold again.
+SQL_PENDING = ("held",)
 
 
 def code(text):
@@ -124,7 +130,8 @@ class TheJobErrorMapping(unittest.TestCase):
         for c in CODES:
             self.assertRegex(py, rf'{c.upper()} = "{c}"')
         known = re.search(r"if v_code not in \((.*?)\) then", self.helper, re.S).group(1)
-        self.assertEqual(re.findall(r"'(\w+)'", known), CODES[:-1])      # unknown is the fall-through, not a listed code
+        self.assertEqual(re.findall(r"'(\w+)'", known),
+                         [c for c in CODES[:-1] if c not in SQL_PENDING])   # unknown is the fall-through, not a listed code
 
     def test_the_sentences_are_the_create_pages_word_for_word(self):
         en = (REPO / "command-center" / "lib" / "i18n" / "en.ts").read_text(encoding="utf-8")
@@ -133,7 +140,7 @@ class TheJobErrorMapping(unittest.TestCase):
         self.assertEqual(sorted(ts), sorted(CODES))
         sql = dict(re.findall(r"when '(\w+)' then '([^']*)'", self.helper))
         sql["unknown"] = re.search(r"else '([^']*)'", self.helper).group(1)
-        self.assertEqual(sql, ts)
+        self.assertEqual(sql, {k: v for k, v in ts.items() if k not in SQL_PENDING})
 
     def test_only_a_failed_job_with_text_is_explained_and_the_rest_reads_null(self):
         self.assertRegex(self.helper, r"if p_status is distinct from 'failed' or p_error is null or p_error = '' then\s+"

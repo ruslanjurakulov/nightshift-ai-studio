@@ -308,6 +308,17 @@ class Evidence:
         return self.produced(channel_id) + self._times(self.events.data, self.events.ok, channel_id, "ts")
 
 
+#: A slot owns the day from its start to the next slot: any evidence inside it is that slot's.
+SLOT_SPAN = timedelta(days=1)
+
+
+def slot_worked(stamps: list, start: datetime) -> bool:
+    """Is there evidence (a time in ``stamps``) that the slot starting at ``start`` was worked? One definition,
+    shared by the dead-man switch (silence is the absence of this) and the scheduler's catch-up (a slot that was
+    worked is never run again), so the two can never disagree about what "a run happened" means."""
+    return any(start <= s < start + SLOT_SPAN for s in stamps)
+
+
 def due(ch: "Scheduled", start: datetime, stamps: list) -> bool:
     """Was this slot ever expected of the channel? Not when it has never produced anything and was created or
     switched on after the slot began (its first run is the next slot, not one that already passed)."""
@@ -358,19 +369,18 @@ def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Ver
         grace = ch.grace_h or grace_default
         for day in (now.date(), now.date() - timedelta(days=1)):
             start = slot_start(day, ch.hour)
-            end = start + timedelta(days=1)        # the next slot's own output is not this slot's
             deadline = start + timedelta(hours=grace)
             if now < deadline:
                 continue
             key = f"deadman:{ch.channel_id}:{day.isoformat()}"
             label = slot_label(day, ch.hour)
-            if any(start <= s < end for s in produced):
+            if slot_worked(produced, start):       # the next slot's own output is not this slot's
                 verdicts.fine[key] = ("pipeline", ch.channel_id,
                                       t(lang, "alert.deadman_ok", channel=ch.channel_id, slot=label))
                 continue
             # Only the run's own events: they say a run began, which silences the alarm, but not that a video
             # exists, so they never earn a "recovered" note.
-            if any(start <= s < end for s in stamps) or not due(ch, start, stamps):
+            if slot_worked(stamps, start) or not due(ch, start, stamps):
                 continue
             if not ev.known:
                 continue                 # evidence cannot be proven absent: an unknown, not silence
@@ -493,7 +503,11 @@ def video_alerts(ev: Evidence, lang: str) -> list:
         if not now - EVENT_WINDOW <= held <= now + timedelta(minutes=5):
             continue
         stamp = vid                      # keyed on the video, not on when it was last held: a re-hold is not news
-        if state == "blocked":
+        if state == "blocked" and r.get("hold_stage") == "before_render":
+            # Held before the video was made (the accuracy check stopped the script): no cut exists.
+            out.append(_alert("pipeline", f"video:blocked:{stamp}", "warn",
+                              t(lang, "alert.video_held_early", channel=safe_id(ch), video=vid), ch))
+        elif state == "blocked":
             out.append(_alert("pipeline", f"video:blocked:{stamp}", "warn",
                               t(lang, "alert.video_blocked", channel=safe_id(ch), video=vid), ch))
         elif state == "held" and r.get("hold_cause") in _HOLD_ALERT_COPY:
