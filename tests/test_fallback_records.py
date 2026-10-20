@@ -113,6 +113,37 @@ class VoiceRecord(unittest.TestCase):
         self.assertNotIn("B" * 20, repr(got))
 
 
+class VoiceRecordCannotStopARun(unittest.TestCase):
+    """A record of the voice is written after the script and the voice are paid
+    for: whatever goes wrong while describing it, the run goes on."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import main
+        except Exception as e:   # the render stack (moviepy, whisper) is missing here
+            raise unittest.SkipTest(f"main.py cannot be imported here: {type(e).__name__}")
+        cls.main = main
+
+    def test_a_good_description_is_recorded(self):
+        class M:
+            def describe_voice(self):
+                return {"provider": "edge", "source": "default"}
+        self.assertEqual(self.main._voice_record(M()), {"provider": "edge", "source": "default"})
+
+    def test_a_mixer_without_the_method_records_nothing_and_does_not_raise(self):
+        self.assertEqual(self.main._voice_record(object()), {})
+
+    def test_a_describe_that_raises_records_nothing_and_does_not_raise(self):
+        class M:
+            def describe_voice(self):
+                raise RuntimeError("boom")
+        self.assertEqual(self.main._voice_record(M()), {})
+
+    def test_a_describe_that_returns_something_odd_records_nothing(self):
+        self.assertEqual(self.main._voice_record(mock.MagicMock()), {})
+
+
 class MainWiring(unittest.TestCase):
     def setUp(self):
         src = MAIN.read_text()
@@ -122,7 +153,7 @@ class MainWiring(unittest.TestCase):
     def test_the_voice_event_carries_what_voice_it_was(self):
         body = self.run_src
         emit = body[body.index("events.VOICE_COMPLETED"):]
-        self.assertIn("metadata=mixer.describe_voice()", emit[:300])
+        self.assertIn("metadata=_voice_record(mixer)", emit[:300])
 
     def test_the_still_event_says_how_many_were_wanted_and_which_scenes_fell_back(self):
         body = self.run_src

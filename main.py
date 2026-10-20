@@ -447,6 +447,17 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
     return allowed
 
 
+def _voice_record(mixer) -> dict:
+    """What the voice event records about the narrator. A record must never be
+    able to stop a run that has already paid for its script: any failure here
+    logs and records nothing."""
+    try:
+        return dict(mixer.describe_voice())
+    except Exception as e:
+        logger.warning("Could not describe the voice for the run record (%s)", type(e).__name__)
+        return {}
+
+
 def _preflight_disk(channel_id, free_fn=None) -> None:
     """Refuse the run, before it spends anything, when the volume holding ``output/`` is nearly full.
 
@@ -962,7 +973,7 @@ def run(
     # Only what was actually synthesized — cached segments cost nothing this run.
     costs.add(TTS_CHARACTERS, mixer.characters_synthesized, stage="voice")
     events.emit(events.VOICE_COMPLETED, agent="audio_mixer", status=events.STATUS_COMPLETED,
-                channel_id=channel_id, metadata=mixer.describe_voice())
+                channel_id=channel_id, metadata=_voice_record(mixer))
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_VOICE, artifacts={"audio": str(audio_path)})
 
     # ── Stage 4: Media
