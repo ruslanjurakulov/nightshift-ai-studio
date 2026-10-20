@@ -244,6 +244,8 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `marketing` | **information only** (see "Marketing" below): posts waiting for your approval (a count: "2 posts are waiting for your approval"); a post that ended `dead` (unconfirmed: "check the channel, do not resend") or `failed` (with its closed error code and the named fix), in the last 24 h; a post that was sent (its kind and time). Never a post's words, link, media or any chat id | info (drafts, sent) / warn (failed) / **critical** (dead) | drafts: when the waiting count RISES above the last count seen (a fall, such as you approving one of two, is noted silently, and 0 clears the memory); a result once |
 | `email` | the owner e-mail copy is failing (two failed deliveries in a row), once per day, info only | info | once a day while it lasts |
 | `audit` | an operator-level audit event with no channel (see above) | **critical** | once |
+| `pipeline` | **silence and per-run failures** (see "Reliability alerts" below): no video, held row or run event for a scheduled operator channel by its publish hour + `OPERATOR_DEADMAN_HOURS` (the dead-man switch); a failed scheduled or dispatched `daily_video.yml` run; a video the publish gate blocked; a failed upload | warn | once per channel per UTC day (dead-man), once per run / video |
+| `health` | the scheduled readiness check (`doctor_scheduled.yml`) is failing a check, or has stopped reporting for 30 h; a provider balance snapshot has not refreshed for 30 h (a rejected key or a dead schedule) | warn | once per check / provider per UTC day while it lasts |
 
 Restraint, so it never spams:
 
@@ -296,6 +298,140 @@ sender, the optional `OWNER_EMAIL_KINDS`, and for local runs `NIGHTSHIFT_EMAIL_T
 failed e-mail is retried a bounded number of times and a sent one never repeats)
 and obeys the same mute, quiet hours, digest hour, language and hourly figure.
 Design, settings and the phone steps: `docs/OWNER_EMAIL.md`.
+
+### Reliability alerts: silence is an incident
+
+The kinds above fire when something FAILS. These cover the day nothing happened
+(modules/operator_bot/reliability.py). They only read: nothing here starts,
+retries, repairs, spends or publishes, and a failing detector logs once and costs
+the others nothing. A source that cannot answer is an unknown and is silent (an
+unreadable table is not an incident); an unknown is never rendered as "missing".
+
+* **Dead-man switch** (kind `pipeline`, warn). A channel the scheduler runs (the same
+  filter as `tools/list_channels.py`: ACTIVE, schedule enabled, verified, the
+  operator's own organization; customer channels are not scheduled and so not
+  watched) has a slot at its `publish_hour_utc` (15 when unset, as the scheduler
+  does). If by slot + grace hours there is no video row (made, held or blocked:
+  the run writes it the moment it ends), no storyboard waiting for a person
+  (`storyboards`), and no run event (`system.started`, `render.completed`,
+  `upload.completed`, `video.published`, `publish.held`, `publish.blocked`,
+  `upload.failed`, `storyboard.ready`) for that channel since the slot, one alert says "No video from channel X for its
+  2026-10-19 15:00 UTC slot" and names the likeliest cause from the workflow's run
+  list: the daily workflow never started (GitHub's schedule did not fire), it is
+  queued with nothing running, its latest run failed, or it ended without making
+  anything. Key `deadman:<channel>:<UTC date>`: one alert per channel per day, however
+  long the silence lasts; a later day is a new alert. The grace is
+  `OPERATOR_DEADMAN_HOURS` (default 3, 1-12, `off` disables) or, per channel,
+  `schedule_config.deadman_grace_hours` (read only; the Command Center does not
+  write it yet, and saving the schedule there may drop it).
+  Arithmetic: the slot is the UTC hour of each day; today's and yesterday's slots
+  are judged (a night in quiet hours does not swallow yesterday's), and any evidence
+  from the slot until the next slot counts, a late manual run included; the next
+  slot's own video never covers for a missed one. A run still `in_progress` (under 4 h old) is not silence; a
+  channel that is PAUSED, schedule-disabled or unverified is not expected; a channel
+  that never produced anything and was created or edited after the slot began was
+  not due (its first slot is the next one). Repurposed Shorts (migration 0080: rows of
+  their own, `parent_video_id` set, `video_format` short) are neither slot evidence nor
+  alerts; they are filtered in the bot, not by the query, because the daily mirror
+  stores a missing parent as an empty string, which `is.null` would not match. A scene
+  repair updates its video's row in place (`repaired_awaiting_review`): that row stays
+  slot evidence, but is never announced as held. The default channel is expected
+  without a `channels` row once the table has any row AND no organization owns the id
+  `default` (the registry synthesizes it only then; one extra read of the id, and an
+  unreadable answer is "blind", not a schedule); an entirely empty table is an
+  unknown, not a schedule.
+  A source that stays unreadable for 6 continuous hours is said once a day as an
+  information alert in kind `health` ("the dead-man switch cannot judge: <source>",
+  key `blind:<source>:<date>`, from silent hourly `blindmark:` rows): a switch that
+  cannot see is not a quiet system. With `OPERATOR_DEADMAN_HOURS=off` no digest cell
+  says MISSING either.
+* **The daily workflow itself** (kind `pipeline`, warn). A finished `daily_video.yml`
+  run (scheduled or manual dispatch, any branch) that ended `failure`, `timed_out`
+  or `startup_failure` within 12 h: which jobs failed and at which step (the
+  workflow's own names, never a log). An hourly schedule that is broken fails every
+  hour, so identical failures in the window are ONE alert per cause per UTC day, about
+  the newest and counting the rest; a different failure the same day (another job or
+  step) is its own alert (key `wf:daily:<date>:<first failing job>-<first failing step>`,
+  `run` when the jobs cannot be read; up to 6 runs' jobs are looked up per pass, the
+  rest join the newest cause). A channel is named only if it is one
+  of the operator's own; any other job is "a customer channel". Read through the
+  token the bot already uses for `/deploys` (`GITHUB_TOKEN`, Actions: read; up to
+  100 runs, so a slot older than the list says "cannot tell", not "did not fire").
+  The cause named in the dead-man alert is chosen in order: a live run excuses the
+  silence, then a failed run since the slot, then a run queued in the slot's hour,
+  then the rest.
+* **Per video** (operator channels only), from the video's own row, which the run writes
+  the moment it ends (the event log is mirrored only by the daily intelligence poll, so
+  it can silence the dead-man alarm but never raise one). The publish gate blocked a
+  video (kind `pipeline`, warn); an upload failed (kind `pipeline`, warn: the run
+  records a held row whose `hold_detail.cause` is `upload_failed` and the workflow
+  ends GREEN, so this row is the only place it is heard); a video was held for review
+  (kind `approval`, info: it is routine while auto publish is off, and it is not
+  e-mailed). Ids only, never a title. Only the one word `hold_detail->>cause` is
+  selected (PostgREST path select, checked against fakes only: if a server refuses
+  it the read repeats without it, so the dead-man evidence is unaffected and only the
+  upload-failed alert is lost); the gate verdict is never read. One alert per video
+  (`video:<what>:<video id>`), however often a resumed run holds it again.
+* **Scheduled readiness check** (kind `health`, warn). `doctor_scheduled.yml` runs
+  `tools/doctor_report.py` every 6 h: the doctor's read-only checks (a rejected or
+  expired YouTube refresh token, a dead or empty provider key, a missing secret, an
+  unapplied migration ...) and ONE row in the alert feed (`operator.doctor`: ok or
+  fail and the failing checks' names, no value, no channel). Each failing check is
+  one alert per UTC day (`doctor:check:<name>:<date>`); 30 h without a row is one
+  too (`doctor:stale:<date>`), because a dead check is silence. A failure that looks
+  like the provider's own hiccup (rate-limited, unreachable, HTTP 5xx; marked `~` in
+  the row) is said only when the check before it failed too; a refused key, a revoked
+  token or a missing secret is said at once. A row holds at most 6 names (cut to 40
+  characters); `+N` counts the rest, so a long list never makes a failure vanish. The
+  repository may be public, so in CI the job log and summary show only `group/name`
+  and PASS / WARN / FAIL, never a balance, plan or model; the full report is for a
+  local run. Not proven: other operator channels' own tokens (Actions cannot list
+  secrets), and the `host` group (the runner is not the render machine).
+* **Providers.** A balance snapshot that has not refreshed for 30 h (and less than
+  7 days: past a week the provider is assumed retired), `provider:stale:<name>:<date>`
+  (kind `health`); a non-ElevenLabs balance at zero (kind `balance`; ElevenLabs
+  already has the "low" alert).
+* **Recovered.** An alert that was delivered and whose condition has cleared is
+  followed once by an information note (key `ok:<alert key>`, same kind). A
+  condition that was never judged is not called recovered, an alert that was only
+  marked as seen (muted, or the first run) gets no note, and a hiccup that was never
+  announced is never "recovered". Recovered notes (and the blind-source note) go to
+  Telegram only; the owner e-mail carries problems.
+* **Digest.** The Telegram digest, `/today` and the owner's e-mail digest show, per
+  scheduled channel, videos made against the one expected, for yesterday and today
+  (UTC): `default: yesterday 1/1 · today 0/1, due 15:00`, `MISSING` past the
+  deadline, `unknown` when a source did not answer.
+
+The restraint is the engine's, unchanged: the keys end in the UTC date, so a cause is
+one alert per channel per day; they are remembered in the alert feed, so a restart
+repeats nothing; quiet hours hold them (they go out after the window, as long as they
+still apply); a mute silences the kind. **The owner e-mail copy now includes both new
+kinds by default** (`pipeline` and `health`, problems only; `OWNER_EMAIL_KINDS` can
+narrow it): a deployment that already has the e-mail on starts receiving them.
+
+Known trade-offs, accepted on purpose:
+
+* The run's own event log (`system_events`) reaches Supabase only when the daily
+  intelligence poll mirrors it (20:00 UTC). It can therefore rescue a verdict (a run
+  began) but never raise or recover one; the video, held and storyboard rows, which
+  the run writes itself, are the evidence.
+* The doctor window is 7 days: only rows from the last 7 days are read, and a doctor
+  that has never reported in that window is silent (not set up), not "stale".
+* A scene repair of an OLDER video that happens after a slot began moves that row's
+  `held_at` and so counts as that slot's evidence; the day's real video is then not
+  required by the dead-man switch. A repair is rare and manual, so this is accepted.
+* At most 6 failing checks are named per readiness row, a transient failure waits for
+  a second row, and a doctor failure on the runner that is not a failure on the worker
+  host is not seen (the `host` group is ignored).
+* Moving a channel's `publish_hour_utc` mid-day can give one false MISSING (or one
+  missed alert) for the day of the change, because the slot is read from the current
+  setting.
+
+What is not covered: a video that exists but is wrong, and a channel whose own token
+differs from the default's. GitHub's hourly schedule is best effort and the daily
+workflow resolves its due channels from the hour it actually STARTS, so a run
+delayed past the top of the hour skips that day's slot: the dead-man switch is what
+catches it.
 
 ## Marketing (information only)
 
@@ -370,7 +506,8 @@ need migration 0109 (applied when it merges) and say "not available yet" until i
    buttons and the site check), `OPERATOR_TZ` (e.g. `Asia/Tashkent`),
    `OPERATOR_LANGUAGE` (`en`, `ru` or `uz`), `OPERATOR_QUIET_HOURS` (e.g. `23-7`),
    `OPERATOR_DIGEST_HOUR` (e.g. `9`),
-   `OPERATOR_STUCK_MINUTES`, `OPERATOR_ALERT_MAX_PER_HOUR`, and the existing
+   `OPERATOR_STUCK_MINUTES`, `OPERATOR_ALERT_MAX_PER_HOUR`, `OPERATOR_DEADMAN_HOURS`
+   (1-12, default 3, `off` disables the dead-man alert), and the existing
    `ELEVENLABS_LOW_CREDITS`.
 3. **Merge the PR.** Then, once: Actions > *Operator Alerts* > Run workflow, tick
    "Also send the daily digest right now". You should get the digest and, on the

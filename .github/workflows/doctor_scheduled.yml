@@ -1,0 +1,105 @@
+name: Scheduled readiness check
+
+# Runs tools/doctor.py (docs/VIDEO_GO_LIVE.md) on a schedule and tells the operator
+# bot what FAILED, so a rejected YouTube refresh token, a dead provider key or a
+# missing secret is an alert in Telegram (and the owner's e-mail) hours or days
+# before the next video would have stopped on it, not a silent day with no video.
+#
+# Read-only. The doctor's own free GET requests, and its one in-memory YouTube
+# token refresh (nothing saved). It starts, retries and changes no run, publishes
+# nothing and spends nothing. The one write is a single row in the alert feed
+# (kind operator.doctor: ok / fail and the NAMES of the failing checks, never a
+# value) made by tools/doctor_report.py with the service key the daily workflow
+# already holds. The operator bot reads that row (modules/operator_bot/reliability.py)
+# and applies its usual dedupe, rate limit, quiet hours and mute. Without the bot
+# configured the row is simply never read.
+#
+# The environment below is the SAME secrets and variables the daily video run
+# passes (a test pins that each name here is passed there with the same source),
+# so the doctor judges the configuration a video would run with. No new secret.
+# Other operator channels' own tokens (CHRONOS_YT_TOKEN_<REF>) cannot be listed
+# here (Actions cannot enumerate secrets), so only the default channel's token is
+# proven; that is said in docs/operator-bot.md.
+
+on:
+  schedule:
+    - cron: "37 */6 * * *"
+  workflow_dispatch:
+
+# One check at a time; a late one waits for the running one.
+concurrency:
+  group: doctor-scheduled
+  cancel-in-progress: false
+
+# Least privilege (BR-S-001): nothing here calls the GitHub API or pushes.
+permissions:
+  contents: read
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install the doctor's dependencies
+        run: pip install requests python-dotenv
+
+      - name: Readiness check
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+          ELEVENLABS_MODEL_ID: ${{ vars.ELEVENLABS_MODEL_ID }}
+          ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+          ELEVENLABS_SECONDARY_VOICE_ID: ${{ vars.ELEVENLABS_SECONDARY_VOICE_ID }}
+          # Opt-in providers: the same switches and keys as the daily run.
+          CHRONOS_VIDEO_PROVIDER: ${{ vars.CHRONOS_VIDEO_PROVIDER }}
+          CHRONOS_ENABLE_VIDEO_GEN: ${{ vars.CHRONOS_ENABLE_VIDEO_GEN }}
+          CHRONOS_ENABLE_MINIMAX_BROLL: ${{ vars.CHRONOS_ENABLE_MINIMAX_BROLL }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          MINIMAX_H3_MODEL: ${{ vars.MINIMAX_H3_MODEL }}
+          MINIMAX_V2_QUERY_PATH: ${{ vars.MINIMAX_V2_QUERY_PATH }}
+          HIGGSFIELD_API_KEY: ${{ secrets.HIGGSFIELD_API_KEY }}
+          HIGGSFIELD_API_KEY_ID: ${{ secrets.HIGGSFIELD_API_KEY_ID }}
+          HIGGSFIELD_API_KEY_SECRET: ${{ secrets.HIGGSFIELD_API_KEY_SECRET }}
+          KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
+          KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
+          VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
+          SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
+          WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
+          WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}
+          CHRONOS_IMAGE_PROVIDER: ${{ vars.CHRONOS_IMAGE_PROVIDER }}
+          CHRONOS_ENABLE_IMAGE_GEN: ${{ vars.CHRONOS_ENABLE_IMAGE_GEN }}
+          CHRONOS_IMAGE_MODEL: ${{ vars.CHRONOS_IMAGE_MODEL }}
+          LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+          BFL_API_KEY: ${{ secrets.BFL_API_KEY }}
+          IDEOGRAM_API_KEY: ${{ secrets.IDEOGRAM_API_KEY }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
+        run: |
+          # First line, on purpose: without it the pipe below returns tee's status and a doctor_report that
+          # could not record its verdict (exit 1) would leave a green job and an operator who hears nothing.
+          set -o pipefail
+          # The doctor's report is already scrubbed (a secret is only ever "set" or "missing"); it goes to
+          # the log and to the job summary. Exit 0 whenever a verdict was recorded, FAIL or not: the alert
+          # is the operator bot's, and a red job here would be a second one for the same fact.
+          python tools/doctor_report.py | tee -a "$GITHUB_STEP_SUMMARY"

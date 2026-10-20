@@ -437,6 +437,7 @@ jobs:
           OPERATORENV_OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
           OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          OPERATORENV_OPERATOR_DEADMAN_HOURS: ${{ vars.OPERATOR_DEADMAN_HOURS }}
           # The owner's e-mail copy (docs/OWNER_EMAIL.md), all optional and OFF while the variable
           # NIGHTSHIFT_OWNER_EMAIL is not exactly `on`. The key is its OWN secret, OPERATOR_RESEND_API_KEY (a
           # Resend "Sending access" key restricted to the one domain, created by the owner for this), and it

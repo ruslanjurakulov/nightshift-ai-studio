@@ -111,6 +111,7 @@ jobs:
           OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
           OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          OPERATOR_DEADMAN_HOURS: ${{ vars.OPERATOR_DEADMAN_HOURS }}
           POLL_SECONDS: ${{ inputs.duration || '270' }}
         run: python tools/run_telegram_control.py --duration "$POLL_SECONDS"
 

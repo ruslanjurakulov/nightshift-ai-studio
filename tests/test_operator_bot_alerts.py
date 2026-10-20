@@ -46,8 +46,10 @@ def failed_job(i, minutes_ago=30, channel="default"):
 
 
 def heartbeat(ops, clock):
-    """Keep the one worker reporting as time moves (the fixtures are fixed in time)."""
-    ops.sync.tables["worker_status"] = [healthy_tables(clock.now)["worker_status"][0]]
+    """Keep the one worker reporting, and the balance snapshot fresh, as time moves (the fixtures are fixed in time)."""
+    fresh = healthy_tables(clock.now)
+    ops.sync.tables["worker_status"] = [fresh["worker_status"][0]]
+    ops.sync.tables["provider_balances"] = fresh["provider_balances"]
 
 
 def arm(engine):
