@@ -368,8 +368,9 @@ def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results
 
     `fact_checker` sets requires_human_review itself and never takes it from the
     model, so this reads a verdict the model could not talk its way past. The
-    count is recorded; the claims themselves are not, so nothing from the script
-    reaches the event stream.
+    decision records counts and reason words only, never claim text; the early-hold
+    event (main._hold_before_render) adds a capped list of the flagged non-narration
+    texts (title, description, thumbnail, hook) on its own, outside this decision.
 
     Where a claim ships decides what an ``unverifiable`` verdict means. A
     narration sentence the checker cannot confirm blocks, as it always did. A
@@ -446,14 +447,17 @@ def _check_shipped_numbers(decision: GateDecision, config: GateConfig, script, l
     description that the narration never says is a figure the script does not
     back. Free: no model call.
 
-    * A LARGE figure (3+ digits, a year, a percentage) the narration never writes as digits is
-      ``shipped_text_unsupported``, a block (``block_on_fact_check``) in EVERY language. The one
-      exception is a narration that writes no number of 2+ digits at all outside English: its numbers
-      are spelled out ("девятьсот тысяч"), which cannot be read, so that case is a warning.
-    * A small figure that is not a headline count ("12 Dead", "25 Years Later") blocks for an English
-      channel, whose spelled-out numbers are read, and warns otherwise.
-    * A headline count ("Top 10 Mysteries", "5 Strange Facts") that the script does not back is
-      ``shipped_count_unsupported``: a warning, never a block.
+    * A LARGE figure (3+ digits, a year, a percentage) in the title, A/B title or thumbnail that the
+      narration never writes as digits is ``shipped_text_unsupported``, a block (``block_on_fact_check``)
+      in EVERY language. Outside English one case only warns: a narration with no number of 2+ digits
+      that does spell out the magnitude ("тысяч", "миллион", "ming"), whose words cannot be read; a
+      narration with neither digits nor a magnitude word for a figure of 1000 or more still blocks.
+    * A small figure that is not backed ("12 Dead", "The 12 Senators") blocks an English channel, whose
+      spelled-out numbers are read, and warns otherwise.
+    * A headline count in a list headline ("Top 10 Mysteries", "Rome: 7 Facts") that the script does not
+      back is ``shipped_count_unsupported``: a warning, never a block.
+    * A figure that only the DESCRIPTION carries and the narration lacks ("Filmed in 2019",
+      "(c) 2024") is ``shipped_description_unsupported``: a warning in every language.
     A check that cannot run is a warning."""
     if script is None:
         return
@@ -463,19 +467,22 @@ def _check_shipped_numbers(decision: GateDecision, config: GateConfig, script, l
 
         found = shipped_number_findings(script)
         english = _is_english(language)
-        blocking = bool(found.large and (english or found.narration_has_big_digits)) or bool(found.small and english)
-        if found.large or found.small:
+        blocking = bool(found.large) or bool((found.large_soft or found.small) and english)
+        if found.hard:
             (decision.blocks if config.block_on_fact_check and blocking else decision.warnings).append(
                 "shipped_text_unsupported")
             logger.warning("Shipped text carries %d figure(s) the narration never says (in: %s)",
                            len(found.hard), ", ".join(sorted({f for f, _ in found.hard})))
         if found.counts:
             decision.warnings.append("shipped_count_unsupported")
-        if found.hard or found.counts:
+        if found.description:
+            decision.warnings.append("shipped_description_unsupported")
+        if found.hard or found.counts or found.description:
             if decision.fact_check is None:
                 decision.fact_check = {}
             decision.fact_check["unsupported_numbers"] = len(found.hard)
             decision.fact_check["unsupported_counts"] = len(found.counts)
+            decision.fact_check["unsupported_description"] = len(found.description)
     except Exception as e:
         decision.warnings.append(f"shipped_text_check_errored:{type(e).__name__}")
 
