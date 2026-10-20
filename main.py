@@ -56,7 +56,7 @@ from modules import budget
 from modules import disk_guard
 from modules import spend_guard
 from modules import shorts
-from modules.claim_extractor import extract_section_claims
+from modules.claim_extractor import SOURCE_NARRATION, extract_shipped_claims
 from modules import claim_scenes
 from modules.compositor import Compositor
 from modules import render_dispatch
@@ -432,6 +432,43 @@ def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
     is over CHRONOS_MAX_RUN_USD (or, for the operator's own organisation, the
     day is over CHRONOS_MAX_DAILY_USD). See modules/spend_guard.py."""
     spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned)
+
+
+def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decision, costs) -> None:
+    """A run whose fact-check would block the publish gate ends here, owner-visibly,
+    before the voice, stills and render are bought.
+
+    Mirrors the neighbouring early stops: the planning already paid for is recorded
+    (``_flush_costs``), the run gets a blocked ``videos`` row of its own (the gate's
+    reasons, scenes with their claim verdicts; no cut, so nothing to approve), and a
+    ``publish.blocked`` event — the one the Command Center, the operator bot and the
+    Telegram control already read for a blocked video — carries fixed words and counts
+    only: no title, no claim text. The caller raises HeldBeforeRender, which __main__
+    turns into HELD_BEFORE_RENDER_EXIT so the runners release the credit hold.
+    Records only; never uploads, never raises."""
+    channel_id = ctx.channel_id
+    flagged = sum(1 for r in fact_results if getattr(r, "requires_human_review", False))
+    logger.error("[channel: %s] Fact-check would block the publish gate (%s) — run stopped before the voice, "
+                 "stills and render were bought", channel_id, ", ".join(decision.blocks))
+    print(f"\n⛔ Held before render ({', '.join(decision.blocks)}). Nothing was spent on the voice or the video.")
+    try:
+        events.emit(events.PUBLISH_BLOCKED, agent="publish_gate", status=events.STATUS_FAILED,
+                    channel_id=channel_id,
+                    metadata={**decision.to_metadata(), "stage": "before_render",
+                              "claims_checked": len(fact_results), "claims_flagged": flagged})
+        try:
+            scenes = claim_scenes.annotate_scenes(script, claims, fact_results)
+        except Exception:
+            scenes = None
+        detail = held_video.gate_detail(held_video.STATE_BLOCKED, decision.to_metadata())
+        detail["stage"] = "before_render"
+        held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED, topic=topic,
+                               title=script.title, script_text=script.full_narration(), scenes=scenes,
+                               detail=detail)
+    except Exception as e:
+        logger.warning("Could not record the early hold (%s: %s) — the run still stops",
+                       type(e).__name__, e)
+    _flush_costs(costs, slug)
 
 
 def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
@@ -934,10 +971,16 @@ def run(
     pipeline.advance(run_record.run_id, PipelineStage.FACT_CHECK)
     fact_results = None
     section_claims = None
+    narration_claim_count = None
     try:
         # Each claim carries its section (claim_id c000-1, scene s000), so the
         # Storyboard can show which scene says what (modules/claim_scenes.py).
-        section_claims = extract_section_claims(script)
+        # The same call checks every other text that ships — the alternate hook
+        # (swapped in AFTER this check), the title(s), the description, the
+        # thumbnail text — so a flagged claim anywhere blocks, not only one in
+        # the narration.
+        section_claims = extract_shipped_claims(script)
+        narration_claim_count = sum(1 for c in section_claims if c.source == SOURCE_NARRATION)
         claims = [c.text for c in section_claims]
         fact_results = fact_check_claims(claims) if claims else []
         flagged = [r for r in fact_results if r.requires_human_review]
@@ -954,6 +997,20 @@ def run(
     except Exception as e:
         logger.warning("Fact-checker failed (%s: %s) — proceeding without fact-check results",
                         type(e).__name__, e)
+
+    # ── Stop here, not after the render, when the gate would block on this check.
+    # The same verdict publish_gate.evaluate reaches on the finished video, taken
+    # before the voice, the stills and the render are bought (CLAUDE.md #6). Only
+    # a check that ran can stop the run here; one that crashed (None) still goes
+    # on to the gate. The gate below stays the final authority.
+    if fact_results is not None:
+        early = publish_gate.evaluate_fact_check(
+            script=script, fact_results=fact_results, channel=ctx,
+            narration_claims=narration_claim_count)
+        if not early.allowed:
+            _hold_before_render(ctx, slug=slug, topic=topic, script=script, claims=section_claims,
+                                fact_results=fact_results, decision=early, costs=costs)
+            raise publish_gate.HeldBeforeRender(", ".join(early.blocks))
 
     pipeline.advance(run_record.run_id, PipelineStage.HUMAN_APPROVAL)
 
@@ -1335,6 +1392,9 @@ def run(
         channel=ctx,
         qc_report=qc_report,
         ir_project=ir_project,
+        # What the uploader will send, not script.title: the A/B arm may ship title_ab.
+        title=published_title,
+        narration_claims=narration_claim_count,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
@@ -1856,6 +1916,11 @@ if __name__ == "__main__":
             print(f"\n⏸ Storyboard {paused.reason}: nothing renders until it is approved "
                   f"in the Command Center (storyboard {paused.storyboard_id}).")
             sys.exit(storyboard_review.PAUSED_EXIT)
+        except publish_gate.HeldBeforeRender:
+            # The fact-check would block the gate: nothing past the script was
+            # bought. A distinct code so the runners release the credit hold
+            # (tools/queue_worker.py, daily_video.yml) instead of reading "0".
+            sys.exit(publish_gate.HELD_BEFORE_RENDER_EXIT)
         except budget.BudgetStop:
             # The ceiling stopped the run before it spent anything; the log and
             # the console line above say so. A distinct code so the runners

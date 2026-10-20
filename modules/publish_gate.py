@@ -52,14 +52,37 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-#: YouTube rejects titles longer than this outright.
+#: YouTube rejects titles longer than this outright. The Data API documents the
+#: title in CHARACTERS (videos resource, snippet.title: "maximum length of 100
+#: characters"), so this is len() of the text, not its UTF-8 bytes; only the
+#: description (5000) and the tags are byte/other-unit limits there.
 MAX_TITLE_CHARS = 100
+#: snippet.title and snippet.description may hold any UTF-8 except these two.
+FORBIDDEN_TITLE_CHARS = "<>"
 #: YouTube's description limit.
 MAX_DESCRIPTION_CHARS = 5000
 #: A rendered file smaller than this is not a video anyone should publish.
 MIN_VIDEO_BYTES = 100_000
 #: Fewer sections than this is a malformed script, not a short one.
 MIN_SECTIONS = 2
+#: A script with at least this many words of narration and NO extractable claim
+#: is an extractor miss or a script of only questions and calls to action, not
+#: a script with nothing to check: "an unknown is not a no". Below it (a few
+#: lines, an intro-only stub) zero claims is believable and does not hold. ~50
+#: words is about twenty seconds of speech, shorter than any real section (the
+#: prompt asks for 45-60 s each) and longer than a hook on its own.
+MIN_WORDS_FOR_CLAIM_CHECK = 50
+
+#: main.py's exit code for "the fact-check on the script would block the
+#: publish gate, so the run stopped BEFORE the voice, stills and render were
+#: bought" (EX_UNAVAILABLE). Not a success: no video exists, so the runners
+#: release the credit hold instead of capturing it (tools/queue_worker.py, the
+#: daily_video.yml step), like the spend ceiling's 78.
+HELD_BEFORE_RENDER_EXIT = 79
+
+
+class HeldBeforeRender(Exception):
+    """The fact-check blocked this script; the run stopped before spending on it."""
 
 
 @dataclass
@@ -159,8 +182,17 @@ def evaluate(
     originality=None,
     qc_report=None,
     ir_project=None,
+    title: Optional[str] = None,
+    narration_claims: Optional[int] = None,
 ) -> GateDecision:
     """Decide whether this video may be uploaded.
+
+    ``title`` is the title the uploader will actually send (the A/B arm's, see
+    main.py ``published_title``); None checks ``script.title``. ``narration_claims``
+    is how many claims the extractor found in the narration alone (the checked
+    list also holds title/description/thumbnail claims, which must not hide a
+    narration the extractor read nothing from); None falls back to the number of
+    results.
 
     Never raises: a gate that crashes must not take down a pipeline that had
     already produced a video. A check that cannot run is recorded as a warning
@@ -173,19 +205,42 @@ def evaluate(
         decision.warnings.append("gate_disabled_for_channel")
         return decision
 
-    _check_sanity(decision, config, script, video_path)
+    _check_sanity(decision, config, script, video_path, title)
     _check_video_qc(decision, config, video_path, qc_report)
-    _check_fact_results(decision, config, fact_results)
+    _check_fact_results(decision, config, fact_results, script, narration_claims)
     _check_originality(decision, config, topic or getattr(script, "topic", ""), originality)
     _check_rights(decision, config, ir_project)
     return decision
 
 
-def _check_sanity(decision: GateDecision, config: GateConfig, script, video_path) -> None:
+def evaluate_fact_check(*, script, fact_results, channel=None,
+                        narration_claims: Optional[int] = None) -> GateDecision:
+    """Only the fact-check part of the gate, for the stop BEFORE the render.
+
+    Same ``_check_fact_results`` the full gate runs, under the same channel
+    config (a gate or a fact-check block that is switched off never stops a
+    run early), so what stops a run here is exactly what would block its
+    upload after the render. The full gate still runs on the finished video and
+    stays the final authority; this only moves one of its verdicts earlier.
+    Never raises.
+    """
+    decision = GateDecision()
+    config = GateConfig.from_channel(channel)
+    if not config.enabled:
+        decision.warnings.append("gate_disabled_for_channel")
+        return decision
+    _check_fact_results(decision, config, fact_results, script, narration_claims)
+    return decision
+
+
+def _check_sanity(decision: GateDecision, config: GateConfig, script, video_path,
+                  shipped_title: Optional[str] = None) -> None:
     """Things YouTube or a viewer would reject outright."""
     decision.checks_run.append("sanity")
     try:
-        title = (getattr(script, "title", "") or "").strip()
+        # The title that will be uploaded, not the one the script happened to
+        # carry: the A/B arm can ship title_ab, which nothing else measured.
+        title = (shipped_title if shipped_title is not None else getattr(script, "title", "") or "").strip()
         description = getattr(script, "description", "") or ""
         sections = getattr(script, "sections", []) or []
 
@@ -194,6 +249,8 @@ def _check_sanity(decision: GateDecision, config: GateConfig, script, video_path
             problems.append("empty_title")
         elif len(title) > MAX_TITLE_CHARS:
             problems.append(f"title_over_{MAX_TITLE_CHARS}_chars")
+        if any(ch in title for ch in FORBIDDEN_TITLE_CHARS):
+            problems.append("title_has_angle_brackets")
         if len(description) > MAX_DESCRIPTION_CHARS:
             problems.append(f"description_over_{MAX_DESCRIPTION_CHARS}_chars")
         if len(sections) < MIN_SECTIONS:
@@ -241,7 +298,8 @@ def _check_video_qc(decision: GateDecision, config: GateConfig, video_path, qc_r
         decision.warnings.append(f"video_qc_errored:{type(e).__name__}")
 
 
-def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results) -> None:
+def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results,
+                        script=None, narration_claims: Optional[int] = None) -> None:
     """Claims the fact-checker flagged for a human.
 
     `fact_checker` sets requires_human_review itself and never takes it from the
@@ -262,10 +320,18 @@ def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results
     decision.checks_run.append("fact_check")
     try:
         flagged = [r for r in fact_results if getattr(r, "requires_human_review", False)]
-        if not flagged:
-            return
-        reason = f"fact_check_flagged:{len(flagged)}"
-        (decision.blocks if config.block_on_fact_check else decision.warnings).append(reason)
+        target = decision.blocks if config.block_on_fact_check else decision.warnings
+        if flagged:
+            target.append(f"fact_check_flagged:{len(flagged)}")
+        # Nothing was extracted from a script that is long enough to have
+        # claims: the check had nothing to look at, which is not the same as
+        # everything being accurate. Hold it for a person.
+        found = len(fact_results) if narration_claims is None else narration_claims
+        if found == 0 and script is not None:
+            from modules.claim_extractor import narration_word_count
+
+            if narration_word_count(script) >= MIN_WORDS_FOR_CLAIM_CHECK:
+                target.append("fact_check_no_claims")
     except Exception as e:
         # Same reasoning: the check was asked for and could not complete.
         (decision.blocks if config.block_on_fact_check else decision.warnings).append(

@@ -243,10 +243,15 @@ class Claim:
     claim_id: str
     section_index: int
     text: str
+    #: Where the text ships: "narration" for a section's sentence, else the
+    #: field it came from (``SOURCE_*``). Text that is not narration has no
+    #: scene of its own (``section_index`` -1) except the alternate opening,
+    #: which replaces section 0's narration when the hook A/B picks "B".
+    source: str = "narration"
 
     @property
     def scene_id(self) -> str:
-        return scene_id(self.section_index)
+        return scene_id(self.section_index) if self.section_index >= 0 else ""
 
 
 def scene_id(section_index: int) -> str:
@@ -304,3 +309,96 @@ def extract_section_claims(script) -> list[Claim]:
     for i, text in enumerate(texts):
         out.extend(section_claims(text, i))
     return out
+
+
+# --- Everything that ships, not only the narration ------------------------------
+
+SOURCE_NARRATION = "narration"
+SOURCE_HOOK_AB = "hook_ab"
+SOURCE_HOOK_SENTENCE = "hook_sentence"
+SOURCE_TITLE = "title"
+SOURCE_TITLE_AB = "title_ab"
+SOURCE_DESCRIPTION = "description"
+SOURCE_THUMBNAIL = "thumbnail_text"
+
+#: A description line that is only hashtags or only a link carries no claim.
+_HASHTAG_OR_URL_LINE = re.compile(r"^\s*(?:(?:#\w+|https?://\S+)\s*)+$", re.IGNORECASE)
+#: Invented chapter marks (the uploader strips these lines too, see
+#: modules/youtube_uploader.TIMESTAMP_LINE); the real chapters are measured.
+_TIMESTAMP_LINE = re.compile(r"^\s*(?:[-*\u2022]\s*)?\d{1,2}:\d{2}(?::\d{2})?\b")
+
+
+def narration_word_count(script) -> int:
+    """Words of narration in ``script`` (cue tags stripped). Never raises."""
+    try:
+        return sum(len(t.split()) for t in _section_texts(script))
+    except Exception:
+        return 0
+
+
+def _field_text(script, name: str) -> str:
+    value = script.get(name) if isinstance(script, dict) else getattr(script, name, "")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _description_sentences(description: str) -> list[str]:
+    lines = [ln for ln in description.splitlines()
+             if not _TIMESTAMP_LINE.match(ln) and not _HASHTAG_OR_URL_LINE.match(ln)]
+    return [s for s in _split_sentences("\n".join(lines)) if _looks_like_claim(s)]
+
+
+def extract_shipped_claims(script) -> list[Claim]:
+    """The narration claims of ``extract_section_claims`` plus every other text
+    that reaches the audience, so one fact-check covers what actually ships.
+
+    Added after the narration claims, in this order: the sentences of the
+    alternate opening (``hook_ab``, which the hook A/B swaps in AFTER the check
+    ran, so its claims are filed under section 0 where they will play), the
+    ``hook_sentence`` (the Short's description), the title, the A/B title, the
+    description's sentences and the thumbnail text. A title or thumbnail text is
+    one claim as a whole (a two-word "NEVER OPENED!" is a claim the sentence
+    filter would drop), but a pure question is still skipped, as in narration.
+    A text that is the same as one already listed is not checked twice. Never
+    raises: a failure returns what was extracted so far.
+    """
+    out = list(extract_section_claims(script))
+    try:
+        seen_in_section = {(c.section_index, _normalize(c.text)) for c in out}
+        seen_text = {_normalize(c.text) for c in out}
+
+        def add(source: str, texts, section_index: int, ids) -> None:
+            n = 0
+            for text in texts:
+                key = _normalize(text)
+                if not key or (section_index, key) in seen_in_section or (
+                        section_index < 0 and key in seen_text):
+                    continue
+                n += 1
+                seen_in_section.add((section_index, key))
+                seen_text.add(key)
+                out.append(Claim(ids(n), section_index, text, source))
+
+        hook_ab = _strip_cue_tags(_field_text(script, "hook_ab"))
+        if hook_ab:
+            add(SOURCE_HOOK_AB, [s for s in _split_sentences(hook_ab) if _looks_like_claim(s)],
+                0, lambda n: f"c000-h{n}")
+
+        def whole(name: str) -> list[str]:
+            text = _strip_cue_tags(_field_text(script, name))
+            return [text] if text and not text.endswith("?") and re.search(r"\w", text) else []
+
+        add(SOURCE_HOOK_SENTENCE,
+            [s for s in _split_sentences(_strip_cue_tags(_field_text(script, "hook_sentence")))
+             if _looks_like_claim(s)], -1, lambda n: f"x-hook_sentence-{n}")
+        add(SOURCE_TITLE, whole("title"), -1, lambda n: f"x-title-{n}")
+        add(SOURCE_TITLE_AB, whole("title_ab"), -1, lambda n: f"x-title_ab-{n}")
+        add(SOURCE_DESCRIPTION, _description_sentences(_field_text(script, "description")),
+            -1, lambda n: f"x-description-{n}")
+        add(SOURCE_THUMBNAIL, whole("thumbnail_overlay_text"), -1, lambda n: f"x-thumbnail_text-{n}")
+    except Exception:
+        pass
+    return out
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip().lower()

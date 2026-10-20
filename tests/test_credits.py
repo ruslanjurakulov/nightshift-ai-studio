@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT))
 
 from modules import credits  # noqa: E402
 from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
+from modules.publish_gate import HELD_BEFORE_RENDER_EXIT  # noqa: E402
 from modules.credits import CreditRefused, CreditsUnavailable, Hold, Price  # noqa: E402
 from tools import credits_settle  # noqa: E402
 from tools import queue_worker as qw  # noqa: E402
@@ -453,6 +454,16 @@ class WorkerCredits(unittest.TestCase):
         ends = self.run_one(job(), fake, [entry("tts_characters", 5000)])
         self.assertEqual(ends[0][0], "failed")
         self.assertIn("spend ceiling", ends[0][1])
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
+
+    def test_held_before_render_exit_fails_the_job_and_releases_the_hold(self):
+        # The fact-check held the script before the voice and render were bought: no video, nothing charged.
+        self.env["FAKE_RC"] = str(HELD_BEFORE_RENDER_EXIT)
+        self.env["FAKE_NO_VIDEO"] = "1"
+        fake = FakeCredits()
+        ends = self.run_one(job(), fake, [entry("gemini_output_tokens", 5000)])
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("fact-check held the script", ends[0][1])
         self.assertEqual(fake.settled(), [("release", "rj-abc")])
 
     def test_the_hold_is_settled_before_the_job_row_is_finished(self):
