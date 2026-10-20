@@ -593,6 +593,12 @@ export const en = {
     stateUploadFailed: "Finished, but the upload did not complete",
     uploadFailedNote: "The video is finished but was not uploaded: the upload to YouTube did not complete, most often because of an expired channel connection. Reconnect YouTube for this channel and try again.",
     uploadFailedWatch: "You can watch it below.",
+    stateQuotaExceeded: "Finished, but YouTube's daily upload quota is used up",
+    quotaExceededNote: "The video is finished but was not uploaded: the daily YouTube API quota for this project is used up. It resets by itself (at midnight Pacific time); send the video again after that.",
+    stateUploadLimitExceeded: "Finished, but the channel hit its upload limit",
+    uploadLimitExceededNote: "The video is finished but was not uploaded: YouTube says this channel has reached its upload limit. Wait for the limit to lift, then send the video again.",
+    stateTokenExpired: "Finished, but the YouTube connection is broken",
+    tokenExpiredNote: "The video is finished but was not uploaded: YouTube no longer accepts this channel's connection (it expired or was revoked). Reconnect YouTube for this channel, then send the video again.",
   },
   /** "Repurpose into clips" on a video page (migration 0080, components/videos/RepurposePanel). */
   repurpose: {

@@ -89,7 +89,7 @@ from modules.thumbnail_generator import ThumbnailGenerator
 from modules import title_formulas
 from modules.title_planner import plan_titles
 from modules.topic_manager import TopicManager, TopicSelectionError
-from modules.youtube_uploader import YouTubeUploader
+from modules.youtube_uploader import YouTubeUploader, reconcile_privacy
 from tools.generate_assets import ensure_assets
 
 logging.basicConfig(
@@ -309,6 +309,8 @@ def _publish_short(
         except OSError:
             logger.debug("Could not stat %s for the cost ledger", short_path, exc_info=True)
 
+        # The privacy YouTube applied (see run()): never recorded as the one that was only requested.
+        short_recorded = reconcile_privacy(privacy, uploaded.get("privacy")).recorded
         with StateStore() as store:
             store.record_video(
                 video_id=uploaded["id"],
@@ -316,7 +318,7 @@ def _publish_short(
                 title=shorts.short_title(script.title),
                 slug=slug,
                 published_at=datetime.utcnow().isoformat(),
-                privacy=privacy,
+                privacy=short_recorded,
                 category_id=YOUTUBE_CATEGORY_ID,
                 local_path=str(short_path),
                 channel_id=channel_id,
@@ -1499,6 +1501,20 @@ def run(
                 attempt=upload_idempotency.begin(slug, channel_id),
             )
             video_id, video_url = uploaded["id"], uploaded["url"]
+            # What YouTube APPLIED, not what was asked for: an API project that has not passed the
+            # audit has every upload locked private whatever privacyStatus says, and a video
+            # recorded as the REQUESTED privacy would read as published when it is not. The row and
+            # the events say what the video has; the Short never goes wider than what was asked.
+            # No `privacy` assignment here: the clamp above is its only one (a test pins that).
+            outcome = reconcile_privacy(privacy, uploaded.get("privacy"))
+            recorded_privacy, short_privacy = outcome.recorded, outcome.limit
+            if outcome.mismatch:
+                logger.error("[channel: %s] YouTube applied privacy %r, not the requested %r — "
+                             "recording what the video has", channel_id, recorded_privacy, privacy)
+                events.emit(events.PUBLISH_HELD, agent="youtube_uploader", status=events.STATUS_FAILED,
+                            channel_id=channel_id, video_id=video_id,
+                            metadata={"reason": "privacy_mismatch", "requested": str(privacy),
+                                      "applied": str(recorded_privacy)})
             # Recorded only on a successful upload — a failed attempt may have
             # sent bytes, but it did not deliver a video, and guessing how many
             # got through would be inventing a number.
@@ -1516,7 +1532,7 @@ def run(
                     title=published_title,
                     slug=slug,
                     published_at=_published_at,
-                    privacy=privacy,
+                    privacy=recorded_privacy,
                     category_id=YOUTUBE_CATEGORY_ID,
                     local_path=str(video_path),
                     channel_id=channel_id,
@@ -1533,7 +1549,7 @@ def run(
                     slug=slug,
                     youtube_id=video_id,
                     published_at=_published_at,
-                    privacy=privacy,
+                    privacy=recorded_privacy,
                     title=published_title,
                     topic=topic,
                     category_id=YOUTUBE_CATEGORY_ID,
@@ -1546,7 +1562,7 @@ def run(
                             metadata={"url": video_url}, store=store)
                 events.emit(events.VIDEO_PUBLISHED, video_id=video_id, agent="youtube_uploader",
                             status=events.STATUS_COMPLETED, channel_id=channel_id,
-                            metadata={"title": published_title, "url": video_url, "privacy": privacy}, store=store)
+                            metadata={"title": published_title, "url": video_url, "privacy": recorded_privacy}, store=store)
                 # What the video was labelled with, and why: read back by the review panel and by the
                 # Instagram / TikTok cross-post, which must give the same answer for the same cut.
                 events.emit(ai_disclosure.EVENT, video_id=video_id, agent="ai_disclosure",
@@ -1650,9 +1666,12 @@ def run(
             # that channel's, and does not read as a Nightshift-wide outage.
             logger.error("[channel: %s] YouTube upload failed (%s): %s", channel_id, type(e).__name__, e)
             print(f"\n✓ Video saved, upload failed: {video_path}")
+            # A fixed word for the owner and the alerts (out of quota today is not a broken token).
+            upload_cause = held_video.upload_failure_cause(e)
             events.emit(events.UPLOAD_FAILED, agent="youtube_uploader", status=events.STATUS_FAILED,
                         channel_id=channel_id,
-                        metadata={"operation": "upload", "error": f"{type(e).__name__}: {e}"})
+                        metadata={"operation": "upload", "error": f"{type(e).__name__}: {e}",
+                                  "cause": upload_cause})
             # The render exists, so the customer must be able to see it: give
             # the run a held row (with its preview) saying the upload failed.
             # Only when no YouTube id came back — a failure after a real upload
@@ -1661,7 +1680,7 @@ def run(
             # log/event above and is never stored on the row.
             if video_id is None:
                 _record_held_run(held_video.STATE_HELD,
-                                 gate_meta={**gate.to_metadata(), "reason": "upload_failed"})
+                                 gate_meta={**gate.to_metadata(), "reason": upload_cause})
         else:
             # ── Stage 9: Short
             # Strictly downstream of a video that actually published: the gate
@@ -1683,7 +1702,7 @@ def run(
                 parent_video_id=video_id,
                 parent_url=video_url,
                 topic=topic,
-                privacy=privacy,
+                privacy=short_privacy,
                 timeline=timeline,
                 costs=costs,
                 ai_decision=ai_decision,

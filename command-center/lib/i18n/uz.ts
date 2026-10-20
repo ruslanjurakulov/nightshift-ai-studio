@@ -582,6 +582,12 @@ export const uz: Dictionary = {
     stateUploadFailed: "Tayyor, lekin yuklash tugallanmadi",
     uploadFailedNote: "Video tayyor, lekin yuklanmadi: YouTube’ga yuklash tugallanmadi, koʻpincha kanal ulanishi muddati tugagani sabab. Bu kanal uchun YouTube’ni qayta ulang va yana urinib koʻring.",
     uploadFailedWatch: "Uni pastda koʻrishingiz mumkin.",
+    stateQuotaExceeded: "Tayyor, lekin YouTube kunlik yuklash kvotasi tugagan",
+    quotaExceededNote: "Video tayyor, lekin yuklanmadi: bu loyiha uchun YouTube API kunlik kvotasi tugagan. U oʻzi tiklanadi (Tinch okeani vaqti bilan yarim tunda); shundan keyin videoni qayta yuboring.",
+    stateUploadLimitExceeded: "Tayyor, lekin kanal yuklash chegarasiga yetgan",
+    uploadLimitExceededNote: "Video tayyor, lekin yuklanmadi: YouTube bu kanal yuklash chegarasiga yetganini aytmoqda. Chegara ochilishini kuting va videoni qayta yuboring.",
+    stateTokenExpired: "Tayyor, lekin YouTube ulanishi buzilgan",
+    tokenExpiredNote: "Video tayyor, lekin yuklanmadi: YouTube bu kanal ulanishini endi qabul qilmayapti (muddati tugagan yoki bekor qilingan). Bu kanal uchun YouTube’ni qayta ulang va videoni qayta yuboring.",
   },
   /** Video sahifasida "Klipllarga boʻlish" (0080-migratsiya, components/videos/RepurposePanel). */
   repurpose: {

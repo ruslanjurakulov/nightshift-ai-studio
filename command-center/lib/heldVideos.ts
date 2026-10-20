@@ -66,11 +66,37 @@ export function heldGate(
   return { allowed: gate.allowed === true, blocks: strings(gate.blocks), warnings: strings(gate.warnings) };
 }
 
-/** Why a gate-passed run is held anyway (hold_detail.cause, a fixed word from modules/held_video.py). Only
- *  "upload_failed" exists: the cut is finished but the YouTube upload raised. Anything else reads null. */
-export function heldCause(v: { hold_detail?: unknown } | null | undefined): "upload_failed" | null {
+/** The fixed words of hold_detail.cause (modules/held_video.HOLD_CAUSES): the cut is finished and passed the gate,
+ *  but the YouTube upload did not happen. They need different responses, so they are different words:
+ *  upload_failed (anything else), quota_exceeded (the day's API quota is used up; it comes back by itself),
+ *  upload_limit_exceeded (the channel hit its own upload limit), token_expired (the connection is broken). */
+export const HELD_CAUSES = ["upload_failed", "quota_exceeded", "upload_limit_exceeded", "token_expired"] as const;
+export type HeldCause = (typeof HELD_CAUSES)[number];
+
+/** Why a gate-passed run is held anyway (hold_detail.cause, a fixed word from modules/held_video.py). Anything
+ *  that is not one of HELD_CAUSES reads null: free text is never rendered. */
+export function heldCause(v: { hold_detail?: unknown } | null | undefined): HeldCause | null {
   const cause = (v?.hold_detail as { cause?: unknown } | null | undefined)?.cause;
-  return cause === "upload_failed" ? cause : null;
+  return typeof cause === "string" && (HELD_CAUSES as readonly string[]).includes(cause) ? (cause as HeldCause) : null;
+}
+
+/** The sentence that says what to do about a hold cause (dictionary section `held`), or null when there is none. */
+export function heldCauseNote(
+  cause: HeldCause | null | undefined,
+  h: { uploadFailedNote: string; quotaExceededNote: string; uploadLimitExceededNote: string; tokenExpiredNote: string },
+): string | null {
+  switch (cause) {
+    case "upload_failed":
+      return h.uploadFailedNote;
+    case "quota_exceeded":
+      return h.quotaExceededNote;
+    case "upload_limit_exceeded":
+      return h.uploadLimitExceededNote;
+    case "token_expired":
+      return h.tokenExpiredNote;
+    default:
+      return null;
+  }
 }
 
 /** Restrict a `videos` query to uploaded rows. Structurally typed like
@@ -91,16 +117,26 @@ export function heldStateLabel(
   state: HeldState | "unknown",
   h: {
     stateUploadFailed?: string;
+    stateQuotaExceeded?: string;
+    stateUploadLimitExceeded?: string;
+    stateTokenExpired?: string;
     stateBlocked: string;
     stateAwaitingApproval: string;
     stateHeld: string;
     stateRepaired: string;
     stateUnknown: string;
   },
-  cause?: "upload_failed" | null,
+  cause?: HeldCause | null,
 ): string {
   // The upload failing is the real reason, whatever the state column says.
-  if (cause === "upload_failed" && h.stateUploadFailed) return h.stateUploadFailed;
+  const byCause: Record<HeldCause, string | undefined> = {
+    upload_failed: h.stateUploadFailed,
+    quota_exceeded: h.stateQuotaExceeded,
+    upload_limit_exceeded: h.stateUploadLimitExceeded,
+    token_expired: h.stateTokenExpired,
+  };
+  const causeLabel = cause ? byCause[cause] : undefined;
+  if (causeLabel) return causeLabel;
   switch (state) {
     case "blocked":
       return h.stateBlocked;

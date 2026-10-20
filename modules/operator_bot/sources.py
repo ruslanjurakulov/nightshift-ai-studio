@@ -54,7 +54,7 @@ BOT_WORKER_ID = "operator-bot"
 #: videos.publish_state values (migration 0016) of a run that did NOT upload.
 HELD_STATES = ("held", "awaiting_approval", "repaired_awaiting_review", "blocked")
 #: What a held row's ``hold_detail.cause`` may say (modules/held_video.HOLD_CAUSES): a fixed word, never text.
-HOLD_CAUSES = ("upload_failed",)
+HOLD_CAUSES = ("upload_failed", "quota_exceeded", "upload_limit_exceeded", "token_expired")
 
 CREATIVE_ACTIVE = ("queued", "planning", "running", "provider_pending", "processing", "rendering")
 
