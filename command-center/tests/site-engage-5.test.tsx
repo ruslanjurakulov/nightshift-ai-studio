@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { TOOL_ART } from "@/lib/site/art";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { readFileSync, statSync } from "node:fs";
@@ -228,15 +227,15 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     const clipBoxes = [...container.querySelectorAll("[data-clip]")];
-    // The hero's footage is printed twice (a phone's picture panel and a desktop's card: the stylesheet shows one), then the two showcases.
-    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "cloud", "pottery", "coast"]);
+    // The hero's footage is printed once (the card's picture, at every width: the phone panel's copy went when the studio backdrop took the panel), then the two showcases.
+    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "pottery", "coast"]);
     for (const b of clipBoxes) {
       // The still under a clip is a frame of stock footage.
       expect(b.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
       expect(b.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
       expect(b.querySelector("img")?.getAttribute("alt")).toBeTruthy();
     }
-    expect(container.querySelectorAll("video")).toHaveLength(4);
+    expect(container.querySelectorAll("video")).toHaveLength(3);
     expect(t.site.samples.clipTag).toMatch(code === "en" ? /^Example clip \(stock footage\)$/ : code === "ru" ? /^Пример клипа/ : /^Namuna klip/);
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
@@ -285,8 +284,8 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
   });
 });
 
-describe("the capability wall (round 8, pictures replaced by AI-generated illustrations): eight illustrations, one per tool", () => {
-  it("replaces the pill carousel in the \"how it works\" block: eight tiles, each with the tool's own name and description and whether it costs credits, under a label that says the pictures are AI-generated illustrations", () => {
+describe("the capability wall (round 8, stock photographs replaced by icons): eight icon tiles, one per tool", () => {
+  it("replaces the pill carousel in the \"how it works\" block: eight tiles, each with the tool's own name and description and whether it costs credits, under a label that says they are icons", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
@@ -303,10 +302,10 @@ describe("the capability wall (round 8, pictures replaced by AI-generated illust
       const id = named[i].id;
       // Only the tool that costs no credits says so on its tile; the note says the rest once.
       expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
-      // An illustration has no photographer to credit: no credit line, and its alt says what it is.
+      // An icon has no photographer to credit and nothing to fetch: no credit line, no image, and the icon is hidden from assistive tech (the name is printed under it).
       expect(tile.querySelector(".nx-wall-credit")).toBeNull();
-      expect(tile.querySelector("img")?.getAttribute("alt")).toBe(t.site.art.alts[TOOL_ART[id as keyof typeof TOOL_ART]]);
-      expect(tile.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+      expect(tile.querySelector("img")).toBeNull();
+      expect(tile.querySelector("svg.nx-wall-icon")?.getAttribute("aria-hidden")).toBe("true");
       expect(tile.querySelector("a, button, [tabindex]")).toBeNull();
     }
     // The ninth tool, the Editor, is a plain line: it has no picture.

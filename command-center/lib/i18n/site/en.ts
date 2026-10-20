@@ -169,23 +169,23 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. The illustrations are different: the hero’s backdrop, the pictures for the three steps and the tools, and the sample thumbnail are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
+    lead: "Every photograph and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Two pictures are different: the hero’s backdrop and the sample thumbnail are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
     licence: "Pexels License",
   },
-  /** The AI-generated illustrations (lib/site/art.ts): the backdrop of the hero is decorative and has no description; every other one is described, and says what it is. */
+  /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries are for the optional pictures in components/site/art.tsx SLOT_ART (none is configured yet): check each against its real picture when one goes in. */
   art: {
     alts: {
-      "step-1": "Illustration: a glowing prompt bar with a lightbulb above it, for the topic",
-      "step-2": "Illustration: a play button on a stand beside a price tag, coins and a calendar",
-      "step-3": "Illustration: a film frame with a green check beside a publish button",
-      "tool-image": "Illustration: a framed landscape picture with a paintbrush beside it",
-      "tool-video": "Illustration: a film clapperboard",
-      "tool-voice": "Illustration: a studio microphone",
-      "tool-edit": "Illustration: scissors cutting a strip of film",
-      "tool-animate": "Illustration: a picture with a moon and a bird lifting out of it",
-      "tool-upscale": "Illustration: a pixelated picture next to the same picture, crisp",
-      "tool-cutout": "Illustration: a plant peeling off a card like a sticker",
-      "tool-styles": "Illustration: a fan of violet cards in shades from dark to light",
+      "step-1": "AI-generated image: a prompt bar with a lightbulb, for the topic",
+      "step-2": "AI-generated image: a play button beside a price tag, coins and a calendar",
+      "step-3": "AI-generated image: a film frame with a green check beside a publish button",
+      "tool-image": "AI-generated image: a framed landscape picture with a paintbrush",
+      "tool-video": "AI-generated image: a film clapperboard",
+      "tool-voice": "AI-generated image: a studio microphone",
+      "tool-edit": "AI-generated image: scissors cutting a strip of film",
+      "tool-animate": "AI-generated image: a picture with a moon and a bird lifting out of it",
+      "tool-upscale": "AI-generated image: a pixelated picture next to the same picture, crisp",
+      "tool-cutout": "AI-generated image: a plant peeling off a card like a sticker",
+      "tool-styles": "AI-generated image: a fan of violet cards in shades from dark to light",
       "thumb-silkroad": "AI-generated image: the Registan in Samarkand at golden hour",
     },
   },
@@ -328,8 +328,8 @@ export const siteEn = {
   toolStrip: { title: "What Nightshift can make" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "AI-generated illustrations of each tool",
-    note: "The pictures stand for the tools. They are AI-generated illustrations, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
+    label: "An icon for each tool",
+    note: "The icons stand for the tools, not for what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
     more: "Show four more tools",
     less: "Show fewer tools",
   },

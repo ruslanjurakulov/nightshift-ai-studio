@@ -12,13 +12,11 @@ import { Showcases } from "@/components/landing/Showcases";
 import { TryDemo } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
-import { HeroBleed } from "@/components/landing/HeroBleed";
 import { HeroFx } from "@/components/site/HeroFx";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
 import { SlotImg, slotSample } from "@/components/site/samples";
-import { ArtImg, HeroBackdrop } from "@/components/site/art";
-import { STEP_ART } from "@/lib/site/art";
+import { ArtSlotImg, HeroBackdrop, slotArt } from "@/components/site/art";
 import { creditLine } from "@/lib/site/media";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
@@ -92,12 +90,13 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
     : null;
   return (
     <section aria-labelledby="hero-title" className="nx-hero">
-      <HeroBackdrop />
+      <HeroBackdrop variant="wide" />
       <HeroFx />
       <div className="nx-wrap nx-hero-in nx-hero-grid">
         <div className="nx-hero-copy">
           <div className="nx-hero-top">
-            <HeroBleed t={t} />
+            {/* The phone panel's backdrop (below 1024 px); the stock footage now plays in the chat card below it, at every width. */}
+            <HeroBackdrop variant="phone" />
             <p className="nx-pill">
               <span aria-hidden className="nx-pill-dot" />
               {h.kicker}
@@ -142,7 +141,7 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
   );
 }
 
-/** Three steps in a strip: an illustration, a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a wall of eight illustrations, one per tool. The pictures are AI-generated drawings, not screenshots (lib/site/art.ts). */
+/** Three steps in a strip: a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a wall of eight icon tiles, one per tool. */
 function How({ t }: { t: Dictionary }) {
   const h = t.site.how.simple;
   return (
@@ -152,16 +151,20 @@ function How({ t }: { t: Dictionary }) {
           {h.title}
         </h2>
         <ol className="nx-strip" aria-label={t.site.how.slug}>
-          {h.steps.map((s, i) => (
-            <li key={s.id} className="nx-strip-step">
-              {s.id in STEP_ART && <ArtImg id={STEP_ART[s.id as keyof typeof STEP_ART]} alt={t.site.art.alts[STEP_ART[s.id as keyof typeof STEP_ART]]} className="nx-strip-pic" />}
-              <span className="nx-strip-no" aria-hidden>
-                {i + 1}
-              </span>
-              <h3 className="nx-h3">{s.title}</h3>
-              <p className="nx-body">{s.body}</p>
-            </li>
-          ))}
+          {h.steps.map((s, i) => {
+            // An optional picture above the numeral (components/site/art.tsx SLOT_ART): none is configured today, so the step is text.
+            const art = slotArt("step", s.id);
+            return (
+              <li key={s.id} className="nx-strip-step">
+                {art && <ArtSlotImg slot={art} alt={t.site.art.alts[art.altKey]} className="nx-strip-pic" />}
+                <span className="nx-strip-no" aria-hidden>
+                  {i + 1}
+                </span>
+                <h3 className="nx-h3">{s.title}</h3>
+                <p className="nx-body">{s.body}</p>
+              </li>
+            );
+          })}
         </ol>
         <CapabilityWall t={t} />
       </div>

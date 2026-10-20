@@ -32,15 +32,20 @@ only as small figures or silhouettes (the caravan, the market crowd) or as hands
 
 Not used: nothing from Pixabay; of the second batch's stage photographs, the orange mountain ridge (28784109) is not on any page. The clips' stills are their own first frames, so the picture a clip fades in over is its own.
 
-## Illustrations (AI-generated)
+## AI-generated pictures
 
-Thirteen pictures on the landing are NOT stock: they are AI-generated renders and illustrations supplied by the owner, used as decoration. They are not screenshots of the product, not output of any account, and not Pexels (no photographer, no licence line). Where the page says what a picture is, it says so: the wall's label ("AI-generated illustrations of each tool"), the Silk Road thumbnail's caption, the footer's credits, and an alt text that begins "Illustration:" or "AI-generated image:" in en, ru and uz (`site.art.alts`). The hero's backdrop is decorative (empty alt). The list is `command-center/lib/site/art.ts`; `tests/site-art.test.tsx` pins the files, their sizes, the alts and the wording. The owner approves these before they ship.
+Three pictures on the landing are NOT stock: they are AI-generated renders supplied by the owner, used as decoration. They are not screenshots of the product, not output of any account, and not Pexels (no photographer, no licence line). Where the page says what they are, it says so: the footer's credits ("the hero's backdrop and the sample thumbnail are AI-generated images ... decoration, not screenshots of the product"), the Silk Road thumbnail's caption, and the thumbnail's alt text ("AI-generated image: ..." in en, ru and uz, `site.art.alts`). The hero's backdrop is decorative (empty alt). The list is `command-center/lib/site/art.ts`; `tests/site-art.test.tsx` pins the files, their sizes, the alts and the wording. The owner has approved these.
 
-Only derivatives are committed (`command-center/scripts/make-site-art.py`: `ART=<dir of the PNGs> python3 scripts/make-site-art.py`, highest WebP quality that fits each budget, no grade, no crop). The PNG originals (1.6 to 3.8 MB each) are not in the repository.
+Only derivatives are committed (`command-center/scripts/make-site-art.py`: `ART=<dir of the PNGs> python3 scripts/make-site-art.py [name ...]`, highest WebP quality that fits each budget, no grade; the one crop is the phone's cut of the hero). The PNG originals (2.5 to 3.8 MB each) are not in the repository.
 
 | file (components/site/art/) | used on | shown at | file |
 | :-- | :-- | :-- | :-- |
-| hero-night | Landing, hero backdrop, from 1024 px up (decorative; below 1024 px the hero keeps its footage panel) | full width of the hero, `object-fit: cover` anchored right, a left-hand scrim | 1672 x 941, budget 220 KB |
-| step-1, step-2, step-3 | Landing, "Three steps": the topic, the price you see first, you press publish | a square, full column on a desktop, 88 px on a phone | 800 x 800, budget 90 KB each |
-| tool-image, tool-video, tool-voice, tool-edit, tool-animate, tool-upscale, tool-cutout, tool-styles | Landing, the capability wall (one per tool) | 4:3 tiles, 4 across from 640 px, 2 across below | 800 x 600, budget 90 KB each |
+| hero-night | Landing, hero backdrop from 1024 px up (decorative) | the whole hero, `object-fit: cover` anchored right, a left-hand scrim | 1672 x 941, budget 220 KB |
+| hero-night-sm | Landing, the phone panel's backdrop below 1024 px (decorative): a portrait cut of the same picture (x 520 to 1150) | behind the dark panel's words, under a veil that is heaviest under them | 630 x 941, budget 90 KB |
 | thumb-silkroad | Landing, "Try an example": behind the words of the Silk Road sample thumbnail (the first sample topic only) | the 16:9 thumbnail box, a scrim from the left | 960 x 540, budget 150 KB |
+
+On a phone the stock cloud footage that used to be the panel's picture plays in the hero's chat card instead (its credit and "Example" badges are the card's), so the page still shows one clip and it is still labelled.
+
+### The step and tool slots (empty today)
+
+The three steps of "How it works" are text, and the eight tool tiles of the capability wall are lucide icons on dark tiles: an earlier set of illustrations for them was dropped. `SLOT_ART` in `components/site/art.tsx` (with `SLOT_DEFS` in `lib/site/art.ts`) is the one list of the eleven optional pictures (step-1..3 square, tool-image, -video, -voice, -edit, -animate, -upscale, -cutout, -styles 4:3, 800 px, 90 KB each). To use them: run the script on the PNGs, import the files in `art.tsx`, set each slot's `src`; the step then shows the picture above its numeral and the tile shows it in place of its icon. Then reword `site.credits.lead`, `site.wall.label` and `site.wall.note` in en, ru and uz, and check `site.art.alts`; the test fails until the footer says so.
