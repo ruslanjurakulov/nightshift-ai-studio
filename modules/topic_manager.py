@@ -223,7 +223,7 @@ class TopicManager:
 
     def _report_reset(self, file: str, error: str, backup, rebuilt) -> None:
         """One event per reset. Fixed words and counts only — no titles."""
-        events.emit(events.TOPIC_HISTORY_RESET, agent="topic_history", status=events.STATUS_FAILED,
+        events.emit(events.TOPIC_HISTORY_RESET, agent="topic_history", status=events.STATUS_WARNING,
                     channel_id=self.channel_id,
                     metadata={"file": file, "error": error, "backup_kept": backup is not None,
                               "rebuilt": rebuilt})
@@ -278,6 +278,17 @@ class TopicManager:
                 "Topic vector store was reset (%s) and could not be rebuilt (%s) — the semantic duplicate "
                 "check starts empty; the word-level check over topics.json still applies",
                 reason, type(e).__name__)
+        if not rebuilt:
+            # Nothing refilled the store. The publish gate builds its own strict
+            # engine later in the run; the corrupt file is gone, so without a
+            # marker it would see an empty store and pass every topic. With one
+            # it raises and blocks until a non-empty store exists again.
+            try:
+                self.originality.mark_unrebuilt()
+                logger.warning("The publish gate will block until the topic vector store is repopulated "
+                               "(marker: %s)", self.originality.reset_marker.name)
+            except Exception as e:
+                logger.warning("Could not write the reset marker (%s)", type(e).__name__)
         self._report_reset("topic_vectors", reason, backup, rebuilt)
 
     def _save(self):

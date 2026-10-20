@@ -798,6 +798,9 @@ class ResetReportingTests(Base):
         self.assertNotIn("SECRET TITLE", text)
         (name, kw), = [e for e in self.events if e[0] == "topic.history_reset"]
         self.assertEqual(kw["agent"], "topic_history")
+        # A reset is a warning, not a failure: "failed" lands on the Errors page and
+        # lets lib/decisions.ts deriveOutcome mark a held decision FAILED.
+        self.assertEqual(kw["status"], "warning")
         self.assertEqual(kw["metadata"], {"file": "topics.json", "error": "JSONDecodeError",
                                           "backup_kept": True, "rebuilt": None})
         self.assertNotIn("agent.failed", [e[0] for e in self.events])
@@ -873,6 +876,164 @@ class RobustnessTests(Base):
         self.assertEqual(tm.own_topics()[:2], ["The Fall of Rome", "Why Pompeii was buried"])
 
 
+class ResetMarkerTests(Base):
+    """A reset whose rebuild did not succeed must keep the publish gate closed.
+
+    TopicManager is built earlier in a run than the gate. After its tolerant
+    reset the corrupt file is gone, so the strict engine the gate builds would
+    see an empty store and pass. The marker file is what makes it raise."""
+
+    def setUp(self):
+        super().setUp()
+        import numpy as np
+        self.np = np
+        self.store = Path(self._tmp.name) / "topic_vectors.npz"
+        env = patch.dict("os.environ", {"CHRONOS_TOPIC_VECTORS": str(self.store)})
+        env.start()
+        self.addCleanup(env.stop)
+        # the default channel reads CHRONOS_TOPIC_VECTORS, exactly like the gate
+        from modules.channels import legacy_default_channel
+        self.channel = legacy_default_channel()
+        self.store.write_bytes(b"garbage")
+
+    @staticmethod
+    def embed(text):
+        import numpy as np
+        v = np.zeros(32, dtype=np.float32)
+        v[sum(map(ord, text)) % 32] = 1.0
+        return v
+
+    @property
+    def marker(self):
+        return self.store.with_name(self.store.name + ".reset-unrebuilt")
+
+    def real_engines(self, embedder):
+        from modules.originality_engine import OriginalityEngine
+        self._patch("modules.topic_manager.OriginalityEngine",
+                    side_effect=lambda **kw: OriginalityEngine(embedder=embedder, **kw))
+
+    def gate(self):
+        """The gate exactly as publish_gate builds it: a bare engine, no path."""
+        from modules import publish_gate
+        decision = publish_gate.GateDecision()
+        with patch("modules.originality_engine._LazyModel2VecEmbedder", return_value=self.embed):
+            publish_gate._check_originality(decision, publish_gate.GateConfig(), "The Fall of Rome", None)
+        return decision
+
+    @staticmethod
+    def broken(text):
+        raise RuntimeError("model not available")
+
+    def test_reset_with_a_failed_rebuild_keeps_the_gate_closed(self):
+        self.write_history([session("The Fall of Rome")])
+        self.real_engines(self.broken)
+        self.manager(self.channel)
+        self.assertFalse(self.store.exists())     # the corrupt file is gone ...
+        self.assertTrue(self.marker.exists())     # ... so the marker carries the fact
+        decision = self.gate()
+        self.assertFalse(decision.allowed)
+        self.assertTrue(any(b.startswith("originality_errored:OriginalityStoreReset") for b in decision.blocks),
+                        decision.blocks)
+
+    def test_the_marker_holds_only_a_timestamp(self):
+        self.write_history([session("SECRET TITLE")])
+        self.real_engines(self.broken)
+        self.manager(self.channel)
+        import re
+        self.assertRegex(self.marker.read_text().strip(), r"^\d{4}-\d{2}-\d{2}T[\d:.+\-Z]+$")
+        self.assertNotIn("SECRET", self.marker.read_text())
+
+    def test_reset_with_a_successful_rebuild_leaves_no_marker_and_the_gate_reads_the_store(self):
+        self.write_history([session("The Fall of Rome")])
+        self.real_engines(self.embed)
+        tm = self.manager(self.channel)
+        self.assertFalse(self.marker.exists())
+        self.assertEqual(tm.originality._topics, ["The Fall of Rome"])
+        decision = self.gate()
+        self.assertEqual(decision.blocks, ["duplicate_topic"])   # it sees the rebuilt topic
+
+    def test_a_reset_that_rebuilds_nothing_keeps_the_marker(self):
+        self.write_history([])      # nothing to rebuild from: the store stays empty
+        self.real_engines(self.embed)
+        self.manager(self.channel)
+        self.assertTrue(self.marker.exists())
+        self.assertFalse(self.gate().allowed)
+
+    def test_the_marker_clears_once_a_topic_is_registered(self):
+        self.write_history([session("The Fall of Rome")])
+        self.real_engines(self.broken)
+        tm = self.manager(self.channel)
+        self.assertTrue(self.marker.exists())
+        tm.originality.embedder = self.embed       # the model is back
+        tm.register_topic("The Antikythera Mechanism", "v.mp4")
+        self.assertFalse(self.marker.exists())
+        self.assertTrue(self.store.exists())
+        self.assertEqual(self.gate().blocks, [])    # reads a real, non-empty store again
+
+    def test_saving_an_empty_store_does_not_clear_the_marker(self):
+        from modules.originality_engine import OriginalityEngine
+        engine = OriginalityEngine(vectors_path=self.store, embedder=self.embed, tolerate_corrupt=True)
+        engine.mark_unrebuilt()
+        engine._topics, engine._vectors = [], None
+        engine._save()
+        self.assertTrue(self.marker.exists())
+
+    def test_repeated_resets_never_leave_more_than_one_marker(self):
+        self.write_history([session("The Fall of Rome")])
+        self.real_engines(self.broken)
+        for _ in range(3):
+            self.store.write_bytes(b"garbage again")
+            self.manager(self.channel)
+        markers = [p.name for p in self.store.parent.iterdir() if p.name.endswith(".reset-unrebuilt")]
+        self.assertEqual(len(markers), 1)
+        self.assertLessEqual(len(list(self.store.parent.glob("topic_vectors.npz.corrupt-*"))), 3)
+
+    def test_without_a_marker_a_missing_store_is_just_a_new_channel(self):
+        from modules.originality_engine import OriginalityEngine
+        path = Path(self._tmp.name) / "fresh.npz"
+        self.assertFalse(OriginalityEngine(vectors_path=path, embedder=self.embed).check("x").is_duplicate)
+
+    def test_a_tolerant_engine_is_not_stopped_by_a_marker(self):
+        from modules.originality_engine import OriginalityEngine
+        self.marker.write_text("2026-10-20T00:00:00+00:00")
+        self.store.unlink()
+        OriginalityEngine(vectors_path=self.store, embedder=self.embed, tolerate_corrupt=True)
+        with self.assertRaises(Exception):
+            OriginalityEngine(vectors_path=self.store, embedder=self.embed)
+
+
+class AtomicVectorSaveTests(Base):
+    def test_a_failure_mid_write_leaves_the_old_store_intact(self):
+        import numpy as np
+        from modules.originality_engine import OriginalityEngine
+        path = Path(self._tmp.name) / "v.npz"
+        emb = lambda t: np.ones(4, dtype=np.float32)
+        engine = OriginalityEngine(vectors_path=path, embedder=emb)
+        engine.register("The Fall of Rome")
+        before = path.read_bytes()
+
+        def dies_mid_write(target, **arrays):
+            target.write(b"PK partial npz bytes")
+            raise OSError("disk full")
+
+        with patch("modules.originality_engine.np.savez", side_effect=dies_mid_write):
+            with self.assertRaises(OSError):
+                engine.register("Stonehenge: who raised it")
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(sorted(p.name for p in path.parent.iterdir() if p.name.startswith("v.npz") or p.suffix == ".npz"),
+                         ["v.npz"])      # no temp file left behind
+        reloaded = OriginalityEngine(vectors_path=path, embedder=emb)
+        self.assertEqual(reloaded._topics, ["The Fall of Rome"])
+
+    def test_a_normal_save_still_round_trips(self):
+        import numpy as np
+        from modules.originality_engine import OriginalityEngine
+        path = Path(self._tmp.name) / "v.npz"
+        emb = lambda t: np.arange(1, 5, dtype=np.float32)
+        OriginalityEngine(vectors_path=path, embedder=emb).register("A")
+        self.assertEqual(OriginalityEngine(vectors_path=path, embedder=emb)._topics, ["A"])
+
+
 class FailureEventTests(Base):
     def test_selection_error_carries_only_fixed_words_and_counts(self):
         from modules.topic_manager import TopicSelectionError
@@ -929,14 +1090,21 @@ class FailureEventTests(Base):
         # The Command Center reads EVERY "agent.failed" as the AI integration
         # failing (integrations/page.tsx, lib/intelligence.ts); a history
         # bookkeeping failure must not be one.
-        self.assertIn("events.TOPIC_HISTORY_FAILED", src)
+        self.assertIn("events.TOPIC_HISTORY_WRITE_ERROR", src)
+        self.assertIn("events.STATUS_WARNING", src)
         self.assertNotIn("AGENT_FAILED", src)
+        self.assertNotIn("STATUS_FAILED", src)
         self.assertIn("topic_history", src)
 
     def test_the_history_event_names_are_not_the_ai_failure_event(self):
         from modules import event_log
-        self.assertEqual(event_log.TOPIC_HISTORY_FAILED, "topic.history_failed")
+        self.assertEqual(event_log.TOPIC_HISTORY_WRITE_ERROR, "topic.history_write_error")
         self.assertEqual(event_log.TOPIC_HISTORY_RESET, "topic.history_reset")
+        self.assertEqual(event_log.STATUS_WARNING, "warning")
+        # command-center/lib/decisions.ts and the Errors page treat any event
+        # name ending in ".failed" as a failure whatever its status.
+        for name in (event_log.TOPIC_HISTORY_WRITE_ERROR, event_log.TOPIC_HISTORY_RESET):
+            self.assertFalse(name.endswith(".failed"), name)
 
 
 if __name__ == "__main__":

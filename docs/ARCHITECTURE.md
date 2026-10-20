@@ -265,7 +265,10 @@ different representative phrasings per run).
   aside as `topics.json.corrupt-<time>` (newest 3 kept) and the history starts empty.
   `OriginalityEngine` is strict by default (a corrupt store raises, so the
   publish gate fails closed); only `TopicManager` passes `tolerate_corrupt=True`
-  and rebuilds the store from the channel's own topics. The publish gate reads
+  and rebuilds the store from the channel's own topics; if nothing could be
+  rebuilt it writes `topic_vectors.npz.reset-unrebuilt` (a timestamp), and the
+  strict engine raises while that marker exists, so the gate blocks until a
+  non-empty store is written again. The store itself is written atomically. The publish gate reads
   the DEFAULT vector store, not `topic_vectors.<channel>.npz`.
 - **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
   `CalendarEntry` records (`queued`/`published`/`skipped`). A write-through JSON

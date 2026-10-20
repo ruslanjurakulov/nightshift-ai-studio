@@ -1699,7 +1699,7 @@ def run(
                      channel_id, type(e).__name__)
         # Not AGENT_FAILED: the Command Center reads every agent.failed as the AI
         # integration failing, and this is local file bookkeeping.
-        events.emit(events.TOPIC_HISTORY_FAILED, agent="topic_history", status=events.STATUS_FAILED,
+        events.emit(events.TOPIC_HISTORY_WRITE_ERROR, agent="topic_history", status=events.STATUS_WARNING,
                     channel_id=channel_id, metadata={"error": type(e).__name__})
 
     # Snapshot what is left on the paid provider accounts (ElevenLabs credits,

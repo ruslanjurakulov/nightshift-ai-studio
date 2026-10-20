@@ -41,6 +41,7 @@ from __future__ import annotations
 import logging
 import os
 import pickle
+import tempfile
 import zipfile
 import zlib
 from dataclasses import dataclass
@@ -69,8 +70,35 @@ _DEFAULT_VECTORS_PATH = HISTORY_DIR / "topic_vectors.npz"
 #: permission or I/O error is transient, not corruption, and must propagate.
 CORRUPT_STORE_ERRORS = (zipfile.BadZipFile, ValueError, KeyError, EOFError,
                         pickle.UnpicklingError, zlib.error)
+#: Written next to a store whose reset could not be rebuilt (see
+#: ``OriginalityEngine.mark_unrebuilt``). One fixed name per store, so there is
+#: never more than one.
+RESET_MARKER_SUFFIX = ".reset-unrebuilt"
+
+
+class OriginalityStoreReset(RuntimeError):
+    """The store was reset after corruption and has not been rebuilt, so "no
+    duplicates found" would mean "nothing to compare with", not "original"."""
+
+
 #: How many ``<file>.corrupt-<time>`` copies are kept per file; older ones go.
 KEEP_CORRUPT_BACKUPS = 3
+
+
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def move_aside_corrupt(path: Path, keep: int = KEEP_CORRUPT_BACKUPS) -> Optional[Path]:
@@ -191,7 +219,30 @@ class OriginalityEngine:
 
     # -- persistence ---------------------------------------------------
 
+    @property
+    def reset_marker(self) -> Path:
+        return self.vectors_path.with_name(self.vectors_path.name + RESET_MARKER_SUFFIX)
+
+    def mark_unrebuilt(self) -> None:
+        """Record that a reset store was NOT refilled. The corrupt file has been
+        moved aside, so without this a strict reader (the pre-publish gate) would
+        see an empty store and pass every topic; with it, it raises until a
+        non-empty store exists again. Holds a timestamp, nothing else."""
+        self.reset_marker.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_bytes(self.reset_marker, datetime.now(timezone.utc).isoformat().encode())
+
+    def _clear_reset_marker(self) -> None:
+        try:
+            self.reset_marker.unlink()
+        except FileNotFoundError:
+            pass
+
     def _load(self) -> None:
+        if not self.tolerate_corrupt and self.reset_marker.exists():
+            raise OriginalityStoreReset(
+                "the topic vector store was reset after corruption and has not been rebuilt; "
+                f"remove {self.reset_marker.name} once the store is restored, or run a topic pick "
+                "that registers a topic")
         if not self.vectors_path.exists():
             self._topics = []
             self._vectors = None
@@ -218,13 +269,26 @@ class OriginalityEngine:
         self._vectors = vectors.astype(np.float32) if len(self._topics) else None
 
     def _save(self) -> None:
+        """Write to a temp file in the same directory, fsync, then replace: a
+        kill mid-write leaves the old store, never half of a new one."""
         self.vectors_path.parent.mkdir(parents=True, exist_ok=True)
         vectors = self._vectors if self._vectors is not None else np.zeros((0, 0), dtype=np.float32)
-        np.savez(
-            self.vectors_path,
-            topics=np.array(self._topics, dtype=object),
-            vectors=vectors,
-        )
+        fd, tmp = tempfile.mkstemp(dir=self.vectors_path.parent, prefix=self.vectors_path.name + ".",
+                                   suffix=".npz")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                np.savez(fh, topics=np.array(self._topics, dtype=object), vectors=vectors)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, self.vectors_path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        if self._topics:
+            self._clear_reset_marker()
 
     # -- public API ------------------------------------------------------
 
