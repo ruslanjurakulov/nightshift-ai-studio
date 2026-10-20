@@ -45,19 +45,20 @@ def still_scheduled(channel_id: str, registry=None):
     swallows an outage and would synthesize an ACTIVE ``default``, which is not an answer)."""
     try:
         if registry is None:
-            from modules.channels import ChannelRegistry
+            from modules.channels import ChannelRegistry, _parse_rows
             from modules.supabase_sync import SupabaseSync
-            from tools.list_channels import _preflight
 
             sync = SupabaseSync()
             if not sync.enabled:
                 return None
-            _preflight(sync)                       # raises when `channels` cannot be read
-            registry = ChannelRegistry()
+            # ONE strict read, and the decision is made from exactly those rows (the registry's own parser). A
+            # second, forgiving read (``ChannelRegistry()``) that failed between the two requests would leave only
+            # the synthesized ``default``, and a channel that is there would read as deleted.
+            registry = ChannelRegistry(_parse_rows(sync.select_strict("channels"), source="supabase"))
         c = registry.get(channel_id)
         return bool(c.is_runnable and c.is_operators)
     except KeyError:
-        return False                               # the channel no longer exists
+        return False                               # absent from the rows the strict read returned: it is gone
     except Exception as e:  # noqa: BLE001 - an unreadable registry is an unknown
         schedule_catchup.warn(f"slot guard: the schedule of {channel_id} could not be read ({type(e).__name__}).")
         return None

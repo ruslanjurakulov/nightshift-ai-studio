@@ -170,6 +170,38 @@ class PausedOrNoLongerScheduled(unittest.TestCase):
             finally:
                 logging.disable(logging.NOTSET)
 
+    def test_a_second_read_that_fails_cannot_make_a_present_channel_look_deleted(self):
+        # The registry used to be built by a SECOND, forgiving read; if that one failed between the two requests
+        # only the synthesized `default` was left and a real channel raised KeyError (read as "deleted"), skipping
+        # a legitimate exact-hour run. The decision is now made from the rows of the one strict read.
+        class FirstReadOnly(FakeSupabase):
+            def select_strict(self, table, params=None):
+                rows = super().select_strict(table, params)
+                self.tables["channels"] = []            # whatever reads next sees nothing
+                return rows
+
+            def select(self, table, params=None):
+                return []
+
+        env = {"SUPABASE_URL": "https://example.invalid", "SUPABASE_SERVICE_KEY": "x"}
+
+        def ask(channel, rows):
+            sync = FirstReadOnly(rows)
+            with mock.patch.dict(os.environ, env), mock.patch("modules.supabase_sync.SupabaseSync", return_value=sync), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                logging.disable(logging.CRITICAL)
+                try:
+                    return slot_guard.still_scheduled(channel), sync
+                finally:
+                    logging.disable(logging.NOTSET)
+
+        verdict, sync = ask("shop", [chan("shop", hour=15)])
+        self.assertIs(verdict, True)
+        self.assertEqual(sync.reads, ["channels"])                  # one read, not two
+        self.assertIs(ask("shop", [chan("shop", hour=15, status="PAUSED")])[0], False)      # still paused: skip
+        self.assertIs(ask("shop", [chan("shop", hour=15, org=CUSTOMER_ORG)])[0], False)
+        self.assertIs(ask("shop", [chan("news", hour=15)])[0], False)                       # truly absent: skip
+
     def test_not_configured_is_quiet_and_unknown(self):
         sync = FakeSupabase([chan("default", hour=15)])
         rc, out = decide(sync, registry_=None)
