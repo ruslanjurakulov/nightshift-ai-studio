@@ -54,15 +54,15 @@ _LEMMA = {
 }
 
 #: Short titles (both at most this many content words) are the same topic only
-#: with exactly the same content words: one extra word is another video
-#: ("Lost Colony of Roanoke" vs "... Roanoke Island" is left to the semantic /
-#: lexical check in OriginalityEngine, which sees it). Above this the overlap
-#: rules below apply.
+#: with identical content words, or when one's words (at least MIN_OVERLAP_WORDS
+#: of them) all sit inside the other's. A shorter one ("Lost Colony of
+#: Roanoke", 3 words, vs "... Roanoke Island") is left to the semantic / lexical
+#: check in OriginalityEngine, which sees it. Above this size the Jaccard rule
+#: below also applies.
 SHORT_TITLE_WORDS = 6
-#: Longer titles are the same topic at or above this Jaccard overlap of content
-#: words, or when the smaller one's words all sit inside the other's. Both need
-#: the smaller side to have at least MIN_OVERLAP_WORDS words: with fewer, an
-#: overlap is just a shared common word.
+#: Longer titles are also the same topic at or above this Jaccard overlap of
+#: content words. Both overlap rules need the smaller side to have at least
+#: MIN_OVERLAP_WORDS words: with fewer, an overlap is just a shared common word.
 JACCARD_THRESHOLD = 0.7
 MIN_OVERLAP_WORDS = 4
 
@@ -128,12 +128,14 @@ def is_same_topic(a: str, b: str) -> bool:
         return True
     if _numerals(wa) != _numerals(wb):
         return False
-    if len(wa) <= SHORT_TITLE_WORDS and len(wb) <= SHORT_TITLE_WORDS:
-        return False
     small, big = (wa, wb) if len(wa) <= len(wb) else (wb, wa)
     if len(small) < MIN_OVERLAP_WORDS:
         return False
-    return small <= big or len(wa & wb) / len(wa | wb) >= JACCARD_THRESHOLD
+    if small <= big:
+        return True
+    if len(wa) <= SHORT_TITLE_WORDS and len(wb) <= SHORT_TITLE_WORDS:
+        return False
+    return len(wa & wb) / len(wa | wb) >= JACCARD_THRESHOLD
 
 
 def find_repeat(candidate: str, history) -> str | None:

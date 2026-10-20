@@ -40,6 +40,9 @@ from __future__ import annotations
 
 import logging
 import os
+import pickle
+import zipfile
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +64,32 @@ DEFAULT_HARD_BLOCK_THRESHOLD = 0.90
 DEFAULT_FLAG_THRESHOLD = 0.80
 
 _DEFAULT_VECTORS_PATH = HISTORY_DIR / "topic_vectors.npz"
+
+#: What a truncated or garbage .npz raises. Deliberately NOT OSError: a
+#: permission or I/O error is transient, not corruption, and must propagate.
+CORRUPT_STORE_ERRORS = (zipfile.BadZipFile, ValueError, KeyError, EOFError,
+                        pickle.UnpicklingError, zlib.error)
+#: How many ``<file>.corrupt-<time>`` copies are kept per file; older ones go.
+KEEP_CORRUPT_BACKUPS = 3
+
+
+def move_aside_corrupt(path: Path, keep: int = KEEP_CORRUPT_BACKUPS) -> Optional[Path]:
+    """Move an unreadable state file to ``<name>.corrupt-<time>`` (never delete
+    it), then prune the older such copies beyond ``keep`` so a cached
+    ``history/`` directory does not fill with them. Returns the backup path, or
+    None when the file could not be moved."""
+    path = Path(path)
+    backup = path.with_name(f"{path.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S%f}")
+    try:
+        os.replace(path, backup)
+    except OSError:
+        return None
+    for old in sorted(path.parent.glob(f"{path.name}.corrupt-*"))[:-keep]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return backup
 
 
 def _resolve_vectors_path(vectors_path: Optional[Path | str]) -> Path:
@@ -131,6 +160,7 @@ class OriginalityEngine:
         embedder: Optional[Callable[[str], np.ndarray]] = None,
         hard_block_threshold: float = DEFAULT_HARD_BLOCK_THRESHOLD,
         flag_threshold: float = DEFAULT_FLAG_THRESHOLD,
+        tolerate_corrupt: bool = False,
     ):
         if not (0.0 <= flag_threshold <= hard_block_threshold <= 1.0):
             raise ValueError(
@@ -143,6 +173,17 @@ class OriginalityEngine:
         self.embedder = embedder if embedder is not None else _LazyModel2VecEmbedder()
         self.hard_block_threshold = hard_block_threshold
         self.flag_threshold = flag_threshold
+        # STRICT by default, on purpose: the pre-publish gate builds a bare
+        # engine and reads an exception as "the duplicate check could not run",
+        # which blocks. An engine that quietly started empty would turn a
+        # corrupt store into "no duplicates" and let a video through. Only a
+        # caller that has its own fallback (TopicManager, which also has the
+        # lexical check over topics.json) passes True.
+        self.tolerate_corrupt = tolerate_corrupt
+        #: Error type name when this engine reset a corrupt store, else None.
+        self.reset_reason: Optional[str] = None
+        #: The backup copy of that store, when one was kept.
+        self.reset_backup: Optional[Path] = None
 
         self._topics: list[str] = []
         self._vectors: Optional[np.ndarray] = None  # shape (n, dim)
@@ -160,18 +201,15 @@ class OriginalityEngine:
             with np.load(self.vectors_path, allow_pickle=True) as data:
                 topics = data["topics"]
                 vectors = data["vectors"]
-        except Exception as e:  # truncated / garbage file: BadZipFile, ValueError, KeyError, ...
-            # One bad file must not stop every run at construction. Move it
-            # aside (never delete it) and start empty; log the error type only.
-            backup = self.vectors_path.with_name(
-                f"{self.vectors_path.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S%f}")
-            try:
-                os.replace(self.vectors_path, backup)
-                kept = f"kept a copy as {backup.name}"
-            except OSError:
-                kept = "could not move it aside"
-            logger.warning("Topic vector store was unreadable (%s) — %s and starting empty",
-                           type(e).__name__, kept)
+        except CORRUPT_STORE_ERRORS as e:
+            if not self.tolerate_corrupt:
+                raise
+            self.reset_reason = type(e).__name__
+            self.reset_backup = move_aside_corrupt(self.vectors_path)
+            logger.warning("Topic vector store was unreadable (%s) — %s; it starts empty",
+                           self.reset_reason,
+                           f"kept a copy as {self.reset_backup.name}" if self.reset_backup
+                           else "could not move it aside")
             self._topics = []
             self._vectors = None
             return
@@ -255,6 +293,17 @@ class OriginalityEngine:
             semantic_score=semantic_score,
             lexical_score=lexical_score,
         )
+
+    def rebuild(self, topics) -> int:
+        """Replace the store with these topics, embedded now, saved once.
+        Returns how many. Used after a reset, from the caller's own history."""
+        topics = [t for t in topics if isinstance(t, str) and t.strip()]
+        if not topics:
+            return 0
+        vectors = np.vstack([np.asarray(self.embedder(t), dtype=np.float32).reshape(1, -1) for t in topics])
+        self._topics, self._vectors = list(topics), vectors
+        self._save()
+        return len(topics)
 
     def register(self, topic: str) -> None:
         """Embed `topic` and persist it to the vector store immediately."""

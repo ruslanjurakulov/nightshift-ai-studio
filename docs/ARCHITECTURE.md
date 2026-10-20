@@ -262,7 +262,11 @@ different representative phrasings per run).
   per channel over the last 200 topics / 365 days (`modules/topic_dedup.py`);
   rows from before the channel id was recorded count for every channel. Writes
   are atomic (temp file + rename) under an flock; an unreadable file is moved
-  aside as `topics.json.corrupt-<time>` and the history starts empty.
+  aside as `topics.json.corrupt-<time>` (newest 3 kept) and the history starts empty.
+  `OriginalityEngine` is strict by default (a corrupt store raises, so the
+  publish gate fails closed); only `TopicManager` passes `tolerate_corrupt=True`
+  and rebuilds the store from the channel's own topics. The publish gate reads
+  the DEFAULT vector store, not `topic_vectors.<channel>.npz`.
 - **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
   `CalendarEntry` records (`queued`/`published`/`skipped`). A write-through JSON
   store, explicitly a placeholder rather than a `state_store` table.

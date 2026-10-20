@@ -55,6 +55,12 @@ JOB_COMPLETED = "job.completed"
 JOB_FAILED = "job.failed"
 # Pipeline stages
 TOPIC_SELECTED = "topic.selected"
+# Topic memory (modules/topic_manager.py). Deliberately NOT `agent.failed`: the
+# Command Center reads every `agent.failed` as the AI integration failing, and
+# a history file that could not be written or had to be reset is not that.
+# Fixed words and counts only — never a topic title.
+TOPIC_HISTORY_RESET = "topic.history_reset"
+TOPIC_HISTORY_FAILED = "topic.history_failed"
 RESEARCH_STARTED = "research.started"
 RESEARCH_COMPLETED = "research.completed"
 # Packaging is decided BEFORE the script (modules/title_planner.py): the title

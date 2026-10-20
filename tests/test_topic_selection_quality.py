@@ -69,6 +69,9 @@ class Base(unittest.TestCase):
         self._patch("modules.topic_manager.TOPIC_HISTORY_FILE", new=self.history_path)
         self._patch("modules.topic_manager.make_client", return_value=MagicMock())
         self.engines = []
+        self.engine_kwargs = []
+        self.events = []
+        self._patch("modules.event_log.emit", side_effect=lambda event, **kw: self.events.append((event, kw)) or True)
         self._patch("modules.topic_manager.OriginalityEngine", side_effect=self._engine)
         self._patch("modules.topic_manager.TopicRecommender", side_effect=lambda **k: self._empty("suggest_topics_as_prompt_text"))
         self._patch("modules.topic_manager.PerformanceAnalyzer", side_effect=lambda **k: self._empty("analyze_videos_as_prompt_text"))
@@ -90,7 +93,8 @@ class Base(unittest.TestCase):
         getattr(m, method).return_value = ""
         return m
 
-    def _engine(self, vectors_path=None, **_):
+    def _engine(self, vectors_path=None, **kw):
+        self.engine_kwargs.append(kw)
         e = MagicMock()
         e.vectors_path = vectors_path
         e.check.return_value = CLEAR
@@ -485,9 +489,17 @@ class NormaliserHardeningTests(unittest.TestCase):
         # Short titles: one extra content word is a different video. The
         # embedding / lexical check in OriginalityEngine still sees this pair.
         self.assertFalse(topic_dedup.is_same_topic("Lost Colony of Roanoke", "Lost Colony of Roanoke Island"))
-        # ... even with enough words that an overlap rule would otherwise fire
-        self.assertFalse(topic_dedup.is_same_topic("Lost Colony Roanoke Island Settlers",
-                                                   "Lost Colony Roanoke Island Settlers Vanished"))
+        # ... even with enough words that the overlap rule would otherwise fire
+        self.assertFalse(topic_dedup.is_same_topic("Roanoke settlers vanished Virginia Dare colony",
+                                                   "Roanoke settlers vanished Virginia Dare Jamestown"))
+
+    def test_four_to_six_words_wholly_inside_a_longer_title_are_a_repeat(self):
+        self.assertTrue(topic_dedup.is_same_topic("Lost Colony Roanoke Island Settlers",
+                                                  "Lost Colony Roanoke Island Settlers Vanished"))
+        # not when the numbers differ, nor when only three words are shared
+        self.assertFalse(topic_dedup.is_same_topic("Apollo 8 crew Moon orbit story",
+                                                   "Apollo 9 crew Moon orbit story lunar module"))
+        self.assertFalse(topic_dedup.is_same_topic("Lost Colony of Roanoke", "Lost Colony of Roanoke Island"))
 
     def test_long_titles_sharing_only_half_their_words_are_distinct(self):
         self.assertFalse(topic_dedup.is_same_topic(
@@ -694,15 +706,171 @@ class PersistenceTests(Base):
         leftovers = sorted(p.name for p in self.history_path.parent.iterdir() if p.name.startswith("topics.json"))
         self.assertEqual(leftovers, ["topics.json", "topics.json.lock"])
 
-    def test_a_corrupt_originality_store_starts_empty_instead_of_failing_the_run(self):
-        from modules.originality_engine import OriginalityEngine
-        path = Path(self._tmp.name) / "vectors.npz"
+
+class GateStaysStrictTests(Base):
+    """The publish gate builds a bare OriginalityEngine and treats an exception
+    as a block. A tolerant engine would turn a corrupt store into a pass."""
+
+    def corrupt(self, name="vectors.npz"):
+        path = Path(self._tmp.name) / name
         path.write_bytes(b"this is not an npz")
+        return path
+
+    def test_the_engine_is_strict_by_default(self):
+        from modules.originality_engine import OriginalityEngine
+        path = self.corrupt()
+        with self.assertRaises(Exception):
+            OriginalityEngine(vectors_path=path, embedder=lambda t: None)
+        self.assertTrue(path.exists())  # nothing was moved aside
+
+    def test_a_corrupt_store_makes_the_publish_gate_fail_closed(self):
+        from modules import publish_gate
+        path = self.corrupt("topic_vectors.npz")
+        with patch.dict("os.environ", {"CHRONOS_TOPIC_VECTORS": str(path)}):
+            decision = publish_gate.GateDecision()
+            publish_gate._check_originality(decision, publish_gate.GateConfig(), "The Fall of Rome", None)
+        self.assertTrue(any(b.startswith("originality_errored") for b in decision.blocks), decision.blocks)
+        self.assertFalse(decision.allowed)
+        self.assertTrue(path.exists())
+
+    def test_only_topic_manager_asks_for_tolerance(self):
+        self.manager(chronos())
+        self.assertEqual(self.engine_kwargs, [{"tolerate_corrupt": True}])
+
+    def test_tolerance_moves_the_file_aside_and_starts_empty(self):
+        from modules.originality_engine import OriginalityEngine
+        path = self.corrupt()
         with self.assertLogs("modules.originality_engine", level="WARNING") as logs:
-            engine = OriginalityEngine(vectors_path=path, embedder=lambda t: __import__("numpy").ones(3))
+            engine = OriginalityEngine(vectors_path=path, embedder=lambda t: None, tolerate_corrupt=True)
+        self.assertEqual(engine.reset_reason, "UnpicklingError")
         self.assertFalse(engine.check("anything").is_duplicate)
         self.assertEqual(len(list(path.parent.glob("vectors.npz.corrupt-*"))), 1)
         self.assertNotIn("this is not an npz", "\n".join(logs.output))
+
+    def test_a_truncated_real_store_is_corruption_too(self):
+        import numpy as np
+        from modules.originality_engine import OriginalityEngine
+        path = Path(self._tmp.name) / "real.npz"
+        good = OriginalityEngine(vectors_path=path, embedder=lambda t: np.ones(4, dtype=np.float32))
+        for t in ("The Fall of Rome", "Stonehenge: who raised it"):
+            good.register(t)
+        data = path.read_bytes()
+        path.write_bytes(data[: len(data) // 2])
+        with self.assertRaises(Exception):
+            OriginalityEngine(vectors_path=path, embedder=lambda t: None)
+        self.assertTrue(path.exists())
+        engine = OriginalityEngine(vectors_path=path, embedder=lambda t: None, tolerate_corrupt=True)
+        self.assertIsNotNone(engine.reset_reason)
+        self.assertEqual(len(list(path.parent.glob("real.npz.corrupt-*"))), 1)
+
+    def test_io_errors_are_not_corruption_even_when_tolerant(self):
+        from modules.originality_engine import OriginalityEngine
+        path = self.corrupt()
+        with patch("modules.originality_engine.np.load", side_effect=PermissionError("denied")):
+            with self.assertRaises(PermissionError):
+                OriginalityEngine(vectors_path=path, embedder=lambda t: None, tolerate_corrupt=True)
+        self.assertTrue(path.exists())
+
+    def test_only_the_three_newest_backups_are_kept(self):
+        from modules.originality_engine import OriginalityEngine
+        path = self.corrupt()
+        for i in range(5):
+            (path.parent / f"vectors.npz.corrupt-2020010{i}T000000000000").write_bytes(b"old")
+        OriginalityEngine(vectors_path=path, embedder=lambda t: None, tolerate_corrupt=True)
+        left = sorted(p.name for p in path.parent.glob("vectors.npz.corrupt-*"))
+        self.assertEqual(len(left), 3)
+        self.assertFalse(any(n.endswith("20200100T000000000000") or n.endswith("20200101T000000000000") for n in left))
+
+
+class ResetReportingTests(Base):
+    def real_engine_factory(self, embedder):
+        from modules.originality_engine import OriginalityEngine
+        return lambda **kw: OriginalityEngine(embedder=embedder, **kw)
+
+    def test_a_history_reset_is_logged_and_emitted_without_content_or_titles(self):
+        self.history_path.write_text('{"sessions": [{"topic": "SECRET TITLE"} BROKEN')
+        with self.assertLogs("modules.topic_manager", level="WARNING") as logs:
+            self.manager(chronos())
+        text = "\n".join(logs.output)
+        self.assertIn("JSONDecodeError", text)
+        self.assertIn("EMPTY", text)           # never reported as a plain empty history
+        self.assertIn("topics.json.corrupt-", text)
+        self.assertNotIn("SECRET TITLE", text)
+        (name, kw), = [e for e in self.events if e[0] == "topic.history_reset"]
+        self.assertEqual(kw["agent"], "topic_history")
+        self.assertEqual(kw["metadata"], {"file": "topics.json", "error": "JSONDecodeError",
+                                          "backup_kept": True, "rebuilt": None})
+        self.assertNotIn("agent.failed", [e[0] for e in self.events])
+
+    def test_a_reset_vector_store_is_rebuilt_from_this_channels_own_topics(self):
+        import numpy as np
+        vec = Path(self._tmp.name) / "topic_vectors.chronos.npz"
+        vec.write_bytes(b"garbage")
+        self.write_history([session("The Fall of Rome", channel_id="chronos"),
+                            session("Index funds explained", channel_id="coin-notes"),
+                            session("The Antikythera Mechanism", channel_id="chronos")])
+        self._patch("modules.topic_manager._resolve_vectors_path", return_value=Path(self._tmp.name) / "topic_vectors.npz")
+        self._patch("modules.topic_manager.OriginalityEngine",
+                    side_effect=self.real_engine_factory(lambda t: np.ones(4, dtype=np.float32)))
+        tm = self.manager(chronos())
+        self.assertEqual(tm.originality._topics, ["The Fall of Rome", "The Antikythera Mechanism"])
+        self.assertTrue(tm.originality.check("anything at all").is_duplicate)
+        (name, kw), = [e for e in self.events if e[0] == "topic.history_reset"]
+        self.assertEqual(kw["metadata"], {"file": "topic_vectors", "error": "UnpicklingError",
+                                          "backup_kept": True, "rebuilt": 2})
+
+    def test_when_the_rebuild_is_impossible_the_log_says_so(self):
+        vec = Path(self._tmp.name) / "topic_vectors.chronos.npz"
+        vec.write_bytes(b"garbage")
+        self.write_history([session("The Fall of Rome", channel_id="chronos")])
+        self._patch("modules.topic_manager._resolve_vectors_path", return_value=Path(self._tmp.name) / "topic_vectors.npz")
+
+        def broken(t):
+            raise RuntimeError("model not available")
+        self._patch("modules.topic_manager.OriginalityEngine", side_effect=self.real_engine_factory(broken))
+        with self.assertLogs("modules.topic_manager", level="WARNING") as logs:
+            tm = self.manager(chronos())
+        self.assertIn("could not be rebuilt", "\n".join(logs.output))
+        self.assertEqual(tm.originality._topics, [])
+        (name, kw), = [e for e in self.events if e[0] == "topic.history_reset"]
+        self.assertIsNone(kw["metadata"]["rebuilt"])
+
+    def test_history_backups_are_pruned_to_three(self):
+        for i in range(5):
+            (self.history_path.parent / f"topics.json.corrupt-2020010{i}T000000000000").write_text("old")
+        self.history_path.write_text("garbage")
+        self.manager(chronos())
+        self.assertEqual(len(list(self.history_path.parent.glob("topics.json.corrupt-*"))), 3)
+
+
+class RobustnessTests(Base):
+    def test_a_failing_flock_is_logged_and_the_write_goes_ahead(self):
+        tm = self.manager(chronos())
+        with patch("modules.topic_manager.fcntl.flock", side_effect=OSError("ENOLCK")):
+            with self.assertLogs("modules.topic_manager", level="WARNING") as logs:
+                tm.register_topic("The Fall of Rome", "x.mp4")
+        self.assertIn("OSError", "\n".join(logs.output))
+        self.assertEqual(json.loads(self.history_path.read_text())["sessions"][0]["topic"], "The Fall of Rome")
+
+    def test_malformed_session_rows_are_skipped_not_fatal(self):
+        self.history_path.write_text(json.dumps({
+            "used_topics": ["The Fall of Rome", 7, None, {"x": 1}],
+            "sessions": [session("Index funds explained", channel_id="coin-notes"), "garbage", 5, None, ["a"],
+                         {"topic": 9}, session("Why Pompeii was buried", channel_id="chronos")]}))
+        with self.assertLogs("modules.topic_manager", level="WARNING") as logs:
+            tm = self.manager(chronos())
+        self.assertIn("skipped 8 malformed", "\n".join(logs.output))
+        self.assertEqual(tm.own_topics(), ["The Fall of Rome", "Why Pompeii was buried"])
+        # the garbage is dropped from what is held and written back
+        self.assertTrue(all(isinstance(r, dict) for r in tm.history["sessions"]))
+        self.assertTrue(all(isinstance(t, str) for t in tm.history["used_topics"]))
+        tm.register_topic("A new subject", "v.mp4")
+        saved = json.loads(self.history_path.read_text())
+        self.assertTrue(all(isinstance(r, dict) for r in saved["sessions"]))
+        self.assertEqual(len(saved["sessions"]), 3)
+        # and a row injected into the live list cannot crash the reader either
+        tm.history["sessions"].append("late garbage")
+        self.assertEqual(tm.own_topics()[:2], ["The Fall of Rome", "Why Pompeii was buried"])
 
 
 class FailureEventTests(Base):
@@ -756,7 +924,19 @@ class FailureEventTests(Base):
         (handler,) = tries[0].handlers
         self.assertEqual(getattr(handler.type, "id", None), "Exception")
         self.assertFalse(any(isinstance(n, ast.Raise) for n in ast.walk(handler)))
-        self.assertTrue(any(self._attr(c) == "emit" for c in self._calls(handler)))
+        (emit,) = [c for c in self._calls(handler) if self._attr(c) == "emit"]
+        src = ast.unparse(emit)
+        # The Command Center reads EVERY "agent.failed" as the AI integration
+        # failing (integrations/page.tsx, lib/intelligence.ts); a history
+        # bookkeeping failure must not be one.
+        self.assertIn("events.TOPIC_HISTORY_FAILED", src)
+        self.assertNotIn("AGENT_FAILED", src)
+        self.assertIn("topic_history", src)
+
+    def test_the_history_event_names_are_not_the_ai_failure_event(self):
+        from modules import event_log
+        self.assertEqual(event_log.TOPIC_HISTORY_FAILED, "topic.history_failed")
+        self.assertEqual(event_log.TOPIC_HISTORY_RESET, "topic.history_reset")
 
 
 if __name__ == "__main__":

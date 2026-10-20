@@ -1697,9 +1697,10 @@ def run(
     except Exception as e:
         logger.error("[channel: %s] Topic history could not be written (%s) — the run itself is unaffected",
                      channel_id, type(e).__name__)
-        events.emit(events.AGENT_FAILED, agent="topic_manager", status=events.STATUS_FAILED,
-                    channel_id=channel_id,
-                    metadata={"error": type(e).__name__, "stage": "topic_history"})
+        # Not AGENT_FAILED: the Command Center reads every agent.failed as the AI
+        # integration failing, and this is local file bookkeeping.
+        events.emit(events.TOPIC_HISTORY_FAILED, agent="topic_history", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": type(e).__name__})
 
     # Snapshot what is left on the paid provider accounts (ElevenLabs credits,
     # Leonardo tokens) for the Billing page. Best-effort; never affects the run.

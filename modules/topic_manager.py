@@ -21,8 +21,9 @@ from modules.channels import DEFAULT_CHANNEL_ID
 from modules.content_planner import ContentPlanner
 from modules.feedback_engine import FeedbackEngine
 from modules.gemini_client import generate_with_retry, make_client
+from modules import event_log as events
 from modules.originality_engine import (
-    DEFAULT_HARD_BLOCK_THRESHOLD, OriginalityEngine, _resolve_vectors_path,
+    DEFAULT_HARD_BLOCK_THRESHOLD, OriginalityEngine, _resolve_vectors_path, move_aside_corrupt,
 )
 from modules.performance_analyzer import PerformanceAnalyzer
 from modules.topic_recommender import TopicRecommender
@@ -130,7 +131,10 @@ class TopicManager:
         self.client = make_client()
         # One vector store per channel: a topic made for channel A must not
         # make channel B's candidate look like a repeat (see _vectors_path).
-        self.originality = OriginalityEngine(vectors_path=self._vectors_path())
+        # tolerate_corrupt is for THIS caller only: the publish gate builds its own
+        # engine and must keep failing closed on a corrupt store.
+        self.originality = OriginalityEngine(vectors_path=self._vectors_path(), tolerate_corrupt=True)
+        self._recover_vectors_if_reset()
         self.recommender = self._safe_make_recommender()
         self.content_planner = self._safe_make_content_planner()
         self.performance_analyzer = self._safe_make_performance_analyzer()
@@ -217,11 +221,20 @@ class TopicManager:
             )
             return ""
 
+    def _report_reset(self, file: str, error: str, backup, rebuilt) -> None:
+        """One event per reset. Fixed words and counts only — no titles."""
+        events.emit(events.TOPIC_HISTORY_RESET, agent="topic_history", status=events.STATUS_FAILED,
+                    channel_id=self.channel_id,
+                    metadata={"file": file, "error": error, "backup_kept": backup is not None,
+                              "rebuilt": rebuilt})
+
     def _load(self) -> dict:
         """The history file, or an empty history. A file that is not valid JSON
-        of the expected shape is moved aside (``topics.json.corrupt-<time>``)
-        rather than stopping every channel's run at construction; the warning
-        names the error type only, never the content."""
+        of the expected shape is moved aside (``topics.json.corrupt-<time>``,
+        newest 3 kept) rather than stopping every channel's run at construction.
+        The warning and the event name the error type only, never the content —
+        and say plainly that the memory starts EMPTY: until the copy is restored
+        this channel cannot see its earlier topics."""
         path = Path(TOPIC_HISTORY_FILE)
         if not path.exists():
             return {"used_topics": [], "sessions": []}
@@ -232,18 +245,40 @@ class TopicManager:
             if not isinstance(data.get("used_topics", []), list) or not isinstance(data.get("sessions", []), list):
                 raise ValueError("history lists are malformed")
         except ValueError as e:  # JSONDecodeError and UnicodeDecodeError are ValueErrors
-            backup = path.with_name(f"{path.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S%f}")
-            try:
-                os.replace(path, backup)
-            except OSError:
-                backup = None
+            backup = move_aside_corrupt(path)
             logger.warning(
-                "Topic history was unreadable (%s) — %s and starting with an empty history",
+                "Topic history was unreadable (%s) — %s. This channel's topic memory starts EMPTY, so "
+                "repeats of earlier topics are not detected until the history is restored from that copy",
                 type(e).__name__, f"kept a copy as {backup.name}" if backup else "could not move it aside")
+            self._report_reset("topics.json", type(e).__name__, backup, None)
             return {"used_topics": [], "sessions": []}
-        data.setdefault("used_topics", [])
-        data.setdefault("sessions", [])
+        used = [t for t in data.get("used_topics", []) if isinstance(t, str)]
+        rows = [r for r in data.get("sessions", []) if isinstance(r, dict) and isinstance(r.get("topic"), str)]
+        skipped = len(data.get("used_topics", [])) + len(data.get("sessions", [])) - len(used) - len(rows)
+        if skipped:
+            logger.warning("Topic history: skipped %d malformed rows (they are dropped at the next save)", skipped)
+        data["used_topics"], data["sessions"] = used, rows
         return data
+
+    def _recover_vectors_if_reset(self) -> None:
+        """If the originality store was corrupt and just reset, refill it from
+        this channel's own topics (embedding them is local and free) so the
+        semantic check is not blind; say so when that cannot be done."""
+        reason = getattr(self.originality, "reset_reason", None)
+        if not isinstance(reason, str):
+            return
+        backup = getattr(self.originality, "reset_backup", None)
+        rebuilt = None
+        try:
+            rebuilt = self.originality.rebuild(self.own_topics())
+            logger.warning("Topic vector store was reset (%s); rebuilt it from %d of this channel's topics",
+                           reason, rebuilt)
+        except Exception as e:
+            logger.warning(
+                "Topic vector store was reset (%s) and could not be rebuilt (%s) — the semantic duplicate "
+                "check starts empty; the word-level check over topics.json still applies",
+                reason, type(e).__name__)
+        self._report_reset("topic_vectors", reason, backup, rebuilt)
 
     def _save(self):
         """Write the history atomically: a reader sees the old file or the new
@@ -269,12 +304,23 @@ class TopicManager:
             yield
             return
         path = Path(TOPIC_HISTORY_FILE)
-        with open(path.with_name(path.name + ".lock"), "a+") as lock:
+        lock = None
+        try:
+            lock = open(path.with_name(path.name + ".lock"), "a+")
             fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
+        except OSError as e:
+            # A filesystem without locks must not stop a finished run from being
+            # recorded; the write itself is still atomic.
+            logger.warning("Topic history lock unavailable (%s) — writing without it", type(e).__name__)
+            if lock is not None:
+                lock.close()
+                lock = None
+        try:
+            yield
+        finally:
+            if lock is not None:
                 fcntl.flock(lock, fcntl.LOCK_UN)
+                lock.close()
 
     @property
     def _history_channel(self) -> str:
@@ -307,6 +353,8 @@ class TopicManager:
         rows = []
         in_sessions = set()
         for s in self.history.get("sessions", []):
+            if not isinstance(s, dict):
+                continue
             topic = s.get("topic")
             if not isinstance(topic, str) or not topic.strip():
                 continue
