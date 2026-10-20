@@ -231,3 +231,23 @@ applied, but it publishes nothing and calls nothing outside the database. It add
 - **Replay.** `add column if not exists`, guarded constraint adds, `create or replace` plus revoke then grant, `drop policy` then `create
   policy`: a replay leaves the same objects. Re-running 0085 or 0110 afterwards would put the old function / audit list back (the approval
   columns would no longer be cleared by a repair, and `approve_video_publish` would fail loudly at its audit write): re-apply 0112 after it.
+
+## The AI-disclosure settings that lower the label are a platform administrator's (0114)
+
+- **What it does.** `agent_config.ai_disclosure = never` and `ai_disclosure_voice = own_clone` (the two values that reduce what
+  is declared to YouTube, Instagram and TikTok) can be set only by `is_platform_admin()`. `channels_config_guard()` (0086's body,
+  every earlier check kept) refuses an INSERT or UPDATE of `channels` that SETS either key to a value the Python reader would
+  read as `never` / `own_clone` (case and whitespace variants included) unless the caller is a platform administrator; a write that
+  leaves the stored value, or raises the label, passes. `create_channel` (a definer, so the trigger cannot see the browser) makes
+  the same check on `p_agent_config`. The service role, the SQL editor and the other definer functions pass, as for 0086's controls.
+  Two new pure helpers (`ai_disclosure_norm`, `channel_label_lowering`) are the one definition of "lowering", executable by the browser roles
+  because the trigger runs as the caller.
+- **Rewrites no row; no backfill.** Live check before applying: no channel has either key.
+- **Deploy order.** Independent of the web app: apply 0114 any time after 0086. Until the Command Center of the same commit is deployed,
+  the database refuses the two words for a non-platform-administrator without the localized sentence (nothing offered them before).
+- **Is it working?** The verify block at the bottom of the file (every column true), and the detection query there (expected: no rows).
+- **Undo.** `docs/sql/rollback_0114_ai_disclosure_admin_lock.sql` (owner-applied; the lab applies it to a database built from 0001-0113,
+  compares the two functions and their grants byte for byte, then re-applies 0114). `tests/security/test_sec_ai_disclosure_lock.py` is the
+  lab test, `tests/test_ai_disclosure_lock_migration.py` pins the file and the agreement with the reader.
+- **Replay.** `create or replace` plus revoke then grant, drop-then-create trigger: a replay leaves the same objects. Re-running 0086 afterwards
+  would put the old guard back (the lock would be off): re-apply 0114 after it.

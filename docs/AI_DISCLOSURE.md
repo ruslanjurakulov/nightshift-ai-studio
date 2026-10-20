@@ -38,8 +38,9 @@ Nothing here changes what is published or when (CLAUDE.md rules 2 and 3): every 
 
 ## What a channel sets
 
-All in the channel's `agent_config` (no migration; the Command Center's writers merge into the blob, so the keys
-survive). A value that is not one of the allowed words reads as the conservative one, never as "never".
+All in the channel's `agent_config` (no column; the Command Center's writers merge into the blob, so the keys survive).
+A value that is not one of the allowed words reads as the conservative one, never as "never". The Channels page has a
+card for the first two (see "Who can set what"); the other two are set in the database.
 
 | Key | Values | Default | Meaning |
 | :-- | :-- | :-- | :-- |
@@ -48,8 +49,8 @@ survive). A value that is not one of the allowed words reads as the conservative
 | `ai_disclosure_line` | `false` to stop the line | `true` | Only an explicit `false` drops the description / caption line; the platform flag is still sent. |
 | `ai_disclosure_text` | up to 300 characters | empty | The line's wording. Empty = the standard wording in the channel's language. One line, no angle brackets (YouTube rejects them). |
 
-`never` switches off a compliance feature, so it is the owner's call. It is not an admin-locked key today
-(`channels_config_guard`, migration 0086); see "Decisions for the owner".
+`never` switches the label off and `own_clone` declares a voice as the owner's own, so both reduce what is declared to the
+platforms. Only a **platform administrator** may set them (migration 0114): see "Who can set what".
 
 ## The `auto` decision table
 
@@ -122,19 +123,71 @@ media it does show; (4) nothing, which labels. New Shorts get their own event at
 upload applies to the next post). The video's **own** channel's settings are used for every cross-post, including a
 YouTube target, because the label describes the content.
 
-## Settings that lower the label are visible (interim, until an owner decision on an admin lock)
+## Who can set what (migration 0114, owner decision of 2026-10-20)
 
-`ai_disclosure: never` and `ai_disclosure_voice: own_clone` reduce what the pipeline would declare, and today any
-editor who can write `agent_config` can set them. Until the owner decides whether they become admin-only (a migration,
-not in this PR), every use is visible: `main.py` logs a warning ("channel settings (...) are in effect for this video"),
-the recorded event carries `overrides: ["mode_never", "voice_own_clone"]`, and the review note says that a person chose
-it (and, for `never`, that the content was not checked: it does not say "nothing in this video needs the label").
+`ai_disclosure = never` and `ai_disclosure_voice = own_clone` reduce what the pipeline declares to YouTube, Instagram and
+TikTok (a compliance risk for the whole site), so they are writable only by a **platform administrator**:
+`public.is_platform_admin()` (migration 0018), i.e. the site owner and the helpers on the platform roster. Not by an
+editor, and not by an organization's admin either: on this site every customer is the admin of their own organization,
+so an organization-admin lock would stop nobody.
+
+| Who | `ai_disclosure` | `ai_disclosure_voice` | Anything else in `agent_config` |
+| :-- | :-- | :-- | :-- |
+| Platform administrator (site owner, helpers) | `auto`, `always`, `never` | `generic`, `own_clone`, `real_person` | as before |
+| Anyone else who can edit the channel (an organization's editor, admin or owner) | `auto`, `always` | `generic`, `real_person` | as before |
+| The service role (the pipeline, `supabase_sync`), the SQL editor | all | all | all (0086's convention: only the browser roles are held to the guard) |
+| Someone who cannot edit the channel | nothing | nothing | nothing |
+
+What "set" means. A write is refused when it makes the stored value one the **reader** (`normalize_mode`,
+`normalize_voice`) would read as `never` / `own_clone` and the stored text was not already exactly that. So:
+
+* `Never`, ` never`, `NEVER`, `never\n`, a no-break space around it, and every other spelling Python's `str.strip().lower()`
+  reads as `never` (or `own_clone`) are refused. The SQL helper `ai_disclosure_norm` lists the stripped characters
+  explicitly, and `tests/test_ai_disclosure_lock_migration.py` and `tests/security/test_sec_ai_disclosure_lock.py` check
+  it against the reader over every Unicode code point. A value the reader reads as a conservative word (a typo, a number,
+  a list) is not lowering and is not refused.
+* A write that leaves the stored value as it is passes: editing the language of a channel that already has `never`
+  (the Voice, Cast and Schedule pages write the whole blob back) still works, and moving a key to a value that raises the
+  label (`always`, `real_person`) or removing it always works. A page that was loaded before a platform administrator
+  moved a key off `never` and then writes the old blob back is refused (it would set `never` again); reload and retry.
+* The refusal is SQLSTATE `42501`, message prefix `ai_disclosure_lock:`, hint `ai_disclosure_lock`. The Channels page words
+  it in the person's language.
+
+Where it is enforced, and every writer of `agent_config`:
+
+| Writer | How the lock covers it |
+| :-- | :-- |
+| `UPDATE channels` from the browser (PostgREST: the Channels, Voice, Cast, Schedule, Studio pages) | `channels_config_guard()` trigger (0086, extended in 0114): runs as the caller, refuses the write unless `is_platform_admin()` |
+| `INSERT` into `channels` from the browser | INSERT is revoked from the browser roles (0086); the same trigger is the second wall |
+| `create_channel(...)` (the wizard, the YouTube connect callback) | `SECURITY DEFINER`, so the trigger does not see the browser: 0114 repeats the check on `p_agent_config` (`trusted caller or is_platform_admin()`) |
+| `set_channel_dna(...)` (0056) | `SECURITY DEFINER`, merges only `elevenlabs_voice_id` and `language`; it cannot set either key (pinned by a test) |
+| `set_channel_credential`, `set_channel_status`, `channel_stamp_from_connection` (0086) | do not touch `agent_config` |
+| `supabase_sync.mirror_channels` (the pipeline) | service role; writes only into an empty `channels` table, from the operator's own `channels.json`; passes the guard like every service write |
+| `channels.json` (the operator's own file, read by the pipeline) | not a database write: only whoever holds the server can edit it, which is the platform side; the pipeline reads it, never writes it |
+| 0001 / 0005 / 0018 backfills | run once as the database owner; touch no `agent_config` value of either key |
+| The public API and MCP (`api_*`, `oauth_*`, 0031, 0042, 0093) | read `agent_config`; none writes it |
+
+A test fails if a new migration writes `channels` or `agent_config` without being added to that list.
+
+Nothing was rewritten: the live check before 0114 found no channel with either key set, so there is no backfill. A
+channel that gets either value from the platform keeps it, and every use stays visible, as before: `main.py` logs a warning
+("channel settings (...) are in effect for this video"), the recorded event carries `overrides: ["mode_never",
+"voice_own_clone"]`, and the review note says that a person chose it (and, for `never`, that the content was not checked:
+it does not say "nothing in this video needs the label").
+
+The Channels page has an "AI-content label" card per channel with both settings. A platform administrator sees all three
+words of each; everyone else sees `never` and `own_clone` locked, with the reason, and can move a setting away from them.
+The ru and uz sentences of the card are machine drafts.
+
+Rollback: `docs/sql/rollback_0114_ai_disclosure_admin_lock.sql` puts 0086's two function bodies back (the trigger is the
+same trigger) and drops the two helpers; it rewrites no row.
 
 ## The default voice is an assumption
 
 `ai_disclosure_voice` defaults to `generic`, i.e. "the narrator is not a real person's voice". The pipeline cannot hear
 or classify a voice: a cloned or celebrity-sounding ElevenLabs voice picked from the account's list is **not detected**
-and is not labelled unless the channel sets `real_person`. This is an owner decision (below), not a measurement.
+and is not labelled unless the channel sets `real_person`. This is an owner decision (below), not a measurement: the default
+stays `generic` and all three values stay available, but `own_clone` is a platform administrator's to set.
 
 ## Interaction with the visibility worker (PR #543, not touched here)
 
@@ -196,13 +249,16 @@ TikTok account private until the app is audited. The post is still requested as 
 1. The default wording of the disclosure line (table above), and who reads the ru / uz lines.
 2. Generic TTS narration: unlabelled by `auto` (the page is silent). Set `ai_disclosure: always` per channel, or tell
    me to make narration by a synthetic voice a label row.
-3. Should `ai_disclosure: never` be an admin-only key (add it to `channels_config_guard`, a new migration)? Today any
-   editor who can write `agent_config` can switch the label off.
+3. ~~Should `ai_disclosure: never` be an admin-only key?~~ **Decided 2026-10-20: yes, a platform administrator's** (migration
+   0114; an organization-admin lock was rejected because every customer is the admin of their own organization).
+   A fully animated channel that wants `never` asks the platform team.
 4. A fully animated / cartoon channel: set `never` per channel, or record a "non-photoreal style" setting that `auto`
    can honour (the page's "not realistic" exemption).
 5. Instagram refusal for `not_faststart`: keep it (honest, but blocks every Instagram post until the compositor
    writes `+faststart`), or ship the follow-up first.
-6. The default voice `generic` is an assumption (a cloned or celebrity ElevenLabs voice is not detected). Should the voice
-   picker record a category, or should the default be `real_person` for non-stock voices?
+6. ~~The default voice `generic` is an assumption.~~ **Decided 2026-10-20: the default stays `generic` and all three values
+   stay available.** `own_clone` (the one that lowers the label) is a platform administrator's to set; `real_person` is open to
+   every editor of the channel. The pipeline still cannot hear a voice: a cloned or celebrity voice picked from the account's
+   list is not detected unless the channel says `real_person`.
 7. `AAC` on TikTok and `moov` first on TikTok are not enforced (the official page is silent). Say so if you want them
    enforced anyway.

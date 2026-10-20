@@ -42,6 +42,12 @@ generated clip or still counts as realistic. A channel whose AI pictures are
 clearly unrealistic (fully animated, cartoon) and that wants the page's
 "not realistic" exemption says so with ``never``; that is the owner's call.
 
+``never`` and ``own_clone`` are the two values that LOWER what is declared, and since migration 0114 only a platform
+administrator can write them (the database refuses everyone else; docs/AI_DISCLOSURE.md, "Who can set what"). The SQL
+that decides "this value is ``never`` / ``own_clone``" (``ai_disclosure_norm`` / ``channel_label_lowering``) reads a value
+the way ``normalize_mode`` and ``normalize_voice`` below do, character for character; change how they read a value and
+tests/test_ai_disclosure_lock_migration.py (and the Command Center's lib/aiDisclosure.ts) fail until the lock is changed too.
+
 Pure: no network, no disk, never raises on bad input.
 """
 
