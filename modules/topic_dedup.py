@@ -30,7 +30,17 @@ did do does done has have had it its this that these those you your we our their
 why how what when where who whom which whose
 story truth secret untold mystery explained revealed real really actually true
 behind shocking ever
+top most facts about things
 """.split())
+
+# Listicle frames ("Top 10 Most Shocking Facts About X") say nothing about X:
+# without 'top most facts about things' above, two such titles about different
+# subjects share most of their words and read as one topic.
+
+# Roman numerals i..xx read as the number they are, so "World War I" and
+# "World War 1" meet, and "World War I" and "World War II" do not.
+_ROMAN = {r: str(n) for n, r in enumerate(
+    "i ii iii iv v vi vii viii ix x xi xii xiii xiv xv xvi xvii xviii xix xx".split(), start=1)}
 
 # The few irregular forms that make "the fall of X" and "why X fell" the same
 # topic. Deliberately tiny: every entry is a pair a title generator really
@@ -43,14 +53,21 @@ _LEMMA = {
     "vanished": "vanish", "disappeared": "disappear",
 }
 
-#: Two topics are the same topic at or above this Jaccard overlap of content words.
+#: Short titles (both at most this many content words) are the same topic only
+#: with exactly the same content words: one extra word is another video
+#: ("Lost Colony of Roanoke" vs "... Roanoke Island" is left to the semantic /
+#: lexical check in OriginalityEngine, which sees it). Above this the overlap
+#: rules below apply.
+SHORT_TITLE_WORDS = 6
+#: Longer titles are the same topic at or above this Jaccard overlap of content
+#: words, or when the smaller one's words all sit inside the other's. Both need
+#: the smaller side to have at least MIN_OVERLAP_WORDS words: with fewer, an
+#: overlap is just a shared common word.
 JACCARD_THRESHOLD = 0.7
-#: A topic whose content words are all inside a longer one's counts too, once it
-#: has this many of them ("Lost Colony of Roanoke" inside "The Lost Colony of
-#: Roanoke Island"); with fewer, containment is just a shared common word.
-MIN_CONTAINED_WORDS = 3
+MIN_OVERLAP_WORDS = 4
 
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_POSSESSIVE_RE = re.compile(r"(?<=\w)['\u2019\u02bc]s\b")
 
 
 def _fold(text: str) -> str:
@@ -83,15 +100,21 @@ _STOP_STEMS = frozenset(_stem(w) for w in _STOP)
 def content_words(topic: str) -> frozenset:
     """The topic reduced to its content words, folded and stemmed.
 
-    Single letters are dropped (the ``s`` of "Rome's"); digits are kept, since
-    "The Battle of 1066" and "The Battle of 1067" are different videos.
+    Every digit and Roman numeral is kept (as an Arabic numeral) and so is a
+    single letter ("Model Y"): "Apollo 8" and "Apollo 9" are different videos.
+    Only the possessive ``'s`` is dropped.
     """
     words = set()
-    for raw in _WORD_RE.findall(_fold(topic)):
+    for raw in _WORD_RE.findall(_POSSESSIVE_RE.sub("", _fold(topic))):
+        raw = _ROMAN.get(raw, raw)
         stem = _stem(raw)
-        if len(raw) >= 2 and stem not in _STOP_STEMS:
+        if stem not in _STOP_STEMS:
             words.add(stem)
     return frozenset(words)
+
+
+def _numerals(words) -> frozenset:
+    return frozenset(w for w in words if w.isdigit())
 
 
 def is_same_topic(a: str, b: str) -> bool:
@@ -103,11 +126,14 @@ def is_same_topic(a: str, b: str) -> bool:
         return bool(raw_a) and raw_a == raw_b
     if wa == wb:
         return True
-    inter = len(wa & wb)
-    if inter / len(wa | wb) >= JACCARD_THRESHOLD:
-        return True
+    if _numerals(wa) != _numerals(wb):
+        return False
+    if len(wa) <= SHORT_TITLE_WORDS and len(wb) <= SHORT_TITLE_WORDS:
+        return False
     small, big = (wa, wb) if len(wa) <= len(wb) else (wb, wa)
-    return len(small) >= MIN_CONTAINED_WORDS and small <= big
+    if len(small) < MIN_OVERLAP_WORDS:
+        return False
+    return small <= big or len(wa & wb) / len(wa | wb) >= JACCARD_THRESHOLD
 
 
 def find_repeat(candidate: str, history) -> str | None:

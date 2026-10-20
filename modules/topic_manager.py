@@ -1,10 +1,19 @@
 """Stage 1: Topic & History Manager — tracks used topics, picks fresh ones via Gemini."""
 
+import contextlib
 import json
 import logging
+import os
 import re
+import tempfile
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+try:  # POSIX only; the bot runs on Linux. Elsewhere the lock is simply absent.
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 from config import GEMINI_MODEL, TOPIC_HISTORY_FILE, SCRIPT_LANGUAGE, VIDEO_DURATION_TARGET
 from modules import topic_dedup
@@ -12,7 +21,9 @@ from modules.channels import DEFAULT_CHANNEL_ID
 from modules.content_planner import ContentPlanner
 from modules.feedback_engine import FeedbackEngine
 from modules.gemini_client import generate_with_retry, make_client
-from modules.originality_engine import OriginalityEngine, _resolve_vectors_path
+from modules.originality_engine import (
+    DEFAULT_HARD_BLOCK_THRESHOLD, OriginalityEngine, _resolve_vectors_path,
+)
 from modules.performance_analyzer import PerformanceAnalyzer
 from modules.topic_recommender import TopicRecommender
 
@@ -29,13 +40,29 @@ HISTORY_WINDOW_DAYS = 365
 
 # What a usable topic looks like. The pipeline's own title planner writes the
 # real title later; this is a one-line working topic.
-MIN_TOPIC_CHARS = 6
+MIN_TOPIC_CHARS = 4          # 'Mars', 'Темур' are topics; 'ok' is not
+MIN_TOPIC_CHARS_CJK = 3      # one CJK character carries a word: 'ローマ' is Rome
 MAX_TOPIC_CHARS = 120
+# A LIST after the title in the same answer ("1. ..." is stripped, a second
+# prose line is not a note): only lines wholly in brackets are dropped.
+_NOTE_LINE_RE = re.compile(r"^\s*[(\[（【].*[)\]）】]\s*$")
 NO_TOPIC = "NO_TOPIC"  # the model's explicit "nothing on-niche and new" answer
 
 _LEGACY_DEFAULT_NICHE = "history mysteries"
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
-_LABEL_RE = re.compile(r"^(?:topic|title)\s*:\s*", re.IGNORECASE)
+_LABEL_RE = re.compile(
+    r"^(?:topic|title|тема|название|mavzu|sarlavha|题目|題目|主题|主題)\s*[:：]\s*", re.IGNORECASE)
+# The model's "no topic" answer in any of the ways it words it: NO_TOPIC with
+# punctuation or a trailing reason, "no topic", "Reply: NO_TOPIC", and the
+# Russian and Uzbek equivalents. Matched at the START of the answer, so a real
+# title that merely contains the words later on is kept.
+_NO_TOPIC_RE = re.compile(
+    r"^[\W_]*(?:reply\s*:\s*)?(?:no[\s_-]*topic|нет\s+темы|mavzu\s+yo['\u2018\u2019\u02bb\u02bc`]?q)\b",
+    re.IGNORECASE)
+_NO_TOPIC_TOKEN_RE = re.compile(r"no_topic", re.IGNORECASE)  # anywhere in the answer
+_LIST_MARK_RE = re.compile(r"^\s*(?:\(?\d{1,2}\s*[.)]|[-*\u2022])\s+")
+_EDGE_QUOTES = "\"'`*\u201c\u201d\u201e\u2018\u2019\u201a\u00ab\u00bb\u2039\u203a\u300c\u300d "
+_TRAILING_PUNCT_RE = re.compile(r"[.,;:!\u2026]+$")
 
 
 class TopicSelectionError(RuntimeError):
@@ -43,7 +70,17 @@ class TopicSelectionError(RuntimeError):
     before research, script, voice or render are paid for — rather than making
     a video about a generic, empty or repeated topic (CLAUDE.md rule 4: no
     video is the better failure). Re-run once the cause below is fixed; a
-    second attempt is a fresh model call and may simply succeed."""
+    second attempt is a fresh model call and may simply succeed.
+
+    ``code``, ``attempts`` and ``kinds`` are fixed words and counts, safe to put
+    in an event; the message names candidate titles and is for the log only.
+    """
+
+    def __init__(self, message: str, *, code: str = "", attempts: int = 0, kinds=()):
+        super().__init__(message)
+        self.code = code
+        self.attempts = attempts
+        self.kinds = tuple(kinds)
 
 
 def _quote(value, limit: int = 600) -> str:
@@ -181,12 +218,63 @@ class TopicManager:
             return ""
 
     def _load(self) -> dict:
-        if TOPIC_HISTORY_FILE.exists():
-            return json.loads(TOPIC_HISTORY_FILE.read_text())
-        return {"used_topics": [], "sessions": []}
+        """The history file, or an empty history. A file that is not valid JSON
+        of the expected shape is moved aside (``topics.json.corrupt-<time>``)
+        rather than stopping every channel's run at construction; the warning
+        names the error type only, never the content."""
+        path = Path(TOPIC_HISTORY_FILE)
+        if not path.exists():
+            return {"used_topics": [], "sessions": []}
+        try:
+            data = json.loads(path.read_text())
+            if not isinstance(data, dict):
+                raise ValueError("history is not a JSON object")
+            if not isinstance(data.get("used_topics", []), list) or not isinstance(data.get("sessions", []), list):
+                raise ValueError("history lists are malformed")
+        except ValueError as e:  # JSONDecodeError and UnicodeDecodeError are ValueErrors
+            backup = path.with_name(f"{path.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S%f}")
+            try:
+                os.replace(path, backup)
+            except OSError:
+                backup = None
+            logger.warning(
+                "Topic history was unreadable (%s) — %s and starting with an empty history",
+                type(e).__name__, f"kept a copy as {backup.name}" if backup else "could not move it aside")
+            return {"used_topics": [], "sessions": []}
+        data.setdefault("used_topics", [])
+        data.setdefault("sessions", [])
+        return data
 
     def _save(self):
-        TOPIC_HISTORY_FILE.write_text(json.dumps(self.history, indent=2, ensure_ascii=False))
+        """Write the history atomically: a reader sees the old file or the new
+        one, never half of it."""
+        path = Path(TOPIC_HISTORY_FILE)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(json.dumps(self.history, indent=2, ensure_ascii=False))
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+
+    @contextlib.contextmanager
+    def _history_lock(self):
+        """Serialise read-modify-write across threads and processes (two
+        channels finishing at once). No-op where fcntl does not exist."""
+        if fcntl is None:  # pragma: no cover
+            yield
+            return
+        path = Path(TOPIC_HISTORY_FILE)
+        with open(path.with_name(path.name + ".lock"), "a+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
     @property
     def _history_channel(self) -> str:
@@ -253,6 +341,30 @@ class TopicManager:
             )
             return None
 
+    def _is_hard_duplicate(self, candidate: str, result) -> bool:
+        """Does the originality result block ``candidate``? Same as
+        ``result.is_duplicate``, except for one false positive: the lexical
+        score is a token-SET ratio, which is 1.0 whenever one title's words are
+        all inside another's, so "Ancient Rome" is blocked by "Ancient Rome and
+        Egypt". A block that is purely lexical (the embedding score is under
+        the hard threshold), whose closest match contains the candidate's words,
+        and where the candidate has fewer than 3 content words, is ignored. The
+        engine itself is unchanged for its other callers."""
+        if result is None or not result.is_duplicate:
+            return False
+        threshold = getattr(self.originality, "hard_block_threshold", None)
+        if not isinstance(threshold, float):
+            threshold = DEFAULT_HARD_BLOCK_THRESHOLD
+        if result.semantic_score >= threshold:
+            return True
+        mine = topic_dedup.content_words(candidate)
+        theirs = topic_dedup.content_words(result.closest_match or "")
+        if mine and len(mine) < 3 and mine <= theirs:
+            logger.info("Ignoring subset-only lexical match of '%s' with '%s' (fewer than 3 content words)",
+                        candidate, result.closest_match)
+            return False
+        return True
+
     def _safe_originality_register(self, topic: str):
         try:
             self.originality.register(topic)
@@ -303,7 +415,7 @@ class TopicManager:
                 lines.append(f"- {label}: {_quote(text, 1500)}")
         return "\n".join(lines)
 
-    def _build_prompt(self, niche: str) -> str:
+    def _build_prompt(self, niche: str, rejected=()) -> str:
         used = self.own_topics()
         used_block = "\n".join(f"- {_quote(t, 200)}" for t in used) if used else "None yet."
         prompt = (
@@ -321,8 +433,14 @@ class TopicManager:
             f"5. If no topic can satisfy rules 1-3, reply with exactly {NO_TOPIC}.\n\n"
             f"CHANNEL (data):\n{self._channel_brief(niche)}\n\n"
             f"ALREADY USED by this channel (data, oldest first):\n{used_block}\n\n"
-            "Pick the single most engaging topic that fits the channel and has not been used."
         )
+        if rejected:
+            # A retry that does not say what failed tends to return it again.
+            prompt += (
+                "REJECTED earlier in this run (data; do not return these or reword them):\n"
+                + "\n".join(f"- {_quote(t, 200)}" for t in rejected) + "\n\n"
+            )
+        prompt += "Pick the single most engaging topic that fits the channel and has not been used."
         # The feedback loop: persisted trend/competitor/demand data, this
         # channel's past performance, its learned topic scores and the
         # learnings a human approved. Each block is built from third-party or
@@ -346,28 +464,48 @@ class TopicManager:
             )
         return prompt
 
-    def _generate_topic(self, niche: str) -> str:
+    def _generate_topic(self, niche: str, rejected=()) -> str:
         """One model call; the raw text, "" when the response carries none (a
         blocked response has ``text`` None)."""
-        response = generate_with_retry(self.client, GEMINI_MODEL, self._build_prompt(niche))
+        response = generate_with_retry(self.client, GEMINI_MODEL, self._build_prompt(niche, rejected))
         text = getattr(response, "text", None)
         return text if isinstance(text, str) else ""
 
     @staticmethod
+    def _tidy(line: str) -> str:
+        """One answer line without list marks, label, quotes or trailing
+        punctuation. A '?' and a leading year ("1066: ...") are kept."""
+        line = _LIST_MARK_RE.sub("", line.strip().strip(_EDGE_QUOTES))
+        line = _LABEL_RE.sub("", line).strip().strip(_EDGE_QUOTES)
+        return _TRAILING_PUNCT_RE.sub("", line).strip().strip(_EDGE_QUOTES)
+
+    @staticmethod
+    def _min_chars(text: str) -> int:
+        cjk = any("\u3040" <= c <= "\u30ff" or "\u3400" <= c <= "\u9fff" or "\uac00" <= c <= "\ud7af"
+                  for c in text)
+        return MIN_TOPIC_CHARS_CJK if cjk else MIN_TOPIC_CHARS
+
+    @staticmethod
     def _clean_topic(raw: str) -> tuple[str | None, str]:
         """(topic, "") for a usable answer, else (None, why it is not)."""
-        edge = "\"'`*\u201c\u201d\u2018\u2019 "
-        text = _LABEL_RE.sub("", (raw or "").strip().strip(edge)).strip().strip(edge)
+        raw = (raw or "").strip()
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
+        if not lines:
+            return None, "empty response"
+        text = TopicManager._tidy(lines[0])
+        if _NO_TOPIC_TOKEN_RE.search(raw) or _NO_TOPIC_RE.match(text):
+            return None, "the model found no on-niche topic it had not used"
         if not text:
             return None, "empty response"
-        if text.upper() == NO_TOPIC:
-            return None, "the model found no on-niche topic it had not used"
-        if "\n" in text or "\r" in text:
+        # More lines: bracketed notes are dropped, anything else is an
+        # explanation the prompt forbids.
+        if any(not _NOTE_LINE_RE.match(ln) for ln in lines[1:]):
             return None, "not a single line"
-        if len(text) < MIN_TOPIC_CHARS:
-            return None, f"too short ({len(text)} chars)"
-        if len(text) > MAX_TOPIC_CHARS:
-            return None, f"too long ({len(text)} chars, limit {MAX_TOPIC_CHARS})"
+        length = sum(1 for c in text if not unicodedata.combining(c))
+        if length < TopicManager._min_chars(text):
+            return None, f"too short ({length} chars)"
+        if length > MAX_TOPIC_CHARS:
+            return None, f"too long ({length} chars, limit {MAX_TOPIC_CHARS})"
         return text, ""
 
     def _try_queued_topic(self) -> str | None:
@@ -408,7 +546,7 @@ class TopicManager:
             return None
 
         result = self._safe_originality_check(entry.topic)
-        if result is not None and result.is_duplicate:
+        if self._is_hard_duplicate(entry.topic, result):
             logger.warning(
                 "Queued topic '%s' (entry %s) hard-blocked as duplicate of '%s' — skipping it, falling back to Gemini",
                 entry.topic, entry.entry_id, result.closest_match,
@@ -468,7 +606,8 @@ class TopicManager:
             return own.strip()
         raise TopicSelectionError(
             f"Channel '{self._history_channel}' has no niche, so there is nothing to choose a "
-            "topic inside. Set the channel's niche in the Command Center (or pass --niche) and run again."
+            "topic inside. Set the channel's niche in the Command Center (or pass --niche) and run again.",
+            code="no_niche",
         )
 
     def pick_topic(self, niche: str | None = None) -> str:
@@ -501,22 +640,29 @@ class TopicManager:
             return queued_topic
 
         failures: list[str] = []
+        kinds: list[str] = []
+        rejected: list[str] = []
         for attempt in range(1, MAX_TOPIC_ATTEMPTS + 1):
-            raw = self._generate_topic(niche)
+            raw = self._generate_topic(niche, rejected)
             candidate, problem = self._clean_topic(raw)
             if candidate is None:
                 failures.append(problem)
+                kinds.append("no_topic" if "no on-niche" in problem else "empty" if "empty" in problem else "format")
                 logger.warning("Topic attempt %d/%d unusable: %s", attempt, MAX_TOPIC_ATTEMPTS, problem)
                 continue
             repeat = self.find_repeat(candidate)
             if repeat is not None:
                 failures.append(f"'{candidate}' repeats this channel's '{repeat}'")
+                kinds.append("repeat")
+                rejected.append(candidate)
                 logger.warning("Topic '%s' repeats this channel's own '%s', attempt %d/%d",
                                candidate, repeat, attempt, MAX_TOPIC_ATTEMPTS)
                 continue
             result = self._safe_originality_check(candidate)
-            if result is not None and result.is_duplicate:
+            if self._is_hard_duplicate(candidate, result):
                 failures.append(f"'{candidate}' is a semantic duplicate of '{result.closest_match}'")
+                kinds.append("semantic_duplicate")
+                rejected.append(candidate)
                 logger.warning(
                     "Topic '%s' hard-blocked as duplicate of '%s' (semantic=%.2f, lexical=%.2f), attempt %d/%d",
                     candidate, result.closest_match, result.semantic_score, result.lexical_score,
@@ -534,7 +680,8 @@ class TopicManager:
         raise TopicSelectionError(
             f"Channel '{self._history_channel}': no usable topic after {MAX_TOPIC_ATTEMPTS} attempts "
             f"({'; '.join(failures)}). The run stopped before research, script or render spent anything. "
-            "Run again, or pass --topic; if it keeps failing, check the channel's niche and rules."
+            "Run again, or pass --topic; if it keeps failing, check the channel's niche and rules.",
+            code="no_usable_topic", attempts=MAX_TOPIC_ATTEMPTS, kinds=kinds,
         )
 
     def register_topic(
@@ -548,16 +695,17 @@ class TopicManager:
         channel. The file is re-read first: another channel's run may have
         written to it since this manager loaded it, and saving a stale copy
         would erase that channel's topic."""
-        self.history = self._load()
-        self.history["used_topics"].append(topic)
-        self.history["sessions"].append({
-            "topic": topic,
-            "channel_id": self._history_channel,
-            "date": datetime.now(timezone.utc).isoformat(),
-            "video": str(video_path),
-            "video_id": video_id,
-            "video_url": video_url,
-        })
-        self._save()
+        with self._history_lock():
+            self.history = self._load()
+            self.history["used_topics"].append(topic)
+            self.history["sessions"].append({
+                "topic": topic,
+                "channel_id": self._history_channel,
+                "date": datetime.now(timezone.utc).isoformat(),
+                "video": str(video_path),
+                "video_id": video_id,
+                "video_url": video_url,
+            })
+            self._save()
         self._safe_originality_register(topic)
         logger.info("Topic registered: %s (video_id=%s)", topic, video_id)

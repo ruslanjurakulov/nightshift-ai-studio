@@ -13,8 +13,11 @@ empty, repeated, over-long or NO_TOPIC one, stops after the retry budget) and
 what text it sends — prompt quality is only measurable with a real call.
 """
 
+import ast
 import json
+import logging
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -124,7 +127,7 @@ class NormaliserTests(unittest.TestCase):
             ("Pompéi's Last Day", "pompei last day"),
             ("The Secrets of Ancient Egypt", "Ancient Egypt Mysteries"),
             ("Why the Library of Alexandria burned", "The Burning of the Library of Alexandria"),
-            ("The Mystery of the Lost Colony of Roanoke", "Lost Colony of Roanoke Island"),
+            ("The Mystery of the Lost Colony of Roanoke", "Lost Colony of Roanoke"),
             ("Рим пал", "рим ПАЛ"),
         ]:
             self.assertTrue(topic_dedup.is_same_topic(a, b), (a, b))
@@ -438,6 +441,322 @@ class FailureBehaviourTests(Base):
         tm = self.manager(chronos(), "Ten celebrity feuds you forgot about")
         self.assertEqual(tm.pick_topic(), "Ten celebrity feuds you forgot about")
         self.assertIn('- niche: "history mysteries"', self.gemini.prompts[0])
+
+
+class NormaliserHardeningTests(unittest.TestCase):
+    """Numbers, Roman numerals and templated titles must not collapse."""
+
+    def test_titles_that_differ_by_a_number_or_numeral_are_distinct(self):
+        for a, b in [
+            ("World War 1", "World War 2"),
+            ("WWI", "WWII"),
+            ("WW1", "WW2"),
+            ("World War I", "World War II"),
+            ("Apollo 8", "Apollo 9"),
+            ("Top 3 Mysteries of Egypt", "Top 5 Mysteries of Egypt"),
+            ("Tesla Model 3", "Tesla Model Y"),
+        ]:
+            self.assertFalse(topic_dedup.is_same_topic(a, b), (a, b))
+
+    def test_templated_titles_about_different_subjects_are_distinct(self):
+        self.assertFalse(topic_dedup.is_same_topic(
+            "Top 10 Most Shocking Facts About Ancient Rome",
+            "Top 10 Most Shocking Facts About Ancient Egypt"))
+        self.assertFalse(topic_dedup.is_same_topic(
+            "10 Things You Did Not Know About Pompeii", "10 Things You Did Not Know About Troy"))
+
+    def test_roman_and_arabic_numerals_agree(self):
+        self.assertTrue(topic_dedup.is_same_topic("World War 1", "World War I"))
+        self.assertTrue(topic_dedup.is_same_topic("Apollo 13 explained", "Apollo XIII"))
+
+    def test_real_paraphrases_are_still_duplicates(self):
+        for a, b in [
+            ("The fall of Rome", "Why Rome fell"),
+            ("Why the Library of Alexandria burned", "The Burning of the Library of Alexandria"),
+            ("The Mystery of the Lost Colony of Roanoke", "Lost Colony of Roanoke"),
+            ("Top 10 Most Shocking Facts About Ancient Rome", "10 Facts About Ancient Rome"),
+        ]:
+            self.assertTrue(topic_dedup.is_same_topic(a, b), (a, b))
+
+    def test_long_titles_use_the_overlap_rule_but_short_ones_need_the_same_words(self):
+        long_a = "The vanished settlers of Roanoke Island: the lost colony of 1590 and Virginia Dare"
+        long_b = long_a + " legend"
+        self.assertTrue(topic_dedup.is_same_topic(long_a, long_b))
+        # Short titles: one extra content word is a different video. The
+        # embedding / lexical check in OriginalityEngine still sees this pair.
+        self.assertFalse(topic_dedup.is_same_topic("Lost Colony of Roanoke", "Lost Colony of Roanoke Island"))
+        # ... even with enough words that an overlap rule would otherwise fire
+        self.assertFalse(topic_dedup.is_same_topic("Lost Colony Roanoke Island Settlers",
+                                                   "Lost Colony Roanoke Island Settlers Vanished"))
+
+    def test_long_titles_sharing_only_half_their_words_are_distinct(self):
+        self.assertFalse(topic_dedup.is_same_topic(
+            "The vanished settlers of Roanoke Island: the lost colony and Virginia Dare",
+            "The vanished crew of the Mary Celeste: the ghost ship found drifting near Gibraltar"))
+        self.assertFalse(topic_dedup.is_same_topic(
+            "Roanoke settlers vanished Virginia Dare colony Island lost",
+            "Roanoke settlers vanished Virginia Dare Jamestown starving winter famine"))
+
+    def test_long_titles_that_differ_only_by_a_number_are_distinct(self):
+        a = "The vanished settlers of Roanoke Island: the lost colony of 1590 and Virginia Dare"
+        self.assertFalse(topic_dedup.is_same_topic(a, a.replace("1590", "1591")))
+
+    def test_a_short_title_inside_a_long_one_is_not_its_duplicate(self):
+        long_a = "The vanished settlers of Roanoke Island: the lost colony and Virginia Dare"
+        self.assertFalse(topic_dedup.is_same_topic("Lost Colony of Roanoke", long_a))
+
+
+class NoTopicVariantTests(Base):
+    VARIANTS = [
+        "NO_TOPIC", "NO_TOPIC.", "NO_TOPIC!", "NO TOPIC", "no-topic", "NO_TOPIC - all used",
+        "NO_TOPIC: nothing new is left", "Reply: NO_TOPIC", "reply: no_topic", '"NO_TOPIC."',
+        "**NO_TOPIC**", "\u041d\u0415\u0422 \u0422\u0415\u041c\u042b", "\u041d\u0435\u0442 \u0442\u0435\u043c\u044b.",
+        "mavzu yo'q", "Mavzu yo\u2018q", "mavzu yo\u02bcq.", "I looked hard but the answer is NO_TOPIC",
+        "NO_TOPIC\n(everything fits a used topic)",
+    ]
+
+    def test_every_variant_is_the_escape_not_a_topic(self):
+        from modules.topic_manager import TopicManager
+        for raw in self.VARIANTS:
+            topic, why = TopicManager._clean_topic(raw)
+            self.assertIsNone(topic, raw)
+            self.assertIn("no on-niche topic", why, raw)
+
+    def test_a_variant_stops_the_run_and_never_becomes_the_title(self):
+        tm = self.manager(chronos(), "NO_TOPIC.", "No topic - all used", "\u041d\u0415\u0422 \u0422\u0415\u041c\u042b")
+        self.assertIn("no on-niche topic", self.assertStopsWith(tm))
+
+    def assertStopsWith(self, tm):
+        from modules.topic_manager import TopicSelectionError
+        with self.assertRaises(TopicSelectionError) as ctx:
+            tm.pick_topic()
+        self.assertEqual(len(self.gemini.prompts), 3)
+        return str(ctx.exception)
+
+    def test_real_titles_that_merely_mention_the_words_are_kept(self):
+        from modules.topic_manager import TopicManager
+        for raw in ("Why nobody could name the topic of the Voynich manuscript",
+                    "The city with no name: Pompeii's neighbour"):
+            self.assertEqual(TopicManager._clean_topic(raw)[0], raw)
+
+
+class CleaningHardeningTests(Base):
+    def clean(self, raw):
+        from modules.topic_manager import TopicManager
+        return TopicManager._clean_topic(raw)
+
+    def test_list_numbers_bullets_quotes_and_trailing_punctuation_are_stripped(self):
+        want = "The Lost Colony of Roanoke"
+        for raw in ("1. The Lost Colony of Roanoke", "1) The Lost Colony of Roanoke",
+                    "- The Lost Colony of Roanoke", "\u2022 The Lost Colony of Roanoke",
+                    "\u00abThe Lost Colony of Roanoke\u00bb", "\u201eThe Lost Colony of Roanoke\u201c",
+                    '"The Lost Colony of Roanoke."', "The Lost Colony of Roanoke.", "The Lost Colony of Roanoke;"):
+            self.assertEqual(self.clean(raw), (want, ""), raw)
+
+    def test_meaningful_punctuation_and_leading_numbers_survive(self):
+        self.assertEqual(self.clean("Who built Stonehenge?")[0], "Who built Stonehenge?")
+        self.assertEqual(self.clean("1066: the year England changed")[0], "1066: the year England changed")
+        self.assertEqual(self.clean("1066 and all that")[0], "1066 and all that")
+
+    def test_labels_in_other_languages_are_removed(self):
+        for raw, want in [
+            ("\u0422\u0435\u043c\u0430: \u041f\u0430\u0434\u0435\u043d\u0438\u0435 \u0420\u0438\u043c\u0430", "\u041f\u0430\u0434\u0435\u043d\u0438\u0435 \u0420\u0438\u043c\u0430"),
+            ("\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435: \u041f\u0430\u0434\u0435\u043d\u0438\u0435 \u0420\u0438\u043c\u0430", "\u041f\u0430\u0434\u0435\u043d\u0438\u0435 \u0420\u0438\u043c\u0430"),
+            ("Mavzu: Amir Temur sirlari", "Amir Temur sirlari"),
+            ("Sarlavha: Amir Temur sirlari", "Amir Temur sirlari"),
+            ("\u9898\u76ee\uff1a\u91d1\u5b57\u5854\u4e4b\u8c1c", "\u91d1\u5b57\u5854\u4e4b\u8c1c"),
+            ("\u4e3b\u9898: \u91d1\u5b57\u5854\u4e4b\u8c1c", "\u91d1\u5b57\u5854\u4e4b\u8c1c"),
+        ]:
+            self.assertEqual(self.clean(raw), (want, ""), raw)
+
+    def test_minimum_length_is_script_aware(self):
+        for ok in ("Mars", "\u0422\u0435\u043c\u0443\u0440", "\u30ed\u30fc\u30de", "\u91d1\u5b57\u5854\u4e4b\u8c1c"):
+            self.assertEqual(self.clean(ok), (ok, ""), ok)
+        for bad in ("ok", "abc", "\u91d1\u5b57", ""):
+            self.assertIsNone(self.clean(bad)[0], bad)
+
+    def test_a_parenthetical_note_on_a_following_line_is_dropped(self):
+        self.assertEqual(self.clean("The Lost Colony of Roanoke\n(Note: this avoids your used list)"),
+                         ("The Lost Colony of Roanoke", ""))
+        self.assertEqual(self.clean("The Lost Colony of Roanoke\n\n(a note)\n[another]")[0],
+                         "The Lost Colony of Roanoke")
+        # prose after the title is an explanation, not a note
+        self.assertEqual(self.clean("The Lost Colony of Roanoke\nIt vanished in 1590.")[1], "not a single line")
+        self.assertEqual(self.clean("Title one here\nTitle two here")[1], "not a single line")
+
+    def test_an_answer_that_is_only_punctuation_or_quotes_is_empty(self):
+        for raw in ('""', "...", "**"):
+            self.assertEqual(self.clean(raw), (None, "empty response"), raw)
+
+    def test_a_contained_no_topic_token_is_rejected_even_with_a_valid_looking_title(self):
+        self.assertIn("no on-niche topic", self.clean("The Lost Colony of Roanoke NO_TOPIC")[1])
+
+
+class RetryPromptTests(Base):
+    def test_a_rejected_candidate_is_named_in_the_next_prompt_only(self):
+        self.write_history([session("The Fall of Rome", channel_id="chronos")])
+        tm = self.manager(chronos(), "Why Rome fell", "Rome's Fall", "The Antikythera Mechanism")
+        self.assertEqual(tm.pick_topic(), "The Antikythera Mechanism")
+        first, second, third = self.gemini.prompts
+        self.assertNotIn("REJECTED", first)
+        self.assertIn('REJECTED earlier in this run', second)
+        self.assertIn('- "Why Rome fell"', second)
+        self.assertNotIn("Rome's Fall", second)
+        # accumulates, in order, every entry a quoted single line, after the rules
+        self.assertLess(third.index('- "Why Rome fell"'), third.index('- "Rome\'s Fall"'))
+        self.assertLess(third.index("RULES (these always win"), third.index("REJECTED earlier"))
+
+    def test_an_empty_or_malformed_answer_adds_nothing_to_the_rejected_list(self):
+        tm = self.manager(chronos(), "", "NO_TOPIC", "The Antikythera Mechanism")
+        tm.pick_topic()
+        self.assertTrue(all("REJECTED" not in p for p in self.gemini.prompts))
+
+
+class LexicalSubsetTests(Base):
+    def run_with(self, result, candidate, final="A perfectly fine other topic"):
+        tm = self.manager(chronos(), candidate, final)
+        tm.originality.check.side_effect = lambda t: result if t == candidate else CLEAR
+        return tm.pick_topic(), len(self.gemini.prompts)
+
+    def test_a_subset_only_lexical_block_on_a_short_candidate_is_ignored(self):
+        res = OriginalityResult(True, False, "Ancient Rome and Egypt", 0.30, 1.0)
+        self.assertEqual(self.run_with(res, "Ancient Rome"), ("Ancient Rome", 1))
+
+    def test_a_subset_block_with_three_or_more_content_words_still_blocks(self):
+        res = OriginalityResult(True, False, "Lost Colony of Roanoke Island", 0.30, 1.0)
+        self.assertEqual(self.run_with(res, "Lost Colony of Roanoke"), ("A perfectly fine other topic", 2))
+
+    def test_a_semantic_hard_block_is_kept_even_for_a_short_subset(self):
+        res = OriginalityResult(True, False, "Ancient Rome and Egypt", 0.95, 1.0)
+        self.assertEqual(self.run_with(res, "Ancient Rome"), ("A perfectly fine other topic", 2))
+
+    def test_a_non_subset_lexical_block_is_kept(self):
+        res = OriginalityResult(True, False, "Pyramids of Giza", 0.30, 0.95)
+        self.assertEqual(self.run_with(res, "Ancient Rome"), ("A perfectly fine other topic", 2))
+
+
+class PersistenceTests(Base):
+    def test_a_corrupt_history_file_is_backed_up_and_the_run_starts_empty(self):
+        self.history_path.write_text("{ not json: SECRETISH-CONTENT")
+        with self.assertLogs("modules.topic_manager", level="WARNING") as logs:
+            tm = self.manager(chronos())
+        self.assertEqual(tm.own_topics(), [])
+        backups = list(self.history_path.parent.glob("topics.json.corrupt-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertIn("SECRETISH-CONTENT", backups[0].read_text())
+        text = "\n".join(logs.output)
+        self.assertIn("JSONDecodeError", text)
+        self.assertNotIn("SECRETISH-CONTENT", text)
+        tm.register_topic("The Fall of Rome", "x.mp4")
+        self.assertEqual(json.loads(self.history_path.read_text())["sessions"][0]["topic"], "The Fall of Rome")
+
+    def test_valid_json_of_the_wrong_shape_is_treated_as_corrupt(self):
+        self.history_path.write_text("[1, 2, 3]")
+        tm = self.manager(chronos())
+        self.assertEqual(tm.own_topics(), [])
+        self.assertEqual(len(list(self.history_path.parent.glob("topics.json.corrupt-*"))), 1)
+
+    def test_concurrent_registers_keep_every_row_and_readers_never_see_partial_json(self):
+        threads_n, per_thread = 4, 40
+        managers = [self.manager(chronos() if i % 2 == 0 else finance()) for i in range(threads_n)]
+        stop = threading.Event()
+        bad = []
+
+        def reader():
+            while not stop.is_set():
+                try:
+                    raw = self.history_path.read_text()
+                except FileNotFoundError:
+                    continue
+                try:
+                    json.loads(raw)
+                except ValueError:
+                    bad.append(raw[:60])
+
+        def writer(i):
+            for n in range(per_thread):
+                managers[i].register_topic(f"Topic {i}-{n}", "v.mp4", video_id=f"{i}-{n}")
+
+        r = threading.Thread(target=reader)
+        r.start()
+        ts = [threading.Thread(target=writer, args=(i,)) for i in range(threads_n)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        stop.set()
+        r.join()
+        self.assertEqual(bad, [])
+        data = json.loads(self.history_path.read_text())
+        self.assertEqual(len(data["sessions"]), threads_n * per_thread)
+        self.assertEqual(len({s["video_id"] for s in data["sessions"]}), threads_n * per_thread)
+        self.assertEqual(len(data["used_topics"]), threads_n * per_thread)
+        leftovers = sorted(p.name for p in self.history_path.parent.iterdir() if p.name.startswith("topics.json"))
+        self.assertEqual(leftovers, ["topics.json", "topics.json.lock"])
+
+    def test_a_corrupt_originality_store_starts_empty_instead_of_failing_the_run(self):
+        from modules.originality_engine import OriginalityEngine
+        path = Path(self._tmp.name) / "vectors.npz"
+        path.write_bytes(b"this is not an npz")
+        with self.assertLogs("modules.originality_engine", level="WARNING") as logs:
+            engine = OriginalityEngine(vectors_path=path, embedder=lambda t: __import__("numpy").ones(3))
+        self.assertFalse(engine.check("anything").is_duplicate)
+        self.assertEqual(len(list(path.parent.glob("vectors.npz.corrupt-*"))), 1)
+        self.assertNotIn("this is not an npz", "\n".join(logs.output))
+
+
+class FailureEventTests(Base):
+    def test_selection_error_carries_only_fixed_words_and_counts(self):
+        from modules.topic_manager import TopicSelectionError
+        self.write_history([session("The Fall of Rome", channel_id="chronos")])
+        tm = self.manager(chronos(), "Why Rome fell", "", "NO_TOPIC")
+        with self.assertRaises(TopicSelectionError) as ctx:
+            tm.pick_topic()
+        e = ctx.exception
+        self.assertEqual((e.code, e.attempts, tuple(e.kinds)), ("no_usable_topic", 3, ("repeat", "empty", "no_topic")))
+        nicheless = ChannelContext(channel_id="coin-notes", name="Coin Notes", niche="")
+        with self.assertRaises(TopicSelectionError) as ctx:
+            self.manager(nicheless).pick_topic(None)
+        self.assertEqual((ctx.exception.code, ctx.exception.attempts), ("no_niche", 0))
+
+    @staticmethod
+    def _main_tree():
+        return ast.parse((Path(__file__).resolve().parent.parent / "main.py").read_text())
+
+    @staticmethod
+    def _calls(node):
+        return [n for n in ast.walk(node) if isinstance(n, ast.Call)]
+
+    @staticmethod
+    def _attr(call):
+        return getattr(call.func, "attr", "")
+
+    def test_main_reports_a_topic_failure_as_an_event_and_reraises(self):
+        """main.py cannot be imported without moviepy, so pin its source shape."""
+        tries = [t for t in ast.walk(self._main_tree()) if isinstance(t, ast.Try)
+                 and any(self._attr(c) == "pick_topic" for b in t.body for c in self._calls(b))]
+        self.assertEqual(len(tries), 1)
+        (handler,) = tries[0].handlers
+        self.assertEqual(getattr(handler.type, "id", None), "TopicSelectionError")
+        emits = [c for c in self._calls(handler) if self._attr(c) == "emit"]
+        self.assertEqual(len(emits), 1)
+        src = ast.unparse(emits[0])
+        self.assertIn("events.AGENT_FAILED", src)
+        self.assertIn("events.STATUS_FAILED", src)
+        self.assertIn("'stage': 'topic'", src)
+        self.assertIn("e.code", src)
+        self.assertNotIn("str(e)", src)         # the message names candidate titles
+        self.assertNotIn("{e}", src)
+        self.assertTrue(any(isinstance(n, ast.Raise) and n.exc is None for n in ast.walk(handler)))
+
+    def test_main_does_not_let_history_bookkeeping_fail_a_finished_run(self):
+        tries = [t for t in ast.walk(self._main_tree()) if isinstance(t, ast.Try)
+                 and any(self._attr(c) == "register_topic" for b in t.body for c in self._calls(b))]
+        self.assertEqual(len(tries), 1)
+        (handler,) = tries[0].handlers
+        self.assertEqual(getattr(handler.type, "id", None), "Exception")
+        self.assertFalse(any(isinstance(n, ast.Raise) for n in ast.walk(handler)))
+        self.assertTrue(any(self._attr(c) == "emit" for c in self._calls(handler)))
 
 
 if __name__ == "__main__":

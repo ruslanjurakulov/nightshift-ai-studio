@@ -41,6 +41,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -155,9 +156,25 @@ class OriginalityEngine:
             self._vectors = None
             return
 
-        with np.load(self.vectors_path, allow_pickle=True) as data:
-            topics = data["topics"]
-            vectors = data["vectors"]
+        try:
+            with np.load(self.vectors_path, allow_pickle=True) as data:
+                topics = data["topics"]
+                vectors = data["vectors"]
+        except Exception as e:  # truncated / garbage file: BadZipFile, ValueError, KeyError, ...
+            # One bad file must not stop every run at construction. Move it
+            # aside (never delete it) and start empty; log the error type only.
+            backup = self.vectors_path.with_name(
+                f"{self.vectors_path.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S%f}")
+            try:
+                os.replace(self.vectors_path, backup)
+                kept = f"kept a copy as {backup.name}"
+            except OSError:
+                kept = "could not move it aside"
+            logger.warning("Topic vector store was unreadable (%s) — %s and starting empty",
+                           type(e).__name__, kept)
+            self._topics = []
+            self._vectors = None
+            return
 
         self._topics = [str(t) for t in topics.tolist()]
         self._vectors = vectors.astype(np.float32) if len(self._topics) else None

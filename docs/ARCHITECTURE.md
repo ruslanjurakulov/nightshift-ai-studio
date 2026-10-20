@@ -260,7 +260,9 @@ different representative phrasings per run).
 - **`topics.json`** — `TopicManager` history: `used_topics` exclusion list and a
   `sessions` log (topic, channel id, date, video path, video id/url). Dedup is
   per channel over the last 200 topics / 365 days (`modules/topic_dedup.py`);
-  rows from before the channel id was recorded count for every channel.
+  rows from before the channel id was recorded count for every channel. Writes
+  are atomic (temp file + rename) under an flock; an unreadable file is moved
+  aside as `topics.json.corrupt-<time>` and the history starts empty.
 - **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
   `CalendarEntry` records (`queued`/`published`/`skipped`). A write-through JSON
   store, explicitly a placeholder rather than a `state_store` table.

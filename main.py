@@ -88,7 +88,7 @@ from modules.subtitle_generator import SubtitleGenerator
 from modules.thumbnail_generator import ThumbnailGenerator
 from modules import title_formulas
 from modules.title_planner import plan_titles
-from modules.topic_manager import TopicManager
+from modules.topic_manager import TopicManager, TopicSelectionError
 from modules.youtube_uploader import YouTubeUploader
 from tools.generate_assets import ensure_assets
 
@@ -792,7 +792,18 @@ def run(
                                topic, repeat)
                 topic = None
         if topic is None:
-            topic = topic_mgr.pick_topic(niche if niche_chosen else None)
+            try:
+                topic = topic_mgr.pick_topic(niche if niche_chosen else None)
+            except TopicSelectionError as e:
+                # Without this the owner sees only a red CI run. Counts and fixed
+                # words only: the message names candidate titles and history.
+                logger.error("[channel: %s] Topic selection stopped the run before it spent anything: %s",
+                             channel_id, e)
+                events.emit(events.AGENT_FAILED, agent="topic_manager", status=events.STATUS_FAILED,
+                            channel_id=channel_id,
+                            metadata={"error": f"TopicSelectionError: {e.code}", "stage": "topic",
+                                      "attempts": e.attempts, "kinds": list(e.kinds)})
+                raise
         logger.info("Topic: %s", topic)
     events.emit(events.TOPIC_SELECTED, agent="topic_manager", status=events.STATUS_COMPLETED,
                 channel_id=channel_id,
@@ -1679,7 +1690,16 @@ def run(
         logger.warning("Could not record costs (%s: %s) — the run itself is unaffected",
                        type(e).__name__, e)
 
-    topic_mgr.register_topic(topic, video_path, video_id=video_id, video_url=video_url)
+    # Bookkeeping after a finished (maybe published) run: a failure here must
+    # not turn that run into a failed one — the video exists either way.
+    try:
+        topic_mgr.register_topic(topic, video_path, video_id=video_id, video_url=video_url)
+    except Exception as e:
+        logger.error("[channel: %s] Topic history could not be written (%s) — the run itself is unaffected",
+                     channel_id, type(e).__name__)
+        events.emit(events.AGENT_FAILED, agent="topic_manager", status=events.STATUS_FAILED,
+                    channel_id=channel_id,
+                    metadata={"error": type(e).__name__, "stage": "topic_history"})
 
     # Snapshot what is left on the paid provider accounts (ElevenLabs credits,
     # Leonardo tokens) for the Billing page. Best-effort; never affects the run.
