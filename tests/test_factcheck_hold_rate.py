@@ -155,37 +155,52 @@ class DescriptionCarriesOnlyStatements(unittest.TestCase):
 
 # ── 1b. every fragment is a claim; an accusation word is recognised ───────
 
-#: One real word form per stem of ``claim_extractor._ACCUSATION_STEMS``. A test fails when the list and the tuple
-#: differ, so a stem cannot be dropped (or added) without a sample that shows it matching.
-ACCUSATION_SAMPLES = {
-    "murder": "murdered", "kill": "killed", "poison": "poisoned", "assassin": "assassinated", "stole": "stole",
-    "steal": "stealing", "thie": "thief", "theft": "theft", "fraud": "fraudster", "framed": "framed",
-    "betray": "betrayed", "conspir": "conspired", "execut": "executed", "massacr": "massacred",
-    "genocid": "genocide", "rape": "raped", "abus": "abused", "corrupt": "corrupt", "guilty": "guilty",
-    "crimin": "criminal", "crime": "crime", "liar": "liar", "lied": "lied", "tortur": "tortured",
-    "slaughter": "slaughtered", "behead": "beheaded", "bribe": "bribed", "blackmail": "blackmailed",
-    "traitor": "traitor", "cover-up": "cover-up", "coverup": "coverup",
-    "убий": "убийца", "убил": "убили", "убит": "убит", "убь": "убьют", "отрав": "отравили",
-    "украл": "украл", "краж": "кража", "предал": "предал", "предател": "предатель", "казн": "казнили",
-    "виновн": "виновным", "преступ": "преступник", "мошенн": "мошенник", "заговор": "заговор",
-    "резн": "резня", "геноцид": "геноцид", "лжец": "лжец", "обман": "обманул", "пытк": "пытки",
-    "взятк": "взятки", "шантаж": "шантажировал",
-    "o'ldir": "oʻldirdi", "o'ldi": "o‘ldi", "qotil": "qotil", "zaharla": "zaharladi", "o'g'ri": "o'g'ri",
-    "o'g'irla": "o'g'irladi", "xiyonat": "xiyonat", "aybdor": "aybdor", "jinoyat": "jinoyat",
-    "firibgar": "firibgar", "fitna": "fitna", "qatl": "qatl qilindi", "genotsid": "genotsid",
-    "yolg'on": "yolg'on", "qiynoq": "qiynoqqa", "poraxo'r": "poraxo'r", "josus": "josus",
+#: The accusation list by class of entry. A test fails when this and ``claim_extractor._ACCUSATION_WORDS`` differ,
+#: so a word cannot be dropped (or added) without a line here that shows it matching.
+ACCUSATION_WORDS = {
+    "en past tense": ("murdered", "killed", "poisoned", "assassinated", "stole", "betrayed", "conspired",
+                      "massacred", "tortured", "slaughtered", "beheaded", "executed", "bribed", "blackmailed",
+                      "abused", "raped", "lied", "cheated"),
+    "en present tense and person": ("murders", "murderer", "murderers", "kills", "poisons", "assassinates", "steals",
+                                    "betrays", "tortures", "executes", "traitor", "liar"),
+    "en nouns and phrases": ("framed for", "fraud", "genocide", "guilty"),
+    "ru verbs": ("убил", "убила", "убили", "отравил", "отравила", "отравили", "украл", "украла", "украли", "предал",
+                 "предала", "предали", "казнил", "казнила", "казнили", "обманул", "обманула", "обманули", "пытал",
+                 "пытали", "зарезал", "зарезали"),
+    "ru participles and adjectives": ("убит", "убита", "убиты", "отравлен", "отравлена", "отравлены", "казнён",
+                                      "казнен", "казнены", "виновен", "виновна", "виновны"),
+    "ru persons": ("убийца", "убийцы", "предатель", "лжец", "мошенник", "мошенники"),
+    "uz verbs and participles": ("o'ldirdi", "o'ldirgan", "o'ldirilgan", "zaharladi", "zaharlangan", "o'g'irladi",
+                                 "qiynadi"),
+    "uz persons and nouns": ("qotil", "qotillar", "o'g'ri", "xiyonat", "aybdor", "jinoyatchi", "firibgar", "qatl",
+                             "poraxo'r", "yolg'onchi", "josus"),
 }
+
+NOT_ACCUSATIONS = ("The Crimean War Explained", "Poison Dart Frogs", "Killer Whales", "The Executive Branch",
+                   "Казна Рима", "казначейство", "Резной камень", "Skilled Sailors", "Crime Scene Photography",
+                   "Abuse Of Power In Rome Explained", "Rapeseed Fields Of Kent", "The Lighthouse Log",
+                   "Что-то странное произошло здесь", "Ajoyib hikoya", "Poisonous Plants Of The Alps")
 
 
 class EveryFragmentIsExtractedAndAccusationsAreRecognised(unittest.TestCase):
-    def test_every_accusation_stem_has_a_word_that_matches_it(self):
-        self.assertEqual(set(ACCUSATION_SAMPLES), set(ce._ACCUSATION_STEMS))
-        for stem, word in ACCUSATION_SAMPLES.items():
-            with self.subTest(stem=stem):
-                self.assertTrue(ce.has_accusation(f"They say he {word} them"), word)
+    def test_the_list_is_exactly_the_words_in_the_module(self):
+        listed = {w for words in ACCUSATION_WORDS.values() for w in words}
+        self.assertEqual(listed, set(ce._ACCUSATION_WORDS))
 
-    def test_a_stem_matches_the_start_of_a_word_not_the_middle(self):
-        for text in ("A skilled sailor", "The Lighthouse Log", "Что-то странное произошло здесь", "Ajoyib hikoya"):
+    def test_every_word_matches_in_a_sentence_and_only_as_a_whole_word(self):
+        for cls, words in ACCUSATION_WORDS.items():
+            for word in words:
+                with self.subTest(cls=cls, word=word):
+                    self.assertTrue(ce.has_accusation(f"They say he {word} them"), word)
+                    self.assertTrue(ce.has_accusation(word.upper()), word)
+                    self.assertFalse(ce.has_accusation(f"They say he {word}xyz them"), word)
+
+    def test_the_probes_still_block_and_the_lookalikes_do_not(self):
+        for text in ("Napoleon Was Poisoned", "Caesar murdered his own brother", "Наполеона отравили",
+                     "Qotil orolda yashiringan edi", "Rome's Emperor Killed His Mother"):
+            with self.subTest(text=text):
+                self.assertTrue(ce.has_accusation(text))
+        for text in NOT_ACCUSATIONS:
             with self.subTest(text=text):
                 self.assertFalse(ce.has_accusation(text))
 
@@ -220,6 +235,12 @@ class EveryFragmentIsExtractedAndAccusationsAreRecognised(unittest.TestCase):
         extra = [c for c in ce.extract_shipped_claims(s) if c.source != "narration"]
         self.assertLessEqual(len(extra), 6)
 
+    def test_a_source_line_loses_its_label_and_the_statement_after_it_is_extracted(self):
+        s = script("The keeper vanished in 1900 without a trace left behind.", title="",
+                   description="Source: Napoleon died of poison in exile.\nSources: Napoleon was poisoned by his friend.")
+        got = [c.text for c in ce.extract_shipped_claims(s) if c.source == "description"]
+        self.assertEqual(got, ["Napoleon died of poison in exile.", "Napoleon was poisoned by his friend."])
+
 
 # ── 1c. a free check: shipped figures must be backed by the narration ─────
 
@@ -231,119 +252,179 @@ def findings(narration, **over):
     return ce.shipped_number_findings(script(*([narration] if isinstance(narration, str) else narration), **over))
 
 
+def none(f):
+    return (f.large, f.small, f.counts) == ((), (), ())
+
+
 class AFigureThatShipsMustBeInTheNarration(unittest.TestCase):
     def test_a_year_or_figure_the_narration_never_says_is_reported_with_its_field(self):
         got = findings(NARRATION, title="The 1,000,000 Victims", description="It began in 1899, they say.")
-        self.assertEqual(sorted(got.hard), [("description", "1899"), ("title", "1,000,000")])
+        self.assertEqual(sorted(got.large), [("description", "1899"), ("title", "1,000,000")])
 
     def test_a_number_the_narration_says_is_supported_however_it_is_written(self):
-        for text in ("Vanished In 1900", "1200 Steps", "1,200 Steps", "3 Keepers Vanished", "40,000 Stones",
-                     "1900 Pages", "Vanished In ١٩٠٠"):
+        for text in ("Vanished In 1900", "1200 Steps", "1,200 Steps", "40,000 Stones", "1900 Pages",
+                     "Vanished In ١٩٠٠", "Рим: 1 200 шагов"):
             with self.subTest(text=text):
-                self.assertEqual(findings(NARRATION, title=text), ce.NumberFindings())
+                self.assertTrue(none(findings(NARRATION, title=text)), findings(NARRATION, title=text))
+
+    def test_a_spaced_or_comma_grouped_figure_is_one_number(self):
+        for narration, title in (("Rome lost 900 000 people.", "Рим потерял 900,000 человек"),
+                                 ("Rome lost 900,000 people.", "Рим потерял 900 000 человек"),
+                                 ("Rome lost 900 000 people.", "Рим потерял 900 000 человек")):
+            with self.subTest(narration=narration, title=title):
+                self.assertTrue(none(findings(narration, title=title)))
+        got = findings("Rome lost many people in 1900.", title="Рим потерял 900 000 человек")
+        self.assertEqual(got.large, (("title", "900 000"),))
 
     def test_spelled_out_years_read_as_two_pairs(self):
         narration = ("In nineteen eighty-four the ship sailed. Eighteen twelve was worse. In four seventy-six it fell. "
                      "Nineteen oh five was calm, and twenty twenty-four is now.")
-        for text in ("1984", "Vanished In 1812", "476 AD", "1905 Was Calm", "Back In 2024", "Vanished In 1900"):
+        for text in ("1984", "Vanished In 1812", "476 AD", "1905 Was Calm", "Back In 2024"):
             with self.subTest(text=text):
-                got = findings(narration, title=text)
-                self.assertEqual(got.hard, () if text != "Vanished In 1900" else (("title", "1900"),))
+                self.assertEqual(findings(narration, title=text).large, ())
+        self.assertEqual(findings(narration, title="Vanished In 1900").large, (("title", "1900"),))
         self.assertEqual(ce._spoken_numbers("nineteen eighty-four, eighteen twelve, four seventy-six, "
                                             "nineteen oh five, twenty twenty-four, nineteen hundred.")
                          & {"1984", "1812", "476", "1905", "2024", "1900"},
                          {"1984", "1812", "476", "1905", "2024", "1900"})
 
-    def test_ordinals_are_not_quantities(self):
+    def test_ordinals_are_not_quantities_in_the_headline_or_in_the_narration(self):
         for text in ("The 20th Century Mystery", "1st Edition Of The Log", "The 2nd Keeper", "3rd Time Lucky",
                      "Конец 20-й смены"):
             with self.subTest(text=text):
-                self.assertEqual(findings(NARRATION, title=text), ce.NumberFindings())
+                self.assertTrue(none(findings(NARRATION, title=text)))
+        # "the 5th year" in the narration does not back "5 Men": it is an ordinal, not a quantity
+        got = findings("In the 5th year the lamp failed. Three keepers left.", title="5 Men Who Changed Rome")
+        self.assertEqual(got.small, (("title", "5"),))
 
     def test_a_figure_with_a_multiplier_matches_however_the_narration_says_it(self):
         for narration in ("It cost one and a half million dollars.", "It cost 1.5 million dollars.",
                           "It cost 1,500,000 dollars."):
             with self.subTest(narration=narration):
-                self.assertEqual(findings(narration, title="1.5 Million Dollars Lost"), ce.NumberFindings())
-        self.assertEqual(findings("It cost two million dollars.", title="1.5 Million Dollars Lost").hard,
-                         (("title", "1.5"),))
+                self.assertTrue(none(findings(narration, title="1.5 Million Dollars Lost")))
+        self.assertTrue(findings("It cost two million dollars.", title="1.5 Million Dollars Lost").hard)
 
-    def test_description_credits_thank_yous_and_series_lines_are_not_read(self):
+    def test_description_credits_thank_yous_sources_and_series_lines_are_not_read(self):
         d = ("00:00 Intro\n#top10 #1900s\nSee https://example.com/v?id=8841 for sources.\nPart 2 of our series\n"
              "Sources: Smith (2019)\nMusic: Kevin 2.0\nThanks for watching, see you in 2 weeks.")
-        self.assertEqual(findings(NARRATION, description=d), ce.NumberFindings())
+        self.assertTrue(none(findings(NARRATION, description=d)))
 
-    def test_a_large_figure_or_percentage_in_the_title_is_hard_even_when_it_leads(self):
-        self.assertEqual(findings(NARRATION, title="2000 Men Were Lost").hard, (("title", "2000"),))
-        self.assertEqual(findings(NARRATION, title="40% Of The Crew Died").hard, (("title", "40"),))
-        self.assertEqual(findings(NARRATION, thumbnail_overlay_text="2000 DEAD").hard, (("thumbnail_text", "2000"),))
+    def test_a_percentage_or_a_big_number_is_a_large_figure(self):
+        self.assertEqual(findings(NARRATION, title="2000 Men Were Lost").large, (("title", "2000"),))
+        self.assertEqual(findings(NARRATION, title="40% Of The Crew Died").large, (("title", "40"),))
+        self.assertEqual(findings(NARRATION, title="5% Of The Crew Died").large, (("title", "5"),))
+        self.assertEqual(findings(NARRATION, thumbnail_overlay_text="2000 DEAD").large, (("thumbnail_text", "2000"),))
+        self.assertEqual(findings(NARRATION, title="476 AD").large, (("title", "476"),))
 
-    def test_a_percentage_or_a_decimal_that_leads_is_a_figure_not_a_count(self):
-        for text in ("5% Of The Crew Died", "5.5 Million Lost", "7:30 At The Lighthouse"):
+    def test_a_small_figure_that_is_a_person_or_an_event_is_hard_even_in_a_list_headline(self):
+        for text in ("12 Dead", "25 Years Later", "17 Killed", "The 12 Dead Of The Lighthouse", "Top 9 Men",
+                     "Why These 3 Men Ruined Rome", "5 Men Who Changed Rome", "Best 8 Soldiers",
+                     "12 погибших", "25 лет спустя", "17 человек", "5 odam", "25 yil keyin"):
             with self.subTest(text=text):
-                self.assertEqual(findings(NARRATION, title=text).counts, ())
-                self.assertTrue(findings(NARRATION, title=text).hard)
+                got = findings("Nobody wrote it down.", title=text)
+                self.assertEqual((len(got.small), got.counts), (1, ()), text)
 
-    def test_a_number_that_does_not_lead_is_a_figure_not_a_count(self):
-        self.assertEqual(findings(NARRATION, title="The 7 Keepers").hard, (("title", "7"),))
+    def test_a_number_that_is_neither_a_count_nor_a_person_is_a_small_figure(self):
+        for text in ("Chapter 7 Of The Log", "7:30 At The Lighthouse", "5.5 Of Them"):
+            with self.subTest(text=text):
+                self.assertTrue(findings("Nobody wrote it down.", title=text).hard)
 
 
-class ASmallLeadingCountIsBackedByTheScriptWalkingThroughIt(unittest.TestCase):
-    LIST = "First, the lamp was clean. Second, the beds were made. And last, the door was locked from inside."
+class ListicleHeadlinesAreCountsNotFigures(unittest.TestCase):
+    HEADLINES = (
+        "Top 10 Mysteries of Rome", "The 7 Wonders of Rome", "Best 5 Roman Emperors", "Here Are 5 Strange Facts",
+        "Rome: 7 Facts", "Rome's 5 Worst Emperors", "5 Strange Facts About The Ocean", "The 7 Keepers",
+        "Топ 5 загадок Рима", "Рим: 7 фактов", "10 причин падения Рима", "Лучших 5 императоров",
+        "Rim haqida 5 ta fakt", "Rim: 7 sir", "Eng 5 jumboq",
+    )
 
-    def test_a_count_the_script_does_not_enumerate_is_a_count_finding_not_a_hard_one(self):
-        got = findings(self.LIST, title="5 Strange Facts About The Ocean")
-        self.assertEqual((got.hard, got.counts), ((), (("title", "5"),)))
+    def test_an_unbacked_headline_count_is_a_warning_finding_never_a_hard_one(self):
+        for text in self.HEADLINES:
+            with self.subTest(text=text):
+                got = findings("Nobody wrote it down.", title=text)
+                self.assertEqual((got.large, got.small), ((), ()))
+                self.assertEqual(len(got.counts), 1)
 
-    def test_enough_enumerators_or_enough_sections_back_it(self):
+    def test_it_applies_to_title_ab_and_thumbnail_text_and_not_to_the_description(self):
+        got = findings("Nobody wrote it down.", title_ab="9 Secrets", thumbnail_overlay_text="TOP 5",
+                       description="9 secrets are told here in full.")
+        self.assertEqual(sorted(got.counts), [("thumbnail_text", "5"), ("title_ab", "9")])
+        self.assertEqual(got.small, (("description", "9"),))
+
+    def test_enumerators_or_sections_back_it(self):
         five = "First a. Second b. Third c. Fourth d. Fifth e."
         self.assertEqual(findings(five, title="5 Strange Facts").counts, ())
-        self.assertEqual(findings("Number one. Number two. Number three, then 4. Four! 1) x 2) y", title="3 Facts").counts, ())
+        self.assertEqual(findings(five, title="Top 6 Facts").counts, (("title", "6"),))
         six_sections = [f"Section {i} says something here today." for i in range(6)]
         self.assertEqual(findings(six_sections, title="5 Strange Facts").counts, ())
         self.assertEqual(findings(six_sections[:3], title="7 Strange Facts").counts, (("title", "7"),))
 
-    def test_a_count_the_narration_writes_as_a_digit_is_backed_outright(self):
-        marked = "1. The lamp was clean.\n2. The beds were made.\n3. The door was locked from inside."
-        self.assertEqual(findings(marked, title="3 Facts About The Lamp"), ce.NumberFindings())
-        self.assertEqual(findings(marked, title="4 Facts About The Lamp").counts, (("title", "4"),))
+    def test_the_narration_saying_n_of_the_same_noun_backs_it(self):
+        for narration in ("There are five secrets in this log.", "Here are 5 secrets of the island.",
+                          "Five strange secrets were found."):
+            with self.subTest(narration=narration):
+                self.assertEqual(findings(narration, title="5 Secrets Of The Island").counts, ())
+        self.assertEqual(findings("There are five lamps in this log.", title="5 Secrets Of The Island").counts,
+                         (("title", "5"),))
 
-    def test_it_applies_to_title_ab_and_thumbnail_text_and_not_to_the_description(self):
-        got = findings(self.LIST, title_ab="9 Secrets", thumbnail_overlay_text="8 CLUES",
-                       description="9 secrets are told here in full.")
-        self.assertEqual(sorted(got.counts), [("thumbnail_text", "8"), ("title_ab", "9")])
-        self.assertEqual(got.hard, (("description", "9"),))
+    def test_a_bare_digit_in_the_narration_no_longer_backs_a_count(self):
+        for narration in ("In the 5th year the lamp failed.", "The 5 lamps burned.", "Chapter 5 begins here."):
+            with self.subTest(narration=narration):
+                self.assertEqual(findings(narration, title="5 Strange Facts").counts, (("title", "5"),))
 
     def test_a_count_of_one_or_over_thirty_is_a_figure(self):
-        self.assertEqual(findings(self.LIST, title="1 Keeper Vanished").hard, (("title", "1"),))
-        self.assertEqual(findings(self.LIST, title="31 Facts").hard, (("title", "31"),))
+        self.assertEqual(findings("Nobody wrote it down.", title="1 Keeper Vanished").small, (("title", "1"),))
+        self.assertEqual(findings("Nobody wrote it down.", title="31 Facts").small, (("title", "31"),))
+
+    def test_a_percentage_or_a_decimal_is_never_a_count(self):
+        for text in ("5% Of The Facts", "5.5 Facts", "7:30 Facts"):
+            with self.subTest(text=text):
+                self.assertEqual(findings("Nobody wrote it down.", title=text).counts, ())
 
 
 class TheGateReadsFindingsPerLanguage(unittest.TestCase):
-    def gate(self, language, **over):
-        return publish_gate.evaluate_fact_check(script=script(NARRATION, **over), fact_results=[], channel=channel(),
+    #: The narration writes numbers as digits ("1900", "1,200") and says nothing of 900 000.
+    def gate(self, language, narration=NARRATION, **over):
+        return publish_gate.evaluate_fact_check(script=script(narration, **over), fact_results=[], channel=channel(),
                                                 narration_claims=1, language=language)
 
-    def test_an_english_channel_blocks_a_figure_the_narration_lacks(self):
-        for language in ("English", "english", "en", "en-US", None, ""):
+    def test_single_digits_alone_do_not_make_a_narration_one_that_writes_numbers_as_digits(self):
+        narration = "В тот год пять смотрителей зажгли 3 лампы и ушли."
+        d = self.gate("Russian", narration, title="Рим потерял 900 000 человек")
+        self.assertEqual((d.blocks, d.warnings), ([], ["shipped_text_unsupported"]))
+        self.assertFalse(ce.shipped_number_findings(script(narration, title="x")).narration_has_big_digits)
+        self.assertTrue(ce.shipped_number_findings(script("В 1900 году.", title="x")).narration_has_big_digits)
+
+    def test_a_large_figure_the_narration_lacks_blocks_in_every_language(self):
+        for language in ("English", "english", "en", "eng", "en-US", None, "", "Russian", "Uzbek", "Arabic", "Chinese"):
             with self.subTest(language=language):
-                d = self.gate(language, title="The 1,000,000 Victims")
+                d = self.gate(language, title="Рим потерял 900 000 человек")
                 self.assertEqual(d.blocks, ["shipped_text_unsupported"])
                 self.assertEqual(d.fact_check["unsupported_numbers"], 1)
+        d = self.gate("Russian", title="Рим пал в 1899 году")
+        self.assertEqual(d.blocks, ["shipped_text_unsupported"])
 
-    def test_another_language_only_warns_because_its_numerals_are_not_read(self):
-        for language in ("Russian", "Uzbek", "Arabic", "Chinese"):
-            with self.subTest(language=language):
-                d = self.gate(language, title="The 1,000,000 Victims")
-                self.assertEqual((d.blocks, d.warnings), ([], ["shipped_text_unsupported"]))
+    def test_with_a_narration_that_writes_no_number_as_digits_a_non_english_channel_only_warns(self):
+        narration = "Рим пал много лет назад, и девятьсот тысяч человек погибли там."
+        d = self.gate("Russian", narration, title="Рим потерял 900 000 человек")
+        self.assertEqual((d.blocks, d.warnings), ([], ["shipped_text_unsupported"]))
+        for language in ("English", "eng", None):
+            self.assertEqual(self.gate(language, narration, title="Рим потерял 900 000 человек").blocks,
+                             ["shipped_text_unsupported"])
+
+    def test_a_small_figure_blocks_an_english_channel_and_only_warns_another(self):
+        d = self.gate("English", title="17 Killed")
+        self.assertEqual(d.blocks, ["shipped_text_unsupported"])
+        d = self.gate("Russian", title="17 Killed")
+        self.assertEqual((d.blocks, d.warnings), ([], ["shipped_text_unsupported"]))
 
     def test_a_count_is_always_a_warning(self):
         for language in ("English", "Russian"):
-            d = self.gate(language, title="5 Strange Facts About The Ocean")
+            d = self.gate(language, title="Top 10 Mysteries Of Rome")
             self.assertEqual((d.blocks, d.warnings), ([], ["shipped_count_unsupported"]))
             self.assertEqual(d.fact_check["unsupported_counts"], 1)
 
-    def test_with_blocking_off_an_english_figure_is_a_warning(self):
+    def test_with_blocking_off_a_large_figure_is_a_warning(self):
         d = publish_gate.evaluate_fact_check(script=script(NARRATION, title="The 1,000,000 Victims"),
                                              fact_results=[], channel=channel({"block_on_fact_check": False}),
                                              narration_claims=1, language="English")
@@ -351,13 +432,14 @@ class TheGateReadsFindingsPerLanguage(unittest.TestCase):
 
     def test_the_full_gate_reaches_the_same_verdict_for_the_language(self):
         orig = SimpleNamespace(check=lambda t: SimpleNamespace(is_duplicate=False, needs_review=False))
-        for language, blocked in (("English", True), ("Russian", False)):
+        for language in ("English", "Russian"):
             d = publish_gate.evaluate(script=script(NARRATION, title="The 1,000,000 Victims"), fact_results=[],
                                       channel=channel(), narration_claims=1, originality=orig, language=language)
-            self.assertEqual("shipped_text_unsupported" in d.blocks, blocked, language)
+            self.assertIn("shipped_text_unsupported", d.blocks, language)
 
     def test_a_script_whose_figures_are_all_backed_passes_in_any_language(self):
-        self.assertEqual(self.gate("English", title="Vanished In 1900").blocks, [])
+        for language in ("English", "Russian"):
+            self.assertEqual(self.gate(language, title="Vanished In 1900").blocks, [])
 
 
 # ── 1d. what an unverifiable fragment means ──────────────────────────────

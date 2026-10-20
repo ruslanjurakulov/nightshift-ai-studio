@@ -444,20 +444,19 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
     thumbnail/hook texts those scenes do not show; no cut, so nothing to approve; a row
     that already holds a cut a person may be reviewing is left alone), and a ``publish.blocked``
     event — the one the Command Center, the operator bot and the Telegram control
-    already read for a blocked video — carries fixed words and counts only: no
-    title, no claim text. The caller raises HeldBeforeRender, which __main__ turns
+    already read for a blocked video — carries the fixed words and counts, the run's
+    slug and held id, what happened to the row, and the flagged non-narration texts
+    (capped; not the script's title). The caller raises HeldBeforeRender, which __main__ turns
     into HELD_BEFORE_RENDER_EXIT so the runners release the credit hold.
     Records only; never uploads, never raises."""
     channel_id = ctx.channel_id
     logger.error("[channel: %s] Fact-check would block the publish gate (%s) — run stopped before the voice, "
                  "stills and render were bought", channel_id, ", ".join(decision.blocks))
     print(f"\n⛔ Held before render ({', '.join(decision.blocks)}). Nothing was spent on the voice or the video.")
+    counts = decision.fact_check or {}
+    held_id, flagged, row = None, [], "not_recorded"
     try:
-        counts = decision.fact_check or {}
-        events.emit(events.PUBLISH_BLOCKED, agent="publish_gate", status=events.STATUS_FAILED,
-                    channel_id=channel_id,
-                    metadata={**decision.to_metadata(), "stage": "before_render",
-                              "claims_checked": len(fact_results), "claims_flagged": counts.get("flagged", 0)})
+        held_id = held_video.held_video_id(channel_id, slug)
         try:
             scenes = claim_scenes.annotate_scenes(script, claims, fact_results)
         except Exception:
@@ -469,18 +468,34 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
             detail["flagged"] = flagged
         # The row's key is channel + topic slug, so an earlier run of this topic may have left a cut on it that a
         # person is still reviewing (held, awaiting approval, blocked after its render). This hold has no video and
-        # would replace that cut's text, scenes and verdict, so a row that holds one is left exactly as it is: the
-        # event above, the exit code and the log still say why this run stopped. A lookup that fails reads as "maybe".
-        has_cut = held_video.HeldVideos().has_cut(held_video.held_video_id(channel_id, slug))
-        if has_cut is not False:
-            logger.warning("[channel: %s] The held row for %s already holds a cut (or could not be read): it is "
-                           "left as it is, and no row is written for this early hold", channel_id, slug)
+        # would replace that cut's text, scenes and verdict, so a row that holds one is left exactly as it is. A
+        # lookup that fails reads as "maybe": nothing is written either. The event below says which of the three
+        # happened and carries the flagged texts, because the rows-based alerts stay silent when no row is written.
+        has_cut = held_video.HeldVideos().has_cut(held_id)
+        if has_cut is False:
+            written = held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED,
+                                             topic=topic, title=script.title, script_text=script.full_narration(),
+                                             scenes=scenes, detail=detail, no_cut=True)
+            row = "written" if written else "not_recorded"
+        elif has_cut:
+            row = "kept_existing_cut"
+            logger.warning("[channel: %s] The held row for %s already holds a cut: it is left as it is, and no row "
+                           "is written for this early hold", channel_id, slug)
         else:
-            held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED,
-                                   topic=topic, title=script.title, script_text=script.full_narration(),
-                                   scenes=scenes, detail=detail, no_cut=True)
+            row = "lookup_failed"
+            logger.warning("[channel: %s] The held row for %s could not be read, so it was not overwritten and no "
+                           "row is written for this early hold", channel_id, slug)
     except Exception as e:
         logger.warning("Could not record the early hold (%s: %s) — the run still stops",
+                       type(e).__name__, e)
+    try:
+        events.emit(events.PUBLISH_BLOCKED, agent="publish_gate", status=events.STATUS_FAILED,
+                    channel_id=channel_id,
+                    metadata={**decision.to_metadata(), "stage": "before_render", "slug": slug, "video_id": held_id,
+                              "row": row, "flagged": flagged,
+                              "claims_checked": len(fact_results), "claims_flagged": counts.get("flagged", 0)})
+    except Exception as e:
+        logger.warning("Could not emit the early-hold event (%s: %s) — the run still stops",
                        type(e).__name__, e)
     _flush_costs(costs, slug)
 

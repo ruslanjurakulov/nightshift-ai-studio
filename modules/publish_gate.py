@@ -438,7 +438,7 @@ def _is_english(language) -> bool:
     """The numeral reader (claim_extractor._spoken_numbers) understands English only. An unknown
     language is treated as English: when in doubt the check keeps its teeth."""
     text = str(language or "").strip().casefold()
-    return text in ("", "en") or text.startswith(("english", "en-", "en_"))
+    return text in ("", "en", "eng") or text.startswith(("english", "en-", "en_", "eng "))
 
 
 def _check_shipped_numbers(decision: GateDecision, config: GateConfig, script, language=None) -> None:
@@ -446,11 +446,13 @@ def _check_shipped_numbers(decision: GateDecision, config: GateConfig, script, l
     description that the narration never says is a figure the script does not
     back. Free: no model call.
 
-    * A figure the narration really lacks is ``shipped_text_unsupported``: a block
-      (``block_on_fact_check``) for an English channel; a warning for any other
-      language, where a spelled-out number ("десять", "beshta") cannot be read yet.
-    * A small leading count ("5 Strange Facts") that the script does not enumerate
-      (first / second / ..., "number one", "1." markers, or that many sections) is
+    * A LARGE figure (3+ digits, a year, a percentage) the narration never writes as digits is
+      ``shipped_text_unsupported``, a block (``block_on_fact_check``) in EVERY language. The one
+      exception is a narration that writes no number of 2+ digits at all outside English: its numbers
+      are spelled out ("девятьсот тысяч"), which cannot be read, so that case is a warning.
+    * A small figure that is not a headline count ("12 Dead", "25 Years Later") blocks for an English
+      channel, whose spelled-out numbers are read, and warns otherwise.
+    * A headline count ("Top 10 Mysteries", "5 Strange Facts") that the script does not back is
       ``shipped_count_unsupported``: a warning, never a block.
     A check that cannot run is a warning."""
     if script is None:
@@ -460,11 +462,12 @@ def _check_shipped_numbers(decision: GateDecision, config: GateConfig, script, l
         from modules.claim_extractor import shipped_number_findings
 
         found = shipped_number_findings(script)
-        if found.hard:
-            english = _is_english(language)
-            (decision.blocks if config.block_on_fact_check and english else decision.warnings).append(
+        english = _is_english(language)
+        blocking = bool(found.large and (english or found.narration_has_big_digits)) or bool(found.small and english)
+        if found.large or found.small:
+            (decision.blocks if config.block_on_fact_check and blocking else decision.warnings).append(
                 "shipped_text_unsupported")
-            logger.warning("Shipped text carries %d number(s) the narration never says (in: %s)",
+            logger.warning("Shipped text carries %d figure(s) the narration never says (in: %s)",
                            len(found.hard), ", ".join(sorted({f for f, _ in found.hard})))
         if found.counts:
             decision.warnings.append("shipped_count_unsupported")

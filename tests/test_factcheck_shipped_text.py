@@ -422,15 +422,29 @@ class RunStopsBeforeTheVoiceWhenTheCheckWouldBlock(unittest.TestCase):
         out = drive(lambda d: d.__setitem__("description", "FLAGME ruled the island in 1900, they say."))
         self.assertTrue(out["voice_built"], out.get("tb"))
 
-    def test_a_figure_the_narration_lacks_holds_an_english_channel_but_only_warns_a_russian_one(self):
-        flag = lambda d: d.__setitem__("title", "The 1,000,000 Victims Of The Lighthouse")  # noqa: E731
+    def test_a_large_figure_the_narration_lacks_holds_an_english_and_a_russian_channel_alike(self):
+        flag = lambda d: d.__setitem__("title", "Рим потерял 900 000 человек")  # noqa: E731
+        for language in ("English", "Russian"):
+            with self.subTest(language=language):
+                out = _drive_row(flag, dict(ROW, agent_config={**ROW["agent_config"], "language": language}))
+                self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
+                self.assertIn("shipped_text_unsupported", out["raised"][1])
+                self.assertFalse(out["voice_built"])
+
+    def test_a_small_figure_that_is_a_person_or_an_event_holds_english_but_only_warns_a_russian_channel(self):
+        flag = lambda d: d.__setitem__("title", "17 Killed On The Island")  # noqa: E731
         held = _drive_row(flag, ROW)
         self.assertEqual(held["raised"][0], "HeldBeforeRender", held.get("tb"))
         russian = _drive_row(flag, dict(ROW, agent_config={**ROW["agent_config"], "language": "Russian"}))
         self.assertTrue(russian["voice_built"], russian.get("tb"))
         self.assertEqual(russian["held"], [])
 
-    def test_the_stop_is_owner_visible_and_carries_no_title_or_claim_text(self):
+    def test_a_headline_count_never_holds_the_run(self):
+        out = drive(lambda d: d.__setitem__("title", "Top 10 Mysteries Of The Lighthouse"))
+        self.assertTrue(out["voice_built"], out.get("tb"))
+        self.assertEqual(out["held"], [])
+
+    def test_the_stop_is_owner_visible_and_names_the_flagged_texts_but_not_the_narration(self):
         out = drive(lambda d: d.__setitem__("title", "BADFACT Killed The Whole Crew"))
         blocked = [e for e in out["events"] if e[0] == "publish.blocked"]
         self.assertEqual(len(blocked), 1)
@@ -440,8 +454,14 @@ class RunStopsBeforeTheVoiceWhenTheCheckWouldBlock(unittest.TestCase):
         self.assertEqual(meta["blocks"], ["fact_check_flagged:1"])
         self.assertEqual(meta["claims_flagged"], 1)
         self.assertGreater(meta["claims_checked"], 1)
-        self.assertNotIn("BADFACT", json.dumps(meta))
-        self.assertNotIn("Lighthouse", json.dumps(meta))
+        # rows-based alerts are silent when no row is written, so the event names the run and what was flagged
+        self.assertEqual(meta["row"], "written")               # the child's fake held-row writer answered
+        self.assertTrue(meta["slug"])
+        self.assertTrue(meta["video_id"].startswith("run-"))
+        self.assertEqual([(f["source"], f["verdict"], f["text"]) for f in meta["flagged"]],
+                         [("title", "likely_inaccurate", "BADFACT Killed The Whole Crew")])
+        for narration_text in ("relief crew", "oilskins", "log book"):
+            self.assertNotIn(narration_text, json.dumps(meta))
         # the run also leaves a blocked row, with the gate's reasons and no cut
         self.assertEqual(len(out["held"]), 1)
         held = out["held"][0]

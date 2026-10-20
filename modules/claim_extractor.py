@@ -386,37 +386,46 @@ _DESCRIPTION_NOISE = (
     # en
     "thanks for watching", "thank you for watching", "don't forget", "dont forget", "follow us",
     "share this", "subscribe", "like and", "hit the bell", "music:", "music by", "credits:", "credit:",
-    "sources:", "source:", "follow me", "turn on notifications", "check out our",
+    "follow me", "turn on notifications", "check out our",
     # ru
     "спасибо за просмотр", "спасибо, что смотр", "подписывай", "подписывайся", "подписаться", "не забудьте",
-    "не забывайте", "ставьте лайк", "ставь лайк", "музыка:", "источники:", "источник:", "жмите колокол",
+    "не забывайте", "ставьте лайк", "ставь лайк", "музыка:", "жмите колокол",
     # uz
     "musiqa:", "obuna bo'ling", "obuna bo'l", "ko'rgani uchun rahmat", "ko'rganingiz uchun",
-    "tomosha qilganingiz uchun", "unutmang", "yoqtiring", "like bosing", "manbalar:", "manba:",
+    "tomosha qilganingiz uchun", "unutmang", "yoqtiring", "like bosing",
 )
+#: A label that introduces a citation. For claims the LABEL is dropped and what follows is judged ("Source:
+#: Napoleon died of poison" is a statement); for the number check the whole line is dropped (a citation year
+#: such as "Smith (2019)" is not a figure the video states).
+_SOURCE_LABELS = ("sources:", "source:", "источники:", "источник:", "manbalar:", "manba:")
 
 #: Words that make a fragment an ACCUSATION (a crime, a betrayal, a killing) that
 #: the checker could not confirm: such a fragment holds the run even when the
 #: verdict is only ``unverifiable``, because "Napoleon Was Poisoned" is exactly the
-#: defamation shape the gate exists for. Data, en / ru / uz. Stems match a word's
-#: start (``\bkill\w*``); apostrophes are normalized first.
-_ACCUSATION_STEMS = (
+#: defamation shape the gate exists for. Data, en / ru / uz: WHOLE WORDS and explicit
+#: inflections, never open prefixes ("The Crimean War", "Poison Dart Frogs", "Killer
+#: Whales", "The Executive Branch", "Казна Рима" are not accusations). Matched against
+#: ``normalize_text`` (case-folded, apostrophes unified).
+_ACCUSATION_WORDS = (
     # en
-    "murder", "kill", "poison", "assassin", "stole", "steal", "thie", "theft", "fraud", "framed", "betray",
-    "conspir", "execut", "massacr", "genocid", "rape", "abus", "corrupt", "guilty", "crimin", "crime",
-    "liar", "lied", "tortur", "slaughter", "behead", "bribe", "blackmail", "traitor", "cover-up", "coverup",
+    "murdered", "murders", "murderer", "murderers", "killed", "kills", "poisoned", "poisons", "assassinated",
+    "assassinates", "stole", "steals", "betrayed", "betrays", "conspired", "massacred", "tortured", "tortures",
+    "slaughtered", "beheaded", "executed", "executes", "bribed", "blackmailed", "abused", "raped", "lied",
+    "cheated", "framed for", "fraud", "genocide", "guilty", "liar", "traitor",
     # ru
-    "убий", "убил", "убит", "убь", "отрав", "украл", "краж", "предал", "предател", "казн", "виновн",
-    "преступ", "мошенн", "заговор", "резн", "геноцид", "лжец", "обман", "пытк", "взятк", "шантаж",
+    "убил", "убила", "убили", "убит", "убита", "убиты", "убийца", "убийцы", "отравил", "отравила", "отравили",
+    "отравлен", "отравлена", "отравлены", "украл", "украла", "украли", "предал", "предала", "предали",
+    "предатель", "казнил", "казнила", "казнили", "казнён", "казнен", "казнены", "обманул", "обманула", "обманули",
+    "лжец", "виновен", "виновна", "виновны", "мошенник", "мошенники", "пытал", "пытали", "зарезал", "зарезали",
     # uz
-    "o'ldir", "o'ldi", "qotil", "zaharla", "o'g'ri", "o'g'irla", "xiyonat", "aybdor", "jinoyat", "firibgar",
-    "fitna", "qatl", "genotsid", "yolg'on", "qiynoq", "poraxo'r", "josus",
+    "o'ldirdi", "o'ldirgan", "o'ldirilgan", "qotil", "qotillar", "zaharladi", "zaharlangan", "o'g'irladi",
+    "o'g'ri", "xiyonat", "aybdor", "jinoyatchi", "firibgar", "qatl", "poraxo'r", "yolg'onchi", "qiynadi", "josus",
 )
-_ACCUSATION_RE = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in _ACCUSATION_STEMS) + r")\w*")
+_ACCUSATION_RE = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(w) for w in _ACCUSATION_WORDS) + r")(?!\w)")
 
 
 def has_accusation(text: str) -> bool:
-    """Whether ``text`` names an accusation word (en / ru / uz list above)."""
+    """Whether ``text`` contains an accusation word or inflection (en / ru / uz list above, whole words)."""
     return bool(_ACCUSATION_RE.search(normalize_text(text)))
 
 
@@ -471,15 +480,23 @@ def _is_noise(sentence: str) -> bool:
     return count_words(sentence) <= _NOISE_SHORT_WORDS and any(p in norm for p in _DESCRIPTION_NOISE)
 
 
-def _description_units(description: str) -> list[str]:
+def _description_units(description: str, keep_sources: bool = True) -> list[str]:
     """The description's statements, one per sentence: lines first, links stripped
     (the rest of the sentence is still judged), noise dropped. A sentence that
-    names a link or a source in passing stays."""
+    names a link or a source in passing stays. A sentence that STARTS with a source
+    label ("Source: ...") loses the label and the rest is judged; with
+    ``keep_sources=False`` it is dropped whole."""
     out: list[str] = []
     for line in _description_lines(description):
         for sentence in _split_sentences(_URL_WHOLE.sub(" ", line)):
             sentence = re.sub(r"\(\s*(?:see|cf\.?)?\s*\)", "", sentence)       # what a stripped link leaves
             sentence = re.sub(r"\s+([.,;!?])", r"\1", re.sub(r"\s+", " ", sentence)).strip()
+            core = re.sub(r"^[^\w]+", "", normalize_text(sentence))
+            label = next((lab for lab in _SOURCE_LABELS if core.startswith(lab)), None)
+            if label:
+                if not keep_sources:
+                    continue
+                sentence = sentence[sentence.casefold().find(label[:-1]) + len(label):].strip()
             if sentence and not _is_noise(sentence):
                 out.append(sentence)
     return out
@@ -557,7 +574,8 @@ def extract_shipped_claims(script) -> list[Claim]:
 
 # --- A free check: a figure that ships must be backed by the narration -----------------
 
-_NUMBER_RE = re.compile(r"\d[\d.,  ]*\d|\d")
+#: A number with grouped digits ("1,000,000", "900 000", "1.500"), or a plain one.
+_NUMBER_RE = re.compile(r"\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?:[.,]\d+)?|\d[\d.,\u00a0\u202f]*\d|\d")
 #: Right after a number: an ordinal suffix ("20th", "1st", Russian "20-й"), which is not a quantity.
 _ORDINAL_SUFFIX = re.compile(r"(?:st|nd|rd|th)\b|-(?:й|я|е|го|му|ом|ый|ая|ое|ые|х)\b", re.IGNORECASE)
 _MULTIPLIER_WORD = re.compile(r"\s*(thousand|million|billion)\b", re.IGNORECASE)
@@ -567,11 +585,34 @@ _UNITS = {w: i for i, w in enumerate(
 _TENS = {w: 10 * i for i, w in enumerate("_ _ twenty thirty forty fifty sixty seventy eighty ninety".split())
          if w != "_"}
 _MULTIPLIERS = {"thousand": 10 ** 3, "million": 10 ** 6, "billion": 10 ** 9}
+_NUMBER_WORD = {**{v: k for k, v in _UNITS.items()}, **{v: k for k, v in _TENS.items()}}
 _ENUMERATORS = re.compile(
     r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|final)\b|\bnumber (\w+)\b",
     re.IGNORECASE)
-#: A leading count ("5 Strange Facts") is small; a bigger leading number is a figure.
+#: A small number (2-30) is a COUNT ("Top 10 Mysteries of Rome") rather than a figure when it sits in a list
+#: headline: a listicle word within the next three words, or a listicle lead-in just before it. The words are
+#: data (en / ru / uz) and kept modest: a number followed by a person or an event ("12 Dead", "25 Years Later",
+#: "3 Men") is a FIGURE and stays hard whatever precedes it, exactly like a number over 30.
 _SMALL_COUNT = range(2, 31)
+_LISTICLE_WORDS = frozenset(
+    # en
+    "facts fact things thing ways way reasons reason secrets secret mysteries mystery wonders wonder signs sign "
+    "myths myth lessons lesson mistakes mistake tips tricks rules steps places questions theories clues stories "
+    "moments best worst greatest top "
+    # ru
+    "фактов факта факты вещей вещи причин причины тайн тайны загадок загадки способов способа чудес чуда уроков "
+    "ошибок мифов признаков правил шагов мест теорий лучших худших "
+    # uz
+    "fakt faktlar sir sirlar sabab sabablar usul usullar jumboq jumboqlar mo''jiza ta".replace("''", "'").split())
+_LISTICLE_LEAD_INS = frozenset("top best worst the these those are топ лучших худших eng".split())
+_FIGURE_NOUNS = frozenset(
+    # en
+    "dead killed died deaths men women people children soldiers victims survivors years months weeks days hours "
+    "minutes "
+    # ru
+    "погибших погибли убитых человек людей лет года год дней дня часов минут жертв солдат мужчин женщин детей "
+    # uz
+    "o'lgan halok kishi odam yil kun soat daqiqa qurbon askar erkak ayol bola".split())
 
 
 def _ascii_digits(text: str) -> str:
@@ -585,7 +626,7 @@ def _fmt(value) -> str:
 
 
 def _digit_tokens(text: str) -> list:
-    """``[(token, start, forms, is_ordinal)]`` for each number in ``text``. A number followed by
+    """``[(token, start, end, forms, is_ordinal)]`` for each number in ``text``. A number followed by
     thousand / million / billion also carries its value ("1.5 million" is 1500000), and
     separators are ignored in the other form ("1,000,000" is "1000000")."""
     ascii_text = _ascii_digits(text)
@@ -596,10 +637,10 @@ def _digit_tokens(text: str) -> list:
         mult = _MULTIPLIER_WORD.match(after)
         if mult:
             try:
-                forms.add(_fmt(float(re.sub(r"[,  ]", "", token)) * _MULTIPLIERS[mult.group(1).lower()]))
+                forms.add(_fmt(float(re.sub(r"[,\u00a0\u202f ]", "", token)) * _MULTIPLIERS[mult.group(1).lower()]))
             except ValueError:
                 pass
-        out.append((token, m.start(), forms, bool(_ORDINAL_SUFFIX.match(after))))
+        out.append((token, m.start(), m.end(), forms, bool(_ORDINAL_SUFFIX.match(after))))
     return out
 
 
@@ -642,8 +683,7 @@ def _spoken_run(run) -> set:
 def _spoken_numbers(text: str) -> set:
     """Numbers written as English words ("forty thousand", "nineteen hundred", "one and a half
     million", the years "nineteen eighty-four" / "eighteen twelve"), as digit strings.
-    English only: a Russian or Uzbek narration is not read, and the check that uses this only blocks
-    for an English channel (publish_gate._check_shipped_numbers)."""
+    English only: a Russian or Uzbek narration is not read (see ``shipped_number_findings``)."""
     # Anything that is not a letter, a space or a hyphen (a comma, a full stop, a digit) is a token of its
     # own, which ends a run: "nineteen eighty-four, eighteen twelve" is two years, not one number.
     words = re.findall(r"[a-z]+|[^a-z\s\-]", (text or "").lower())
@@ -676,19 +716,67 @@ def _spoken_numbers(text: str) -> set:
 
 def _enumerators(narration: str) -> int:
     """How many list items the narration enumerates in words: distinct first / second / ... / last
-    and "number one". A count in a title ("5 Strange Facts") is backed when the script walks
-    through that many. ("1." / "2)" markers need no rule: a title count N is already backed
-    whenever the narration writes the digit N.)"""
-    items = {(m.group(1) or "number " + m.group(2)).lower() for m in _ENUMERATORS.finditer(narration)}
-    return len(items)
+    and "number one". A count in a headline ("5 Strange Facts") is backed when the script walks
+    through that many."""
+    return len({(m.group(1) or "number " + m.group(2)).lower() for m in _ENUMERATORS.finditer(narration)})
+
+
+def _words_after(text: str, end: int, n: int) -> list:
+    return re.findall(r"[\w']+", normalize_text(text[end:]))[:n]
+
+
+def _word_before(text: str, start: int) -> str:
+    found = re.findall(r"[\w']+", normalize_text(text[:start]))
+    return found[-1] if found else ""
+
+
+def _count_noun(text: str, end: int) -> str:
+    """The listicle word a count refers to ("facts" in "5 Strange Facts"), '' when none."""
+    return next((w for w in _words_after(text, end, 3) if w in _LISTICLE_WORDS), "")
+
+
+def _is_count(field: str, token: str, forms: set, text: str, start: int, end: int) -> bool:
+    """A 2-30 integer in a title / A/B title / thumbnail text that sits in a list headline. Never a
+    percentage or a decimal; never one followed by a person or an event ("12 Dead")."""
+    if field == SOURCE_DESCRIPTION or not token.isdigit() or int(token) not in _SMALL_COUNT or len(forms) != 1:
+        return False
+    if text[end:end + 1] in ("%", ".", ":", "/") or re.search(r"\d[:./,]$", text[max(0, start - 2):start]):
+        return False                                   # a percentage, a decimal, a time ("7:30")
+    after = _words_after(text, end, 3)
+    if after and after[0] in _FIGURE_NOUNS:
+        return False
+    return bool(_count_noun(text, end)) or _word_before(text, start) in _LISTICLE_LEAD_INS
+
+
+def _count_is_backed(n: int, noun: str, narration: str, enumerated: int, n_sections: int) -> bool:
+    """A headline count is backed when the narration enumerates at least that many items, the script has
+    that many sections, or the narration says "N <noun>" itself ("five facts", "5 secrets")."""
+    if enumerated >= n or n_sections >= n:
+        return True
+    if not noun:
+        return False
+    word = _NUMBER_WORD.get(n, "")
+    number = rf"(?:{n}{'|' + word if word else ''})"
+    return bool(re.search(rf"\b{number}\b(?:\W+\w+){{0,2}}?\W+{re.escape(noun)}\b", narration, re.IGNORECASE))
 
 
 @dataclass(frozen=True)
 class NumberFindings:
-    #: ``((field, number), ...)``: figures that ship and that the narration never says.
-    hard: tuple = ()
-    #: Same shape: a small leading count ("5 Strange Facts") that the script does not enumerate.
+    #: ``((field, number), ...)``: a 3+ digit number, a year or a percentage that ships and that the narration
+    #: never says as digits.
+    large: tuple = ()
+    #: Same shape: a 1-2 digit figure that is not a headline count ("12 Dead", "25 Years Later", "40%").
+    small: tuple = ()
+    #: Same shape: a headline count ("Top 10 Mysteries") that the script does not back. A warning only.
     counts: tuple = ()
+    #: Whether the narration writes any number of 2+ digits as digits. When it writes none at all its numbers
+    #: are spelled out (or absent), and a large figure cannot be compared: the gate then only warns outside
+    #: English, whose spelled numbers are read.
+    narration_has_big_digits: bool = False
+
+    @property
+    def hard(self) -> tuple:
+        return self.large + self.small
 
 
 def shipped_number_findings(script) -> NumberFindings:
@@ -696,41 +784,49 @@ def shipped_number_findings(script) -> NumberFindings:
     the narration does not back.
 
     Free and deterministic: no model. A figure matches however it is grouped ("1,000,000" is
-    "1000000"), with its thousand / million / billion ("1.5 million" is "one and a half million"),
-    in any digits, or as an English spelled-out number or year. Not read: ordinals ("20th"), links,
-    timestamp, hashtag, credit, thank-you and series ("Part 2") lines of the description.
+    "1000000", "900 000" is "900,000"), with its thousand / million / billion ("1.5 million" is
+    "one and a half million"), in any digits, or as an English spelled-out number or year. Not read:
+    ordinals ("20th", and an ordinal in the narration is not a quantity either), links, timestamp,
+    hashtag, credit, thank-you, source and series ("Part 2") lines of the description.
 
-    A small number (2-30) that opens a title, A/B title or thumbnail text is a COUNT: it is backed
-    when the narration enumerates at least that many items or the script has that many sections,
-    and otherwise goes to ``counts`` (a warning), not ``hard``. Never raises."""
+    A small number (2-30) in a list headline ("Top 10 Mysteries of Rome", "Here Are 5 Strange Facts")
+    is a COUNT: backed when the narration enumerates that many items, the script has that many
+    sections, or the narration says "N <noun>"; otherwise it goes to ``counts`` (a warning). Any other
+    figure goes to ``large`` (3+ digits, a year, a percentage) or ``small``. Never raises."""
     try:
         sections = _section_texts(script)
         narration = "\n\n".join(sections)
-        known = set()
-        for _tok, _pos, forms, _ordinal in _digit_tokens(narration):
-            known |= forms
+        known, big = set(), False
+        for _tok, _s, _e, forms, ordinal in _digit_tokens(narration):
+            if not ordinal:
+                known |= forms
+                big = big or len(re.sub(r"\D", "", _tok)) >= 2
         known |= _spoken_numbers(narration)
         enumerated, n_sections = _enumerators(narration), len([t for t in sections if t.strip()])
         fields = [(SOURCE_TITLE, _field_text(script, "title")),
                   (SOURCE_TITLE_AB, _field_text(script, "title_ab")),
                   (SOURCE_THUMBNAIL, _field_text(script, "thumbnail_overlay_text")),
-                  (SOURCE_DESCRIPTION, " ".join(_description_units(_field_text(script, "description"))))]
-        hard, counts, seen = [], [], set()
+                  (SOURCE_DESCRIPTION, " ".join(_description_units(_field_text(script, "description"),
+                                                                    keep_sources=False)))]
+        large, small, counts, seen = [], [], [], set()
         for field, text in fields:
-            lead = re.match(r"^\W*", _ascii_digits(text)).end()
-            for token, pos, forms, ordinal in _digit_tokens(text):
-                if ordinal or forms & known or (field, token) in seen:
+            ascii_text = _ascii_digits(text)
+            for token, start, end, forms, ordinal in _digit_tokens(text):
+                if ordinal or (field, token) in seen:
                     continue
                 seen.add((field, token))
-                is_count = (field != SOURCE_DESCRIPTION and pos == lead and token.isdigit()
-                            and int(token) in _SMALL_COUNT and len(forms) == 1
-                            and not _ascii_digits(text)[pos + len(token):pos + len(token) + 1] in ("%", ".", ":", "/"))
-                if is_count:
-                    if enumerated >= int(token) or n_sections >= int(token):
-                        continue
-                    counts.append((field, token))
+                if _is_count(field, token, forms, ascii_text, start, end):
+                    if not _count_is_backed(int(token), _count_noun(ascii_text, end), narration, enumerated,
+                                            n_sections):
+                        counts.append((field, token))
+                    continue
+                if forms & known:
+                    continue
+                digits = re.sub(r"\D", "", token)
+                if len(digits) >= 3 or ascii_text[end:end + 1] == "%":
+                    large.append((field, token))
                 else:
-                    hard.append((field, token))
-        return NumberFindings(tuple(hard), tuple(counts))
+                    small.append((field, token))
+        return NumberFindings(tuple(large), tuple(small), tuple(counts), big)
     except Exception:
         return NumberFindings()

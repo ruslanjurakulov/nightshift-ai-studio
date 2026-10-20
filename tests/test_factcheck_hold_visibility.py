@@ -15,6 +15,7 @@ No network: Supabase is the in-memory fake from tests/test_video_review_record.p
 from __future__ import annotations
 
 import ast
+import json
 import logging
 import os
 import sys
@@ -140,9 +141,35 @@ class AnEarlyHoldNeverReplacesACutSomebodyMayBeReviewing(unittest.TestCase):
         self.assertEqual(fake.rows[self.HID], before)
 
     def test_the_run_still_stops_and_says_why_when_the_row_is_left_alone(self):
-        emitted = _hold(self.seeded())
+        claims = [claim("title", "Napoleon Was Poisoned")]
+        emitted = _hold(self.seeded(), claims, [_make_result(claims[0].text, "unverifiable", "Cannot tell.")])
         self.assertEqual([a[0] for a, _ in emitted], ["publish.blocked"])
-        self.assertEqual(emitted[0][1]["metadata"]["stage"], "before_render")
+        meta = emitted[0][1]["metadata"]
+        self.assertEqual(meta["stage"], "before_render")
+        # no row is written, so the rows-based alerts are silent: the event is what reads
+        self.assertEqual((meta["row"], meta["slug"], meta["video_id"]), ("kept_existing_cut", "the-lost-city", self.HID))
+        self.assertEqual([(f["source"], f["verdict"], f["text"]) for f in meta["flagged"]],
+                         [("title", "unverifiable", "Napoleon Was Poisoned")])
+        self.assertNotIn("The Lost City", json.dumps(meta))            # the script's title and narration are not in it
+        self.assertNotIn("the narration", json.dumps(meta))
+
+    def test_the_event_is_emitted_even_when_recording_the_row_blows_up(self):
+        with mock.patch.object(HeldVideos, "has_cut", side_effect=RuntimeError("boom")):
+            emitted = _hold(FakeSupabase())
+        self.assertEqual(len(emitted), 1)
+        self.assertEqual(emitted[0][1]["metadata"]["row"], "not_recorded")
+
+    def test_the_event_says_what_happened_to_the_row_in_each_case(self):
+        written = _hold(FakeSupabase())[0][1]["metadata"]
+        self.assertEqual(written["row"], "written")
+        with mock.patch.object(HeldVideos, "has_cut", return_value=None), self.assertLogs("t", "WARNING") as logs:
+            failed = _hold(self.seeded())[0][1]["metadata"]
+        self.assertEqual(failed["row"], "lookup_failed")
+        self.assertTrue(any("could not be read" in line for line in logs.output))
+        env = {}                                                       # an inert client: nothing is written, nothing to protect
+        with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(HeldVideos, "has_cut", return_value=False), \
+                mock.patch.object(HeldVideos, "record_held", return_value=None):
+            self.assertEqual(_hold(FakeSupabase())[0][1]["metadata"]["row"], "not_recorded")
 
     def test_a_lookup_that_fails_is_read_as_maybe_and_writes_nothing(self):
         fake = self.seeded()
