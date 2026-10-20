@@ -160,7 +160,11 @@ alert instead of as a day with no video (docs/operator-bot.md, "Reliability
 alerts"). It sees the configuration GitHub holds (the secrets and variables the daily
 run is given), not the worker container's own environment, which is refreshed by each
 deploy; the `host` checks (disk, ffmpeg) belong to the machine and are not judged
-there. Run the doctor in the container, as above, after a deploy.
+there. Run the doctor in the container, as above, after a deploy. It proves the
+default channel's token and every other scheduled operator channel's
+(`CHRONOS_YT_TOKEN_<REF>`, one free in-memory refresh each, listed as `token/<channel id>`);
+a run that will upload also asks Google about its own channel's token before it spends
+anything, and stops there when the token is expired or revoked.
 
 Reading the report:
 

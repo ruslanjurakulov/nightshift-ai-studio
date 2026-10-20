@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -203,6 +204,39 @@ def _row(c) -> dict:
     }
 
 
+_TOKEN_SECRET = re.compile(r"CHRONOS_YT_TOKEN_[A-Z0-9_]+")
+
+
+def token_rows(registry=None, sync=None) -> list[dict]:
+    """The scheduled operator channels whose YouTube token the doctor must prove: ``channel_id`` and the NAME of
+    the secret holding the token, from the function the publishing side reads it with
+    (``channel_credentials.env_var_name``), so the two cannot drift.
+
+    Active, schedule-enabled channels of the operator's own organization, other than the legacy default (its
+    token is ``YOUTUBE_TOKEN_JSON`` and the doctor proves that one already). A customer's token is its Vault
+    connection, never a secret here. Names only: nothing secret is read or returned. Raises when the registry is
+    unreadable (the same strict read ``due_channels`` uses), so an outage is never mistaken for "no channels"."""
+    if registry is None:
+        _preflight(sync)
+        registry = ChannelRegistry()
+    return [
+        {"channel_id": str(c.channel_id), "token_secret": env_var_name(c)}
+        for c in registry.active()
+        if c.is_operators and str(c.channel_id) != str(DEFAULT_CHANNEL_ID)
+    ]
+
+
+def token_slot_lines(slots: int, registry=None, sync=None) -> list[str]:
+    """``KEY=value`` lines for ``$GITHUB_OUTPUT``: ``rows`` (the whole list as one line of JSON) and ``name0`` ..
+    ``name<slots-1>`` (the first channels' secret names, blank when there is no such channel). The doctor
+    workflow indexes ``secrets[...]`` with the names, because Actions cannot enumerate secrets; a name is a
+    ``CHRONOS_YT_TOKEN_<REF>`` string or blank, never a value."""
+    rows = token_rows(registry=registry, sync=sync)
+    names = [r["token_secret"] if _TOKEN_SECRET.fullmatch(r["token_secret"]) else "" for r in rows[:slots]]
+    names += [""] * (slots - len(names))
+    return ["rows=" + json.dumps(rows, separators=(",", ":"))] + [f"name{i}={n}" for i, n in enumerate(names)]
+
+
 def resolve_only(channel_id: str, registry=None) -> dict:
     """The matrix row for one explicitly named channel, or an error.
 
@@ -251,7 +285,23 @@ def main() -> int:
     parser.add_argument("--all", action="store_true", help="Every channel, including PAUSED ones")
     parser.add_argument("--only", default=None,
                         help="Exactly this channel, whatever its schedule (an explicit manual run)")
+    parser.add_argument("--token-slots", type=int, default=None, metavar="N",
+                        help="Print GITHUB_OUTPUT lines (rows, name0..nameN-1) naming the token secrets of the "
+                             "scheduled operator channels, for the scheduled doctor")
     args = parser.parse_args()
+
+    if args.token_slots is not None:
+        try:
+            lines = token_slot_lines(args.token_slots)
+        except Exception as e:
+            # Exception type only: a failed Supabase call can carry a URL or a key fragment. Empty rows tell the
+            # doctor "could not be listed" (a warning), which is not the same as "no channels".
+            msg = f"channel registry UNREADABLE ({type(e).__name__}) - the doctor cannot name the scheduled channels' token secrets."
+            print(f"warning: {msg}", file=sys.stderr)
+            print(f"::warning::{msg}", file=sys.stderr)
+            lines = ["rows="] + [f"name{i}=" for i in range(args.token_slots)]
+        print("\n".join(lines))
+        return 0
 
     if args.only:
         try:
