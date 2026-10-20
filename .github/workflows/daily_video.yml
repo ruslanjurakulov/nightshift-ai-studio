@@ -133,6 +133,12 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           INPUT_CHANNEL: ${{ github.event.inputs.channel }}
           EVENT_NAME: ${{ github.event_name }}
+          # The global pause for scheduled and all-channels runs: set the repo
+          # VARIABLE to true and tools/list_channels.py emits an empty matrix
+          # (the make-video job below is then skipped, not failed). An explicit
+          # channel dispatch (--only) is a manual run and ignores it. Resume by
+          # deleting the variable or setting it to false. See docs/VIDEO_GO_LIVE.md.
+          NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
         run: |
           set -euo pipefail
           if [ -n "${INPUT_CHANNEL:-}" ]; then
@@ -156,6 +162,10 @@ jobs:
   # ---------------------------------------------------------------------------
   make-video:
     needs: resolve
+    # An empty matrix ({"include": []}: every channel paused, the global pause on,
+    # or simply no channel due this hour) has count 0, so this job is SKIPPED
+    # rather than started with a matrix GitHub would reject. Keep this `if`: it
+    # is what makes "nothing to do" a green run.
     if: needs.resolve.outputs.count > 0
     # Where the render runs. Unset repo VARIABLE RENDER_RUNNER = GitHub's
     # ubuntu-latest, exactly as before. Set it to the label of a self-hosted

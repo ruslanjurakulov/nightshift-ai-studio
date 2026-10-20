@@ -17,10 +17,23 @@ Three safety properties matter here:
   no credit hold, so the operator pays for it. A customer organization's
   channel runs when the Command Center names it (``--only``) together with the
   reservation that pays for it, never on the schedule.
-* **It cannot fail the workflow open.** If the registry cannot be loaded at
-  all, it falls back to the default channel — the single channel this bot has
-  always published — rather than emitting an empty matrix that would silently
-  stop production, or every channel it half-read.
+* **It cannot fail the workflow open.** If the registry raises, it falls back
+  to the default channel — the single channel this bot has always published —
+  rather than emitting an empty matrix that would silently stop production, or
+  every channel it half-read. That fallback is loud, and the global pause
+  below still beats it.
+* **Pausing means pausing.** A registry that LOADED and has no operator channel
+  active (every one paused, or its schedule off) is an operator decision, so
+  the matrix is empty on purpose. Before this, that case re-added the legacy
+  ``default`` channel (Chronos, the operator's test channel), so pausing Chronos
+  in the Command Center never stopped a scheduled run and there was no way to
+  stop the whole pipeline. "Cannot read the registry" and "read it, everything
+  is paused" are different facts and are handled differently.
+
+``NIGHTSHIFT_PIPELINE_PAUSED`` (repo variable, see docs/VIDEO_GO_LIVE.md) is the
+one global switch for scheduled runs. It is an environment variable and not a
+database flag on purpose: it must still work when Supabase is the thing that is
+down, and it must not depend on the registry that the fallback distrusts.
 
 `--due-hour` filters to channels whose `schedule.publish_hour_utc` matches. A
 channel with no hour set is treated as due at the default 15:00 UTC slot, which
@@ -31,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -41,13 +55,51 @@ from modules.channels import DEFAULT_CHANNEL_ID, ChannelRegistry, legacy_default
 
 DEFAULT_HOUR_UTC = 15
 
+PAUSE_ENV = "NIGHTSHIFT_PIPELINE_PAUSED"
+_PAUSED_WORDS = frozenset({"1", "true", "yes", "on"})
+_RUNNING_WORDS = frozenset({"", "0", "false", "no", "off"})
+
+
+def pipeline_paused(env=None) -> bool:
+    """Is the global kill switch for scheduled runs on?
+
+    Only ``1/true/yes/on`` (any case, surrounding space ignored) pause. Anything
+    else — unset, empty, ``false``, a typo, garbage — means NOT paused. The
+    switch is an explicit opt-in to stopping production: a mangled value must
+    not silently stop a pipeline the owner believes is running, which is the
+    failure the dead-man alert exists to catch. The cost of that choice is that
+    a typo does not pause, so an unrecognised non-empty value is said out loud
+    (never echoed) instead of being swallowed.
+    """
+    raw = str((os.environ if env is None else env).get(PAUSE_ENV, "") or "").strip().lower()
+    if raw in _PAUSED_WORDS:
+        return True
+    if raw not in _RUNNING_WORDS:
+        print(
+            f"warning: {PAUSE_ENV} is set to a value that is not 1/true/yes/on — "
+            "treating the pipeline as NOT paused. Set it to true to pause.",
+            file=sys.stderr,
+        )
+    return False
+
 
 def due_channels(due_hour: int | None = None, registry=None) -> list[dict]:
+    if pipeline_paused():
+        print(f"note: pipeline paused by {PAUSE_ENV} — nothing is scheduled", file=sys.stderr)
+        return []
+
     try:
         registry = registry or ChannelRegistry()
         channels = registry.active()
-    except Exception as e:  # pragma: no cover - defensive, see module docstring
-        print(f"warning: channel registry unavailable ({type(e).__name__}: {e})", file=sys.stderr)
+    except Exception as e:
+        # Only the exception TYPE: a message from a failed Supabase call can carry
+        # a URL or a key fragment, and this goes into the workflow log.
+        print(
+            f"warning: channel registry UNREADABLE ({type(e).__name__}) — FALLING BACK to the "
+            "legacy default channel 'default'. Pausing a channel in the Command Center does NOT "
+            f"stop this run while the registry is unreadable; set {PAUSE_ENV}=true to stop it.",
+            file=sys.stderr,
+        )
         channels = [legacy_default_channel()]
 
     # A scheduled run carries no credit hold, so it is the operator's to pay
@@ -67,8 +119,12 @@ def due_channels(due_hour: int | None = None, registry=None) -> list[dict]:
     channels = [c for c in channels if c.is_operators]
 
     if not channels:
-        print("warning: no active channels resolved — falling back to the default", file=sys.stderr)
-        channels = [legacy_default_channel()]
+        # The registry loaded and no operator channel is active: someone paused
+        # them all (or switched their schedules off). That is a decision, so the
+        # matrix is empty on purpose — re-adding `default` here made Chronos
+        # impossible to pause.
+        print("note: all operator channels paused — nothing is scheduled", file=sys.stderr)
+        return []
 
     if due_hour is not None:
         channels = [
