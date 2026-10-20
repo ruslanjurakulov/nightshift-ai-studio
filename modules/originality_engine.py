@@ -358,6 +358,11 @@ class OriginalityEngine:
             lexical_score=lexical_score,
         )
 
+    @property
+    def stored_count(self) -> int:
+        """How many topics the store holds. 0 is an EMPTY store, which checks nothing (see ``check``)."""
+        return len(self._topics)
+
     def rebuild(self, topics) -> int:
         """Replace the store with these topics, embedded now, saved once.
         Returns how many. Used after a reset, from the caller's own history."""
