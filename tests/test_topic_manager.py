@@ -161,7 +161,12 @@ class TopicManagerQueueIntegrationTestCase(unittest.TestCase):
         entry = planner.enqueue("A Duplicate Topic", source="manual")
 
         blocked = OriginalityResult(is_duplicate=True, needs_review=False, closest_match="A Duplicate Topic (already used)", semantic_score=0.95, lexical_score=0.9)
+        clear = OriginalityResult(is_duplicate=False, needs_review=False, closest_match=None, semantic_score=0.0, lexical_score=0.0)
         tm = self._make_manager(originality_check_result=blocked, gemini_text="Fresh Fallback Topic")
+        # Only the QUEUED topic is a duplicate; the fresh one is not. (This test
+        # used to mark every candidate a duplicate and pass on pick_topic's old
+        # "use the last one anyway" fallback, which no longer exists.)
+        tm.originality.check.side_effect = lambda topic: blocked if topic == "A Duplicate Topic" else clear
 
         topic = tm.pick_topic("history mysteries")
 

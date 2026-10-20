@@ -88,7 +88,7 @@ from modules.subtitle_generator import SubtitleGenerator
 from modules.thumbnail_generator import ThumbnailGenerator
 from modules import title_formulas
 from modules.title_planner import plan_titles
-from modules.topic_manager import TopicManager
+from modules.topic_manager import TopicManager, TopicSelectionError
 from modules.youtube_uploader import YouTubeUploader
 from tools.generate_assets import ensure_assets
 
@@ -545,6 +545,10 @@ def run(
     # its style/cadence shape the run below. See modules/series.py; resolution
     # never raises.
     series_obj = resolve_series(series)
+    # effective_niche ends in "history mysteries"; remember whether the channel,
+    # the series or the caller actually named a niche, so topic selection stops
+    # for a channel that has none instead of quietly making history videos.
+    niche_chosen = bool(niche or (series_obj and series_obj.niche) or ctx.niche)
     niche = effective_niche(niche, series_obj, ctx.niche)
     # A series carries more than a niche: its look (biases b-roll and, with the
     # avatar on, the presenter), its narration style (a recorded hint), and its
@@ -779,8 +783,27 @@ def run(
     else:
         if topic is None and getattr(config, "AGENT_AUTOPILOT", False):
             topic = _agent_pick_topic(channel_id, video_provider=_active_video_provider())
+            # The planner ranks trending titles with no memory of what this
+            # channel already made: without this, one strong trend is the day's
+            # video every day.
+            repeat = topic_mgr.find_repeat(topic) if topic else None
+            if repeat:
+                logger.warning("Autopilot topic %r repeats this channel's own %r — using the topic manager",
+                               topic, repeat)
+                topic = None
         if topic is None:
-            topic = topic_mgr.pick_topic(niche)
+            try:
+                topic = topic_mgr.pick_topic(niche if niche_chosen else None)
+            except TopicSelectionError as e:
+                # Without this the owner sees only a red CI run. Counts and fixed
+                # words only: the message names candidate titles and history.
+                logger.error("[channel: %s] Topic selection stopped the run before it spent anything: %s",
+                             channel_id, e)
+                events.emit(events.AGENT_FAILED, agent="topic_manager", status=events.STATUS_FAILED,
+                            channel_id=channel_id,
+                            metadata={"error": f"TopicSelectionError: {e.code}", "stage": "topic",
+                                      "attempts": e.attempts, "kinds": list(e.kinds)})
+                raise
         logger.info("Topic: %s", topic)
     events.emit(events.TOPIC_SELECTED, agent="topic_manager", status=events.STATUS_COMPLETED,
                 channel_id=channel_id,
@@ -1667,7 +1690,17 @@ def run(
         logger.warning("Could not record costs (%s: %s) — the run itself is unaffected",
                        type(e).__name__, e)
 
-    topic_mgr.register_topic(topic, video_path, video_id=video_id, video_url=video_url)
+    # Bookkeeping after a finished (maybe published) run: a failure here must
+    # not turn that run into a failed one — the video exists either way.
+    try:
+        topic_mgr.register_topic(topic, video_path, video_id=video_id, video_url=video_url)
+    except Exception as e:
+        logger.error("[channel: %s] Topic history could not be written (%s) — the run itself is unaffected",
+                     channel_id, type(e).__name__)
+        # Not AGENT_FAILED: the Command Center reads every agent.failed as the AI
+        # integration failing, and this is local file bookkeeping.
+        events.emit(events.TOPIC_HISTORY_WRITE_ERROR, agent="topic_history", status=events.STATUS_WARNING,
+                    channel_id=channel_id, metadata={"error": type(e).__name__})
 
     # Snapshot what is left on the paid provider accounts (ElevenLabs credits,
     # Leonardo tokens) for the Billing page. Best-effort; never affects the run.

@@ -55,6 +55,14 @@ JOB_COMPLETED = "job.completed"
 JOB_FAILED = "job.failed"
 # Pipeline stages
 TOPIC_SELECTED = "topic.selected"
+# Topic memory (modules/topic_manager.py). Deliberately NOT `agent.failed`: the
+# Command Center reads every `agent.failed` as the AI integration failing, and
+# a history file that could not be written or had to be reset is not that.
+# Fixed words and counts only — never a topic title.
+TOPIC_HISTORY_RESET = "topic.history_reset"
+# Not named `.failed` on purpose: command-center/lib/decisions.ts and the Errors
+# page treat ANY event name ending in `.failed` as a failure, whatever its status.
+TOPIC_HISTORY_WRITE_ERROR = "topic.history_write_error"
 RESEARCH_STARTED = "research.started"
 RESEARCH_COMPLETED = "research.completed"
 # Packaging is decided BEFORE the script (modules/title_planner.py): the title
@@ -246,6 +254,10 @@ DURABILITY_CHECK = "durability.check"
 STATUS_RUNNING = "running"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
+# Something degraded but the run goes on (a history file reset, say). The
+# Command Center renders an unknown status neutrally; only "failed"/"error"
+# are errors there.
+STATUS_WARNING = "warning"
 
 # Substrings that mark a metadata key as credential-bearing. Case-insensitive.
 _SENSITIVE_KEY_MARKERS = (
