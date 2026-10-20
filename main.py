@@ -1519,10 +1519,9 @@ def run(
             if outcome.mismatch:
                 logger.error("[channel: %s] YouTube applied privacy %r, not the requested %r — "
                              "recording what the video has", channel_id, recorded_privacy, privacy)
-                events.emit(events.PUBLISH_HELD, agent="youtube_uploader", status=events.STATUS_FAILED,
+                events.emit(events.PRIVACY_FORCED, agent="youtube_uploader", status=events.STATUS_COMPLETED,
                             channel_id=channel_id, video_id=video_id,
-                            metadata={"reason": "privacy_mismatch", "requested": str(privacy),
-                                      "applied": str(recorded_privacy)})
+                            metadata={"requested": str(privacy), "applied": str(recorded_privacy)})
             # Recorded only on a successful upload — a failed attempt may have
             # sent bytes, but it did not deliver a video, and guessing how many
             # got through would be inventing a number.

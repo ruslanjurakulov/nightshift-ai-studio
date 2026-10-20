@@ -233,6 +233,27 @@ class HealthReportTestCase(ChannelFixture):
                 self.assertIn("finance", detail)
                 self.assertNotIn("{", detail)
 
+    def test_a_customer_is_never_sent_to_operator_tooling(self):
+        # A customer's token is a Vault connection: there is no secret to update and no CLI to run.
+        customer = self.channel(org_id="11111111-2222-3333-4444-555555555555")
+        self.assertFalse(customer.is_operators)
+        for reason in sorted(ytc.DEAD_CODES) + [ytc.MALFORMED]:
+            with self.subTest(reason=reason):
+                detail = self.with_check(ytc.TokenVerdict(ytc.DEAD, reason, 1), customer).blocking[0].detail
+                self.assertIn("Command Center", detail)
+                self.assertIn("before anything was spent", detail.lower())
+                self.assertIn("finance", detail)
+                for word in ("connect_channel", "tools/", "secret", "authoris", "invalid_", ".py", "OAuth"):
+                    self.assertNotIn(word, detail, word)
+
+    def test_an_operator_channel_keeps_the_cli_wording(self):
+        operator = self.channel()
+        self.assertTrue(operator.is_operators)
+        for reason in ("invalid_grant", ytc.MALFORMED):
+            with self.subTest(reason=reason):
+                detail = self.with_check(ytc.TokenVerdict(ytc.DEAD, reason, 1), operator).blocking[0].detail
+                self.assertIn("tools/connect_channel.py", detail)
+
     def test_an_unknown_token_does_not_block_and_says_so(self):
         report = self.with_check(ytc.TokenVerdict(ytc.UNKNOWN, "network", 2))
         self.assertTrue(report.ok)

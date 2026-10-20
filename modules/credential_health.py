@@ -231,6 +231,21 @@ _DEAD_DETAIL = {
         "(tools/connect_channel.py) and update its token secret. The run stopped before anything was spent."),
 }
 
+#: The same, for a customer's channel: its token is a Vault connection, so there is no secret to update and
+#: no tool to run. One remedy (reconnect in the Command Center); no vendor error codes, no file names.
+_DEAD_DETAIL_CUSTOMER = {
+    "invalid_grant": (
+        "YouTube says channel {channel}'s connection has expired or been revoked, so its upload would fail. "
+        "Reconnect YouTube for this channel in the Command Center. The run stopped before anything was spent."),
+    "invalid_client": (
+        "YouTube refused the connection for channel {channel}, so its upload would fail. Reconnect YouTube for "
+        "this channel in the Command Center. The run stopped before anything was spent."),
+    "malformed": (
+        "Channel {channel}'s YouTube connection is incomplete, so its upload would fail. Reconnect YouTube for "
+        "this channel in the Command Center. The run stopped before anything was spent."),
+}
+_DEAD_DETAIL_CUSTOMER["unauthorized_client"] = _DEAD_DETAIL_CUSTOMER["invalid_client"]
+
 
 def with_live_youtube_check(report: HealthReport, channel, *, check=None) -> HealthReport:
     """``report`` plus one ``youtube_token_live`` check: does the channel's YouTube token still refresh?
@@ -248,9 +263,11 @@ def with_live_youtube_check(report: HealthReport, channel, *, check=None) -> Hea
         if verdict.status == ytc.ABSENT:
             return report
         if verdict.status == ytc.DEAD:
+            # Only the operator's own channels are fixed with tools/ and a secret.
+            table = _DEAD_DETAIL if getattr(channel, "is_operators", True) else _DEAD_DETAIL_CUSTOMER
             new = CredentialCheck(
                 name="youtube_token_live", required=True, status=MISSING,
-                detail=_DEAD_DETAIL.get(verdict.reason, _DEAD_DETAIL["invalid_grant"]).format(channel=channel_id))
+                detail=table.get(verdict.reason, table["invalid_grant"]).format(channel=channel_id))
         elif verdict.status == ytc.LIVE:
             new = CredentialCheck(name="youtube_token_live", required_for_publish=True, status=OK)
         else:

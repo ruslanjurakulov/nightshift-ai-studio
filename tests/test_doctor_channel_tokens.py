@@ -144,6 +144,21 @@ class CheckChannelTokensTestCase(unittest.TestCase):
                 self.assertEqual(d.check_channel_tokens(ctx)[0].status, FAIL)
                 self.assertEqual(ctx.http.calls, [])
 
+    def test_a_token_without_its_own_client_pair_is_a_fail_whatever_the_environment_holds(self):
+        # The run reads client_id / client_secret from the token file alone (youtube_token_check._read_token)
+        # and refuses a file without them, so the doctor must not pass what the run would stop on.
+        env = {"YOUTUBE_CLIENT_SECRET_JSON": json.dumps({"installed": {"client_id": "env-cid", "client_secret": "env-sec"}}),
+               "GOOGLE_OAUTH_CLIENT_ID": "env-cid", "GOOGLE_OAUTH_CLIENT_SECRET": "env-sec"}
+        for name, doc in (("no client at all", {"refresh_token": REFRESH_A}),
+                          ("no secret", {"refresh_token": REFRESH_A, "client_id": "cid"}),
+                          ("no id", {"refresh_token": REFRESH_A, "client_secret": SECRET_A}),
+                          ("blank refresh token", {"refresh_token": "  ", "client_id": "cid", "client_secret": SECRET_A})):
+            with self.subTest(name):
+                ctx = ctx_for(ROWS[:1], {"CHRONOS_YT_TOKEN_FINANCE": json.dumps(doc), **env})
+                out = d.check_channel_tokens(ctx)
+                self.assertEqual([c.status for c in out], [FAIL])
+                self.assertEqual(ctx.http.calls, [])
+
     def test_google_refusing_the_token_is_a_fail_and_a_blip_is_a_warning(self):
         cases = [(Resp(400, {"error": "invalid_grant"}), FAIL), (Resp(401, {"error": "invalid_client"}), FAIL),
                  (Resp(503, None), WARN), (Resp(429, {"error": "x"}), WARN), (Resp(None), WARN)]
@@ -291,7 +306,8 @@ class WorkflowTestCase(unittest.TestCase):
         for i in range(d.CHANNEL_TOKEN_SLOTS):
             self.assertEqual(
                 slots[f"DOCTOR_CHANNEL_TOKEN_{i}"],
-                "${{ secrets[needs.resolve.outputs.name%d || 'DOCTOR_NO_SUCH_SECRET'] }}" % i)
+                "${{ secrets[startsWith(needs.resolve.outputs.name%d, 'CHRONOS_YT_TOKEN_') && "
+                "needs.resolve.outputs.name%d || 'DOCTOR_NO_SUCH_SECRET'] }}" % (i, i))
 
     def test_the_rows_variable_is_always_present_so_ci_mode_is_unambiguous(self):
         self.assertEqual(self.step["env"]["DOCTOR_CHANNEL_TOKEN_ROWS"], "${{ needs.resolve.outputs.rows }}")

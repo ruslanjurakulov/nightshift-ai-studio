@@ -23,7 +23,7 @@ name: Scheduled readiness check
 # Actions cannot enumerate secrets, so the `resolve` job reads the channel registry (the
 # same strict read the daily run's resolver makes), computes each channel's secret NAME
 # with the function the publishing side reads it with, and the doctor step is handed the
-# first six by name (secrets[needs.resolve.outputs.nameN]); a seventh channel is reported
+# first six by name (one indexed lookup per slot, guarded below); a seventh channel is reported
 # as not checked. The doctor refreshes each in memory (free, nothing saved). A scheduled
 # channel whose secret is not set is a failing check named after the channel. If the
 # registry cannot be read the doctor still runs and says so as a warning.
@@ -148,14 +148,16 @@ jobs:
           VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
           # The scheduled operator channels' tokens, by position: slot N holds the secret the resolver
           # named for the Nth channel (blank, or a name that is no secret, gives an empty value). The
-          # DOCTOR_NO_SUCH_SECRET fallback only gives the expression something to index.
+          # prefix guard lives in the expression itself, so a name that is not a CHRONOS_YT_TOKEN_ secret
+          # can never be looked up here whatever the resolver printed; the DOCTOR_NO_SUCH_SECRET
+          # fallback only gives the expression something to index.
           DOCTOR_CHANNEL_TOKEN_ROWS: ${{ needs.resolve.outputs.rows }}
-          DOCTOR_CHANNEL_TOKEN_0: ${{ secrets[needs.resolve.outputs.name0 || 'DOCTOR_NO_SUCH_SECRET'] }}
-          DOCTOR_CHANNEL_TOKEN_1: ${{ secrets[needs.resolve.outputs.name1 || 'DOCTOR_NO_SUCH_SECRET'] }}
-          DOCTOR_CHANNEL_TOKEN_2: ${{ secrets[needs.resolve.outputs.name2 || 'DOCTOR_NO_SUCH_SECRET'] }}
-          DOCTOR_CHANNEL_TOKEN_3: ${{ secrets[needs.resolve.outputs.name3 || 'DOCTOR_NO_SUCH_SECRET'] }}
-          DOCTOR_CHANNEL_TOKEN_4: ${{ secrets[needs.resolve.outputs.name4 || 'DOCTOR_NO_SUCH_SECRET'] }}
-          DOCTOR_CHANNEL_TOKEN_5: ${{ secrets[needs.resolve.outputs.name5 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_0: ${{ secrets[startsWith(needs.resolve.outputs.name0, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name0 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_1: ${{ secrets[startsWith(needs.resolve.outputs.name1, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name1 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_2: ${{ secrets[startsWith(needs.resolve.outputs.name2, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name2 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_3: ${{ secrets[startsWith(needs.resolve.outputs.name3, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name3 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_4: ${{ secrets[startsWith(needs.resolve.outputs.name4, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name4 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_5: ${{ secrets[startsWith(needs.resolve.outputs.name5, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name5 || 'DOCTOR_NO_SUCH_SECRET'] }}
         run: |
           # First line, on purpose: without it the pipe below returns tee's status and a doctor_report that
           # could not record its verdict (exit 1) would leave a green job and an operator who hears nothing.

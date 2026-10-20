@@ -210,6 +210,29 @@ class MainWiringTestCase(unittest.TestCase):
         self.assertEqual(len(published), 1)
         self.assertIn('"privacy": recorded_privacy', self.ast.unparse(published[0]).replace("'", '"'))
 
+    def test_a_privacy_the_video_was_given_is_never_told_as_a_hold(self):
+        # The video WAS uploaded (video.published follows). `publish.held` means "held, not published"
+        # to the owner digest, the Telegram templates and the held counters: a different name carries
+        # this fact, and no emit of the held name sits in the mismatch branch.
+        mismatch = next(n for n in self.ast.walk(self.run_fn)
+                        if isinstance(n, self.ast.If) and self.ast.unparse(n.test) == "outcome.mismatch")
+        emitted = [self.ast.unparse(c) for b in mismatch.body for c in self.ast.walk(b)
+                   if isinstance(c, self.ast.Call) and self.ast.unparse(c.func).endswith("events.emit")]
+        self.assertEqual(len(emitted), 1)
+        self.assertNotIn("PUBLISH_HELD", emitted[0])
+        self.assertIn("PRIVACY_FORCED", emitted[0])
+
+    def test_the_privacy_event_name_is_not_one_a_held_consumer_reads(self):
+        from modules import event_log  # noqa: PLC0415
+
+        name = event_log.PRIVACY_FORCED
+        self.assertNotEqual(name, event_log.PUBLISH_HELD)
+        root = Path(__file__).resolve().parent.parent
+        for rel in ("modules/telegram_control.py", "modules/operator_bot/views.py",
+                    "modules/operator_bot/owner_digest.py", "modules/operator_bot/sources.py",
+                    "tools/run_telegram_control.py"):
+            self.assertNotIn(name, (root / rel).read_text(encoding="utf-8"), rel)
+
     def test_the_short_never_goes_wider_than_the_request(self):
         short = [c for c in self.calls("_publish_short")]
         self.assertEqual(len(short), 1)

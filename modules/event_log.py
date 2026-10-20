@@ -122,6 +122,11 @@ PUBLISH_ALLOWED = "publish.allowed"
 # upload is held for a human to publish. This is a policy hold, never a gate
 # failure — `publish.allowed` still fired; the video is finished and on disk.
 PUBLISH_HELD = "publish.held"
+# The video WAS uploaded, but YouTube applied a stricter privacy than the run asked for (an API
+# project that has not passed the audit locks uploads private). `video.published` still fires,
+# carrying the privacy the video really has. Deliberately NOT `publish.held`: no consumer counts
+# this as held-for-review, because the video is on the channel, only not public.
+PRIVACY_FORCED = "publish.privacy_forced"
 # Advisory pre-publish intelligence (modules/publish_score.py). Records a
 # quality/prediction score for a human to read; it never gates, blocks, or
 # permits anything — the gate above is the only thing that decides publishing.

@@ -849,11 +849,13 @@ def check_channel_tokens(ctx: Ctx) -> List[Check]:
                              f"add the GitHub Actions secret {secret_name} (the channel's token JSON), or pause the channel"))
             continue
         token, ok = _load_json(value)
-        if not ok or not isinstance(token, dict) or not token.get("refresh_token"):
+        if not ok or not isinstance(token, dict) or not str(token.get("refresh_token") or "").strip():
             out.append(Check(g, cid, FAIL, "its token secret is not a token document with a refresh token",
                              f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}"))
             continue
-        cid_, csecret = _client_pair(ctx, token)
+        # The client pair comes from the token file alone, as the run reads it (youtube_token_check._read_token):
+        # no YOUTUBE_CLIENT_SECRET_JSON / GOOGLE_OAUTH_* fallback, so the doctor cannot pass a file the run refuses.
+        cid_, csecret = (str(token.get(k) or "").strip() for k in ("client_id", "client_secret"))
         if not (cid_ and csecret):
             out.append(Check(g, cid, FAIL, "its token has no OAuth client id/secret to refresh it with",
                              f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}"))
