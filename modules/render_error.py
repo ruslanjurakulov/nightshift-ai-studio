@@ -24,7 +24,8 @@ From what the failed run itself says, never from a guess about money:
 
 * the last exception line of the traceback in the log tail
   (``modules.audio_mixer.VoiceUnavailable: ...``) names the failing stage;
-* the worker's own headers (``credits: ...``, ``timed out after ...``).
+* the worker's own headers (``credits: ...``, ``timed out after ...``, and the
+  held-before-render exit code's).
 
 No match is ``unknown``, shown as such. Nothing here reads a key, and the tail it
 looks at has already been scrubbed by the worker.
@@ -35,15 +36,21 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
+from modules.publish_gate import HELD_BEFORE_RENDER_EXIT
+
 CREDITS = "credits"
 VOICE = "voice"
 PROVIDER_QUOTA = "provider_quota"
 MEDIA = "media"
 RENDER = "render"
 TIMEOUT = "timeout"
+#: The accuracy check held the script before any video was made (main.py exit
+#: ``publish_gate.HELD_BEFORE_RENDER_EXIT``): no traceback, so it is named by the
+#: worker's own header, never guessed from the log.
+HELD = "held"
 UNKNOWN = "unknown"
 
-CODES = (CREDITS, VOICE, PROVIDER_QUOTA, MEDIA, RENDER, TIMEOUT, UNKNOWN)
+CODES = (CREDITS, VOICE, PROVIDER_QUOTA, MEDIA, RENDER, TIMEOUT, HELD, UNKNOWN)
 
 #: The marker ``lib/runBackend.ts`` parses. Keep the two in step.
 PREFIX_RE = re.compile(r"^\[code:([a-z_]+)\][ \t]?")
@@ -88,6 +95,8 @@ def classify(header: str = "", tail: Iterable[str] = ()) -> str:
     first = (header or "").strip().splitlines()[0] if (header or "").strip() else ""
     if first.startswith("credits:"):
         return CREDITS
+    if first.startswith(f"main.py exited with code {HELD_BEFORE_RENDER_EXIT}:"):
+        return HELD
     if _TIMED_OUT.search(first):
         return TIMEOUT
     last = None

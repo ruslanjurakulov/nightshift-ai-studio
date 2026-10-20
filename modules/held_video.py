@@ -84,7 +84,7 @@ _COLUMNS_0016 = ("publish_state", "held_at", "hold_detail")
 COLUMNS_0112 = ("cut_sha256", "gate_verdict")
 # Older optional columns (0011 scenes, 0013 manifest), dropped next if a write
 # is still refused, so the row itself lands on the oldest supported schema.
-_COLUMNS_OPTIONAL = ("manifest", "scenes")
+_COLUMNS_OPTIONAL = ("manifest", "scenes", "preview_path")
 
 
 def held_video_id(channel_id: str, slug: str) -> str:
@@ -118,6 +118,42 @@ def gate_detail(reason: str, gate_meta: Optional[Mapping] = None) -> dict:
             "checks_run": [str(c) for c in (gate_meta.get("checks_run") or [])],
         }
     return detail
+
+
+#: At most this many flagged texts, each cut to a fixed length, go into ``hold_detail.flagged``.
+MAX_FLAGGED_IN_DETAIL = 20
+MAX_FLAGGED_TEXT = 200
+MAX_FLAGGED_REASONING = 300
+
+
+def flagged_claims(claims, results) -> list:
+    """The checked texts that ship OUTSIDE the narration and that the fact-check did
+    not clear (title, A/B title, description, thumbnail text, hook sentence, the
+    alternate hook): ``[{source, verdict, reasoning, text}]``, capped in count and
+    length. The storyboard's scenes already list the narration's own claims; these
+    belong to no scene, so without this the owner would see "0 flagged" on a run
+    that was held for its title. The strings are model-written, never a secret.
+    A checker's unresolved sentinel is not a finding and is left out. Never raises."""
+    out: list = []
+    try:
+        claims = list(claims or [])
+        for claim, r in zip(claims, list(results or [])):
+            source = str(getattr(claim, "source", "narration") or "narration")
+            if source == "narration" or getattr(r, "unresolved", False):
+                continue
+            if not getattr(r, "requires_human_review", False):
+                continue
+            out.append({
+                "source": source,
+                "verdict": str(getattr(r, "verdict", "") or "unverifiable"),
+                "reasoning": str(getattr(r, "reasoning", "") or "")[:MAX_FLAGGED_REASONING],
+                "text": str(getattr(claim, "text", "") or "")[:MAX_FLAGGED_TEXT],
+            })
+            if len(out) >= MAX_FLAGGED_IN_DETAIL:
+                break
+    except Exception:
+        return out
+    return out
 
 
 def gate_verdict(gate_meta: Optional[Mapping]) -> Optional[dict]:
@@ -177,6 +213,7 @@ class HeldVideos:
         detail: Optional[dict] = None,
         now: Optional[str] = None,
         fill_if_new: Optional[Mapping] = None,
+        no_cut: bool = False,
     ) -> Optional[str]:
         """Upsert this run's held row. Returns its video_id, or None when
         nothing was written. Never raises.
@@ -185,6 +222,11 @@ class HeldVideos:
         repair has no chosen title) never blanks what an earlier one wrote.
         ``published_at`` and ``privacy`` are always sent as NULL: whatever this
         row said before, the run is not uploaded now.
+
+        ``no_cut`` says this hold has NO video (the run stopped before the render): the
+        row's ``local_path`` and ``preview_path`` are sent as NULL. Without it a re-run
+        of the same topic (same row key) would keep the previous cut's preview under
+        the new text, since fields left as None are not sent.
 
         ``fill_if_new`` (title / script_text / scenes) is written only when the
         run has no row yet — a repair knows the saved script but not the chosen
@@ -224,6 +266,11 @@ class HeldVideos:
                                ("script_text", script_text), ("local_path", local_path)):
                 if value:
                     row[key] = value
+            if no_cut:
+                # Nothing of an earlier cut of this run survives under the new text.
+                row["local_path"] = None
+                row["preview_path"] = None
+                row["manifest"] = None
             if manifest:
                 from modules import video_ir
 

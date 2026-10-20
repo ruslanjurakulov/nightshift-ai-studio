@@ -127,6 +127,13 @@ class ClaimsCoverEverythingThatShips(unittest.TestCase):
             "thumbnail_text": "1,000,000 DEAD",
         })
 
+    def test_a_rhetorical_title_is_not_a_claim(self):
+        s = script(title="The Lighthouse Log Was Found", title_ab="Something Strange Happened Here",
+                   thumbnail_overlay_text="LOOK CLOSER", hook_sentence="The lamp was found burning at dawn.")
+        shipped = [c for c in claim_extractor.extract_shipped_claims(s)
+                   if c.source != claim_extractor.SOURCE_NARRATION]
+        self.assertEqual(shipped, [])
+
     def test_a_two_word_thumbnail_text_is_a_claim_even_though_narration_would_drop_it(self):
         claims = claim_extractor.extract_shipped_claims(script(thumbnail_overlay_text="NEVER OPENED!"))
         self.assertIn(("thumbnail_text", "NEVER OPENED!"), sources(claims))
@@ -235,8 +242,9 @@ class TheGateMeasuresTheTitleThatIsUploaded(unittest.TestCase):
     def test_a_too_long_shipped_title_blocks_although_script_title_is_fine(self):
         self.assertIn("title_over_100_chars", self.blocks("x" * 101))
 
-    def test_a_long_script_title_does_not_block_when_it_is_not_the_one_shipped(self):
-        self.assertNotIn("title_over_100_chars", self.blocks("Short shipped", script_title="x" * 150))
+    def test_the_scripts_own_title_is_still_checked_when_the_other_title_ships(self):
+        """main's gate always measured script.title: checking only the shipped one would be looser."""
+        self.assertIn("title_over_100_chars", self.blocks("Short shipped", script_title="x" * 150))
 
     def test_angle_brackets_block_because_the_api_refuses_them(self):
         self.assertIn("title_has_angle_brackets", self.blocks("Rome <b>fell</b>"))
@@ -265,7 +273,7 @@ sys.path.insert(0, sys.argv[1])
 row = json.loads(sys.argv[2]); script_file = sys.argv[3]; hook = sys.argv[4]
 import main
 from modules.channels import ChannelContext
-from modules.fact_checker import _make_result
+from modules.fact_checker import _make_result, _safe_default
 from modules.state_store import StateStore
 
 ctx = ChannelContext.from_dict(row)
@@ -287,11 +295,14 @@ class FakeMixer:
         raise RuntimeError("stop here: the voice is the first purchase after the check")
 def fake_check(claims):
     out["checked"] = list(claims)
-    return [_make_result(c, "unverifiable" if "FLAGME" in c else "likely_accurate", "x") for c in claims]
+    if any("UNRESOLVED" in c for c in claims):
+        return [_safe_default(c) for c in claims]
+    verdict = lambda c: ("likely_inaccurate" if "BADFACT" in c else "unverifiable" if "FLAGME" in c else "likely_accurate")
+    return [_make_result(c, verdict(c), "x") for c in claims]
 def fake_emit(name, **kw):
     out["events"].append([name, kw.get("status"), kw.get("metadata")])
 def fake_held(**kw):
-    out["held"].append({k: (v if k in ("state", "detail", "title", "topic") else "...") for k, v in kw.items()})
+    out["held"].append({k: (v if k in ("state", "detail", "title", "topic", "no_cut") else "...") for k, v in kw.items()})
     return "run-x"
 
 # Hermetic: the run writes its checkpoint, script copy, fact_check.json and pipeline state under
@@ -378,17 +389,36 @@ class RunStopsBeforeTheVoiceWhenTheCheckWouldBlock(unittest.TestCase):
                 self.assertFalse(out["voice_built"])
 
     def test_a_title_a_description_and_a_thumbnail_text_are_checked(self):
-        for field, text in (("title", "FLAGME Is Why The Lighthouse Fell"),
-                            ("title_ab", "FLAGME Killed Them All"),
-                            ("description", "FLAGME was the keeper's real name, historians say."),
-                            ("thumbnail_overlay_text", "FLAGME 1,000,000")):
+        """A fragment holds the run when the checker says it is inaccurate (the fragment must assert
+        something: an accusation here, so it is extracted at all)."""
+        for field, text in (("title", "BADFACT Killed The Whole Crew"),
+                            ("title_ab", "BADFACT Killed Them All"),
+                            ("description", "BADFACT was the keeper's real name, historians say."),
+                            ("thumbnail_overlay_text", "BADFACT NEVER"),
+                            ("hook_sentence", "BADFACT never happened to anyone else.")):
             with self.subTest(field=field):
                 out = drive(lambda d, f=field, t=text: d.__setitem__(f, t))
                 self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
                 self.assertFalse(out["voice_built"])
 
+    def test_a_fragment_the_checker_cannot_verify_does_not_hold_the_run(self):
+        """Unverifiable is the usual answer for a bare phrase judged with no context: a warning, not a hold."""
+        for field, text in (("title", "FLAGME Killed The Whole Crew"),
+                            ("description", "FLAGME was the keeper's real name, historians say."),
+                            ("thumbnail_overlay_text", "FLAGME NEVER")):
+            with self.subTest(field=field):
+                out = drive(lambda d, f=field, t=text: d.__setitem__(f, t))
+                self.assertTrue(out["voice_built"], out.get("tb"))
+                self.assertEqual(out["held"], [])
+
+    def test_a_number_in_an_unverifiable_fragment_is_held_but_a_number_in_the_narration_is_known(self):
+        # 1900 is in the demo narration, so only the checker's doubt about a figure holds it
+        out = drive(lambda d: d.__setitem__("description", "FLAGME ruled the island in 1900, they say."))
+        self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
+        self.assertFalse(out["voice_built"])
+
     def test_the_stop_is_owner_visible_and_carries_no_title_or_claim_text(self):
-        out = drive(lambda d: d.__setitem__("title", "FLAGME Is Why The Lighthouse Fell"))
+        out = drive(lambda d: d.__setitem__("title", "BADFACT Killed The Whole Crew"))
         blocked = [e for e in out["events"] if e[0] == "publish.blocked"]
         self.assertEqual(len(blocked), 1)
         meta = blocked[0][2]
@@ -397,7 +427,7 @@ class RunStopsBeforeTheVoiceWhenTheCheckWouldBlock(unittest.TestCase):
         self.assertEqual(meta["blocks"], ["fact_check_flagged:1"])
         self.assertEqual(meta["claims_flagged"], 1)
         self.assertGreater(meta["claims_checked"], 1)
-        self.assertNotIn("FLAGME", json.dumps(meta))
+        self.assertNotIn("BADFACT", json.dumps(meta))
         self.assertNotIn("Lighthouse", json.dumps(meta))
         # the run also leaves a blocked row, with the gate's reasons and no cut
         self.assertEqual(len(out["held"]), 1)
@@ -417,8 +447,40 @@ class RunStopsBeforeTheVoiceWhenTheCheckWouldBlock(unittest.TestCase):
         self.assertFalse(out["voice_built"])
         self.assertTrue(out["checked"])      # the title and the description were still sent to the check
 
+    def test_a_batch_the_checker_could_not_read_does_not_hold_the_run_before_the_render(self):
+        """The sentinel is an outage, not a finding: the early stop leaves it to the final gate."""
+        out = drive(lambda d: d["sections"][1].__setitem__(
+            "narration", d["sections"][1]["narration"] + " UNRESOLVED is what the log called it, they say."))
+        self.assertTrue(out["voice_built"], out.get("tb"))
+        self.assertEqual(out["held"], [])
+
+    def test_a_title_youtube_would_refuse_holds_the_run_before_the_render(self):
+        for field, text in (("title", "Long " * 21), ("title_ab", "Rome <b>fell</b> that night")):
+            with self.subTest(field=field):
+                out = drive(lambda d, f=field, t=text: d.__setitem__(f, t))
+                self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
+                self.assertFalse(out["voice_built"])
+
+    def test_a_number_in_the_title_that_the_narration_never_says_holds_before_the_render(self):
+        out = drive(lambda d: d.__setitem__("title", "The 1,000,000 Victims Of The Lighthouse"))
+        self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
+        self.assertIn("shipped_text_unsupported", out["raised"][1])
+        self.assertFalse(out["voice_built"])
+        meta = [e for e in out["events"] if e[0] == "publish.blocked"][0][2]
+        self.assertEqual(meta["fact_check"]["unsupported_numbers"], 1)
+
+    def test_the_held_row_names_the_flagged_texts_and_has_no_cut(self):
+        out = drive(lambda d: (d.__setitem__("title", "BADFACT Killed The Whole Crew"),
+                               d.__setitem__("description", "BADFACT ruled the island in 1900, they say.")))
+        held = out["held"][0]
+        flagged = held["detail"]["flagged"]
+        self.assertEqual({(f["source"], f["verdict"]) for f in flagged},
+                         {("title", "likely_inaccurate"), ("description", "likely_inaccurate")})
+        self.assertTrue(all(f["text"] and f["reasoning"] == "x" for f in flagged))
+        self.assertTrue(held["no_cut"])
+
     def test_it_stops_only_where_the_gate_would_block(self):
-        flag = lambda d: d.__setitem__("title", "FLAGME Is Why The Lighthouse Fell")  # noqa: E731
+        flag = lambda d: d.__setitem__("title", "BADFACT Killed The Whole Crew")  # noqa: E731
         for cfg in ({"block_on_fact_check": False}, {"enabled": False}):
             with self.subTest(cfg=cfg):
                 out = _drive_with_gate(flag, cfg)

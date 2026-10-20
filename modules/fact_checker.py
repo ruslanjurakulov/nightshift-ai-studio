@@ -122,9 +122,13 @@ class FactCheckResult:
     verdict: str
     reasoning: str
     requires_human_review: bool
+    #: True only for the safe-default sentinel: the checker could not read its own
+    #: answer for this claim. That is an outage, not a verdict on the claim, so the
+    #: gate counts it apart (publish_gate: ``fact_check_unresolved``).
+    unresolved: bool = False
 
 
-def _make_result(claim: str, verdict: str, reasoning: str) -> FactCheckResult:
+def _make_result(claim: str, verdict: str, reasoning: str, unresolved: bool = False) -> FactCheckResult:
     """Build a FactCheckResult, always computing requires_human_review here."""
     if verdict not in VALID_VERDICTS:
         verdict = "unverifiable"
@@ -133,12 +137,13 @@ def _make_result(claim: str, verdict: str, reasoning: str) -> FactCheckResult:
         verdict=verdict,
         reasoning=reasoning,
         requires_human_review=(verdict != "likely_accurate"),
+        unresolved=unresolved,
     )
 
 
 def _safe_default(claim: str) -> FactCheckResult:
     """The sentinel used whenever a claim's verdict can't be resolved."""
-    return _make_result(claim, SAFE_DEFAULT_VERDICT, SAFE_DEFAULT_REASONING)
+    return _make_result(claim, SAFE_DEFAULT_VERDICT, SAFE_DEFAULT_REASONING, unresolved=True)
 
 
 def _build_prompt(batch: list[str]) -> str:

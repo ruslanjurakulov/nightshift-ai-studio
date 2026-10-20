@@ -464,6 +464,7 @@ class WorkerCredits(unittest.TestCase):
         ends = self.run_one(job(), fake, [entry("gemini_output_tokens", 5000)])
         self.assertEqual(ends[0][0], "failed")
         self.assertIn("fact-check held the script", ends[0][1])
+        self.assertTrue(ends[0][1].startswith("[code:held] "), ends[0][1][:60])   # the customer reads the held sentence
         self.assertEqual(fake.settled(), [("release", "rj-abc")])
 
     def test_the_hold_is_settled_before_the_job_row_is_finished(self):

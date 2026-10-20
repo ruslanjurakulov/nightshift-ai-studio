@@ -46,6 +46,7 @@ way `fact_checker._build_prompt` does) would be a reasonable follow-up.
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 # --- Sentence splitting -----------------------------------------------------
@@ -72,7 +73,12 @@ _DOT_PLACEHOLDER = " DOT "
 # trailing whitespace, this already leaves "3.5" (no space after the period)
 # alone; the abbreviation/decimal protection below exists for the cases that
 # DO have a following space, like "Dr. Smith".
-_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+#
+# Scripts that end a sentence with their own mark are split on it too, with or
+# without a space after it: Chinese/Japanese 。！？ carry no space at all, the
+# Hindi danda । ॥ and Arabic ؟ usually do. A mark followed by a closing quote or
+# bracket stays with its sentence.
+_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|(?<=[。！？।॥؟])(?![」』）)\"”’])\s*")
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -99,6 +105,28 @@ def _split_sentences(text: str) -> list[str]:
 # Fewer words than this reads as a fragment, not a checkable claim (e.g. a
 # lone interjection or a cue-stripped leftover).
 MIN_CLAIM_WORDS = 4
+
+#: Scripts written without spaces between words. A run of them counts as one
+#: "word" per this many characters (a Chinese or Japanese word is ~2 characters,
+#: a Thai or Khmer one ~4); without it a whole Chinese narration is "2 words".
+_UNSPACED_CHARS_PER_WORD = (
+    (re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]"), 2),
+    (re.compile(r"[\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff]"), 4),
+)
+_QUESTION_MARKS = ("?", "\uff1f", "\u061f")
+
+
+def count_words(text: str) -> int:
+    """Words in ``text``, counting unspaced scripts (CJK, Thai, Lao, Myanmar,
+    Khmer) by characters so a narration without spaces is not read as nearly empty."""
+    text = text or ""
+    total = 0
+    for pattern, per_word in _UNSPACED_CHARS_PER_WORD:
+        found = pattern.findall(text)
+        if found:
+            total += -(-len(found) // per_word)
+            text = pattern.sub(" ", text)
+    return total + len(text.split())
 
 # Substrings (case-insensitive) that mark a sentence as a hook/CTA/transition
 # rather than a factual statement. This is a heuristic keyword list, not a
@@ -141,9 +169,9 @@ def _looks_like_claim(sentence: str) -> bool:
     stripped = sentence.strip()
     if not stripped:
         return False
-    if stripped.endswith("?"):
+    if stripped.endswith(_QUESTION_MARKS):
         return False
-    if len(stripped.split()) < MIN_CLAIM_WORDS:
+    if count_words(stripped) < MIN_CLAIM_WORDS:
         return False
     lowered = stripped.lower()
     if any(phrase in lowered for phrase in _CTA_PHRASES):
@@ -321,19 +349,115 @@ SOURCE_TITLE_AB = "title_ab"
 SOURCE_DESCRIPTION = "description"
 SOURCE_THUMBNAIL = "thumbnail_text"
 
+#: Short texts that are not narration. The checker judges each one as an isolated
+#: phrase with no context, so "I cannot tell" (``unverifiable``) is the usual
+#: answer to a bare title; the gate (publish_gate._check_fact_results) holds on
+#: a fragment only for ``likely_inaccurate`` or when it carries a digit or year.
+#: The alternate hook is NOT here: it replaces section 0's narration.
+FRAGMENT_SOURCES = frozenset({SOURCE_TITLE, SOURCE_TITLE_AB, SOURCE_DESCRIPTION,
+                              SOURCE_THUMBNAIL, SOURCE_HOOK_SENTENCE})
+
 #: A description line that is only hashtags or only a link carries no claim.
-_HASHTAG_OR_URL_LINE = re.compile(r"^\s*(?:(?:#\w+|https?://\S+)\s*)+$", re.IGNORECASE)
+_HASHTAG_OR_URL_LINE = re.compile(r"^\s*(?:(?:#\w+|https?://\S+|www\.\S+)\s*)+$", re.IGNORECASE)
 #: Invented chapter marks (the uploader strips these lines too, see
 #: modules/youtube_uploader.TIMESTAMP_LINE); the real chapters are measured.
-_TIMESTAMP_LINE = re.compile(r"^\s*(?:[-*\u2022]\s*)?\d{1,2}:\d{2}(?::\d{2})?\b")
+_TIMESTAMP_LINE = re.compile(r"^\s*(?:[-*•]\s*)?\d{1,2}:\d{2}(?::\d{2})?\b")
+_URL = re.compile(r"https?://|www\.", re.IGNORECASE)
+_URL_WHOLE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+
+_APOSTROPHES = str.maketrans({"ʻ": "'", "ʼ": "'", "‘": "'", "’": "'", "`": "'", "´": "'"})
+
+
+def normalize_text(text: str) -> str:
+    """Case-folded text with every apostrophe look-alike as ``'``, so the word
+    lists below match Uzbek ``o'g'ri`` however the model typed its apostrophes."""
+    return (text or "").translate(_APOSTROPHES).casefold()
+
+
+#: Description lines that are a thank-you, a call to action or a credit, not a
+#: statement about the video's subject. Description-only: narration keeps the
+#: shorter ``_CTA_PHRASES`` above (a loosened narration filter would check less
+#: than before). Data, one language per row; matched against ``normalize_text``.
+_DESCRIPTION_NOISE = (
+    # en
+    "thanks for watching", "thank you for watching", "don't forget", "dont forget", "follow us",
+    "share this", "subscribe", "like and", "hit the bell", "music:", "music by", "credits:", "credit:",
+    "sources:", "source:", "follow me", "turn on notifications", "check out our",
+    # ru
+    "спасибо за просмотр", "спасибо, что смотр", "подписывай", "подписывайся", "подписаться", "не забудьте",
+    "не забывайте", "ставьте лайк", "ставь лайк", "музыка:", "источники:", "источник:", "жмите колокол",
+    # uz
+    "musiqa:", "obuna bo'ling", "obuna bo'l", "ko'rgani uchun rahmat", "ko'rganingiz uchun",
+    "tomosha qilganingiz uchun", "unutmang", "yoqtiring", "like bosing", "manbalar:", "manba:",
+)
+
+#: Words that make a short text a CLAIM rather than a rhetorical hook (title,
+#: title_ab, thumbnail text, hook_sentence): an accusation, or a superlative or
+#: absolute. A digit or a year is the third trigger (``has_number``). Data, en / ru / uz.
+#: Stems match a word's start (``\bkill\w*``); apostrophes are normalized first.
+_ACCUSATION_STEMS = (
+    # en
+    "murder", "kill", "poison", "assassin", "stole", "steal", "thie", "theft", "fraud", "framed", "betray",
+    "conspir", "execut", "massacr", "genocid", "rape", "abus", "corrupt", "guilty", "crimin", "crime",
+    "liar", "lied", "tortur", "slaughter", "behead", "bribe", "blackmail", "traitor", "cover-up", "coverup",
+    # ru
+    "убий", "убил", "убит", "убь", "отрав", "украл", "краж", "предал", "предател", "казн", "виновн",
+    "преступ", "мошенн", "заговор", "резн", "геноцид", "лжец", "обман", "пытк", "взятк", "шантаж",
+    # uz
+    "o'ldir", "o'ldi", "qotil", "zaharla", "o'g'ri", "o'g'irla", "xiyonat", "aybdor", "jinoyat", "firibgar",
+    "fitna", "qatl", "genotsid", "yolg'on", "qiynoq", "poraxo'r", "josus",
+)
+_ABSOLUTE_WORDS = (
+    # en
+    "most", "biggest", "deadliest", "worst", "greatest", "largest", "smallest", "oldest", "first", "last",
+    "only", "never", "always", "every", "everyone", "everything", "nobody", "nothing", "all", "entire",
+    "whole", "truth", "proof", "proven", "secret", "secrets", "revealed", "impossible", "forever", "ever",
+    "real", "really", "true", "hidden",
+    # ru
+    "самый", "самая", "самое", "самые", "худший", "лучший", "первый", "последний", "единственный",
+    "никогда", "всегда", "все", "всё", "каждый", "никто", "вся", "весь", "правда", "истина", "тайна",
+    "раскрыта", "раскрыт", "навсегда", "невозможно", "доказано",
+    # uz
+    "eng", "birinchi", "oxirgi", "yagona", "hech", "doim", "har", "hamma", "butun", "haqiqat", "isbot",
+    "sir", "ochildi", "abadiy", "imkonsiz",
+)
+_ACCUSATION_RE = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in _ACCUSATION_STEMS) + r")\w*")
+_ABSOLUTE_RE = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in _ABSOLUTE_WORDS) + r")\b|\bno one\b")
+
+
+def has_number(text: str) -> bool:
+    """A digit of any script (``\d`` is Unicode-aware): a number or a year."""
+    return bool(re.search(r"\d", text or ""))
+
+
+def carries_checkable_content(text: str) -> bool:
+    """Whether a short text asserts something checkable: it has a number or a
+    year, an accusation word, or a superlative or absolute (en / ru / uz lists
+    above). A bare phrase with none of them is a rhetorical hook, not a claim."""
+    norm = normalize_text(text)
+    return has_number(norm) or bool(_ACCUSATION_RE.search(norm)) or bool(_ABSOLUTE_RE.search(norm))
 
 
 def narration_word_count(script) -> int:
-    """Words of narration in ``script`` (cue tags stripped). Never raises."""
+    """Words of narration in ``script`` (cue tags stripped; unspaced scripts
+    counted by characters, see ``count_words``). Never raises."""
     try:
-        return sum(len(t.split()) for t in _section_texts(script))
+        return sum(count_words(t) for t in _section_texts(script))
     except Exception:
         return 0
+
+
+def narration_char_count(script) -> int:
+    """Non-space characters of narration: a floor that does not depend on how a
+    language writes its words. Never raises."""
+    try:
+        return sum(len(re.sub(r"\s", "", t)) for t in _section_texts(script))
+    except Exception:
+        return 0
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip().lower()
 
 
 def _field_text(script, name: str) -> str:
@@ -341,10 +465,24 @@ def _field_text(script, name: str) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _description_lines(description: str) -> list[str]:
+    """The description's lines that can hold a statement: no invented chapter
+    marks, no hashtag-only or link-only lines (split on LINES first, so a
+    "Music: ..." credit is never glued to the paragraph above it)."""
+    return [ln for ln in (description or "").splitlines()
+            if ln.strip() and not _TIMESTAMP_LINE.match(ln) and not _HASHTAG_OR_URL_LINE.match(ln)]
+
+
 def _description_sentences(description: str) -> list[str]:
-    lines = [ln for ln in description.splitlines()
-             if not _TIMESTAMP_LINE.match(ln) and not _HASHTAG_OR_URL_LINE.match(ln)]
-    return [s for s in _split_sentences("\n".join(lines)) if _looks_like_claim(s)]
+    out: list[str] = []
+    for line in _description_lines(description):
+        for sentence in _split_sentences(line):
+            norm = normalize_text(sentence)
+            if _URL.search(sentence) or any(noise in norm for noise in _DESCRIPTION_NOISE):
+                continue
+            if _looks_like_claim(sentence):
+                out.append(sentence)
+    return out
 
 
 def extract_shipped_claims(script) -> list[Claim]:
@@ -355,11 +493,17 @@ def extract_shipped_claims(script) -> list[Claim]:
     alternate opening (``hook_ab``, which the hook A/B swaps in AFTER the check
     ran, so its claims are filed under section 0 where they will play), the
     ``hook_sentence`` (the Short's description), the title, the A/B title, the
-    description's sentences and the thumbnail text. A title or thumbnail text is
-    one claim as a whole (a two-word "NEVER OPENED!" is a claim the sentence
-    filter would drop), but a pure question is still skipped, as in narration.
-    A text that is the same as one already listed is not checked twice. Never
-    raises: a failure returns what was extracted so far.
+    description's sentences and the thumbnail text.
+
+    A title, A/B title, thumbnail text or hook sentence is extracted only when it
+    asserts something (``carries_checkable_content``: a number or year, an
+    accusation, a superlative or absolute); a rhetorical hook or a bare phrase is
+    not a claim. A title or thumbnail text is one claim as a whole (a two-word
+    "NEVER OPENED!" is a claim the sentence filter would drop), a pure question
+    is skipped as in narration, and a text that is the same as one already
+    listed is not checked twice. Description sentences are all extracted except
+    links, thank-yous, calls to action and credits (``_DESCRIPTION_NOISE``).
+    Never raises: a failure returns what was extracted so far.
     """
     out = list(extract_section_claims(script))
     try:
@@ -385,11 +529,16 @@ def extract_shipped_claims(script) -> list[Claim]:
 
         def whole(name: str) -> list[str]:
             text = _strip_cue_tags(_field_text(script, name))
-            return [text] if text and not text.endswith("?") and re.search(r"\w", text) else []
+            if (text and not text.endswith(_QUESTION_MARKS) and re.search(r"\w", text)
+                    and carries_checkable_content(text)):
+                return [text]
+            return []
 
+        hook_sentence = _strip_cue_tags(_field_text(script, "hook_sentence"))
         add(SOURCE_HOOK_SENTENCE,
-            [s for s in _split_sentences(_strip_cue_tags(_field_text(script, "hook_sentence")))
-             if _looks_like_claim(s)], -1, lambda n: f"x-hook_sentence-{n}")
+            [s for s in _split_sentences(hook_sentence)
+             if _looks_like_claim(s) and carries_checkable_content(s)],
+            -1, lambda n: f"x-hook_sentence-{n}")
         add(SOURCE_TITLE, whole("title"), -1, lambda n: f"x-title-{n}")
         add(SOURCE_TITLE_AB, whole("title_ab"), -1, lambda n: f"x-title_ab-{n}")
         add(SOURCE_DESCRIPTION, _description_sentences(_field_text(script, "description")),
@@ -400,5 +549,89 @@ def extract_shipped_claims(script) -> list[Claim]:
     return out
 
 
-def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text or "").strip().lower()
+# --- A free check: a number that ships must be in the narration --------------------
+
+_NUMBER_RE = re.compile(r"\d[\d.,  ]*\d|\d")
+_UNITS = {w: i for i, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen "
+    "sixteen seventeen eighteen nineteen".split())}
+_TENS = {w: 10 * i for i, w in enumerate("_ _ twenty thirty forty fifty sixty seventy eighty ninety".split())
+         if w != "_"}
+_MULTIPLIERS = {"thousand": 10 ** 3, "million": 10 ** 6, "billion": 10 ** 9}
+
+
+def _ascii_digits(text: str) -> str:
+    """Digits of any script as ASCII digits (``unicodedata.digit``); other characters unchanged."""
+    return "".join(str(unicodedata.digit(c)) if c.isdigit() and unicodedata.digit(c, None) is not None else c
+                   for c in text or "")
+
+
+def _number_forms(token: str) -> set:
+    return {token, re.sub(r"\D", "", token)}
+
+
+def _spoken_numbers(text: str) -> set:
+    """Numbers written as English words ("forty thousand", "nineteen hundred"),
+    as digit strings. Only English: a Russian or Uzbek narration that spells a
+    number out does not support a title that writes it in digits (see the PR)."""
+    found, total, current, in_run = set(), 0, 0, False
+
+    def flush():
+        nonlocal total, current, in_run
+        if in_run:
+            found.add(str(total + current))
+        total = current = 0
+        in_run = False
+
+    for word in re.findall(r"[a-z]+", (text or "").lower()):
+        if word in _UNITS or word in _TENS:
+            current += _UNITS.get(word, _TENS.get(word, 0))
+            in_run = True
+        elif word == "hundred" and in_run:
+            current = max(current, 1) * 100
+        elif word in _MULTIPLIERS and in_run:
+            total += max(current, 1) * _MULTIPLIERS[word]
+            current = 0
+        elif word == "and" and in_run:
+            continue
+        else:
+            flush()
+    flush()
+    return found
+
+
+def _numbers_in(text: str) -> set:
+    out: set = set()
+    for m in _NUMBER_RE.finditer(_ascii_digits(text)):
+        out |= _number_forms(m.group())
+    return out
+
+
+def unsupported_numbers(script) -> list:
+    """``[(field, number), ...]``: every number or year in the title, the A/B
+    title, the thumbnail text or the description that the narration never says.
+
+    Free and deterministic: no model. A figure that ships but is not in the
+    script is not backed by it, whatever the checker thinks of the sentence.
+    A number matches however it is grouped ("1,000,000" is "1000000") and an
+    English spelled-out number counts ("three" is 3). Links, timestamp lines and
+    hashtag lines of the description are not read. Never raises."""
+    try:
+        narration = " ".join(_section_texts(script))
+        known = _numbers_in(narration) | _spoken_numbers(narration)
+        fields = [(SOURCE_TITLE, _field_text(script, "title")),
+                  (SOURCE_TITLE_AB, _field_text(script, "title_ab")),
+                  (SOURCE_THUMBNAIL, _field_text(script, "thumbnail_overlay_text")),
+                  (SOURCE_DESCRIPTION, "\n".join(_URL_WHOLE.sub(" ", ln) for ln in
+                                                 _description_lines(_field_text(script, "description"))))]
+        missing, seen = [], set()
+        for field, text in fields:
+            for m in _NUMBER_RE.finditer(_ascii_digits(text)):
+                forms = _number_forms(m.group())
+                if forms & known or (field, m.group()) in seen:
+                    continue
+                seen.add((field, m.group()))
+                missing.append((field, m.group()))
+        return missing
+    except Exception:
+        return []

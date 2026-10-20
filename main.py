@@ -440,31 +440,43 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
 
     Mirrors the neighbouring early stops: the planning already paid for is recorded
     (``_flush_costs``), the run gets a blocked ``videos`` row of its own (the gate's
-    reasons, scenes with their claim verdicts; no cut, so nothing to approve), and a
-    ``publish.blocked`` event — the one the Command Center, the operator bot and the
-    Telegram control already read for a blocked video — carries fixed words and counts
-    only: no title, no claim text. The caller raises HeldBeforeRender, which __main__
-    turns into HELD_BEFORE_RENDER_EXIT so the runners release the credit hold.
+    reasons, scenes with their claim verdicts, and the flagged title/description/
+    thumbnail/hook texts those scenes do not show; no cut, so nothing to approve and
+    no stale preview from an earlier run of the same topic), and a ``publish.blocked``
+    event — the one the Command Center, the operator bot and the Telegram control
+    already read for a blocked video — carries fixed words and counts only: no
+    title, no claim text. The caller raises HeldBeforeRender, which __main__ turns
+    into HELD_BEFORE_RENDER_EXIT so the runners release the credit hold.
     Records only; never uploads, never raises."""
     channel_id = ctx.channel_id
-    flagged = sum(1 for r in fact_results if getattr(r, "requires_human_review", False))
     logger.error("[channel: %s] Fact-check would block the publish gate (%s) — run stopped before the voice, "
                  "stills and render were bought", channel_id, ", ".join(decision.blocks))
     print(f"\n⛔ Held before render ({', '.join(decision.blocks)}). Nothing was spent on the voice or the video.")
     try:
+        counts = decision.fact_check or {}
         events.emit(events.PUBLISH_BLOCKED, agent="publish_gate", status=events.STATUS_FAILED,
                     channel_id=channel_id,
                     metadata={**decision.to_metadata(), "stage": "before_render",
-                              "claims_checked": len(fact_results), "claims_flagged": flagged})
+                              "claims_checked": len(fact_results), "claims_flagged": counts.get("flagged", 0)})
         try:
             scenes = claim_scenes.annotate_scenes(script, claims, fact_results)
         except Exception:
             scenes = None
         detail = held_video.gate_detail(held_video.STATE_BLOCKED, decision.to_metadata())
         detail["stage"] = "before_render"
-        held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED, topic=topic,
-                               title=script.title, script_text=script.full_narration(), scenes=scenes,
-                               detail=detail)
+        flagged = held_video.flagged_claims(claims, fact_results)
+        if flagged:
+            detail["flagged"] = flagged
+        # An earlier run of this topic may have left a preview under this row's own key: the row stops
+        # pointing at it (no_cut) and the object is removed, or it would stay in the bucket unreferenced.
+        review = VideoReview()
+        held_id = held_video.held_video_id(channel_id, slug)
+        previous = review.preview_of(held_id)
+        written = held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED,
+                                         topic=topic, title=script.title, script_text=script.full_narration(),
+                                         scenes=scenes, detail=detail, no_cut=True)
+        if written and previous and previous.startswith(f"{channel_id}/{held_video.HELD_ID_PREFIX}"):
+            review.delete_objects([previous])
     except Exception as e:
         logger.warning("Could not record the early hold (%s: %s) — the run still stops",
                        type(e).__name__, e)
@@ -1006,7 +1018,7 @@ def run(
     if fact_results is not None:
         early = publish_gate.evaluate_fact_check(
             script=script, fact_results=fact_results, channel=ctx,
-            narration_claims=narration_claim_count)
+            narration_claims=narration_claim_count, claims=section_claims)
         if not early.allowed:
             _hold_before_render(ctx, slug=slug, topic=topic, script=script, claims=section_claims,
                                 fact_results=fact_results, decision=early, costs=costs)
@@ -1395,6 +1407,7 @@ def run(
         # What the uploader will send, not script.title: the A/B arm may ship title_ab.
         title=published_title,
         narration_claims=narration_claim_count,
+        claims=section_claims,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
@@ -1475,6 +1488,11 @@ def run(
                 held_scenes = claim_scenes.annotate_scenes(script, section_claims, fact_results)
             except Exception:
                 held_scenes = None
+            detail = held_video.gate_detail(state, gate_meta)
+            # The flagged title / description / thumbnail / hook texts belong to no scene: say them here.
+            flagged = held_video.flagged_claims(section_claims, fact_results)
+            if flagged:
+                detail["flagged"] = flagged
             held_video.record_held(
                 channel_id=channel_id,
                 slug=slug,
@@ -1485,7 +1503,7 @@ def run(
                 scenes=held_scenes,
                 manifest=ir_project.to_dict() if ir_project is not None else None,
                 local_path=str(video_path),
-                detail=held_video.gate_detail(state, gate_meta),
+                detail=detail,
             )
             # The finished cut must be watchable, not only listed: put the 480p
             # review copy and the script where the Command Center reads them,
