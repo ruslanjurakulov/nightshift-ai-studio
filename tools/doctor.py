@@ -52,6 +52,8 @@ from typing import Any, Callable, Dict, List, Mapping, NamedTuple, Optional, Seq
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from modules import pipeline_pause  # noqa: E402 - stdlib only; the scheduler's and the bot's reading of the pause
+
 PASS, WARN, FAIL, UNVERIFIED, SKIP = "PASS", "WARN", "FAIL", "UNVERIFIED", "SKIP"
 _TAGS = {PASS: "[PASS]", WARN: "[WARN]", FAIL: "[FAIL]", UNVERIFIED: "[ -- ]", SKIP: "[SKIP]"}
 
@@ -395,6 +397,31 @@ def check_required_keys(ctx: Ctx) -> List[Check]:
         else:
             out.append(Check("keys", name, FAIL, f"missing - needed for {why}", _fix_env(name)))
     return out
+
+
+def check_pipeline_pause(ctx: Ctx) -> List[Check]:
+    """REPORT whether the owner paused the scheduled pipeline (NIGHTSHIFT_PIPELINE_PAUSED). Never a FAIL: a pause is
+    the owner's decision, and the scheduled doctor turns every FAIL into a readiness alert. It is a WARN because a
+    paused pipeline is not "ready to make the next scheduled video", and the reader of a doctor report should see it.
+    The reading is the scheduler's own (modules/pipeline_pause.py), silent here; the value is never echoed. Outside
+    GitHub Actions an unset variable is UNVERIFIED, not PASS (see below); a pause that IS visible is reported anywhere."""
+    g, n = "pipeline", "scheduled runs"
+    state = pipeline_pause.pause_state(ctx.env)
+    if state == "running":
+        # The schedule reads the REPOSITORY variable. Only the scheduled doctor (GitHub Actions) is given it; a doctor
+        # run on a laptop or in the worker container has its own environment, where "unset" proves nothing
+        # (CLAUDE.md rule 5: a default is not a measurement).
+        if str(ctx.env.get("GITHUB_ACTIONS", "")).lower() != "true":
+            return [Check(g, n, UNVERIFIED, f"{pipeline_pause.PAUSE_ENV} is not set in THIS environment, which says nothing "
+                          "about the repository variable the schedule reads",
+                          "read the variable in GitHub (Settings > Secrets and variables > Actions > Variables) or the "
+                          "scheduled doctor's job summary")]
+        return [Check(g, n, PASS, f"not paused: scheduled runs go ahead ({pipeline_pause.PAUSE_ENV} is unset or off)")]
+    what = ("holds an unrecognised value, which counts as paused (fail closed)" if state == "unrecognised"
+            else "is on")
+    return [Check(g, n, WARN, f"scheduled runs are paused: {pipeline_pause.PAUSE_ENV} {what}; manual and paid runs still work",
+                  "set the repository variable " + pipeline_pause.PAUSE_ENV + " to false (or delete it) to resume the schedule; "
+                  "then run Actions > 'Deploy web' so the operator bot's service sees it")]
 
 
 def check_host(ctx: Ctx) -> List[Check]:
@@ -1044,7 +1071,7 @@ def run_checks(ctx: Ctx, *, offline: bool = False, github: bool = False, repo: O
     if github:
         return guarded(github_checks, ctx, repo)
     checks: List[Check] = []
-    for fn in (check_required_keys, check_shapes, check_video, check_images, check_tts, check_host):
+    for fn in (check_required_keys, check_shapes, check_video, check_images, check_tts, check_pipeline_pause, check_host):
         checks += guarded(fn, ctx)
     if offline:
         return checks

@@ -245,7 +245,7 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `email` | the owner e-mail copy is failing (two failed deliveries in a row), once per day, info only | info | once a day while it lasts |
 | `audit` | an operator-level audit event with no channel (see above) | **critical** | once |
 | `pipeline` | **silence and per-run failures** (see "Reliability alerts" below): no video, held row or run event for a scheduled operator channel by its publish hour + `OPERATOR_DEADMAN_HOURS` (the dead-man switch); a failed scheduled or dispatched `daily_video.yml` run; a video the publish gate blocked; a failed upload | warn | once per channel per UTC day (dead-man), once per run / video |
-| `health` | the scheduled readiness check (`doctor_scheduled.yml`) is failing a check, or has stopped reporting for 30 h; a provider balance snapshot has not refreshed for 30 h (a rejected key or a dead schedule) | warn | once per check / provider per UTC day while it lasts |
+| `health` | the scheduled readiness check (`doctor_scheduled.yml`) is failing a check, or has stopped reporting for 30 h; a provider balance snapshot has not refreshed for 30 h (a rejected key or a dead schedule); **information:** the scheduled pipeline is paused by `NIGHTSHIFT_PIPELINE_PAUSED` (see "While the pipeline is paused" below) | warn (info for the pause) | once per check / provider per UTC day while it lasts |
 
 Restraint, so it never spams:
 
@@ -351,6 +351,34 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   key `blind:<source>:<date>`, from silent hourly `blindmark:` rows): a switch that
   cannot see is not a quiet system. With `OPERATOR_DEADMAN_HOURS=off` no digest cell
   says MISSING either.
+* **While the pipeline is paused.** When the owner sets the repository variable
+  `NIGHTSHIFT_PIPELINE_PAUSED` (docs/VIDEO_GO_LIVE.md, section 8) the scheduler runs
+  nothing, so a slot with no video is not silence. The bot reads the variable through
+  the scheduler's own function (`modules/pipeline_pause.py`: `true/1/yes/on` pause,
+  empty/`false/0/no/off` run, anything else pauses, so the two cannot disagree), and
+  while it is on: **no dead-man alert** (and no "cannot judge" note about it), the digest
+  and `/today` show `paused` in place of `MISSING` (a video that was made, for example by
+  a manual run, is still counted), and **one information alert a UTC day**
+  (kind `health`, key `paused:<UTC date>`, Telegram only, never the owner's e-mail) says
+  "Scheduled runs are paused by NIGHTSHIFT_PIPELINE_PAUSED", so a pause left on for weeks
+  is not forgotten. Lifting the pause is followed once by "scheduled runs are no longer
+  paused" (only if the pause had been announced). A channel that is itself PAUSED or has
+  its schedule switched off in the Command Center was never expected, so it was already
+  silent in both places. A failed daily run, a blocked or failed-upload video and the
+  readiness check are still heard while paused (a manual dispatch still runs). The
+  variable is passed to `operator_alerts.yml` and `telegram_control.yml` (read on every
+  pass, no stale window) and to the always-on service through `deploy_web.yml`, which reads
+  it **at deploy time**: a snapshot, while the scheduler and the doctor read the live
+  variable. Until you run Deploy web after changing it the service is wrong in both
+  directions: pause set but not deployed, it can raise a false dead-man alert (warn, so it
+  can be e-mailed) for a slot stopped on purpose; pause lifted but not deployed, it
+  silences real dead-man alerts and its daily "paused" note contradicts the doctor (the
+  note says to run Deploy web). Known limit: the bot has no history of when the pipeline
+  was paused, so on the first pass after the pause is lifted an overdue slot with no
+  video can raise **two** false dead-man alerts per channel (yesterday's and, if the
+  resume lands after today's deadline, today's), both warn so also e-mailed (Mute 24h of
+  kind `pipeline` if you do not want them). Follow-up: a record written by the pipeline's
+  own run so a paused slot can be told from a missed one.
 * **The daily workflow itself** (kind `pipeline`, warn). A finished `daily_video.yml`
   run (scheduled or manual dispatch, any branch) that ended `failure`, `timed_out`
   or `startup_failure` within 12 h: which jobs failed and at which step (the
@@ -521,8 +549,10 @@ need migration 0109 (applied when it merges) and say "not available yet" until i
    `OPERATOR_LANGUAGE` (`en`, `ru` or `uz`), `OPERATOR_QUIET_HOURS` (e.g. `23-7`),
    `OPERATOR_DIGEST_HOUR` (e.g. `9`),
    `OPERATOR_STUCK_MINUTES`, `OPERATOR_ALERT_MAX_PER_HOUR`, `OPERATOR_DEADMAN_HOURS`
-   (1-12, default 3, `off` disables the dead-man alert), and the existing
-   `ELEVENLABS_LOW_CREDITS`.
+   (1-12, default 3, `off` disables the dead-man alert), `NIGHTSHIFT_PIPELINE_PAUSED`
+   (the owner's pause of the scheduled pipeline, docs/VIDEO_GO_LIVE.md section 8: the bot
+   then raises no dead-man alert, shows `paused` instead of MISSING and reminds once a
+   day), and the existing `ELEVENLABS_LOW_CREDITS`.
 3. **Merge the PR.** Then, once: Actions > *Operator Alerts* > Run workflow, tick
    "Also send the daily digest right now". You should get the digest and, on the
    first run, "Operator alerts are on".

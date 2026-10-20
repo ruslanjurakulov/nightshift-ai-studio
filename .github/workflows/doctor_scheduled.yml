@@ -116,6 +116,8 @@ jobs:
           YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Reported by the doctor (a WARN, never a FAIL): is the scheduled pipeline paused?
+          NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
           TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
           ELEVENLABS_MODEL_ID: ${{ vars.ELEVENLABS_MODEL_ID }}
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}

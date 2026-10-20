@@ -71,6 +71,34 @@ class RowTestCase(unittest.TestCase):
         self.assertTrue(body.startswith("~providers/elevenlabs,~providers/pexels,~providers/leonardo,providers/gemini"))
 
 
+class PausedPipelineTestCase(unittest.TestCase):
+    """The scheduled doctor reports a paused pipeline in its summary but never records it as a failing check."""
+
+    def test_a_paused_pipeline_is_not_a_failing_check(self):
+        checks = [check("pipeline", "scheduled runs", doctor.WARN, "paused", "remove the variable"),
+                  check("keys", "GEMINI_API_KEY", doctor.PASS)]
+        self.assertEqual(doctor_report.failing_names(checks), [])
+        self.assertEqual(doctor_report.build_row(checks)["title"], "ok")
+
+    def test_the_real_doctor_under_a_pause_records_ok_and_shows_the_check_in_ci(self):
+        from tests.test_doctor import make_ctx
+        env = {"NIGHTSHIFT_PIPELINE_PAUSED": "true", "GITHUB_ACTIONS": "true"}
+        out, sync = [], FakeSync()
+        rc = doctor_report.main(env=env, sync=sync, out=out.append,
+                                run=lambda: doctor.run_checks(make_ctx(env), offline=True))
+        self.assertEqual(rc, 0)
+        (table, rows), = sync.upserts
+        self.assertEqual((rows[0]["title"], rows[0]["body"]), ("ok", ""))
+        text = "\n".join(out)
+        self.assertIn("[WARN] pipeline/scheduled runs", text)       # visible in the job summary, name and verdict only
+        self.assertNotIn("NIGHTSHIFT_PIPELINE_PAUSED", text)
+
+    def test_the_bot_hears_no_readiness_alert_for_it(self):
+        row = dict(doctor_report.build_row([check("pipeline", "scheduled runs", doctor.WARN)]), at=iso(NOW), channel_id=None)
+        engine, _, _, ops, _ = make(now=NOW, channels=[], tables={"alert_events": [row]})
+        self.assertEqual([a for a in alerts.detect(ops, 15000) if a.key.startswith("doctor:check")], [])
+
+
 class MainTestCase(unittest.TestCase):
     def run_main(self, checks, sync, env=None, raising=False):
         out = []
@@ -158,9 +186,11 @@ class WorkflowTestCase(unittest.TestCase):
         cls.step = next(s for s in cls.job["steps"] if s.get("name") == "Readiness check")
         # Everything the daily video job hands to any of its steps: the run step and the token-restore steps.
         cls.daily_env = {}
-        for s in cls.daily["jobs"]["make-video"]["steps"]:
-            for k, v in (s.get("env") or {}).items():
-                cls.daily_env[k] = f"{cls.daily_env.get(k, '')} {v}"
+        # The pause variable is read where the daily run picks its channels (the resolve job), not in make-video.
+        for job in cls.daily["jobs"].values():
+            for s in job.get("steps", []):
+                for k, v in (s.get("env") or {}).items():
+                    cls.daily_env[k] = f"{cls.daily_env.get(k, '')} {v}"
 
     def refs(self, expr):
         return set(re.findall(r"(?:secrets|vars)\.[A-Z0-9_]+", str(expr)))
@@ -190,6 +220,26 @@ class WorkflowTestCase(unittest.TestCase):
         for expr in self.step["env"].values():
             mine |= self.refs(expr)
         self.assertTrue(mine <= daily_refs, mine - daily_refs)
+
+    def test_the_other_jobs_of_the_daily_workflow_widen_the_doctors_set_by_exactly_the_catchup_variable(self):
+        # The doctor's env may be judged against every daily job, but a future job must not widen what it may read
+        # unnoticed: what the other jobs add over make-video is the resolver's catch-up variable and nothing else
+        # (the pause variable reaches make-video too, for the slot guard, and the doctor reads it from either).
+        make_video = set()
+        for s in self.daily["jobs"]["make-video"]["steps"]:
+            for v in (s.get("env") or {}).values():
+                make_video |= self.refs(v)
+        others = set()
+        for name, job in self.daily["jobs"].items():
+            if name != "make-video":
+                for s in job.get("steps", []):
+                    for v in (s.get("env") or {}).values():
+                        others |= self.refs(v)
+        self.assertEqual(others - make_video, {"vars.NIGHTSHIFT_CATCHUP_HOURS"})
+        self.assertIn("vars.NIGHTSHIFT_PIPELINE_PAUSED", others | make_video)
+
+    def test_it_sees_the_pause_variable_the_scheduler_reads(self):
+        self.assertEqual(self.step["env"]["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
 
     def test_every_secret_the_doctor_judges_is_passed_to_it(self):
         wanted = set()

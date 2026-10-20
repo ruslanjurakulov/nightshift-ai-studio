@@ -21,6 +21,7 @@ from datetime import timezone, tzinfo
 from typing import Mapping, Optional
 
 from modules.operator_bot.i18n import DEFAULT_LANGUAGE, normalize_language
+from modules import pipeline_pause
 
 try:  # zoneinfo is stdlib on 3.9+, but the tz database may be missing.
     from zoneinfo import ZoneInfo
@@ -117,6 +118,12 @@ class OperatorConfig:
     #: it off with the value ``off``. A malformed value keeps the default: a typo must not
     #: silence the one alert that fires on silence.
     deadman_hours: Optional[int] = DEFAULT_DEADMAN_HOURS
+    #: The owner paused the scheduled pipeline (NIGHTSHIFT_PIPELINE_PAUSED). Read through the scheduler's own
+    #: function (modules/pipeline_pause.py), so the two agree on every value, a typo included: while it is on, a
+    #: slot with no video is not silence (no dead-man alert, "paused" instead of MISSING), and one information
+    #: alert a day says the pause is still on. The bot sees its own environment: the fallback workflows read the
+    #: repository variable on every pass, the always-on service reads it at deploy time.
+    pipeline_paused: bool = False
     #: The language the bot speaks until the owner picks one with /language
     #: (OPERATOR_LANGUAGE; an unknown code falls back to the default).
     language: str = DEFAULT_LANGUAGE
@@ -135,6 +142,7 @@ class OperatorConfig:
             max_alerts_per_hour=_int(env.get("OPERATOR_ALERT_MAX_PER_HOUR"), DEFAULT_MAX_ALERTS_PER_HOUR, 1, 60),
             language=normalize_language(env.get("OPERATOR_LANGUAGE")),
             deadman_hours=parse_deadman_hours(env.get("OPERATOR_DEADMAN_HOURS")),
+            pipeline_paused=pipeline_pause.pipeline_paused(env),
             github_repo=repo if re.fullmatch(r"[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+", repo) else "",
         )
 

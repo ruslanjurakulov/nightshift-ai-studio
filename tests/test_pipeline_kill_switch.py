@@ -384,9 +384,16 @@ class WorkflowHandlesAnEmptyMatrix(unittest.TestCase):
         step = _step("make-video", "Run Chronos bot")
         self.assertEqual(step["env"]["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
         self.assertLess(step["run"].index("tools/slot_guard.py"), step["run"].index("python main.py"))
+        # modules/pipeline_pause.py is the ONE place the variable's meaning lives (shared by the scheduler, the slot
+        # guard, the operator bot and the doctor); no pipeline stage may read the variable or import that module.
         self.assertNotIn("NIGHTSHIFT_PIPELINE_PAUSED", (ROOT / "main.py").read_text(encoding="utf-8"))
+        self.assertNotIn("pipeline_pause", (ROOT / "main.py").read_text(encoding="utf-8"))
         for path in (ROOT / "modules").glob("*.py"):
-            self.assertNotIn("NIGHTSHIFT_PIPELINE_PAUSED", path.read_text(encoding="utf-8"), path.name)
+            if path.name == "pipeline_pause.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("NIGHTSHIFT_PIPELINE_PAUSED", text, path.name)
+            self.assertNotIn("pipeline_pause", text, path.name)
 
     def test_workflow_permissions_are_unchanged(self):
         self.assertEqual(_workflow()["permissions"], {"contents": "read"})
