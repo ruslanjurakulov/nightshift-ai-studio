@@ -288,6 +288,18 @@ class HeldVideos:
                            type(e).__name__, e)
             return None
 
+    def has_cut(self, video_id: str) -> Optional[bool]:
+        """Does this run's row already hold a cut a person could be reviewing (a preview or a local
+        path)? False when there is no such row, or when this client is inert (nothing to protect);
+        None when the lookup failed, which a caller that would overwrite the row must read as
+        "maybe"."""
+        if not self.enabled:
+            return False
+        resp = self._send("get", {"video_id": f"eq.{video_id}", "select": "preview_path,local_path"}, None, "")
+        if resp is None or resp.status_code >= 300:
+            return None
+        return any(bool(r.get("preview_path") or r.get("local_path")) for r in _json_list(resp))
+
     def _exists(self, video_id: str) -> Optional[bool]:
         """Is there a row for this id? None when the lookup failed."""
         resp = self._send("get", {"video_id": f"eq.{video_id}", "select": "video_id"}, None, "")

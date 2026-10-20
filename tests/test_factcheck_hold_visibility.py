@@ -6,8 +6,8 @@ Review findings on the first version of the early fact-check stop:
   "0 flagged" for a run held because of them (``hold_detail.flagged`` now carries them);
 * exit 79 left no traceback, so a customer read "Something went wrong" (the ``held`` job error code);
 * the operator bot said "Blocked by the gate and kept" about a run with no video (``hold_detail.stage``);
-* a re-run of the same topic kept the OLD cut's preview and manifest under the new text, and the old
-  preview object stayed in the bucket unreferenced.
+* a re-run of the same topic would have replaced (or blanked) a cut a person may still be reviewing under the
+  same row key: a row that holds a cut is now left exactly as it is.
 
 No network: Supabase is the in-memory fake from tests/test_video_review_record.py.
 """
@@ -32,7 +32,6 @@ from modules.fact_checker import _make_result, _safe_default  # noqa: E402
 from modules.held_video import HeldVideos, held_video_id  # noqa: E402
 from modules.operator_bot import views  # noqa: E402
 from modules.operator_bot.i18n import LANGUAGES, t, table  # noqa: E402
-from modules.video_review import VideoReview  # noqa: E402
 from tests.test_video_review_record import FakeSupabase, KEY, URL, _patched  # noqa: E402
 
 MAIN = ROOT / "main.py"
@@ -81,7 +80,7 @@ class FlaggedTextsReachTheHeldRow(unittest.TestCase):
         self.assertIn('detail["flagged"] = flagged', record)
 
 
-# ── a hold with no cut leaves nothing of an earlier cut behind ───────────
+# ── an early hold never replaces a cut somebody may be reviewing ─────────
 
 def _hold_runner(**over):
     """The real ``_hold_before_render`` from main.py with its globals supplied."""
@@ -89,7 +88,7 @@ def _hold_runner(**over):
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_hold_before_render")
     emitted = []
     ns = dict(
-        held_video=held_video, VideoReview=VideoReview, logger=logging.getLogger("t"), print=lambda *a, **k: None,
+        held_video=held_video, logger=logging.getLogger("t"), print=lambda *a, **k: None,
         claim_scenes=SimpleNamespace(annotate_scenes=lambda *a: [{"name": "Hook"}]),
         events=SimpleNamespace(emit=lambda *a, **k: emitted.append((a, k)), PUBLISH_BLOCKED="publish.blocked",
                                STATUS_FAILED="failed"),
@@ -111,57 +110,88 @@ def _hold(fake, claims=(), results=()):
     return emitted
 
 
-class AnEarlyHoldIsNotTheOldCut(unittest.TestCase):
+class AnEarlyHoldNeverReplacesACutSomebodyMayBeReviewing(unittest.TestCase):
     HID = held_video_id("news", "the-lost-city")
 
-    def seeded(self):
+    def seeded(self, **over):
         fake = FakeSupabase()
-        fake.rows[self.HID] = {
-            "video_id": self.HID, "channel_id": "news", "slug": "the-lost-city", "publish_state": "held",
-            "preview_path": f"news/{self.HID}.mp4", "local_path": "/out/old/final_video.mp4",
-            "manifest": {"scenes": [{"id": "s000"}]}, "cut_sha256": "abc", "script_text": "the old narration",
-            "title": "Old", "hold_detail": {"reason": "held"}}
+        row = {"video_id": self.HID, "channel_id": "news", "slug": "the-lost-city", "publish_state": "held",
+               "preview_path": f"news/{self.HID}.mp4", "local_path": "/out/old/final_video.mp4",
+               "manifest": {"scenes": [{"id": "s000"}]}, "cut_sha256": "abc", "script_text": "the old narration",
+               "title": "Old", "hold_detail": {"reason": "held"}, "scenes": [{"name": "Old"}]}
+        row.update(over)
+        fake.rows[self.HID] = row
         return fake
 
-    def test_the_row_stops_pointing_at_the_old_cut(self):
+    def test_a_row_that_holds_a_preview_is_left_exactly_as_it_is_in_every_held_state(self):
+        for state in ("held", "awaiting_approval", "repaired_awaiting_review", "blocked"):
+            with self.subTest(state=state):
+                fake = self.seeded(publish_state=state)
+                before = dict(fake.rows[self.HID])
+                _hold(fake)
+                self.assertEqual(fake.rows[self.HID], before)
+                self.assertEqual([c for c in fake.calls if c[0] in ("post", "patch")], [])
+                self.assertEqual([c for c in fake.calls if c[0] == "delete"], [])      # nothing removed from storage
+
+    def test_a_row_with_only_a_local_cut_is_left_alone_too(self):
+        fake = self.seeded(preview_path=None)
+        before = dict(fake.rows[self.HID])
+        _hold(fake)
+        self.assertEqual(fake.rows[self.HID], before)
+
+    def test_the_run_still_stops_and_says_why_when_the_row_is_left_alone(self):
+        emitted = _hold(self.seeded())
+        self.assertEqual([a[0] for a, _ in emitted], ["publish.blocked"])
+        self.assertEqual(emitted[0][1]["metadata"]["stage"], "before_render")
+
+    def test_a_lookup_that_fails_is_read_as_maybe_and_writes_nothing(self):
         fake = self.seeded()
+        with mock.patch.object(HeldVideos, "has_cut", return_value=None):
+            before = dict(fake.rows[self.HID])
+            _hold(fake)
+        self.assertEqual(fake.rows[self.HID], before)
+        fake = FakeSupabase(fail=True)                                         # every request raises
+        emitted = _hold(fake)
+        self.assertEqual(fake.rows, {})
+        self.assertEqual(len(emitted), 1)
+
+    def test_a_lookup_that_fails_while_the_write_would_work_writes_nothing(self):
+        """The real failure shape: the read errors, the upsert would succeed, and the row must still not change."""
+        class ReadsFail(FakeSupabase):
+            def get(self, *a, **k):
+                raise ConnectionError("read failed")
+
+        fake = ReadsFail()
+        fake.rows[self.HID] = {"video_id": self.HID, "channel_id": "news", "publish_state": "held",
+                               "preview_path": "news/x.mp4", "script_text": "the old narration"}
+        before = dict(fake.rows[self.HID])
+        emitted = _hold(fake)
+        self.assertEqual(fake.rows[self.HID], before)
+        self.assertEqual(len(emitted), 1)
+
+    def test_a_row_without_a_cut_is_written_and_loses_its_stale_manifest(self):
+        fake = self.seeded(preview_path=None, local_path=None)
         _hold(fake)
         row = fake.rows[self.HID]
-        self.assertIsNone(row["preview_path"])
-        self.assertIsNone(row["local_path"])
         self.assertIsNone(row["manifest"])
         self.assertIsNone(row["cut_sha256"])
         self.assertEqual(row["publish_state"], "blocked")
-        self.assertEqual(row["script_text"], "the narration")                 # the new text, not the old one
+        self.assertEqual(row["script_text"], "the narration")
         self.assertEqual(row["hold_detail"]["stage"], "before_render")
         self.assertIsNone(row["published_at"])
 
-    def test_the_old_preview_object_is_removed_from_the_bucket(self):
-        fake = self.seeded()
-        _hold(fake)
-        deletes = [c for c in fake.calls if c[0] == "delete" and "/storage/" in c[1]]
-        self.assertEqual([c[3] for c in deletes], [{"prefixes": [f"news/{self.HID}.mp4"]}])
-
-    def test_an_object_that_is_not_a_held_run_preview_is_never_removed(self):
-        fake = self.seeded()
-        fake.rows[self.HID]["preview_path"] = "news/dQw4w9WgXcQ.mp4"          # an uploaded video's preview
-        _hold(fake)
-        self.assertEqual([c for c in fake.calls if c[0] == "delete" and "/storage/" in c[1]], [])
-
-    def test_nothing_is_removed_when_the_row_could_not_be_written(self):
-        fake = self.seeded()
-        fake.missing = {"hold_detail"}                                          # a refused write
-        with mock.patch.object(HeldVideos, "record_held", return_value=None):
-            _hold(fake)
-        self.assertEqual([c for c in fake.calls if c[0] == "delete" and "/storage/" in c[1]], [])
-
-    def test_a_first_hold_with_no_earlier_row_removes_nothing_and_carries_the_flagged_texts(self):
+    def test_a_first_hold_with_no_row_is_written_with_the_flagged_texts(self):
         fake = FakeSupabase()
         claims = [claim("title", "The Keeper Killed Them")]
         _hold(fake, claims, [_make_result(claims[0].text, "likely_inaccurate", "No evidence.")])
         row = fake.rows[self.HID]
         self.assertEqual(row["hold_detail"]["flagged"][0]["source"], "title")
-        self.assertEqual([c for c in fake.calls if c[0] == "delete" and "/storage/" in c[1]], [])
+        self.assertEqual(row["hold_detail"]["stage"], "before_render")
+
+    def test_has_cut_is_false_for_an_inert_client_and_for_a_missing_row(self):
+        self.assertFalse(HeldVideos(url="", service_key="").has_cut(self.HID))
+        with _patched(FakeSupabase()):
+            self.assertFalse(HeldVideos(url=URL, service_key=KEY).has_cut(self.HID))
 
     def test_an_ordinary_hold_still_leaves_the_other_columns_alone(self):
         """no_cut is only for a hold with no video: a hold with one never blanks its preview."""
@@ -172,11 +202,11 @@ class AnEarlyHoldIsNotTheOldCut(unittest.TestCase):
         self.assertEqual(fake.rows[self.HID]["preview_path"], f"news/{self.HID}.mp4")
         self.assertEqual(fake.rows[self.HID]["local_path"], "/out/old/final_video.mp4")
 
-    def test_a_database_that_refuses_the_cleared_columns_still_records_the_hold(self):
-        """Migrations 0004/0011/0013 are older than the held rows (0016), but the fallback must not depend on it."""
-        fake = FakeSupabase(missing_columns={"preview_path"})
-        _hold(fake)
-        self.assertIn(self.HID, fake.rows)
+    def test_the_helper_no_longer_touches_the_bucket(self):
+        src = MAIN.read_text()
+        body = src[src.index("def _hold_before_render"):src.index("def _effective_privacy")]
+        self.assertNotIn("delete_objects", body)
+        self.assertNotIn("VideoReview", body)
 
 
 # ── the customer's page and the worker ───────────────────────────────────

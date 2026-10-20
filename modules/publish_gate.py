@@ -195,6 +195,7 @@ def evaluate(
     title: Optional[str] = None,
     narration_claims: Optional[int] = None,
     claims=None,
+    language=None,
 ) -> GateDecision:
     """Decide whether this video may be uploaded.
 
@@ -222,14 +223,14 @@ def evaluate(
     _check_sanity(decision, config, script, video_path, title)
     _check_video_qc(decision, config, video_path, qc_report)
     _check_fact_results(decision, config, fact_results, script, narration_claims, claims)
-    _check_shipped_numbers(decision, config, script)
+    _check_shipped_numbers(decision, config, script, language)
     _check_originality(decision, config, topic or getattr(script, "topic", ""), originality)
     _check_rights(decision, config, ir_project)
     return decision
 
 
 def evaluate_fact_check(*, script, fact_results, channel=None,
-                        narration_claims: Optional[int] = None, claims=None) -> GateDecision:
+                        narration_claims: Optional[int] = None, claims=None, language=None) -> GateDecision:
     """The part of the gate that needs no rendered video, for the stop BEFORE the render.
 
     The same ``_check_fact_results`` and ``_check_shipped_numbers`` the full gate
@@ -248,7 +249,7 @@ def evaluate_fact_check(*, script, fact_results, channel=None,
         decision.warnings.append("gate_disabled_for_channel")
         return decision
     _check_fact_results(decision, config, fact_results, script, narration_claims, claims, early=True)
-    _check_shipped_numbers(decision, config, script)
+    _check_shipped_numbers(decision, config, script, language)
     try:
         problems = []
         for name in ("title", "title_ab"):
@@ -396,7 +397,7 @@ def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results
         return
     decision.checks_run.append("fact_check")
     try:
-        from modules.claim_extractor import FRAGMENT_SOURCES, has_number, narration_char_count, narration_word_count
+        from modules.claim_extractor import FRAGMENT_SOURCES, has_accusation, narration_char_count, narration_word_count
 
         target = decision.blocks if config.block_on_fact_check else decision.warnings
         flagged = fragments = unresolved = 0
@@ -406,7 +407,7 @@ def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results
             elif not getattr(r, "requires_human_review", False):
                 continue
             elif (source in FRAGMENT_SOURCES and getattr(r, "verdict", None) == "unverifiable"
-                  and not has_number(str(getattr(r, "claim", "") or ""))):
+                  and not has_accusation(str(getattr(r, "claim", "") or ""))):
                 fragments += 1
             else:
                 flagged += 1
@@ -433,26 +434,45 @@ def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results
         )
 
 
-def _check_shipped_numbers(decision: GateDecision, config: GateConfig, script) -> None:
+def _is_english(language) -> bool:
+    """The numeral reader (claim_extractor._spoken_numbers) understands English only. An unknown
+    language is treated as English: when in doubt the check keeps its teeth."""
+    text = str(language or "").strip().casefold()
+    return text in ("", "en") or text.startswith(("english", "en-", "en_"))
+
+
+def _check_shipped_numbers(decision: GateDecision, config: GateConfig, script, language=None) -> None:
     """A number or year in the title, the A/B title, the thumbnail text or the
     description that the narration never says is a figure the script does not
-    back. Free: no model call. It follows ``block_on_fact_check`` (it is a
-    fact-check of shipped text) and a check that cannot run is a warning."""
+    back. Free: no model call.
+
+    * A figure the narration really lacks is ``shipped_text_unsupported``: a block
+      (``block_on_fact_check``) for an English channel; a warning for any other
+      language, where a spelled-out number ("десять", "beshta") cannot be read yet.
+    * A small leading count ("5 Strange Facts") that the script does not enumerate
+      (first / second / ..., "number one", "1." markers, or that many sections) is
+      ``shipped_count_unsupported``: a warning, never a block.
+    A check that cannot run is a warning."""
     if script is None:
         return
     decision.checks_run.append("shipped_text")
     try:
-        from modules.claim_extractor import unsupported_numbers
+        from modules.claim_extractor import shipped_number_findings
 
-        missing = unsupported_numbers(script)
-        if missing:
-            (decision.blocks if config.block_on_fact_check else decision.warnings).append(
+        found = shipped_number_findings(script)
+        if found.hard:
+            english = _is_english(language)
+            (decision.blocks if config.block_on_fact_check and english else decision.warnings).append(
                 "shipped_text_unsupported")
+            logger.warning("Shipped text carries %d number(s) the narration never says (in: %s)",
+                           len(found.hard), ", ".join(sorted({f for f, _ in found.hard})))
+        if found.counts:
+            decision.warnings.append("shipped_count_unsupported")
+        if found.hard or found.counts:
             if decision.fact_check is None:
                 decision.fact_check = {}
-            decision.fact_check["unsupported_numbers"] = len(missing)
-            logger.warning("Shipped text carries %d number(s) the narration never says (in: %s)",
-                           len(missing), ", ".join(sorted({f for f, _ in missing})))
+            decision.fact_check["unsupported_numbers"] = len(found.hard)
+            decision.fact_check["unsupported_counts"] = len(found.counts)
     except Exception as e:
         decision.warnings.append(f"shipped_text_check_errored:{type(e).__name__}")
 

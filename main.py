@@ -441,8 +441,8 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
     Mirrors the neighbouring early stops: the planning already paid for is recorded
     (``_flush_costs``), the run gets a blocked ``videos`` row of its own (the gate's
     reasons, scenes with their claim verdicts, and the flagged title/description/
-    thumbnail/hook texts those scenes do not show; no cut, so nothing to approve and
-    no stale preview from an earlier run of the same topic), and a ``publish.blocked``
+    thumbnail/hook texts those scenes do not show; no cut, so nothing to approve; a row
+    that already holds a cut a person may be reviewing is left alone), and a ``publish.blocked``
     event — the one the Command Center, the operator bot and the Telegram control
     already read for a blocked video — carries fixed words and counts only: no
     title, no claim text. The caller raises HeldBeforeRender, which __main__ turns
@@ -467,16 +467,18 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
         flagged = held_video.flagged_claims(claims, fact_results)
         if flagged:
             detail["flagged"] = flagged
-        # An earlier run of this topic may have left a preview under this row's own key: the row stops
-        # pointing at it (no_cut) and the object is removed, or it would stay in the bucket unreferenced.
-        review = VideoReview()
-        held_id = held_video.held_video_id(channel_id, slug)
-        previous = review.preview_of(held_id)
-        written = held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED,
-                                         topic=topic, title=script.title, script_text=script.full_narration(),
-                                         scenes=scenes, detail=detail, no_cut=True)
-        if written and previous and previous.startswith(f"{channel_id}/{held_video.HELD_ID_PREFIX}"):
-            review.delete_objects([previous])
+        # The row's key is channel + topic slug, so an earlier run of this topic may have left a cut on it that a
+        # person is still reviewing (held, awaiting approval, blocked after its render). This hold has no video and
+        # would replace that cut's text, scenes and verdict, so a row that holds one is left exactly as it is: the
+        # event above, the exit code and the log still say why this run stopped. A lookup that fails reads as "maybe".
+        has_cut = held_video.HeldVideos().has_cut(held_video.held_video_id(channel_id, slug))
+        if has_cut is not False:
+            logger.warning("[channel: %s] The held row for %s already holds a cut (or could not be read): it is "
+                           "left as it is, and no row is written for this early hold", channel_id, slug)
+        else:
+            held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED,
+                                   topic=topic, title=script.title, script_text=script.full_narration(),
+                                   scenes=scenes, detail=detail, no_cut=True)
     except Exception as e:
         logger.warning("Could not record the early hold (%s: %s) — the run still stops",
                        type(e).__name__, e)
@@ -1018,7 +1020,8 @@ def run(
     if fact_results is not None:
         early = publish_gate.evaluate_fact_check(
             script=script, fact_results=fact_results, channel=ctx,
-            narration_claims=narration_claim_count, claims=section_claims)
+            narration_claims=narration_claim_count, claims=section_claims,
+            language=getattr(ctx.agent, "language", None))
         if not early.allowed:
             _hold_before_render(ctx, slug=slug, topic=topic, script=script, claims=section_claims,
                                 fact_results=fact_results, decision=early, costs=costs)
@@ -1408,6 +1411,7 @@ def run(
         title=published_title,
         narration_claims=narration_claim_count,
         claims=section_claims,
+        language=getattr(ctx.agent, "language", None),
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human

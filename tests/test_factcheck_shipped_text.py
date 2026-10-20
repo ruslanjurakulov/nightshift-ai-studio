@@ -127,13 +127,6 @@ class ClaimsCoverEverythingThatShips(unittest.TestCase):
             "thumbnail_text": "1,000,000 DEAD",
         })
 
-    def test_a_rhetorical_title_is_not_a_claim(self):
-        s = script(title="The Lighthouse Log Was Found", title_ab="Something Strange Happened Here",
-                   thumbnail_overlay_text="LOOK CLOSER", hook_sentence="The lamp was found burning at dawn.")
-        shipped = [c for c in claim_extractor.extract_shipped_claims(s)
-                   if c.source != claim_extractor.SOURCE_NARRATION]
-        self.assertEqual(shipped, [])
-
     def test_a_two_word_thumbnail_text_is_a_claim_even_though_narration_would_drop_it(self):
         claims = claim_extractor.extract_shipped_claims(script(thumbnail_overlay_text="NEVER OPENED!"))
         self.assertIn(("thumbnail_text", "NEVER OPENED!"), sources(claims))
@@ -403,19 +396,39 @@ class RunStopsBeforeTheVoiceWhenTheCheckWouldBlock(unittest.TestCase):
 
     def test_a_fragment_the_checker_cannot_verify_does_not_hold_the_run(self):
         """Unverifiable is the usual answer for a bare phrase judged with no context: a warning, not a hold."""
-        for field, text in (("title", "FLAGME Killed The Whole Crew"),
+        for field, text in (("title", "FLAGME Is Why The Lighthouse Fell"),
+                            ("title_ab", "FLAGME Failed Math"),
                             ("description", "FLAGME was the keeper's real name, historians say."),
-                            ("thumbnail_overlay_text", "FLAGME NEVER")):
+                            ("thumbnail_overlay_text", "FLAGME NEVER"),
+                            ("hook_sentence", "FLAGME was never found by anyone there.")):
             with self.subTest(field=field):
                 out = drive(lambda d, f=field, t=text: d.__setitem__(f, t))
                 self.assertTrue(out["voice_built"], out.get("tb"))
                 self.assertEqual(out["held"], [])
 
-    def test_a_number_in_an_unverifiable_fragment_is_held_but_a_number_in_the_narration_is_known(self):
-        # 1900 is in the demo narration, so only the checker's doubt about a figure holds it
+    def test_an_unverifiable_accusation_in_a_fragment_does_hold_the_run(self):
+        for field, text in (("title", "FLAGME Killed The Whole Crew"),
+                            ("title_ab", "Napoleon Was FLAGME Poisoned"),
+                            ("description", "FLAGME murdered his own brother in cold blood."),
+                            ("thumbnail_overlay_text", "FLAGME KILLED THEM"),
+                            ("hook_sentence", "FLAGME poisoned the whole crew that night.")):
+            with self.subTest(field=field):
+                out = drive(lambda d, f=field, t=text: d.__setitem__(f, t))
+                self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
+                self.assertFalse(out["voice_built"])
+
+    def test_a_figure_in_an_unverifiable_fragment_does_not_hold_when_the_narration_has_it(self):
+        # 1900 is in the demo narration: the free check backs it, and the checker's doubt alone is a warning
         out = drive(lambda d: d.__setitem__("description", "FLAGME ruled the island in 1900, they say."))
-        self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
-        self.assertFalse(out["voice_built"])
+        self.assertTrue(out["voice_built"], out.get("tb"))
+
+    def test_a_figure_the_narration_lacks_holds_an_english_channel_but_only_warns_a_russian_one(self):
+        flag = lambda d: d.__setitem__("title", "The 1,000,000 Victims Of The Lighthouse")  # noqa: E731
+        held = _drive_row(flag, ROW)
+        self.assertEqual(held["raised"][0], "HeldBeforeRender", held.get("tb"))
+        russian = _drive_row(flag, dict(ROW, agent_config={**ROW["agent_config"], "language": "Russian"}))
+        self.assertTrue(russian["voice_built"], russian.get("tb"))
+        self.assertEqual(russian["held"], [])
 
     def test_the_stop_is_owner_visible_and_carries_no_title_or_claim_text(self):
         out = drive(lambda d: d.__setitem__("title", "BADFACT Killed The Whole Crew"))
@@ -553,7 +566,7 @@ class TheExitCodeReachesTheRunners(unittest.TestCase):
                  and ast.unparse(n.func) == "publish_gate.evaluate"]
         self.assertEqual(len(calls), 1)
         kw = {k.arg for k in calls[0].keywords}
-        self.assertTrue({"fact_results", "title", "narration_claims", "video_path"} <= kw)
+        self.assertTrue({"fact_results", "title", "narration_claims", "video_path", "claims", "language"} <= kw)
         self.assertEqual(
             next(k.value for k in calls[0].keywords if k.arg == "title").id, "published_title")
 

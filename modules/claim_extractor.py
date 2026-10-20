@@ -157,7 +157,7 @@ _CTA_PHRASES = (
 )
 
 
-def _looks_like_claim(sentence: str) -> bool:
+def _looks_like_claim(sentence: str, cta: bool = True) -> bool:
     """Heuristic filter: drop obvious non-claims, keep everything else.
 
     Documented heuristics only (not a guaranteed-accurate classification):
@@ -174,7 +174,7 @@ def _looks_like_claim(sentence: str) -> bool:
     if count_words(stripped) < MIN_CLAIM_WORDS:
         return False
     lowered = stripped.lower()
-    if any(phrase in lowered for phrase in _CTA_PHRASES):
+    if cta and any(phrase in lowered for phrase in _CTA_PHRASES):
         return False
     return True
 
@@ -352,8 +352,10 @@ SOURCE_THUMBNAIL = "thumbnail_text"
 #: Short texts that are not narration. The checker judges each one as an isolated
 #: phrase with no context, so "I cannot tell" (``unverifiable``) is the usual
 #: answer to a bare title; the gate (publish_gate._check_fact_results) holds on
-#: a fragment only for ``likely_inaccurate`` or when it carries a digit or year.
-#: The alternate hook is NOT here: it replaces section 0's narration.
+#: a fragment only for ``likely_inaccurate`` or when it names an accusation
+#: (``has_accusation``). A number in a fragment is the free check's business
+#: (``shipped_number_findings``). The alternate hook is NOT here: it replaces
+#: section 0's narration.
 FRAGMENT_SOURCES = frozenset({SOURCE_TITLE, SOURCE_TITLE_AB, SOURCE_DESCRIPTION,
                               SOURCE_THUMBNAIL, SOURCE_HOOK_SENTENCE})
 
@@ -363,7 +365,7 @@ _HASHTAG_OR_URL_LINE = re.compile(r"^\s*(?:(?:#\w+|https?://\S+|www\.\S+)\s*)+$"
 #: modules/youtube_uploader.TIMESTAMP_LINE); the real chapters are measured.
 _TIMESTAMP_LINE = re.compile(r"^\s*(?:[-*•]\s*)?\d{1,2}:\d{2}(?::\d{2})?\b")
 _URL = re.compile(r"https?://|www\.", re.IGNORECASE)
-_URL_WHOLE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+_URL_WHOLE = re.compile(r"(?:https?://|www\.)[^\s)\]>,;]+", re.IGNORECASE)
 
 _APOSTROPHES = str.maketrans({"ʻ": "'", "ʼ": "'", "‘": "'", "’": "'", "`": "'", "´": "'"})
 
@@ -374,10 +376,12 @@ def normalize_text(text: str) -> str:
     return (text or "").translate(_APOSTROPHES).casefold()
 
 
-#: Description lines that are a thank-you, a call to action or a credit, not a
+#: Description sentences that are a thank-you, a call to action or a credit, not a
 #: statement about the video's subject. Description-only: narration keeps the
 #: shorter ``_CTA_PHRASES`` above (a loosened narration filter would check less
-#: than before). Data, one language per row; matched against ``normalize_text``.
+#: than before). Data, one language per row; matched against ``normalize_text``,
+#: and only where the sentence STARTS with it or is short (``_is_noise``): a long
+#: sentence that merely contains "source:" or "subscribe" is still a statement.
 _DESCRIPTION_NOISE = (
     # en
     "thanks for watching", "thank you for watching", "don't forget", "dont forget", "follow us",
@@ -391,10 +395,11 @@ _DESCRIPTION_NOISE = (
     "tomosha qilganingiz uchun", "unutmang", "yoqtiring", "like bosing", "manbalar:", "manba:",
 )
 
-#: Words that make a short text a CLAIM rather than a rhetorical hook (title,
-#: title_ab, thumbnail text, hook_sentence): an accusation, or a superlative or
-#: absolute. A digit or a year is the third trigger (``has_number``). Data, en / ru / uz.
-#: Stems match a word's start (``\bkill\w*``); apostrophes are normalized first.
+#: Words that make a fragment an ACCUSATION (a crime, a betrayal, a killing) that
+#: the checker could not confirm: such a fragment holds the run even when the
+#: verdict is only ``unverifiable``, because "Napoleon Was Poisoned" is exactly the
+#: defamation shape the gate exists for. Data, en / ru / uz. Stems match a word's
+#: start (``\bkill\w*``); apostrophes are normalized first.
 _ACCUSATION_STEMS = (
     # en
     "murder", "kill", "poison", "assassin", "stole", "steal", "thie", "theft", "fraud", "framed", "betray",
@@ -407,35 +412,12 @@ _ACCUSATION_STEMS = (
     "o'ldir", "o'ldi", "qotil", "zaharla", "o'g'ri", "o'g'irla", "xiyonat", "aybdor", "jinoyat", "firibgar",
     "fitna", "qatl", "genotsid", "yolg'on", "qiynoq", "poraxo'r", "josus",
 )
-_ABSOLUTE_WORDS = (
-    # en
-    "most", "biggest", "deadliest", "worst", "greatest", "largest", "smallest", "oldest", "first", "last",
-    "only", "never", "always", "every", "everyone", "everything", "nobody", "nothing", "all", "entire",
-    "whole", "truth", "proof", "proven", "secret", "secrets", "revealed", "impossible", "forever", "ever",
-    "real", "really", "true", "hidden",
-    # ru
-    "самый", "самая", "самое", "самые", "худший", "лучший", "первый", "последний", "единственный",
-    "никогда", "всегда", "все", "всё", "каждый", "никто", "вся", "весь", "правда", "истина", "тайна",
-    "раскрыта", "раскрыт", "навсегда", "невозможно", "доказано",
-    # uz
-    "eng", "birinchi", "oxirgi", "yagona", "hech", "doim", "har", "hamma", "butun", "haqiqat", "isbot",
-    "sir", "ochildi", "abadiy", "imkonsiz",
-)
 _ACCUSATION_RE = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in _ACCUSATION_STEMS) + r")\w*")
-_ABSOLUTE_RE = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in _ABSOLUTE_WORDS) + r")\b|\bno one\b")
 
 
-def has_number(text: str) -> bool:
-    """A digit of any script (``\d`` is Unicode-aware): a number or a year."""
-    return bool(re.search(r"\d", text or ""))
-
-
-def carries_checkable_content(text: str) -> bool:
-    """Whether a short text asserts something checkable: it has a number or a
-    year, an accusation word, or a superlative or absolute (en / ru / uz lists
-    above). A bare phrase with none of them is a rhetorical hook, not a claim."""
-    norm = normalize_text(text)
-    return has_number(norm) or bool(_ACCUSATION_RE.search(norm)) or bool(_ABSOLUTE_RE.search(norm))
+def has_accusation(text: str) -> bool:
+    """Whether ``text`` names an accusation word (en / ru / uz list above)."""
+    return bool(_ACCUSATION_RE.search(normalize_text(text)))
 
 
 def narration_word_count(script) -> int:
@@ -473,16 +455,40 @@ def _description_lines(description: str) -> list[str]:
             if ln.strip() and not _TIMESTAMP_LINE.match(ln) and not _HASHTAG_OR_URL_LINE.match(ln)]
 
 
-def _description_sentences(description: str) -> list[str]:
+#: A sentence this short that contains a noise phrase anywhere is still noise.
+_NOISE_SHORT_WORDS = 5
+#: "Part 2 of our series", "Chapter 3", "Эпизод 4", "Qism 2": a series marker, not a statement.
+_SERIES_MARKER = re.compile(
+    r"^(?:part|chapter|episode|season|vol(?:ume)?|ep|часть|глава|серия|эпизод|сезон|выпуск|qism|epizod|bob|mavsum)\b\.?\s*[\divxl#]+\b")
+
+
+def _is_noise(sentence: str) -> bool:
+    """A thank-you, a call to action, a credit or a series marker: not a statement."""
+    norm = normalize_text(sentence)
+    core = re.sub(r"^[^\w]+", "", norm)
+    if _SERIES_MARKER.match(core) or any(core.startswith(p) for p in _DESCRIPTION_NOISE):
+        return True
+    return count_words(sentence) <= _NOISE_SHORT_WORDS and any(p in norm for p in _DESCRIPTION_NOISE)
+
+
+def _description_units(description: str) -> list[str]:
+    """The description's statements, one per sentence: lines first, links stripped
+    (the rest of the sentence is still judged), noise dropped. A sentence that
+    names a link or a source in passing stays."""
     out: list[str] = []
     for line in _description_lines(description):
-        for sentence in _split_sentences(line):
-            norm = normalize_text(sentence)
-            if _URL.search(sentence) or any(noise in norm for noise in _DESCRIPTION_NOISE):
-                continue
-            if _looks_like_claim(sentence):
+        for sentence in _split_sentences(_URL_WHOLE.sub(" ", line)):
+            sentence = re.sub(r"\(\s*(?:see|cf\.?)?\s*\)", "", sentence)       # what a stripped link leaves
+            sentence = re.sub(r"\s+([.,;!?])", r"\1", re.sub(r"\s+", " ", sentence)).strip()
+            if sentence and not _is_noise(sentence):
                 out.append(sentence)
     return out
+
+
+def _description_sentences(description: str) -> list[str]:
+    # cta=False: a description sentence that merely mentions "subscribe" is judged whole; its real calls to
+    # action were already dropped as noise (a sentence that STARTS with one, or is short).
+    return [s for s in _description_units(description) if _looks_like_claim(s, cta=False)]
 
 
 def extract_shipped_claims(script) -> list[Claim]:
@@ -495,14 +501,16 @@ def extract_shipped_claims(script) -> list[Claim]:
     ``hook_sentence`` (the Short's description), the title, the A/B title, the
     description's sentences and the thumbnail text.
 
-    A title, A/B title, thumbnail text or hook sentence is extracted only when it
-    asserts something (``carries_checkable_content``: a number or year, an
-    accusation, a superlative or absolute); a rhetorical hook or a bare phrase is
-    not a claim. A title or thumbnail text is one claim as a whole (a two-word
-    "NEVER OPENED!" is a claim the sentence filter would drop), a pure question
-    is skipped as in narration, and a text that is the same as one already
-    listed is not checked twice. Description sentences are all extracted except
-    links, thank-yous, calls to action and credits (``_DESCRIPTION_NOISE``).
+    Every title, A/B title, thumbnail text and hook sentence is extracted (a
+    plain false claim such as "Einstein Failed Math" has no trigger word in any
+    language): the gate decides what an unverifiable fragment means (a warning,
+    or a block when it is an accusation). A title or thumbnail text is one claim
+    as a whole (a two-word "NEVER OPENED!" is a claim the sentence filter would
+    drop), a pure question is skipped as in narration, and a text that is the
+    same as one already listed is not checked twice. Description sentences are
+    all extracted except thank-yous, calls to action, credits and series markers
+    (``_is_noise``); a link is stripped and the rest judged. All of it rides in the
+    one batch of claims the checker already gets.
     Never raises: a failure returns what was extracted so far.
     """
     out = list(extract_section_claims(script))
@@ -529,15 +537,13 @@ def extract_shipped_claims(script) -> list[Claim]:
 
         def whole(name: str) -> list[str]:
             text = _strip_cue_tags(_field_text(script, name))
-            if (text and not text.endswith(_QUESTION_MARKS) and re.search(r"\w", text)
-                    and carries_checkable_content(text)):
+            if text and not text.endswith(_QUESTION_MARKS) and re.search(r"\w", text):
                 return [text]
             return []
 
         hook_sentence = _strip_cue_tags(_field_text(script, "hook_sentence"))
         add(SOURCE_HOOK_SENTENCE,
-            [s for s in _split_sentences(hook_sentence)
-             if _looks_like_claim(s) and carries_checkable_content(s)],
+            [s for s in _split_sentences(hook_sentence) if _looks_like_claim(s)],
             -1, lambda n: f"x-hook_sentence-{n}")
         add(SOURCE_TITLE, whole("title"), -1, lambda n: f"x-title-{n}")
         add(SOURCE_TITLE_AB, whole("title_ab"), -1, lambda n: f"x-title_ab-{n}")
@@ -549,15 +555,23 @@ def extract_shipped_claims(script) -> list[Claim]:
     return out
 
 
-# --- A free check: a number that ships must be in the narration --------------------
+# --- A free check: a figure that ships must be backed by the narration -----------------
 
 _NUMBER_RE = re.compile(r"\d[\d.,  ]*\d|\d")
+#: Right after a number: an ordinal suffix ("20th", "1st", Russian "20-й"), which is not a quantity.
+_ORDINAL_SUFFIX = re.compile(r"(?:st|nd|rd|th)\b|-(?:й|я|е|го|му|ом|ый|ая|ое|ые|х)\b", re.IGNORECASE)
+_MULTIPLIER_WORD = re.compile(r"\s*(thousand|million|billion)\b", re.IGNORECASE)
 _UNITS = {w: i for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen "
     "sixteen seventeen eighteen nineteen".split())}
 _TENS = {w: 10 * i for i, w in enumerate("_ _ twenty thirty forty fifty sixty seventy eighty ninety".split())
          if w != "_"}
 _MULTIPLIERS = {"thousand": 10 ** 3, "million": 10 ** 6, "billion": 10 ** 9}
+_ENUMERATORS = re.compile(
+    r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|final)\b|\bnumber (\w+)\b",
+    re.IGNORECASE)
+#: A leading count ("5 Strange Facts") is small; a bigger leading number is a figure.
+_SMALL_COUNT = range(2, 31)
 
 
 def _ascii_digits(text: str) -> str:
@@ -566,72 +580,157 @@ def _ascii_digits(text: str) -> str:
                    for c in text or "")
 
 
-def _number_forms(token: str) -> set:
-    return {token, re.sub(r"\D", "", token)}
+def _fmt(value) -> str:
+    return str(int(value)) if float(value).is_integer() else str(round(float(value), 6))
+
+
+def _digit_tokens(text: str) -> list:
+    """``[(token, start, forms, is_ordinal)]`` for each number in ``text``. A number followed by
+    thousand / million / billion also carries its value ("1.5 million" is 1500000), and
+    separators are ignored in the other form ("1,000,000" is "1000000")."""
+    ascii_text = _ascii_digits(text)
+    out = []
+    for m in _NUMBER_RE.finditer(ascii_text):
+        token, after = m.group(), ascii_text[m.end():m.end() + 24]
+        forms = {token, re.sub(r"\D", "", token)}
+        mult = _MULTIPLIER_WORD.match(after)
+        if mult:
+            try:
+                forms.add(_fmt(float(re.sub(r"[,  ]", "", token)) * _MULTIPLIERS[mult.group(1).lower()]))
+            except ValueError:
+                pass
+        out.append((token, m.start(), forms, bool(_ORDINAL_SUFFIX.match(after))))
+    return out
+
+
+def _group(tokens, first: bool = False):
+    """The value 0-99 (1-99 for ``first``) of one or two spoken words, or None."""
+    t = list(tokens)
+    if len(t) == 1 and (t[0] in _UNITS or t[0] in _TENS):
+        v = _UNITS.get(t[0], _TENS.get(t[0]))
+        return v if (v >= 1 or not first) else None
+    if len(t) == 2 and t[0] in _TENS and t[1] in _UNITS and 1 <= _UNITS[t[1]] <= 9:
+        return _TENS[t[0]] + _UNITS[t[1]]
+    if len(t) == 2 and t[0] == "oh" and not first and t[1] in _UNITS and 1 <= _UNITS[t[1]] <= 9:
+        return _UNITS[t[1]]
+    return None
+
+
+def _spoken_run(run) -> set:
+    found = set()
+    total = current = 0.0
+    for tok in run:
+        if tok in _UNITS or tok in _TENS:
+            current += _UNITS.get(tok, _TENS.get(tok))
+        elif tok == "hundred":
+            current = max(current, 1) * 100
+        elif tok in _MULTIPLIERS:
+            total += max(current, 1) * _MULTIPLIERS[tok]
+            current = 0
+        elif tok == "and_a_half":
+            current += 0.5
+    found.add(_fmt(total + current))
+    # A year read as two pairs: "nineteen eighty-four", "eighteen twelve", "four seventy-six", "nineteen oh five".
+    if len(run) >= 2 and all(t in _UNITS or t in _TENS or t == "oh" for t in run):
+        for k in range(1, len(run)):
+            hi, lo = _group(run[:k], first=True), _group(run[k:])
+            if hi is not None and lo is not None:
+                found.add(str(hi * 100 + lo))
+    return found
 
 
 def _spoken_numbers(text: str) -> set:
-    """Numbers written as English words ("forty thousand", "nineteen hundred"),
-    as digit strings. Only English: a Russian or Uzbek narration that spells a
-    number out does not support a title that writes it in digits (see the PR)."""
-    found, total, current, in_run = set(), 0, 0, False
+    """Numbers written as English words ("forty thousand", "nineteen hundred", "one and a half
+    million", the years "nineteen eighty-four" / "eighteen twelve"), as digit strings.
+    English only: a Russian or Uzbek narration is not read, and the check that uses this only blocks
+    for an English channel (publish_gate._check_shipped_numbers)."""
+    # Anything that is not a letter, a space or a hyphen (a comma, a full stop, a digit) is a token of its
+    # own, which ends a run: "nineteen eighty-four, eighteen twelve" is two years, not one number.
+    words = re.findall(r"[a-z]+|[^a-z\s\-]", (text or "").lower())
+    found, run, i = set(), [], 0
 
     def flush():
-        nonlocal total, current, in_run
-        if in_run:
-            found.add(str(total + current))
-        total = current = 0
-        in_run = False
+        nonlocal run
+        if run:
+            found.update(_spoken_run(run))
+        run = []
 
-    for word in re.findall(r"[a-z]+", (text or "").lower()):
-        if word in _UNITS or word in _TENS:
-            current += _UNITS.get(word, _TENS.get(word, 0))
-            in_run = True
-        elif word == "hundred" and in_run:
-            current = max(current, 1) * 100
-        elif word in _MULTIPLIERS and in_run:
-            total += max(current, 1) * _MULTIPLIERS[word]
-            current = 0
-        elif word == "and" and in_run:
+    while i < len(words):
+        w, nxt = words[i], (words[i + 1] if i + 1 < len(words) else "")
+        if w in _UNITS or w in _TENS or w in _MULTIPLIERS or w == "hundred":
+            run.append(w)
+        elif w == "and" and run and nxt == "a" and words[i + 2:i + 3] == ["half"]:
+            run.append("and_a_half")
+            i += 3
             continue
+        elif w == "and" and run and (nxt in _UNITS or nxt in _TENS):
+            pass
+        elif w == "oh" and run and nxt in _UNITS and 1 <= _UNITS[nxt] <= 9:
+            run.append("oh")
         else:
             flush()
+        i += 1
     flush()
     return found
 
 
-def _numbers_in(text: str) -> set:
-    out: set = set()
-    for m in _NUMBER_RE.finditer(_ascii_digits(text)):
-        out |= _number_forms(m.group())
-    return out
+def _enumerators(narration: str) -> int:
+    """How many list items the narration enumerates in words: distinct first / second / ... / last
+    and "number one". A count in a title ("5 Strange Facts") is backed when the script walks
+    through that many. ("1." / "2)" markers need no rule: a title count N is already backed
+    whenever the narration writes the digit N.)"""
+    items = {(m.group(1) or "number " + m.group(2)).lower() for m in _ENUMERATORS.finditer(narration)}
+    return len(items)
 
 
-def unsupported_numbers(script) -> list:
-    """``[(field, number), ...]``: every number or year in the title, the A/B
-    title, the thumbnail text or the description that the narration never says.
+@dataclass(frozen=True)
+class NumberFindings:
+    #: ``((field, number), ...)``: figures that ship and that the narration never says.
+    hard: tuple = ()
+    #: Same shape: a small leading count ("5 Strange Facts") that the script does not enumerate.
+    counts: tuple = ()
 
-    Free and deterministic: no model. A figure that ships but is not in the
-    script is not backed by it, whatever the checker thinks of the sentence.
-    A number matches however it is grouped ("1,000,000" is "1000000") and an
-    English spelled-out number counts ("three" is 3). Links, timestamp lines and
-    hashtag lines of the description are not read. Never raises."""
+
+def shipped_number_findings(script) -> NumberFindings:
+    """Every number or year in the title, the A/B title, the thumbnail text or the description that
+    the narration does not back.
+
+    Free and deterministic: no model. A figure matches however it is grouped ("1,000,000" is
+    "1000000"), with its thousand / million / billion ("1.5 million" is "one and a half million"),
+    in any digits, or as an English spelled-out number or year. Not read: ordinals ("20th"), links,
+    timestamp, hashtag, credit, thank-you and series ("Part 2") lines of the description.
+
+    A small number (2-30) that opens a title, A/B title or thumbnail text is a COUNT: it is backed
+    when the narration enumerates at least that many items or the script has that many sections,
+    and otherwise goes to ``counts`` (a warning), not ``hard``. Never raises."""
     try:
-        narration = " ".join(_section_texts(script))
-        known = _numbers_in(narration) | _spoken_numbers(narration)
+        sections = _section_texts(script)
+        narration = "\n\n".join(sections)
+        known = set()
+        for _tok, _pos, forms, _ordinal in _digit_tokens(narration):
+            known |= forms
+        known |= _spoken_numbers(narration)
+        enumerated, n_sections = _enumerators(narration), len([t for t in sections if t.strip()])
         fields = [(SOURCE_TITLE, _field_text(script, "title")),
                   (SOURCE_TITLE_AB, _field_text(script, "title_ab")),
                   (SOURCE_THUMBNAIL, _field_text(script, "thumbnail_overlay_text")),
-                  (SOURCE_DESCRIPTION, "\n".join(_URL_WHOLE.sub(" ", ln) for ln in
-                                                 _description_lines(_field_text(script, "description"))))]
-        missing, seen = [], set()
+                  (SOURCE_DESCRIPTION, " ".join(_description_units(_field_text(script, "description"))))]
+        hard, counts, seen = [], [], set()
         for field, text in fields:
-            for m in _NUMBER_RE.finditer(_ascii_digits(text)):
-                forms = _number_forms(m.group())
-                if forms & known or (field, m.group()) in seen:
+            lead = re.match(r"^\W*", _ascii_digits(text)).end()
+            for token, pos, forms, ordinal in _digit_tokens(text):
+                if ordinal or forms & known or (field, token) in seen:
                     continue
-                seen.add((field, m.group()))
-                missing.append((field, m.group()))
-        return missing
+                seen.add((field, token))
+                is_count = (field != SOURCE_DESCRIPTION and pos == lead and token.isdigit()
+                            and int(token) in _SMALL_COUNT and len(forms) == 1
+                            and not _ascii_digits(text)[pos + len(token):pos + len(token) + 1] in ("%", ".", ":", "/"))
+                if is_count:
+                    if enumerated >= int(token) or n_sections >= int(token):
+                        continue
+                    counts.append((field, token))
+                else:
+                    hard.append((field, token))
+        return NumberFindings(tuple(hard), tuple(counts))
     except Exception:
-        return []
+        return NumberFindings()
