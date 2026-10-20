@@ -694,6 +694,16 @@ jobs:
             echo "Spend ceiling reached — nothing was spent."
             exit 0
           fi
+          # Exit 79: the fact-check on the script would block the publish gate, so
+          # the run stopped before the voice, stills and render were bought
+          # (publish_gate.HELD_BEFORE_RENDER_EXIT). A held row and a publish.blocked
+          # event say why; the step is green like 75 and 78, and the settle step
+          # releases the hold: no video was made, so nothing is charged.
+          if [ "$rc" -eq 79 ]; then
+            echo "paused=true" >> "$GITHUB_OUTPUT"
+            echo "Held before render by the fact-check — nothing was spent on the video."
+            exit 0
+          fi
           exit "$rc"
 
       # Settle the hold claimed above: on success, charge what the run's cost

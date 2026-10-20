@@ -494,7 +494,11 @@ def video_alerts(ev: Evidence, lang: str) -> list:
         if not now - EVENT_WINDOW <= held <= now + timedelta(minutes=5):
             continue
         stamp = vid                      # keyed on the video, not on when it was last held: a re-hold is not news
-        if state == "blocked":
+        if state == "blocked" and r.get("hold_stage") == "before_render":
+            # Held before the video was made (the accuracy check stopped the script): no cut exists.
+            out.append(_alert("pipeline", f"video:blocked:{stamp}", "warn",
+                              t(lang, "alert.video_held_early", channel=safe_id(ch), video=vid), ch))
+        elif state == "blocked":
             out.append(_alert("pipeline", f"video:blocked:{stamp}", "warn",
                               t(lang, "alert.video_blocked", channel=safe_id(ch), video=vid), ch))
         elif state == "held" and r.get("hold_cause") == "upload_failed":

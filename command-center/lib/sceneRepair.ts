@@ -63,8 +63,9 @@ const UPLOADED_EVENTS: ReadonlySet<string> = new Set(["upload.completed", "video
 
 export type SceneRepairEligibility =
   | { repairable: true }
-  /** "uploaded": the video reached YouTube; "unknown": no video row to judge. */
-  | { repairable: false; reason: "uploaded" | "unknown" };
+  /** "uploaded": the video reached YouTube; "no_cut": the run was held before its video was made (nothing to repair);
+   *  "unknown": no video row to judge. */
+  | { repairable: false; reason: "uploaded" | "no_cut" | "unknown" };
 
 function present(v: unknown): boolean {
   return typeof v === "string" && v.trim() !== "";
@@ -92,7 +93,10 @@ function present(v: unknown): boolean {
  * Pure: it reads nothing, writes nothing and changes no permission or gate.
  */
 export function sceneRepairEligibility(
-  video: { published_at?: string | null; privacy?: string | null; publish_state?: string | null } | null | undefined,
+  video:
+    | { published_at?: string | null; privacy?: string | null; publish_state?: string | null; hold_detail?: unknown }
+    | null
+    | undefined,
   events?: ReadonlyArray<{ event?: string | null }> | null,
 ): SceneRepairEligibility {
   if (!video) return { repairable: false, reason: "unknown" };
@@ -102,5 +106,10 @@ export function sceneRepairEligibility(
     // Migration 0016: a held row re-keyed to its YouTube id on upload.
     video.publish_state === "uploaded" ||
     (events ?? []).some((e) => typeof e?.event === "string" && UPLOADED_EVENTS.has(e.event));
-  return uploaded ? { repairable: false, reason: "uploaded" } : { repairable: true };
+  if (uploaded) return { repairable: false, reason: "uploaded" };
+  // A run held by the early fact-check stop never rendered: scene_repair.find_run has no cut to re-render.
+  if ((video.hold_detail as { stage?: unknown } | null | undefined)?.stage === "before_render") {
+    return { repairable: false, reason: "no_cut" };
+  }
+  return { repairable: true };
 }

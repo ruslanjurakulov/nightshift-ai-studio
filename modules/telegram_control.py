@@ -192,6 +192,8 @@ def _parse_user_ids(raw) -> set[int]:
 _EVENT_TEMPLATES = {
     "video.published": "✅ Published: {title}\n{url}",
     "publish.blocked": "⛔ Blocked by the gate ({blocks}) — kept for review: {title}",
+    # The early fact-check stop (main.py _hold_before_render): no video was made, so nothing is "kept".
+    "publish.blocked:before_render": "⛔ Held before the video was made ({blocks}) — no video exists",
     "publish.held": "⏸ Auto-publish OFF — gate passed, held for review: {title}",
     "upload.failed": "⚠️ Upload failed: {title} ({error})",
     "short.completed": "🎬 Short published: {url}",
@@ -203,7 +205,8 @@ def format_notification(event: str, metadata: Optional[dict] = None) -> Optional
     """Build a Telegram message for a pipeline event, or None for an event with
     no template (most events are not worth a push). Missing fields render as
     '?' rather than raising."""
-    template = _EVENT_TEMPLATES.get(event)
+    stage = (metadata or {}).get("stage") if isinstance(metadata, dict) else None
+    template = _EVENT_TEMPLATES.get(f"{event}:{stage}") or _EVENT_TEMPLATES.get(event)
     if not template:
         return None
     data = _SafeDict(metadata or {})

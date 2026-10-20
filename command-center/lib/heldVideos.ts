@@ -73,6 +73,42 @@ export function heldCause(v: { hold_detail?: unknown } | null | undefined): "upl
   return cause === "upload_failed" ? cause : null;
 }
 
+/** True when the run was held BEFORE its video was made (hold_detail.stage, a fixed word written by main.py's
+ *  early fact-check stop): there is no cut, no preview and nothing to repair or approve. */
+export function heldBeforeRender(v: { hold_detail?: unknown } | null | undefined): boolean {
+  return (v?.hold_detail as { stage?: unknown } | null | undefined)?.stage === "before_render";
+}
+
+/** The sources a flagged text can ship in (hold_detail.flagged[].source), as modules/claim_extractor.py names them. */
+export const FLAGGED_SOURCES = ["hook_ab", "hook_sentence", "title", "title_ab", "description", "thumbnail_text"] as const;
+export type FlaggedSource = (typeof FLAGGED_SOURCES)[number];
+export const FLAGGED_VERDICTS = ["likely_inaccurate", "unverifiable"] as const;
+export type FlaggedVerdict = (typeof FLAGGED_VERDICTS)[number];
+export type FlaggedText = { source: FlaggedSource; verdict: FlaggedVerdict; reasoning: string; text: string };
+
+/** The texts outside the narration that the fact-check did not clear (hold_detail.flagged), parsed defensively: the
+ *  column is free-form jsonb, so a source or verdict this build does not know is dropped, and the count and the
+ *  lengths are capped again here. These are model-written strings, rendered as text only. */
+export function heldFlagged(v: { hold_detail?: unknown } | null | undefined): FlaggedText[] {
+  const raw = (v?.hold_detail as { flagged?: unknown } | null | undefined)?.flagged;
+  if (!Array.isArray(raw)) return [];
+  const out: FlaggedText[] = [];
+  for (const item of raw) {
+    const r = item as { source?: unknown; verdict?: unknown; reasoning?: unknown; text?: unknown } | null;
+    if (!r || typeof r !== "object") continue;
+    if (!(FLAGGED_SOURCES as readonly string[]).includes(r.source as string)) continue;
+    if (!(FLAGGED_VERDICTS as readonly string[]).includes(r.verdict as string)) continue;
+    out.push({
+      source: r.source as FlaggedSource,
+      verdict: r.verdict as FlaggedVerdict,
+      reasoning: typeof r.reasoning === "string" ? r.reasoning.slice(0, 300) : "",
+      text: typeof r.text === "string" ? r.text.slice(0, 200) : "",
+    });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
 /** Restrict a `videos` query to uploaded rows. Structurally typed like
  *  scopeQuery, so it composes with it without TS2589. */
 export function uploadedOnly<Q extends object>(query: Q): Q {

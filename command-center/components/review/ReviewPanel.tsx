@@ -15,6 +15,7 @@ import {
   studioUrl,
   type ApproveAccess,
 } from "@/lib/videoApproval";
+import { heldBeforeRender, heldFlagged } from "@/lib/heldVideos";
 import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 
 /**
@@ -166,6 +167,7 @@ export function ReviewPanel({
     }
   }
 
+  const flaggedTexts = heldFlagged(video);
   const decided = state.view.kind === "approved" || state.view.kind === "expired" ? state.view : null;
   const who = decided?.by ?? null;
   const at = decided ? dayTime(decided.at) : "";
@@ -207,7 +209,9 @@ export function ReviewPanel({
               ? t.review.previewUnreadable
               : video.preview_path
                 ? t.review.previewLoading
-                : t.review.previewMissing}
+                : heldBeforeRender(video)
+                  ? t.review.previewBeforeRender
+                  : t.review.previewMissing}
           </p>
         </div>
       )}
@@ -262,6 +266,21 @@ export function ReviewPanel({
                   </li>
                 ))}
               </ul>
+            )}
+            {flaggedTexts.length > 0 && (
+              <div data-testid="flagged-texts" className="mt-3">
+                <div className="t-label">{t.review.flaggedHeading}</div>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {flaggedTexts.map((f, i) => (
+                    <li key={i} className="text-sm">
+                      <span className="text-[var(--color-muted)]">
+                        {t.review.flaggedSources[f.source]} · {t.review.flaggedVerdicts[f.verdict]}
+                      </span>
+                      <p className="m-0 mt-1">{f.text}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </>
         ) : (

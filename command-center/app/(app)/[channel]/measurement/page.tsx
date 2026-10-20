@@ -354,8 +354,9 @@ export default async function MeasurePage() {
               <ul className="g4-kv g4-gate mt-4">
                 {gateEvents.map((e) => {
                   const blocked = e.event === "publish.blocked";
-                  // Reasons are the gate's own strings (see publish_gate.to_metadata);
-                  // no script or claim text is ever carried in an event.
+                  // Only the reasons are read here: the gate's own strings (see publish_gate.to_metadata). The
+                  // early-hold event (stage "before_render") also carries a capped list of the flagged
+                  // title / description / thumbnail texts, which this list never shows.
                   const reasons = [
                     ...((e.metadata?.blocks as string[] | undefined) ?? []),
                     ...((e.metadata?.warnings as string[] | undefined) ?? []),

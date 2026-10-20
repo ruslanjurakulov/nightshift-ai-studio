@@ -732,7 +732,11 @@ def view_status(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
         lines.append(t(lang, "status.videos_unknown", why=unknown(lang, held)))
     else:
         lines.append(t(lang, "status.held", n=len(analysis.review_queue(held.data)), cut=cut(lang, held)))
-        lines.append(t(lang, "status.blocked", n=len(held.data) - len(analysis.review_queue(held.data))))
+        blocked_rows = [r for r in held.data if r.get("publish_state") == "blocked"]
+        early = sum(1 for r in blocked_rows if r.get("hold_stage") == "before_render")
+        lines.append(t(lang, "status.blocked", n=len(blocked_rows) - early))
+        if early:
+            lines.append(t(lang, "status.held_early", n=early))
     pub = ops.videos_published(now - timedelta(days=7))
     if not pub.ok:
         lines.append(t(lang, "status.published_unknown", why=unknown(lang, pub)))
@@ -773,9 +777,12 @@ def view_pending(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
                                age=age_label(parse_ts(r.get("held_at")), now)))
             if len(queue) > 10:
                 lines.append(t(lang, "pending.v_more", n=len(queue) - 10))
-        blocked = len(sec.data) - len(queue)
-        if blocked:
-            lines.append(t(lang, "pending.v_blocked", n=blocked))
+        blocked_rows = [r for r in sec.data if r.get("publish_state") == "blocked"]
+        early = sum(1 for r in blocked_rows if r.get("hold_stage") == "before_render")
+        if len(blocked_rows) - early:
+            lines.append(t(lang, "pending.v_blocked", n=len(blocked_rows) - early))
+        if early:
+            lines.append(t(lang, "pending.v_held_early", n=early))
     lines.append(t(lang, "pending.v_footer"))
     return Reply("\n".join(lines), _with_menu(
         lang, [_nav(lang, "approvals")], [open_button(lang, "approvals", app_link(cfg, "approvals"))], again="pending"))
