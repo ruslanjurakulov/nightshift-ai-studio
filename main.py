@@ -458,6 +458,33 @@ def _voice_record(mixer) -> dict:
         return {}
 
 
+def _record_stills(costs, fetcher, gen_images, channel_id) -> None:
+    """The run's record of generated stills: the ledger entry and the event.
+
+    A still the model returned nothing for falls back to stock for that scene, by
+    design (``image_providers``), and the record says which scenes and how many.
+    The event stays ``completed`` and carries ``degraded``: the Command Center reads
+    any failed event as a hard failure, and a soft image miss is not one. No ledger
+    entry is written for zero stills: an unpriced entry, even of quantity 0, makes
+    the settlement capture the whole hold instead of the metered amount
+    (``credits.settle_amount``)."""
+    made = len(gen_images)
+    missing = list(getattr(fetcher, "images_missing", None) or [])
+    attempted = getattr(fetcher, "images_attempted", made)
+    if missing:
+        logger.warning("[channel: %s] %d of %d generated still(s) did not come back; scene(s) %s use "
+                       "stock images", channel_id, len(missing), attempted, missing)
+    if not (made or missing):
+        return
+    provider = image_providers.active_provider()
+    if made:
+        costs.add(IMAGE_GENERATIONS, made, stage=f"image:{provider}")
+    events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
+                channel_id=channel_id,
+                metadata={"generated": made, "attempted": attempted, "missing_sections": missing,
+                          "degraded": bool(missing), "provider": provider})
+
+
 def _preflight_disk(channel_id, free_fn=None) -> None:
     """Refuse the run, before it spends anything, when the volume holding ``output/`` is nearly full.
 
@@ -1052,24 +1079,9 @@ def run(
         events.emit(events.AGENT_FAILED, agent="image_providers", status=events.STATUS_FAILED,
                     channel_id=channel_id, metadata={"error": str(e), "stage": "images"})
         raise
-    images_missing = list(getattr(fetcher, "images_missing", None) or [])
-    if images_missing:
-        # Soft by design (the model returned nothing), but never silent: the scene
-        # shows a stock image, and the record says which scenes and how many.
-        logger.warning("[channel: %s] %d of %d generated still(s) did not come back; scene(s) %s use "
-                       "stock images", channel_id, len(images_missing),
-                       getattr(fetcher, "images_attempted", 0), images_missing)
-    if gen_images or images_missing:
-        from modules import image_providers as _img
+    _record_stills(costs, fetcher, gen_images, channel_id)
+    if gen_images:
         images = list(gen_images) + list(images)
-        costs.add(IMAGE_GENERATIONS, len(gen_images), stage=f"image:{_img.active_provider()}")
-        events.emit(events.IMAGE_GENERATED, agent="image_providers",
-                    status=events.STATUS_COMPLETED if gen_images else events.STATUS_FAILED,
-                    channel_id=channel_id,
-                    metadata={"generated": len(gen_images),
-                              "attempted": getattr(fetcher, "images_attempted", len(gen_images)),
-                              "missing_sections": images_missing,
-                              "provider": _img.active_provider()})
     # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
     # supplementing the stock above. Off unless a key + flag are set, in which
     # case it makes no request and changes nothing. Generated clips join the
@@ -1286,8 +1298,10 @@ def run(
     # Measure the file first (modules/video_qc.py): streams, duration vs the
     # narration, truncation, black and silent runs. Never raises; the report
     # lands in qc_report.json and in the gate event's metadata.
+    # A scene whose recipe is a designed card is a still frame on purpose.
     qc_report = video_qc.run(video_path, audio_path=audio_path, timeline=timeline,
-                             expected_width=render_fmt.width, expected_height=render_fmt.height)
+                             expected_width=render_fmt.width, expected_height=render_fmt.height,
+                             static_scene_ids=video_qc.static_scene_ids(ir_project))
     gate = publish_gate.evaluate(
         script=script,
         video_path=video_path,

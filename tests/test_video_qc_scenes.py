@@ -46,21 +46,21 @@ def freeze_lines(*runs):
 
 
 class SceneQc(QcTestCase):
-    def qc_short(self, black=(), frozen=(), decoded_s=30.0):
+    def qc_short(self, black=(), frozen=(), decoded_s=30.0, **kw):
         stdout, stderr = scan_output(decoded_s=decoded_s, black=black)
         stderr += "\n".join(freeze_lines(*frozen)) + "\n"
         fake = FakeFfmpeg(banner().replace("00:01:00.02", "00:00:30.02"), scan=(stdout, stderr))
-        return self.qc(fake, narration_duration_s=30.0, timeline=SHORT)
+        return self.qc(fake, narration_duration_s=30.0, timeline=SHORT, **kw)
 
 
 class BlackSceneTests(SceneQc):
     def test_a_whole_black_scene_blocks_even_when_the_totals_stay_small(self):
-        report = self.qc_short(black=[(12.0, 18.0)])          # scene s002, 6 s of 30 s
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 18.0)])   # s002, 6 s of 30 s
         self.assertIn("video_qc_scene_black:s002", report.blocks)
         self.assertFalse(report.ok)
 
     def test_the_scene_is_named_in_the_report_measurements(self):
-        report = self.qc_short(black=[(12.0, 18.0)])
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 18.0)])
         self.assertEqual(report.measured["scene_black"], {"s002": 1.0})
 
     def test_half_a_black_scene_is_not_a_scene_block(self):
@@ -90,6 +90,70 @@ class BlackSceneTests(SceneQc):
         report = self.qc(fake, timeline=[])
         self.assertIn("video_qc_scenes_unchecked", report.warnings)
         self.assertEqual({c.name: c.status for c in report.checks}["scenes"], "skipped")
+
+
+class DarkButMovingTests(SceneQc):
+    """blackdetect calls a frame black when 98 % of its pixels are dark, so a sparse
+    night sky or a heading on a dark ground reads black while the picture moves.
+    A scene is a dead scene only when it is black AND still (F1 of the review)."""
+
+    def test_a_black_scene_that_is_not_frozen_does_not_block(self):
+        report = self.qc_short(black=[(12.0, 18.0)])
+        self.assertEqual([b for b in report.blocks if "scene" in b], [])
+
+    def test_it_is_a_warning_so_a_person_still_sees_it(self):
+        report = self.qc_short(black=[(12.0, 18.0)])
+        self.assertIn("video_qc_scene_dark:s002", report.warnings)
+
+    def test_black_with_less_than_half_the_scene_frozen_does_not_block(self):
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 14.9)])        # 48 % frozen
+        self.assertEqual([b for b in report.blocks if "scene" in b], [])
+
+    def test_black_with_half_the_scene_frozen_blocks(self):
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 15.0)])        # 50 % frozen
+        self.assertIn("video_qc_scene_black:s002", report.blocks)
+
+    def test_a_frozen_but_not_black_scene_still_blocks_as_frozen(self):
+        report = self.qc_short(frozen=[(12.0, 18.0)])
+        self.assertIn("video_qc_scene_frozen:s002", report.blocks)
+
+
+class StaticCardTests(SceneQc):
+    """A designed card (title, chapter, quote, stat, evidence) is still on purpose."""
+
+    def test_a_scene_named_static_is_not_blocked_for_being_black_or_frozen(self):
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 18.0)], static_scene_ids=["s002"])
+        self.assertEqual([b for b in report.blocks if "scene" in b], [])
+        self.assertEqual(report.measured["scene_static"], ["s002"])
+
+    def test_the_other_scenes_are_still_judged(self):
+        report = self.qc_short(black=[(6.0, 12.0), (12.0, 18.0)], frozen=[(6.0, 12.0), (12.0, 18.0)],
+                               static_scene_ids=["s002"])
+        self.assertEqual([b for b in report.blocks if "scene" in b], ["video_qc_scene_black:s001"])
+
+    def test_nothing_is_static_unless_the_caller_says_so(self):
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 18.0)])
+        self.assertEqual(report.measured["scene_static"], [])
+        self.assertIn("video_qc_scene_black:s002", report.blocks)
+
+    def test_the_whole_video_gates_are_unchanged_by_static_scenes(self):
+        # ten seconds of black is a hole whatever the scene is called
+        timeline = [{"section": "a", "start_ms": 0, "end_ms": 30_000}]
+        stdout, stderr = scan_output(decoded_s=30.0, black=[(5.0, 16.0)])
+        fake = FakeFfmpeg(banner().replace("00:01:00.02", "00:00:30.02"), scan=(stdout, stderr))
+        report = self.qc(fake, narration_duration_s=30.0, timeline=timeline, static_scene_ids=["s000"])
+        self.assertTrue(any(b.startswith("video_qc_black:") for b in report.blocks))
+
+    def test_card_recipes_come_from_the_ir_scenes(self):
+        from types import SimpleNamespace as NS
+        scene = lambda i, recipe: NS(id=f"s{i:03d}", shot=NS(recipe=recipe))
+        project = NS(scenes=[scene(0, "title_card"), scene(1, "slow_push"), scene(2, "evidence_card"),
+                             scene(3, "lateral_pan"), scene(4, "chapter_card"), scene(5, "no_such_recipe")])
+        self.assertEqual(video_qc.static_scene_ids(project), ["s000", "s002", "s004"])
+
+    def test_no_ir_project_means_no_static_scenes_and_no_crash(self):
+        self.assertEqual(video_qc.static_scene_ids(None), [])
+        self.assertEqual(video_qc.static_scene_ids(object()), [])
 
 
 class FrozenSceneTests(SceneQc):
@@ -125,6 +189,46 @@ class FrozenSceneTests(SceneQc):
         self.assertEqual(report.blocks, [])
 
 
+class FilterMissingTests(SceneQc):
+    """If this ffmpeg has no freezedetect, the whole decode pass used to fail and
+    black, silence and truncation went unmeasured with it (F2 of the review)."""
+
+    class NoFreezeFfmpeg(FakeFfmpeg):
+        def __call__(self, cmd, **kw):
+            if "-f" in cmd and "null" in cmd and "-vf" in cmd and "freezedetect" in cmd[cmd.index("-vf") + 1]:
+                self.calls.append(cmd)
+                return subprocess.CompletedProcess(
+                    cmd, 1, "", "[AVFilterGraph @ 0x1] No such filter: 'freezedetect'\nError reinitializing filters!\n")
+            return super().__call__(cmd, **kw)
+
+    def run_without_freeze(self, black=()):
+        fake = self.NoFreezeFfmpeg(banner().replace("00:01:00.02", "00:00:30.02"),
+                                   scan=scan_output(decoded_s=30.0, black=black))
+        return fake, self.qc(fake, narration_duration_s=30.0, timeline=SHORT)
+
+    def test_the_pass_is_retried_once_without_the_freeze_filter(self):
+        fake, _ = self.run_without_freeze()
+        scans = [c for c in fake.calls if "null" in c]
+        self.assertEqual(len(scans), 2)
+        self.assertNotIn("freezedetect", scans[1][scans[1].index("-vf") + 1])
+
+    def test_black_is_still_measured_and_the_whole_video_rule_still_blocks(self):
+        _, report = self.run_without_freeze(black=[(5.0, 16.0)])
+        self.assertTrue(any(b.startswith("video_qc_black:") for b in report.blocks))
+        self.assertEqual({c.name: c.status for c in report.checks}["decode"], "pass")
+
+    def test_the_per_scene_reading_is_unknown_not_clean(self):
+        _, report = self.run_without_freeze(black=[(12.0, 18.0)])
+        self.assertIn("video_qc_scenes_unchecked", report.warnings)
+        self.assertEqual({c.name: c.status for c in report.checks}["scenes"], "skipped")
+        self.assertEqual([b for b in report.blocks if "scene" in b], [])
+
+    def test_a_pass_that_fails_for_another_reason_is_not_retried(self):
+        fake = FakeFfmpeg(banner(), scan=("frame=1\nout_time_us=1000000\n", "Invalid data found\n"), scan_rc=1)
+        self.qc(fake)
+        self.assertEqual(len([c for c in fake.calls if "null" in c]), 1)
+
+
 class ScanCommandTests(SceneQc):
     def test_the_decode_pass_detects_freezes_outside_the_caption_band(self):
         fake = FakeFfmpeg(banner())
@@ -136,6 +240,22 @@ class ScanCommandTests(SceneQc):
         self.assertIn("blackdetect=", chain)
         self.assertLess(chain.index("crop="), chain.index("freezedetect="))
         self.assertIn("freezedetect=n=-60dB", chain)
+
+
+def _build(video: Path, parts, audio_s: float, size="640x360", fps=30):
+    """Concatenate lavfi sources into one mp4 with a tone, as the render would give."""
+    ff = video_qc._ffmpeg_exe()
+    cmd = [ff, "-y", "-hide_banner", "-loglevel", "error"]
+    for p in parts:
+        cmd += ["-f", "lavfi", "-i", p]
+    n = len(parts)
+    cmd += ["-f", "lavfi", "-i", f"sine=frequency=440:sample_rate=44100:duration={audio_s}",
+            "-filter_complex", "".join(f"[{i}:v]format=yuv420p,setsar=1[v{i}];" for i in range(n))
+            + "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[v]",
+            "-map", "[v]", "-map", f"{n}:a", "-c:v", "libx264", "-c:a", "aac", "-shortest", str(video)]
+    done = subprocess.run(cmd, capture_output=True, text=True)
+    if done.returncode != 0 or not video.exists():
+        raise unittest.SkipTest("this ffmpeg could not build the test clip: " + done.stderr[-300:])
 
 
 def _ffmpeg():
@@ -196,6 +316,58 @@ class RealFfmpegTests(unittest.TestCase):
         flagged = {b.rsplit(":", 1)[-1] for b in self.report.blocks if "scene" in b}
         self.assertEqual(flagged, {"s001", "s002"}, self.report.blocks)
         self.assertFalse([w for w in self.report.warnings if "frozen" in w and "s003" in w])
+
+
+@unittest.skipUnless(_ffmpeg() or shutil.which("ffmpeg"), "ffmpeg is not installed here")
+class DarkStaticSceneRealFfmpegTests(unittest.TestCase):
+    """Cards and skies the reviewer found false holds on, built with ffmpeg:
+    s000 a title card (#0b0b10, a bar 6 % of the width), s001 a short heading
+    (under 2 % bright pixels), s002 a sparse night sky that slowly zooms,
+    s003 moving picture. Ten seconds each, so every one is judged."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.video = Path(cls.tmp.name) / "final_video.mp4"
+        size, fps = "640x360", 30
+        card = (f"color=c=0x0b0b10:s={size}:r={fps}:d=10,"
+                "drawbox=x=300:y=170:w=38:h=14:color=white:t=fill")           # 6 % of the width
+        heading = (f"color=c=0x0b0b10:s={size}:r={fps}:d=10,"
+                   "drawbox=x=290:y=170:w=60:h=16:color=white:t=fill")        # about 0.4 % of the pixels
+        sky = (f"nullsrc=s=1280x720:r={fps}:d=10,"
+               "geq=lum='if(gt(random(1),0.9985),255,4)':cb=128:cr=128,"
+               f"zoompan=z='1+0.12*on/300':d=1:s={size}:fps={fps}")
+        moving = f"testsrc2=s={size}:r={fps}:d=10"
+        cls.timeline = [{"section": f"s{i}", "start_ms": i * 10_000, "end_ms": (i + 1) * 10_000}
+                        for i in range(4)]
+        _build(cls.video, [card, heading, sky, moving], 40)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def report(self, **kw):
+        with patch("modules.video_qc._expected_format", return_value=(640, 360, 30.0)):
+            return video_qc.run(self.video, narration_duration_s=40.0, timeline=self.timeline,
+                                write_report=False, **kw)
+
+    def scene_blocks(self, report):
+        return {b.rsplit(":", 1)[-1] for b in report.blocks if "scene" in b}
+
+    def test_a_sparse_night_sky_that_moves_is_not_held(self):
+        report = self.report()
+        self.assertNotIn("s002", self.scene_blocks(report), report.measured.get("scene_frozen"))
+
+    def test_moving_picture_is_not_held(self):
+        self.assertNotIn("s003", self.scene_blocks(self.report()))
+
+    def test_cards_are_held_unless_the_caller_says_they_are_cards(self):
+        # Why the caller must say so: a still card IS black-and-frozen to ffmpeg.
+        self.assertTrue({"s000", "s001"} <= self.scene_blocks(self.report()))
+
+    def test_cards_named_static_pass(self):
+        report = self.report(static_scene_ids=["s000", "s001"])
+        self.assertEqual(self.scene_blocks(report), set(), report.blocks)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modules import audio_mixer, image_providers as ip
+from modules import audio_mixer, credits, image_providers as ip
 from modules.audio_mixer import AudioMixer
 from modules.media_fetcher import MediaFetcher
 
@@ -144,6 +144,84 @@ class VoiceRecordCannotStopARun(unittest.TestCase):
         self.assertEqual(self.main._voice_record(mock.MagicMock()), {})
 
 
+class StillOutcomeRecord(unittest.TestCase):
+    """main._record_stills: what the run's record and its ledger say about stills."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import main
+        except Exception as e:
+            raise unittest.SkipTest(f"main.py cannot be imported here: {type(e).__name__}")
+        cls.main = main
+
+    def record(self, made, missing, attempted):
+        from modules import cost_ledger
+        costs = cost_ledger.CostLedger()
+        fetcher = mock.MagicMock()
+        fetcher.images_missing, fetcher.images_attempted = list(missing), attempted
+        with mock.patch.object(self.main.events, "emit") as emit, \
+                mock.patch.object(self.main.image_providers, "active_provider", return_value="leonardo"):
+            self.main._record_stills(costs, fetcher, [Path(f"g{i}.jpg") for i in range(made)], "chan")
+        return costs, emit
+
+    def test_a_soft_miss_is_a_completed_event_marked_degraded_not_a_failure(self):
+        # The Command Center reads any failed event as a hard failure; a held run whose
+        # only fault was a soft image miss must not show FAILED.
+        _, emit = self.record(made=0, missing=[0, 1, 2], attempted=3)
+        emit.assert_called_once()
+        kw = emit.call_args.kwargs
+        self.assertEqual(kw["status"], self.main.events.STATUS_COMPLETED)
+        self.assertEqual(kw["metadata"], {"generated": 0, "attempted": 3, "missing_sections": [0, 1, 2],
+                                          "degraded": True, "provider": "leonardo"})
+
+    def test_a_clean_generation_is_not_degraded(self):
+        _, emit = self.record(made=2, missing=[], attempted=2)
+        self.assertIs(emit.call_args.kwargs["metadata"]["degraded"], False)
+
+    def test_part_missing_is_degraded_and_the_made_ones_are_counted(self):
+        costs, emit = self.record(made=2, missing=[2], attempted=3)
+        self.assertIs(emit.call_args.kwargs["metadata"]["degraded"], True)
+        self.assertEqual([(e.unit, e.quantity) for e in costs.entries], [("image_generations", 2.0)])
+
+    def test_nothing_asked_for_records_nothing(self):
+        costs, emit = self.record(made=0, missing=[], attempted=0)
+        emit.assert_not_called()
+        self.assertEqual(costs.entries, [])
+
+    def test_no_zero_quantity_ledger_entry_when_no_still_came_back(self):
+        costs, _ = self.record(made=0, missing=[0], attempted=1)
+        self.assertEqual(costs.entries, [])
+
+    def test_the_event_keys_survive_the_event_log_redaction(self):
+        import json
+        from modules import event_log
+        _, emit = self.record(made=0, missing=[0], attempted=1)
+        kept = json.loads(event_log._sanitize(emit.call_args.kwargs["metadata"]))
+        self.assertEqual(set(kept), {"generated", "attempted", "missing_sections", "degraded", "provider"})
+        self.assertNotIn(event_log._REDACTED, kept.values())
+
+
+class ZeroQuantityLedgerEntryAndSettlement(unittest.TestCase):
+    """Why the helper must not write a zero entry: an unpriced entry, even with
+    quantity 0, makes the settlement capture the whole hold instead of the metered
+    amount (credits.settle_amount)."""
+
+    PRICES = {"tts_characters": credits.Price(0.001, 0.0)}
+
+    def settle(self, *extra):
+        entries = [{"unit": "tts_characters", "quantity": 2000}, *extra]
+        return credits.settle_amount(40, entries, self.PRICES)
+
+    def test_a_metered_run_is_charged_what_it_used(self):
+        got = self.settle()
+        self.assertEqual((got.reason, got.amount), (credits.SETTLE_METERED, 2.0))
+
+    def test_an_unpriced_zero_entry_would_capture_the_whole_hold(self):
+        got = self.settle({"unit": "image_generations", "quantity": 0})
+        self.assertEqual((got.reason, got.amount), (credits.SETTLE_UNPRICED, 40))
+
+
 class MainWiring(unittest.TestCase):
     def setUp(self):
         src = MAIN.read_text()
@@ -155,18 +233,16 @@ class MainWiring(unittest.TestCase):
         emit = body[body.index("events.VOICE_COMPLETED"):]
         self.assertIn("metadata=_voice_record(mixer)", emit[:300])
 
-    def test_the_still_event_says_how_many_were_wanted_and_which_scenes_fell_back(self):
+    def test_the_qc_call_names_the_card_scenes_of_the_ir_project(self):
         body = self.run_src
-        call = body[body.index("events.IMAGE_GENERATED"):]
-        self.assertIn('"attempted"', call[:500])
-        self.assertIn('"missing_sections"', call[:500])
+        qc = body[body.index("video_qc.run("):]
+        self.assertIn("static_scene_ids=video_qc.static_scene_ids(ir_project)", qc[:400])
+        self.assertLess(body.index("ir_project = video_ir.write_for_run("), body.index("video_qc.run("))
 
-    def test_a_scene_that_fell_back_is_reported_even_when_no_still_came_back(self):
+    def test_run_hands_the_still_outcome_to_the_helper_after_the_generator_stage(self):
         body = self.run_src
-        # The event used to sit inside `if gen_images:`, so zero stills of three
-        # asked for left no trace at all.
-        gate = body.index("if gen_images or images_missing:")
-        self.assertLess(gate, body.index("events.IMAGE_GENERATED"))
+        self.assertGreater(body.index("_record_stills(costs, fetcher, gen_images"),
+                           body.index("fetcher.generate_images("))
 
 
 if __name__ == "__main__":

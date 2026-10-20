@@ -20,7 +20,10 @@ depends on — and returns numbers, not opinions:
   no visual was built is a black/near-black ``ColorClip``;
 * **silence** — long silent runs (``silencedetect``);
 * **scenes** — black and frozen picture per scene (``freezedetect``): a scene a
-  viewer saw nothing in blocks even when the whole-video totals stay small.
+  viewer saw nothing in blocks even when the whole-video totals stay small. A
+  scene is dead only when it is black AND still (a sparse night sky or a heading
+  on a dark ground reads black while moving); a scene whose recipe is a designed
+  card is a still frame on purpose and is skipped (``static_scene_ids``).
 
 Black and silent runs are mapped onto scene ids (``s000``, ``s001`` …, the
 script section index — the shared Video IR convention) using the audio
@@ -93,6 +96,8 @@ BLACK_BLOCK_FRACTION = 0.25
 # the 90 % keeps a fade or a held title card at either end from counting.
 SCENE_MIN_S = 3.0
 SCENE_BLOCK_FRACTION = 0.9
+# ... and a black scene blocks only when at least this much of it is also frozen.
+SCENE_BLACK_FROZEN_FRACTION = 0.5
 
 # Frozen picture. The picture is checked above the caption band only: the
 # burnt-in word captions change a small patch of every frame and would hide a
@@ -385,26 +390,57 @@ def scan(path: Path, *, has_video: bool, has_audio: bool,
     exe = _ffmpeg_exe()
     if not exe:
         raise FileNotFoundError("ffmpeg")
-    cmd = [exe, "-hide_banner", "-nostdin", "-nostats", "-i", str(path)]
-    if has_video:
-        cmd += ["-vf",
-                f"blackdetect=d={BLACK_MIN_S}:pix_th={BLACK_PIX_TH},"
-                f"crop=iw:2*trunc(ih*{FREEZE_KEEP_TOP}/2):0:0,"
-                f"freezedetect=n={FREEZE_NOISE_DB}dB:d={FREEZE_MIN_S}"]
-    else:
-        cmd += ["-vn"]
-    if has_audio:
-        cmd += ["-af", f"silencedetect=noise={SILENCE_NOISE_DB}dB:d={SILENCE_MIN_S}"]
-    else:
-        cmd += ["-an"]
-    cmd += ["-f", "null", "-progress", "pipe:1", "-"]
-    done = subprocess.run(cmd, capture_output=True, text=True, timeout=SCAN_TIMEOUT_S)
+    def command(with_freeze: bool) -> list:
+        cmd = [exe, "-hide_banner", "-nostdin", "-nostats", "-i", str(path)]
+        if has_video:
+            chain = f"blackdetect=d={BLACK_MIN_S}:pix_th={BLACK_PIX_TH}"
+            if with_freeze:
+                chain += (f",crop=iw:2*trunc(ih*{FREEZE_KEEP_TOP}/2):0:0,"
+                          f"freezedetect=n={FREEZE_NOISE_DB}dB:d={FREEZE_MIN_S}")
+            cmd += ["-vf", chain]
+        else:
+            cmd += ["-vn"]
+        if has_audio:
+            cmd += ["-af", f"silencedetect=noise={SILENCE_NOISE_DB}dB:d={SILENCE_MIN_S}"]
+        else:
+            cmd += ["-an"]
+        return cmd + ["-f", "null", "-progress", "pipe:1", "-"]
+
+    done = subprocess.run(command(has_video), capture_output=True, text=True, timeout=SCAN_TIMEOUT_S)
+    freeze_unavailable = False
+    err = (done.stderr or "").lower()
+    if has_video and done.returncode != 0 and ("freezedetect" in err or "no such filter" in err):
+        # This ffmpeg cannot run the freeze filter, and the whole pass failed with it:
+        # black, silence and truncation would go unmeasured too. Run it once without
+        # the filter; what the freeze filter would have said stays unknown.
+        retry = subprocess.run(command(False), capture_output=True, text=True, timeout=SCAN_TIMEOUT_S)
+        if retry.returncode == 0:
+            done, freeze_unavailable = retry, True
     result = _parse_scan(done.stdout or "", done.stderr or "", fallback_end_s=duration_s)
     result["returncode"] = done.returncode
+    result["freeze_unavailable"] = freeze_unavailable
     return result
 
 
 # ── scene mapping ──────────────────────────────────────────────────────────
+
+
+def static_scene_ids(project) -> list:
+    """Ids of the scenes whose recipe is a designed card (title, chapter, quote,
+    stat, evidence, timeline: ``shot_recipes`` kind ``graphic``) in a Video IR
+    project. Such a scene is a still frame on purpose, black-and-frozen to ffmpeg,
+    so per-scene QC leaves it alone. Never raises; unknown means not static."""
+    try:
+        from modules import shot_recipes
+
+        out = []
+        for scene in getattr(project, "scenes", None) or []:
+            recipe = shot_recipes.get(getattr(getattr(scene, "shot", None), "recipe", None))
+            if recipe is not None and recipe.kind == shot_recipes.KIND_GRAPHIC:
+                out.append(str(scene.id))
+        return out
+    except Exception:
+        return []
 
 
 def scene_id(section_index: int) -> str:
@@ -512,14 +548,20 @@ def run(
     expected_height: Optional[int] = None,
     expected_fps: Optional[float] = None,
     write_report: bool = True,
+    static_scene_ids=None,
 ) -> QcReport:
-    """Measure `video_path` and write `qc_report.json` next to it. Never raises."""
+    """Measure `video_path` and write `qc_report.json` next to it. Never raises.
+
+    ``static_scene_ids`` names scenes that are a still card on purpose (see
+    :func:`static_scene_ids`); the per-scene black and frozen blocks skip them. The
+    whole-video rules are unchanged."""
     report = QcReport(video_path=str(video_path or ""))
     try:
         _run_checks(
             report, video_path, audio_path=audio_path,
             narration_duration_s=narration_duration_s, timeline=timeline,
             expected=(expected_width, expected_height, expected_fps),
+            static=set(static_scene_ids or ()),
         )
     except Exception as e:  # belt and braces: each check already guards itself
         report.add("qc", STATUS_ERROR, type(e).__name__)
@@ -538,7 +580,7 @@ def run(
 
 
 def _run_checks(report: QcReport, video_path, *, audio_path, narration_duration_s,
-                timeline, expected) -> None:
+                timeline, expected, static=frozenset()) -> None:
     exp_w, exp_h, exp_fps = expected
     def_w, def_h, def_fps = _expected_format()
     exp_w, exp_h, exp_fps = exp_w or def_w, exp_h or def_h, exp_fps or def_fps
@@ -638,7 +680,7 @@ def _run_checks(report: QcReport, video_path, *, audio_path, narration_duration_
     _judge_decode(report, result, duration)
     if video is not None:
         _judge_black(report, result, duration, timeline)
-        _judge_scenes(report, result, timeline)
+        _judge_scenes(report, result, timeline, static)
     if audio is not None:
         _judge_silence(report, result, timeline)
 
@@ -683,15 +725,18 @@ def _judge_black(report: QcReport, result: dict, duration: Optional[float], time
         report.add("black", STATUS_PASS, f"only short runs ({total:.1f}s total)")
 
 
-def _judge_scenes(report: QcReport, result: dict, timeline) -> None:
+def _judge_scenes(report: QcReport, result: dict, timeline, static=frozenset()) -> None:
     """Black and frozen picture, scene by scene. Only blocks and warnings: what a
     block does to a video (a hold, never a publish) is the gate's call."""
     frozen = _spans(result.get("frozen") or [], timeline)
     report.measured["frozen_segments"] = frozen
     report.measured["frozen_total_s"] = round(sum(s["duration_s"] for s in frozen), 3)
-    if not timeline:
-        # No scene windows: a per-scene reading is unknown, not clean.
-        report.add("scenes", STATUS_SKIPPED, "no scene timeline")
+    if not timeline or result.get("freeze_unavailable"):
+        # No scene windows, or no freeze reading (this ffmpeg lacks the filter): a
+        # per-scene reading is unknown, not clean. Black needs the freeze reading
+        # to be judged (below), so nothing per scene is judged either.
+        report.add("scenes", STATUS_SKIPPED,
+                   "no scene timeline" if not timeline else "this ffmpeg has no freezedetect")
         report.warnings.append("video_qc_scenes_unchecked")
         return
     black_cov = _scene_coverage(result.get("black") or [], timeline)
@@ -700,20 +745,27 @@ def _judge_scenes(report: QcReport, result: dict, timeline) -> None:
     scene_frozen = {k: v for k, v in frozen_cov.items() if v > 0}
     report.measured["scene_black"] = scene_black
     report.measured["scene_frozen"] = scene_frozen
+    report.measured["scene_static"] = sorted(static)
     bad = []
-    black_scenes = {sid for sid, f in scene_black.items() if f >= SCENE_BLOCK_FRACTION}
+    # blackdetect calls a frame black when 98 % of its pixels are dark, so a sparse
+    # night sky or a heading on a dark ground reads black while the picture moves.
+    # A scene nobody saw anything in is black AND still: black alone is a warning.
+    mostly_black = {sid for sid, f in scene_black.items() if f >= SCENE_BLOCK_FRACTION and sid not in static}
+    black_scenes = {sid for sid in mostly_black if scene_frozen.get(sid, 0.0) >= SCENE_BLACK_FROZEN_FRACTION}
+    for sid in sorted(mostly_black - black_scenes):
+        report.warnings.append(f"video_qc_scene_dark:{sid}")
     for sid in sorted(black_scenes):
         report.blocks.append(f"video_qc_scene_black:{sid}")
         bad.append(f"{sid} black")
     # A black picture is also a frozen one; the scene is reported once, as black.
     frozen_scenes = {sid for sid, f in scene_frozen.items()
-                     if f >= SCENE_BLOCK_FRACTION and sid not in black_scenes}
+                     if f >= SCENE_BLOCK_FRACTION and sid not in black_scenes and sid not in static}
     for sid in sorted(frozen_scenes):
         report.blocks.append(f"video_qc_scene_frozen:{sid}")
         bad.append(f"{sid} frozen")
     longest = max(frozen, key=lambda s: s["duration_s"], default=None)
     if (longest and longest["duration_s"] >= FREEZE_WARN_S
-            and not set(longest.get("scene_ids") or []) & (frozen_scenes | black_scenes)):
+            and not set(longest.get("scene_ids") or []) & (frozen_scenes | black_scenes | set(static))):
         report.warnings.append(f"video_qc_frozen:{longest['duration_s']:.1f}s{_where(longest)}")
     report.add("scenes", STATUS_FAIL if bad else STATUS_PASS, ", ".join(bad))
 
