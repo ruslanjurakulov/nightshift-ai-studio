@@ -54,20 +54,28 @@ SLOT_ASPECT = {"step": 1.0, "tool": 4 / 3}
 ALPHA_FLOOR = 12
 # The object keeps this share of the canvas free on each side of its limiting axis, the same for all eleven, so they read as equally sized.
 MARGIN = 0.07
+# Per-slot margin where the shared one would leave a picture small: step-1 is a wide thin bar, so in a square it is limited by width alone and
+# gets 1% of the canvas on each side (its width goes from 86% to 98%, about 30% more area) instead of 7%.
+SLOT_MARGIN = {"step-1": 0.01}
+# The three step pictures share one baseline and one left edge: each object is placed against the canvas's bottom (4% up) and left (1% in), so on the
+# page the picture bottoms line up across the steps and the picture's left edge sits on the text edge. The tool tiles keep their objects centred.
+STEP_LEFT = 0.01
+STEP_BOTTOM = 0.04
 
 
-def make_slot(src: Image.Image, width: int, aspect: float) -> Image.Image:
-    """Cleans the alpha, trims the transparent border, and re-pads the object onto a transparent canvas of the slot's shape with the same margin."""
+def make_slot(src: Image.Image, width: int, aspect: float, margin: float = MARGIN, step: bool = False) -> Image.Image:
+    """Cleans the alpha, trims the transparent border, and re-pads the object onto a transparent canvas of the slot's shape with the same margin (centred for a tool, bottom-left for a step)."""
     px = np.array(src.convert("RGBA"))
     px[px[..., 3] < ALPHA_FLOOR] = 0
     ys, xs = np.where(px[..., 3] > 0)
     obj = Image.fromarray(px[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1], "RGBA")
     cw, ch = width, round(width / aspect)
-    scale = min(cw * (1 - 2 * MARGIN) / obj.width, ch * (1 - 2 * MARGIN) / obj.height)
+    scale = min(cw * (1 - 2 * margin) / obj.width, ch * (1 - 2 * margin) / obj.height)
     # Pillow resizes RGBA premultiplied, so the edge carries no halo of the colour under the transparent pixels.
     obj = obj.resize((round(obj.width * scale), round(obj.height * scale)), Image.LANCZOS)
     canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-    canvas.paste(obj, ((cw - obj.width) // 2, (ch - obj.height) // 2))
+    at = (round(cw * STEP_LEFT), ch - round(ch * STEP_BOTTOM) - obj.height) if step else ((cw - obj.width) // 2, (ch - obj.height) // 2)
+    canvas.paste(obj, at)
     return canvas
 
 
@@ -90,7 +98,7 @@ def main() -> None:
             print(f"{name}: no {os.path.basename(src)} in ART, skipped")
             continue
         if name in SLOT_PNG:
-            im = make_slot(Image.open(src), width, SLOT_ASPECT[name.split("-")[0]])
+            im = make_slot(Image.open(src), width, SLOT_ASPECT[name.split("-")[0]], SLOT_MARGIN.get(name, MARGIN), step=name.startswith("step-"))
         else:
             im = Image.open(src).convert("RGB")
             if name in CROP:

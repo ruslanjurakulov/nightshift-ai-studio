@@ -220,6 +220,11 @@ describe("the steps and the tool wall", () => {
   it("draws the pictures on the page's own surface in both themes: no dark box, no shadow, contained (never cropped), the tile 4:3 with the base surface and the panels' hairline; the icon tile keeps its dark gradient", () => {
     expect(css).toMatch(/\.nx-strip-pic \{ display: block; width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; object-fit: contain; \}/);
     expect(css).toMatch(/\.nx-strip-step \{ align-content: start; \}/);
+    // The three step pictures share one baseline and one left edge (the converter puts each object against the canvas's bottom and left), and step-1, a thin bar, has a smaller margin.
+    const script = read("scripts/make-site-art.py");
+    expect(script).toMatch(/SLOT_MARGIN = \{"step-1": 0\.01\}/);
+    expect(script).toMatch(/STEP_LEFT = 0\.01/);
+    expect(script).toMatch(/STEP_BOTTOM = 0\.04/);
     expect(css).toMatch(/\.nx-strip-step:has\(\.nx-strip-pic\) \.nx-strip-pic \{ grid-column: 1; grid-row: 1 \/ span 3; width: 104px; \}/);
     expect(css).toMatch(/\.nx-wall-frame:has\(\.nx-wall-pic\) \{ aspect-ratio: 4 \/ 3; background: var\(--ns-ground\); border: 1px solid var\(--ns-rule\); \}/);
     expect(css).toMatch(/\.nx-wall-pic \{ display: block; width: 100%; height: 100%; object-fit: contain; \}/);
@@ -230,6 +235,21 @@ describe("the steps and the tool wall", () => {
     // The picture's drift is only where motion is allowed (reduced motion and the pause switch keep it still); so is the icon's.
     expect(css).toMatch(/html\[data-motion="paused"\] \.nx-wall-pic \{ transition: none; transform: none !important; \}/);
     expect(css).toMatch(/html\[data-motion="paused"\] \.nx-wall-icon \{ transition: none; transform: none !important; \}/);
+  });
+
+  it("lightens the muted text of \"How it works\" in dark mode only, in that section only (the shared token is the whole site's muted text, so no global value moves)", () => {
+    const g = read("app/globals.css");
+    expect(g).toContain("--ns-text-dim: #b4aea1;");
+    expect(css).toMatch(/@media \(prefers-color-scheme: dark\) \{ :root:not\(\[data-theme="light"\]\) \.nx-section#how \{ --ns-text-dim: #d3cdc1; \} \}/);
+    expect(css).toMatch(/:root\[data-theme="dark"\] \.nx-section#how \{ --ns-text-dim: #d3cdc1; \}/);
+    // 4.5:1 is the floor; the aim for this small text is about 7:1. It sits on the raised section's #1b1a17 (the ground is darker): the brighter of the two is the worst case.
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (a: string, b: string) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+    expect(ratio("#d3cdc1", "#1b1a17")).toBeGreaterThanOrEqual(7);
+    expect(ratio("#d3cdc1", "#1b1a17")).toBeGreaterThan(ratio("#b4aea1", "#1b1a17"));
   });
 
   it("has the fallback icon's colour at 4.5:1 or better on the tile's brightest point (the icon tile never changes with the theme)", () => {

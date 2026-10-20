@@ -1383,3 +1383,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
   .nx-hero-copy { --ns-text: #fff; --ns-text-dim: rgba(255, 255, 255, 0.88); --ns-rule-strong: rgba(255, 255, 255, 0.4); --ns-console: rgba(8, 8, 8, 0.66); --st-act-ink: #b3acff; --ns-go: #5ee0a0; color: #fff; }
   .nx-hero-copy .nx-h1 { text-shadow: 0 1px 24px rgba(0, 0, 0, 0.35); }
 }
+
+/* ── "How it works" in dark mode: its small muted text (the steps' sentences, the wall's label, "No credits" and its note) a step lighter ── */
+/* --ns-text-dim is the whole site's muted text (#b4aea1, 7.9:1 on the dark surface); this section reads it at 15 to 16 px under 14 to 21 px headings, so it takes #d3cdc1 here (11.0:1 measured on the glyphs) and nothing else on the site moves. The three selectors are globals.css's own dark switches (the system's, and the explicit data-theme). */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .nx-section#how { --ns-text-dim: #d3cdc1; } }
+:root[data-theme="dark"] .nx-section#how { --ns-text-dim: #d3cdc1; }
