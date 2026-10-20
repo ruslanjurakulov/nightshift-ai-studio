@@ -12,6 +12,11 @@ all, and the problems that only show when a run starts.
   event for it since the slot, one alert says so and names the likeliest cause from
   the GitHub run list: the workflow never started, it failed, it ended with
   nothing, or it is stuck queued. A run that is still in progress is not silence.
+* **A paused pipeline is not silence.** While the owner has ``NIGHTSHIFT_PIPELINE_PAUSED`` on (the scheduler's own
+  reading of it, ``modules/pipeline_pause.py``) no slot is expected: no dead-man alert and no "cannot judge" note,
+  the digest says "paused" instead of MISSING, and ONE information alert a UTC day (health kind, Telegram only,
+  never e-mail) says the pause is still on, so a pause left on for weeks is not forgotten. A channel-level pause
+  (status PAUSED, schedule off) was always honoured: ``scheduled_channels`` is the registry's own judgement.
 * **The daily workflow itself.** A failed scheduled run or manual dispatch of
   ``daily_video.yml`` (which jobs, at which step: workflow names, never a log).
 * **Per video.** A video the publish gate blocked, a failed upload, and (as
@@ -359,9 +364,16 @@ def _run_view(runs: Section, start: datetime, now: datetime) -> tuple:
 
 # -- the dead-man switch --------------------------------------------------------------------
 
+def paused(ops: OperatorSources) -> bool:
+    """Did the owner pause the scheduled pipeline? (``OperatorConfig.pipeline_paused``, the scheduler's own reading.)"""
+    return bool(getattr(ops.cfg, "pipeline_paused", False))
+
+
 def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Verdicts) -> list:
     if grace_default is None or not ev.sched:
         return []
+    if paused(ev.ops):
+        return []                        # a slot stopped on purpose is not silence, and earns no "recovered" note either
     now = _utc(ev.now)
     out = []
     for ch in ev.sched:
@@ -475,6 +487,15 @@ def words(value, limit: int) -> str:
 
 # -- one video ------------------------------------------------------------------------------
 
+#: The alert sentence for each reason a finished video was not uploaded (held_video.HOLD_CAUSES).
+_HOLD_ALERT_COPY = {
+    "upload_failed": "alert.video_upload_failed",
+    "quota_exceeded": "alert.video_quota_exceeded",
+    "upload_limit_exceeded": "alert.video_upload_limit_exceeded",
+    "token_expired": "alert.video_token_expired",
+}
+
+
 def video_alerts(ev: Evidence, lang: str) -> list:
     """A video the publish gate blocked, one whose upload failed, one held for review: operator channels only
     (the registry the scheduler uses). All three come from the video's own row, which the run writes the moment
@@ -501,9 +522,11 @@ def video_alerts(ev: Evidence, lang: str) -> list:
         elif state == "blocked":
             out.append(_alert("pipeline", f"video:blocked:{stamp}", "warn",
                               t(lang, "alert.video_blocked", channel=safe_id(ch), video=vid), ch))
-        elif state == "held" and r.get("hold_cause") == "upload_failed":
-            out.append(_alert("pipeline", f"video:upload_failed:{stamp}", "warn",
-                              t(lang, "alert.video_upload_failed", channel=safe_id(ch), video=vid), ch))
+        elif state == "held" and r.get("hold_cause") in _HOLD_ALERT_COPY:
+            # One word per cause (modules/held_video.HOLD_CAUSES): "out of quota today" is not "broken token".
+            cause = r["hold_cause"]
+            out.append(_alert("pipeline", f"video:{cause}:{stamp}", "warn",
+                              t(lang, _HOLD_ALERT_COPY[cause], channel=safe_id(ch), video=vid), ch))
         elif state == "held":
             out.append(_alert("approval", f"video:held:{stamp}", "info",
                               t(lang, "alert.video_held", channel=safe_id(ch), video=vid), ch))
@@ -563,6 +586,23 @@ def doctor_alerts(ops: OperatorSources, now: datetime, lang: str, verdicts: Verd
     verdicts.sweeps.append(Sweep("doctor:check:", "health", lambda k: t(
         lang, "alert.doctor_ok", check=family(k).split(":")[2]), bad))
     return out
+
+
+# -- the pause itself -----------------------------------------------------------------------
+
+def pause_alerts(ops: OperatorSources, now: datetime, lang: str, verdicts: Verdicts) -> list:
+    """ONE information alert per UTC day while the pipeline is paused: a pause left on for weeks must not be
+    forgotten, and nothing else (no dead-man alert, no MISSING) reminds the owner of it. Health kind and
+    information severity, so it is Telegram only (the owner's e-mail takes information alerts of payment and
+    sign-up only). When the pause is lifted after it was announced, one "recovered" note says so (the sweep
+    judges every ``paused:`` condition at once, like the readiness check's)."""
+    key = f"paused:{_utc(now).date().isoformat()}"
+    note = lambda k: t(lang, "alert.paused_ok")  # noqa: E731
+    if not paused(ops):
+        verdicts.sweeps.append(Sweep("paused:", "health", note))
+        return []
+    verdicts.sweeps.append(Sweep("paused:", "health", note, {family(key)}))
+    return [_alert("health", key, "info", t(lang, "alert.paused"))]
 
 
 # -- providers ------------------------------------------------------------------------------
@@ -633,10 +673,12 @@ def detect(ops: OperatorSources, now: datetime, low_credits: float, lang: str, v
     out: list = []
     ev = _guard("evidence", Evidence, ops, now)
     if isinstance(ev, Evidence):
-        verdicts.blind = list(ev.blind)
+        # A dead-man switch that is off on purpose (a pause) is not "blind": there is nothing it failed to see.
+        verdicts.blind = [] if paused(ops) else list(ev.blind)
         out += _guard("deadman", deadman, ev, ops.cfg.deadman_hours, lang, verdicts)
         out += _guard("workflow", workflow_failures, ev, lang)
         out += _guard("videos", video_alerts, ev, lang)
+    out += _guard("paused", pause_alerts, ops, now, lang, verdicts)
     out += _guard("doctor", doctor_alerts, ops, now, lang, verdicts)
     out += _guard("providers", provider_alerts, ops, now, low_credits, lang, verdicts)
     return out
@@ -648,20 +690,22 @@ def digest_lines(ops: OperatorSources, lang: str) -> list:
     """One line per scheduled channel: videos made against the one a day it is scheduled for, for yesterday
     and today (UTC, the day a slot belongs to). [] when nothing is scheduled; an unknown is said as unknown.
     With the dead-man switch off (``OPERATOR_DEADMAN_HOURS=off``) no cell says MISSING: the count is shown
-    without a verdict."""
+    without a verdict. While the pipeline is paused (``NIGHTSHIFT_PIPELINE_PAUSED``) a slot with no video reads
+    "paused" instead of MISSING, and the first line says why: it is shown even when no channel is scheduled."""
     try:
         now = _utc(ops.now())
         ev = Evidence(ops, now)
+        head = [t(lang, "digest.paused")] if paused(ops) else []
         if not ev.channels.ok:
-            return [t(lang, "digest.expected_unknown", why=_why(lang, ev.channels))]
+            return head + [t(lang, "digest.expected_unknown", why=_why(lang, ev.channels))]
         if not ev.sched:
-            return []
+            return head
         for sec in (ev.videos, ev.storyboards, ev.events):
             if not sec.ok:
-                return [t(lang, "digest.expected_unknown", why=_why(lang, sec))]
+                return head + [t(lang, "digest.expected_unknown", why=_why(lang, sec))]
         judge = ops.cfg.deadman_hours is not None
         grace = ops.cfg.deadman_hours if judge else DEFAULT_DEADMAN_HOURS
-        out = []
+        out = list(head)
         for ch in ev.sched:
             cells = [_cell(lang, ev, ch, day, now, ch.grace_h or grace, judge)
                      for day in (now.date() - timedelta(days=1), now.date())]
@@ -693,6 +737,11 @@ def _cell(lang: str, ev: Evidence, ch: Scheduled, day: date, now: datetime, grac
         return t(lang, "rel.cell_none")
     if made:
         return t(lang, "rel.cell", made=len(made), want=want)
+    if paused(ev.ops):
+        # Stopped on purpose: neither due nor missing. A run that did start (a manual dispatch) is still said.
+        if any(in_slot(s) for s in stamps):
+            return t(lang, "rel.cell_ran", made=0, want=want)
+        return t(lang, "rel.cell_paused")
     if now < start + timedelta(hours=grace):
         return t(lang, "rel.cell_due", made=0, want=want, hour=f"{ch.hour:02d}")
     if any(in_slot(s) for s in stamps):

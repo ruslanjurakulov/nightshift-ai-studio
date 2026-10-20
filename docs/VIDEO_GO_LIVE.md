@@ -160,7 +160,11 @@ alert instead of as a day with no video (docs/operator-bot.md, "Reliability
 alerts"). It sees the configuration GitHub holds (the secrets and variables the daily
 run is given), not the worker container's own environment, which is refreshed by each
 deploy; the `host` checks (disk, ffmpeg) belong to the machine and are not judged
-there. Run the doctor in the container, as above, after a deploy.
+there. Run the doctor in the container, as above, after a deploy. It proves the
+default channel's token and every other scheduled operator channel's
+(`CHRONOS_YT_TOKEN_<REF>`, one free in-memory refresh each, listed as `token/<channel id>`);
+a run that will upload also asks Google about its own channel's token before it spends
+anything, and stops there when the token is expired or revoked.
 
 Reading the report:
 
@@ -265,6 +269,42 @@ channels again, each at its own `publish_hour_utc`. A slot that passed while pau
 made up only if you resume within the catch-up window (section 9) of that slot, and only
 if the slot has no run recorded; set `NIGHTSHIFT_CATCHUP_HOURS=0` if you want a resume to
 never start a past slot.
+
+**The operator bot knows about the pause.** The same variable is passed to the operator
+bot (`operator_alerts.yml`, `telegram_control.yml`, and the always-on service through
+`deploy_web.yml`), which reads it with the scheduler's own function, so the two cannot
+disagree. While it is on: the dead-man switch raises **no** "No video from channel ..."
+alert for the paused slots, the daily digest and `/today` say `paused` where they would say
+`MISSING`, and the bot sends **one information alert a day** (Telegram only, never e-mail)
+"Scheduled runs are paused by NIGHTSHIFT_PIPELINE_PAUSED", so a pause left on for weeks
+is not forgotten; lifting it is followed by one "no longer paused" note. The scheduled
+readiness check (`doctor_scheduled.yml`) shows a `[WARN] pipeline/scheduled runs` line in
+its job summary and never records the pause as a failure. Run by hand (a laptop, the worker
+container) the same check reads UNVERIFIED when the variable is not set in that environment,
+because only the scheduled doctor is given the repository variable; it reports WARN wherever
+it does see a pause. The always-on bot service reads
+the variable **at deploy time** (a snapshot taken by Deploy web), while the scheduler and
+the doctor read the live repository variable, so for as long as you have not run Deploy
+web the bot can be wrong in BOTH directions: **pause set but not deployed** means the bot
+still thinks the pipeline runs, so it can raise a false "No video from channel ..."
+alert for a slot you stopped on purpose (a warn alert, so it can also be e-mailed);
+**pause lifted but not deployed** means the bot still thinks it is paused, so a real
+dead-man alert is silenced and the daily "paused" note contradicts the doctor. After
+changing the variable run Actions > *Deploy web*; the daily "paused" alert says so too.
+(The Actions-based passes, `operator_alerts.yml` and `telegram_control.yml`, read it on
+every run and have no stale window.) The bot also keeps no history of the pause: after you
+resume, an overdue slot that made no video can raise **two** false dead-man alerts per
+channel on the first pass, yesterday's and, if you resume after today's deadline
+(`publish_hour_utc` + grace), today's; both are warn alerts, so they can be e-mailed too.
+Mute 24h (kind `pipeline`) if you do not want them. A follow-up (not in this change): have
+the pipeline's own run write a record so the bot can tell a paused slot from a missed one.
+
+**Misconfiguration warnings.** In GitHub Actions the resolver now prints
+`::warning::Supabase is not configured - channel pauses cannot be read` when the Supabase
+secrets are not set (every pause stored in the Command Center is then invisible to it), and a
+warning when the `channels` table is empty (migration 0001 seeds `default`, so an empty table
+almost always means the secrets point at the wrong project). Scheduling is unchanged: it still
+falls back to the default channel.
 
 **Pause one channel.** Pausing a channel (or switching its schedule off) in the Command
 Center still works, and now it also works for the operator's test channel Chronos (id

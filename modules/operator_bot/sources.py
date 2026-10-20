@@ -54,7 +54,7 @@ BOT_WORKER_ID = "operator-bot"
 #: videos.publish_state values (migration 0016) of a run that did NOT upload.
 HELD_STATES = ("held", "awaiting_approval", "repaired_awaiting_review", "blocked")
 #: What a held row's ``hold_detail.cause`` may say (modules/held_video.HOLD_CAUSES): a fixed word, never text.
-HOLD_CAUSES = ("upload_failed",)
+HOLD_CAUSES = ("upload_failed", "quota_exceeded", "upload_limit_exceeded", "token_expired")
 #: What a held row's ``hold_detail.stage`` may say: only the early fact-check stop writes one (main.py
 #: ``_hold_before_render``): the run was held before its video was made, so no cut exists.
 HOLD_STAGES = ("before_render",)

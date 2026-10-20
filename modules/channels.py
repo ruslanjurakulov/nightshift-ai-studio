@@ -535,16 +535,21 @@ def ui_auto_publish_from_row(d: dict | None) -> Optional[bool]:
 
 
 def effective_privacy(requested: str | None, ui_auto_publish: Optional[bool]) -> str | None:
-    """The privacy a run may upload with: OFF means "never public".
+    """The privacy a run may upload with: only a plainly ON switch lets the
+    request through.
 
-    The switch limits privacy, never the upload itself. Unrestricted (None: no
-    switch carried) and ON (True) return ``requested`` unchanged, so the
-    existing publish gate and approvals still decide. Anything else -- the
-    switch is off, or present but not plainly true -- clamps to "private",
-    whatever was asked for (``--privacy public``, ``YOUTUBE_PRIVACY=public``,
-    unlisted, an unknown value, nothing).
+    The switch limits privacy, never the upload itself. ON (``True``) returns
+    ``requested`` unchanged, so the existing publish gate and approvals still
+    decide. Anything else clamps to "private", whatever was asked for
+    (``--privacy public``, ``YOUTUBE_PRIVACY=public``, unlisted, an unknown
+    value, nothing): the switch is off, or present but not plainly true, or --
+    ``None`` -- it could not be read at all (a registry outage synthesizes the
+    legacy default with no switch; channels.json and a database from before
+    migration 0004 carry none). An unknown is not a yes: before this, ``None``
+    meant "unrestricted", so a Supabase blip would have let ``--privacy public``
+    through. Fail closed (CLAUDE.md rule 2).
     """
-    if ui_auto_publish is None or ui_auto_publish is True:
+    if ui_auto_publish is True:
         return requested
     return "private"
 

@@ -818,6 +818,27 @@ class VideoEventsTestCase(unittest.TestCase):
         self.assertIn("Upload failed", tg.texts()[-1])
         self.assertEqual(engine.tick().sent, 0)
 
+    def test_every_hold_cause_has_its_own_alert_in_every_language(self):
+        # "Out of quota today" is not "the connection is broken": each cause word is a different
+        # alert (own key, own sentence), so the owner can tell them apart from the page.
+        from modules import held_video
+        from modules.operator_bot.i18n import t
+        from modules.operator_bot.reliability import _HOLD_ALERT_COPY
+        self.assertEqual(set(_HOLD_ALERT_COPY), set(held_video.HOLD_CAUSES))
+        lines = {}
+        for cause in held_video.HOLD_CAUSES:
+            found = self.found(videos=[video("run-cccc", state="held", held=at(14, 15, 32),
+                                             detail={"reason": "held", "cause": cause})])
+            self.assertEqual([(a.key.split(":")[1], a.kind, a.severity) for a in found],
+                             [(cause, "pipeline", "warn")])
+            self.assertIn("run-cccc", found[0].line)
+            lines[cause] = found[0].line
+        self.assertEqual(len(set(lines.values())), len(lines))
+        for lang in ("en", "ru", "uz"):
+            texts = {t(lang, key, channel="news", video="run-1") for key in _HOLD_ALERT_COPY.values()}
+            self.assertEqual(len(texts), len(_HOLD_ALERT_COPY))
+            self.assertTrue(all("{" not in x for x in texts))
+
     def test_the_hold_causes_the_bot_knows_are_the_pipelines(self):
         from modules import held_video
         from modules.operator_bot import sources

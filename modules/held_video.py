@@ -44,8 +44,10 @@ finished run into a failed one.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Mapping, Optional
 
@@ -67,11 +69,64 @@ STATE_HELD = "held"                              # gate passed, auto-publish off
 STATE_REPAIRED = "repaired_awaiting_review"      # a scene repair's new cut
 STATE_UPLOADED = "uploaded"                      # promoted after a real upload
 
-#: Fixed words for ``hold_detail.cause`` (the Command Center shows a sentence
-#: for each): "upload_failed" = the cut is finished and passed the gate but the
-#: YouTube upload raised, usually an expired channel connection.
+#: Fixed words for ``hold_detail.cause`` (the Command Center and the operator bot
+#: show a sentence for each). All four mean "the cut is finished and passed the
+#: gate, but the YouTube upload did not happen", and they need different
+#: responses, which is why they are not one word:
+#:   upload_failed         the upload raised for any other reason
+#:   quota_exceeded        YouTube's daily API quota is used up (quotaExceeded):
+#:                         it comes back by itself, send again tomorrow
+#:   upload_limit_exceeded the CHANNEL hit its own upload limit (uploadLimitExceeded)
+#:   token_expired         the connection to the channel is broken (revoked or
+#:                         expired refresh token): reconnect YouTube
 CAUSE_UPLOAD_FAILED = "upload_failed"
-HOLD_CAUSES = (CAUSE_UPLOAD_FAILED,)
+CAUSE_QUOTA_EXCEEDED = "quota_exceeded"
+CAUSE_UPLOAD_LIMIT_EXCEEDED = "upload_limit_exceeded"
+CAUSE_TOKEN_EXPIRED = "token_expired"
+HOLD_CAUSES = (CAUSE_UPLOAD_FAILED, CAUSE_QUOTA_EXCEEDED, CAUSE_UPLOAD_LIMIT_EXCEEDED, CAUSE_TOKEN_EXPIRED)
+
+_QUOTA_REASONS = frozenset({"quotaExceeded", "dailyLimitExceeded"})
+_UPLOAD_LIMIT_REASONS = frozenset({"uploadLimitExceeded"})
+_AUTH_REASONS = frozenset({"authError"})
+
+
+def _error_reasons(exc) -> list:
+    """The reason WORDS YouTube put on an ``HttpError`` (quotaExceeded, ...),
+    never its message or body."""
+    reasons: list = []
+    details = getattr(exc, "error_details", None)
+    if isinstance(details, list):
+        reasons += [d.get("reason") for d in details if isinstance(d, dict)]
+    if not reasons:
+        try:
+            content = getattr(exc, "content", b"") or b""
+            doc = json.loads(content.decode("utf-8") if isinstance(content, bytes) else str(content))
+            errs = ((doc or {}).get("error") or {}).get("errors") or []
+            reasons += [e.get("reason") for e in errs if isinstance(e, dict)]
+        except Exception:
+            pass
+    return [r for r in reasons if isinstance(r, str) and re.fullmatch(r"[A-Za-z_]{1,64}", r)]
+
+
+def upload_failure_cause(exc: BaseException) -> str:
+    """Which word of :data:`HOLD_CAUSES` a failed upload gets.
+
+    Decided from YouTube's structured reason (and the type of a refresh error),
+    never from message text: text can say anything, and it is never stored. An
+    exception this does not recognise is ``upload_failed``, which is what every
+    failure was before the others had words."""
+    from modules import upload_idempotency  # noqa: PLC0415 - keep this module's import light
+
+    reasons = set(_error_reasons(exc))
+    if reasons & _QUOTA_REASONS:
+        return CAUSE_QUOTA_EXCEEDED
+    if reasons & _UPLOAD_LIMIT_REASONS:
+        return CAUSE_UPLOAD_LIMIT_EXCEEDED
+    if (type(exc).__name__ == "RefreshError" or reasons & _AUTH_REASONS
+            or upload_idempotency.http_status(exc) == 401):
+        return CAUSE_TOKEN_EXPIRED
+    return CAUSE_UPLOAD_FAILED
+
 
 HELD_STATES = (STATE_BLOCKED, STATE_AWAITING_APPROVAL, STATE_HELD, STATE_REPAIRED)
 ALL_STATES = HELD_STATES + (STATE_UPLOADED,)

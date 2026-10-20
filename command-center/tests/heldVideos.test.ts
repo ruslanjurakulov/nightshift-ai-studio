@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   HELD_STATES,
   UPLOADED_FILTER,
+  HELD_CAUSES,
   heldCause,
+  heldCauseNote,
   heldGate,
   heldOnly,
   heldState,
@@ -149,6 +151,48 @@ describe("D1: an upload that failed is shown as that, with the fixed cause", () 
   it("without the cause the label is unchanged", () => {
     expect(heldStateLabel("held", en.held, null)).toBe(en.held.stateHeld);
     expect(heldStateLabel("held", en.held)).toBe(en.held.stateHeld);
+  });
+});
+
+describe("M12: each way the upload can be refused has its own word, label and sentence", () => {
+  const causeRow = (cause: unknown) => ({
+    ...heldRow,
+    publish_state: "held",
+    hold_detail: { reason: "held", cause, gate: { allowed: true, blocks: [], warnings: [], checks_run: [] } },
+  });
+
+  it("heldCause reads exactly the fixed words of modules/held_video.HOLD_CAUSES", () => {
+    for (const word of ["upload_failed", "quota_exceeded", "upload_limit_exceeded", "token_expired"]) {
+      expect(heldCause(causeRow(word))).toBe(word);
+    }
+    expect([...HELD_CAUSES]).toEqual(["upload_failed", "quota_exceeded", "upload_limit_exceeded", "token_expired"]);
+    // Free text, a near miss or a non-string is never rendered.
+    for (const bad of ["quotaExceeded", "QUOTA_EXCEEDED", "quota_exceeded ya29.secret", "", 3, null, {}, ["quota_exceeded"]]) {
+      expect(heldCause(causeRow(bad))).toBeNull();
+    }
+  });
+
+  it("every cause gets a different label and a different sentence in every language", () => {
+    for (const d of [en, ru, uz]) {
+      const labels = HELD_CAUSES.map((c) => heldStateLabel("held", d.held, c));
+      expect(new Set(labels).size).toBe(HELD_CAUSES.length);
+      for (const label of labels) expect(label).not.toBe(d.held.stateHeld);
+      const notes = HELD_CAUSES.map((c) => heldCauseNote(c, d.held));
+      expect(new Set(notes).size).toBe(HELD_CAUSES.length);
+      for (const note of notes) expect((note ?? "").length).toBeGreaterThan(20);
+    }
+  });
+
+  it("the quota sentence says it resets by itself; the connection sentence says reconnect", () => {
+    expect(en.held.quotaExceededNote).toMatch(/resets by itself/);
+    expect(en.held.tokenExpiredNote).toMatch(/Reconnect YouTube/);
+    expect(en.held.quotaExceededNote).not.toMatch(/Reconnect/);
+    expect(en.held.uploadLimitExceededNote).toMatch(/upload limit/);
+  });
+
+  it("no cause means no sentence", () => {
+    expect(heldCauseNote(null, en.held)).toBeNull();
+    expect(heldCauseNote(undefined, en.held)).toBeNull();
   });
 });
 

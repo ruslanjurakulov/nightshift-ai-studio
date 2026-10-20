@@ -16,10 +16,17 @@ name: Scheduled readiness check
 #
 # The environment below is the SAME secrets and variables the daily video run
 # passes (a test pins that each name here is passed there with the same source),
-# so the doctor judges the configuration a video would run with. No new secret.
-# Other operator channels' own tokens (CHRONOS_YT_TOKEN_<REF>) cannot be listed
-# here (Actions cannot enumerate secrets), so only the default channel's token is
-# proven; that is said in docs/operator-bot.md.
+# so the doctor judges the configuration a video would run with. No new secret:
+# the per-channel token slots read the very secrets the daily run restores per
+# channel, by the same names.
+# Every scheduled operator channel's own token (CHRONOS_YT_TOKEN_<REF>) is proven too.
+# Actions cannot enumerate secrets, so the `resolve` job reads the channel registry (the
+# same strict read the daily run's resolver makes), computes each channel's secret NAME
+# with the function the publishing side reads it with, and the doctor step is handed the
+# first six by name (one indexed lookup per slot, guarded below); a seventh channel is reported
+# as not checked. The doctor refreshes each in memory (free, nothing saved). A scheduled
+# channel whose secret is not set is a failing check named after the channel. If the
+# registry cannot be read the doctor still runs and says so as a warning.
 
 on:
   schedule:
@@ -36,7 +43,51 @@ permissions:
   contents: read
 
 jobs:
+  # Which channels' tokens to prove, and under which secret NAME. Names only: no token is
+  # read here, and the job holds only the two registry secrets the daily resolver holds.
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rows: ${{ steps.pick.outputs.rows }}
+      name0: ${{ steps.pick.outputs.name0 }}
+      name1: ${{ steps.pick.outputs.name1 }}
+      name2: ${{ steps.pick.outputs.name2 }}
+      name3: ${{ steps.pick.outputs.name3 }}
+      name4: ${{ steps.pick.outputs.name4 }}
+      name5: ${{ steps.pick.outputs.name5 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install resolver dependencies
+        run: pip install requests python-dotenv
+
+      - name: List the scheduled channels' token secrets
+        id: pick
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          set -euo pipefail
+          # rows=<one line of JSON>, name0=..name5=<a secret NAME or blank>. A registry that cannot be read
+          # prints empty rows and a warning (exit 0): the doctor then says "could not be listed".
+          python tools/list_channels.py --token-slots 6 >> "$GITHUB_OUTPUT"
+
   doctor:
+    needs: resolve
+    # The doctor runs even when the resolver failed: every other check is unaffected, and the
+    # token checks then say they could not be listed.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -65,6 +116,8 @@ jobs:
           YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Reported by the doctor (a WARN, never a FAIL): is the scheduled pipeline paused?
+          NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
           TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
           ELEVENLABS_MODEL_ID: ${{ vars.ELEVENLABS_MODEL_ID }}
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
@@ -95,6 +148,18 @@ jobs:
           FAL_KEY: ${{ secrets.FAL_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
+          # The scheduled operator channels' tokens, by position: slot N holds the secret the resolver
+          # named for the Nth channel (blank, or a name that is no secret, gives an empty value). The
+          # prefix guard lives in the expression itself, so a name that is not a CHRONOS_YT_TOKEN_ secret
+          # can never be looked up here whatever the resolver printed; the DOCTOR_NO_SUCH_SECRET
+          # fallback only gives the expression something to index.
+          DOCTOR_CHANNEL_TOKEN_ROWS: ${{ needs.resolve.outputs.rows }}
+          DOCTOR_CHANNEL_TOKEN_0: ${{ secrets[startsWith(needs.resolve.outputs.name0, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name0 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_1: ${{ secrets[startsWith(needs.resolve.outputs.name1, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name1 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_2: ${{ secrets[startsWith(needs.resolve.outputs.name2, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name2 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_3: ${{ secrets[startsWith(needs.resolve.outputs.name3, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name3 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_4: ${{ secrets[startsWith(needs.resolve.outputs.name4, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name4 || 'DOCTOR_NO_SUCH_SECRET'] }}
+          DOCTOR_CHANNEL_TOKEN_5: ${{ secrets[startsWith(needs.resolve.outputs.name5, 'CHRONOS_YT_TOKEN_') && needs.resolve.outputs.name5 || 'DOCTOR_NO_SUCH_SECRET'] }}
         run: |
           # First line, on purpose: without it the pipe below returns tee's status and a doctor_report that
           # could not record its verdict (exit 1) would leave a green job and an operator who hears nothing.
