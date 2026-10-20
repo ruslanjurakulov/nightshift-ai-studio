@@ -88,8 +88,8 @@ describe("public landing page", () => {
     const { container } = renderLanding({ kind: "announced" });
     const imgs = [...container.querySelectorAll("img")];
     // The hero card's footage frame (at every width), the two showcases and the closing panel's photograph (stock stills, each with a data-sample),
-    // and the AI-generated pictures (each with a data-art-id): the hero's two backdrops (wide, and the phone's portrait cut) and the sample thumbnail.
-    expect(imgs.length).toBe(7);
+    // and the AI-generated pictures (each with a data-art-id): the hero's two backdrops (wide, and the phone's portrait cut), the sample thumbnail, the three steps' pictures and the eight tool tiles'.
+    expect(imgs.length).toBe(18);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);

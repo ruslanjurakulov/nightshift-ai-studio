@@ -1,5 +1,16 @@
 import heroNight from "@/components/site/art/hero-night.webp";
 import heroNightSm from "@/components/site/art/hero-night-sm.webp";
+import artStep1 from "@/components/site/art/step-1.webp";
+import artStep2 from "@/components/site/art/step-2.webp";
+import artStep3 from "@/components/site/art/step-3.webp";
+import artToolImage from "@/components/site/art/tool-image.webp";
+import artToolVideo from "@/components/site/art/tool-video.webp";
+import artToolVoice from "@/components/site/art/tool-voice.webp";
+import artToolEdit from "@/components/site/art/tool-edit.webp";
+import artToolAnimate from "@/components/site/art/tool-animate.webp";
+import artToolUpscale from "@/components/site/art/tool-upscale.webp";
+import artToolCutout from "@/components/site/art/tool-cutout.webp";
+import artToolStyles from "@/components/site/art/tool-styles.webp";
 import thumbSilkroad from "@/components/site/art/thumb-silkroad.webp";
 import { ART_SIZE, SLOT_DEFS, type SlotSlug, type THUMB_ART } from "@/lib/site/art";
 
@@ -22,12 +33,13 @@ export function ArtImg({ id, alt, className }: { id: typeof THUMB_ART; alt: stri
 }
 
 /**
- * THE SLOTS: the one list of the pictures the steps and the tool tiles can show. `src` is null for every one today, so the steps
- * are text and the tiles are icons. To put the pictures in: run scripts/make-site-art.py on the new PNGs (step-N.webp, tool-NAME.webp
- * land in components/site/art/), `import stepOne from "@/components/site/art/step-1.webp"` here, and set that slot's `src`; the step
- * then shows its picture above its numeral and the tile shows it in place of its icon. Then reword `site.credits.lead` and
- * `site.wall.label` / `site.wall.note` in en, ru and uz (they say what is AI-made and what is an icon), and check each `site.art.alts`
- * entry against the real picture: tests/site-art.test.tsx fails until the footer's wording mentions the steps and the tools.
+ * THE SLOTS: the one list of the pictures the steps and the tool tiles can show: transparent-background WebPs (3D objects), one per
+ * step of "How it works" (a square) and one per tool tile of the capability wall (4:3). `src` is the imported file, or null: then
+ * the step is text and the tile shows its icon, so a slot can be emptied (or one picture swapped) by changing one line here.
+ * To replace the pictures: run scripts/make-site-art.py on the new PNGs, and the files land under the same names. If any slot
+ * is emptied or filled, the footer's and the wall's wording (`site.credits.lead`, `site.wall.label`, `site.wall.note`, en, ru
+ * and uz) says what is AI-made and what is an icon: tests/site-art.test.tsx fails until it agrees, and `site.art.alts` has to
+ * describe the real picture.
  */
 export interface SlotArt {
   slug: SlotSlug;
@@ -38,7 +50,20 @@ export interface SlotArt {
   h: number;
   altKey: SlotSlug;
 }
-export const SLOT_ART: readonly SlotArt[] = SLOT_DEFS.map((d) => ({ ...d, src: null }));
+const SLOT_FILES: Record<SlotSlug, Img | null> = {
+  "step-1": artStep1,
+  "step-2": artStep2,
+  "step-3": artStep3,
+  "tool-image": artToolImage,
+  "tool-video": artToolVideo,
+  "tool-voice": artToolVoice,
+  "tool-edit": artToolEdit,
+  "tool-animate": artToolAnimate,
+  "tool-upscale": artToolUpscale,
+  "tool-cutout": artToolCutout,
+  "tool-styles": artToolStyles,
+};
+export const SLOT_ART: readonly SlotArt[] = SLOT_DEFS.map((d) => ({ ...d, src: SLOT_FILES[d.slug] }));
 
 /** The configured picture of a step or a tool, or null (then the step is text and the tile an icon). */
 export function slotArt(kind: "step" | "tool", target: string): SlotArt | null {
@@ -46,7 +71,7 @@ export function slotArt(kind: "step" | "tool", target: string): SlotArt | null {
   return s && s.src ? s : null;
 }
 
-/** A configured slot's picture, with its own width and height (CSS sizes it; the attributes reserve the aspect ratio). Lazy: neither the steps nor the tiles are on the first screen. */
+/** A slot's picture, with its own width and height (CSS sizes it; the attributes reserve the aspect ratio). Lazy: neither the steps nor the tiles are on the first screen. */
 export function ArtSlotImg({ slot, alt, className }: { slot: SlotArt; alt: string; className?: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element

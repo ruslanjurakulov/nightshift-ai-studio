@@ -1331,7 +1331,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 
 /* ── The tool tiles: a calm violet icon on a dark tile ── */
 /* Dark in both themes (a light page shows a dark tile, like the showcases and the closing panel); the icon is #b3acff, about 9:1 on the tile's darkest and 7:1 on its glow, and it is decoration (aria-hidden: the tool's name is printed under it). The tile's size is the wall's own (2:1 on a phone, 4:3 from 640 px), so the layout is as before. */
-.nx-wall-frame { display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse 70% 90% at 50% 55%, #2b2566 0%, #15122f 55%, #0b0a1c 100%); }
+.nx-wall-frame:has(.nx-wall-icon) { display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse 70% 90% at 50% 55%, #2b2566 0%, #15122f 55%, #0b0a1c 100%); }
 .nx-wall-icon { width: 42%; max-width: 64px; height: auto; max-height: 62%; aspect-ratio: 1; color: #b3acff; filter: drop-shadow(0 0 14px rgba(143, 132, 255, 0.45)); }
 @media (prefers-reduced-motion: no-preference) {
   .nx-wall-icon { transition: transform 7s cubic-bezier(0.2, 0.6, 0.2, 1); }
@@ -1339,17 +1339,20 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
   html[data-motion="paused"] .nx-wall-icon { transition: none; transform: none !important; }
 }
 
-/* ── Optional pictures in the slots (components/site/art.tsx SLOT_ART; none is configured today, so none of this applies) ── */
-/* A step's picture: a rounded dark box, a small square beside the words on a phone and a full-column square above them from 860 px. A tile's picture fills its tile and drifts like the icon does. */
-.nx-strip-step:has(.nx-strip-pic) { align-content: start; }
-.nx-strip-pic { display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 20px; background: #0b0a1c; object-fit: cover; }
+/* ── The step and tool pictures (components/site/art.tsx SLOT_ART): transparent-background 3D objects, so they sit on the page's own surface in both themes (no box of their own, no shadow); where a slot has no picture none of this applies ── */
+/* The tallest step sets the row; the others keep their numeral and title at the top instead of stretching the rows apart (step 3's title used to sit higher than 1's and 2's). */
+.nx-strip-step { align-content: start; }
+/* A step's picture: above the numeral, at most 260 px, contained (never cropped); a small square beside the words on a phone. A tile's picture sits centred in its tile and drifts like the icon does. */
+.nx-strip-pic { display: block; width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; object-fit: contain; }
 @media (max-width: 859px) {
-  .nx-strip-step:has(.nx-strip-pic) { grid-template-columns: 88px minmax(0, 1fr); column-gap: 16px; }
-  .nx-strip-step:has(.nx-strip-pic) .nx-strip-pic { grid-column: 1; grid-row: 1 / span 3; width: 88px; border-radius: 16px; }
+  .nx-strip-step:has(.nx-strip-pic) { grid-template-columns: 104px minmax(0, 1fr); column-gap: 16px; }
+  .nx-strip-step:has(.nx-strip-pic) .nx-strip-pic { grid-column: 1; grid-row: 1 / span 3; width: 104px; }
   .nx-strip-step:has(.nx-strip-pic) .nx-strip-no { grid-column: 2; grid-row: 1; font-size: 22px; letter-spacing: 0; }
 }
 @media (min-width: 860px) { .nx-strip-pic { margin-bottom: 20px; } }
-.nx-wall-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The tile is the page's own base surface with the hairline the panels use (the wall sits on the raised surface), 4:3 at every width so a phone shows the whole object. */
+.nx-wall-frame:has(.nx-wall-pic) { aspect-ratio: 4 / 3; background: var(--ns-ground); border: 1px solid var(--ns-rule); }
+.nx-wall-pic { display: block; width: 100%; height: 100%; object-fit: contain; }
 @media (prefers-reduced-motion: no-preference) {
   .nx-wall-pic { transition: transform 7s cubic-bezier(0.2, 0.6, 0.2, 1); }
   .nx-wall-tile[data-alive] .nx-wall-pic, .nx-wall-tile:hover .nx-wall-pic { transform: scale(1.12); }

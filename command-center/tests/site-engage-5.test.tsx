@@ -284,8 +284,8 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
   });
 });
 
-describe("the capability wall (round 8, stock photographs replaced by icons): eight icon tiles, one per tool", () => {
-  it("replaces the pill carousel in the \"how it works\" block: eight tiles, each with the tool's own name and description and whether it costs credits, under a label that says they are icons", () => {
+describe("the capability wall (round 8, stock photographs replaced by AI-generated pictures): eight tiles, one per tool", () => {
+  it("replaces the pill carousel in the \"how it works\" block: eight tiles, each with the tool's own name and description and whether it costs credits, under a label that says they are AI-generated pictures", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
@@ -302,10 +302,9 @@ describe("the capability wall (round 8, stock photographs replaced by icons): ei
       const id = named[i].id;
       // Only the tool that costs no credits says so on its tile; the note says the rest once.
       expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
-      // An icon has no photographer to credit and nothing to fetch: no credit line, no image, and the icon is hidden from assistive tech (the name is printed under it).
+      // An AI-generated picture has no photographer to credit: no credit line; it is lazy and described (tests/site-art.test.tsx pins the alts and the icon fallback).
       expect(tile.querySelector(".nx-wall-credit")).toBeNull();
-      expect(tile.querySelector("img")).toBeNull();
-      expect(tile.querySelector("svg.nx-wall-icon")?.getAttribute("aria-hidden")).toBe("true");
+      expect(tile.querySelector("img")?.getAttribute("loading")).toBe("lazy");
       expect(tile.querySelector("a, button, [tabindex]")).toBeNull();
     }
     // The ninth tool, the Editor, is a plain line: it has no picture.

@@ -10,7 +10,7 @@ vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: str
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
-import { HeroBackdrop, SLOT_ART, slotArt } from "@/components/site/art";
+import { HeroBackdrop, SLOT_ART, slotArt, type SlotArt } from "@/components/site/art";
 import { ART_IDS, ART_SIZE, HERO_ART, HERO_ART_SM, SLOT_DEFS, THUMB_ART } from "@/lib/site/art";
 
 /**
@@ -29,9 +29,11 @@ const landing = (locale: "en" | "ru" | "uz" = "en") =>
 afterEach(cleanup);
 
 describe("the files", () => {
-  const budgets: Record<string, number> = { [HERO_ART]: 220 * KB, [HERO_ART_SM]: 90 * KB, [THUMB_ART]: 150 * KB };
-  it("holds one WebP for the hero, its phone cut and the thumbnail, within their byte budgets, and nothing else (derivatives only: the PNG originals are not in the repository)", () => {
-    const names = [HERO_ART, HERO_ART_SM, THUMB_ART];
+  const fixed = [HERO_ART, HERO_ART_SM, THUMB_ART];
+  const slots = SLOT_DEFS.map((d) => d.slug);
+  const budgets: Record<string, number> = { [HERO_ART]: 220 * KB, [HERO_ART_SM]: 90 * KB, [THUMB_ART]: 150 * KB, ...Object.fromEntries(slots.map((n) => [n, 90 * KB])) };
+  it("holds one WebP for the hero, its phone cut, the thumbnail and each of the eleven slots, within their byte budgets, and nothing else (derivatives only: the PNG originals are not in the repository)", () => {
+    const names = [...fixed, ...slots];
     expect(readdirSync(join(ROOT, "components/site/art")).sort()).toEqual(names.map((n) => `${n}.webp`).sort());
     for (const n of names) {
       const size = statSync(join(ROOT, "components/site/art", `${n}.webp`)).size;
@@ -40,34 +42,44 @@ describe("the files", () => {
     }
   });
 
-  it("declares each file's real width and height (the img reserves its box from them), read from the WebP header", () => {
-    for (const [name, size] of Object.entries(ART_SIZE)) {
-      const b = readFileSync(join(ROOT, "components/site/art", `${name}.webp`));
-      expect(b.toString("latin1", 0, 4), name).toBe("RIFF");
-      expect(b.toString("latin1", 8, 12), name).toBe("WEBP");
-      // A lossy WebP: the "VP8 " chunk, its 3-byte frame tag and start code, then the 14-bit width and height.
-      expect(b.toString("latin1", 12, 16), name).toBe("VP8 ");
-      expect({ width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff }, name).toEqual(size);
+  /** A WebP's pixel size from its header: plain lossy ("VP8 ": a 14-bit width and height) or extended ("VP8X", which the slots' alpha makes it: canvas width and height minus one, 24 bits each). */
+  const dims = (name: string) => {
+    const b = readFileSync(join(ROOT, "components/site/art", `${name}.webp`));
+    expect(b.toString("latin1", 0, 4), name).toBe("RIFF");
+    expect(b.toString("latin1", 8, 12), name).toBe("WEBP");
+    const kind = b.toString("latin1", 12, 16);
+    if (kind === "VP8X") return { kind, alpha: (b[20] & 0x10) !== 0, width: 1 + (b[24] | (b[25] << 8) | (b[26] << 16)), height: 1 + (b[27] | (b[28] << 8) | (b[29] << 16)) };
+    expect(kind, name).toBe("VP8 ");
+    return { kind, alpha: false, width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
+  };
+  it("declares each file's real width and height (the img reserves its box from them), read from the WebP header, and the slots' files carry an alpha channel while the backdrops do not", () => {
+    for (const [name, size] of Object.entries(ART_SIZE)) expect({ width: dims(name).width, height: dims(name).height }, name).toEqual(size);
+    for (const d of SLOT_DEFS) {
+      const h = dims(d.slug);
+      expect({ width: h.width, height: h.height }, d.slug).toEqual({ width: d.w, height: d.h });
+      expect(h.alpha, `${d.slug} has an alpha channel`).toBe(true);
     }
-    expect(Object.keys(ART_SIZE).sort()).toEqual([HERO_ART, HERO_ART_SM, THUMB_ART].sort());
+    for (const n of fixed) expect(dims(n).alpha, n).toBe(false);
+    expect(Object.keys(ART_SIZE).sort()).toEqual([...fixed].sort());
   });
 
-  it("keeps the converter ready for the eleven step and tool pictures at their budgets (a missing PNG is skipped), and carries none of them today", () => {
+  it("keeps the converter's entries, budgets and clean-up for the eleven slots (alpha below 12 cleared, border trimmed, the same margin on every picture)", () => {
     const script = read("scripts/make-site-art.py");
     for (const d of SLOT_DEFS) expect(script, d.slug).toContain(`"${d.slug}": (${d.w}, 90 * KB)`);
+    expect(script).toMatch(/ALPHA_FLOOR = 12/);
+    expect(script).toMatch(/MARGIN = 0\.07/);
     expect(script).toMatch(/skipped/);
-    // None is configured: no file for any slot is in the directory (the files test above), and no slot has a src.
-    expect(SLOT_ART.filter((x) => x.src)).toEqual([]);
   });
 
-  it("configures every slot's width and height from one list that the files, the script and the markup share", () => {
+  it("configures every slot from one list that the files, the script and the markup share, steps square and tools 4:3, all filled", () => {
     expect(SLOT_ART.map((x) => x.slug)).toEqual(SLOT_DEFS.map((d) => d.slug));
     for (const d of SLOT_DEFS) expect(d.w / d.h, d.slug).toBe(d.kind === "step" ? 1 : 4 / 3);
+    expect(SLOT_ART.filter((x) => !x.src)).toEqual([]);
   });
 });
 
 describe("the descriptions (en, ru, uz)", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the thumbnail and each optional slot picture has its own short description that says it is an AI-generated image, never a photo or a screenshot", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the thumbnail and each slot picture has its own short description that says it is an AI-generated image, never a photo or a screenshot", (code) => {
     const alts = dictionaries[code].site.art.alts as Record<string, string>;
     expect(Object.keys(alts).sort()).toEqual([...ART_IDS].sort());
     const says = code === "en" ? /^AI-generated image: / : code === "ru" ? /^Изображение, созданное нейросетью: / : /^Sunʼiy intellekt yaratgan tasvir: /;
@@ -89,23 +101,26 @@ describe("the descriptions (en, ru, uz)", () => {
 });
 
 describe("the page says what the pictures are", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the thumbnail's caption and the footer's credits say AI-generated, and the wall (icons now) says neither stock nor AI", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the thumbnail's caption, the footer's credits and the wall's label and note all say AI-generated, and the footer names the steps and the tools", (code) => {
     const s = dictionaries[code].site;
     const AI = /AI-generated|нейросет|sunʼiy intellekt/i;
     const STOCK = /stock|стоков|stok/i;
     expect(s.try.thumbArtNote).toMatch(AI);
     expect(s.credits.lead).toMatch(AI);
-    // The footer names exactly the two AI pictures, and that they are decoration, not product screenshots.
-    expect(s.credits.lead).toMatch(code === "en" ? /backdrop and the sample thumbnail/ : code === "ru" ? /фон главного экрана и пример обложки/ : /bosh ekran foni va namuna muqova/);
+    expect(s.wall.label).toMatch(AI);
+    expect(s.wall.note).toMatch(AI);
     expect(s.wall.label + s.wall.note).not.toMatch(STOCK);
-    expect(s.wall.label + s.wall.note).not.toMatch(AI);
+    // Said as decoration, not as the product: the footer says so in every language.
+    expect(s.credits.lead).toMatch(code === "en" ? /not screenshots of the product/ : code === "ru" ? /не скриншоты продукта/ : /mahsulotning skrinshotlari emas/);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: puts no step or tool picture in until the footer, the wall's label and its note say they are AI-made (reword them when SLOT_ART gets a src)", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the footer and the wall's wording agree with which slots hold a picture (the steps and the tools are named exactly when one does; an icon wall says icons)", (code) => {
     const s = dictionaries[code].site;
-    if (!SLOT_ART.some((x) => x.src)) return;
-    expect(s.credits.lead).toMatch(code === "en" ? /steps/i : code === "ru" ? /шаг/i : /qadam/i);
-    expect(s.wall.label + s.wall.note).toMatch(/AI-generated|нейросет|sunʼiy intellekt/i);
+    const filled = SLOT_ART.some((x) => x.src);
+    const steps = code === "en" ? /steps/i : code === "ru" ? /шаг/i : /qadam/i;
+    const AI = /AI-generated|нейросет|sunʼiy intellekt/i;
+    expect(steps.test(s.credits.lead)).toBe(filled);
+    expect(AI.test(s.wall.label + s.wall.note)).toBe(filled);
   });
 });
 
@@ -151,73 +166,73 @@ describe("the hero's backdrop", () => {
 });
 
 describe("the steps and the tool wall", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the steps are text only again (a numeral, a title, a sentence), and each tool tile is a hidden icon over the tool's own name, with no picture and no credit", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: each step shows its picture first (above the numeral), each tool tile shows its picture in place of the icon, with the right description, explicit size and lazy loading", (code) => {
     const t = dictionaries[code];
     const { container } = landing(code);
     const steps = [...container.querySelectorAll(".nx-strip-step")];
     expect(steps).toHaveLength(3);
-    for (const li of steps) {
-      expect(li.querySelector("img, picture, svg")).toBeNull();
-      expect([...li.children].map((c) => c.tagName)).toEqual(["SPAN", "H3", "P"]);
+    for (const [i, li] of steps.entries()) {
+      const def = SLOT_DEFS.filter((d) => d.kind === "step")[i];
+      const img = li.querySelector("img.nx-strip-pic")!;
+      expect(img.getAttribute("data-art-id")).toBe(def.slug);
+      expect(img.getAttribute("alt")).toBe(t.site.art.alts[def.altKey]);
+      expect([img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("loading"), img.getAttribute("decoding")]).toEqual(["800", "800", "lazy", "async"]);
+      expect(li.firstElementChild).toBe(img);
+      expect([...li.children].map((c) => c.tagName)).toEqual(["IMG", "SPAN", "H3", "P"]);
     }
     const tiles = [...container.querySelectorAll("#tools .nx-wall-tile")];
-    expect(tiles).toHaveLength(8);
     const named = t.site.studio.tools.filter((x) => x.id !== "editor");
+    expect(tiles).toHaveLength(8);
     for (const [i, tile] of tiles.entries()) {
-      expect(tile.querySelector("img")).toBeNull();
-      const icon = tile.querySelector(".nx-wall-frame svg.nx-wall-icon")!;
-      expect(icon.getAttribute("aria-hidden")).toBe("true");
-      expect(tile.querySelector(".nx-wall-frame")?.getAttribute("data-tool")).toBe(named[i].id);
+      const def = SLOT_DEFS.find((d) => d.kind === "tool" && d.target === named[i].id)!;
+      const img = tile.querySelector(".nx-wall-frame img.nx-wall-pic")!;
+      expect(img.getAttribute("data-art-id")).toBe(def.slug);
+      expect(img.getAttribute("alt")).toBe(t.site.art.alts[def.altKey]);
+      expect([img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("loading"), img.getAttribute("decoding")]).toEqual(["800", "600", "lazy", "async"]);
+      expect(tile.querySelector("svg.nx-wall-icon")).toBeNull();
     }
-    // One icon each: eight different shapes (lucide gives each its own class).
-    expect(new Set(tiles.map((x) => x.querySelector("svg")?.getAttribute("class")?.split(" ").find((c) => c.startsWith("lucide-")))).size).toBe(8);
   });
 
-  it("shows a configured picture in its slot and nothing in the others: a step gets its image above the numeral, a tile gets it in place of its icon, and both fall back when it is removed", () => {
-    const set = (slug: string, src: string | null) => (SLOT_ART.find((x) => x.slug === slug)!.src = src);
+  it("falls back when a slot is emptied: a step with no picture is text, a tile with none shows its icon (the others keep their pictures)", () => {
+    const set = (slug: string, src: SlotArt["src"]) => (SLOT_ART.find((x) => x.slug === slug)!.src = src);
+    const keep = { step: SLOT_ART.find((x) => x.slug === "step-1")!.src, voice: SLOT_ART.find((x) => x.slug === "tool-voice")!.src };
     try {
-      set("step-1", "/art/step-1.webp");
-      set("tool-voice", "/art/tool-voice.webp");
-      const t = dictionaries.en;
-      expect(slotArt("step", "topic")?.slug).toBe("step-1");
-      expect(slotArt("step", "price")).toBeNull();
-      const { container } = landing();
-      const first = container.querySelector(".nx-strip-step")!;
-      const img = first.querySelector("img.nx-strip-pic")!;
-      expect(first.firstElementChild).toBe(img);
-      expect(img.getAttribute("alt")).toBe(t.site.art.alts["step-1"]);
-      expect([img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("loading"), img.getAttribute("decoding")]).toEqual(["800", "800", "lazy", "async"]);
-      expect(container.querySelectorAll(".nx-strip-step img")).toHaveLength(1);
-      const voice = container.querySelector('.nx-wall-frame[data-tool="voice"]')!;
-      expect(voice.querySelector("svg")).toBeNull();
-      const pic = voice.querySelector("img.nx-wall-pic")!;
-      expect([pic.getAttribute("alt"), pic.getAttribute("width"), pic.getAttribute("height")]).toEqual([t.site.art.alts["tool-voice"], "800", "600"]);
-      // The other seven tiles are still icons.
-      expect(container.querySelectorAll(".nx-wall-frame svg.nx-wall-icon")).toHaveLength(7);
-    } finally {
       set("step-1", null);
       set("tool-voice", null);
+      expect(slotArt("step", "topic")).toBeNull();
+      expect(slotArt("step", "price")?.slug).toBe("step-2");
+      const { container } = landing();
+      const first = container.querySelector(".nx-strip-step")!;
+      expect(first.querySelector("img")).toBeNull();
+      expect([...first.children].map((c) => c.tagName)).toEqual(["SPAN", "H3", "P"]);
+      expect(container.querySelectorAll(".nx-strip-step img")).toHaveLength(2);
+      const voice = container.querySelector('.nx-wall-frame[data-tool="voice"]')!;
+      expect(voice.querySelector("img")).toBeNull();
+      expect(voice.querySelector("svg.nx-wall-icon")?.getAttribute("aria-hidden")).toBe("true");
+      expect(container.querySelectorAll(".nx-wall-frame img.nx-wall-pic")).toHaveLength(7);
+      expect(container.querySelectorAll(".nx-wall-frame svg.nx-wall-icon")).toHaveLength(1);
+    } finally {
+      set("step-1", keep.step);
+      set("tool-voice", keep.voice);
     }
-    cleanup();
-    const { container } = landing();
-    expect(container.querySelectorAll(".nx-strip-step img, .nx-wall-frame img")).toHaveLength(0);
-    // The slots' styles are ready: a step's picture is a dark rounded square, a tile's fills its tile.
-    expect(css).toMatch(/\.nx-strip-pic \{[^}]*aspect-ratio: 1; border-radius: 20px; background: #0b0a1c;/);
-    expect(css).toMatch(/\.nx-strip-step:has\(\.nx-strip-pic\) \.nx-strip-pic \{ grid-column: 1; grid-row: 1 \/ span 3; width: 88px;/);
-    expect(css).toMatch(/\.nx-wall-pic \{ display: block; width: 100%; height: 100%; object-fit: cover; \}/);
   });
 
-  it("keeps the wall's own tile size (2:1 on a phone, 4:3 from 640 px) and draws a dark tile with a violet icon, the same in both themes", () => {
-    expect(css).toMatch(/\.nx-wall-frame \{ display: block; aspect-ratio: 2 \/ 1;/);
-    expect(css).toMatch(/\.nx-wall-frame \{ aspect-ratio: 4 \/ 3; \}/);
-    expect(css).toMatch(/\.nx-wall-frame \{ display: flex; align-items: center; justify-content: center; background: radial-gradient\(ellipse 70% 90% at 50% 55%, #2b2566 0%, #15122f 55%, #0b0a1c 100%\); \}/);
+  it("draws the pictures on the page's own surface in both themes: no dark box, no shadow, contained (never cropped), the tile 4:3 with the base surface and the panels' hairline; the icon tile keeps its dark gradient", () => {
+    expect(css).toMatch(/\.nx-strip-pic \{ display: block; width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; object-fit: contain; \}/);
+    expect(css).toMatch(/\.nx-strip-step \{ align-content: start; \}/);
+    expect(css).toMatch(/\.nx-strip-step:has\(\.nx-strip-pic\) \.nx-strip-pic \{ grid-column: 1; grid-row: 1 \/ span 3; width: 104px; \}/);
+    expect(css).toMatch(/\.nx-wall-frame:has\(\.nx-wall-pic\) \{ aspect-ratio: 4 \/ 3; background: var\(--ns-ground\); border: 1px solid var\(--ns-rule\); \}/);
+    expect(css).toMatch(/\.nx-wall-pic \{ display: block; width: 100%; height: 100%; object-fit: contain; \}/);
+    const block = css.slice(css.indexOf("/* ── The step and tool pictures"), css.indexOf("/* ── The sample thumbnail's background"));
+    expect(block).not.toMatch(/box-shadow|drop-shadow|gradient/);
+    expect(css).toMatch(/\.nx-wall-frame:has\(\.nx-wall-icon\) \{ display: flex; align-items: center; justify-content: center; background: radial-gradient\(ellipse 70% 90% at 50% 55%, #2b2566 0%, #15122f 55%, #0b0a1c 100%\); \}/);
     expect(css).toMatch(/\.nx-wall-icon \{[^}]*color: #b3acff;/);
-    // The icon's drift is only where motion is allowed (reduced motion and the pause switch keep it still).
-    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\n  \.nx-wall-icon \{ transition: transform 7s/);
+    // The picture's drift is only where motion is allowed (reduced motion and the pause switch keep it still); so is the icon's.
+    expect(css).toMatch(/html\[data-motion="paused"\] \.nx-wall-pic \{ transition: none; transform: none !important; \}/);
     expect(css).toMatch(/html\[data-motion="paused"\] \.nx-wall-icon \{ transition: none; transform: none !important; \}/);
   });
 
-  it("has the icon's colour at 4.5:1 or better on the tile's brightest point, in both themes (the tile never changes)", () => {
+  it("has the fallback icon's colour at 4.5:1 or better on the tile's brightest point (the icon tile never changes with the theme)", () => {
     const lum = (hex: string) => {
       const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
       return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];

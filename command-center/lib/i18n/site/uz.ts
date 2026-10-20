@@ -161,23 +161,23 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Ikkita rasm esa boshqacha: bosh ekran foni va namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
+    lead: "Bu sahifalardagi har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Baʼzi rasmlar esa boshqacha: bosh ekran foni, uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
     licence: "Pexels litsenziyasi",
   },
-  /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries are for the optional pictures in components/site/art.tsx SLOT_ART (none is configured yet): check each against its real picture when one goes in. */
+  /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {
     alts: {
-      "step-1": "Sunʼiy intellekt yaratgan tasvir: soʻrov qatori va lampochka — video mavzusi",
-      "step-2": "Sunʼiy intellekt yaratgan tasvir: ijro tugmasi, yonida narx yorligʻi, tangalar va kalendar",
-      "step-3": "Sunʼiy intellekt yaratgan tasvir: yashil belgili kinolenta kadri va nashr tugmasi",
-      "tool-image": "Sunʼiy intellekt yaratgan tasvir: ramkadagi manzara va moʻyqalam",
-      "tool-video": "Sunʼiy intellekt yaratgan tasvir: kino xlopushkasi",
-      "tool-voice": "Sunʼiy intellekt yaratgan tasvir: studiya mikrofoni",
-      "tool-edit": "Sunʼiy intellekt yaratgan tasvir: qaychi kinolentani kesmoqda",
-      "tool-animate": "Sunʼiy intellekt yaratgan tasvir: ichidan oy va qush uchib chiqayotgan rasm",
-      "tool-upscale": "Sunʼiy intellekt yaratgan tasvir: piksellashgan rasm va uning oʻzi, ammo aniq",
-      "tool-cutout": "Sunʼiy intellekt yaratgan tasvir: oʻsimlik kartochkadan stiker kabi ajralmoqda",
-      "tool-styles": "Sunʼiy intellekt yaratgan tasvir: toʻqdan ochgacha binafsha kartochkalar yelpigʻichi",
+      "step-1": "Sunʼiy intellekt yaratgan tasvir: binafsha yulduzli soʻrov qatori — video mavzusi",
+      "step-2": "Sunʼiy intellekt yaratgan tasvir: narx yorligʻi boʻsh ijro tugmasi",
+      "step-3": "Sunʼiy intellekt yaratgan tasvir: ijro tugmasi va yashil belgili kadr",
+      "tool-image": "Sunʼiy intellekt yaratgan tasvir: ramkadagi rasm: koʻl ustidagi havo shari va yulduz",
+      "tool-video": "Sunʼiy intellekt yaratgan tasvir: kinolenta kadri: quyosh botishidagi yelkanli qayiq va ijro tugmasi",
+      "tool-voice": "Sunʼiy intellekt yaratgan tasvir: studiya mikrofoni va tovush toʻlqini ustunlari",
+      "tool-edit": "Sunʼiy intellekt yaratgan tasvir: toʻq sariq va koʻk yarmiga boʻlingan divan, yaltirash bilan",
+      "tool-animate": "Sunʼiy intellekt yaratgan tasvir: ramkadagi osmon va undan uchib chiqayotgan kaptar",
+      "tool-upscale": "Sunʼiy intellekt yaratgan tasvir: piksellashgan kapalak va uning oʻzi, ammo aniq",
+      "tool-cutout": "Sunʼiy intellekt yaratgan tasvir: qogʻoz kartochkadan olingan oʻsimlik, konturi qolgan",
+      "tool-styles": "Sunʼiy intellekt yaratgan tasvir: bir xil guldonning turli uslubdagi uchta kartochkasi",
       "thumb-silkroad": "Sunʼiy intellekt yaratgan tasvir: Samarqanddagi Registon oltin soatda",
     },
   },
@@ -319,8 +319,8 @@ export const siteUz: SiteDictionary = {
   toolStrip: { title: "Nightshift nimalar yarata oladi" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Har bir vosita uchun belgi",
-    note: "Belgilar vositalarni bildiradi, xolos, vositalar yaratgan narsani emas. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
+    label: "Har bir vosita uchun sunʼiy intellekt yaratgan rasmlar",
+    note: "Rasmlar vositalarni bildiradi, xolos. Bular sunʼiy intellekt yaratgan bezak, vositalar yaratgan narsa emas. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
     more: "Yana toʻrtta vositani koʻrsatish",
     less: "Kamroq koʻrsatish",
   },

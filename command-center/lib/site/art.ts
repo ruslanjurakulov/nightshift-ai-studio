@@ -17,10 +17,10 @@ export const HERO_ART_SM = "hero-night-sm";
 export const THUMB_ART = "thumb-silkroad";
 
 /**
- * The eleven optional picture slots: one per step of "How it works" (a square) and one per tool tile of the capability wall (4:3).
- * No file is configured for them today (the steps are text, the tiles are icons); the slot list is here so that putting a picture
- * in is a small change (components/site/art.tsx, SLOT_ART: import the file, set `src`). `target` is the id of the step in
- * `site.how.simple.steps` or of the tool in `site.studio.tools`; `altKey` is the entry of `site.art.alts` that describes the picture.
+ * The eleven picture slots: one per step of "How it works" (a square) and one per tool tile of the capability wall (4:3), each
+ * a transparent-background WebP. A slot with no file falls back (a step is text, a tile shows its icon); which file fills which slot
+ * is components/site/art.tsx, SLOT_ART. `target` is the id of the step in `site.how.simple.steps` or of the tool in
+ * `site.studio.tools`; `altKey` is the entry of `site.art.alts` that describes the picture.
  */
 export const SLOT_DEFS = [
   { slug: "step-1", kind: "step", target: "topic", w: 800, h: 800, altKey: "step-1" },
