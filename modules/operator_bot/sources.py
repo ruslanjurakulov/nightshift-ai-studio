@@ -54,7 +54,10 @@ BOT_WORKER_ID = "operator-bot"
 #: videos.publish_state values (migration 0016) of a run that did NOT upload.
 HELD_STATES = ("held", "awaiting_approval", "repaired_awaiting_review", "blocked")
 #: What a held row's ``hold_detail.cause`` may say (modules/held_video.HOLD_CAUSES): a fixed word, never text.
-HOLD_CAUSES = ("upload_failed",)
+HOLD_CAUSES = ("upload_failed", "quota_exceeded", "upload_limit_exceeded", "token_expired")
+#: What a held row's ``hold_detail.stage`` may say: only the early fact-check stop writes one (main.py
+#: ``_hold_before_render``): the run was held before its video was made, so no cut exists.
+HOLD_STAGES = ("before_render",)
 
 CREATIVE_ACTIVE = ("queued", "planning", "running", "provider_pending", "processing", "rendering")
 
@@ -310,15 +313,23 @@ class OperatorSources:
     def held_videos(self) -> Section:
         """Runs that did not upload (held, awaiting approval, repaired, blocked
         by the gate), newest first. Ids and states: no title, no topic, no
-        `hold_detail`."""
-        sec = self._read("videos", {
+        `hold_detail` beyond the one fixed word of its stage (``hold_stage``)."""
+        params = {
             "select": "video_id,channel_id,publish_state,held_at",
             "publish_state": f"in.({','.join(HELD_STATES)})", "published_at": "is.null",
             "order": "held_at.desc", "limit": "200",
-        })
+        }
+        # The stage is ONE fixed word inside hold_detail, read through PostgREST's path select so the gate
+        # verdict next to it is never read; a server that refuses the syntax gets the plain read (as in
+        # ``recent_videos``): the counts must not depend on it.
+        sec = self._read("videos", {**params, "select": params["select"] + ",hold_stage:hold_detail->>stage"})
+        if not sec.ok:
+            sec = self._read("videos", params)
         if not sec.ok:
             return sec
-        return Section(True, [r for r in sec.data or [] if r.get("publish_state") in HELD_STATES], cap=sec.cap)
+        rows = [{**r, "hold_stage": r.get("hold_stage") if r.get("hold_stage") in HOLD_STAGES else None}
+                for r in sec.data or [] if r.get("publish_state") in HELD_STATES]
+        return Section(True, rows, cap=sec.cap)
 
     def videos_published(self, since: datetime) -> Section:
         return self._read("videos", {
@@ -425,7 +436,7 @@ class OperatorSources:
         # just that word, so the gate verdict next to it is never read. If a server refuses the path syntax the
         # read is repeated without it: the evidence (the dead-man's whole job) must not depend on it, and only
         # the "upload failed" alert is lost.
-        pub, held = read(base + ",hold_cause:hold_detail->>cause")
+        pub, held = read(base + ",hold_cause:hold_detail->>cause,hold_stage:hold_detail->>stage")
         if not pub.ok or not held.ok:
             pub, held = read(base)
         if not pub.ok or not held.ok:
@@ -434,8 +445,9 @@ class OperatorSources:
         for r in list(pub.data or []) + list(held.data or []):
             if r.get("video_id") not in seen:
                 seen.add(r.get("video_id"))
-                cause = r.get("hold_cause")
-                rows.append({**r, "hold_cause": cause if cause in HOLD_CAUSES else None})
+                cause, stage = r.get("hold_cause"), r.get("hold_stage")
+                rows.append({**r, "hold_cause": cause if cause in HOLD_CAUSES else None,
+                             "hold_stage": stage if stage in HOLD_STAGES else None})
         return Section(True, rows, cap=pub.cap or held.cap)
 
     def channel_named(self, channel_id: str) -> Section:

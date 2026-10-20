@@ -340,6 +340,12 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   `default` (the registry synthesizes it only then; one extra read of the id, and an
   unreadable answer is "blind", not a schedule); an entirely empty table is an
   unknown, not a schedule.
+  The scheduler now uses this same evidence (`reliability.slot_worked`) to catch up a slot whose
+  cron was late or dropped (`NIGHTSHIFT_CATCHUP_HOURS`, default 1; `docs/VIDEO_GO_LIVE.md` section 9),
+  so a delayed run usually heals before the default 3 h grace expires and no alert is sent; if it
+  heals later, the usual "recovered" note follows. A run that fails without writing a row does not
+  count as the slot being worked: the dead-man alert is the signal for it. A catch-up changes nothing here: the dead-man
+  still only reads.
   A source that stays unreadable for 6 continuous hours is said once a day as an
   information alert in kind `health` ("the dead-man switch cannot judge: <source>",
   key `blind:<source>:<date>`, from silent hourly `blindmark:` rows): a switch that
@@ -391,9 +397,13 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
 * **Per video** (operator channels only), from the video's own row, which the run writes
   the moment it ends (the event log is mirrored only by the daily intelligence poll, so
   it can silence the dead-man alarm but never raise one). The publish gate blocked a
-  video (kind `pipeline`, warn); an upload failed (kind `pipeline`, warn: the run
-  records a held row whose `hold_detail.cause` is `upload_failed` and the workflow
-  ends GREEN, so this row is the only place it is heard); a video was held for review
+  video (kind `pipeline`, warn); an upload did not happen (kind `pipeline`, warn: the run
+  records a held row whose `hold_detail.cause` is one of four fixed words and the
+  workflow ends GREEN, so this row is the only place it is heard: `upload_failed`
+  (anything else), `quota_exceeded` (YouTube's daily API quota is used up: it resets
+  by itself), `upload_limit_exceeded` (the channel hit its own upload limit),
+  `token_expired` (the connection to the channel is broken: reconnect YouTube); each
+  has its own sentence in en/ru/uz and its own key `video:<cause>:<video id>`); a video was held for review
   (kind `approval`, info: it is routine while auto publish is off, and it is not
   e-mailed). Ids only, never a title. Only the one word `hold_detail->>cause` is
   selected (PostgREST path select, checked against fakes only: if a server refuses
@@ -413,8 +423,12 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   characters); `+N` counts the rest, so a long list never makes a failure vanish. The
   repository may be public, so in CI the job log and summary show only `group/name`
   and PASS / WARN / FAIL, never a balance, plan or model; the full report is for a
-  local run. Not proven: other operator channels' own tokens (Actions cannot list
-  secrets), and the `host` group (the runner is not the render machine).
+  local run. Every scheduled operator channel's own YouTube token is proven too (a free
+  in-memory refresh, check `token/<channel id>`): the workflow's `resolve` job reads the
+  registry and names each channel's secret, and the doctor is handed the first six by
+  name (a seventh is reported as not checked, a registry that cannot be read as a
+  warning). A scheduled channel whose secret is not set is a failing check named after
+  the channel. Not proven: the `host` group (the runner is not the render machine).
 * **Providers.** A balance snapshot that has not refreshed for 30 h (and less than
   7 days: past a week the provider is assumed retired), `provider:stale:<name>:<date>`
   (kind `health`); a non-ElevenLabs balance at zero (kind `balance`; ElevenLabs

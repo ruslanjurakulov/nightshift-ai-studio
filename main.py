@@ -47,7 +47,8 @@ from modules.avatar import (
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, effective_privacy, resolve_channel
-from modules.credential_health import CredentialsMissing, check_run_credentials, placeholder_media_allowed
+from modules.credential_health import (
+    CredentialsMissing, check_run_credentials, placeholder_media_allowed, with_live_youtube_check)
 from modules.cost_ledger import (
     CostLedger, IMAGE_GENERATIONS, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS,
     UPLOAD_BYTES, VIDEO_GEN_CLIPS,
@@ -56,7 +57,7 @@ from modules import budget
 from modules import disk_guard
 from modules import spend_guard
 from modules import shorts
-from modules.claim_extractor import extract_section_claims
+from modules.claim_extractor import SOURCE_NARRATION, extract_shipped_claims
 from modules import claim_scenes
 from modules.compositor import Compositor
 from modules import render_dispatch
@@ -89,7 +90,7 @@ from modules.thumbnail_generator import ThumbnailGenerator
 from modules import title_formulas
 from modules.title_planner import plan_titles
 from modules.topic_manager import TopicManager, TopicSelectionError
-from modules.youtube_uploader import YouTubeUploader
+from modules.youtube_uploader import YouTubeUploader, reconcile_privacy
 from tools.generate_assets import ensure_assets
 
 logging.basicConfig(
@@ -309,6 +310,8 @@ def _publish_short(
         except OSError:
             logger.debug("Could not stat %s for the cost ledger", short_path, exc_info=True)
 
+        # The privacy YouTube applied (see run()): never recorded as the one that was only requested.
+        short_recorded = reconcile_privacy(privacy, uploaded.get("privacy")).recorded
         with StateStore() as store:
             store.record_video(
                 video_id=uploaded["id"],
@@ -316,7 +319,7 @@ def _publish_short(
                 title=shorts.short_title(script.title),
                 slug=slug,
                 published_at=datetime.utcnow().isoformat(),
-                privacy=privacy,
+                privacy=short_recorded,
                 category_id=YOUTUBE_CATEGORY_ID,
                 local_path=str(short_path),
                 channel_id=channel_id,
@@ -434,16 +437,87 @@ def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
     spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned)
 
 
+def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decision, costs) -> None:
+    """A run whose fact-check would block the publish gate ends here, owner-visibly,
+    before the voice, stills and render are bought.
+
+    Mirrors the neighbouring early stops: the planning already paid for is recorded
+    (``_flush_costs``), the run gets a blocked ``videos`` row of its own (the gate's
+    reasons, scenes with their claim verdicts, and the flagged title/description/
+    thumbnail/hook texts those scenes do not show; no cut, so nothing to approve; a row
+    that already holds a cut a person may be reviewing is left alone), and a ``publish.blocked``
+    event — the one the Command Center, the operator bot and the Telegram control
+    already read for a blocked video — carries the fixed words and counts, the run's
+    slug and held id, what happened to the row, and the flagged non-narration texts
+    (capped; not the script's title). The caller raises HeldBeforeRender, which __main__ turns
+    into HELD_BEFORE_RENDER_EXIT so the runners release the credit hold.
+    Records only; never uploads, never raises."""
+    channel_id = ctx.channel_id
+    logger.error("[channel: %s] Fact-check would block the publish gate (%s) — run stopped before the voice, "
+                 "stills and render were bought", channel_id, ", ".join(decision.blocks))
+    print(f"\n⛔ Held before render ({', '.join(decision.blocks)}). Nothing was spent on the voice or the video.")
+    counts = decision.fact_check or {}
+    held_id, flagged, row = None, [], "not_recorded"
+    try:
+        held_id = held_video.held_video_id(channel_id, slug)
+        try:
+            scenes = claim_scenes.annotate_scenes(script, claims, fact_results)
+        except Exception:
+            scenes = None
+        detail = held_video.gate_detail(held_video.STATE_BLOCKED, decision.to_metadata())
+        detail["stage"] = "before_render"
+        flagged = held_video.flagged_claims(claims, fact_results)
+        if flagged:
+            detail["flagged"] = flagged
+        # The row's key is channel + topic slug, so an earlier run of this topic may have left a cut on it that a
+        # person is still reviewing (held, awaiting approval, blocked after its render). This hold has no video and
+        # would replace that cut's text, scenes and verdict, so a row that holds one is left exactly as it is. A
+        # lookup that fails reads as "maybe": nothing is written either. The event below says which of the three
+        # happened and carries the flagged texts, because the rows-based alerts stay silent when no row is written.
+        has_cut = held_video.HeldVideos().has_cut(held_id)
+        if has_cut is False:
+            written = held_video.record_held(channel_id=channel_id, slug=slug, state=held_video.STATE_BLOCKED,
+                                             topic=topic, title=script.title, script_text=script.full_narration(),
+                                             scenes=scenes, detail=detail, no_cut=True)
+            row = "written" if written else "not_recorded"
+        elif has_cut:
+            row = "kept_existing_cut"
+            logger.warning("[channel: %s] The held row for %s already holds a cut: it is left as it is, and no row "
+                           "is written for this early hold", channel_id, slug)
+        else:
+            row = "lookup_failed"
+            logger.warning("[channel: %s] The held row for %s could not be read, so it was not overwritten and no "
+                           "row is written for this early hold", channel_id, slug)
+    except Exception as e:
+        logger.warning("Could not record the early hold (%s: %s) — the run still stops",
+                       type(e).__name__, e)
+    try:
+        events.emit(events.PUBLISH_BLOCKED, agent="publish_gate", status=events.STATUS_FAILED,
+                    channel_id=channel_id,
+                    metadata={**decision.to_metadata(), "stage": "before_render", "slug": slug, "video_id": held_id,
+                              "row": row, "flagged": flagged,
+                              "claims_checked": len(fact_results), "claims_flagged": counts.get("flagged", 0)})
+    except Exception as e:
+        logger.warning("Could not emit the early-hold event (%s: %s) — the run still stops",
+                       type(e).__name__, e)
+    _flush_costs(costs, slug)
+
+
 def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
-    """The privacy this run may upload with. If the channel's Command Center
-    auto-publish switch is not ON (and the source carries one at all), anything
-    other than private is clamped to private with a one-line warning; see
-    modules.channels.effective_privacy. ON or no switch: unchanged."""
+    """The privacy this run may upload with. Unless the channel's Command Center
+    auto-publish switch is plainly ON, anything other than private is clamped to
+    private with a one-line warning; see modules.channels.effective_privacy. A
+    switch that could not be read (None) clamps too: unknown is not a yes."""
     allowed = effective_privacy(privacy, ctx.ui_auto_publish)
     if str(privacy or "").strip().lower() not in ("", "private") and allowed != privacy:
-        logger.warning(
-            "[channel: %s] Auto publish is not ON for this channel: %r requested, uploading "
-            "private instead (the switch means never public)", ctx.channel_id, privacy)
+        if ctx.ui_auto_publish is None:
+            logger.warning(
+                "[channel: %s] No auto-publish switch could be read for this channel: %r requested, "
+                "uploading private instead (unknown is treated as off)", ctx.channel_id, privacy)
+        else:
+            logger.warning(
+                "[channel: %s] Auto publish is not ON for this channel: %r requested, uploading "
+                "private instead (the switch means never public)", ctx.channel_id, privacy)
     return allowed
 
 
@@ -624,6 +698,13 @@ def run(
     health = None
     try:
         health = check_run_credentials(ctx)
+        # A run that will upload asks Google, for free and before the first paid step, whether this
+        # channel's YouTube token still refreshes: a revoked or expired one used to be found only at
+        # the upload, after the script, the voice and the render were paid for. A dead token joins the
+        # blocking list below (the same early stop as a missing key); an unknown goes on. A run that
+        # will not upload (--no-upload, auto-publish off) needs no token and is not asked.
+        if not skip_upload and ctx.auto_publish:
+            health = with_live_youtube_check(health, ctx)
         if health.blocking:
             logger.error("[channel: %s] Credential preflight — MISSING required: %s",
                          channel_id, ", ".join(c.name for c in health.blocking))
@@ -813,6 +894,9 @@ def run(
     # A saved script skips both Gemini calls, so a crash in a later stage — or a
     # spent daily quota — does not mean paying for generation again.
     topic_mgr = TopicManager(channel=ctx)
+    # history/ is only an Actions cache: after a long pause or a lost cache the channel has no memory of what it
+    # made. Rebuild it (read only) from the channel's own videos in Supabase before any topic is chosen or checked.
+    topic_mgr.seed_history_from_supabase()
 
     if script_file:
         script = ScriptEngine.load(Path(script_file), topic)
@@ -934,10 +1018,16 @@ def run(
     pipeline.advance(run_record.run_id, PipelineStage.FACT_CHECK)
     fact_results = None
     section_claims = None
+    narration_claim_count = None
     try:
         # Each claim carries its section (claim_id c000-1, scene s000), so the
         # Storyboard can show which scene says what (modules/claim_scenes.py).
-        section_claims = extract_section_claims(script)
+        # The same call checks every other text that ships — the alternate hook
+        # (swapped in AFTER this check), the title(s), the description, the
+        # thumbnail text — so a flagged claim anywhere blocks, not only one in
+        # the narration.
+        section_claims = extract_shipped_claims(script)
+        narration_claim_count = sum(1 for c in section_claims if c.source == SOURCE_NARRATION)
         claims = [c.text for c in section_claims]
         fact_results = fact_check_claims(claims) if claims else []
         flagged = [r for r in fact_results if r.requires_human_review]
@@ -954,6 +1044,21 @@ def run(
     except Exception as e:
         logger.warning("Fact-checker failed (%s: %s) — proceeding without fact-check results",
                         type(e).__name__, e)
+
+    # ── Stop here, not after the render, when the gate would block on this check.
+    # The same verdict publish_gate.evaluate reaches on the finished video, taken
+    # before the voice, the stills and the render are bought (CLAUDE.md #6). Only
+    # a check that ran can stop the run here; one that crashed (None) still goes
+    # on to the gate. The gate below stays the final authority.
+    if fact_results is not None:
+        early = publish_gate.evaluate_fact_check(
+            script=script, fact_results=fact_results, channel=ctx,
+            narration_claims=narration_claim_count, claims=section_claims,
+            language=getattr(ctx.agent, "language", None))
+        if not early.allowed:
+            _hold_before_render(ctx, slug=slug, topic=topic, script=script, claims=section_claims,
+                                fact_results=fact_results, decision=early, costs=costs)
+            raise publish_gate.HeldBeforeRender(", ".join(early.blocks))
 
     pipeline.advance(run_record.run_id, PipelineStage.HUMAN_APPROVAL)
 
@@ -1335,6 +1440,11 @@ def run(
         channel=ctx,
         qc_report=qc_report,
         ir_project=ir_project,
+        # What the uploader will send, not script.title: the A/B arm may ship title_ab.
+        title=published_title,
+        narration_claims=narration_claim_count,
+        claims=section_claims,
+        language=getattr(ctx.agent, "language", None),
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
@@ -1415,6 +1525,11 @@ def run(
                 held_scenes = claim_scenes.annotate_scenes(script, section_claims, fact_results)
             except Exception:
                 held_scenes = None
+            detail = held_video.gate_detail(state, gate_meta)
+            # The flagged title / description / thumbnail / hook texts belong to no scene: say them here.
+            flagged = held_video.flagged_claims(section_claims, fact_results)
+            if flagged:
+                detail["flagged"] = flagged
             held_video.record_held(
                 channel_id=channel_id,
                 slug=slug,
@@ -1425,7 +1540,7 @@ def run(
                 scenes=held_scenes,
                 manifest=ir_project.to_dict() if ir_project is not None else None,
                 local_path=str(video_path),
-                detail=held_video.gate_detail(state, gate_meta),
+                detail=detail,
             )
             # The finished cut must be watchable, not only listed: put the 480p
             # review copy and the script where the Command Center reads them,
@@ -1494,6 +1609,19 @@ def run(
                 attempt=upload_idempotency.begin(slug, channel_id),
             )
             video_id, video_url = uploaded["id"], uploaded["url"]
+            # What YouTube APPLIED, not what was asked for: an API project that has not passed the
+            # audit has every upload locked private whatever privacyStatus says, and a video
+            # recorded as the REQUESTED privacy would read as published when it is not. The row and
+            # the events say what the video has; the Short never goes wider than what was asked.
+            # No `privacy` assignment here: the clamp above is its only one (a test pins that).
+            outcome = reconcile_privacy(privacy, uploaded.get("privacy"))
+            recorded_privacy, short_privacy = outcome.recorded, outcome.limit
+            if outcome.mismatch:
+                logger.error("[channel: %s] YouTube applied privacy %r, not the requested %r — "
+                             "recording what the video has", channel_id, recorded_privacy, privacy)
+                events.emit(events.PRIVACY_FORCED, agent="youtube_uploader", status=events.STATUS_COMPLETED,
+                            channel_id=channel_id, video_id=video_id,
+                            metadata={"requested": str(privacy), "applied": str(recorded_privacy)})
             # Recorded only on a successful upload — a failed attempt may have
             # sent bytes, but it did not deliver a video, and guessing how many
             # got through would be inventing a number.
@@ -1511,7 +1639,7 @@ def run(
                     title=published_title,
                     slug=slug,
                     published_at=_published_at,
-                    privacy=privacy,
+                    privacy=recorded_privacy,
                     category_id=YOUTUBE_CATEGORY_ID,
                     local_path=str(video_path),
                     channel_id=channel_id,
@@ -1528,7 +1656,7 @@ def run(
                     slug=slug,
                     youtube_id=video_id,
                     published_at=_published_at,
-                    privacy=privacy,
+                    privacy=recorded_privacy,
                     title=published_title,
                     topic=topic,
                     category_id=YOUTUBE_CATEGORY_ID,
@@ -1541,7 +1669,7 @@ def run(
                             metadata={"url": video_url}, store=store)
                 events.emit(events.VIDEO_PUBLISHED, video_id=video_id, agent="youtube_uploader",
                             status=events.STATUS_COMPLETED, channel_id=channel_id,
-                            metadata={"title": published_title, "url": video_url, "privacy": privacy}, store=store)
+                            metadata={"title": published_title, "url": video_url, "privacy": recorded_privacy}, store=store)
                 # What the video was labelled with, and why: read back by the review panel and by the
                 # Instagram / TikTok cross-post, which must give the same answer for the same cut.
                 events.emit(ai_disclosure.EVENT, video_id=video_id, agent="ai_disclosure",
@@ -1645,9 +1773,12 @@ def run(
             # that channel's, and does not read as a Nightshift-wide outage.
             logger.error("[channel: %s] YouTube upload failed (%s): %s", channel_id, type(e).__name__, e)
             print(f"\n✓ Video saved, upload failed: {video_path}")
+            # A fixed word for the owner and the alerts (out of quota today is not a broken token).
+            upload_cause = held_video.upload_failure_cause(e)
             events.emit(events.UPLOAD_FAILED, agent="youtube_uploader", status=events.STATUS_FAILED,
                         channel_id=channel_id,
-                        metadata={"operation": "upload", "error": f"{type(e).__name__}: {e}"})
+                        metadata={"operation": "upload", "error": f"{type(e).__name__}: {e}",
+                                  "cause": upload_cause})
             # The render exists, so the customer must be able to see it: give
             # the run a held row (with its preview) saying the upload failed.
             # Only when no YouTube id came back — a failure after a real upload
@@ -1656,7 +1787,7 @@ def run(
             # log/event above and is never stored on the row.
             if video_id is None:
                 _record_held_run(held_video.STATE_HELD,
-                                 gate_meta={**gate.to_metadata(), "reason": "upload_failed"})
+                                 gate_meta={**gate.to_metadata(), "reason": upload_cause})
         else:
             # ── Stage 9: Short
             # Strictly downstream of a video that actually published: the gate
@@ -1678,7 +1809,7 @@ def run(
                 parent_video_id=video_id,
                 parent_url=video_url,
                 topic=topic,
-                privacy=privacy,
+                privacy=short_privacy,
                 timeline=timeline,
                 costs=costs,
                 ai_decision=ai_decision,
@@ -1856,6 +1987,11 @@ if __name__ == "__main__":
             print(f"\n⏸ Storyboard {paused.reason}: nothing renders until it is approved "
                   f"in the Command Center (storyboard {paused.storyboard_id}).")
             sys.exit(storyboard_review.PAUSED_EXIT)
+        except publish_gate.HeldBeforeRender:
+            # The fact-check would block the gate: nothing past the script was
+            # bought. A distinct code so the runners release the credit hold
+            # (tools/queue_worker.py, daily_video.yml) instead of reading "0".
+            sys.exit(publish_gate.HELD_BEFORE_RENDER_EXIT)
         except budget.BudgetStop:
             # The ceiling stopped the run before it spent anything; the log and
             # the console line above say so. A distinct code so the runners

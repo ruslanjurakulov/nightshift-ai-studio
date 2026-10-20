@@ -208,6 +208,11 @@ class WorkflowTestCase(unittest.TestCase):
         for expr in self.daily_env.values():
             daily_refs |= self.refs(expr)
         for name, expr in self.step["env"].items():
+            if name.startswith("DOCTOR_CHANNEL_TOKEN_"):
+                # The scheduled channels' tokens: the daily run restores the same secrets per channel through
+                # secrets[matrix.token_secret]; here they are read by the names the resolver job computed
+                # (tests/test_doctor_channel_tokens.py pins the exact expressions).
+                continue
             self.assertIn(name, self.daily_env, f"{name} is not passed to the daily run")
             self.assertTrue(self.refs(expr) <= self.refs(self.daily_env[name]),
                             f"{name} reads a source the daily run does not use for it")

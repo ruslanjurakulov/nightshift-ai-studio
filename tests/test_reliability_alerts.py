@@ -46,7 +46,7 @@ def video(vid="vid1", cid="default", state="held", held=None, published=None, de
     """A videos row as the server answers the bot's select: the hold's cause is the one word the path select returns."""
     return {"video_id": vid, "channel_id": cid, "publish_state": state, "video_format": fmt, "parent_video_id": parent,
             "held_at": iso(held) if held else None, "published_at": iso(published) if published else None,
-            "hold_cause": (detail or {}).get("cause")}
+            "hold_cause": (detail or {}).get("cause"), "hold_stage": (detail or {}).get("stage")}
 
 
 def storyboard(when, cid="default", sid="sb1"):
@@ -392,7 +392,7 @@ class UnknownIsNotSilenceTestCase(unittest.TestCase):
         vids = [p for tbl, p in ops.sync.reads if tbl == "videos"][0]
         self.assertEqual(vids["channel_id"], "in.(default)")
         self.assertEqual(vids["select"], "video_id,channel_id,publish_state,published_at,held_at,video_format,"
-                                         "parent_video_id,hold_cause:hold_detail->>cause")
+                                         "parent_video_id,hold_cause:hold_detail->>cause,hold_stage:hold_detail->>stage")
         # no server-side parent filter: the mirror writes '' not NULL, and is.null would drop every master
         self.assertNotIn("parent_video_id", vids)
         boards = [p for tbl, p in ops.sync.reads if tbl == "storyboards"][0]
@@ -818,6 +818,27 @@ class VideoEventsTestCase(unittest.TestCase):
         self.assertIn("Upload failed", tg.texts()[-1])
         self.assertEqual(engine.tick().sent, 0)
 
+    def test_every_hold_cause_has_its_own_alert_in_every_language(self):
+        # "Out of quota today" is not "the connection is broken": each cause word is a different
+        # alert (own key, own sentence), so the owner can tell them apart from the page.
+        from modules import held_video
+        from modules.operator_bot.i18n import t
+        from modules.operator_bot.reliability import _HOLD_ALERT_COPY
+        self.assertEqual(set(_HOLD_ALERT_COPY), set(held_video.HOLD_CAUSES))
+        lines = {}
+        for cause in held_video.HOLD_CAUSES:
+            found = self.found(videos=[video("run-cccc", state="held", held=at(14, 15, 32),
+                                             detail={"reason": "held", "cause": cause})])
+            self.assertEqual([(a.key.split(":")[1], a.kind, a.severity) for a in found],
+                             [(cause, "pipeline", "warn")])
+            self.assertIn("run-cccc", found[0].line)
+            lines[cause] = found[0].line
+        self.assertEqual(len(set(lines.values())), len(lines))
+        for lang in ("en", "ru", "uz"):
+            texts = {t(lang, key, channel="news", video="run-1") for key in _HOLD_ALERT_COPY.values()}
+            self.assertEqual(len(texts), len(_HOLD_ALERT_COPY))
+            self.assertTrue(all("{" not in x for x in texts))
+
     def test_the_hold_causes_the_bot_knows_are_the_pipelines(self):
         from modules import held_video
         from modules.operator_bot import sources
@@ -851,7 +872,7 @@ class VideoEventsTestCase(unittest.TestCase):
         self.assertEqual(sec.data[0]["video_id"], "run-jjjj")
         for _table, params in sync.reads:
             self.assertNotIn("hold_detail,", params["select"] + ",")             # the whole JSON is never asked for
-            self.assertNotIn("hold_detail", params["select"].replace("hold_detail->>cause", ""))
+            self.assertNotIn("hold_detail", params["select"].replace("hold_detail->>cause", "").replace("hold_detail->>stage", ""))
 
     def test_repurposed_shorts_are_neither_alerts_nor_slot_evidence(self):
         shorts = [video(f"short{i}", state="held", held=at(14, 15, 30), fmt="short", parent="master1") for i in range(20)]

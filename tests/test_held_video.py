@@ -351,7 +351,7 @@ class MainWiring(unittest.TestCase):
 
     def test_upload_failure_records_a_held_row_only_without_a_youtube_id(self):
         src = _src()
-        i = src.index('"reason": "upload_failed"')
+        i = src.index('"reason": upload_cause')
         guard = src.rfind("if video_id is None:", 0, i)
         self.assertGreater(guard, src.index("YouTube upload failed ("))
         self.assertIn("_record_held_run(held_video.STATE_HELD", src[guard:i])
@@ -366,7 +366,7 @@ class MainWiring(unittest.TestCase):
 
     def test_promote_uses_the_same_published_at_as_the_local_row(self):
         src = _src()
-        self.assertIn("published_at=_published_at,\n                    privacy=privacy,", src)
+        self.assertIn("published_at=_published_at,\n                    privacy=recorded_privacy,", src)
         self.assertRegex(src, re.compile(r"record_video\([^)]*published_at=_published_at", re.S))
 
 

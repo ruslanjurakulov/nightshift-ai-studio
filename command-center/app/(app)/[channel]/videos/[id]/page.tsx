@@ -37,7 +37,7 @@ import {
 import { resolveRunBackend } from "@/lib/runBackend";
 import { sceneRepairEligibility } from "@/lib/sceneRepair";
 import { latestByScene, parseRegenRows, REGEN_COLUMNS, type RegenRow } from "@/lib/sceneRegenerate";
-import { heldCause, heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
+import { heldCause, heldCauseNote, heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchChannelTopicScores, getChannelScope } from "@/lib/channels-server";
@@ -339,9 +339,9 @@ export default async function VideoDetail({
             <div className="text-sm font-semibold text-[var(--color-warn)]">
               {isClip ? t.repurpose.clipState : heldStateLabel(heldState(video), t.held, heldCause(video))}
             </div>
-            {!isClip && heldCause(video) === "upload_failed" && (
+            {!isClip && heldCauseNote(heldCause(video), t.held) && (
               <p className="m-0 text-xs leading-relaxed text-[var(--color-fg)]">
-                {t.held.uploadFailedNote}
+                {heldCauseNote(heldCause(video), t.held)}
                 {video.preview_path ? ` ${t.held.uploadFailedWatch}` : ""}
               </p>
             )}

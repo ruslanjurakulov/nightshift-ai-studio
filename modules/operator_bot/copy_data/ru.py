@@ -360,6 +360,7 @@ TABLE = {
     "status.videos_unknown": "Видео: {why}",
     "status.held": "На проверке: {n}{cut}",
     "status.blocked": "Заблокировано шлюзом и сохранено: {n}",
+    "status.held_early": "Остановлено до создания видео (готового видео нет): {n}",
     "status.published_unknown": "Опубликованные видео: {why}",
     "status.published": "Опубликовано: {day} за 24 часа, {week} за 7 дней{cut}",
     "status.footer": "Только числа, из базы данных. Отсюда ничего не публикуется и не одобряется.",
@@ -370,6 +371,7 @@ TABLE = {
     "pending.v_line": "• {id} · {channel} · {state} · {age}",
     "pending.v_more": "+ ещё {n}",
     "pending.v_blocked": "Заблокировано шлюзом и сохранено: {n}",
+    "pending.v_held_early": "Остановлено до создания видео (готового видео нет): {n}",
     "pending.v_footer": "Только id, без названий. Решайте в приложении: отсюда ничего не публикуется.",
 
     # -- marketing: только информация (числа и закрытые коды, никогда слова поста) --
@@ -486,8 +488,12 @@ TABLE = {
     "alert.deadman_hint_old": "Список запусков GitHub не доходит до этого слота, причину назвать нельзя.",
     "alert.run_failed_nojobs": "Ежедневный запуск видео #{number} ({event}) завершился: {conclusion} — {sha}",
     "alert.video_blocked": "Публикационный фильтр заблокировал видео — канал {channel}, видео {video}",
+    "alert.video_held_early": "Сценарий остановлен до создания видео (готового видео нет) — канал {channel}, видео {video}",
     "alert.video_held": "Видео ждёт проверки — канал {channel}, видео {video}",
     "alert.video_upload_failed": "Загрузка не удалась — канал {channel}, видео {video}",
+    "alert.video_quota_exceeded": "Загрузка отложена: дневная квота YouTube API исчерпана — канал {channel}, видео {video}. Квота восстановится сама; отправьте видео снова завтра.",
+    "alert.video_upload_limit_exceeded": "Загрузка отложена: канал достиг лимита загрузок YouTube — канал {channel}, видео {video}. Дождитесь снятия лимита и отправьте снова.",
+    "alert.video_token_expired": "Загрузка отложена: подключение к YouTube нарушено — канал {channel}, видео {video}. Переподключите YouTube для этого канала и отправьте снова.",
     "alert.doctor_fail": "Плановая проверка готовности падает: {check}. Запустите tools/doctor.py (или откройте сводку workflow doctor_scheduled): там указано, что чинить.",
     "alert.doctor_ok": "Восстановлено: проверка готовности {check} снова проходит",
     "alert.doctor_stale": "Плановая проверка готовности не отчитывалась {age}: проверьте workflow doctor_scheduled.",

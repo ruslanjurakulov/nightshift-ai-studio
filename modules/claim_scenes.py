@@ -62,6 +62,11 @@ def fact_check_records(claims: Optional[Iterable[Claim]], results) -> list[dict]
             row["claim_id"] = claims[i].claim_id
             row["section_index"] = claims[i].section_index
             row["scene_id"] = claims[i].scene_id
+            if claims[i].source != "narration":
+                # Text that ships outside the narration (title, description,
+                # thumbnail, the alternate opening): say which, so a reviewer
+                # reading fact_check.json knows where the flagged words ship.
+                row["source"] = claims[i].source
         rows.append(row)
     return rows
 
