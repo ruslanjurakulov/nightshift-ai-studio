@@ -271,7 +271,13 @@ from modules.state_store import StateStore
 ctx = ChannelContext.from_dict(row)
 work = Path(tempfile.mkdtemp()); os.chdir(work)
 db = Path(os.environ["CHRONOS_STATE_DB"])
-out = {"events": [], "held": [], "checked": [], "voice_built": False}
+out = {"events": [], "held": [], "checked": [], "voice_built": False, "warnings": []}
+import logging
+class _Collect(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            out["warnings"].append(record.getMessage()[:300])
+logging.getLogger().addHandler(_Collect())
 
 class FakeMixer:
     characters_synthesized = 10
@@ -287,6 +293,14 @@ def fake_emit(name, **kw):
 def fake_held(**kw):
     out["held"].append({k: (v if k in ("state", "detail", "title", "topic") else "...") for k, v in kw.items()})
     return "run-x"
+
+# Hermetic: the run writes its checkpoint, script copy, fact_check.json and pipeline state under
+# OUTPUT_DIR / HISTORY_DIR, which are per-checkout files other runs share. Point every module's
+# copy at this child's own directory so a parallel run cannot corrupt this one.
+for _name, _mod in list(sys.modules.items()):
+    for _attr, _dir in (("OUTPUT_DIR", work / "output"), ("HISTORY_DIR", work / "history")):
+        if _name.split(".")[0] in ("main", "modules", "config") and getattr(_mod, _attr, None) is not None:
+            setattr(_mod, _attr, _dir)
 
 fetcher = MagicMock()
 patches = [
@@ -310,6 +324,7 @@ try:
 except BaseException as e:
     out["raised"] = [type(e).__name__, str(e)]
     out["tb"] = traceback.format_exc()[-1500:]
+out["tb"] = out.get("tb", "") + " | warnings: " + " ; ".join(out["warnings"])[-1500:]
 print("RESULT " + json.dumps(out))
 """
 
