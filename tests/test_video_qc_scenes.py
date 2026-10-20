@@ -144,16 +144,69 @@ class StaticCardTests(SceneQc):
         report = self.qc(fake, narration_duration_s=30.0, timeline=timeline, static_scene_ids=["s000"])
         self.assertTrue(any(b.startswith("video_qc_black:") for b in report.blocks))
 
-    def test_card_recipes_come_from_the_ir_scenes(self):
+    # -- a recipe is only an intention: the default compositor ignores it ------------
+    # The director gives every section a recipe on every run (stat_counter for a
+    # numbers-heavy sentence, quote_card for a quote ...), and the default moviepy
+    # render draws that scene as an ordinary still or stock clip. Only a scene that
+    # Remotion really rendered is a card; anything else keeps the per-scene blocks.
+
+    @staticmethod
+    def project(*recipes):
         from types import SimpleNamespace as NS
-        scene = lambda i, recipe: NS(id=f"s{i:03d}", shot=NS(recipe=recipe))
-        project = NS(scenes=[scene(0, "title_card"), scene(1, "slow_push"), scene(2, "evidence_card"),
-                             scene(3, "lateral_pan"), scene(4, "chapter_card"), scene(5, "no_such_recipe")])
-        self.assertEqual(video_qc.static_scene_ids(project), ["s000", "s002", "s004"])
+        return NS(scenes=[NS(id=f"s{i:03d}", shot=NS(recipe=r)) for i, r in enumerate(recipes)])
+
+    RECIPES = ("title_card", "slow_push", "evidence_card", "lateral_pan", "chapter_card", "no_such_recipe")
+
+    @staticmethod
+    def rendered(**by_scene):
+        return {"backend_by_scene": by_scene}
+
+    def test_cards_that_remotion_rendered_are_static(self):
+        sr = self.rendered(s000="remotion", s001="ffmpeg", s002="remotion", s003="ffmpeg",
+                           s004="remotion", s005="remotion")
+        self.assertEqual(video_qc.static_scene_ids(self.project(*self.RECIPES), sr),
+                         ["s000", "s002", "s004"])
+
+    def test_a_motion_recipe_is_not_static_even_when_remotion_rendered_it(self):
+        sr = self.rendered(s001="remotion", s003="remotion")
+        self.assertEqual(video_qc.static_scene_ids(self.project(*self.RECIPES), sr), [])
+
+    def test_a_card_recipe_with_the_default_render_is_not_static(self):
+        # The reproduced case: a stat_counter scene drawn by moviepy as a Ken-Burns still.
+        project = self.project("title_card", "stat_counter", "quote_card")
+        for scene_render in (None, {}, {"backend_by_scene": {}}, {"backend_by_scene": {"s001": "ffmpeg"}}):
+            with self.subTest(scene_render=scene_render):
+                self.assertEqual(video_qc.static_scene_ids(project, scene_render), [])
+        self.assertEqual(video_qc.static_scene_ids(project), [])
+
+    def test_a_scene_that_fell_back_from_remotion_to_ffmpeg_is_not_static(self):
+        # scene_render records the backend that actually produced the scene.
+        project = self.project("title_card")
+        self.assertEqual(video_qc.static_scene_ids(project, self.rendered(s000="ffmpeg")), [])
+
+    def test_a_malformed_render_record_means_nothing_is_skipped_and_never_raises(self):
+        project = self.project("title_card")
+        for bad in ("remotion", 7, ["remotion"], {"backend_by_scene": None}, {"backend_by_scene": ["s000"]},
+                    {"backend_by_scene": "s000"}, {"backend_by_scene": {"s000": None}}):
+            with self.subTest(bad=bad):
+                self.assertEqual(video_qc.static_scene_ids(project, bad), [])
 
     def test_no_ir_project_means_no_static_scenes_and_no_crash(self):
-        self.assertEqual(video_qc.static_scene_ids(None), [])
-        self.assertEqual(video_qc.static_scene_ids(object()), [])
+        sr = self.rendered(s000="remotion")
+        self.assertEqual(video_qc.static_scene_ids(None, sr), [])
+        self.assertEqual(video_qc.static_scene_ids(object(), sr), [])
+
+    def test_a_dead_scene_with_a_card_recipe_but_a_default_render_still_blocks(self):
+        project = self.project("title_card", "evidence_card", "stat_counter", "slow_push", "slow_push")
+        ids = video_qc.static_scene_ids(project, None)
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 18.0)], static_scene_ids=ids)
+        self.assertIn("video_qc_scene_black:s002", report.blocks)
+
+    def test_the_same_dead_scene_is_skipped_when_remotion_really_drew_the_card(self):
+        project = self.project("title_card", "evidence_card", "stat_counter", "slow_push", "slow_push")
+        ids = video_qc.static_scene_ids(project, self.rendered(s002="remotion"))
+        report = self.qc_short(black=[(12.0, 18.0)], frozen=[(12.0, 18.0)], static_scene_ids=ids)
+        self.assertEqual([b for b in report.blocks if "scene" in b], [])
 
 
 class FrozenSceneTests(SceneQc):

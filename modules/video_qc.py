@@ -23,7 +23,8 @@ depends on — and returns numbers, not opinions:
   viewer saw nothing in blocks even when the whole-video totals stay small. A
   scene is dead only when it is black AND still (a sparse night sky or a heading
   on a dark ground reads black while moving); a scene whose recipe is a designed
-  card is a still frame on purpose and is skipped (``static_scene_ids``).
+  card AND was really rendered by Remotion is a still frame on purpose and is skipped
+  (``static_scene_ids``); a recipe alone is not enough.
 
 Black and silent runs are mapped onto scene ids (``s000``, ``s001`` …, the
 script section index — the shared Video IR convention) using the audio
@@ -425,18 +426,32 @@ def scan(path: Path, *, has_video: bool, has_audio: bool,
 # ── scene mapping ──────────────────────────────────────────────────────────
 
 
-def static_scene_ids(project) -> list:
-    """Ids of the scenes whose recipe is a designed card (title, chapter, quote,
-    stat, evidence, timeline: ``shot_recipes`` kind ``graphic``) in a Video IR
-    project. Such a scene is a still frame on purpose, black-and-frozen to ffmpeg,
-    so per-scene QC leaves it alone. Never raises; unknown means not static."""
+def static_scene_ids(project, scene_render=None) -> list:
+    """Ids of the scenes that really were drawn as a designed card: the Video IR
+    scene's recipe is a card (``shot_recipes`` kind ``graphic``: title, chapter,
+    quote, stat counter, evidence, timeline) AND ``scene_render`` (the render
+    result's ``scene_render`` record) says Remotion rendered that scene.
+
+    A recipe alone proves nothing. The director gives every section a recipe on
+    every run, a numbers-heavy sentence gets ``stat_counter``, and the default
+    compositor ignores recipes and draws that scene as an ordinary still or stock
+    clip: exempting it would exempt exactly the dead scene QC is for. A scene whose
+    Remotion render failed and was redone with ffmpeg is recorded as ffmpeg, so it
+    is not exempt either. No record (the default render) means nothing is skipped.
+    A still card is black-and-frozen to ffmpeg on purpose, which is why a real one
+    is left alone. Never raises; unknown means not static."""
     try:
+        from modules import scene_render as sr
         from modules import shot_recipes
 
+        backends = scene_render.get("backend_by_scene") if isinstance(scene_render, dict) else None
+        if not isinstance(backends, dict):
+            return []
         out = []
         for scene in getattr(project, "scenes", None) or []:
             recipe = shot_recipes.get(getattr(getattr(scene, "shot", None), "recipe", None))
-            if recipe is not None and recipe.kind == shot_recipes.KIND_GRAPHIC:
+            if (recipe is not None and recipe.kind == shot_recipes.KIND_GRAPHIC
+                    and backends.get(str(scene.id)) == sr.BACKEND_REMOTION):
                 out.append(str(scene.id))
         return out
     except Exception:
@@ -552,7 +567,7 @@ def run(
 ) -> QcReport:
     """Measure `video_path` and write `qc_report.json` next to it. Never raises.
 
-    ``static_scene_ids`` names scenes that are a still card on purpose (see
+    ``static_scene_ids`` names scenes that really were drawn as a still card (see
     :func:`static_scene_ids`); the per-scene black and frozen blocks skip them. The
     whole-video rules are unchanged."""
     report = QcReport(video_path=str(video_path or ""))

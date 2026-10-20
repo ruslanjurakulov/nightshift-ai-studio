@@ -236,7 +236,10 @@ class MainWiring(unittest.TestCase):
     def test_the_qc_call_names_the_card_scenes_of_the_ir_project(self):
         body = self.run_src
         qc = body[body.index("video_qc.run("):]
-        self.assertIn("static_scene_ids=video_qc.static_scene_ids(ir_project)", qc[:400])
+        flat = " ".join(qc[:600].split())
+        self.assertIn('static_scene_ids=video_qc.static_scene_ids( ir_project, getattr(render_result, "scene_render", None))', flat)
+        # the render result must exist before QC reads which backend drew each scene
+        self.assertLess(body.index("render_result = render_dispatch.render_video("), body.index("video_qc.run("))
         self.assertLess(body.index("ir_project = video_ir.write_for_run("), body.index("video_qc.run("))
 
     def test_run_hands_the_still_outcome_to_the_helper_after_the_generator_stage(self):

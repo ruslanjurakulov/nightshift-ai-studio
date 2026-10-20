@@ -1298,10 +1298,12 @@ def run(
     # Measure the file first (modules/video_qc.py): streams, duration vs the
     # narration, truncation, black and silent runs. Never raises; the report
     # lands in qc_report.json and in the gate event's metadata.
-    # A scene whose recipe is a designed card is a still frame on purpose.
+    # A scene Remotion really drew as a designed card is a still frame on purpose; a
+    # card recipe alone proves nothing (the default render ignores recipes).
     qc_report = video_qc.run(video_path, audio_path=audio_path, timeline=timeline,
                              expected_width=render_fmt.width, expected_height=render_fmt.height,
-                             static_scene_ids=video_qc.static_scene_ids(ir_project))
+                             static_scene_ids=video_qc.static_scene_ids(
+                                 ir_project, getattr(render_result, "scene_render", None)))
     gate = publish_gate.evaluate(
         script=script,
         video_path=video_path,
