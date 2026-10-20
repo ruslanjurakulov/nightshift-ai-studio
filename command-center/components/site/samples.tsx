@@ -24,14 +24,6 @@ import citynight from "@/components/site/media/citynight.webp";
 import citynightSm from "@/components/site/media/citynight-sm.webp";
 import desert from "@/components/site/media/desert.webp";
 import desertSm from "@/components/site/media/desert-sm.webp";
-import peak from "@/components/site/media/peak.webp";
-import waterfall from "@/components/site/media/waterfall.webp";
-import mic from "@/components/site/media/mic.webp";
-import reel from "@/components/site/media/reel.webp";
-import trails from "@/components/site/media/trails.webp";
-import fibres from "@/components/site/media/fibres.webp";
-import paper from "@/components/site/media/paper.webp";
-import paint from "@/components/site/media/paint.webp";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
 
@@ -59,15 +51,6 @@ export const SAMPLES = {
   lighthouse: pair(lighthouse, lighthouseSm),
   citynight: pair(citynight, citynightSm),
   desert: pair(desert, desertSm),
-  // The capability wall's tiles: one 448 px file each.
-  peak: pair(peak, peak),
-  waterfall: pair(waterfall, waterfall),
-  mic: pair(mic, mic),
-  reel: pair(reel, reel),
-  trails: pair(trails, trails),
-  fibres: pair(fibres, fibres),
-  paper: pair(paper, paper),
-  paint: pair(paint, paint),
 } as const satisfies Record<MediaId, { src: string; width: number; height: number; sm: string; smWidth: number }>;
 export type SampleId = keyof typeof SAMPLES;
 

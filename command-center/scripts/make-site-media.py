@@ -76,20 +76,8 @@ OUT_STILLS = {
     "citynight": ("photo/solutions-city-night-39659645.jpg", (0, 0.0, 1, 0.73), (2, 1), 72, 1.0, LIFT),
     # Round 9. The sign-in stage: a square of golden light over dunes (a tall stage and a wide band both crop a square well); the sun is at 54% of the width.
     "desert": ("2:photo/golden-desert-sunrise-28638937.jpg", (0.22, 0, 0.865, 1), (1, 1), 66, 1.0, 0.015),
-    # The capability wall's tiles: one 448 x 336 file each (TILES), at most 25 KB.
-    "peak": ("2:photo/tile-image-peak-gold-34033024.jpg", (0.1, 0, 0.99, 1), (4, 3), 64, 1.0, LIFT),
-    "waterfall": ("2:photo/tile-video-flowing-water-8780358.jpg", (0.12, 0, 0.88, 1), (4, 3), 62, 1.0, LIFT),
-    "mic": ("2:photo/tile-voice-brass-mic-26280295.jpg", (0.0, 0, 0.889, 1), (4, 3), 66, 1.0, LIFT),
-    "reel": ("2:photo/tile-edit-film-reel-34084909.jpg", (0.055, 0, 0.945, 1), (4, 3), 64, 1.0, LIFT),
-    "trails": ("2:photo/tile-animate-light-trails-36504036.jpg", (0.0, 0, 1, 1), (4, 3), 62, 1.0, LIFT),
-    "fibres": ("2:photo/tile-upscale-macro-fibres-37955302.jpg", (0.0, 0, 1, 1), (4, 3), 62, 1.0, LIFT),
-    "paper": ("2:photo/tile-cutout-paper-layers-34051927.jpg", (0.0, 0.1, 1, 0.9), (4, 3), 64, 1.0, LIFT),
-    "paint": ("2:photo/tile-styles-impasto-paint-1208949.jpg", (0.0, 0, 1, 1), (4, 3), 60, 0.92, LIFT),
 }
-TILES = {"peak", "waterfall", "mic", "reel", "trails", "fibres", "paper", "paint"}
 WIDTHS = {"": 1280, "-sm": 640}
-TILE_MAX_KB = 25
-TILE_W = 448  # a tile is about 170 px wide on a phone (2 columns) and 280 on a desktop (4 columns); 448 covers both at 1x and the phone at 2x
 
 
 def source(path: str) -> str:
@@ -115,20 +103,11 @@ def make_stills(only: set[str] | None = None) -> dict:
             nh = round(cw * ah / aw)
             box = (box[0], box[1] + (ch - nh) // 2, box[2], box[1] + (ch - nh) // 2 + nh)
         for suffix, w in WIDTHS.items():
-            if name in TILES and suffix == "":
-                continue
-            if name in TILES:
-                w = TILE_W
             h = round(w * ah / aw)
             im = grade(src.resize((w, h), Image.LANCZOS, box=box), sat=sat, lift=lift)
-            path = os.path.join(STILLS_DIR, f"{name}{suffix}.webp" if name not in TILES else f"{name}.webp")
+            path = os.path.join(STILLS_DIR, f"{name}{suffix}.webp")
             quality = q if suffix == "" else q - 4
             im.save(path, "WEBP", quality=quality, method=6)
-            if name in TILES:
-                # The tile is the smallest picture on the page: lower the quality until it fits its budget.
-                while os.path.getsize(path) > TILE_MAX_KB * 1024 and quality > 36:
-                    quality -= 3
-                    im.save(path, "WEBP", quality=quality, method=6)
             sizes[path.split(os.sep)[-1][:-5]] = os.path.getsize(path)
     return sizes
 

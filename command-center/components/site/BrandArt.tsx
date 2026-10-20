@@ -85,7 +85,7 @@ export function thumbWords(topic: string): string[] {
   return words.slice(0, 3);
 }
 
-export function ThumbArt({ topic, className = "" }: { topic: string; className?: string }) {
+export function ThumbArt({ topic, className = "", backdrop = false }: { topic: string; className?: string; /** A picture sits behind the drawing (the Silk Road example's AI-generated image): the stage fill and its glow are left out, the words and the frame stay. */ backdrop?: boolean }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const words = thumbWords(topic);
   let h = 0;
@@ -108,13 +108,17 @@ export function ThumbArt({ topic, className = "" }: { topic: string; className?:
           <stop offset="1" stopColor={AMBER} stopOpacity="0" />
         </radialGradient>
       </defs>
-      <rect width="640" height="360" fill={STAGE} />
-      <circle cx={gx} cy={gy} r="230" fill={`url(#t${uid})`} />
-      <g stroke={DIM} strokeOpacity="0.08">
-        {[90, 180, 270].map((y) => (
-          <line key={y} x1="0" y1={y} x2="640" y2={y} />
-        ))}
-      </g>
+      {!backdrop && (
+        <>
+          <rect width="640" height="360" fill={STAGE} />
+          <circle cx={gx} cy={gy} r="230" fill={`url(#t${uid})`} />
+          <g stroke={DIM} strokeOpacity="0.08">
+            {[90, 180, 270].map((y) => (
+              <line key={y} x1="0" y1={y} x2="640" y2={y} />
+            ))}
+          </g>
+        </>
+      )}
       <rect x="26" y="26" width="588" height="308" rx="18" fill="none" stroke={AMBER} strokeOpacity="0.3" strokeWidth="2" />
       {words.map((w, i) => (
         <text key={`${w}${i}`} x="56" y={74 + size + i * (size + 12)} fontFamily="var(--font-display)" fontWeight="700" fontSize={size} letterSpacing="-1" fill={i === words.length - 1 ? AMBER : "var(--nx-stage-text)"}>

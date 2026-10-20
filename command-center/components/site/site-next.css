@@ -1204,11 +1204,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-wall-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; margin: 12px 0 0; padding: 0; list-style: none; }
 .nx-wall-tile { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px; min-width: 0; }
 .nx-wall-frame { display: block; aspect-ratio: 2 / 1; margin-bottom: 6px; border-radius: 16px; overflow: hidden; background: #12151c; }
-.nx-wall-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
 .nx-wall-name { font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.2; color: var(--ns-text); }
 .nx-wall-body { font-size: 15px; line-height: 1.35; color: var(--ns-text); }
 .nx-wall-price { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
-.nx-wall-credit { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); overflow-wrap: anywhere; }
 .nx-wall-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 12px 0 0; font-size: 15px; color: var(--ns-text); }
 .nx-wall-editor svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--ns-text-dim); }
 .nx-wall-editor b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
@@ -1241,7 +1239,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   .nx-hero-top .nx-sample-label { text-decoration-color: rgba(255, 255, 255, 0.55); }
   .nx-hero-top .nx-sample:hover .nx-sample-label { color: #fff; text-decoration-color: #fff; }
   .nx-hero-top .nx-sample-note { color: rgba(255, 255, 255, 0.86); }
-  .nx-hero .nx-chat .nx-result-art { display: none; }
   .nx-hero-visual { margin-top: 20px; }
 }
 
@@ -1253,11 +1250,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   .nx-wall-more { width: 100%; }
 }
 @media (min-width: 640px) { .nx-wall-more { display: none; } }
-@media (prefers-reduced-motion: no-preference) {
-  .nx-wall-pic { transition: transform 7s cubic-bezier(0.2, 0.6, 0.2, 1); }
-  .nx-wall-tile[data-alive] .nx-wall-pic, .nx-wall-tile:hover .nx-wall-pic { transform: scale(1.12); }
-  html[data-motion="paused"] .nx-wall-pic { transition: none; transform: none !important; }
-}
 
 /* ── Round 9: a shorter phone landing (the first screen is now the picture; what the page says twice is said once) ── */
 @media (max-width: 859px) {
@@ -1336,3 +1328,63 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-bleed .nx-clip-pause { top: 12px; right: 12px; bottom: auto; z-index: 3; }
 /* Focus on a picture: the stage amber (the public site's focus colour; the light theme's darker amber would be lost on a photograph) outside a dark gap, so it reads against any footage. The tokens have literal fallbacks: /mcp's header is outside .nx, where they are undefined, and an unresolved var() in `outline` drops the whole ring. */
 .nx-clip-pause:focus-visible { outline: 3px solid var(--nx-stage-amber, #ffa940); outline-offset: 2px; box-shadow: 0 0 0 2px rgba(8, 8, 8, 0.9); }
+
+/* ── The tool tiles: a calm violet icon on a dark tile ── */
+/* Dark in both themes (a light page shows a dark tile, like the showcases and the closing panel); the icon is #b3acff, about 9:1 on the tile's darkest and 7:1 on its glow, and it is decoration (aria-hidden: the tool's name is printed under it). The tile's size is the wall's own (2:1 on a phone, 4:3 from 640 px), so the layout is as before. */
+.nx-wall-frame:has(.nx-wall-icon) { display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse 70% 90% at 50% 55%, #2b2566 0%, #15122f 55%, #0b0a1c 100%); }
+.nx-wall-icon { width: 42%; max-width: 64px; height: auto; max-height: 62%; aspect-ratio: 1; color: #b3acff; filter: drop-shadow(0 0 14px rgba(143, 132, 255, 0.45)); }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-wall-icon { transition: transform 7s cubic-bezier(0.2, 0.6, 0.2, 1); }
+  .nx-wall-tile[data-alive] .nx-wall-icon, .nx-wall-tile:hover .nx-wall-icon { transform: scale(1.12); }
+  html[data-motion="paused"] .nx-wall-icon { transition: none; transform: none !important; }
+}
+
+/* ── The step and tool pictures (components/site/art.tsx SLOT_ART): transparent-background 3D objects, so they sit on the page's own surface in both themes (no box of their own, no shadow); where a slot has no picture none of this applies ── */
+/* The tallest step sets the row; the others keep their numeral and title at the top instead of stretching the rows apart (step 3's title used to sit higher than 1's and 2's). */
+.nx-strip-step { align-content: start; }
+/* A step's picture: above the numeral, at most 260 px, contained (never cropped); a small square beside the words on a phone. A tile's picture sits centred in its tile and drifts like the icon does. */
+.nx-strip-pic { display: block; width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; object-fit: contain; }
+@media (max-width: 859px) {
+  .nx-strip-step:has(.nx-strip-pic) { grid-template-columns: 104px minmax(0, 1fr); column-gap: 16px; }
+  .nx-strip-step:has(.nx-strip-pic) .nx-strip-pic { grid-column: 1; grid-row: 1 / span 3; width: 104px; }
+  .nx-strip-step:has(.nx-strip-pic) .nx-strip-no { grid-column: 2; grid-row: 1; font-size: 22px; letter-spacing: 0; }
+}
+@media (min-width: 860px) { .nx-strip-pic { margin-bottom: 20px; } }
+/* The tile is the page's own base surface with the hairline the panels use (the wall sits on the raised surface), 4:3 at every width so a phone shows the whole object. */
+.nx-wall-frame:has(.nx-wall-pic) { aspect-ratio: 4 / 3; background: var(--ns-ground); border: 1px solid var(--ns-rule); }
+.nx-wall-pic { display: block; width: 100%; height: 100%; object-fit: contain; }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-wall-pic { transition: transform 7s cubic-bezier(0.2, 0.6, 0.2, 1); }
+  .nx-wall-tile[data-alive] .nx-wall-pic, .nx-wall-tile:hover .nx-wall-pic { transform: scale(1.12); }
+  html[data-motion="paused"] .nx-wall-pic { transition: none; transform: none !important; }
+}
+
+/* ── The sample thumbnail's background (lib/site/art.ts; made with AI, said so in the caption) ── */
+/* The picture fills the box (cover), a scrim from the left keeps the words, which sit on the left, over its dark and mid tones. */
+.nx-try-thumb-bg { object-fit: cover; object-position: 70% 50%; }
+.nx-try-thumb-scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6, 6, 12, 0.86) 0%, rgba(6, 6, 12, 0.78) 55%, rgba(6, 6, 12, 0.3) 100%); }
+
+/* ── The hero's backdrop (components/site/art.tsx HeroBackdrop; made with AI, said so in the footer's credits) ── */
+/* Each copy is shown, and fetched, in its own range of widths. The hero's words are white on a dark base in both themes, like the showcases and the closing panel, whatever the page's theme. */
+.nx-hero-bg { display: none; }
+/* Below 1024 px: a portrait cut behind the dark panel's words, under the same kind of veil the footage had (clear at the top, heavy under the words), so the small text never depends on the picture. */
+@media (max-width: 1023px) {
+  .nx-hero-bg-phone { display: block; position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; background: #0b0a1c; pointer-events: none; }
+  .nx-hero-bg-phone img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; }
+  .nx-hero-bg-phone::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(6, 6, 12, 0.18) 0%, rgba(6, 6, 12, 0.3) 24%, rgba(6, 6, 12, 0.62) 44%, rgba(6, 6, 12, 0.8) 70%, rgba(6, 6, 12, 0.9) 100%); }
+}
+/* From 1024 px: the wide picture across the whole hero; the copy column re-binds the text tokens (the chat card, a sibling, keeps the theme's own). Its left 40% is empty on purpose; the scrim only deepens it where a plant or the window reaches under the headline. */
+@media (min-width: 1024px) {
+  .nx-hero { background: #0b0a09; border-radius: 0 0 28px 28px; }
+  .nx-hero-bg-wide { display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+  .nx-hero-bg-wide img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 100% 50%; }
+  .nx-hero-bg-wide::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6, 6, 12, 0.5) 0%, rgba(6, 6, 12, 0.44) 50%, rgba(6, 6, 12, 0) 78%); }
+  .nx-hero .nx-fx { display: none; }
+  .nx-hero-copy { --ns-text: #fff; --ns-text-dim: rgba(255, 255, 255, 0.88); --ns-rule-strong: rgba(255, 255, 255, 0.4); --ns-console: rgba(8, 8, 8, 0.66); --st-act-ink: #b3acff; --ns-go: #5ee0a0; color: #fff; }
+  .nx-hero-copy .nx-h1 { text-shadow: 0 1px 24px rgba(0, 0, 0, 0.35); }
+}
+
+/* ── "How it works" in dark mode: its small muted text (the steps' sentences, the wall's label, "No credits" and its note) a step lighter ── */
+/* --ns-text-dim is the whole site's muted text (#b4aea1, 7.9:1 on the dark surface); this section reads it at 15 to 16 px under 14 to 21 px headings, so it takes #d3cdc1 here (11.0:1 measured on the glyphs) and nothing else on the site moves. The three selectors are globals.css's own dark switches (the system's, and the explicit data-theme). */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .nx-section#how { --ns-text-dim: #d3cdc1; } }
+:root[data-theme="dark"] .nx-section#how { --ns-text-dim: #d3cdc1; }

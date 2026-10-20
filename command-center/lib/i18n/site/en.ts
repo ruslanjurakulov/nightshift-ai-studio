@@ -78,6 +78,7 @@ export const siteEn = {
     drafting: "Drafting the example…",
     sampleNote: "Example plan for “{topic}”. Type your own topic and it changes.",
     thumbNote: "A drawn stand-in: your words, as the thumbnail would carry them.",
+    thumbArtNote: "The background of this example is an AI-generated image.",
     ready: "Example plan ready. Nothing here was generated.",
     noTopic: "Type a topic first, or pick one below.",
     sections: [
@@ -163,21 +164,30 @@ export const siteEn = {
       lighthouse: "Example frame: a lighthouse in tall grass at golden hour",
       citynight: "Example frame: a city’s lights at twilight seen from a hill",
       desert: "Golden light over desert dunes",
-      peak: "Example frame: a snow peak lit gold above the clouds",
-      waterfall: "Example frame: silky long-exposure water falling over rocks",
-      mic: "Example frame: a vintage chrome and brass microphone",
-      reel: "Example frame: a vintage film reel and its film strip",
-      trails: "Example frame: golden light trails over a dusk sky",
-      fibres: "Example frame: tan wool fibres in close-up",
-      paper: "Example frame: layered cut paper in coral, orange and gold",
-      paint: "Example frame: a close-up of a painting with thick turquoise and orange strokes",
     },
   },
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every picture and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift.",
+    lead: "Every photograph and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Some pictures are different: the hero’s backdrop, the pictures for the three steps and the eight tools, and the sample thumbnail are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
     licence: "Pexels License",
+  },
+  /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
+  art: {
+    alts: {
+      "step-1": "AI-generated image: a prompt bar with a violet star, for the topic",
+      "step-2": "AI-generated image: a play button with a blank price tag",
+      "step-3": "AI-generated image: a play frame with a green check mark",
+      "tool-image": "AI-generated image: a framed picture of a balloon over a lake, with a star",
+      "tool-video": "AI-generated image: a film frame with a sailboat at sunset and a play button",
+      "tool-voice": "AI-generated image: a studio microphone beside sound-wave bars",
+      "tool-edit": "AI-generated image: a sofa split into an orange half and a blue half, with a sparkle",
+      "tool-animate": "AI-generated image: a framed sky with a dove flying out of it",
+      "tool-upscale": "AI-generated image: a pixelated butterfly next to the same butterfly, sharp",
+      "tool-cutout": "AI-generated image: a plant lifted out of a paper card, leaving its outline",
+      "tool-styles": "AI-generated image: three cards of the same vase in different styles",
+      "thumb-silkroad": "AI-generated image: the Registan in Samarkand at golden hour",
+    },
   },
   caps: {
     demo: "An example of what you can ask for and the kind of result that comes back. The pictures are stock photos and footage, shown as examples. Everything shown is an example.",
@@ -318,8 +328,8 @@ export const siteEn = {
   toolStrip: { title: "What Nightshift can make" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Stock photos, illustrating each tool",
-    note: "The pictures stand for the tools. They are stock photos, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
+    label: "AI-generated pictures of each tool",
+    note: "The pictures stand for the tools. They are AI-generated decoration, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
     more: "Show four more tools",
     less: "Show fewer tools",
   },

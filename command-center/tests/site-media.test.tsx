@@ -6,22 +6,24 @@ import { act, cleanup, render } from "@testing-library/react";
 import { LoopClip } from "@/components/site/LoopClip";
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { devDictionaries } from "@/lib/i18n/dev";
-import { creditLine, LICENCE, MEDIA, MEDIA_IDS, TILE_FOR_TOOL, TILE_IDS } from "@/lib/site/media";
+import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 import { SAMPLES, SLOTS } from "@/components/site/samples";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
 
 /**
- * The public site's pictures are real stock photographs and footage by Pexels contributors (round 7b). These tests keep
- * the three promises made about them: every picture has a credit in the one data file, nothing is labelled as AI-made or
- * as output of Nightshift, and the repository holds derivatives only.
+ * The public site's photographs and footage are real stock by Pexels contributors (round 7b). These tests keep the three
+ * promises made about them: every one has a credit in the one data file, none is labelled as AI-made or as output of
+ * Nightshift, and the repository holds derivatives only. The AI-generated illustrations (lib/site/art.ts) are a separate
+ * set with the opposite label, pinned in tests/site-art.test.tsx; the capability wall used to be stock photographs and is
+ * now those illustrations.
  */
 const ROOT = join(__dirname, "..");
 const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 
 describe("every picture has a credit", () => {
   it("lists each credited picture once, with a creator, a profile, a source page on Pexels and a Pexels id that is in the source URL", () => {
-    expect(MEDIA_IDS.length).toBe(21);
+    expect(MEDIA_IDS.length).toBe(13);
     const ids = new Set<string>();
     for (const id of MEDIA_IDS) {
       const m = MEDIA[id];
@@ -43,8 +45,7 @@ describe("every picture has a credit", () => {
     }
     for (const id of MEDIA_IDS) {
       expect(statSync(join(ROOT, "components/site/media", `${id}.webp`)).size, id).toBeGreaterThan(1000);
-      // A wall tile is one 448 px file; every other picture also has a 640 px one for phones.
-      if (!(TILE_IDS as readonly string[]).includes(id)) expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeGreaterThan(500);
+      expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeGreaterThan(500);
     }
     for (const slot of Object.values(SLOTS)) expect(MEDIA_IDS).toContain(slot.id);
   });
@@ -70,19 +71,6 @@ describe("every picture has a credit", () => {
   });
 });
 
-describe("the capability wall", () => {
-  it("gives each of eight tools its own credited photograph, and names only tools the studio lists, in every language", () => {
-    expect(Object.keys(TILE_FOR_TOOL)).toHaveLength(8);
-    expect(new Set(Object.values(TILE_FOR_TOOL)).size).toBe(8);
-    for (const { code } of LOCALES) {
-      const ids = dictionaries[code].site.studio.tools.map((x) => x.id);
-      for (const tool of Object.keys(TILE_FOR_TOOL)) expect(ids, `${code} ${tool}`).toContain(tool);
-      expect(dictionaries[code].site.wall.label.length).toBeGreaterThan(15);
-    }
-    for (const id of TILE_IDS) expect(MEDIA[id].kind).toBe("photo");
-  });
-});
-
 describe("the publish desk's frame is real footage, labelled and credited", () => {
   it.each(LOCALES.map((l) => l.code))("%s: the frame says it is an example and credits the footage, on the frame and, for a phone, in a caption under it", (code) => {
     const t = dictionaries[code];
@@ -104,8 +92,11 @@ describe("no label says the pictures are AI-made, and none says they are Nightsh
 
   it.each(LOCALES.map((l) => l.code))("%s: the picture labels, notes, alts and credits are plain", (code) => {
     const s = dictionaries[code].site;
-    const text = JSON.stringify([s.samples, s.credits, s.caps.demo]);
+    // The stock pictures' own labels never say AI. The footer's credits do, once, about the illustrations that are NOT stock (lib/site/art.ts): the one sentence allowed to.
+    const text = JSON.stringify([s.samples, s.caps.demo]);
     expect(text).not.toMatch(AI);
+    expect(s.credits.title + s.credits.licence).not.toMatch(AI);
+    expect(s.credits.lead).toMatch(AI);
     const dev = devDictionaries[code].mcp.land.examples;
     expect(JSON.stringify([dev.lead, dev.sample, dev.alts, dev.credit])).not.toMatch(AI);
     // Said plainly: stock photos and footage from Pexels contributors, not output from a real account.

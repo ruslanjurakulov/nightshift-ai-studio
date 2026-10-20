@@ -227,15 +227,15 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     const clipBoxes = [...container.querySelectorAll("[data-clip]")];
-    // The hero's footage is printed twice (a phone's picture panel and a desktop's card: the stylesheet shows one), then the two showcases.
-    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "cloud", "pottery", "coast"]);
+    // The hero's footage is printed once (the card's picture, at every width: the phone panel's copy went when the studio backdrop took the panel), then the two showcases.
+    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "pottery", "coast"]);
     for (const b of clipBoxes) {
       // The still under a clip is a frame of stock footage.
       expect(b.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
       expect(b.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
       expect(b.querySelector("img")?.getAttribute("alt")).toBeTruthy();
     }
-    expect(container.querySelectorAll("video")).toHaveLength(4);
+    expect(container.querySelectorAll("video")).toHaveLength(3);
     expect(t.site.samples.clipTag).toMatch(code === "en" ? /^Example clip \(stock footage\)$/ : code === "ru" ? /^Пример клипа/ : /^Namuna klip/);
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
@@ -284,8 +284,8 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
   });
 });
 
-describe("the capability wall (round 8): eight stock photographs, one per tool", () => {
-  it("replaces the pill carousel in the \"how it works\" block: eight tiles, each with the tool's own name and description, whether it costs credits, and its photographer's credit, under a label that says they are stock photos", () => {
+describe("the capability wall (round 8, stock photographs replaced by AI-generated pictures): eight tiles, one per tool", () => {
+  it("replaces the pill carousel in the \"how it works\" block: eight tiles, each with the tool's own name and description and whether it costs credits, under a label that says they are AI-generated pictures", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
@@ -302,17 +302,17 @@ describe("the capability wall (round 8): eight stock photographs, one per tool",
       const id = named[i].id;
       // Only the tool that costs no credits says so on its tile; the note says the rest once.
       expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
-      expect(tile.querySelector(".nx-wall-credit")?.textContent).toMatch(/ \/ Pexels$/);
+      // An AI-generated picture has no photographer to credit: no credit line; it is lazy and described (tests/site-art.test.tsx pins the alts and the icon fallback).
+      expect(tile.querySelector(".nx-wall-credit")).toBeNull();
       expect(tile.querySelector("img")?.getAttribute("loading")).toBe("lazy");
       expect(tile.querySelector("a, button, [tabindex]")).toBeNull();
     }
-    // The ninth tool, the Editor, is a plain line: it has no photograph.
+    // The ninth tool, the Editor, is a plain line: it has no picture.
     expect(wall.querySelector(".nx-wall-editor")?.textContent).toContain(t.site.studio.tools.find((x) => x.id === "editor")!.title);
     expect(container.querySelector("section#tools")).toBeNull();
     // Two columns on a phone, four from 640 px.
     expect(css).toMatch(/\.nx-wall-grid \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
     expect(css).toMatch(/@media \(min-width: 640px\) \{ \.nx-wall-grid \{ grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
-    expect(css).toMatch(/\.nx-wall-credit \{[^}]*font-size: 14px/);
   });
 });
 
