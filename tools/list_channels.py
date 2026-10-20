@@ -50,7 +50,7 @@ is when the workflow has always run.
 Catch-up and once-per-slot (modules/schedule_catchup.py): GitHub's cron can be
 late or drop a run, which used to skip a channel's whole day. With ``--due-hour``
 a channel is ALSO due when its slot hour passed within the last
-``NIGHTSHIFT_CATCHUP_HOURS`` hours (default 3, 0 = off, max 6) and its slot has
+``NIGHTSHIFT_CATCHUP_HOURS`` hours (default 1, 0 = off, max 6) and its slot has
 no evidence of a run; a channel whose slot already has evidence is not scheduled
 again, at its exact hour either. Evidence is the dead-man switch's own, read from
 Supabase. It can only REDUCE or LATE-START work, never add publishing power (the
@@ -195,7 +195,9 @@ def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, windo
         schedule_catchup.warn(
             "run evidence UNREADABLE for " + ", ".join(unknown_late) + " - NOT catching up (an unknown must "
             "not start a paid run).")
-    return rows
+    # The exact hour is the schedule; a catch-up is the exception. If a run is cut short, the schedule's own
+    # channels (matrix order is run order, max-parallel 1) have already had their turn.
+    return sorted(rows, key=lambda r: r["catchup"])
 
 
 def due_channels(due_hour: int | None = None, registry=None, sync=None, now=None, evidence=None,

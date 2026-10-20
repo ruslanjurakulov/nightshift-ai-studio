@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 import os
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -82,16 +83,33 @@ def video(channel_id, *, published=None, held=None, state=None, fmt="long", pare
             "held_at": held, "video_format": fmt, "parent_video_id": parent}
 
 
-def run(due_hour, rows, *, now, sync=None, registry_=None, env=None):
-    """due_channels with the clock, the environment and Supabase controlled. Returns (matrix rows, stderr)."""
+def warning_lines(text: str) -> str:
+    """What the scheduler itself said as a warning: the `warning:` and `::warning::` lines, nothing else. Python's
+    last-resort handler also prints an unrelated library log line to stderr when a test runs alone; that is not
+    this module's output and must not decide a test."""
+    return "\n".join(l for l in text.splitlines() if l.startswith(("warning:", "::warning::")))
+
+
+def run(due_hour, rows, *, now, sync=None, registry_=None, env=None, window="3"):
+    """due_channels with the clock, the environment and Supabase controlled. Returns (matrix rows, stderr).
+
+    ``window`` is the catch-up window the scenario assumes (the default is 1 hour, which most scenarios here are
+    wider than); ``None`` leaves the variable unset to test the default itself. ``logging`` is switched off so a
+    test does not depend on how the runner configures it."""
     sync = sync if sync is not None else FakeSupabase([c for c in rows])
     reg = registry_ if registry_ is not None else registry(*rows)
     clean = {k: v for k, v in os.environ.items()
              if k not in (list_channels.PAUSE_ENV, schedule_catchup.CATCHUP_ENV)}
+    if window is not None:
+        clean[schedule_catchup.CATCHUP_ENV] = window
     clean.update(env or {})
     err = io.StringIO()
-    with mock.patch.dict(os.environ, clean, clear=True), contextlib.redirect_stderr(err):
-        out = list_channels.due_channels(due_hour, registry=reg, now=now, evidence_sync=sync)
+    logging.disable(logging.CRITICAL)
+    try:
+        with mock.patch.dict(os.environ, clean, clear=True), contextlib.redirect_stderr(err):
+            out = list_channels.due_channels(due_hour, registry=reg, now=now, evidence_sync=sync)
+    finally:
+        logging.disable(logging.NOTSET)
     return out, err.getvalue()
 
 
@@ -123,7 +141,12 @@ class TheWindow(unittest.TestCase):
     def test_the_hour_before_the_slot_is_not_due(self):
         self.assertEqual(run(14, self.rows, now=at(20, 14, 5))[0], [])
 
-    def test_the_default_window_is_three_hours(self):
+    def test_the_default_window_is_one_hour(self):
+        # One hour is all a late or dropped cron needs; more is only more paid retries of a run that wrote no row.
+        self.assertEqual(ids(run(16, self.rows, now=at(20, 16, 5), window=None)[0]), ["default"])    # 1 h late
+        self.assertEqual(run(17, self.rows, now=at(20, 17, 5), window=None)[0], [])                  # 2 h late
+
+    def test_a_window_of_three_still_reaches_three_hours_and_no_more(self):
         self.assertEqual(ids(run(18, self.rows, now=at(20, 18, 5))[0]), ["default"])      # 3 h late
         self.assertEqual(run(19, self.rows, now=at(20, 19, 5))[0], [])                    # 4 h late
 
@@ -269,8 +292,10 @@ class AnUnknownNeverStartsARun(unittest.TestCase):
 
     def test_a_warning_never_carries_what_the_database_said(self):
         _, err = run(17, [self.chan], now=NOW, sync=FakeSupabase([self.chan], fail={"videos"}))
+        said = warning_lines(err)
+        self.assertIn("NOT catching up", said)            # the assertion below is not vacuous
         for leaked in ("SENTINEL", "503", "boom"):
-            self.assertNotIn(leaked, err)
+            self.assertNotIn(leaked, said)
 
     def test_a_channel_the_evidence_did_not_cover_is_unknown_not_unworked(self):
         shop, other = chan("shop", hour=15), chan("news", hour=15)
@@ -370,6 +395,8 @@ class NeverTwoRowsForOneChannel(unittest.TestCase):
         rows = [chan("default", hour=15)]
         due_hours = [h for h in range(24) if run(h, rows, now=at(20, h, 5))[0]]
         self.assertEqual(due_hours, [15, 16, 17, 18])           # the exact hour plus three catch-up hours
+        due_hours = [h for h in range(24) if run(h, rows, now=at(20, h, 5), window=None)[0]]
+        self.assertEqual(due_hours, [15, 16])                   # by default: the exact hour plus one
 
     def test_once_the_exact_run_made_a_video_no_later_hour_runs_it_again(self):
         rows = [chan("default", hour=15)]
@@ -387,7 +414,7 @@ class TheWindowSetting(unittest.TestCase):
 
     def test_unset_and_empty_are_the_default_without_a_warning(self):
         for value in (None, "", "  "):
-            self.assertEqual(self.say(value), (3, []))
+            self.assertEqual(self.say(value), (1, []))
 
     def test_whole_numbers_up_to_six(self):
         for n in range(0, 7):
@@ -399,7 +426,7 @@ class TheWindowSetting(unittest.TestCase):
     def test_garbage_is_the_default_with_a_warning_that_never_echoes_it(self):
         for value in ("abc", "1.5", "-1", "3h", "∞", "SENTINEL-7"):
             got, said = self.say(value)
-            self.assertEqual(got, 3, value)
+            self.assertEqual(got, 1, value)
             self.assertEqual(len(said), 1, value)
             self.assertNotIn(value, said[0])
 
@@ -411,6 +438,25 @@ class TheWindowSetting(unittest.TestCase):
     def test_plain_off_words_mean_off(self):
         for value in ("off", "OFF", "false", "no", "none", "disabled"):
             self.assertEqual(self.say(value), (0, []))
+
+
+class ExactHourRowsComeFirst(unittest.TestCase):
+    def test_the_schedules_own_channels_run_before_a_catch_up(self):
+        # Matrix order is run order (max-parallel 1): a run cut short must not have spent its time on a
+        # catch-up while a channel that is due on the hour was still waiting.
+        late, exact = chan("aaa-late", hour=16), chan("zzz-exact", hour=17)
+        for order in ((late, exact), (exact, late)):
+            out, _ = run(17, list(order), now=NOW)
+            self.assertEqual([(r["channel_id"], r["catchup"]) for r in out if r["channel_id"] != "default"],
+                             [("zzz-exact", False), ("aaa-late", True)])
+
+    def test_catch_up_rows_never_precede_exact_rows_among_many(self):
+        rows = [chan(f"c{i}", hour=16 if i % 2 else 17) for i in range(6)]
+        out, _ = run(17, rows, now=NOW)
+        flags = [r["catchup"] for r in out]
+        self.assertEqual(flags, sorted(flags))
+        self.assertIn(True, flags)
+        self.assertIn(False, flags)
 
 
 class TheMatrixCarriesTheSlot(unittest.TestCase):

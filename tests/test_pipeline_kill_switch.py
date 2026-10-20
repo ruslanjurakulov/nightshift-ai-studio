@@ -377,9 +377,16 @@ class WorkflowHandlesAnEmptyMatrix(unittest.TestCase):
         self.assertEqual(step["env"]["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
         self.assertNotIn("${{", step["run"])
 
-    def test_the_pause_variable_is_not_handed_to_the_render_step(self):
-        # Nothing downstream reads it; the render job only exists when something is due.
-        self.assertNotIn("NIGHTSHIFT_PIPELINE_PAUSED", _step("make-video", "Run Chronos bot")["env"])
+    def test_the_pause_variable_reaches_the_run_step_only_for_the_slot_guard(self):
+        # The guard (tools/slot_guard.py) re-checks the pause for a scheduled job that waited in its concurrency
+        # group. The pipeline itself (main.py and modules) must still not read it: a manual run ignores the pause,
+        # and a run in progress is never stopped by it.
+        step = _step("make-video", "Run Chronos bot")
+        self.assertEqual(step["env"]["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
+        self.assertLess(step["run"].index("tools/slot_guard.py"), step["run"].index("python main.py"))
+        self.assertNotIn("NIGHTSHIFT_PIPELINE_PAUSED", (ROOT / "main.py").read_text(encoding="utf-8"))
+        for path in (ROOT / "modules").glob("*.py"):
+            self.assertNotIn("NIGHTSHIFT_PIPELINE_PAUSED", path.read_text(encoding="utf-8"), path.name)
 
     def test_workflow_permissions_are_unchanged(self):
         self.assertEqual(_workflow()["permissions"], {"contents": "read"})

@@ -13,7 +13,7 @@ on:
     #
     # GitHub's cron is best effort: a run can start late, or be dropped. So the
     # resolver also CATCHES UP a channel whose slot hour passed within the last
-    # NIGHTSHIFT_CATCHUP_HOURS (default 3) and has no run recorded for it, and
+    # NIGHTSHIFT_CATCHUP_HOURS (default 1) and has no run recorded for it, and
     # never schedules a slot that already has one (tools/list_channels.py,
     # docs/VIDEO_GO_LIVE.md section 9). Still private, still paused by the
     # same switches.
@@ -147,7 +147,7 @@ jobs:
           # deleting the variable or setting it to false. See docs/VIDEO_GO_LIVE.md.
           NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
           # How many hours after its slot a channel with no run recorded for it
-          # is still caught up. Unset = 3, 0 = off, at most 6; a typo is the
+          # is still caught up. Unset = 1, 0 = off, at most 6; a typo is the
           # default with a warning. A pause above still wins over all of it.
           NIGHTSHIFT_CATCHUP_HOURS: ${{ vars.NIGHTSHIFT_CATCHUP_HOURS }}
         run: |
@@ -187,18 +187,20 @@ jobs:
     runs-on: ${{ vars.RENDER_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     name: make-video (${{ matrix.channel_id }})
-    # One run per channel and slot at a time. A late cron, a catch-up and a manual
-    # dispatch near the hour all name the same group, so they queue instead of
-    # racing on the history cache and rendering twice at once. Nothing is
-    # cancelled that is running (cancel-in-progress: false); GitHub keeps ONE
-    # pending job per group, so a newer pending job replaces an older one. The
-    # group is per channel, so it does not interact with `max-parallel` below
-    # (that only limits this run's channels at once). A queued SCHEDULED job asks
+    # One SCHEDULED run per channel and slot at a time: a late cron and a catch-up
+    # name the same group, so they queue instead of rendering twice at once.
+    # Nothing running is cancelled (cancel-in-progress: false); GitHub keeps ONE
+    # pending job per group, so a newer pending job replaces an older one, which
+    # is harmless for a scheduled run (the next hour asks again). EVERY manual
+    # dispatch (a named channel, a Command Center "Run now" carrying a credit
+    # hold, an all-channels run) gets a group of its own (its run id), so it is
+    # never queued behind or replaced by anything: a cancelled dispatch would
+    # never claim or settle its credit hold. The group is per channel, so it
+    # does not interact with `max-parallel` below. A queued scheduled job asks
     # again before spending whether the slot was meanwhile worked
-    # (tools/slot_guard.py, in the run step); a manual dispatch is an explicit
-    # instruction and still runs after the queue.
+    # (tools/slot_guard.py, in the run step).
     concurrency:
-      group: nightshift-slot-${{ matrix.channel_id }}-${{ matrix.slot_date }}
+      group: ${{ github.event_name == 'schedule' && format('nightshift-slot-{0}-{1}', matrix.channel_id, matrix.slot_date) || format('nightshift-manual-{0}-{1}', matrix.channel_id, github.run_id) }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -514,6 +516,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SLOT_START: ${{ matrix.slot_start }}
           SLOT_CATCHUP: ${{ matrix.catchup }}
+          # The guard re-checks the pause: this job may have waited in its group.
+          NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
           INPUT_TOPIC: ${{ github.event.inputs.topic }}
           INPUT_NICHE: ${{ github.event.inputs.niche }}
           # Per-run controls (empty on a scheduled run, so the channel's own
@@ -631,9 +635,9 @@ jobs:
           #
           # Once per slot (scheduled runs only). This job may have queued in the
           # concurrency group behind the run that has now finished, so ask again,
-          # before anything is spent, whether the slot already has a run. A manual
-          # dispatch is not asked: naming a channel is an instruction. Exit 3 =
-          # already worked. Any other failure of the guard itself: an exact-hour
+          # before anything is spent, whether the pipeline is still on, the channel
+          # still scheduled, and the slot still without a run. A manual dispatch is
+          # not asked: naming a channel is an instruction. Exit 3 = skip. Any other failure of the guard itself: an exact-hour
           # run goes on as it always did, a catch-up does not (an unknown must not
           # start a paid run).
           if [ "$EVENT_NAME" = "schedule" ]; then

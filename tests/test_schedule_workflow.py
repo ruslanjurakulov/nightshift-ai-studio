@@ -35,18 +35,60 @@ def step(job: str, name: str) -> dict:
     return next(s for s in load()["jobs"][job]["steps"] if s.get("name") == name)
 
 
+GROUP = re.compile(
+    r"^\$\{\{ github\.event_name == 'schedule' && format\('(?P<slot>[^']+)', matrix\.channel_id, matrix\.slot_date\) "
+    r"\|\| format\('(?P<manual>[^']+)', matrix\.channel_id, github\.run_id\) \}\}$")
+
+
+def group_for(expr: str, *, event: str, channel: str, slot_date: str, run_id: int) -> str:
+    """The group name the workflow's expression gives a job: `cond && a || b` with GitHub's semantics (a non-empty
+    string is truthy), evaluated for the pinned shape of the expression only."""
+    m = GROUP.match(expr)
+    assert m, f"the group expression changed shape: {expr}"
+    fmt = m["slot"] if event == "schedule" else m["manual"]
+    return fmt.format(*((channel, slot_date) if event == "schedule" else (channel, run_id)))
+
+
 class ConcurrencyGroup(unittest.TestCase):
     def setUp(self):
         self.doc = load()
         self.job = self.doc["jobs"]["make-video"]
+        self.expr = self.job["concurrency"]["group"]
 
-    def test_make_video_queues_per_channel_and_slot_and_never_cancels_a_running_run(self):
-        c = self.job["concurrency"]
-        self.assertIs(c["cancel-in-progress"], False)
-        group = c["group"]
-        self.assertIn("matrix.channel_id", group)     # one channel's runs queue behind each other ...
-        self.assertIn("matrix.slot_date", group)      # ... for one slot, not for ever
-        self.assertTrue(group.startswith("nightshift-slot-"))
+    def g(self, **kw):
+        base = dict(event="schedule", channel="default", slot_date="2026-10-20", run_id=1)
+        return group_for(self.expr, **{**base, **kw})
+
+    def test_a_running_run_is_never_cancelled(self):
+        self.assertIs(self.job["concurrency"]["cancel-in-progress"], False)
+
+    def test_scheduled_runs_share_a_group_per_channel_and_slot(self):
+        self.assertEqual(self.g(run_id=1), self.g(run_id=2))                       # a late cron and a catch-up queue
+        self.assertNotEqual(self.g(channel="a"), self.g(channel="b"))              # channels never wait for each other
+        self.assertNotEqual(self.g(slot_date="2026-10-20"), self.g(slot_date="2026-10-21"))
+        self.assertTrue(self.g().startswith("nightshift-slot-"))
+
+    def test_every_manual_dispatch_has_a_group_of_its_own(self):
+        # A pending dispatch is replaced by the next job in its group, and a paid "Run now" replaced before the
+        # step that claims its credit hold would leave the hold unclaimed until it expires.
+        for event in ("workflow_dispatch", "workflow_call", "repository_dispatch", "push"):
+            self.assertNotEqual(self.g(event=event, run_id=1), self.g(event=event, run_id=2), event)
+            self.assertNotEqual(self.g(event=event, run_id=1), self.g(event="schedule", run_id=1), event)
+            self.assertTrue(self.g(event=event).startswith("nightshift-manual-"), event)
+
+    def test_a_dispatch_carrying_a_credit_ref_can_never_be_in_a_shared_group(self):
+        # credit_ref is only an input of workflow_dispatch; the shared group is selected by the event alone.
+        self.assertIn("credit_ref", (self.doc.get(True) or self.doc["on"])["workflow_dispatch"]["inputs"])
+        shared = {self.g(event="schedule", channel=c, slot_date=d, run_id=r)
+                  for c in ("default", "shop") for d in ("2026-10-20", "2026-10-21") for r in range(1, 6)}
+        for run_id in range(1, 6):
+            for channel in ("default", "shop"):
+                self.assertNotIn(self.g(event="workflow_dispatch", channel=channel, run_id=run_id), shared)
+
+    def test_the_shared_group_is_built_only_behind_the_schedule_condition(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(text.count("format('nightshift-slot-"), 1)
+        self.assertLess(self.expr.index("github.event_name == 'schedule'"), self.expr.index("nightshift-slot-"))
 
     def test_there_is_no_workflow_wide_group(self):
         # A workflow-level group would queue the cheap hourly resolver behind a long render and cancel its
@@ -63,6 +105,11 @@ class ConcurrencyGroup(unittest.TestCase):
         text = WORKFLOW.read_text(encoding="utf-8")
         for key in ("matrix.slot_date", "matrix.slot_start", "matrix.catchup"):
             self.assertIn(key, text)
+
+    def test_the_run_step_hands_the_guard_the_pause_variable(self):
+        env = step("make-video", "Run Chronos bot")["env"]
+        self.assertEqual(env["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
+        self.assertEqual(env["EVENT_NAME"], "${{ github.event_name }}")
 
     def test_an_empty_matrix_still_skips_the_job(self):
         self.assertEqual(self.job["if"], "needs.resolve.outputs.count > 0")

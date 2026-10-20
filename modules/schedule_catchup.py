@@ -5,7 +5,7 @@ Why this exists. ``daily_video.yml`` fires hourly and ``tools/list_channels.py``
 hour (or dropped) used to skip that channel's whole day, and nothing noticed but the dead-man alert. Two rules
 close that, and a third makes them safe to combine:
 
-* **Catch-up.** A channel whose slot hour passed within the last ``NIGHTSHIFT_CATCHUP_HOURS`` hours (default 3,
+* **Catch-up.** A channel whose slot hour passed within the last ``NIGHTSHIFT_CATCHUP_HOURS`` hours (default 1,
   0 disables, at most 6) and whose slot has no evidence of a run is due now. A late or lost cron heals itself.
 * **Once per slot.** A channel whose slot already has evidence (a video, held or blocked row, a storyboard
   waiting for a person, a run event) is not scheduled again, at its exact hour either. Evidence is the dead-man
@@ -28,7 +28,10 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 CATCHUP_ENV = "NIGHTSHIFT_CATCHUP_HOURS"
-DEFAULT_CATCHUP_HOURS = 3
+#: One hour is what a late or dropped cron needs: the next hourly run is the catch-up. A wider window only buys more
+#: paid retries of a run that died before it wrote any row (an OOM, a timeout, a provider outage), which this module
+#: cannot tell from "never started"; widen it deliberately once the spend guards (CHRONOS_PRICE_*) are set.
+DEFAULT_CATCHUP_HOURS = 1
 MAX_CATCHUP_HOURS = 6
 #: Words that plainly mean "off". Anything else that is not a number is garbage and gets the default.
 _OFF_WORDS = frozenset({"off", "false", "no", "none", "disabled", "disable"})

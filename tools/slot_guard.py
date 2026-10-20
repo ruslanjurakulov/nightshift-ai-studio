@@ -9,7 +9,12 @@ the run that was ahead of it has finished and written its video, held or blocked
 once, before ``main.py`` spends anything, is what turns "serialised" into "not run twice". Only the
 SCHEDULE calls this: a manual dispatch that names a channel is an explicit instruction and always runs.
 
-The answer comes from the dead-man switch's evidence (modules/schedule_catchup.py):
+A job that waited in the group can start up to an hour after the resolver chose it, so the guard first asks
+again what the resolver asked: is the pipeline paused (``NIGHTSHIFT_PIPELINE_PAUSED``, fails closed) and is the
+channel still ACTIVE, schedule on, verified and the operator's own. Either no -> exit 3, whatever the kind of run.
+An unreadable registry is an unknown (below), not a no.
+
+The answer then comes from the dead-man switch's evidence (modules/schedule_catchup.py):
 
 * evidence in the slot            -> exit 3, nothing is spent;
 * every source answered, none     -> exit 0, the run goes ahead;
@@ -29,11 +34,48 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules import schedule_catchup  # noqa: E402
+from tools.list_channels import pipeline_paused  # noqa: E402
 
 GO, SKIP = 0, 3
 
 
-def decide(channel_id: str, slot_start: str, catchup: bool, sync=None, now=None, evidence=None) -> int:
+def still_scheduled(channel_id: str, registry=None):
+    """True / False when the registry says whether the scheduler would still run this channel, None when that
+    cannot be told (Supabase not configured, or the strict read of ``channels`` failed: the registry itself
+    swallows an outage and would synthesize an ACTIVE ``default``, which is not an answer)."""
+    try:
+        if registry is None:
+            from modules.channels import ChannelRegistry
+            from modules.supabase_sync import SupabaseSync
+            from tools.list_channels import _preflight
+
+            sync = SupabaseSync()
+            if not sync.enabled:
+                return None
+            _preflight(sync)                       # raises when `channels` cannot be read
+            registry = ChannelRegistry()
+        c = registry.get(channel_id)
+        return bool(c.is_runnable and c.is_operators)
+    except KeyError:
+        return False                               # the channel no longer exists
+    except Exception as e:  # noqa: BLE001 - an unreadable registry is an unknown
+        schedule_catchup.warn(f"slot guard: the schedule of {channel_id} could not be read ({type(e).__name__}).")
+        return None
+
+
+def decide(channel_id: str, slot_start: str, catchup: bool, sync=None, now=None, evidence=None,
+           registry=None) -> int:
+    if pipeline_paused():
+        print(f"{channel_id}: the pipeline is paused (NIGHTSHIFT_PIPELINE_PAUSED) - nothing was run or spent.")
+        return SKIP
+    scheduled = still_scheduled(channel_id, registry)
+    if scheduled is False:
+        print(f"{channel_id}: the channel is no longer scheduled (paused, schedule off or not verified) - "
+              "nothing was run or spent.")
+        return SKIP
+    if scheduled is None and catchup:
+        return SKIP                                # an unknown never starts a catch-up (already said, if it was read)
+
     start = None
     try:
         start = datetime.fromisoformat(str(slot_start).replace("Z", "+00:00"))

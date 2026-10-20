@@ -308,9 +308,11 @@ starts is the same run the exact hour would have started.
 
 **Catch-up window.** A channel is due when its slot hour passed within the last
 `NIGHTSHIFT_CATCHUP_HOURS` hours and its slot has no run recorded. Set it as a repository
-**Variable** (like `NIGHTSHIFT_PIPELINE_PAUSED`): unset = 3, `0` (or `off`) = no catch-up,
-1-6 = that many hours, above 6 = 6. A value that is not a whole number is the default (3)
-with a `::warning::` that never echoes it. The log line is
+**Variable** (like `NIGHTSHIFT_PIPELINE_PAUSED`): unset = 1, `0` (or `off`) = no catch-up,
+1-6 = that many hours, above 6 = 6. A value that is not a whole number is the default (1)
+with a `::warning::` that never echoes it. One hour is what a late or dropped cron needs (the next
+hourly run is the catch-up); a wider window only buys more paid retries of a run that died without
+writing a row (see "A failed run" below), so widen it deliberately. The log line is
 `<channel> missed its <slot> UTC slot (<n>h ago) - catching up`.
 
 **What counts as "a run was recorded".** The dead-man switch's own evidence, read from
@@ -318,7 +320,9 @@ Supabase through the same helpers (`modules/operator_bot/reliability.py`): a vid
 (uploaded, held or blocked), a storyboard waiting for a person, or a run event, for that
 channel since the slot began and before the next slot. One definition, so the alarm and the
 catch-up cannot disagree. A slot that has any of it is not scheduled again, **at its exact
-hour either** (for example after a manual run at 15:00:30).
+hour either** (for example after a manual run at 15:00:30). A named manual dispatch of the same
+channel that finishes after the slot began counts as that slot's evidence too: a manual video at
+15:20 means the 15:00 slot is not run again.
 
 **Fail safe.** If that evidence cannot be read (Supabase down, a source cut at its row
 limit, the channel not in the `channels` table) it is an unknown, and an unknown never starts
@@ -335,28 +339,39 @@ schedule is off and a customer's channel are never caught up. The one thing to k
 variable has no history, so if you pause and then resume inside the window, the slot that
 passed during the pause is eligible. Set the window to 0 before resuming if you do not want that.
 
-**One run per channel and slot.** The `make-video` job has a `concurrency` group per channel
-and slot date (`nightshift-slot-<channel>-<slot date>`, `cancel-in-progress: false`), so a
-late cron, a catch-up and a manual dispatch near the hour queue instead of racing on the
-history cache. Nothing running is ever cancelled. GitHub keeps one *pending* job per group, so a
-newer pending job replaces an older pending one (it shows as cancelled): a manual dispatch queued
-behind a running slot can be replaced by the next hour's catch-up job; re-dispatch if it does.
-The group is per channel, so it does not change `max-parallel: 1` (which only limits how many of
-one run's channels render at once).
+**One scheduled run per channel and slot.** The `make-video` job has a `concurrency` group for
+scheduled runs only: `nightshift-slot-<channel>-<slot date>`, `cancel-in-progress: false`, so a late
+cron and a catch-up queue instead of rendering twice at once and racing on the history cache. Nothing
+running is ever cancelled. GitHub keeps one *pending* job per group, so a newer pending scheduled job
+replaces an older one (it shows as cancelled); that is harmless, the next hour asks again. **Every
+manual dispatch** (a named channel, a Command Center "Run now" that carries a credit hold, an
+all-channels run) gets a group of its own (`nightshift-manual-<channel>-<run id>`), so it is never
+queued behind or replaced by anything and behaves exactly as before this change; in particular a paid
+run can never be cancelled before it claims its credit hold. The group is per channel, so it does not
+change `max-parallel: 1` (which only limits how many of one run's channels render at once). A manual
+run and a scheduled run of the same channel can therefore overlap in time; do not dispatch near the
+cron hour unless you want that.
 
-**The run asks again.** A scheduled job that waited in the group re-checks the slot before it
-spends anything (`tools/slot_guard.py`, first thing in the "Run Chronos bot" step): the run ahead
-of it has finished by then and its video row exists, so the queued job stops with a green step and
-`Slot already worked`. This is the "already ran today" guard in the run itself. A **manual dispatch
-that names a channel always runs** (it is an explicit instruction; it queues behind a running slot
-and then runs, so do not dispatch near the cron hour unless you want the second video). If the guard
-itself fails, an exact-hour run goes ahead as before and a catch-up does not.
+**The run asks again.** A scheduled job that waited in the group can start up to an hour after the
+resolver chose it, so before it spends anything it re-checks (`tools/slot_guard.py`, first thing in
+the "Run Chronos bot" step): is `NIGHTSHIFT_PIPELINE_PAUSED` on, is the channel still ACTIVE, schedule on,
+verified and the operator's own, and does the slot still have no run. The run ahead of it has finished by
+then and its video row exists, so the queued job stops with a green step and a log line saying why
+(the step's `skipped` output is written but nothing reads it). This is the "already ran today" guard in
+the run itself. A **manual dispatch that names a channel always runs** (it is an explicit instruction and
+ignores the pause, as before). If the guard itself fails or cannot read, an exact-hour run goes ahead as
+before and a catch-up does not. Known cost: a skipped job has already run checkout, `pip install` and the
+token steps before the guard, and saves an (unchanged) history cache entry; the install order is not
+changed here.
 
-**A failed run is retried.** A run that dies before it writes any row (a provider outage mid-render,
-for example) leaves no evidence, so the next hourly run inside the window tries the slot again, up to the
-window. That is the catch-up doing its job, and it can repeat provider spend; the per-run and daily USD
-caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`) still apply, and `NIGHTSHIFT_CATCHUP_HOURS=0`
-switches it off.
+**A failed run does not count as "worked", and is retried.** The evidence is a video, held or blocked
+row, a storyboard or a run event. A run that dies before it writes any of them (an OOM or timeout at
+render, a provider outage) leaves no evidence, so the next hourly run inside the window runs the slot
+again, up to the window (default 1, so one retry). That is a retry of paid work: the per-run and daily USD
+caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`) only bite when the `CHRONOS_PRICE_*` prices are set,
+and with none set the unpriced spend is not capped. The dead-man alert is the signal for a run that failed;
+`NIGHTSHIFT_CATCHUP_HOURS=0` switches the retry off. Follow-up idea, not in this change: have the run write a
+direct "slot claimed" row when it starts, so a started-and-failed run is distinguishable from a never-started one.
 
 **Topic memory survives a lost cache.** `history/topics.json` is only an Actions cache (evicted
 after 7 days). When a channel has no topics of its own locally, the run now rebuilds them from
