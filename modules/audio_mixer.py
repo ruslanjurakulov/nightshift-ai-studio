@@ -394,6 +394,24 @@ class AudioMixer:
             )
         return secondary
 
+    def describe_voice(self) -> dict:
+        """What this run's voice was and how it came to be, for the run's record
+        (the voice event). ``source`` separates a voice somebody chose (``run``:
+        the Create page; ``channel``: the channel's saved provider; ``deployment``:
+        TTS_PROVIDER) from the one the environment resolved to (``default``: an
+        ElevenLabs key present, or absent and so the free Edge voice). Rule 5: a
+        default is never recorded as a choice. Carries no key and no voice id."""
+        agent = self.channel.agent if self.channel is not None else None
+        if self.tts_provider == "elevenlabs" and ELEVENLABS_RUN_VOICE_ID:
+            source = "run"
+        elif getattr(agent, "tts_provider_explicit", False) is True:
+            source = "channel"
+        elif TTS_PROVIDER_EXPLICIT:
+            source = "deployment"
+        else:
+            source = "default"
+        return {"provider": self.tts_provider, "source": source}
+
     @staticmethod
     def _segment_seconds(path: Path):
         """Length of a cached segment in seconds: 0.0 when ffmpeg says the file is

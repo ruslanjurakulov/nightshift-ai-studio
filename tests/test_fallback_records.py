@@ -134,9 +134,8 @@ class MainWiring(unittest.TestCase):
         body = self.run_src
         # The event used to sit inside `if gen_images:`, so zero stills of three
         # asked for left no trace at all.
-        gate = body.index("images_missing")
+        gate = body.index("if gen_images or images_missing:")
         self.assertLess(gate, body.index("events.IMAGE_GENERATED"))
-        self.assertIn("if gen_images or", body[gate - 80:gate + 80])
 
 
 if __name__ == "__main__":

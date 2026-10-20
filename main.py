@@ -961,7 +961,8 @@ def run(
     audio_path, timeline = mixer.build(script)
     # Only what was actually synthesized — cached segments cost nothing this run.
     costs.add(TTS_CHARACTERS, mixer.characters_synthesized, stage="voice")
-    events.emit(events.VOICE_COMPLETED, agent="audio_mixer", status=events.STATUS_COMPLETED, channel_id=channel_id)
+    events.emit(events.VOICE_COMPLETED, agent="audio_mixer", status=events.STATUS_COMPLETED,
+                channel_id=channel_id, metadata=mixer.describe_voice())
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_VOICE, artifacts={"audio": str(audio_path)})
 
     # ── Stage 4: Media
@@ -1040,13 +1041,24 @@ def run(
         events.emit(events.AGENT_FAILED, agent="image_providers", status=events.STATUS_FAILED,
                     channel_id=channel_id, metadata={"error": str(e), "stage": "images"})
         raise
-    if gen_images:
+    images_missing = list(getattr(fetcher, "images_missing", None) or [])
+    if images_missing:
+        # Soft by design (the model returned nothing), but never silent: the scene
+        # shows a stock image, and the record says which scenes and how many.
+        logger.warning("[channel: %s] %d of %d generated still(s) did not come back; scene(s) %s use "
+                       "stock images", channel_id, len(images_missing),
+                       getattr(fetcher, "images_attempted", 0), images_missing)
+    if gen_images or images_missing:
         from modules import image_providers as _img
         images = list(gen_images) + list(images)
         costs.add(IMAGE_GENERATIONS, len(gen_images), stage=f"image:{_img.active_provider()}")
-        events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
+        events.emit(events.IMAGE_GENERATED, agent="image_providers",
+                    status=events.STATUS_COMPLETED if gen_images else events.STATUS_FAILED,
                     channel_id=channel_id,
-                    metadata={"generated": len(gen_images), "provider": _img.active_provider()})
+                    metadata={"generated": len(gen_images),
+                              "attempted": getattr(fetcher, "images_attempted", len(gen_images)),
+                              "missing_sections": images_missing,
+                              "provider": _img.active_provider()})
     # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
     # supplementing the stock above. Off unless a key + flag are set, in which
     # case it makes no request and changes nothing. Generated clips join the
