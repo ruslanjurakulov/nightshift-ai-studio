@@ -18,7 +18,7 @@ name: Scheduled readiness check
 # passes (a test pins that each name here is passed there with the same source),
 # so the doctor judges the configuration a video would run with. No new secret:
 # the per-channel token slots read the very secrets the daily run restores per
-# channel (secrets[matrix.token_secret] there, secrets[needs.resolve.outputs.nameN] here).
+# channel, by the same names.
 # Every scheduled operator channel's own token (CHRONOS_YT_TOKEN_<REF>) is proven too.
 # Actions cannot enumerate secrets, so the `resolve` job reads the channel registry (the
 # same strict read the daily run's resolver makes), computes each channel's secret NAME

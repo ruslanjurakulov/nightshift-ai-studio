@@ -131,6 +131,8 @@ class CheckChannelTokensTestCase(unittest.TestCase):
         finance = one(out, "finance")
         self.assertEqual(finance.status, FAIL)
         self.assertIn("CHRONOS_YT_TOKEN_FINANCE", finance.fix)             # the fix names the secret to add
+        self.assertIn("no token secret", finance.detail)                  # said as missing, not as malformed
+        self.assertIn("add the GitHub Actions secret", finance.fix)
         self.assertEqual(one(out, "news").status, PASS)
         self.assertEqual(len(ctx.http.calls), 1)                            # nothing to refresh for the empty one
 
