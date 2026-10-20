@@ -261,8 +261,10 @@ It is a Variable, not a secret and not a database flag, so it also works when Su
 is down.
 
 **Resume.** Delete the variable or set it to `false`. The next hourly run schedules
-channels again, each at its own `publish_hour_utc`. An hour that passed while paused is
-not made up.
+channels again, each at its own `publish_hour_utc`. A slot that passed while paused is
+made up only if you resume within the catch-up window (section 9) of that slot, and only
+if the slot has no run recorded; set `NIGHTSHIFT_CATCHUP_HOURS=0` if you want a resume to
+never start a past slot.
 
 **Pause one channel.** Pausing a channel (or switching its schedule off) in the Command
 Center still works, and now it also works for the operator's test channel Chronos (id
@@ -294,3 +296,72 @@ Making that outage fail closed instead is an owner decision and is not made here
 
 Disabling the `Daily YouTube Video` workflow in the GitHub Actions UI is the
 GitHub-native way to stop the schedule altogether (it also stops the hourly resolver).
+
+## 9. A late or repeated schedule: catch-up, once per slot, topic memory
+
+GitHub's cron is best effort: an hourly run can start late, or be dropped. Before this,
+`daily_video.yml` ran only the channels whose `publish_hour_utc` equals the current UTC hour,
+so a run delayed past the top of the hour skipped that channel's whole day, and nothing
+noticed except the dead-man alert (`docs/operator-bot.md`). Everything below is reliability
+only: it adds no publishing power, the schedule still passes `--privacy private`, and a run it
+starts is the same run the exact hour would have started.
+
+**Catch-up window.** A channel is due when its slot hour passed within the last
+`NIGHTSHIFT_CATCHUP_HOURS` hours and its slot has no run recorded. Set it as a repository
+**Variable** (like `NIGHTSHIFT_PIPELINE_PAUSED`): unset = 3, `0` (or `off`) = no catch-up,
+1-6 = that many hours, above 6 = 6. A value that is not a whole number is the default (3)
+with a `::warning::` that never echoes it. The log line is
+`<channel> missed its <slot> UTC slot (<n>h ago) - catching up`.
+
+**What counts as "a run was recorded".** The dead-man switch's own evidence, read from
+Supabase through the same helpers (`modules/operator_bot/reliability.py`): a video row
+(uploaded, held or blocked), a storyboard waiting for a person, or a run event, for that
+channel since the slot began and before the next slot. One definition, so the alarm and the
+catch-up cannot disagree. A slot that has any of it is not scheduled again, **at its exact
+hour either** (for example after a manual run at 15:00:30).
+
+**Fail safe.** If that evidence cannot be read (Supabase down, a source cut at its row
+limit, the channel not in the `channels` table) it is an unknown, and an unknown never starts
+a paid run: the exact hour runs exactly as it always did, a catch-up does not happen, and a
+`::warning::` names the channel. A registry that could not be read (the existing default-channel
+fallback) also gets no catch-up. A channel that was created or edited after the slot began and
+has produced nothing was never due for that slot (the dead-man's rule), so changing a channel's
+hour or switching it on at 15:30 does not start the 14:00 slot.
+
+**It can never run when paused.** The global switch `NIGHTSHIFT_PIPELINE_PAUSED` returns
+before any of this; the candidates are only the channels the scheduler already allows
+(ACTIVE, schedule on, verified, the operator's own), so a paused channel, a channel whose
+schedule is off and a customer's channel are never caught up. The one thing to know: the
+variable has no history, so if you pause and then resume inside the window, the slot that
+passed during the pause is eligible. Set the window to 0 before resuming if you do not want that.
+
+**One run per channel and slot.** The `make-video` job has a `concurrency` group per channel
+and slot date (`nightshift-slot-<channel>-<slot date>`, `cancel-in-progress: false`), so a
+late cron, a catch-up and a manual dispatch near the hour queue instead of racing on the
+history cache. Nothing running is ever cancelled. GitHub keeps one *pending* job per group, so a
+newer pending job replaces an older pending one (it shows as cancelled): a manual dispatch queued
+behind a running slot can be replaced by the next hour's catch-up job; re-dispatch if it does.
+The group is per channel, so it does not change `max-parallel: 1` (which only limits how many of
+one run's channels render at once).
+
+**The run asks again.** A scheduled job that waited in the group re-checks the slot before it
+spends anything (`tools/slot_guard.py`, first thing in the "Run Chronos bot" step): the run ahead
+of it has finished by then and its video row exists, so the queued job stops with a green step and
+`Slot already worked`. This is the "already ran today" guard in the run itself. A **manual dispatch
+that names a channel always runs** (it is an explicit instruction; it queues behind a running slot
+and then runs, so do not dispatch near the cron hour unless you want the second video). If the guard
+itself fails, an exact-hour run goes ahead as before and a catch-up does not.
+
+**A failed run is retried.** A run that dies before it writes any row (a provider outage mid-render,
+for example) leaves no evidence, so the next hourly run inside the window tries the slot again, up to the
+window. That is the catch-up doing its job, and it can repeat provider spend; the per-run and daily USD
+caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`) still apply, and `NIGHTSHIFT_CATCHUP_HOURS=0`
+switches it off.
+
+**Topic memory survives a lost cache.** `history/topics.json` is only an Actions cache (evicted
+after 7 days). When a channel has no topics of its own locally, the run now rebuilds them from
+that channel's `videos` rows (uploaded, held and blocked; the last 200 topics of the last 365 days,
+the same window the dedup uses) before it picks a topic, in the file's existing format. It only
+reads; if Supabase cannot be read the run goes on with whatever local history exists and logs a
+warning. Titles are never logged, only counts. The semantic duplicate store
+(`topic_vectors*.npz`) is refilled from them too when it is empty.

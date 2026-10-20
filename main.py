@@ -813,6 +813,9 @@ def run(
     # A saved script skips both Gemini calls, so a crash in a later stage — or a
     # spent daily quota — does not mean paying for generation again.
     topic_mgr = TopicManager(channel=ctx)
+    # history/ is only an Actions cache: after a long pause or a lost cache the channel has no memory of what it
+    # made. Rebuild it (read only) from the channel's own videos in Supabase before any topic is chosen or checked.
+    topic_mgr.seed_history_from_supabase()
 
     if script_file:
         script = ScriptEngine.load(Path(script_file), topic)

@@ -10,6 +10,13 @@ on:
     #
     # With only the default channel configured (publish_hour_utc 15) exactly
     # one video job runs per day, at 15:00 UTC — unchanged from before.
+    #
+    # GitHub's cron is best effort: a run can start late, or be dropped. So the
+    # resolver also CATCHES UP a channel whose slot hour passed within the last
+    # NIGHTSHIFT_CATCHUP_HOURS (default 3) and has no run recorded for it, and
+    # never schedules a slot that already has one (tools/list_channels.py,
+    # docs/VIDEO_GO_LIVE.md section 9). Still private, still paused by the
+    # same switches.
     - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
@@ -139,6 +146,10 @@ jobs:
           # channel dispatch (--only) is a manual run and ignores it. Resume by
           # deleting the variable or setting it to false. See docs/VIDEO_GO_LIVE.md.
           NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
+          # How many hours after its slot a channel with no run recorded for it
+          # is still caught up. Unset = 3, 0 = off, at most 6; a typo is the
+          # default with a warning. A pause above still wins over all of it.
+          NIGHTSHIFT_CATCHUP_HOURS: ${{ vars.NIGHTSHIFT_CATCHUP_HOURS }}
         run: |
           set -euo pipefail
           if [ -n "${INPUT_CHANNEL:-}" ]; then
@@ -176,6 +187,19 @@ jobs:
     runs-on: ${{ vars.RENDER_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     name: make-video (${{ matrix.channel_id }})
+    # One run per channel and slot at a time. A late cron, a catch-up and a manual
+    # dispatch near the hour all name the same group, so they queue instead of
+    # racing on the history cache and rendering twice at once. Nothing is
+    # cancelled that is running (cancel-in-progress: false); GitHub keeps ONE
+    # pending job per group, so a newer pending job replaces an older one. The
+    # group is per channel, so it does not interact with `max-parallel` below
+    # (that only limits this run's channels at once). A queued SCHEDULED job asks
+    # again before spending whether the slot was meanwhile worked
+    # (tools/slot_guard.py, in the run step); a manual dispatch is an explicit
+    # instruction and still runs after the queue.
+    concurrency:
+      group: nightshift-slot-${{ matrix.channel_id }}-${{ matrix.slot_date }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       max-parallel: 1  # one ffmpeg render at a time on a 2-core runner
@@ -486,6 +510,10 @@ jobs:
           # like  '; rm -rf ~ #  spliced straight into a command would execute;
           # as an env var it is just a string the shell reads with "$VAR".
           CHANNEL_ID: ${{ matrix.channel_id }}
+          # For the once-per-slot guard below (scheduled runs only).
+          EVENT_NAME: ${{ github.event_name }}
+          SLOT_START: ${{ matrix.slot_start }}
+          SLOT_CATCHUP: ${{ matrix.catchup }}
           INPUT_TOPIC: ${{ github.event.inputs.topic }}
           INPUT_NICHE: ${{ github.event.inputs.niche }}
           # Per-run controls (empty on a scheduled run, so the channel's own
@@ -600,6 +628,27 @@ jobs:
           # Build argv as an array so each value stays one argument. No value
           # is ever re-parsed by the shell: env vars are read with "$VAR", and
           # "${args[@]}" hands python exactly the elements we appended.
+          #
+          # Once per slot (scheduled runs only). This job may have queued in the
+          # concurrency group behind the run that has now finished, so ask again,
+          # before anything is spent, whether the slot already has a run. A manual
+          # dispatch is not asked: naming a channel is an instruction. Exit 3 =
+          # already worked. Any other failure of the guard itself: an exact-hour
+          # run goes on as it always did, a catch-up does not (an unknown must not
+          # start a paid run).
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            guard=(--channel "$CHANNEL_ID" --slot-start "$SLOT_START")
+            if [ "${SLOT_CATCHUP:-}" = "true" ]; then
+              guard+=(--catchup)
+            fi
+            guard_rc=0
+            python tools/slot_guard.py "${guard[@]}" || guard_rc=$?
+            if [ "$guard_rc" -eq 3 ] || { [ "$guard_rc" -ne 0 ] && [ "${SLOT_CATCHUP:-}" = "true" ]; }; then
+              echo "skipped=true" >> "$GITHUB_OUTPUT"
+              echo "Slot already worked (or its state is unknown for a catch-up) — nothing was run or spent."
+              exit 0
+            fi
+          fi
           args=(--channel "$CHANNEL_ID" --privacy "${YOUTUBE_PRIVACY:-private}")
           if [ -n "$INPUT_TOPIC" ]; then
             args+=(--topic "$INPUT_TOPIC")

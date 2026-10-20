@@ -46,6 +46,20 @@ worker, or a run already in progress.
 `--due-hour` filters to channels whose `schedule.publish_hour_utc` matches. A
 channel with no hour set is treated as due at the default 15:00 UTC slot, which
 is when the workflow has always run.
+
+Catch-up and once-per-slot (modules/schedule_catchup.py): GitHub's cron can be
+late or drop a run, which used to skip a channel's whole day. With ``--due-hour``
+a channel is ALSO due when its slot hour passed within the last
+``NIGHTSHIFT_CATCHUP_HOURS`` hours (default 3, 0 = off, max 6) and its slot has
+no evidence of a run; a channel whose slot already has evidence is not scheduled
+again, at its exact hour either. Evidence is the dead-man switch's own, read from
+Supabase. It can only REDUCE or LATE-START work, never add publishing power (the
+schedule still forces ``--privacy private``), and it never overrides a pause: the
+global switch returns before any of it, only channels ``registry.active()`` already
+let through are candidates, and an unreadable registry (the default-channel
+fallback) gets no catch-up. When the evidence cannot be read an unknown starts
+nothing: the exact hour behaves as it always did, a catch-up does not happen, and a
+``::warning::`` says so.
 """
 
 from __future__ import annotations
@@ -54,11 +68,13 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules.channel_credentials import env_var_name  # noqa: E402
+from modules import schedule_catchup  # noqa: E402
 from modules.channels import DEFAULT_CHANNEL_ID, ChannelRegistry, legacy_default_channel  # noqa: E402
 
 DEFAULT_HOUR_UTC = 15
@@ -114,11 +130,83 @@ def _preflight(sync=None) -> None:
         sync.select_strict("channels")
 
 
-def due_channels(due_hour: int | None = None, registry=None, sync=None) -> list[dict]:
+def _hour(c) -> int:
+    return c.schedule.publish_hour_utc if c.schedule.publish_hour_utc is not None else DEFAULT_HOUR_UTC
+
+
+def _slot_row(c, start: datetime, catchup: bool) -> dict:
+    """A matrix row plus the slot it is for. ``slot_date`` names the concurrency group (one channel, one slot,
+    one run at a time) and ``slot_start``/``catchup`` go to tools/slot_guard.py, which asks again once the run
+    holds the group."""
+    row = _row(c)
+    row["slot_start"] = start.strftime("%Y-%m-%dT%H:%M:%SZ")
+    row["slot_date"] = start.strftime("%Y-%m-%d")
+    row["catchup"] = catchup
+    return row
+
+
+def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, window: int) -> list[dict]:
+    """The rows for one hour: each channel at its exact hour, plus the ones inside the catch-up window, minus the
+    slots that already have evidence. See modules/schedule_catchup.py for why an unknown starts nothing."""
+    now = now or datetime.now(timezone.utc)
+    ref = schedule_catchup.reference_hour(now, due_hour)
+    candidates = []
+    for c in channels:
+        late = schedule_catchup.lateness(due_hour, _hour(c))
+        if late == 0 or 1 <= late <= window:
+            candidates.append((c, late))
+    if not candidates:
+        return []
+
+    ev, configured = evidence, evidence is not None
+    if ev is None:
+        if evidence_sync is None:
+            from modules.supabase_sync import SupabaseSync
+
+            evidence_sync = SupabaseSync()
+        configured = bool(getattr(evidence_sync, "enabled", False))   # not configured = a local run: nothing to say
+        try:
+            ev = schedule_catchup.read_evidence(evidence_sync, now)
+        except Exception as e:  # noqa: BLE001 - an unreadable source is an unknown, never a stop
+            schedule_catchup.warn(f"slot evidence UNREADABLE ({type(e).__name__}) - treating every slot as unknown.")
+
+    rows, unknown_exact, unknown_late = [], [], []
+    for c, late in candidates:
+        cid, start = str(c.channel_id), ref - timedelta(hours=late)
+        state = schedule_catchup.slot_state(ev, cid, start)
+        if state == schedule_catchup.WORKED:
+            print(f"note: {cid} already has a run for its {start:%Y-%m-%d %H}:00 UTC slot - not scheduled again",
+                  file=sys.stderr)
+        elif late == 0:
+            if state == schedule_catchup.UNKNOWN:
+                unknown_exact.append(cid)
+            rows.append(_slot_row(c, start, False))      # the exact hour, as it has always been
+        elif state == schedule_catchup.UNKNOWN:
+            unknown_late.append(cid)
+        elif schedule_catchup.was_expected(ev, cid, start):
+            print(f"note: {cid} missed its {start:%Y-%m-%d %H}:00 UTC slot ({late}h ago) - catching up",
+                  file=sys.stderr)
+            rows.append(_slot_row(c, start, True))
+    if configured and unknown_exact:
+        schedule_catchup.warn(
+            "run evidence UNREADABLE for " + ", ".join(unknown_exact) + " - running at the exact hour as usual; "
+            "a run already made for this slot cannot be seen.")
+    if configured and unknown_late:
+        schedule_catchup.warn(
+            "run evidence UNREADABLE for " + ", ".join(unknown_late) + " - NOT catching up (an unknown must "
+            "not start a paid run).")
+    return rows
+
+
+def due_channels(due_hour: int | None = None, registry=None, sync=None, now=None, evidence=None,
+                 evidence_sync=None) -> list[dict]:
+    """``sync`` is only the registry preflight's. The slot evidence comes from ``evidence`` (an already-read
+    ``reliability.Evidence``, for tests) or is read with ``evidence_sync`` (default: Supabase from the environment)."""
     if pipeline_paused():
         print(f"note: pipeline paused by {PAUSE_ENV} — nothing is scheduled", file=sys.stderr)
         return []
 
+    fell_back = False
     try:
         if registry is None:
             _preflight(sync)
@@ -135,6 +223,7 @@ def due_channels(due_hour: int | None = None, registry=None, sync=None) -> list[
         print(f"warning: {msg}", file=sys.stderr)
         print(f"::warning::{msg}", file=sys.stderr)
         channels = [legacy_default_channel()]
+        fell_back = True
 
     # A scheduled run carries no credit hold, so it is the operator's to pay
     # for: only the operator's own channels are scheduled. A customer's channel
@@ -160,15 +249,16 @@ def due_channels(due_hour: int | None = None, registry=None, sync=None) -> list[
         print("note: all operator channels paused — nothing is scheduled", file=sys.stderr)
         return []
 
-    if due_hour is not None:
-        channels = [
-            c
-            for c in channels
-            if (c.schedule.publish_hour_utc if c.schedule.publish_hour_utc is not None else DEFAULT_HOUR_UTC)
-            == due_hour
-        ]
+    if due_hour is None:
+        start = (now or datetime.now(timezone.utc)).replace(minute=0, second=0, microsecond=0)
+        return [_slot_row(c, start, False) for c in channels]
 
-    return [_row(c) for c in channels]
+    if fell_back:
+        # The fallback channel is a guess, not a schedule: exactly the old behaviour, no catch-up and no evidence
+        # read (a Supabase that cannot serve the registry is not going to serve that either).
+        start = schedule_catchup.reference_hour(now or datetime.now(timezone.utc), due_hour)
+        return [_slot_row(c, start, False) for c in channels if _hour(c) == due_hour]
+    return _scheduled_rows(channels, due_hour, now, evidence, evidence_sync, schedule_catchup.catchup_hours())
 
 
 def _row(c) -> dict:
@@ -259,6 +349,9 @@ def main() -> int:
         except (KeyError, ValueError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
+        start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        row.update(slot_start=start.strftime("%Y-%m-%dT%H:%M:%SZ"), slot_date=start.strftime("%Y-%m-%d"),
+                   catchup=False)
         print(json.dumps({"include": [row]}))
         return 0
 

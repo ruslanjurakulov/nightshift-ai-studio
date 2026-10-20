@@ -340,6 +340,11 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   `default` (the registry synthesizes it only then; one extra read of the id, and an
   unreadable answer is "blind", not a schedule); an entirely empty table is an
   unknown, not a schedule.
+  The scheduler now uses this same evidence (`reliability.slot_worked`) to catch up a slot whose
+  cron was late or dropped (`NIGHTSHIFT_CATCHUP_HOURS`, default 3; `docs/VIDEO_GO_LIVE.md` section 9),
+  so a delayed run usually heals before the default 3 h grace expires and no alert is sent; if it
+  heals later, the usual "recovered" note follows. A catch-up changes nothing here: the dead-man
+  still only reads.
   A source that stays unreadable for 6 continuous hours is said once a day as an
   information alert in kind `health` ("the dead-man switch cannot judge: <source>",
   key `blind:<source>:<date>`, from silent hourly `blindmark:` rows): a switch that

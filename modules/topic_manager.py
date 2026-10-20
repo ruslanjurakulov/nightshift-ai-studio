@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover
     fcntl = None
 
 from config import GEMINI_MODEL, TOPIC_HISTORY_FILE, SCRIPT_LANGUAGE, VIDEO_DURATION_TARGET
-from modules import topic_dedup
+from modules import topic_dedup, topic_seed
 from modules.channels import DEFAULT_CHANNEL_ID
 from modules.content_planner import ContentPlanner
 from modules.feedback_engine import FeedbackEngine
@@ -380,6 +380,93 @@ class TopicManager:
         bare = [t for t in self.history.get("used_topics", [])
                 if isinstance(t, str) and t.strip() and t not in in_sessions]
         return (bare + rows)[-HISTORY_WINDOW_TOPICS:]
+
+    def seed_history_from_supabase(self, sync=None) -> int:
+        """Rebuild this channel's topic memory from Supabase when the local one has none of its own. Returns how
+        many topics were added (0 = nothing to do, nothing found, or Supabase could not be read).
+
+        ``history/`` lives in the Actions cache, which is evicted after 7 days: a pause longer than that, or a
+        cache that failed to save, otherwise makes the channel forget every topic it made and repeat them. Every
+        video the pipeline made (uploaded, held or blocked) has a ``videos`` row with its topic, so the last
+        ``HISTORY_WINDOW_TOPICS`` of the last ``HISTORY_WINDOW_DAYS`` days are read back (modules/topic_seed.py,
+        read only; nothing is written to Supabase) and merged into the history file in its own format, under the
+        same lock and atomic write as ``register_topic``. Dedup is unchanged: it simply sees the same memory it
+        would have had without the loss. Skipped when the channel already has topics of its own, so a healthy
+        cache is never second-guessed.
+
+        Fails safe: Supabase unconfigured or unreadable means "carry on with the local history", with a warning,
+        and never stops the run. Titles are untrusted data: only counts are logged."""
+        try:
+            if self.own_topics():
+                return 0
+            if sync is None:
+                from modules.supabase_sync import SupabaseSync
+
+                sync = SupabaseSync()
+            if not getattr(sync, "enabled", False):
+                return 0
+            rows = topic_seed.recent_topics(sync, self._history_channel,
+                                            days=HISTORY_WINDOW_DAYS, limit=HISTORY_WINDOW_TOPICS)
+            if rows is None:
+                logger.warning(
+                    "[channel: %s] Topic history is empty here and Supabase could not be read to rebuild it - "
+                    "continuing with no earlier topics, so repeats of them are not detected this run",
+                    self._history_channel)
+                return 0
+            if not rows:
+                logger.info("[channel: %s] Topic history is empty and Supabase has no earlier videos for the "
+                            "channel - nothing to seed", self._history_channel)
+                return 0
+            added = self._merge_seeded(rows)
+            logger.info("[channel: %s] Topic history was empty: rebuilt %d topics from Supabase",
+                        self._history_channel, added)
+            self._reseed_vectors_if_empty()
+            return added
+        except Exception as e:  # noqa: BLE001 - memory is a safety net, never a reason to stop the run
+            logger.warning("[channel: %s] Topic history could not be rebuilt from Supabase (%s) - continuing "
+                           "with the local history", self._history_channel, type(e).__name__)
+            return 0
+
+    def _merge_seeded(self, rows: list[dict]) -> int:
+        """Append seeded topics to the history file, skipping any already there for this channel."""
+        me = self._history_channel
+        with self._history_lock():
+            self.history = self._load()
+            have = {(s.get("topic"), s.get("channel_id")) for s in self.history["sessions"]}
+            added = 0
+            for r in rows:
+                if (r["topic"], me) in have:
+                    continue
+                self.history["used_topics"].append(r["topic"])
+                self.history["sessions"].append({
+                    "topic": r["topic"], "channel_id": me, "date": r["date"], "video": "",
+                    "video_id": r["video_id"], "video_url": None, "source": "supabase",
+                })
+                added += 1
+            if added:
+                try:
+                    self._save()
+                except OSError as e:
+                    # Kept in memory for this run; the next run seeds again.
+                    logger.warning("Seeded topic history could not be saved (%s) - used for this run only",
+                                   type(e).__name__)
+        return added
+
+    def _reseed_vectors_if_empty(self) -> None:
+        """The semantic duplicate check (and the publish gate's) reads the vector store, which is lost with the
+        cache too. Refill an EMPTY store from the channel's topics (embedding is local and free); a store that
+        has content is left alone, and an embedder that cannot load only costs the semantic check, as before."""
+        count = getattr(self.originality, "stored_count", None)
+        if not isinstance(count, int) or count != 0:
+            return
+        try:
+            n = self.originality.rebuild(self.own_topics())
+            logger.info("[channel: %s] Topic vector store was empty: refilled with %d topics",
+                        self._history_channel, n)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[channel: %s] Topic vector store could not be refilled (%s) - the semantic duplicate "
+                           "check stays empty; the word-level check still applies", self._history_channel,
+                           type(e).__name__)
 
     def find_repeat(self, topic: str) -> str | None:
         """The channel's own recent topic that ``topic`` repeats, or None."""
