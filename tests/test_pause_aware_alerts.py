@@ -60,6 +60,11 @@ class SharedSemanticsTestCase(unittest.TestCase):
         self.assertNotIn("_RUNNING_WORDS", text)        # no hand-copied word list in the bot
         self.assertNotRegex(text, r"""["']false["']""")
 
+    def test_the_slot_guard_re_checks_the_pause_with_the_same_function(self):
+        # #553: a scheduled job that waited in its concurrency group re-checks the pause before it spends
+        from tools import slot_guard
+        self.assertIs(slot_guard.pipeline_paused, pipeline_pause.pipeline_paused)
+
     def test_unset_means_running_and_the_default_config_is_not_paused(self):
         self.assertFalse(OperatorConfig.from_env({}).pipeline_paused)
         self.assertFalse(OperatorConfig().pipeline_paused)
