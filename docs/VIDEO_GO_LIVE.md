@@ -264,6 +264,28 @@ is down.
 channels again, each at its own `publish_hour_utc`. An hour that passed while paused is
 not made up.
 
+**The operator bot knows about the pause.** The same variable is passed to the operator
+bot (`operator_alerts.yml`, `telegram_control.yml`, and the always-on service through
+`deploy_web.yml`), which reads it with the scheduler's own function, so the two cannot
+disagree. While it is on: the dead-man switch raises **no** "No video from channel ..."
+alert for the paused slots, the daily digest and `/today` say `paused` where they would say
+`MISSING`, and the bot sends **one information alert a day** (Telegram only, never e-mail)
+"Scheduled runs are paused by NIGHTSHIFT_PIPELINE_PAUSED", so a pause left on for weeks
+is not forgotten; lifting it is followed by one "no longer paused" note. The scheduled
+readiness check (`doctor_scheduled.yml`) shows a `[WARN] pipeline/scheduled runs` line in
+its job summary and never records the pause as a failure. The always-on bot service reads
+the variable **at deploy time**: after changing it, run Actions > *Deploy web* so the
+service sees the new value (the Actions-based passes read it on every run). The bot keeps no
+history of the pause, so after you resume, yesterday's slot, if it made no video, can raise
+one dead-man alert on the first pass.
+
+**Misconfiguration warnings.** In GitHub Actions the resolver now prints
+`::warning::Supabase is not configured - channel pauses cannot be read` when the Supabase
+secrets are not set (every pause stored in the Command Center is then invisible to it), and a
+warning when the `channels` table is empty (migration 0001 seeds `default`, so an empty table
+almost always means the secrets point at the wrong project). Scheduling is unchanged: it still
+falls back to the default channel.
+
 **Pause one channel.** Pausing a channel (or switching its schedule off) in the Command
 Center still works, and now it also works for the operator's test channel Chronos (id
 `default`). When every operator channel is paused the scheduler emits an empty matrix and

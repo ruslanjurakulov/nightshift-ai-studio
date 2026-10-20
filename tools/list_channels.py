@@ -38,7 +38,8 @@ stored in the database is invisible while Supabase is down. The preflight makes
 that outage loud; only ``NIGHTSHIFT_PIPELINE_PAUSED`` actually stops it.
 
 ``NIGHTSHIFT_PIPELINE_PAUSED`` (repo variable, see docs/VIDEO_GO_LIVE.md) pauses
-the scheduled operator runs. It is an environment variable and not a database
+the scheduled operator runs (its meaning is modules/pipeline_pause.py, shared with the
+operator bot and the doctor, so they cannot drift). It is an environment variable and not a database
 flag on purpose: it must still work when Supabase is the thing that is down.
 It does not stop manual runs, the Command Center, paid API runs, the queue
 worker, or a run already in progress.
@@ -60,42 +61,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules.channel_credentials import env_var_name  # noqa: E402
 from modules.channels import DEFAULT_CHANNEL_ID, ChannelRegistry, legacy_default_channel  # noqa: E402
+# The pause semantics live in one module the operator bot and the doctor read too, so they cannot drift.
+from modules.pipeline_pause import PAUSE_ENV, pipeline_paused  # noqa: E402,F401
 
 DEFAULT_HOUR_UTC = 15
-
-PAUSE_ENV = "NIGHTSHIFT_PIPELINE_PAUSED"
-_RUNNING_WORDS = frozenset({"", "0", "false", "no", "off"})
-
-
-def _pause_value(env=None) -> str:
-    raw = str((os.environ if env is None else env).get(PAUSE_ENV, "") or "").strip()
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
-        raw = raw[1:-1]  # one pair of surrounding quotes: a pasted "true" means true
-    return raw.strip().lower()
-
-
-def pipeline_paused(env=None) -> bool:
-    """Is the pause for scheduled operator runs on? Fails CLOSED.
-
-    Only ``""/0/false/no/off`` (case-insensitive, trimmed, one pair of quotes
-    stripped) mean "run". ANYTHING else pauses — ``1/true/yes/on``, but also a
-    typo or garbage. The person who set the variable meant to stop something;
-    an unreadable instruction to stop is not a licence to spend (CLAUDE.md rule
-    4: no video is the better failure, and ``normalize_status`` likewise reads an
-    unknown channel status as PAUSED). An unrecognised value is said out loud —
-    never echoed — so a typo is noticed and fixed rather than quietly obeyed.
-    """
-    raw = _pause_value(env)
-    if raw in _RUNNING_WORDS:
-        return False
-    if raw not in {"1", "true", "yes", "on"}:
-        msg = (
-            f"{PAUSE_ENV} has an unrecognised value - treating as PAUSED. "
-            "Accepted: true/1/yes/on (pause) or false/0/no/off/unset (run)."
-        )
-        print(f"warning: {msg}", file=sys.stderr)
-        print(f"::warning::{msg}", file=sys.stderr)
-    return True
 
 
 def _preflight(sync=None) -> None:
@@ -104,14 +73,32 @@ def _preflight(sync=None) -> None:
     ``ChannelRegistry`` swallows a failed read and falls back to a synthesized
     ``default``; this read is strict so the outage is seen. Skipped when
     Supabase is not configured (local runs, tests), where there is nothing to
-    read and "no rows" is the honest answer.
+    read and "no rows" is the honest answer, except in GitHub Actions: there
+    the scheduled run MEANS to read the pauses stored in the database, so an
+    unset secret is said, because every pause set in the Command Center is
+    invisible to it (the fallback is the default channel, fail-open).
+
+    An EMPTY ``channels`` table is said too: migration 0001 seeds ``default``,
+    so no rows almost always means the secrets point at the wrong project.
+    Scheduling is unchanged (fail-open to the default channel); this only makes
+    the likely mistake visible. Both warnings go to stderr, never to the matrix.
     """
     if sync is None:
         from modules.supabase_sync import SupabaseSync
 
         sync = SupabaseSync()
-    if getattr(sync, "enabled", False):
-        sync.select_strict("channels")
+    if not getattr(sync, "enabled", False):
+        if os.environ.get("GITHUB_ACTIONS"):
+            print("::warning::Supabase is not configured - channel pauses cannot be read", file=sys.stderr)
+        return
+    if not sync.select_strict("channels"):
+        msg = (
+            "the channels table is EMPTY - migration 0001 seeds 'default', so SUPABASE_URL probably points at the "
+            "wrong project. Channel pauses stored in the database are not being read; scheduling falls back to "
+            "the default channel."
+        )
+        print(f"warning: {msg}", file=sys.stderr)
+        print(f"::warning::{msg}", file=sys.stderr)
 
 
 def due_channels(due_hour: int | None = None, registry=None, sync=None) -> list[dict]:

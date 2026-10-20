@@ -119,6 +119,52 @@ class SecretHygiene(unittest.TestCase):
                 self.assertTrue(c.fix, c.name)
 
 
+class PipelinePause(unittest.TestCase):
+    """A paused schedule is REPORTED by the doctor, never a failure: pausing is the owner's decision, and a red
+    doctor would page the owner (as a failing readiness check) for doing what they meant to do."""
+
+    PAUSE = "NIGHTSHIFT_PIPELINE_PAUSED"
+
+    def check(self, **env):
+        return one(d.run_checks(make_ctx(env), offline=True), "scheduled runs")
+
+    def test_unset_or_a_running_word_is_a_pass_that_says_runs_are_scheduled(self):
+        for value in (None, "", "false", "0", "OFF", ' "no" '):
+            c = self.check(**{self.PAUSE: value})
+            self.assertEqual((c.group, c.status), ("pipeline", PASS), value)
+            self.assertIn("not paused", c.detail)
+
+    def test_a_paused_pipeline_is_a_warning_with_the_way_back_never_a_failure(self):
+        for value in ("true", "1", "yes", "ON", '"true"'):
+            c = self.check(**{self.PAUSE: value})
+            self.assertEqual(c.status, WARN, value)
+            self.assertIn("paused", c.detail)
+            self.assertIn(self.PAUSE, c.detail)
+            self.assertIn("false", c.fix)
+            self.assertIn("manual", c.detail)          # a named manual run still works: say so
+
+    def test_an_unrecognised_value_is_paused_fail_closed_and_never_echoed(self):
+        c = self.check(**{self.PAUSE: "ture-SENTINEL"})
+        self.assertEqual(c.status, WARN)
+        self.assertIn("unrecognised", c.detail)
+        self.assertNotIn("SENTINEL", c.detail + c.fix)
+
+    def test_a_paused_pipeline_never_turns_a_ready_doctor_into_a_blocking_one(self):
+        checks = d.run_checks(make_ctx({self.PAUSE: "true"}), offline=True)
+        self.assertFalse([c for c in checks if c.group == "pipeline" and c.status == FAIL])
+        self.assertEqual(d.summarize(checks, True)["counts"][FAIL], d.summarize(
+            d.run_checks(make_ctx(), offline=True), True)["counts"][FAIL])
+
+    def test_it_is_in_the_offline_set_the_run_start_uses_and_makes_no_request(self):
+        ctx = make_ctx({self.PAUSE: "true"})
+        d.run_checks(ctx, offline=True)
+        self.assertEqual(ctx.http.calls, [])
+
+    def test_it_uses_the_schedulers_own_function(self):
+        from modules import pipeline_pause
+        self.assertIs(d.pipeline_pause, pipeline_pause)
+
+
 class EffectiveConfig(unittest.TestCase):
     def video(self, **env):
         return d.check_video(make_ctx(env))[0]
