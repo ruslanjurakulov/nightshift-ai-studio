@@ -216,6 +216,21 @@ class WorkflowTestCase(unittest.TestCase):
             mine |= self.refs(expr)
         self.assertTrue(mine <= daily_refs, mine - daily_refs)
 
+    def test_the_other_jobs_of_the_daily_workflow_widen_the_doctors_set_by_exactly_the_pause_variable(self):
+        # The doctor's env may be judged against every daily job, but a future job must not widen what it may read
+        # unnoticed: what the other jobs add over make-video is the pause variable and nothing else.
+        make_video = set()
+        for s in self.daily["jobs"]["make-video"]["steps"]:
+            for v in (s.get("env") or {}).values():
+                make_video |= self.refs(v)
+        others = set()
+        for name, job in self.daily["jobs"].items():
+            if name != "make-video":
+                for s in job.get("steps", []):
+                    for v in (s.get("env") or {}).values():
+                        others |= self.refs(v)
+        self.assertEqual(others - make_video, {"vars.NIGHTSHIFT_PIPELINE_PAUSED"})
+
     def test_it_sees_the_pause_variable_the_scheduler_reads(self):
         self.assertEqual(self.step["env"]["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
 

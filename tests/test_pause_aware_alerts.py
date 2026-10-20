@@ -208,6 +208,37 @@ class PauseReminderTestCase(unittest.TestCase):
             self.assertIn("NIGHTSHIFT_PIPELINE_PAUSED", table(lang)["digest.paused"])
 
 
+class StaleSnapshotTestCase(unittest.TestCase):
+    """The always-on bot reads a deploy-time snapshot of the variable, the scheduler and the doctor the live one."""
+
+    def test_the_reminder_says_what_to_do_if_the_pause_was_already_lifted(self):
+        for lang in LANGUAGES:
+            self.assertIn("Deploy web", table(lang)["alert.paused"], lang)
+        found = run_detect(now=at(14, 12, 0), videos=[], cfg=PAUSED)[0]
+        self.assertIn("If you already lifted it, run Deploy web so this bot sees it.", pause_alerts(found)[0].line)
+
+    def test_after_a_resume_an_overdue_slot_can_raise_two_false_alerts_per_channel_and_both_are_mailed(self):
+        # The documented limit (the bot has no history of the pause): resumed after today's deadline, so yesterday's
+        # and today's slot are both overdue with no video. Warn severity, so the owner e-mail wants them.
+        found = run_detect(now=at(15, 19, 0), videos=[], cfg=RUNNING)[0]
+        self.assertEqual(sorted(keys(found)), ["deadman:default:2026-10-14", "deadman:default:2026-10-15"])
+        sink = type("S", (), {"kinds": frozenset(owner_mail.DEFAULT_KINDS)})()
+        for a in found:
+            if a.key.startswith("deadman:"):
+                self.assertEqual(a.severity, "warn")
+                self.assertTrue(owner_mail.OwnerMail.wants(sink, a))
+
+    def test_the_docs_describe_both_directions_of_the_stale_window_and_the_two_alerts(self):
+        golive = (ROOT / "docs" / "VIDEO_GO_LIVE.md").read_text()
+        bot = (ROOT / "docs" / "operator-bot.md").read_text()
+        for text in (golive, bot):
+            flat = " ".join(text.split())
+            self.assertIn("pause set but not deployed", flat)
+            self.assertIn("pause lifted but not deployed", flat)
+            self.assertIn("**two** false dead-man alerts", flat)
+            self.assertRegex(flat, r"(?i)e-mailed")
+
+
 class PauseReminderDeliveryTestCase(unittest.TestCase):
     """Through the engine: once a UTC day, across restarts, never in quiet hours, and a note when it is lifted.
     The bot is armed while the pipeline runs and the owner pauses it afterwards (the first pass only records what

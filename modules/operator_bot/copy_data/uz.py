@@ -501,7 +501,7 @@ TABLE = {
     "alert.provider_stale_ok": "Tiklandi: {provider} balansi yana yangilanmoqda",
     "alert.provider_zero": "{provider} {metric}: nol, bunga muhtoj ishga tushirishlar toʻxtaydi",
     "alert.provider_zero_ok": "Tiklandi: {provider} balansi yana noldan yuqori",
-    "alert.paused": "Jadval boʻyicha ishga tushirishlar NIGHTSHIFT_PIPELINE_PAUSED oʻzgaruvchisi bilan toʻxtatilgan: jadval boʻyicha video yaratilmaydi va «video yoʻq» signali berilmaydi. Davom ettirish uchun uni false qiling yoki oʻchiring. (Yoniq turgan paytda kuniga bir marta eslatma.)",
+    "alert.paused": "Jadval boʻyicha ishga tushirishlar NIGHTSHIFT_PIPELINE_PAUSED oʻzgaruvchisi bilan toʻxtatilgan: jadval boʻyicha video yaratilmaydi va «video yoʻq» signali berilmaydi. Davom ettirish uchun uni false qiling yoki oʻchiring. Agar uni allaqachon olib tashlagan boʻlsangiz, bu bot koʻrishi uchun Deploy web ni ishga tushiring. (Yoniq turgan paytda kuniga bir marta eslatma.)",
     "alert.paused_ok": "Tiklandi: jadval boʻyicha ishga tushirishlar endi toʻxtatilmagan (NIGHTSHIFT_PIPELINE_PAUSED oʻchiq)",
     "digest.expected": "Video kutilgan va yaratilgan (UTC) — {channel}: kecha {yesterday} · bugun {today}",
     "digest.expected_unknown": "Video kutilgan va yaratilgan: {why}",

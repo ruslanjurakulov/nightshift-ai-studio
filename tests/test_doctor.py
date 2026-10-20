@@ -128,11 +128,26 @@ class PipelinePause(unittest.TestCase):
     def check(self, **env):
         return one(d.run_checks(make_ctx(env), offline=True), "scheduled runs")
 
-    def test_unset_or_a_running_word_is_a_pass_that_says_runs_are_scheduled(self):
+    def test_unset_or_a_running_word_is_a_pass_in_the_scheduled_doctor_that_says_runs_are_scheduled(self):
         for value in (None, "", "false", "0", "OFF", ' "no" '):
-            c = self.check(**{self.PAUSE: value})
+            c = self.check(**{self.PAUSE: value, "GITHUB_ACTIONS": "true"})
             self.assertEqual((c.group, c.status), ("pipeline", PASS), value)
             self.assertIn("not paused", c.detail)
+
+    def test_outside_actions_an_unset_variable_is_unverified_never_a_pass(self):
+        # a laptop or the worker container has its own environment: "unset" there says nothing about the
+        # repository variable the schedule reads (CLAUDE.md rule 5)
+        for value in (None, "", "false", "0", "OFF"):
+            for actions in (None, "", "false"):
+                c = self.check(**{self.PAUSE: value, "GITHUB_ACTIONS": actions})
+                self.assertEqual((c.group, c.status), ("pipeline", UNVERIFIED), (value, actions))
+                self.assertNotIn("not paused", c.detail)
+                self.assertIn("repository variable", c.detail)
+                self.assertIn("Variables", c.fix)
+
+    def test_a_pause_that_is_visible_is_a_warning_wherever_the_doctor_runs(self):
+        for actions in (None, "true"):
+            self.assertEqual(self.check(**{self.PAUSE: "true", "GITHUB_ACTIONS": actions}).status, WARN)
 
     def test_a_paused_pipeline_is_a_warning_with_the_way_back_never_a_failure(self):
         for value in ("true", "1", "yes", "ON", '"true"'):

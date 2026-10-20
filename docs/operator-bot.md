@@ -361,11 +361,18 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   silent in both places. A failed daily run, a blocked or failed-upload video and the
   readiness check are still heard while paused (a manual dispatch still runs). The
   variable is passed to `operator_alerts.yml` and `telegram_control.yml` (read on every
-  pass) and to the always-on service through `deploy_web.yml` (read **at deploy
-  time**: after changing the variable run Deploy web). Known limit: the bot has no
-  history of when the pipeline was paused, so on the first pass after the pause is
-  lifted, yesterday's slot, if it made no video, can still raise one dead-man alert
-  (Mute 24h if you do not want it).
+  pass, no stale window) and to the always-on service through `deploy_web.yml`, which reads
+  it **at deploy time**: a snapshot, while the scheduler and the doctor read the live
+  variable. Until you run Deploy web after changing it the service is wrong in both
+  directions: pause set but not deployed, it can raise a false dead-man alert (warn, so it
+  can be e-mailed) for a slot stopped on purpose; pause lifted but not deployed, it
+  silences real dead-man alerts and its daily "paused" note contradicts the doctor (the
+  note says to run Deploy web). Known limit: the bot has no history of when the pipeline
+  was paused, so on the first pass after the pause is lifted an overdue slot with no
+  video can raise **two** false dead-man alerts per channel (yesterday's and, if the
+  resume lands after today's deadline, today's), both warn so also e-mailed (Mute 24h of
+  kind `pipeline` if you do not want them). Follow-up: a record written by the pipeline's
+  own run so a paused slot can be told from a missed one.
 * **The daily workflow itself** (kind `pipeline`, warn). A finished `daily_video.yml`
   run (scheduled or manual dispatch, any branch) that ended `failure`, `timed_out`
   or `startup_failure` within 12 h: which jobs failed and at which step (the

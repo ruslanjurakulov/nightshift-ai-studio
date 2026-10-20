@@ -273,11 +273,25 @@ alert for the paused slots, the daily digest and `/today` say `paused` where the
 "Scheduled runs are paused by NIGHTSHIFT_PIPELINE_PAUSED", so a pause left on for weeks
 is not forgotten; lifting it is followed by one "no longer paused" note. The scheduled
 readiness check (`doctor_scheduled.yml`) shows a `[WARN] pipeline/scheduled runs` line in
-its job summary and never records the pause as a failure. The always-on bot service reads
-the variable **at deploy time**: after changing it, run Actions > *Deploy web* so the
-service sees the new value (the Actions-based passes read it on every run). The bot keeps no
-history of the pause, so after you resume, yesterday's slot, if it made no video, can raise
-one dead-man alert on the first pass.
+its job summary and never records the pause as a failure. Run by hand (a laptop, the worker
+container) the same check reads UNVERIFIED when the variable is not set in that environment,
+because only the scheduled doctor is given the repository variable; it reports WARN wherever
+it does see a pause. The always-on bot service reads
+the variable **at deploy time** (a snapshot taken by Deploy web), while the scheduler and
+the doctor read the live repository variable, so for as long as you have not run Deploy
+web the bot can be wrong in BOTH directions: **pause set but not deployed** means the bot
+still thinks the pipeline runs, so it can raise a false "No video from channel ..."
+alert for a slot you stopped on purpose (a warn alert, so it can also be e-mailed);
+**pause lifted but not deployed** means the bot still thinks it is paused, so a real
+dead-man alert is silenced and the daily "paused" note contradicts the doctor. After
+changing the variable run Actions > *Deploy web*; the daily "paused" alert says so too.
+(The Actions-based passes, `operator_alerts.yml` and `telegram_control.yml`, read it on
+every run and have no stale window.) The bot also keeps no history of the pause: after you
+resume, an overdue slot that made no video can raise **two** false dead-man alerts per
+channel on the first pass, yesterday's and, if you resume after today's deadline
+(`publish_hour_utc` + grace), today's; both are warn alerts, so they can be e-mailed too.
+Mute 24h (kind `pipeline`) if you do not want them. A follow-up (not in this change): have
+the pipeline's own run write a record so the bot can tell a paused slot from a missed one.
 
 **Misconfiguration warnings.** In GitHub Actions the resolver now prints
 `::warning::Supabase is not configured - channel pauses cannot be read` when the Supabase

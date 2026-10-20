@@ -502,7 +502,7 @@ TABLE = {
     "alert.provider_stale_ok": "Recovered: the {provider} balance is refreshed again",
     "alert.provider_zero": "{provider} {metric} is at zero: runs that need it will stop",
     "alert.provider_zero_ok": "Recovered: the {provider} balance is above zero again",
-    "alert.paused": "Scheduled runs are paused by NIGHTSHIFT_PIPELINE_PAUSED: no video is made on the schedule and no missing-video alarm is raised. Set the variable to false, or delete it, to resume. (Reminder, once a day while it is on.)",
+    "alert.paused": "Scheduled runs are paused by NIGHTSHIFT_PIPELINE_PAUSED: no video is made on the schedule and no missing-video alarm is raised. Set the variable to false, or delete it, to resume. If you already lifted it, run Deploy web so this bot sees it. (Reminder, once a day while it is on.)",
     "alert.paused_ok": "Recovered: scheduled runs are no longer paused (NIGHTSHIFT_PIPELINE_PAUSED is off)",
     "digest.expected": "Videos expected vs made (UTC) — {channel}: yesterday {yesterday} · today {today}",
     "digest.expected_unknown": "Videos expected vs made: {why}",
