@@ -18,7 +18,9 @@ depends on — and returns numbers, not opinions:
   can still carry a plausible header);
 * **black** — long black runs (``blackdetect``). The compositor's fallback when
   no visual was built is a black/near-black ``ColorClip``;
-* **silence** — long silent runs (``silencedetect``).
+* **silence** — long silent runs (``silencedetect``);
+* **scenes** — black and frozen picture per scene (``freezedetect``): a scene a
+  viewer saw nothing in blocks even when the whole-video totals stay small.
 
 Black and silent runs are mapped onto scene ids (``s000``, ``s001`` …, the
 script section index — the shared Video IR convention) using the audio
@@ -82,6 +84,26 @@ BLACK_PIX_TH = 0.10
 BLACK_WARN_S = 2.0
 BLACK_BLOCK_S = 10.0
 BLACK_BLOCK_FRACTION = 0.25
+
+# Per scene. The totals above were written for long scenes: a video of six-second
+# scenes can lose a whole scene to a dead stock source (or the compositor's solid
+# filler) and stay under both. A scene that is almost entirely black, or almost
+# entirely a frozen picture, is a scene the viewer saw nothing in. Scenes under
+# SCENE_MIN_S are not judged (too little footage to tell a cut from a hole), and
+# the 90 % keeps a fade or a held title card at either end from counting.
+SCENE_MIN_S = 3.0
+SCENE_BLOCK_FRACTION = 0.9
+
+# Frozen picture. The picture is checked above the caption band only: the
+# burnt-in word captions change a small patch of every frame and would hide a
+# frozen backdrop behind them (measured: a still frame with a moving caption-sized
+# patch never trips freezedetect). -60 dB is freezedetect's default; a Ken-Burns
+# zoom (12 % over a scene) stayed clear of it on a smooth gradient, the worst
+# case, while a single held frame trips it (tests/test_video_qc_scenes.py).
+FREEZE_NOISE_DB = -60
+FREEZE_MIN_S = 2.0
+FREEZE_WARN_S = 4.0
+FREEZE_KEEP_TOP = 0.7
 
 # Silent runs. Scripts mark dramatic pauses with [PAUSE:n] (typically 1-2 s),
 # and a whoosh is overlaid every ~35 s, so a real narrated video is never
@@ -303,6 +325,8 @@ _BLACK_RE = re.compile(r"black_start:\s*([\d.]+)\s+black_end:\s*([\d.]+)")
 _SILENCE_START_RE = re.compile(r"silence_start:\s*(-?[\d.]+)")
 _SILENCE_END_RE = re.compile(r"silence_end:\s*([\d.]+)")
 _OUT_TIME_RE = re.compile(r"out_time_us=(\d+)")
+_FREEZE_START_RE = re.compile(r"lavfi\.freezedetect\.freeze_start:\s*([\d.]+)")
+_FREEZE_END_RE = re.compile(r"lavfi\.freezedetect\.freeze_end:\s*([\d.]+)")
 
 
 def _parse_scan(stdout: str, stderr: str, *, fallback_end_s: Optional[float]) -> dict:
@@ -320,6 +344,22 @@ def _parse_scan(stdout: str, stderr: str, *, fallback_end_s: Optional[float]) ->
             open_start = None
     times = _OUT_TIME_RE.findall(stdout)
     decoded_s = int(times[-1]) / 1_000_000 if times else None
+    frozen = []
+    freeze_open = None
+    for line in stderr.splitlines():
+        fs = _FREEZE_START_RE.search(line)
+        if fs:
+            freeze_open = float(fs.group(1))
+            continue
+        fe = _FREEZE_END_RE.search(line)
+        if fe and freeze_open is not None:
+            frozen.append((freeze_open, float(fe.group(1))))
+            freeze_open = None
+    if freeze_open is not None:
+        # ffmpeg prints no freeze_end for a picture still frozen at EOF.
+        end = decoded_s if decoded_s is not None else fallback_end_s
+        if end is not None and end > freeze_open:
+            frozen.append((freeze_open, end))
     if open_start is not None:
         # Older ffmpeg does not flush a trailing silence_end at EOF: the
         # silence ran to the end of what was decoded.
@@ -332,6 +372,7 @@ def _parse_scan(stdout: str, stderr: str, *, fallback_end_s: Optional[float]) ->
     )
     return {
         "black": black,
+        "frozen": frozen,
         "silence": silence,
         "decoded_s": decoded_s,
         "decode_errors": decode_errors,
@@ -340,13 +381,16 @@ def _parse_scan(stdout: str, stderr: str, *, fallback_end_s: Optional[float]) ->
 
 def scan(path: Path, *, has_video: bool, has_audio: bool,
          duration_s: Optional[float] = None) -> dict:
-    """One full decode with blackdetect + silencedetect attached."""
+    """One full decode with blackdetect, freezedetect and silencedetect attached."""
     exe = _ffmpeg_exe()
     if not exe:
         raise FileNotFoundError("ffmpeg")
     cmd = [exe, "-hide_banner", "-nostdin", "-nostats", "-i", str(path)]
     if has_video:
-        cmd += ["-vf", f"blackdetect=d={BLACK_MIN_S}:pix_th={BLACK_PIX_TH}"]
+        cmd += ["-vf",
+                f"blackdetect=d={BLACK_MIN_S}:pix_th={BLACK_PIX_TH},"
+                f"crop=iw:2*trunc(ih*{FREEZE_KEEP_TOP}/2):0:0,"
+                f"freezedetect=n={FREEZE_NOISE_DB}dB:d={FREEZE_MIN_S}"]
     else:
         cmd += ["-vn"]
     if has_audio:
@@ -380,6 +424,30 @@ def scenes_for_span(timeline, start_s: float, end_s: float) -> list:
         if a < end_s and b > start_s:
             ids.append(scene_id(i))
     return ids
+
+
+def _scene_coverage(runs, timeline) -> dict:
+    """``{scene_id: fraction of that scene the runs cover}`` for every scene long
+    enough to judge (SCENE_MIN_S). Runs are merged first, so two runs that
+    overlap are not counted twice."""
+    merged = []
+    for a, b in sorted((float(a), float(b)) for a, b in runs or []):
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    out = {}
+    for i, entry in enumerate(timeline or []):
+        try:
+            a = float(entry["start_ms"]) / 1000
+            b = float(entry["end_ms"]) / 1000
+        except (KeyError, TypeError, ValueError):
+            continue
+        if b - a < SCENE_MIN_S:
+            continue
+        covered = sum(max(0.0, min(b, y) - max(a, x)) for x, y in merged)
+        out[scene_id(i)] = round(min(1.0, covered / (b - a)), 3)
+    return out
 
 
 def _spans(runs, timeline) -> list:
@@ -570,6 +638,7 @@ def _run_checks(report: QcReport, video_path, *, audio_path, narration_duration_
     _judge_decode(report, result, duration)
     if video is not None:
         _judge_black(report, result, duration, timeline)
+        _judge_scenes(report, result, timeline)
     if audio is not None:
         _judge_silence(report, result, timeline)
 
@@ -612,6 +681,41 @@ def _judge_black(report: QcReport, result: dict, duration: Optional[float], time
         report.warnings.append(f"video_qc_black:{longest['duration_s']:.1f}s{_where(longest)}")
     else:
         report.add("black", STATUS_PASS, f"only short runs ({total:.1f}s total)")
+
+
+def _judge_scenes(report: QcReport, result: dict, timeline) -> None:
+    """Black and frozen picture, scene by scene. Only blocks and warnings: what a
+    block does to a video (a hold, never a publish) is the gate's call."""
+    frozen = _spans(result.get("frozen") or [], timeline)
+    report.measured["frozen_segments"] = frozen
+    report.measured["frozen_total_s"] = round(sum(s["duration_s"] for s in frozen), 3)
+    if not timeline:
+        # No scene windows: a per-scene reading is unknown, not clean.
+        report.add("scenes", STATUS_SKIPPED, "no scene timeline")
+        report.warnings.append("video_qc_scenes_unchecked")
+        return
+    black_cov = _scene_coverage(result.get("black") or [], timeline)
+    frozen_cov = _scene_coverage(result.get("frozen") or [], timeline)
+    scene_black = {k: v for k, v in black_cov.items() if v > 0}
+    scene_frozen = {k: v for k, v in frozen_cov.items() if v > 0}
+    report.measured["scene_black"] = scene_black
+    report.measured["scene_frozen"] = scene_frozen
+    bad = []
+    black_scenes = {sid for sid, f in scene_black.items() if f >= SCENE_BLOCK_FRACTION}
+    for sid in sorted(black_scenes):
+        report.blocks.append(f"video_qc_scene_black:{sid}")
+        bad.append(f"{sid} black")
+    # A black picture is also a frozen one; the scene is reported once, as black.
+    frozen_scenes = {sid for sid, f in scene_frozen.items()
+                     if f >= SCENE_BLOCK_FRACTION and sid not in black_scenes}
+    for sid in sorted(frozen_scenes):
+        report.blocks.append(f"video_qc_scene_frozen:{sid}")
+        bad.append(f"{sid} frozen")
+    longest = max(frozen, key=lambda s: s["duration_s"], default=None)
+    if (longest and longest["duration_s"] >= FREEZE_WARN_S
+            and not set(longest.get("scene_ids") or []) & (frozen_scenes | black_scenes)):
+        report.warnings.append(f"video_qc_frozen:{longest['duration_s']:.1f}s{_where(longest)}")
+    report.add("scenes", STATUS_FAIL if bad else STATUS_PASS, ", ".join(bad))
 
 
 def _judge_silence(report: QcReport, result: dict, timeline) -> None:
