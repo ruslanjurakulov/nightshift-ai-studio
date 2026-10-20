@@ -12,7 +12,10 @@ What these tests pin:
 * registry LOADED, no operator channel active  -> empty matrix on purpose, said out loud;
 * registry UNREADABLE (raises)                  -> the fail-safe fallback to `default`,
   loud, with the exception TYPE only, and never when the global switch is on;
-* NIGHTSHIFT_PIPELINE_PAUSED                    -> 1/true/yes/on pause, anything else does not;
+* NIGHTSHIFT_PIPELINE_PAUSED                    -> fails CLOSED: only ""/0/false/no/off run,
+  anything else (typos and garbage included) pauses, with a warning that never echoes it;
+* a Supabase outage (the registry swallows it and synthesizes `default`) is made loud by a
+  strict preflight read, and stays fail-open;
 * an explicit `--only` run and `--all` listing are not the scheduler and ignore the pause;
 * daily_video.yml turns an empty matrix into a skipped job, not a red run.
 
@@ -161,34 +164,135 @@ class GlobalPauseSwitch(unittest.TestCase):
             ids, err = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": value})
             self.assertEqual(ids, [], repr(value))
             self.assertIn("pipeline paused by NIGHTSHIFT_PIPELINE_PAUSED", err, repr(value))
+            self.assertNotIn("unrecognised", err, repr(value))
 
-    def test_everything_else_does_not_pause(self):
-        for value in ("", "0", "false", "False", "no", "off", "ture", "paused", "2", "y", "enabled", "{", "🛑"):
+    def test_only_the_running_words_run(self):
+        for value in ("", "0", "false", "False", "FALSE", "no", "No", "off", "OFF", "  off  ",
+                      '"false"', "'off'", '"0"', ' "no" '):
             ids, err = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": value})
             self.assertEqual(ids, ["default", "shop"], repr(value))
             self.assertNotIn("pipeline paused", err, repr(value))
-
-    def test_unset_does_not_pause(self):
-        self.assertEqual(_run(15, self.RUNNING)[0], ["default", "shop"])
-
-    def test_a_typo_is_warned_about_and_never_echoed(self):
-        _, err = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": "ture"})
-        self.assertIn("NOT paused", err)
-        self.assertNotIn("ture", err.replace("NIGHTSHIFT_PIPELINE_PAUSED", ""))
-
-    def test_the_known_off_words_are_silent(self):
-        for value in ("", "0", "false", "no", "off"):
-            _, err = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": value})
             self.assertNotIn("warning", err, repr(value))
 
-    def test_pausing_chronos_alone_does_not_need_the_switch_and_the_switch_needs_no_registry(self):
-        # The switch must work when the database is the thing that is down.
+    def test_unset_runs(self):
+        self.assertEqual(_run(15, self.RUNNING)[0], ["default", "shop"])
+
+    def test_garbage_and_typos_pause_fail_closed(self):
+        for value in ("ture", "paused", "2", "y", "enabled", "{", "\U0001F6D1", "nope", "falsee", "fals"):
+            ids, err = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": value})
+            self.assertEqual(ids, [], repr(value))
+
+    def test_a_quoted_truthy_value_pauses_and_is_not_called_unrecognised(self):
+        for value in ('"true"', "'1'", '"on"'):
+            ids, err = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": value})
+            self.assertEqual(ids, [], repr(value))
+            self.assertNotIn("unrecognised", err, repr(value))
+
+    def test_only_one_pair_of_quotes_is_stripped(self):
+        # ""false"" is not the word false.
+        ids, _ = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": '""false""'})
+        self.assertEqual(ids, [])
+        # A lone quote is garbage, not an empty value.
+        ids, _ = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": '"'})
+        self.assertEqual(ids, [])
+
+    def test_an_unrecognised_value_is_warned_with_an_annotation_and_never_echoed(self):
+        _, err = _run(15, self.RUNNING, env={"NIGHTSHIFT_PIPELINE_PAUSED": "ture-SENTINEL"})
+        self.assertIn(
+            "warning: NIGHTSHIFT_PIPELINE_PAUSED has an unrecognised value - treating as PAUSED. "
+            "Accepted: true/1/yes/on (pause) or false/0/no/off/unset (run).", err)
+        self.assertIn("::warning::NIGHTSHIFT_PIPELINE_PAUSED has an unrecognised value", err)
+        self.assertNotIn("ture-SENTINEL", err)
+        self.assertNotIn("SENTINEL", err)
+
+    def test_the_switch_needs_no_registry(self):
+        # It must work when the database is the thing that is down.
         ids, _ = _run(None, _Unreadable(), env={"NIGHTSHIFT_PIPELINE_PAUSED": "1"})
         self.assertEqual(ids, [])
 
     def test_pipeline_paused_reads_the_given_mapping(self):
         self.assertTrue(list_channels.pipeline_paused({"NIGHTSHIFT_PIPELINE_PAUSED": "on"}))
+        self.assertTrue(list_channels.pipeline_paused({"NIGHTSHIFT_PIPELINE_PAUSED": "banana"}))
         self.assertFalse(list_channels.pipeline_paused({}))
+        self.assertFalse(list_channels.pipeline_paused({"NIGHTSHIFT_PIPELINE_PAUSED": '"False"'}))
+
+
+class _Sync:
+    """A stand-in for SupabaseSync that records strict reads."""
+
+    def __init__(self, enabled=True, error=None):
+        self.enabled = enabled
+        self.error = error
+        self.reads = []
+
+    def select_strict(self, table, params=None):
+        self.reads.append(table)
+        if self.error:
+            raise self.error
+        return []
+
+
+class SupabaseOutagePreflight(unittest.TestCase):
+    """ChannelRegistry swallows a failed Supabase read and synthesizes `default`,
+    so an outage never raises. The strict preflight makes it loud (still fail-open)."""
+
+    def _run_sync(self, sync, due_hour=15, env=None, registry=None):
+        clean = {k: v for k, v in os.environ.items() if k != list_channels.PAUSE_ENV}
+        clean.update(env or {})
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, clean, clear=True), contextlib.redirect_stderr(err), \
+                mock.patch.object(list_channels, "ChannelRegistry", lambda: _registry(_row("default", status="PAUSED"))):
+            rows = list_channels.due_channels(due_hour, registry=registry, sync=sync)
+        return [r["channel_id"] for r in rows], err.getvalue()
+
+    def _read_error(self):
+        from modules.supabase_sync import SupabaseReadError
+        return SupabaseReadError("channels", 503, "boom-SENTINEL")
+
+    def test_a_failed_strict_read_is_loud_and_falls_back_to_default(self):
+        sync = _Sync(error=self._read_error())
+        ids, err = self._run_sync(sync)
+        self.assertEqual(ids, ["default"])
+        self.assertEqual(sync.reads, ["channels"])
+        self.assertIn("UNREADABLE", err)
+        self.assertIn("SupabaseReadError", err)
+        self.assertIn("::warning::channel registry UNREADABLE", err)
+
+    def test_the_outage_warning_leaks_nothing_but_the_exception_type(self):
+        _, err = self._run_sync(_Sync(error=self._read_error()))
+        for leaked in ("SENTINEL", "503", "boom"):
+            self.assertNotIn(leaked, err)
+
+    def test_the_outage_fallback_is_still_fail_open_and_still_due_hour_filtered(self):
+        self.assertEqual(self._run_sync(_Sync(error=self._read_error()), due_hour=3)[0], [])
+        self.assertEqual(self._run_sync(_Sync(error=self._read_error()), due_hour=None)[0], ["default"])
+
+    def test_the_global_pause_beats_the_outage_fallback_and_skips_the_read(self):
+        sync = _Sync(error=self._read_error())
+        ids, err = self._run_sync(sync, env={"NIGHTSHIFT_PIPELINE_PAUSED": "true"})
+        self.assertEqual(ids, [])
+        self.assertEqual(sync.reads, [])
+        self.assertNotIn("UNREADABLE", err)
+
+    def test_a_readable_database_with_a_paused_default_is_an_empty_matrix(self):
+        sync = _Sync()
+        ids, err = self._run_sync(sync)
+        self.assertEqual(ids, [])
+        self.assertEqual(sync.reads, ["channels"])
+        self.assertIn("all operator channels paused", err)
+        self.assertNotIn("UNREADABLE", err)
+
+    def test_the_preflight_is_skipped_when_supabase_is_not_configured(self):
+        sync = _Sync(enabled=False, error=self._read_error())
+        ids, err = self._run_sync(sync)
+        self.assertEqual(sync.reads, [])
+        self.assertNotIn("UNREADABLE", err)
+        self.assertEqual(ids, [])  # the (injected) registry says everything is paused
+
+    def test_an_injected_registry_is_never_preflighted(self):
+        sync = _Sync(error=self._read_error())
+        self._run_sync(sync, registry=_registry(_row("default")))
+        self.assertEqual(sync.reads, [])
 
 
 class CommandLineEntryPoint(unittest.TestCase):
@@ -222,6 +326,21 @@ class CommandLineEntryPoint(unittest.TestCase):
                                 {"NIGHTSHIFT_PIPELINE_PAUSED": "true"})
         self.assertEqual(rc, 0)
         self.assertEqual([r["channel_id"] for r in json.loads(out)["include"]], ["default"])
+
+    def test_a_paused_run_does_not_make_the_extra_voice_read(self):
+        reg = mock.MagicMock(wraps=_registry(_row("default")))
+        _, _, _ = self._main(["--due-hour", "15"], reg, {"NIGHTSHIFT_PIPELINE_PAUSED": "true"})
+        reg.voice_collisions.assert_not_called()
+
+    def test_an_empty_all_paused_matrix_does_not_make_the_voice_read_either(self):
+        reg = mock.MagicMock(wraps=_registry(_row("default", status="PAUSED")))
+        self._main(["--due-hour", "15"], reg)
+        reg.voice_collisions.assert_not_called()
+
+    def test_a_scheduled_channel_still_gets_the_voice_check(self):
+        reg = mock.MagicMock(wraps=_registry(_row("default")))
+        self._main(["--due-hour", "15"], reg)
+        reg.voice_collisions.assert_called_once()
 
     def test_the_all_channels_admin_listing_ignores_the_pause(self):
         rc, out, _ = self._main(["--all"], _registry(_row("default", status="PAUSED")),
@@ -308,6 +427,14 @@ class PickStepEndToEnd(unittest.TestCase):
         proc, out = self.pick("workflow_dispatch", paused="1")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(out["count"], "0")
+
+    def test_a_typo_pauses_with_an_annotation_and_the_matrix_stays_clean_json(self):
+        proc, out = self.pick("schedule", paused="ture")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(json.loads(out["matrix"]), {"include": []})
+        self.assertEqual(out["count"], "0")
+        self.assertIn("::warning::NIGHTSHIFT_PIPELINE_PAUSED has an unrecognised value", proc.stderr)
+        self.assertNotIn("::warning::", out["matrix"])
 
     def test_the_same_dispatch_unpaused_still_finds_the_default_channel(self):
         proc, out = self.pick("workflow_dispatch", paused="false")

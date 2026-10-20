@@ -229,42 +229,59 @@ Without a token it prints `SKIP` and does nothing.
 - **First week.** Watch ElevenLabs characters, the Gemini billing page, each AI
   provider's dashboard, and `docker system df`.
 
-## 8. Pausing the whole pipeline (kill switch)
+## 8. Pausing the scheduled operator runs
 
-There are two separate ways to stop scheduled production. Use the one that matches
-what you mean.
+`NIGHTSHIFT_PIPELINE_PAUSED` pauses the **scheduled operator runs** of
+`daily_video.yml`. It is not a stop-everything button: read "What it does not stop"
+below before relying on it.
 
-**Pause everything.** Set the repository **Variable** `NIGHTSHIFT_PIPELINE_PAUSED`
-to `true` (Settings > Secrets and variables > Actions > Variables). From the next
-hourly run, `.github/workflows/daily_video.yml` resolves to an empty matrix and the
-`make-video` job is skipped; the run is green and the log says
-`pipeline paused by NIGHTSHIFT_PIPELINE_PAUSED`. Accepted truthy words: `1`, `true`,
-`yes`, `on` (any case). Anything else, including a typo, an empty value or `false`,
-means NOT paused. That is deliberate: a mangled value must not silently stop a
-pipeline you believe is running, so the log warns when the value is set but
-unrecognised. After setting it, read the "Pick due channels" step of the next hourly
-run to confirm it says paused. It is a Variable, not a secret and not a database
-flag, so it still works when Supabase is down.
+**Pause.** Set the repository **Variable** `NIGHTSHIFT_PIPELINE_PAUSED` to `true`
+(Settings > Secrets and variables > Actions > Variables). From the next hourly run,
+`daily_video.yml` resolves to an empty matrix and the `make-video` job is skipped; the
+run is green and the "Pick due channels" step logs
+`pipeline paused by NIGHTSHIFT_PIPELINE_PAUSED`. Read that step in the next hourly run
+to confirm.
+
+**The value fails closed.** Only an empty value, `0`, `false`, `no` or `off` (any case,
+spaces and one pair of quotes ignored) means "run". Anything else pauses: `1`, `true`,
+`yes`, `on`, and also a typo such as `ture`. A value that is not one of the accepted words
+logs `warning: NIGHTSHIFT_PIPELINE_PAUSED has an unrecognised value - treating as
+PAUSED` and a GitHub `::warning::` annotation (the value is never printed). The reason:
+whoever set it meant to stop something, and no video is the better failure.
+It is a Variable, not a secret and not a database flag, so it also works when Supabase
+is down.
 
 **Resume.** Delete the variable or set it to `false`. The next hourly run schedules
-channels again, each at its own `publish_hour_utc`. An hour that passed while paused
-is not made up.
+channels again, each at its own `publish_hour_utc`. An hour that passed while paused is
+not made up.
 
-**Pause one channel.** Pausing a channel (or switching its schedule off) in the
-Command Center still works, and now it also works for the operator's test channel
-Chronos (id `default`). When every operator channel is paused the scheduler emits an
-empty matrix and the log says `all operator channels paused`. Before this change that
-case re-added `default` at the 15:00 UTC slot, so Chronos could not be paused.
+**Pause one channel.** Pausing a channel (or switching its schedule off) in the Command
+Center still works, and now it also works for the operator's test channel Chronos (id
+`default`). When every operator channel is paused the scheduler emits an empty matrix and
+the log says `all operator channels paused`. Before this change that case re-added
+`default` at the 15:00 UTC slot, so Chronos could not be paused.
 
-What it does not do:
+**While Supabase is down, a channel pause is invisible.** The channel registry never
+raises on a Supabase outage: it reads no rows, then synthesizes `default` as ACTIVE. The
+scheduler now does a strict read of the `channels` table first and, if it fails, prints
+`channel registry UNREADABLE (<type>) - FALLING BACK to the legacy default channel` plus a
+`::warning::` annotation, then keeps the existing fail-open behaviour (it still schedules
+`default`, so a database blip does not silently stop production). A channel pause stored
+in the database cannot be read in that state; only `NIGHTSHIFT_PIPELINE_PAUSED` stops it.
+Making that outage fail closed instead is an owner decision and is not made here.
 
-- It does **not** cancel a run already in progress. Cancel that run in Actions.
-- It does not block a manual run: a dispatch that names a channel (and a paid run
-  started from the Command Center) still runs. A dispatch with the channel left empty
-  ("every active channel") follows the pause and resolves to nothing.
-- It does not touch the queue worker (`NIGHTSHIFT_RUN_BACKEND=queue`): that worker
-  only runs jobs somebody asked for, there is no scheduled producer to pause.
-- If the channel registry cannot be read at all, the scheduler still falls back to
-  `default` (a loud `registry UNREADABLE` warning in the log), because silently
-  stopping production on a database blip is the worse failure. Only the global
-  variable stops that fallback.
+**What it does not stop**
+
+- A run already in progress. Cancel it in Actions.
+- A manual dispatch that names a channel (`--only`). A dispatch with the channel left
+  empty ("every active channel") does follow the pause and resolves to nothing.
+- Command Center "Run now", storyboard approval, `/api/agent/run`, and customer-paid API
+  or MCP `create_video` runs, which create `render_jobs`.
+- `render_jobs` and the queue worker or VPS workers (`NIGHTSHIFT_RUN_BACKEND=queue`):
+  they only run jobs somebody asked for, and nothing schedules them, so there is nothing
+  to pause there.
+- Spend from those paid or manual runs. A runaway there needs a different stop (a
+  follow-up, not part of this switch).
+
+Disabling the `Daily YouTube Video` workflow in the GitHub Actions UI is the
+GitHub-native way to stop the schedule altogether (it also stops the hourly resolver).
