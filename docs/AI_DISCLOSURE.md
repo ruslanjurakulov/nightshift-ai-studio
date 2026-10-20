@@ -49,8 +49,9 @@ card for the first two (see "Who can set what"); the other two are set in the da
 | `ai_disclosure_line` | `false` to stop the line | `true` | Only an explicit `false` drops the description / caption line; the platform flag is still sent. |
 | `ai_disclosure_text` | up to 300 characters | empty | The line's wording. Empty = the standard wording in the channel's language. One line, no angle brackets (YouTube rejects them). |
 
-`never` switches the label off and `own_clone` declares a voice as the owner's own, so both reduce what is declared to the
-platforms. Only a **platform administrator** may set them (migration 0114): see "Who can set what".
+`never` switches the label off (a compliance risk for the whole site) and `own_clone` declares the voice as the owner's own
+(the same label as `generic`, but a recorded "a person chose this"). Only a **platform administrator** may set them
+(migration 0114): see "Who can set what", which says what each lock does and does not buy.
 
 ## The `auto` decision table
 
@@ -125,8 +126,8 @@ YouTube target, because the label describes the content.
 
 ## Who can set what (migration 0114, owner decision of 2026-10-20)
 
-`ai_disclosure = never` and `ai_disclosure_voice = own_clone` reduce what the pipeline declares to YouTube, Instagram and
-TikTok (a compliance risk for the whole site), so they are writable only by a **platform administrator**:
+`ai_disclosure = never` (which switches the label off, a compliance risk for the whole site) and
+`ai_disclosure_voice = own_clone` (an audited declaration, see below) are writable only by a **platform administrator**:
 `public.is_platform_admin()` (migration 0018), i.e. the site owner and the helpers on the platform roster. Not by an
 editor, and not by an organization's admin either: on this site every customer is the admin of their own organization,
 so an organization-admin lock would stop nobody.
@@ -137,6 +138,12 @@ so an organization-admin lock would stop nobody.
 | Anyone else who can edit the channel (an organization's editor, admin or owner) | `auto`, `always` | `generic`, `real_person` | as before |
 | The service role (the pipeline, `supabase_sync`), the SQL editor | all | all | all (0086's convention: only the browser roles are held to the guard) |
 | Someone who cannot edit the channel | nothing | nothing | nothing |
+
+What each lock buys, plainly. Only `ai_disclosure: never` lowers the label itself. In `decide()`, `own_clone` and `generic`
+produce the same label: only `real_person` adds a label reason (`real_person_voice`). So locking `own_clone` does not stop a
+channel from sending less; anyone can already leave the voice key unset or `generic`. What the voice lock protects is the
+audit signal: `overrides_of` reports `voice_own_clone` ("a person chose this"), and the review note says so, so a person cannot
+quietly record a declaration the platform did not vouch for. The voice lock is there because the owner asked for both keys.
 
 What "set" means. A write is refused when it makes the stored value one the **reader** (`normalize_mode`,
 `normalize_voice`) would read as `never` / `own_clone` and the stored text was not already exactly that. So:
@@ -157,7 +164,7 @@ Where it is enforced, and every writer of `agent_config`:
 
 | Writer | How the lock covers it |
 | :-- | :-- |
-| `UPDATE channels` from the browser (PostgREST: the Channels, Voice, Cast, Schedule, Studio pages) | `channels_config_guard()` trigger (0086, extended in 0114): runs as the caller, refuses the write unless `is_platform_admin()` |
+| `UPDATE channels` from the browser (PostgREST: the Channels, Voice, Cast, Schedule, Studio pages) | `channels_config_guard()` trigger (0086; 0114 replaces the function body the trigger calls and leaves the trigger itself alone): runs as the caller, refuses the write unless `is_platform_admin()` |
 | `INSERT` into `channels` from the browser | INSERT is revoked from the browser roles (0086); the same trigger is the second wall |
 | `create_channel(...)` (the wizard, the YouTube connect callback) | `SECURITY DEFINER`, so the trigger does not see the browser: 0114 repeats the check on `p_agent_config` (`trusted caller or is_platform_admin()`) |
 | `set_channel_dna(...)` (0056) | `SECURITY DEFINER`, merges only `elevenlabs_voice_id` and `language`; it cannot set either key (pinned by a test) |
@@ -179,8 +186,8 @@ The Channels page has an "AI-content label" card per channel with both settings.
 words of each; everyone else sees `never` and `own_clone` locked, with the reason, and can move a setting away from them.
 The ru and uz sentences of the card are machine drafts.
 
-Rollback: `docs/sql/rollback_0114_ai_disclosure_admin_lock.sql` puts 0086's two function bodies back (the trigger is the
-same trigger) and drops the two helpers; it rewrites no row.
+Rollback: `docs/sql/rollback_0114_ai_disclosure_admin_lock.sql` puts 0086's two function bodies back (the trigger is never dropped or
+re-created, by 0114 or by the rollback) and drops the two helpers; it rewrites no row.
 
 ## The default voice is an assumption
 
@@ -257,7 +264,7 @@ TikTok account private until the app is audited. The post is still requested as 
 5. Instagram refusal for `not_faststart`: keep it (honest, but blocks every Instagram post until the compositor
    writes `+faststart`), or ship the follow-up first.
 6. ~~The default voice `generic` is an assumption.~~ **Decided 2026-10-20: the default stays `generic` and all three values
-   stay available.** `own_clone` (the one that lowers the label) is a platform administrator's to set; `real_person` is open to
+   stay available.** `own_clone` (which does not change the label, but is recorded as "a person chose this") is a platform administrator's to set; `real_person` is open to
    every editor of the channel. The pipeline still cannot hear a voice: a cloned or celebrity voice picked from the account's
    list is not detected unless the channel says `real_person`.
 7. `AAC` on TikTok and `moov` first on TikTok are not enforced (the official page is silent). Say so if you want them

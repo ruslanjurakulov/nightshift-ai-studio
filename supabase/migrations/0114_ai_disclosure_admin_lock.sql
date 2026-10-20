@@ -5,9 +5,12 @@
 --   A channel's agent_config carries two keys (modules/ai_disclosure.py) that decide what is declared to YouTube,
 --   Instagram and TikTok as "altered or synthetic content":
 --     * ai_disclosure        = never      declares nothing, whatever the video contains
---     * ai_disclosure_voice  = own_clone  declares that the narrator is the owner's own cloned voice (not a label)
---   Both reduce what the platforms are told, which is a compliance risk for the whole site, yet any editor who could
---   write agent_config could set them. On this site every customer is the admin of their own organization, so an
+--     * ai_disclosure_voice  = own_clone  declares that the narrator is the owner's own cloned voice
+--   WHAT EACH LOCK BUYS. Only ai_disclosure = never lowers the label itself. In decide() own_clone and generic give the
+--   same label: only real_person adds a label reason. Locking own_clone protects the AUDIT SIGNAL (overrides_of reports
+--   voice_own_clone as "a person chose this", and the review note says so), not the label: anyone can already leave
+--   the voice key unset or generic. The voice lock is kept because the owner asked for both keys.
+--   Both are settable today by any editor who could write agent_config, which is a compliance risk for the whole site. On this site every customer is the admin of their own organization, so an
 --   "organization admin" lock would stop nobody: the lock is is_platform_admin() (0018: the site owner and helpers).
 --
 -- WHAT THIS CHANGES
@@ -37,6 +40,8 @@
 --
 -- REQUIRES 0018 (is_platform_admin), 0020 (credits_trusted_caller) and 0086 (channels, the guard, create_channel).
 -- Additive and idempotent: create or replace of two new pure functions and the two 0086 functions, grants repeated.
+-- No table is altered and no trigger is dropped or re-created, so nothing here takes a lock on public.channels.
+-- Order: independent of 0113 (reserved by the unmerged PR #543); 0114 may be applied before it.
 -- Rollback: docs/sql/rollback_0114_ai_disclosure_admin_lock.sql (puts 0086's two function bodies back).
 
 do $$
@@ -156,11 +161,9 @@ begin
 end
 $$;
 
--- The trigger itself is 0086's, unchanged (create trigger is repeated so this file stands alone on replay).
-drop trigger if exists channels_config_guard on public.channels;
-create trigger channels_config_guard
-  before insert or update on public.channels
-  for each row execute function public.channels_config_guard();
+-- The trigger itself is 0086's and is NOT touched: it is already on public.channels in production (before insert or
+-- update, for each row), and it calls channels_config_guard() by name, so the create or replace above is all it takes.
+-- Dropping and re-creating it would take an ACCESS EXCLUSIVE lock on public.channels for nothing.
 
 revoke all on function public.channels_config_guard() from public, anon, authenticated, service_role;
 

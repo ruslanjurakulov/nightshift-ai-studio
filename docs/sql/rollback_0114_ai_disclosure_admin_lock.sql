@@ -6,7 +6,7 @@
 -- the platforms (docs/AI_DISCLOSURE.md). A row that carries either value keeps it either way: 0114 rewrote no row.
 --
 -- WHAT IT DOES, in one transaction:
---   1. Puts channels_config_guard() back to 0086's body, byte for byte (the trigger that uses it is unchanged).
+--   1. Puts channels_config_guard() back to 0086's body, byte for byte (the trigger that calls it is neither dropped nor re-created: 0114 never touched it).
 --   2. Puts create_channel(...) back to 0086's body, byte for byte, with 0086's grants.
 --   3. Drops channel_label_lowering(jsonb) and ai_disclosure_norm(jsonb) (nothing else calls them).
 --

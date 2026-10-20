@@ -193,9 +193,15 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         # an INSERT compares with an empty blob, so a new channel cannot be created with either value
         self.assertIn("if tg_op = 'INSERT' then\n    o := '{}'::jsonb;", guard)
 
-    def test_the_trigger_and_the_grants_are_repeated_like_0086s(self):
+    def test_the_trigger_is_left_alone_and_the_grants_are_repeated_like_0086s(self):
+        # The trigger is 0086's and is not touched: dropping and re-creating it takes an ACCESS EXCLUSIVE lock on channels.
+        self.assertNotRegex(CODE, r"(?i)\b(create|drop|alter)\s+trigger\b")
+        self.assertNotRegex(CODE, r"(?i)\balter\s+table\b|\block\s+table\b")
         self.assertIn("create trigger channels_config_guard\n  before insert or update on public.channels\n"
-                      "  for each row execute function public.channels_config_guard();", CODE)
+                      "  for each row execute function public.channels_config_guard();", code(M86))
+        for f in sorted(MIGRATIONS.glob("*.sql")):   # and nothing between 0086 and 0114 changed it
+            if "0086" < f.name[:4] < "0114":
+                self.assertNotRegex(code(f.read_text(encoding="utf-8")), r"(?i)trigger\s+channels_config_guard", f.name)
         self.assertIn("revoke all on function public.channels_config_guard() from public, anon, authenticated, service_role;", CODE)
         self.assertIn("grant execute on function public.create_channel(text, uuid, text, text, jsonb, jsonb, jsonb, boolean)\n"
                       "  to authenticated, service_role;", CODE)
@@ -230,6 +236,7 @@ class RollbackPutsBack0086(unittest.TestCase):
         self.assertNotIn("channel_label_lowering(", ROLLBACK.replace("drop function if exists public.channel_label_lowering(jsonb);", "")
                          .split("-- Verify")[0].replace("-- ", "").split("begin;", 1)[1])
         self.assertIn("drop function if exists public.channel_label_lowering(jsonb);\ndrop function if exists public.ai_disclosure_norm(jsonb);", ROLLBACK)
+        self.assertNotRegex(code(ROLLBACK), r"(?i)\b(create|drop|alter)\s+trigger\b")   # only the two bodies and the helpers
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")
         self.assertRegex(ROLLBACK, r"(?m)^commit;$")
 

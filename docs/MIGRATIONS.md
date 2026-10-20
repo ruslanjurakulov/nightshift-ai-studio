@@ -242,12 +242,13 @@ applied, but it publishes nothing and calls nothing outside the database. It add
   the same check on `p_agent_config`. The service role, the SQL editor and the other definer functions pass, as for 0086's controls.
   Two new pure helpers (`ai_disclosure_norm`, `channel_label_lowering`) are the one definition of "lowering", executable by the browser roles
   because the trigger runs as the caller.
+- **What each lock buys.** Only `never` lowers the label itself; `own_clone` and `generic` give the same label in `decide()` (only `real_person` adds a reason), so locking `own_clone` protects the audit signal (`overrides_of`: "a person chose this"), not the label.
 - **Rewrites no row; no backfill.** Live check before applying: no channel has either key.
-- **Deploy order.** Independent of the web app: apply 0114 any time after 0086. Until the Command Center of the same commit is deployed,
+- **Deploy order.** Independent of the web app: apply 0114 any time after 0086. 0113 is reserved by the unmerged PR #543; 0114 touches none of its functions and may be applied first. Until the Command Center of the same commit is deployed,
   the database refuses the two words for a non-platform-administrator without the localized sentence (nothing offered them before).
 - **Is it working?** The verify block at the bottom of the file (every column true), and the detection query there (expected: no rows).
 - **Undo.** `docs/sql/rollback_0114_ai_disclosure_admin_lock.sql` (owner-applied; the lab applies it to a database built from 0001-0113,
   compares the two functions and their grants byte for byte, then re-applies 0114). `tests/security/test_sec_ai_disclosure_lock.py` is the
   lab test, `tests/test_ai_disclosure_lock_migration.py` pins the file and the agreement with the reader.
-- **Replay.** `create or replace` plus revoke then grant, drop-then-create trigger: a replay leaves the same objects. Re-running 0086 afterwards
+- **Replay.** `create or replace` plus revoke then grant (the trigger is 0086's and is not dropped or re-created, so no lock is taken on `channels`): a replay leaves the same objects. Re-running 0086 afterwards
   would put the old guard back (the lock would be off): re-apply 0114 after it.

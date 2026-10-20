@@ -321,10 +321,17 @@ def test_the_migration_replays_and_the_rollback_puts_0086s_two_functions_back(co
             return {s: (su.value("select pg_get_functiondef(%s::regprocedure)", [s]),
                         su.value("select proacl::text from pg_proc where oid = %s::regprocedure", [s])) for s in sigs}
         applied = snapshot()
+        trig = "select oid, tgtype, tgenabled, pg_get_triggerdef(oid) from pg_trigger where tgrelid = 'public.channels'::regclass and tgname = 'channels_config_guard'"
+        trigger_before = su.rows(trig)
+        assert len(trigger_before) == 1
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))          # a replay
         assert snapshot() == applied
+        # the trigger is the same object (same oid): 0114 neither dropped nor re-created it
+        assert su.rows(trig) == trigger_before
+        assert "BEFORE INSERT OR UPDATE ON public.channels FOR EACH ROW EXECUTE FUNCTION channels_config_guard()" in trigger_before[0][3]
         su.conn.execute(body)
         assert snapshot() == want
+        assert su.rows(trig) == trigger_before                           # nor does the rollback touch it
         assert [r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")] == fns
         su.conn.execute(body)                                           # the rollback replays
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))
