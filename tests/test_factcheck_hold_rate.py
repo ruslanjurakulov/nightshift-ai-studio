@@ -369,7 +369,7 @@ class ListicleHeadlinesAreCountsNotFigures(unittest.TestCase):
 
     def test_the_narration_saying_n_of_the_same_noun_backs_it(self):
         for narration in ("There are five secrets in this log.", "Here are 5 secrets of the island.",
-                          "Five strange secrets were found."):
+                          "Five secrets were found."):
             with self.subTest(narration=narration):
                 self.assertEqual(findings(narration, title="5 Secrets Of The Island").counts, ())
         self.assertEqual(findings("There are five lamps in this log.", title="5 Secrets Of The Island").counts,
@@ -702,7 +702,7 @@ class AnyHeadlineNumberIsBackedByTheScriptWalkingThroughIt(unittest.TestCase):
         got = findings("Five times who knows what happened.", title="5 Battles Who Changed Rome")
         self.assertEqual(len(got.small), 1)
         got = findings("Five times the battles raged.", title="5 Battles Who Changed Rome")
-        self.assertEqual(got.small, ())
+        self.assertEqual(len(got.small), 1)               # "five times the battles": the noun is not next to the number
 
     def test_a_person_or_an_event_noun_keeps_a_number_hard_whatever_the_script_enumerates(self):
         for text in ("12 Dead", "25 Years Later", "17 Killed", "Rome in 7 Days", "Top 9 Men"):
@@ -836,3 +836,102 @@ class SpaceGroupedNumbersEndAtTheirThirdDigitGroup(unittest.TestCase):
         self.assertEqual(got.large, ())                                  # 1953 is in the narration; 5 is a date
         got = findings("Nobody wrote it down.", title="Apollo 11 1969")
         self.assertEqual(got.large, (("title", "1969"),))
+
+
+# ── round 4 of the second delta review ───────────────────────────────────
+
+class ANumberThatIsPartOfANameIsBackedByTheNameInTheNarration(unittest.TestCase):
+    NAMES = (("Apollo 11 Mission Explained", "The Apollo 11 mission landed on the moon."),
+             ("Apollo 13 Disaster", "Apollo 13 lost power on the way."),
+             ("Soyuz 11 Tragedy", "Soyuz 11 depressurised on the way home."),
+             ("Chapter 11 Bankruptcy of Rome", "Rome went through Chapter 11 in a way."),
+             ("Vitamin B12 and Rome", "The legions lacked vitamin B12 in winter."),
+             ("Apollo 17", "Apollo 17 was the last to land."),
+             ("Windows 10", "Nobody ran Windows 10 on the island."),
+             ("Louis 16", "Louis 16 ruled France then."))
+
+    def test_each_name_is_backed_when_the_narration_says_it(self):
+        for title, narration in self.NAMES:
+            with self.subTest(title=title):
+                self.assertTrue(none(findings(narration, title=title)), findings(narration, title=title))
+                self.assertTrue(none(findings(narration.lower(), title=title.upper())))
+
+    def test_the_same_names_are_flagged_when_the_narration_never_says_them(self):
+        for title, _ in self.NAMES:
+            with self.subTest(title=title):
+                got = findings("Nobody wrote it down.", title=title)
+                self.assertEqual(len(got.small) + len(got.counts), 1, title)
+
+    def test_another_name_in_the_narration_does_not_back_an_unrelated_headline_number(self):
+        got = findings("Apollo 12 landed on the moon.", title="Rome Lost 12 Senators")
+        self.assertEqual(len(got.small), 1)
+        got = findings("Soyuz 12 and Apollo 12 flew.", title="Rome Lost 12 Senators")
+        self.assertEqual(len(got.small), 1)
+
+    def test_a_word_that_says_nothing_about_a_name_does_not_back_a_number(self):
+        for narration in ("Rome kept the 12 legions in the north.", "In the 12 months it fell."):
+            got = findings(narration, title="Rome Lost The 12 Senators")
+            self.assertEqual(len(got.small), 1, narration)
+
+    def test_the_name_must_be_a_whole_word_not_the_end_of_another(self):
+        got = findings("The club 12 met in the cellar.", title="Vitamin B12 and Rome")
+        self.assertEqual(len(got.small), 1)
+        got = findings("The Mapollo 11 met in the cellar.", title="Apollo 11 Mission Explained")
+        self.assertEqual(len(got.small), 1)
+
+    def test_the_spoken_number_backs_a_name_too(self):
+        self.assertTrue(none(findings("Apollo eleven reached the moon.", title="Apollo 11 Mission Explained")))
+
+
+class TheNounThatBacksACountIsRightAfterTheNumber(unittest.TestCase):
+    def test_an_unrelated_topical_word_does_not_back_a_count(self):
+        for narration in ("In 5 BC the Roman senate met.", "In 5 AD the Roman senate met.",
+                          "The 5 BC Roman senate met at dawn."):
+            with self.subTest(narration=narration):
+                got = findings(narration, title="5 Roman Emperors Who Went Mad")
+                self.assertEqual(len(got.small), 1, narration)
+
+    def test_five_battles_and_seven_emperors_style_backing_still_works(self):
+        self.assertTrue(none(findings("Five battles shaped the city.", title="5 Battles That Changed Rome")))
+        self.assertTrue(none(findings("Seven emperors went mad in turn.", title="7 Roman Emperors Who Went Mad")))
+        self.assertTrue(none(findings("Seven Roman emperors went mad in turn.", title="7 Roman Emperors Who Went Mad")))
+        self.assertTrue(none(findings("There are 5 secrets in it.", title="5 Secrets Of The Island")))
+
+    def test_a_word_between_the_number_and_the_noun_no_longer_backs_it(self):
+        got = findings("Five strange battles raged.", title="5 Battles That Changed Rome")
+        self.assertEqual(len(got.small), 1)
+
+
+class AYearNeverDowngradesToAWarningBecauseOfAMagnitudeWord(unittest.TestCase):
+    PLAIN_WITH_MAGNITUDE = "Тысячелетие Рима длилось долго, и люди там погибли."
+
+    def test_a_year_blocks_even_when_the_narration_names_a_magnitude(self):
+        got = ce.shipped_number_findings(script(self.PLAIN_WITH_MAGNITUDE, title="Рим пал в 1900 году"))
+        self.assertEqual((len(got.large), got.large_soft), (1, ()))
+        d = publish_gate.evaluate_fact_check(script=script(self.PLAIN_WITH_MAGNITUDE, title="Рим пал в 1900 году"),
+                                             fact_results=[], channel=channel(), narration_claims=1, language="Russian")
+        self.assertEqual(d.blocks, ["shipped_text_unsupported"])
+
+    def test_the_boundaries_of_a_year_are_1000_and_2100(self):
+        for title, is_year in (("Рим в 1000 году", True), ("Рим в 2100 году", True), ("Рим в 2101 году", False),
+                               ("Рим в 999 году", False)):
+            with self.subTest(title=title):
+                got = ce.shipped_number_findings(script("Рим пал, тысячи людей погибли.", title=title))
+                self.assertEqual(bool(got.large), is_year, title)
+                self.assertEqual(bool(got.large_soft), not is_year, title)
+
+    def test_a_figure_that_is_not_a_year_still_downgrades_with_a_magnitude_word(self):
+        got = ce.shipped_number_findings(script(self.PLAIN_WITH_MAGNITUDE, title="Рим потерял 900 000 человек"))
+        self.assertEqual((got.large, len(got.large_soft)), ((), 1))
+
+    def test_the_uzbek_word_for_a_thousand_is_a_whole_word(self):
+        got = ce.shipped_number_findings(script("Rim quladi, mingan odam halok boʻldi.", title="Rim 900 000 kishini yoʻqotdi"))
+        self.assertEqual((len(got.large), got.large_soft), (1, ()))        # "mingan" is not "ming": it blocks
+
+    def test_the_first_two_noun_like_words_count_and_a_third_or_a_stop_word_does_not(self):
+        # "roman", "imperial", "emperors" are the first three noun-like words: only the first two may back the number
+        title = "5 Roman Imperial Emperors Who Went Mad"
+        self.assertTrue(none(findings("Five imperial legions marched.", title=title)))
+        self.assertEqual(len(findings("Five emperors marched.", title=title).small), 1)
+        # a stop word of 4+ letters is not a noun
+        self.assertEqual(len(findings("Five those were there.", title="5 Those Who Fell Here").small), 1)

@@ -742,12 +742,32 @@ def _word_before(text: str, start: int) -> str:
     return found[-1] if found else ""
 
 
+#: Words of 4+ letters that are not a noun a count could refer to.
+_NOUN_STOP = frozenset("that what which this these those were went have from with about into your their".split())
+
+
 def _count_nouns(text: str, end: int) -> list:
-    """The words a count may refer to: the listicle word within three words ("facts" in "5 Strange Facts") and
-    the next three words of the headline of 4+ letters ("roman", "emperors" in "7 Roman Emperors Who Went Mad";
-    short words like "who" or "the" would back anything)."""
+    """The words a count may refer to: a listicle word within three words ("facts" in "5 Strange Facts") and the
+    first two noun-like words after the number (4+ letters, not a stop word: "roman", "emperors" in "7 Roman
+    Emperors Who Went Mad"). Short words and stop words would back anything."""
     after = _words_after(text, end, 3)
-    return [w for w in after if w in _LISTICLE_WORDS or len(w) >= 4]
+    noun_like = [w for w in after if len(w) >= 4 and w not in _NOUN_STOP][:2]
+    return list(dict.fromkeys([w for w in after if w in _LISTICLE_WORDS] + noun_like))
+
+
+#: Words before a number that say nothing about a NAME ("Apollo 11", "Chapter 11", "Vitamin B12").
+_NAME_STOP = frozenset("the these those are and for with from over only just top best worst in of by at to on a an".split())
+
+
+def _name_backed(text: str, start: int, n: int, narration: str) -> bool:
+    """A number that is part of a name ("Apollo 11", "Vitamin B12", "Windows 10") is backed when the narration
+    has the same word, or letter, right before that number: "Apollo 11", "B12"."""
+    prev = _word_before(text, start)
+    if not prev or prev in _NAME_STOP:
+        return False
+    word = _NUMBER_WORD.get(n, "")
+    number = rf"(?:{n}{'|' + word if word else ''})"
+    return bool(re.search(rf"(?<!\w){re.escape(prev)}\W{{0,2}}{number}(?!\w)", narration, re.IGNORECASE))
 
 
 def _listicle_context(text: str, start: int, end: int) -> bool:
@@ -770,12 +790,12 @@ def _is_count_candidate(field: str, token: str, forms: set, text: str, start: in
 def _count_is_backed(n: int, nouns: list, narration: str, enumerated: int, n_sections: int) -> bool:
     """A headline count is backed when the narration enumerates at least that many items, the script has
     that many sections, or the narration says "N <noun>" itself ("five facts", "5 secrets", "seven
-    emperors") with at most two words between."""
+    emperors") with nothing between the number and the noun."""
     if enumerated >= n or n_sections >= n:
         return True
     word = _NUMBER_WORD.get(n, "")
     number = rf"(?:{n}{'|' + word if word else ''})"
-    return any(re.search(rf"\b{number}\b(?:\W+\w+){{0,2}}?\W+{re.escape(noun)}\w*", narration, re.IGNORECASE)
+    return any(re.search(rf"\b{number}\s+{re.escape(noun)}\w*", narration, re.IGNORECASE)
                for noun in nouns)
 
 
@@ -844,8 +864,9 @@ def shipped_number_findings(script) -> NumberFindings:
                     continue
                 seen.add((field, token))
                 if _is_count_candidate(field, token, forms, ascii_text, start, end):
-                    if not _count_is_backed(int(token), _count_nouns(ascii_text, end), narration, enumerated,
-                                            n_sections):
+                    if not (_count_is_backed(int(token), _count_nouns(ascii_text, end), narration, enumerated,
+                                             n_sections)
+                            or _name_backed(ascii_text, start, int(token), narration)):
                         (counts if _listicle_context(ascii_text, start, end) else small).append((field, token))
                     continue
                 if forms & known:
@@ -855,7 +876,9 @@ def shipped_number_findings(script) -> NumberFindings:
                     continue
                 value = max((int(f) for f in forms if f.isdigit()), default=0)
                 if len(str(value)) >= 3 or ascii_text[end:end + 1] == "%":
-                    soft = not big and not (value >= 1000 and not _has_magnitude_word(narration, value))
+                    year = bool(re.fullmatch(r"[12]\d{3}", token)) and 1000 <= value <= 2100
+                    soft = (not big and not year
+                            and not (value >= 1000 and not _has_magnitude_word(narration, value)))
                     (large_soft if soft else large).append((field, token))
                 else:
                     small.append((field, token))
