@@ -410,19 +410,23 @@ jobs:
             echo "skipped for it. Reconnect it in the Command Center's channel wizard."
           fi
 
-      # A customer organization's channel, connected from the Command Center,
-      # keeps its refresh token in Supabase Vault (migration 0022), not in a
-      # GitHub secret. With an ACTIVE Vault connection this writes the token
-      # file (0600) that channel's uploader reads, masking every secret string
-      # in it first; with none it does nothing and the step above applies,
-      # exactly as before. A failed lookup with no secret to fall back to stops
-      # the job here, before anything is spent. The file is removed by the
-      # self-hosted cleanup step below; it is never cached. See
+      # A channel connected from the Command Center keeps its refresh token in
+      # Supabase Vault, not in a GitHub secret: a customer organization's
+      # (migration 0022) and the operator's own, the default channel included
+      # (migration 0115: the "Connect YouTube" button on the Channels page).
+      # With an ACTIVE Vault connection this writes the token file (0600) that
+      # channel's uploader reads, masking every secret string in it first, and
+      # it wins over the GitHub secret; with none it does nothing and the steps
+      # above apply, exactly as before. A failed lookup with no secret to fall
+      # back to stops the job here, before anything is spent. The file is
+      # removed by the self-hosted cleanup step below; it is never cached. See
       # tools/restore_channel_token.py and modules/channel_tokens.py.
-      - name: Restore YouTube token from Vault (customer channel)
-        if: ${{ !matrix.is_default }}
+      - name: Restore YouTube token from Vault (connected from the Command Center)
         env:
           CHANNEL_ID: ${{ matrix.channel_id }}
+          # The default channel's registry row names no YouTube channel: the id the run itself
+          # targets stands in for it, so a token granted for another account stops the run here.
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           # The Command Center's OAuth client: a refresh token only works with

@@ -8,17 +8,20 @@ the authorized-user JSON the uploader already loads — in memory, never logged.
 
 Fallback order, per channel
 ---------------------------
-1. The legacy default channel never consults Vault. Its token stays the
-   ``YOUTUBE_TOKEN_JSON`` GitHub secret, exactly as before.
-2. An ACTIVE Vault connection wins. A customer who connected (or reconnected)
-   their channel expects that connection to be the one used.
-3. Otherwise the channel's own ``CHRONOS_YT_TOKEN_<REF>`` env var / GitHub
-   secret, as before 0022 — so nothing changes for a channel nobody connected
-   through Vault, or for a deployment that has not applied 0022. ONLY for the
-   operator's own channels: a customer organization's channel never reads the
-   environment (its row is written by its members, so it must not choose which
-   secret the worker reads: BR-G-002). Its only token is step 2.
-4. Otherwise no token: publishing and analytics are skipped for the run, as
+1. An ACTIVE Vault connection wins. A customer who connected (or reconnected)
+   their channel expects that connection to be the one used; so does the
+   operator who clicked "Connect YouTube" on one of his own channels, the
+   legacy ``default`` channel (Chronos) included (migration 0115). The key is
+   always the channel's OWN id: never ``credential.ref``, never anything a
+   customer's row can name.
+2. Otherwise the channel's own ``CHRONOS_YT_TOKEN_<REF>`` env var / GitHub
+   secret (the default channel's ``YOUTUBE_TOKEN_JSON``), as before 0022 — so
+   nothing changes for a channel nobody connected through Vault, or for a
+   deployment that has not applied 0022 / 0115. ONLY for the operator's own
+   channels: a customer organization's channel never reads the environment
+   (its row is written by its members, so it must not choose which secret the
+   worker reads: BR-G-002). Its only token is step 1.
+3. Otherwise no token: publishing and analytics are skipped for the run, as
    they are today for a channel with no secret. Never another channel's token.
 
 A Vault lookup that FAILS (network, HTTP 5xx) is not "no token": when there is
@@ -37,6 +40,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
@@ -60,6 +64,13 @@ CLIENT_FILE_ENV = "YOUTUBE_CLIENT_SECRET_JSON"
 class ChannelTokenError(RuntimeError):
     """A channel's Vault token could not be used. The message is ours and
     names the remedy; it never contains a token, a secret or a response body."""
+
+
+class VaultLookupError(ChannelTokenError):
+    """The Vault LOOKUP itself failed (network, HTTP 5xx, an unreadable answer),
+    which says nothing about whether the channel has a connection. Distinct from
+    a connection whose OAuth client is missing: only a failed lookup may fall
+    back to the channel's old secret."""
 
 
 @dataclass(frozen=True)
@@ -88,11 +99,17 @@ class ResolvedToken:
 class VaultTokenClient:
     """``read_channel_token`` over PostgREST with the service key."""
 
-    def __init__(self, url: str, service_key: str, *, timeout: float = 15.0, session=None):
+    #: Waits before the 2nd and 3rd attempt. One timed-out or 5xx lookup must not send a run back to a dead
+    #: old secret; the retries use a short timeout so the added delay stays bounded: 1 + 5 + 3 + 5 = 14 s.
+    RETRY_BACKOFF = (1.0, 3.0)
+    RETRY_TIMEOUT = 5.0
+
+    def __init__(self, url: str, service_key: str, *, timeout: float = 15.0, session=None, sleep=None):
         self.url = (url or "").rstrip("/")
         self._key = service_key or ""
         self._timeout = timeout
         self._http = session
+        self._sleep = sleep if sleep is not None else time.sleep
 
     @property
     def configured(self) -> bool:
@@ -107,20 +124,38 @@ class VaultTokenClient:
 
     def read(self, channel_id: str) -> Optional[VaultToken]:
         """The channel's active token, or None when it has none (never
-        connected, revoked, or 0022 not applied). Raises ChannelTokenError when
-        the lookup itself failed."""
+        connected, revoked, or 0022 not applied). Raises VaultLookupError when
+        the lookup itself failed, after retrying a transient failure (a network
+        error, a timeout, HTTP 429/5xx, an unreadable answer) twice more."""
         if not self.configured:
             return None
+        for attempt in range(len(self.RETRY_BACKOFF) + 1):
+            if attempt:
+                self._sleep(self.RETRY_BACKOFF[attempt - 1])
+            try:
+                return self._attempt(channel_id, self._timeout if attempt == 0 else min(self._timeout, self.RETRY_TIMEOUT))
+            except VaultLookupError as e:
+                if not getattr(e, "transient", False) or attempt == len(self.RETRY_BACKOFF):
+                    raise
+                logger.warning("channel %s: %s — retrying (%d of %d)", channel_id, e, attempt + 1, len(self.RETRY_BACKOFF))
+        return None  # unreachable: the last attempt returns or raises
+
+    def _attempt(self, channel_id: str, timeout: float) -> Optional[VaultToken]:
+        def transient(msg: str) -> VaultLookupError:
+            err = VaultLookupError(msg)
+            err.transient = True
+            return err
+
         try:
             r = self._session().post(
                 f"{self.url}/rest/v1/rpc/read_channel_token",
                 json={"p_channel_id": str(channel_id)},
                 headers={"apikey": self._key, "Authorization": f"Bearer {self._key}",
                          "Content-Type": "application/json"},
-                timeout=self._timeout,
+                timeout=timeout,
             )
         except Exception as e:  # network, TLS, timeout — the type only
-            raise ChannelTokenError(f"Vault token lookup failed ({type(e).__name__})") from None
+            raise transient(f"Vault token lookup failed ({type(e).__name__})") from None
         status = getattr(r, "status_code", 0)
         if status == 404:
             # PostgREST's "function not found": 0022 is not applied here, which
@@ -129,11 +164,12 @@ class VaultTokenClient:
                         "not applied) — using the channel's GitHub secret, as before", channel_id)
             return None
         if status >= 300:
-            raise ChannelTokenError(f"Vault token lookup failed: HTTP {status}")
+            msg = f"Vault token lookup failed: HTTP {status}"
+            raise transient(msg) if status in (408, 429) or status >= 500 else VaultLookupError(msg)
         try:
             rows = r.json() or []
         except Exception:
-            raise ChannelTokenError("Vault token lookup returned an unreadable answer") from None
+            raise transient("Vault token lookup returned an unreadable answer") from None
         if isinstance(rows, dict):
             rows = [rows]
         if not rows:
@@ -220,7 +256,6 @@ def resolve_channel_token(
     env: Mapping[str, str],
     *,
     client: Optional[VaultTokenClient] = None,
-    is_default: bool = False,
     expected_youtube_channel_id: str = "",
     allow_env: bool = True,
 ) -> ResolvedToken:
@@ -228,10 +263,13 @@ def resolve_channel_token(
 
     ``allow_env=False`` is a channel that is not the operator's: step 3 (the
     environment) does not exist for it, whatever its row names, so the only
-    token it can ever get is its own Vault connection (BR-G-002)."""
+    token it can ever get is its own Vault connection (BR-G-002).
+
+    ``channel_id`` is the channel row's own id and is the Vault key. The caller
+    passes ``allow_env=True`` only for a channel of the operator's organization."""
     env_token = (env.get(env_name) or "").strip() if (env_name and allow_env) else ""
 
-    if not is_default and client is not None:
+    if client is not None:
         try:
             vault = client.read(channel_id)
         except ChannelTokenError as e:

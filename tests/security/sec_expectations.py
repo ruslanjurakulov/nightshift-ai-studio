@@ -573,3 +573,8 @@ sec_approve_video_0112.extend(TABLES, FUNCTIONS)
 import sec_ai_disclosure_lock_0114  # noqa: E402
 
 sec_ai_disclosure_lock_0114.extend(TABLES, FUNCTIONS)
+
+# Migration 0115 (the operator's own channels connect to YouTube from the Command Center): tests/security/sec_operator_channel_token_0115.py
+import sec_operator_channel_token_0115  # noqa: E402
+
+sec_operator_channel_token_0115.extend(TABLES, FUNCTIONS)

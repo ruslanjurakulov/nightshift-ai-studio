@@ -215,7 +215,8 @@ def _youtube_check(channel) -> CredentialCheck:
 _DEAD_DETAIL = {
     "invalid_grant": (
         "Google says channel {channel}'s YouTube refresh token is expired or revoked (invalid_grant), so its upload "
-        "would fail. Authorise the channel again (tools/connect_channel.py) and update its token secret; a Google "
+        "would fail. Press Reconnect on this channel's card on the Command Center's Channels page; or authorise it "
+        "again (tools/connect_channel.py) and update its token secret. A Google "
         "OAuth app left in 'Testing' expires tokens after 7 days. The run stopped before anything was spent."),
     "invalid_client": (
         "Google refused the OAuth client behind channel {channel}'s YouTube token (invalid_client), so its upload "
@@ -227,8 +228,9 @@ _DEAD_DETAIL = {
         "before anything was spent."),
     "malformed": (
         "Channel {channel}'s YouTube token is not a usable authorized-user document (a refresh token, client id or "
-        "client secret is missing), so its upload would fail. Authorise the channel again "
-        "(tools/connect_channel.py) and update its token secret. The run stopped before anything was spent."),
+        "client secret is missing), so its upload would fail. Press Reconnect on this channel's card on the "
+        "Command Center's Channels page; or authorise it again (tools/connect_channel.py) and update its token "
+        "secret. The run stopped before anything was spent."),
 }
 
 #: The same, for a customer's channel: its token is a Vault connection, so there is no secret to update and
