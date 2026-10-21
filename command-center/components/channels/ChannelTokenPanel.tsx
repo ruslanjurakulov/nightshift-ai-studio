@@ -11,6 +11,7 @@ import { atLeast, type Role } from "@/lib/auth/roles-shared";
 import {
   GOOGLE_PERMISSIONS_URL,
   missingScopes,
+  type OperatorYoutubeState,
   shortScope,
   tokenPanelActions,
   type ChannelTokenStatus,
@@ -26,6 +27,10 @@ export interface ChannelTokenPanelProps {
   oauthConfigured: boolean;
   /** The scopes the connect flow requests (lib/server/google-oauth.ts). */
   requiredScopes: string[];
+  /** The operator's own channel (migration 0115): Connect / Reconnect only, and the status words come from
+   *  what the bot reported (`operatorState`: connected / expired / not connected). */
+  operator?: boolean;
+  operatorState?: OperatorYoutubeState;
 }
 
 /**
@@ -42,6 +47,8 @@ export function ChannelTokenPanel({
   role,
   oauthConfigured,
   requiredScopes,
+  operator = false,
+  operatorState,
 }: ChannelTokenPanelProps) {
   const { t, locale } = useI18n();
   const tt = t.channelTokens;
@@ -53,7 +60,11 @@ export function ChannelTokenPanel({
   const { confirm, dialog } = useConfirm();
 
   const connected = Boolean(status?.connected);
-  const actions = tokenPanelActions({ role, oauthConfigured, available, connected });
+  const actions = tokenPanelActions({ role, oauthConfigured, available, connected, operator });
+  // The operator's channel reads "expired" when the bot's last live check found the token dead; the button then
+  // says Reconnect even though a connection is on file.
+  const expired = operator && operatorState === "expired";
+  const viaSecret = operator && operatorState === "connected" && !connected;
   const missing = connected && status ? missingScopes(status.scopes, requiredScopes) : [];
   const startHref = `/api/oauth/youtube/start?ref=${encodeURIComponent(channelId)}`;
 
@@ -87,8 +98,16 @@ export function ChannelTokenPanel({
         <h4 className="g2-label">{tt.title}</h4>
         {available && (
           <StatusLamp
-            tone={connected ? (missing.length ? "warn" : "ok") : "idle"}
-            label={connected ? tt.connected : status?.revoked_at ? tt.disconnected : tt.notConnected}
+            tone={expired ? "fail" : connected || viaSecret ? (missing.length ? "warn" : "ok") : "idle"}
+            label={
+              expired
+                ? tt.expired
+                : connected || viaSecret
+                  ? tt.connected
+                  : status?.revoked_at
+                    ? tt.disconnected
+                    : tt.notConnected
+            }
           />
         )}
       </div>
@@ -139,7 +158,13 @@ export function ChannelTokenPanel({
               {fmt(tt.missingScopes, { scopes: missing.map(shortScope).join(", ") })}
             </p>
           )}
-          <p className="g2-note">{tt.vaultNote}</p>
+          {expired && (
+            <p className="g2-warn" role="alert">
+              {tt.expiredHint}
+            </p>
+          )}
+          {viaSecret && <p className="g2-note">{tt.viaSecret}</p>}
+          <p className="g2-note">{operator ? tt.operatorNote : tt.vaultNote}</p>
 
           {justDisconnected && (
             <p className="g2-note" role="status">
@@ -161,7 +186,7 @@ export function ChannelTokenPanel({
           <div className="g2-actions">
             {actions.connect && (
               <a href={startHref} className="btn-quiet">
-                {connected ? tt.reconnect : tt.connect}
+                {connected || expired || viaSecret ? tt.reconnect : tt.connect}
               </a>
             )}
             {actions.disconnect && (

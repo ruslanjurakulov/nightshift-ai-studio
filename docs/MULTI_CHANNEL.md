@@ -112,7 +112,47 @@ and written to `youtube_token_finance.json` on the runner. The default channel
 with a blank ref keeps the existing `YOUTUBE_TOKEN_JSON` / `youtube_token.json`
 path, so nothing about the production channel changes.
 
-### Connecting a channel
+### Connecting the operator's own channel from the Command Center (migration 0115)
+
+**What the owner does, in plain words.** Open the Command Center, go to **Channels**, find the channel's card
+(Chronos is `default`) and press **Connect YouTube** (or **Reconnect** if it says *Expired*). Google's page opens; sign in
+as the account that owns the channel and leave every permission ticked. You land back on the Channels page and the card
+says *Connected*. That is all: there is no file to produce, no GitHub secret to paste, no "Deploy web". The next scheduled
+run uses the new connection. When Google ever expires the token again, the card says *Expired*; press **Reconnect**.
+
+**One-time setup, by the owner, once:** merge this change, run `supabase/migrations/0115_operator_channel_token.sql` in the
+Supabase SQL editor, and Deploy web so the new button is served. `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`
+must be set as GitHub Actions secrets (they already are if customers can connect: Deploy web forwards the same pair to the
+web server). If you have not applied 0115, the button falls back to the old behaviour (a GitHub secret, when
+`GITHUB_SECRETS_TOKEN` is configured) and nothing breaks. The Google OAuth app must be **In production**, or Google expires
+every token after 7 days whatever way it was connected.
+
+**How it works.** The button is the same OAuth route customers use (`/api/oauth/youtube/start?ref=<channel id>`). The
+callback checks, in the database (never from the redirect's state), that the channel belongs to the operator's own
+organization and that the signed-in account is a platform owner/admin; it checks every permission was granted and that
+Google named a channel; then it stores the refresh token with `store_operator_channel_token` (0115) into Supabase Vault
+(`channel_token_refs`, the same table as customer connections). The runner reads it with the service key it already has
+(`read_channel_token`, service role only): `daily_video.yml` and `intelligence_poll.yml` run `tools/restore_channel_token.py`
+for the default channel too, the queue worker resolves it the same way (`tools/queue_worker.channel_token`), and the
+token is written to the one file the uploader, analytics, comments, the pre-spend liveness check
+(`modules/youtube_token_check.py`), `credential_status` and the doctor all read.
+
+**Order of precedence for the operator's channels:** an active Vault connection, else the old secret
+(`YOUTUBE_TOKEN_JSON` for `default`, `CHRONOS_YT_TOKEN_<REF>` for the others). So an owner who prefers the old secret
+simply never presses the button; and a Vault lookup that FAILS keeps the secret with a warning (an unknown is not a no).
+A connection that exists but cannot be refreshed because the runner lacks the Command Center's OAuth client stops the
+run before it spends and names the fix; it does not silently use the old secret.
+
+**BR-L-080 still holds.** The Vault key is the channel row's own id, checked against its organization inside the
+function; a customer's `credential.ref`, a lookalike id, or a customer admin cannot name or write the operator's
+connection, and a customer channel still never reads the environment. `store_channel_token` (customers) is unchanged and
+still refuses the operator's organization.
+
+**Status words** on the card (connected / expired / not connected) come from what the bot reported, never guessed:
+*Expired* means the bot's last pre-spend check (`credential.health`, `youtube_token_live`) found the token dead and that
+check is newer than the connection.
+
+### Connecting a channel the old way (still works)
 
 ```bash
 python tools/connect_channel.py --channel extinct-world

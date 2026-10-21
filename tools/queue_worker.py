@@ -495,20 +495,22 @@ def channel_token(channel_row: Mapping, env: Mapping[str, str],
     (modules/channel_tokens.py). The Vault key is always the row's own channel
     id. Never another channel's token. Raises ChannelTokenError when the Vault
     lookup failed with nothing to fall back to."""
+    expected = expected_youtube_channel_id or str(channel_row.get("youtube_channel_id") or "")
     if channel_row.get("is_default"):
-        # `is_default` is set only for the operator's own `default` channel (tools/list_channels._row).
-        name = "YOUTUBE_TOKEN_JSON"
-    else:
-        name = str(channel_row.get("token_secret") or "")
-    if name != "YOUTUBE_TOKEN_JSON" and not name.startswith(TOKEN_PREFIX):
+        # `is_default` is set only for the operator's own `default` channel (tools/list_channels._row), so its
+        # secret is the environment's to give and its Vault key is that id, whatever else the row says.
+        return channel_tokens.resolve_channel_token(
+            "default", "YOUTUBE_TOKEN_JSON", env, client=token_client,
+            expected_youtube_channel_id=expected, allow_env=True)
+    name = str(channel_row.get("token_secret") or "")
+    if not name.startswith(TOKEN_PREFIX):
         name = ""
     # The environment is the operator's own channels' place for a token. A row
     # without the flag is treated as someone else's: the safe direction.
     return channel_tokens.resolve_channel_token(
         str(channel_row.get("channel_id") or ""), name, env, client=token_client,
-        expected_youtube_channel_id=(expected_youtube_channel_id
-                                     or str(channel_row.get("youtube_channel_id") or "")),
-        allow_env=channel_row.get("is_operators") is True or channel_row.get("is_default") is True)
+        expected_youtube_channel_id=expected,
+        allow_env=channel_row.get("is_operators") is True)
 
 
 def youtube_publish_credentials(channel_id: str, env: Mapping[str, str],

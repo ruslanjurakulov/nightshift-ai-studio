@@ -39,6 +39,15 @@ export function decideTokenStore(answer: {
   return { mode: "vault", orgId: answer.orgId };
 }
 
+/**
+ * Is a channel of this organization one of the OPERATOR's own (migration 0115)? Only the default organization's
+ * channels can be connected through `store_operator_channel_token`; the database checks it again, and also that the
+ * caller is a platform owner/admin. An unknown channel (null) is not one.
+ */
+export function isOperatorOrg(orgId: string | null | undefined): boolean {
+  return Boolean(orgId) && orgId === DEFAULT_ORG_ID;
+}
+
 /** One row of channel_token_status(). */
 export interface ChannelTokenStatus {
   channel_id: string;
@@ -106,12 +115,80 @@ export function tokenPanelActions(opts: {
   oauthConfigured: boolean;
   available: boolean;
   connected: boolean;
+  /** The operator's own channel: connect/reconnect only. Disconnecting the channel the bot publishes with is not
+   *  offered from a button (the database function exists for the owner's SQL editor). */
+  operator?: boolean;
 }): { connect: boolean; disconnect: boolean } {
   const admin = atLeast(opts.role, "admin");
   return {
     connect: admin && opts.oauthConfigured && opts.available,
-    disconnect: admin && opts.available && opts.connected,
+    disconnect: admin && opts.available && opts.connected && !opts.operator,
   };
+}
+
+/** What the operator's channel card says about its YouTube token. */
+export type OperatorYoutubeState = "connected" | "expired" | "not_connected";
+
+/** The bot's last answer to "does this channel's YouTube token still refresh?" — the `youtube_token_live` check of a
+ *  `credential.health` event (modules/credential_health.with_live_youtube_check). */
+export interface LiveVerdict {
+  ts: string;
+  /** Google refused the token (the run stopped before it spent). */
+  dead: boolean;
+}
+
+function asObject(v: unknown): Record<string, unknown> | null {
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/**
+ * The newest live-check verdict per channel, from `credential.health` events (newest first or not — the order is
+ * decided here). An event without the check (a run that does not upload) says nothing and is skipped. The event's
+ * metadata is read as an object or as the JSON text the pipeline stores.
+ */
+export function latestLiveVerdicts(
+  events: { channel_id: string | null; event: string; ts: string; metadata: unknown }[],
+): Map<string, LiveVerdict> {
+  const out = new Map<string, LiveVerdict>();
+  for (const e of events) {
+    if (e.event !== "credential.health" || !e.channel_id) continue;
+    const meta = asObject(e.metadata);
+    const checks = Array.isArray(meta?.checks) ? (meta.checks as unknown[]) : [];
+    const live = checks.map(asObject).find((c) => c?.name === "youtube_token_live");
+    if (!live) continue;
+    const prev = out.get(e.channel_id);
+    if (!prev || Date.parse(e.ts) > Date.parse(prev.ts)) out.set(e.channel_id, { ts: e.ts, dead: live.status === "missing" });
+  }
+  return out;
+}
+
+/**
+ * connected / expired / not connected for an operator channel, from what the bot reported — never guessed:
+ * - expired: the bot's last live check found the token dead AND that check is newer than the connection (a
+ *   reconnect after the failure reads as connected until the next run says otherwise), or the bot's credential
+ *   mirror says the token expired;
+ * - connected: an active Vault connection, or the bot sees a usable token from the old GitHub secret;
+ * - not connected: neither.
+ */
+export function operatorYoutubeState(opts: {
+  token: ChannelTokenStatus | null;
+  credentialStatus: string | null | undefined;
+  live: LiveVerdict | undefined;
+}): OperatorYoutubeState {
+  const { token, credentialStatus, live } = opts;
+  const connectedAt = token?.connected && token.connected_at ? Date.parse(token.connected_at) : null;
+  if (live?.dead && (connectedAt === null || Date.parse(live.ts) > connectedAt)) return "expired";
+  if (credentialStatus === "expired" && !token?.connected) return "expired";
+  if (token?.connected) return "connected";
+  if (credentialStatus === "connected") return "connected";
+  return "not_connected";
 }
 
 /** Result words the callback may put in `?yt=` for a Vault connection. */

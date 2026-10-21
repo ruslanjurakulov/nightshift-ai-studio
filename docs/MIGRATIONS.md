@@ -231,3 +231,20 @@ applied, but it publishes nothing and calls nothing outside the database. It add
 - **Replay.** `add column if not exists`, guarded constraint adds, `create or replace` plus revoke then grant, `drop policy` then `create
   policy`: a replay leaves the same objects. Re-running 0085 or 0110 afterwards would put the old function / audit list back (the approval
   columns would no longer be cleared by a repair, and `approve_video_publish` would fail loudly at its audit write): re-apply 0112 after it.
+
+## The operator's own channels connect from the Command Center (0115)
+
+0115 (`0115_operator_channel_token.sql`, numbers 0113 and 0114 are reserved by unmerged PRs) adds ONE function,
+`store_operator_channel_token(channel, refresh_token, meta)`, so the owner can press **Connect YouTube** on Chronos (and any other channel of
+the operator's organization) and have the refresh token kept in Supabase Vault like a customer's, instead of pasting it into a GitHub secret.
+
+- **Who.** A signed-in platform owner/admin (`is_platform_admin()`), for a channel whose `org_id` is the default organization. Everyone else
+  (a customer's admin, an editor or viewer, an organization member who is not on the platform roster, anon, the service key) and every other
+  channel get the same 42501 answer. `store_channel_token` is NOT changed and still refuses the operator's organization.
+- **Dormant until used.** The function changes nothing by existing; without it the Command Center falls back to the GitHub-secret write.
+- **Deploy order:** apply 0115, Deploy web (the button), then press it. Needs 0018 and 0022 (and the Vault extension). The runner side needs no
+  deploy order: it prefers an active Vault connection and otherwise uses the old secret.
+- **Is it working?** The verify block at the bottom of the file (every column true).
+- **Undo.** `docs/sql/rollback_0115_operator_channel_token.sql` drops the function and KEEPS any stored connection (the runner keeps using it);
+  `select public.revoke_channel_token('default');` removes it. `tests/security/test_sec_operator_channel_token.py` is the lab test.
+- **Replay.** `create or replace` plus revoke then grant: a replay leaves the same objects.

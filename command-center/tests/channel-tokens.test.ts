@@ -37,6 +37,8 @@ const state: {
   channelOrg: Record<string, string>;
   channelOrgError: { code?: string; message?: string } | null;
   storeAnswer: RpcAnswer;
+  operatorStoreAnswer: RpcAnswer;
+  githubConfigured: boolean;
   revokeAnswer: RpcAnswer;
   grantedScopes: string;
   refresh: string | undefined;
@@ -49,6 +51,8 @@ const state: {
   channelOrg: {},
   channelOrgError: null,
   storeAnswer: { data: { connected: true }, error: null },
+  operatorStoreAnswer: { data: { connected: true }, error: null },
+  githubConfigured: true,
   revokeAnswer: { data: true, error: null },
   grantedScopes: ALL_SCOPES.join(" "),
   refresh: REFRESH,
@@ -61,6 +65,7 @@ const rpc = vi.fn(async (fn: string, args: Record<string, unknown>): Promise<Rpc
     return { data: state.channelOrg[args.ch as string] ?? null, error: null };
   }
   if (fn === "store_channel_token") return state.storeAnswer;
+  if (fn === "store_operator_channel_token") return state.operatorStoreAnswer;
   if (fn === "revoke_channel_token") return state.revokeAnswer;
   return { data: null, error: null };
 });
@@ -89,7 +94,13 @@ vi.mock("@/lib/auth/roles", async () => {
   };
 });
 vi.mock("@/lib/server/audit", () => ({ logAudit }));
-vi.mock("@/lib/server/github-secrets", () => ({ fetchPublicKey: async () => ({ key: "k", key_id: "1" }), putSecret }));
+vi.mock("@/lib/server/github-secrets", () => ({
+  fetchPublicKey: async () => ({ key: "k", key_id: "1" }),
+  putSecret,
+  get isGithubConfigured() {
+    return state.githubConfigured;
+  },
+}));
 vi.mock("@/lib/server/google-oauth", async () => {
   const actual = await vi.importActual<typeof import("../lib/server/google-oauth")>("../lib/server/google-oauth");
   return { ...actual, isGoogleOAuthConfigured: true, GOOGLE_CLIENT_ID: "cc-client.apps.googleusercontent.com", exchangeCode };
@@ -149,10 +160,16 @@ function storeCalls() {
   return rpc.mock.calls.filter(([fn]) => fn === "store_channel_token");
 }
 
+function operatorStoreCalls() {
+  return rpc.mock.calls.filter(([fn]) => fn === "store_operator_channel_token");
+}
+
 beforeEach(() => {
   state.channelOrg = { "ch-a": ORG_A, "ch-b": ORG_B, news: DEFAULT_ORG };
   state.channelOrgError = null;
   state.storeAnswer = { data: { connected: true }, error: null };
+  state.operatorStoreAnswer = { data: { connected: true }, error: null };
+  state.githubConfigured = true;
   state.revokeAnswer = { data: true, error: null };
   state.grantedScopes = ALL_SCOPES.join(" ");
   state.refresh = REFRESH;
@@ -306,19 +323,134 @@ describe("callback — customer channel into Vault", () => {
   });
 });
 
-describe("callback — the operator's channels are unchanged", () => {
-  it("seals the token into the GitHub secret for a platform admin, never Vault", async () => {
+describe("callback — the operator's own channels (migration 0115)", () => {
+  it("seals the token into Vault through the operator function for a platform admin, never into a GitHub secret", async () => {
     viewing(org(DEFAULT_ORG, "admin", true), ["news"], "admin");
     const res = await callback.GET(callbackReq("news"));
-    expect(res.headers.get("location")).toBe("https://app.test/news/providers?yt=connected");
-    expect(putSecret).toHaveBeenCalledTimes(1);
-    expect((putSecret.mock.calls[0] as unknown[])[0]).toBe("CHRONOS_YT_TOKEN_NEWS");
+    expect(res.headers.get("location")).toBe("https://app.test/all-channels/channels?yt=connected");
+    const [[, args]] = operatorStoreCalls();
+    expect(args).toMatchObject({
+      p_channel_id: "news",
+      p_refresh_token: REFRESH,
+      p_meta: { youtube_channel_id: "UCcustomer", oauth_client_id: "cc-client.apps.googleusercontent.com" },
+    });
+    expect((args as { p_meta: { scopes: string[] } }).p_meta.scopes).toEqual([...ALL_SCOPES].sort());
+    expect(putSecret).not.toHaveBeenCalled();
     expect(storeCalls()).toHaveLength(0);
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "channel.youtube.connect", channelId: "news", detail: expect.objectContaining({ store: "vault", operator: true }) }),
+    );
   });
 
-  it("refuses an organization admin with no platform role, as before", async () => {
+  it("never lets a token reach the redirect, the cookie or the audit log", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), ["news"], "admin");
+    const res = await callback.GET(callbackReq("news"));
+    const visible = [res.headers.get("location"), res.headers.get("set-cookie"), JSON.stringify(logAudit.mock.calls)].join(" ");
+    expect(visible).not.toContain(REFRESH);
+    expect(visible).not.toContain(ACCESS);
+  });
+
+  it("refuses an organization admin with no platform role before Google is asked, and stores nothing anywhere", async () => {
     viewing(org(DEFAULT_ORG, "admin", true), ["news"], "viewer");
     const res = await callback.GET(callbackReq("news"));
+    expect(res.headers.get("location")).toBe("https://app.test/all-channels/channels?yt=forbidden");
+    expect(exchangeCode).not.toHaveBeenCalled();
+    expect(putSecret).not.toHaveBeenCalled();
+    expect(operatorStoreCalls()).toHaveLength(0);
+  });
+
+  it("refuses a customer organization's admin who names an operator channel, at the start and at the callback", async () => {
+    viewing(org(ORG_A, "admin"), ["ch-a"], "viewer");
+    expect((await start.GET(startReq("news"))).status).toBe(403);
+    const res = await callback.GET(callbackReq("news"));
+    expect(res.headers.get("location")).toContain("yt=forbidden");
+    expect(exchangeCode).not.toHaveBeenCalled();
+    expect(operatorStoreCalls()).toHaveLength(0);
+    expect(storeCalls()).toHaveLength(0);
+    expect(putSecret).not.toHaveBeenCalled();
+  });
+
+  it("does not take the operator path for a customer's channel, whoever asks (a platform admin included)", async () => {
+    viewing(org(ORG_A, "admin"), ["ch-a"], "admin");
+    await callback.GET(callbackReq("ch-a"));
+    expect(operatorStoreCalls()).toHaveLength(0);
+    expect(storeCalls()).toHaveLength(1);
+  });
+
+  it("reads the store from the database, never from the state: a state claiming another ref changes nothing", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), ["news"], "admin");
+    const params = new URLSearchParams({
+      code: "c",
+      state: Buffer.from(JSON.stringify({ ref: "news", nonce: "n-1", store: "github", operator: false, pick: false }), "utf8").toString("base64url"),
+    });
+    const res = await callback.GET(new Request(`https://app.test/api/oauth/youtube/callback?${params}`, { headers: { cookie: "__Host-yt_oauth_nonce=n-1" } }));
+    expect(res.headers.get("location")).toContain("yt=connected");
+    expect(operatorStoreCalls()).toHaveLength(1);
+    expect(putSecret).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the GitHub secret, as before 0115, only when the function is missing and GitHub is configured", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), ["news"], "admin");
+    state.operatorStoreAnswer = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
+    const res = await callback.GET(callbackReq("news"));
+    expect(res.headers.get("location")).toBe("https://app.test/all-channels/channels?yt=connected");
+    expect(putSecret).toHaveBeenCalledTimes(1);
+    expect((putSecret.mock.calls[0] as unknown[])[0]).toBe("CHRONOS_YT_TOKEN_NEWS");
+    expect(exchangeCode).toHaveBeenCalledTimes(1);            // the one-time code is exchanged once
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({ detail: expect.objectContaining({ store: "github" }) }));
+    putSecret.mockClear();
+    state.githubConfigured = false;
+    const res2 = await callback.GET(callbackReq("news"));
+    expect(res2.headers.get("location")).toContain("yt=not_available");
+    expect(putSecret).not.toHaveBeenCalled();
+  });
+
+  it("falls back for no other refusal: wrong YouTube channel, not a platform admin in the database, a failure", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), ["news"], "admin");
+    for (const [error, word] of [
+      [{ code: "22023", message: "wrong_youtube_channel: …" }, "wrong_channel"],
+      [{ code: "42501", message: "only the platform owner or an admin may connect an operator channel" }, "forbidden"],
+      [{ code: "XX000", message: "boom" }, "failed"],
+    ] as const) {
+      state.operatorStoreAnswer = { data: null, error };
+      const res = await callback.GET(callbackReq("news"));
+      expect(res.headers.get("location")).toContain(`yt=${word}`);
+    }
+    expect(putSecret).not.toHaveBeenCalled();
+  });
+
+  it("stores nothing when a permission was unticked, without a refresh token, or without a YouTube channel", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), ["news"], "admin");
+    state.grantedScopes = ALL_SCOPES.filter((s) => !s.endsWith("youtube.upload")).join(" ");
+    expect((await callback.GET(callbackReq("news"))).headers.get("location")).toContain("yt=missing_scopes");
+    state.grantedScopes = ALL_SCOPES.join(" ");
+    state.refresh = undefined;
+    expect((await callback.GET(callbackReq("news"))).headers.get("location")).toContain("yt=no_refresh");
+    state.refresh = REFRESH;
+    state.youtube = null;
+    expect((await callback.GET(callbackReq("news"))).headers.get("location")).toContain("yt=no_channel");
+    expect(operatorStoreCalls()).toHaveLength(0);
+    expect(putSecret).not.toHaveBeenCalled();
+  });
+
+  it("checks the CSRF nonce before exchanging the code", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), ["news"], "admin");
+    const res = await callback.GET(callbackReq("news", { nonce: "n-1", cookie: "n-2" }));
+    expect(res.headers.get("location")).toContain("yt=bad_state");
+    expect(exchangeCode).not.toHaveBeenCalled();
+  });
+
+  it("keeps the GitHub path for a ref that is no channel of the operator's, as before", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), [], "admin");
+    const res = await callback.GET(callbackReq("ghost"));
+    expect(res.headers.get("location")).toBe("https://app.test/ghost/providers?yt=connected");
+    expect((putSecret.mock.calls[0] as unknown[])[0]).toBe("CHRONOS_YT_TOKEN_GHOST");
+    expect(operatorStoreCalls()).toHaveLength(0);
+  });
+
+  it("refuses an organization admin with no platform role on the legacy ref too, as before", async () => {
+    viewing(org(DEFAULT_ORG, "admin", true), [], "viewer");
+    const res = await callback.GET(callbackReq("ghost"));
     expect(res.headers.get("location")).toBe("https://app.test/default/providers?yt=forbidden");
     expect(putSecret).not.toHaveBeenCalled();
   });
@@ -345,6 +477,70 @@ describe("disconnect", () => {
     viewing(org(DEFAULT_ORG, "owner", true), ["news"], "owner");
     expect((await revoke.POST(revokeReq("news"))).status).toBe(400);
     expect(rpc.mock.calls.some(([fn]) => fn === "revoke_channel_token")).toBe(false);
+  });
+});
+
+describe("operator panel state — what the bot reported", () => {
+  const token = (over: Partial<import("../lib/channel-tokens").ChannelTokenStatus> = {}) =>
+    ({
+      channel_id: "default",
+      connected: true,
+      youtube_channel_id: "UC1",
+      youtube_channel_title: "Chronos",
+      google_account_email: null,
+      scopes: [],
+      connected_at: "2026-10-21T10:00:00Z",
+      connected_by_email: null,
+      revoked_at: null,
+      ...over,
+    }) as import("../lib/channel-tokens").ChannelTokenStatus;
+  const health = (ts: string, status: string, as: "object" | "text" = "object") => {
+    const meta = { channel_id: "default", checks: [{ name: "gemini", status: "ok" }, { name: "youtube_token_live", status }] };
+    return { channel_id: "default", event: "credential.health", ts, metadata: as === "text" ? JSON.stringify(meta) : meta };
+  };
+
+  it("reads the newest live verdict from object or text metadata, skipping events without the check", () => {
+    const m = helpers.latestLiveVerdicts([
+      health("2026-10-20T22:00:00Z", "missing"),
+      health("2026-10-18T22:00:00Z", "ok", "text"),
+      { channel_id: "default", event: "credential.health", ts: "2026-10-21T01:00:00Z", metadata: { checks: [{ name: "gemini", status: "ok" }] } },
+      { channel_id: "other", event: "run.started", ts: "2026-10-21T01:00:00Z", metadata: null },
+      { channel_id: null, event: "credential.health", ts: "2026-10-21T01:00:00Z", metadata: "not json" },
+    ]);
+    expect(m.get("default")).toEqual({ ts: "2026-10-20T22:00:00Z", dead: true });
+    expect(m.size).toBe(1);
+    expect(helpers.latestLiveVerdicts([health("2026-10-19T00:00:00Z", "ok", "text")]).get("default")?.dead).toBe(false);
+  });
+
+  it("is expired when the bot's live check found the token dead after it was connected", () => {
+    const dead = { ts: "2026-10-22T01:00:00Z", dead: true };
+    expect(helpers.operatorYoutubeState({ token: token(), credentialStatus: undefined, live: dead })).toBe("expired");
+    expect(helpers.operatorYoutubeState({ token: null, credentialStatus: "connected", live: dead })).toBe("expired");
+  });
+
+  it("reads connected after a reconnect that is newer than the failure, until the bot says otherwise", () => {
+    const old = { ts: "2026-10-20T22:50:00Z", dead: true };
+    expect(helpers.operatorYoutubeState({ token: token(), credentialStatus: undefined, live: old })).toBe("connected");
+  });
+
+  it("is connected from a live token, an active Vault row, or the bot's sight of the old secret; else not connected", () => {
+    expect(helpers.operatorYoutubeState({ token: token(), credentialStatus: undefined, live: { ts: "2026-10-22T00:00:00Z", dead: false } })).toBe("connected");
+    expect(helpers.operatorYoutubeState({ token: null, credentialStatus: "connected", live: undefined })).toBe("connected");
+    expect(helpers.operatorYoutubeState({ token: null, credentialStatus: undefined, live: undefined })).toBe("not_connected");
+    expect(helpers.operatorYoutubeState({ token: token({ connected: false, revoked_at: "2026-10-01T00:00:00Z" }), credentialStatus: "not_connected", live: undefined })).toBe("not_connected");
+    expect(helpers.operatorYoutubeState({ token: null, credentialStatus: "expired", live: undefined })).toBe("expired");
+  });
+
+  it("offers an operator Connect / Reconnect but never Disconnect, and only to an admin", () => {
+    const base = { oauthConfigured: true, available: true, connected: true, operator: true };
+    expect(helpers.tokenPanelActions({ ...base, role: "admin" })).toEqual({ connect: true, disconnect: false });
+    expect(helpers.tokenPanelActions({ ...base, role: "viewer" })).toEqual({ connect: false, disconnect: false });
+    expect(helpers.tokenPanelActions({ ...base, role: "admin", operator: false })).toEqual({ connect: true, disconnect: true });
+  });
+
+  it("knows the operator's organization and nothing else", () => {
+    expect(helpers.isOperatorOrg(DEFAULT_ORG)).toBe(true);
+    for (const v of [ORG_A, null, undefined, ""]) expect(helpers.isOperatorOrg(v)).toBe(false);
   });
 });
 

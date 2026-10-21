@@ -48,9 +48,9 @@ during the first week.
 | `PEXELS_API_KEY` | a dead or wrong key makes a black video, so the doctor checks it |
 | `ELEVENLABS_API_KEY` | not needed if you choose the free voice (below) |
 | `YOUTUBE_CLIENT_SECRET_JSON` | the whole `client_secret.json`, pasted on one line |
-| `YOUTUBE_TOKEN_JSON` | the whole `youtube_token.json` |
+| `YOUTUBE_TOKEN_JSON` | the whole `youtube_token.json` (optional once the default channel is connected with the **Connect YouTube** button on the Channels page: that connection, kept in Vault, wins; see docs/MULTI_CHANNEL.md) |
 | `YOUTUBE_CHANNEL_ID` | |
-| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | only for customers connecting their own channels |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | the Command Center's OAuth client: needed to refresh any token connected from the Command Center (customers' channels, and your own channels when you press **Connect YouTube**) |
 
 **Variables**
 
