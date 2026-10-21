@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import axe from "axe-core";
 
 const h = vi.hoisted(() => ({ signIn: vi.fn(), locale: "en" as "en" | "ru" | "uz" }));
 
@@ -117,17 +118,27 @@ describe("GoogleButton", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("sign-up carries the consent line with the Terms and Privacy links; sign-in does not", async () => {
-    const up = render(<GoogleButton mode="signup" />);
+  // /login is not only for people who already have an account: with sign-up open, a Google address that has no
+  // account yet gets one here. The button creates an account without the e-mail form's checkbox on BOTH pages, so
+  // both carry the same consent line (Terms and Privacy), and it sits next to the button, above the divider.
+  it.each(["signin", "signup"] as const)("%s: the consent line with the Terms and Privacy links sits under the button", async (mode) => {
+    const { container } = render(<GoogleButton mode={mode} />);
     await screen.findByRole("button", { name: "Continue with Google" });
-    expect(up.container.textContent).toContain("By continuing you agree to the Terms of Service and Privacy Policy.");
+    expect(container.textContent).toContain("By continuing you agree to the Terms of Service and Privacy Policy.");
     expect(screen.getByRole("link", { name: "Terms of Service" }).getAttribute("href")).toBe("/terms");
     expect(screen.getByRole("link", { name: "Privacy Policy" }).getAttribute("href")).toBe("/privacy");
-    up.unmount();
-    const inn = render(<GoogleButton mode="signin" />);
-    await screen.findByRole("button", { name: "Continue with Google" });
-    expect(inn.container.textContent).not.toContain("By continuing");
-    expect(inn.container.textContent).toContain("or");
+    const order = [...container.querySelectorAll("button, p.ns-google-consent, .ns-google-or")].map((n) => n.className || n.tagName);
+    expect(order).toEqual(["ns-google-btn", "ns-google-consent", "ns-google-or"]);
+    expect(container.textContent).toContain("or");
+  });
+
+  it.each([
+    ["ru", "Продолжая, вы принимаете Условия использования и Политику конфиденциальности."],
+    ["uz", "Davom etish orqali siz Foydalanish shartlari va Maxfiylik siyosatiga rozilik bildirasiz."],
+  ] as const)("the consent line on sign-in is translated (%s)", async (locale, line) => {
+    h.locale = locale;
+    const { container } = render(<GoogleButton mode="signin" />);
+    await waitFor(() => expect(container.textContent).toContain(line));
   });
 
   it.each([
@@ -247,5 +258,34 @@ describe("GoogleButton with the server's answer (no layout jump)", () => {
     });
     expect(container.innerHTML).toBe("");
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+// The block is a named button, two links and an alert: axe must find nothing in any language, in either mode, with
+// and without a failure shown. (Contrast is a real-browser check and jsdom has no layout, so those two are off, as in
+// the repo's other axe tests.)
+describe("GoogleButton accessibility", () => {
+  async function violations(container: HTMLElement) {
+    const r = await axe.run(container, { rules: { "color-contrast": { enabled: false }, region: { enabled: false } } });
+    return r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(" | ")}`);
+  }
+  it.each(["en", "ru", "uz"] as const)("passes axe in %s, sign-in and sign-up, with and without an error", async (locale) => {
+    h.locale = locale;
+    for (const mode of ["signin", "signup"] as const) {
+      for (const search of ["", "?error=google_unverified"]) {
+        at(search);
+        const { container, unmount } = render(<GoogleButton mode={mode} />);
+        await screen.findByRole("button");
+        expect(await violations(container)).toEqual([]);
+        unmount();
+      }
+    }
+  });
+
+  it("the button's accessible name is its visible label, the G is hidden from assistive technology", async () => {
+    const { container } = render(<GoogleButton mode="signin" />);
+    const btn = await screen.findByRole("button", { name: "Continue with Google" });
+    expect(btn.textContent?.trim()).toBe("Continue with Google");
+    expect(container.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   });
 });

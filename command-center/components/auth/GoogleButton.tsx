@@ -51,8 +51,10 @@ function GoogleG() {
  * components/auth/GoogleEnabled.tsx; isGoogleEnabled is the browser fallback); until the owner switches it on, the page is the
  * plain email form. A failure that comes back in the URL is still explained.
  *
- * On /signup the line under the button carries the same consent the form's
- * checkbox does, because this button creates an account without that form.
+ * The line under the button carries the same consent the sign-up form's
+ * checkbox does, on /login as well as /signup: with sign-up open, a Google
+ * address that has no account yet gets one from either page, and neither goes
+ * through that form.
  */
 export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
   const { t } = usePublicI18n();
@@ -144,19 +146,17 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
             {busy ? <span className="ns-google-spin" aria-hidden="true" /> : <GoogleG />}
             <span>{g.button}</span>
           </button>
-          {mode === "signup" && (
-            <p className="ns-google-consent">
-              {g.consentPre}{" "}
-              <Link href="/terms" target="_blank" className={link}>
-                {g.terms}
-              </Link>{" "}
-              {g.consentAnd}{" "}
-              <Link href="/privacy" target="_blank" className={link}>
-                {g.privacy}
-              </Link>
-              {g.consentPost}
-            </p>
-          )}
+          <p className="ns-google-consent">
+            {g.consentPre}{" "}
+            <Link href="/terms" target="_blank" className={link}>
+              {g.terms}
+            </Link>{" "}
+            {g.consentAnd}{" "}
+            <Link href="/privacy" target="_blank" className={link}>
+              {g.privacy}
+            </Link>
+            {g.consentPost}
+          </p>
           <div className="ns-google-or" aria-hidden="true">
             <span>{g.or}</span>
           </div>
