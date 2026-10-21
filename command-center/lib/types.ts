@@ -325,6 +325,12 @@ export interface ChannelRow {
    * only after the publish gate passes. The gate is in front of both paths.
    */
   auto_publish: boolean;
+  /**
+   * "Publish when approved" (migration 0116), default false: approving a video on this channel records the decision and
+   * nothing else. True queues the approved video to be made public by a worker (which YouTube may still refuse). Written only
+   * through `set_channel_publish_on_approve`. Absent before 0116 is applied: then the switch is not shown.
+   */
+  publish_on_approve?: boolean;
   /** The organization that owns this channel (migration 0018). Absent before
    *  that migration is applied. */
   org_id?: string | null;

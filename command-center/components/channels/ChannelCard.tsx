@@ -40,6 +40,7 @@ export function ChannelCard({
   vault,
   dna,
   canControl = false,
+  publishReleased = false,
   canEdit = false,
   canLowerAiLabel = false,
 }: {
@@ -61,6 +62,12 @@ export function ChannelCard({
    * this the switches are shown but disabled.
    */
   canControl?: boolean;
+  /**
+   * Is "Publish when approved" released to customers (the server flag, lib/server/release-flags.ts)? Not released: the switch is
+   * drawn only while it is ON, so an administrator can still turn it OFF, and nothing offers to turn it ON. Default false: a
+   * caller that forgets the prop does not expose the feature.
+   */
+  publishReleased?: boolean;
   /** May the caller write this channel's settings (an editor of its organization)? */
   canEdit?: boolean;
   /**
@@ -78,6 +85,12 @@ export function ChannelCard({
   const [auto, setAuto] = useState(Boolean(channel.auto_publish));
   const [review, setReview] = useState(channel.agent_config?.storyboard_review === true);
   const [reviewBusy, setReviewBusy] = useState(false);
+  // "Publish when approved" (migration 0116). Absent before that migration is applied: then there is no switch to show.
+  const [publishOn, setPublishOn] = useState(channel.publish_on_approve === true);
+  // Released: shown whenever the column exists. Not released: shown only while it is on (the way to turn it off), and it is gone
+  // again the moment it is off, so there is never a control to turn it on.
+  const showPublishSwitch = typeof channel.publish_on_approve === "boolean" && (publishReleased || publishOn);
+  const [publishBusy, setPublishBusy] = useState(false);
   const { confirm, dialog } = useConfirm();
   const cs = t.confirmSheets;
   // One question or write at a time, locked synchronously: state alone lags a render, and a second tap during the
@@ -164,6 +177,42 @@ export function ChannelCard({
     startTransition(() => router.refresh());
   }
 
+  /**
+   * Publish when approved, per channel (migration 0116). Off (the default): approving a video records the decision and nothing
+   * else, and the video is made public on YouTube by a person. On: approving also queues the video, and a worker asks YouTube
+   * to make it public after checking everything again; YouTube may still keep it private, and the video page says what YouTube
+   * reports. Written only through the database function, which checks that the caller administers this workspace, and audits it;
+   * the column itself is closed to every API role.
+   */
+  async function togglePublishOn() {
+    const supabase = createClient();
+    if (!supabase) return;
+    if (!publishOn && !publishReleased) return;      // not released: this can only turn it off
+    setPublishBusy(true);
+    setError(null);
+    const next = !publishOn;
+    const { data, error: err } = await supabase.rpc("set_channel_publish_on_approve", {
+      p_channel_id: channel.channel_id,
+      p_on: next,
+    });
+    setPublishBusy(false);
+    const out = (data ?? null) as { ok?: unknown; error?: unknown } | null;
+    if (err || !out || out.ok !== true) {
+      setError(
+        err?.code === "42501"
+          ? t.channels.publishOnForbidden
+          : out?.error === "rate_limited"
+            ? t.channels.publishOnRateLimited
+            : out?.error === "two_person_required"
+              ? t.channels.publishOnTwoPerson
+              : t.channels.publishOnFailed,
+      );
+      return;
+    }
+    setPublishOn(next);
+    startTransition(() => router.refresh());
+  }
+
   async function toggleStatus() {
     const supabase = createClient();
     if (!supabase) return;
@@ -215,6 +264,26 @@ export function ChannelCard({
             ],
           },
       toggleAuto,
+    );
+
+  // Publish when approved ON lets an approval make a video public with no further step, so it asks and needs a word typed.
+  // OFF is the safe direction and stays one tap.
+  const askPublishOn = () =>
+    guarded(
+      publishOn
+        ? null
+        : {
+            title: fmt(cs.publishOnTitle, { name: channel.name }),
+            message: cs.publishOnBody,
+            confirmLabel: cs.publishOnConfirm,
+            typeToConfirm: cs.publishOnWord,
+            details: [
+              { label: cs.dChannel, value: channel.name },
+              { label: cs.dNow, value: cs.publishOnModeRecord },
+              { label: cs.dAfter, value: cs.publishOnModePublish },
+            ],
+          },
+      togglePublishOn,
     );
 
   // Pausing stops new videos; resuming starts runs that spend. Both say so, neither needs a word: both are undone by
@@ -311,7 +380,7 @@ export function ChannelCard({
           <SwitchRow
             id={`${titleId}-auto`}
             label={t.channels.autoLabel}
-            hint={auto ? t.channels.autoOnHint : t.channels.autoOffHint}
+            hint={auto ? t.channels.autoOnHint : publishOn ? t.channels.autoOffHintPublish : t.channels.autoOffHint}
             on={auto}
             word={autoBusy ? t.channels.saving : auto ? t.channels.autoOn : t.channels.autoOff}
             onClick={askAuto}
@@ -330,6 +399,20 @@ export function ChannelCard({
             disabled={reviewBusy || pending || !canControl}
             title={canControl ? undefined : t.channels.adminOnly}
           />
+          {/* Publish when approved (migration 0116). Off is the default; on queues an approved video to be made public by a
+              worker, which YouTube may still refuse. Only shown once the migration is applied. */}
+          {showPublishSwitch && (
+            <SwitchRow
+              id={`${titleId}-publish-on-approve`}
+              label={t.channels.publishOnLabel}
+              hint={publishOn ? t.channels.publishOnHintOn : t.channels.publishOnHintOff}
+              on={publishOn}
+              word={publishBusy ? t.channels.saving : publishOn ? t.channels.publishOnOn : t.channels.publishOnOff}
+              onClick={askPublishOn}
+              disabled={publishBusy || pending || !canControl}
+              title={canControl ? undefined : t.channels.adminOnly}
+            />
+          )}
           {error && (
             <p className="g2-fail tnum pt-2" role="alert">
               {t.channels.saveFailed}: {error}

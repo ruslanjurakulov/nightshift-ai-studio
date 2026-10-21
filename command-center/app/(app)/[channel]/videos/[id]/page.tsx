@@ -10,6 +10,8 @@ import { loadDownloads } from "@/lib/server/downloads";
 import { getOrgContext } from "@/lib/orgs-server";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { accessFromWord, storedGate, type ApproveAccess } from "@/lib/videoApproval";
+import { parseVisibilityRow, VISIBILITY_COLUMNS, type VisibilityRequestRow } from "@/lib/visibilityRequest";
+import { publishOnApproveReleased } from "@/lib/server/release-flags";
 import { CopyButton } from "@/components/feedback/CopyButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -77,12 +79,20 @@ export default async function VideoDetail({
   const path = await getChannelPath();
 
   const supabase = await createClient();
+  // "Publish when approved" (migration 0116): the channel's database switch and this video's newest request are ALWAYS read, here
+  // on the server. The label and the request's state follow the switch: "Approve and publish" only on a channel whose switch is
+  // ON, whatever the release flag says (a channel that already has it on must not say "Approve" over a button that publishes).
+  // The flag (server, default off) hides only the entry points that turn it on (the Channels page): with the switch off and the
+  // flag off the panel says "Approve" and shows nothing about the feature, as before the feature existed.
+  const released = publishOnApproveReleased();
   let video: VideoRow | null = null;
   let snapshots: MetricsSnapshotRow[] = [];
   let events: SystemEventRow[] = [];
   let learningSignals: FeedbackSignalRow[] = [];
   let topicPerf: TopicPerformanceRow[] = [];
   let autoPublish = false;
+  let publishOnApprove = false;
+  let visibilityRequest: VisibilityRequestRow | null = null;
   let pendingIntent: ReviewIntentRow | null = null;
   // May this person approve here? The database's own word (video_approve_access, migration 0112): the same function
   // approve_video_publish asks, so the key is offered to exactly the people it would accept. An error (0112 not applied)
@@ -138,7 +148,7 @@ export default async function VideoDetail({
       topicPerf = await fetchChannelTopicScores(supabase, video.channel_id);
       // The review panel needs two more facts: whether this channel publishes
       // on its own, and whether a request is already waiting on this video.
-      const [ch, intent, regens] = await Promise.all([
+      const [ch, intent, regens, sw, vreq] = await Promise.all([
         supabase.from("channels").select("auto_publish, name").eq("channel_id", video.channel_id).maybeSingle(),
         // The panel's own old requests only: a per-scene request (below) must not read as the video's. Approving is
         // now a database function (0112) that consumes these, so what is still waiting here was never carried out.
@@ -159,7 +169,22 @@ export default async function VideoDetail({
           .eq("video_id", id)
           .order("created_at", { ascending: false })
           .limit(200),
+        // "Publish when approved" (migration 0116): the channel's switch and this video's newest request, through RLS. Read
+        // apart from the channel's other columns, so a database that has not applied 0116 yet answers with an error here and
+        // nowhere else: that reads as "switch off, no request".
+        supabase.from("channels").select("publish_on_approve").eq("channel_id", video.channel_id).maybeSingle(),
+        supabase
+          .from("video_visibility_requests")
+          .select(VISIBILITY_COLUMNS)
+          .eq("video_id", id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
+      publishOnApprove = !sw.error && (sw.data as { publish_on_approve?: unknown } | null)?.publish_on_approve === true;
+      // A request is shown when the channel's switch is on, or the feature is released (then also a request of a switch turned off
+      // since reads "not published, switched off"). Not released and the switch off: nothing about the feature.
+      visibilityRequest = (released || publishOnApprove) && !vreq.error ? parseVisibilityRow(vreq.data) : null;
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
       channelName = (ch.data as { name?: string } | null)?.name || video.channel_id;
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
@@ -291,6 +316,8 @@ export default async function VideoDetail({
         staleRequest={pendingIntent}
         access={access}
         channelName={channelName || video.channel_id}
+        publishOnApprove={publishOnApprove}
+        request={visibilityRequest}
       />
       {video.preview_path && atLeast(orgRole, "admin") && <ShareReviewLink videoId={video.video_id} />}
       {/* The AI-content label, from the event the upload recorded; no record reads "unknown", never "not labelled". */}

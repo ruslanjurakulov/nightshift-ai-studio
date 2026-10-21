@@ -413,6 +413,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The brand-channel poster (0108): tests/security/sec_marketing_0108.py — one draft post and one showcase asset.
     import sec_marketing_0108
     sec_marketing_0108.seed(conn, sc)
+    # Publish when approved (0116): tests/security/sec_visibility_0116.py — one finished request per tenant, one ledger day.
+    import sec_visibility_0116
+    sec_visibility_0116.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

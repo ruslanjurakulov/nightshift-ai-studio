@@ -1,19 +1,24 @@
 /**
  * What the app says about approving must be what the code does. Since migration 0112 "Approve" RECORDS a decision, bound to
  * the exact cut and good for 24 hours; it does not make a video public. Every video is uploaded as private and stays private
- * until a person makes it public on YouTube (a worker that does it for an approved video, Phase 1b, is not built). Copy
- * that says the button publishes, that a later run carries the request out, or that a video is private "until you approve"
- * was false and was removed in all three languages. This pins it: if one of those sentences comes back, this fails.
+ * until a person makes it public on YouTube. Copy that says the button publishes, that a later run carries the request out,
+ * or that a video is private "until you approve" was false and was removed in all three languages. This pins it: if one of
+ * those sentences comes back, this fails.
  *
- * When Phase 1b makes an approved video public, change this test in the same pull request, on purpose.
+ * Phase 1b (migration 0116) adds ONE exception, on purpose and per channel: where the channel's administrators switched
+ * "publish when approved" on (default OFF), the button may read "Approve and publish", and the panel says what the database
+ * recorded. So the label lives at exactly one key (`review.approvePublish`) and the panel shows it only behind the switch; the
+ * only sentence that says "published" is the one for a request a read-back of YouTube ended as public; every sentence that
+ * describes the switched-on flow says YouTube may still keep the video private and that the switch can be turned off.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { en } from "../lib/i18n/en";
 import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
 import { APPROVE_REASONS, type ApprovalBlocker } from "../lib/videoApproval";
+import { RETRY_ERRORS, VISIBILITY_REASONS } from "../lib/visibilityRequest";
 
 const dicts = { en, ru, uz } as const;
 const REPO = join(__dirname, "..", "..");
@@ -81,7 +86,8 @@ const OVERCLAIMS: Record<keyof typeof dicts, RegExp[]> = {
  * The one place the old label may still appear: the alt text of the landing page's screenshot, which describes the picture
  * as it is (an image taken before the button was renamed). It has to be re-shot; until then the alt describes the image.
  */
-const EXEMPT = /\.shotAlt$|^ru\.inbox\.reply\.approve$/;   // (the second is the comment inbox: approving a REPLY does post it)
+// (the second is the comment inbox: approving a REPLY does post it; the third is the label of the switched-on flow, below)
+const EXEMPT = /\.shotAlt$|^ru\.inbox\.reply\.approve$|^(en|ru|uz)\.review\.approvePublish$/;
 
 describe("no copy says the Approve button publishes", () => {
   it.each(["en", "ru", "uz"] as const)("%s has none of the old over-claiming sentences", (loc) => {
@@ -93,14 +99,16 @@ describe("no copy says the Approve button publishes", () => {
     expect(hits).toEqual([]);
   });
 
-  it("the screenshot's alt text is the only string left that names the old label", () => {
+  it("the screenshot's alt text and the switched-on label are the only strings left that name the old label", () => {
     const left: string[] = [];
     for (const loc of ["en", "ru", "uz"] as const) {
       for (const [path, s] of strings(dicts[loc], loc)) {
         if (/Approve and publish|Одобрить и опубликовать|Tasdiqlash va nashr qilish/.test(s) && !/^ru\.inbox\.reply\.approve$/.test(path)) left.push(path.replace(/^(en|ru|uz)\./, ""));
       }
     }
-    expect(left.every((p) => /\.shotAlt$/.test(p)), left.join(", ")).toBe(true);
+    expect(left.every((p) => /\.shotAlt$|^review\.approvePublish$/.test(p)), left.join(", ")).toBe(true);
+    // and the label is there in all three languages, at that one key
+    expect(left.filter((p) => p === "review.approvePublish")).toHaveLength(3);
   });
 
   it("the old sheets of the two re-render buttons, which promised a render and a price, are gone", () => {
@@ -183,13 +191,112 @@ describe("the page metadata", () => {
   });
 });
 
+describe("publish when approved (migration 0116): no copy claims publishing unless the channel's switch is on and the read-back confirms", () => {
+  const SRC = (p: string) => readFileSync(join(__dirname, "..", p), "utf8");
+  const walk = (dir: string): string[] =>
+    readdirSync(join(__dirname, "..", dir), { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : [],
+    );
+
+  it("the switched-on label is rendered only behind the channel's switch, and nowhere else", () => {
+    const panel = SRC("components/review/ReviewPanel.tsx");
+    const uses = panel.split("\n").filter((l) => /\bapprovePublish\b/.test(l));
+    expect(uses.length).toBeGreaterThanOrEqual(2);
+    for (const l of uses) expect(l, l).toMatch(/publishing/);
+    // `publishing` is the switch and nothing else, and never when the channel publishes by itself
+    expect(panel).toContain("const publishing = publishOnApprove && !autoPublish;");
+    // the page hands over the switch as read from the channel row: true only for an explicit true, false on any error
+    const page = SRC("app/(app)/[channel]/videos/[id]/page.tsx");
+    // ... whatever the release flag says (a channel that has it on must not say "Approve" over a button that publishes); the flag
+    // (server, default off, lib/server/release-flags.ts) hides only the way to turn it on
+    expect(page).toContain("publishOnApprove = !sw.error && (sw.data as { publish_on_approve?: unknown } | null)?.publish_on_approve === true;");
+    expect(page).toContain("visibilityRequest = (released || publishOnApprove) && !vreq.error ? parseVisibilityRow(vreq.data) : null;");
+    // no other component or page names the label
+    const others = [...walk("components"), ...walk("app")].filter((f) => !/ReviewPanel\.tsx$/.test(f) && /\bapprovePublish\b/.test(SRC(f)));
+    expect(others).toEqual([]);
+    // and with the switch off the button and its hint are the old ones
+    expect(panel).toContain("{publishing ? t.review.approvePublish : t.review.approve}");
+    expect(panel).toContain("publishing\n                    ? t.review.queueHintPublish\n                    : t.review.queueHint");
+  });
+
+  it("only a request that a read-back of YouTube ended as public is called published", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const d = dicts[loc];
+      // (\b does not see Cyrillic: a letter on either side is what makes it a different word)
+      const claim = /(?<![\p{L}])(Published|Опубликовано|Nashr qilindi)(?![\p{L}])/u;
+      const owners = [
+        ...strings(d.review.visibility, `${loc}.review.visibility`),
+        ...strings({ a: d.review.queueHintPublish, b: d.review.approvedByPublish, c: d.review.approvedAnonPublish, e: d.review.expiredByPublish,
+                     f: d.review.expiredAnonPublish, g: d.review.makePublicFallbackBody }, `${loc}.review`),
+        ...strings({ a: d.confirmSheets.rvApprovePublishBody, b: d.confirmSheets.publishOnBody, c: d.confirmSheets.publishOnTitle }, `${loc}.confirmSheets`),
+        ...strings({ a: d.channels.publishOnHintOn, b: d.channels.publishOnHintOff, c: d.channels.autoOffHintPublish }, `${loc}.channels`),
+      ];
+      const claims = owners.filter(([, s]) => claim.test(s)).map(([p]) => p.replace(`${loc}.`, ""));
+      expect(claims.sort(), loc).toEqual(["review.visibility.published", "review.visibility.publishedNoTime"]);
+    }
+    // the view says it too: published needs an applied request whose read-back was public, whatever else is true
+    const src = SRC("lib/visibilityRequest.ts");
+    expect(src).toContain('request.after_privacy === "public" ? { kind: "published"');
+    expect(src.match(/kind: "published"/g)).toHaveLength(2);   // the type and that one return
+  });
+
+  it.each(["en", "ru", "uz"] as const)("%s: every sentence of the switched-on flow says YouTube may still keep the video private and that the switch can be turned off", (loc) => {
+    const d = dicts[loc];
+    const keep = { en: /may still keep/, ru: /всё равно может оставить/, uz: /baribir shaxsiy qoldirishi mumkin/ }[loc];
+    const off = { en: /switch(ed)? (it|this|the setting|“Publish when approved”) off/, ru: /выключить|отключить/, uz: /oʻchirib qoʻyish/ }[loc];
+    for (const [name, s] of [
+      ["review.queueHintPublish", d.review.queueHintPublish],
+      ["confirmSheets.rvApprovePublishBody", d.confirmSheets.rvApprovePublishBody],
+      ["confirmSheets.publishOnBody", d.confirmSheets.publishOnBody],
+      ["channels.publishOnHintOn", d.channels.publishOnHintOn],
+    ]) {
+      expect(s, `${loc}.${name}`).toMatch(keep);
+      expect(s, `${loc}.${name}`).toMatch(off);
+    }
+  });
+
+  it.each(["en", "ru", "uz"] as const)("%s: the switch is explained as off by default, as recording a decision when off, and never as a certain outcome", (loc) => {
+    const d = dicts[loc];
+    const byDefault = { en: /Off by default/, ru: /По умолчанию выключено/, uz: /Standart boʻyicha oʻchiq/ }[loc];
+    expect(d.channels.publishOnHintOff).toMatch(byDefault);
+    expect(d.confirmSheets.publishOnBody).toMatch({ en: /off by default/, ru: /По умолчанию выключено/, uz: /Standart boʻyicha oʻchiq/ }[loc]);
+    // the OFF state still says approving only records a decision (and the old sentence about the review panel is untouched)
+    expect(d.channels.publishOnHintOff).toMatch({ en: /records your decision only/, ru: /только записывает ваше решение/, uz: /faqat qaroringizni yozib qoʻyadi/ }[loc]);
+    const certain: Record<typeof loc, RegExp[]> = {
+      en: [/(?<!not |nothing )will be published/i, /goes public (on its own|automatically)/i, /is published (automatically|when you approve)/i, /guarantee/i],
+      ru: [/(?<!не )будет опубликован/i, /автоматически публикуется/i, /гарантир/i],
+      uz: [/(?<!hech narsa )nashr qilinadi(?![\p{L}])/iu, /avtomatik nashr qilinadi/i, /kafolat/i],
+    };
+    for (const s of [d.review.queueHintPublish, d.confirmSheets.rvApprovePublishBody, d.confirmSheets.publishOnBody, d.channels.publishOnHintOn,
+                     d.channels.publishOnHintOff, d.channels.autoOffHintPublish, d.review.visibility.queued, d.review.visibility.queuedHint]) {
+      for (const re of certain[loc]) expect(s, `${loc}: ${s}`).not.toMatch(re);
+    }
+  });
+
+  it("every reason word has a sentence in all three languages, none of them says published, and the retry errors are covered too", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const v = dicts[loc].review.visibility;
+      expect(Object.keys(v.reasons).sort(), loc).toEqual([...VISIBILITY_REASONS].sort());
+      expect(Object.keys(v.retryErrors).sort(), loc).toEqual([...RETRY_ERRORS, "failed"].sort());
+      for (const s of [...Object.values(v.reasons), ...Object.values(v.retryErrors)]) {
+        expect(s.trim().length, `${loc}: ${s}`).toBeGreaterThan(8);
+        expect(s, `${loc}: ${s}`).not.toMatch(/(?<![\p{L}])(published|опубликован\p{L}*|nashr qilindi)(?![\p{L}])/iu);
+      }
+    }
+  });
+});
+
 describe("CLAUDE.md rule 3 tells the truth", () => {
   const rules = readFileSync(join(REPO, "CLAUDE.md"), "utf8");
   it("no longer says the next pipeline run reads the dashboard's row and acts", () => {
     expect(rules).not.toMatch(/the next\s+pipeline run reads it and acts/i);
   });
-  it("says what is read, what Approve records, and that Phase 1b is not built", () => {
+  it("says what is read, what Approve records, and that publishing on approval is per channel, off by default and read back", () => {
     expect(rules).toMatch(/approve_video_publish/);
-    expect(rules).toMatch(/Phase 1b \(the bot flips privacy\) is not built yet/);
+    expect(rules).not.toMatch(/Phase 1b \(the bot flips privacy\) is not built yet/);
+    expect(rules).toMatch(/"publish when approved" \(migration 0116/);
+    expect(rules).toMatch(/second per-channel switch, off by default/);
+    expect(rules).toMatch(/`modules\/visibility_publish\.py` is the only code\s+that may change an existing video's privacy/);
+    expect(rules).toMatch(/only for a request whose read-back of YouTube said public/);
   });
 });

@@ -3,7 +3,7 @@
 Status: **DRAFT, design only.** Docs only: no code, no migration, nothing applied, no money.
 Written for the owner to read on a phone. Summary first, details after.
 Basis: `main` at `da00b7d` (PR #551), plus the unmerged draft PR #543 (branch head `6599d4b`:
-migration 0113, `docs/APPROVE_PUBLISH_1B.md`, the rule 2/3 patch). Nothing here was run against
+migration 0116, `docs/APPROVE_PUBLISH_1B.md`, the rule 2/3 patch). Nothing here was run against
 production. Chronos facts (ACTIVE, 22:00 UTC, `channels.auto_publish` off, no `auto_publish` key in `agent_config`, 0 videos) are as the coordinator
 reported them from the live row; I did not read it myself.
 
@@ -13,10 +13,10 @@ reported them from the live row; I did not read it myself.
 
 ## Summary
 
-1. **Four levels per channel.** L0 hold (an allowed video is kept on disk, not uploaded). L1 private upload, owner reviews (**Chronos today**). L2 publish when approved (0113, not released). L3 auto-publish after the gate plus a hold-back window (does not exist; needs its own rule amendment).
+1. **Four levels per channel.** L0 hold (an allowed video is kept on disk, not uploaded). L1 private upload, owner reviews (**Chronos today**). L2 publish when approved (0116, not released). L3 auto-publish after the gate plus a hold-back window (does not exist; needs its own rule amendment).
 2. **Up is always a person.** An admin moves a channel up, one rung at a time, with a typed word. The system only measures and *recommends* (an alert). It never promotes.
 3. **Down is automatic.** WARN (alert, promotion frozen), DEMOTE (one rung), HALT (level 0 and the schedule paused). Unknown data never promotes and never demotes.
-4. **Facts found in the code that shape the design** (each marked VERIFIED with file:line in section 0). (a) There are **two** `auto_publish` switches: the `agent_config` key decides *upload or hold*; the Channels-page column only *clamps privacy to private* and never stops an upload. No scheduled path can make a video public today. (b) Nothing records an owner *rejection*, and nothing reads YouTube after upload (forced-private, removed, rejected are invisible; `videos.privacy` stores what we asked for). (c) The 0113 worker does not read `NIGHTSHIFT_PIPELINE_PAUSED`. (d) Events reach the database only through the 20:00 UTC poll.
+4. **Facts found in the code that shape the design** (each marked VERIFIED with file:line in section 0). (a) There are **two** `auto_publish` switches: the `agent_config` key decides *upload or hold*; the Channels-page column only *clamps privacy to private* and never stops an upload. No scheduled path can make a video public today. (b) Nothing records an owner *rejection*, and nothing reads YouTube after upload (forced-private, removed, rejected are invisible; `videos.privacy` stores what we asked for). (c) The 0116 worker does not read `NIGHTSHIFT_PIPELINE_PAUSED`. (d) Events reach the database only through the 20:00 UTC poll.
 5. **Data model.** L0 to L2 need no new column (derived from the `agent_config` key and `publish_on_approve`; the Channels-page column is a separate clamp, see 1.1). L3 needs one admin-only column plus a service-only demote function (shapes in section 3, no migration written).
 6. **Chronos.** Already at L1: videos 1 to 7 (you choose 5 to 10) are private uploads reviewed with a 10-point checklist, starting with tonight's run. The report then says READY or NOT READY cell by cell. Going public *automatically* is not possible before phases 2 to 4.
 7. **Be honest about evidence.** Seven clean videos only rule out a bad-video rate above about 35% (95% confidence). The ladder limits the blast radius and forces a human look; it does not prove quality.
@@ -41,7 +41,7 @@ Re-checked against `main` at `da00b7d` after the correction. **VERIFIED** = I re
 - VERIFIED. Approve is refused for a held, blocked or never-uploaded run: `0112_approve_video_publish.sql:38`. It records the decision and does not change privacy.
 - VERIFIED. YouTube is never read after upload: `youtube_uploader.py:466` returns only `response["id"]`; `main.py:1514`, `:1531`, `:1544` store and emit the *requested* `privacy` (`state_store.py:309-318` persists it); no module outside the uploader's request body (`youtube_uploader.py:643`) mentions `privacyStatus`.
 - VERIFIED. No owner rejection is recorded: `review_state` allows `rejected` (`0004_review.sql:38`) and three functions read it (`0029:254`, `0080:497`, `0112:180`), but a grep of `supabase/migrations`, `modules`, `tools`, `main.py`, `command-center/app` and `lib` finds no writer; `review_intents.action` has no reject (`0015_scene_repair_intents.sql:31`).
-- VERIFIED. The service key passes the 0086 guard (`0086_channel_config_lock.sql:161`, `current_user not in ('authenticated','anon')`); the 0113 guard refuses it too (`0113_visibility_requests.sql:109` on #543, head `6599d4b`).
+- VERIFIED. The service key passes the 0086 guard (`0086_channel_config_lock.sql:161`, `current_user not in ('authenticated','anon')`); the 0116 guard refuses it too (`0116_visibility_requests.sql:109` on #543, head `6599d4b`).
 - VERIFIED. Events are written to the local store (`event_log.py:296-330`) and reach Supabase only through `supabase_sync.mirror_from_store` (`supabase_sync.py:400`), whose only caller is `tools/run_intelligence_poll.py:548` (called at `:633`), cron `0 20 * * *` (`intelligence_poll.yml:11`). A 22:00 UTC run's events arrive about 22 hours later. `videos` rows are written when the run ends (`main.py` review/held recording after upload).
 - VERIFIED. The global pause is read in one place: `tools/list_channels.py:66,77` (called from the workflow's resolve step, `daily_video.yml:141`). A grep of all `.py`, `.yml` and `.example` files finds no other reader. `tools/queue_worker.py` on main has only the storyboard exit code named PAUSED (`:136`, `:1304`); `tools/queue_worker.py` and `modules/visibility_publish.py` on #543 have none. Whether the worker's environment even holds the variable is UNVERIFIED.
 - VERIFIED. `CLAUDE.md` on `main` has the *unamended* rules 2 and 3. The "named exception" for publish-when-approved exists only as the patch `docs/proposals/claude-md-rules-2-3-phase-1b.patch` in #543. This proposal assumes it is applied before L2 is used.
@@ -64,7 +64,7 @@ Re-checked against `main` at `da00b7d` after the correction. **VERIFIED** = I re
 
 ### 1.1 Levels in terms of the switches that already exist
 
-Three inputs (names as in section 0): **U** = `agent_config.auto_publish` (upload or hold; absent means upload), **C** = column `channels.auto_publish` (the Channels-page switch; only clamps privacy), **A** = `channels.publish_on_approve` (0113). A fourth, **G** = `publish_after_gate`, is new (L3).
+Three inputs (names as in section 0): **U** = `agent_config.auto_publish` (upload or hold; absent means upload), **C** = column `channels.auto_publish` (the Channels-page switch; only clamps privacy), **A** = `channels.publish_on_approve` (0116). A fourth, **G** = `publish_after_gate`, is new (L3).
 
 | U | C | A | What a scheduled run does | Level |
 | :-- | :-- | :-- | :-- | :-- |
@@ -83,14 +83,14 @@ What each level means for you:
 - **L2 Approve.** "Approve and publish" queues one request; a worker flips and reads back.
 - **L3 Auto.** As L2 without the tap.
 
-L3 reuses the 0113 flip path on purpose. The #543 rule patch says `modules/visibility_publish.py` is the only code that may change an existing video's privacy. A direct `privacy=public` insert would be a second path, with no read-back, no quota ledger and no reconcile logic. The schedule keeps pinning `private` forever.
+L3 reuses the 0116 flip path on purpose. The #543 rule patch says `modules/visibility_publish.py` is the only code that may change an existing video's privacy. A direct `privacy=public` insert would be a second path, with no read-back, no quota ledger and no reconcile logic. The schedule keeps pinning `private` forever.
 
 ### 1.2 Who moves a channel
 
 | Move | Who | How |
 | :-- | :-- | :-- |
 | Up (L0 to L1) | admin, human | set `agent_config.auto_publish` to true (a 0086 admin-only control; no dashboard control exists for this key, so it is a config edit) |
-| Up (L1 to L2) | admin, human, real member | 0113 `set_channel_publish_on_approve` |
+| Up (L1 to L2) | admin, human, real member | 0116 `set_channel_publish_on_approve` |
 | Up (L2 to L3) | admin, human, real member | new `set_channel_publish_after_gate` (section 3) |
 | Recommend | system | alert + report. No write to `channels` |
 | Down / kill | system or human | service-only demote function; humans use the same switches off |
@@ -114,14 +114,14 @@ Rules that keep this inside rules 2 and 3:
 | AI-disclosure coverage | event `video.ai_disclosure` per video | up to ~22 h |
 | owner review | `review_state`, `decided_at`, `approved_cut_sha256` = `cut_sha256`; `review_intents` (`regenerate_scene` count) | immediate |
 | cost | `video_costs`; known only if every unit is priced | at run end |
-| publish truth | 0113 `video_visibility_requests` (`applied`, `refused`, `failed`, `expired`, `after_privacy`) | after 0113 |
+| publish truth | 0116 `video_visibility_requests` (`applied`, `refused`, `failed`, `expired`, `after_privacy`) | after 0116 |
 | YouTube-side state | **not read anywhere today** | never |
 | strikes | **invisible to the API** | owner only |
 | owner rejections | **not recorded** | never |
 
 Consequences, written down so they are not forgotten:
 
-- Anything that can only come from events is a *slow* signal. Decisions that must be fresh (the L3 last check) may use only `videos` rows, the 0113 tables, and a fresh YouTube read.
+- Anything that can only come from events is a *slow* signal. Decisions that must be fresh (the L3 last check) may use only `videos` rows, the 0116 tables, and a fresh YouTube read.
 - A cell that cannot be measured is **unknown**. An unknown cell never counts as met and never counts as a failure. A report that says READY must have zero unknown cells in its required set.
 - "Not approved" and "rejected" cannot be told apart today. The report shows only "not approved". Section 6, phase 2c proposes a reject record.
 
@@ -150,7 +150,7 @@ All numbers are **proposals**, not measurements (Chronos has no history). They s
 7. Every uploaded video read back from YouTube as private, processed, not rejected, not deleted (needs phase 2 reader; until then this cell is unknown, so the recommendation cannot appear).
 8. No demotion in the last 14 days.
 9. Promotion screen carries the owner statement "Studio shows no strike or limit" (typed word + acknowledgement, written to the audit row).
-10. Project-level: the 0113 live test answered "an unaudited project can make a video public" (owner-recorded fact, once).
+10. Project-level: the 0116 live test answered "an unaudited project can make a video public" (owner-recorded fact, once).
 
 **L2 to L3: recommend when ALL hold** (window `N2`, with at least 5 flips)
 
@@ -200,7 +200,7 @@ Counts are over started runs, not calendar days: a global pause leaves no gaps t
 Notes:
 
 - D1 and D2 overlap by design: content blocks mean the niche or DNA is producing unpublishable material; technical blocks mean the pipeline is broken. Both stop publishing power; only repeated technical blocks stop spending.
-- An unaudited project that silently keeps videos private must **never** be counted as a successful publish. A publish counts only when a read-back saw `public` (0113 `applied`). `platform_kept_private` is a failure of the *project*, not of the channel.
+- An unaudited project that silently keeps videos private must **never** be counted as a successful publish. A publish counts only when a read-back saw `public` (0116 `applied`). `platform_kept_private` is a failure of the *project*, not of the channel.
 - "Unknown is not a no" cuts both ways. A read that fails is not evidence of failure (D11), so an outage cannot demote the fleet.
 
 ### 2.3 What the owner sees (existing operator bot kinds)
@@ -226,13 +226,13 @@ HALT and DEMOTE are undone only by a person: read the reason, fix the cause, swi
 | :-- | :-- |
 | `agent_config.auto_publish` (U) | L0 vs L1+. Admin-only control (0086 lists the key). False: allowed videos are held, nothing uploads |
 | `channels.auto_publish` (C) | not a level. Admin-only (0086). Not plainly true: a run's privacy is clamped to private. Chronos: off |
-| `channels.publish_on_approve` (0113) | L2. Admin-only RPC; reset when a channel changes organization |
-| new `publish_after_gate` | L3. Same shape as 0113's switch |
+| `channels.publish_on_approve` (0116) | L2. Admin-only RPC; reset when a channel changes organization |
+| new `publish_after_gate` | L3. Same shape as 0116's switch |
 | `NIGHTSHIFT_PIPELINE_PAUSED` | stops *scheduled* runs only (fails closed). Ladder level is unchanged; paused periods are not failures. **Does not stop flips today** (verified above) |
-| worker locks | `NIGHTSHIFT_VISIBILITY_PUBLISH` (0113). L3 adds `NIGHTSHIFT_POLICY_PUBLISH`, default off. Both must be on for a policy flip |
+| worker locks | `NIGHTSHIFT_VISIBILITY_PUBLISH` (0116). L3 adds `NIGHTSHIFT_POLICY_PUBLISH`, default off. Both must be on for a policy flip |
 | publish gate | runs before upload (unchanged). Its stored verdict is checked again at every flip (`video_publish_refusal`). L3 requires the gate not weakened (D10) |
 | 24 h approval expiry | L2 only: an approval older than 24 h is `expired`, not published. L3 has no approval; it has a hold-back window instead |
-| `require_two_person_publish` | a channel with it on cannot be promoted to L3. Note: 0113 states two-person is not re-checked at flip time, so L2 may let one admin do what the flag was meant to require (open question 13) |
+| `require_two_person_publish` | a channel with it on cannot be promoted to L3. Note: as first drafted 0116 did not look at it, so L2 could let one admin do what the flag was meant to require (open question 13); 0116 now refuses it (the switch cannot be turned on for such a channel, and a request on one ends `two_person_required`), so L2 and this flag are exclusive |
 
 **Requirement that follows from the pause finding:** a policy flip must refuse while the global pause is truthy in the worker environment (same fail-closed parser as `pipeline_paused()`). Whether person-approved flips should stop too is open question 10; my recommendation is yes ("paused means paused").
 
@@ -255,20 +255,20 @@ Acting inside a grant a human gave is not the system widening its own power; but
 | C. Key in `agent_config` | Rejected. Editors can write `agent_config`; the 0086 guard only protects listed keys; the service key bypasses it |
 | D. Stored `autonomy_level` int | Rejected. Two sources of truth beside the booleans; drift is a safety bug |
 
-### 3.4 Migration shapes (NOT written; numbers are placeholders after 0113 merges)
+### 3.4 Migration shapes (NOT written; numbers are placeholders after 0116 merges)
 
-**(i) Phase 3, `0114`: demotion and audit.** Additive, idempotent, in the style of 0086 and 0113.
+**(i) Phase 3, `0114`: demotion and audit.** Additive, idempotent, in the style of 0086 and 0116.
 
 - `create or replace function public.demote_channel_autonomy(p_channel_id text, p_to smallint, p_reason text, p_detail jsonb) returns jsonb`, `security definer`, `set search_path = public, pg_temp`.
   - Callable only by `credits_trusted_caller()` (the service key). `revoke all ... from public, anon, authenticated; grant execute ... to service_role`.
   - Locks the channel row FOR UPDATE; computes the current derived level; **only lowers** (`p_to` must be below it, otherwise `{ok:true, changed:false}`).
   - Sets, top down, `publish_after_gate`, `publish_on_approve` to false and, for level 0 only, `agent_config.auto_publish` to false (`jsonb_set`) as `p_to` requires. It never touches the column `channels.auto_publish`. HALT reasons also set `status = 'PAUSED'`.
   - `p_reason` must be in a closed list: `gate_blocks, qc_blocks, run_failures, upload_failures, topic_failures, quota, spend, platform_kept_private, youtube_rejected, youtube_removed, disclosure_gap, owner_reversal, gate_weakened, project_wide`. `p_detail` holds counts and ids only (no titles, no free text).
-  - Refuses waiting visibility requests whose write is not yet marked (same `where ... submitting_at is null` as the 0113 switch function).
+  - Refuses waiting visibility requests whose write is not yet marked (same `where ... submitting_at is null` as the 0116 switch function).
   - Writes one `app_audit_log` row `channel.autonomy_demoted` (actor null = system) and returns `{ok, from, to, reason}`.
-- `create or replace function public.audit_action_allowed(text)`: the 0113 list verbatim plus `channel.autonomy_demoted`, `channel.publish_after_gate`.
+- `create or replace function public.audit_action_allowed(text)`: the 0116 list verbatim plus `channel.autonomy_demoted`, `channel.publish_after_gate`.
 - Optional hardening **H1** (open question 9): replace `channels_config_guard` with its 0086 body verbatim plus one rule: `service_role` may not change the column `auto_publish`, or the `agent_config` key `auto_publish`, from not-true to true. No dashboard code writes either with the service key (grep found none); who else writes `agent_config` with it is UNVERIFIED (the registry mirror might), so check before writing H1. The SQL editor still can.
-- Rollback `docs/sql/rollback_0114_autonomy_demote.sql`: drop the function, restore the two replaced bodies byte for byte, as 0113's rollback does.
+- Rollback `docs/sql/rollback_0114_autonomy_demote.sql`: drop the function, restore the two replaced bodies byte for byte, as 0116's rollback does.
 
 **(ii) Phase 4, `0115`: the L3 switch.**
 
@@ -276,7 +276,7 @@ Acting inside a grant a human gave is not the system widening its own power; but
 - Trigger `channels_autonomy_switch_guard`, copy of `channels_publish_switch_guard`: `before insert or update of publish_after_gate, org_id`; refuses `anon`, `authenticated` and `service_role` any change outside the RPC; resets the column when `org_id` changes.
 - `set_channel_publish_after_gate(p_channel_id text, p_on boolean, p_ack jsonb) returns jsonb`: `security definer`; `auth.uid()` required; organization from the channel row; `is_org_member(org,'admin')` and `video_real_member(org,'admin')`; `take_web_rate('autonomy_switch', 10, 600)`. Turning ON also requires `publish_on_approve` and `auto_publish` true, `require_two_person_publish` not true, gate not weakened, a typed word, and `p_ack = {"studio_checked": true}`. Writes the audit row. Turning OFF refuses waiting policy requests as above.
 - `video_visibility_requests.origin text not null default 'person' check (origin in ('person','policy'))`; `visibility_request_refusal` branches on origin; `enqueue_policy_publish(p_video_id)` is service-only and re-runs every check in 3.2.
-- Rollback `docs/sql/rollback_0115_publish_after_gate.sql`: switch all channels off, drop functions and trigger, restore replaced bodies; keep the column as 0113's rollback keeps its own.
+- Rollback `docs/sql/rollback_0115_publish_after_gate.sql`: switch all channels off, drop functions and trigger, restore replaced bodies; keep the column as 0116's rollback keeps its own.
 
 Neither migration is applied by this PR. Per `CLAUDE.md`: additive only, applied by hand, merge applies it.
 
@@ -318,7 +318,7 @@ Good: tap **Approve**. Bad: do not approve (and optionally delete or leave priva
 | :-- | :-- | :-- |
 | (L0 to L1) | not needed: Chronos is at L1 | only if you set it back to hold |
 | stay at L1, publish by hand in Studio | any time | nothing new; works today |
-| L1 to L2 | after 7 clean approved videos (video 7 or later) **and** 0113 released | rule 2/3 amendment applied, legal and consent text, live test passed, worker lock on, then your tap |
+| L1 to L2 | after 7 clean approved videos (video 7 or later) **and** 0116 released | rule 2/3 amendment applied, legal and consent text, live test passed, worker lock on, then your tap |
 | L2 to L3 | after 10 clean videos with 5+ real flips | phase 4 built, second amendment, then your tap |
 
 So: "first 5 to 10 private, then auto-publish" is achievable as *private for 7 videos, then you publish by hand or with one tap* in the near term. Fully automatic public publishing is the end of phase 4 and depends on things only you and YouTube can unlock.
@@ -327,16 +327,16 @@ So: "first 5 to 10 private, then auto-publish" is achievable as *private for 7 v
 
 ## 5. Edge cases
 
-- **Customer channels.** Never scheduled (a customer's run starts from the Command Center with its credit hold). They can use L0 to L2 under their own org admins; platform admins cannot flip their switches (0112/0113 rule). L3 is **out of scope** for customers until there is customer-facing legal and consent text and you decide. Their evidence is never sent to the operator bot (the bot ignores customer channel rows). A demotion on a customer channel needs an in-app notice to their org (phase 5; until then the automatic demotion is not applied to customer channels, only HALT-class platform signals are, and shown on their Channels page).
+- **Customer channels.** Never scheduled (a customer's run starts from the Command Center with its credit hold). They can use L0 to L2 under their own org admins; platform admins cannot flip their switches (0112/0116 rule). L3 is **out of scope** for customers until there is customer-facing legal and consent text and you decide. Their evidence is never sent to the operator bot (the bot ignores customer channel rows). A demotion on a customer channel needs an in-app notice to their org (phase 5; until then the automatic demotion is not applied to customer channels, only HALT-class platform signals are, and shown on their Channels page).
 - **Schedule changes.** `publish_hour_utc` or `enabled` changes do not touch the level or the window; windows count started runs. A channel re-scheduled mid-window keeps its evidence.
 - **Paused and unpaused.** Global pause: no scheduled runs, no failures counted, level unchanged; the dead-man alert may speak (I found no pause handling in `modules/operator_bot`: a separate pre-existing question, not verified). Channel PAUSED by a person: the same. PAUSED by HALT: unpausing is the promotion act (same screen, same evidence).
-- **Channel moved between organizations.** 0113 already resets `publish_on_approve` on an org change. The ladder adds: `agent_config.auto_publish` (to hold), the column and `publish_after_gate` reset too, the window restarts, level L0. The new org's admins did not choose the old grant. (Needs a trigger extension; today only `publish_on_approve` resets.)
+- **Channel moved between organizations.** 0116 already resets `publish_on_approve` on an org change. The ladder adds: `agent_config.auto_publish` (to hold), the column and `publish_after_gate` reset too, the window restarts, level L0. The new org's admins did not choose the old grant. (Needs a trigger extension; today only `publish_on_approve` resets.)
 - **Videos deleted on YouTube.** The `videos` row stays. With the phase 2 reader, a missing or deleted video is "withdrawn": it counts as not approved for the window, and a *published* one deleted within 7 days is D9. Owner-deleted and YouTube-removed cannot be told apart; both count the same, honestly labelled.
-- **Unaudited API project forcing private.** Detected in two places: the 0113 read-back (`platform_kept_private`) and, in phase 2, the observed privacy after upload compared with what we asked for. Never counted as a publish. It is a HALT-class, project-wide event. Caution: `platform_kept_private` can in principle be a slow propagation misread (the #543 doc says so), so the halt is reversible by an admin who has checked Studio.
+- **Unaudited API project forcing private.** Detected in two places: the 0116 read-back (`platform_kept_private`) and, in phase 2, the observed privacy after upload compared with what we asked for. Never counted as a publish. It is a HALT-class, project-wide event. Caution: `platform_kept_private` can in principle be a slow propagation misread (the #543 doc says so), so the halt is reversible by an admin who has checked Studio.
 - **Token revoked or scope missing.** Counts as operational failure (D3); `scope_missing` at flip time is D4.
 - **Repairs and resumes.** A scene repair voids the approval (0112) and produces a new cut of the *same* run: one video in the window, judged on its final cut.
 - **Manual dispatch.** Someone with repository write access can dispatch a run with `privacy = public`. On a channel whose column `channels.auto_publish` is not plainly true (Chronos today) that is clamped to private (`channels.py:537-548`); where the column is on, it goes public. The ladder governs the bot, not people with repo access, and manual runs are not evidence. A test should keep pinning that the *schedule* can never request public.
-- **Shorts.** Excluded from evidence (`parent_video_id` set); they stay private (0113).
+- **Shorts.** Excluded from evidence (`parent_video_id` set); they stay private (0116).
 - **YouTube API quota.** `videos.insert` ~1600 and `captions.insert` ~400 per video leave room for about 4 to 5 videos a day per OAuth project before any flip (50 each), thumbnails or comments (costs not in the repo table; unverified). One project, many channels, is a real ceiling for "an autonomous pipeline per channel".
 
 ---
@@ -356,7 +356,7 @@ So: "first 5 to 10 private, then auto-publish" is achievable as *private for 7 v
 | 4 | L3: migration `0115`, policy origin, worker lock, pause honoring, UI, **second rule amendment** | yes: all of it |
 | 5 | Customer channel notices (in-app) | yes |
 
-Phase 1 touches nothing that publishes. Phases 2 and 3 only move in the restrictive direction, like the publish gate. Only phase 4 adds power, and it is gated on 0113 being released.
+Phase 1 touches nothing that publishes. Phases 2 and 3 only move in the restrictive direction, like the publish gate. Only phase 4 adds power, and it is gated on 0116 being released.
 
 The operator bot stays read-only: it *decides and tells* (as `reliability.py` does); only a workflow step with the service key applies a demotion.
 
@@ -404,11 +404,11 @@ Frontend (phase 2d and later): the three-language strings, the level pill with t
 6. The "Studio shows no strike or limit" statement is typed into the promotion screen because strikes are invisible to us. Acceptable?
 7. Do the operator channels and customer channels share one Google OAuth project? (Decides how wide a forced-private halt must be.)
 8. Customer channels: L0 to L2 only, in-app notice on demotion, L3 never for now. Agree?
-9. Harden the database so the service key cannot turn `auto_publish` on, column or config key (H1)? Small migration, closes a gap beside the 0113 guard.
+9. Harden the database so the service key cannot turn `auto_publish` on, column or config key (H1)? Small migration, closes a gap beside the 0116 guard.
 10. Should the global pause also hold person-approved flips (L2)? I recommend yes.
 11. If you change a channel's DNA, voice or niche mid-window, should the evidence restart? Today such edits are not audited, so I cannot detect them.
 12. Are the thresholds in 1.4 and 2.2 right for your risk appetite (2 of 5 blocks, 2 failures in a row, 14 days freeze, 48 h settling)?
-13. 0113 does not re-check `require_two_person_publish` at flip time. Intended?
+13. (Answered in the build of 0116: a channel with `require_two_person_publish` cannot use "publish when approved"; the database refuses the switch and refuses a request with `two_person_required`. Making the two cooperate, so that a second person's approval satisfies it, is a separate design.)
 14. Should HALT pause the channel (stops spend) or only set level 0?
 15. You said quality, topics, schedule and error-free running come first. Should phase 1 also report topic quality beyond duplicates (for example repeat rate, near-duplicate warnings, topic-selection failures per week)? The local topic queue (`history/`) is not durable on Actions runners, so queueing the first ten topics ahead is not reliable; the workflow's `topic` input is.
 16. Should the evaluator treat the Channels-page column being ON as a defect at L1 and above (it lets a manual run go public), or only as a note? The owner's wording "auto_publish=false" refers to this column.

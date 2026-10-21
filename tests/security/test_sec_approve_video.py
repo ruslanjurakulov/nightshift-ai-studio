@@ -35,6 +35,10 @@ from sec_scenario import DEFAULT_ORG
 
 MIGRATION = sec_db.REPO / "supabase" / "migrations" / "0112_approve_video_publish.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0112_approve_video_publish.sql"
+# 0116 redefines approve_video_publish and audit_action_allowed from 0112's text, so the two files are applied (and rolled
+# back) as a pair: 0112 then 0116 going up, 0116 then 0112 going down.
+MIGRATION_0116 = sec_db.REPO / "supabase" / "migrations" / "0116_visibility_requests.sql"
+ROLLBACK_0116 = sec_db.REPO / "docs" / "sql" / "rollback_0116_visibility_requests.sql"
 
 APPROVE = "select public.approve_video_publish(%s, %s, %s::jsonb)"
 ACK = json.dumps({"rights_and_labels": True})
@@ -422,6 +426,8 @@ def test_applying_it_again_changes_nothing(conn):
         before = snapshot(su)
         su.conn.execute(text)
         su.conn.execute(text)
+        # 0112 alone puts back its own approve_video_publish and audit list; 0116 replaces both, so it goes on top again.
+        su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
         assert snapshot(su) == before
 
 
@@ -446,7 +452,8 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     base = f"ns_approve_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0112_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
+                                      if not f.name.startswith(("0112_", "0116_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -455,13 +462,20 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
             policy = b.execute("select cmd, qual, with_check from pg_policies where tablename = 'review_intents' and policyname = 'review_intents_insert'").fetchone()
     finally:
         sec_db.drop_database(admin, base)
-    rollback = ROLLBACK.read_text(encoding="utf-8")
-    assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
-    body = "\n".join(ln for ln in rollback.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    def sql_body(path):
+        text = path.read_text(encoding="utf-8")
+        assert re.search(r"(?m)^begin;$", text) and re.search(r"(?m)^commit;$", text)
+        return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+    body, body_0116 = sql_body(ROLLBACK), sql_body(ROLLBACK_0116)
+    # 0116's rollback keeps (by design, see its header) the three internal functions its kept table and triggers need.
+    kept = ["channels_publish_switch_guard()", "video_visibility_requests_guard()", "visibility_reason_words()"]
     with as_superuser(conn, commit=False) as su:
         after = snapshot(su)
+        su.conn.execute(body_0116)                 # going down: 0116, then 0112
         su.conn.execute(body)
-        assert [r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")] == fns
+        live = [r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
+        assert sorted(live) == sorted([*fns, *kept])
         for sig, (definition, acl) in want.items():
             assert su.value("select pg_get_functiondef(%s::regprocedure)", [sig]) == definition, sig
             assert su.value("select proacl::text from pg_proc where oid = %s::regprocedure", [sig]) == acl, sig
@@ -469,6 +483,8 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
         assert su.value("select public.audit_action_allowed('video.approve')") is False
         # the columns stay (a record of who approved what); the direct insert works again
         assert su.value("select count(*) from information_schema.columns where table_name = 'videos' and column_name = 'cut_sha256'") == 1
-        su.conn.execute(body)                      # the rollback replays
-        su.conn.execute(MIGRATION.read_text(encoding="utf-8"))
+        su.conn.execute(body_0116)                 # the rollbacks replay
+        su.conn.execute(body)
+        su.conn.execute(MIGRATION.read_text(encoding="utf-8"))      # going up: 0112, then 0116
+        su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
         assert snapshot(su) == after

@@ -170,6 +170,9 @@ jobs:
           # shows an "off" note and /api/marketing answers 404). MARKETING_TELEGRAM_CHAT is the channel's public @name,
           # shown on the confirm sheet; never the bot token (that secret never reaches the web container).
           WEBENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
+          # Publish when approved (migration 0116): hidden from customers unless this variable is on (on, 1, true or yes); empty = hidden
+          # (docs/APPROVE_PUBLISH_1B.md, "Releasing it"). The worker's own switch is a separate variable on the worker.
+          WEBENV_PUBLISH_ON_APPROVE_RELEASED: ${{ vars.PUBLISH_ON_APPROVE_RELEASED }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}

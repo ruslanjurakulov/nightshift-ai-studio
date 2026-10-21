@@ -26,8 +26,20 @@ credential *reference* into a usable token, and it does so server-side.
 `config.YOUTUBE_PRIVACY` defaults to `private`, and so do the schedule and the
 manual dispatch: this bot has never published anything publicly on its own.
 Auto publish is a per-channel switch that defaults to off, and the publish gate
-(`modules/publish_gate.py`) runs in front of both paths. Nothing you write may
-make the bot publish more autonomously, on any path, by any default.
+(`modules/publish_gate.py`) runs in front of both paths. There is exactly one
+further way a video becomes public through this system, and it is a person's
+act, not the bot's: "publish when approved" (migration 0116,
+`docs/APPROVE_PUBLISH_1B.md`). It is a second per-channel switch, off by default,
+that only a real administrator of the channel's workspace can turn on (through an
+audited database function; not a default, not the service key), and the worker
+that carries it out is itself off unless `NIGHTSHIFT_VISIBILITY_PUBLISH=on`. After
+a person approved one exact cut of an already uploaded, private video, the queue
+worker may ask YouTube once to make that video public, only after asking the
+database again (the cut still the approved one, the gate verdict stored and
+allowed, the approval unexpired, the switch still on), and it records only what a
+read-back of YouTube reports. `modules/visibility_publish.py` is the only code
+that may change an existing video's privacy. Nothing you write may make the bot
+publish more autonomously than that, on any path, by any default.
 
 **3. Nothing in a browser may publish, re-render, or spend.**
 A dashboard button writes a row and stops. Today only scene repair reads
@@ -36,8 +48,13 @@ A dashboard button writes a row and stops. Today only scene repair reads
 `approve_video_publish` (migration 0112): it records who approved which exact cut
 (its sha256), until when (24 hours) and with what acknowledgement, and it does NOT
 change the video's privacy. Every upload is private and stays private until a person
-makes it public on YouTube, unless the channel's auto-publish switch is on. Phase 1b (the bot flips privacy) is not built yet, and
-it needs the owner's amendment of rule 2 first. The two re-render buttons stay
+makes it public on YouTube, unless the channel's auto-publish switch is on or, on a
+channel whose administrators switched on "publish when approved" (migration 0116,
+default off), the approval itself queues one request in the database that the queue
+worker carries out (rule 2). The browser still only calls a database function and
+stops: the button reads "Approve and publish" only on such a channel, and the
+panel says "published" only for a request whose read-back of YouTube said public.
+The two re-render buttons stay
 disabled until a priced consumer exists. An intent row is the record of *who asked*,
 which is why intents can be read but never edited or deleted, and why a browser can
 no longer insert an `approve` one. The dashboard uses the Supabase ANON key only —

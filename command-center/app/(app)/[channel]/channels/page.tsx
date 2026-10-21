@@ -32,6 +32,7 @@ import { loadStyleContext } from "@/lib/server/style-kits";
 import { loadDnaCharacters } from "@/lib/server/channel-dna";
 import { dnaFromChannel } from "@/lib/channel-dna";
 import { atLeast } from "@/lib/auth/roles";
+import { publishOnApproveReleased, publishSwitchForCard } from "@/lib/server/release-flags";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -129,6 +130,10 @@ export default async function ChannelsPage({
   // refuses everyone else (migration 0114), so only a platform administrator is offered them. An unknown reads as no.
   const canLowerAiLabel = await isPlatformAdmin();
 
+  // "Publish when approved" can be turned ON only once released (server flag, default off). Until then a channel whose switch is
+  // already on still shows it, and it can be turned off; no channel offers to turn it on.
+  const released = publishOnApproveReleased();
+
   const thumbnails = Object.fromEntries(channels.map((c) => [c.channel_id, c.credential_ref?.youtube_thumbnail ?? null]));
 
   return (
@@ -188,7 +193,8 @@ export default async function ChannelsPage({
             {channels.map((channel) => (
               <ChannelCard
                 key={channel.channel_id}
-                channel={channel}
+                channel={publishSwitchForCard(channel, released)}
+                publishReleased={released}
                 slug={channelSlug(channel, channels)}
                 credential={credentials.find(
                   (c) => c.channel_id === channel.channel_id && c.provider === "youtube",

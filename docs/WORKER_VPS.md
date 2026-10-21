@@ -143,7 +143,20 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # Izohlar qutisi (migration 0081, modules/comment_replies.py). DEFAULT: O'CHIQ.
 # NIGHTSHIFT_COMMENT_INBOX=on           # faqat "on" bo'lsa ishlaydi (0081 qo'llanganidan keyin)
 # NIGHTSHIFT_INBOX_SYNC_SECONDS=300     # har oraliqda bitta kanal, navbat bilan
+
+# "Tasdiqdan keyin nashr qilish" (migration 0116, modules/visibility_publish.py). DEFAULT: O'CHIQ.
+# NIGHTSHIFT_VISIBILITY_PUBLISH=on          # faqat "on" bo'lsa ishlaydi (0116 qo'llanganidan keyin)
+# NIGHTSHIFT_VISIBILITY_DAILY_UNITS=1000    # bu funksiyaning kunlik YouTube kvotasi (videos.update = 50 birlik)
+# NIGHTSHIFT_VISIBILITY_ORG_PERCENT=50      # bitta tashkilotning shu kvotadagi ulushi, foiz 1-100 (sukut bo'yicha 50)
+# NIGHTSHIFT_YT_QUOTA_PROJECT=default       # Google Cloud loyihasining belgisi (kvota jurnali uchun)
 ```
+
+**Tasdiqdan keyin nashr qilish (0116): sukut bo'yicha o'chiq, ikki qulf.** Workerning bu qadami
+`NIGHTSHIFT_VISIBILITY_PUBLISH=on` bo'lsagina ishlaydi, va u faqat admin kanal sozlamasida
+"Publish when approved"ni yoqqan kanallarning, odam tasdiqlagan aniq versiyadagi, allaqachon yuklangan
+yopiq videosini ommaviy qilishni YouTube'dan so'raydi: avval bazadan hamma narsani qayta so'raydi,
+so'ng `videos.update` (50 birlik) ni bir marta yuboradi va YouTube'dan holatni **qayta o'qib** faqat
+o'qilganini yozadi. Batafsil, jonli sinov ro'yxati va qaytarish: `docs/APPROVE_PUBLISH_1B.md`.
 
 **Izohlar qutisi (0081): sukut bo'yicha o'chiq.** `NIGHTSHIFT_COMMENT_INBOX=on`
 qo'yilgandagina worker render vazifalari orasida ulangan kanallarning oxirgi
