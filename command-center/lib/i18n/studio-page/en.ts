@@ -91,7 +91,7 @@ export const studioPageEn = {
     items: [
       { id: "private", title: "Uploads go to YouTube as private", body: "A finished video is sent to your channel as a private video, which only you and the people you share it with can watch, until it is made public." },
       { id: "check", title: "A publish check runs first", body: "Every video passes a publish check, and the verdict is shown on the video’s page: passed, or blocked and why." },
-      { id: "approve", title: "Going public is your decision", body: "You watch the video and record your decision in the app. Making it public is done on YouTube. Auto-publish is a switch per channel, and it stays off until you turn it on." },
+      { id: "approve", title: "Going public is your decision", body: "You watch the video and record your decision in the app. You make it public on YouTube or, on a channel where someone who manages your workspace has switched on “Publish when approved”, by approving that exact video in the app. Auto-publish and “Publish when approved” are switches per channel, and both stay off until you turn them on." },
     ],
     figure: "Illustration of a video’s state before it goes public: uploaded as private, the publish check passed, waiting for your approval. Everything shown is an example.",
     figureTitle: "Publish desk",
@@ -121,7 +121,7 @@ export const studioPageEn = {
       {
         id: "publishes",
         q: "Do you publish for me?",
-        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on.",
+        a: "Only if you switch it on. Finished videos go to YouTube as private and pass a publish check first. Auto-publish is off for a channel until you turn it on. “Publish when approved” is also off until someone who manages your workspace turns it on for a channel; then approving that exact video in the app asks YouTube to make it public.",
       },
       {
         id: "languages",
@@ -136,7 +136,7 @@ export const studioPageEn = {
       {
         id: "private",
         q: "What is a private upload?",
-        a: "On YouTube, a private video can be watched only by you and the people you share it with. Nightshift sends every finished video to your channel that way first, and it becomes public only when you make it public.",
+        a: "On YouTube, a private video can be watched only by you and the people you share it with. Nightshift sends every finished video to your channel that way first, and it becomes public only when you make it public: on YouTube or, where “Publish when approved” is on for the channel, by approving it in the app.",
       },
       {
         id: "data",

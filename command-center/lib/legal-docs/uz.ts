@@ -22,7 +22,7 @@ export const uz: LegalTexts = {
           {
             list: [
               "Akkaunt maʼlumotlari: elektron pochta manzilingiz va parolingiz — ularni autentifikatsiya provayderimiz (Supabase Auth) boshqaradi. Biz parolingizni hech qachon ochiq koʻrinishda koʻrmaymiz va saqlamaymiz.",
-              "Siz kiritgan sozlamalar: kanal nomlari, nisha, til, ovoz va uslub tanlovi, jadvallar, seriyalar, shuningdek tekshiruvdagi qarorlaringiz (masalan, videoni tasdiqlash) — ular foydalanuvchi identifikatoringiz bilan audit jurnaliga yoziladi.",
+              "Siz kiritgan sozlamalar: kanal nomlari, nisha, til, ovoz va uslub tanlovi, jadvallar, seriyalar, shuningdek tekshiruvdagi qarorlaringiz (masalan, videoni tasdiqlash va, kanal uchun “Tasdiqdan keyin nashr qilish” yoqilgan boʻlsa, undan keyingi soʻrov hamda YouTube xabar qilgan natija) — ular foydalanuvchi identifikatoringiz bilan audit jurnaliga yoziladi.",
               "Siz kiritgan uchinchi tomon xizmatlarining API kalitlari: ular serverimizga kelgan zahoti shifrlanadi, konveyerning shifrlangan sirlar omboriga (GitHub Actions secrets) yoziladi va tashlab yuboriladi. Ular hech qachon maʼlumotlar bazamizda saqlanmaydi, sizga qayta koʻrsatilmaydi va jurnallarga yozilmaydi.",
               "Telegram bildirishnomalari, faqat chatni ulagan boʻlsangiz: Telegram chatining identifikatori va Telegram u uchun bizga beradigan ism yoki @username, xabarlar uchun tanlagan tilingiz, qaysi bildirishnomalarni yoqqaningiz va oxirgi xabar qachon yetkazilgani. Chatni Sozlamalarda istalgan payt toʻxtatish yoki uzish mumkin; uzilganda bu maʼlumotlar oʻchiriladi.",
               "Siz ruxsat bergan Google foydalanuvchi maʼlumotlari — 3-boʻlimga qarang.",
@@ -43,7 +43,7 @@ export const uz: LegalTexts = {
               rows: [
                 [
                   "`youtube.upload`",
-                  "Nightshift kanalingiz uchun tayyorlagan videolarni yuklaydi va ularning muqovasini (thumbnail) oʻrnatadi. Agar shu kanal uchun boshqacha tanlamagan boʻlsangiz — masalan, sukut boʻyicha oʻchiq avto-nashrni yoqmagan boʻlsangiz — yuklangan videolar yopiq (private) boʻladi.",
+                  "Nightshift kanalingiz uchun tayyorlagan videolarni yuklaydi va ularning muqovasini (thumbnail) oʻrnatadi. Agar shu kanal uchun boshqacha tanlamagan boʻlsangiz — masalan, sukut boʻyicha oʻchiq avto-nashrni yoqmagan boʻlsangiz — yuklangan videolar yopiq (private) boʻladi. Yopiq yuklangan videoni sizning tasdigʻingizdan keyin ommaviy qilish ham mumkin, lekin faqat shu kanal uchun “Tasdiqdan keyin nashr qilish” yoqilgan boʻlsa (sukut boʻyicha oʻchiq; 4-boʻlimga qarang).",
                 ],
                 [
                   "`youtube.readonly`",
@@ -51,7 +51,7 @@ export const uz: LegalTexts = {
                 ],
                 [
                   "`youtube.force-ssl`",
-                  "Nightshift yuklagan videolarga subtitr yoʻlagini qoʻshadi; nashr qilingan videoni seriya pleylistiga qoʻshadi; Nightshift nashr qilgan video ostida kanal nomidan bitta izoh (tomoshabinlarga savol) qoldiradi; auditoriya soʻrayotgan mavzularni topish uchun kanal videolaridagi izohlarni oʻqiydi. Texnik jihatdan bu ruxsat videolarni tahrirlash va oʻchirishga ham imkon beradi — Nightshift hech narsani oʻchirmaydi va mavjud videolaringiz, pleylistlaringiz yoki izohlaringizni tahrirlamaydi; u faqat shu yerda sanab oʻtilganlarni qoʻshadi.",
+                  "Nightshift yuklagan videolarga subtitr yoʻlagini qoʻshadi; nashr qilingan videoni seriya pleylistiga qoʻshadi; Nightshift nashr qilgan video ostida kanal nomidan bitta izoh (tomoshabinlarga savol) qoldiradi; auditoriya soʻrayotgan mavzularni topish uchun kanal videolaridagi izohlarni oʻqiydi; hamda faqat ish maydoningiz administratori shu kanal uchun “Tasdiqdan keyin nashr qilish”ni (sukut boʻyicha oʻchiq) yoqqan va inson aynan shu videoni tasdiqlagan boʻlsagina, shu bitta videoning koʻrinish sozlamasini (visibility) yopiqdan ommaviyga oʻzgartiradi va tasdiqlash uchun videoni qayta oʻqiydi (4-boʻlimga qarang). Texnik jihatdan bu ruxsat videolarni tahrirlash va oʻchirishga ham imkon beradi. Nightshift hech narsani oʻchirmaydi va mavjud videolaringiz, pleylistlaringiz yoki izohlaringizni tahrirlamaydi — faqat siz tasdiqlagan videoning shu bitta koʻrinish oʻzgarishi bundan mustasno: bu oʻzgarish videoning nomi, tavsifi, teglari va muqovasiga tegmaydi, undan tashqari Nightshift faqat shu yerda sanab oʻtilganlarni qoʻshadi.",
                 ],
                 [
                   "`yt-analytics.readonly`",
@@ -71,7 +71,8 @@ export const uz: LegalTexts = {
         id: "how-we-use-google-data",
         heading: "4. Google maʼlumotlaridan qanday foydalanamiz",
         body: [
-          "Google foydalanuvchi maʼlumotlari faqat Xizmatda siz koʻradigan funksiyalarni taqdim etish va yaxshilash uchun ishlatiladi: videolaringizni yuklash va subtitrlash, ularni pleylistlarga qoʻshish, jalb qiluvchi izohni joylash, takroriy yuklashning oldini olish, kanal natijalarini panelda koʻrsatish va nima yaxshi ishlagani hamda auditoriya nimani soʻrayotganiga qarab keyingi mavzularni tanlash.",
+          "Google foydalanuvchi maʼlumotlari faqat Xizmatda siz koʻradigan funksiyalarni taqdim etish va yaxshilash uchun ishlatiladi: videolaringizni yuklash va subtitrlash, ularni pleylistlarga qoʻshish, jalb qiluvchi izohni joylash, takroriy yuklashning oldini olish, kanal natijalarini panelda koʻrsatish va nima yaxshi ishlagani hamda auditoriya nimani soʻrayotganiga qarab keyingi mavzularni tanlash hamda — faqat siz yoqqan joyda — siz tasdiqlagan videoni ommaviy qilish.",
+          "“Tasdiqdan keyin nashr qilish”. Bu Nightshift YouTube’da allaqachon turgan videoni oʻzgartiradigan yagona holat. U har bir kanal uchun sukut boʻyicha oʻchiq. Ish maydoningiz administratori uni bitta kanal uchun yoqishi mumkin (buning uchun tasdiq soʻzini yozish kerak) va istalgan payt “Kanallar” sahifasida oʻchirib qoʻyishi mumkin. U yoqilgan boʻlsa va inson Nightshift allaqachon yopiq holda yuklagan videoning aynan bitta versiyasini tasdiqlasa, ishchi dastur tasdiq hali kuchdaligini yana tekshiradi (u 24 soat amal qiladi va video qayta renderlansa yoki tuzatilsa tugaydi) va YouTube’dan shu videoning koʻrinish sozlamasini yopiqdan ommaviyga oʻzgartirishni bir marta soʻraydi. Soʻrovga videoning statusdagi boshqa sozlamalari YouTube qaytargan holida kiritiladi, shunda ular avvalgidek qoladi. Keyin Nightshift videoni qayta oʻqiydi va faqat YouTube xabar qilganini yozib qoʻyadi; YouTube videoni baribir yopiq qoldirishi mumkin. Nightshift videoning nomi, tavsifi, teglari va muqovasini oʻzgartirmaydi, hech narsani oʻchirmaydi va boshqa video, pleylist yoki izohni tahrirlamaydi.",
           "Bu xulosalar uchun videolaringizdagi izohlar matni va video koʻrsatkichlari kanalingiz uchun tasniflash va umumlashtirish maqsadida matn uchun sunʼiy intellekt provayderimizga (Google Gemini API) yuborilishi mumkin. Biz izoh matnini emas, natijani saqlaymiz — masalan, auditoriya soʻragan mavzu va u necha marta soʻralgani.",
         ],
       },
@@ -261,6 +262,7 @@ export const uz: LegalTexts = {
         heading: "4. YouTube kanalingiz va Google akkauntingiz",
         body: [
           "Faqat oʻzingizga tegishli yoki boshqarishga vakolatingiz bor kanallarni ulashingiz mumkin. Kanalni ulash orqali siz Nightshift’ga Maxfiylik siyosatida tavsiflanganidek, Google rozilik oynasida bergan ruxsatlaringiz doirasida u bilan ishlashga ruxsat berasiz. Kanalingiz uchun javobgarlik oʻzingizda qoladi va siz [YouTube foydalanish shartlari](https://www.youtube.com/t/terms) hamda YouTube’ning [Hamjamiyat qoidalari](https://www.youtube.com/howyoutubeworks/policies/community-guidelines/)ga rioya qilishingiz shart. Google maʼlumotlaringizni qanday qayta ishlashi [Google maxfiylik siyosati](https://policies.google.com/privacy) bilan tartibga solinadi.",
+          "Tasdiqlangan videoni ommaviy qilish. Nightshift videolarni yopiq holda yuklaydi. Ish maydoningiz administratori kanal uchun “Tasdiqdan keyin nashr qilish”ni yoqqan joyda (sukut boʻyicha oʻchiq, istalgan payt oʻchirib qoʻyish mumkin) shu kanaldagi videoning aynan bitta versiyasini tasdiqlash YouTube’dan shu videoni yopiqdan ommaviyga oʻzgartirishni soʻraydi. Bu usulda hech narsa ommaviy boʻlmaydi — faqat shu sozlama yoqilgan va inson aynan shu versiyani tasdiqlagan boʻlsa; tasdiq 24 soatdan keyin yoki video qayta renderlansa yoxud tuzatilsa tugaydi. YouTube videoni baribir yopiq qoldirishi mumkin. Shu usulda ommaviy boʻlgan video siz tanlagan sozlamalar boʻyicha nashr qilingan kontent hisoblanadi va unga 5-boʻlim tatbiq etiladi. Bu oʻzgarish videoning nomi, tavsifi, teglari va muqovasiga tegmaydi va hech narsani oʻchirmaydi.",
           "Ruxsatni istalgan vaqtda [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions) sahifasida bekor qilishingiz mumkin; shundan soʻng Xizmat oʻsha kanal bilan ishlashni toʻxtatadi.",
         ],
       },
