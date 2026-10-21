@@ -253,6 +253,14 @@ export interface ChannelAgentConfig {
    */
   storyboard_review?: boolean;
   /**
+   * The AI-content label (modules/ai_disclosure.py): `auto` | `always` | `never`, and the narrator's voice
+   * `generic` | `own_clone` | `real_person`. Read them through normalizeAiMode / normalizeAiVoice (lib/aiDisclosure.ts):
+   * the stored text may be any spelling the pipeline accepts. `never` and `own_clone` lower what is declared to the
+   * platforms and only a platform administrator may set them (migration 0114).
+   */
+  ai_disclosure?: unknown;
+  ai_disclosure_voice?: unknown;
+  /**
    * The channel's Character Bible / Elements Library: reusable characters,
    * locations and props kept consistent across videos (modules/elements.py).
    * The pipeline detects which appear in a scene and injects each one's

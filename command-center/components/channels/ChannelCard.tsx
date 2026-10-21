@@ -14,6 +14,7 @@ import type { ChannelHealth } from "@/lib/channels";
 import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
 import { ChannelTokenPanel, type ChannelTokenPanelProps } from "@/components/channels/ChannelTokenPanel";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
+import { AiDisclosureSettings } from "@/components/channels/AiDisclosureSettings";
 
 /**
  * One channel: identity, configuration, credential status and health.
@@ -39,6 +40,8 @@ export function ChannelCard({
   vault,
   dna,
   canControl = false,
+  canEdit = false,
+  canLowerAiLabel = false,
 }: {
   channel: ChannelRow;
   /** The channel's URL segment — its name, not its internal id. */
@@ -58,6 +61,13 @@ export function ChannelCard({
    * this the switches are shown but disabled.
    */
   canControl?: boolean;
+  /** May the caller write this channel's settings (an editor of its organization)? */
+  canEdit?: boolean;
+  /**
+   * Is the caller a platform administrator? Only then are `never` and `own_clone` (the two AI-content label settings that
+   * lower what is declared to the platforms) offered: migration 0114 refuses them from everyone else.
+   */
+  canLowerAiLabel?: boolean;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -325,6 +335,13 @@ export function ChannelCard({
               {t.channels.saveFailed}: {error}
             </p>
           )}
+          {/* The AI-content label. `never` and `own_clone` are the platform team's to set (migration 0114). */}
+          <AiDisclosureSettings
+            channelId={channel.channel_id}
+            agent={channel.agent_config}
+            canEdit={canEdit}
+            canLower={canLowerAiLabel}
+          />
         </div>
 
         <div className="flex flex-col gap-4">

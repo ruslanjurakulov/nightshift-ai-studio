@@ -125,6 +125,9 @@ export default async function ChannelsPage({
   // Who may edit a channel is the database's question (0018); this only hides
   // the Edit button from someone it would refuse.
   const canEditDna = atLeast(orgRole, "editor");
+  // The AI-content label settings that lower what is declared (never, own_clone) are the platform team's: the database
+  // refuses everyone else (migration 0114), so only a platform administrator is offered them. An unknown reads as no.
+  const canLowerAiLabel = await isPlatformAdmin();
 
   const thumbnails = Object.fromEntries(channels.map((c) => [c.channel_id, c.credential_ref?.youtube_thumbnail ?? null]));
 
@@ -200,6 +203,8 @@ export default async function ChannelsPage({
                 }
                 videos={videos.filter((v) => v.channel_id === channel.channel_id).length}
                 canControl={atLeast(orgRole, "admin")}
+                canEdit={canEditDna}
+                canLowerAiLabel={canLowerAiLabel}
                 vault={
                   tokens && role
                     ? {
