@@ -8,17 +8,20 @@ the authorized-user JSON the uploader already loads — in memory, never logged.
 
 Fallback order, per channel
 ---------------------------
-1. The legacy default channel never consults Vault. Its token stays the
-   ``YOUTUBE_TOKEN_JSON`` GitHub secret, exactly as before.
-2. An ACTIVE Vault connection wins. A customer who connected (or reconnected)
-   their channel expects that connection to be the one used.
-3. Otherwise the channel's own ``CHRONOS_YT_TOKEN_<REF>`` env var / GitHub
-   secret, as before 0022 — so nothing changes for a channel nobody connected
-   through Vault, or for a deployment that has not applied 0022. ONLY for the
-   operator's own channels: a customer organization's channel never reads the
-   environment (its row is written by its members, so it must not choose which
-   secret the worker reads: BR-G-002). Its only token is step 2.
-4. Otherwise no token: publishing and analytics are skipped for the run, as
+1. An ACTIVE Vault connection wins. A customer who connected (or reconnected)
+   their channel expects that connection to be the one used; so does the
+   operator who clicked "Connect YouTube" on one of his own channels, the
+   legacy ``default`` channel (Chronos) included (migration 0115). The key is
+   always the channel's OWN id: never ``credential.ref``, never anything a
+   customer's row can name.
+2. Otherwise the channel's own ``CHRONOS_YT_TOKEN_<REF>`` env var / GitHub
+   secret (the default channel's ``YOUTUBE_TOKEN_JSON``), as before 0022 — so
+   nothing changes for a channel nobody connected through Vault, or for a
+   deployment that has not applied 0022 / 0115. ONLY for the operator's own
+   channels: a customer organization's channel never reads the environment
+   (its row is written by its members, so it must not choose which secret the
+   worker reads: BR-G-002). Its only token is step 1.
+3. Otherwise no token: publishing and analytics are skipped for the run, as
    they are today for a channel with no secret. Never another channel's token.
 
 A Vault lookup that FAILS (network, HTTP 5xx) is not "no token": when there is
@@ -60,6 +63,13 @@ CLIENT_FILE_ENV = "YOUTUBE_CLIENT_SECRET_JSON"
 class ChannelTokenError(RuntimeError):
     """A channel's Vault token could not be used. The message is ours and
     names the remedy; it never contains a token, a secret or a response body."""
+
+
+class VaultLookupError(ChannelTokenError):
+    """The Vault LOOKUP itself failed (network, HTTP 5xx, an unreadable answer),
+    which says nothing about whether the channel has a connection. Distinct from
+    a connection whose OAuth client is missing: only a failed lookup may fall
+    back to the channel's old secret."""
 
 
 @dataclass(frozen=True)
@@ -120,7 +130,7 @@ class VaultTokenClient:
                 timeout=self._timeout,
             )
         except Exception as e:  # network, TLS, timeout — the type only
-            raise ChannelTokenError(f"Vault token lookup failed ({type(e).__name__})") from None
+            raise VaultLookupError(f"Vault token lookup failed ({type(e).__name__})") from None
         status = getattr(r, "status_code", 0)
         if status == 404:
             # PostgREST's "function not found": 0022 is not applied here, which
@@ -129,11 +139,11 @@ class VaultTokenClient:
                         "not applied) — using the channel's GitHub secret, as before", channel_id)
             return None
         if status >= 300:
-            raise ChannelTokenError(f"Vault token lookup failed: HTTP {status}")
+            raise VaultLookupError(f"Vault token lookup failed: HTTP {status}")
         try:
             rows = r.json() or []
         except Exception:
-            raise ChannelTokenError("Vault token lookup returned an unreadable answer") from None
+            raise VaultLookupError("Vault token lookup returned an unreadable answer") from None
         if isinstance(rows, dict):
             rows = [rows]
         if not rows:
@@ -220,7 +230,6 @@ def resolve_channel_token(
     env: Mapping[str, str],
     *,
     client: Optional[VaultTokenClient] = None,
-    is_default: bool = False,
     expected_youtube_channel_id: str = "",
     allow_env: bool = True,
 ) -> ResolvedToken:
@@ -228,10 +237,13 @@ def resolve_channel_token(
 
     ``allow_env=False`` is a channel that is not the operator's: step 3 (the
     environment) does not exist for it, whatever its row names, so the only
-    token it can ever get is its own Vault connection (BR-G-002)."""
+    token it can ever get is its own Vault connection (BR-G-002).
+
+    ``channel_id`` is the channel row's own id and is the Vault key. The caller
+    passes ``allow_env=True`` only for a channel of the operator's organization."""
     env_token = (env.get(env_name) or "").strip() if (env_name and allow_env) else ""
 
-    if not is_default and client is not None:
+    if client is not None:
         try:
             vault = client.read(channel_id)
         except ChannelTokenError as e:

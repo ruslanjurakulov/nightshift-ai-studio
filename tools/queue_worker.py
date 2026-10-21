@@ -487,18 +487,20 @@ def channel_token(channel_row: Mapping, env: Mapping[str, str],
                   *, expected_youtube_channel_id: str = "") -> "channel_tokens.ResolvedToken":
     """This channel's YouTube token, in memory — the one rule a render run
     (prepare_credentials) and a "Publish to platforms" YouTube upload
-    (youtube_publish_credentials) share. The default channel: YOUTUBE_TOKEN_JSON.
-    Any other operator channel: its ACTIVE Vault connection, else its own
-    CHRONOS_YT_TOKEN_<REF>. A channel of any other organization: its ACTIVE
-    Vault connection only, never the environment (BR-G-002)
-    (modules/channel_tokens.py). Never another channel's token. Raises
-    ChannelTokenError when the Vault lookup failed with nothing to fall back to."""
+    (youtube_publish_credentials) share. The operator's own channels: the ACTIVE
+    Vault connection its owner made with the Command Center's button (migration
+    0115), else its own secret: YOUTUBE_TOKEN_JSON for the default channel,
+    CHRONOS_YT_TOKEN_<REF> for any other. A channel of any other organization:
+    its ACTIVE Vault connection only, never the environment (BR-G-002)
+    (modules/channel_tokens.py). The Vault key is always the row's own channel
+    id. Never another channel's token. Raises ChannelTokenError when the Vault
+    lookup failed with nothing to fall back to."""
     if channel_row.get("is_default"):
-        raw = env.get("YOUTUBE_TOKEN_JSON", "")
-        return (channel_tokens.ResolvedToken(channel_tokens.SOURCE_ENV, raw) if raw.strip()
-                else channel_tokens.ResolvedToken(channel_tokens.SOURCE_NONE))
-    name = str(channel_row.get("token_secret") or "")
-    if not name.startswith(TOKEN_PREFIX):
+        # `is_default` is set only for the operator's own `default` channel (tools/list_channels._row).
+        name = "YOUTUBE_TOKEN_JSON"
+    else:
+        name = str(channel_row.get("token_secret") or "")
+    if name != "YOUTUBE_TOKEN_JSON" and not name.startswith(TOKEN_PREFIX):
         name = ""
     # The environment is the operator's own channels' place for a token. A row
     # without the flag is treated as someone else's: the safe direction.
@@ -506,7 +508,7 @@ def channel_token(channel_row: Mapping, env: Mapping[str, str],
         str(channel_row.get("channel_id") or ""), name, env, client=token_client,
         expected_youtube_channel_id=(expected_youtube_channel_id
                                      or str(channel_row.get("youtube_channel_id") or "")),
-        allow_env=channel_row.get("is_operators") is True)
+        allow_env=channel_row.get("is_operators") is True or channel_row.get("is_default") is True)
 
 
 def youtube_publish_credentials(channel_id: str, env: Mapping[str, str],
@@ -556,10 +558,11 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
     if channel_row.get("is_default"):
         if resolved.found:
             _write_private(Path(repo_dir) / "youtube_token.json", resolved.token_json)
-            logger.info("channel %s: YOUTUBE_TOKEN_JSON is set — wrote youtube_token.json", cid)
+            logger.info("channel %s: its %s is set — wrote youtube_token.json", cid,
+                        "Vault connection" if resolved.source == channel_tokens.SOURCE_VAULT else "YOUTUBE_TOKEN_JSON")
         else:
-            logger.info("channel %s: YOUTUBE_TOKEN_JSON is not set — publishing and analytics "
-                        "will be skipped", cid)
+            logger.info("channel %s: no Vault connection and YOUTUBE_TOKEN_JSON is not set — publishing "
+                        "and analytics will be skipped", cid)
     elif channel_row.get("is_operators") is not True:
         # Another organization's channel: its Vault token is handed over as the
         # file its uploader reads (modules/channel_credentials.token_path), never
@@ -1273,10 +1276,15 @@ class Worker:
             # A customer's token is a file, not an env var (BR-L-080): its strings
             # are added from the file the run reads.
             from_file: List[str] = []
-            if channel_row.get("is_operators") is not True and not channel_row.get("is_default"):
+            if channel_row.get("is_default"):
+                name = "youtube_token.json"          # the operator's own default channel: Vault or its secret
+            elif channel_row.get("is_operators") is not True:
+                name = channel_credentials.customer_token_filename(str(channel_row.get("channel_id")))
+            else:
+                name = ""
+            if name:
                 try:
-                    text = (Path(self.repo_dir) / channel_credentials.customer_token_filename(
-                        str(channel_row.get("channel_id")))).read_text(encoding="utf-8")
+                    text = (Path(self.repo_dir) / name).read_text(encoding="utf-8")
                     from_file = channel_tokens.secret_strings(channel_tokens.ResolvedToken(
                         channel_tokens.SOURCE_VAULT, text))
                 except OSError:

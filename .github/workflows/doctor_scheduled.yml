@@ -116,6 +116,11 @@ jobs:
           YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # A channel connected from the Command Center keeps its token in Vault: the doctor reads it
+          # with the service key above (as the video run does) and refreshes it with the Command
+          # Center's OAuth client, the pair that minted it.
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           # Reported by the doctor (a WARN, never a FAIL): is the scheduled pipeline paused?
           NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
           TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
