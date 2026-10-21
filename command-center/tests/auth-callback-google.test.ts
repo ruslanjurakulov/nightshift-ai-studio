@@ -105,6 +105,34 @@ describe("/auth/callback after Continue with Google", () => {
     expect(await land("?code=c1&provider=google&next=https%3A%2F%2Fevil.example")).toBe("/welcome");
   });
 
+  // `next` is in a link anyone can craft. After a verified Google sign-in the person must only ever be sent to a
+  // path on this origin, whichever way the address is written or encoded.
+  it.each([
+    "//evil.example",
+    "https://evil.example",
+    "/\\evil.example",
+    "/%5cevil.example",
+    "/%2f%2fevil.example",
+    "/%252f%252fevil.example",
+    "/\t/evil.example",
+    "/a/..//evil.example",
+    "javascript:alert(1)",
+    "/auth/callback?next=//evil.example",
+  ])("never follows next=%j off this origin after a verified Google sign-in", async (next) => {
+    h.exchange.mockResolvedValue(session(true));
+    const res = await GET(new Request(`https://nightshift.test/auth/callback?code=c1&provider=google&next=${encodeURIComponent(next)}`));
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.origin).toBe("https://nightshift.test");
+    expect(loc.pathname.startsWith("//")).toBe(false);
+    expect(loc.pathname).not.toMatch(/^\/auth(\/|$)/);
+  });
+
+  it("the same attacks written as a bare, double-encoded query value land on /welcome", async () => {
+    h.exchange.mockResolvedValue(session(true));
+    expect(await land("?code=c1&provider=google&next=%252F%252Fevil.example")).toBe("/welcome");
+    expect(await land("?code=c1&provider=google&next=%2F%2Fevil.example")).toBe("/welcome");
+  });
+
   describe("with password recovery (#418): the gate comes first", () => {
     it("a refused Google session is never turned into a recovery session, whatever the exchange says", async () => {
       const bad = session(false);
