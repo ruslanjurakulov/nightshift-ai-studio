@@ -23,7 +23,8 @@ What it does and does not do
   Supabase checks are a handful of ``limit=0`` reads), only on endpoints that are
   free: ElevenLabs subscription and voices, Leonardo /me, Pexels search, Gemini's
   ``GET models/{model}``, Supabase REST. The one POST is the YouTube OAuth token
-  refresh (free, in memory, nothing is saved). Providers with no such endpoint
+  refresh (free, in memory, nothing is saved), made once for the default channel's
+  token and once for each other scheduled operator channel's. Providers with no such endpoint
   are reported UNVERIFIED, never PASS; the one the config selects counts as WARN.
 * A value read from a free-text variable (provider ids, model names) is echoed
   only if it is a known id; anything else is "an unrecognised value", so a key
@@ -51,6 +52,8 @@ from typing import Any, Callable, Dict, List, Mapping, NamedTuple, Optional, Seq
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from modules import pipeline_pause  # noqa: E402 - stdlib only; the scheduler's and the bot's reading of the pause
+
 PASS, WARN, FAIL, UNVERIFIED, SKIP = "PASS", "WARN", "FAIL", "UNVERIFIED", "SKIP"
 _TAGS = {PASS: "[PASS]", WARN: "[WARN]", FAIL: "[FAIL]", UNVERIFIED: "[ -- ]", SKIP: "[SKIP]"}
 
@@ -60,6 +63,12 @@ _TRUE = ("1", "true", "yes", "on")
 CHARS_PER_MINUTE = 15 * 60
 MIN_FREE_GB = 5
 YOUTUBE_TOKEN_URI = "https://oauth2.googleapis.com/token"  # fixed: never the URI inside a secret
+#: How many scheduled channels' tokens the scheduled workflow hands the doctor (DOCTOR_CHANNEL_TOKEN_0..N-1, named
+#: by the resolver job): Actions cannot enumerate secrets, so each is read by an explicit name. The workflow's
+#: slot count and `--token-slots` are pinned to this number by a test; a channel beyond it is reported unchecked.
+CHANNEL_TOKEN_SLOTS = 6
+CHANNEL_TOKEN_ROWS_ENV = "DOCTOR_CHANNEL_TOKEN_ROWS"
+_TOKEN_SECRET_NAME = re.compile(r"CHRONOS_YT_TOKEN_[A-Z0-9_]+")
 
 
 @dataclass
@@ -107,6 +116,12 @@ class Http:
         return self._wrap(lambda: requests.post(url, data=data, timeout=self.timeout,
                                                 allow_redirects=False))
 
+    def post_json(self, url: str, body: dict, headers: Optional[dict] = None) -> Resp:
+        import requests  # noqa: PLC0415
+
+        return self._wrap(lambda: requests.post(url, json=body, headers=headers or {}, timeout=self.timeout,
+                                                allow_redirects=False))
+
 
 @dataclass
 class Ctx:
@@ -120,6 +135,9 @@ class Ctx:
     cache_home: Optional[Path] = None
     preflight_video: Optional[Callable[[], None]] = None
     youtube: bool = True
+    #: The scheduled operator channels whose token the doctor proves: a callable returning
+    #: ``[{"channel_id", "token_secret"}, ...]`` (tools/list_channels.token_rows). None = not asked.
+    channel_rows: Optional[Callable[[], List[dict]]] = None
 
     def get(self, name: str) -> str:
         return str(self.env.get(name, "") or "").strip()
@@ -385,6 +403,31 @@ def check_required_keys(ctx: Ctx) -> List[Check]:
         else:
             out.append(Check("keys", name, FAIL, f"missing - needed for {why}", _fix_env(name)))
     return out
+
+
+def check_pipeline_pause(ctx: Ctx) -> List[Check]:
+    """REPORT whether the owner paused the scheduled pipeline (NIGHTSHIFT_PIPELINE_PAUSED). Never a FAIL: a pause is
+    the owner's decision, and the scheduled doctor turns every FAIL into a readiness alert. It is a WARN because a
+    paused pipeline is not "ready to make the next scheduled video", and the reader of a doctor report should see it.
+    The reading is the scheduler's own (modules/pipeline_pause.py), silent here; the value is never echoed. Outside
+    GitHub Actions an unset variable is UNVERIFIED, not PASS (see below); a pause that IS visible is reported anywhere."""
+    g, n = "pipeline", "scheduled runs"
+    state = pipeline_pause.pause_state(ctx.env)
+    if state == "running":
+        # The schedule reads the REPOSITORY variable. Only the scheduled doctor (GitHub Actions) is given it; a doctor
+        # run on a laptop or in the worker container has its own environment, where "unset" proves nothing
+        # (CLAUDE.md rule 5: a default is not a measurement).
+        if str(ctx.env.get("GITHUB_ACTIONS", "")).lower() != "true":
+            return [Check(g, n, UNVERIFIED, f"{pipeline_pause.PAUSE_ENV} is not set in THIS environment, which says nothing "
+                          "about the repository variable the schedule reads",
+                          "read the variable in GitHub (Settings > Secrets and variables > Actions > Variables) or the "
+                          "scheduled doctor's job summary")]
+        return [Check(g, n, PASS, f"not paused: scheduled runs go ahead ({pipeline_pause.PAUSE_ENV} is unset or off)")]
+    what = ("holds an unrecognised value, which counts as paused (fail closed)" if state == "unrecognised"
+            else "is on")
+    return [Check(g, n, WARN, f"scheduled runs are paused: {pipeline_pause.PAUSE_ENV} {what}; manual and paid runs still work",
+                  "set the repository variable " + pipeline_pause.PAUSE_ENV + " to false (or delete it) to resume the schedule; "
+                  "then run Actions > 'Deploy web' so the operator bot's service sees it")]
 
 
 def check_host(ctx: Ctx) -> List[Check]:
@@ -744,41 +787,209 @@ def _client_pair(ctx: Ctx, token: dict) -> Tuple[str, str]:
     return cid, secret
 
 
-def check_youtube(ctx: Ctx) -> List[Check]:
-    g, n = "youtube", "operator channel token"
-    if not ctx.has("YOUTUBE_TOKEN_JSON"):
-        return [Check(g, n, WARN, "YOUTUBE_TOKEN_JSON is not set: uploads for the operator channel will fail (customer channels use their own connection)",
-                      _fix_env("YOUTUBE_TOKEN_JSON, YOUTUBE_CLIENT_SECRET_JSON and YOUTUBE_CHANNEL_ID"))]
-    token, ok = _load_json(ctx.get("YOUTUBE_TOKEN_JSON"))
-    if not ok:
-        return [Check(g, n, FAIL, "YOUTUBE_TOKEN_JSON is not valid JSON", "re-paste the whole youtube_token.json into the secret, then Deploy web")]
-    if not isinstance(token, dict) or not token.get("refresh_token"):
-        return [Check(g, n, FAIL, "YOUTUBE_TOKEN_JSON has no refresh token", "run the YouTube authorisation again (tools/connect_channel.py) and update the secret")]
-    cid, secret = _client_pair(ctx, token)
-    if not (cid and secret):
-        return [Check(g, n, FAIL, "no OAuth client id/secret to refresh the token with",
-                      _fix_env("YOUTUBE_CLIENT_SECRET_JSON"))]
-    out: List[Check] = []
-    if not ctx.has("YOUTUBE_CHANNEL_ID"):
-        out.append(Check(g, "channel id", WARN, "YOUTUBE_CHANNEL_ID is not set", _fix_env("YOUTUBE_CHANNEL_ID")))
+def _vault_token(ctx: Ctx, channel_id: str) -> Tuple[str, Optional[dict], str]:
+    """The channel's Command Center connection, the way the run reads it (migration 0022 / 0115).
+
+    ``(state, token document, why)``: ``none`` (no Supabase here, 0022 not applied, or no active connection - the
+    GitHub secret applies), ``active`` (the document the run builds from it, refreshable with the Command Center's
+    OAuth client), ``unusable`` (a connection exists but this environment cannot refresh it: ``why`` says what is
+    missing) or ``unknown`` (the lookup itself failed: an unknown is not a no). Reads with the service key the
+    doctor already has; the token goes into the in-memory document and nowhere else."""
+    from modules import channel_tokens  # noqa: PLC0415
+
+    if not (ctx.has("SUPABASE_URL") and ctx.has("SUPABASE_SERVICE_KEY")):
+        return "none", None, ""
+    post = getattr(ctx.http, "post_json", None)
+    if post is None:
+        return "none", None, ""
+    r = post(f"{ctx.get('SUPABASE_URL').rstrip('/')}/rest/v1/rpc/read_channel_token",
+             {"p_channel_id": channel_id}, _sb_headers(ctx))
+    if r.status == 404:
+        return "none", None, ""
+    if r.status is None or r.status >= 300:
+        return "unknown", None, "the Vault lookup did not answer" if r.status is None else f"the Vault lookup answered HTTP {r.status}"
+    rows = r.data if isinstance(r.data, list) else ([r.data] if isinstance(r.data, dict) else [])
+    row = rows[0] if rows and isinstance(rows[0], dict) else {}
+    refresh = str(row.get("refresh_token") or "").strip()
+    if not refresh:
+        return "none", None, ""
+    vault = channel_tokens.VaultToken(
+        refresh_token=refresh, scopes=tuple(str(x) for x in (row.get("scopes") or []) if x),
+        oauth_client_id=str(row.get("oauth_client_id") or ""), youtube_channel_id=str(row.get("youtube_channel_id") or ""))
+    try:
+        cid, csecret = channel_tokens.oauth_client_for(vault, dict(ctx.env))
+    except channel_tokens.ChannelTokenError:
+        return "unusable", None, ("this runner has no OAuth client that can refresh it: set GOOGLE_OAUTH_CLIENT_ID and "
+                                  "GOOGLE_OAUTH_CLIENT_SECRET to the Command Center's values")
+    return "active", json.loads(channel_tokens.build_token_json(vault, cid, csecret)), ""
+
+
+def _refresh_check(ctx: Ctx, group: str, name: str, token: dict, cid: str, secret: str, *, fix: str, note: str) -> Check:
+    """One free in-memory refresh of ``token``; ``fix`` is the next step for a refused token."""
+    from modules.youtube_token_check import DEAD, LIVE, verdict_from_response  # noqa: PLC0415
+
     if not ctx.youtube:
-        return out + [Check(g, n, SKIP, "token refresh skipped (--no-youtube)")]
+        return Check(group, name, SKIP, "token refresh skipped (--no-youtube)")
     r = ctx.http.post_form(YOUTUBE_TOKEN_URI, {"client_id": cid, "client_secret": secret,
                                                "refresh_token": str(token["refresh_token"]), "grant_type": "refresh_token"})
-    if r.status == 200 and isinstance(r.data, dict) and r.data.get("access_token"):
-        return out + [Check(g, n, PASS, "Google accepted the refresh token (checked in memory, nothing saved)")]
+    verdict = verdict_from_response(r.status, r.data)
+    if verdict.status == LIVE:
+        return Check(group, name, PASS, f"Google accepted the refresh token{note} (checked in memory, nothing saved)")
+    if verdict.status == DEAD and verdict.reason == "invalid_grant":
+        return Check(group, name, FAIL, f"Google says the refresh token{note} is expired or revoked (invalid_grant)", fix)
+    if verdict.status == DEAD:
+        return Check(group, name, FAIL, f"Google refused the OAuth client ({verdict.reason})",
+                     "the client id/secret must be the pair that minted the token"
+                     + ("; press Reconnect on the channel's card on the Channels page" if note else "; fix YOUTUBE_CLIENT_SECRET_JSON, then Deploy web"))
+    if r.status is None:
+        return Check(group, name, WARN, "could not reach Google", "run the doctor again")
     err = ""
     if isinstance(r.data, dict) and isinstance(r.data.get("error"), str) and SAFE_WORD.fullmatch(r.data["error"]):
         err = r.data["error"]
-    if err == "invalid_grant":
-        return out + [Check(g, n, FAIL, "Google says the refresh token is expired or revoked (invalid_grant)",
-                            "authorise the channel again (tools/connect_channel.py), update the secret YOUTUBE_TOKEN_JSON, then Deploy web; "
-                            "a Google OAuth app left in 'Testing' expires its tokens after 7 days - publish the consent screen")]
-    if err in ("invalid_client", "unauthorized_client"):
-        return out + [Check(g, n, FAIL, f"Google refused the OAuth client ({err})", "the client id/secret must be the pair that minted the token; fix YOUTUBE_CLIENT_SECRET_JSON, then Deploy web")]
-    if r.status is None:
-        return out + [Check(g, n, WARN, "could not reach Google", "run the doctor again")]
-    return out + [Check(g, n, WARN, f"token refresh answered HTTP {r.status}" + (f" ({err})" if err else ""), "run the doctor again")]
+    return Check(group, name, WARN, f"token refresh answered HTTP {r.status}" + (f" ({err})" if err else ""), "run the doctor again")
+
+
+_RECONNECT_FIX = ("press Reconnect on the channel's card on the Command Center's Channels page; "
+                  "a Google OAuth app left in 'Testing' expires its tokens after 7 days - publish the consent screen")
+
+
+def check_youtube(ctx: Ctx) -> List[Check]:
+    """The operator's default channel's token: the Command Center connection when there is one (the token the run
+    uses), else ``YOUTUBE_TOKEN_JSON`` exactly as before."""
+    g, n = "youtube", "operator channel token"
+    out: List[Check] = []
+    state, doc, why = _vault_token(ctx, "default")
+    if state == "active" and doc is not None:
+        if not ctx.has("YOUTUBE_CHANNEL_ID"):
+            out.append(Check(g, "channel id", WARN, "YOUTUBE_CHANNEL_ID is not set", _fix_env("YOUTUBE_CHANNEL_ID")))
+        return out + [_refresh_check(ctx, g, n, doc, str(doc["client_id"]), str(doc["client_secret"]),
+                                     fix=_RECONNECT_FIX, note=" (connected from the Command Center)")]
+    if state == "unusable":
+        return [Check(g, n, FAIL, f"the default channel is connected from the Command Center, but {why}",
+                      "add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to the GitHub Actions secrets (the same values as the Command Center), "
+                      "or disconnect the channel to use YOUTUBE_TOKEN_JSON")]
+    if state == "unknown":
+        out.append(Check(g, "operator channel connection", WARN, f"{why}, so the Command Center connection was not checked; "
+                         "the check below is of YOUTUBE_TOKEN_JSON", "run the doctor again"))
+    if not ctx.has("YOUTUBE_TOKEN_JSON"):
+        return out + [Check(g, n, WARN, "no Command Center connection and YOUTUBE_TOKEN_JSON is not set: uploads for the operator channel will fail (customer channels use their own connection)",
+                            "press Connect YouTube on the default channel's card on the Channels page, or " + _fix_env("YOUTUBE_TOKEN_JSON, YOUTUBE_CLIENT_SECRET_JSON and YOUTUBE_CHANNEL_ID"))]
+    token, ok = _load_json(ctx.get("YOUTUBE_TOKEN_JSON"))
+    if not ok:
+        return out + [Check(g, n, FAIL, "YOUTUBE_TOKEN_JSON is not valid JSON", "press Connect YouTube on the Channels page, or re-paste the whole youtube_token.json into the secret, then Deploy web")]
+    if not isinstance(token, dict) or not token.get("refresh_token"):
+        return out + [Check(g, n, FAIL, "YOUTUBE_TOKEN_JSON has no refresh token", "press Connect YouTube on the Channels page, or run the YouTube authorisation again (tools/connect_channel.py) and update the secret")]
+    cid, secret = _client_pair(ctx, token)
+    if not (cid and secret):
+        return out + [Check(g, n, FAIL, "no OAuth client id/secret to refresh the token with",
+                            _fix_env("YOUTUBE_CLIENT_SECRET_JSON"))]
+    if not ctx.has("YOUTUBE_CHANNEL_ID"):
+        out.append(Check(g, "channel id", WARN, "YOUTUBE_CHANNEL_ID is not set", _fix_env("YOUTUBE_CHANNEL_ID")))
+    return out + [_refresh_check(
+        ctx, g, n, token, cid, secret, note="",
+        fix="press Connect YouTube on the Channels page (no secret to touch), or authorise the channel again (tools/connect_channel.py), "
+            "update the secret YOUTUBE_TOKEN_JSON, then Deploy web; "
+            "a Google OAuth app left in 'Testing' expires its tokens after 7 days - publish the consent screen")]
+
+
+def _channel_token_rows(ctx: Ctx) -> Tuple[Optional[List[Tuple[dict, str]]], Optional[Check]]:
+    """(rows with the token each one holds, None) or (None, the warning that says they could not be listed).
+
+    CI mode (the scheduled workflow, ``DOCTOR_CHANNEL_TOKEN_ROWS`` present): the resolver job listed the
+    channels and the workflow handed over the first N secrets by position; the registry is not read here. Env
+    mode (a worker or a person at a terminal): the registry hook lists them and each token is the environment
+    variable of the same name."""
+    g = "token"
+    if CHANNEL_TOKEN_ROWS_ENV in ctx.env:
+        raw = ctx.get(CHANNEL_TOKEN_ROWS_ENV)
+        rows, ok = _load_json(raw) if raw else (None, False)
+        if not ok or not isinstance(rows, list):
+            return None, Check(g, "scheduled channels", WARN,
+                               "the list of scheduled channels could not be read, so their tokens were not checked",
+                               "open the doctor_scheduled run's 'resolve' job: the channel registry was unreadable")
+        return [(r, ctx.get(f"DOCTOR_CHANNEL_TOKEN_{i}") if i < CHANNEL_TOKEN_SLOTS else None)
+                for i, r in enumerate(rows) if isinstance(r, dict)], None
+    if ctx.channel_rows is None:
+        return [], None
+    try:
+        rows = list(ctx.channel_rows())
+    except Exception as e:
+        return None, Check(g, "scheduled channels", WARN,
+                           f"the list of scheduled channels could not be read ({type(e).__name__}), so their tokens were not checked",
+                           "run the doctor again once Supabase answers")
+    return [(r, ctx.get(str(r.get("token_secret") or ""))) for r in rows if isinstance(r, dict)], None
+
+
+def check_channel_tokens(ctx: Ctx) -> List[Check]:
+    """Every scheduled operator channel's YouTube token, one free in-memory refresh each (nothing saved).
+
+    The default channel is ``check_youtube``'s. Here: a channel whose secret is not set is a FAIL naming the
+    channel (it would be scheduled, rendered and paid for, then fail at the upload); a refused refresh token is a
+    FAIL; a Google that does not answer is a WARN (an unknown is not a no). Names are ``token/<channel id>`` so a
+    public CI log and the alert row carry the channel id and a verdict, nothing the check found."""
+    from modules.youtube_token_check import DEAD, LIVE, verdict_from_response  # noqa: PLC0415
+
+    g = "token"
+    rows, problem = _channel_token_rows(ctx)
+    if problem is not None:
+        return [problem]
+    out: List[Check] = []
+    for row, value in rows:
+        cid, secret_name = str(row.get("channel_id") or ""), str(row.get("token_secret") or "")
+        if not cid:
+            continue
+        # A channel connected from the Command Center (Vault) is read that way by the run, so that is the token to prove.
+        state, doc, why = _vault_token(ctx, cid)
+        if state == "active" and doc is not None:
+            out.append(_refresh_check(ctx, g, cid, doc, str(doc["client_id"]), str(doc["client_secret"]),
+                                      fix=_RECONNECT_FIX, note=" (connected from the Command Center)"))
+            continue
+        if state == "unusable":
+            out.append(Check(g, cid, FAIL, f"this channel is connected from the Command Center, but {why}",
+                             "add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to the GitHub Actions secrets (the same values as the Command Center)"))
+            continue
+        if state == "unknown":
+            out.append(Check(g, f"{cid} connection", WARN, f"{why}, so the Command Center connection was not checked; the check of its secret follows",
+                             "run the doctor again"))
+        if not _TOKEN_SECRET_NAME.fullmatch(secret_name) or value is None:
+            why = ("this channel is beyond the " + str(CHANNEL_TOKEN_SLOTS) + " tokens the workflow hands the doctor"
+                   if value is None else "its token secret name is not a CHRONOS_YT_TOKEN_<REF> name")
+            out.append(Check(g, cid, WARN, f"not checked: {why}",
+                             "check this channel's token by hand with tools/doctor.py on the worker"
+                             if value is None else "fix the channel's credential reference"))
+            continue
+        if not value:
+            out.append(Check(g, cid, FAIL, "no token secret for this scheduled channel: its upload would fail after the render is paid for",
+                             f"add the GitHub Actions secret {secret_name} (the channel's token JSON), or pause the channel"))
+            continue
+        token, ok = _load_json(value)
+        if not ok or not isinstance(token, dict) or not str(token.get("refresh_token") or "").strip():
+            out.append(Check(g, cid, FAIL, "its token secret is not a token document with a refresh token",
+                             f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}"))
+            continue
+        # The client pair comes from the token file alone, as the run reads it (youtube_token_check._read_token):
+        # no YOUTUBE_CLIENT_SECRET_JSON / GOOGLE_OAUTH_* fallback, so the doctor cannot pass a file the run refuses.
+        cid_, csecret = (str(token.get(k) or "").strip() for k in ("client_id", "client_secret"))
+        if not (cid_ and csecret):
+            out.append(Check(g, cid, FAIL, "its token has no OAuth client id/secret to refresh it with",
+                             f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}"))
+            continue
+        if not ctx.youtube:
+            out.append(Check(g, cid, SKIP, "token refresh skipped (--no-youtube)"))
+            continue
+        r = ctx.http.post_form(YOUTUBE_TOKEN_URI, {"client_id": cid_, "client_secret": csecret,
+                                                   "refresh_token": str(token["refresh_token"]), "grant_type": "refresh_token"})
+        verdict = verdict_from_response(r.status, r.data)
+        if verdict.status == LIVE:
+            out.append(Check(g, cid, PASS, "Google accepted the refresh token (checked in memory, nothing saved)"))
+        elif verdict.status == DEAD:
+            out.append(Check(g, cid, FAIL, f"Google refused this channel's token ({verdict.reason})",
+                             f"authorise the channel again (tools/connect_channel.py) and update the secret {secret_name}; "
+                             "a Google OAuth app left in 'Testing' expires its tokens after 7 days"))
+        else:
+            out.append(Check(g, cid, WARN, "could not get an answer from Google" if r.status is None
+                             else f"token refresh answered HTTP {r.status}", "run the doctor again"))
+    return out
 
 
 # -- GitHub (repo side) ---------------------------------------------------------
@@ -947,12 +1158,12 @@ def run_checks(ctx: Ctx, *, offline: bool = False, github: bool = False, repo: O
     if github:
         return guarded(github_checks, ctx, repo)
     checks: List[Check] = []
-    for fn in (check_required_keys, check_shapes, check_video, check_images, check_tts, check_host):
+    for fn in (check_required_keys, check_shapes, check_video, check_images, check_tts, check_pipeline_pause, check_host):
         checks += guarded(fn, ctx)
     if offline:
         return checks
     for fn in (check_elevenlabs, check_pexels, check_leonardo, check_gemini, check_unverified,
-               check_supabase, check_youtube):
+               check_supabase, check_youtube, check_channel_tokens):
         checks += guarded(fn, ctx)
     return checks
 
@@ -1000,8 +1211,14 @@ def default_ctx(env: Optional[Mapping[str, str]] = None, **kw) -> Ctx:
         from modules import video_providers  # noqa: PLC0415
         video_providers.preflight()
 
+    def channel_rows() -> List[dict]:
+        from tools import list_channels  # noqa: PLC0415 - imports the registry; only a live run needs it
+
+        return list_channels.token_rows()
+
     return Ctx(env=env, http=kw.pop("http", None) or Http(), now=kw.pop("now", None) or datetime.now(timezone.utc),
-               preflight_video=kw.pop("preflight_video", video_preflight if live else None), **kw)
+               preflight_video=kw.pop("preflight_video", video_preflight if live else None),
+               channel_rows=kw.pop("channel_rows", channel_rows if live else None), **kw)
 
 
 def preflight_summary(env: Optional[Mapping[str, str]] = None, **kw) -> Dict[str, Any]:

@@ -1,4 +1,4 @@
-"""Migration 0113: "publish when approved" is a per-channel opt-in, a queue only the database writes, and a worker that cannot
+"""Migration 0116: "publish when approved" is a per-channel opt-in, a queue only the database writes, and a worker that cannot
 claim more than it read back.
 
 What would break without these (each attacked in a real database):
@@ -31,7 +31,7 @@ import psycopg
 import sec_db
 from sec_db import ANON, SERVICE, as_superuser
 from sec_scenario import DEFAULT_ORG
-from test_sec_approve_video import (ACK, CUT, MIGRATION, MIGRATION_0113, OTHER, ROLLBACK, ROLLBACK_0113, VID, acting,
+from test_sec_approve_video import (ACK, CUT, MIGRATION, MIGRATION_0116, OTHER, ROLLBACK, ROLLBACK_0116, VID, acting,
                                     answer, approve, member, snapshot, uploaded)
 
 ALL = "00000000-0000-0000-0000-000000000000"      # the ledger's row for a project's whole day
@@ -909,7 +909,7 @@ def test_the_expiry_sweep_leaves_a_marked_request_to_the_worker_which_reads_yout
 
 def test_the_rollback_waits_for_a_write_in_flight_and_keeps_an_old_marked_request_queued(conn, sc):
     bob = sc.bob
-    body = "\n".join(ln for ln in ROLLBACK_0113.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
+    body = "\n".join(ln for ln in ROLLBACK_0116.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
     with as_superuser(conn, commit=False) as su:
         sent = marked(conn, su, bob)
         out = su.run(body)
@@ -1092,7 +1092,7 @@ def test_the_audit_list_has_the_new_actions_and_kept_the_old_ones(conn):
 # ── replay and rollback ──────────────────────────────────────────────────────
 
 def test_applying_it_again_changes_nothing(conn):
-    text = MIGRATION_0113.read_text(encoding="utf-8")
+    text = MIGRATION_0116.read_text(encoding="utf-8")
     with as_superuser(conn, commit=False) as su:
         before = snapshot(su)
         su.conn.execute(text)
@@ -1106,7 +1106,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
     base = f"ns_visibility_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0113_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0116_")])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -1114,7 +1114,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
                     for s in ("public.approve_video_publish(text, text, jsonb)", "public.audit_action_allowed(text)")}
     finally:
         sec_db.drop_database(admin, base)
-    rollback = ROLLBACK_0113.read_text(encoding="utf-8")
+    rollback = ROLLBACK_0116.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
     body = "\n".join(ln for ln in rollback.splitlines() if ln.strip() not in ("begin;", "commit;"))
     kept = ["channels_publish_switch_guard()", "video_visibility_requests_guard()", "visibility_reason_words()"]
@@ -1142,7 +1142,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         assert set(out) == PHASE_1A_KEYS and len(requests(su)) == 1
         switch(su, bob.channel, False)
         su.conn.execute(body)                      # the rollback replays
-        su.conn.execute(MIGRATION_0113.read_text(encoding="utf-8"))
+        su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
         assert snapshot(su) == after
-        su.conn.execute(MIGRATION_0113.read_text(encoding="utf-8"))
+        su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
         assert snapshot(su) == after

@@ -144,14 +144,14 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # NIGHTSHIFT_COMMENT_INBOX=on           # faqat "on" bo'lsa ishlaydi (0081 qo'llanganidan keyin)
 # NIGHTSHIFT_INBOX_SYNC_SECONDS=300     # har oraliqda bitta kanal, navbat bilan
 
-# "Tasdiqdan keyin nashr qilish" (migration 0113, modules/visibility_publish.py). DEFAULT: O'CHIQ.
-# NIGHTSHIFT_VISIBILITY_PUBLISH=on          # faqat "on" bo'lsa ishlaydi (0113 qo'llanganidan keyin)
+# "Tasdiqdan keyin nashr qilish" (migration 0116, modules/visibility_publish.py). DEFAULT: O'CHIQ.
+# NIGHTSHIFT_VISIBILITY_PUBLISH=on          # faqat "on" bo'lsa ishlaydi (0116 qo'llanganidan keyin)
 # NIGHTSHIFT_VISIBILITY_DAILY_UNITS=1000    # bu funksiyaning kunlik YouTube kvotasi (videos.update = 50 birlik)
 # NIGHTSHIFT_VISIBILITY_ORG_PERCENT=50      # bitta tashkilotning shu kvotadagi ulushi, foiz 1-100 (sukut bo'yicha 50)
 # NIGHTSHIFT_YT_QUOTA_PROJECT=default       # Google Cloud loyihasining belgisi (kvota jurnali uchun)
 ```
 
-**Tasdiqdan keyin nashr qilish (0113): sukut bo'yicha o'chiq, ikki qulf.** Workerning bu qadami
+**Tasdiqdan keyin nashr qilish (0116): sukut bo'yicha o'chiq, ikki qulf.** Workerning bu qadami
 `NIGHTSHIFT_VISIBILITY_PUBLISH=on` bo'lsagina ishlaydi, va u faqat admin kanal sozlamasida
 "Publish when approved"ni yoqqan kanallarning, odam tasdiqlagan aniq versiyadagi, allaqachon yuklangan
 yopiq videosini ommaviy qilishni YouTube'dan so'raydi: avval bazadan hamma narsani qayta so'raydi,

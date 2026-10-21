@@ -52,7 +52,7 @@ export const siteUz: SiteDictionary = {
       { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
       { id: "plan", tab: "Reja", title: "Nima tayyorlanishini koʻring", body: "Ssenariy, ovoz, tasvir va subtitrlar — kanalingiz tilida.", items: [{ name: "Ssenariy", detail: "Oʻrganiladi va tekshiriladi" }, { name: "Ovoz", detail: "Kanalning oʻz ovozi" }, { name: "Tasvir", detail: "Kanal uslubida" }, { name: "Subtitrlar", detail: "Kanal tilida" }], priceNote: "Narx boshlashdan oldin tugmada koʻrinadi", key: "Boshlash" },
       { id: "approve", tab: "Tasdiq", title: "Koʻring, keyin qaror qiling", body: "Video YouTube’da shaxsiy holda kutadi. Hozircha hech narsa ommaviy emas.", lamp: "YouTube’da shaxsiy", check: "Nashr tekshiruvidan oʻtdi", key: "Videoni tasdiqlash", waiting: "Sizni kutmoqda" },
-      { id: "live", tab: "Efirda", title: "Siz aytganda ommaviy", body: "Siz videoni YouTube’da ommaviy qildingiz, endi u efirda.", lamp: "YouTube’da ommaviy", sub: "Siz nashr qildingiz" },
+      { id: "live", tab: "Efirda", title: "Siz aytganda ommaviy", body: "Siz videoni ommaviy qildingiz, endi u efirda.", lamp: "YouTube’da ommaviy", sub: "Siz nashr qildingiz" },
     ],
   },
   try: {
@@ -70,6 +70,7 @@ export const siteUz: SiteDictionary = {
     drafting: "Namuna tayyorlanmoqda…",
     sampleNote: "“{topic}” mavzusi uchun namuna reja. Oʻz mavzuingizni yozing, u oʻzgaradi.",
     thumbNote: "Chizilgan oʻrinbosar: sizning soʻzlaringiz muqovada qanday turishi.",
+    thumbArtNote: "Bu namunaning foni sunʼiy intellekt yaratgan tasvir.",
     ready: "Namuna reja tayyor. Bu yerda hech narsa yaratilmagan.",
     noTopic: "Avval mavzuni yozing yoki quyidan tanlang.",
     sections: [
@@ -155,21 +156,30 @@ export const siteUz: SiteDictionary = {
       lighthouse: "Namuna kadr: oltin soatda uzun oʻt orasidagi mayoq",
       citynight: "Namuna kadr: tepalikdan koʻrinadigan shom chogʻidagi shahar chiroqlari",
       desert: "Choʻl tepaliklari ustidagi oltin nur",
-      peak: "Namuna kadr: bulutlar ustidagi oltin nur tushgan qorli choʻqqi",
-      waterfall: "Namuna kadr: toshlar ustidan tushayotgan ipakdek suv, uzoq ekspozitsiya",
-      mic: "Namuna kadr: xrom va jezdan yasalgan qadimiy mikrofon",
-      reel: "Namuna kadr: gʻaltakdagi eski kino tasmasi",
-      trails: "Namuna kadr: shom osmoni ustidagi oltin nur izlari",
-      fibres: "Namuna kadr: bej jun tolalari yaqin planda",
-      paper: "Namuna kadr: marjon, toʻq sariq va oltin rangdagi qatlamli qirqilgan qogʻoz",
-      paint: "Namuna kadr: qalin firuza va toʻq sariq mazkli rasmning yaqin koʻrinishi",
     },
   },
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi har bir rasm va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi.",
+    lead: "Bu sahifalardagi har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Baʼzi rasmlar esa boshqacha: bosh ekran foni, uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
     licence: "Pexels litsenziyasi",
+  },
+  /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
+  art: {
+    alts: {
+      "step-1": "Sunʼiy intellekt yaratgan tasvir: binafsha yulduzli soʻrov qatori — video mavzusi",
+      "step-2": "Sunʼiy intellekt yaratgan tasvir: narx yorligʻi boʻsh ijro tugmasi",
+      "step-3": "Sunʼiy intellekt yaratgan tasvir: ijro tugmasi va yashil belgili kadr",
+      "tool-image": "Sunʼiy intellekt yaratgan tasvir: ramkadagi rasm: koʻl ustidagi havo shari va yulduz",
+      "tool-video": "Sunʼiy intellekt yaratgan tasvir: kinolenta kadri: quyosh botishidagi yelkanli qayiq va ijro tugmasi",
+      "tool-voice": "Sunʼiy intellekt yaratgan tasvir: studiya mikrofoni va tovush toʻlqini ustunlari",
+      "tool-edit": "Sunʼiy intellekt yaratgan tasvir: toʻq sariq va koʻk yarmiga boʻlingan divan, yaltirash bilan",
+      "tool-animate": "Sunʼiy intellekt yaratgan tasvir: ramkadagi osmon va undan uchib chiqayotgan kaptar",
+      "tool-upscale": "Sunʼiy intellekt yaratgan tasvir: piksellashgan kapalak va uning oʻzi, ammo aniq",
+      "tool-cutout": "Sunʼiy intellekt yaratgan tasvir: qogʻoz kartochkadan olingan oʻsimlik, konturi qolgan",
+      "tool-styles": "Sunʼiy intellekt yaratgan tasvir: bir xil guldonning turli uslubdagi uchta kartochkasi",
+      "thumb-silkroad": "Sunʼiy intellekt yaratgan tasvir: Samarqanddagi Registon oltin soatda",
+    },
   },
   caps: {
     demo: "Nimani soʻrash mumkinligi va qanday natija qaytishining namunasi. Rasmlar stok suratlar va videolar boʻlib, namuna sifatida koʻrsatilgan. Undagi hamma narsa namuna.",
@@ -261,7 +271,7 @@ export const siteUz: SiteDictionary = {
       {
         id: "approval",
         title: "Sizsiz hech narsa ommaviy boʻlmaydi",
-        body: "Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Ommaviy qilishni siz hal qilasiz, YouTube’da. Avtomatik nashr har bir kanalda alohida, va siz yoqmaguningizcha oʻchiq turadi.",
+        body: "Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Ommaviy qilishni inson hal qiladi: videoni YouTube’da oʻzingiz ommaviy qilasiz yoki ish maydoningizni boshqaradigan kishi “Tasdiqdan keyin nashr qilish”ni yoqqan kanalda ilovada aynan shu videoni tasdiqlaysiz. Bu sozlama va avtomatik nashr har bir kanalda alohida, va siz yoqmaguningizcha oʻchiq turadi.",
         state: "Kutmoqda",
         lines: ["Shaxsiy holda yuklandi", "Nashr tekshiruvidan oʻtdi", "Tasdigʻingizni kutmoqda"],
       },
@@ -277,12 +287,12 @@ export const siteUz: SiteDictionary = {
       steps: [
         { id: "topic", title: "Mavzu bering", body: "Bir qator yozing yoki kanal oʻz yoʻnalishidan keyingi mavzuni tanlasin. Nightshift ssenariy, ovoz, tasvir va subtitrlarni tayyorlaydi." },
         { id: "price", title: "Narxini koʻrib boshlang", body: "Narx boshlashdan oldin tugmada turadi. Ish xato bilan tugasa, kreditlar oʻzi qaytadi." },
-        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Ommaviy qilish YouTube’da bajariladi; shu paytgacha u shaxsiy qoladi." },
+        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Ommaviy qilinmaguncha u shaxsiy qoladi: uni YouTube’da oʻzingiz ommaviy qilasiz yoki, agar ish maydonini boshqaradigan kishi kanal uchun “Tasdiqdan keyin nashr qilish”ni yoqqan boʻlsa, aynan shu versiyani tasdiqlash YouTube’dan buni soʻraydi." },
       ],
     },
     shotTag: "Skrinshot",
     shotTitle: "Ilovaning haqiqiy tasdiqlash ekrani.",
-    shotBody: "Tayyor video oʻz sahifasida kutadi: koʻrib chiqish nusxasi, qaysi nom bilan chiqishi, YouTube’da yopiq holati, nashr tekshiruvining xulosasi va tugmalar. Tugmalar qaroringizni yozib qoʻyadi; videoni ommaviy qilish YouTube’da bajariladi.",
+    shotBody: "Tayyor video oʻz sahifasida kutadi: koʻrib chiqish nusxasi, qaysi nom bilan chiqishi, YouTube’da yopiq holati, nashr tekshiruvining xulosasi va tugmalar. Tugmalar qaroringizni yozib qoʻyadi. Video siz uni YouTube’da ommaviy qilganingizda yoki — faqat ish maydonini boshqaradigan kishi “Tasdiqdan keyin nashr qilish”ni yoqqan kanalda — aynan shu versiyani tasdiqlaganingizda ommaviy boʻladi.",
     shotCaption: "Ilovaning haqiqiy ekrani. Undagi hamma narsa namuna: kanal, video, balans va akkaunt.",
     shotAlt: "Boshqaruv markazi skrinshoti: “Nega Oy bizga doim bir tomoni bilan qaraydi” videosi tasdiqni kutmoqda — yopiq, avtomatik nashr oʻchiq, nashr tekshiruvidan oʻtgan — “Tasdiqlash va nashr qilish” tugmasi bilan. Undagi barcha maʼlumotlar namuna.",
     steps: [
@@ -291,7 +301,7 @@ export const siteUz: SiteDictionary = {
       { id: "script", title: "Ssenariy", body: "Siz tanlagan uzunlikka, kanal tilida oʻrganiladi, yoziladi va keyingi bosqichga oʻtishdan oldin tekshiriladi." },
       { id: "video", title: "Video", body: "Ovoz, vizual, subtitrlar va montaj kanal uchun belgilangan ovoz va uslubda yigʻiladi. Bu ovoz mavjud boʻlmasa, ishga tushirish yomonroq ovozni olmaydi — toʻxtaydi." },
       { id: "approval", title: "Sizning tasdigʻingiz", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaror qilasiz." },
-      { id: "youtube", title: "YouTube", body: "Video siz uni YouTube’da ommaviy qilganingizda ommaviy boʻladi — oʻz-oʻzidan esa faqat avtonashrni yoqqan kanalingizda." },
+      { id: "youtube", title: "YouTube", body: "Video siz uni YouTube’da ommaviy qilganingizda ommaviy boʻladi. Buni kanalning ikki sozlamasi oʻzgartiradi, ikkalasi ham sukut boʻyicha oʻchiq: ish maydonini boshqaradigan kishi yoqadigan va tasdiqlangan videoni ommaviy qiladigan “Tasdiqdan keyin nashr qilish” hamda oʻzi nashr qiladigan avtonashr." },
     ],
   },
   planner: {
@@ -309,8 +319,8 @@ export const siteUz: SiteDictionary = {
   toolStrip: { title: "Nightshift nimalar yarata oladi" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Har bir vositani tasvirlovchi stok suratlar",
-    note: "Suratlar vositalarni tasvirlaydi, xolos. Bular stok suratlar, vositalar yaratgan narsa emas. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
+    label: "Har bir vosita uchun sunʼiy intellekt yaratgan rasmlar",
+    note: "Rasmlar vositalarni bildiradi, xolos. Bular sunʼiy intellekt yaratgan bezak, vositalar yaratgan narsa emas. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
     more: "Yana toʻrtta vositani koʻrsatish",
     less: "Kamroq koʻrsatish",
   },
@@ -480,7 +490,7 @@ export const siteUz: SiteDictionary = {
     secondary: "Narxlarni koʻrish",
     pictures: {
       signoff: {
-        figure: "Tasvir: nashr pultidagi tayyor video. U YouTube’da shaxsiy holda kutmoqda, nashr tekshiruvi oʻtgan, qaroringiz yozib qoʻyiladi, shundan keyin videoni YouTube’da ommaviy qilasiz.",
+        figure: "Tasvir: nashr pultidagi tayyor video. U YouTube’da shaxsiy holda kutmoqda, nashr tekshiruvi oʻtgan, qaroringiz yozib qoʻyiladi, shundan keyin video ommaviy boʻladi — YouTube’da siz tomondan yoki, kanal uchun “Tasdiqdan keyin nashr qilish” yoqilgan boʻlsa, tasdiqning oʻzi bilan.",
         title: "Nashr pulti",
         channel: "Kanalingiz",
         tag: "Tasvir",
@@ -490,7 +500,7 @@ export const siteUz: SiteDictionary = {
         checkState: "Oʻtdi",
         first: "Sizning tasdigʻingiz",
         firstState: "Sizni kutmoqda",
-        air: "Faqat siz YouTube’da ommaviy qilgandagina efirga chiqadi.",
+        air: "Faqat siz YouTube’da ommaviy qilsangiz yoki “Tasdiqdan keyin nashr qilish” yoqilgan kanalda tasdiqlasangizgina efirga chiqadi.",
       },
       composer: {
         figure: "Studiya konstruktori rasmi: tavsif, tanlangan 16:9 shakli, uslublaringizdan biri va narxi ustida koʻrsatilgan «Yaratish» tugmasi.",
@@ -528,7 +538,7 @@ export const siteUz: SiteDictionary = {
         what: [
           { title: "Mavzudan tayyor videogacha", body: "Ssenariy, ovoz, vizual, subtitrlar va montaj — siz tanlagan uzunlikda." },
           { title: "Kanal oʻzligicha qoladi", body: "Til, ovoz, vizual uslub va jadval har bir kanal uchun belgilanadi va boshqasiga oʻtmaydi." },
-          { title: "Nashr qilmaguningizcha shaxsiy", body: "Har bir video shaxsiy holda yuklanadi va nashr tekshiruvidan oʻtadi. Koʻrasiz, soʻng YouTube’da oʻzingiz ommaviy qilasiz." },
+          { title: "Nashr qilmaguningizcha shaxsiy", body: "Har bir video shaxsiy holda yuklanadi va nashr tekshiruvidan oʻtadi. Koʻrasiz, soʻng YouTube’da oʻzingiz ommaviy qilasiz — yoki, ish maydonini boshqaradigan kishi kanal uchun “Tasdiqdan keyin nashr qilish”ni yoqqan boʻlsa, tasdiqlaysiz." },
           { title: "Kanalingiz raqamlari", body: "Ulangan kanalning koʻrishlari va tahlili — siz bergan ruxsat bilan va faqat sizga." },
         ],
         not: [

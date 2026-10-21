@@ -170,7 +170,7 @@ jobs:
           # shows an "off" note and /api/marketing answers 404). MARKETING_TELEGRAM_CHAT is the channel's public @name,
           # shown on the confirm sheet; never the bot token (that secret never reaches the web container).
           WEBENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
-          # Publish when approved (migration 0113): hidden from customers unless this variable is on (on, 1, true or yes); empty = hidden
+          # Publish when approved (migration 0116): hidden from customers unless this variable is on (on, 1, true or yes); empty = hidden
           # (docs/APPROVE_PUBLISH_1B.md, "Releasing it"). The worker's own switch is a separate variable on the worker.
           WEBENV_PUBLISH_ON_APPROVE_RELEASED: ${{ vars.PUBLISH_ON_APPROVE_RELEASED }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
@@ -440,6 +440,10 @@ jobs:
           OPERATORENV_OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
           OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          OPERATORENV_OPERATOR_DEADMAN_HOURS: ${{ vars.OPERATOR_DEADMAN_HOURS }}
+          # The owner's pause of the scheduled pipeline: the always-on bot reads it at deploy time, so after
+          # changing the variable run Deploy web (docs/VIDEO_GO_LIVE.md, section 8).
+          OPERATORENV_NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
           # The owner's e-mail copy (docs/OWNER_EMAIL.md), all optional and OFF while the variable
           # NIGHTSHIFT_OWNER_EMAIL is not exactly `on`. The key is its OWN secret, OPERATOR_RESEND_API_KEY (a
           # Resend "Sending access" key restricted to the one domain, created by the owner for this), and it

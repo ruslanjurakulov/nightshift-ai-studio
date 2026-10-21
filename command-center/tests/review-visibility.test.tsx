@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The review panel on a channel whose "publish when approved" switch is ON (migration 0113), and the same panel with it off.
+ * The review panel on a channel whose "publish when approved" switch is ON (migration 0116), and the same panel with it off.
  *
  * What would break: the button saying "Approve and publish" on a channel that did not switch it on (the old over-claim, back),
  * the sheet or the hint promising a publish that YouTube may refuse, "Published" shown for a request that is only queued, that

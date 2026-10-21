@@ -253,6 +253,14 @@ export interface ChannelAgentConfig {
    */
   storyboard_review?: boolean;
   /**
+   * The AI-content label (modules/ai_disclosure.py): `auto` | `always` | `never`, and the narrator's voice
+   * `generic` | `own_clone` | `real_person`. Read them through normalizeAiMode / normalizeAiVoice (lib/aiDisclosure.ts):
+   * the stored text may be any spelling the pipeline accepts. `never` and `own_clone` lower what is declared to the
+   * platforms and only a platform administrator may set them (migration 0114).
+   */
+  ai_disclosure?: unknown;
+  ai_disclosure_voice?: unknown;
+  /**
    * The channel's Character Bible / Elements Library: reusable characters,
    * locations and props kept consistent across videos (modules/elements.py).
    * The pipeline detects which appear in a scene and injects each one's
@@ -318,9 +326,9 @@ export interface ChannelRow {
    */
   auto_publish: boolean;
   /**
-   * "Publish when approved" (migration 0113), default false: approving a video on this channel records the decision and
+   * "Publish when approved" (migration 0116), default false: approving a video on this channel records the decision and
    * nothing else. True queues the approved video to be made public by a worker (which YouTube may still refuse). Written only
-   * through `set_channel_publish_on_approve`. Absent before 0113 is applied: then the switch is not shown.
+   * through `set_channel_publish_on_approve`. Absent before 0116 is applied: then the switch is not shown.
    */
   publish_on_approve?: boolean;
   /** The organization that owns this channel (migration 0018). Absent before

@@ -1,6 +1,6 @@
 OWNER MUST APPROVE THIS RULE CHANGE. NOT APPLIED. Rules 2 and 3 of CLAUDE.md are the owner's; nobody else edits them.
 
-Proposed amendment for "publish when approved" (Phase 1b, migration 0113, docs/APPROVE_PUBLISH_1B.md).
+Proposed amendment for "publish when approved" (Phase 1b, migration 0116, docs/APPROVE_PUBLISH_1B.md).
 What it changes: rule 2 gains ONE named exception (a person's approval, a per-channel switch that is off by default and that only a
 real workspace administrator can turn on, a worker that is itself off by default, re-checks, and a read-back of YouTube), and
 rule 3 says the browser still only calls a database function. It also changes the one test that pins today's wording
@@ -18,7 +18,7 @@ Until it is applied, the code in this branch contradicts rule 2's text: do not m
 -make the bot publish more autonomously, on any path, by any default.
 +(`modules/publish_gate.py`) runs in front of both paths. There is exactly one
 +further way a video becomes public through this system, and it is a person's
-+act, not the bot's: "publish when approved" (migration 0113,
++act, not the bot's: "publish when approved" (migration 0116,
 +`docs/APPROVE_PUBLISH_1B.md`). It is a second per-channel switch, off by default,
 +that only a real administrator of the channel's workspace can turn on (through an
 +audited database function; not a default, not the service key), and the worker
@@ -40,7 +40,7 @@ Until it is applied, the code in this branch contradicts rule 2's text: do not m
 -makes it public on YouTube, unless the channel's auto-publish switch is on. Phase 1b (the bot flips privacy) is not built yet, and
 -it needs the owner's amendment of rule 2 first. The two re-render buttons stay
 +makes it public on YouTube, unless the channel's auto-publish switch is on or, on a
-+channel whose administrators switched on "publish when approved" (migration 0113,
++channel whose administrators switched on "publish when approved" (migration 0116,
 +default off), the approval itself queues one request in the database that the queue
 +worker carries out (rule 2). The browser still only calls a database function and
 +stops: the button reads "Approve and publish" only on such a channel, and the
@@ -60,7 +60,7 @@ Until it is applied, the code in this branch contradicts rule 2's text: do not m
      expect(rules).toMatch(/approve_video_publish/);
 -    expect(rules).toMatch(/Phase 1b \(the bot flips privacy\) is not built yet/);
 +    expect(rules).not.toMatch(/Phase 1b \(the bot flips privacy\) is not built yet/);
-+    expect(rules).toMatch(/"publish when approved" \(migration 0113/);
++    expect(rules).toMatch(/"publish when approved" \(migration 0116/);
 +    expect(rules).toMatch(/second per-channel switch, off by default/);
 +    expect(rules).toMatch(/`modules\/visibility_publish\.py` is the only code\s+that may change an existing video's privacy/);
 +    expect(rules).toMatch(/only for a request whose read-back of YouTube said public/);

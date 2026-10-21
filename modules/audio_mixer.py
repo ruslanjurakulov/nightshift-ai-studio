@@ -11,6 +11,7 @@ from pathlib import Path
 import edge_tts
 import requests
 from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
 from pydub.effects import normalize
 
 from config import (
@@ -173,6 +174,11 @@ def _refuse_default_edge(*, explicit: bool = False) -> None:
 
 #: Narration speed the estimate assumes: roughly 15 characters a second.
 CHARS_PER_SECOND = 15
+#: The fastest a segment can plausibly be spoken. A cached segment shorter than
+#: its text divided by this is a cut one (about half the normal pace): it is
+#: rendered again, not reused. Generous on purpose: a false alarm costs one
+#: re-render, a miss ships narration that stops mid-sentence.
+MAX_CHARS_PER_SECOND = 30
 
 
 def _estimated_characters(agent) -> int:
@@ -388,6 +394,48 @@ class AudioMixer:
             )
         return secondary
 
+    def describe_voice(self) -> dict:
+        """What this run's voice was and how it came to be, for the run's record
+        (the voice event). ``source`` separates a voice somebody chose (``run``:
+        the Create page; ``channel``: the channel's saved provider; ``deployment``:
+        TTS_PROVIDER) from the one the environment resolved to (``default``: an
+        ElevenLabs key present, or absent and so the free Edge voice). Rule 5: a
+        default is never recorded as a choice. Carries no key and no voice id."""
+        agent = self.channel.agent if self.channel is not None else None
+        if self.tts_provider == "elevenlabs" and ELEVENLABS_RUN_VOICE_ID:
+            source = "run"
+        elif getattr(agent, "tts_provider_explicit", False) is True:
+            source = "channel"
+        elif TTS_PROVIDER_EXPLICIT:
+            source = "deployment"
+        else:
+            source = "default"
+        return {"provider": self.tts_provider, "source": source}
+
+    @staticmethod
+    def _segment_seconds(path: Path):
+        """Length of a cached segment in seconds: 0.0 when ffmpeg says the file is
+        not audio, ``None`` when the check could not run at all (no ffmpeg). The
+        render decodes this same file next, so an unknown is left to fail there."""
+        try:
+            return len(AudioSegment.from_file(path)) / 1000
+        except CouldntDecodeError:
+            return 0.0
+        except Exception:
+            return None
+
+    def _cached_segment_ok(self, path: Path, text: str) -> bool:
+        """May a segment already on disk be reused? It must not be empty, must
+        decode, and must not be shorter than the text can be spoken in. The write
+        is atomic now, but a file written by an older build, a full disk or a
+        half-restored volume is still in the cache, and a resume would narrate it."""
+        if path.stat().st_size <= 0:
+            return False
+        seconds = self._segment_seconds(path)
+        if seconds is None:
+            return True
+        return seconds > 0 and seconds >= len(text) / MAX_CHARS_PER_SECOND
+
     def _render_segment(self, text: str, voice_role: str) -> Path:
         """Render a single TTS segment, return path to .mp3.
 
@@ -409,9 +457,12 @@ class AudioMixer:
         digest = hashlib.sha1(f"{voice_key}:{voice_role}:{text}".encode("utf-8")).hexdigest()[:12]
         out = self.work_dir / f"seg_{digest}_{voice_role}.mp3"
         if out.exists():
-            if out.stat().st_size > 0:
+            if self._cached_segment_ok(out, text):
                 return out
-            out.unlink()   # an empty file is a write that never finished, not a segment
+            # Empty, undecodable or cut short: a write that never finished, not a segment.
+            logger.warning("Cached voice segment %s is unusable (empty, unreadable or shorter than "
+                           "its text) — rendering it again", out.name)
+            out.unlink()
         self.characters_synthesized += len(text)
         if self.tts_provider == "elevenlabs":
             self._tts_elevenlabs(text, self._elevenlabs_voice_for(voice_role), out)

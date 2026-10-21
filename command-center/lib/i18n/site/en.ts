@@ -60,7 +60,7 @@ export const siteEn = {
       { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "Why the Silk Road ran through Samarkand", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
       { id: "plan", tab: "Plan", title: "Check what it will make", body: "Script, voice, visuals and captions, in your channel’s language.", items: [{ name: "Script", detail: "Researched and checked" }, { name: "Voice", detail: "The channel’s own" }, { name: "Visuals", detail: "In the channel’s look" }, { name: "Captions", detail: "In the channel’s language" }], priceNote: "The price is on the button before you start", key: "Start" },
       { id: "approve", tab: "Approve", title: "Watch it, then decide", body: "It waits on YouTube as private. Nothing is public yet.", lamp: "Private on YouTube", check: "Publish check passed", key: "Approve the video", waiting: "Waiting for you" },
-      { id: "live", tab: "Live", title: "Public when you say so", body: "You made it public on YouTube, so now it airs.", lamp: "Public on YouTube", sub: "Published by you" },
+      { id: "live", tab: "Live", title: "Public when you say so", body: "You made it public, so now it airs.", lamp: "Public on YouTube", sub: "Published by you" },
     ],
   },
   try: {
@@ -78,6 +78,7 @@ export const siteEn = {
     drafting: "Drafting the example…",
     sampleNote: "Example plan for “{topic}”. Type your own topic and it changes.",
     thumbNote: "A drawn stand-in: your words, as the thumbnail would carry them.",
+    thumbArtNote: "The background of this example is an AI-generated image.",
     ready: "Example plan ready. Nothing here was generated.",
     noTopic: "Type a topic first, or pick one below.",
     sections: [
@@ -163,21 +164,30 @@ export const siteEn = {
       lighthouse: "Example frame: a lighthouse in tall grass at golden hour",
       citynight: "Example frame: a city’s lights at twilight seen from a hill",
       desert: "Golden light over desert dunes",
-      peak: "Example frame: a snow peak lit gold above the clouds",
-      waterfall: "Example frame: silky long-exposure water falling over rocks",
-      mic: "Example frame: a vintage chrome and brass microphone",
-      reel: "Example frame: a vintage film reel and its film strip",
-      trails: "Example frame: golden light trails over a dusk sky",
-      fibres: "Example frame: tan wool fibres in close-up",
-      paper: "Example frame: layered cut paper in coral, orange and gold",
-      paint: "Example frame: a close-up of a painting with thick turquoise and orange strokes",
     },
   },
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every picture and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift.",
+    lead: "Every photograph and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Some pictures are different: the hero’s backdrop, the pictures for the three steps and the eight tools, and the sample thumbnail are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
     licence: "Pexels License",
+  },
+  /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
+  art: {
+    alts: {
+      "step-1": "AI-generated image: a prompt bar with a violet star, for the topic",
+      "step-2": "AI-generated image: a play button with a blank price tag",
+      "step-3": "AI-generated image: a play frame with a green check mark",
+      "tool-image": "AI-generated image: a framed picture of a balloon over a lake, with a star",
+      "tool-video": "AI-generated image: a film frame with a sailboat at sunset and a play button",
+      "tool-voice": "AI-generated image: a studio microphone beside sound-wave bars",
+      "tool-edit": "AI-generated image: a sofa split into an orange half and a blue half, with a sparkle",
+      "tool-animate": "AI-generated image: a framed sky with a dove flying out of it",
+      "tool-upscale": "AI-generated image: a pixelated butterfly next to the same butterfly, sharp",
+      "tool-cutout": "AI-generated image: a plant lifted out of a paper card, leaving its outline",
+      "tool-styles": "AI-generated image: three cards of the same vase in different styles",
+      "thumb-silkroad": "AI-generated image: the Registan in Samarkand at golden hour",
+    },
   },
   caps: {
     demo: "An example of what you can ask for and the kind of result that comes back. The pictures are stock photos and footage, shown as examples. Everything shown is an example.",
@@ -269,7 +279,7 @@ export const siteEn = {
       {
         id: "approval",
         title: "Nothing goes public without you",
-        body: "Finished videos upload to YouTube as private and pass a publish check first. Going public is your decision, made on YouTube. Auto-publish is a per-channel switch, and it stays off until you turn it on.",
+        body: "Finished videos upload to YouTube as private and pass a publish check first. Going public is a person’s decision: you make a video public on YouTube, or you approve that exact video in the app on a channel where someone who manages your workspace has switched on “Publish when approved”. That setting and auto-publish are per-channel switches, and both stay off until you turn them on.",
         state: "Waiting",
         lines: ["Uploaded as private", "Publish check passed", "Waiting for your approval"],
       },
@@ -285,12 +295,12 @@ export const siteEn = {
       steps: [
         { id: "topic", title: "Give it a topic", body: "Type a line, or let your channel pick its next topic from its niche. Nightshift writes the script, the voice, the visuals and the captions." },
         { id: "price", title: "Start it at a price you have seen", body: "The price is on the button before anything starts. If a run fails, the credits come back on their own." },
-        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private. You watch it and record your decision in the app. Making it public is done on YouTube; until then it stays private." },
+        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private. You watch it and record your decision in the app. Until it is made public it stays private: you make it public on YouTube or, where someone who manages the workspace has switched on “Publish when approved” for the channel, approving that exact version asks YouTube to do it." },
       ],
     },
     shotTag: "Screenshot",
     shotTitle: "The app’s real approval screen.",
-    shotBody: "A finished video waits on its own page: the preview, the title it goes out under, private on YouTube, the publish check's verdict, and the keys. The keys record your decision; making a video public is done on YouTube.",
+    shotBody: "A finished video waits on its own page: the preview, the title it goes out under, private on YouTube, the publish check's verdict, and the keys. The keys record your decision. A video becomes public when you make it public on YouTube or, only on a channel where someone who manages the workspace has switched on “Publish when approved”, when you approve that exact version.",
     shotCaption: "A real screen from the app. Everything on it is sample data: the channel, the video, the balance and the account.",
     shotAlt: "Screenshot of the Command Center: the video “Why the Moon always shows us the same face” waiting for approval — private, auto-publish off, the publish gate passed every check — with the Approve and publish button. Everything shown is sample data.",
     steps: [
@@ -299,7 +309,7 @@ export const siteEn = {
       { id: "script", title: "Script", body: "Researched and written for the length you chose, in the channel’s language, and checked before it moves on." },
       { id: "video", title: "Video", body: "Narration, visuals, captions and the edit come together in the voice and look the channel is set to. If that voice is unavailable, the run stops instead of using a worse one." },
       { id: "approval", title: "Your approval", body: "The video waits on YouTube as private. You watch it and decide." },
-      { id: "youtube", title: "YouTube", body: "It goes public when you make it public on YouTube — or on its own only where you have switched auto-publish on for that channel." },
+      { id: "youtube", title: "YouTube", body: "It goes public when you make it public on YouTube. Two per-channel settings, both off by default, change that: “Publish when approved”, which someone who manages the workspace switches on and which makes an approved video public, and auto-publish, which publishes on its own." },
     ],
   },
   /** /pricing: the month planner (minutes of finished video, the credits it takes at the published rate, the pack that covers it). */
@@ -318,8 +328,8 @@ export const siteEn = {
   toolStrip: { title: "What Nightshift can make" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Stock photos, illustrating each tool",
-    note: "The pictures stand for the tools. They are stock photos, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
+    label: "AI-generated pictures of each tool",
+    note: "The pictures stand for the tools. They are AI-generated decoration, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
     more: "Show four more tools",
     less: "Show fewer tools",
   },
@@ -491,7 +501,7 @@ export const siteEn = {
     secondary: "See pricing",
     pictures: {
       signoff: {
-        figure: "Illustration of one finished video at the publish desk: it waits on YouTube as private, the publish check has passed, and your decision is recorded before you make it public on YouTube.",
+        figure: "Illustration of one finished video at the publish desk: it waits on YouTube as private, the publish check has passed, and your decision is recorded before it is made public, by you on YouTube or, where “Publish when approved” is on for the channel, by the approval itself.",
         title: "Publish desk",
         channel: "Your channel",
         tag: "Illustration",
@@ -501,7 +511,7 @@ export const siteEn = {
         checkState: "Passed",
         first: "Your approval",
         firstState: "Waiting for you",
-        air: "It goes public only when you make it public on YouTube.",
+        air: "It goes public only when you make it public on YouTube, or approve it on a channel with “Publish when approved” on.",
       },
       composer: {
         figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate button that carries its price.",
@@ -539,7 +549,7 @@ export const siteEn = {
         what: [
           { title: "Topic to finished video", body: "Script, narration, visuals, captions and the edit, made for the length you choose." },
           { title: "A channel that stays itself", body: "Language, voice, visual style and schedule are set per channel and never leak into another." },
-          { title: "Private until you publish", body: "Every video uploads as private and passes a publish check. You watch it, then make it public on YouTube." },
+          { title: "Private until you publish", body: "Every video uploads as private and passes a publish check. You watch it, then make it public on YouTube — or approve it, if someone who manages the workspace switched on “Publish when approved” for the channel." },
           { title: "Your channel’s numbers", body: "Views and analytics for the connected channel, read with the access you granted, shown only to you." },
         ],
         not: [

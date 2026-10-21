@@ -17,7 +17,12 @@ Four kinds of source, none of them new:
   from a definer function that returns numbers, kinds and closed codes and never
   a post's words, link, media or chat. Read like a table: a function the database
   does not have yet reads as "not set up yet".
-* GitHub Actions run status (the repository's own, via the job token).
+* GitHub Actions run status (the repository's own, via the job token): the deploy, tests and frontend
+  workflows, and the daily video workflow's runs and the failed jobs of one run (names only).
+* The reliability reads (``channels``, ``recent_videos``, ``recent_storyboards``, ``run_events``,
+  ``doctor_results``): the operator's own channels' schedule, the video, held and storyboard rows their runs
+  write, and the scheduled readiness check's verdict rows. Ids, states, times and one fixed word (a hold's
+  cause); never a title, a script, a gate verdict or an event's metadata.
 * The public pages of the site (a GET, status code only).
 
 Every read returns a :class:`Section`. A source that cannot answer says WHY in a
@@ -29,8 +34,9 @@ No call here writes anything, spends anything or reaches a paid provider.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 from modules.log_redaction import describe_http_error
@@ -47,6 +53,11 @@ BOT_WORKER_ID = "operator-bot"
 
 #: videos.publish_state values (migration 0016) of a run that did NOT upload.
 HELD_STATES = ("held", "awaiting_approval", "repaired_awaiting_review", "blocked")
+#: What a held row's ``hold_detail.cause`` may say (modules/held_video.HOLD_CAUSES): a fixed word, never text.
+HOLD_CAUSES = ("upload_failed", "quota_exceeded", "upload_limit_exceeded", "token_expired")
+#: What a held row's ``hold_detail.stage`` may say: only the early fact-check stop writes one (main.py
+#: ``_hold_before_render``): the run was held before its video was made, so no cut exists.
+HOLD_STAGES = ("before_render",)
 
 CREATIVE_ACTIVE = ("queued", "planning", "running", "provider_pending", "processing", "rendering")
 
@@ -68,6 +79,17 @@ SECURITY_AUDIT_ACTIONS = (
 SECURITY_AUDIT_PREFIXES = ("role.", "member.")
 
 GITHUB_WORKFLOWS = (("deploy_web.yml", "deploy"), ("tests.yml", "tests"), ("frontend.yml", "frontend"))
+#: The daily video workflow, read separately from the three above: its runs are about production, not code, and
+#: they are listed on every branch and for every event (a manual dispatch is a run too).
+DAILY_VIDEO_WORKFLOW = "daily_video.yml"
+#: How many runs of it are listed (the API's maximum): the hourly schedule makes ~24 a day, so this reaches back
+#: about four days; a slot older than the list says "cannot tell" (reliability._run_view).
+RUNS_PER_PAGE = 100
+#: system_events that prove a run began or ended for a channel (modules/event_log.py). Nothing else counts:
+#: the intelligence poll also writes per-channel events, and those are not a video.
+RUN_EVENTS = ("system.started", "render.completed", "upload.completed", "video.published", "publish.held",
+              "publish.blocked", "upload.failed", "storyboard.ready")
+_CHANNEL_ID = re.compile(r"[a-z0-9][a-z0-9-]{1,38}")
 #: The only database functions the bot may call (each takes no argument and only reads). A new one is a deliberate
 #: addition here, reviewed with its migration; anything else is refused before a request is made.
 _READ_FUNCTIONS = frozenset({"operator_marketing_summary"})
@@ -140,6 +162,7 @@ class OperatorSources:
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._github_token = github_token or ""
         self._cache: dict = {}
+        self._jobs_cache: dict = {}
 
     def now(self) -> datetime:
         return self._now()
@@ -290,15 +313,23 @@ class OperatorSources:
     def held_videos(self) -> Section:
         """Runs that did not upload (held, awaiting approval, repaired, blocked
         by the gate), newest first. Ids and states: no title, no topic, no
-        `hold_detail`."""
-        sec = self._read("videos", {
+        `hold_detail` beyond the one fixed word of its stage (``hold_stage``)."""
+        params = {
             "select": "video_id,channel_id,publish_state,held_at",
             "publish_state": f"in.({','.join(HELD_STATES)})", "published_at": "is.null",
             "order": "held_at.desc", "limit": "200",
-        })
+        }
+        # The stage is ONE fixed word inside hold_detail, read through PostgREST's path select so the gate
+        # verdict next to it is never read; a server that refuses the syntax gets the plain read (as in
+        # ``recent_videos``): the counts must not depend on it.
+        sec = self._read("videos", {**params, "select": params["select"] + ",hold_stage:hold_detail->>stage"})
+        if not sec.ok:
+            sec = self._read("videos", params)
         if not sec.ok:
             return sec
-        return Section(True, [r for r in sec.data or [] if r.get("publish_state") in HELD_STATES], cap=sec.cap)
+        rows = [{**r, "hold_stage": r.get("hold_stage") if r.get("hold_stage") in HOLD_STAGES else None}
+                for r in sec.data or [] if r.get("publish_state") in HELD_STATES]
+        return Section(True, rows, cap=sec.cap)
 
     def videos_published(self, since: datetime) -> Section:
         return self._read("videos", {
@@ -368,6 +399,163 @@ class OperatorSources:
                     or str(r.get("action") or "").startswith(SECURITY_AUDIT_PREFIXES))
                 and r.get("channel_id") in (None, "")]
         return Section(True, rows, cap=sec.cap)
+
+    # -- the schedule: what should exist, and what does (reliability.py) ---------
+
+    def channels(self) -> Section:
+        """The operator's own channels with the settings the scheduler reads (status, schedule, verification)
+        and nothing else: the database is asked for the default organization's rows only, so a customer's
+        channel is never fetched. The credential column is a reference plus public facts, never a token."""
+        return self._read("channels", {
+            "select": "channel_id,status,schedule_config,credential_ref,org_id,created_at,updated_at",
+            "org_id": f"eq.{DEFAULT_ORG_ID}", "limit": "200",
+        })
+
+    def recent_videos(self, since: datetime, channel_ids: list) -> Section:
+        """The named channels' videos made or held since ``since``, repurposed Shorts included (migration 0080
+        stores each as a row of its own): the caller keeps the masters (``reliability.is_master``). There is no
+        server-side ``parent_video_id`` filter on purpose: the daily mirror upserts that column as an empty string,
+        not NULL, and ``is.null`` would match none of the masters; at most 20 Shorts per master fit the row limit.
+        A day of slack is read and the caller filters exactly: the two time columns are text and timestamptz and do
+        not compare alike. Ids, channel, state, format, times and the cause of a hold: no title, no topic, no gate
+        verdict. The channel list is part of the query, so other organizations' videos never fill the row limit."""
+        ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
+        if not ids:
+            return Section(True, [])
+        base = "video_id,channel_id,publish_state,published_at,held_at,video_format,parent_video_id"
+        slack, chans = iso(since - timedelta(days=1)), f"in.({','.join(ids)})"
+
+        def read(select: str):
+            common = {"select": select, "channel_id": chans}
+            return (self._read("videos", {**common, "published_at": f"gte.{slack}",
+                                          "order": "published_at.desc", "limit": "300"}),
+                    self._read("videos", {**common, "held_at": f"gte.{slack}",
+                                          "order": "held_at.desc", "limit": "300"}))
+
+        # The cause of a hold is ONE fixed word inside the hold_detail JSON; PostgREST's path select hands back
+        # just that word, so the gate verdict next to it is never read. If a server refuses the path syntax the
+        # read is repeated without it: the evidence (the dead-man's whole job) must not depend on it, and only
+        # the "upload failed" alert is lost.
+        pub, held = read(base + ",hold_cause:hold_detail->>cause,hold_stage:hold_detail->>stage")
+        if not pub.ok or not held.ok:
+            pub, held = read(base)
+        if not pub.ok or not held.ok:
+            return pub if not pub.ok else held
+        seen, rows = set(), []
+        for r in list(pub.data or []) + list(held.data or []):
+            if r.get("video_id") not in seen:
+                seen.add(r.get("video_id"))
+                cause, stage = r.get("hold_cause"), r.get("hold_stage")
+                rows.append({**r, "hold_cause": cause if cause in HOLD_CAUSES else None,
+                             "hold_stage": stage if stage in HOLD_STAGES else None})
+        return Section(True, rows, cap=pub.cap or held.cap)
+
+    def channel_named(self, channel_id: str) -> Section:
+        """Whether a ``channels`` row with this id exists in ANY organization (the id is the table's primary key):
+        the id and nothing else. The registry's default channel is the operator's only when no row owns the id."""
+        if not _CHANNEL_ID.fullmatch(channel_id or ""):
+            return Section(True, [])
+        sec = self._read("channels", {"select": "channel_id", "channel_id": f"eq.{channel_id}", "limit": "1"})
+        if not sec.ok:
+            return sec
+        return Section(True, [r for r in sec.data or [] if r.get("channel_id") == channel_id])
+
+    def recent_storyboards(self, since: datetime, channel_ids: list) -> Section:
+        """Storyboards (migration 0057) the named channels' runs stopped at since ``since``: a run that planned a
+        video and waits for a person. Id, channel, status and time; never the scenes, the script or the title."""
+        ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
+        if not ids:
+            return Section(True, [])
+        return self._read("storyboards", {
+            "select": "id,channel_id,status,created_at", "channel_id": f"in.({','.join(ids)})",
+            "created_at": f"gte.{iso(since - timedelta(days=1))}", "order": "created_at.desc", "limit": "100",
+        })
+
+    def run_events(self, since: datetime, channel_ids: list) -> Section:
+        """The run-lifecycle events of the named channels since ``since``: name, time and channel. Never
+        `metadata`, which carries titles and error text. The channel list is part of the query, so a busy
+        customer cannot push an operator's evidence out of the row limit. These events reach Supabase only when
+        the intelligence poll mirrors them (once a day), so they can RESCUE a verdict but never prove a run
+        did not happen: the video, held and storyboard rows are written by the run itself."""
+        ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
+        if not ids:
+            return Section(True, [])
+        sec = self._read("system_events", {
+            "select": "event,ts,channel_id",
+            "event": f"in.({','.join(RUN_EVENTS)})", "channel_id": f"in.({','.join(ids)})",
+            "ts": f"gte.{iso(since - timedelta(minutes=1))}", "order": "ts.desc", "limit": "2000",
+        })
+        if not sec.ok:
+            return sec
+        # Belt and braces for a source that ignored the filter: only run events, only the named channels.
+        rows = [r for r in sec.data or [] if r.get("event") in RUN_EVENTS and r.get("channel_id") in ids]
+        return Section(True, rows, cap=sec.cap)
+
+    def doctor_results(self, since: datetime) -> Section:
+        """The scheduled readiness check's own rows (tools/doctor_report.py): title ``ok`` or ``fail``,
+        body the failing checks' names. The bot's rows carry no channel; one that does is not the bot's."""
+        return self._read("alert_events", {
+            "select": "at,title,body", "kind": "eq.operator.doctor", "channel_id": "is.null",
+            "at": f"gte.{iso(since)}", "order": "at.desc", "limit": "50",
+        })
+
+    def _github_get(self, url: str):
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+        if self._github_token:
+            headers["Authorization"] = f"Bearer {self._github_token}"
+        return self.http_get(url, headers, 10)
+
+    def daily_video_runs(self) -> Section:
+        """The newest runs of the daily video workflow, on any branch, scheduled or dispatched. Ids, event,
+        state, times and a short commit: nothing a person typed (the dispatch inputs are not selected)."""
+        repo = self.cfg.github_repo
+        if not repo:
+            return Section.fail("not configured")
+        key = ("gh_runs", DAILY_VIDEO_WORKFLOW)
+        if key in self._cache:
+            return self._cache[key]
+        status, body = self._github_get(
+            f"https://api.github.com/repos/{repo}/actions/workflows/{DAILY_VIDEO_WORKFLOW}/runs?per_page={RUNS_PER_PAGE}")
+        runs = (body or {}).get("workflow_runs") if isinstance(body, dict) else None
+        if status != 200 or not isinstance(runs, list):
+            out = Section.fail("unavailable")
+        else:
+            out = Section(True, [{
+                "id": r.get("id"), "number": r.get("run_number"), "event": r.get("event"),
+                "status": r.get("status"), "conclusion": r.get("conclusion"),
+                "sha": str(r.get("head_sha") or "")[:7],
+                "created_at": r.get("created_at"), "started_at": r.get("run_started_at") or r.get("created_at"),
+                "updated_at": r.get("updated_at"),
+            } for r in runs if isinstance(r, dict)])
+        self._cache[key] = out
+        return out
+
+    def run_jobs(self, run_id) -> Section:
+        """Which jobs of one finished run failed and at which step: the matrix job is named after its
+        channel (``make-video (default)``). A finished run never changes, so the answer is kept for the
+        life of the process (bounded)."""
+        repo = self.cfg.github_repo
+        rid = str(run_id or "")
+        if not repo or not rid.isdigit():
+            return Section.fail("not configured")
+        if rid in self._jobs_cache:
+            return self._jobs_cache[rid]
+        status, body = self._github_get(f"https://api.github.com/repos/{repo}/actions/runs/{rid}/jobs?per_page=30")
+        jobs = (body or {}).get("jobs") if isinstance(body, dict) else None
+        if status != 200 or not isinstance(jobs, list):
+            return Section.fail("unavailable")            # not kept: asked again next pass
+        slim = []
+        for j in jobs:
+            if not isinstance(j, dict):
+                continue
+            step = next((x.get("name") for x in j.get("steps") or []
+                         if isinstance(x, dict) and x.get("conclusion") == "failure"), None)
+            slim.append({"name": j.get("name"), "conclusion": j.get("conclusion"), "step": step})
+        out = Section(True, slim)
+        if len(self._jobs_cache) >= 50:
+            self._jobs_cache.clear()
+        self._jobs_cache[rid] = out
+        return out
 
     # -- outside ----------------------------------------------------------
 

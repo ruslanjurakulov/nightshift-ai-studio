@@ -25,7 +25,7 @@ import { TypedText } from "@/components/site/TypedText";
 import { FlowCard } from "@/components/auth/FlowCard";
 import { PackPlanner } from "@/components/pricing/PackPlanner";
 import { CLIPS } from "@/components/site/samples";
-import { MEDIA_IDS, TILE_IDS } from "@/lib/site/media";
+import { MEDIA_IDS } from "@/lib/site/media";
 import type { PricingPack } from "@/lib/pricing";
 
 afterEach(cleanup);
@@ -278,12 +278,10 @@ describe("the pictures and the data", () => {
 
   it("keeps one still and its phone width for every credited picture, and nothing else (derivatives only, no originals)", () => {
     const files = readdirSync(join(ROOT, "components/site/media")).sort();
-    const tiles = TILE_IDS as readonly string[];
-    expect(files).toEqual(MEDIA_IDS.flatMap((id) => (tiles.includes(id) ? [`${id}.webp`] : [`${id}-sm.webp`, `${id}.webp`])).sort());
+    expect(files).toEqual(MEDIA_IDS.flatMap((id) => [`${id}-sm.webp`, `${id}.webp`]).sort());
     for (const id of MEDIA_IDS) {
-      const tile = tiles.includes(id);
-      expect(statSync(join(ROOT, "components/site/media", `${id}.webp`)).size, id).toBeLessThan(tile ? 31 * 1024 : 130 * 1024);
-      if (!tile) expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeLessThan(45 * 1024);
+      expect(statSync(join(ROOT, "components/site/media", `${id}.webp`)).size, id).toBeLessThan(130 * 1024);
+      expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeLessThan(45 * 1024);
     }
   });
 });

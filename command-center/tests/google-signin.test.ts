@@ -37,6 +37,63 @@ describe("googleRedirectTo", () => {
     expect(u.searchParams.get("next")).toBe("/welcome");
   });
 
+  // Every shape an open redirect has been tried with. For each, the `next` Google's round trip carries must resolve
+  // on THIS origin (what the browser and router.push would do with it), never start with // or hold a backslash, and
+  // never be an /auth/ page (the callback would loop on a spent code). Percent-encoded and fullwidth forms are not
+  // decoded into a host by browsers, so they may be kept as harmless paths; what matters is where they land.
+  const ATTACKS = [
+    "//evil.example",
+    "///evil.example",
+    "////evil.example/a",
+    "https://evil.example",
+    "HTTPS://EVIL.EXAMPLE",
+    "http:evil.example",
+    "//evil.example@nightshift-ai.studio",
+    "/\\evil.example",
+    "\\/evil.example",
+    "\\\\evil.example",
+    "/%5cevil.example",
+    "/%5Cevil.example",
+    "/%2f%2fevil.example",
+    "/%2F/evil.example",
+    "/%252f%252fevil.example",
+    "%2f%2fevil.example",
+    "%5cevil.example",
+    "/\t/evil.example",
+    "/\n/evil.example",
+    "/\r/evil.example",
+    "/%09/evil.example",
+    "/%0d%0a/evil.example",
+    "/\u0000/evil.example",
+    "/\u2028/evil.example",
+    "/\uff0fevil.example",
+    "/a/..//evil.example",
+    "/a/%2e%2e//evil.example",
+    "/./\\evil.example",
+    " //evil.example",
+    "\t//evil.example",
+    "data:text/html,<script>alert(1)</script>",
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    "/auth/callback?next=//evil.example",
+    "/auth/confirm",
+    "/auth",
+  ];
+  it.each(ATTACKS)("never carries %j anywhere but this origin", (raw) => {
+    const origin = "https://nightshift-ai.studio";
+    const u = new URL(googleRedirectTo(origin, raw, "/welcome"));
+    expect(u.origin).toBe(origin);
+    expect(u.pathname).toBe("/auth/callback");
+    const next = u.searchParams.get("next")!;
+    expect(next.startsWith("/")).toBe(true);
+    expect(next.startsWith("//")).toBe(false);
+    expect(next.includes("\\")).toBe(false);
+    expect(next === "/auth" || next.startsWith("/auth/")).toBe(false);
+    expect(new URL(next, origin).origin).toBe(origin);
+    // What the browser lands on after the callback is the same: the raw next, resolved on this origin.
+    expect(new URL(u.toString()).searchParams.getAll("next")).toHaveLength(1);
+  });
+
   it("lets an AI app's connection request through sign-in and back", () => {
     const next = "/oauth/authorize?client_id=abc&state=" + "x".repeat(900);
     const u = new URL(googleRedirectTo("https://nightshift-ai.studio", next, "/command-center"));

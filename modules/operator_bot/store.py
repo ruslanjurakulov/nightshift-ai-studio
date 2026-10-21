@@ -13,6 +13,9 @@ keeps its state there as rows with ``kind`` starting ``operator.``:
   operator.unmute   title = alert kind or ``all``
   operator.digest   title = the local date the daily digest went out
   operator.language title = the language code the owner picked with /language
+  operator.doctor   written by tools/doctor_report.py (the scheduled readiness check), READ-ONLY here:
+                    title = ``ok`` or ``fail``, body = the failing checks' names; replay ignores it, the
+                    reliability alerts read it (modules/operator_bot/reliability.py)
   operator.mail     the owner's e-mail copy of an alert (modules/operator_bot/owner_mail.py):
                     title = the dedupe key, body = ``<alert kind>:<outcome>`` with the
                     outcome sent | seen | retry. ``mail:baseline`` is the marker that the first

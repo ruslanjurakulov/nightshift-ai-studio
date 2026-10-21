@@ -3,7 +3,7 @@
 Status: built, **DRAFT, dormant, and not to be merged before the owner has (1) approved the rule change in
 `docs/proposals/claude-md-rules-2-3-phase-1b.patch` and (2) run the live test below on a disposable channel.**
 
-Phase 1a (migration 0112, merged) made "Approve" a recorded decision bound to one exact cut. Phase 1b (migration 0113 + the
+Phase 1a (migration 0112, merged) made "Approve" a recorded decision bound to one exact cut. Phase 1b (migration 0116 + the
 queue worker) lets a worker act on that decision, **only on a channel whose administrators switched "Publish when approved" on**.
 
 ## What happens, in order
@@ -160,7 +160,7 @@ video public. Section 4 should list "making an approved video public" among the 
 
 Use a channel nobody watches, a throwaway video, and the real OAuth project. Stop at the first line that does not read as written.
 
-0. Preconditions: 0113 applied on a **branch or the live project only if the owner so decides**; worker deployed with
+0. Preconditions: 0116 applied on a **branch or the live project only if the owner so decides**; worker deployed with
    `NIGHTSHIFT_VISIBILITY_PUBLISH=on` and `NIGHTSHIFT_VISIBILITY_DAILY_UNITS=200`; the disposable channel connected with a token that
    includes `youtube.force-ssl`; one video uploaded private by the pipeline (it has `cut_sha256` and a stored gate verdict).
 1. `select publish_on_approve from channels where channel_id = '<ch>';` reads `false`. Approve the video on a channel with the switch

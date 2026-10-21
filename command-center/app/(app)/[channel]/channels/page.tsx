@@ -19,10 +19,10 @@ import type {
 } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
 import { getOrgContext } from "@/lib/orgs-server";
-import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { isPlatformAdmin, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
 import { YOUTUBE_OAUTH_SCOPES, isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
-import { parseVaultResult } from "@/lib/channel-tokens";
+import { latestLiveVerdicts, operatorYoutubeState, parseVaultResult } from "@/lib/channel-tokens";
 import { fetchSocialAccounts } from "@/lib/server/social-accounts";
 import { isSocialConfigured } from "@/lib/server/social-oauth";
 import { isSocialPlatform, parseSocialResult } from "@/lib/social-accounts";
@@ -84,13 +84,29 @@ export default async function ChannelsPage({
 
   const stats = channelStats(channels, videos, snapshots);
 
-  // A customer organization connects its own channels here (migration 0022);
-  // the operator's organization keeps the GitHub-secret path and sees no panel.
+  // A customer organization connects its own channels here (migration 0022); the
+  // operator connects his own the same way (migration 0115) — Connect / Reconnect
+  // for a platform owner/admin, status for everyone who can see the page. The
+  // operator's panel never offers Disconnect (ChannelTokenPanel `operator`).
   const org = await getOrgContext();
-  const customerOrg = Boolean(org.supported && org.current && !org.current.is_default);
-  const [tokens, role] = customerOrg
-    ? await Promise.all([fetchTokenStatuses(), resolveCurrentOrgRole()])
-    : [null, null];
+  const connectable = Boolean(org.supported && org.current);
+  const operatorOrg = Boolean(org.supported && org.current?.is_default);
+  const [tokens, orgRoleHere, platformAdmin] = connectable
+    ? await Promise.all([fetchTokenStatuses(), resolveCurrentOrgRole(), operatorOrg ? isPlatformAdmin() : Promise.resolve(false)])
+    : [null, null, false];
+  // Presentation only: the route and the database check the platform role again.
+  const role = orgRoleHere === null ? null : operatorOrg ? (platformAdmin ? orgRoleHere : "viewer") : orgRoleHere;
+  // What the bot last said about each channel's token (credential.health, the live check).
+  let liveVerdicts = latestLiveVerdicts([]);
+  if (operatorOrg && supabase) {
+    const { data } = await supabase
+      .from("system_events")
+      .select("channel_id, event, ts, metadata")
+      .eq("event", "credential.health")
+      .order("ts", { ascending: false })
+      .limit(100);
+    liveVerdicts = latestLiveVerdicts((data as Parameters<typeof latestLiveVerdicts>[0]) ?? []);
+  }
 
   // Instagram / TikTok belong to the organization, not to one channel
   // (migration 0028) — every organization, the operator's included.
@@ -110,6 +126,9 @@ export default async function ChannelsPage({
   // Who may edit a channel is the database's question (0018); this only hides
   // the Edit button from someone it would refuse.
   const canEditDna = atLeast(orgRole, "editor");
+  // The AI-content label settings that lower what is declared (never, own_clone) are the platform team's: the database
+  // refuses everyone else (migration 0114), so only a platform administrator is offered them. An unknown reads as no.
+  const canLowerAiLabel = await isPlatformAdmin();
 
   // "Publish when approved" can be turned ON only once released (server flag, default off). Until then a channel whose switch is
   // already on still shows it, and it can be turned off; no channel offers to turn it on.
@@ -190,6 +209,8 @@ export default async function ChannelsPage({
                 }
                 videos={videos.filter((v) => v.channel_id === channel.channel_id).length}
                 canControl={atLeast(orgRole, "admin")}
+                canEdit={canEditDna}
+                canLowerAiLabel={canLowerAiLabel}
                 vault={
                   tokens && role
                     ? {
@@ -198,6 +219,18 @@ export default async function ChannelsPage({
                         role,
                         oauthConfigured: isGoogleOAuthConfigured,
                         requiredScopes: YOUTUBE_OAUTH_SCOPES,
+                        ...(operatorOrg
+                          ? {
+                              operator: true,
+                              operatorState: operatorYoutubeState({
+                                token: tokens.rows.find((r) => r.channel_id === channel.channel_id) ?? null,
+                                credentialStatus: credentials.find(
+                                  (c) => c.channel_id === channel.channel_id && c.provider === "youtube",
+                                )?.status,
+                                live: liveVerdicts.get(channel.channel_id),
+                              }),
+                            }
+                          : {}),
                       }
                     : undefined
                 }

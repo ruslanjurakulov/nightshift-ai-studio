@@ -1,11 +1,11 @@
--- rollback_0113_visibility_requests.sql — takes migration 0113 out again. OWNER-APPLY: paste into the Supabase SQL editor.
+-- rollback_0116_visibility_requests.sql — takes migration 0116 out again. OWNER-APPLY: paste into the Supabase SQL editor.
 -- Nothing in the app runs it.
 --
 -- WHEN YOU NEED IT. To switch the whole feature off for good, in one transaction. The cheaper undo is the data: the per-channel
 -- switch (a channel's administrators turn "Publish when approved" off in the Command Center; its queued requests are refused at
--- once) and the worker's own switch (NIGHTSHIFT_VISIBILITY_PUBLISH unset). 0113 changes no video's privacy by itself.
+-- once) and the worker's own switch (NIGHTSHIFT_VISIBILITY_PUBLISH unset). 0116 changes no video's privacy by itself.
 --
--- ORDER. If you also roll back 0112, run THIS file first: 0113 redefines approve_video_publish and audit_action_allowed from
+-- ORDER. If you also roll back 0112, run THIS file first: 0116 redefines approve_video_publish and audit_action_allowed from
 -- 0112's text, and rollback_0112 restores the versions before 0112.
 --
 -- WHAT IT DOES, in one transaction:
@@ -22,20 +22,20 @@
 --      finish_visibility_request, visibility_request_refusal, visibility_channel_connected, youtube_quota_take and youtube_quota_refund: no API role
 --      can write the queue, change the switch or spend quota any more.
 --   3. Puts approve_video_publish(text, text, jsonb) back to 0112's body, byte for byte, with the grant 0112 gave it: it queues nothing.
---   4. Puts audit_action_allowed(text) back to 0112's body (the seven 0113 action names become unknown again).
+--   4. Puts audit_action_allowed(text) back to 0112's body (the seven 0116 action names become unknown again).
 --
 -- WHAT IT KEEPS ON PURPOSE. The tables video_visibility_requests and youtube_quota_ledger with every row (the record of what was
 -- asked and what YouTube reported; deleting history is not undoable), the column channels.publish_on_approve (now false
 -- everywhere), and the three internal functions those need: channels_publish_switch_guard(), video_visibility_requests_guard()
--- and visibility_reason_words(). Applying 0113 again keeps them all (create if not exists / create or replace).
+-- and visibility_reason_words(). Applying 0116 again keeps them all (create if not exists / create or replace).
 --
 -- CHECK BEFORE YOU RUN IT: this file puts two functions back to the text they had in 0112. If a later migration has redefined
 -- either, running this would silently undo that later change. Compare first:
 --     select pg_get_functiondef('public.approve_video_publish(text, text, jsonb)'::regprocedure);
 --     select pg_get_functiondef('public.audit_action_allowed(text)'::regprocedure);
--- The only differences from this file's text should be the lines marked 0113 (and the seven action names in the list).
+-- The only differences from this file's text should be the lines marked 0116 (and the seven action names in the list).
 --
--- tests/security/test_sec_visibility.py applies this file to the lab database and then re-applies 0113.
+-- tests/security/test_sec_visibility.py applies this file to the lab database and then re-applies 0116.
 
 begin;
 set local lock_timeout = '5s';
@@ -48,7 +48,7 @@ begin
   select count(*) into n_flight from public.video_visibility_requests
    where status = 'queued' and submitting_at is not null and submitting_at > now() - interval '10 minutes';
   if n_flight > 0 then
-    raise exception 'rollback 0113: % request(s) have a YouTube write that may be in flight (marked in the last 10 minutes); wait and run this again, so the worker can record what YouTube reports', n_flight
+    raise exception 'rollback 0116: % request(s) have a YouTube write that may be in flight (marked in the last 10 minutes); wait and run this again, so the worker can record what YouTube reports', n_flight
       using errcode = '55000';
   end if;
   update public.video_visibility_requests
@@ -56,7 +56,7 @@ begin
    where status = 'queued' and submitting_at is null;
   select count(*) into n_marked from public.video_visibility_requests where status = 'queued' and submitting_at is not null;
   if n_marked > 0 then
-    raise notice 'rollback 0113: % request(s) stay queued because a write was marked for them: check those videos in YouTube Studio', n_marked;
+    raise notice 'rollback 0116: % request(s) stay queued because a write was marked for them: check those videos in YouTube Studio', n_marked;
   end if;
 end $$;
 update public.channels set publish_on_approve = false where publish_on_approve;

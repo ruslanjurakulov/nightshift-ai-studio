@@ -45,6 +45,8 @@ https://<project-ref>.supabase.co/auth/v1/callback   (Supabase)
 /welcome (yangi hisob)  yoki  next (mavjud hisob)
 ```
 
+Tugma ostida **"Davom etish orqali siz Foydalanish shartlari va Maxfiylik siyosatiga rozilik bildirasiz"** qatori bor, `/login` va `/signup` ikkalasida ham: ro'yxatdan o'tish ochiq bo'lgani uchun hisobi yo'q Google manzili `/login` dan ham yangi hisob oladi, va u email formasidagi rozilik belgisidan o'tmaydi.
+
 Xatolar `/login?error=<kod>` ko'rinishida qaytadi va qat'iy matn bilan
 ko'rsatiladi (en/ru/uz); Google yoki Supabase matni hech qachon ko'rsatilmaydi:
 
@@ -121,7 +123,9 @@ alohida hech narsa yaratilmaydi va qo'shimcha migratsiya kerak emas:
    - **Authorized JavaScript origins**: `https://nightshift-ai.studio`
      (oqim serverda, Supabase orqali o'tadi, shuning uchun majburiy emas; qo'yish zarar qilmaydi).
    - **Authorized redirect URIs** — aynan shu bitta:
-     `https://<project-ref>.supabase.co/auth/v1/callback`
+     `https://<project-ref>.supabase.co/auth/v1/callback` (joriy loyiha uchun
+     `https://kgqzdjttlnhrxrlqxqge.supabase.co/auth/v1/callback`; ilovaning o'z
+     `/auth/callback` manzili bu yerga YOZILMAYDI)
      (Supabase → Authentication → Sign In / Providers → Google ichidagi
      **Callback URL (for OAuth)** maydonidan nusxalang; `<project-ref>` ni o'zingiz
      yozmang)

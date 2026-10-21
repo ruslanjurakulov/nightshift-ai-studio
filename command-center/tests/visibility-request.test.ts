@@ -1,5 +1,5 @@
 /**
- * lib/visibilityRequest.ts: what the panel may say about a video's publish-when-approved request (migration 0113).
+ * lib/visibilityRequest.ts: what the panel may say about a video's publish-when-approved request (migration 0116).
  *
  * What would break: "published" said for anything but a request the database ended as applied with a read-back of public; a
  * request of an earlier approval speaking for the current one; an expired approval read as "waiting"; an unknown word from the
@@ -79,7 +79,7 @@ describe("visibilityView", () => {
       .toEqual({ kind: "refused", reason: "platform_kept_private" });
     expect(visibilityView(row({ status: "failed", reason: "token_expired", finished_at: DECIDED }), VIDEO, NOW))
       .toEqual({ kind: "failed", reason: "token_expired", retryable: true });
-    // "try again" is offered while the request is under the database's lifetime cap (migration 0113), not after it
+    // "try again" is offered while the request is under the database's lifetime cap (migration 0116), not after it
     expect(visibilityView(row({ status: "failed", reason: "token_expired", finished_at: DECIDED, lifetime_attempts: MAX_LIFETIME_ATTEMPTS - 1 }), VIDEO, NOW))
       .toEqual({ kind: "failed", reason: "token_expired", retryable: true });
     expect(visibilityView(row({ status: "failed", reason: "token_expired", finished_at: DECIDED, lifetime_attempts: MAX_LIFETIME_ATTEMPTS }), VIDEO, NOW))
@@ -118,7 +118,7 @@ describe("parseVisibilityRow", () => {
 describe("the vocabulary", () => {
   it("is the database's list and the worker's, word for word", () => {
     const repo = join(__dirname, "..", "..");
-    const sql = readFileSync(join(repo, "supabase", "migrations", "0113_visibility_requests.sql"), "utf8");
+    const sql = readFileSync(join(repo, "supabase", "migrations", "0116_visibility_requests.sql"), "utf8");
     const fn = /function public\.visibility_reason_words\(\).*?select array\[(.*?)\]::text\[\]/s.exec(sql)![1];
     const sqlWords = [...fn.split("\n").map((l) => l.split("--")[0]).join("\n").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     expect([...VISIBILITY_REASONS].sort()).toEqual(sqlWords.sort());
@@ -137,7 +137,7 @@ describe("the vocabulary", () => {
   it("reads only the columns a member is granted (no worker internals)", () => {
     const cols = VISIBILITY_COLUMNS.split(",");
     for (const hidden of ["claimed_by", "claimed_at", "lease_until", "submitting_at"]) expect(cols).not.toContain(hidden);
-    const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0113_visibility_requests.sql"), "utf8");
+    const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0116_visibility_requests.sql"), "utf8");
     const granted = /grant select \((.*?)\)\s+on public\.video_visibility_requests/s.exec(sql)![1].split(",").map((s) => s.trim());
     for (const c of cols) expect(granted, c).toContain(c);
   });

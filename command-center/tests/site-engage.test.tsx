@@ -169,10 +169,13 @@ describe("the landing page's reasons to stay", () => {
     const section = container.querySelector("#try") as HTMLElement;
     // Drawn, not a still: the topic's own words, set on the stage (BrandArt ThumbArt), and the same topic always the same drawing.
     const thumb = () => [...section.querySelectorAll(".nx-try-thumb svg[data-art='thumb'] text")].map((x) => x.textContent);
-    expect(section.querySelector(".nx-try-thumb img")).toBeNull();
+    // The sample topic (the first) also has an AI-generated picture behind its words, with its own alt and a caption that says so; any other topic is the drawing alone.
+    expect(section.querySelector(".nx-try-thumb img")?.getAttribute("alt")).toBe(dictionaries.en.site.art.alts["thumb-silkroad"]);
+    expect(section.querySelector(".nx-try-thumb figcaption")?.textContent).toBe(`${t.thumbNote} ${t.thumbArtNote}`);
     const first = thumb();
     expect(first.length).toBeGreaterThan(0);
     fireEvent.click(within(section).getByRole("button", { name: t.topics[1] }));
+    expect(section.querySelector(".nx-try-thumb img")).toBeNull();
     expect(thumb()).not.toEqual(first);
     expect(thumb()).toEqual(thumbWords(t.topics[1]));
     expect(section.querySelector(".nx-try-thumb .nx-result-badge")?.textContent).toBe(t.tag);
@@ -197,10 +200,10 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
-    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of four
-    // (the hero's picture panel and the two clip pictures carry the same switch), and all four agree.
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of three
+    // (the hero's switch under the card and the two showcases' clip pictures carry the same switch), and all three agree.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(all()).toHaveLength(4);
+    expect(all()).toHaveLength(3);
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);

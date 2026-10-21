@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Is "publish when approved" (migration 0113) RELEASED to customers? Evaluated on the SERVER at request time, default OFF.
+ * Is "publish when approved" (migration 0116) RELEASED to customers? Evaluated on the SERVER at request time, default OFF.
  *
  * The database half (the switch, the queue, the worker) can exist long before customers are told about it: the worker has its
  * own off switch, and the legal pages and the Google consent text still describe a product that never edits an existing video.

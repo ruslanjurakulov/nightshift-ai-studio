@@ -28,7 +28,7 @@ manual dispatch: this bot has never published anything publicly on its own.
 Auto publish is a per-channel switch that defaults to off, and the publish gate
 (`modules/publish_gate.py`) runs in front of both paths. There is exactly one
 further way a video becomes public through this system, and it is a person's
-act, not the bot's: "publish when approved" (migration 0113,
+act, not the bot's: "publish when approved" (migration 0116,
 `docs/APPROVE_PUBLISH_1B.md`). It is a second per-channel switch, off by default,
 that only a real administrator of the channel's workspace can turn on (through an
 audited database function; not a default, not the service key), and the worker
@@ -49,7 +49,7 @@ A dashboard button writes a row and stops. Today only scene repair reads
 (its sha256), until when (24 hours) and with what acknowledgement, and it does NOT
 change the video's privacy. Every upload is private and stays private until a person
 makes it public on YouTube, unless the channel's auto-publish switch is on or, on a
-channel whose administrators switched on "publish when approved" (migration 0113,
+channel whose administrators switched on "publish when approved" (migration 0116,
 default off), the approval itself queues one request in the database that the queue
 worker carries out (rule 2). The browser still only calls a database function and
 stops: the button reads "Approve and publish" only on such a channel, and the

@@ -569,7 +569,17 @@ import sec_approve_video_0112  # noqa: E402
 
 sec_approve_video_0112.extend(TABLES, FUNCTIONS)
 
-# Migration 0113 (publish when approved: the switch, the queue, the quota ledger): tests/security/sec_visibility_0113.py
-import sec_visibility_0113  # noqa: E402
+# Migration 0114 (the AI-disclosure settings that lower the platform label are a platform administrator's): tests/security/sec_ai_disclosure_lock_0114.py
+import sec_ai_disclosure_lock_0114  # noqa: E402
 
-sec_visibility_0113.extend(TABLES, FUNCTIONS)
+sec_ai_disclosure_lock_0114.extend(TABLES, FUNCTIONS)
+
+# Migration 0115 (the operator's own channels connect to YouTube from the Command Center): tests/security/sec_operator_channel_token_0115.py
+import sec_operator_channel_token_0115  # noqa: E402
+
+sec_operator_channel_token_0115.extend(TABLES, FUNCTIONS)
+
+# Migration 0116 (publish when approved: the switch, the queue, the quota ledger): tests/security/sec_visibility_0116.py
+import sec_visibility_0116  # noqa: E402
+
+sec_visibility_0116.extend(TABLES, FUNCTIONS)

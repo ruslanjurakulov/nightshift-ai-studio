@@ -78,6 +78,23 @@ jobs:
             echo "analytics will be skipped."
           fi
 
+      # The default channel connected from the Command Center (migration 0115)
+      # keeps its refresh token in Supabase Vault: the analytics and comment
+      # polls must use the same token the video run does. With no active
+      # connection this does nothing and the secret above applies, as before.
+      - name: Restore YouTube token from Vault (default channel)
+        # The poll is advisory and never spends: a failure here must not stop it
+        # (the video run is the step that fails closed).
+        continue-on-error: true
+        env:
+          CHANNEL_ID: default
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+        run: python tools/restore_channel_token.py
+
       - name: Restore YouTube client secret
         env:
           YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}

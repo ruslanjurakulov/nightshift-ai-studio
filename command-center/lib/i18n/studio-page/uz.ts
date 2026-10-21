@@ -86,7 +86,7 @@ export const studioPageUz: StudioPageDictionary = {
     items: [
       { id: "private", title: "YouTube’ga yuklamalar shaxsiy", body: "Tayyor video kanalingizga shaxsiy video sifatida yuboriladi: ommaviy boʻlguncha uni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi." },
       { id: "check", title: "Avval nashr tekshiruvi", body: "Har bir video tekshiruvdan oʻtadi, hukm esa video sahifasida koʻrinadi: oʻtdi yoki bloklandi va nima uchun." },
-      { id: "approve", title: "Ommaviy qilish — sizning qaroringiz", body: "Siz videoni koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Ommaviy qilish YouTube’da bajariladi. Avtomatik nashr har bir kanalda alohida yoqiladi va siz yoqmaguningizcha oʻchiq turadi." },
+      { id: "approve", title: "Ommaviy qilish — sizning qaroringiz", body: "Siz videoni koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Uni YouTube’da ommaviy qilasiz yoki, ish maydoningizni boshqaradigan kishi “Tasdiqdan keyin nashr qilish”ni yoqqan kanalda, ilovada aynan shu videoni tasdiqlaysiz. Avtomatik nashr va “Tasdiqdan keyin nashr qilish” har bir kanalda alohida yoqiladi va siz yoqmaguningizcha oʻchiq turadi." },
     ],
     figure: "Ommaviy boʻlishdan oldingi video holati tasviri: shaxsiy holda yuklangan, nashr tekshiruvi oʻtgan, tasdigʻingizni kutmoqda. Koʻrsatilgan hamma narsa — namuna.",
     figureTitle: "Nashr pulti",
@@ -116,7 +116,7 @@ export const studioPageUz: StudioPageDictionary = {
       {
         id: "publishes",
         q: "Mening oʻrnimga nashr qilasizmi?",
-        a: "Faqat siz yoqsangiz. Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Avtomatik nashr kanal uchun siz yoqmaguningizcha oʻchiq.",
+        a: "Faqat siz yoqsangiz. Tayyor videolar YouTube’ga shaxsiy holda yuklanadi va avval nashr tekshiruvidan oʻtadi. Avtomatik nashr kanal uchun siz yoqmaguningizcha oʻchiq. “Tasdiqdan keyin nashr qilish” ham ish maydoningizni boshqaradigan kishi uni kanal uchun yoqmaguncha oʻchiq; shundan keyin ilovada aynan shu videoni tasdiqlash YouTube’dan uni ommaviy qilishni soʻraydi.",
       },
       {
         id: "languages",
@@ -131,7 +131,7 @@ export const studioPageUz: StudioPageDictionary = {
       {
         id: "private",
         q: "Shaxsiy yuklash nima?",
-        a: "YouTube’da shaxsiy videoni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi. Nightshift har bir tayyor videoni avval kanalingizga shunday yuboradi va u faqat siz ommaviy qilganingizdan keyin ommaviy boʻladi.",
+        a: "YouTube’da shaxsiy videoni faqat siz va u bilan oʻrtoqlashgan kishilar koʻra oladi. Nightshift har bir tayyor videoni avval kanalingizga shunday yuboradi va u faqat siz ommaviy qilganingizdan keyin — YouTube’da yoki, kanal uchun “Tasdiqdan keyin nashr qilish” yoqilgan boʻlsa, ilovada tasdiqlab — ommaviy boʻladi.",
       },
       {
         id: "data",

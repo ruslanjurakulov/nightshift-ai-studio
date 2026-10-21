@@ -21,6 +21,7 @@ import {
   visibilityView,
   type VisibilityRequestRow,
 } from "@/lib/visibilityRequest";
+import { heldBeforeRender, heldFlagged } from "@/lib/heldVideos";
 import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 
 /**
@@ -32,7 +33,7 @@ import type { ReviewIntentRow, VideoRow } from "@/lib/types";
  *    RECORDS who approved which exact cut (its checksum), until when (24 hours) and with what acknowledgement. Every
  *    video is uploaded as private and stays private until a person makes it public on YouTube (unless the channel's auto-publish
  *    switch is on); nothing in a browser can take a video public, re-render one, or spend a token. On a channel whose
- *    administrators ALSO switched "publish when approved" on (migration 0113, default off), approving queues one request that a
+ *    administrators ALSO switched "publish when approved" on (migration 0116, default off), approving queues one request that a
  *    worker carries out, and the panel then says what the database recorded: queued, refused with the reason in words, expired,
  *    or published, and "published" only for a request whose read-back said public (lib/visibilityRequest.ts). The button then
  *    reads "Approve and publish"; on every other channel it reads "Approve" and says it does not make the video public.
@@ -64,9 +65,9 @@ export function ReviewPanel({
   /** Whether this person may approve here (lib/videoApproval.approveAccess); the database decides again. */
   access: ApproveAccess;
   channelName?: string;
-  /** The channel's "publish when approved" switch (migration 0113). False when it is off, and when 0113 is not applied. */
+  /** The channel's "publish when approved" switch (migration 0116). False when it is off, and when 0116 is not applied. */
   publishOnApprove?: boolean;
-  /** This video's newest publish-when-approved request (migration 0113), or null. */
+  /** This video's newest publish-when-approved request (migration 0116), or null. */
   request?: VisibilityRequestRow | null;
 }) {
   const { t } = useI18n();
@@ -230,6 +231,7 @@ export function ReviewPanel({
     }
   }
 
+  const flaggedTexts = heldFlagged(video);
   const decided = state.view.kind === "approved" || state.view.kind === "expired" ? state.view : null;
   const who = decided?.by ?? null;
   const at = decided ? dayTime(decided.at) : "";
@@ -271,7 +273,9 @@ export function ReviewPanel({
               ? t.review.previewUnreadable
               : video.preview_path
                 ? t.review.previewLoading
-                : t.review.previewMissing}
+                : heldBeforeRender(video)
+                  ? t.review.previewBeforeRender
+                  : t.review.previewMissing}
           </p>
         </div>
       )}
@@ -326,6 +330,21 @@ export function ReviewPanel({
                   </li>
                 ))}
               </ul>
+            )}
+            {flaggedTexts.length > 0 && (
+              <div data-testid="flagged-texts" className="mt-3">
+                <div className="t-label">{t.review.flaggedHeading}</div>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {flaggedTexts.map((f, i) => (
+                    <li key={i} className="text-sm">
+                      <span className="text-[var(--color-muted)]">
+                        {t.review.flaggedSources[f.source]} · {t.review.flaggedVerdicts[f.verdict]}
+                      </span>
+                      <p className="m-0 mt-1">{f.text}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </>
         ) : (

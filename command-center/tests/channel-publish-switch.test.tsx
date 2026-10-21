@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The Channels page's "Publish when approved" switch (migration 0113): off by default, administrators only, an honest sheet
+ * The Channels page's "Publish when approved" switch (migration 0116): off by default, administrators only, an honest sheet
  * before it is turned on, one tap to turn it off, written ONLY through the database function.
  *
  * What would break: the switch shown as on (or writable) for someone who is not an administrator, turned on by a single tap
@@ -135,7 +135,7 @@ describe("not released (the server flag is off)", () => {
 });
 
 describe("the switch", () => {
-  it("is not shown before migration 0113 is applied (the column is absent): nothing is offered that is not there", () => {
+  it("is not shown before migration 0116 is applied (the column is absent): nothing is offered that is not there", () => {
     card({});
     expect(screen.queryByRole("switch", { name: new RegExp(en.channels.publishOnLabel) })).toBeNull();
     expect(document.body.textContent).not.toContain(en.channels.publishOnLabel);

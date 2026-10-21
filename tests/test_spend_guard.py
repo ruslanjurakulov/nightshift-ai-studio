@@ -206,6 +206,8 @@ class FakeMixer:
     def build(self, script):
         out["voice_built"] = True
         return work / "a.mp3", []
+    def describe_voice(self):
+        return {"provider": "edge", "source": "default"}
 
 fetcher = MagicMock()
 fetcher.generate_broll.return_value = SimpleNamespace(generated=0, by_section={}, newly_generated=0, to_dict=lambda: {})

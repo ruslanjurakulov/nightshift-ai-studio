@@ -7,9 +7,12 @@ import { fmt } from "@/lib/i18n/core";
 import type { Dictionary } from "@/lib/i18n";
 import { buildPlan, cleanTopic, TOPIC_MAX } from "@/lib/site/demo-plan";
 import { ThumbArt } from "@/components/site/BrandArt";
+import { ArtImg } from "@/components/site/art";
+import { THUMB_ART } from "@/lib/site/art";
 import { useMotionPaused } from "@/lib/site/motion";
 
 type Copy = Dictionary["site"]["try"];
+type ArtAlts = Dictionary["site"]["art"]["alts"];
 
 /** One section appears every STEP_MS while the example is "drafting". */
 const STEP_MS = 520;
@@ -33,7 +36,7 @@ const STEP_MS = 520;
  * The thumbnail card draws the thumbnail the plan asks for (components/site/BrandArt.tsx ThumbArt): up to three of the
  * topic's words, large, on the stage. It is drawn, not a still, so the landing never shows the hero's picture twice.
  */
-export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: string; href?: string }) {
+export function TryDemo({ copy, art, note, href = "/signup" }: { copy: Copy; /** The descriptions of the AI-generated illustrations (site.art.alts). */ art: ArtAlts; note: string; href?: string }) {
   const uid = useId();
   const [value, setValue] = useState("");
   // What the plan was built from; the field can change without the plan changing under it.
@@ -84,6 +87,9 @@ export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: st
   // Until a topic is asked for, the plan on show is the first sample topic's.
   const shownTopic = topic || copy.topics[0];
   const plan = buildPlan(copy.sections, shownTopic);
+  // The first sample topic (the Silk Road) has a picture behind its thumbnail's words: an AI-generated image of the Registan, said so
+  // in the caption and in its alt. Any other topic keeps the drawn stand-in, as before.
+  const thumbPicture = shownTopic === copy.topics[0];
   const state: "sample" | "drafting" | "ready" = !topic ? "sample" : shown < total ? "drafting" : "ready";
 
   useEffect(
@@ -196,11 +202,17 @@ export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: st
                 </ul>
                 {s.id === "thumb" && (
                   <figure className="nx-try-thumb">
-                    <div className="nx-try-thumb-pic">
-                      <ThumbArt topic={shownTopic} className="nx-art" />
+                    <div className="nx-try-thumb-pic" data-picture={thumbPicture ? "true" : undefined}>
+                      {thumbPicture && (
+                        <>
+                          <ArtImg id={THUMB_ART} alt={art[THUMB_ART]} className="nx-art nx-try-thumb-bg" />
+                          <span className="nx-try-thumb-scrim" aria-hidden />
+                        </>
+                      )}
+                      <ThumbArt topic={shownTopic} className="nx-art" backdrop={thumbPicture} />
                       <span className="nx-result-badge">{copy.tag}</span>
                     </div>
-                    <figcaption>{copy.thumbNote}</figcaption>
+                    <figcaption>{thumbPicture ? `${copy.thumbNote} ${copy.thumbArtNote}` : copy.thumbNote}</figcaption>
                   </figure>
                 )}
               </li>

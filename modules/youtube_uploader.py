@@ -35,6 +35,7 @@ rule YouTube enforces (see ``build_chapters``).
 import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -282,6 +283,42 @@ def compose_description(description: str, chapters: list[str]) -> str:
     return candidate
 
 
+_OPENNESS = {"private": 0, "unlisted": 1, "public": 2}
+
+
+@dataclass(frozen=True)
+class PrivacyOutcome:
+    """What to record about an upload whose privacy YouTube reported.
+
+    ``recorded``: the privacy the video HAS (what the row and the events say).
+    ``limit``: the privacy anything downstream (the Short) may use: never wider
+    than what was requested. ``mismatch``: YouTube applied something other than
+    what was requested."""
+
+    recorded: str
+    limit: str
+    mismatch: bool
+
+
+def reconcile_privacy(requested, observed) -> PrivacyOutcome:
+    """Compare the privacy asked for with the one YouTube applied.
+
+    An API project that has not passed YouTube's audit has its uploads locked
+    private whatever ``privacyStatus`` says; recording such a video as the
+    privacy that was REQUESTED would read as published when it is not. An
+    observation that is missing or not one of the three words proves nothing, so
+    the request stands (what every upload did before this check). A video more
+    open than requested is recorded as it IS, but nothing downstream is widened
+    to match it."""
+    asked = str(requested or "").strip().lower()
+    seen = str(observed or "").strip().lower()
+    if seen not in _OPENNESS or asked not in _OPENNESS:
+        return PrivacyOutcome(recorded=requested, limit=requested, mismatch=False)
+    if seen == asked:
+        return PrivacyOutcome(recorded=seen, limit=asked, mismatch=False)
+    return PrivacyOutcome(recorded=seen, limit=min(asked, seen, key=_OPENNESS.__getitem__), mismatch=True)
+
+
 class YouTubeUploader:
     def __init__(self, channel: Optional[ChannelContext] = None):
         self.channel = channel
@@ -463,6 +500,10 @@ class YouTubeUploader:
             if status:
                 pct = int(status.progress() * 100)
                 logger.info("Yuklash: %d%%", pct)
+        # What YouTube APPLIED, from the insert's own response (part=status): it may keep a
+        # video private whatever was asked for. Unknown stays None, never the request.
+        applied = (response.get("status") or {}).get("privacyStatus") if isinstance(response, dict) else None
+        self._applied_privacy = applied if isinstance(applied, str) else None
         return response["id"]
 
     def _insert_idempotent(self, body: dict, video_path: Path, title: str,
@@ -556,6 +597,7 @@ class YouTubeUploader:
         section_timeline: list[dict] | None = None,
         description_suffix: str | None = None,
         attempt=None,
+        ai_disclosure=None,
     ) -> dict:
         """Upload one video.
 
@@ -584,6 +626,14 @@ class YouTubeUploader:
         (see modules/upload_idempotency.py). None keeps the old single-shot
         upload exactly.
 
+        `ai_disclosure` (a ``modules.ai_disclosure.Decision``) is the channel's
+        answer to "does this video contain realistic synthetic media". When its
+        label is true the body carries ``status.containsSyntheticMedia: true``
+        and the description gets the disclosure line (placed before the
+        watch-next block, so the line wins when only one fits). A false label
+        or None sends nothing at all: the body is exactly what it was before
+        this parameter existed. Neither changes privacy or who may publish.
+
         Quota: videos.insert is ~1600 units of the 10,000/day; a caption track
         adds ~400. Chapters are description text and cost nothing. A marker
         lookup is ~3 units.
@@ -599,9 +649,29 @@ class YouTubeUploader:
             description = compose_description(
                 description, build_chapters(section_timeline, script.sections)
             )
+        if ai_disclosure is not None and getattr(ai_disclosure, "label", False):
+            from modules import ai_disclosure as ad
+
+            # Bytes, not characters: YouTube's 5000 is a byte limit and a Russian
+            # or Uzbek description is two bytes a letter. The flag below is the
+            # declaration; a line that does not fit is the one thing dropped.
+            line = getattr(ai_disclosure, "line", "") or ""
+            with_line = ad.append_line(description, line, limit=MAX_DESCRIPTION,
+                                       measure=lambda t: len(t.encode("utf-8")))
+            if line and line not in with_line:
+                logger.warning("%sThe AI-disclosure line did not fit the description; the "
+                               "containsSyntheticMedia flag is still sent", self._label)
+            description = with_line
         if description_suffix:
             from modules import watch_next
-            description = watch_next.append_watch_next(description, description_suffix)
+            with_wn = watch_next.append_watch_next(description, description_suffix)
+            # append_watch_next counts characters; YouTube's 5000 is bytes, and a Russian or Uzbek description is two
+            # bytes a letter. Keep the block only if the result still fits, as the disclosure line is held to.
+            if with_wn == description or len(with_wn.encode("utf-8")) <= MAX_DESCRIPTION:
+                description = with_wn
+            else:
+                logger.warning("%sThe watch-next block was dropped: the description would exceed %d bytes",
+                               self._label, MAX_DESCRIPTION)
 
         body = {
             "snippet": {
@@ -616,6 +686,11 @@ class YouTubeUploader:
             },
         }
 
+        if ai_disclosure is not None and getattr(ai_disclosure, "label", False):
+            # Only ever true: a body without the field is what every upload has
+            # always sent, and YouTube reads the absence as "no".
+            body["status"]["containsSyntheticMedia"] = True
+
         # Labelled from the channel's real language, never a constant; an
         # unknown language sends no field rather than a wrong one.
         language = content_language(self.channel)
@@ -626,12 +701,14 @@ class YouTubeUploader:
         if self.target_channel_id:
             body["snippet"]["channelId"] = self.target_channel_id
 
+        self._applied_privacy = None
         if attempt is None:
             video_id = self._insert_once(body, video_path, title, privacy)
         else:
             video_id = self._insert_idempotent(body, video_path, title, privacy, attempt)
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         logger.info("%sYuklandi: %s", self._label, video_url)
+        applied_privacy = getattr(self, "_applied_privacy", None)
 
         # With an attempt record, a step an earlier attempt of this run already
         # finished for this same video is not repeated (a second caption track
@@ -655,7 +732,11 @@ class YouTubeUploader:
             if self.upload_captions(video_id, captions_path) and attempt is not None:
                 attempt.mark_step(STEP_CAPTIONS)
 
-        return {"id": video_id, "url": video_url}
+        result = {"id": video_id, "url": video_url}
+        if applied_privacy:
+            # Only when YouTube said: a caller compares it with what it asked for (reconcile_privacy).
+            result["privacy"] = applied_privacy
+        return result
 
     # -- captions ----------------------------------------------------------
 

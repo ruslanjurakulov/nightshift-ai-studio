@@ -52,7 +52,7 @@ it. Instagram / TikTok tokens come from Supabase Vault (0028); a YouTube
 channel's token is resolved exactly as for a render run of that channel
 (``channel_token``), in memory. None is ever printed.
 
-Publish when approved (migration 0113, ``modules/visibility_publish.py``): between render jobs the worker also claims at most
+Publish when approved (migration 0116, ``modules/visibility_publish.py``): between render jobs the worker also claims at most
 one ``video_visibility_requests`` row (queued when a person approved one exact cut of an uploaded, private video on a channel
 whose administrators switched "publish when approved" on) and makes that video public with ``videos.update`` on the channel's own
 token (``youtube_publish_credentials``), in memory. It asks the database again before and immediately before the write
@@ -137,6 +137,7 @@ from modules import comment_replies  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
 from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
+from modules.publish_gate import HELD_BEFORE_RENDER_EXIT  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import visibility_publish  # noqa: E402
@@ -496,16 +497,21 @@ def channel_token(channel_row: Mapping, env: Mapping[str, str],
                   *, expected_youtube_channel_id: str = "") -> "channel_tokens.ResolvedToken":
     """This channel's YouTube token, in memory — the one rule a render run
     (prepare_credentials) and a "Publish to platforms" YouTube upload
-    (youtube_publish_credentials) share. The default channel: YOUTUBE_TOKEN_JSON.
-    Any other operator channel: its ACTIVE Vault connection, else its own
-    CHRONOS_YT_TOKEN_<REF>. A channel of any other organization: its ACTIVE
-    Vault connection only, never the environment (BR-G-002)
-    (modules/channel_tokens.py). Never another channel's token. Raises
-    ChannelTokenError when the Vault lookup failed with nothing to fall back to."""
+    (youtube_publish_credentials) share. The operator's own channels: the ACTIVE
+    Vault connection its owner made with the Command Center's button (migration
+    0115), else its own secret: YOUTUBE_TOKEN_JSON for the default channel,
+    CHRONOS_YT_TOKEN_<REF> for any other. A channel of any other organization:
+    its ACTIVE Vault connection only, never the environment (BR-G-002)
+    (modules/channel_tokens.py). The Vault key is always the row's own channel
+    id. Never another channel's token. Raises ChannelTokenError when the Vault
+    lookup failed with nothing to fall back to."""
+    expected = expected_youtube_channel_id or str(channel_row.get("youtube_channel_id") or "")
     if channel_row.get("is_default"):
-        raw = env.get("YOUTUBE_TOKEN_JSON", "")
-        return (channel_tokens.ResolvedToken(channel_tokens.SOURCE_ENV, raw) if raw.strip()
-                else channel_tokens.ResolvedToken(channel_tokens.SOURCE_NONE))
+        # `is_default` is set only for the operator's own `default` channel (tools/list_channels._row), so its
+        # secret is the environment's to give and its Vault key is that id, whatever else the row says.
+        return channel_tokens.resolve_channel_token(
+            "default", "YOUTUBE_TOKEN_JSON", env, client=token_client,
+            expected_youtube_channel_id=expected, allow_env=True)
     name = str(channel_row.get("token_secret") or "")
     if not name.startswith(TOKEN_PREFIX):
         name = ""
@@ -513,8 +519,7 @@ def channel_token(channel_row: Mapping, env: Mapping[str, str],
     # without the flag is treated as someone else's: the safe direction.
     return channel_tokens.resolve_channel_token(
         str(channel_row.get("channel_id") or ""), name, env, client=token_client,
-        expected_youtube_channel_id=(expected_youtube_channel_id
-                                     or str(channel_row.get("youtube_channel_id") or "")),
+        expected_youtube_channel_id=expected,
         allow_env=channel_row.get("is_operators") is True)
 
 
@@ -565,10 +570,11 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
     if channel_row.get("is_default"):
         if resolved.found:
             _write_private(Path(repo_dir) / "youtube_token.json", resolved.token_json)
-            logger.info("channel %s: YOUTUBE_TOKEN_JSON is set — wrote youtube_token.json", cid)
+            logger.info("channel %s: its %s is set — wrote youtube_token.json", cid,
+                        "Vault connection" if resolved.source == channel_tokens.SOURCE_VAULT else "YOUTUBE_TOKEN_JSON")
         else:
-            logger.info("channel %s: YOUTUBE_TOKEN_JSON is not set — publishing and analytics "
-                        "will be skipped", cid)
+            logger.info("channel %s: no Vault connection and YOUTUBE_TOKEN_JSON is not set — publishing "
+                        "and analytics will be skipped", cid)
     elif channel_row.get("is_operators") is not True:
         # Another organization's channel: its Vault token is handed over as the
         # file its uploader reads (modules/channel_credentials.token_path), never
@@ -693,7 +699,7 @@ class Worker:
         # paid for) and post (only what a person approved), between render
         # jobs. None = off.
         self.comments = comments
-        # Publish when approved (migration 0113): makes an approved video public on a channel that switched it on, between
+        # Publish when approved (migration 0116): makes an approved video public on a channel that switched it on, between
         # render jobs. None = off (the default: NIGHTSHIFT_VISIBILITY_PUBLISH).
         self.visibility = visibility
         # The service-key credits client and where a finished run's ledger is
@@ -1297,10 +1303,15 @@ class Worker:
             # A customer's token is a file, not an env var (BR-L-080): its strings
             # are added from the file the run reads.
             from_file: List[str] = []
-            if channel_row.get("is_operators") is not True and not channel_row.get("is_default"):
+            if channel_row.get("is_default"):
+                name = "youtube_token.json"          # the operator's own default channel: Vault or its secret
+            elif channel_row.get("is_operators") is not True:
+                name = channel_credentials.customer_token_filename(str(channel_row.get("channel_id")))
+            else:
+                name = ""
+            if name:
                 try:
-                    text = (Path(self.repo_dir) / channel_credentials.customer_token_filename(
-                        str(channel_row.get("channel_id")))).read_text(encoding="utf-8")
+                    text = (Path(self.repo_dir) / name).read_text(encoding="utf-8")
                     from_file = channel_tokens.secret_strings(channel_tokens.ResolvedToken(
                         channel_tokens.SOURCE_VAULT, text))
                 except OSError:
@@ -1338,6 +1349,13 @@ class Worker:
                 return end("failed", format_error(
                     f"main.py exited with code {rc}: the channel's spend ceiling stopped the run "
                     "before anything was spent; nothing was charged", tail, self._secrets))
+            if rc == HELD_BEFORE_RENDER_EXIT:
+                # The fact-check would block the publish gate: the run stopped before
+                # the voice and the render were bought. No video, so the job fails
+                # and the hold is released; the held row says why.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: the fact-check held the script before the video "
+                    "was made; nothing was charged", tail, self._secrets))
             return end("failed", format_error(f"main.py exited with code {rc}", tail, self._secrets))
         finally:
             done.set()
@@ -1561,7 +1579,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         comments = _comment_inbox(url, key, args.worker_id, token_client)
     visibility = None
     # OFF by default: this is the one step that changes an existing video's privacy. A channel's own switch (default off,
-    # set by its administrators) is the second lock; migration 0113 must be applied.
+    # set by its administrators) is the second lock; migration 0116 must be applied.
     if visibility_publish.enabled():
         visibility = visibility_publish.VisibilityService(
             url, key, worker_id=args.worker_id,

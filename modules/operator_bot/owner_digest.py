@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
-from modules.operator_bot import analysis, views
+from modules.operator_bot import analysis, reliability, views
 from modules.operator_bot.i18n import Raw, t
 from modules.operator_bot.sources import OperatorSources, Section, parse_ts
 from modules.tg_text import safe_id
@@ -124,6 +124,7 @@ def build(ops: OperatorSources, lang: str, held: Optional[list] = None) -> Diges
                          failed=c.get("render.failed", 0) + c.get("upload.failed", 0), cut=views.cut(lang, ev)))
     else:
         d.lines.append(t(lang, "ownermail.dg_videos_unknown", why=views.unknown(lang, ev)))
+    d.lines += reliability.digest_lines(ops, lang)
 
     # -- spend: only rows recorded inside the day, so the wording of the bot's cost line applies unchanged
     costs = ops.creative_costs(start)

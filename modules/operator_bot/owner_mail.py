@@ -68,12 +68,14 @@ SWITCH = "NIGHTSHIFT_OWNER_EMAIL"
 SWITCH_ON = "on"
 
 #: Alert kinds the owner can have by e-mail. ``signup`` exists only here.
-MAIL_KINDS = ("payment", "signup", "run", "stuck", "worker", "deploy", "marketing", "balance", "audit", "approval")
+MAIL_KINDS = ("payment", "signup", "run", "stuck", "worker", "deploy", "marketing", "balance", "audit", "approval",
+              "pipeline", "health")
 #: What an unset OWNER_EMAIL_KINDS means: the owner's list (payments, sign-ups,
 #: system problems). Balances, audit events and approvals are opt-in by name.
-DEFAULT_KINDS = ("payment", "signup", "run", "stuck", "worker", "deploy", "marketing")
+DEFAULT_KINDS = ("payment", "signup", "run", "stuck", "worker", "deploy", "marketing", "pipeline", "health")
 #: Kinds whose INFO-severity alerts are wanted as news (a payment received, a new
-#: account). Any other info alert (a draft waiting, a post sent) is not e-mailed.
+#: account). Any other info alert (a draft waiting, a post sent, a "recovered" note, "the dead-man switch cannot
+#: judge") is not e-mailed: those stay in Telegram.
 INFO_KINDS = ("payment", "signup")
 
 MAX_ATTEMPTS = 3

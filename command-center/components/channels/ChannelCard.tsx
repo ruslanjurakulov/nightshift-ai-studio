@@ -14,6 +14,7 @@ import type { ChannelHealth } from "@/lib/channels";
 import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
 import { ChannelTokenPanel, type ChannelTokenPanelProps } from "@/components/channels/ChannelTokenPanel";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
+import { AiDisclosureSettings } from "@/components/channels/AiDisclosureSettings";
 
 /**
  * One channel: identity, configuration, credential status and health.
@@ -40,6 +41,8 @@ export function ChannelCard({
   dna,
   canControl = false,
   publishReleased = false,
+  canEdit = false,
+  canLowerAiLabel = false,
 }: {
   channel: ChannelRow;
   /** The channel's URL segment — its name, not its internal id. */
@@ -65,6 +68,13 @@ export function ChannelCard({
    * caller that forgets the prop does not expose the feature.
    */
   publishReleased?: boolean;
+  /** May the caller write this channel's settings (an editor of its organization)? */
+  canEdit?: boolean;
+  /**
+   * Is the caller a platform administrator? Only then are `never` and `own_clone` (the two AI-content label settings that
+   * lower what is declared to the platforms) offered: migration 0114 refuses them from everyone else.
+   */
+  canLowerAiLabel?: boolean;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -75,7 +85,7 @@ export function ChannelCard({
   const [auto, setAuto] = useState(Boolean(channel.auto_publish));
   const [review, setReview] = useState(channel.agent_config?.storyboard_review === true);
   const [reviewBusy, setReviewBusy] = useState(false);
-  // "Publish when approved" (migration 0113). Absent before that migration is applied: then there is no switch to show.
+  // "Publish when approved" (migration 0116). Absent before that migration is applied: then there is no switch to show.
   const [publishOn, setPublishOn] = useState(channel.publish_on_approve === true);
   // Released: shown whenever the column exists. Not released: shown only while it is on (the way to turn it off), and it is gone
   // again the moment it is off, so there is never a control to turn it on.
@@ -168,7 +178,7 @@ export function ChannelCard({
   }
 
   /**
-   * Publish when approved, per channel (migration 0113). Off (the default): approving a video records the decision and nothing
+   * Publish when approved, per channel (migration 0116). Off (the default): approving a video records the decision and nothing
    * else, and the video is made public on YouTube by a person. On: approving also queues the video, and a worker asks YouTube
    * to make it public after checking everything again; YouTube may still keep it private, and the video page says what YouTube
    * reports. Written only through the database function, which checks that the caller administers this workspace, and audits it;
@@ -387,7 +397,7 @@ export function ChannelCard({
             disabled={reviewBusy || pending || !canControl}
             title={canControl ? undefined : t.channels.adminOnly}
           />
-          {/* Publish when approved (migration 0113). Off is the default; on queues an approved video to be made public by a
+          {/* Publish when approved (migration 0116). Off is the default; on queues an approved video to be made public by a
               worker, which YouTube may still refuse. Only shown once the migration is applied. */}
           {showPublishSwitch && (
             <SwitchRow
@@ -406,6 +416,13 @@ export function ChannelCard({
               {t.channels.saveFailed}: {error}
             </p>
           )}
+          {/* The AI-content label. `never` and `own_clone` are the platform team's to set (migration 0114). */}
+          <AiDisclosureSettings
+            channelId={channel.channel_id}
+            agent={channel.agent_config}
+            canEdit={canEdit}
+            canLower={canLowerAiLabel}
+          />
         </div>
 
         <div className="flex flex-col gap-4">

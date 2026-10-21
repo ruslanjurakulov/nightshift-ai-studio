@@ -4,8 +4,9 @@ its use in the queue worker, and the workflow's restore step.
 What would break without these:
 
 * a customer who connected their channel silently uploading with a stale
-  GitHub secret instead (or the reverse: the operator's default channel
-  suddenly consulting Vault);
+  GitHub secret instead (or the operator who pressed "Connect YouTube" on his
+  own default channel, Chronos, silently still uploading with a dead
+  YOUTUBE_TOKEN_JSON);
 * a refresh token surfacing in a log line, an exception, a stored job error or
   a repr — the one thing this whole path exists to prevent;
 * a token file left readable by others, or left on disk after the run;
@@ -81,10 +82,83 @@ def vault_row(**kw):
 
 def client(resp=None, exc=None):
     return ct.VaultTokenClient("https://x.supabase.co", "service-key-value",
-                               session=Session(resp, exc))
+                               session=Session(resp, exc), sleep=lambda s: None)
 
 
 BASE_ENV = {ct.CLIENT_ID_ENV: CLIENT_ID, ct.CLIENT_SECRET_ENV: CLIENT_SECRET}
+
+
+class Flaky:
+    """A session that answers from a script, one entry per attempt (the last repeats); an exception entry is raised."""
+
+    def __init__(self, *script):
+        self.script, self.calls, self.timeouts = list(script), [], []
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        self.calls.append(json)
+        self.timeouts.append(timeout)
+        a = self.script[min(len(self.calls), len(self.script)) - 1]
+        if isinstance(a, BaseException):
+            raise a
+        return a
+
+
+class VaultRetry(unittest.TestCase):
+    """One timeout or 5xx at the slot hour must not send the run back to a dead old secret (review F1)."""
+
+    def make(self, *script):
+        self.sleeps = []
+        self.session = Flaky(*script)
+        return ct.VaultTokenClient("https://x.supabase.co", "k", session=self.session, sleep=self.sleeps.append)
+
+    def test_two_transient_failures_then_success_uses_the_vault_token(self):
+        c = self.make(TimeoutError("slow"), Resp(503, {}), Resp(200, [vault_row()]))
+        with self.assertLogs("modules.channel_tokens", level="WARNING"):
+            tok = c.read("default")
+        self.assertEqual(tok.refresh_token, REFRESH)
+        self.assertEqual(len(self.session.calls), 3)
+        self.assertEqual(self.sleeps, [1.0, 3.0])
+
+    def test_it_gives_up_after_three_attempts_and_the_fallback_is_todays(self):
+        c = self.make(Resp(500, {"message": REFRESH}))
+        with self.assertLogs("modules.channel_tokens", level="WARNING") as logs:
+            with self.assertRaises(ct.VaultLookupError) as cm:
+                c.read("default")
+        self.assertEqual(len(self.session.calls), 3)
+        self.assertNotIn(REFRESH, str(cm.exception) + "\n".join(logs.output))
+        r = ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", dict(BASE_ENV, YOUTUBE_TOKEN_JSON=ENV_TOKEN),
+                                     client=self.make(Resp(500, {})))
+        self.assertEqual(r.source, ct.SOURCE_ENV)
+        with self.assertRaises(ct.VaultLookupError):          # fail closed with nothing to fall back to
+            ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", BASE_ENV, client=self.make(Resp(500, {})))
+
+    def test_the_added_delay_is_bounded(self):
+        c = self.make(TimeoutError("slow"))
+        with self.assertLogs("modules.channel_tokens", level="WARNING"):
+            with self.assertRaises(ct.VaultLookupError):
+                c.read("default")
+        added = sum(self.sleeps) + sum(t for t in self.session.timeouts[1:])
+        self.assertLess(added, 20)
+        self.assertEqual(self.session.timeouts[0], 15.0)
+
+    def test_an_answer_is_not_retried(self):
+        for resp in (Resp(200, []), Resp(404, {"code": "PGRST202"}), Resp(200, [vault_row()])):
+            c = self.make(resp)
+            c.read("default")
+            self.assertEqual((len(self.session.calls), self.sleeps), (1, []))
+
+    def test_a_refusal_that_will_not_change_is_not_retried(self):
+        for status in (400, 401, 403):
+            c = self.make(Resp(status, {}))
+            with self.assertRaises(ct.VaultLookupError):
+                c.read("default")
+            self.assertEqual((len(self.session.calls), self.sleeps), (1, []), status)
+
+    def test_an_unreadable_answer_is_retried(self):
+        c = self.make(Resp(200, ValueError("html")), Resp(200, [vault_row()]))
+        with self.assertLogs("modules.channel_tokens", level="WARNING"):
+            self.assertIsNotNone(c.read("default"))
+        self.assertEqual(len(self.session.calls), 2)
 
 
 class FallbackOrder(unittest.TestCase):
@@ -115,13 +189,35 @@ class FallbackOrder(unittest.TestCase):
         r = ct.resolve_channel_token("shop", "CHRONOS_YT_TOKEN_SHOP", env, client=client(Resp(200, [])))
         self.assertEqual((r.source, r.found), (ct.SOURCE_NONE, False))
 
-    def test_the_default_channel_never_consults_vault(self):
+    def test_the_operators_default_channel_uses_its_vault_connection_over_YOUTUBE_TOKEN_JSON(self):
+        """Migration 0115: the owner's button-connected Chronos token wins; the key is the channel's own id."""
         s = Session(Resp(200, [vault_row()]))
         c = ct.VaultTokenClient("https://x.supabase.co", "k", session=s)
-        r = ct.resolve_channel_token("default", "CHRONOS_YT_TOKEN_DEFAULT",
-                                     {"CHRONOS_YT_TOKEN_DEFAULT": ENV_TOKEN}, client=c, is_default=True)
+        env = dict(BASE_ENV, YOUTUBE_TOKEN_JSON=ENV_TOKEN)
+        r = ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", env, client=c)
+        self.assertEqual(r.source, ct.SOURCE_VAULT)
+        self.assertEqual(json.loads(r.token_json)["refresh_token"], REFRESH)
+        self.assertEqual([call[1] for call in s.calls], [{"p_channel_id": "default"}])
+
+    def test_the_default_channel_without_a_connection_keeps_YOUTUBE_TOKEN_JSON(self):
+        r = ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", dict(BASE_ENV, YOUTUBE_TOKEN_JSON=ENV_TOKEN),
+                                     client=client(Resp(200, [])))
+        self.assertEqual((r.source, r.token_json), (ct.SOURCE_ENV, ENV_TOKEN))
+        r = ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", dict(BASE_ENV, YOUTUBE_TOKEN_JSON=ENV_TOKEN),
+                                     client=client(Resp(404, {"code": "PGRST202"})))
         self.assertEqual(r.source, ct.SOURCE_ENV)
-        self.assertEqual(s.calls, [])
+
+    def test_a_connection_whose_oauth_client_is_missing_stops_instead_of_using_the_old_secret(self):
+        """An unusable connection is not "no connection": falling back would upload with a token the owner just replaced."""
+        with self.assertRaises(ct.ChannelTokenError) as cm:
+            ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", {"YOUTUBE_TOKEN_JSON": ENV_TOKEN},
+                                     client=client(Resp(200, [vault_row()])))
+        self.assertNotIsInstance(cm.exception, ct.VaultLookupError)
+        self.assertNotIn(REFRESH, str(cm.exception))
+
+    def test_a_failed_lookup_is_told_apart_from_a_missing_client(self):
+        with self.assertRaises(ct.VaultLookupError):
+            ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", BASE_ENV, client=client(Resp(500, {})))
 
     def test_without_supabase_configured_it_is_todays_path(self):
         c = ct.VaultTokenClient("", "")
@@ -240,7 +336,8 @@ FAKE_MAIN = textwrap.dedent("""
     # A customer channel's token reaches the run as the 0600 file the worker wrote
     # (channel_credentials.customer_token_filename), never as an environment
     # variable (BR-L-080); the report says which CHRONOS_YT_TOKEN_* the run saw.
-    path = "youtube_token__shop.json"
+    # (the operator's default channel's, from Vault or YOUTUBE_TOKEN_JSON, is youtube_token.json)
+    path = next((p for p in ("youtube_token__shop.json", "youtube_token.json") if os.path.exists(p)), "youtube_token__shop.json")
     doc = open(path).read() if os.path.exists(path) else ""
     report = {"tokens": sorted(k for k in os.environ if k.startswith("CHRONOS_YT_TOKEN_")),
               "oauth_env": sorted(k for k in os.environ if k.startswith("GOOGLE_OAUTH_")),
@@ -287,14 +384,16 @@ class WorkerWithVault(unittest.TestCase):
         (self.repo / "main.py").write_text(FAKE_MAIN)
         self.env = {"PATH": os.environ.get("PATH", ""), **BASE_ENV,
                     "CHRONOS_YT_TOKEN_NEWS": json.dumps({"refresh_token": "news-refresh-token-xyz"})}
-        self.rows = {"shop": {"channel_id": "shop", "is_default": False, "token_secret": "CHRONOS_YT_TOKEN_SHOP"}}
+        self.rows = {"shop": {"channel_id": "shop", "is_default": False, "token_secret": "CHRONOS_YT_TOKEN_SHOP"},
+                     "default": {"channel_id": "default", "is_default": True, "is_operators": True,
+                                 "token_secret": "CHRONOS_YT_TOKEN_DEFAULT"}}
         self.out = io.StringIO()
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_worker(self, token_client):
-        q = FakeQueue([job()])
+    def run_worker(self, token_client, channel="shop"):
+        q = FakeQueue([job(channel)])
         w = qw.Worker(q, worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
                       resolve_channel=lambda cid: self.rows[cid], heartbeat_seconds=5,
                       poll_seconds=0.01, grace_seconds=60, kill_after_seconds=2, out=self.out,
@@ -347,6 +446,41 @@ class WorkerWithVault(unittest.TestCase):
         self.assertEqual(self.report()["tokens"], [])
         self.assertEqual(q.calls[-1][2], "succeeded")
 
+    def test_the_operators_default_channel_runs_with_its_vault_token_and_it_is_scrubbed(self):
+        """Chronos connected with the Command Center's button: the worker hands the run the Vault token as
+        youtube_token.json, never as an env var, and scrubs it from the output."""
+        self.env["YOUTUBE_TOKEN_JSON"] = ENV_TOKEN
+        q, w = self.run_worker(client(Resp(200, [vault_row()])), channel="default")
+        r = self.report()
+        self.assertEqual((r["refresh"], r["tokens"], r["oauth_env"], r["mode"]), (REFRESH, [], [], "0o600"))
+        self.assertEqual(q.calls[-1][2], "succeeded")
+        self.assertNotIn(REFRESH, self.out.getvalue())
+        self.assertIn("refreshing with [redacted]", self.out.getvalue())
+        self.assertFalse(list(self.repo.glob("youtube_token*.json")))
+        self.assertNotIn(REFRESH, "".join(w._secrets))
+
+    def test_the_default_channel_without_a_connection_still_runs_with_YOUTUBE_TOKEN_JSON(self):
+        self.env["YOUTUBE_TOKEN_JSON"] = ENV_TOKEN
+        q, _ = self.run_worker(client(Resp(200, [])), channel="default")
+        self.assertIn("GITHUBSECRETTOKEN", self.report()["refresh"])
+        self.assertEqual(q.calls[-1][2], "succeeded")
+
+    def test_the_default_channel_stops_before_spending_when_vault_fails_and_there_is_no_secret(self):
+        q, _ = self.run_worker(client(Resp(500, {"message": REFRESH})), channel="default")
+        (_, _, status, error) = q.calls[-1]
+        self.assertEqual(status, "failed")
+        self.assertIn("nothing was run", error)
+        self.assertNotIn(REFRESH, error)
+        self.assertFalse((self.repo / "report.out").exists())
+
+    def test_a_customer_row_named_like_the_default_channel_never_gets_the_operators_token(self):
+        """BR-L-110 with 0115: the Vault key is the row's own id and the env is the operator's only."""
+        self.env["YOUTUBE_TOKEN_JSON"] = ENV_TOKEN
+        row = {"channel_id": "default", "is_default": False, "is_operators": False, "token_secret": ""}
+        resolved = qw.channel_token(row, self.env, client(Resp(200, [])))
+        self.assertFalse(resolved.found)
+        self.assertNotIn("YOUTUBE_TOKEN_JSON", qw.prepare_credentials(row, self.env, self.repo))
+
     def test_worker_log_names_the_source_never_the_value(self):
         with self.assertLogs("queue_worker", level="INFO") as logs:
             self.run_worker(client(Resp(200, [vault_row()])))
@@ -384,8 +518,12 @@ class RestoreStep(unittest.TestCase):
         self.github_env.write_text("")
         self.patch = mock.patch("config.BASE_DIR", self.base)
         self.patch.start()
+        # The default channel's primary token path is absolute (computed at import): keep it inside the sandbox.
+        self.patch_file = mock.patch("config.YOUTUBE_TOKEN_FILE", self.base / "youtube_token.json")
+        self.patch_file.start()
 
     def tearDown(self):
+        self.patch_file.stop()
         self.patch.stop()
         self.tmp.cleanup()
 
@@ -424,11 +562,96 @@ class RestoreStep(unittest.TestCase):
         self.assertFalse(list(self.base.glob("youtube_token*.json")))
         self.assertEqual(self.github_env.read_text(), "")
 
-    def test_default_channel_is_never_looked_up(self):
+    def test_the_default_channel_is_looked_up_by_its_own_id_and_its_vault_token_replaces_the_secret_file(self):
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)        # what the YOUTUBE_TOKEN_JSON step wrote
         s = Session(Resp(200, [vault_row()]))
         tc = ct.VaultTokenClient("https://x.supabase.co", "k", session=s)
-        rc, _ = self.run_step(tc, channel=Channel("default", default=True))
-        self.assertEqual((rc, s.calls), (0, []))
+        rc, out = self.run_step(tc, env={"CHANNEL_ID": "default", "YOUTUBE_TOKEN_JSON": ENV_TOKEN},
+                                channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+        self.assertEqual([c[1] for c in s.calls], [{"p_channel_id": "default"}])
+        path = self.base / "youtube_token.json"
+        self.assertEqual(json.loads(path.read_text())["refresh_token"], REFRESH)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.assertIn(f"::add-mask::{REFRESH}", out.splitlines())
+        self.assertNotIn(REFRESH, [l for l in out.splitlines() if not l.startswith("::add-mask::")].__str__())
+        self.assertEqual(self.github_env.read_text(), "")      # no env var to blank: the secret is a file
+
+    def test_the_default_channel_without_a_connection_leaves_the_secret_file_alone(self):
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)
+        rc, out = self.run_step(client(Resp(200, [])), env={"CHANNEL_ID": "default"}, channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+        self.assertEqual((self.base / "youtube_token.json").read_text(), ENV_TOKEN)
+        self.assertIn("using YOUTUBE_TOKEN_JSON, as before", out)
+
+    def test_a_vault_outage_keeps_the_default_channels_secret_file_but_stops_when_there_is_none(self):
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)
+        rc, out = self.run_step(client(Resp(500, {"message": REFRESH})), env={"CHANNEL_ID": "default"},
+                                channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+        self.assertIn("::warning::", out)
+        self.assertNotIn(REFRESH, out)
+        self.assertEqual((self.base / "youtube_token.json").read_text(), ENV_TOKEN)
+        (self.base / "youtube_token.json").unlink()
+        rc, out = self.run_step(client(Resp(500, {})), env={"CHANNEL_ID": "default"}, channel=Channel("default", default=True))
+        self.assertEqual(rc, 1)
+
+    def test_wrong_account_guard_uses_YOUTUBE_CHANNEL_ID_for_the_default_channel(self):
+        """Review F2: the legacy default's registry row names no YouTube channel, so the id the run targets stands in."""
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)
+        default = Channel("default", default=True)
+        rc, out = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCsomeoneelse000000000000"},
+                                channel=default)
+        self.assertEqual(rc, 1)
+        self.assertIn("different YouTube channel", out)
+        self.assertNotIn(REFRESH, out)
+        self.assertEqual((self.base / "youtube_token.json").read_text(), ENV_TOKEN)      # nothing was replaced
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCcustomer000000000000000"},
+                              channel=default)
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads((self.base / "youtube_token.json").read_text())["refresh_token"], REFRESH)
+
+    def test_unset_YOUTUBE_CHANNEL_ID_keeps_todays_behaviour(self):
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default"}, channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "  "},
+                              channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+
+    def test_the_guard_never_blocks_a_channel_that_has_no_connection(self):
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)
+        rc, out = self.run_step(client(Resp(200, [])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCanything"},
+                                channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+        self.assertEqual((self.base / "youtube_token.json").read_text(), ENV_TOKEN)
+
+    def test_a_registry_youtube_id_outranks_the_environment(self):
+        from modules.channels import ChannelContext, CredentialRef
+
+        ctx = ChannelContext(channel_id="default", name="N", niche="n", credential=CredentialRef(youtube_channel_id="UCregistry00000000000000"))
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCcustomer000000000000000"},
+                              channel=lambda _id: ctx)
+        self.assertEqual(rc, 1)          # the vault token is UCcustomer…; the registry says UCregistry…
+
+    def test_other_channels_ignore_YOUTUBE_CHANNEL_ID(self):
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"YOUTUBE_CHANNEL_ID": "UCsomeoneelse000000000000"})
+        self.assertEqual(rc, 0)          # "shop", not the default channel
+
+    def test_the_vault_step_hands_the_default_channels_YOUTUBE_CHANNEL_ID_secret_to_the_script(self):
+        wf = (ROOT / ".github" / "workflows" / "daily_video.yml").read_text()
+        step = wf.index("Restore YouTube token from Vault (connected from the Command Center)")
+        block = wf[step:wf.index("- name: Restore YouTube client secret")]
+        self.assertIn("YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}", block)
+
+    def test_a_connection_without_the_command_centers_oauth_client_stops_the_default_channel_before_it_spends(self):
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)
+        # No client pair in this environment (run_step always adds one): the old file must not be trusted silently.
+        env = {"CHANNEL_ID": "default", "GITHUB_ENV": str(self.github_env)}
+        out2 = io.StringIO()
+        rc2 = restore.main(env, load_channel=Channel("default", default=True), client=client(Resp(200, [vault_row()])), out=out2)
+        self.assertEqual(rc2, 1)
+        self.assertIn("OAuth client", out2.getvalue())
+        self.assertNotIn(REFRESH, out2.getvalue())
 
     def test_outage_without_a_secret_fails_the_step_without_the_token(self):
         rc, out = self.run_step(client(Resp(500, {"message": REFRESH})))
@@ -450,16 +673,27 @@ class RestoreStep(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("::warning::", out)
 
-    def test_the_workflow_runs_it_for_non_default_channels_before_the_client_secret(self):
+    def test_the_workflow_runs_it_for_every_channel_default_included_after_the_secret_steps(self):
         wf = (ROOT / ".github" / "workflows" / "daily_video.yml").read_text()
-        step = wf.index("Restore YouTube token from Vault (customer channel)")
+        step = wf.index("Restore YouTube token from Vault (connected from the Command Center)")
         self.assertLess(wf.index("Restore YouTube token (this channel)"), step)
+        self.assertLess(wf.index("Restore YouTube token (default channel)"), step)
         self.assertLess(step, wf.index("- name: Restore YouTube client secret"))
         block = wf[step:wf.index("- name: Restore YouTube client secret")]
-        self.assertIn("!matrix.is_default", block)
+        self.assertNotIn("if:", block.split("env:")[0])      # no matrix gate: the default channel is covered too
         self.assertIn("python tools/restore_channel_token.py", block)
+        self.assertIn("GOOGLE_OAUTH_CLIENT_SECRET", block)
         # The cleanup step still removes whatever it wrote.
         self.assertIn('rm -f -- "$GITHUB_WORKSPACE"/youtube_token*.json', wf)
+
+    def test_the_intelligence_poll_reads_the_same_default_token_and_never_fails_on_it(self):
+        wf = (ROOT / ".github" / "workflows" / "intelligence_poll.yml").read_text()
+        step = wf.index("Restore YouTube token from Vault (default channel)")
+        self.assertLess(wf.index("- name: Restore YouTube token\n"), step)
+        block = wf[step:wf.index("- name: Restore YouTube client secret")]
+        self.assertIn("CHANNEL_ID: default", block)
+        self.assertIn("continue-on-error: true", block)
+        self.assertIn("python tools/restore_channel_token.py", block)
 
 
 if __name__ == "__main__":

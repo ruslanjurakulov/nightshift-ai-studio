@@ -17,7 +17,8 @@ Configuration (env): see docs/operator-bot.md — TELEGRAM_BOT_TOKEN,
 TELEGRAM_CHAT_ID, SUPABASE_URL, SUPABASE_SERVICE_KEY, GITHUB_TOKEN /
 GITHUB_REPOSITORY (supplied by Actions), ELEVENLABS_LOW_CREDITS and the optional
 OPERATOR_APP_URL, OPERATOR_TZ, OPERATOR_QUIET_HOURS, OPERATOR_DIGEST_HOUR,
-OPERATOR_STUCK_MINUTES, OPERATOR_ALERT_MAX_PER_HOUR.
+OPERATOR_STUCK_MINUTES, OPERATOR_ALERT_MAX_PER_HOUR, OPERATOR_DEADMAN_HOURS (1-12, `off`: the dead-man switch
+of modules/operator_bot/reliability.py).
 
 The owner's e-mail copy (docs/OWNER_EMAIL.md) is off unless NIGHTSHIFT_OWNER_EMAIL
 is exactly `on`; it also needs RESEND_API_KEY and NIGHTSHIFT_EMAIL_FROM, and takes

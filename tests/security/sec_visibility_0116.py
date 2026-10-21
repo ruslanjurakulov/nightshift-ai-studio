@@ -1,11 +1,11 @@
-"""Security-lab contract for migration 0113 (publish when approved: the switch, the queue, the quota ledger).
+"""Security-lab contract for migration 0116 (publish when approved: the switch, the queue, the quota ledger).
 
 Wired in like the other per-migration files:
 
   * sec_expectations.py, at the bottom:
-        import sec_visibility_0113; sec_visibility_0113.extend(TABLES, FUNCTIONS)
+        import sec_visibility_0116; sec_visibility_0116.extend(TABLES, FUNCTIONS)
   * sec_scenario.build_scenario(), after the tenants are seeded:
-        sec_visibility_0113.seed(conn, sc)
+        sec_visibility_0116.seed(conn, sc)
 
 Two tables, neither writable by any API role (the service key included):
 

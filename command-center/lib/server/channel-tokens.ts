@@ -7,6 +7,7 @@ import {
   requestedScopesOnly,
   storeErrorResult,
   type ChannelTokenStatus,
+  isOperatorOrg,
   type TokenStore,
   type VaultResult,
 } from "@/lib/channel-tokens";
@@ -38,6 +39,23 @@ export async function resolveTokenStore(ref: string): Promise<TokenStore> {
   }
 }
 
+/**
+ * Does this channel exist and belong to the operator's own organization (migration 0115)? False for an unknown
+ * channel, a customer's, and on any error: the operator Vault path is taken only on a positive answer.
+ */
+export async function isOperatorChannel(ref: string): Promise<boolean> {
+  const channelId = (ref || "").trim();
+  if (!channelId) return false;
+  const supabase = await createClient();
+  if (!supabase) return false;
+  try {
+    const { data, error } = await supabase.rpc("channel_org", { ch: channelId });
+    return !error && isOperatorOrg(typeof data === "string" ? data : null);
+  } catch {
+    return false;
+  }
+}
+
 /** The YouTube channel the just-granted token acts for, from channels.list
  *  (mine=true, 1 quota unit, youtube.readonly — already requested). */
 export async function fetchGrantedChannel(accessToken: string): Promise<{ id: string; title: string } | null> {
@@ -66,11 +84,14 @@ export async function storeVaultToken(opts: {
   refreshToken: string;
   grantedScopes: string[];
   youtube: { id: string; title: string };
+  /** The operator's own channel: store_operator_channel_token (0115), which the database allows to a platform
+   *  owner/admin for a channel of the default organization only. */
+  operator?: boolean;
 }): Promise<VaultResult> {
   const supabase = await createClient();
   if (!supabase) return "not_available";
   try {
-    const { error } = await supabase.rpc("store_channel_token", {
+    const { error } = await supabase.rpc(opts.operator ? "store_operator_channel_token" : "store_channel_token", {
       p_channel_id: opts.channelId,
       p_refresh_token: opts.refreshToken,
       p_meta: {

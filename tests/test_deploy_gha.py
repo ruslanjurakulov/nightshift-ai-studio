@@ -1972,10 +1972,13 @@ OPERATOR_REQUIRED = ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "TELEGRAM_BOT_TOKEN
 OPERATOR_OPTIONAL = [
     "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
     "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
-    "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
+    "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR", "OPERATOR_DEADMAN_HOURS",
+    # The owner's pause of the scheduled pipeline (docs/VIDEO_GO_LIVE.md): the bot says "paused", not MISSING.
+    "NIGHTSHIFT_PIPELINE_PAUSED",
     # The owner's e-mail copy (docs/OWNER_EMAIL.md): off unless NIGHTSHIFT_OWNER_EMAIL is exactly `on`.
     "NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM",
 ]
+PAUSE_VAR = "NIGHTSHIFT_PIPELINE_PAUSED"
 # Everything the pipeline worker holds that the operator bot must never see.
 PIPELINE_KEYS = (
     "GEMINI_API_KEY", "PEXELS_API_KEY", "ELEVENLABS_API_KEY", "YOUTUBE_TOKEN_JSON", "YOUTUBE_CLIENT_SECRET_JSON",
@@ -2201,6 +2204,55 @@ class BuildOperatorEnvTests(unittest.TestCase):
                 self.assertEqual(fake in payload.read_text(), expect)
                 self.assertNotIn(fake, proc.stdout + proc.stderr)
 
+    # -- NIGHTSHIFT_PIPELINE_PAUSED: the scheduler accepts '"true"', "'on'" and 'true # pause' (#549), and clean()
+    # refuses a leading quote, ' #' and '$' as compose syntax, so a quoted pause would have failed EVERY Deploy web
+    # while the bot was on. The file gets the canonical value, from the scheduler's own function.
+    PAUSE_CASES = (
+        ('"true"', "true"), ("'on'", "true"), ("true # pause", "true"), ("ture $x", "true"), ("TRUE", "true"),
+        ("  yes\r", "true"), ('"1"', "true"), ("banana", "true"), ('""false""', "true"), ('"', "true"),
+        ("false", ""), ('"false"', ""), ("'off'", ""), (" No ", ""), ("0", ""), ("", ""), ("   ", ""),
+    )
+
+    def test_a_pause_value_the_scheduler_accepts_is_written_canonically_and_never_fails_the_deploy(self):
+        for raw, expected in self.PAUSE_CASES:
+            with self.subTest(raw=raw):
+                lines, errors = self.build(**{PAUSE_VAR: raw})
+                self.assertEqual(errors, [])
+                self.assertIn(f"{PAUSE_VAR}={expected}", lines)
+
+    def test_the_written_pause_value_never_carries_raw_text_or_syntax(self):
+        for raw in ('"true" #' + self.SECRET, "'on'$" + self.SECRET, "true\nINJECTED=1" + self.SECRET, "`id`" + self.SECRET):
+            with self.subTest(raw=raw):
+                lines, errors = self.build(**{PAUSE_VAR: raw})
+                self.assertEqual(errors, [])
+                (line,) = [l for l in lines if l.startswith(PAUSE_VAR + "=")]
+                self.assertEqual(line, f"{PAUSE_VAR}=true")        # so no raw text, quote, $ or # can be in it
+
+    def test_the_pause_value_is_decided_by_the_schedulers_own_function(self):
+        from modules import pipeline_pause
+        for raw, _ in self.PAUSE_CASES:
+            expected = "" if not pipeline_pause.pipeline_paused({PAUSE_VAR: raw}) else "true"
+            self.assertEqual(self.mod.canonical_pause(raw), expected, raw)
+
+    def test_every_other_key_still_goes_through_clean_unchanged(self):
+        for key in _example_keys_of(OPERATOR_EXAMPLE):
+            if key == PAUSE_VAR:
+                continue
+            _, errors = self.build(**{key: '"quoted"'})
+            self.assertIn(key, "\n".join(errors), key)
+
+    def test_the_command_line_tool_accepts_a_quoted_pause_and_writes_true(self):
+        import subprocess, tempfile
+        for raw, expected in (('"true"', "true"), ("true # pause", "true"), ('"false"', "")):
+            with self.subTest(raw=raw), tempfile.TemporaryDirectory() as tmp:
+                payload = Path(tmp) / "payload"
+                env = {k: v for k, v in os.environ.items() if not k.startswith("OPERATORENV_")}
+                env.update(self.env(**{PAUSE_VAR: raw}))
+                proc = subprocess.run([sys.executable, str(ROOT / "deploy" / "build-service-env.py"), "operator", str(payload)],
+                                      env=env, capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertIn(f"\n{PAUSE_VAR}={expected}\n", payload.read_text())
+
     def test_each_required_key_empty_fails_by_name(self):
         for key in OPERATOR_REQUIRED:
             with self.subTest(key):
@@ -2218,6 +2270,8 @@ class BuildOperatorEnvTests(unittest.TestCase):
             "quote": "'quoted'", "dquote": '"quoted"', "backtick": "`id`", "comment": "value # tail",
         }
         for key in _example_keys_of(OPERATOR_EXAMPLE):
+            if key == PAUSE_VAR:
+                continue            # never written raw: canonicalised (OperatorPauseValueTests)
             for label, raw in bad.items():
                 with self.subTest(key=key, case=label):
                     value = raw + self.SECRET
@@ -2229,6 +2283,8 @@ class BuildOperatorEnvTests(unittest.TestCase):
 
     def test_an_embedded_tab_or_control_character_is_refused_before_ssh(self):
         for key in _example_keys_of(OPERATOR_EXAMPLE):
+            if key == PAUSE_VAR:
+                continue            # never written raw: canonicalised (OperatorPauseValueTests)
             for ch in ("\t", "\x1b", "\x00", "\x7f"):
                 with self.subTest(key=key, ch=repr(ch)):
                     _, errors = self.build(**{key: "ab" + ch + "cd" + self.SECRET})

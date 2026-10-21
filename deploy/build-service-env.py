@@ -36,6 +36,9 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Tuple
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+
+from modules import pipeline_pause  # noqa: E402 - stdlib only; the scheduler's own reading of the pause
 
 # service -> (marker line, example file, environment prefix, where the switch lives)
 SERVICES: Dict[str, Tuple[str, str, str, str]] = {
@@ -49,7 +52,9 @@ OPTIONAL: Dict[str, frozenset] = {
     "operator": frozenset({
         "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
         "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
-        "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR",
+        "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR", "OPERATOR_DEADMAN_HOURS",
+        # The owner's pause of the scheduled pipeline (empty = running): docs/VIDEO_GO_LIVE.md.
+        "NIGHTSHIFT_PIPELINE_PAUSED",
         # The owner's e-mail copy (docs/OWNER_EMAIL.md): off while NIGHTSHIFT_OWNER_EMAIL is empty.
         "NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM",
     }),
@@ -96,6 +101,17 @@ def clean(key: str, raw: str, optional: bool = False) -> Tuple[str, List[str]]:
     return value, errors
 
 
+def canonical_pause(raw: str) -> str:
+    """The pause variable as it is WRITTEN to the env file: ``""`` (running) or ``true`` (paused), decided by the
+    scheduler's own reading (modules/pipeline_pause.py), never the raw text.
+
+    The scheduler accepts ``"true"``, ``'on'`` and ``true # pause`` (one pair of quotes, any case), so a value
+    that ``clean()`` would refuse as compose syntax is a legitimate pause: refusing it failed EVERY deploy while
+    the bot was on and the pause stayed quoted. Anything the scheduler cannot read counts as paused (fail closed),
+    and nothing with a quote, ``$`` or ``#`` reaches compose. The raw value is never echoed."""
+    return "" if pipeline_pause.pause_state({pipeline_pause.PAUSE_ENV: raw}) == "running" else "true"
+
+
 def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: str,
           optional: frozenset = frozenset(), gated: Mapping[str, str] = {}) -> Tuple[List[str], List[str]]:
     lines: List[str] = []
@@ -107,7 +123,10 @@ def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: 
         if prefix + key not in env:
             errors.append(f"{key} is in deploy/{example_name} but not mapped in deploy_web.yml")
             continue
-        value, problems = clean(key, env[prefix + key], key in optional)
+        if key == pipeline_pause.PAUSE_ENV:
+            value, problems = canonical_pause(env[prefix + key]), []
+        else:
+            value, problems = clean(key, env[prefix + key], key in optional)
         if key in gated and env.get(prefix + gated[key], "").strip() != "on":
             value = ""
         errors.extend(problems)

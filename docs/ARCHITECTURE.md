@@ -258,14 +258,26 @@ different representative phrasings per run).
 
 ### JSON flat-files (under `history/`)
 - **`topics.json`** — `TopicManager` history: `used_topics` exclusion list and a
-  `sessions` log (topic, date, video path, video id/url).
+  `sessions` log (topic, channel id, date, video path, video id/url). Dedup is
+  per channel over the last 200 topics / 365 days (`modules/topic_dedup.py`);
+  rows from before the channel id was recorded count for every channel. Writes
+  are atomic (temp file + rename) under an flock; an unreadable file is moved
+  aside as `topics.json.corrupt-<time>` (newest 3 kept) and the history starts empty.
+  `OriginalityEngine` is strict by default (a corrupt store raises, so the
+  publish gate fails closed); only `TopicManager` passes `tolerate_corrupt=True`
+  and rebuilds the store from the channel's own topics; if nothing could be
+  rebuilt it writes `topic_vectors.npz.reset-unrebuilt` (a timestamp), and the
+  strict engine raises while that marker exists, so the gate blocks until a
+  non-empty store is written again. The store itself is written atomically. The publish gate reads
+  the DEFAULT vector store, not `topic_vectors.<channel>.npz`.
 - **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
   `CalendarEntry` records (`queued`/`published`/`skipped`). A write-through JSON
   store, explicitly a placeholder rather than a `state_store` table.
 - **`pipeline_runs.json`** — `PipelineStateMachine`'s per-run stage history and
   `human_approved` flag (tracking only; see §2). Also a placeholder store.
 - **`topic_vectors.npz`** — `OriginalityEngine`'s flat numpy vector store of
-  topic embeddings (path overridable via `CHRONOS_TOPIC_VECTORS`).
+  topic embeddings (path overridable via `CHRONOS_TOPIC_VECTORS`). The default
+  channel uses this file; every other channel gets `topic_vectors.<channel>.npz`.
 
 Per-video artifacts (script JSON, fact-check JSON, media, subtitles, thumbnails,
 final MP4) live under `output/<slug>/`.

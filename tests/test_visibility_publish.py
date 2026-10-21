@@ -122,7 +122,7 @@ def wrap(**kw):
 
 
 class MemoryStore:
-    """The database's side of the contract, in memory: the same rules the SQL functions of 0113 enforce."""
+    """The database's side of the contract, in memory: the same rules the SQL functions of 0116 enforce."""
 
     def __init__(self, *, video_refusals=(), request_refusals=(), ceiling_units=None, gap=None, org_units=None):
         self.video_refusals = list(video_refusals)       # one answer per call; the last repeats
@@ -937,7 +937,7 @@ class ClosedVocabulary(unittest.TestCase):
         for w in vp.REASONS:
             self.assertEqual(sum([w in vp.EXPIRED, w in vp.FAILED, vp.status_of(w) == "refused"]), 1, w)
         self.assertEqual(len(vp.REASONS), len(set(vp.REASONS)))
-        sql = (REPO / "supabase" / "migrations" / "0113_visibility_requests.sql").read_text(encoding="utf-8")
+        sql = (REPO / "supabase" / "migrations" / "0116_visibility_requests.sql").read_text(encoding="utf-8")
         fn = re.search(r"function public\.visibility_reason_words\(\).*?select array\[(.*?)\]::text\[\]", sql, re.S).group(1)
         words = re.findall(r"'([a-z_]+)'", "\n".join(ln.split("--", 1)[0] for ln in fn.splitlines()))
         self.assertEqual(sorted(words), sorted(vp.REASONS))
@@ -1014,7 +1014,7 @@ class Rest(unittest.TestCase):
                                         "p_before": "private", "p_after": "public", "p_units": 53, "p_retry_seconds": None})
         s._http = Session(Resp(404, {"message": f"no function {TOKEN}"}))
         with self.assertLogs("modules.visibility_publish", level="WARNING") as logs:
-            self.assertIsNone(s.claim("w1"))                  # 0113 not applied: nothing to do, and not silently
+            self.assertIsNone(s.claim("w1"))                  # 0116 not applied: nothing to do, and not silently
             self.assertIsNone(s.claim("w1"))
         self.assertEqual(len(logs.output), 1)                 # once per function, so the loop does not fill the log
         self.assertIn("claim_visibility_request", logs.output[0])

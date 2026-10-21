@@ -5,7 +5,7 @@
  * or that a video is private "until you approve" was false and was removed in all three languages. This pins it: if one of
  * those sentences comes back, this fails.
  *
- * Phase 1b (migration 0113) adds ONE exception, on purpose and per channel: where the channel's administrators switched
+ * Phase 1b (migration 0116) adds ONE exception, on purpose and per channel: where the channel's administrators switched
  * "publish when approved" on (default OFF), the button may read "Approve and publish", and the panel says what the database
  * recorded. So the label lives at exactly one key (`review.approvePublish`) and the panel shows it only behind the switch; the
  * only sentence that says "published" is the one for a request a read-back of YouTube ended as public; every sentence that
@@ -191,7 +191,7 @@ describe("the page metadata", () => {
   });
 });
 
-describe("publish when approved (migration 0113): no copy claims publishing unless the channel's switch is on and the read-back confirms", () => {
+describe("publish when approved (migration 0116): no copy claims publishing unless the channel's switch is on and the read-back confirms", () => {
   const SRC = (p: string) => readFileSync(join(__dirname, "..", p), "utf8");
   const walk = (dir: string): string[] =>
     readdirSync(join(__dirname, "..", dir), { withFileTypes: true }).flatMap((e) =>
@@ -294,7 +294,7 @@ describe("CLAUDE.md rule 3 tells the truth", () => {
   it("says what is read, what Approve records, and that publishing on approval is per channel, off by default and read back", () => {
     expect(rules).toMatch(/approve_video_publish/);
     expect(rules).not.toMatch(/Phase 1b \(the bot flips privacy\) is not built yet/);
-    expect(rules).toMatch(/"publish when approved" \(migration 0113/);
+    expect(rules).toMatch(/"publish when approved" \(migration 0116/);
     expect(rules).toMatch(/second per-channel switch, off by default/);
     expect(rules).toMatch(/`modules\/visibility_publish\.py` is the only code\s+that may change an existing video's privacy/);
     expect(rules).toMatch(/only for a request whose read-back of YouTube said public/);

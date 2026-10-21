@@ -210,6 +210,8 @@ def render_short(
             audio_codec="aac",
             preset="fast",
             threads=4,
+            # moov first, same reason as the master encode in compositor.py.
+            ffmpeg_params=["-movflags", "+faststart"],
             verbose=False,
             logger=None,
         )

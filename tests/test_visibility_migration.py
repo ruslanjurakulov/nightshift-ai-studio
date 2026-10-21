@@ -1,4 +1,4 @@
-"""Migration 0113 (publish when approved: the switch, the queue, the quota ledger) builds on the LATEST body of everything it
+"""Migration 0116 (publish when approved: the switch, the queue, the quota ledger) builds on the LATEST body of everything it
 redefines and ships with the feature OFF. These are the checks that need no database: they read the file and fail if it ever
 drops a line of an old body, widens a grant, lets an API role write a new table, turns the switch on by default or anywhere,
 lets the audit list drift from 0112's, changes what approving does while the switch is off, or if the rollback stops being the
@@ -12,9 +12,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "supabase" / "migrations"
-FILE = "0113_visibility_requests.sql"
+FILE = "0116_visibility_requests.sql"
 SQL = (MIGRATIONS / FILE).read_text(encoding="utf-8")
-ROLLBACK = (REPO / "docs" / "sql" / "rollback_0113_visibility_requests.sql").read_text(encoding="utf-8")
+ROLLBACK = (REPO / "docs" / "sql" / "rollback_0116_visibility_requests.sql").read_text(encoding="utf-8")
 
 REPLACED = {"approve_video_publish": "0112_approve_video_publish.sql", "audit_action_allowed": "0112_approve_video_publish.sql"}
 PERSON = {"set_channel_publish_on_approve", "retry_video_visibility"}
@@ -69,19 +69,19 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         for name, src in REPLACED.items():
             self.assertEqual(latest(name)[0], src, name)
         for name in NEW:
-            with self.assertRaises(AssertionError, msg=f"{name} existed before 0113"):
+            with self.assertRaises(AssertionError, msg=f"{name} existed before 0116"):
                 latest(name)
 
     def test_approve_video_publish_is_0112s_body_plus_two_marked_blocks_and_nothing_else(self):
         old, new = latest("approve_video_publish")[1], NEW_BODIES["approve_video_publish"]
         decl_old = "  i      public.review_intents;\nbegin\n"
-        decl_new = "  i      public.review_intents;\n  v_switch boolean;   -- 0113\n  v_req    bigint;    -- 0113\n  v_out    jsonb;     -- 0113\nbegin\n"
+        decl_new = "  i      public.review_intents;\n  v_switch boolean;   -- 0116\n  v_req    bigint;    -- 0116\n  v_out    jsonb;     -- 0116\nbegin\n"
         ret_old = ("  return jsonb_build_object('ok', true, 'already', false, 'video_id', v.video_id, 'cut_sha256', p_cut_sha256,\n"
                    "                            'decided_at', now(), 'expires_at', v_exp, 'intent_id', i.id);\nend\n$$;\n")
         self.assertEqual(old.count(decl_old), 1)
         self.assertEqual(old.count(ret_old), 1)
         # take the two blocks out of the new body and the rest is 0112's, byte for byte
-        start = new.index("\n  -- 0113: on a channel whose")
+        start = new.index("\n  -- 0116: on a channel whose")
         stop = new.index("  return v_out;\nend\n$$;\n") + len("  return v_out;\nend\n$$;\n")
         stripped = new[:start] + ret_old + new[stop:]
         self.assertEqual(stripped.replace(decl_new, decl_old), old)
@@ -115,7 +115,7 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         self.assertEqual(len(new), len(set(new)))
         for arm in (r"~ '^social\.(instagram|tiktok)\.(connect|connect_failed|disconnect)$'", r"~ '^learning\.(approve|reject)$'"):
             self.assertIn(arm, NEW_BODIES["audit_action_allowed"])
-        inserted = ("    -- 0113: the per-channel switch, a queued request, the worker's results, a person's retry.\n"
+        inserted = ("    -- 0116: the per-channel switch, a queued request, the worker's results, a person's retry.\n"
                     "    'channel.publish_on_approve', 'video.publish_queued', 'video.visibility_applied', 'video.visibility_refused',\n"
                     "    'video.visibility_failed', 'video.visibility_expired', 'video.visibility_retry',\n")
         self.assertEqual(NEW_BODIES["audit_action_allowed"].count(inserted), 1)

@@ -232,9 +232,51 @@ applied, but it publishes nothing and calls nothing outside the database. It add
   policy`: a replay leaves the same objects. Re-running 0085 or 0110 afterwards would put the old function / audit list back (the approval
   columns would no longer be cleared by a repair, and `approve_video_publish` would fail loudly at its audit write): re-apply 0112 after it.
 
-## Publish when approved: the switch, the queue, the quota ledger (0113)
+## The AI-disclosure settings that lower the label are a platform administrator's (0114)
 
-0113 (`0113_visibility_requests.sql`: Phase 1b of the approve-and-publish design, `docs/APPROVE_PUBLISH_1B.md`) ships with the feature OFF: it
+- **What it does.** `agent_config.ai_disclosure = never` and `ai_disclosure_voice = own_clone` (the two values that reduce what
+  is declared to YouTube, Instagram and TikTok) can be set only by `is_platform_admin()`. `channels_config_guard()` (0086's body,
+  every earlier check kept) refuses an INSERT or UPDATE of `channels` that SETS either key to a value the Python reader would
+  read as `never` / `own_clone` (case and whitespace variants included) unless the caller is a platform administrator; a write that
+  leaves the stored value, or raises the label, passes. `create_channel` (a definer, so the trigger cannot see the browser) makes
+  the same check on `p_agent_config`. The service role, the SQL editor and the other definer functions pass, as for 0086's controls.
+  Two new pure helpers (`ai_disclosure_norm`, `channel_label_lowering`) are the one definition of "lowering", executable by the browser roles
+  because the trigger runs as the caller.
+- **What each lock buys.** Only `never` lowers the label itself; `own_clone` and `generic` give the same label in `decide()` (only `real_person` adds a reason), so locking `own_clone` protects the audit signal (`overrides_of`: "a person chose this"), not the label.
+- **Rewrites no row; no backfill.** Live check before applying: no channel has either key.
+- **Deploy order.** Independent of the web app: apply 0114 any time after 0086. 0113 was first reserved for PR #543 and is skipped (that PR took 0116, see below); 0114 touches none of its functions and may be applied before or after it. Until the Command Center of the same commit is deployed,
+  the database refuses the two words for a non-platform-administrator without the localized sentence (nothing offered them before).
+- **Is it working?** The verify block at the bottom of the file (every column true), and the detection query there (expected: no rows).
+- **Undo.** `docs/sql/rollback_0114_ai_disclosure_admin_lock.sql` (owner-applied; the lab applies it to a database built from every earlier migration,
+  compares the two functions and their grants byte for byte, then re-applies 0114). `tests/security/test_sec_ai_disclosure_lock.py` is the
+  lab test, `tests/test_ai_disclosure_lock_migration.py` pins the file and the agreement with the reader.
+- **Replay.** `create or replace` plus revoke then grant (the trigger is 0086's and is not dropped or re-created, so no lock is taken on `channels`): a replay leaves the same objects. Re-running 0086 afterwards
+  would put the old guard back (the lock would be off): re-apply 0114 after it.
+
+## The operator's own channels connect from the Command Center (0115)
+
+0115 (`0115_operator_channel_token.sql`; 0113 was reserved by PR #543, which now carries 0116) adds ONE function,
+`store_operator_channel_token(channel, refresh_token, meta)`, so the owner can press **Connect YouTube** on Chronos (and any other channel of
+the operator's organization) and have the refresh token kept in Supabase Vault like a customer's, instead of pasting it into a GitHub secret.
+
+- **Who.** A signed-in platform owner/admin (`is_platform_admin()`), for a channel whose `org_id` is the default organization. Everyone else
+  (a customer's admin, an editor or viewer, an organization member who is not on the platform roster, anon, the service key) and every other
+  channel get the same 42501 answer. `store_channel_token` is NOT changed and still refuses the operator's organization.
+- **Dormant until used.** The function changes nothing by existing; without it the Command Center falls back to the GitHub-secret write.
+- **Deploy order:** apply 0115, Deploy web (the button), then press it. Needs 0018 and 0022 (and the Vault extension). The runner side needs no
+  deploy order: it prefers an active Vault connection and otherwise uses the old secret.
+- **Is it working?** The verify block at the bottom of the file (every column true).
+- **Undo.** `docs/sql/rollback_0115_operator_channel_token.sql` drops the function and KEEPS any stored connection (the runner keeps using it);
+  `select public.revoke_channel_token('default');` removes it. `tests/security/test_sec_operator_channel_token.py` is the lab test.
+- **Replay.** `create or replace` plus revoke then grant: a replay leaves the same objects.
+
+## Publish when approved: the switch, the queue, the quota ledger (0116)
+
+> **Numbering.** This file was drafted as `0113_visibility_requests.sql`. There is no 0113: 0114 and 0115 were applied to production first, and a migration
+> numbered below the latest applied one is rejected or skipped by the Supabase CLI/integration, so it was renumbered 0116 (the text of the file is the
+> draft's, with only the number changed).
+
+0116 (`0116_visibility_requests.sql`: Phase 1b of the approve-and-publish design, `docs/APPROVE_PUBLISH_1B.md`) ships with the feature OFF: it
 changes no video's privacy, calls nothing outside the database, and turns nothing on. Every channel's switch is `false` the moment it is
 applied, and the worker that reads the queue (`tools/queue_worker.py`, `modules/visibility_publish.py`) is itself off unless
 `NIGHTSHIFT_VISIBILITY_PUBLISH=on`. **It needs the owner's amendment of CLAUDE.md rules 2 and 3 before it is merged** (the proposal is
@@ -268,16 +310,16 @@ applied, and the worker that reads the queue (`tools/queue_worker.py`, `modules/
   **The file supports fresh databases only**: a scratch database that took an earlier draft (different `youtube_quota_ledger` and
   `video_visibility_requests` columns) must be rebuilt, or have the rollback run and those two tables dropped, first. The video-level re-check is 0112's `video_publish_refusal`, called with the cut hash recorded at approval.
   `visibility_channel_connected` is `publish_channel_connected`'s rule under its own name (that function arrived in 0029 by a later edit).
-- **Order of merge and deploy.** Apply 0113, then deploy the app (the panel and the Channels page read the new objects and degrade to the
+- **Order of merge and deploy.** Apply 0116, then deploy the app (the panel and the Channels page read the new objects and degrade to the
   Phase 1a panel when they are missing). The worker needs the new code and `NIGHTSHIFT_VISIBILITY_PUBLISH=on`; nothing publishes before an
   administrator also switches a channel on. Do the live test on a disposable channel first (`docs/APPROVE_PUBLISH_1B.md`).
 - **Is it off?** `select count(*) from public.channels where publish_on_approve;` must read `0`; the verify block at the bottom of the file.
-- **Undo.** The switch is the undo for behaviour. To remove the objects: `docs/sql/rollback_0113_visibility_requests.sql` (owner-applied; run it
+- **Undo.** The switch is the undo for behaviour. To remove the objects: `docs/sql/rollback_0116_visibility_requests.sql` (owner-applied; run it
   BEFORE rollback 0112): it refuses every queued request that was never marked for a write (it stops with an error while a write may be in flight,
   and leaves an older marked one queued with a notice: check those videos in YouTube Studio), switches every channel off, drops the callable functions, puts 0112's
   `approve_video_publish` and `audit_action_allowed` back byte for byte, and KEEPS the two tables, the column and the three internal functions
   they need (a record of what was asked and what YouTube reported). The lab applies it to a database built from 0001-0112, compares the
-  two restored functions, then re-applies 0113.
+  two restored functions, then re-applies 0116.
 - **Replay.** `add column if not exists`, `create table if not exists`, `create or replace` plus revoke then grant, drop-then-create for the
   triggers and policies: a replay leaves the same objects and keeps every row. Re-running 0112 afterwards puts 0112's `approve_video_publish`
-  and audit list back (approving would queue nothing, and the request functions would fail loudly at their audit write): re-apply 0113 after it.
+  and audit list back (approving would queue nothing, and the request functions would fail loudly at their audit write): re-apply 0116 after it.

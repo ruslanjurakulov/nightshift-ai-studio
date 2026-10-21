@@ -23,6 +23,8 @@ import { RepurposePanel } from "@/components/videos/RepurposePanel";
 import { IntelligenceTrace } from "@/components/intel/IntelligenceTrace";
 import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
+import { aiDisclosureFromEvents } from "@/lib/aiDisclosure";
+import { AiDisclosureNote } from "@/components/review/AiDisclosureNote";
 import { summarizeSceneRetention } from "@/lib/sceneRetention";
 import {
   CLIP_COLUMNS,
@@ -37,7 +39,7 @@ import {
 import { resolveRunBackend } from "@/lib/runBackend";
 import { sceneRepairEligibility } from "@/lib/sceneRepair";
 import { latestByScene, parseRegenRows, REGEN_COLUMNS, type RegenRow } from "@/lib/sceneRegenerate";
-import { heldCause, heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
+import { heldCause, heldCauseNote, heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchChannelTopicScores, getChannelScope } from "@/lib/channels-server";
@@ -77,7 +79,7 @@ export default async function VideoDetail({
   const path = await getChannelPath();
 
   const supabase = await createClient();
-  // "Publish when approved" (migration 0113): the channel's database switch and this video's newest request are ALWAYS read, here
+  // "Publish when approved" (migration 0116): the channel's database switch and this video's newest request are ALWAYS read, here
   // on the server. The label and the request's state follow the switch: "Approve and publish" only on a channel whose switch is
   // ON, whatever the release flag says (a channel that already has it on must not say "Approve" over a button that publishes).
   // The flag (server, default off) hides only the entry points that turn it on (the Channels page): with the switch off and the
@@ -167,8 +169,8 @@ export default async function VideoDetail({
           .eq("video_id", id)
           .order("created_at", { ascending: false })
           .limit(200),
-        // "Publish when approved" (migration 0113): the channel's switch and this video's newest request, through RLS. Read
-        // apart from the channel's other columns, so a database that has not applied 0113 yet answers with an error here and
+        // "Publish when approved" (migration 0116): the channel's switch and this video's newest request, through RLS. Read
+        // apart from the channel's other columns, so a database that has not applied 0116 yet answers with an error here and
         // nowhere else: that reads as "switch off, no request".
         supabase.from("channels").select("publish_on_approve").eq("channel_id", video.channel_id).maybeSingle(),
         supabase
@@ -318,6 +320,8 @@ export default async function VideoDetail({
         request={visibilityRequest}
       />
       {video.preview_path && atLeast(orgRole, "admin") && <ShareReviewLink videoId={video.video_id} />}
+      {/* The AI-content label, from the event the upload recorded; no record reads "unknown", never "not labelled". */}
+      <AiDisclosureNote view={aiDisclosureFromEvents(events)} uploaded={Boolean(video.published_at)} />
       <PublishPanel
         video={video}
         channelName={channelName || video.channel_id}
@@ -362,9 +366,9 @@ export default async function VideoDetail({
             <div className="text-sm font-semibold text-[var(--color-warn)]">
               {isClip ? t.repurpose.clipState : heldStateLabel(heldState(video), t.held, heldCause(video))}
             </div>
-            {!isClip && heldCause(video) === "upload_failed" && (
+            {!isClip && heldCauseNote(heldCause(video), t.held) && (
               <p className="m-0 text-xs leading-relaxed text-[var(--color-fg)]">
-                {t.held.uploadFailedNote}
+                {heldCauseNote(heldCause(video), t.held)}
                 {video.preview_path ? ` ${t.held.uploadFailedWatch}` : ""}
               </p>
             )}

@@ -1,5 +1,5 @@
 /**
- * "Publish when approved" (migration 0113): what the review panel may say about a video's request.
+ * "Publish when approved" (migration 0116): what the review panel may say about a video's request.
  *
  * An administrator switches the feature on per channel (default OFF). Approving one exact cut of an uploaded, private video
  * then queues ONE request that a worker carries out: it asks the database again, asks YouTube to make the video public, and
@@ -11,7 +11,7 @@
  * Pure and client-safe, so the panel and the page agree and it is unit-tested directly.
  */
 
-/** The words a request may end with: the same list as `visibility_reason_words()` (migration 0113) and `modules/visibility_publish.py`. */
+/** The words a request may end with: the same list as `visibility_reason_words()` (migration 0116) and `modules/visibility_publish.py`. */
 export const VISIBILITY_REASONS = [
   "video_not_found", "not_uploaded", "gate_blocked", "gate_unknown", "rejected", "already_public", "no_preview",
   "cut_unknown", "cut_changed", "not_approved", "approval_expired",
@@ -41,7 +41,7 @@ export function knownRetryError(raw: unknown): RetryError | null {
 export const VISIBILITY_COLUMNS =
   "id,status,reason,attempts,lifetime_attempts,approved_cut_sha256,decided_at,expires_at,next_attempt_at,before_privacy,after_privacy,finished_at,created_at";
 
-/** The database stops carrying a request out after this many claims over its lifetime (migration 0113). */
+/** The database stops carrying a request out after this many claims over its lifetime (migration 0116). */
 export const MAX_LIFETIME_ATTEMPTS = 6;
 
 export const VISIBILITY_STATUSES = ["queued", "applied", "refused", "failed", "expired"] as const;

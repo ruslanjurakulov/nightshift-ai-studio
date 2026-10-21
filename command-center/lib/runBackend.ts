@@ -105,7 +105,7 @@ export function buildRenderJobInsert(
 export type QueueJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 /** Why a render job failed, in the closed set modules/render_error.py writes. */
-export const JOB_ERROR_CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "unknown"] as const;
+export const JOB_ERROR_CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "held", "unknown"] as const;
 export type JobErrorCode = (typeof JOB_ERROR_CODES)[number];
 
 /**

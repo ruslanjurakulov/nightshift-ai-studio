@@ -54,52 +54,51 @@ afterEach(() => {
 
 const landing = (code: "en" | "ru" | "uz" = "en") => render(<Landing t={dictionaries[code]} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
 
-describe("a phone's first screen is the picture (round 9)", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero's footage is a panel behind the pill, the headline and the one button, labelled and credited like every picture", (code) => {
+describe("a phone's first screen is the picture (round 9; the footage moved into the chat card when the studio backdrop took the panel)", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: the dark panel holds the backdrop first, then the pill, the headline and the one button; the stock footage plays in the chat card under it, labelled and credited like every picture", (code) => {
     env();
     const t = dictionaries[code];
     const { container } = landing(code);
     const top = container.querySelector(".nx-hero-top")!;
-    const bleed = top.querySelector(":scope > .nx-hero-bleed")!;
-    expect(top.firstElementChild).toBe(bleed);
-    expect(bleed.getAttribute("data-clip")).toBe("cloud");
-    expect(bleed.querySelector("img")?.getAttribute("data-sample")).toBe("cloud");
-    expect(bleed.querySelector("img")?.getAttribute("loading")).toBe("eager");
-    expect(bleed.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
-    expect(bleed.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
-    expect(bleed.querySelector(".nx-result-credit")?.textContent).toBe(t.site.samples.credit.video.replace("{name}", "K"));
+    expect(top.firstElementChild?.matches("picture.nx-hero-bg-phone")).toBe(true);
+    expect(container.querySelector(".nx-hero-bleed")).toBeNull();
+    // The footage (one clip on the page, never two) is the card's picture at every width, with its badges and credit.
+    const art = container.querySelector(".nx-hero-visual .nx-result-art")!;
+    expect(art.getAttribute("data-clip")).toBe("cloud");
+    expect(art.querySelector("img")?.getAttribute("data-sample")).toBe("cloud");
+    expect(art.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
+    expect(art.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
+    expect(art.querySelector(".nx-result-credit")?.textContent).toBe(t.site.samples.credit.video.replace("{name}", "K"));
     // The headline and the hero's one primary button are inside the panel; the only other "Start free" links are the closing panel's.
     expect(top.querySelector("h1")).toBeTruthy();
     expect(top.querySelectorAll(".nx-actions a.nx-btn")).toHaveLength(1);
     expect(container.querySelectorAll(".nx-hero .nx-actions")).toHaveLength(1);
   });
 
-  it("hides the desktop card's picture below 1024 px and the panel above it, so the clip is never on screen twice", () => {
-    expect(css).toMatch(/\.nx-hero-bleed \{ display: none; \}/);
-    expect(css).toMatch(/@media \(max-width: 1023px\) \{[\s\S]*?\.nx-hero-bleed \{ display: block; \}/);
-    expect(css).toMatch(/\.nx-hero \.nx-chat \.nx-result-art \{ display: none; \}/);
+  it("shows the phone backdrop below 1024 px and the wide one above it, and the card's footage at every width (the clip is never on screen twice: the old panel's copy is gone)", () => {
+    expect(css).toMatch(/\.nx-hero-bg \{ display: none; \}/);
+    expect(css).toMatch(/@media \(max-width: 1023px\) \{\n  \.nx-hero-bg-phone \{ display: block;/);
+    expect(css).toMatch(/@media \(min-width: 1024px\) \{\n  \.nx-hero \{ background: #0b0a09;[\s\S]*?\.nx-hero-bg-wide \{ display: block;/);
+    expect(css).not.toMatch(/\.nx-hero \.nx-chat \.nx-result-art \{ display: none; \}/);
   });
 
-  it("keeps the panel dark in both themes and the clip a pixel smaller than its still (the still stays the LCP element)", () => {
+  it("keeps the panel dark in both themes, and the stock clip a pixel smaller than its still where the footage is a panel (/mcp's header)", () => {
     expect(css).toMatch(/\.nx-hero-top \{[^}]*background: #0b0a09; color: #fff;/);
     expect(css).toMatch(/\.nx-bleed \.nx-clip \{ left: 3px; width: calc\(100% - 6px\);/);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: the panel has its own 44 px pause button (named like the page's switch), in step with it, clear of the badge and the credit", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the page's own pause switch (under the card) stops the footage, and the picture panels' 44 px pause button keeps its rules (/mcp's header is still one)", (code) => {
     env();
     const t = dictionaries[code];
     const { container } = landing(code);
-    const bleed = container.querySelector(".nx-hero-bleed")!;
-    const btn = bleed.querySelector("button.nx-clip-pause") as HTMLButtonElement;
-    expect(btn.getAttribute("aria-label")).toBe(t.site.fx.pause);
-    expect(btn.getAttribute("aria-pressed")).toBe("false");
-    act(() => btn.click());
-    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    const sw = container.querySelector(".nx-hero-visual .nx-motion-btn") as HTMLButtonElement;
+    expect(sw.textContent).toBe(t.site.fx.pause);
+    expect(sw.getAttribute("aria-pressed")).toBe("false");
+    act(() => sw.click());
+    expect(sw.getAttribute("aria-pressed")).toBe("true");
     expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
-    // The page's own switch (under the card) shows the same state: one switch.
-    expect(container.querySelector(".nx-hero-visual .nx-motion-btn")?.getAttribute("aria-pressed")).toBe("true");
     act(() => setMotionPaused(false));
-    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    expect(sw.getAttribute("aria-pressed")).toBe("false");
     // Top right, 44 px, a visible focus ring; the badge is top left and the credit bottom right; under reduced motion it is gone with the video.
     expect(css).toMatch(/\.nx-bleed \.nx-clip-pause \{ top: 12px; right: 12px; bottom: auto; z-index: 3; \}/);
     expect(css).toMatch(/\.nx-clip-pause \{[^}]*width: 44px; height: 44px;/);
@@ -110,7 +109,7 @@ describe("a phone's first screen is the picture (round 9)", () => {
     expect(css).toContain('.nx-clip-pause[aria-pressed="true"] { border-color: var(--nx-stage-amber, #ffa940); color: var(--nx-stage-amber, #ffa940); }');
   });
 
-  it("asks for the wide still on a phone (200vw) so the still, not the clip's first frame, is the largest paint (a still drawn larger than its own pixels counts for less)", () => {
+  it("asks for the wide still on a phone (200vw) where the footage is a panel (HeroBleed, now /mcp's header), so the still, not the clip's first frame, is the largest paint", () => {
     const src = readFileSync(join(ROOT, "components/landing/HeroBleed.tsx"), "utf8");
     expect(src).toContain('"(min-width: 1024px) 1px, 200vw"');
     expect(src).toContain('"(min-width: 1024px) 720px, 200vw"');
@@ -153,9 +152,9 @@ describe("the capability wall on a phone (round 9)", () => {
   });
 
   it("lets only the tile that shows most of itself drift, and never under reduced motion or the pause switch", () => {
-    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*\.nx-wall-pic \{ transition: transform 7s/);
-    expect(css).toMatch(/\.nx-wall-tile\[data-alive\] \.nx-wall-pic, \.nx-wall-tile:hover \.nx-wall-pic \{ transform: scale\(1\.12\); \}/);
-    expect(css).toMatch(/html\[data-motion="paused"\] \.nx-wall-pic \{ transition: none; transform: none !important; \}/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*\.nx-wall-icon \{ transition: transform 7s/);
+    expect(css).toMatch(/\.nx-wall-tile\[data-alive\] \.nx-wall-icon, \.nx-wall-tile:hover \.nx-wall-icon \{ transform: scale\(1\.12\); \}/);
+    expect(css).toMatch(/html\[data-motion="paused"\] \.nx-wall-icon \{ transition: none; transform: none !important; \}/);
     const src = readFileSync(join(ROOT, "components/landing/WallControls.tsx"), "utf8");
     expect(src).toMatch(/prefers-reduced-motion: reduce/);
   });

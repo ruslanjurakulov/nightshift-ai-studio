@@ -1,7 +1,7 @@
-"""Publish when approved — the worker's side of 0113.
+"""Publish when approved — the worker's side of 0116.
 
 An administrator switched "publish when approved" on for a channel; a person then approved ONE exact cut of an already
-uploaded, PRIVATE video (0112); approving queued one ``video_visibility_requests`` row (0113). The queue worker
+uploaded, PRIVATE video (0112); approving queued one ``video_visibility_requests`` row (0116). The queue worker
 (``tools/queue_worker.py``) claims those rows with the service key and hands each to :func:`process_request`, which makes
 the one change this feature exists for: ``videos.update`` with ``status.privacyStatus = public``. In order:
 
@@ -60,7 +60,7 @@ from typing import Callable, Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
-#: The words a request may end with: the same list as ``visibility_reason_words()`` (0113) and
+#: The words a request may end with: the same list as ``visibility_reason_words()`` (0116) and
 #: ``command-center/lib/visibilityRequest.ts``; tests/test_visibility_publish.py pins the three equal.
 REASONS = (
     "video_not_found", "not_uploaded", "gate_blocked", "gate_unknown", "rejected", "already_public", "no_preview",
@@ -148,11 +148,11 @@ def failed(reason: str) -> Stop:
     return Stop(reason, "failed")
 
 
-# ── Supabase (the service key; only the functions of 0113) ───────────────────
+# ── Supabase (the service key; only the functions of 0116) ───────────────────
 
 
 class VisibilityStore:
-    """The queue, over PostgREST function calls. The service key has no table privilege on it (0113)."""
+    """The queue, over PostgREST function calls. The service key has no table privilege on it (0116)."""
 
     def __init__(self, url: str, service_key: str, *, session=None, timeout: float = 30.0):
         self.url = (url or "").rstrip("/")
@@ -174,11 +174,11 @@ class VisibilityStore:
                                       "Content-Type": "application/json"},
                              timeout=self._timeout)
         if r.status_code == 404:
-            # 0113 not applied, or PostgREST's schema cache has not seen it yet: nothing can be done, and it must not be silent
+            # 0116 not applied, or PostgREST's schema cache has not seen it yet: nothing can be done, and it must not be silent
             # (once per function, so a loop that asks every few seconds does not fill the log). The name only, never the body.
             if name not in self._warned_404:
                 self._warned_404.add(name)
-                logger.warning("visibility: the database function %s answered 404 (migration 0113 not applied, or the API schema "
+                logger.warning("visibility: the database function %s answered 404 (migration 0116 not applied, or the API schema "
                                "cache is stale): nothing is carried out until it exists", name)
             return None
         if r.status_code >= 300:

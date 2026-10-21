@@ -44,8 +44,10 @@ finished run into a failed one.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Mapping, Optional
 
@@ -67,11 +69,64 @@ STATE_HELD = "held"                              # gate passed, auto-publish off
 STATE_REPAIRED = "repaired_awaiting_review"      # a scene repair's new cut
 STATE_UPLOADED = "uploaded"                      # promoted after a real upload
 
-#: Fixed words for ``hold_detail.cause`` (the Command Center shows a sentence
-#: for each): "upload_failed" = the cut is finished and passed the gate but the
-#: YouTube upload raised, usually an expired channel connection.
+#: Fixed words for ``hold_detail.cause`` (the Command Center and the operator bot
+#: show a sentence for each). All four mean "the cut is finished and passed the
+#: gate, but the YouTube upload did not happen", and they need different
+#: responses, which is why they are not one word:
+#:   upload_failed         the upload raised for any other reason
+#:   quota_exceeded        YouTube's daily API quota is used up (quotaExceeded):
+#:                         it comes back by itself, send again tomorrow
+#:   upload_limit_exceeded the CHANNEL hit its own upload limit (uploadLimitExceeded)
+#:   token_expired         the connection to the channel is broken (revoked or
+#:                         expired refresh token): reconnect YouTube
 CAUSE_UPLOAD_FAILED = "upload_failed"
-HOLD_CAUSES = (CAUSE_UPLOAD_FAILED,)
+CAUSE_QUOTA_EXCEEDED = "quota_exceeded"
+CAUSE_UPLOAD_LIMIT_EXCEEDED = "upload_limit_exceeded"
+CAUSE_TOKEN_EXPIRED = "token_expired"
+HOLD_CAUSES = (CAUSE_UPLOAD_FAILED, CAUSE_QUOTA_EXCEEDED, CAUSE_UPLOAD_LIMIT_EXCEEDED, CAUSE_TOKEN_EXPIRED)
+
+_QUOTA_REASONS = frozenset({"quotaExceeded", "dailyLimitExceeded"})
+_UPLOAD_LIMIT_REASONS = frozenset({"uploadLimitExceeded"})
+_AUTH_REASONS = frozenset({"authError"})
+
+
+def _error_reasons(exc) -> list:
+    """The reason WORDS YouTube put on an ``HttpError`` (quotaExceeded, ...),
+    never its message or body."""
+    reasons: list = []
+    details = getattr(exc, "error_details", None)
+    if isinstance(details, list):
+        reasons += [d.get("reason") for d in details if isinstance(d, dict)]
+    if not reasons:
+        try:
+            content = getattr(exc, "content", b"") or b""
+            doc = json.loads(content.decode("utf-8") if isinstance(content, bytes) else str(content))
+            errs = ((doc or {}).get("error") or {}).get("errors") or []
+            reasons += [e.get("reason") for e in errs if isinstance(e, dict)]
+        except Exception:
+            pass
+    return [r for r in reasons if isinstance(r, str) and re.fullmatch(r"[A-Za-z_]{1,64}", r)]
+
+
+def upload_failure_cause(exc: BaseException) -> str:
+    """Which word of :data:`HOLD_CAUSES` a failed upload gets.
+
+    Decided from YouTube's structured reason (and the type of a refresh error),
+    never from message text: text can say anything, and it is never stored. An
+    exception this does not recognise is ``upload_failed``, which is what every
+    failure was before the others had words."""
+    from modules import upload_idempotency  # noqa: PLC0415 - keep this module's import light
+
+    reasons = set(_error_reasons(exc))
+    if reasons & _QUOTA_REASONS:
+        return CAUSE_QUOTA_EXCEEDED
+    if reasons & _UPLOAD_LIMIT_REASONS:
+        return CAUSE_UPLOAD_LIMIT_EXCEEDED
+    if (type(exc).__name__ == "RefreshError" or reasons & _AUTH_REASONS
+            or upload_idempotency.http_status(exc) == 401):
+        return CAUSE_TOKEN_EXPIRED
+    return CAUSE_UPLOAD_FAILED
+
 
 HELD_STATES = (STATE_BLOCKED, STATE_AWAITING_APPROVAL, STATE_HELD, STATE_REPAIRED)
 ALL_STATES = HELD_STATES + (STATE_UPLOADED,)
@@ -84,7 +139,7 @@ _COLUMNS_0016 = ("publish_state", "held_at", "hold_detail")
 COLUMNS_0112 = ("cut_sha256", "gate_verdict")
 # Older optional columns (0011 scenes, 0013 manifest), dropped next if a write
 # is still refused, so the row itself lands on the oldest supported schema.
-_COLUMNS_OPTIONAL = ("manifest", "scenes")
+_COLUMNS_OPTIONAL = ("manifest", "scenes", "preview_path")
 
 
 def held_video_id(channel_id: str, slug: str) -> str:
@@ -118,6 +173,42 @@ def gate_detail(reason: str, gate_meta: Optional[Mapping] = None) -> dict:
             "checks_run": [str(c) for c in (gate_meta.get("checks_run") or [])],
         }
     return detail
+
+
+#: At most this many flagged texts, each cut to a fixed length, go into ``hold_detail.flagged``.
+MAX_FLAGGED_IN_DETAIL = 20
+MAX_FLAGGED_TEXT = 200
+MAX_FLAGGED_REASONING = 300
+
+
+def flagged_claims(claims, results) -> list:
+    """The checked texts that ship OUTSIDE the narration and that the fact-check did
+    not clear (title, A/B title, description, thumbnail text, hook sentence, the
+    alternate hook): ``[{source, verdict, reasoning, text}]``, capped in count and
+    length. The storyboard's scenes already list the narration's own claims; these
+    belong to no scene, so without this the owner would see "0 flagged" on a run
+    that was held for its title. The strings are model-written, never a secret.
+    A checker's unresolved sentinel is not a finding and is left out. Never raises."""
+    out: list = []
+    try:
+        claims = list(claims or [])
+        for claim, r in zip(claims, list(results or [])):
+            source = str(getattr(claim, "source", "narration") or "narration")
+            if source == "narration" or getattr(r, "unresolved", False):
+                continue
+            if not getattr(r, "requires_human_review", False):
+                continue
+            out.append({
+                "source": source,
+                "verdict": str(getattr(r, "verdict", "") or "unverifiable"),
+                "reasoning": str(getattr(r, "reasoning", "") or "")[:MAX_FLAGGED_REASONING],
+                "text": str(getattr(claim, "text", "") or "")[:MAX_FLAGGED_TEXT],
+            })
+            if len(out) >= MAX_FLAGGED_IN_DETAIL:
+                break
+    except Exception:
+        return out
+    return out
 
 
 def gate_verdict(gate_meta: Optional[Mapping]) -> Optional[dict]:
@@ -177,6 +268,7 @@ class HeldVideos:
         detail: Optional[dict] = None,
         now: Optional[str] = None,
         fill_if_new: Optional[Mapping] = None,
+        no_cut: bool = False,
     ) -> Optional[str]:
         """Upsert this run's held row. Returns its video_id, or None when
         nothing was written. Never raises.
@@ -185,6 +277,11 @@ class HeldVideos:
         repair has no chosen title) never blanks what an earlier one wrote.
         ``published_at`` and ``privacy`` are always sent as NULL: whatever this
         row said before, the run is not uploaded now.
+
+        ``no_cut`` says this hold has NO video (the run stopped before the render): the
+        row's ``local_path`` and ``preview_path`` are sent as NULL. Without it a re-run
+        of the same topic (same row key) would keep the previous cut's preview under
+        the new text, since fields left as None are not sent.
 
         ``fill_if_new`` (title / script_text / scenes) is written only when the
         run has no row yet — a repair knows the saved script but not the chosen
@@ -224,6 +321,11 @@ class HeldVideos:
                                ("script_text", script_text), ("local_path", local_path)):
                 if value:
                     row[key] = value
+            if no_cut:
+                # Nothing of an earlier cut of this run survives under the new text.
+                row["local_path"] = None
+                row["preview_path"] = None
+                row["manifest"] = None
             if manifest:
                 from modules import video_ir
 
@@ -240,6 +342,18 @@ class HeldVideos:
             logger.warning("Could not record the held run (%s: %s) — the run is unaffected",
                            type(e).__name__, e)
             return None
+
+    def has_cut(self, video_id: str) -> Optional[bool]:
+        """Does this run's row already hold a cut a person could be reviewing (a preview or a local
+        path)? False when there is no such row, or when this client is inert (nothing to protect);
+        None when the lookup failed, which a caller that would overwrite the row must read as
+        "maybe"."""
+        if not self.enabled:
+            return False
+        resp = self._send("get", {"video_id": f"eq.{video_id}", "select": "preview_path,local_path"}, None, "")
+        if resp is None or resp.status_code >= 300:
+            return None
+        return any(bool(r.get("preview_path") or r.get("local_path")) for r in _json_list(resp))
 
     def _exists(self, video_id: str) -> Optional[bool]:
         """Is there a row for this id? None when the lookup failed."""

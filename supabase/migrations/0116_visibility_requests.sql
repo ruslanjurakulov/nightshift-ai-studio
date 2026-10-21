@@ -1,4 +1,4 @@
--- 0113_visibility_requests.sql — Phase 1b of the approve-and-publish design: the DATABASE half of "a worker may make an
+-- 0116_visibility_requests.sql — Phase 1b of the approve-and-publish design: the DATABASE half of "a worker may make an
 -- already-approved, already-uploaded PRIVATE YouTube video public, ONLY on a channel whose administrators switched that on".
 -- NOTHING IN THIS FILE TOUCHES YOUTUBE and nothing here makes a video public. It adds the per-channel switch (default OFF),
 -- the worker's queue (one row per approval act), the day's quota ledger, and the hook that queues a request only when the
@@ -53,7 +53,7 @@
 --
 -- Additive and idempotent: add column if not exists, create table if not exists, guarded constraint adds, create or replace
 -- (bodies copied from the latest migration that defines each), drop trigger/policy then create, revoke then grant.
--- Rollback: docs/sql/rollback_0113_visibility_requests.sql.
+-- Rollback: docs/sql/rollback_0116_visibility_requests.sql.
 -- REQUIRES 0112 (approve_video_publish, video_publish_refusal, video_approve_access, video_real_member), 0086 (channels column
 -- grants), 0087 (take_web_rate, the audit stamp), 0022 (channel_token_refs), 0018 (channel_org, accessible_channel_ids).
 
@@ -63,25 +63,25 @@ do $$
 begin
   if to_regclass('public.channels') is null or to_regclass('public.videos') is null
      or to_regclass('public.review_intents') is null or to_regclass('public.app_audit_log') is null then
-    raise exception '0113 needs channels, videos, review_intents and app_audit_log: apply 0004 and 0008 first';
+    raise exception '0116 needs channels, videos, review_intents and app_audit_log: apply 0004 and 0008 first';
   end if;
   if to_regprocedure('public.approve_video_publish(text, text, jsonb)') is null
      or to_regprocedure('public.video_publish_refusal(text, text)') is null
      or to_regprocedure('public.video_approve_access(text)') is null
      or to_regprocedure('public.video_real_member(uuid, text)') is null then
-    raise exception '0113 needs 0112_approve_video_publish.sql (approve_video_publish, video_publish_refusal): apply it first';
+    raise exception '0116 needs 0112_approve_video_publish.sql (approve_video_publish, video_publish_refusal): apply it first';
   end if;
   if to_regprocedure('public.take_web_rate(text, integer, integer)') is null
      or to_regprocedure('public.audit_action_allowed(text)') is null then
-    raise exception '0113 needs 0087_audit_and_rate_hardening.sql (take_web_rate, audit_action_allowed): apply it first';
+    raise exception '0116 needs 0087_audit_and_rate_hardening.sql (take_web_rate, audit_action_allowed): apply it first';
   end if;
   if to_regclass('public.channel_token_refs') is null or to_regclass('public.channel_credentials') is null then
-    raise exception '0113 needs 0022_channel_tokens.sql (channel_token_refs, channel_credentials): apply it first';
+    raise exception '0116 needs 0022_channel_tokens.sql (channel_token_refs, channel_credentials): apply it first';
   end if;
   if to_regprocedure('public.is_org_member(uuid, text)') is null or to_regprocedure('public.channel_org(text)') is null
      or to_regprocedure('public.accessible_channel_ids(text)') is null or to_regprocedure('public.is_platform_admin()') is null
      or to_regprocedure('public.credits_trusted_caller()') is null then
-    raise exception '0113 needs 0018_organizations.sql and 0020_credits.sql (is_org_member, channel_org, credits_trusted_caller): apply them first';
+    raise exception '0116 needs 0018_organizations.sql and 0020_credits.sql (is_org_member, channel_org, credits_trusted_caller): apply them first';
   end if;
 end $$;
 
@@ -92,7 +92,7 @@ end $$;
 alter table public.channels add column if not exists publish_on_approve boolean not null default false;
 
 comment on column public.channels.publish_on_approve is
-  'Publish when approved (migration 0113). OFF by default. When on, approving an exact cut of an uploaded video on this channel queues one request that a worker carries out: it re-checks everything, asks YouTube to make the video public, reads the privacy back and records what YouTube reports. Written only by set_channel_publish_on_approve(); never by a browser UPDATE and never by the service key.';
+  'Publish when approved (migration 0116). OFF by default. When on, approving an exact cut of an uploaded video on this channel queues one request that a worker carries out: it re-checks everything, asks YouTube to make the video public, reads the privacy back and records what YouTube reports. Written only by set_channel_publish_on_approve(); never by a browser UPDATE and never by the service key.';
 
 -- The API roles may not write the switch except through the function below (which runs as its owner, so current_user inside it
 -- is not an API role: the way 0086 tells its own functions from the browser, here extended to the service key, which holds every
@@ -187,7 +187,7 @@ create table if not exists public.video_visibility_requests (
 );
 
 comment on table public.video_visibility_requests is
-  'Publish when approved (migration 0113): one row per approval act on a channel whose switch was on. Written only by the database functions (approve_video_publish queues it, the worker''s claim/finish functions end it, retry_video_visibility re-queues a failed one). applied means a read-back of YouTube said public. No provider text is ever stored here.';
+  'Publish when approved (migration 0116): one row per approval act on a channel whose switch was on. Written only by the database functions (approve_video_publish queues it, the worker''s claim/finish functions end it, retry_video_visibility re-queues a failed one). applied means a read-back of YouTube said public. No provider text is ever stored here.';
 
 create index if not exists video_visibility_requests_claim_idx
   on public.video_visibility_requests (next_attempt_at, id) where status = 'queued';
@@ -242,7 +242,7 @@ create table if not exists public.youtube_quota_ledger (
 );
 
 comment on table public.youtube_quota_ledger is
-  'Publish when approved (migration 0113): YouTube quota units this feature spent, per Pacific-time day, Google Cloud project and organization (the all-zero org_id row is the whole day). Written only by youtube_quota_take(); read by a platform admin.';
+  'Publish when approved (migration 0116): YouTube quota units this feature spent, per Pacific-time day, Google Cloud project and organization (the all-zero org_id row is the whole day). Written only by youtube_quota_take(); read by a platform admin.';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. The switch: the one place it is written
@@ -316,9 +316,9 @@ declare
   v_exp  timestamptz := now() + interval '24 hours';
   v_mail text;
   i      public.review_intents;
-  v_switch boolean;   -- 0113
-  v_req    bigint;    -- 0113
-  v_out    jsonb;     -- 0113
+  v_switch boolean;   -- 0116
+  v_req    bigint;    -- 0116
+  v_out    jsonb;     -- 0116
 begin
   if uid is null then
     raise exception 'forbidden' using errcode = '42501';
@@ -390,7 +390,7 @@ begin
                              'rights_and_labels', true, 'expires_at', v_exp, 'intent_id', i.id),
           v.channel_id);
 
-  -- 0113: on a channel whose "publish when approved" switch is ON, this approval act is queued for the worker, once (the key is
+  -- 0116: on a channel whose "publish when approved" switch is ON, this approval act is queued for the worker, once (the key is
   -- the act: video, cut and the decision's own time). With the switch off nothing below runs and the answer is 0112's.
   select c.publish_on_approve into v_switch from public.channels c where c.channel_id = v.channel_id;
   if v_switch is true then
@@ -556,7 +556,7 @@ $$;
 -- failing on a function of the same name and another shape. THIS FILE SUPPORTS FRESH DATABASES ONLY: an earlier draft of it created
 -- youtube_quota_ledger without org_id and video_visibility_requests without lifetime_attempts, and "create table if not exists"
 -- does not alter a table that exists. A scratch database that took that draft must be rebuilt, or have
--- docs/sql/rollback_0113_visibility_requests.sql run and those two tables dropped, before this file is applied.)
+-- docs/sql/rollback_0116_visibility_requests.sql run and those two tables dropped, before this file is applied.)
 drop function if exists public.mark_visibility_submitting(bigint, text);
 create or replace function public.mark_visibility_submitting(p_request_id bigint, p_worker text) returns text
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -843,7 +843,7 @@ create or replace function public.audit_action_allowed(p_action text) returns bo
     'marketing.create',
     -- 0112: a person approves the exact cut of an uploaded video (approve_video_publish).
     'video.approve',
-    -- 0113: the per-channel switch, a queued request, the worker's results, a person's retry.
+    -- 0116: the per-channel switch, a queued request, the worker's results, a person's retry.
     'channel.publish_on_approve', 'video.publish_queued', 'video.visibility_applied', 'video.visibility_refused',
     'video.visibility_failed', 'video.visibility_expired', 'video.visibility_retry',
     -- The comment inbox (0081, in review when this was written): its routes audit

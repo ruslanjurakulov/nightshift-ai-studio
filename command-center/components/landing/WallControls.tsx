@@ -6,9 +6,8 @@ import { useEffect, useRef, useState } from "react";
  * The capability wall's two small behaviours, both on the wall's own element so the wall itself stays a Server Component:
  *
  * - a phone shows the first four tiles and a "show all" button; the other four are in the page (so every tool's name is
- *   reachable) but hidden, and a hidden lazy picture is not fetched until the button shows it (from 640 px up all eight show
- *   and the button is hidden);
- * - the tile that shows most of itself drifts (a slow zoom of its photograph, CSS only, no extra file), unless motion is
+ *   reachable) but hidden; from 640 px up all eight show and the button is hidden;
+ * - the tile that shows most of itself drifts (a slow zoom of its icon, CSS only), unless motion is
  *   reduced or paused; hovering a tile does the same. Nothing is fetched for it.
  */
 export function WallControls({ more, less }: { more: string; less: string }) {
