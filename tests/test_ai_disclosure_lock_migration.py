@@ -254,6 +254,7 @@ class EveryWriterOfAgentConfigIsKnown(unittest.TestCase):
         "0056_channel_dna.sql": "set_channel_dna merges ONLY elevenlabs_voice_id and language into agent_config",
         "0086_channel_config_lock.sql": "create_channel (checked again in 0114), credential/status functions, the stamp trigger",
         "0114_ai_disclosure_admin_lock.sql": "this file replaces the guard and create_channel; it writes no row",
+        "0116_visibility_requests.sql": "set_channel_publish_on_approve updates ONLY publish_on_approve and updated_at (pinned in tests/test_visibility_migration.py); it never reads or writes agent_config",
     }
 
     def test_no_migration_writes_channels_without_being_in_the_known_list(self):

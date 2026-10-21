@@ -373,5 +373,19 @@ class TheRollbackIsTheExactOldText(unittest.TestCase):
         self.assertIn("grant execute on function public.approve_video_publish(text, text, jsonb) to authenticated;", top)
 
 
+class WritesToChannelsAreOnlyTheSwitch(unittest.TestCase):
+    """0114 (the AI-disclosure lock) lists every migration that writes ``channels`` and why none can lower the label
+    (tests/test_ai_disclosure_lock_migration.py, EveryWriterOfAgentConfigIsKnown). This file is on that list because its only
+    write to ``channels`` is the switch; this pins that claim so the list entry stays true."""
+
+    def test_the_only_update_of_channels_sets_the_switch_and_the_timestamp(self):
+        text = code(SQL)
+        updates = re.findall(r"(?is)\bupdate\s+public\.channels\b(.*?);", text)
+        self.assertEqual(len(updates), 1, updates)
+        self.assertRegex(updates[0], r"(?is)^\s*set\s+publish_on_approve\s*=\s*p_on\s*,\s*updated_at\s*=\s*now\(\)\s+where\s+channel_id\s*=\s*p_channel_id\s*$")
+        self.assertNotRegex(text, r"(?is)\binsert\s+into\s+(public\.)?channels\b(?!_)")
+        self.assertNotIn("agent_config", text)
+
+
 if __name__ == "__main__":
     unittest.main()
