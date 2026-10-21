@@ -4,7 +4,7 @@ import "server-only";
  * Is "publish when approved" (migration 0116) RELEASED to customers? Evaluated on the SERVER at request time, default OFF.
  *
  * The database half (the switch, the queue, the worker) can exist long before customers are told about it: the worker has its
- * own off switch, and the legal pages and the Google consent text still describe a product that never edits an existing video.
+ * own off switch, and the legal pages already describe the setting as one that is off by default (PR #544).
  * Until the owner sets `PUBLISH_ON_APPROVE_RELEASED=on` on the Command Center's server, the ENTRY POINTS are hidden, never the
  * truth about a channel that already has the switch on (that would say "Approve" over a button that publishes, and leave an
  * administrator no way to turn it off):

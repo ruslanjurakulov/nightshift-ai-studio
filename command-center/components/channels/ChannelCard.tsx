@@ -203,7 +203,9 @@ export function ChannelCard({
           ? t.channels.publishOnForbidden
           : out?.error === "rate_limited"
             ? t.channels.publishOnRateLimited
-            : t.channels.publishOnFailed,
+            : out?.error === "two_person_required"
+              ? t.channels.publishOnTwoPerson
+              : t.channels.publishOnFailed,
       );
       return;
     }

@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 REASONS = (
     "video_not_found", "not_uploaded", "gate_blocked", "gate_unknown", "rejected", "already_public", "no_preview",
     "cut_unknown", "cut_changed", "not_approved", "approval_expired",
-    "not_enabled", "approval_superseded", "channel_not_connected",
+    "not_enabled", "approval_superseded", "channel_not_connected", "two_person_required",
     "scope_missing", "token_expired", "quota_exceeded", "rate_limited", "video_not_found_on_youtube", "channel_mismatch",
     "still_processing", "rejected_by_youtube", "privacy_changed", "platform_refused", "platform_kept_private",
     "platform_error", "readback_failed", "status_unreadable",

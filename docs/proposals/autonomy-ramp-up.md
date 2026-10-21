@@ -232,7 +232,7 @@ HALT and DEMOTE are undone only by a person: read the reason, fix the cause, swi
 | worker locks | `NIGHTSHIFT_VISIBILITY_PUBLISH` (0116). L3 adds `NIGHTSHIFT_POLICY_PUBLISH`, default off. Both must be on for a policy flip |
 | publish gate | runs before upload (unchanged). Its stored verdict is checked again at every flip (`video_publish_refusal`). L3 requires the gate not weakened (D10) |
 | 24 h approval expiry | L2 only: an approval older than 24 h is `expired`, not published. L3 has no approval; it has a hold-back window instead |
-| `require_two_person_publish` | a channel with it on cannot be promoted to L3. Note: 0116 states two-person is not re-checked at flip time, so L2 may let one admin do what the flag was meant to require (open question 13) |
+| `require_two_person_publish` | a channel with it on cannot be promoted to L3. Note: as first drafted 0116 did not look at it, so L2 could let one admin do what the flag was meant to require (open question 13); 0116 now refuses it (the switch cannot be turned on for such a channel, and a request on one ends `two_person_required`), so L2 and this flag are exclusive |
 
 **Requirement that follows from the pause finding:** a policy flip must refuse while the global pause is truthy in the worker environment (same fail-closed parser as `pipeline_paused()`). Whether person-approved flips should stop too is open question 10; my recommendation is yes ("paused means paused").
 
@@ -408,7 +408,7 @@ Frontend (phase 2d and later): the three-language strings, the level pill with t
 10. Should the global pause also hold person-approved flips (L2)? I recommend yes.
 11. If you change a channel's DNA, voice or niche mid-window, should the evidence restart? Today such edits are not audited, so I cannot detect them.
 12. Are the thresholds in 1.4 and 2.2 right for your risk appetite (2 of 5 blocks, 2 failures in a row, 14 days freeze, 48 h settling)?
-13. 0116 does not re-check `require_two_person_publish` at flip time. Intended?
+13. (Answered in the build of 0116: a channel with `require_two_person_publish` cannot use "publish when approved"; the database refuses the switch and refuses a request with `two_person_required`. Making the two cooperate, so that a second person's approval satisfies it, is a separate design.)
 14. Should HALT pause the channel (stops spend) or only set level 0?
 15. You said quality, topics, schedule and error-free running come first. Should phase 1 also report topic quality beyond duplicates (for example repeat rate, near-duplicate warnings, topic-selection failures per week)? The local topic queue (`history/`) is not durable on Actions runners, so queueing the first ten topics ahead is not reliable; the workflow's `topic` input is.
 16. Should the evaluator treat the Channels-page column being ON as a defect at L1 and above (it lets a manual run go public), or only as a note? The owner's wording "auto_publish=false" refers to this column.

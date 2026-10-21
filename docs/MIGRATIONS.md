@@ -288,6 +288,12 @@ applied, and the worker that reads the queue (`tools/queue_worker.py`, `modules/
   refused; a trigger refuses `anon`, `authenticated` and the SERVICE KEY outside that function (the owner of the database, the SQL editor,
   can: that is the documented undo). Turning it off refuses the channel's queued requests at once (`not_enabled`), except one whose write was
   marked (`submitting_at` set): that stays queued and the worker records what YouTube reports. A channel moved to another organization comes out off.
+- **A channel that requires a second person cannot use it.** `channels.agent_config.require_two_person_publish` (0009; the rule the cross-post rail
+  of 0029 and auto publish already apply) means one person's act must not make a video public. `set_channel_publish_on_approve` answers
+  `{ok: false, error: 'two_person_required'}` instead of turning the switch ON for such a channel (OFF always works), and
+  `visibility_request_refusal` (asked early and again inside `mark_visibility_submitting`, under the channel row lock) ends a request on one
+  with the closed word `two_person_required`, whatever the order in which the switch and the requirement were set. Fail closed: this
+  feature does not read `publish_approvals`; making the two cooperate would be its own design.
 - **`video_visibility_requests`**: one row per approval act, unique `(video_id, approved_cut_sha256, decided_at)`, status
   `queued | applied | refused | failed | expired`, `reason` a closed word (`visibility_reason_words()`), never a provider's text. A CHECK says
   `applied` needs `after_privacy = 'public'`: the worker records that from a read-back of YouTube after its call, never from the call's own

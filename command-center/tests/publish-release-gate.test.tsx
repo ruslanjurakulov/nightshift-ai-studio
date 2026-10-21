@@ -73,7 +73,7 @@ vi.mock("@/lib/channels", async (orig) => ({
 vi.mock("@/lib/server/publish", () => ({ loadPublishPanel: async () => ({ accounts: [], youtube: null, requests: [] }) }));
 vi.mock("@/lib/server/downloads", () => ({ loadDownloads: async () => null }));
 vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: true, current: { id: "org-1", is_default: true } }) }));
-vi.mock("@/lib/auth/org-roles", () => ({ isOperator: async () => false, resolveCurrentOrgRole: async () => "owner" }));
+vi.mock("@/lib/auth/org-roles", () => ({ isOperator: async () => false, isPlatformAdmin: async () => false, resolveCurrentOrgRole: async () => "owner" }));
 vi.mock("@/lib/server/channel-tokens", () => ({ fetchTokenStatuses: async () => null }));
 vi.mock("@/lib/server/google-oauth", () => ({ YOUTUBE_OAUTH_SCOPES: [], isGoogleOAuthConfigured: false }));
 vi.mock("@/lib/server/social-accounts", () => ({ fetchSocialAccounts: async () => ({ rows: [], available: false }) }));

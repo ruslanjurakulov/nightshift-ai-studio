@@ -352,13 +352,16 @@ class TheDatabaseSaysNo(unittest.TestCase):
             self.assert_not_called(yt, store, out, "refused", word)
         store, yt = MemoryStore(request_refusals=["approval_superseded"]), wrap()
         self.assert_not_called(yt, store, run(store, yt)[0], "refused", "approval_superseded")
+        # a channel that requires a second person: one approver's act never makes a video public (refused, not retried, not failed)
+        store, yt = MemoryStore(request_refusals=["two_person_required"]), wrap()
+        self.assert_not_called(yt, store, run(store, yt)[0], "refused", "two_person_required")
         store, yt = MemoryStore(request_refusals=["channel_not_connected"]), wrap()
         self.assert_not_called(yt, store, run(store, yt)[0], "failed", "channel_not_connected")
 
     def test_a_change_between_the_early_check_and_the_marker_stops_the_write_because_the_marker_asks_again(self):
         # the early pair passes; YouTube is read; the video changed meanwhile: the database's answer in the marker's own step says no
         for word, end_status in (("cut_changed", "refused"), ("not_approved", "refused"), ("not_enabled", "refused"),
-                                 ("approval_superseded", "refused"), ("already_public", "refused"), ("gate_blocked", "refused"),
+                                 ("approval_superseded", "refused"), ("already_public", "refused"), ("gate_blocked", "refused"), ("two_person_required", "refused"),
                                  ("approval_expired", "expired"), ("channel_not_connected", "failed")):
             store, yt = MemoryStore(gap=word), wrap()
             out, _ = run(store, yt)

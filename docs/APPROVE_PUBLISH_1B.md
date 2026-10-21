@@ -1,7 +1,9 @@
 # Approve and publish, Phase 1b: the worker that makes an approved video public
 
-Status: built, **DRAFT, dormant, and not to be merged before the owner has (1) approved the rule change in
-`docs/proposals/claude-md-rules-2-3-phase-1b.patch` and (2) run the live test below on a disposable channel.**
+Status: built and **dormant (dark): everything is off by default**. The owner approved the rule change
+(`docs/proposals/claude-md-rules-2-3-phase-1b.patch`, applied to `CLAUDE.md` rules 2 and 3 in this PR) and decided to merge it dark; the
+legal and consent wording (PR #544) was merged before it. **Nothing may be switched on until the live test below has been run on a
+disposable channel** and the release steps in "Releasing it" are done.
 
 Phase 1a (migration 0112, merged) made "Approve" a recorded decision bound to one exact cut. Phase 1b (migration 0116 + the
 queue worker) lets a worker act on that decision, **only on a channel whose administrators switched "Publish when approved" on**.
@@ -30,6 +32,11 @@ queue worker) lets a worker act on that decision, **only on a channel whose admi
    Queued / Published (only from that read-back) / Not published (reason in words) / Expired.
 
 Every failure leaves the video private, which is the safe state.
+
+**A channel that requires a second person is excluded.** A channel with `agent_config.require_two_person_publish` on cannot have this
+switch turned ON (`two_person_required`), and a request on one (the requirement was added after the switch, or the database owner set the
+switch) is refused by the request-level check and by the marker, so the worker never writes. One approver's act is not two people's, and
+this feature does not read `publish_approvals`; making a second person's approval satisfy it would be its own design.
 
 ## The switches and settings
 
@@ -90,8 +97,9 @@ old organization is refused (`not_enabled`) by the re-check.
 
 ## Releasing it
 
-Entry points hidden until released, on purpose: the legal pages and the Google consent text still say Nightshift never edits an
-existing video. The Command Center reads the server flag `PUBLISH_ON_APPROVE_RELEASED` (default off; an unset, empty or odd value is
+Entry points hidden until released, on purpose: the legal pages and the public pages already describe the setting (PR #544, merged
+first; each statement is conditional on a setting that is off by default), but customers must not be offered a switch before the live
+test and the release steps are done. The Command Center reads the server flag `PUBLISH_ON_APPROVE_RELEASED` (default off; an unset, empty or odd value is
 off; a server variable read per request, **not** `NEXT_PUBLIC_`, so no build can leave it on). **The flag hides the doors that turn
 the feature on; it never hides the truth about a channel whose switch is already on:**
 
@@ -108,7 +116,9 @@ channel on; the worker then still has its own switch): the flag hides the entry 
 Release, in this order, each step only after the one before:
 
 1. Owner approves the CLAUDE.md rule 2/3 amendment (`docs/proposals/claude-md-rules-2-3-phase-1b.patch`) and merges.
-2. Legal text and Google consent text changed (the section above) and, if Google asks, the OAuth app re-verified.
+2. Legal text and Google consent text: the wording is in `main` (PR #544). Still to do by the owner at release: set
+   `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` to the release date and redeploy web (the policy changes what Google user data is used for;
+   until it is changed the pages show the old date, or "not configured" when it was never set), and, if Google asks, re-verify the OAuth app.
 3. The live test below passed on a disposable channel (the three unverified answers recorded).
 4. Worker: `NIGHTSHIFT_VISIBILITY_PUBLISH=on` (+ ceiling and organization share if the defaults are wrong).
 5. Web: repository variable `PUBLISH_ON_APPROVE_RELEASED=on`, then deploy web (it is a key of `deploy/.env.web.example`, mapped in
@@ -138,7 +148,7 @@ already requests (`config.YOUTUBE_SCOPES` and `command-center/lib/server/google-
   say "Nightshift never ... edits your existing videos": that sentence becomes false for this feature and must change (below).
   If the owner prefers a narrower grant, there is none: `youtube` is broader, `youtubepartner` is for partners.
 
-## Documents that must change before the feature is switched on for anyone (not changed in this PR: the owner decides the words)
+## Documents that had to change before the feature is switched on for anyone (done in PR #544, merged; kept here as the checklist of what it covers)
 
 `docs/GOOGLE_OAUTH_VERIFICATION.md` section 4 (and the consent-screen justification text, in English, as submitted to Google):
 

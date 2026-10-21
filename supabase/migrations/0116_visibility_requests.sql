@@ -18,6 +18,8 @@
 --       outside that function. Turning it off at once refuses the channel's queued requests (not_enabled) EXCEPT one whose
 --       write may already be on its way (submitting_at set): that one stays, and the worker records what YouTube reports.
 --       A channel moved to another organization comes out switched off (the same trigger).
+--       A channel whose agent_config requires a SECOND person to publish (require_two_person_publish) cannot have it switched ON
+--       (error two_person_required): one approver's act is not two people's.
 --  2. video_visibility_requests   one row per approval act: unique (video_id, approved_cut_sha256, decided_at), so a replay
 --       never queues twice. status is closed: queued | applied | refused | failed | expired. reason is a closed WORD
 --       (visibility_reason_words()), never a provider's text. 'applied' is only possible with after_privacy = 'public', which
@@ -33,7 +35,7 @@
 --       queues one request for that approval act and writes one 'video.publish_queued' audit row, and the answer gains
 --       queued/request_id. With the switch off the function is byte-identical in effect to 0112 (same writes, same answer).
 --  5. the worker's functions, SERVICE KEY ONLY: claim_visibility_request (lease, backoff, three attempts, expiry sweep),
---       visibility_request_refusal (the request-level re-check: switch, same approval act, expiry, channel connected),
+--       visibility_request_refusal (the request-level re-check: switch, no second-person requirement, same approval act, expiry, channel connected),
 --       mark_visibility_submitting (the LAST check and the marker "the write may be sent", in one transaction under row locks:
 --       the channel row FOR SHARE, the request FOR UPDATE, the video FOR SHARE; it returns 'ok' or the closed word that says no),
 --       finish_visibility_request (the only writer of a result; mirrors videos.privacy from the read-back only; accepts a
@@ -140,7 +142,7 @@ create or replace function public.visibility_reason_words() returns text[]
     'video_not_found', 'not_uploaded', 'gate_blocked', 'gate_unknown', 'rejected', 'already_public', 'no_preview',
     'cut_unknown', 'cut_changed', 'not_approved', 'approval_expired',
     -- the request-level re-check
-    'not_enabled', 'approval_superseded', 'channel_not_connected',
+    'not_enabled', 'approval_superseded', 'channel_not_connected', 'two_person_required',
     -- YouTube and the token
     'scope_missing', 'token_expired', 'quota_exceeded', 'rate_limited', 'video_not_found_on_youtube', 'channel_mismatch',
     'still_processing', 'rejected_by_youtube', 'privacy_changed', 'platform_refused', 'platform_kept_private',
@@ -279,6 +281,14 @@ begin
   end if;
   if not public.take_web_rate('publish_switch', 30, 600) then
     return jsonb_build_object('ok', false, 'error', 'rate_limited');
+  end if;
+  -- A channel that requires a SECOND person to publish (agent_config.require_two_person_publish, 0009/0029) cannot have a single
+  -- approver's act make a video public: the switch does not go ON for it (OFF is always allowed). The worker refuses such a
+  -- request again (visibility_request_refusal), for a channel that gained the requirement after the switch was on.
+  if p_on is true and was is distinct from true and exists (
+       select 1 from public.channels c where c.channel_id = p_channel_id
+          and coalesce(c.agent_config ->> 'require_two_person_publish', '') = 'true') then
+    return jsonb_build_object('ok', false, 'error', 'two_person_required');
   end if;
   if was is distinct from p_on then
     update public.channels set publish_on_approve = p_on, updated_at = now() where channel_id = p_channel_id;
@@ -454,6 +464,12 @@ begin
   -- was reset by the move as well).
   if not found or ch.publish_on_approve is not true or ch.org_id is distinct from r.org_id then
     return 'not_enabled';
+  end if;
+  -- One person's approval is not a second person's: a channel that requires two (the rule 0029 applies to the cross-post rail
+  -- and main.py to auto publish) never has a video made public by this feature. Asked again inside mark_visibility_submitting,
+  -- under the channel row lock, like the switch.
+  if coalesce(ch.agent_config ->> 'require_two_person_publish', '') = 'true' then
+    return 'two_person_required';
   end if;
   select * into v from public.videos where video_id = r.video_id and channel_id = r.channel_id;
   -- The approval this request was queued for must still be THE approval: a repaired cut clears it, a new one has its own request.

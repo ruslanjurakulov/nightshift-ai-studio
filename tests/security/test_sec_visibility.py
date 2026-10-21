@@ -27,6 +27,7 @@ import re
 import uuid
 
 import psycopg
+import pytest
 
 import sec_db
 from sec_db import ANON, SERVICE, as_superuser
@@ -37,6 +38,17 @@ from test_sec_approve_video import (ACK, CUT, MIGRATION, MIGRATION_0116, OTHER, 
 ALL = "00000000-0000-0000-0000-000000000000"      # the ledger's row for a project's whole day
 REQ = ("id, status, reason, attempts, approved_cut_sha256, decided_at, expires_at, intent_id, org_id, channel_id, before_privacy, "
        "after_privacy, quota_units, finished_at")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def channels_do_not_require_a_second_person(conn, sc):
+    """Another lab file (test_sec_channel_dna.py) commits agent_config.require_two_person_publish = true on Bob's channel. A channel
+    that requires a second person is refused by this feature on purpose (two_person_required), so the tests here start from channels
+    that do not, and each one that needs the requirement sets it inside its own rolled-back world."""
+    with as_superuser(conn, commit=True) as su:
+        su.rows("update public.channels set agent_config = agent_config - 'require_two_person_publish' "
+                "where agent_config ? 'require_two_person_publish' returning 1")
+    yield
 
 
 def flip(s, channel, on=True):
@@ -938,6 +950,12 @@ def test_the_marker_is_set_only_when_everything_is_asked_again_inside_the_locks(
         "approval_expired": "update public.videos set approval_expires_at = now() - interval '1 second' where video_id = '%s'" % VID,
         "already_public": "update public.videos set privacy = 'public' where video_id = '%s'" % VID,
         "gate_blocked": "update public.videos set gate_verdict = '{\"allowed\": false, \"blocks\": [\"rights\"], \"warnings\": []}'::jsonb where video_id = '%s'" % VID,
+        # what the publish gate said, held or never stored, and the review: a request is never carried out over any of them
+        "gate_unknown": "update public.videos set gate_verdict = null where video_id = '%s'" % VID,
+        "not_uploaded": "update public.videos set publish_state = 'held', published_at = null, privacy = null where video_id = '%s'" % VID,
+        "rejected": "update public.videos set review_state = 'rejected' where video_id = '%s'" % VID,
+        # one approver is not two people (the requirement arrived after the switch)
+        "two_person_required": "update public.channels set agent_config = coalesce(agent_config, '{}'::jsonb) || '{\"require_two_person_publish\": true}'::jsonb where channel_id = '%s'" % bob.channel,
         "approval_superseded": "update public.videos set decided_at = decided_at + interval '1 second' where video_id = '%s'" % VID,
         "not_enabled": "update public.channels set publish_on_approve = false where channel_id = '%s'" % bob.channel,
         "channel_not_connected": "update public.channels set status = 'PAUSED' where channel_id = '%s'" % bob.channel,
@@ -979,6 +997,52 @@ def test_a_request_of_a_channel_that_moved_to_another_organization_is_refused_an
         with acting(conn, SERVICE) as s:
             s.rows("update public.channels set org_id = %s, publish_on_approve = true where channel_id = %s returning 1", [bob.org, bob.channel])
         assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is False
+
+
+def two_person(su, channel, on=True):
+    """The channel requires a SECOND person to publish (agent_config.require_two_person_publish, 0009/0029); written as the
+    database owner, the way 0086 allows only an administrator or the owner of the database to."""
+    su.rows("update public.channels set agent_config = coalesce(agent_config, '{}'::jsonb) || %s::jsonb where channel_id = %s returning 1",
+            [json.dumps({"require_two_person_publish": on}), channel])
+
+
+def test_a_channel_that_requires_a_second_person_never_has_a_video_made_public_by_one_approver(conn, sc):
+    """One approver is not two people. The switch cannot be turned ON for such a channel, and a request on one (the requirement
+    came after the switch, or the database owner set the switch) is refused by the request-level check and by the marker, so the
+    worker is told no before it could write. Switching OFF stays allowed; without the requirement everything is as before."""
+    bob = sc.bob
+    with as_superuser(conn, commit=False) as su:
+        admin = member(su, bob.org, "admin")
+        two_person(su, bob.channel)
+        before = len(audits(su, bob.channel))
+        with acting(conn, admin) as s:
+            out = answer(flip(s, bob.channel))
+        assert out == {"ok": False, "error": "two_person_required"}, out
+        assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is False
+        assert len(audits(su, bob.channel)) == before                      # a refusal changes and audits nothing
+        # the requirement removed: the same call works (the guard is exactly this requirement and nothing else)
+        two_person(su, bob.channel, False)
+        with acting(conn, admin) as s:
+            assert answer(flip(s, bob.channel))["publish_on_approve"] is True
+        # the requirement added after the switch was on: switching OFF is always allowed and an ON repeat changes nothing
+        two_person(su, bob.channel)
+        with acting(conn, admin) as s:
+            assert answer(flip(s, bob.channel))["changed"] is False
+            assert answer(flip(s, bob.channel, False))["changed"] is True
+        # a request on such a channel: approving still records the decision (0112) and queues; nothing may carry it out
+        two_person(su, bob.channel, False)
+        rid = queued(su, bob)
+        activate(su, bob.channel)
+        assert refusal(conn, rid) is None
+        assert svc_value(conn, "select public.claim_visibility_request('w1')")["id"] == rid
+        two_person(su, bob.channel)
+        assert refusal(conn, rid) == "two_person_required"
+        # the marker asks again in its own transaction: it answers the word, and marks nothing, so no write may follow
+        assert svc_value(conn, "select public.mark_visibility_submitting(%s, 'w1')", [rid]) == "two_person_required"
+        assert su.value("select submitting_at is null from public.video_visibility_requests where id = %s", [rid]) is True
+        # the word is one the table accepts as an end, and the request ends refused with it
+        finish(conn, rid, "w1", "refused", "two_person_required")
+        assert su.rows("select status, reason from public.video_visibility_requests where id = %s", [rid]) == [("refused", "two_person_required")]
 
 
 def test_the_claim_serves_organizations_in_turn(conn, sc):

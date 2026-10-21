@@ -337,7 +337,9 @@ class WhoMayDoWhat(unittest.TestCase):
     def test_the_request_level_recheck_asks_for_the_switch_the_same_approval_and_the_channel(self):
         r = code(NEW_BODIES["visibility_request_refusal"])
         words = re.findall(r"return '(\w+)';", r)
-        self.assertEqual(words, ["not_enabled", "approval_superseded", "approval_expired", "channel_not_connected"])
+        self.assertEqual(words, ["not_enabled", "two_person_required", "approval_superseded", "approval_expired", "channel_not_connected"])
+        # one approver is not two: a channel that requires a second person never has a video made public by this feature
+        self.assertIn("coalesce(ch.agent_config ->> 'require_two_person_publish', '') = 'true'", r)
         self.assertIn("v.decided_at is distinct from r.decided_at or v.approved_cut_sha256 is distinct from r.approved_cut_sha256", r)
         self.assertIn("visibility_channel_connected(r.channel_id)", r)
         # 0029's own function arrived by an edit after it was first merged: this file must not depend on it
@@ -384,7 +386,10 @@ class WritesToChannelsAreOnlyTheSwitch(unittest.TestCase):
         self.assertEqual(len(updates), 1, updates)
         self.assertRegex(updates[0], r"(?is)^\s*set\s+publish_on_approve\s*=\s*p_on\s*,\s*updated_at\s*=\s*now\(\)\s+where\s+channel_id\s*=\s*p_channel_id\s*$")
         self.assertNotRegex(text, r"(?is)\binsert\s+into\s+(public\.)?channels\b(?!_)")
-        self.assertNotIn("agent_config", text)
+        # agent_config is only READ, and only for the second-person requirement (the two guards): never assigned, never merged
+        self.assertEqual(len(re.findall(r"agent_config", text)), len(re.findall(r"agent_config ->> 'require_two_person_publish'", text)))
+        self.assertEqual(len(re.findall(r"agent_config ->> 'require_two_person_publish'", text)), 2)
+        self.assertNotRegex(text, r"(?is)\bagent_config\s*(=|\|\||::)")
 
 
 if __name__ == "__main__":
