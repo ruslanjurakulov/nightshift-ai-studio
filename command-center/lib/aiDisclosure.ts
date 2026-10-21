@@ -70,3 +70,68 @@ function parse(meta: Record<string, unknown> | null): AiDisclosureView | null {
   const known = Array.isArray(overrides) ? overrides.filter((o): o is AiOverride => (AI_OVERRIDES as readonly unknown[]).includes(o)) : [];
   return { label, mode: mode as AiMode, reasons: reasons as AiReason[], line, overrides: known };
 }
+
+// ── Who may set the two settings that lower the label (migration 0114) ───────────────────────────────────────────────
+
+/** The closed words of modules/ai_disclosure.VOICES. */
+export const AI_VOICES = ["generic", "own_clone", "real_person"] as const;
+export type AiVoice = (typeof AI_VOICES)[number];
+
+/** The two channel settings (agent_config keys) this page edits. */
+export type AiSettingKey = "ai_disclosure" | "ai_disclosure_voice";
+
+/**
+ * The one value of each key that LOWERS what is declared to the platforms: `never` declares nothing, `own_clone` declares
+ * a cloned voice that is not labelled. Migration 0114 lets only a platform administrator write them (the database refuses
+ * anyone else, an organization's admin included); this is what hides them from the rest.
+ */
+export const AI_LOWERING: Record<AiSettingKey, AiMode | AiVoice> = { ai_disclosure: "never", ai_disclosure_voice: "own_clone" };
+
+/**
+ * Python's `str.strip()` (modules/ai_disclosure.py normalize_mode / normalize_voice) removes this set, which is not what
+ * JavaScript's `trim()` removes (trim() also removes U+FEFF and leaves U+001C-001F and U+0085). It is the character class of
+ * migration 0114's `ai_disclosure_norm`, character for character; tests/ai-disclosure-lock-ui.test.tsx pins the three equal.
+ */
+export const AI_STRIP_CLASS = "[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]";
+const STRIP = new RegExp(`^${AI_STRIP_CLASS}+|${AI_STRIP_CLASS}+$`, "g");
+
+function readWord(value: unknown): string | null {
+  return typeof value === "string" ? value.replace(STRIP, "").toLowerCase() : null;
+}
+
+/** How the pipeline reads a stored `ai_disclosure`: exactly one of the three words (case and surrounding space ignored), else `auto`. */
+export function normalizeAiMode(value: unknown): AiMode {
+  const v = readWord(value);
+  return v !== null && (AI_MODES as readonly string[]).includes(v) ? (v as AiMode) : "auto";
+}
+
+/** How the pipeline reads a stored `ai_disclosure_voice`: absent or blank is `generic`; an unknown word is `real_person` (the cautious reading). */
+export function normalizeAiVoice(value: unknown): AiVoice {
+  if (value === null || value === undefined) return "generic";
+  const v = readWord(value);
+  if (v === "") return "generic";
+  return v !== null && (AI_VOICES as readonly string[]).includes(v) ? (v as AiVoice) : "real_person";
+}
+
+export interface AiChoice<V extends string> {
+  value: V;
+  /** True when the caller may not pick it: the option is shown (so the person sees it exists and why it is off), not hidden. */
+  locked: boolean;
+}
+
+/** Every word of a setting, with the lowering one locked unless `canLower` (a platform administrator). */
+export function aiChoices(key: "ai_disclosure", canLower: boolean): AiChoice<AiMode>[];
+export function aiChoices(key: "ai_disclosure_voice", canLower: boolean): AiChoice<AiVoice>[];
+export function aiChoices(key: AiSettingKey, canLower: boolean): AiChoice<string>[] {
+  const words: readonly string[] = key === "ai_disclosure" ? AI_MODES : AI_VOICES;
+  return words.map((value) => ({ value, locked: !canLower && value === AI_LOWERING[key] }));
+}
+
+/** The hint migration 0114's refusal carries (and the prefix of its message). */
+export const AI_LOCK_HINT = "ai_disclosure_lock";
+
+/** Is this a PostgREST / RPC error the lock raised (rather than any other failure to save)? */
+export function isAiLockRefusal(err: { code?: string | null; message?: string | null; hint?: string | null } | null | undefined): boolean {
+  if (!err) return false;
+  return err.hint === AI_LOCK_HINT || (typeof err.message === "string" && err.message.includes(AI_LOCK_HINT));
+}

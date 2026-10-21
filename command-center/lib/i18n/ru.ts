@@ -1,5 +1,6 @@
 import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
+import { aiLabelRu } from "./ai-label/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
@@ -2989,6 +2990,7 @@ export const ru: Dictionary = {
     openApp: "Открыть Nightshift",
   },
   notifyChannels: notifyChannelsRu,
+  aiLabel: aiLabelRu,
   accountSecurity: {
     cancel: "Отмена",
     title: "Аккаунт и безопасность",
