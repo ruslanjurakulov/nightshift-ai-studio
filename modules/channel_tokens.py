@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
@@ -98,11 +99,17 @@ class ResolvedToken:
 class VaultTokenClient:
     """``read_channel_token`` over PostgREST with the service key."""
 
-    def __init__(self, url: str, service_key: str, *, timeout: float = 15.0, session=None):
+    #: Waits before the 2nd and 3rd attempt. One timed-out or 5xx lookup must not send a run back to a dead
+    #: old secret; the retries use a short timeout so the added delay stays bounded: 1 + 5 + 3 + 5 = 14 s.
+    RETRY_BACKOFF = (1.0, 3.0)
+    RETRY_TIMEOUT = 5.0
+
+    def __init__(self, url: str, service_key: str, *, timeout: float = 15.0, session=None, sleep=None):
         self.url = (url or "").rstrip("/")
         self._key = service_key or ""
         self._timeout = timeout
         self._http = session
+        self._sleep = sleep if sleep is not None else time.sleep
 
     @property
     def configured(self) -> bool:
@@ -117,20 +124,38 @@ class VaultTokenClient:
 
     def read(self, channel_id: str) -> Optional[VaultToken]:
         """The channel's active token, or None when it has none (never
-        connected, revoked, or 0022 not applied). Raises ChannelTokenError when
-        the lookup itself failed."""
+        connected, revoked, or 0022 not applied). Raises VaultLookupError when
+        the lookup itself failed, after retrying a transient failure (a network
+        error, a timeout, HTTP 429/5xx, an unreadable answer) twice more."""
         if not self.configured:
             return None
+        for attempt in range(len(self.RETRY_BACKOFF) + 1):
+            if attempt:
+                self._sleep(self.RETRY_BACKOFF[attempt - 1])
+            try:
+                return self._attempt(channel_id, self._timeout if attempt == 0 else min(self._timeout, self.RETRY_TIMEOUT))
+            except VaultLookupError as e:
+                if not getattr(e, "transient", False) or attempt == len(self.RETRY_BACKOFF):
+                    raise
+                logger.warning("channel %s: %s — retrying (%d of %d)", channel_id, e, attempt + 1, len(self.RETRY_BACKOFF))
+        return None  # unreachable: the last attempt returns or raises
+
+    def _attempt(self, channel_id: str, timeout: float) -> Optional[VaultToken]:
+        def transient(msg: str) -> VaultLookupError:
+            err = VaultLookupError(msg)
+            err.transient = True
+            return err
+
         try:
             r = self._session().post(
                 f"{self.url}/rest/v1/rpc/read_channel_token",
                 json={"p_channel_id": str(channel_id)},
                 headers={"apikey": self._key, "Authorization": f"Bearer {self._key}",
                          "Content-Type": "application/json"},
-                timeout=self._timeout,
+                timeout=timeout,
             )
         except Exception as e:  # network, TLS, timeout — the type only
-            raise VaultLookupError(f"Vault token lookup failed ({type(e).__name__})") from None
+            raise transient(f"Vault token lookup failed ({type(e).__name__})") from None
         status = getattr(r, "status_code", 0)
         if status == 404:
             # PostgREST's "function not found": 0022 is not applied here, which
@@ -139,11 +164,12 @@ class VaultTokenClient:
                         "not applied) — using the channel's GitHub secret, as before", channel_id)
             return None
         if status >= 300:
-            raise VaultLookupError(f"Vault token lookup failed: HTTP {status}")
+            msg = f"Vault token lookup failed: HTTP {status}"
+            raise transient(msg) if status in (408, 429) or status >= 500 else VaultLookupError(msg)
         try:
             rows = r.json() or []
         except Exception:
-            raise VaultLookupError("Vault token lookup returned an unreadable answer") from None
+            raise transient("Vault token lookup returned an unreadable answer") from None
         if isinstance(rows, dict):
             rows = [rows]
         if not rows:

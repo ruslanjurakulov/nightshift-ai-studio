@@ -64,6 +64,7 @@ export function ChannelTokenPanel({
   // The operator's channel reads "expired" when the bot's last live check found the token dead; the button then
   // says Reconnect even though a connection is on file.
   const expired = operator && operatorState === "expired";
+  const needsClient = operator && operatorState === "needs_client";
   const viaSecret = operator && operatorState === "connected" && !connected;
   const missing = connected && status ? missingScopes(status.scopes, requiredScopes) : [];
   const startHref = `/api/oauth/youtube/start?ref=${encodeURIComponent(channelId)}`;
@@ -98,11 +99,13 @@ export function ChannelTokenPanel({
         <h4 className="g2-label">{tt.title}</h4>
         {available && (
           <StatusLamp
-            tone={expired ? "fail" : connected || viaSecret ? (missing.length ? "warn" : "ok") : "idle"}
+            tone={expired || needsClient ? "fail" : connected || viaSecret ? (missing.length ? "warn" : "ok") : "idle"}
             label={
-              expired
-                ? tt.expired
-                : connected || viaSecret
+              needsClient
+                ? tt.needsClient
+                : expired
+                  ? tt.expired
+                  : connected || viaSecret
                   ? tt.connected
                   : status?.revoked_at
                     ? tt.disconnected
@@ -158,9 +161,9 @@ export function ChannelTokenPanel({
               {fmt(tt.missingScopes, { scopes: missing.map(shortScope).join(", ") })}
             </p>
           )}
-          {expired && (
+          {(expired || needsClient) && (
             <p className="g2-warn" role="alert">
-              {tt.expiredHint}
+              {needsClient ? tt.needsClientHint : tt.expiredHint}
             </p>
           )}
           {viaSecret && <p className="g2-note">{tt.viaSecret}</p>}

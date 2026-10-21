@@ -82,10 +82,83 @@ def vault_row(**kw):
 
 def client(resp=None, exc=None):
     return ct.VaultTokenClient("https://x.supabase.co", "service-key-value",
-                               session=Session(resp, exc))
+                               session=Session(resp, exc), sleep=lambda s: None)
 
 
 BASE_ENV = {ct.CLIENT_ID_ENV: CLIENT_ID, ct.CLIENT_SECRET_ENV: CLIENT_SECRET}
+
+
+class Flaky:
+    """A session that answers from a script, one entry per attempt (the last repeats); an exception entry is raised."""
+
+    def __init__(self, *script):
+        self.script, self.calls, self.timeouts = list(script), [], []
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        self.calls.append(json)
+        self.timeouts.append(timeout)
+        a = self.script[min(len(self.calls), len(self.script)) - 1]
+        if isinstance(a, BaseException):
+            raise a
+        return a
+
+
+class VaultRetry(unittest.TestCase):
+    """One timeout or 5xx at the slot hour must not send the run back to a dead old secret (review F1)."""
+
+    def make(self, *script):
+        self.sleeps = []
+        self.session = Flaky(*script)
+        return ct.VaultTokenClient("https://x.supabase.co", "k", session=self.session, sleep=self.sleeps.append)
+
+    def test_two_transient_failures_then_success_uses_the_vault_token(self):
+        c = self.make(TimeoutError("slow"), Resp(503, {}), Resp(200, [vault_row()]))
+        with self.assertLogs("modules.channel_tokens", level="WARNING"):
+            tok = c.read("default")
+        self.assertEqual(tok.refresh_token, REFRESH)
+        self.assertEqual(len(self.session.calls), 3)
+        self.assertEqual(self.sleeps, [1.0, 3.0])
+
+    def test_it_gives_up_after_three_attempts_and_the_fallback_is_todays(self):
+        c = self.make(Resp(500, {"message": REFRESH}))
+        with self.assertLogs("modules.channel_tokens", level="WARNING") as logs:
+            with self.assertRaises(ct.VaultLookupError) as cm:
+                c.read("default")
+        self.assertEqual(len(self.session.calls), 3)
+        self.assertNotIn(REFRESH, str(cm.exception) + "\n".join(logs.output))
+        r = ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", dict(BASE_ENV, YOUTUBE_TOKEN_JSON=ENV_TOKEN),
+                                     client=self.make(Resp(500, {})))
+        self.assertEqual(r.source, ct.SOURCE_ENV)
+        with self.assertRaises(ct.VaultLookupError):          # fail closed with nothing to fall back to
+            ct.resolve_channel_token("default", "YOUTUBE_TOKEN_JSON", BASE_ENV, client=self.make(Resp(500, {})))
+
+    def test_the_added_delay_is_bounded(self):
+        c = self.make(TimeoutError("slow"))
+        with self.assertLogs("modules.channel_tokens", level="WARNING"):
+            with self.assertRaises(ct.VaultLookupError):
+                c.read("default")
+        added = sum(self.sleeps) + sum(t for t in self.session.timeouts[1:])
+        self.assertLess(added, 20)
+        self.assertEqual(self.session.timeouts[0], 15.0)
+
+    def test_an_answer_is_not_retried(self):
+        for resp in (Resp(200, []), Resp(404, {"code": "PGRST202"}), Resp(200, [vault_row()])):
+            c = self.make(resp)
+            c.read("default")
+            self.assertEqual((len(self.session.calls), self.sleeps), (1, []))
+
+    def test_a_refusal_that_will_not_change_is_not_retried(self):
+        for status in (400, 401, 403):
+            c = self.make(Resp(status, {}))
+            with self.assertRaises(ct.VaultLookupError):
+                c.read("default")
+            self.assertEqual((len(self.session.calls), self.sleeps), (1, []), status)
+
+    def test_an_unreadable_answer_is_retried(self):
+        c = self.make(Resp(200, ValueError("html")), Resp(200, [vault_row()]))
+        with self.assertLogs("modules.channel_tokens", level="WARNING"):
+            self.assertIsNotNone(c.read("default"))
+        self.assertEqual(len(self.session.calls), 2)
 
 
 class FallbackOrder(unittest.TestCase):
@@ -445,8 +518,12 @@ class RestoreStep(unittest.TestCase):
         self.github_env.write_text("")
         self.patch = mock.patch("config.BASE_DIR", self.base)
         self.patch.start()
+        # The default channel's primary token path is absolute (computed at import): keep it inside the sandbox.
+        self.patch_file = mock.patch("config.YOUTUBE_TOKEN_FILE", self.base / "youtube_token.json")
+        self.patch_file.start()
 
     def tearDown(self):
+        self.patch_file.stop()
         self.patch.stop()
         self.tmp.cleanup()
 
@@ -518,6 +595,53 @@ class RestoreStep(unittest.TestCase):
         (self.base / "youtube_token.json").unlink()
         rc, out = self.run_step(client(Resp(500, {})), env={"CHANNEL_ID": "default"}, channel=Channel("default", default=True))
         self.assertEqual(rc, 1)
+
+    def test_wrong_account_guard_uses_YOUTUBE_CHANNEL_ID_for_the_default_channel(self):
+        """Review F2: the legacy default's registry row names no YouTube channel, so the id the run targets stands in."""
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)
+        default = Channel("default", default=True)
+        rc, out = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCsomeoneelse000000000000"},
+                                channel=default)
+        self.assertEqual(rc, 1)
+        self.assertIn("different YouTube channel", out)
+        self.assertNotIn(REFRESH, out)
+        self.assertEqual((self.base / "youtube_token.json").read_text(), ENV_TOKEN)      # nothing was replaced
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCcustomer000000000000000"},
+                              channel=default)
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads((self.base / "youtube_token.json").read_text())["refresh_token"], REFRESH)
+
+    def test_unset_YOUTUBE_CHANNEL_ID_keeps_todays_behaviour(self):
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default"}, channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "  "},
+                              channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+
+    def test_the_guard_never_blocks_a_channel_that_has_no_connection(self):
+        (self.base / "youtube_token.json").write_text(ENV_TOKEN)
+        rc, out = self.run_step(client(Resp(200, [])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCanything"},
+                                channel=Channel("default", default=True))
+        self.assertEqual(rc, 0)
+        self.assertEqual((self.base / "youtube_token.json").read_text(), ENV_TOKEN)
+
+    def test_a_registry_youtube_id_outranks_the_environment(self):
+        from modules.channels import ChannelContext, CredentialRef
+
+        ctx = ChannelContext(channel_id="default", name="N", niche="n", credential=CredentialRef(youtube_channel_id="UCregistry00000000000000"))
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"CHANNEL_ID": "default", "YOUTUBE_CHANNEL_ID": "UCcustomer000000000000000"},
+                              channel=lambda _id: ctx)
+        self.assertEqual(rc, 1)          # the vault token is UCcustomer…; the registry says UCregistry…
+
+    def test_other_channels_ignore_YOUTUBE_CHANNEL_ID(self):
+        rc, _ = self.run_step(client(Resp(200, [vault_row()])), env={"YOUTUBE_CHANNEL_ID": "UCsomeoneelse000000000000"})
+        self.assertEqual(rc, 0)          # "shop", not the default channel
+
+    def test_the_vault_step_hands_the_default_channels_YOUTUBE_CHANNEL_ID_secret_to_the_script(self):
+        wf = (ROOT / ".github" / "workflows" / "daily_video.yml").read_text()
+        step = wf.index("Restore YouTube token from Vault (connected from the Command Center)")
+        block = wf[step:wf.index("- name: Restore YouTube client secret")]
+        self.assertIn("YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}", block)
 
     def test_a_connection_without_the_command_centers_oauth_client_stops_the_default_channel_before_it_spends(self):
         (self.base / "youtube_token.json").write_text(ENV_TOKEN)

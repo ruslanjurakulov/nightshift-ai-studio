@@ -74,6 +74,13 @@ describe("operator channel panel", () => {
     expect(screen.queryByText(tt.connected)).toBeNull();
   });
 
+  it("says a refused OAuth client needs a new client, not a Reconnect, as the headline", () => {
+    render(panel({ status: status(), operatorState: "needs_client" }));
+    expect(screen.getByText(tt.needsClient)).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe(tt.needsClientHint);
+    expect(screen.queryByText(tt.expired)).toBeNull();
+  });
+
   it("tells the old-secret connection how to move, without calling it expired", () => {
     render(panel({ status: null, operatorState: "connected" }));
     expect(screen.getByText(tt.viaSecret)).toBeTruthy();
@@ -96,7 +103,7 @@ describe("operator channel panel", () => {
   it("has the new words in all three languages and passes axe in each", async () => {
     for (const locale of ["en", "ru", "uz"] as const) {
       const d = dictionaries[locale].channelTokens;
-      for (const key of ["expired", "expiredHint", "viaSecret", "operatorNote"] as const) {
+      for (const key of ["expired", "expiredHint", "needsClient", "needsClientHint", "viaSecret", "operatorNote"] as const) {
         expect(d[key].length).toBeGreaterThan(5);
         if (locale !== "en") expect(d[key]).not.toBe(dictionaries.en.channelTokens[key]);
       }

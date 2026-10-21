@@ -518,6 +518,23 @@ describe("operator panel state — what the bot reported", () => {
     expect(helpers.operatorYoutubeState({ token: null, credentialStatus: "connected", live: dead })).toBe("expired");
   });
 
+  it("tells a refused OAuth client from an expired token (Reconnect will not fix the former)", () => {
+    const withDetail = (detail: string) => ({
+      channel_id: "default",
+      event: "credential.health",
+      ts: "2026-10-22T01:00:00Z",
+      metadata: { checks: [{ name: "youtube_token_live", status: "missing", detail }] },
+    });
+    const client = helpers.latestLiveVerdicts([withDetail("Google refused the OAuth client behind channel default's YouTube token (invalid_client), so its upload would fail.")]);
+    const unauth = helpers.latestLiveVerdicts([withDetail("Google refused the OAuth client … (unauthorized_client) …")]);
+    const grant = helpers.latestLiveVerdicts([withDetail("Google says channel default's YouTube refresh token is expired or revoked (invalid_grant), so …")]);
+    const st = (m: ReturnType<typeof helpers.latestLiveVerdicts>) =>
+      helpers.operatorYoutubeState({ token: token(), credentialStatus: undefined, live: m.get("default") });
+    expect(st(client)).toBe("needs_client");
+    expect(st(unauth)).toBe("needs_client");
+    expect(st(grant)).toBe("expired");
+  });
+
   it("reads connected after a reconnect that is newer than the failure, until the bot says otherwise", () => {
     const old = { ts: "2026-10-20T22:50:00Z", dead: true };
     expect(helpers.operatorYoutubeState({ token: token(), credentialStatus: undefined, live: old })).toBe("connected");

@@ -89,10 +89,16 @@ def main(env=None, *, load_channel=_load_channel, client=None, out=None) -> int:
             + (f"using {label} only, as before." if operators else "no token for this channel."))
         return 0
 
+    # The wrong-account guard, before anything is spent: a Vault token granted for another YouTube channel than the
+    # one this channel is verified against stops the run. The legacy default channel's registry row carries no
+    # YouTube id, so the YOUTUBE_CHANNEL_ID the run itself targets stands in for it; unset = no check, as before.
+    expected = channel.credential.youtube_channel_id
+    if is_default and not expected:
+        expected = (env.get("YOUTUBE_CHANNEL_ID") or "").strip()
     try:
         resolved = channel_tokens.resolve_channel_token(
             channel_id, name, env, client=client,
-            expected_youtube_channel_id=channel.credential.youtube_channel_id, allow_env=operators)
+            expected_youtube_channel_id=expected, allow_env=operators)
     except channel_tokens.VaultLookupError as e:
         if is_default and token_path(channel).exists():
             say(f"::warning::channel {channel_id}: {e} — keeping YOUTUBE_TOKEN_JSON for this run.")

@@ -424,6 +424,9 @@ jobs:
       - name: Restore YouTube token from Vault (connected from the Command Center)
         env:
           CHANNEL_ID: ${{ matrix.channel_id }}
+          # The default channel's registry row names no YouTube channel: the id the run itself
+          # targets stands in for it, so a token granted for another account stops the run here.
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           # The Command Center's OAuth client: a refresh token only works with

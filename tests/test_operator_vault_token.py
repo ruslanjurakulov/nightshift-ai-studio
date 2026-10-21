@@ -68,7 +68,7 @@ class Session:
 
 
 def vault(rows, status=200):
-    return ct.VaultTokenClient("https://x.supabase.co", "service-key", session=Session(Resp_(status, rows)))
+    return ct.VaultTokenClient("https://x.supabase.co", "service-key", session=Session(Resp_(status, rows)), sleep=lambda s: None)
 
 
 class FakePost:
@@ -155,6 +155,21 @@ class OnDisk(unittest.TestCase):
             self.assertEqual(run_time.name, "youtube_token.json")
             self.assertEqual(json.loads(run_time.read_text())["refresh_token"], VAULT_REFRESH)
             self.assertEqual(cc.legacy_token_path(), run_time)
+
+    def test_with_YOUTUBE_CHANNEL_ID_set_in_the_vault_step_the_file_is_still_where_the_run_looks(self):
+        """The Vault step now has YOUTUBE_CHANNEL_ID, so config's primary name is youtube_token_<id>.json there too."""
+        suffixed = self.base / "youtube_token_UCchronos.json"
+        for secret_file in (True, False):
+            for f in self.base.glob("youtube_token*.json"):
+                f.unlink()
+            if secret_file:
+                self.secret_step()
+            with mock.patch.object(cfg, "YOUTUBE_TOKEN_FILE", suffixed):
+                self.assertEqual(self.restore(vault([vault_row(youtube_channel_id="UCchronos")]), YOUTUBE_CHANNEL_ID="UCchronos")[0], 0)
+                # and at run time (same config)
+                run_time = cc.token_path(legacy_default_channel())
+                self.assertEqual(json.loads(run_time.read_text())["refresh_token"], VAULT_REFRESH, secret_file)
+                self.assertEqual(cc.legacy_token_path(), run_time)
 
     def test_without_a_secret_file_the_vault_token_is_still_written_where_the_run_looks(self):
         self.assertEqual(self.restore(vault([vault_row()]))[0], 0)

@@ -127,7 +127,7 @@ export function tokenPanelActions(opts: {
 }
 
 /** What the operator's channel card says about its YouTube token. */
-export type OperatorYoutubeState = "connected" | "expired" | "not_connected";
+export type OperatorYoutubeState = "connected" | "expired" | "needs_client" | "not_connected";
 
 /** The bot's last answer to "does this channel's YouTube token still refresh?" — the `youtube_token_live` check of a
  *  `credential.health` event (modules/credential_health.with_live_youtube_check). */
@@ -135,6 +135,9 @@ export interface LiveVerdict {
   ts: string;
   /** Google refused the token (the run stopped before it spent). */
   dead: boolean;
+  /** ...because it refused the OAuth CLIENT behind it (invalid_client / unauthorized_client): a new connection
+   *  will not help, the runner's client pair must be the one that minted the token. */
+  clientProblem?: boolean;
 }
 
 function asObject(v: unknown): Record<string, unknown> | null {
@@ -164,7 +167,12 @@ export function latestLiveVerdicts(
     const live = checks.map(asObject).find((c) => c?.name === "youtube_token_live");
     if (!live) continue;
     const prev = out.get(e.channel_id);
-    if (!prev || Date.parse(e.ts) > Date.parse(prev.ts)) out.set(e.channel_id, { ts: e.ts, dead: live.status === "missing" });
+    if (!prev || Date.parse(e.ts) > Date.parse(prev.ts)) {
+      const dead = live.status === "missing";
+      // The operator wording names the code in parentheses (modules/credential_health._DEAD_DETAIL).
+      const clientProblem = dead && /\((invalid_client|unauthorized_client)\)/.test(String(live.detail ?? ""));
+      out.set(e.channel_id, { ts: e.ts, dead, ...(clientProblem ? { clientProblem: true } : {}) });
+    }
   }
   return out;
 }
@@ -174,6 +182,8 @@ export function latestLiveVerdicts(
  * - expired: the bot's last live check found the token dead AND that check is newer than the connection (a
  *   reconnect after the failure reads as connected until the next run says otherwise), or the bot's credential
  *   mirror says the token expired;
+ * - needs_client: the same, but Google refused the OAuth client (invalid_client / unauthorized_client) —
+ *   Reconnect will not help;
  * - connected: an active Vault connection, or the bot sees a usable token from the old GitHub secret;
  * - not connected: neither.
  */
@@ -184,7 +194,8 @@ export function operatorYoutubeState(opts: {
 }): OperatorYoutubeState {
   const { token, credentialStatus, live } = opts;
   const connectedAt = token?.connected && token.connected_at ? Date.parse(token.connected_at) : null;
-  if (live?.dead && (connectedAt === null || Date.parse(live.ts) > connectedAt)) return "expired";
+  if (live?.dead && (connectedAt === null || Date.parse(live.ts) > connectedAt))
+    return live.clientProblem ? "needs_client" : "expired";
   if (credentialStatus === "expired" && !token?.connected) return "expired";
   if (token?.connected) return "connected";
   if (credentialStatus === "connected") return "connected";
