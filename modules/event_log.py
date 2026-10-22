@@ -38,6 +38,11 @@ logger = logging.getLogger(__name__)
 # -- canonical event names --------------------------------------------------
 # System / heartbeat
 SYSTEM_STARTED = "system.started"
+# One scheduled attempt at a channel's slot (modules/schedule_catchup.py claim_attempt). Unlike every other event it
+# is written straight to Supabase, atomically, by tools/slot_guard.py before the pipeline starts: the run's local
+# event store reaches Supabase once a day, far too late to cap the attempts of a slot. Closed fields only: the
+# slot's start, the attempt number and the cap. Never evidence that a video exists (see reliability.Evidence).
+SLOT_ATTEMPT = "schedule.attempt"
 SYSTEM_HEARTBEAT = "system.heartbeat"
 # Agents (a logical worker: topic manager, script engine, poller, ...)
 AGENT_STARTED = "agent.started"

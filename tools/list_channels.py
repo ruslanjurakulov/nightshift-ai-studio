@@ -140,12 +140,18 @@ def _slot_row(c, start: datetime, catchup: bool) -> dict:
 
 
 def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, window: int,
-                    backup: bool = False) -> list[dict]:
+                    backup: bool = False, attempts=None, cap: int | None = None) -> list[dict]:
     """The rows for one hour: each channel at its exact hour, plus the ones inside the catch-up window, minus the
     slots that already have evidence. See modules/schedule_catchup.py for why an unknown starts nothing. A BACKUP
     tick's exact-hour row is strict like a catch-up's (``catchup`` True: the guard in the run also needs readable
-    evidence), and an unknown there starts nothing."""
+    evidence), and an unknown there starts nothing.
+
+    The attempt cap (``NIGHTSHIFT_SLOT_MAX_ATTEMPTS``) is applied here too: a slot that has used its attempts is not
+    handed out, whatever tick asks. ``attempts`` is ``schedule_catchup.read_attempts`` (None = unknown, the default
+    reads it with ``evidence_sync``). An unknown count starts no catch-up and no backup tick's run; the original
+    tick's exact hour goes ahead as it always did and the guard in the run then claims the attempt."""
     now = now or datetime.now(timezone.utc)
+    cap = schedule_catchup.max_attempts() if cap is None else cap
     ref = schedule_catchup.reference_hour(now, due_hour)
     candidates = []
     for c in channels:
@@ -167,18 +173,29 @@ def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, windo
         except Exception as e:  # noqa: BLE001 - an unreadable source is an unknown, never a stop
             schedule_catchup.warn(f"slot evidence UNREADABLE ({type(e).__name__}) - treating every slot as unknown.")
 
+    if attempts is None:
+        if evidence_sync is None:
+            from modules.supabase_sync import SupabaseSync
+
+            evidence_sync = SupabaseSync()
+        attempts = schedule_catchup.read_attempts(evidence_sync, now)
+
     rows, unknown_exact, unknown_late = [], [], []
     for c, late in candidates:
         cid, start = str(c.channel_id), ref - timedelta(hours=late)
         state = schedule_catchup.slot_state(ev, cid, start)
+        used = schedule_catchup.attempts_used(attempts, cid, start)
         if state == schedule_catchup.WORKED:
             print(f"note: {cid} already has a run for its {start:%Y-%m-%d %H}:00 UTC slot - not scheduled again",
                   file=sys.stderr)
+        elif used is not None and used >= cap:
+            print(f"note: {cid} slot {start:%Y-%m-%d %H}:00 UTC used its {used} attempt(s) and has no video - "
+                  "not scheduled again (run it by hand)", file=sys.stderr)
         elif late == 0 and not backup:
-            if state == schedule_catchup.UNKNOWN:
+            if state == schedule_catchup.UNKNOWN or used is None:
                 unknown_exact.append(cid)
             rows.append(_slot_row(c, start, False))      # the exact hour, as it has always been
-        elif state == schedule_catchup.UNKNOWN:
+        elif state == schedule_catchup.UNKNOWN or used is None:
             unknown_late.append(cid)
         elif late == 0:
             rows.append(_slot_row(c, start, True))       # a backup tick at the exact hour: free slot, readable evidence
@@ -188,11 +205,11 @@ def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, windo
             rows.append(_slot_row(c, start, True))
     if configured and unknown_exact:
         schedule_catchup.warn(
-            "run evidence UNREADABLE for " + ", ".join(unknown_exact) + " - running at the exact hour as usual; "
+            "run evidence or attempt count UNREADABLE for " + ", ".join(unknown_exact) + " - running at the exact hour as usual; "
             "a run already made for this slot cannot be seen.")
     if configured and unknown_late:
         schedule_catchup.warn(
-            "run evidence UNREADABLE for " + ", ".join(unknown_late) + " - NOT catching up (an unknown must "
+            "run evidence or attempt count UNREADABLE for " + ", ".join(unknown_late) + " - NOT catching up (an unknown must "
             "not start a paid run).")
     # The exact hour is the schedule; a catch-up is the exception. If a run is cut short, the schedule's own
     # channels (matrix order is run order, max-parallel 1) have already had their turn.
@@ -200,7 +217,7 @@ def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, windo
 
 
 def due_channels(due_hour: int | None = None, registry=None, sync=None, now=None, evidence=None,
-                 evidence_sync=None, backup_tick: bool = False) -> list[dict]:
+                 evidence_sync=None, backup_tick: bool = False, attempts=None) -> list[dict]:
     """``sync`` is only the registry preflight's. The slot evidence comes from ``evidence`` (an already-read
     ``reliability.Evidence``, for tests) or is read with ``evidence_sync`` (default: Supabase from the environment).
     ``backup_tick`` marks a scheduled tick that is not the original cron entry (see the module docstring)."""
@@ -267,7 +284,7 @@ def due_channels(due_hour: int | None = None, registry=None, sync=None, now=None
         start = schedule_catchup.reference_hour(now or datetime.now(timezone.utc), due_hour)
         return [_slot_row(c, start, False) for c in channels if _hour(c) == due_hour]
     return _scheduled_rows(channels, due_hour, now, evidence, evidence_sync, schedule_catchup.catchup_hours(),
-                           backup_tick)
+                           backup_tick, attempts)
 
 
 def _row(c) -> dict:

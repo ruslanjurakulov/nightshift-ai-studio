@@ -27,15 +27,16 @@ What this cannot see, said plainly: a run that is still rendering has written no
 serialises runs of one channel and slot (``concurrency`` in daily_video.yml) and re-asks this question in the run
 itself (``tools/slot_guard.py``) once it holds the group, which is after the first run has finished and written
 its row. A run that died before writing any row leaves no trace here, so the next hourly run inside the window
-tries again; that retry is the catch-up working, and ``NIGHTSHIFT_CATCHUP_HOURS=0`` turns it off. With more ticks
-and a wider window that retry can happen more often in a row; it resumes the run's saved state rather than
-paying again for tasks already ledgered, and the per-run and daily USD caps bound the rest (see
-docs/VIDEO_GO_LIVE.md section 9).
+tries again; that retry is the catch-up working, and ``NIGHTSHIFT_CATCHUP_HOURS=0`` turns it off. A retry is a fresh run (the scheduled run
+does not pass ``--resume``), so it pays again: with more ticks and a wider window the number of retries is CAPPED per
+slot (``NIGHTSHIFT_SLOT_MAX_ATTEMPTS``, default 2, at most 4; ``claim_attempt``), enforced by the resolver and again
+by the guard in the run (see docs/VIDEO_GO_LIVE.md section 9).
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -55,6 +56,16 @@ PRIMARY_CRON = "0 * * * *"
 _OFF_WORDS = frozenset({"off", "false", "no", "none", "disabled", "disable"})
 
 WORKED, UNWORKED, UNKNOWN = "worked", "unworked", "unknown"
+
+# -- the attempt cap -----------------------------------------------------------------------------------------------
+#: A scheduled slot may START the pipeline at most this many times (a run that wrote no video, held or blocked row
+#: is otherwise retried by every later tick in the window, and a retry is a fresh run that pays again).
+ATTEMPT_ENV = "NIGHTSHIFT_SLOT_MAX_ATTEMPTS"
+DEFAULT_MAX_ATTEMPTS = 2
+MAX_MAX_ATTEMPTS = 4
+CLAIMED, DENIED = "claimed", "denied"          # claim_attempt's answers; UNKNOWN is the third
+_ATTEMPT_KEY = re.compile(r"slot-attempt:(?P<channel>[a-z0-9][a-z0-9-]{1,38}):(?P<slot>[0-9TZ:-]{20}):(?P<n>[1-9])")
+_ATTEMPT_ROWS_LIMIT = 1000
 
 
 def warn(message: str) -> None:
@@ -158,3 +169,95 @@ def was_expected(ev, channel_id: str, start: datetime) -> bool:
         if c.channel_id == channel_id:
             return due(c, start, ev.stamps(channel_id))
     return False
+
+
+# -- attempts: the durable "a scheduled run started" record --------------------------------------------------------
+
+def max_attempts(env=None, say=warn) -> int:
+    """How many scheduled attempts one channel slot may have. Unset or empty is 2; a value that is not a whole number
+    of 1 or more (0 and negatives included: "no cap" is not an option) is 2 with a warning that never echoes it;
+    above 4 is 4 with a warning."""
+    raw = str((os.environ if env is None else env).get(ATTEMPT_ENV, "") or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
+        raw = raw[1:-1].strip()
+    if raw == "":
+        return DEFAULT_MAX_ATTEMPTS
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value < 1:
+        say(f"{ATTEMPT_ENV} is not a whole number of attempts from 1 to {MAX_MAX_ATTEMPTS} - "
+            f"using the default of {DEFAULT_MAX_ATTEMPTS}.")
+        return DEFAULT_MAX_ATTEMPTS
+    if value > MAX_MAX_ATTEMPTS:
+        say(f"{ATTEMPT_ENV} is above the maximum - using {MAX_MAX_ATTEMPTS}.")
+        return MAX_MAX_ATTEMPTS
+    return value
+
+
+def slot_iso(start: datetime) -> str:
+    return start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def attempt_key(channel_id: str, start: datetime, n: int) -> str:
+    """The primary key of attempt ``n`` of a slot in ``system_events``: claiming a number is inserting its key, and
+    the database lets exactly one inserter win, so two jobs can never both hold the same attempt."""
+    return f"slot-attempt:{channel_id}:{slot_iso(start)}:{n}"
+
+
+def read_attempts(sync, now: datetime):
+    """``{(channel_id, slot iso): attempts so far}`` for the last 48 hours, or None when it cannot be told (Supabase
+    not configured, a failed read, or a read that hit its row limit and may have cut rows). Reads only; never
+    raises. An unknown is not zero: callers that would start a paid run on it do not."""
+    if sync is None or not getattr(sync, "enabled", False):
+        return None
+    from modules.event_log import SLOT_ATTEMPT
+
+    since = (now - timedelta(hours=48)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        rows = sync.select_strict("system_events", {
+            "select": "event_key,channel_id", "event": f"eq.{SLOT_ATTEMPT}", "ts": f"gte.{since}",
+            "limit": str(_ATTEMPT_ROWS_LIMIT)})
+    except Exception:  # noqa: BLE001 - an unreadable source is an unknown
+        return None
+    if len(rows) >= _ATTEMPT_ROWS_LIMIT:
+        return None
+    out: dict = {}
+    for r in rows:
+        m = _ATTEMPT_KEY.fullmatch(str(r.get("event_key") or ""))
+        if m:
+            key = (m["channel"], m["slot"])
+            out[key] = out.get(key, 0) + 1
+    return out
+
+
+def attempts_used(attempts, channel_id: str, start: datetime):
+    """Attempts the slot has used, or None when ``attempts`` (read_attempts) is unknown."""
+    return None if attempts is None else attempts.get((channel_id, slot_iso(start)), 0)
+
+
+def claim_attempt(sync, channel_id: str, start: datetime, cap: int, now: datetime):
+    """Take the next attempt number of a slot, atomically. Returns ``(CLAIMED, n)``, ``(DENIED, cap)`` when the slot
+    has used all its attempts, or ``(UNKNOWN, 0)`` when the claim could not be made (not configured, a failed
+    write): then nothing is known to have been recorded. Never raises.
+
+    The row is closed: event name, key, time, channel, and metadata with the slot start, the attempt number and the cap.
+    No script, title, prompt or person."""
+    if sync is None or not getattr(sync, "enabled", False):
+        return UNKNOWN, 0
+    from modules.event_log import SLOT_ATTEMPT
+
+    stamp = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        for n in range(1, cap + 1):
+            row = {"event_key": attempt_key(channel_id, start, n), "event": SLOT_ATTEMPT, "ts": stamp,
+                   "channel_id": channel_id, "metadata": {"slot_start": slot_iso(start), "attempt": n, "cap": cap}}
+            got = sync.insert_new("system_events", [row], on_conflict="event_key")
+            if got is None:
+                return UNKNOWN, 0
+            if got:
+                return CLAIMED, n
+        return DENIED, cap
+    except Exception:  # noqa: BLE001
+        return UNKNOWN, 0

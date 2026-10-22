@@ -432,26 +432,49 @@ guard through simulated days of dropped and delayed ticks to prove it:
 3. *The guard in the run* (`tools/slot_guard.py`) asks again once the job holds the group, which is after the run
    ahead of it has finished and written its video row, and stops with exit 3 and nothing spent.
 
-**Exposure.** A scheduled run carries no credit hold, so it spends the operator's money. The maximum for a day is
-unchanged by this change: one run per operator channel per slot, plus the retries of a run that wrote no row
-(below). It is bounded further by the per-run and daily USD caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`)
-when the `CHRONOS_PRICE_*` prices are set. What changes is *when*: a missed slot is made up for up to three hours
-instead of one, so a day's video can appear at an odd hour (private until you publish it).
+**Exposure.** A scheduled run carries no credit hold, so it spends the operator's money. The maximum for a slot
+is **the attempt cap**: at most `NIGHTSHIFT_SLOT_MAX_ATTEMPTS` (default 2, hard maximum 4) starts of the pipeline
+per operator channel and slot, and exactly one when the first one writes a video, held or blocked row (then nothing
+else starts). However many ticks GitHub delivers and whatever dies, a slot cannot buy more than that many runs. The
+per-run and daily USD caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`) still apply on top, but only when the
+`CHRONOS_PRICE_*` prices are set; unpriced spend is not capped by them, which is why the attempt cap exists. What the
+wider window changes is *when*: a missed slot is made up for up to three hours instead of one, so a day's video can
+appear at an odd hour (private until you publish it).
 
-**A failed run does not count as "worked", and is retried.** The evidence is a video, held or blocked
-row, a storyboard or a run event. A run that dies before it writes any of them (an OOM or timeout at
-render, a provider outage) leaves no evidence, so the next tick inside the window runs the slot
-again. That is a retry, not a second video: the scheduled run restores the channel's saved run state
-(checkpoint, paid provider-task ledger, upload-attempt ledger, saved script; `tools/run_state_cache.py`), so tasks it
-already paid for are polled rather than bought again and an upload is reconciled rather than repeated. Retries are
-serial (one job of the slot at a time), and the per-run and daily USD caps only bite when the `CHRONOS_PRICE_*` prices
-are set; with none set the unpriced spend is not capped. **This is the one repeat the design allows, and a longer
-window and more ticks give it more chances**: a run that fails within minutes can now be retried by every tick of
-the window instead of once. If you see runs failing repeatedly, fix the cause or lower the window (the dead-man
-alert is the signal). `NIGHTSHIFT_CATCHUP_HOURS=0` switches the catch-up retry off, and the exact-hour run still
-happens. Follow-up idea, not in this change: have the run write a direct "slot claimed" row when it starts, so a
-started-and-failed run is distinguishable from a never-started one and can be limited to a fixed number of
-attempts per slot.
+**Attempt cap (`NIGHTSHIFT_SLOT_MAX_ATTEMPTS`).** An *attempt* is a scheduled run that got past the checks before
+anything is spent (the pipeline pause, the channel still scheduled, the slot still without a video) and reached the
+point of starting the pipeline: `tools/slot_guard.py` records it, in the run, just before `main.py`. The record is a
+row in `system_events` named `schedule.attempt` with the key `slot-attempt:<channel>:<slot start>:<n>`, inserted
+with PostgREST's ignore-duplicates, so exactly one job can ever hold attempt number `n` and two jobs racing cannot
+both start. Its only fields are the channel, the time, and the slot start, the number and the cap. It is written
+straight to Supabase (the run's own event log reaches Supabase once a day, too late) and it is not slot evidence:
+a video row is, an attempt is not, so a run that died stays retryable up to the cap.
+- **Enforced twice.** The resolver does not hand out a slot that has used its attempts (any tick, any hour of the
+  window), and the guard in the run claims the next number only if one is left; a refused claim stops the run before
+  anything is spent and says `used its N attempt(s)`.
+- **What counts.** Every run that reaches the claim counts, including one that then stopped for its own reasons
+  inside `main.py` (a credential preflight, exit 79 held before render, exit 78 spend ceiling). The distinction
+  "provably spent nothing" is not available at the claim, so it fails closed: it counts, and the log says so. A
+  job that fails earlier (token restore, install steps) never reaches the claim and uses no attempt.
+- **Unreadable.** If the attempt count or the claim cannot be read or written, a catch-up or a backup tick starts
+  nothing (as for unreadable evidence). The original hourly tick's exact-hour run keeps its documented fail-open
+  behaviour, and a denied claim stops it too. That is the one way a slot can exceed the cap: the original tick
+  running at its exact hour while Supabase is unreadable, which is the existing owner choice.
+- **Manual dispatches are exempt** (an explicit instruction, and they never ask the guard); they neither count nor
+  are stopped. Beware that a manual run does not reset a used-up slot either, and a video it makes does end the slot.
+- **Dead-man alert.** When the last attempt recorded for a slot was its cap, the alert says `the slot used its N
+  attempts and the scheduler will not start it again` and gives the manual step.
+
+**A failed run does not count as "worked", and is retried up to the cap.** The evidence is a video, held or blocked
+row, a storyboard or a run event. A run that dies before it writes any of them (an OOM or timeout at render, a
+provider outage) leaves no evidence, so the next tick inside the window starts the slot again, until the attempt cap
+is used up. **The second attempt is a fresh run, not a resume.** The scheduled run does not pass `--resume`, so it
+picks a topic again, rewrites the script and pays for the voice, stills and clips again; the saved run state of the
+first attempt (checkpoint, paid-task ledger, upload-attempt ledger, script, kept in the Actions cache for seven days
+by `tools/run_state_cache.py`) is restored into `output/` but a fresh run does not read it (its ledgers belong to the first run's epoch). That is exactly why the number of attempts is capped. If a slot died after paying and you would
+rather continue than start over, run it by hand with `resume` ticked and the channel named: that reuses the saved
+script and polls the paid provider tasks instead of buying them again. `NIGHTSHIFT_CATCHUP_HOURS=0` switches the
+catch-up retry off, and `NIGHTSHIFT_SLOT_MAX_ATTEMPTS=1` makes every slot a single try.
 
 **When the window has passed: run it by hand.** The dead-man alert (default 3 h after the slot; a tick in the
 window's last hour can still make the slot up after it, and a "recovered" note follows) now ends with the

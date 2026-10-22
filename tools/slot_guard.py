@@ -23,6 +23,12 @@ The answer then comes from the dead-man switch's evidence (modules/schedule_catc
   is what the resolver passes for every run that needs positive knowledge: a real catch-up, and any run handed
   out by a backup cron tick; only the original hourly tick's exact-hour run is the fail-open one.)
 
+Last, before ``main.py`` spends anything, the guard CLAIMS the slot's next attempt (``NIGHTSHIFT_SLOT_MAX_ATTEMPTS``,
+default 2, at most 4; modules/schedule_catchup.py ``claim_attempt``): a row in ``system_events`` whose key names the
+attempt number, inserted atomically, so two jobs can never both hold one. A slot that has used all its attempts exits
+3 for every kind of run, the original tick's included; a claim that cannot be made exits 3 for a ``--catchup`` run
+and 0 for the original tick's exact hour, as for unreadable evidence.
+
 The log carries the channel id, the slot time and fixed words, never a title or a message from Supabase.
 """
 
@@ -111,11 +117,33 @@ def decide(channel_id: str, slot_start: str, catchup: bool, sync=None, now=None,
     if state == schedule_catchup.WORKED:
         print(f"{channel_id}: the {start:%Y-%m-%d %H}:00 UTC slot already has a run - nothing to do.")
         return SKIP
-    if state == schedule_catchup.UNKNOWN:
-        if configured:
-            schedule_catchup.warn(f"slot guard: run evidence UNREADABLE for {channel_id} - "
+    unknown = state == schedule_catchup.UNKNOWN
+    if unknown and configured:
+        schedule_catchup.warn(f"slot guard: run evidence UNREADABLE for {channel_id} - "
+                              + ("NOT running a catch-up." if catchup else "running at the exact hour as usual."))
+    if unknown and catchup:
+        return SKIP
+
+    # The attempt cap. Claiming is the last thing before the pipeline starts, and it is atomic in the database, so
+    # two jobs can never hold the same attempt however they race. A denied claim is positive knowledge (the slot
+    # has used all its attempts) and stops even the original tick's exact-hour run; a claim that could not be made
+    # stops a catch-up or backup run, and lets the original tick's exact hour go ahead as it always did.
+    if sync is None:
+        from modules.supabase_sync import SupabaseSync
+
+        sync = SupabaseSync()
+    cap = schedule_catchup.max_attempts()
+    got, n = schedule_catchup.claim_attempt(sync, channel_id, start, cap, now)
+    if got == schedule_catchup.DENIED:
+        print(f"{channel_id}: the {start:%Y-%m-%d %H}:00 UTC slot used its {cap} attempt(s) and has no video - "
+              "not running it again (run it by hand: Actions, Daily YouTube Video, Run workflow).")
+        return SKIP
+    if got == schedule_catchup.UNKNOWN:
+        if getattr(sync, "enabled", False):
+            schedule_catchup.warn(f"slot guard: the attempt of {channel_id} could not be recorded - "
                                   + ("NOT running a catch-up." if catchup else "running at the exact hour as usual."))
         return SKIP if catchup else GO
+    print(f"{channel_id}: attempt {n} of {cap} for the {start:%Y-%m-%d %H}:00 UTC slot.")
     return GO
 
 

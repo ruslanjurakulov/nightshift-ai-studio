@@ -125,7 +125,8 @@ class PausedOrNoLongerScheduled(unittest.TestCase):
 
     def test_a_pause_value_that_means_run_does_not_stop_it(self):
         for value in ("", "0", "false", "off"):
-            self.assertEqual(decide(self.sync, env={list_channels.PAUSE_ENV: value})[0], slot_guard.GO)
+            sync = FakeSupabase([chan("default", hour=15)])                  # a fresh slot: each go claims an attempt
+            self.assertEqual(decide(sync, env={list_channels.PAUSE_ENV: value})[0], slot_guard.GO)
 
     def test_a_channel_paused_since_the_resolver_looked_is_skipped(self):
         for kw in ({"status": "PAUSED"}, {"schedule_on": False}, {"status": "whatever"}):
@@ -214,6 +215,120 @@ class PausedOrNoLongerScheduled(unittest.TestCase):
         self.assertEqual(decide(worked)[0], slot_guard.SKIP)
         self.assertEqual(decide(FakeSupabase([chan("default", hour=15)]))[0], slot_guard.GO)
 
+
+
+def attempt_rows(sync):
+    return [r for r in sync.tables["system_events"] if r.get("event") == "schedule.attempt"]
+
+
+class TheAttemptCap(unittest.TestCase):
+    """A scheduled slot starts the pipeline at most NIGHTSHIFT_SLOT_MAX_ATTEMPTS times (default 2, at most 4). A scheduled
+    retry is a fresh run that pays again, so the cap is what bounds the money, whatever the ticks do."""
+
+    def setUp(self):
+        self.chan = chan("default", hour=15)
+        self.sync = FakeSupabase([self.chan])
+
+    def go(self, **kw):
+        return decide(self.sync, **kw)
+
+    def test_the_first_two_attempts_go_and_the_third_does_not(self):
+        self.assertEqual(self.go()[0], slot_guard.GO)
+        self.assertEqual(self.go()[0], slot_guard.GO)
+        rc, said = self.go()
+        self.assertEqual(rc, slot_guard.SKIP)
+        self.assertIn("used its 2 attempt(s)", said)
+        self.assertIn("Run workflow", said)
+        self.assertEqual(len(attempt_rows(self.sync)), 2)               # a refused attempt writes nothing
+
+    def test_the_cap_stops_the_original_ticks_exact_hour_run_and_a_catch_up_alike(self):
+        for catchup in (False, True, False, True):
+            self.go(catchup=catchup)
+        for catchup in (False, True):
+            self.assertEqual(self.go(catchup=catchup)[0], slot_guard.SKIP)
+
+    def test_the_row_is_closed_fields_only(self):
+        self.go()
+        (row,) = attempt_rows(self.sync)
+        self.assertEqual(set(row), {"event_key", "event", "ts", "channel_id", "metadata"})
+        self.assertEqual(row["event_key"], "slot-attempt:default:2026-10-20T15:00:00Z:1")
+        self.assertEqual(row["channel_id"], "default")
+        self.assertEqual(row["metadata"], {"slot_start": SLOT, "attempt": 1, "cap": 2})
+
+    def test_the_variable_sets_the_cap_between_one_and_four(self):
+        for value, cap in (("1", 1), ("3", 3), ("4", 4), ("9", 4), ("0", 2), ("-1", 2), ("two", 2), ("", 2)):
+            sync = FakeSupabase([self.chan])
+            gos = [decide(sync, env={schedule_catchup.ATTEMPT_ENV: value})[0] for _ in range(6)]
+            self.assertEqual(gos.count(slot_guard.GO), cap, value)
+            self.assertEqual(gos[:cap], [slot_guard.GO] * cap, value)
+
+    def test_a_bad_value_is_the_default_with_a_warning_that_never_echoes_it(self):
+        for value in ("0", "-3", "SENTINEL-7"):
+            said = []
+            self.assertEqual(schedule_catchup.max_attempts({schedule_catchup.ATTEMPT_ENV: value}, say=said.append), 2)
+            self.assertEqual(len(said), 1, value)
+            self.assertNotIn(value, said[0])
+        said = []
+        self.assertEqual(schedule_catchup.max_attempts({}, say=said.append), 2)
+        self.assertEqual(said, [])
+
+    def test_each_claim_takes_a_different_number_so_a_race_cannot_double_up(self):
+        got = [schedule_catchup.claim_attempt(self.sync, "default", at(20, 15), 2, at(20, 15, 30)) for _ in range(3)]
+        self.assertEqual(got, [("claimed", 1), ("claimed", 2), ("denied", 2)])
+
+    def test_a_slot_that_already_has_its_video_uses_no_attempt(self):
+        sync = FakeSupabase([self.chan], videos=[video("default", published=iso(at(20, 15, 40)))])
+        self.assertEqual(decide(sync)[0], slot_guard.SKIP)
+        self.assertEqual(attempt_rows(sync), [])
+
+    def test_an_attempt_is_not_evidence_that_the_slot_was_worked(self):
+        # A run that started and died must stay retryable (up to the cap): the attempt row is not a video.
+        self.go()
+        ev = schedule_catchup.read_evidence(self.sync, at(20, 17, 30))
+        self.assertEqual(schedule_catchup.slot_state(ev, "default", at(20, 15)), schedule_catchup.UNWORKED)
+
+    def test_other_slots_and_other_channels_have_their_own_attempts(self):
+        shop = chan("shop", hour=15)
+        sync = FakeSupabase([self.chan, shop])
+        for _ in range(2):
+            decide(sync, registry_=registry(self.chan, shop))
+        self.assertEqual(decide(sync, registry_=registry(self.chan, shop))[0], slot_guard.SKIP)
+        self.assertEqual(decide(sync, registry_=registry(self.chan, shop), channel="shop")[0], slot_guard.GO)
+        self.assertEqual(decide(sync, slot="2026-10-19T15:00:00Z", now=at(19, 16))[0], slot_guard.GO)
+
+    def test_a_claim_that_cannot_be_written_stops_a_catch_up_and_not_the_original_tick(self):
+        sync = FakeSupabase([self.chan], fail_write={"system_events"})
+        rc, said = decide(sync, catchup=True)
+        self.assertEqual(rc, slot_guard.SKIP)
+        self.assertIn("could not be recorded", said)
+        rc, said = decide(sync, catchup=False)
+        self.assertEqual(rc, slot_guard.GO)
+        self.assertIn("running at the exact hour as usual", said)
+
+    def test_unreadable_evidence_claims_nothing_for_a_strict_run_and_goes_on_for_the_original_tick(self):
+        sync = FakeSupabase([self.chan], fail={"videos"})
+        self.assertEqual(decide(sync, catchup=True)[0], slot_guard.SKIP)
+        self.assertEqual(attempt_rows(sync), [])
+        self.assertEqual(decide(sync, catchup=False)[0], slot_guard.GO)
+        self.assertEqual(len(attempt_rows(sync)), 1)
+
+    def test_a_denied_claim_stops_the_original_tick_even_when_the_evidence_is_unreadable(self):
+        sync = FakeSupabase([self.chan], fail={"videos"})
+        for _ in range(2):
+            decide(sync, catchup=False)
+        self.assertEqual(decide(sync, catchup=False)[0], slot_guard.SKIP)
+
+    def test_supabase_not_configured_runs_the_original_tick_and_never_a_catch_up(self):
+        sync = FakeSupabase([self.chan], enabled=False)
+        self.assertEqual(decide(sync, catchup=False)[0], slot_guard.GO)
+        self.assertEqual(decide(sync, catchup=True)[0], slot_guard.SKIP)
+
+    def test_the_warning_carries_nothing_the_database_said(self):
+        _, out = decide(FakeSupabase([self.chan], fail_write={"system_events"}), catchup=True)
+        said = warning_lines(out)
+        self.assertIn("could not be recorded", said)
+        for leaked in ("SENTINEL", "503", "boom"):
+            self.assertNotIn(leaked, said)
 
 if __name__ == "__main__":
     unittest.main()

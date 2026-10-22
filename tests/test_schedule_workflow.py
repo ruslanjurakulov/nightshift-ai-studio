@@ -155,6 +155,11 @@ class NothingElseMoved(unittest.TestCase):
         self.assertEqual(env["NIGHTSHIFT_CATCHUP_HOURS"], "${{ vars.NIGHTSHIFT_CATCHUP_HOURS }}")
         self.assertEqual(env["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
 
+    def test_the_attempt_cap_variable_reaches_both_the_resolver_and_the_guard(self):
+        want = "${{ vars.NIGHTSHIFT_SLOT_MAX_ATTEMPTS }}"
+        self.assertEqual(step("resolve", "Pick due channels")["env"]["NIGHTSHIFT_SLOT_MAX_ATTEMPTS"], want)
+        self.assertEqual(step("make-video", "Run Chronos bot")["env"]["NIGHTSHIFT_SLOT_MAX_ATTEMPTS"], want)
+
     def test_the_scheduled_resolver_still_filters_by_the_current_hour(self):
         script = step("resolve", "Pick due channels")["run"]
         self.assertIn('python tools/list_channels.py --due-hour "$(date -u +%-H)"', script)

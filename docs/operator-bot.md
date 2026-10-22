@@ -347,7 +347,9 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   default 3 h grace, so a tick in that last hour can still make the slot up after the alert). The alert ends
   with the manual step (GitHub Actions, workflow Daily YouTube Video, Run workflow with the channel id, private by
   default) for the case where the window has passed too. A run that fails without writing a row does not
-  count as the slot being worked: the dead-man alert is the signal for it. A catch-up changes nothing here: the dead-man
+  count as the slot being worked: the dead-man alert is the signal for it. The scheduler starts such a slot at most
+  `NIGHTSHIFT_SLOT_MAX_ATTEMPTS` times (default 2); when the attempts the run recorded (`schedule.attempt`, which the
+  bot only reads) reached their cap the alert says `the slot used its N attempts` and that it will not be started again. A catch-up changes nothing here: the dead-man
   still only reads.
   A source that stays unreadable for 6 continuous hours is said once a day as an
   information alert in kind `health` ("the dead-man switch cannot judge: <source>",

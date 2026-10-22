@@ -58,11 +58,25 @@ class FakeSupabase:
     """A SupabaseSync lookalike over in-memory tables. ``eq.`` filters are honoured, the rest is left to the
     caller's own client-side checks (as they are in production). ``fail`` names tables whose read raises."""
 
-    def __init__(self, channels, videos=(), storyboards=(), events=(), fail=(), enabled=True):
+    def __init__(self, channels, videos=(), storyboards=(), events=(), fail=(), enabled=True, fail_write=()):
         self.enabled = enabled
+        self.fail_write = set(fail_write)
         self.tables = {"channels": list(channels), "videos": list(videos),
                        "storyboards": list(storyboards), "system_events": list(events)}
         self.fail, self.reads = set(fail), []
+
+    def insert_new(self, table, rows, on_conflict):
+        """PostgREST ignore-duplicates: only rows whose conflict key is new are inserted and returned. ``fail_write``
+        names tables whose write fails (None, as the real client answers on any failure)."""
+        if table in self.fail_write or not self.enabled:
+            return None
+        have, out = {r.get(on_conflict) for r in self.tables.setdefault(table, [])}, []
+        for r in rows:
+            if r.get(on_conflict) not in have:
+                have.add(r.get(on_conflict))
+                self.tables[table].append(dict(r))
+                out.append(dict(r))
+        return out
 
     def select_strict(self, table, params=None):
         from modules.supabase_sync import SupabaseReadError
@@ -473,6 +487,90 @@ class BackupTicks(unittest.TestCase):
                     mock.patch("sys.argv", ["list_channels.py", *argv]), contextlib.redirect_stdout(io.StringIO()):
                 list_channels.main()
             self.assertIs(calls[-1], want, argv)
+
+
+def attempt(channel_id, slot, n):
+    return {"event_key": f"slot-attempt:{channel_id}:{slot}:{n}", "event": "schedule.attempt",
+            "ts": "2026-10-20T15:05:00Z", "channel_id": channel_id}
+
+
+class TheAttemptCapInTheResolver(unittest.TestCase):
+    """A slot that has used its attempts (and has no video) is not handed out, whichever tick asks."""
+
+    SLOT = "2026-10-20T15:00:00Z"
+
+    def setUp(self):
+        self.chan = chan("default", hour=15)
+
+    def sync(self, *attempts, **kw):
+        return FakeSupabase([self.chan], events=list(attempts), **kw)
+
+    def used(self, n):
+        return self.sync(*[attempt("default", self.SLOT, i) for i in range(1, n + 1)])
+
+    def test_a_slot_with_attempts_left_is_handed_out(self):
+        for hour, minute in ((15, 4), (16, 5), (18, 5)):
+            self.assertEqual(ids(run(hour, [self.chan], now=at(20, hour, minute), sync=self.used(1))[0]), ["default"])
+
+    def test_a_slot_that_used_its_attempts_is_not_handed_out_at_any_hour_or_by_any_tick(self):
+        for hour in (15, 16, 17, 18):
+            for backup in (False, True):
+                out, err = run(hour, [self.chan], now=at(20, hour, 20), sync=self.used(2), backup=backup)
+                self.assertEqual(out, [], (hour, backup))
+        self.assertIn("used its 2 attempt(s)", err)
+
+    def test_the_cap_follows_the_variable(self):
+        env = {schedule_catchup.ATTEMPT_ENV: "3"}
+        self.assertEqual(ids(run(16, [self.chan], now=at(20, 16, 5), sync=self.used(2), env=env)[0]), ["default"])
+        self.assertEqual(run(16, [self.chan], now=at(20, 16, 5), sync=self.used(3), env=env)[0], [])
+        env = {schedule_catchup.ATTEMPT_ENV: "1"}
+        self.assertEqual(run(15, [self.chan], now=at(20, 15, 5), sync=self.used(1), env=env)[0], [])
+
+    def test_another_slot_or_channel_does_not_use_this_ones_attempts(self):
+        other = [attempt("default", "2026-10-19T15:00:00Z", 1), attempt("default", "2026-10-19T15:00:00Z", 2),
+                 attempt("shop", self.SLOT, 1), attempt("shop", self.SLOT, 2)]
+        out, _ = run(15, [self.chan], now=at(20, 15, 4), sync=self.sync(*other))
+        self.assertEqual(ids(out), ["default"])
+
+    def test_unreadable_attempts_start_no_catch_up_and_no_backup_run_but_the_original_exact_hour_goes_on(self):
+        sync = self.sync(fail={"system_events"})
+        self.assertEqual(run(17, [self.chan], now=at(20, 17, 5), sync=sync)[0], [])
+        self.assertEqual(run(15, [self.chan], now=at(20, 15, 20), sync=sync, backup=True)[0], [])
+        self.assertEqual(ids(run(15, [self.chan], now=at(20, 15, 4), sync=sync)[0]), ["default"])
+
+    def test_an_attempt_count_that_alone_cannot_be_read_is_not_zero(self):
+        # The evidence reads fine; only the attempt rows fail. Zero attempts must not be assumed.
+        class OnlyAttemptsFail(FakeSupabase):
+            def select_strict(self, table, params=None):
+                from modules.supabase_sync import SupabaseReadError
+
+                if (params or {}).get("event") == "eq.schedule.attempt":
+                    raise SupabaseReadError(table, 503, "boom-SENTINEL")
+                return super().select_strict(table, params)
+
+        sync = OnlyAttemptsFail([self.chan])
+        out, err = run(17, [self.chan], now=at(20, 17, 5), sync=sync)                    # a catch-up
+        self.assertEqual(out, [])
+        self.assertIn("attempt count UNREADABLE", err)
+        self.assertEqual(run(15, [self.chan], now=at(20, 15, 20), sync=sync, backup=True)[0], [])
+        out, err = run(15, [self.chan], now=at(20, 15, 4), sync=sync)                     # the original tick, as always
+        self.assertEqual(ids(out), ["default"])
+        self.assertIn("::warning::", err)
+
+    def test_attempt_rows_are_read_only_when_a_channel_is_a_candidate(self):
+        sync = self.sync()
+        run(3, [self.chan], now=at(20, 3, 5), sync=sync)
+        self.assertEqual(sync.reads, [])
+
+    def test_a_read_that_hit_its_row_limit_is_unknown_not_zero(self):
+        many = [attempt("shop", f"2026-10-{d:02d}T10:00:00Z", 1) for d in range(1, 29)] * 40
+        sync = FakeSupabase([self.chan], events=many)
+        self.assertIsNone(schedule_catchup.read_attempts(sync, at(20, 17)))
+
+    def test_malformed_rows_are_ignored_not_counted(self):
+        junk = [{"event_key": "slot-attempt:default:whenever:1", "event": "schedule.attempt"},
+                {"event_key": "other", "event": "schedule.attempt"}, {"event": "schedule.attempt"}]
+        self.assertEqual(schedule_catchup.read_attempts(self.sync(*junk), at(20, 17)), {})
 
 
 class NeverTwoRowsForOneChannel(unittest.TestCase):

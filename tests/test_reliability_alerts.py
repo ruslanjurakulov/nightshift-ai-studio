@@ -109,6 +109,48 @@ class DeadManArithmeticTestCase(unittest.TestCase):
         self.assertEqual((a.kind, a.severity, a.channel_id, a.cooldown_min), ("pipeline", "warn", "default", 0))
         self.assertIn("2026-10-14 15:00 UTC", a.line)
 
+    def attempt(self, n, cap=2, slot="2026-10-14T15:00:00Z", cid="default"):
+        return {"event_key": f"slot-attempt:{cid}:{slot}:{n}", "event": "schedule.attempt", "ts": "2026-10-14T15:05:00Z",
+                "channel_id": cid, "metadata": {"slot_start": slot, "attempt": n, "cap": cap}}
+
+    def deadman_line(self, events, **kw):
+        found = run_detect(now=at(14, 18, 0), events=events, **kw)[0]
+        return [x for x in found if x.key == "deadman:default:2026-10-14"][0].line
+
+    def test_the_alert_says_when_the_slot_used_all_its_attempts(self):
+        line = self.deadman_line([self.attempt(1), self.attempt(2)])
+        self.assertIn("used its 2 attempts", line)
+        self.assertIn("will not start it again", line)
+        self.assertIn("Run workflow", line)
+
+    def test_a_slot_with_attempts_left_gets_the_usual_alert(self):
+        line = self.deadman_line([self.attempt(1)])
+        self.assertNotIn("used its", line)
+        self.assertIn("grace has passed", line)
+
+    def test_the_cap_is_the_one_the_run_recorded_not_a_setting_of_the_bot(self):
+        self.assertIn("used its 3 attempts", self.deadman_line([self.attempt(i, cap=3) for i in (1, 2, 3)]))
+        self.assertNotIn("used its", self.deadman_line([self.attempt(1, cap=3), self.attempt(2, cap=3)]))
+
+    def test_another_slot_or_channel_does_not_count(self):
+        other = [self.attempt(1, slot="2026-10-13T15:00:00Z"), self.attempt(2, slot="2026-10-13T15:00:00Z"),
+                 self.attempt(2, cid="shop")]
+        self.assertNotIn("used its", self.deadman_line(other))
+
+    def test_an_attempt_is_not_a_video_so_the_alarm_still_fires(self):
+        found = run_detect(now=at(14, 18, 0), events=[self.attempt(1), self.attempt(2)])[0]
+        self.assertEqual(keys(found), ["deadman:default:2026-10-14"])
+
+    def test_the_capped_text_exists_in_every_language_with_the_same_fields(self):
+        from modules.operator_bot.i18n import t
+
+        for lang in ("en", "ru", "uz"):
+            line = t(lang, "alert.deadman_capped", channel="default", slot="2026-10-14 15:00", grace=3, used=2,
+                     hint=reliability.Raw("x"))
+            self.assertIn("2", line, lang)
+            self.assertIn("channel default", line, lang)
+            self.assertNotIn(">", line, lang)
+
     def test_the_alert_says_how_to_make_the_slot_up_by_hand_in_every_language(self):
         # The scheduler's catch-up only reaches NIGHTSHIFT_CATCHUP_HOURS back; after that the owner has to run it.
         from modules.operator_bot.i18n import t

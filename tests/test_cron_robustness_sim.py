@@ -75,19 +75,52 @@ class SimEvidence:
         return list(self._stamps.get(channel_id, []))
 
 
+class SimSync:
+    """The slice of Supabase the scheduler touches for attempts: ``insert_new`` (atomic, ignore-duplicates on the key)
+    and a ``select_strict`` over ``system_events``. ``outage`` makes every call fail the way the real client does."""
+
+    enabled = True
+
+    def __init__(self, world, outage):
+        self.world, self.outage = world, outage
+
+    def insert_new(self, table, rows, on_conflict):
+        if self.outage or table != "system_events":
+            return None
+        out = []
+        for r in rows:
+            if r[on_conflict] not in self.world.attempt_rows:
+                self.world.attempt_rows[r[on_conflict]] = dict(r)
+                out.append(dict(r))
+        return out
+
+    def select_strict(self, table, params=None):
+        from modules.supabase_sync import SupabaseReadError
+
+        if self.outage:
+            raise SupabaseReadError(table, 503, "down")
+        if table != "system_events":
+            return []
+        rows = [r for r in self.world.attempt_rows.values() if r["event"] == (params or {}).get("event", "")[3:]]
+        limit = int((params or {}).get("limit") or 0)
+        return rows[:limit] if limit else rows
+
+
 class World:
     """One simulation. ``ticks`` is a list of ``(when, cron)``; ``random_ticks`` builds them from the workflow's
     crons with drops and delays. ``serialize`` False removes the concurrency group, ``guard`` replaces the guard."""
 
     def __init__(self, channel_rows, ticks, *, seed=0, run_minutes=(20, 50), setup_minutes=(3, 8), p_fail=0.0,
-                 p_outage=0.0, serialize=True, guard=None, window=WINDOW):
+                 p_outage=0.0, serialize=True, guard=None, window=WINDOW, cap=None):
         self.channel_rows = channel_rows
         self.registry = registry(*channel_rows)
         self.rng = random.Random(seed)
         self.run_minutes, self.setup_minutes = run_minutes, setup_minutes
         self.p_fail, self.p_outage, self.serialize, self.window = p_fail, p_outage, serialize, window
+        self.cap = cap
         self.guard = guard or slot_guard.decide
         self.videos = []                       # (channel, when its row became visible)
+        self.attempt_rows = {}                 # event_key -> row: the durable "a scheduled run started" records
         self.starts = {}                       # (channel, slot_start) -> [(start, end or None, ok)]
         self.groups = {}                       # (channel, slot date) -> {"running": Job|None, "pending": Job|None}
         self.jobs = []
@@ -110,6 +143,9 @@ class World:
         clean = {k: v for k, v in os.environ.items()
                  if k not in (list_channels.PAUSE_ENV, schedule_catchup.CATCHUP_ENV)}
         clean[schedule_catchup.CATCHUP_ENV] = str(self.window)
+        clean.pop(schedule_catchup.ATTEMPT_ENV, None)
+        if self.cap is not None:
+            clean[schedule_catchup.ATTEMPT_ENV] = str(self.cap)
         logging.disable(logging.CRITICAL)
         try:
             with mock.patch.dict(os.environ, clean, clear=True), contextlib.redirect_stderr(io.StringIO()), \
@@ -121,12 +157,15 @@ class World:
             logging.disable(logging.NOTSET)
         return self
 
-    def evidence(self, now):
-        return SimEvidence(self, now, outage=self.rng.random() < self.p_outage)
+    def io(self, now):
+        """What one resolver or guard call can read and write at ``now``: the evidence and the attempts, both gone
+        together in an outage (they are the same database)."""
+        outage = self.rng.random() < self.p_outage
+        return SimEvidence(self, now, outage=outage), SimSync(self, outage)
 
     def on_tick(self, now, cron):
-        ev = self.evidence(now)
-        rows = list_channels.due_channels(now.hour, registry=self.registry, now=now, evidence=ev,
+        ev, sync = self.io(now)
+        rows = list_channels.due_channels(now.hour, registry=self.registry, now=now, evidence=ev, evidence_sync=sync,
                                           backup_tick=schedule_catchup.is_backup_tick(cron))
         for r in rows:
             start = datetime.strptime(r["slot_start"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
@@ -150,10 +189,10 @@ class World:
         self.push(now + self.between(*self.setup_minutes), "guard", job)
 
     def on_guard(self, now, job):
-        ev = self.evidence(now)
+        ev, sync = self.io(now)
         job.guard_unreadable = not ev.known
         rc = self.guard(job.channel, job.slot_start.strftime("%Y-%m-%dT%H:%M:%SZ"), job.catchup,
-                        evidence=ev, now=now, registry=self.registry)
+                        sync=sync, evidence=ev, now=now, registry=self.registry)
         if rc != slot_guard.GO:
             self.push(now + timedelta(minutes=1), "end", (job, None, now))
             return
@@ -204,6 +243,12 @@ def repeats(world):
             if i and runs[i - 1][1] is None:
                 bad.append((key, "started while the run before it never ended", began))
     return bad
+
+
+def over_cap(world, cap=2):
+    """Slots that started the pipeline more often than the cap, not counting a start the original tick made on a
+    source it could not read (its documented fail-open, which cannot claim an attempt either)."""
+    return [(key, len(runs)) for key, runs in world.starts.items() if len(runs) > cap]
 
 
 def missed(world, days):
@@ -290,6 +335,66 @@ class AtMostOnce(unittest.TestCase):
         self.assertGreater(went, 0)               # the scenario does exercise the exact-hour exception
 
 
+class TheAttemptCap(unittest.TestCase):
+    """The money bound: a scheduled slot starts the pipeline at most the cap times (default 2, NIGHTSHIFT_SLOT_MAX_ATTEMPTS,
+    at most 4), whatever dies and whichever ticks land. A retry is a fresh run that pays again."""
+
+    def test_runs_that_die_after_spending_never_exceed_the_cap(self):
+        for seed in range(60):
+            for p_drop in (0.0, 0.5, 0.77, 0.9):
+                for p_fail in (0.5, 1.0):
+                    w = simulate(seed, p_drop=p_drop, p_fail=p_fail)
+                    with self.subTest(seed=seed, p_drop=p_drop, p_fail=p_fail):
+                        self.assertEqual(over_cap(w), [])
+                        self.assertEqual(repeats(w), [])
+
+    def test_a_slot_whose_every_run_dies_is_started_exactly_the_cap_times(self):
+        for cap in (1, 2, 3, 4):
+            for seed in range(10):
+                w = simulate(seed, p_drop=0.0, p_fail=1.0, cap=cap, max_delay=10)
+                with self.subTest(cap=cap, seed=seed):
+                    self.assertEqual({len(v) for v in w.starts.values()}, {cap})
+                    self.assertEqual(over_cap(w, cap), [])
+
+    def test_the_default_cap_is_two(self):
+        w = simulate(1, p_drop=0.0, p_fail=1.0, max_delay=10)
+        self.assertEqual({len(v) for v in w.starts.values()}, {2})
+
+    def test_four_ticks_in_the_same_minute_still_give_one_run_and_a_dying_run_gives_two(self):
+        at = D0 + timedelta(hours=22, minutes=10)
+        ticks = [(at, PRIMARY)] + [(at, BACKUP)] * 3
+        ok = World([chan("default", hour=22)], ticks, seed=1).run()
+        self.assertEqual(len(ok.starts[("default", D0 + timedelta(hours=22))]), 1)
+        dying = World([chan("default", hour=22)], ticks, seed=1, p_fail=1.0).run()
+        self.assertEqual(len(dying.starts[("default", D0 + timedelta(hours=22))]), 2)
+        self.assertEqual(len(dying.attempt_rows), 2)
+
+    def test_every_start_is_one_recorded_attempt(self):
+        for seed in range(30):
+            w = simulate(seed, p_fail=0.5)
+            self.assertEqual(len(w.attempt_rows), sum(len(v) for v in w.starts.values()), seed)
+
+    def test_an_outage_never_lets_a_backup_or_catch_up_past_the_cap(self):
+        for seed in range(60):
+            w = simulate(seed, p_outage=0.3, p_fail=1.0)
+            fail_open = {}
+            for j in w.jobs:
+                if j.went and j.guard_unreadable:
+                    fail_open[(j.channel, j.slot_start)] = fail_open.get((j.channel, j.slot_start), 0) + 1
+            for key, runs in w.starts.items():
+                with self.subTest(seed=seed, slot=key):
+                    self.assertLessEqual(len(runs) - fail_open.get(key, 0), 2)
+
+    def test_a_slot_that_used_its_attempts_is_not_handed_out_by_the_resolver(self):
+        w = simulate(2, p_drop=0.0, p_fail=1.0, max_delay=10)
+        slot = D0 + timedelta(hours=22)
+        self.assertEqual(len(w.starts[("default", slot)]), 2)
+        late = D0 + timedelta(hours=23, minutes=50)
+        ev, sync = w.io(late)
+        out = list_channels.due_channels(23, registry=w.registry, now=late, evidence=ev, evidence_sync=sync)
+        self.assertNotIn("default", [r["channel_id"] for r in out])
+
+
 class AtLeastOnceWhenATickLands(unittest.TestCase):
     def test_a_slot_runs_when_any_tick_lands_in_its_window(self):
         for seed in range(60):
@@ -336,6 +441,16 @@ class TheChecksHaveTeeth(unittest.TestCase):
     def test_without_the_guard_in_the_run_a_slot_runs_twice(self):
         found = sum(bool(repeats(simulate(seed, guard=lambda *a, **k: slot_guard.GO))) for seed in range(30))
         self.assertGreater(found, 20)
+
+    def test_without_the_attempt_claim_a_dying_slot_is_started_on_every_tick(self):
+        always = lambda sync, channel, start, cap, now: (schedule_catchup.CLAIMED, 1)       # noqa: E731
+        with mock.patch.object(schedule_catchup, "claim_attempt", always):
+            counts = [max(len(v) for v in simulate(seed, p_drop=0.5, p_fail=1.0).starts.values()) for seed in range(20)]
+        self.assertGreater(max(counts), 2)
+
+    def test_without_the_cap_in_the_guard_or_the_resolver_the_cap_check_finds_it(self):
+        w = simulate(3, p_drop=0.0, p_fail=1.0, guard=lambda *a, **k: slot_guard.GO)
+        self.assertTrue(over_cap(w))
 
     def test_without_the_concurrency_group_ticks_in_one_hour_overlap(self):
         at = D0 + timedelta(hours=22, minutes=10)
