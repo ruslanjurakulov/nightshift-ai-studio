@@ -407,8 +407,9 @@ def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Ver
             key = f"deadman:{ch.channel_id}:{day.isoformat()}"
             label = slot_label(day, ch.hour)
             if slot_worked(produced, start):       # the next slot's own output is not this slot's
-                verdicts.fine[key] = ("pipeline", ch.channel_id,
-                                      t(lang, "alert.deadman_ok", channel=ch.channel_id, slot=label))
+                note = ("pipeline", ch.channel_id, t(lang, "alert.deadman_ok", channel=ch.channel_id, slot=label))
+                verdicts.fine[key] = note
+                verdicts.fine[f"deadman-capped:{ch.channel_id}:{day.isoformat()}"] = note
                 continue
             # Only the run's own events: they say a run began, which silences the alarm, but not that a video
             # exists, so they never earn a "recovered" note.
@@ -424,7 +425,9 @@ def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Ver
                      number=safe_id((run or {}).get("number"), 12) or "?")
             used = attempts_used_up(ev, ch.channel_id, start)
             if used:
-                out.append(_alert("pipeline", key, "warn",
+                # Its own key: the plain alert for this slot may already have gone out, and a capped alert that
+                # shared its key would be swallowed as a repeat.
+                out.append(_alert("pipeline", f"deadman-capped:{ch.channel_id}:{day.isoformat()}", "warn",
                                   t(lang, "alert.deadman_capped", channel=ch.channel_id, slot=label, grace=grace,
                                     used=used, hint=Raw(hint)), ch.channel_id))
                 continue

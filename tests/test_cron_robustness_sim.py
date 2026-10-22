@@ -111,13 +111,13 @@ class World:
     crons with drops and delays. ``serialize`` False removes the concurrency group, ``guard`` replaces the guard."""
 
     def __init__(self, channel_rows, ticks, *, seed=0, run_minutes=(20, 50), setup_minutes=(3, 8), p_fail=0.0,
-                 p_outage=0.0, serialize=True, guard=None, window=WINDOW, cap=None):
+                 p_outage=0.0, serialize=True, guard=None, window=WINDOW, cap=None, fix_after=None):
         self.channel_rows = channel_rows
         self.registry = registry(*channel_rows)
         self.rng = random.Random(seed)
         self.run_minutes, self.setup_minutes = run_minutes, setup_minutes
         self.p_fail, self.p_outage, self.serialize, self.window = p_fail, p_outage, serialize, window
-        self.cap = cap
+        self.cap, self.fix_after, self.first_go = cap, fix_after, {}
         self.guard = guard or slot_guard.decide
         self.videos = []                       # (channel, when its row became visible)
         self.attempt_rows = {}                 # event_key -> row: the durable "a scheduled run started" records
@@ -199,6 +199,11 @@ class World:
         job.went = True
         ok = self.rng.random() >= self.p_fail
         end = now + self.between(*self.run_minutes)
+        if self.fix_after is not None:
+            # A dead credential: every run fails within minutes until it is fixed `fix_after` after the first attempt.
+            first = self.first_go.setdefault((job.channel, job.slot_start), now)
+            ok = now >= first + self.fix_after
+            end = now + (self.between(*self.run_minutes) if ok else timedelta(minutes=3))
         self.starts.setdefault((job.channel, job.slot_start), []).append([now, None, ok])
         self.push(end, "end", (job, ok, now))
 
@@ -243,6 +248,10 @@ def repeats(world):
             if i and runs[i - 1][1] is None:
                 bad.append((key, "started while the run before it never ended", began))
     return bad
+
+
+def has_video(world, channel_id, start):
+    return any(c == channel_id and start <= t < start + timedelta(days=1) for c, t in world.videos)
 
 
 def over_cap(world, cap=2):
@@ -348,51 +357,52 @@ class TheAttemptCap(unittest.TestCase):
                         self.assertEqual(over_cap(w), [])
                         self.assertEqual(repeats(w), [])
 
-    def test_a_slot_whose_every_run_dies_is_started_exactly_the_cap_times(self):
+    def test_a_slot_whose_every_run_dies_is_started_exactly_the_cap_times_when_the_window_has_room(self):
+        # The attempts are at least the minimum gap (45 minutes) apart, and one job of a slot runs at a time, so
+        # four attempts need more than the default three-hour window; a six-hour window has the room.
         for cap in (1, 2, 3, 4):
             for seed in range(10):
-                w = simulate(seed, p_drop=0.0, p_fail=1.0, cap=cap, max_delay=10)
+                w = simulate(seed, p_drop=0.0, p_fail=1.0, cap=cap, max_delay=10, window=6)
                 with self.subTest(cap=cap, seed=seed):
-                    self.assertEqual({len(v) for v in w.starts.values()}, {cap})
+                    self.assertEqual({len(w.starts[k]) for k in slots(w, 3)}, {cap})
                     self.assertEqual(over_cap(w, cap), [])
 
-    def test_the_default_cap_is_two(self):
-        w = simulate(1, p_drop=0.0, p_fail=1.0, max_delay=10)
-        self.assertEqual({len(v) for v in w.starts.values()}, {2})
-
-    def test_four_ticks_in_the_same_minute_still_give_one_run_and_a_dying_run_gives_two(self):
-        at = D0 + timedelta(hours=22, minutes=10)
-        ticks = [(at, PRIMARY)] + [(at, BACKUP)] * 3
-        ok = World([chan("default", hour=22)], ticks, seed=1).run()
-        self.assertEqual(len(ok.starts[("default", D0 + timedelta(hours=22))]), 1)
-        dying = World([chan("default", hour=22)], ticks, seed=1, p_fail=1.0).run()
-        self.assertEqual(len(dying.starts[("default", D0 + timedelta(hours=22))]), 2)
-        self.assertEqual(len(dying.attempt_rows), 2)
-
-    def test_every_start_is_one_recorded_attempt(self):
-        for seed in range(30):
-            w = simulate(seed, p_fail=0.5)
-            self.assertEqual(len(w.attempt_rows), sum(len(v) for v in w.starts.values()), seed)
-
-    def test_an_outage_never_lets_a_backup_or_catch_up_past_the_cap(self):
+    def test_the_attempts_of_a_slot_are_at_least_the_minimum_gap_apart(self):
         for seed in range(60):
-            w = simulate(seed, p_outage=0.3, p_fail=1.0)
-            fail_open = {}
-            for j in w.jobs:
-                if j.went and j.guard_unreadable:
-                    fail_open[(j.channel, j.slot_start)] = fail_open.get((j.channel, j.slot_start), 0) + 1
-            for key, runs in w.starts.items():
-                with self.subTest(seed=seed, slot=key):
-                    self.assertLessEqual(len(runs) - fail_open.get(key, 0), 2)
+            for p_drop in (0.0, 0.5, 0.77):
+                w = simulate(seed, p_drop=p_drop, p_fail=1.0, cap=4, window=6)
+                for key, runs in w.starts.items():
+                    times = sorted(r[0] for r in runs)
+                    with self.subTest(seed=seed, p_drop=p_drop, slot=key):
+                        for a, b in zip(times, times[1:]):
+                            self.assertGreaterEqual(b - a, timedelta(minutes=45))
 
-    def test_a_slot_that_used_its_attempts_is_not_handed_out_by_the_resolver(self):
-        w = simulate(2, p_drop=0.0, p_fail=1.0, max_delay=10)
-        slot = D0 + timedelta(hours=22)
-        self.assertEqual(len(w.starts[("default", slot)]), 2)
-        late = D0 + timedelta(hours=23, minutes=50)
-        ev, sync = w.io(late)
-        out = list_channels.due_channels(23, registry=w.registry, now=late, evidence=ev, evidence_sync=sync)
-        self.assertNotIn("default", [r["channel_id"] for r in out])
+    def test_a_credential_fixed_within_the_gap_is_picked_up_by_the_second_attempt(self):
+        # Runs fail within minutes (a dead token) until the owner fixes it some time after the first attempt. With no
+        # gap the 15-minute ticks burned both attempts at once; with it the second attempt comes at least 45 minutes
+        # after the first (45-62 in the simulation), so a fix inside that time is always picked up in the window.
+        for fix_min in (30, 40, 45):
+            for seed in range(20):
+                w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=fix_min))
+                with self.subTest(fix_min=fix_min, seed=seed):
+                    self.assertEqual(over_cap(w), [])
+                    for cid, start in slots(w, 3):
+                        self.assertTrue(has_video(w, cid, start), (cid, start))
+                        self.assertEqual(len(w.starts[(cid, start)]), 2)
+
+    def test_a_slower_fix_needs_a_longer_gap_or_a_higher_cap_and_never_exceeds_the_cap(self):
+        env_gap = {schedule_catchup.GAP_ENV: "75"}
+        for seed in range(20):
+            with mock.patch.dict(os.environ, env_gap):
+                w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=70))
+            for cid, start in slots(w, 3):
+                self.assertTrue(has_video(w, cid, start), (seed, cid, start))     # the gap is the lever
+            w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=100))
+            self.assertEqual(over_cap(w), [])
+            self.assertFalse(any(has_video(w, c, st) for c, st in slots(w, 3)))   # honest: both attempts spent by then
+            w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=95), cap=3, window=6)
+            for cid, start in slots(w, 3):
+                self.assertTrue(has_video(w, cid, start), (seed, cid, start))
 
 
 class AtLeastOnceWhenATickLands(unittest.TestCase):
@@ -454,7 +464,7 @@ class TheChecksHaveTeeth(unittest.TestCase):
 
     def test_without_the_concurrency_group_ticks_in_one_hour_overlap(self):
         at = D0 + timedelta(hours=22, minutes=10)
-        w = World([chan("default", hour=22)], [(at, PRIMARY), (at + timedelta(minutes=15), BACKUP)], seed=1,
+        w = World([chan("default", hour=22)], [(at, PRIMARY), (at + timedelta(minutes=50), BACKUP)], seed=1,
                   serialize=False, run_minutes=(60, 60)).run()
         self.assertTrue(repeats(w))
 

@@ -383,7 +383,7 @@ catch-up does not happen, a **backup** tick (`15,30,45`) hands out nothing, and 
 documented choice: an outage must not cost the day's video by itself), so an outage cannot turn four
 ticks an hour into four runs. The workflow tells the resolver which cron entry fired
 (`github.event.schedule`, `--tick`); anything other than exactly `0 * * * *` counts as a backup, and
-a backup's row is marked `catchup: true`, which makes the guard in the run strict too. The first cron
+a backup's row is marked `catchup: true`, which makes the guard in the run strict too. A backup tick at the exact hour also honours the dead-man's "never due" rule (as a catch-up does): a channel created or edited after its slot began, with nothing produced, gets no unplanned run from a backup tick. The first cron
 entry must therefore stay `0 * * * *` (`modules/schedule_catchup.PRIMARY_CRON`; a test pins it). A registry that could not be read (the existing default-channel
 fallback) also gets no catch-up. A channel that was created or edited after the slot began and
 has produced nothing was never due for that slot (the dead-man's rule), so changing a channel's
@@ -435,11 +435,14 @@ guard through simulated days of dropped and delayed ticks to prove it:
 **Exposure.** A scheduled run carries no credit hold, so it spends the operator's money. The maximum for a slot
 is **the attempt cap**: at most `NIGHTSHIFT_SLOT_MAX_ATTEMPTS` (default 2, hard maximum 4) starts of the pipeline
 per operator channel and slot, and exactly one when the first one writes a video, held or blocked row (then nothing
-else starts). However many ticks GitHub delivers and whatever dies, a slot cannot buy more than that many runs. The
-per-run and daily USD caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`) still apply on top, but only when the
-`CHRONOS_PRICE_*` prices are set; unpriced spend is not capped by them, which is why the attempt cap exists. What the
-wider window changes is *when*: a missed slot is made up for up to three hours instead of one, so a day's video can
-appear at an odd hour (private until you publish it).
+else starts). However many ticks GitHub delivers and whatever dies, a slot cannot buy more than that many runs,
+**with one exception that is the owner's existing fail-open choice: under a Supabase outage at the slot's exact
+hour the original `0 * * * *` tick still starts the run and cannot record its attempt, so the true bound there is
+cap + 1 (and one more if a delayed original tick of the previous hour lands in the same clock hour).** Backups and
+catch-ups never start on an outage. The per-run and daily USD caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`)
+still apply on top, but only when the `CHRONOS_PRICE_*` prices are set; unpriced spend is not capped by them, which
+is why the attempt cap exists. What the wider window changes is *when*: a missed slot is made up for up to three
+hours instead of one, so a day's video can appear at an odd hour (private until you publish it).
 
 **Attempt cap (`NIGHTSHIFT_SLOT_MAX_ATTEMPTS`).** An *attempt* is a scheduled run that got past the checks before
 anything is spent (the pipeline pause, the channel still scheduled, the slot still without a video) and reached the
@@ -460,10 +463,19 @@ a video row is, an attempt is not, so a run that died stays retryable up to the 
   nothing (as for unreadable evidence). The original hourly tick's exact-hour run keeps its documented fail-open
   behaviour, and a denied claim stops it too. That is the one way a slot can exceed the cap: the original tick
   running at its exact hour while Supabase is unreadable, which is the existing owner choice.
+- **Minimum gap between attempts (`NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES`, default 45, 10-180).** A run that
+  fails within minutes (a dead token, a provider outage) would otherwise burn every attempt within a tick or two
+  (ticks are 15 minutes apart) and the slot would be dead before anyone could fix the cause. A slot whose latest
+  attempt is less than the gap old is not handed out by the resolver, and the guard exits 3 WITHOUT claiming, so the
+  attempt stays for a later tick. The gap is measured from the previous claim's time (`system_events.ts`, which
+  mixes naive and `Z` UTC strings; both are read; an unreadable one counts as just claimed). In the simulation the
+  second attempt comes 45-62 minutes after the first, so a credential fixed within 45 minutes is always picked up
+  inside the window; for a slower fix raise the gap or the cap, or run it by hand.
 - **Manual dispatches are exempt** (an explicit instruction, and they never ask the guard); they neither count nor
   are stopped. Beware that a manual run does not reset a used-up slot either, and a video it makes does end the slot.
-- **Dead-man alert.** When the last attempt recorded for a slot was its cap, the alert says `the slot used its N
-  attempts and the scheduler will not start it again` and gives the manual step.
+- **Dead-man alert.** When the last attempt recorded for a slot was its cap, the alert (its own key,
+  `deadman-capped:<channel>:<day>`, so an earlier plain alert cannot swallow it) says `the scheduler stopped after N
+  attempt(s) at it (its cap)` and gives the manual step.
 
 **A failed run does not count as "worked", and is retried up to the cap.** The evidence is a video, held or blocked
 row, a storyboard or a run event. A run that dies before it writes any of them (an OOM or timeout at render, a

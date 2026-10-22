@@ -27,7 +27,9 @@ Last, before ``main.py`` spends anything, the guard CLAIMS the slot's next attem
 default 2, at most 4; modules/schedule_catchup.py ``claim_attempt``): a row in ``system_events`` whose key names the
 attempt number, inserted atomically, so two jobs can never both hold one. A slot that has used all its attempts exits
 3 for every kind of run, the original tick's included; a claim that cannot be made exits 3 for a ``--catchup`` run
-and 0 for the original tick's exact hour, as for unreadable evidence.
+and 0 for the original tick's exact hour, as for unreadable evidence. A slot whose previous attempt was less than
+``NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES`` (default 45, 10-180) ago exits 3 WITHOUT claiming, so a dead credential
+cannot burn every attempt in a few minutes. Under an outage at the exact hour the true bound is cap + 1.
 
 The log carries the channel id, the slot time and fixed words, never a title or a message from Supabase.
 """
@@ -127,12 +129,29 @@ def decide(channel_id: str, slot_start: str, catchup: bool, sync=None, now=None,
     # The attempt cap. Claiming is the last thing before the pipeline starts, and it is atomic in the database, so
     # two jobs can never hold the same attempt however they race. A denied claim is positive knowledge (the slot
     # has used all its attempts) and stops even the original tick's exact-hour run; a claim that could not be made
-    # stops a catch-up or backup run, and lets the original tick's exact hour go ahead as it always did.
+    # stops a catch-up or backup run, and lets the original tick's exact hour go ahead as it always did. That last
+    # case is the only way a slot exceeds the cap: with Supabase unreadable at the exact hour the original tick
+    # cannot claim, so the true bound there is cap + 1 (and one more if a delayed previous-hour original tick lands in
+    # the same clock hour). It is the owner's documented fail-open, unchanged.
     if sync is None:
         from modules.supabase_sync import SupabaseSync
 
         sync = SupabaseSync()
     cap = schedule_catchup.max_attempts()
+    # The minimum gap since the slot's previous attempt: a dead credential or a provider outage must not burn every
+    # attempt within a tick or two, before anyone can fix it. Skipped WITHOUT claiming, so the attempt stays for a
+    # later tick. An attempt count that cannot be read stops a catch-up or backup run, as an unreadable claim does.
+    attempts = schedule_catchup.read_attempts(sync, now)
+    passed = schedule_catchup.gap_passed(attempts, channel_id, start, now, schedule_catchup.attempt_gap())
+    if passed is False:
+        print(f"{channel_id}: the {start:%Y-%m-%d %H}:00 UTC slot had an attempt less than "
+              f"{int(schedule_catchup.attempt_gap().total_seconds() // 60)} minutes ago and no video - "
+              "waiting before another; nothing was run or spent.")
+        return SKIP
+    if passed is None and catchup:
+        if getattr(sync, "enabled", False):
+            schedule_catchup.warn(f"slot guard: the attempts of {channel_id} could not be read - NOT running a catch-up.")
+        return SKIP
     got, n = schedule_catchup.claim_attempt(sync, channel_id, start, cap, now)
     if got == schedule_catchup.DENIED:
         print(f"{channel_id}: the {start:%Y-%m-%d %H}:00 UTC slot used its {cap} attempt(s) and has no video - "

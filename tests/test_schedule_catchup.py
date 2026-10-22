@@ -453,10 +453,16 @@ class BackupTicks(unittest.TestCase):
         out, _ = run(15, [], now=at(20, 15, 4), registry_=Boom())
         self.assertEqual(ids(out), ["default"])                                       # the old fail-open, unchanged
 
-    def test_the_exact_hour_is_not_held_back_by_an_edit_after_the_slot_began(self):
-        # The same as the original tick: only a CATCH-UP honours the dead-man's "never due" rule.
+    def test_a_channel_edited_after_the_slot_began_gets_no_unplanned_run_from_a_backup_tick(self):
+        # The dead-man's "never due" rule, as for a catch-up: a channel created or edited at 15:10 with hour 15 and
+        # nothing produced was not expected to run the 15:00 slot, so the 15:20 backup tick does not start it.
         edited = chan("default", hour=15, updated=iso(at(20, 15, 10)))
-        self.assertEqual(ids(run(15, [edited], now=at(20, 15, 20), backup=True)[0]), ["default"])
+        out, _ = run(15, [edited], now=at(20, 15, 20), backup=True)
+        self.assertEqual(out, [])
+        # ... where the ORIGINAL tick still runs its exact hour (unchanged), and an edit BEFORE the slot is no bar.
+        self.assertEqual(ids(run(15, [edited], now=at(20, 15, 4))[0]), ["default"])
+        before = chan("default", hour=15, updated=iso(at(20, 14, 59)))
+        self.assertEqual(ids(run(15, [before], now=at(20, 15, 20), backup=True)[0]), ["default"])
 
     def test_late_hours_are_the_same_catch_up_as_for_the_original_tick(self):
         for hour in (16, 17, 18):
@@ -509,7 +515,7 @@ class TheAttemptCapInTheResolver(unittest.TestCase):
         return self.sync(*[attempt("default", self.SLOT, i) for i in range(1, n + 1)])
 
     def test_a_slot_with_attempts_left_is_handed_out(self):
-        for hour, minute in ((15, 4), (16, 5), (18, 5)):
+        for hour, minute in ((16, 5), (18, 5)):             # attempt 1 was at 15:05: the gap has passed
             self.assertEqual(ids(run(hour, [self.chan], now=at(20, hour, minute), sync=self.used(1))[0]), ["default"])
 
     def test_a_slot_that_used_its_attempts_is_not_handed_out_at_any_hour_or_by_any_tick(self):
@@ -571,6 +577,49 @@ class TheAttemptCapInTheResolver(unittest.TestCase):
         junk = [{"event_key": "slot-attempt:default:whenever:1", "event": "schedule.attempt"},
                 {"event_key": "other", "event": "schedule.attempt"}, {"event": "schedule.attempt"}]
         self.assertEqual(schedule_catchup.read_attempts(self.sync(*junk), at(20, 17)), {})
+
+
+class TheGapInTheResolver(unittest.TestCase):
+    """A slot whose latest attempt is less than the minimum gap old (default 45 minutes) is not handed out yet."""
+
+    SLOT = "2026-10-20T15:00:00Z"
+
+    def sync(self, *rows):
+        return FakeSupabase([chan("default", hour=15)], events=list(rows))
+
+    def claimed(self, n, ts):
+        return {**attempt("default", self.SLOT, n), "ts": ts}
+
+    def test_nothing_is_handed_out_until_the_gap_has_passed(self):
+        sync = self.sync(self.claimed(1, "2026-10-20T15:05:00Z"))
+        rows = [chan("default", hour=15)]
+        for minute, backup in ((10, False), (15, True), (30, True), (49, True)):
+            out, err = run(15, rows, now=at(20, 15, minute), sync=sync, backup=backup)
+            self.assertEqual(out, [], minute)
+        self.assertIn("waiting before another", err)
+        self.assertEqual(ids(run(15, rows, now=at(20, 15, 50), sync=sync, backup=True)[0]), ["default"])
+        self.assertEqual(ids(run(16, rows, now=at(20, 16, 5), sync=sync)[0]), ["default"])
+
+    def test_the_latest_attempt_sets_the_gap(self):
+        sync = self.sync(self.claimed(1, "2026-10-20T15:05:00Z"), self.claimed(2, "2026-10-20T16:00:00Z"))
+        env = {schedule_catchup.ATTEMPT_ENV: "3"}
+        rows = [chan("default", hour=15)]
+        self.assertEqual(run(16, rows, now=at(20, 16, 30), sync=sync, env=env)[0], [])
+        self.assertEqual(ids(run(16, rows, now=at(20, 16, 45), sync=sync, env=env)[0]), ["default"])
+
+    def test_naive_and_z_timestamps_both_count_and_an_unreadable_one_counts_as_just_claimed(self):
+        rows = [chan("default", hour=15)]
+        for ts, want in (("2026-10-20T15:05:00", ["default"]), ("2026-10-20T16:20:00.5", []), ("nonsense", [])):
+            sync = self.sync(self.claimed(1, ts))
+            self.assertEqual(ids(run(16, rows, now=at(20, 16, 30), sync=sync)[0]), want, ts)
+
+    def test_the_variable_moves_the_gap(self):
+        sync = self.sync(self.claimed(1, "2026-10-20T15:05:00Z"))
+        rows = [chan("default", hour=15)]
+        env = {schedule_catchup.GAP_ENV: "10"}
+        self.assertEqual(ids(run(15, rows, now=at(20, 15, 16), sync=sync, env=env, backup=True)[0]), ["default"])
+        env = {schedule_catchup.GAP_ENV: "120"}
+        self.assertEqual(run(16, rows, now=at(20, 16, 30), sync=sync, env=env)[0], [])
 
 
 class NeverTwoRowsForOneChannel(unittest.TestCase):

@@ -159,6 +159,9 @@ class NothingElseMoved(unittest.TestCase):
         want = "${{ vars.NIGHTSHIFT_SLOT_MAX_ATTEMPTS }}"
         self.assertEqual(step("resolve", "Pick due channels")["env"]["NIGHTSHIFT_SLOT_MAX_ATTEMPTS"], want)
         self.assertEqual(step("make-video", "Run Chronos bot")["env"]["NIGHTSHIFT_SLOT_MAX_ATTEMPTS"], want)
+        gap = "${{ vars.NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES }}"
+        self.assertEqual(step("resolve", "Pick due channels")["env"]["NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES"], gap)
+        self.assertEqual(step("make-video", "Run Chronos bot")["env"]["NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES"], gap)
 
     def test_the_scheduled_resolver_still_filters_by_the_current_hour(self):
         script = step("resolve", "Pick due channels")["run"]

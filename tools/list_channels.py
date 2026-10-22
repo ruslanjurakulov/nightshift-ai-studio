@@ -152,6 +152,7 @@ def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, windo
     tick's exact hour goes ahead as it always did and the guard in the run then claims the attempt."""
     now = now or datetime.now(timezone.utc)
     cap = schedule_catchup.max_attempts() if cap is None else cap
+    gap = schedule_catchup.attempt_gap()
     ref = schedule_catchup.reference_hour(now, due_hour)
     candidates = []
     for c in channels:
@@ -191,6 +192,9 @@ def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, windo
         elif used is not None and used >= cap:
             print(f"note: {cid} slot {start:%Y-%m-%d %H}:00 UTC used its {used} attempt(s) and has no video - "
                   "not scheduled again (run it by hand)", file=sys.stderr)
+        elif schedule_catchup.gap_passed(attempts, cid, start, now, gap) is False:
+            print(f"note: {cid} slot {start:%Y-%m-%d %H}:00 UTC had an attempt less than {int(gap.total_seconds() // 60)} "
+                  "minutes ago and no video - waiting before another", file=sys.stderr)
         elif late == 0 and not backup:
             if state == schedule_catchup.UNKNOWN or used is None:
                 unknown_exact.append(cid)
@@ -198,7 +202,11 @@ def _scheduled_rows(channels, due_hour: int, now, evidence, evidence_sync, windo
         elif state == schedule_catchup.UNKNOWN or used is None:
             unknown_late.append(cid)
         elif late == 0:
-            rows.append(_slot_row(c, start, True))       # a backup tick at the exact hour: free slot, readable evidence
+            # A backup tick at the exact hour: a free slot, readable evidence, and a slot that was ever the channel's
+            # to produce (the dead-man's rule, as for a catch-up): a channel created or edited at 22:30 with hour 22
+            # must not get an unplanned paid run from the 22:45 backup tick.
+            if schedule_catchup.was_expected(ev, cid, start):
+                rows.append(_slot_row(c, start, True))
         elif schedule_catchup.was_expected(ev, cid, start):
             print(f"note: {cid} missed its {start:%Y-%m-%d %H}:00 UTC slot ({late}h ago) - catching up",
                   file=sys.stderr)

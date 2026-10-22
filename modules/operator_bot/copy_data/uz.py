@@ -480,7 +480,7 @@ TABLE = {
     "ownermail.subject_pipeline": "Video konveyer ogohlantirishi",
     "ownermail.subject_health": "Tayyorlik ogohlantirishi",
     "alert.deadman": "{channel} kanalidan {slot} UTC sloti uchun video yoʻq ({grace} soat imtiyoz oʻtdi). {hint} Qoʻlda chiqarish: GitHub Actions, workflow Daily YouTube Video, Run workflow with channel {channel} (sukut boʻyicha private).",
-    "alert.deadman_capped": "{channel} kanalidan {slot} UTC sloti uchun video yoʻq: slot oʻz urinishlarini ({used}) ishlatdi, rejalashtiruvchi uni qayta ishga tushirmaydi. {hint} Qoʻlda chiqarish: GitHub Actions, workflow Daily YouTube Video, Run workflow with channel {channel} (sukut boʻyicha private).",
+    "alert.deadman_capped": "{channel} kanalidan {slot} UTC sloti uchun video yoʻq: rejalashtiruvchi {used} ta urinishdan keyin toʻxtadi (uning chegarasi). {hint} Qoʻlda chiqarish: GitHub Actions, workflow Daily YouTube Video, Run workflow with channel {channel} (sukut boʻyicha private).",
     "alert.deadman_ok": "Tiklandi: {channel} kanali {slot} UTC sloti uchun videoni baribir chiqardi",
     "alert.deadman_hint_none": "Kunlik workflow slotdan beri ishga tushmadi: GitHub jadvali ishlamadi.",
     "alert.deadman_hint_waiting": "Kunlik workflow ishga tushirilishi navbatda turibdi, hech narsa bajarilmayapti: runnerni tekshiring.",

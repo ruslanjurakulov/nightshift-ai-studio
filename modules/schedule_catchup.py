@@ -63,6 +63,12 @@ WORKED, UNWORKED, UNKNOWN = "worked", "unworked", "unknown"
 ATTEMPT_ENV = "NIGHTSHIFT_SLOT_MAX_ATTEMPTS"
 DEFAULT_MAX_ATTEMPTS = 2
 MAX_MAX_ATTEMPTS = 4
+#: Minimum minutes between two attempts of one slot (since the previous claim's time). Without it a dead credential or
+#: a provider outage burns every attempt within one tick or two (ticks are 15 minutes apart) and the slot is dead
+#: before anyone can fix the cause; with it the attempts are spread across the catch-up window.
+GAP_ENV = "NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES"
+DEFAULT_ATTEMPT_GAP_MINUTES = 45
+MIN_ATTEMPT_GAP_MINUTES, MAX_ATTEMPT_GAP_MINUTES = 10, 180
 CLAIMED, DENIED = "claimed", "denied"          # claim_attempt's answers; UNKNOWN is the third
 _ATTEMPT_KEY = re.compile(r"slot-attempt:(?P<channel>[a-z0-9][a-z0-9-]{1,38}):(?P<slot>[0-9TZ:-]{20}):(?P<n>[1-9])")
 _ATTEMPT_ROWS_LIMIT = 1000
@@ -206,10 +212,42 @@ def attempt_key(channel_id: str, start: datetime, n: int) -> str:
     return f"slot-attempt:{channel_id}:{slot_iso(start)}:{n}"
 
 
+def attempt_gap(env=None, say=warn) -> timedelta:
+    """Minimum time between two attempts of one slot. Unset or empty is 45 minutes; a value that is not a whole number
+    is the default with a warning that never echoes it; a number outside 10..180 is clamped to the nearest bound,
+    also with a warning."""
+    raw = str((os.environ if env is None else env).get(GAP_ENV, "") or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
+        raw = raw[1:-1].strip()
+    if raw == "":
+        return timedelta(minutes=DEFAULT_ATTEMPT_GAP_MINUTES)
+    try:
+        value = int(raw)
+    except ValueError:
+        say(f"{GAP_ENV} is not a whole number of minutes - using the default of {DEFAULT_ATTEMPT_GAP_MINUTES}.")
+        return timedelta(minutes=DEFAULT_ATTEMPT_GAP_MINUTES)
+    if not MIN_ATTEMPT_GAP_MINUTES <= value <= MAX_ATTEMPT_GAP_MINUTES:
+        say(f"{GAP_ENV} is outside {MIN_ATTEMPT_GAP_MINUTES}-{MAX_ATTEMPT_GAP_MINUTES} - using the nearest limit.")
+        value = min(max(value, MIN_ATTEMPT_GAP_MINUTES), MAX_ATTEMPT_GAP_MINUTES)
+    return timedelta(minutes=value)
+
+
+def parse_ts(raw, fallback: datetime) -> datetime:
+    """A ``system_events.ts`` as a UTC time. The column is text and the rows mix naive ``isoformat()`` strings
+    (the mirror's) with ``...Z`` ones (the attempt claims'): both are UTC. A value that cannot be read is
+    ``fallback``, which callers pass as "now", so it counts as JUST CLAIMED (fail-closed)."""
+    try:
+        t = datetime.fromisoformat(str(raw).strip().replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return fallback
+    return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t.astimezone(timezone.utc)
+
+
 def read_attempts(sync, now: datetime):
-    """``{(channel_id, slot iso): attempts so far}`` for the last 48 hours, or None when it cannot be told (Supabase
-    not configured, a failed read, or a read that hit its row limit and may have cut rows). Reads only; never
-    raises. An unknown is not zero: callers that would start a paid run on it do not."""
+    """``{(channel_id, slot iso): (attempts so far, time of the latest claim)}`` for the last 48 hours, or None when
+    it cannot be told (Supabase not configured, a failed read, or a read that hit its row limit and may have cut
+    rows). A claim whose time cannot be read counts as made just now. Reads only; never raises. An unknown is
+    not zero: callers that would start a paid run on it do not."""
     if sync is None or not getattr(sync, "enabled", False):
         return None
     from modules.event_log import SLOT_ATTEMPT
@@ -217,7 +255,7 @@ def read_attempts(sync, now: datetime):
     since = (now - timedelta(hours=48)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         rows = sync.select_strict("system_events", {
-            "select": "event_key,channel_id", "event": f"eq.{SLOT_ATTEMPT}", "ts": f"gte.{since}",
+            "select": "event_key,channel_id,ts", "event": f"eq.{SLOT_ATTEMPT}", "ts": f"gte.{since}",
             "limit": str(_ATTEMPT_ROWS_LIMIT)})
     except Exception:  # noqa: BLE001 - an unreadable source is an unknown
         return None
@@ -228,13 +266,24 @@ def read_attempts(sync, now: datetime):
         m = _ATTEMPT_KEY.fullmatch(str(r.get("event_key") or ""))
         if m:
             key = (m["channel"], m["slot"])
-            out[key] = out.get(key, 0) + 1
+            n, last = out.get(key, (0, None))
+            when = parse_ts(r.get("ts"), now)
+            out[key] = (n + 1, when if last is None or when > last else last)
     return out
 
 
 def attempts_used(attempts, channel_id: str, start: datetime):
     """Attempts the slot has used, or None when ``attempts`` (read_attempts) is unknown."""
-    return None if attempts is None else attempts.get((channel_id, slot_iso(start)), 0)
+    return None if attempts is None else attempts.get((channel_id, slot_iso(start)), (0, None))[0]
+
+
+def gap_passed(attempts, channel_id: str, start: datetime, now: datetime, gap: timedelta):
+    """Has the minimum gap passed since the slot's latest attempt? True when it has none; None when the attempts are
+    unknown. A latest claim in the future of ``now`` (clock skew) has not passed."""
+    if attempts is None:
+        return None
+    n, last = attempts.get((channel_id, slot_iso(start)), (0, None))
+    return True if not n or last is None else now - last >= gap
 
 
 def claim_attempt(sync, channel_id: str, start: datetime, cap: int, now: datetime):
