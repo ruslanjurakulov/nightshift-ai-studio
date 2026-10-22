@@ -147,7 +147,7 @@ class NothingElseMoved(unittest.TestCase):
         env = step("resolve", "Pick due channels")["env"]
         self.assertEqual(env["TICK_CRON"], "${{ github.event.schedule }}")
         script = step("resolve", "Pick due channels")["run"]
-        self.assertIn('--due-hour "$(date -u +%-H)" --tick "$TICK_CRON"', script)
+        self.assertIn('--due-hour "$(date -u +%-H)" --tick "${TICK_CRON:-}"', script)
         self.assertEqual(script.count("--tick"), 1)                                # a manual run is never a "tick"
 
     def test_the_resolver_gets_the_window_from_a_repo_variable_and_the_pause_is_still_passed(self):

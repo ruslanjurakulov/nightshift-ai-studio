@@ -177,7 +177,7 @@ jobs:
             # Manual run with no channel: every ACTIVE channel, ignoring the hour.
             MATRIX=$(python tools/list_channels.py)
           else
-            MATRIX=$(python tools/list_channels.py --due-hour "$(date -u +%-H)" --tick "$TICK_CRON")
+            MATRIX=$(python tools/list_channels.py --due-hour "$(date -u +%-H)" --tick "${TICK_CRON:-}")
           fi
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           COUNT=$(printf '%s' "$MATRIX" | python -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))')
