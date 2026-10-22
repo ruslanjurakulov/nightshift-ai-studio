@@ -135,6 +135,57 @@ export function heldFlagged(v: { hold_detail?: unknown } | null | undefined): Fl
   return out;
 }
 
+/** What the online source check (modules/grounding.py: the English Wikipedia) did for one video. */
+export type EvidenceSource = { title: string; url: string; claims: number };
+export type EvidenceInfo = {
+  /** False when the check was switched off for the run; null when the record does not say. */
+  enabled: boolean | null;
+  /** A fixed reason word (http_429, timeout, ...) when the lookup could not run; null when it ran. */
+  unavailable: string | null;
+  upgraded: number;
+  flaggedByEvidence: number;
+  sources: EvidenceSource[];
+};
+
+const WIKIPEDIA_PAGE = /^https:\/\/en\.wikipedia\.org\/wiki\/[^\s"'<>]+$/;
+
+function count(x: unknown): number {
+  return typeof x === "number" && Number.isFinite(x) && x >= 0 ? Math.floor(x) : 0;
+}
+
+/** Parses a `grounding` record (hold_detail.grounding, or fact_check.grounding in the gate event), defensively: the
+ *  column and the event are free-form. Only links to the English Wikipedia are kept, so a record can never make the
+ *  page link anywhere else; titles are rendered as text. Null when there is no record: an older video, or none. */
+export function parseEvidence(raw: unknown): EvidenceInfo | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as { enabled?: unknown; unavailable?: unknown; upgraded?: unknown; flagged_by_evidence?: unknown; sources?: unknown };
+  const sources: EvidenceSource[] = [];
+  if (Array.isArray(r.sources)) {
+    for (const item of r.sources) {
+      const s = item as { title?: unknown; url?: unknown; claims?: unknown } | null;
+      if (!s || typeof s !== "object" || typeof s.url !== "string" || !WIKIPEDIA_PAGE.test(s.url)) continue;
+      sources.push({
+        title: typeof s.title === "string" && s.title.trim() ? s.title.slice(0, 200) : s.url,
+        url: s.url.slice(0, 500),
+        claims: count(s.claims),
+      });
+      if (sources.length >= 30) break;
+    }
+  }
+  return {
+    enabled: typeof r.enabled === "boolean" ? r.enabled : null,
+    unavailable: typeof r.unavailable === "string" && /^[\w:.-]{1,40}$/.test(r.unavailable) ? r.unavailable : null,
+    upgraded: count(r.upgraded),
+    flaggedByEvidence: count(r.flagged_by_evidence),
+    sources,
+  };
+}
+
+/** The online source check of a held run (hold_detail.grounding), or null. */
+export function heldEvidence(v: { hold_detail?: unknown } | null | undefined): EvidenceInfo | null {
+  return parseEvidence((v?.hold_detail as { grounding?: unknown } | null | undefined)?.grounding);
+}
+
 /** Restrict a `videos` query to uploaded rows. Structurally typed like
  *  scopeQuery, so it composes with it without TS2589. */
 export function uploadedOnly<Q extends object>(query: Q): Q {

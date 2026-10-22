@@ -29,6 +29,11 @@ toward "make a human look at this":
      verdict="unverifiable", requires_human_review=True. It never defaults to
      "accurate" just because the model's response couldn't be understood.
 
+Grounding: this module judges from the model's own recall and never sees evidence. The
+evidence lookup (modules/grounding.py) runs AFTER it, reads these results, and may only
+upgrade an unverifiable claim with a quote verified in code or add a flag; see
+docs/GROUNDED_FACTCHECK.md.
+
 Input contract
 --------------
 `fact_check_claims` takes a plain `list[str]` of claim strings. This is a
@@ -45,6 +50,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 from config import GEMINI_MODEL
 from modules.gemini_client import generate_with_retry, make_client
@@ -126,6 +132,11 @@ class FactCheckResult:
     #: answer for this claim. That is an outage, not a verdict on the claim, so the
     #: gate counts it apart (publish_gate: ``fact_check_unresolved``).
     unresolved: bool = False
+    #: What the evidence lookup (modules/grounding.py) did for this claim, or None when it had no
+    #: say: the status, the effect (``upgraded`` / ``flagged`` / ``none``), the cited sources and
+    #: the quote. Never set by the checker itself; the verdict above is the checker's own unless
+    #: ``grounding["effect"]`` says otherwise.
+    grounding: Optional[dict] = None
 
 
 def _make_result(claim: str, verdict: str, reasoning: str, unresolved: bool = False) -> FactCheckResult:
@@ -368,11 +379,19 @@ def _check_batch(client, batch: list[str], allow_split_retry: bool = True
 
     if by_index is not None:
         results = []
+        clamped = 0
         for i, claim in enumerate(batch):
             item = by_index[i]
             verdict = item.get("verdict")
             reasoning = str(item.get("reasoning", ""))
+            clamped += verdict not in VALID_VERDICTS
             results.append(_make_result(claim, verdict, reasoning))
+        if clamped:
+            # A measurement, not a fix: a verdict outside the three words is read as "unverifiable"
+            # (every such claim is then flagged). The count says whether that is why a run flagged
+            # most of its claims; the strings themselves are model output and are not logged.
+            logger.warning("Fact-checker returned a verdict outside the three known values for %d of %d "
+                           "claim(s) in a batch; they were read as 'unverifiable'", clamped, len(batch))
         return results
 
     logger.warning(

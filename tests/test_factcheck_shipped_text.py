@@ -272,7 +272,7 @@ from modules.state_store import StateStore
 ctx = ChannelContext.from_dict(row)
 work = Path(tempfile.mkdtemp()); os.chdir(work)
 db = Path(os.environ["CHRONOS_STATE_DB"])
-out = {"events": [], "held": [], "checked": [], "voice_built": False, "warnings": []}
+out = {"events": [], "held": [], "checked": [], "voice_built": False, "warnings": [], "http": [], "rows": []}
 import logging
 class _Collect(logging.Handler):
     def emit(self, record):
@@ -306,6 +306,40 @@ for _name, _mod in list(sys.modules.items()):
         if _name.split(".")[0] in ("main", "modules", "config") and getattr(_mod, _attr, None) is not None:
             setattr(_mod, _attr, _dir)
 
+# Grounding (modules/grounding.py) is OFF in these children unless a test asks for it, and when it is asked for
+# nothing leaves the process: the HTTP client and the evidence-matching model call are fakes.
+import modules.grounding as grounding
+mode = os.environ.get("GROUNDING_MODE", "")
+_RealClient = grounding.WikipediaClient
+class _HttpResponse:
+    def __init__(self, data=None, status=200):
+        self._data, self.status_code, self.headers = data, status, {}
+    def json(self):
+        return self._data
+_PAGE = {"pageid": 1, "ns": 0, "title": "Lantern Rock", "index": 1, "lastrevid": 5,
+         "extract": "FLAGME sank the Lantern Rock vessel in 1851 after a long chase through the strait.",
+         "fullurl": "https://en.wikipedia.org/wiki/Lantern_Rock", "canonicalurl": "https://en.wikipedia.org/wiki/Lantern_Rock"}
+class _FakeHttp:
+    def get(self, url, params=None, headers=None, timeout=None):
+        out["http"].append([url, headers.get("User-Agent", "")[:20], timeout])
+        if mode == "real_429":
+            return _HttpResponse(None, 429)
+        return _HttpResponse({"batchcomplete": True, "query": {"pages": [dict(_PAGE)]}})
+class _ModelResponse:
+    def __init__(self, text):
+        self.text = text
+        self.usage_metadata = SimpleNamespace(prompt_token_count=1200, candidates_token_count=80)
+def fake_generate(prompt):
+    data = json.loads(prompt.split("<data>\n")[1].split("\n</data>")[0])
+    quote = os.environ.get("GROUNDING_QUOTE", "")
+    found = []
+    for c in data["claims"]:
+        if "FLAGME" in c["claim"] and c["candidates"]:
+            found.append({"index": c["index"], "status": "supported", "snippet_id": c["candidates"][0], "quote": quote})
+        else:
+            found.append({"index": c["index"], "status": "not_found"})
+    return _ModelResponse(json.dumps({"results": found}))
+
 fetcher = MagicMock()
 patches = [
     patch.object(main, "resolve_channel", return_value=ctx),
@@ -321,6 +355,9 @@ patches = [
     patch.object(main.events, "emit", fake_emit),
     patch.object(main.held_video, "record_held", fake_held),
 ]
+if mode.startswith("real"):
+    patches += [patch.object(grounding, "WikipediaClient", lambda: _RealClient(_FakeHttp(), sleep=lambda s: None)),
+                patch.object(grounding, "_default_generate", fake_generate)]
 for p in patches: p.start()
 try:
     main.run(script_file=script_file, channel=ctx.channel_id, skip_upload=True)
@@ -328,6 +365,10 @@ try:
 except BaseException as e:
     out["raised"] = [type(e).__name__, str(e)]
     out["tb"] = traceback.format_exc()[-1500:]
+try:
+    out["rows"] = [[r["unit"], r["quantity"], r["stage"]] for r in StateStore(db).list_video_costs()]
+except Exception as e:
+    out["rows"] = [repr(e)]
 out["tb"] = out.get("tb", "") + " | warnings: " + " ; ".join(out["warnings"])[-1500:]
 print("RESULT " + json.dumps(out))
 """
@@ -348,6 +389,7 @@ def drive(patch_script, hook="A", env=None):
         capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir(),
         env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
              "PEXELS_API_KEY": "not-a-real-key", "NIGHTSHIFT_MIN_FREE_DISK_GB": "0",
+             "NIGHTSHIFT_GROUNDED_FACTCHECK": "off",
              "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"), **(env or {})})
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")), None)
     assert line is not None, proc.stderr[-3000:]
@@ -541,6 +583,7 @@ def _drive_row(patch_script, row, child=_CHILD):
         capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir(),
         env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
              "PEXELS_API_KEY": "not-a-real-key", "NIGHTSHIFT_MIN_FREE_DISK_GB": "0",
+             "NIGHTSHIFT_GROUNDED_FACTCHECK": "off",
              "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db")})
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")), None)
     assert line is not None, proc.stderr[-3000:]

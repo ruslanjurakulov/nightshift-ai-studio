@@ -196,6 +196,7 @@ def evaluate(
     narration_claims: Optional[int] = None,
     claims=None,
     language=None,
+    grounding: Optional[dict] = None,
 ) -> GateDecision:
     """Decide whether this video may be uploaded.
 
@@ -208,6 +209,10 @@ def evaluate(
     to the number of results. ``claims`` are the extracted claims, aligned with
     ``fact_results``: they say where each checked text ships, because a bare
     fragment (a title) the checker cannot judge is a warning, not a block.
+    ``grounding`` is the evidence lookup's summary (modules/grounding.py): it is RECORDED
+    in the fact-check metadata and an unavailable lookup adds a warning; it never decides
+    anything here, because its effect is already in the results (an upgrade carries a
+    verified quote, a contradiction is a flag).
 
     Never raises: a gate that crashes must not take down a pipeline that had
     already produced a video. A check that cannot run is recorded as a warning
@@ -223,6 +228,7 @@ def evaluate(
     _check_sanity(decision, config, script, video_path, title)
     _check_video_qc(decision, config, video_path, qc_report)
     _check_fact_results(decision, config, fact_results, script, narration_claims, claims)
+    _note_grounding(decision, grounding)
     _check_shipped_numbers(decision, config, script, language)
     _check_originality(decision, config, topic or getattr(script, "topic", ""), originality)
     _check_rights(decision, config, ir_project)
@@ -230,7 +236,8 @@ def evaluate(
 
 
 def evaluate_fact_check(*, script, fact_results, channel=None,
-                        narration_claims: Optional[int] = None, claims=None, language=None) -> GateDecision:
+                        narration_claims: Optional[int] = None, claims=None, language=None,
+                        grounding: Optional[dict] = None) -> GateDecision:
     """The part of the gate that needs no rendered video, for the stop BEFORE the render.
 
     The same ``_check_fact_results`` and ``_check_shipped_numbers`` the full gate
@@ -249,6 +256,7 @@ def evaluate_fact_check(*, script, fact_results, channel=None,
         decision.warnings.append("gate_disabled_for_channel")
         return decision
     _check_fact_results(decision, config, fact_results, script, narration_claims, claims, early=True)
+    _note_grounding(decision, grounding)
     _check_shipped_numbers(decision, config, script, language)
     try:
         problems = []
@@ -433,6 +441,23 @@ def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results
         (decision.blocks if config.block_on_fact_check else decision.warnings).append(
             f"fact_check_errored:{type(e).__name__}"
         )
+
+
+def _note_grounding(decision: GateDecision, grounding) -> None:
+    """Record what the evidence lookup did next to the fact-check counts, and warn when it was
+    wanted but unavailable ("grounding_unavailable": every claim was then judged exactly as it
+    would have been without it). A record, never a block: the lookup's effect on a verdict is
+    already in the results, and an outage of a free website must not hold a video."""
+    if not isinstance(grounding, dict):
+        return
+    try:
+        if decision.fact_check is None:
+            decision.fact_check = {}
+        decision.fact_check["grounding"] = grounding
+        if grounding.get("enabled") is not False and grounding.get("unavailable"):
+            decision.warnings.append("grounding_unavailable")
+    except Exception as e:
+        decision.warnings.append(f"grounding_note_errored:{type(e).__name__}")
 
 
 def _is_english(language) -> bool:

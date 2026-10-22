@@ -58,6 +58,8 @@ def fact_check_records(claims: Optional[Iterable[Claim]], results) -> list[dict]
     rows = []
     for i, r in enumerate(results or []):
         row = dict(getattr(r, "__dict__", {}) or {})
+        if row.get("grounding") is None:
+            row.pop("grounding", None)      # the file keeps its shape when no evidence was involved
         if i < len(claims) and _norm(claims[i].text) == _norm(row.get("claim", "")):
             row["claim_id"] = claims[i].claim_id
             row["section_index"] = claims[i].section_index

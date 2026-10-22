@@ -39,7 +39,16 @@ import {
 import { resolveRunBackend } from "@/lib/runBackend";
 import { sceneRepairEligibility } from "@/lib/sceneRepair";
 import { latestByScene, parseRegenRows, REGEN_COLUMNS, type RegenRow } from "@/lib/sceneRegenerate";
-import { heldCause, heldCauseNote, heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
+import {
+  heldCause,
+  heldCauseNote,
+  heldEvidence,
+  heldGate,
+  heldState,
+  heldStateLabel,
+  isHeldVideo,
+  parseEvidence,
+} from "@/lib/heldVideos";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchChannelTopicScores, getChannelScope } from "@/lib/channels-server";
@@ -285,6 +294,11 @@ export default async function VideoDetail({
   // gate's events do not name an uploaded video (they are emitted before it exists), then the held run's own.
   const cutVerdict = storedGate(video);
   const flagged = typeof flaggedRaw === "number" ? flaggedRaw : null;
+  // The online source check (modules/grounding.py): a held run keeps it on the row, a run that went on to upload only
+  // has it in the gate event it emitted. No record reads null (older videos), never "no sources".
+  const evidence =
+    heldEvidence(video) ??
+    parseEvidence((gateEvent?.metadata as { fact_check?: { grounding?: unknown } } | null | undefined)?.fact_check?.grounding);
   const gate = cutVerdict
     ? { allowed: cutVerdict.allowed && cutVerdict.blocks.length === 0, reasons: [...cutVerdict.blocks, ...cutVerdict.warnings], flagged }
     : gateMeta
@@ -318,6 +332,7 @@ export default async function VideoDetail({
         channelName={channelName || video.channel_id}
         publishOnApprove={publishOnApprove}
         request={visibilityRequest}
+        evidence={evidence}
       />
       {video.preview_path && atLeast(orgRole, "admin") && <ShareReviewLink videoId={video.video_id} />}
       {/* The AI-content label, from the event the upload recorded; no record reads "unknown", never "not labelled". */}

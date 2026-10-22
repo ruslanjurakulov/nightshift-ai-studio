@@ -15,7 +15,7 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
-import { FLAGGED_SOURCES, FLAGGED_VERDICTS, heldBeforeRender, heldFlagged } from "@/lib/heldVideos";
+import { FLAGGED_SOURCES, FLAGGED_VERDICTS, heldBeforeRender, heldEvidence, heldFlagged, parseEvidence } from "@/lib/heldVideos";
 import { sceneRepairEligibility } from "@/lib/sceneRepair";
 import { JOB_ERROR_CODES, parseJobError } from "@/lib/runBackend";
 import type { VideoRow } from "@/lib/types";
@@ -37,7 +37,7 @@ const HELD = {
 
 afterEach(cleanup);
 
-function panel(over: Partial<VideoRow> = {}, locale: Locale = "en") {
+function panel(over: Partial<VideoRow> = {}, locale: Locale = "en", evidence?: ReturnType<typeof parseEvidence>) {
   const node: ReactNode = (
     <I18nProvider locale={locale}>
       <ReviewPanel
@@ -47,6 +47,7 @@ function panel(over: Partial<VideoRow> = {}, locale: Locale = "en") {
         staleRequest={null}
         access="ok"
         channelName="Chronos"
+        evidence={evidence ?? null}
       />
     </I18nProvider>
   );
@@ -128,6 +129,90 @@ describe("the review panel for such a run", () => {
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByTestId("flagged-texts").textContent).toContain("<img src=x onerror=alert(1)>");
   });
+});
+
+const WIKI = "https://en.wikipedia.org/wiki/Mary_Celeste";
+const GROUNDING = {
+  enabled: true,
+  unavailable: null,
+  upgraded: 2,
+  flagged_by_evidence: 1,
+  sources: [
+    { title: "Mary Celeste", url: WIKI, ids: ["W1"], claims: 2 },
+    { title: "Evil", url: "https://evil.example/wiki/x", claims: 1 },
+    { title: "Scheme", url: "javascript:alert(1)", claims: 1 },
+    { title: "Lookalike", url: "https://en.wikipedia.org.evil.example/wiki/x", claims: 1 },
+    "str",
+    null,
+  ],
+};
+
+describe("the sources of the online check (modules/grounding.py)", () => {
+  it("keeps only links to the English Wikipedia", () => {
+    const got = parseEvidence(GROUNDING);
+    expect(got?.sources).toEqual([{ title: "Mary Celeste", url: WIKI, claims: 2 }]);
+    expect(got).toMatchObject({ enabled: true, unavailable: null, upgraded: 2, flaggedByEvidence: 1 });
+  });
+
+  it("reads a record it does not know as no record, never as an empty one that says nothing was found", () => {
+    for (const bad of [null, undefined, "x", 7, [], true]) expect(parseEvidence(bad)).toBeNull();
+    expect(heldEvidence({ hold_detail: { reason: "blocked" } })).toBeNull();
+    expect(heldEvidence({ hold_detail: { grounding: GROUNDING } })?.sources).toHaveLength(1);
+  });
+
+  it("takes the reason word only in its fixed shape and caps the list", () => {
+    expect(parseEvidence({ unavailable: "http_429" })?.unavailable).toBe("http_429");
+    expect(parseEvidence({ unavailable: "<script>alert(1)</script>" })?.unavailable).toBeNull();
+    const many = Array.from({ length: 80 }, (_, i) => ({ title: `T${i}`, url: `${WIKI}_${i}`, claims: 1 }));
+    expect(parseEvidence({ sources: many })?.sources).toHaveLength(30);
+  });
+
+  it("lists the pages as links that open safely, with the claims each backed", () => {
+    panel({} as never, "en", parseEvidence(GROUNDING));
+    const box = screen.getByTestId("evidence-sources");
+    const a = box.querySelector("a") as HTMLAnchorElement;
+    expect(a.getAttribute("href")).toBe(WIKI);
+    expect(a.textContent).toBe("Mary Celeste");
+    expect(a.getAttribute("rel")).toContain("noopener");
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(box.querySelectorAll("a")).toHaveLength(1);
+    expect(box.textContent).toContain("2 claim(s)");
+  });
+
+  it("says when the check was off, when it could not run, and when it found nothing: three different sentences", () => {
+    const en = dictionaries.en.review;
+    const off = panel({} as never, "en", parseEvidence({ enabled: false, unavailable: null }));
+    expect(screen.getByTestId("evidence-sources").textContent).toContain(en.sourcesOff);
+    off.unmount();
+    const down = panel({} as never, "en", parseEvidence({ enabled: true, unavailable: "http_429" }));
+    expect(screen.getByTestId("evidence-sources").textContent).toContain("http_429");
+    expect(screen.getByTestId("evidence-sources").textContent).not.toContain(en.sourcesNone);
+    down.unmount();
+    panel({} as never, "en", parseEvidence({ enabled: true, unavailable: null, sources: [] }));
+    expect(screen.getByTestId("evidence-sources").textContent).toContain(en.sourcesNone);
+  });
+
+  it("shows nothing at all for a video with no record", () => {
+    panel({} as never, "en", null);
+    expect(screen.queryByTestId("evidence-sources")).toBeNull();
+  });
+
+  it("renders a hostile title as text", () => {
+    panel({} as never, "en", parseEvidence({ sources: [{ title: "<img src=x onerror=alert(1)>", url: WIKI, claims: 1 }] }));
+    expect(document.querySelector("img")).toBeNull();
+    expect(screen.getByTestId("evidence-sources").textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+
+  for (const locale of ["en", "ru", "uz"] as const) {
+    it(`${locale}: the copy is complete`, () => {
+      const r = dictionaries[locale].review;
+      for (const key of ["sourcesHeading", "sourcesNote", "sourcesOff", "sourcesUnavailable", "sourcesNone", "sourcesClaims"] as const) {
+        expect(r[key], key).toBeTruthy();
+      }
+      expect(r.sourcesUnavailable).toContain("{reason}");
+      expect(r.sourcesClaims).toContain("{n}");
+    });
+  }
 });
 
 describe("the sentences, in every language", () => {
