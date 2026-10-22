@@ -90,11 +90,11 @@ def warning_lines(text: str) -> str:
     return "\n".join(l for l in text.splitlines() if l.startswith(("warning:", "::warning::")))
 
 
-def run(due_hour, rows, *, now, sync=None, registry_=None, env=None, window="3"):
+def run(due_hour, rows, *, now, sync=None, registry_=None, env=None, window="3", backup=False):
     """due_channels with the clock, the environment and Supabase controlled. Returns (matrix rows, stderr).
 
-    ``window`` is the catch-up window the scenario assumes (the default is 1 hour, which most scenarios here are
-    wider than); ``None`` leaves the variable unset to test the default itself. ``logging`` is switched off so a
+    ``window`` is the catch-up window the scenario assumes (3 hours, the default); ``None`` leaves the variable
+    unset to test the default itself; ``backup`` makes the tick one of the extra (backup) cron entries. ``logging`` is switched off so a
     test does not depend on how the runner configures it."""
     sync = sync if sync is not None else FakeSupabase([c for c in rows])
     reg = registry_ if registry_ is not None else registry(*rows)
@@ -107,7 +107,7 @@ def run(due_hour, rows, *, now, sync=None, registry_=None, env=None, window="3")
     logging.disable(logging.CRITICAL)
     try:
         with mock.patch.dict(os.environ, clean, clear=True), contextlib.redirect_stderr(err):
-            out = list_channels.due_channels(due_hour, registry=reg, now=now, evidence_sync=sync)
+            out = list_channels.due_channels(due_hour, registry=reg, now=now, evidence_sync=sync, backup_tick=backup)
     finally:
         logging.disable(logging.NOTSET)
     return out, err.getvalue()
@@ -141,10 +141,11 @@ class TheWindow(unittest.TestCase):
     def test_the_hour_before_the_slot_is_not_due(self):
         self.assertEqual(run(14, self.rows, now=at(20, 14, 5))[0], [])
 
-    def test_the_default_window_is_one_hour(self):
-        # One hour is all a late or dropped cron needs; more is only more paid retries of a run that wrote no row.
-        self.assertEqual(ids(run(16, self.rows, now=at(20, 16, 5), window=None)[0]), ["default"])    # 1 h late
-        self.assertEqual(run(17, self.rows, now=at(20, 17, 5), window=None)[0], [])                  # 2 h late
+    def test_the_default_window_is_three_hours(self):
+        # GitHub delivers about one hourly tick in four (the repo's own history), so one hour of catch-up covers
+        # under half the slots; three covers most of them, and six (the cap) stays an explicit choice.
+        self.assertEqual(ids(run(18, self.rows, now=at(20, 18, 5), window=None)[0]), ["default"])    # 3 h late
+        self.assertEqual(run(19, self.rows, now=at(20, 19, 5), window=None)[0], [])                  # 4 h late
 
     def test_a_window_of_three_still_reaches_three_hours_and_no_more(self):
         self.assertEqual(ids(run(18, self.rows, now=at(20, 18, 5))[0]), ["default"])      # 3 h late
@@ -383,6 +384,97 @@ class AVetoIsAlwaysRespected(unittest.TestCase):
         self.assertNotIn("privacy", out[0])
 
 
+class BackupTicks(unittest.TestCase):
+    """daily_video.yml ticks four times an hour: the original ``0 * * * *`` and three backups. A backup tick only
+    ever acts on POSITIVE knowledge that the slot is free. The original tick keeps its documented fail-open at the
+    exact hour, so an outage cannot make four ticks start four runs."""
+
+    def setUp(self):
+        self.chan = chan("default", hour=15)
+
+    def test_which_ticks_are_backups(self):
+        self.assertFalse(schedule_catchup.is_backup_tick(None))                       # not a scheduled tick at all
+        self.assertFalse(schedule_catchup.is_backup_tick(schedule_catchup.PRIMARY_CRON))
+        self.assertTrue(schedule_catchup.is_backup_tick("15,30,45 * * * *"))
+        self.assertTrue(schedule_catchup.is_backup_tick(""))                          # a tick that cannot say what it is
+
+    def test_a_free_slot_is_handed_out_at_the_exact_hour_as_a_strict_row(self):
+        out, _ = run(15, [self.chan], now=at(20, 15, 20), backup=True)
+        self.assertEqual(ids(out), ["default"])
+        self.assertTrue(out[0]["catchup"])            # the guard in the run then also needs the evidence to be readable
+        self.assertEqual(out[0]["slot_start"], iso(at(20, 15, 0)))
+
+    def test_the_original_tick_at_the_exact_hour_is_not_strict(self):
+        out, _ = run(15, [self.chan], now=at(20, 15, 4))
+        self.assertFalse(out[0]["catchup"])
+
+    def test_a_worked_slot_is_not_handed_out_again(self):
+        sync = FakeSupabase([self.chan], videos=[video("default", published=iso(at(20, 15, 12)))])
+        self.assertEqual(run(15, [self.chan], now=at(20, 15, 20), sync=sync, backup=True)[0], [])
+
+    def test_an_unknown_starts_nothing_and_says_so(self):
+        out, err = run(15, [self.chan], now=at(20, 15, 20), sync=FakeSupabase([self.chan], fail={"videos"}), backup=True)
+        self.assertEqual(out, [])
+        self.assertIn("::warning::", err)
+        self.assertIn("NOT", err)
+        for leaked in ("SENTINEL", "503", "boom"):
+            self.assertNotIn(leaked, warning_lines(err))
+        # ... where the original tick, with the very same evidence, still runs the exact hour as it always did.
+        out, _ = run(15, [self.chan], now=at(20, 15, 4), sync=FakeSupabase([self.chan], fail={"videos"}))
+        self.assertEqual(ids(out), ["default"])
+
+    def test_supabase_not_configured_leaves_the_exact_hour_to_the_original_tick_alone(self):
+        sync = FakeSupabase([self.chan], enabled=False)
+        self.assertEqual(run(15, [self.chan], now=at(20, 15, 20), sync=sync, backup=True)[0], [])
+        self.assertEqual(ids(run(15, [self.chan], now=at(20, 15, 4), sync=sync)[0]), ["default"])
+
+    def test_an_unreadable_registry_gets_no_backup_run(self):
+        class Boom:
+            def active(self):
+                raise RuntimeError("boom")
+
+        out, err = run(15, [], now=at(20, 15, 20), registry_=Boom(), backup=True)
+        self.assertEqual(out, [])
+        self.assertIn("::warning::", err)
+        out, _ = run(15, [], now=at(20, 15, 4), registry_=Boom())
+        self.assertEqual(ids(out), ["default"])                                       # the old fail-open, unchanged
+
+    def test_the_exact_hour_is_not_held_back_by_an_edit_after_the_slot_began(self):
+        # The same as the original tick: only a CATCH-UP honours the dead-man's "never due" rule.
+        edited = chan("default", hour=15, updated=iso(at(20, 15, 10)))
+        self.assertEqual(ids(run(15, [edited], now=at(20, 15, 20), backup=True)[0]), ["default"])
+
+    def test_late_hours_are_the_same_catch_up_as_for_the_original_tick(self):
+        for hour in (16, 17, 18):
+            a, _ = run(hour, [self.chan], now=at(20, hour, 20), backup=True)
+            b, _ = run(hour, [self.chan], now=at(20, hour, 20))
+            self.assertEqual(a, b)
+            self.assertTrue(a[0]["catchup"])
+        self.assertEqual(run(19, [self.chan], now=at(20, 19, 20), backup=True)[0], [])
+
+    def test_the_pause_and_the_other_vetoes_still_win(self):
+        self.assertEqual(run(15, [self.chan], now=at(20, 15, 20), backup=True,
+                             env={list_channels.PAUSE_ENV: "true"})[0], [])
+        self.assertEqual(run(15, [chan("default", hour=15, status="PAUSED")], now=at(20, 15, 20), backup=True)[0], [])
+        self.assertEqual(run(15, [chan("default", hour=15, org=CUSTOMER_ORG)], now=at(20, 15, 20), backup=True)[0], [])
+
+    def test_the_command_line_marks_a_scheduled_tick_that_is_not_the_original(self):
+        calls = []
+
+        def fake(due_hour=None, **kw):
+            calls.append(kw.get("backup_tick"))
+            return []
+
+        for argv, want in ((["--due-hour", "5"], False),
+                           (["--due-hour", "5", "--tick", schedule_catchup.PRIMARY_CRON], False),
+                           (["--due-hour", "5", "--tick", "15,30,45 * * * *"], True),
+                           (["--due-hour", "5", "--tick", ""], True)):
+            with mock.patch.object(list_channels, "due_channels", fake), \
+                    mock.patch("sys.argv", ["list_channels.py", *argv]), contextlib.redirect_stdout(io.StringIO()):
+                list_channels.main()
+            self.assertIs(calls[-1], want, argv)
+
+
 class NeverTwoRowsForOneChannel(unittest.TestCase):
     def test_a_channel_is_listed_once_however_many_hours_it_could_match(self):
         rows = [chan("default", hour=15)]
@@ -396,7 +488,7 @@ class NeverTwoRowsForOneChannel(unittest.TestCase):
         due_hours = [h for h in range(24) if run(h, rows, now=at(20, h, 5))[0]]
         self.assertEqual(due_hours, [15, 16, 17, 18])           # the exact hour plus three catch-up hours
         due_hours = [h for h in range(24) if run(h, rows, now=at(20, h, 5), window=None)[0]]
-        self.assertEqual(due_hours, [15, 16])                   # by default: the exact hour plus one
+        self.assertEqual(due_hours, [15, 16, 17, 18])           # by default too: the exact hour plus three
 
     def test_once_the_exact_run_made_a_video_no_later_hour_runs_it_again(self):
         rows = [chan("default", hour=15)]
@@ -414,7 +506,7 @@ class TheWindowSetting(unittest.TestCase):
 
     def test_unset_and_empty_are_the_default_without_a_warning(self):
         for value in (None, "", "  "):
-            self.assertEqual(self.say(value), (1, []))
+            self.assertEqual(self.say(value), (3, []))
 
     def test_whole_numbers_up_to_six(self):
         for n in range(0, 7):
@@ -426,7 +518,7 @@ class TheWindowSetting(unittest.TestCase):
     def test_garbage_is_the_default_with_a_warning_that_never_echoes_it(self):
         for value in ("abc", "1.5", "-1", "3h", "∞", "SENTINEL-7"):
             got, said = self.say(value)
-            self.assertEqual(got, 1, value)
+            self.assertEqual(got, 3, value)
             self.assertEqual(len(said), 1, value)
             self.assertNotIn(value, said[0])
 

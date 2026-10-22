@@ -5,7 +5,7 @@ Why this exists. ``daily_video.yml`` fires hourly and ``tools/list_channels.py``
 hour (or dropped) used to skip that channel's whole day, and nothing noticed but the dead-man alert. Two rules
 close that, and a third makes them safe to combine:
 
-* **Catch-up.** A channel whose slot hour passed within the last ``NIGHTSHIFT_CATCHUP_HOURS`` hours (default 1,
+* **Catch-up.** A channel whose slot hour passed within the last ``NIGHTSHIFT_CATCHUP_HOURS`` hours (default 3,
   0 disables, at most 6) and whose slot has no evidence of a run is due now. A late or lost cron heals itself.
 * **Once per slot.** A channel whose slot already has evidence (a video, held or blocked row, a storyboard
   waiting for a person, a run event) is not scheduled again, at its exact hour either. Evidence is the dead-man
@@ -14,11 +14,23 @@ close that, and a third makes them safe to combine:
 * **Fail safe.** When that evidence cannot be read, an unknown never starts a run: the exact-hour behaviour is
   exactly what it always was, and a catch-up is NOT started (a paid run must not rest on a guess).
 
+* **Backup ticks.** GitHub guarantees nothing about its cron (over seven weeks about one hourly tick in four was
+  delivered, at random minutes, with gaps of up to a day), so ``daily_video.yml`` ticks four times an hour: the
+  original ``0 * * * *`` (``PRIMARY_CRON``) and backups. Every tick asks the same questions, so any tick that
+  lands in a slot's window finds it. The original tick keeps the exact-hour behaviour it always had, including
+  going ahead when the evidence cannot be read. A BACKUP tick never does: it hands a slot out only on positive
+  knowledge that the slot is free (readable evidence, none in the slot), exactly as a catch-up does, so an
+  outage cannot turn four ticks an hour into four runs. At most once per slot is unchanged: the evidence check
+  here, the concurrency group of the slot and the guard in the run (``tools/slot_guard.py``).
+
 What this cannot see, said plainly: a run that is still rendering has written no row yet. The workflow therefore
 serialises runs of one channel and slot (``concurrency`` in daily_video.yml) and re-asks this question in the run
 itself (``tools/slot_guard.py``) once it holds the group, which is after the first run has finished and written
 its row. A run that died before writing any row leaves no trace here, so the next hourly run inside the window
-tries again; that retry is the catch-up working, and ``NIGHTSHIFT_CATCHUP_HOURS=0`` turns it off.
+tries again; that retry is the catch-up working, and ``NIGHTSHIFT_CATCHUP_HOURS=0`` turns it off. With more ticks
+and a wider window that retry can happen more often in a row; it resumes the run's saved state rather than
+paying again for tasks already ledgered, and the per-run and daily USD caps bound the rest (see
+docs/VIDEO_GO_LIVE.md section 9).
 """
 
 from __future__ import annotations
@@ -28,11 +40,17 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 CATCHUP_ENV = "NIGHTSHIFT_CATCHUP_HOURS"
-#: One hour is what a late or dropped cron needs: the next hourly run is the catch-up. A wider window only buys more
-#: paid retries of a run that died before it wrote any row (an OOM, a timeout, a provider outage), which this module
-#: cannot tell from "never started"; widen it deliberately once the spend guards (CHRONOS_PRICE_*) are set.
-DEFAULT_CATCHUP_HOURS = 1
+#: Three hours: GitHub delivered about one hourly tick in four over seven weeks of this repo's own history, and with
+#: one hour of catch-up under half of all slots had a tick in their window (three hours: about four in five; six:
+#: about 24 in 25). A late run publishes at an odd hour, which is acceptable for a private-first video; it spends
+#: no more than the slot's own run would (one per channel and slot, and the evidence check below stops a second).
+#: The price of a wider window is more retries of a run that died before it wrote any row (an OOM, a timeout, a
+#: provider outage), which this module cannot tell from "never started"; 0 switches the catch-up off, 6 is the cap.
+DEFAULT_CATCHUP_HOURS = 3
 MAX_CATCHUP_HOURS = 6
+#: The cron entry that has always been in daily_video.yml. Its tick is the one that may start the exact hour when the
+#: evidence cannot be read; every other entry is a backup (tests/test_schedule_workflow.py pins the workflow to this).
+PRIMARY_CRON = "0 * * * *"
 #: Words that plainly mean "off". Anything else that is not a number is garbage and gets the default.
 _OFF_WORDS = frozenset({"off", "false", "no", "none", "disabled", "disable"})
 
@@ -70,6 +88,16 @@ def catchup_hours(env=None, say=warn) -> int:
         say(f"{CATCHUP_ENV} is above the maximum - using {MAX_CATCHUP_HOURS}.")
         return MAX_CATCHUP_HOURS
     return value
+
+
+def is_backup_tick(cron) -> bool:
+    """Is this scheduled tick one of the backups? ``cron`` is the cron entry that fired (``github.event.schedule``):
+    None means the run is not a scheduled tick at all (a test, a direct call), which is the original behaviour.
+    Anything that is not exactly the original entry, an empty value included, is a backup: when in doubt a tick
+    needs positive knowledge before it starts a paid run."""
+    if cron is None:
+        return False
+    return str(cron).strip() != PRIMARY_CRON
 
 
 def reference_hour(now: datetime, due_hour: int) -> datetime:

@@ -341,9 +341,12 @@ unreadable table is not an incident); an unknown is never rendered as "missing".
   unreadable answer is "blind", not a schedule); an entirely empty table is an
   unknown, not a schedule.
   The scheduler now uses this same evidence (`reliability.slot_worked`) to catch up a slot whose
-  cron was late or dropped (`NIGHTSHIFT_CATCHUP_HOURS`, default 1; `docs/VIDEO_GO_LIVE.md` section 9),
+  cron was late or dropped (`NIGHTSHIFT_CATCHUP_HOURS`, default 3; `docs/VIDEO_GO_LIVE.md` section 9),
   so a delayed run usually heals before the default 3 h grace expires and no alert is sent; if it
-  heals later, the usual "recovered" note follows. A run that fails without writing a row does not
+  heals later, the usual "recovered" note follows (the default 3 h catch-up window reaches one hour past the
+  default 3 h grace, so a tick in that last hour can still make the slot up after the alert). The alert ends
+  with the manual step (GitHub Actions, workflow Daily YouTube Video, Run workflow with the channel id, private by
+  default) for the case where the window has passed too. A run that fails without writing a row does not
   count as the slot being worked: the dead-man alert is the signal for it. A catch-up changes nothing here: the dead-man
   still only reads.
   A source that stays unreadable for 6 continuous hours is said once a day as an

@@ -109,6 +109,19 @@ class DeadManArithmeticTestCase(unittest.TestCase):
         self.assertEqual((a.kind, a.severity, a.channel_id, a.cooldown_min), ("pipeline", "warn", "default", 0))
         self.assertIn("2026-10-14 15:00 UTC", a.line)
 
+    def test_the_alert_says_how_to_make_the_slot_up_by_hand_in_every_language(self):
+        # The scheduler's catch-up only reaches NIGHTSHIFT_CATCHUP_HOURS back; after that the owner has to run it.
+        from modules.operator_bot.i18n import t
+
+        for lang in ("en", "ru", "uz"):
+            line = t(lang, "alert.deadman", channel="default", slot="2026-10-14 15:00", grace=3,
+                     hint=reliability.Raw("x"))
+            self.assertIn("Run workflow", line, lang)
+            self.assertIn("Daily YouTube Video", line, lang)
+            self.assertIn("channel default", line, lang)
+            self.assertIn("private", line, lang)
+            self.assertNotIn(">", line, lang)                      # Telegram HTML: nothing to escape in the fixed words
+
     def test_a_video_row_or_a_run_event_since_the_slot_is_enough(self):
         self.assertEqual(keys(run_detect(videos=[video("v", held=at(14, 15, 40))])[0]), [])
         self.assertEqual(keys(run_detect(videos=[video("v", state="uploaded", published=at(14, 16, 5))])[0]), [])

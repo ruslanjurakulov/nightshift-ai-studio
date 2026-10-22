@@ -480,7 +480,7 @@ TABLE = {
     "kind.health": "tokens and providers",
     "ownermail.subject_pipeline": "Video pipeline alert",
     "ownermail.subject_health": "Readiness alert",
-    "alert.deadman": "No video from channel {channel} for its {slot} UTC slot ({grace}h grace has passed). {hint}",
+    "alert.deadman": "No video from channel {channel} for its {slot} UTC slot ({grace}h grace has passed). {hint} To make it up by hand: GitHub Actions, workflow Daily YouTube Video, Run workflow with channel {channel} (private by default).",
     "alert.deadman_ok": "Recovered: channel {channel} has produced its {slot} UTC video after all",
     "alert.deadman_hint_none": "The daily workflow has not started since the slot: the GitHub schedule did not fire.",
     "alert.deadman_hint_waiting": "A daily workflow run is queued and nothing is running: check the runner.",

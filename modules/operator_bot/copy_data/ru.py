@@ -474,7 +474,7 @@ TABLE = {
     "kind.health": "токены и провайдеры",
     "ownermail.subject_pipeline": "Сбой видеоконвейера",
     "ownermail.subject_health": "Сбой готовности",
-    "alert.deadman": "Нет видео канала {channel} за слот {slot} UTC (льготные {grace} ч прошли). {hint}",
+    "alert.deadman": "Нет видео канала {channel} за слот {slot} UTC (льготные {grace} ч прошли). {hint} Выпустить вручную: GitHub Actions, workflow Daily YouTube Video, Run workflow with channel {channel} (по умолчанию private).",
     "alert.deadman_ok": "Восстановлено: канал {channel} всё же выпустил видео за слот {slot} UTC",
     "alert.deadman_hint_none": "Ежедневный workflow не запускался с момента слота: расписание GitHub не сработало.",
     "alert.deadman_hint_waiting": "Запуск ежедневного workflow стоит в очереди, ничего не выполняется: проверьте раннер.",

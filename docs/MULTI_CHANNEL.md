@@ -284,9 +284,9 @@ of its own omits the field and uploads to whatever channel its own token owns.
 
 ## 5. Scheduling
 
-`.github/workflows/daily_video.yml` wakes **hourly**. A cheap `resolve` job
+`.github/workflows/daily_video.yml` ticks **four times an hour** (GitHub drops most scheduled ticks, so one is not enough; see `docs/VIDEO_GO_LIVE.md` section 9). A cheap `resolve` job
 (two pure-Python packages, not `requirements.txt`) asks the registry which
-channels are due at this UTC hour and emits a matrix; the 23 hours a day that
+channels are due at this UTC hour and emits a matrix; the ticks that
 resolve to nothing cost seconds and produce an empty matrix, which the video job
 skips.
 

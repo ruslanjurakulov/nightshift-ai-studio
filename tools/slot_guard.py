@@ -19,7 +19,9 @@ The answer then comes from the dead-man switch's evidence (modules/schedule_catc
 * evidence in the slot            -> exit 3, nothing is spent;
 * every source answered, none     -> exit 0, the run goes ahead;
 * a source could not be read      -> exit 0 for an exact-hour run (as it has always been), exit 3 for a
-  ``--catchup`` run: an unknown must never start a paid catch-up. A ``::warning::`` says which.
+  ``--catchup`` run: an unknown must never start a paid catch-up. A ``::warning::`` says which. (``--catchup``
+  is what the resolver passes for every run that needs positive knowledge: a real catch-up, and any run handed
+  out by a backup cron tick; only the original hourly tick's exact-hour run is the fail-open one.)
 
 The log carries the channel id, the slot time and fixed words, never a title or a message from Supabase.
 """
