@@ -255,7 +255,7 @@ _MEDICAL_CLAIM = (
 )
 _DISASTER = (
     "earthquake", "crash", "shooting", "attack", "explosion", "flood", "wildfire", "hurricane", "tsunami",
-    "outbreak", "pandemic", "massacre", "bombing", "terror*", "collapse", "disaster",
+    "outbreak", "pandemic", "massacre", "bombing", "terror*", "collapse", "disaster", "tornado*", "торнадо",
     "землетрясени*", "взрыв*", "наводнени*", "теракт*", "zilzila*", "portlash*", "suv toshqin*",
 )
 # "Latest research" and "what we know today" are said of Pompeii too, so the soft
@@ -284,7 +284,10 @@ _YEAR_RE = re.compile(r"(?<![\d,.$\u20ac\u00a3\u20b9])(1\d{3}|20\d{2})(?!\d)")
 _NOT_A_YEAR_AFTER = re.compile(
     r"(?:%|\s{0,2}(?:p|k|px|fps|hz|crores?|cr|lakhs?|views?|subs|subscribers|days?|goals?|likes|votes|"
     r"vs|mb|gb|tb|kg|km|mm|cm|usd|inr|rs|eur|dollars?|rupees|years?|yrs?|hours?|minutes?|episodes?|"
-    r"points?|runs|wickets|miles|metres|meters|feet|ft|th|st|nd|rd)\b)", re.IGNORECASE)
+    r"points?|runs|wickets|miles|metres|meters|feet|ft)\b"
+    # An ordinal is glued to its digits ("1000th"); with a space it is the next word
+    # ("2025 St Louis", "1066 Rd"), and the number stays a year.
+    r"|(?:th|st|nd|rd)\b)", re.IGNORECASE)
 # Whitespace between the digits and "year-old" is bounded: an unbounded \s* pair
 # is quadratic on "1" + 100k spaces.
 _AGE_RE = re.compile(r"(?<!\d)(\d{1,2})\s{0,3}-?\s{0,3}(?:year|yr|y)-?\s{0,3}old|(?<!\d)(\d{1,2})\s{0,3}(?:\u043b\u0435\u0442\u043d\w{0,10}|yosh\w{0,10})")

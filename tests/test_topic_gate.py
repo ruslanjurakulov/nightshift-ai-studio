@@ -450,6 +450,79 @@ class NewsPhrasedAccusationsBesideAHistoricalName(unittest.TestCase):
                 self.assertEqual(gate.evaluate(topic, HISTORY, source="ai").action, gate.ACCEPT)
 
 
+class AnOrdinalIsGluedToItsDigits(unittest.TestCase):
+    """Review blocker: "2025 St Louis" is a year and a place, not "2025st"."""
+
+    RECENT = ["2025 St Petersburg flood death", "Hurricane 2024 St Augustine rescue",
+              "Mass shooting in 2025 St Paul", "Flood in 2025 St Louis kills 12",
+              "Tornado 2025 St. Louis dead", "Wildfire 2025 St Helena death"]
+
+    def test_a_recent_year_before_a_place_called_st_still_makes_an_active_tragedy(self):
+        for niche in (HISTORY, gate.niche_profile("personal finance")):
+            for source in ("ai", TREND):
+                for topic in self.RECENT:
+                    with self.subTest(niche=niche.text, source=source, topic=topic):
+                        v = gate.evaluate(topic, niche, source=source)
+                        self.assertEqual((v.action, v.detail), (gate.REJECT, "active_tragedy"))
+
+    def test_an_old_year_before_st_or_rd_is_still_history(self):
+        for topic in ("The 1431 St Joan of Arc trial", "The 1066 Rd"):
+            for source in ("ai", TREND):
+                with self.subTest(topic=topic, source=source):
+                    self.assertEqual(gate.evaluate(topic, HISTORY, source=source).action, gate.ACCEPT)
+            self.assertEqual(gate._years(topic), [int(topic.split()[1])])
+
+    def test_a_glued_ordinal_is_still_not_a_year(self):
+        for topic in ("The 1000th goal", "His 1500th match", "The 1066th day", "The 2021st edition", "The 1102nd"):
+            self.assertEqual(gate._years(topic), [], topic)
+
+    def test_units_that_tolerate_a_space_still_do(self):
+        for topic in ("RANABAALI Teaser 1080 p", "RANABAALI Teaser 1000 crore", "RANABAALI Teaser 1500 views", "RANABAALI Teaser 1200 k"):
+            self.assertEqual(gate._years(topic), [], topic)
+            self.assertEqual(gate.evaluate(topic, HISTORY, source=TREND).reason, "off_niche", topic)
+
+
+class TheNameRunIsExactlyAsStrictAsItSays(unittest.TestCase):
+    """Each test fails under one specific change of gate._name_run / the unknown-niche rule."""
+
+    ANIME = gate.niche_profile("anime")
+
+    def verdict(self, topic, profile=None):
+        return gate.evaluate(topic, profile or self.ANIME, source=TREND)
+
+    def test_three_names_beside_an_entertainment_word_are_held(self):
+        v = self.verdict("Vijay Deverakonda Rashmika teaser")
+        self.assertEqual((v.action, v.detail), (gate.REJECT, "living_person"))
+
+    def test_two_names_are_not(self):
+        self.assertNotEqual(self.verdict("Vijay Deverakonda teaser").action, gate.REJECT)
+
+    def test_three_names_with_no_entertainment_word_are_not_held(self):
+        self.assertNotEqual(self.verdict("Vijay Deverakonda Rashmika interview").action, gate.REJECT)
+
+    def test_a_celebrity_and_an_entertainment_word_is_still_screened_on_a_known_niche(self):
+        """A known, non-entertainment niche keeps the first-round rule (two entertainment
+        points are a person story), whatever the run of names."""
+        for profile in (HISTORY, gate.niche_profile("personal finance")):
+            self.assertEqual(gate.sensitive_category("Taylor Swift teaser", profile), "living_person")
+
+    def test_a_leading_stop_word_is_not_a_third_name(self):
+        self.assertNotEqual(self.verdict("The Demon Slayer box office record").action, gate.REJECT)
+        self.assertEqual(gate.analyze("The Demon Slayer box office record").name_run, 2)
+
+    def test_a_known_term_is_not_a_name(self):
+        self.assertNotEqual(self.verdict("Demon Slayer Trailer Breakdown").action, gate.REJECT)
+        self.assertEqual(gate.analyze("Demon Slayer Trailer Breakdown").name_run, 2)
+
+    def test_names_that_are_not_next_to_each_other_do_not_add_up(self):
+        self.assertNotEqual(self.verdict("Naruto movie Shippuden trailer Boruto").action, gate.REJECT)
+        self.assertEqual(gate.analyze("Naruto movie Shippuden trailer Boruto").name_run, 1)
+
+    def test_two_letter_words_are_not_names(self):
+        self.assertNotEqual(self.verdict("Ed Al Jo Ng teaser").action, gate.REJECT)
+        self.assertEqual(gate.analyze("Ed Al Jo Ng teaser").name_run, 0)
+
+
 class SmallReadingFixes(unittest.TestCase):
     def test_an_ordinal_is_not_a_year(self):
         for topic in ("The 1000th goal", "His 1500th match", "The 1066th day", "The 1100st"):

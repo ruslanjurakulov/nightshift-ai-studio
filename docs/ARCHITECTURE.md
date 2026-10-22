@@ -109,6 +109,13 @@ consumer side of the feedback loop:
     for naming a person. A history channel's neighbours (true crime, science) are
     not "another field". A niche the word tables do not know is never called
     off-niche by words: the sensitive screen and the model decide.
+  - *Known residuals* (a skipped topic, never a failed run): a news-phrased
+    accusation beside a historical name with no year and no era word is held
+    ("The Knights Templar were accused of heresy", "Socrates accused of corrupting
+    the youth", "Pompeii graffiti lawsuit"); the weak entertainment word `star`
+    sends "Star Carr" or "Star Chamber" to the model for a trend; on a niche the
+    tables do not know, a three-word title in capitals ("Dragon Ball Super movie
+    box office") reads as a cast list and is held.
   - *Only if the words cannot place it* **and** the source is a trend (or any
     source other than the AI pick and audience demand), or the entry is stale: one
     small Gemini question (ON / OFF), at most `CHRONOS_TOPIC_GATE_MODEL_CALLS`
