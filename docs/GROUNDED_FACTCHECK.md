@@ -32,11 +32,14 @@ second, checkable opinion: passages from the English Wikipedia, a free, keyless,
 1. `fact_check_claims` runs exactly as before and never sees the evidence. Its verdicts are the baseline.
 2. `grounding` looks the topic and the names in the narration up: **three requests** for a normal video (a
    search for the topic, the full text of its best page, and ONE `titles=A|B|C` request for the names), on
-   `en.wikipedia.org` only. At most 15 requests including retries, a timeout for the whole of each request, no
-   redirects followed, a 1 MB cap per answer, a 90 s deadline, one `User-Agent` that names the project, no
-   secret. Disambiguation and missing pages are skipped, every page is cut into passages of at most 700
+   `en.wikipedia.org` only. At most 15 requests including retries, no redirect followed, a 1 MB cap per answer, the body read in
+   8 KB chunks with the clock checked **between chunks** (a read that stalls inside one chunk is bounded by the
+   socket timeout of 10 s, and the whole lookup by a 90 s deadline checked between requests; there is no
+   wall-clock watchdog), one `User-Agent` that names the project, no secret. Disambiguation and missing pages are skipped, every page is cut into passages of at most 700
    characters, and each claim is offered the (at most 3) passages that share words with it. The passages are
-   saved in `grounding.json` and **reused** when the same topic is run again (no request).
+   saved in `grounding.json` with a `fetched_at` time and **reused** when the same topic is run again within 24 hours (no
+   request). A file from an incomplete lookup records which steps failed (`failed_steps`); a re-run asks again for
+   those steps only. An older file, or one without a readable `fetched_at`, is ignored.
 3. One model call per 15 claims (not per claim) matches the claims against the passages **only** and answers
    `supported` (snippet id and the exact words), `contradicted` (snippet id) or `not_found`. The call has a
    timeout and the whole matching phase has a deadline.
@@ -51,7 +54,8 @@ second, checkable opinion: passages from the English Wikipedia, a free, keyless,
   * a snippet that was offered for that claim, and a quote found in that snippet (25 to 300 characters; `...`
     may join pieces of at least 12 characters, in order, **inside one sentence**);
   * every number of the claim in the quote, **one group per number** ("three ships" does not back "three ships
-    and five hundred men"), the same era (BC/AD) and the same regnal numerals ("Louis XIV" is not "Louis XV");
+    and five hundred men"), and the same era (BC/AD) and regnal numerals as the quote's whole sentence
+    ("Louis XIV" is not "Louis XV"; "Napoleon" is not "Napoleon III" even if the "III" is just outside the quote);
   * at least three of the claim's content words, or half of them, in the quote;
   * the claim's capitalised names in the quote's sentence;
   * no hedge ("allegedly", "legend", "according to", "unlikely", "falsely", "hoax", ...) in the **whole
@@ -73,6 +77,20 @@ second, checkable opinion: passages from the English Wikipedia, a free, keyless,
   judge model, so the guards above are what stand between it and a clearance.
 * **Nothing about publishing changes.** The gate's blocks, exit code 79 and the early stop are untouched; the
   gate only *records* the lookup in `fact_check.grounding` of its event.
+
+## Documented residual: semantic reversals
+
+The guards are lexical. A sentence that says the **opposite** with the same words and numbers can still pass:
+
+* verb swap ("X conquered Y" cleared by "X abandoned Y"), role reversal ("A defeated B" by "B defeated A"),
+  comparative reversal ("The Ottomans won" by "The Ottomans lost", "larger than" by "smaller than").
+* hedge and negation synonyms that are not on the lists (the lists are data and will grow).
+
+**Precondition for the checker-prompt change** (the separate PR that sends `FACT_CHECK_SYSTEM_PROMPT` and so
+lets clearances happen): before it merges, measure the **false-accept rate** of the guards plus the judge model
+on exactly these shapes (reversals, hedge synonyms, negation synonyms), on real judge output, and decide with
+the owner whether that rate is acceptable. Until then clearances are refused for every clamped verdict, which
+is every real verdict today.
 
 ## Turning it off
 

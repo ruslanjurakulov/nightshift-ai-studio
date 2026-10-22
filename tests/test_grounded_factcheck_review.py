@@ -327,6 +327,7 @@ class StreamedResponse:
         self.status_code, self.headers, self._chunks, self.closed, self._on = status, headers or {}, chunks, False, on_chunk
 
     def iter_content(self, chunk_size=65536):
+        self.chunk_size = chunk_size
         for c in self._chunks:
             if self._on:
                 self._on()
@@ -446,7 +447,7 @@ class TheClientIsHardened(unittest.TestCase):
         client = client_for(mary_celeste_router, min_interval=0)
         _o, first = grounding.ground_results("The Mary Celeste mystery", [CLAIM_ADRIFT], [unchecked(CLAIM_ADRIFT)],
                                              client=client, generate=says("not_found"))
-        saved = json.loads(json.dumps({"topic": "The Mary Celeste mystery", "passages": grounding.evidence_record(first.evidence)}))
+        saved = json.loads(json.dumps(grounding.evidence_file("The Mary Celeste mystery", first.evidence, first.to_dict())))
         cached = grounding.evidence_from_record(saved, "The Mary Celeste mystery")
         self.assertTrue(cached.snippets)
         client2 = client_for(lambda c, n: FakeResponse(None, 429), min_interval=0)
@@ -458,20 +459,23 @@ class TheClientIsHardened(unittest.TestCase):
         self.assertFalse(out[0].requires_human_review)
 
     def test_a_cache_of_another_topic_or_a_damaged_one_is_not_used(self):
-        good = {"topic": "A", "passages": [{"id": "W1", "title": "T", "url": "https://en.wikipedia.org/wiki/T", "revid": 1,
-                                            "text": "A passage of enough length to be a passage at all, really."}]}
+        good = {"topic": "A", "fetched_at": grounding.now_iso(),
+                "passages": [{"id": "W1", "title": "T", "url": "https://en.wikipedia.org/wiki/T", "revid": 1,
+                              "text": "A passage of enough length to be a passage at all, really."}]}
         self.assertIsNotNone(grounding.evidence_from_record(good, "A"))
         self.assertIsNone(grounding.evidence_from_record(good, "B"))
-        for bad in (None, [], "x", {"topic": "A"}, {"topic": "A", "passages": "x"}, {"topic": "A", "passages": []},
-                    {"topic": "A", "passages": [{"id": "W1", "title": "T", "url": "https://evil.example/x", "text": "x" * 60}]},
-                    {"topic": "A", "passages": [{"id": "../x", "title": "T", "url": "https://en.wikipedia.org/wiki/T", "text": "x" * 60}]},
-                    {"topic": "A", "passages": [{"id": "W1", "title": "T", "url": "https://en.wikipedia.org/wiki/T", "text": 5}]}):
+        now = grounding.now_iso()
+        for bad in (None, [], "x", {"topic": "A"}, {"topic": "A", "fetched_at": now, "passages": "x"},
+                    {"topic": "A", "fetched_at": now, "passages": []},
+                    {"topic": "A", "fetched_at": now, "passages": [{"id": "W1", "title": "T", "url": "https://evil.example/x", "text": "x" * 60}]},
+                    {"topic": "A", "fetched_at": now, "passages": [{"id": "../x", "title": "T", "url": "https://en.wikipedia.org/wiki/T", "text": "x" * 60}]},
+                    {"topic": "A", "fetched_at": now, "passages": [{"id": "W1", "title": "T", "url": "https://en.wikipedia.org/wiki/T", "text": 5}]}):
             self.assertIsNone(grounding.evidence_from_record(bad, "A"), bad)
 
     def test_main_reuses_and_saves_grounding_json_with_the_topic(self):
         src = (ROOT / "main.py").read_text()
         self.assertIn("grounding.load_cached_evidence(", src)
-        self.assertIn('"topic": topic', src)
+        self.assertIn("grounding.evidence_file(topic", src)
 
     def test_the_model_call_has_a_timeout(self):
         from unittest.mock import patch
@@ -498,6 +502,193 @@ class TheClientIsHardened(unittest.TestCase):
         results = [unchecked(c) for c in claims]
         grounding.ground_results("The Mary Celeste mystery", claims, results, client=client, generate=slow, clock=clock)
         self.assertEqual(len(calls), 1)
+
+
+# ── the last round ───────────────────────────────────────────────────────────────
+
+CLEAN = "The abbey was founded by Aldric in 1066."
+CLAIM_ABBEY = "The abbey was founded by Aldric in 1066."
+
+
+def abbey(sentence):
+    return grounding.check_support(CLAIM_ABBEY, S(sentence), "founded by Aldric in 1066")
+
+
+class RegnalNumeralsAndErasAreReadInTheSentence(unittest.TestCase):
+    def test_a_numeral_or_an_era_outside_the_quote_but_in_its_sentence_blocks(self):
+        ok, why = grounding.check_support("Napoleon was exiled to Saint Helena in 1815.",
+                                          S("Napoleon III was exiled to Saint Helena in 1815."),
+                                          "was exiled to Saint Helena in 1815")
+        self.assertEqual((ok, why), (False, "number_not_in_quote"))
+        ok, why = grounding.check_support("Louis ruled France for 72 years.",
+                                          S("Louis XIV ruled France for 72 years, from 1643."),
+                                          "ruled France for 72 years")
+        self.assertFalse(ok)
+        ok, why = grounding.check_support("Caesar was killed in 44.", S("Caesar was killed in 44 BC by a group of senators."),
+                                          "Caesar was killed in 44")
+        self.assertFalse(ok)
+
+    def test_the_same_numeral_in_the_sentence_still_passes(self):
+        ok, _ = grounding.check_support("Louis XIV ruled France for 72 years.", S("Louis XIV ruled France for 72 years."),
+                                        "Louis XIV ruled France for 72 years")
+        self.assertTrue(ok)
+
+    def test_numbers_backed_takes_the_sentence_as_a_third_argument(self):
+        self.assertFalse(grounding.numbers_backed("Napoleon was exiled in 1815.", "was exiled in 1815",
+                                                  "Napoleon III was exiled in 1815."))
+        self.assertTrue(grounding.numbers_backed("Napoleon was exiled in 1815.", "was exiled in 1815",
+                                                 "Napoleon was exiled in 1815."))
+
+    def test_the_context_keeps_the_case_even_for_letters_that_change_length_when_folded(self):
+        snippet = "Die Straße von Konstanz and Louis XIV were famous in Straße lore."
+        text, why = grounding.quote_context("Louis XIV were famous in Straße lore", snippet)
+        self.assertIsNone(why)
+        self.assertIn("XIV", text)
+        self.assertEqual(grounding.roman_numerals(text), {"XIV"})
+
+
+class MoreWordsOfDoubt(unittest.TestCase):
+    WORDS = {
+        "claims that": "He claims that the abbey was founded by Aldric in 1066.",
+        "claimed": "It was claimed the abbey was founded by Aldric in 1066.",
+        "traditionally": "The abbey was traditionally founded by Aldric in 1066.",
+        "arguably": "The abbey was arguably founded by Aldric in 1066.",
+        "reputedly": "The abbey was reputedly founded by Aldric in 1066.",
+        "ostensibly": "The abbey was ostensibly founded by Aldric in 1066.",
+        "apparently": "The abbey was apparently founded by Aldric in 1066.",
+        "so-called": "The so-called abbey was founded by Aldric in 1066.",
+        "wrongly": "The abbey was wrongly founded by Aldric in 1066.",
+        "fictional": "The fictional abbey was founded by Aldric in 1066.",
+        "invented": "The abbey, an invented place, was founded by Aldric in 1066.",
+        "unsubstantiated": "It is unsubstantiated that the abbey was founded by Aldric in 1066.",
+        "fails to": "The text fails to say the abbey was founded by Aldric in 1066.",
+        "lacks evidence": "The story lacks evidence: the abbey was founded by Aldric in 1066.",
+        "rejects": "One historian rejects that the abbey was founded by Aldric in 1066.",
+        "rejected": "That the abbey was founded by Aldric in 1066 was rejected.",
+        "ruled out": "That the abbey was founded by Aldric in 1066 was ruled out.",
+        "alleged": "The alleged abbey was founded by Aldric in 1066.",
+        "allegedly": "The abbey was allegedly founded by Aldric in 1066.",
+        "purported": "The purported abbey was founded by Aldric in 1066.",
+        "purportedly": "The abbey was purportedly founded by Aldric in 1066.",
+        "supposed": "The supposed abbey was founded by Aldric in 1066.",
+        "supposedly": "The abbey was supposedly founded by Aldric in 1066.",
+        "rumoured": "The abbey, rumoured to be old, was founded by Aldric in 1066.",
+        "rumored": "The abbey, rumored to be old, was founded by Aldric in 1066.",
+        "rumour": "A rumour says the abbey was founded by Aldric in 1066.",
+    }
+
+    def test_the_plain_sentence_passes(self):
+        self.assertEqual(abbey(CLEAN), (True, "ok"))
+
+    def test_each_word_in_the_sentence_that_the_claim_lacks_refuses_the_clearance(self):
+        for word, sentence in self.WORDS.items():
+            with self.subTest(word):
+                ok, why = abbey(sentence)
+                self.assertFalse(ok, sentence)
+
+    def test_a_claim_that_says_it_too_is_not_refused_for_it(self):
+        ok, _ = grounding.check_support("The abbey was traditionally founded by Aldric in 1066.",
+                                        S("The abbey was traditionally founded by Aldric in 1066."),
+                                        "traditionally founded by Aldric in 1066")
+        self.assertTrue(ok)
+
+
+class TheCacheGoesStaleAndMendsItself(unittest.TestCase):
+    def evidence(self, **kw):
+        client = client_for(mary_celeste_router, min_interval=0)
+        ev = grounding.gather_evidence("The Mary Celeste mystery", [CLAIM_ADRIFT, "Captain Morehouse of the Dei Gratia boarded her."],
+                                       client=client)
+        return ev, client
+
+    def file(self, ev, at=None):
+        return json.loads(json.dumps(grounding.evidence_file("The Mary Celeste mystery", ev, {}, now=at)))
+
+    def test_the_file_says_when_it_was_fetched_and_whether_it_was_complete(self):
+        ev, _c = self.evidence()
+        rec = self.file(ev)
+        self.assertRegex(rec["fetched_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertEqual((rec["complete"], rec["failed_steps"], rec["topic"]), (True, [], "The Mary Celeste mystery"))
+
+    def test_a_file_older_than_a_day_or_without_a_date_is_ignored(self):
+        from datetime import datetime, timedelta, timezone
+        ev, _c = self.evidence()
+        now = datetime.now(timezone.utc)
+        fresh = grounding.evidence_from_record(self.file(ev, now - timedelta(hours=23)), "The Mary Celeste mystery")
+        self.assertIsNotNone(fresh)
+        for age in (timedelta(hours=25), timedelta(days=30), timedelta(hours=-2)):
+            with self.subTest(age=age):
+                self.assertIsNone(grounding.evidence_from_record(self.file(ev, now - age), "The Mary Celeste mystery"))
+        rec = self.file(ev)
+        for broken in (None, "yesterday", 5, ""):
+            rec["fetched_at"] = broken
+            self.assertIsNone(grounding.evidence_from_record(rec, "The Mary Celeste mystery"))
+        del rec["fetched_at"]
+        self.assertIsNone(grounding.evidence_from_record(rec, "The Mary Celeste mystery"))
+
+    def test_a_partial_earlier_lookup_asks_again_only_for_what_failed(self):
+        def flaky(call, n):
+            if "|" in call["params"].get("titles", "") and "exintro" in call["params"]:
+                return FakeResponse(None, 503)                       # the names step failed the first time
+            return mary_celeste_router(call, n)
+        client = client_for(flaky, min_interval=0)
+        claims = [CLAIM_ADRIFT, "Captain Morehouse of the Dei Gratia boarded her."]
+        first = grounding.gather_evidence("The Mary Celeste mystery", claims, client=client)
+        self.assertEqual(first.failed_steps, ["intros"])
+        saved = self.file(first)
+        self.assertFalse(saved["complete"])
+        cached = grounding.evidence_from_record(saved, "The Mary Celeste mystery")
+        self.assertEqual(cached.failed_steps, ["intros"])
+        client2 = client_for(mary_celeste_router, min_interval=0)
+        out, summary = grounding.ground_results("The Mary Celeste mystery", claims, [unchecked(c) for c in claims], client=client2,
+                                                generate=says("not_found"), cached=cached)
+        asked = [c["params"] for c in client2.fake_http.calls]
+        self.assertEqual(len(asked), 1)
+        self.assertIn("|", asked[0]["titles"])                         # only the names, not the search or the page again
+        self.assertIn("Dei Gratia", {s.title for s in summary.evidence.snippets.values()})
+        self.assertTrue(set(cached.snippets) <= set(summary.evidence.snippets))
+        self.assertEqual(summary.evidence.failed_steps, [])
+
+    def test_a_complete_file_is_reused_without_any_request(self):
+        ev, _c = self.evidence()
+        cached = grounding.evidence_from_record(self.file(ev), "The Mary Celeste mystery")
+        client = client_for(lambda c, n: FakeResponse(None, 429), min_interval=0)
+        _o, summary = grounding.ground_results("The Mary Celeste mystery", [CLAIM_ADRIFT], [unchecked(CLAIM_ADRIFT)], client=client,
+                                               generate=says("not_found"), cached=cached)
+        self.assertEqual(client.fake_http.calls, [])
+        self.assertTrue(summary.reused)
+
+
+class TheTimeoutWordsAreHonest(unittest.TestCase):
+    def test_the_body_is_read_in_small_chunks_so_the_clock_is_looked_at_often(self):
+        resp = StreamedResponse([json.dumps(api([page("A", "z" * 60)])).encode()])
+        client = client_for(lambda c, n: resp, min_interval=0)
+        client.get({"titles": "A"})
+        self.assertLessEqual(resp.chunk_size, 16384)
+
+    def test_the_docs_say_what_bounds_a_stalled_read(self):
+        doc = (ROOT / "docs/GROUNDED_FACTCHECK.md").read_text()
+        self.assertNotIn("a timeout for the whole of each request", doc)
+        self.assertIn("between chunks", doc)
+        self.assertIn("socket timeout", doc)
+        self.assertIn("residual", doc.lower())
+        for shape in ("verb swap", "role reversal", "comparative"):
+            self.assertIn(shape, doc)
+        self.assertIn("false-accept rate", doc)
+
+
+class TheLastTwoSurvivors(unittest.TestCase):
+    def test_an_abbreviation_does_not_end_a_sentence(self):
+        snippet = S("Rome was not, wrote Dr. Smith, founded by Romulus in 753 BC.")
+        ok, why = grounding.check_support("Romulus founded the city in 753 BC.", snippet, "founded by Romulus in 753 BC")
+        self.assertEqual((ok, why), (False, "negation_differs"))
+        spans = grounding._sentence_spans("he met dr. smith in 1999. then a. b. c. left. fin")
+        self.assertEqual(len(spans), 2)      # only "left." ends one: dr. a. b. c. and 1999. do not
+
+    def test_a_name_cannot_smuggle_a_second_title_into_the_names_request(self):
+        client = client_for(lambda c, n: FakeResponse(api([])), min_interval=0)
+        grounding._intros(client, ["Alpha|Beta", "Gamma\nDelta", "  "])
+        titles = client.fake_http.calls[0]["params"]["titles"]
+        self.assertEqual(titles, "Alpha Beta|Gamma Delta")
 
 
 # ── 6 ───────────────────────────────────────────────────────────────────────────

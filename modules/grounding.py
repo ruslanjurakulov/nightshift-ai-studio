@@ -50,8 +50,9 @@ model has not been told the three verdict words and anything else it says is rea
 enforcement only becomes meaningful once real checker verdicts reach this module.
 
 Bounded: at most MAX_REQUESTS requests per video (retries included; a normal video needs 3), a
-timeout for the whole of each request, a byte cap on each answer, no redirects, a deadline for
-the lookup and one for the matching, a cap on time spent waiting for a rate limit, a stop after
+socket timeout, a clock check between 8 KB chunks of a body (no wall-clock watchdog: a stall inside
+one chunk is the socket timeout's), a byte cap on each answer, no redirects, a deadline for the
+lookup (checked between requests) and one for the matching, a cap on time spent waiting for a rate limit, a stop after
 two failures in a row, and a cache so nothing is asked twice. The only host contacted is
 en.wikipedia.org. No secret is sent: the request carries a User-Agent that names the project,
 as Wikimedia's policy asks, and nothing else.
@@ -132,6 +133,8 @@ MAX_ENTITY_QUERIES = 8
 SEARCH_HITS_TOPIC = 3
 #: The most an answer may weigh before it is refused (the longest articles are a few hundred KB).
 MAX_BODY_BYTES = 1_000_000
+#: The body is read this much at a time, so the clock is looked at often.
+READ_CHUNK = 8192
 #: The model call of the matching step: timeout of one call, and for all the calls together.
 JUDGE_TIMEOUT_S = 60
 JUDGE_DEADLINE_S = 150
@@ -178,6 +181,10 @@ class Evidence:
     candidates: dict = field(default_factory=dict)        # claim index -> [snippet ids]
     queries: int = 0
     pages: int = 0
+    #: Lookup steps that failed ("search", "full_page", "intros"); a later run asks again for these only.
+    failed_steps: list = field(default_factory=list)
+    #: The topic's best page (the one whose full text is fetched), once a search has found it.
+    best_title: Optional[str] = None
 
 
 def _clean(text: str) -> str:
@@ -283,7 +290,7 @@ class WikipediaClient:
         if not callable(chunks):
             return resp.json()
         buf = bytearray()
-        for chunk in chunks(65536):
+        for chunk in chunks(READ_CHUNK):
             if self._clock() - started > self.timeout:
                 raise _Slow()
             buf += chunk
@@ -621,16 +628,27 @@ def _choose_candidates(ev: Evidence, claims) -> None:
             ev.candidates[i] = [sid for _, _, sid in ranked[:CANDIDATES_PER_CLAIM]]
 
 
-def gather_evidence(topic: str, claims, *, client: WikipediaClient, sources=None) -> Evidence:
+STEPS = ("search", "full_page", "intros")
+
+
+def gather_evidence(topic: str, claims, *, client: WikipediaClient, sources=None,
+                    seed: Optional[Evidence] = None) -> Evidence:
     """Passages for ``claims``: the topic's best article (intro of three hits and the full text of
-    the best one) and the intro of the best hits for the names in the claims. Nothing is requested
-    when there is no claim to check."""
+    the best one) and the intros of the names in the claims. Nothing is requested when there is no
+    claim to check. ``seed`` is the evidence of an earlier, partial lookup: its passages are kept and
+    only the steps that failed then (``seed.failed_steps``) are asked for again."""
     ev = Evidence()
     claims = list(claims or [])
     if not any(isinstance(c, str) and c.strip() for c in claims):
         return ev
     seen_text: set = set()
     seen_titles: set = set()
+    done: set = set()
+    if seed is not None:
+        ev.snippets, ev.pages, ev.best_title = dict(seed.snippets), seed.pages, seed.best_title
+        seen_text = {re.sub(r"\W+", "", sn.text.casefold()) for sn in seed.snippets.values()}
+        seen_titles = {sn.title.casefold() for sn in seed.snippets.values()}
+        done = set(STEPS) - set(seed.failed_steps)
     topic_words = _words(topic)
 
     def take(pages: list) -> None:
@@ -642,20 +660,38 @@ def gather_evidence(topic: str, claims, *, client: WikipediaClient, sources=None
             ev.pages += 1
             _add_passages(ev, page, page.get("extract") or "", seen_text)
 
+    def step(name: str, run) -> None:
+        """Run one lookup; a step that got no answer is remembered as failed."""
+        before = len(client.failures)
+        run()
+        ev.queries += 1
+        if len(client.failures) > before:
+            ev.failed_steps.append(name)
+
     if _query_text(topic):
-        hits = _search(client, topic, SEARCH_HITS_TOPIC)
-        ev.queries += 1
-        take(hits)
-        best = next((p for p in hits if topic_words & _words(str(p.get("title")))), None)
-        if best is not None and not client.aborted and not client.budget_exhausted:
-            full = _full_page(client, str(best.get("title")))
-            ev.queries += 1
-            if full is not None:
-                _add_passages(ev, full, full.get("extract") or "", seen_text)
+        if "search" not in done:
+            def search():
+                hits = _search(client, topic, SEARCH_HITS_TOPIC)
+                take(hits)
+                best = next((p for p in hits if topic_words & _words(str(p.get("title")))), None)
+                if best is not None:
+                    ev.best_title = str(best.get("title"))
+            step("search", search)
+        if ev.best_title and "full_page" not in done and not client.aborted and not client.budget_exhausted:
+            def full_page():
+                full = _full_page(client, ev.best_title)
+                if full is not None:
+                    _add_passages(ev, full, full.get("extract") or "", seen_text)
+            step("full_page", full_page)
+        elif ev.best_title is None and "search" in ev.failed_steps:
+            ev.failed_steps.append("full_page")                # not even attempted: it needs the search
     names = [n for n in extract_entities(claims, topic, sources) if n.casefold() not in seen_titles]
-    if names and not client.aborted and not client.budget_exhausted:
-        take(_intros(client, names))
-        ev.queries += 1
+    if names and "intros" not in done:
+        if client.aborted or client.budget_exhausted:
+            ev.failed_steps.append("intros")
+        else:
+            step("intros", lambda: take(_intros(client, names)))
+    ev.failed_steps = list(dict.fromkeys(ev.failed_steps))
     _choose_candidates(ev, claims)
     return ev
 
@@ -673,6 +709,18 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text or "").translate(_PUNCT)).strip().casefold()
 
 
+def _keep(text: str) -> str:
+    """``_norm`` without the case fold: the text as it is read, for what depends on capitals (regnal
+    numerals, eras)."""
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text or "").translate(_PUNCT)).strip()
+
+
+def _fold(text: str) -> str:
+    """``_keep`` lower-cased one character at a time, so it is as long as ``_keep`` (a full case fold turns
+    "ß" into "ss" and would shift every position): positions found in the fold are positions in the text."""
+    return "".join(c.lower() if len(c.lower()) == 1 else c for c in _keep(text))
+
+
 def _locate(quote, snippet_text: str) -> Optional[list]:
     """The ``(start, end)`` of each piece of ``quote`` in the normalised snippet text, in order, or None
     when it is not there. Case, spacing, curly quotes and dashes do not matter. ``...`` between pieces
@@ -681,12 +729,12 @@ def _locate(quote, snippet_text: str) -> Optional[list]:
     nothing) and a piece under MIN_QUOTE_PIECE cannot ride along with a long one."""
     if not isinstance(quote, str):
         return None
-    pieces = [_norm(p).strip(" \"'") for p in _ELLIPSIS.split(quote)]
+    pieces = [_fold(p).strip(" \"'") for p in _ELLIPSIS.split(quote)]
     pieces = [p for p in pieces if p]
     total = sum(len(p) for p in pieces)
     if not pieces or total < MIN_QUOTE_CHARS or total > MAX_QUOTE_CHARS:
         return None
-    haystack, pos, found = _norm(snippet_text), 0, []
+    haystack, pos, found = _fold(snippet_text), 0, []
     for piece in pieces:
         if len(piece) < MIN_QUOTE_PIECE:
             return None
@@ -731,7 +779,7 @@ def quote_context(quote, snippet_text: str) -> tuple:
     pieces = _locate(quote, snippet_text)
     if pieces is None:
         return None, "quote_not_in_snippet"
-    text = _norm(snippet_text)
+    text = _fold(snippet_text)
     spans = _sentence_spans(text)
 
     def sentences(a: int, b: int) -> tuple:
@@ -742,7 +790,7 @@ def quote_context(quote, snippet_text: str) -> tuple:
     if len(pieces) > 1 and not (len(set(ranges)) == 1 and ranges[0][0] == ranges[0][1]):
         return None, "ellipsis_across_sentences"
     first, last = min(r[0] for r in ranges), max(r[1] for r in ranges)
-    return text[spans[first][0]:spans[last][1]], None
+    return _keep(snippet_text)[spans[first][0]:spans[last][1]], None      # with its capitals: numerals and eras need them
 
 
 _ONE = re.compile(r"(?<![\w-])one(?![\w-])", re.IGNORECASE)
@@ -813,10 +861,13 @@ def _number_groups(text: str) -> list:
     return groups
 
 
-def numbers_backed(claim: str, quote: str) -> bool:
-    """Every number of ``claim`` also appears in ``quote``, however it is written; the era (BC / AD) is the
-    same; and the regnal numerals agree both ways ("Louis XIV" is not "Louis XV", "Napoleon" is not
-    "Napoleon III"). A claim that says 1415 is not backed by a sentence that says 1451."""
+def numbers_backed(claim: str, quote: str, context: Optional[str] = None) -> bool:
+    """Every number of ``claim`` also appears in ``quote``, however it is written; the era (BC / AD) and
+    the regnal numerals agree with those of ``context`` (the whole sentence of the quote; the quote itself
+    when none is given), both ways ("Louis XIV" is not "Louis XV", "Napoleon" is not "Napoleon III", and a
+    "III" just outside the quoted words still counts). A claim that says 1415 is not backed by a sentence
+    that says 1451."""
+    context = quote if context is None else context
     known: set = set()
     for _tok, _s, _e, forms, _ord in claim_extractor._digit_tokens(quote or ""):
         known |= set(forms)
@@ -824,9 +875,9 @@ def numbers_backed(claim: str, quote: str) -> bool:
         known |= group
     if not all(group & known for group in _number_groups(claim)):
         return False
-    if eras(claim) != eras(quote):
+    if eras(claim) != eras(context):
         return False
-    return roman_numerals(claim) == roman_numerals(quote)
+    return roman_numerals(claim) == roman_numerals(context)
 
 
 # What a sentence can say that a bare quote does not: that it is doubted, or denied.
@@ -836,7 +887,9 @@ _HEDGE = re.compile(
     r"thought to|said to|may have|might have|possibl\w*|probabl\w*|perhaps|unclear|uncertain|disputed|dispute[sd]?|"
     r"debated|unproven|unverified|apocryphal|some historians|some say|tradition|doubt\w*|dubious|spurious|"
     r"unlikely|contrary|hoax\w*|false\w*|misattribut\w*|fabricat\w*|forg(?:ed|ery|eries)|erroneous\w*|"
-    r"mistaken\w*|incorrect\w*|inaccura\w*|untrue|bogus|debunk\w*|denied|deny|denies|rejected|refut\w*|disprov\w*)"
+    r"mistaken\w*|incorrect\w*|inaccura\w*|untrue|bogus|debunk\w*|denied|deny|denies|reject(?:s|ed)?|refut\w*|"
+    r"disprov\w*|claims? that|claimed|traditionally|arguably|reputedly|ostensibly|apparently|so-called|wrongly|"
+    r"fictional|invented|unsubstantiated|fails? to|lacks? evidence|ruled out)"
     r"(?!\w)", re.IGNORECASE)
 #: Plain negation. Its PRESENCE has to be the same in the claim and in the sentence.
 _NEGATION = re.compile(r"(?<!\w)(not|never|no|none|nor|neither|without|cannot)(?!\w)|(?<=\w)n't(?!\w)", re.IGNORECASE)
@@ -912,7 +965,7 @@ def check_support(claim: str, snippet: Optional[Snippet], quote) -> tuple:
     context, why = quote_context(quote, snippet.text)
     if context is None:
         return False, why
-    if not numbers_backed(claim, quote):
+    if not numbers_backed(claim, quote, context):
         return False, "number_not_in_quote"
     wanted = _words(claim)
     shared = wanted & _words(quote)
@@ -920,7 +973,7 @@ def check_support(claim: str, snippet: Optional[Snippet], quote) -> tuple:
         return False, "quote_unrelated_to_claim"
     if len(shared) < required_shared_words(len(wanted)) or len(wanted) < MIN_SHARED_WORDS:
         return False, "quote_covers_too_little"
-    if not claim_names(claim) <= {w[:6] for w in re.findall(r"\w+", context)}:
+    if not claim_names(claim) <= {w[:6] for w in re.findall(r"\w+", context.casefold())}:
         return False, "name_not_in_sentence"
     if hedge_markers(context) - hedge_markers(claim):
         return False, "hedged_in_sentence"
@@ -1202,11 +1255,14 @@ def _ground(topic, claims, results, sources, language, client, generate, on_resp
                     language)
     client = client or WikipediaClient()
     if cached is not None:
-        evidence = Evidence(snippets=dict(cached.snippets), pages=cached.pages)
-        _choose_candidates(evidence, claims)
         summary.reused = True
-        logger.info("Fact-check grounding: reusing the %d passage(s) saved by an earlier run of this topic",
-                    len(evidence.snippets))
+        logger.info("Fact-check grounding: reusing the %d passage(s) saved by an earlier run of this topic%s",
+                    len(cached.snippets), f" (asking again for: {', '.join(cached.failed_steps)})" if cached.failed_steps else "")
+        if cached.failed_steps:
+            evidence = gather_evidence(topic, claims, client=client, sources=sources, seed=cached)
+        else:
+            evidence = Evidence(snippets=dict(cached.snippets), pages=cached.pages, best_title=cached.best_title)
+            _choose_candidates(evidence, claims)
     else:
         evidence = gather_evidence(topic, claims, client=client, sources=sources)
         if not evidence.snippets and client.second_chance():
@@ -1302,15 +1358,43 @@ def evidence_record(evidence: Evidence) -> list:
             for s in evidence.snippets.values()]
 
 
+def now_iso(now=None) -> str:
+    from datetime import datetime, timezone
+
+    return (now or datetime.now(timezone.utc)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+#: A saved lookup older than this is not reused: pages change.
+CACHE_MAX_AGE_S = 24 * 3600
+
+
+def evidence_file(topic: str, evidence: Evidence, summary: dict, now=None) -> dict:
+    """What ``grounding.json`` holds: the topic, when the passages were fetched, whether the lookup was
+    complete (and which steps failed if not, so a re-run asks again for those only), the summary and
+    every passage."""
+    return {"topic": topic, "fetched_at": now_iso(now), "complete": not evidence.failed_steps,
+            "failed_steps": list(evidence.failed_steps), "best_title": evidence.best_title,
+            "summary": summary, "passages": evidence_record(evidence)}
+
+
 _SNIPPET_ID = re.compile(r"^W\d{1,3}$")
 
 
-def evidence_from_record(record, topic: str) -> Optional[Evidence]:
-    """Evidence rebuilt from a saved ``grounding.json`` (``{"topic": ..., "passages": [...]}``), or None
-    when it is for another topic or anything in it is not what this module writes: a damaged or tampered
-    file is not evidence."""
+def evidence_from_record(record, topic: str, now=None) -> Optional[Evidence]:
+    """Evidence rebuilt from a saved ``grounding.json``, or None when it is for another topic, is older
+    than a day (or has no readable ``fetched_at``), or anything in it is not what this module writes: a
+    damaged or tampered file is not evidence."""
     try:
+        from datetime import datetime, timezone
+
         if not isinstance(record, dict) or record.get("topic") != topic:
+            return None
+        stamp = record.get("fetched_at")
+        if not isinstance(stamp, str):
+            return None
+        fetched = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        age = ((now or datetime.now(timezone.utc)) - fetched).total_seconds()
+        if age > CACHE_MAX_AGE_S or age < -300:
             return None
         passages = record.get("passages")
         if not isinstance(passages, list) or not passages or len(passages) > MAX_PASSAGES:
@@ -1328,6 +1412,12 @@ def evidence_from_record(record, topic: str) -> Optional[Evidence]:
             ev.snippets[p["id"]] = Snippet(p["id"], _clean(title)[:200], url[:500], _clean(text), revid)
             titles.add(title.casefold())
         ev.pages = len(titles)
+        failed = record.get("failed_steps") or []
+        if not isinstance(failed, list) or any(f not in STEPS for f in failed):
+            return None
+        ev.failed_steps = list(dict.fromkeys(failed))
+        best = record.get("best_title")
+        ev.best_title = best[:200] if isinstance(best, str) and best else None
         return ev
     except Exception:
         return None

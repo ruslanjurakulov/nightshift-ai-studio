@@ -457,8 +457,7 @@ def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_r
         if summary.evidence is not None and summary.evidence.snippets:
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps({"topic": topic, "summary": record,
-                                            "passages": grounding.evidence_record(summary.evidence)},
+                path.write_text(json.dumps(grounding.evidence_file(topic, summary.evidence, record),
                                            indent=2, ensure_ascii=False))
             except OSError as e:
                 logger.warning("Could not save grounding.json (%s) - the run is unaffected", type(e).__name__)
