@@ -21,7 +21,7 @@ import {
   visibilityView,
   type VisibilityRequestRow,
 } from "@/lib/visibilityRequest";
-import { heldBeforeRender, heldFlagged } from "@/lib/heldVideos";
+import { heldBeforeRender, heldFlagged, type EvidenceInfo } from "@/lib/heldVideos";
 import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 
 /**
@@ -55,6 +55,7 @@ export function ReviewPanel({
   channelName,
   publishOnApprove = false,
   request = null,
+  evidence = null,
 }: {
   video: VideoRow;
   autoPublish: boolean;
@@ -69,6 +70,8 @@ export function ReviewPanel({
   publishOnApprove?: boolean;
   /** This video's newest publish-when-approved request (migration 0116), or null. */
   request?: VisibilityRequestRow | null;
+  /** What the online source check did (hold_detail.grounding or the gate event), or null when nothing was recorded. */
+  evidence?: EvidenceInfo | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -351,6 +354,52 @@ export function ReviewPanel({
           <p className="mt-2 text-sm text-[var(--color-muted)]">{t.review.gateUnknown}</p>
         )}
       </div>
+
+      {/* ── the sources the accuracy check found online ───────────────── */}
+      {evidence && (
+        <div data-testid="evidence-sources" className="rounded-[16px] border border-[var(--color-border)] p-4">
+          <div className="t-label">{t.review.sourcesHeading}</div>
+          {evidence.enabled === false ? (
+            <p className="mt-2 text-sm text-[var(--color-muted)]">{t.review.sourcesOff}</p>
+          ) : evidence.unavailable ? (
+            <p className="mt-2 text-sm text-[var(--color-muted)]">
+              {fmt(t.review.sourcesUnavailable, { reason: evidence.unavailable })}
+            </p>
+          ) : evidence.sources.length === 0 ? (
+            <p className="mt-2 text-sm text-[var(--color-muted)]">{t.review.sourcesNone}</p>
+          ) : (
+            <>
+              <ul className="mt-2 flex flex-col gap-1">
+                {evidence.sources.map((s) => (
+                  <li key={s.url} className="text-sm">
+                    {/* The link is checked to be an en.wikipedia.org page in parseEvidence; the title is text. */}
+                    <a href={s.url} target="_blank" rel="noopener noreferrer nofollow" className="underline">
+                      {s.title}
+                    </a>
+                    <span className="text-[var(--color-muted)]"> · {fmt(t.review.sourcesClaims, { n: s.claims })}</span>
+                  </li>
+                ))}
+              </ul>
+              {evidence.cleared.length > 0 && (
+                <ul data-testid="evidence-cleared" className="mt-3 flex flex-col gap-2">
+                  {evidence.cleared.map((c) => (
+                    <li key={`${c.claimId}|${c.url}`} className="text-sm">
+                      <span className="text-[var(--color-muted)]">
+                        {t.review.sourcesCleared} {c.claimId} ·{" "}
+                      </span>
+                      <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="underline">
+                        {c.title}
+                      </a>
+                      <p className="m-0 mt-1 text-[var(--color-muted)]">{`\u201C${c.quote}\u201D`}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-xs text-[var(--color-muted)]">{t.review.sourcesNote}</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── the script it was built from ───────────────────────────────── */}
       <div className="stack gap-3">

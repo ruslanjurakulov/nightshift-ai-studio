@@ -166,6 +166,10 @@ Dependency: **Gemini**. Persists: `output/<slug>/script.json` (reusable via
 LLM call) feeds `modules/fact_checker.fact_check_claims()`. Flags claims for
 human review but **never blocks** generation or upload. Persists:
 `output/<slug>/fact_check.json`.
+Since the grounded fact-check, `modules/grounding.py` then looks the claims up in the
+English Wikipedia and may clear a claim only with a quote verified in code, or add a flag on a
+contradiction; an outage changes nothing. See `docs/GROUNDED_FACTCHECK.md` (it also says how to
+switch it off: `NIGHTSHIFT_GROUNDED_FACTCHECK=off`).
 
 ### Pipeline-stage tracking (capture/tracking only — does NOT gate publishing)
 `main.py` constructs a `PipelineStateMachine`

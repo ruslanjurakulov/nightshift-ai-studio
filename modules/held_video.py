@@ -181,6 +181,48 @@ MAX_FLAGGED_TEXT = 200
 MAX_FLAGGED_REASONING = 300
 
 
+#: At most this many cited sources ride on one flagged text or one hold.
+MAX_SOURCES_PER_CLAIM = 3
+MAX_SOURCES_IN_DETAIL = 30
+
+
+def grounding_sources(result) -> list:
+    """The Wikipedia pages the evidence lookup cited for one claim, ``[{id, title, url}]``: only
+    pages that changed its verdict (a quote that backed it, or a contradiction). Titles and
+    links of public pages, never script text. Never raises."""
+    try:
+        record = getattr(result, "grounding", None) or {}
+        if record.get("effect") not in ("upgraded", "flagged"):
+            return []
+        return [{"id": str(s.get("id", ""))[:12], "title": str(s.get("title", ""))[:200],
+                 "url": str(s.get("url", ""))[:500]}
+                for s in (record.get("sources") or [])[:MAX_SOURCES_PER_CLAIM]
+                if str(s.get("url", "")).startswith("https://en.wikipedia.org/")]
+    except Exception:
+        return []
+
+
+def grounding_detail(summary) -> Optional[dict]:
+    """What ``hold_detail.grounding`` keeps of the evidence lookup: whether it ran, why it was
+    unavailable, the counts and the sources it cited (title, link, snippet ids). None when
+    grounding recorded nothing. Fixed words and public page titles only."""
+    if not isinstance(summary, Mapping):
+        return None
+    keys = ("enabled", "unavailable", "wiki_language", "script_language", "requests", "failed_requests",
+            "snippets", "claims_with_evidence", "supported", "contradicted", "upgraded", "flagged_by_evidence",
+            "clamped_verdicts", "upgrade_cap", "refused_by_cap", "second_chance", "reused")
+    out = {k: summary.get(k) for k in keys if k in summary}
+    out["cleared"] = [{"claim_id": str(c.get("claim_id", ""))[:24], "title": str(c.get("title", ""))[:200],
+                       "url": str(c.get("url", ""))[:500], "quote": str(c.get("quote", ""))[:300]}
+                      for c in (summary.get("cleared") or [])[:20]
+                      if isinstance(c, Mapping) and str(c.get("url", "")).startswith("https://en.wikipedia.org/")]
+    out["sources"] = [{"title": str(s.get("title", ""))[:200], "url": str(s.get("url", ""))[:500],
+                       "ids": [str(i)[:12] for i in (s.get("ids") or [])][:10], "claims": int(s.get("claims") or 0)}
+                      for s in (summary.get("sources") or [])[:MAX_SOURCES_IN_DETAIL]
+                      if isinstance(s, Mapping) and str(s.get("url", "")).startswith("https://en.wikipedia.org/")]
+    return out
+
+
 def flagged_claims(claims, results) -> list:
     """The checked texts that ship OUTSIDE the narration and that the fact-check did
     not clear (title, A/B title, description, thumbnail text, hook sentence, the
@@ -198,12 +240,16 @@ def flagged_claims(claims, results) -> list:
                 continue
             if not getattr(r, "requires_human_review", False):
                 continue
-            out.append({
+            entry = {
                 "source": source,
                 "verdict": str(getattr(r, "verdict", "") or "unverifiable"),
                 "reasoning": str(getattr(r, "reasoning", "") or "")[:MAX_FLAGGED_REASONING],
                 "text": str(getattr(claim, "text", "") or "")[:MAX_FLAGGED_TEXT],
-            })
+            }
+            cited = grounding_sources(r)
+            if cited:
+                entry["sources"] = cited
+            out.append(entry)
             if len(out) >= MAX_FLAGGED_IN_DETAIL:
                 break
     except Exception:

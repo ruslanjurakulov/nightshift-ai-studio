@@ -161,7 +161,7 @@ stop it:
 | Check | Blocks when |
 | --- | --- |
 | sanity | no title, title over 100 characters, video file missing or under 100 KB, fewer than 2 script sections |
-| fact-check | the fact-checker returned failing claims |
+| fact-check | the fact-checker returned failing claims (the Wikipedia lookup of `docs/GROUNDED_FACTCHECK.md` can clear a claim with a verified quote or add a flag; its outage is only the warning `grounding_unavailable`) |
 | originality | the topic duplicates an already-published video |
 | rights | an asset a scene actually uses has `rights.status == "blocked"` in the Video IR (`unknown` only warns — see below) |
 

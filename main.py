@@ -14,6 +14,7 @@ Nightshift YouTube Bot — Full Pipeline
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 import time
@@ -65,6 +66,7 @@ from modules.resource_monitor import MemorySampler, log_usage
 from modules.video_review import VideoReview
 from modules import held_video
 from modules.fact_checker import fact_check_claims
+from modules import grounding
 from modules.media_fetcher import MediaFetcher, MediaUnavailable, require_media
 from modules import video_providers
 from modules import image_providers
@@ -437,7 +439,41 @@ def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
     spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned)
 
 
-def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decision, costs) -> None:
+def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_results) -> tuple:
+    """``(results, summary dict)``: the evidence lookup (modules/grounding.py) applied to the
+    checker's results, its extra Gemini tokens in the cost ledger under their own stage, and the
+    passages it used saved as ``grounding.json`` beside ``fact_check.json`` so a quote can be
+    audited after the page has changed. Never raises: whatever fails, the results come back as the
+    checker gave them and the summary says why."""
+    try:
+        path = OUTPUT_DIR / slug / "grounding.json"
+        # A re-run of the same topic reuses the passages the earlier run saved: no request, and no
+        # rate limit to meet (the file is only read when it is for this exact topic).
+        results, summary = grounding.ground_results(
+            topic, claims, fact_results, sources=[c.source for c in section_claims],
+            language=getattr(ctx.agent, "language", None), claim_ids=[c.claim_id for c in section_claims],
+            cached=grounding.load_cached_evidence(path, topic),
+            on_response=lambda r: costs.add_gemini_usage(r, stage=grounding.STAGE))
+        record = summary.to_dict()
+        if summary.evidence is not None and summary.evidence.snippets:
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                # Atomically (a temp file, then replace): a reader never sees half a file. The original fetch
+                # time is carried through reuse, so the file cannot be kept alive by being reused.
+                tmp = path.with_name(path.name + ".tmp")
+                tmp.write_text(json.dumps(grounding.evidence_file(topic, summary.evidence, record),
+                                          indent=2, ensure_ascii=False), encoding="utf-8")
+                os.replace(tmp, path)
+            except OSError as e:
+                logger.warning("Could not save grounding.json (%s) - the run is unaffected", type(e).__name__)
+        return results, record
+    except Exception as e:
+        logger.warning("Fact-check grounding failed (%s: %s) - verdicts are the checker's own",
+                       type(e).__name__, e)
+        return fact_results, {"enabled": True, "unavailable": f"error:{type(e).__name__}"}
+
+
+def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decision, costs, grounding_summary=None) -> None:
     """A run whose fact-check would block the publish gate ends here, owner-visibly,
     before the voice, stills and render are bought.
 
@@ -469,6 +505,9 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
         flagged = held_video.flagged_claims(claims, fact_results)
         if flagged:
             detail["flagged"] = flagged
+        evidence = held_video.grounding_detail(grounding_summary)
+        if evidence:
+            detail["grounding"] = evidence
         # The row's key is channel + topic slug, so an earlier run of this topic may have left a cut on it that a
         # person is still reviewing (held, awaiting approval, blocked after its render). This hold has no video and
         # would replace that cut's text, scenes and verdict, so a row that holds one is left exactly as it is. A
@@ -1025,6 +1064,7 @@ def run(
     fact_results = None
     section_claims = None
     narration_claim_count = None
+    grounding_summary = None
     try:
         # Each claim carries its section (claim_id c000-1, scene s000), so the
         # Storyboard can show which scene says what (modules/claim_scenes.py).
@@ -1036,6 +1076,16 @@ def run(
         narration_claim_count = sum(1 for c in section_claims if c.source == SOURCE_NARRATION)
         claims = [c.text for c in section_claims]
         fact_results = fact_check_claims(claims) if claims else []
+        # Evidence from the English Wikipedia (modules/grounding.py), applied AFTER the checker has
+        # given its own verdicts without seeing it: it can upgrade a claim only with a quote that is
+        # verified in code, add a flag on a contradiction, and when the lookup is unavailable every
+        # verdict stays exactly as the checker gave it. Switch: NIGHTSHIFT_GROUNDED_FACTCHECK=off.
+        if fact_results:
+            if grounding.enabled():
+                fact_results, grounding_summary = _ground_fact_results(
+                    ctx, costs, topic, slug, claims, section_claims, fact_results)
+            else:
+                grounding_summary = grounding.disabled_summary()
         flagged = [r for r in fact_results if r.requires_human_review]
         if flagged:
             logger.warning("Fact-check: %d/%d claim(s) flagged for human review", len(flagged), len(fact_results))
@@ -1060,10 +1110,11 @@ def run(
         early = publish_gate.evaluate_fact_check(
             script=script, fact_results=fact_results, channel=ctx,
             narration_claims=narration_claim_count, claims=section_claims,
-            language=getattr(ctx.agent, "language", None))
+            language=getattr(ctx.agent, "language", None), grounding=grounding_summary)
         if not early.allowed:
             _hold_before_render(ctx, slug=slug, topic=topic, script=script, claims=section_claims,
-                                fact_results=fact_results, decision=early, costs=costs)
+                                fact_results=fact_results, decision=early, costs=costs,
+                                grounding_summary=grounding_summary)
             raise publish_gate.HeldBeforeRender(", ".join(early.blocks))
 
     pipeline.advance(run_record.run_id, PipelineStage.HUMAN_APPROVAL)
@@ -1451,6 +1502,7 @@ def run(
         narration_claims=narration_claim_count,
         claims=section_claims,
         language=getattr(ctx.agent, "language", None),
+        grounding=grounding_summary,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
@@ -1536,6 +1588,11 @@ def run(
             flagged = held_video.flagged_claims(section_claims, fact_results)
             if flagged:
                 detail["flagged"] = flagged
+            # The lookup's summary rides in the gate's own metadata (fact_check.grounding).
+            evidence = held_video.grounding_detail(
+                ((gate_meta or {}).get("fact_check") or {}).get("grounding") if isinstance(gate_meta, dict) else None)
+            if evidence:
+                detail["grounding"] = evidence
             held_video.record_held(
                 channel_id=channel_id,
                 slug=slug,

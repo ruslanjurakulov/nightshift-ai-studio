@@ -17,11 +17,11 @@ module deliberately does NOT expose a "sources" or "citations" field — the
 model has no real sources to cite, and giving it such a field would only
 invite fabricated ones.
 
-Real grounding — actual web search, retrieval, or citation verification — is
-explicitly NOT built here. It is a separate, follow-up piece of work; this
-module is the "ask the model what it recalls, and make it show its
-uncertainty" step that should feed into (and be superseded in rigor by) that
-future grounding layer.
+Real grounding — actual retrieval and citation verification — is NOT built
+here. The FACT-CHECK is grounded (modules/grounding.py looks claims up in the
+English Wikipedia and checks quotes in code); this research step is still the
+"ask the model what it recalls, and make it show its uncertainty" step, and its
+notes remain unverified until the fact-check has seen the script that used them.
 """
 
 import json
