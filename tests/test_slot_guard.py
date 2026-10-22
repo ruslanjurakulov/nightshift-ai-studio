@@ -12,6 +12,7 @@ import io
 import logging
 import os
 import unittest
+from datetime import timedelta
 from unittest import mock
 
 from modules import schedule_catchup
@@ -51,9 +52,8 @@ class TheGuard(unittest.TestCase):
             self.assertEqual(decide(sync, catchup=catchup)[0], slot_guard.SKIP)
 
     def test_a_free_slot_is_a_go_for_both_kinds_of_run(self):
-        sync = FakeSupabase([self.chan])
-        for catchup in (False, True):
-            self.assertEqual(decide(sync, catchup=catchup)[0], slot_guard.GO)
+        for catchup in (False, True):                        # a fresh slot each time: a second attempt would wait
+            self.assertEqual(decide(FakeSupabase([self.chan]), catchup=catchup)[0], slot_guard.GO)
 
     def test_the_run_that_finished_ahead_of_us_is_seen(self):
         # The point of asking again: it was free when the resolver looked and is not now.
@@ -125,7 +125,8 @@ class PausedOrNoLongerScheduled(unittest.TestCase):
 
     def test_a_pause_value_that_means_run_does_not_stop_it(self):
         for value in ("", "0", "false", "off"):
-            self.assertEqual(decide(self.sync, env={list_channels.PAUSE_ENV: value})[0], slot_guard.GO)
+            sync = FakeSupabase([chan("default", hour=15)])                  # a fresh slot: each go claims an attempt
+            self.assertEqual(decide(sync, env={list_channels.PAUSE_ENV: value})[0], slot_guard.GO)
 
     def test_a_channel_paused_since_the_resolver_looked_is_skipped(self):
         for kw in ({"status": "PAUSED"}, {"schedule_on": False}, {"status": "whatever"}):
@@ -214,6 +215,202 @@ class PausedOrNoLongerScheduled(unittest.TestCase):
         self.assertEqual(decide(worked)[0], slot_guard.SKIP)
         self.assertEqual(decide(FakeSupabase([chan("default", hour=15)]))[0], slot_guard.GO)
 
+
+
+def attempt_rows(sync):
+    return [r for r in sync.tables["system_events"] if r.get("event") == "schedule.attempt"]
+
+
+class TheAttemptCap(unittest.TestCase):
+    """A scheduled slot starts the pipeline at most NIGHTSHIFT_SLOT_MAX_ATTEMPTS times (default 2, at most 4). A scheduled
+    retry is a fresh run that pays again, so the cap is what bounds the money, whatever the ticks do."""
+
+    def setUp(self):
+        self.chan = chan("default", hour=15)
+        self.sync = FakeSupabase([self.chan])
+
+    def go(self, **kw):
+        """One guard call, 65 minutes after the one before (the minimum gap between attempts is 60)."""
+        self.calls = getattr(self, "calls", 0) + 1
+        return decide(self.sync, **{"now": at(20, 15, 10) + timedelta(minutes=65 * (self.calls - 1)), **kw})
+
+    def test_the_first_two_attempts_go_and_the_third_does_not(self):
+        self.assertEqual(self.go()[0], slot_guard.GO)
+        self.assertEqual(self.go()[0], slot_guard.GO)
+        rc, said = self.go()
+        self.assertEqual(rc, slot_guard.SKIP)
+        self.assertIn("used its 2 attempt(s)", said)
+        self.assertIn("Run workflow", said)
+        self.assertEqual(len(attempt_rows(self.sync)), 2)               # a refused attempt writes nothing
+
+    def test_the_cap_stops_the_original_ticks_exact_hour_run_and_a_catch_up_alike(self):
+        for catchup in (False, True):
+            self.go(catchup=catchup)
+        for catchup in (False, True):
+            self.assertEqual(self.go(catchup=catchup)[0], slot_guard.SKIP)
+
+    def test_the_row_is_closed_fields_only(self):
+        self.go()
+        (row,) = attempt_rows(self.sync)
+        self.assertEqual(set(row), {"event_key", "event", "ts", "channel_id", "metadata"})
+        self.assertEqual(row["event_key"], "slot-attempt:default:2026-10-20T15:00:00Z:1")
+        self.assertEqual(row["channel_id"], "default")
+        self.assertEqual(row["metadata"], {"slot_start": SLOT, "attempt": 1, "cap": 2})
+
+    def test_the_variable_sets_the_cap_between_one_and_four(self):
+        for value, cap in (("1", 1), ("3", 3), ("4", 4), ("9", 4), ("0", 2), ("-1", 2), ("two", 2), ("", 2)):
+            sync = FakeSupabase([self.chan])
+            gos = [decide(sync, now=at(20, 15, 10) + timedelta(minutes=65 * k),
+                          env={schedule_catchup.ATTEMPT_ENV: value})[0] for k in range(6)]
+            self.assertEqual(gos.count(slot_guard.GO), cap, value)
+            self.assertEqual(gos[:cap], [slot_guard.GO] * cap, value)
+
+    def test_a_bad_value_is_the_default_with_a_warning_that_never_echoes_it(self):
+        for value in ("0", "-3", "SENTINEL-7"):
+            said = []
+            self.assertEqual(schedule_catchup.max_attempts({schedule_catchup.ATTEMPT_ENV: value}, say=said.append), 2)
+            self.assertEqual(len(said), 1, value)
+            self.assertNotIn(value, said[0])
+        said = []
+        self.assertEqual(schedule_catchup.max_attempts({}, say=said.append), 2)
+        self.assertEqual(said, [])
+
+    def test_each_claim_takes_a_different_number_so_a_race_cannot_double_up(self):
+        got = [schedule_catchup.claim_attempt(self.sync, "default", at(20, 15), 2, at(20, 15, 30)) for _ in range(3)]  # the gap is the guard's, not the claim's
+        self.assertEqual(got, [("claimed", 1), ("claimed", 2), ("denied", 2)])
+
+    def test_a_slot_that_already_has_its_video_uses_no_attempt(self):
+        sync = FakeSupabase([self.chan], videos=[video("default", published=iso(at(20, 15, 40)))])
+        self.assertEqual(decide(sync)[0], slot_guard.SKIP)
+        self.assertEqual(attempt_rows(sync), [])
+
+    def test_an_attempt_is_not_evidence_that_the_slot_was_worked(self):
+        # A run that started and died must stay retryable (up to the cap): the attempt row is not a video.
+        self.go()
+        ev = schedule_catchup.read_evidence(self.sync, at(20, 17, 30))
+        self.assertEqual(schedule_catchup.slot_state(ev, "default", at(20, 15)), schedule_catchup.UNWORKED)
+
+    def test_other_slots_and_other_channels_have_their_own_attempts(self):
+        shop = chan("shop", hour=15)
+        sync = FakeSupabase([self.chan, shop])
+        for k in range(2):
+            decide(sync, registry_=registry(self.chan, shop), now=at(20, 15, 10) + timedelta(minutes=65 * k))
+        late = at(20, 17, 30)
+        self.assertEqual(decide(sync, registry_=registry(self.chan, shop), now=late)[0], slot_guard.SKIP)
+        self.assertEqual(decide(sync, registry_=registry(self.chan, shop), channel="shop", now=late)[0], slot_guard.GO)
+        self.assertEqual(decide(sync, slot="2026-10-19T15:00:00Z", now=at(19, 16))[0], slot_guard.GO)
+
+    def test_a_claim_that_cannot_be_written_stops_a_catch_up_and_not_the_original_tick(self):
+        sync = FakeSupabase([self.chan], fail_write={"system_events"})
+        rc, said = decide(sync, catchup=True)
+        self.assertEqual(rc, slot_guard.SKIP)
+        self.assertIn("could not be recorded", said)
+        rc, said = decide(sync, catchup=False)
+        self.assertEqual(rc, slot_guard.GO)
+        self.assertIn("running at the exact hour as usual", said)
+
+    def test_unreadable_evidence_claims_nothing_for_a_strict_run_and_goes_on_for_the_original_tick(self):
+        sync = FakeSupabase([self.chan], fail={"videos"})
+        self.assertEqual(decide(sync, catchup=True)[0], slot_guard.SKIP)
+        self.assertEqual(attempt_rows(sync), [])
+        self.assertEqual(decide(sync, catchup=False)[0], slot_guard.GO)
+        self.assertEqual(len(attempt_rows(sync)), 1)
+
+    def test_a_denied_claim_stops_the_original_tick_even_when_the_evidence_is_unreadable(self):
+        sync = FakeSupabase([self.chan], fail={"videos"})
+        for k in range(2):
+            decide(sync, catchup=False, now=at(20, 15, 10) + timedelta(minutes=65 * k))
+        self.assertEqual(decide(sync, catchup=False, now=at(20, 17, 30))[0], slot_guard.SKIP)
+
+    def test_supabase_not_configured_runs_the_original_tick_and_never_a_catch_up(self):
+        sync = FakeSupabase([self.chan], enabled=False)
+        self.assertEqual(decide(sync, catchup=False)[0], slot_guard.GO)
+        self.assertEqual(decide(sync, catchup=True)[0], slot_guard.SKIP)
+
+    def test_the_warning_carries_nothing_the_database_said(self):
+        _, out = decide(FakeSupabase([self.chan], fail_write={"system_events"}), catchup=True)
+        said = warning_lines(out)
+        self.assertIn("could not be recorded", said)
+        for leaked in ("SENTINEL", "503", "boom"):
+            self.assertNotIn(leaked, said)
+
+
+class TheMinimumGapBetweenAttempts(unittest.TestCase):
+    """A dead credential or a provider outage fails a run in minutes. Without a gap the ticks (15 minutes apart) burn
+    every attempt before anyone can fix the cause; with it the attempts are spread across the catch-up window."""
+
+    def setUp(self):
+        self.chan = chan("default", hour=15)
+        self.sync = FakeSupabase([self.chan])
+        self.first = at(20, 15, 10)
+        self.assertEqual(decide(self.sync, now=self.first)[0], slot_guard.GO)
+
+    def test_a_second_attempt_waits_for_the_gap_and_claims_nothing_meanwhile(self):
+        for minutes in (0, 5, 15, 30, 45, 59):
+            rc, said = decide(self.sync, now=self.first + timedelta(minutes=minutes))
+            self.assertEqual(rc, slot_guard.SKIP, minutes)
+        self.assertIn("less than 60 minutes ago", said)
+        self.assertEqual(len(attempt_rows(self.sync)), 1)                 # waiting used no attempt
+        self.assertEqual(decide(self.sync, now=self.first + timedelta(minutes=60))[0], slot_guard.GO)
+        self.assertEqual(len(attempt_rows(self.sync)), 2)
+
+    def test_it_holds_for_every_kind_of_run(self):
+        for catchup in (False, True):
+            self.assertEqual(decide(self.sync, catchup=catchup, now=self.first + timedelta(minutes=10))[0],
+                             slot_guard.SKIP)
+
+    def test_the_gap_is_measured_from_the_latest_attempt(self):
+        env = {schedule_catchup.ATTEMPT_ENV: "3"}
+        self.assertEqual(decide(self.sync, now=self.first + timedelta(minutes=65), env=env)[0], slot_guard.GO)
+        rc, _ = decide(self.sync, now=self.first + timedelta(minutes=95), env=env)
+        self.assertEqual(rc, slot_guard.SKIP)                       # 30 minutes after the second, 95 after the first
+        rc, _ = decide(self.sync, now=self.first + timedelta(minutes=125), env=env)
+        self.assertEqual(rc, slot_guard.GO)                         # 60 after the second
+
+    def test_the_variable_sets_the_gap_within_ten_and_one_hundred_eighty_minutes(self):
+        for value, minutes in (("10", 10), ("90", 90), ("180", 180), ("5", 10), ("999", 180), ("soon", 60), ("", 60)):
+            said = []
+            got = schedule_catchup.attempt_gap({schedule_catchup.GAP_ENV: value}, say=said.append)
+            self.assertEqual(got, timedelta(minutes=minutes), value)
+            self.assertNotIn("soon", " ".join(said))                        # a warning never echoes the value
+        sync = FakeSupabase([self.chan])
+        env = {schedule_catchup.GAP_ENV: "20"}
+        decide(sync, now=self.first, env=env)
+        self.assertEqual(decide(sync, now=self.first + timedelta(minutes=19), env=env)[0], slot_guard.SKIP)
+        self.assertEqual(decide(sync, now=self.first + timedelta(minutes=20), env=env)[0], slot_guard.GO)
+
+    def test_live_rows_mix_naive_and_z_timestamps_and_both_are_utc(self):
+        now = at(20, 16, 0)
+        half_past = at(20, 15, 30)
+        for raw in ("2026-10-20T15:30:00Z", "2026-10-20T15:30:00", "2026-10-20T15:30:00+00:00",
+                    "2026-10-20T17:30:00+02:00"):
+            self.assertEqual(schedule_catchup.parse_ts(raw, now), half_past, raw)
+        self.assertEqual(schedule_catchup.parse_ts("2026-10-20T15:30:00.123456", now),
+                         half_past + timedelta(microseconds=123456))
+        for junk in ("garbage", "", None, 12):
+            self.assertEqual(schedule_catchup.parse_ts(junk, now), now, junk)
+
+    def test_a_timestamp_that_cannot_be_read_counts_as_just_claimed(self):
+        sync = FakeSupabase([self.chan], events=[{"event_key": "slot-attempt:default:2026-10-20T15:00:00Z:1",
+                                                  "event": "schedule.attempt", "ts": "garbage", "channel_id": "default"}])
+        for catchup in (False, True):
+            rc, _ = decide(sync, catchup=catchup, now=at(20, 19, 0))
+            self.assertEqual(rc, slot_guard.SKIP)
+
+    def test_an_unreadable_attempt_count_stops_a_catch_up_and_not_the_original_tick(self):
+        class OnlyAttemptsFail(FakeSupabase):
+            def select_strict(self, table, params=None):
+                from modules.supabase_sync import SupabaseReadError
+
+                if (params or {}).get("event") == "eq.schedule.attempt":
+                    raise SupabaseReadError(table, 503, "boom-SENTINEL")
+                return super().select_strict(table, params)
+
+        sync = OnlyAttemptsFail([self.chan])
+        rc, said = decide(sync, catchup=True)
+        self.assertEqual(rc, slot_guard.SKIP)
+        self.assertNotIn("SENTINEL", said)
+        self.assertEqual(decide(sync, catchup=False)[0], slot_guard.GO)
 
 if __name__ == "__main__":
     unittest.main()

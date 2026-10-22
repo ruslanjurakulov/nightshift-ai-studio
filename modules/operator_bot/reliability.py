@@ -362,6 +362,26 @@ def _run_view(runs: Section, start: datetime, now: datetime) -> tuple:
     return "none", None
 
 
+def attempts_used_up(ev: "Evidence", channel_id: str, start: datetime) -> int:
+    """How many attempts the scheduler made at this slot when it has used ALL it was allowed (the last attempt
+    recorded was the cap it ran under), else 0. 0 also when the records cannot be read: the alert then says what it
+    always said, and never claims a cap it cannot see. The cap comes from the records themselves, so the bot needs no
+    setting of its own."""
+    from modules import schedule_catchup  # noqa: PLC0415 - the scheduler's own spelling of the key
+
+    sec = ev.ops.slot_attempts(ev.now - LOOKBACK, [channel_id])
+    if not sec.ok:
+        return 0
+    prefix = f"slot-attempt:{channel_id}:{schedule_catchup.slot_iso(start)}:"
+    mine = [r for r in sec.data or [] if str(r.get("event_key") or "").startswith(prefix)]
+    for r in mine:
+        meta = r.get("metadata") if isinstance(r.get("metadata"), dict) else {}
+        n, cap = meta.get("attempt"), meta.get("cap")
+        if isinstance(n, int) and isinstance(cap, int) and not isinstance(n, bool) and 1 <= cap and n >= cap:
+            return len(mine)
+    return 0
+
+
 # -- the dead-man switch --------------------------------------------------------------------
 
 def paused(ops: OperatorSources) -> bool:
@@ -387,8 +407,9 @@ def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Ver
             key = f"deadman:{ch.channel_id}:{day.isoformat()}"
             label = slot_label(day, ch.hour)
             if slot_worked(produced, start):       # the next slot's own output is not this slot's
-                verdicts.fine[key] = ("pipeline", ch.channel_id,
-                                      t(lang, "alert.deadman_ok", channel=ch.channel_id, slot=label))
+                note = ("pipeline", ch.channel_id, t(lang, "alert.deadman_ok", channel=ch.channel_id, slot=label))
+                verdicts.fine[key] = note
+                verdicts.fine[f"deadman-capped:{ch.channel_id}:{day.isoformat()}"] = note
                 continue
             # Only the run's own events: they say a run began, which silences the alarm, but not that a video
             # exists, so they never earn a "recovered" note.
@@ -402,6 +423,14 @@ def deadman(ev: Evidence, grace_default: Optional[int], lang: str, verdicts: Ver
             hint = t(lang, f"alert.deadman_hint_{state}",
                      conclusion=safe_id((run or {}).get("conclusion"), 20) or "?",
                      number=safe_id((run or {}).get("number"), 12) or "?")
+            used = attempts_used_up(ev, ch.channel_id, start)
+            if used:
+                # Its own key: the plain alert for this slot may already have gone out, and a capped alert that
+                # shared its key would be swallowed as a repeat.
+                out.append(_alert("pipeline", f"deadman-capped:{ch.channel_id}:{day.isoformat()}", "warn",
+                                  t(lang, "alert.deadman_capped", channel=ch.channel_id, slot=label, grace=grace,
+                                    used=used, hint=Raw(hint)), ch.channel_id))
+                continue
             out.append(_alert("pipeline", key, "warn",
                               t(lang, "alert.deadman", channel=ch.channel_id, slot=label, grace=grace,
                                 hint=Raw(hint)), ch.channel_id))

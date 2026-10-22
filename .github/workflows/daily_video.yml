@@ -2,22 +2,38 @@ name: Daily YouTube Video
 
 on:
   schedule:
-    # Hourly. The `resolve` job below asks the channel registry which channels
-    # are due at THIS UTC hour and emits a matrix; every other hour costs one
-    # short job that resolves to an empty matrix and stops. GitHub cron cannot
-    # read a database, so this is how a per-channel `publish_hour_utc` becomes
-    # a real schedule without hardcoding anyone's hour into this file.
+    # Four ticks an hour. The `resolve` job below asks the channel registry which
+    # channels are due at THIS UTC hour and emits a matrix; a tick with nothing
+    # due costs one short job that resolves to an empty matrix and stops. GitHub
+    # cron cannot read a database, so this is how a per-channel
+    # `publish_hour_utc` becomes a real schedule without hardcoding anyone's hour
+    # into this file.
     #
     # With only the default channel configured (publish_hour_utc 15) exactly
-    # one video job runs per day, at 15:00 UTC — unchanged from before.
+    # one video job runs per day, at 15:00 UTC or as soon after as GitHub fires
+    # a tick.
     #
-    # GitHub's cron is best effort: a run can start late, or be dropped. So the
-    # resolver also CATCHES UP a channel whose slot hour passed within the last
-    # NIGHTSHIFT_CATCHUP_HOURS (default 1) and has no run recorded for it, and
-    # never schedules a slot that already has one (tools/list_channels.py,
-    # docs/VIDEO_GO_LIVE.md section 9). Still private, still paused by the
-    # same switches.
+    # GitHub guarantees NOTHING about this cron: a tick can start late, or be
+    # dropped. This repo's own history (268 scheduled runs over seven weeks of an
+    # hourly cron) is about one tick in four delivered, at random minutes, with
+    # gaps of up to a day; a lost 22:00 slot (2026-10-21) is what that costs. So
+    # (1) there are four ticks an hour instead of one, (2) the resolver CATCHES UP
+    # a channel whose slot hour passed within the last NIGHTSHIFT_CATCHUP_HOURS
+    # (default 3) and has no run recorded for it, and (3) never schedules a slot
+    # that already has one (tools/list_channels.py, docs/VIDEO_GO_LIVE.md section
+    # 9). More ticks cannot mean more runs: the evidence check in the resolver,
+    # the concurrency group of the slot and the guard in the run each stop a
+    # second run of a slot that has one, and a slot that never produced a video
+    # is started at most NIGHTSHIFT_SLOT_MAX_ATTEMPTS (default 2) times: the
+    # guard in the run records each attempt before anything is spent. Still
+    # private, still paused by the same switches.
+    #
+    # The FIRST entry is the original hourly one and must stay exactly "0 * * * *"
+    # (modules/schedule_catchup.PRIMARY_CRON): only its tick may start the exact
+    # hour when the run evidence cannot be read. The others are backups, which
+    # start a run only on positive knowledge that the slot is free.
     - cron: "0 * * * *"
+    - cron: "15,30,45 * * * *"
   workflow_dispatch:
     inputs:
       channel:
@@ -147,9 +163,21 @@ jobs:
           # deleting the variable or setting it to false. See docs/VIDEO_GO_LIVE.md.
           NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
           # How many hours after its slot a channel with no run recorded for it
-          # is still caught up. Unset = 1, 0 = off, at most 6; a typo is the
+          # is still caught up. Unset = 3, 0 = off, at most 6; a typo is the
           # default with a warning. A pause above still wins over all of it.
           NIGHTSHIFT_CATCHUP_HOURS: ${{ vars.NIGHTSHIFT_CATCHUP_HOURS }}
+          # How many times one channel slot may START the pipeline from the
+          # schedule (a retry of a run that wrote no video row is a fresh run
+          # that pays again). Unset = 2, at most 4; 0 or a typo is 2 with a
+          # warning. Manual runs are exempt. Also read by tools/slot_guard.py.
+          NIGHTSHIFT_SLOT_MAX_ATTEMPTS: ${{ vars.NIGHTSHIFT_SLOT_MAX_ATTEMPTS }}
+          # Minimum minutes between two attempts of one slot, so a dead credential
+          # cannot burn them all within a few ticks. Unset = 60, 10-180.
+          NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES: ${{ vars.NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES }}
+          # Which cron entry fired (empty on a manual run). Any entry other than
+          # the original "0 * * * *" is a backup tick, which never starts a run
+          # on evidence it cannot read (tools/list_channels.py --tick).
+          TICK_CRON: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
           if [ -n "${INPUT_CHANNEL:-}" ]; then
@@ -159,7 +187,7 @@ jobs:
             # Manual run with no channel: every ACTIVE channel, ignoring the hour.
             MATRIX=$(python tools/list_channels.py)
           else
-            MATRIX=$(python tools/list_channels.py --due-hour "$(date -u +%-H)")
+            MATRIX=$(python tools/list_channels.py --due-hour "$(date -u +%-H)" --tick "${TICK_CRON:-}")
           fi
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           COUNT=$(printf '%s' "$MATRIX" | python -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))')
@@ -522,6 +550,9 @@ jobs:
           SLOT_CATCHUP: ${{ matrix.catchup }}
           # The guard re-checks the pause: this job may have waited in its group.
           NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
+          # The guard claims the slot's attempt (cap above) before anything is spent.
+          NIGHTSHIFT_SLOT_MAX_ATTEMPTS: ${{ vars.NIGHTSHIFT_SLOT_MAX_ATTEMPTS }}
+          NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES: ${{ vars.NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES }}
           INPUT_TOPIC: ${{ github.event.inputs.topic }}
           INPUT_NICHE: ${{ github.event.inputs.niche }}
           # Per-run controls (empty on a scheduled run, so the channel's own
@@ -642,8 +673,9 @@ jobs:
           # before anything is spent, whether the pipeline is still on, the channel
           # still scheduled, and the slot still without a run. A manual dispatch is
           # not asked: naming a channel is an instruction. Exit 3 = skip. Any other failure of the guard itself: an exact-hour
-          # run goes on as it always did, a catch-up does not (an unknown must not
-          # start a paid run).
+          # run of the original hourly tick goes on as it always did; a catch-up
+          # and a backup tick's run (both carry catchup=true) do not (an unknown
+          # must not start a paid run).
           if [ "$EVENT_NAME" = "schedule" ]; then
             guard=(--channel "$CHANNEL_ID" --slot-start "$SLOT_START")
             if [ "${SLOT_CATCHUP:-}" = "true" ]; then

@@ -491,6 +491,19 @@ class OperatorSources:
         rows = [r for r in sec.data or [] if r.get("event") in RUN_EVENTS and r.get("channel_id") in ids]
         return Section(True, rows, cap=sec.cap)
 
+    def slot_attempts(self, since: datetime, channel_ids: list) -> Section:
+        """The scheduler's attempt records (``schedule.attempt``, written by tools/slot_guard.py when a scheduled
+        run starts) for the named channels since ``since``: key, channel and the closed metadata (slot start, attempt
+        number, cap). They say a run STARTED, never that a video exists, so they are not slot evidence; the dead-man
+        reads them only to say that a slot used all its attempts."""
+        ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
+        if not ids:
+            return Section(True, [])
+        return self._read("system_events", {
+            "select": "event_key,channel_id,metadata", "event": "eq.schedule.attempt",
+            "channel_id": f"in.({','.join(ids)})", "ts": f"gte.{iso(since)}", "order": "ts.desc", "limit": "200",
+        })
+
     def doctor_results(self, since: datetime) -> Section:
         """The scheduled readiness check's own rows (tools/doctor_report.py): title ``ok`` or ``fail``,
         body the failing checks' names. The bot's rows carry no channel; one that does is not the bot's."""
