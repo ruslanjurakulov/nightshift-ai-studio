@@ -83,6 +83,37 @@ consumer side of the feedback loop:
 - First checks `ContentPlanner`'s queue (`_try_queued_topic()`); a queued
   suggestion that clears the originality check is used directly, spending **no**
   Gemini call.
+- **Every topic the system picks is vetted first** (`modules/topic_gate.py`,
+  `TopicManager.vet_topic()`): a queued entry (any `content_opportunity:*`
+  source), the autopilot's trend pick and the AI's own answer. A topic given with
+  `--topic` (a manual or Command Center dispatch) is an instruction and is never
+  vetted, and neither is a planner entry whose source is `manual`.
+  - *Niche gate.* The channel's niche and name place it in one or more families
+    (history, entertainment, finance, ...; en/ru/uz word lists, one place,
+    versioned by `GATE_VERSION`); the topic's words are scored against the same
+    families. Clearly another field and nothing of the channel's own is
+    `off_niche`; clearly the channel's own is accepted; both without a model call.
+    The same teaser is rejected for a history channel and accepted for an
+    entertainment-news channel.
+  - *Sensitive screen* (minimal, not a policy engine): living people in
+    entertainment or politics, accusations and legal claims, minors in harm's way,
+    a tragedy that is still happening, a medical claim. These are `needs_human`:
+    not auto-selected. A topic anchored in the past (a year up to 1945, or a
+    strong historical term, and nothing recent) is exempt. A channel that is
+    itself about entertainment or politics is not held for naming a person.
+  - *Only if the words cannot place it* **and** the source is a trend (or any
+    source other than the AI pick and audience demand), or the entry is stale: one
+    small Gemini question (ON / OFF), at most `CHRONOS_TOPIC_GATE_MODEL_CALLS`
+    (default 2) per run, recorded in the cost ledger as stage `topic_gate`. No
+    answer leaves a fresh entry queued for another run; a stale one expires.
+  - *Planner state.* A refused entry becomes `rejected` with one closed reason
+    word - `off_niche`, `needs_human` or `stale` - in `content_calendar.json` (and
+    `[rejected: <reason>]` in the mirrored rationale), is never served again, and
+    for `off_niche`/`needs_human` the same text is not queued a second time. The
+    run log says `reason=...` and a `topic.rejected` warning event is emitted.
+    Entries older than `CHRONOS_TOPIC_QUEUE_STALE_DAYS` (default 14; 0 = no age
+    rule), or with an unreadable age, are re-validated at use time, never bulk
+    deleted. `CHRONOS_TOPIC_GATE=off` is a logged rollback switch.
 - Otherwise `_generate_topic()` asks Gemini for a fresh topic, appending — as
   *optional inspiration, never a directive* — `TopicRecommender`'s trend/demand
   suggestions and `PerformanceAnalyzer`'s past-performance context (see §7).
@@ -271,7 +302,8 @@ different representative phrasings per run).
   non-empty store is written again. The store itself is written atomically. The publish gate reads
   the DEFAULT vector store, not `topic_vectors.<channel>.npz`.
 - **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
-  `CalendarEntry` records (`queued`/`published`/`skipped`). A write-through JSON
+  `CalendarEntry` records (`queued`/`reserved`/`rendered`/`published`/`skipped`/
+  `rejected`). A write-through JSON
   store, explicitly a placeholder rather than a `state_store` table.
 - **`pipeline_runs.json`** — `PipelineStateMachine`'s per-run stage history and
   `human_approved` flag (tracking only; see §2). Also a placeholder store.

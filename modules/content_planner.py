@@ -20,7 +20,10 @@ from (a manual add, a `ContentOpportunity` produced by
 etc.), each carrying a lightweight lifecycle status:
 ``queued`` → ``reserved`` (a run claimed it) → ``rendered`` (its video is on
 disk) → ``published`` (upload succeeded), with ``skipped`` for a hard-blocked
-duplicate. It is deliberately NOT a strict state machine — nothing here
+duplicate and ``rejected`` for a topic the selection gate refused to use
+(``modules/topic_gate.py``: off the channel's niche, needs a human, or stale),
+which carries one closed reason word and is never served again. It is
+deliberately NOT a strict state machine — nothing here
 *enforces* the ordering, and callers advance an entry as far as their run
 actually got — just a durable list with dedup, a "give me the next thing to
 work on" accessor, and honest status: a run advances an entry to ``published``
@@ -110,8 +113,15 @@ class CalendarEntry:
     # upload leaves "rendered" (a real video awaiting a human), never a false
     # "published". A run that dies before rendering leaves "reserved" — visibly
     # stuck, which is the honest record, not silently marked done.
-    status: str = "queued"  # queued | reserved | rendered | published | skipped
+    #
+    # "rejected" is the dead end for a topic the selection gate refused
+    # (modules/topic_gate.py), with ``reject_reason`` one of its closed words.
+    # It is never served again, and an entry that was rejected for what the
+    # topic IS (off_niche, needs_human) also stops the same text being queued a
+    # second time - see ContentPlanner.enqueue.
+    status: str = "queued"  # queued | reserved | rendered | published | skipped | rejected
     channel_id: str = DEFAULT_CHANNEL_ID
+    reject_reason: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -128,7 +138,18 @@ class CalendarEntry:
             # Entries written before Phase 5 have no channel — they are the
             # default channel's, which is what the backfill says everywhere else.
             channel_id=d.get("channel_id") or DEFAULT_CHANNEL_ID,
+            reject_reason=d.get("reject_reason") or "",
         )
+
+
+#: Reasons that are a judgement about the TOPIC itself. A topic rejected for one
+#: of these is not queued a second time by the trend poll: it would only be
+#: rejected again, and the model-assisted check would be paid for again. "stale"
+#: is about the entry's age, so the same topic may legitimately come back.
+TOPIC_REJECTION_REASONS = ("off_niche", "needs_human")
+#: Every reason ``mark_rejected`` accepts. Mirrors modules/topic_gate.REASONS;
+#: kept here as a literal so the queue has no import dependency on the gate.
+REJECT_REASONS = TOPIC_REJECTION_REASONS + ("stale",)
 
 
 class ContentPlanner:
@@ -193,6 +214,17 @@ class ContentPlanner:
             ):
                 logger.info("Duplicate queued topic %r — reusing entry %s", topic, entry.entry_id)
                 return entry
+            # A topic the gate rejected for what it IS stays rejected: the poll
+            # that found it trending will find it again tomorrow.
+            if (
+                entry.topic == topic
+                and entry.status == "rejected"
+                and entry.reject_reason in TOPIC_REJECTION_REASONS
+                and entry.channel_id == self.channel_id
+            ):
+                logger.info("Topic %r was rejected (%s) by the selection gate - not queueing it again (entry %s)",
+                            topic, entry.reject_reason, entry.entry_id)
+                return entry
 
         entry_id = uuid.uuid4().hex[:12]
         entry = CalendarEntry(
@@ -223,14 +255,19 @@ class ContentPlanner:
             rationale=opportunity.rationale,
         )
 
-    def next_topic(self) -> Optional[CalendarEntry]:
+    def next_topic(self, skip=()) -> Optional[CalendarEntry]:
         """Return the oldest still-`"queued"` entry (FIFO by `added_at`), or
         None if the queue is empty. Peeking only — does not mutate status.
+
+        `skip` is a collection of entry ids to pass over: how a caller moves on
+        to the next candidate when it has set one aside for this run without
+        changing it (the selection gate could not confirm it this time).
         """
+        skip = set(skip)
         queued = [
             e
             for e in self._load_all().values()
-            if e.status == "queued" and e.channel_id == self.channel_id
+            if e.status == "queued" and e.channel_id == self.channel_id and e.entry_id not in skip
         ]
         if not queued:
             return None
@@ -279,6 +316,27 @@ class ContentPlanner:
         entry.status = "skipped"
         if reason:
             entry.rationale = f"{entry.rationale} [skipped: {reason}]".strip()
+        entries[entry_id] = entry
+        self._save_all(entries)
+        return entry
+
+    def mark_rejected(self, entry_id: str, reason: str) -> CalendarEntry:
+        """Mark `entry_id` as "rejected" with one closed `reason` word
+        (REJECT_REASONS): the selection gate refused to use this topic, and it
+        is never served again. The word is also appended to the rationale as
+        "[rejected: <reason>]" so the mirrored queue shows it without a schema
+        change. Raises ValueError for an unknown id or a reason outside the
+        closed set - a free-text reason here would be a log line pretending to
+        be state."""
+        if reason not in REJECT_REASONS:
+            raise ValueError(f"Unknown rejection reason: {reason!r} (expected one of {REJECT_REASONS})")
+        entries = self._load_all()
+        entry = entries.get(entry_id)
+        if entry is None:
+            raise ValueError(f"No such calendar entry: {entry_id!r}")
+        entry.status = "rejected"
+        entry.reject_reason = reason
+        entry.rationale = f"{entry.rationale} [rejected: {reason}]".strip()
         entries[entry_id] = entry
         self._save_all(entries)
         return entry

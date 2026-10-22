@@ -15,8 +15,11 @@ try:  # POSIX only; the bot runs on Linux. Elsewhere the lock is simply absent.
 except ImportError:  # pragma: no cover
     fcntl = None
 
-from config import GEMINI_MODEL, TOPIC_HISTORY_FILE, SCRIPT_LANGUAGE, VIDEO_DURATION_TARGET
-from modules import topic_dedup, topic_seed
+from config import (
+    GEMINI_MODEL, SCRIPT_LANGUAGE, TOPIC_GATE_ENABLED, TOPIC_GATE_MODEL_CALLS, TOPIC_HISTORY_FILE,
+    TOPIC_QUEUE_STALE_DAYS, VIDEO_DURATION_TARGET,
+)
+from modules import topic_dedup, topic_gate, topic_seed
 from modules.channels import DEFAULT_CHANNEL_ID
 from modules.content_planner import ContentPlanner
 from modules.feedback_engine import FeedbackEngine
@@ -31,6 +34,11 @@ from modules.topic_recommender import TopicRecommender
 logger = logging.getLogger(__name__)
 
 MAX_TOPIC_ATTEMPTS = 3
+
+# How many queued entries one run may look at before it gives up on the queue
+# and asks the model. Each rejection is written to the planner, so the next run
+# starts further down; the cap only bounds one run's writes and log lines.
+MAX_QUEUE_CANDIDATES = 10
 
 # A channel's own memory: how many of its past topics, and how far back, a new
 # topic is compared with (and how many are listed in the prompt). Topics older
@@ -117,9 +125,15 @@ class TopicManager:
     collaborator rather than left to a global.
     """
 
-    def __init__(self, channel=None):
+    def __init__(self, channel=None, costs=None):
         TOPIC_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
         self.channel = channel
+        # The run's cost ledger (modules/cost_ledger.CostLedger), when the caller
+        # has one: the gate's small model calls are recorded in it. None records
+        # nothing - a gap, not an invented number.
+        self.costs = costs
+        # Model calls the niche gate has made in THIS manager's life (one run).
+        self._gate_calls = 0
         self.channel_id = str(channel.channel_id) if channel is not None else None
         # The content-planner entry this run picked, if the topic came off the
         # queue (None when Gemini generated it fresh). Held so the run can mark
@@ -654,63 +668,176 @@ class TopicManager:
             return None, f"too long ({length} chars, limit {MAX_TOPIC_CHARS})"
         return text, ""
 
-    def _try_queued_topic(self) -> str | None:
-        """Check modules/content_planner.py's queue before spending a Gemini
-        call on a fresh topic. A queued entry (enqueued elsewhere — e.g. from
-        TopicRecommender suggestions fed in by the intelligence poller) still
-        goes through the same OriginalityEngine check as a Gemini-generated
-        candidate would: real duplicate topics don't get a pass just because
-        they came from the queue.
+    # -- the niche gate and the sensitive screen (modules/topic_gate.py) ------
 
-        A queued entry that's accepted is **reserved** in the planner, not
-        marked published: the entry is only claimed by this run, and it is
-        advanced to "rendered" and then "published" at the real moments those
-        things happen (see mark_queue_entry_rendered / mark_queue_entry_published,
-        which main.py calls). This is what closes the "marked published the
-        instant it was picked" gap — a run that fails downstream leaves the
-        entry honestly at "reserved" or "rendered", never a false "published".
-        A hard-blocked duplicate is marked "skipped" (not left queued forever)
-        and topic selection falls through to Gemini generation.
+    def _channel_name(self) -> str:
+        name = getattr(self.channel, "name", "")
+        return name if isinstance(name, str) else ""
+
+    def _ask_on_niche(self, topic: str, niche: str) -> bool | None:
+        """The one small model question: is this topic inside the niche? True /
+        False, or None when it could not be asked or answered (no budget left,
+        the call failed, the answer was not ON or OFF). Bounded: at most
+        ``TOPIC_GATE_MODEL_CALLS`` calls per manager, i.e. per run; a failed
+        call counts. Only the error TYPE is logged, never the topic or the
+        message."""
+        if self._gate_calls >= TOPIC_GATE_MODEL_CALLS:
+            logger.info("[channel: %s] Niche check: model-call budget (%d) is spent - not asking about this topic",
+                        self._history_channel, TOPIC_GATE_MODEL_CALLS)
+            return None
+        self._gate_calls += 1
+        agent = getattr(self.channel, "agent", None)
+        prompt = topic_gate.build_niche_prompt(
+            topic, niche, self._channel_name(), getattr(agent, "niche_rules", "") or "")
+        try:
+            response = generate_with_retry(self.client, GEMINI_MODEL, prompt)
+        except Exception as e:  # noqa: BLE001 - an unanswered question is a defer, never a crash
+            logger.warning("[channel: %s] Niche check: the model call failed (%s) - the topic is not confirmed",
+                           self._history_channel, type(e).__name__)
+            return None
+        if self.costs is not None:
+            try:
+                self.costs.add_gemini_usage(response, stage="topic_gate")
+            except Exception:  # noqa: BLE001 - a ledger gap must not change the verdict
+                pass
+        return topic_gate.parse_niche_answer(getattr(response, "text", None))
+
+    def vet_topic(self, topic: str, niche: str, *, source: str, added_at=None, queued: bool = False,
+                  entry_id: str = "") -> "topic_gate.Verdict":
+        """Is this topic fit to be used for this channel, from this source?
+
+        For every topic the SYSTEM picks - a queued entry, a trend, the
+        autopilot's choice, the AI's own answer. Never called for ``--topic``.
+
+        1. Words first (free): a topic clearly outside the channel's niche, or
+           in the sensitive screen, is rejected; one clearly inside it is
+           accepted. Neither makes a model call.
+        2. Only if the words cannot place it AND the source is a trend or the
+           entry is stale: one small model call, capped per run. An ON answer
+           accepts; OFF rejects (``off_niche``); no answer defers the entry for
+           this run (untouched in the queue), except a stale one, which expires.
+        3. The AI's own pick and audience-demand entries are accepted when the
+           words are merely unsure - the model already chose them under the
+           niche rules.
+
+        Every non-accept is logged with its reason and emitted as a
+        ``topic.rejected`` event. This method writes nothing to the planner;
+        the caller does, so a defer leaves the entry as it was.
+        """
+        if not TOPIC_GATE_ENABLED:
+            logger.warning("[channel: %s] Topic gate is OFF (CHRONOS_TOPIC_GATE) - using %r from %s unchecked",
+                           self._history_channel, topic, source)
+            return topic_gate.Verdict(topic_gate.ACCEPT, detail="gate_off")
+        profile = topic_gate.niche_profile(niche, self._channel_name())
+        stale = bool(queued) and topic_gate.is_stale(added_at, TOPIC_QUEUE_STALE_DAYS)
+        verdict = topic_gate.evaluate(topic, profile, source=source, stale=stale)
+        if verdict.action == topic_gate.ASK:
+            answer = self._ask_on_niche(topic, niche)
+            if answer is True:
+                verdict = topic_gate.Verdict(topic_gate.ACCEPT, detail="confirmed", check="model")
+            elif answer is False:
+                verdict = topic_gate.Verdict(topic_gate.REJECT, topic_gate.REASON_OFF_NICHE,
+                                             detail="model", check="model")
+            elif stale:
+                verdict = topic_gate.Verdict(topic_gate.REJECT, topic_gate.REASON_STALE,
+                                             detail="unconfirmed", check="none")
+            else:
+                verdict = topic_gate.Verdict(topic_gate.DEFER, detail="unconfirmed", check="none")
+        if verdict.action != topic_gate.ACCEPT:
+            self._report_gate(topic, verdict, source=source, entry_id=entry_id, stale=stale)
+        elif stale:
+            logger.info("[channel: %s] Stale queue entry %s re-validated and accepted (%s)",
+                        self._history_channel, entry_id or "-", verdict.detail or "words")
+        return verdict
+
+    def _report_gate(self, topic: str, verdict, *, source: str, entry_id: str, stale: bool) -> None:
+        """Say why a topic was not used: one log line and one event."""
+        what = "rejected" if verdict.action == topic_gate.REJECT else "set aside for this run (not confirmed)"
+        logger.warning(
+            "[channel: %s] Topic %s: reason=%s detail=%s check=%s%s - %r (entry %s, source=%s, gate rules %s)",
+            self._history_channel, what, verdict.reason or "unconfirmed", verdict.detail or "-", verdict.check,
+            ", stale entry" if stale else "", topic, entry_id or "-", source, topic_gate.GATE_VERSION)
+        events.emit(events.TOPIC_REJECTED, agent="topic_gate", status=events.STATUS_WARNING,
+                    channel_id=self.channel_id,
+                    metadata={"action": verdict.action, "reason": verdict.reason or "unconfirmed",
+                              "detail": verdict.detail, "check": verdict.check, "source": source,
+                              "entry_id": entry_id, "stale": stale, "model_calls": self._gate_calls,
+                              "gate_version": topic_gate.GATE_VERSION, "topic": topic[:100]})
+
+    def _try_queued_topic(self, niche: str | None = None) -> str | None:
+        """Check modules/content_planner.py's queue before spending a Gemini
+        call on a fresh topic. A queued entry (enqueued elsewhere - e.g. from
+        TopicRecommender suggestions fed in by the intelligence poller) goes
+        through the same checks a Gemini-generated candidate would: real
+        duplicate topics don't get a pass just because they came from the
+        queue, and neither do off-niche or sensitive ones (``vet_topic``).
+
+        Entries are tried oldest first, up to MAX_QUEUE_CANDIDATES:
+          - a repeat or hard-blocked duplicate is marked "skipped";
+          - a topic the gate refuses is marked "rejected" with its closed
+            reason word (off_niche / needs_human / stale) and never served again;
+          - one the gate could not confirm this time is left queued and passed
+            over for this run;
+          - the first one that clears everything is **reserved**.
+        A reserved entry is only claimed by this run: it is advanced to
+        "rendered" and then "published" at the real moments those things happen
+        (see mark_queue_entry_rendered / mark_queue_entry_published, which
+        main.py calls), so a run that fails downstream leaves the entry
+        honestly at "reserved" or "rendered", never a false "published".
 
         Returns None (falls through to Gemini generation) if the planner is
-        unavailable, the queue is empty, or the queued topic is hard-blocked.
+        unavailable or no queued entry is usable.
         """
         if self.content_planner is None:
             return None
+        niche = niche or self._resolve_niche(None)
+        passed_over: set[str] = set()
+        for _ in range(MAX_QUEUE_CANDIDATES):
+            entry = self.content_planner.next_topic(skip=passed_over)
+            if entry is None:
+                return None
 
-        entry = self.content_planner.next_topic()
-        if entry is None:
-            return None
+            repeat = self.find_repeat(entry.topic)
+            if repeat is not None:
+                logger.warning(
+                    "Queued topic '%s' (entry %s) repeats this channel's own '%s' — skipping it",
+                    entry.topic, entry.entry_id, repeat,
+                )
+                self.content_planner.mark_skipped(entry.entry_id, reason="repeats a recent topic of this channel")
+                continue
 
-        repeat = self.find_repeat(entry.topic)
-        if repeat is not None:
-            logger.warning(
-                "Queued topic '%s' (entry %s) repeats this channel's own '%s' — skipping it, falling back to Gemini",
-                entry.topic, entry.entry_id, repeat,
-            )
-            self.content_planner.mark_skipped(entry.entry_id, reason="repeats a recent topic of this channel")
-            return None
+            result = self._safe_originality_check(entry.topic)
+            if self._is_hard_duplicate(entry.topic, result):
+                logger.warning(
+                    "Queued topic '%s' (entry %s) hard-blocked as duplicate of '%s' — skipping it",
+                    entry.topic, entry.entry_id, result.closest_match,
+                )
+                self.content_planner.mark_skipped(entry.entry_id, reason="hard-blocked as duplicate by originality check")
+                continue
 
-        result = self._safe_originality_check(entry.topic)
-        if self._is_hard_duplicate(entry.topic, result):
-            logger.warning(
-                "Queued topic '%s' (entry %s) hard-blocked as duplicate of '%s' — skipping it, falling back to Gemini",
-                entry.topic, entry.entry_id, result.closest_match,
-            )
-            self.content_planner.mark_skipped(entry.entry_id, reason="hard-blocked as duplicate by originality check")
-            return None
+            verdict = self.vet_topic(entry.topic, niche, source=entry.source, added_at=entry.added_at,
+                                     queued=True, entry_id=entry.entry_id)
+            if verdict.action == topic_gate.REJECT:
+                self.content_planner.mark_rejected(entry.entry_id, verdict.reason)
+                continue
+            if verdict.action == topic_gate.DEFER:
+                passed_over.add(entry.entry_id)
+                continue
 
-        if result is not None and result.needs_review:
-            logger.warning(
-                "Queued topic '%s' flagged for review as near-duplicate of '%s' — using anyway",
-                entry.topic, result.closest_match,
-            )
+            if result is not None and result.needs_review:
+                logger.warning(
+                    "Queued topic '%s' flagged for review as near-duplicate of '%s' — using anyway",
+                    entry.topic, result.closest_match,
+                )
 
-        self.content_planner.reserve(entry.entry_id)
-        self._reserved_entry = entry
-        logger.info("Reserved queued topic from content planner: '%s' (entry %s, source=%s)",
-                    entry.topic, entry.entry_id, entry.source)
-        return entry.topic
+            self.content_planner.reserve(entry.entry_id)
+            self._reserved_entry = entry
+            logger.info("Reserved queued topic from content planner: '%s' (entry %s, source=%s)",
+                        entry.topic, entry.entry_id, entry.source)
+            return entry.topic
+        logger.warning("[channel: %s] Looked at %d queued topics and none was usable - choosing a fresh one",
+                       self._history_channel, MAX_QUEUE_CANDIDATES)
+        return None
 
     def mark_queue_entry_rendered(self) -> None:
         """Advance this run's reserved queue entry to "rendered" — its video
@@ -775,12 +902,16 @@ class TopicManager:
         cutoff. When every attempt fails the run STOPS: it never falls back to
         the last candidate, a previous topic or a generic one.
 
-        Not checked, because it cannot be checked without another model call:
-        whether an accepted topic is actually on-niche. The prompt asks for it
-        and offers NO_TOPIC as the way out; nothing here verifies it.
+        On-niche is checked by words only (modules/topic_gate.py), with no extra
+        model call: an answer clearly about another field, or in the sensitive
+        screen, is rejected and regenerated like any other bad answer. An answer
+        the words cannot place is accepted - the prompt asked for the niche and
+        offers NO_TOPIC as the way out, and a model call per attempt would
+        double the cost of the common case. A queued trend entry the words
+        cannot place is the exception (see ``vet_topic``).
         """
         niche = self._resolve_niche(niche)
-        queued_topic = self._try_queued_topic()
+        queued_topic = self._try_queued_topic(niche)
         if queued_topic is not None:
             logger.info("Selected topic: %s", queued_topic)
             return queued_topic
@@ -814,6 +945,14 @@ class TopicManager:
                     candidate, result.closest_match, result.semantic_score, result.lexical_score,
                     attempt, MAX_TOPIC_ATTEMPTS,
                 )
+                continue
+            # The model was told to stay in the niche; the words check that it did
+            # (and the sensitive screen), without another model call.
+            verdict = self.vet_topic(candidate, niche, source="ai")
+            if verdict.action != topic_gate.ACCEPT:
+                failures.append(f"'{candidate}' was rejected: {verdict.reason or 'unconfirmed'} ({verdict.detail})")
+                kinds.append(verdict.reason or "unconfirmed")
+                rejected.append(candidate)
                 continue
             if result is not None and result.needs_review:
                 logger.warning(
