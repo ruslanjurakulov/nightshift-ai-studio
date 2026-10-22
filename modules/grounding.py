@@ -42,12 +42,10 @@ The rules (each is pinned by a test in tests/test_grounded_factcheck*.py)
    data. Text inside a snippet can persuade the judge model, so the guards above are what stand
    between it and a clearance; it can at most add a flag without them.
 
-Clamped verdicts. FACT_CHECK_SYSTEM_PROMPT is defined in fact_checker.py but never sent, so the
-model has not been told the three verdict words and anything else it says is read as
-"unverifiable" (``FactCheckResult.clamped``). The word it really meant may have been
-"likely_inaccurate", so such a result is never cleared here. Until the checker's prompt is fixed
-(a separate, measured change) most clearances will therefore be refused, by design: the
-enforcement only becomes meaningful once real checker verdicts reach this module.
+Clamped verdicts. A checker verdict that is not one of the three words (a JSON boolean, say, which is
+what the model answered while FACT_CHECK_SYSTEM_PROMPT was not sent; see docs/GROUNDED_FACTCHECK.md) is
+read as "unverifiable" (``FactCheckResult.clamped``). The word it really meant may have been
+"likely_inaccurate", so such a result is never cleared here, whatever the prompt switch says.
 
 Bounded: at most MAX_REQUESTS requests per video (retries included; a normal video needs 3), a
 socket timeout (per recv), a clock check between 8 KB chunks of a body (no watchdog: a server that sends

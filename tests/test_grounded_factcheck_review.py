@@ -106,10 +106,13 @@ class AClampedVerdictIsNeverUpgraded(unittest.TestCase):
         self.assertNotIn("clamped", rows[1])
         self.assertNotIn("raw_verdict", rows[1])
 
-    def test_the_system_prompt_is_still_not_sent_in_this_change(self):
-        """Diagnose before fix (CLAUDE.md #8): sending it is a separate, measured change."""
+    def test_the_system_prompt_is_now_sent_in_the_separate_measured_change(self):
+        """This test used to pin the prompt as NOT sent, until the separate change (CLAUDE.md #8) that
+        measured it (run 39749438994: booleans and an `explanation` key) and sent it. The behaviour is
+        pinned in tests/test_factcheck_system_prompt.py; this keeps the call site honest."""
         src = (ROOT / "modules" / "fact_checker.py").read_text()
-        self.assertIn("generate_with_retry(client, GEMINI_MODEL, prompt)", src)
+        self.assertNotIn("generate_with_retry(client, GEMINI_MODEL, prompt)", src)
+        self.assertIn("generate_with_retry(client, GEMINI_MODEL, prompt, config=_request_config())", src)
 
 
 # ── 2 ───────────────────────────────────────────────────────────────────────────

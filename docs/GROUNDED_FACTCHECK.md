@@ -1,6 +1,6 @@
 # Grounded fact-check
 
-`modules/grounding.py` · switch `NIGHTSHIFT_GROUNDED_FACTCHECK` · files `output/<slug>/fact_check.json`, `output/<slug>/grounding.json`
+`modules/grounding.py` · switches `NIGHTSHIFT_GROUNDED_FACTCHECK`, `NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT` · files `output/<slug>/fact_check.json`, `output/<slug>/grounding.json`
 
 ## Why
 
@@ -18,14 +18,53 @@ second, checkable opinion: passages from the English Wikipedia, a free, keyless,
   panel shows each clearance with its quote and its source so it can be audited.
 * **Grounding is conservative.** It starts from the checker's verdicts and can only clear a claim under the
   guards below. It adds a flag when a source contradicts a claim.
-* **A checker verdict that was clamped is never cleared.** `FACT_CHECK_SYSTEM_PROMPT` is defined in
-  `modules/fact_checker.py` but never sent, so the model has not been told the three verdict words, and
-  anything else it says is read as `unverifiable` (`FactCheckResult.clamped`). The word it meant may have been
-  `likely_inaccurate`. So until the checker's prompt is fixed (a **separate, measured** change, CLAUDE.md #8),
-  most clearances will be refused by design, and this feature's enforcement only becomes meaningful once real
-  checker verdicts reach it. The log now carries a per-batch histogram of the raw verdict words and the item
-  keys (structure only), and `fact_check.json` rows show `clamped` / `raw_verdict`, so the next real run
-  proves or kills that theory.
+* **A checker verdict that was clamped is never cleared.** Until the change in "The checker's system prompt"
+  below, `FACT_CHECK_SYSTEM_PROMPT` was defined in `modules/fact_checker.py` but never sent, so the model had not
+  been told the three verdict words and answered in a schema of its own (JSON booleans, an `explanation` key;
+  Actions run 39749438994). Anything that is not one of the three words is read as `unverifiable`
+  (`FactCheckResult.clamped`), because the word it meant may have been `likely_inaccurate`. That rule is
+  unchanged and is what keeps a model that ignores the prompt from clearing anything. The log carries a
+  per-batch histogram of the raw verdict words and the item keys (structure only), and `fact_check.json` rows
+  show `clamped` / `raw_verdict`.
+
+## The checker's system prompt
+
+**Evidence.** Run 39749438994 (topic "Lost Colony of Roanoke"): `verdict outside the three known values for 30
+of 30 claim(s) ... verdicts {True=29, False=1}; item keys {claim,explanation,index,verdict=30}`, then `22 of
+22 ... {True=22}; item keys {explanation,index,verdict=22}`. All 52 claims were clamped to `unverifiable`, all 52
+were flagged, and the publish gate held the video (`fact_check_flagged:43`, exit 79).
+
+**Diagnosis.** The call was `generate_with_retry(client, GEMINI_MODEL, prompt)` with no config, so
+`FACT_CHECK_SYSTEM_PROMPT` (the three words, the `reasoning` key) never reached the model. It invented
+booleans and `explanation`, which is what a model does with a schema it was never given.
+
+**Change.** The prompt is sent through the same `json_config(None, system_instruction=...)` helper the research
+and video-critic calls use (JSON MIME type, no response schema), unless `NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT` is
+`off` / `0` / `false` / `no` / `disabled` / `none`. Empty (what the deploy writes for an unset variable) is ON.
+Nothing in how the answer is read changed: a boolean, an unknown word, a missing `verdict` key are still
+clamped to `unverifiable`, the parser still reads `reasoning` only (a valid word under `explanation` is read with
+empty reasoning), and `requires_human_review` is still computed from the verdict. `tests/test_factcheck_system_prompt.py`
+pins each of those. The variable reaches the runners like `NIGHTSHIFT_GROUNDED_FACTCHECK`: `daily_video.yml`,
+`deploy_web.yml` (into `/opt/nightshift/.env.worker`) and `deploy/.env.worker.example`.
+
+**What this changes for real.** Before, no checker verdict could ever be `likely_accurate`, so nothing was
+cleared and nothing the checker said could be wrong in the lenient direction. After, the model can answer
+`likely_accurate`, and **that verdict is not flagged for review**; the evidence lookup can also now clear
+`unverifiable` claims. The guards in code are unchanged; what is NOT known is how the live model behaves.
+
+**Precondition, measured live, before merging.** The false-accept rate of the checker on plausible-sounding
+falsehoods has to be measured against the real model, and the result posted on the pull request:
+
+    GEMINI_API_KEY=... python3 tools/factcheck_calibration.py --live
+
+It asks the same request the pipeline sends about the 40 claims of `tools/factcheck_calibration_claims.json`
+(15 true, 15 false including popular myths and one-detail swaps, 10 obscure). **Pass: 0 of the 15 false claims
+come back `likely_accurate`.** It also reports how many of the 15 true claims clear (never required) and the
+obscure ones (reported only). A run with any clamped or unresolved verdict is INCONCLUSIVE, not a pass. 15
+false claims can only show that the rate is not high: a clean run is evidence, not a guarantee. The harness
+measures the checker alone; the grounded lookup's own false-accept rate on reversals is the separate
+measurement under "Documented residual" below. Offline (no `--live`) it only validates the data file; the
+unit tests run it against a fake client.
 
 ## What it does, in order
 
@@ -91,11 +130,13 @@ The guards are lexical. A sentence that says the **opposite** with the same word
   comparative reversal ("The Ottomans won" by "The Ottomans lost", "larger than" by "smaller than").
 * hedge and negation synonyms that are not on the lists (the lists are data and will grow).
 
-**Precondition for the checker-prompt change** (the separate PR that sends `FACT_CHECK_SYSTEM_PROMPT` and so
-lets clearances happen): before it merges, measure the **false-accept rate** of the guards plus the judge model
+**Precondition for the checker-prompt change** (the PR that sends `FACT_CHECK_SYSTEM_PROMPT` and so lets
+clearances happen): before it merges, measure the **false-accept rate** of the guards plus the judge model
 on exactly these shapes (reversals, hedge synonyms, negation synonyms), on real judge output, and decide with
-the owner whether that rate is acceptable. Until then clearances are refused for every clamped verdict, which
-is every real verdict today.
+the owner whether that rate is acceptable. That PR also carries the live calibration of the checker itself
+(`tools/factcheck_calibration.py --live`, above). Neither measurement has been made: both need a Gemini key
+with quota. Until the prompt is sent, clearances are refused for every clamped verdict, which was every real
+verdict in run 39749438994.
 
 ## Turning it off
 
