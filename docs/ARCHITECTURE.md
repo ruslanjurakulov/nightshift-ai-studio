@@ -83,6 +83,54 @@ consumer side of the feedback loop:
 - First checks `ContentPlanner`'s queue (`_try_queued_topic()`); a queued
   suggestion that clears the originality check is used directly, spending **no**
   Gemini call.
+- **Every topic the system picks is vetted first** (`modules/topic_gate.py`,
+  `TopicManager.vet_topic()`): a queued entry (any `content_opportunity:*`
+  source), the autopilot's trend pick and the AI's own answer. A topic given with
+  `--topic` (a manual or Command Center dispatch) is an instruction and is never
+  vetted, and neither is a planner entry whose source is `manual`.
+  - *Niche gate.* The channel's niche and name place it in one or more families
+    (history, entertainment, finance, ...; en/ru/uz word lists, one place,
+    versioned by `GATE_VERSION`); the topic's words are scored against the same
+    families. Clearly another field and nothing of the channel's own is
+    `off_niche`; clearly the channel's own is accepted; both without a model call.
+    The same teaser is rejected for a history channel and accepted for an
+    entertainment-news channel.
+  - *Sensitive screen* (minimal, not a policy engine): living people in
+    entertainment or politics, accusations and legal claims, minors in harm's way,
+    a tragedy that is still happening, a medical claim. These are `needs_human`:
+    not auto-selected. A topic anchored in the past is exempt: a period word
+    (ancient, medieval, BC ...), one distinctive historical name (Pompeii), a year
+    up to 1945 with no personal name beside it, or two strong history terms -
+    never one word that is also a modern name (Roman, Salem, Athens, Viking), and
+    never once the topic says it is recent (a recent year, "breaking", "death
+    toll"; "latest research" is not recent). Phrased as a news report (police,
+    accused, arrested, sued) the minor and living-person screens run regardless.
+    A channel that is itself about entertainment or politics is not held merely
+    for naming a person. A history channel's neighbours (true crime, science) are
+    not "another field". A niche the word tables do not know is never called
+    off-niche by words: the sensitive screen and the model decide.
+  - *Known residuals* (a skipped topic, never a failed run): a news-phrased
+    accusation beside a historical name with no year and no era word is held
+    ("The Knights Templar were accused of heresy", "Socrates accused of corrupting
+    the youth", "Pompeii graffiti lawsuit"); the weak entertainment word `star`
+    sends "Star Carr" or "Star Chamber" to the model for a trend; on a niche the
+    tables do not know, a three-word title in capitals ("Dragon Ball Super movie
+    box office") reads as a cast list and is held.
+  - *Only if the words cannot place it* **and** the source is a trend (or any
+    source other than the AI pick and audience demand), or the entry is stale: one
+    small Gemini question (ON / OFF), at most `CHRONOS_TOPIC_GATE_MODEL_CALLS`
+    (default 2) per run, recorded in the cost ledger as stage `topic_gate`. No
+    answer leaves the entry queued for another run (stale or not: a model outage
+    must not empty the queue); an explicit OFF on a stale entry expires it as
+    `stale`, which does not stop the same text being queued again.
+  - *Planner state.* A refused entry becomes `rejected` with one closed reason
+    word - `off_niche`, `needs_human` or `stale` - in `content_calendar.json` (and
+    `[rejected: <reason>]` in the mirrored rationale), is never served again, and
+    for `off_niche`/`needs_human` the same text is not queued a second time. The
+    run log says `reason=...` and a `topic.rejected` warning event is emitted.
+    Entries older than `CHRONOS_TOPIC_QUEUE_STALE_DAYS` (default 14; 0 = no age
+    rule), or with an unreadable age, are re-validated at use time, never bulk
+    deleted. `CHRONOS_TOPIC_GATE=off` is a logged rollback switch.
 - Otherwise `_generate_topic()` asks Gemini for a fresh topic, appending — as
   *optional inspiration, never a directive* — `TopicRecommender`'s trend/demand
   suggestions and `PerformanceAnalyzer`'s past-performance context (see §7).
@@ -271,7 +319,8 @@ different representative phrasings per run).
   non-empty store is written again. The store itself is written atomically. The publish gate reads
   the DEFAULT vector store, not `topic_vectors.<channel>.npz`.
 - **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
-  `CalendarEntry` records (`queued`/`published`/`skipped`). A write-through JSON
+  `CalendarEntry` records (`queued`/`reserved`/`rendered`/`published`/`skipped`/
+  `rejected`). A write-through JSON
   store, explicitly a placeholder rather than a `state_store` table.
 - **`pipeline_runs.json`** — `PipelineStateMachine`'s per-run stage history and
   `human_approved` flag (tracking only; see §2). Also a placeholder store.

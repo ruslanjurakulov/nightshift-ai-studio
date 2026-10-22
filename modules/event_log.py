@@ -68,6 +68,12 @@ TOPIC_HISTORY_RESET = "topic.history_reset"
 # Not named `.failed` on purpose: command-center/lib/decisions.ts and the Errors
 # page treat ANY event name ending in `.failed` as a failure, whatever its status.
 TOPIC_HISTORY_WRITE_ERROR = "topic.history_write_error"
+# A topic the selection gate (modules/topic_gate.py) refused to use, or could
+# not confirm this time. Not named `.failed` for the reason above, and a warning
+# not a failure: the run carries on with the next candidate. Metadata is fixed
+# words and the gate's rule-set version; the topic is shortened to 100 characters
+# the way topic.selected carries it, so an operator can see WHAT was refused.
+TOPIC_REJECTED = "topic.rejected"
 RESEARCH_STARTED = "research.started"
 RESEARCH_COMPLETED = "research.completed"
 # Packaging is decided BEFORE the script (modules/title_planner.py): the title

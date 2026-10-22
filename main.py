@@ -893,7 +893,7 @@ def run(
     # ── Stages 1-2: Topic and Script
     # A saved script skips both Gemini calls, so a crash in a later stage — or a
     # spent daily quota — does not mean paying for generation again.
-    topic_mgr = TopicManager(channel=ctx)
+    topic_mgr = TopicManager(channel=ctx, costs=costs)
     # history/ is only an Actions cache: after a long pause or a lost cache the channel has no memory of what it
     # made. Rebuild it (read only) from the channel's own videos in Supabase before any topic is chosen or checked.
     topic_mgr.seed_history_from_supabase()
@@ -912,6 +912,12 @@ def run(
             if repeat:
                 logger.warning("Autopilot topic %r repeats this channel's own %r — using the topic manager",
                                topic, repeat)
+                topic = None
+            # ...nor with any memory of what the channel is ABOUT: a trending
+            # celebrity teaser is a strong trend. Same niche gate and sensitive
+            # screen as the queue (modules/topic_gate.py); a refused or
+            # unconfirmed topic falls through to the topic manager below.
+            if topic and niche_chosen and not topic_mgr.vet_topic(topic, niche, source="autopilot").accepted:
                 topic = None
         if topic is None:
             try:
