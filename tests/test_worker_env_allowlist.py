@@ -36,10 +36,6 @@ NOT_DEPLOYED = {
     "CHRONOS_ENABLE_REVENUE": "revenue experiments are an Actions-only opt-in",
     "CHRONOS_GEMINI_STRUCTURED_OUTPUT": "a default-off spike (roadmap #50)",
     "CHRONOS_THUMBNAIL_VARIANTS": "A/B width, not a provider setting",
-    "CHRONOS_TOPIC_GATE": "a logged rollback switch for the topic niche gate (modules/topic_gate.py); the gate is on "
-                          "by default and no workflow maps a variable for it - set it in the process environment",
-    "CHRONOS_TOPIC_GATE_MODEL_CALLS": "tuning (default 2 small model calls per run); the code default is the tested one",
-    "CHRONOS_TOPIC_QUEUE_STALE_DAYS": "tuning (default 14 days); the code default is the tested one",
     "ELEVENLABS_RUN_VOICE_ID": "per-run: tools/queue_worker passes it from the job's parameters",
     "GEMINI_MAX_RETRIES": "retry tuning; the code default is the tested one",
     "GEMINI_RETRY_MAX_DELAY": "retry tuning; the code default is the tested one",

@@ -98,14 +98,24 @@ consumer side of the feedback loop:
   - *Sensitive screen* (minimal, not a policy engine): living people in
     entertainment or politics, accusations and legal claims, minors in harm's way,
     a tragedy that is still happening, a medical claim. These are `needs_human`:
-    not auto-selected. A topic anchored in the past (a year up to 1945, or a
-    strong historical term, and nothing recent) is exempt. A channel that is
-    itself about entertainment or politics is not held for naming a person.
+    not auto-selected. A topic anchored in the past is exempt: a period word
+    (ancient, medieval, BC ...), one distinctive historical name (Pompeii), a year
+    up to 1945 with no personal name beside it, or two strong history terms -
+    never one word that is also a modern name (Roman, Salem, Athens, Viking), and
+    never once the topic says it is recent (a recent year, "breaking", "death
+    toll"; "latest research" is not recent). Phrased as a news report (police,
+    accused, arrested, sued) the minor and living-person screens run regardless.
+    A channel that is itself about entertainment or politics is not held merely
+    for naming a person. A history channel's neighbours (true crime, science) are
+    not "another field". A niche the word tables do not know is never called
+    off-niche by words: the sensitive screen and the model decide.
   - *Only if the words cannot place it* **and** the source is a trend (or any
     source other than the AI pick and audience demand), or the entry is stale: one
     small Gemini question (ON / OFF), at most `CHRONOS_TOPIC_GATE_MODEL_CALLS`
     (default 2) per run, recorded in the cost ledger as stage `topic_gate`. No
-    answer leaves a fresh entry queued for another run; a stale one expires.
+    answer leaves the entry queued for another run (stale or not: a model outage
+    must not empty the queue); an explicit OFF on a stale entry expires it as
+    `stale`, which does not stop the same text being queued again.
   - *Planner state.* A refused entry becomes `rejected` with one closed reason
     word - `off_niche`, `needs_human` or `stale` - in `content_calendar.json` (and
     `[rejected: <reason>]` in the mirrored rationale), is never served again, and

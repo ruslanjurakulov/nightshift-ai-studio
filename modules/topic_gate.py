@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 #: Bump on ANY change to a word list or a threshold below. Logged with every
 #: rejection (and in the event), so "why was this topic rejected on that day"
 #: has an answer after the lists change.
-GATE_VERSION = "2026-10-22.1"
+GATE_VERSION = "2026-10-22.2"
 
 # -- the closed set of reasons --------------------------------------------
 #: The topic is outside the channel's niche (decided by words, or by the model).
@@ -55,8 +55,10 @@ REASON_OFF_NICHE = "off_niche"
 #: A person must decide: living real people, accusations, minors, an active
 #: tragedy, a medical or legal claim. Scheduled runs never auto-select these.
 REASON_NEEDS_HUMAN = "needs_human"
-#: A queued entry older than the stale limit that nothing could positively
-#: confirm as on-niche. Expired, not served.
+#: A queued entry older than the stale limit that the model explicitly called
+#: off-niche. Expired, not served - but, unlike off_niche, not a verdict on the
+#: topic itself, so the same text may be queued again when it trends again.
+#: (A stale entry nothing could confirm stays queued: an outage must not empty it.)
 REASON_STALE = "stale"
 REASONS = (REASON_OFF_NICHE, REASON_NEEDS_HUMAN, REASON_STALE)
 
@@ -99,26 +101,44 @@ LENIENT_SOURCES = frozenset({"ai", "content_opportunity:demand"})
 # folded at import; "x*" is a prefix, a term with a space is a phrase.
 # =========================================================================
 
+# History, strong terms, in three kinds - the difference decides whether a topic
+# is EXEMPT from the sensitive screen, because "Roman Abramovich", "Roman Reigns",
+# "Athens police", "Salem police" and "Minnesota Vikings" are people and places in
+# today's news, not history:
+#   era        names a period: on its own it anchors a topic in the past
+#   distinct   names one famous historical thing nobody else is called: also anchors
+#   homonym    a word that is history AND a modern name or brand: counts only as
+#              one of TWO strong terms, never alone
+_HIST_ERA = (
+    "ancient", "antiquity", "medieval", "middle ages", "dark ages", "bronze age", "iron age", "stone age",
+    "bc", "bce", "pharaoh*", "crusade*", "crusader*", "conquistador*", "renaissance", "inquisition",
+    "caliphate", "byzantine", "byzantium", "black death",
+    "древн*", "средневеков*", "фараон*", "крестов*", "византи*",
+    "qadimgi", "qadimiy", "firavn*", "salib*",
+)
+_HIST_DISTINCT = (
+    "pompeii", "pompei", "herculaneum", "roanoke", "celeste", "atlantis", "stonehenge", "tutankhamun",
+    "cleopatra", "napoleon*", "caesar", "genghis", "constantinople", "templar*", "archaeolog*",
+    "excavation*", "mummy", "mummies", "sumerian*", "babylon*", "mesopotamia*", "assyria*", "silk road",
+    "world war", "wwi", "wwii", "ww1", "ww2", "colosseum", "nuremberg", "socrates", "hamelin",
+    "machu picchu", "tenochtitlan", "romanov*",
+    "помпе*", "атлантид*", "наполеон*", "клеопатр*", "цезар*", "чингис*", "константинопол*", "тамплиер*",
+    "археолог*", "мумия", "мумии", "тутанхамон*", "селест*", "роанок*", "амир темур", "романов*",
+    "pompeya", "atlantida", "temur", "temuriy*", "chingiz*", "arxeolog*",
+)
+_HIST_HOMONYM = (
+    "empire*", "emperor*", "dynasty", "dynasties", "pyramid*", "viking*", "roman", "romans", "rome",
+    "titanic", "maya", "mayan", "inca", "incas", "aztec*", "tsar", "tsars", "sultan*", "gladiator*",
+    "spartan*", "sparta", "trojan", "athens", "salem", "samurai", "mongol*", "ottoman*",
+    "импери*", "династи*", "пирамид*", "римск*", "рим", "викинг*", "монгол*", "самура*", "титаник",
+    "imperiya*", "sulola*", "piramida*", "rim", "rimlik*",
+)
+
 # family -> (strong terms, weak terms). A strong term all but names the family;
 # a weak one only leans (the word "film" is in history too).
 _FAMILIES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "history": (
-        ("ancient", "antiquity", "medieval", "middle ages", "dark ages", "empire*", "emperor*", "dynasty",
-         "dynasties", "pharaoh*", "pyramid*", "crusade*", "crusader*", "viking*", "roman", "romans", "rome",
-         "romanov*", "pompeii", "pompei", "herculaneum", "roanoke", "celeste", "atlantis", "stonehenge",
-         "titanic", "tutankhamun", "cleopatra", "napoleon*", "caesar", "genghis", "mongol*", "ottoman*",
-         "byzantine", "byzantium", "constantinople", "samurai", "templar*", "black death", "archaeolog*",
-         "excavat*", "mummy", "mummies", "sumerian*", "babylon*", "mesopotamia*", "assyria*", "maya", "mayan",
-         "aztec*", "inca", "incas", "silk road", "world war", "wwi", "wwii", "ww1", "ww2", "bronze age",
-         "iron age", "stone age", "bc", "bce", "tsar", "tsars", "sultan*", "caliphate", "gladiator*",
-         "colosseum", "spartan*", "sparta", "trojan", "athens", "renaissance", "inquisition", "conquistador*",
-         "salem", "nuremberg", "socrates", "hamelin", "machu picchu", "tenochtitlan",
-         "древн*", "импери*", "средневеков*", "фараон*", "пирамид*", "римск*", "рим", "викинг*", "династи*",
-         "крестов*", "помпе*", "атлантид*", "наполеон*", "клеопатр*", "цезар*", "чингис*", "монгол*",
-         "византи*", "константинопол*", "самура*", "тамплиер*", "археолог*", "мумия", "мумии", "титаник",
-         "тутанхамон*", "селест*", "роанок*", "амир темур",
-         "qadimgi", "qadimiy", "imperiya*", "firavn*", "piramida*", "rim", "rimlik*", "sulola*", "salib*",
-         "pompeya", "atlantida", "temur", "temuriy*", "chingiz*", "arxeolog*", "fir'avn*"),
+        _HIST_ERA + _HIST_HOMONYM + _HIST_DISTINCT,
         ("history", "historic", "historical", "histories", "century", "centuries", "mystery", "mysteries",
          "unsolved", "vanished", "vanish", "disappeared", "disappearance", "legend", "legends", "lost",
          "battle", "siege", "war", "revolution", "kingdom", "king", "queen", "plague", "shipwreck",
@@ -238,10 +258,17 @@ _DISASTER = (
     "outbreak", "pandemic", "massacre", "bombing", "terror*", "collapse", "disaster",
     "землетрясени*", "взрыв*", "наводнени*", "теракт*", "zilzila*", "portlash*", "suv toshqin*",
 )
+# "Latest research" and "what we know today" are said of Pompeii too, so the soft
+# words (today, latest, ongoing) are NOT recency. These are: a story as it breaks.
 _RECENCY_WORDS = (
-    "breaking", "latest", "today", "tonight", "ongoing", "this week", "just in", "live updates",
-    "death toll", "срочно", "сегодня", "прямо сейчас", "bugun", "shoshilinch",
+    "breaking", "tonight", "this week", "just in", "live updates",
+    "death toll", "срочно", "прямо сейчас", "shoshilinch",
 )
+# News-report phrasing: if present, a past-looking anchor does not switch the
+# minor / living-person screens off ("Rome: 12-year-old missing, police say").
+_NEWS_CUES = ("police", "accused", "arrested", "sued", "sues", "charged", "полиц*", "politsiya*")
+# Gossip verbs: a named person doing something now.
+_GOSSIP_CUES = ("visits", "slams", "reacts", "spotted", "responds", "reveals", "announces", "reunites")
 
 
 # =========================================================================
@@ -251,14 +278,70 @@ _RECENCY_WORDS = (
 _APOSTROPHES = "'`‘’ʻʼʹ′´"
 _APOS_TABLE = {ord(c): None for c in _APOSTROPHES}
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
-_YEAR_RE = re.compile(r"(?<!\d)(1\d{3}|20\d{2})(?!\d)")
-_AGE_RE = re.compile(r"(?<!\d)(\d{1,2})\s*[- ]?\s*(?:year|yr|y)[- ]?\s*old|(?<!\d)(\d{1,2})\s*(?:летн\w*|yosh\w*)")
+# A year-like number: not part of a bigger number or a price, and (checked in
+# _years) not a quantity - "1080p", "1500 crore", "1000 goals" are not years.
+_YEAR_RE = re.compile(r"(?<![\d,.$\u20ac\u00a3\u20b9])(1\d{3}|20\d{2})(?!\d)")
+_NOT_A_YEAR_AFTER = re.compile(
+    r"(?:%|\s{0,2}(?:p|k|px|fps|hz|crores?|cr|lakhs?|views?|subs|subscribers|days?|goals?|likes|votes|"
+    r"vs|mb|gb|tb|kg|km|mm|cm|usd|inr|rs|eur|dollars?|rupees|years?|yrs?|hours?|minutes?|episodes?|"
+    r"points?|runs|wickets|miles|metres|meters|feet|ft)\b)", re.IGNORECASE)
+# Whitespace between the digits and "year-old" is bounded: an unbounded \s* pair
+# is quadratic on "1" + 100k spaces.
+_AGE_RE = re.compile(r"(?<!\d)(\d{1,2})\s{0,3}-?\s{0,3}(?:year|yr|y)-?\s{0,3}old|(?<!\d)(\d{1,2})\s{0,3}(?:\u043b\u0435\u0442\u043d\w{0,10}|yosh\w{0,10})")
+
+#: A topic is read up to this many characters; the rest is not evidence and a
+#: queue entry can be arbitrarily long.
+MAX_TOPIC_READ = 400
+
+# Characters that look like a Latin letter in another script. Applied only inside
+# a word that ALREADY contains a Latin letter ("Teаser" with a Cyrillic а), so
+# real Russian and Greek words are never rewritten.
+_HOMOGLYPHS = {ord(k): v for k, v in {
+    "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p", "\u0441": "c", "\u0445": "x", "\u0443": "y",
+    "\u043a": "k", "\u0456": "i", "\u0458": "j", "\u04bb": "h", "\u0455": "s", "\u0501": "d",
+    "\u0410": "A", "\u0412": "B", "\u0415": "E", "\u041a": "K", "\u041c": "M", "\u041d": "H",
+    "\u041e": "O", "\u0420": "P", "\u0421": "C", "\u0422": "T", "\u0425": "X", "\u0423": "Y",
+    "\u03b1": "a", "\u03bf": "o", "\u03c1": "p", "\u03bd": "v", "\u03b5": "e", "\u03b9": "i",
+    "\u03ba": "k", "\u03c4": "t", "\u03c5": "u", "\u03c7": "x",
+    "\u0391": "A", "\u0392": "B", "\u0395": "E", "\u0396": "Z", "\u0397": "H", "\u0399": "I",
+    "\u039a": "K", "\u039c": "M", "\u039d": "N", "\u039f": "O", "\u03a1": "P", "\u03a4": "T",
+    "\u03a5": "Y", "\u03a7": "X",
+}.items()}
+_ASCII_LETTER = re.compile(r"[A-Za-z]")
+
+
+def _unmix(match) -> str:
+    word = match.group(0)
+    if _ASCII_LETTER.search(word):
+        return word.translate(_HOMOGLYPHS)
+    return word
+
+
+def clean(text) -> str:
+    """The text as a reader sees it: compatibility forms folded (NFKC: full-width
+    and math-bold letters become plain), invisible format characters (zero-width
+    space, soft hyphen, joiners) removed, and look-alike letters in a mixed-script
+    word turned back into Latin. What a filter must read, not what was typed to
+    get past it."""
+    s = unicodedata.normalize("NFKC", str(text or ""))
+    s = "".join(c for c in s if unicodedata.category(c) != "Cf")
+    return re.sub(r"\w+", _unmix, s)
 
 
 def fold(text) -> str:
     """Case-, accent- and apostrophe-insensitive form of ``text``."""
-    s = unicodedata.normalize("NFKD", str(text or "").casefold().translate(_APOS_TABLE))
-    return "".join(c for c in s if not unicodedata.combining(c))
+    s = unicodedata.normalize("NFKD", clean(text).casefold().translate(_APOS_TABLE))
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+def _years(text: str) -> list:
+    """The year-like numbers in ``text`` that are years."""
+    out = []
+    for m in _YEAR_RE.finditer(text):
+        if _NOT_A_YEAR_AFTER.match(text, m.end()):
+            continue
+        out.append(int(m.group(1)))
+    return out
 
 
 class _Lexicon:
@@ -305,8 +388,18 @@ _LEX_MEDICAL = _Lexicon(_MEDICAL)
 _LEX_MEDICAL_CLAIM = _Lexicon(_MEDICAL_CLAIM)
 _LEX_DISASTER = _Lexicon(_DISASTER)
 _LEX_RECENCY = _Lexicon(_RECENCY_WORDS)
+_LEX_NEWS = _Lexicon(_NEWS_CUES)
+_LEX_GOSSIP = _Lexicon(_GOSSIP_CUES)
+_LEX_ERA = _Lexicon(_HIST_ERA)
+_LEX_DISTINCT = _Lexicon(_HIST_DISTINCT)
+_LEX_HOMONYM = _Lexicon(_HIST_HOMONYM)
 
 FAMILY_NAMES = tuple(_FAMILIES)
+
+#: A history channel's neighbours: a true-crime or science topic is not "another
+#: field" for it ("Jack the Ripper: the murders", "Challenger: what NASA knew").
+#: They are not evidence FOR the niche either: they only stop a rejection.
+ADJACENT_FAMILIES = {"history": ("true_crime", "science")}
 
 
 @dataclass(frozen=True)
@@ -316,10 +409,36 @@ class Analysis:
     scores: dict          # family -> score (2 per strong term, 1 per weak term)
     strong: dict          # family -> how many STRONG terms it matched
     credits: bool         # "Title | Name Surname | Name Surname" video-credit pattern
-    recent: bool          # a year >= 1990, or a "breaking / latest / today" word
-    recent_year: bool     # a year within the last two calendar years
+    era: bool             # names a period (ancient, medieval, BC, crusade ...)
+    distinct: int         # era + distinctive historical terms matched
+    homonyms: int         # history words that are also modern names (roman, rome, salem ...)
+    year_hist: bool       # a real year up to 1945
+    late_year: bool       # a real year from 1990 on
+    recent_year: bool     # a real year within the last two calendar years
+    hard_recent: bool     # breaking / death toll / live updates ...
+    news: bool            # police, accused, arrested, sued ...
+    gossip: bool          # visits, slams, reacts, spotted ...
+    person_like: bool     # two adjacent Capitalised words that are no known term: a name
     tokens: tuple
     padded: str
+
+    @property
+    def strongly_historical(self) -> bool:
+        """Safe to call history without a model: an era, a year (that is not
+        beside a name), or two strong terms. One distinctive term (Pompeii) is
+        history; it is not proof that the sentence around it is."""
+        return self.era or self.year_hist or (self.distinct + self.homonyms) >= 2
+
+    @property
+    def anchored(self) -> bool:
+        """Is the topic about the past, for the sensitive screen's exemption?"""
+        return self.era or self.distinct >= 1 or self.year_hist or (self.distinct + self.homonyms) >= 2
+
+    @property
+    def recent(self) -> bool:
+        """Does the topic say it is about now? A recent year or a story-as-it-breaks
+        word. A year from 1990 on also counts unless the topic names an era."""
+        return self.hard_recent or self.recent_year or (self.late_year and not self.era)
 
 
 def _current_year() -> int:
@@ -341,39 +460,93 @@ def _people_credits(text: str) -> bool:
     return sum(1 for p in parts[1:] if _looks_like_name(p)) >= 2
 
 
-def analyze(topic: str) -> Analysis:
-    folded = fold(topic)
+#: Words that start a title in capitals and are not part of a name.
+_NAME_STOP = frozenset(fold(w) for w in (
+    "the a an why how what when where who which top inside secret secrets dark real true untold lost last "
+    "great new old first final shocking hidden mystery mysteries story history behind truth case fall rise "
+    "age battle war book day night man woman life death that this these those with from into over after "
+    "before about between beyond they their them its our your you we he she it his her and but for not no "
+    "latest research theories theory evidence discovery discoveries what we know today").split())
+
+
+def _person_like(text: str) -> bool:
+    """Two adjacent Capitalised words, neither a stop word nor a term of any
+    family vocabulary: "Kim Kardashian", "Mark Zuckerberg". It does not know who
+    is famous - only that a name is there, and a name beside a news cue is not
+    a thing the word tables can place."""
+    words = [re.sub(r"[\u2019']s$", "", w.strip(".,;:!?()[]\"'|-")) for w in str(text or "").split()]
+    for first, second in zip(words, words[1:]):
+        if not (len(first) >= 3 and len(second) >= 3):
+            continue
+        if fold(second) in _NAME_STOP:
+            continue
+        if not all(w.isalpha() and w[0].isupper() and w[1:].islower() for w in (first, second)):
+            continue
+        if fold(first) in _NAME_STOP:
+            continue
+        if any(_known_term(w) for w in (first, second)):
+            continue
+        return True
+    return False
+
+
+def _known_term(word: str) -> bool:
+    folded = fold(word)
     tokens = tuple(_WORD_RE.findall(folded))
     padded = " " + " ".join(tokens) + " "
-    credits = _people_credits(topic)
+    for name in FAMILY_NAMES:
+        if _STRONG[name].hits(tokens, padded) or _WEAK[name].hits(tokens, padded):
+            return True
+    return False
+
+
+def analyze(topic: str) -> Analysis:
+    text = clean(str(topic or "")[:MAX_TOPIC_READ])
+    folded = fold(text)
+    tokens = tuple(_WORD_RE.findall(folded))
+    padded = " " + " ".join(tokens) + " "
+    credits = _people_credits(text)
+    person = _person_like(text)
     scores: dict[str, int] = {}
     strong: dict[str, int] = {}
     for name in FAMILY_NAMES:
         strong[name] = len(_STRONG[name].hits(tokens, padded))
         scores[name] = STRONG_WEIGHT * strong[name] + WEAK_WEIGHT * len(_WEAK[name].hits(tokens, padded))
-    years = [int(y) for y in _YEAR_RE.findall(str(topic or ""))]
-    # A year puts the topic in time. Up to the end of WWII it is evidence of
-    # history on its own; 1946-1989 leans; from 1990 on it is recent and is
-    # never read as history (it also withdraws the history exemption below).
     # A "Title | Name Surname | Name Surname" video title is a credited
     # production - overwhelmingly a film, a series, a song - so it reads as
     # entertainment (it never reads as history).
     if credits:
         strong["entertainment"] += 1
         scores["entertainment"] += STRONG_WEIGHT
+    years = _years(folded)
+    # A year puts the topic in time. Up to the end of WWII it is evidence of
+    # history on its own - unless a name is beside it, when the number is as
+    # likely a stray figure as a date; 1946-1989 leans; from 1990 on it is
+    # recent and is never read as history.
+    year_hist = any(y <= 1945 for y in years) and not person
     for y in years:
         if y <= 1945:
-            strong["history"] += 1
-            scores["history"] += STRONG_WEIGHT
+            if not person:
+                strong["history"] += 1
+                scores["history"] += STRONG_WEIGHT
         elif y <= 1989:
             scores["history"] += WEAK_WEIGHT
     now = _current_year()
+    era_hits = _LEX_ERA.hits(tokens, padded)
     return Analysis(
         scores=scores,
         strong=strong,
         credits=credits,
-        recent=any(y >= 1990 for y in years) or bool(_LEX_RECENCY.hits(tokens, padded)),
+        era=bool(era_hits),
+        distinct=len(era_hits | _LEX_DISTINCT.hits(tokens, padded)),
+        homonyms=len(_LEX_HOMONYM.hits(tokens, padded)),
+        year_hist=year_hist,
+        late_year=any(y >= 1990 for y in years),
         recent_year=any(y >= now - 2 for y in years),
+        hard_recent=bool(_LEX_RECENCY.hits(tokens, padded)),
+        news=bool(_LEX_NEWS.hits(tokens, padded)),
+        gossip=bool(_LEX_GOSSIP.hits(tokens, padded)),
+        person_like=person,
         tokens=tokens,
         padded=padded,
     )
@@ -386,7 +559,8 @@ def analyze(topic: str) -> Analysis:
 #: Words in a niche or channel name that say nothing about the subject.
 _GENERIC_NICHE_WORDS = frozenset({"news", "video", "videos", "channel", "daily", "best", "new", "world",
                                   "life", "tips", "guide", "official", "shorts", "tv", "show", "story",
-                                  "stories", "facts", "top", "hub", "central", "lab", "studio", "club"})
+                                  "stories", "facts", "top", "hub", "central", "lab", "studio", "club",
+                                  "history", "mystery", "dark", "real", "true", "untold", "chrono"})
 
 
 @dataclass(frozen=True)
@@ -408,6 +582,11 @@ def niche_profile(niche: str, name: str = "") -> NicheProfile:
     Its free-text strategy and rules are deliberately not read: a history
     channel's rules say "no celebrity gossip", and the word must not make it an
     entertainment channel.
+
+    ``words`` are the channel's own content words, minus the generic ones and
+    minus any word that is already a family term: "history" is in every
+    history topic and in "The dark history of Taylor Swift's album", so sharing
+    it proves nothing.
     """
     from modules import topic_dedup  # light module; imported here to keep this one import-cycle-proof
 
@@ -419,26 +598,36 @@ def niche_profile(niche: str, name: str = "") -> NicheProfile:
         for fam in FAMILY_NAMES:
             if _STRONG[fam].hits(tokens, padded) or _WEAK[fam].hits(tokens, padded):
                 families.add(fam)
-    words = {w for w in topic_dedup.content_words(f"{niche} {name}") if w not in _GENERIC_NICHE_WORDS and len(w) > 2}
+    words = {w for w in topic_dedup.content_words(f"{niche} {name}")
+             if w not in _GENERIC_NICHE_WORDS and len(w) > 2 and not _known_term(w)}
     return NicheProfile(frozenset(families), frozenset(words), " ".join(str(niche or "").split())[:200])
 
 
 def niche_check(topic: str, profile: NicheProfile, analysis: Analysis | None = None) -> str:
     """``"on"`` / ``"off"`` / ``"unsure"`` from the words alone.
 
-    off    a different family is clearly named (a score of 2 or more), the
-           channel's own families get no evidence at all, and the topic shares
-           no word with the channel's niche or name
-    on     the channel's own family is named by a strong term, and no other
-           family is clearly named
-    unsure everything else - mixed evidence, no evidence, an unknown niche
-           with no foreign evidence
+    unsure always, when the channel's niche is not one the word tables know
+           ("anime", "fantasy stories", a customer's own words): nothing can be
+           called foreign to a niche that has no shape
+    off    a different family is clearly named (a score of 2 or more), neither
+           the channel's own families nor their neighbours (ADJACENT_FAMILIES)
+           get any evidence, and the topic shares no word with the niche
+    on     the channel's own family is named by a strong term, no other family
+           is clearly named, and - for a history channel - the topic is not a
+           named person the words cannot vouch for ("Kim Kardashian visits Pompeii")
+    unsure everything else
     """
+    if not profile.known:
+        return "unsure"
     a = analysis or analyze(topic)
+    near = set(profile.families)
+    for fam in profile.families:
+        near.update(ADJACENT_FAMILIES.get(fam, ()))
     native = max((a.scores.get(f, 0) for f in profile.families), default=0)
     native_strong = max((a.strong.get(f, 0) for f in profile.families), default=0)
-    foreign = max((s for f, s in a.scores.items() if f not in profile.families), default=0)
-    if foreign >= DECISIVE_SCORE and native == 0:
+    adjacent = max((a.scores.get(f, 0) for f in near - profile.families), default=0)
+    foreign = max((s for f, s in a.scores.items() if f not in near), default=0)
+    if foreign >= DECISIVE_SCORE and native == 0 and adjacent == 0:
         from modules import topic_dedup
 
         if profile.words & topic_dedup.content_words(topic):
@@ -447,6 +636,8 @@ def niche_check(topic: str, profile: NicheProfile, analysis: Analysis | None = N
     # "on" needs a STRONG term of the channel's own family, however many weak
     # ones there are: "mystery", "vanished" and "lost" are in every tabloid headline.
     if native_strong >= 1 and foreign < DECISIVE_SCORE:
+        if "history" in profile.families and a.person_like and not a.strongly_historical:
+            return "unsure"
         return "on"
     return "unsure"
 
@@ -468,16 +659,20 @@ _WAIVED_BY_NICHE = {
 def sensitive_category(topic: str, profile: NicheProfile | None = None, analysis: Analysis | None = None) -> str | None:
     """The sensitive category the topic falls in, or None.
 
-    A topic anchored in the past (a year up to 1945, or a clearly historical
-    term, and nothing recent) is exempt: "the arrest of Joan of Arc" is not an
-    accusation about a living person. That exemption is the only one; it never
-    applies to a recent year or a "breaking" word.
+    A topic anchored in the past is exempt: "the arrest of Joan of Arc in 1430"
+    is not an accusation about a living person. Anchored means a period word, a
+    distinctive historical term (Pompeii), a year up to 1945 with no name beside
+    it, or two strong history terms - never ONE modern-name homonym ("Roman
+    Abramovich", "Salem police", "Athens police"), and never once the topic says
+    it is recent (a recent year, "breaking", "death toll"). Where the topic is
+    phrased as a news report (police, accused, arrested, sued) the minor and
+    living-person screens run even for an anchored topic.
     """
     a = analysis or analyze(topic)
     families = profile.families if profile is not None else frozenset()
     waived = {c for f in families for c in _WAIVED_BY_NICHE.get(f, ())}
-    historical = a.strong.get("history", 0) >= 1 and not a.recent
-    if historical:
+    historical = a.anchored and not a.recent
+    if historical and not a.news:
         return None
     tokens, padded = a.tokens, a.padded
 
@@ -487,15 +682,18 @@ def sensitive_category(topic: str, profile: NicheProfile | None = None, analysis
                 or (a.scores.get("politics", 0) >= DECISIVE_SCORE and a.scores.get("history", 0) == 0)):
             return CAT_LIVING_PERSON
     # an accusation, a case, a lawsuit
-    if _LEX_ACCUSATION.hits(tokens, padded) or len(_LEX_LEGAL_WEAK.hits(tokens, padded)) >= 2:
+    if not historical and (_LEX_ACCUSATION.hits(tokens, padded) or len(_LEX_LEGAL_WEAK.hits(tokens, padded)) >= 2):
         return CAT_CRIME_LEGAL
     # a minor
-    ages = [int(x) for m in _AGE_RE.findall(str(topic or "")) for x in m if x]
+    ages = [int(x) for m in _AGE_RE.findall(clean(str(topic or "")[:MAX_TOPIC_READ])) for x in m if x]
     young = any(age < 18 for age in ages)
     if young or (_LEX_MINOR.hits(tokens, padded) and _LEX_HARM.hits(tokens, padded)):
         return CAT_MINOR
-    # a tragedy that is still happening
-    if _LEX_DISASTER.hits(tokens, padded) and (a.recent_year or _LEX_RECENCY.hits(tokens, padded)):
+    if historical:
+        return None
+    # a tragedy that is still happening: a recent year or a story as it breaks,
+    # never "latest research" about an old one
+    if _LEX_DISASTER.hits(tokens, padded) and (a.recent_year or a.hard_recent):
         return CAT_ACTIVE_TRAGEDY
     if "death toll" in padded:
         return CAT_ACTIVE_TRAGEDY
@@ -517,13 +715,16 @@ class Verdict:
 
     ``reason`` is one of REASONS for a reject, "" otherwise. ``detail`` is a
     fixed word (a sensitive category, "operator", "model") - never the topic -
-    so it is safe in an event. ``check`` says what decided it.
+    so it is safe in an event. ``check`` says what decided it. ``soft`` marks an
+    ASK that the topic's own source already vouches for (the AI pick): with no
+    model answer it is accepted.
     """
 
     action: str
     reason: str = ""
     detail: str = ""
     check: str = "words"
+    soft: bool = False
 
     @property
     def accepted(self) -> bool:
@@ -545,7 +746,9 @@ def evaluate(topic: str, profile: NicheProfile, *, source: str, stale: bool = Fa
     ACCEPT / REJECT are final. ASK means the words are not enough AND the
     source is strict (or the entry is stale): the caller may spend one small
     model call, and decides what a missing answer means (see
-    ``TopicManager.vet_topic``).
+    ``TopicManager.vet_topic``). A SOFT ask is the lenient sources' version:
+    a named person next to an entertainment, politics, gossip or news word,
+    which the words cannot place; no answer means accept.
     """
     if is_operator_source(source):
         return Verdict(ACCEPT, detail="operator")
@@ -560,6 +763,10 @@ def evaluate(topic: str, profile: NicheProfile, *, source: str, stale: bool = Fa
         return Verdict(ACCEPT)
     if stale or is_strict(source):
         return Verdict(ASK)
+    cue = (a.scores.get("entertainment", 0) >= 1 and "entertainment" not in profile.families) or \
+          (a.scores.get("politics", 0) >= 1 and "politics" not in profile.families) or a.gossip or a.news
+    if a.person_like and not a.strongly_historical and cue:
+        return Verdict(ASK, soft=True)
     return Verdict(ACCEPT, detail="unchecked")
 
 

@@ -62,7 +62,7 @@ class RanabaaliRegression(unittest.TestCase):
         self.assertEqual(v.action, gate.ACCEPT)
 
     def test_it_is_off_niche_for_other_unrelated_niches_too(self):
-        for niche in ("personal finance", "cooking recipes", "kids bedtime stories", "football tactics"):
+        for niche in ("personal finance", "cooking recipes", "football tactics"):
             with self.subTest(niche=niche):
                 v = gate.evaluate(RANABAALI, gate.niche_profile(niche), source=TREND)
                 self.assertEqual((v.action, v.reason), (gate.REJECT, "off_niche"))
@@ -250,6 +250,277 @@ class MissingPieces(unittest.TestCase):
         self.assertEqual(prompt.count("TOPIC:"), 1)
 
 
+class HistoricalExemptionIsNotACoarseSwitch(unittest.TestCase):
+    """Review F1: one history word, or any 4-digit number, must not switch the
+    sensitive screen off. People and places in today's news are called Roman,
+    Salem, Athens, Viking."""
+
+    MUST_NOT_PASS = [
+        "Roman Abramovich accused of fraud", "Roman Reigns arrested", "Minnesota Vikings coach sued for assault",
+        "Salem police arrest teen", "Athens police arrest teenager", "Rome: 12-year-old missing, police say",
+        "Kim Kardashian visits Pompeii", "Mark Zuckerberg accused of fraud 1200",
+    ]
+
+    def test_none_of_these_is_accepted_from_a_trend_or_from_the_ai(self):
+        for source in (TREND, "ai"):
+            for topic in self.MUST_NOT_PASS:
+                with self.subTest(source=source, topic=topic):
+                    self.assertNotEqual(gate.evaluate(topic, HISTORY, source=source).action, gate.ACCEPT)
+
+    def test_the_ones_that_say_what_they_are_are_held_for_a_human(self):
+        for topic in self.MUST_NOT_PASS:
+            if "Kardashian" in topic:
+                continue       # a name and a verb: only a model can tell (below)
+            with self.subTest(topic=topic):
+                v = gate.evaluate(topic, HISTORY, source="ai")
+                self.assertEqual((v.action, v.reason), (gate.REJECT, "needs_human"))
+
+    def test_numbers_that_are_not_years_are_not_years(self):
+        for n in ("RANABAALI Teaser 1080p", "RANABAALI Teaser 1500 crore", "RANABAALI Teaser $1000",
+                  "RANABAALI Teaser 1000 goals", "RANABAALI Teaser 1200 views", "RANABAALI Teaser 1,500"):
+            with self.subTest(topic=n):
+                self.assertEqual(gate.analyze(n).scores["history"], 0)
+                v = gate.evaluate(n, HISTORY, source=TREND)
+                self.assertEqual((v.action, v.reason), (gate.REJECT, "off_niche"))
+        self.assertEqual(gate._years("the year 1066 and 1914-18, 1080p, 1500 crore, $1000"), [1066, 1914])
+
+    def test_a_year_beside_a_name_is_not_an_anchor(self):
+        self.assertTrue(gate.analyze("The arrest of Joan of Arc in 1430").year_hist)
+        self.assertFalse(gate.analyze("Mark Zuckerberg 1200").year_hist)
+
+    def test_one_homonym_is_not_history_but_two_strong_terms_are(self):
+        self.assertFalse(gate.analyze("Salem police").anchored)
+        self.assertFalse(gate.analyze("Roman Reigns").anchored)
+        self.assertTrue(gate.analyze("Roman Empire").anchored)          # two homonyms: a subject
+        self.assertTrue(gate.analyze("Pompeii").anchored)               # distinctive
+        self.assertTrue(gate.analyze("medieval").anchored)              # a period
+
+    def test_a_news_report_about_a_child_beside_a_historical_place_is_still_a_minor_story(self):
+        v = gate.evaluate("Pompeii: 12-year-old missing, police say", HISTORY, source="ai")
+        self.assertEqual((v.action, v.detail), (gate.REJECT, "minor"))
+        v = gate.evaluate("The Children's Crusade of 1212", HISTORY, source="ai")     # same words, no news
+        self.assertEqual(v.action, gate.ACCEPT)
+
+    def test_the_1945_threshold_is_a_real_edge(self):
+        """Mutation target: 1945 is history, 1946 only leans, 1990 is recent."""
+        self.assertTrue(gate.analyze("The Battle of 1945 in the city").year_hist)
+        self.assertFalse(gate.analyze("The Battle of 1946 in the city").year_hist)
+        self.assertEqual(gate.analyze("The siege of 1946 in the city").scores["history"] - 1, 1 + 0)   # 'siege' + year leans
+        self.assertTrue(gate.analyze("Collapse 1990").late_year)
+        self.assertFalse(gate.analyze("Collapse 1989").late_year)
+
+
+class NeighbouringFieldsAreNotForeign(unittest.TestCase):
+    """Review F2: a history channel covers murders and spaceflight disasters."""
+
+    TOPICS = [
+        "Jack the Ripper: the murders and the killer nobody could name",
+        "The Hinterkaifeck Murders: a farm, six victims and a killer who stayed for days",
+        "Challenger: what NASA knew", "Убийство Распутина: что скрывают архивы", "Убийство Кирова",
+        "Чёрная Далия: убийство, которое не раскрыли", "Убийство Романовых: судьба Анастасии",
+        "Смерть Мэрилин Монро: убийство или самоубийство", "Merilin Monro o'limi: qotillikmi yoki o'z joniga qasd?",
+    ]
+
+    def test_none_is_rejected_from_any_source(self):
+        for source in (TREND, "ai", "content_opportunity:demand"):
+            for topic in self.TOPICS:
+                with self.subTest(source=source, topic=topic):
+                    self.assertNotEqual(gate.evaluate(topic, HISTORY, source=source).action, gate.REJECT)
+
+    def test_the_adjacency_is_only_for_history_channels(self):
+        fin = gate.niche_profile("personal finance")
+        v = gate.evaluate("Jack the Ripper: the murders and the killer nobody could name", fin, source=TREND)
+        self.assertEqual((v.action, v.reason), (gate.REJECT, "off_niche"))
+
+    def test_adjacent_evidence_beside_foreign_evidence_is_asked_not_called_off(self):
+        topic = "Serial killer movie trailer breakdown"
+        self.assertEqual(gate.niche_check(topic, HISTORY), "unsure")
+        self.assertEqual(gate.niche_check(topic, gate.niche_profile("personal finance")), "off")
+
+    def test_adjacency_does_not_let_entertainment_through(self):
+        v = gate.evaluate("Murder mystery movie trailer teaser", HISTORY, source=TREND)
+        self.assertNotEqual(v.action, gate.ACCEPT)
+
+
+class OldTopicsAreNotRecentJustForSayingLatest(unittest.TestCase):
+    """Review F3: 'latest', 'today', 'ongoing' are said of Pompeii too."""
+
+    def test_soft_recency_words_change_nothing(self):
+        for topic in ("The Bronze Age Collapse: latest theories", "The Earthquake That Destroyed Pompeii: Latest Research",
+                      "The Collapse of the Bronze Age: What we know today", "Pompeii excavations: ongoing discoveries"):
+            with self.subTest(topic=topic):
+                self.assertNotEqual(gate.evaluate(topic, HISTORY, source="ai").action, gate.REJECT)
+                self.assertNotEqual(gate.evaluate(topic, HISTORY, source=TREND).action, gate.REJECT)
+
+    def test_a_story_as_it_breaks_still_is(self):
+        for topic in ("Earthquake: death toll rises", "Breaking: building collapse in the city centre",
+                      "Flood in 2026 leaves thousands homeless"):
+            with self.subTest(topic=topic):
+                v = gate.evaluate(topic, HISTORY, source="ai")
+                self.assertEqual((v.action, v.detail), (gate.REJECT, "active_tragedy"))
+
+    def test_a_disaster_word_alone_is_not_an_active_tragedy(self):
+        """No recent year, nothing breaking: a collapse is a collapse."""
+        for topic in ("The Silvertown bridge collapse and what the inquiry found", "Why the old mill explosion was forgotten"):
+            with self.subTest(topic=topic):
+                self.assertNotEqual(gate.evaluate(topic, HISTORY, source="ai").reason, "needs_human")
+
+    def test_a_recent_year_withdraws_even_an_ancient_words_exemption(self):
+        v = gate.evaluate("Ancient ruins: building collapse in 2026", HISTORY, source="ai")
+        self.assertEqual((v.action, v.detail), (gate.REJECT, "active_tragedy"))
+
+
+class UnclassifiableNichesAreNeverOffNiche(unittest.TestCase):
+    """Review F5: a customer's niche in their own words has no shape the word
+    tables know; nothing can be foreign to it."""
+
+    def test_unknown_niches_are_unsure(self):
+        for niche in ("anime", "Fantactik", "fantasy stories", "", "   "):
+            with self.subTest(niche=niche):
+                profile = gate.niche_profile(niche)
+                self.assertFalse(profile.known)
+                self.assertEqual(gate.niche_check("Naruto movie trailer breakdown", profile), "unsure")
+                self.assertEqual(gate.niche_check("Bitcoin price prediction", profile), "unsure")
+
+    def test_naruto_on_an_anime_channel_is_asked_not_called_off_niche(self):
+        v = gate.evaluate("Naruto anime opening breakdown", gate.niche_profile("anime"), source=TREND)
+        self.assertEqual(v.action, gate.ASK)
+
+    def test_the_sensitive_screen_still_runs_for_an_unknown_niche(self):
+        v = gate.evaluate("Famous actor arrested", gate.niche_profile("anime"), source=TREND)
+        self.assertEqual((v.action, v.reason), (gate.REJECT, "needs_human"))
+
+
+class SharingAGenericWordProvesNothing(unittest.TestCase):
+    """Review F6."""
+
+    def test_history_is_not_a_word_the_channel_owns(self):
+        self.assertNotIn("history", HISTORY.words)
+        for topic in ("The dark history of Taylor Swift's 1989 album", "Dark History Behind Vijay Deverakonda's Ranabaali"):
+            with self.subTest(topic=topic):
+                self.assertEqual(gate.niche_check(topic, HISTORY), "unsure")
+
+    def test_a_trend_naming_a_person_is_put_to_the_model(self):
+        for topic in ("The dark history of Taylor Swift's 1989 album", "Dark History Behind Vijay Deverakonda's Ranabaali"):
+            self.assertEqual(gate.evaluate(topic, HISTORY, source=TREND).action, gate.ASK)
+
+    def test_the_ai_pick_naming_a_person_beside_an_entertainment_word_gets_one_soft_question(self):
+        v = gate.evaluate("The dark history of Taylor Swift's 1989 album", HISTORY, source="ai")
+        self.assertEqual((v.action, v.soft), (gate.ASK, True))
+        # no cue, no question: the AI pick otherwise costs nothing
+        self.assertEqual(gate.evaluate("The Antikythera Mechanism", HISTORY, source="ai").action, gate.ACCEPT)
+        self.assertEqual(gate.evaluate("Amelia Earhart's last flight", HISTORY, source="ai").action, gate.ACCEPT)
+
+    def test_a_word_the_channel_really_owns_still_saves_a_topic_from_off_niche(self):
+        profile = gate.niche_profile("baking sourdough")
+        topic = "Sourdough starter trailer teaser"
+        self.assertEqual(gate.niche_check(topic, profile), "unsure")
+        self.assertEqual(gate.niche_check("Starter trailer teaser", profile), "off")
+
+    def test_a_real_niche_word_still_counts(self):
+        profile = gate.niche_profile("fantasy stories", "Fantactik")
+        self.assertIn("fantactik", {w for w in profile.words})
+
+
+class WhatIsReadIsWhatIsMeant(unittest.TestCase):
+    """Review F7 and F8."""
+
+    DISGUISES = ["Ranabaali Te\u0430ser", "Ranabaali Tea\u200bser", "Ranabaali Teas\u00ader",
+                 "\U0001d413\U0001d41e\U0001d41a\U0001d42c\U0001d41e\U0001d42b Ranabaali",   # math bold
+                 "Ranabaali \uff34\uff45\uff41\uff53\uff45\uff52",                              # full width
+                 "Ranabaali \u03a4ea\u0455er", "RANABAALI T\u0435\u0430ser | Vijay Deverakonda"]
+
+    def test_disguised_cue_words_still_match(self):
+        for topic in self.DISGUISES:
+            with self.subTest(topic=topic):
+                v = gate.evaluate(topic, HISTORY, source=TREND)
+                self.assertEqual((v.action, v.reason), (gate.REJECT, "off_niche"))
+
+    def test_real_russian_and_greek_words_are_not_rewritten(self):
+        self.assertEqual(gate.clean("тизер трейлер"), "тизер трейлер")
+        self.assertEqual(gate.clean("\u03b1\u03b8\u03ae\u03bd\u03b1"), "\u03b1\u03b8\u03ae\u03bd\u03b1")
+        self.assertEqual(gate.evaluate("Тизер сериала", HISTORY, source=TREND).reason, "off_niche")
+        self.assertEqual(gate.clean("Teаser"), "Teaser")
+
+    def test_a_long_run_of_spaces_after_a_digit_is_read_in_bounded_time(self):
+        import time
+        for topic in ("1" + " " * 100000 + "year old", "12" + " " * 100000 + "x", "1 " * 50000 + "-" * 50000,
+                      "9" * 100000, ("1y" * 60000)):
+            started = time.monotonic()
+            gate.evaluate(topic, HISTORY, source=TREND)
+            self.assertLess(time.monotonic() - started, 2.0, topic[:20])
+
+    def test_the_age_pattern_itself_is_not_quadratic(self):
+        """The read cap protects the screen; the pattern must not depend on it."""
+        import time
+        for text in ("12" + " " * 100000 + "x", "1" + " " * 100000 + "year" + " " * 100000 + "x"):
+            started = time.monotonic()
+            gate._AGE_RE.findall(text)
+            self.assertLess(time.monotonic() - started, 1.0)
+
+    def test_only_the_start_of_a_very_long_topic_is_read(self):
+        self.assertLessEqual(len(gate.analyze("x " * 100000).tokens), gate.MAX_TOPIC_READ)
+
+
+class ProbeTables(unittest.TestCase):
+    """Real-looking topics with the answer a person would give (tests/topic_gate_probe_topics.py)."""
+
+    def test_no_legitimate_history_topic_is_rejected_from_any_source(self):
+        from tests.topic_gate_probe_topics import LEGIT
+        wrong = [(src, t) for src in (TREND, "ai", "content_opportunity:demand") for t in LEGIT
+                 if gate.evaluate(t, HISTORY, source=src).action == gate.REJECT]
+        self.assertEqual(wrong, [])        # 0 of 86: the bar is 1%
+
+    def test_the_off_niche_ones_are_rejected_by_words_from_any_source(self):
+        from tests.topic_gate_probe_topics import OFF
+        missed = [(src, t) for src in (TREND, "ai") for t in OFF
+                  if gate.evaluate(t, HISTORY, source=src).action != gate.REJECT]
+        self.assertEqual(missed, [])
+
+    def test_the_sensitive_ones_are_held_from_any_source(self):
+        from tests.topic_gate_probe_topics import HELD
+        missed = [(src, t) for src in (TREND, "ai") for t in HELD
+                  if gate.evaluate(t, HISTORY, source=src).action != gate.REJECT]
+        self.assertEqual(missed, [])
+
+    def test_the_unplaceable_ones_are_never_waved_through_from_a_trend(self):
+        from tests.topic_gate_probe_topics import ASKED
+        waved = [t for t in ASKED if gate.evaluate(t, HISTORY, source=TREND).action == gate.ACCEPT]
+        self.assertEqual(waved, [])
+
+
+class WorkflowsPassTheGateSettings(unittest.TestCase):
+    NAMES = ("CHRONOS_TOPIC_GATE", "CHRONOS_TOPIC_QUEUE_STALE_DAYS", "CHRONOS_TOPIC_GATE_MODEL_CALLS")
+
+    def test_the_scheduled_run_and_the_worker_deploy_carry_them(self):
+        daily = (ROOT / ".github" / "workflows" / "daily_video.yml").read_text()
+        deploy = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text()
+        example = (ROOT / "deploy" / ".env.worker.example").read_text()
+        for name in self.NAMES:
+            self.assertIn(f"{name}: ${{{{ vars.{name} }}}}", daily)
+            self.assertIn(f"WORKERENV_{name}: ${{{{ vars.{name} }}}}", deploy)
+            self.assertRegex(example, rf"(?m)^{name}=$")
+
+    def test_empty_variables_mean_the_defaults_and_off_means_off(self):
+        code = ("import config;print(config.TOPIC_GATE_ENABLED, config.TOPIC_QUEUE_STALE_DAYS, "
+                "config.TOPIC_GATE_MODEL_CALLS)")
+
+        def read(**env):
+            base = {"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), **env}
+            out = subprocess.run([sys.executable, "-I", "-c", code], cwd=ROOT, capture_output=True, text=True,
+                                 env=base, timeout=60)
+            self.assertEqual(out.returncode, 0, out.stderr[-500:])
+            return out.stdout.strip()
+
+        # -I drops the cwd from sys.path: add the repo
+        code = "import sys;sys.path.insert(0, %r);" % str(ROOT) + code
+        self.assertEqual(read(CHRONOS_TOPIC_GATE="", CHRONOS_TOPIC_QUEUE_STALE_DAYS="", CHRONOS_TOPIC_GATE_MODEL_CALLS=""),
+                         "True 14 2")
+        self.assertEqual(read(CHRONOS_TOPIC_GATE="off", CHRONOS_TOPIC_QUEUE_STALE_DAYS="30",
+                              CHRONOS_TOPIC_GATE_MODEL_CALLS="0"), "False 30 0")
+        self.assertEqual(read(CHRONOS_TOPIC_QUEUE_STALE_DAYS="soon"), "True 14 2")
+
+
 class GateInTheManager(Base):
     """TopicManager.pick_topic with a real planner file and a scripted model."""
 
@@ -327,9 +598,8 @@ class GateInTheManager(Base):
 
     def test_a_stale_rejection_does_not_block_the_same_topic_being_queued_again(self):
         entry = self.queue("Quiet keepers of the harbour light", age_days=30)    # stale, words cannot place it
-        tm = self.manager(chronos(), "Stonehenge: who raised it")
-        with patch("modules.topic_manager.TOPIC_GATE_MODEL_CALLS", 0):
-            tm.pick_topic()
+        tm = self.manager(chronos(), "OFF", "Stonehenge: who raised it")         # an explicit OFF
+        tm.pick_topic()
         self.assertEqual(self.status(entry).reject_reason, "stale")
         again = self.planner.enqueue("Quiet keepers of the harbour light", source=TREND)
         self.assertNotEqual(again.entry_id, entry.entry_id)
@@ -495,16 +765,39 @@ class GateInTheManager(Base):
         self.assertEqual(tm.pick_topic(), "Pompeii: the last day")
         self.assertEqual(self.status(entry).status, "reserved")
 
-    def test_a_stale_entry_nothing_can_confirm_is_expired_with_the_stale_reason(self):
+    def test_a_stale_entry_the_model_calls_off_niche_expires_as_stale(self):
         entry = self.queue("The strange silence of the old lighthouse keepers", age_days=40,
                            source="content_opportunity:demand")
-        with patch("modules.topic_manager.TOPIC_GATE_MODEL_CALLS", 0):
-            tm = self.manager(chronos(), "Stonehenge: who raised it")
-            tm.pick_topic()
+        self.manager(chronos(), "OFF", "Stonehenge: who raised it").pick_topic()
         saved = self.status(entry)
         self.assertEqual((saved.status, saved.reject_reason), ("rejected", "stale"))
         (event,) = self.rejected_events()
-        self.assertEqual((event["metadata"]["stale"], event["metadata"]["check"]), (True, "none"))
+        self.assertEqual((event["metadata"]["stale"], event["metadata"]["check"]), (True, "model"))
+
+    def test_a_stale_entry_nothing_can_confirm_stays_queued(self):
+        """No budget, no answer, an error: a stale entry is passed over, never lost."""
+        entry = self.queue("The strange silence of the old lighthouse keepers", age_days=40,
+                           source="content_opportunity:demand")
+        with patch("modules.topic_manager.TOPIC_GATE_MODEL_CALLS", 0):
+            self.manager(chronos(), "Stonehenge: who raised it").pick_topic()
+        self.assertEqual(self.status(entry).status, "queued")
+
+    def test_a_model_outage_does_not_empty_a_queue_of_legitimate_stale_entries(self):
+        entries = [self.queue(f"The quiet harbour that swallowed whole fleets part {i}", age_days=20 + i % 3,
+                              source=TREND) for i in range(12)]
+        from modules.topic_manager import TopicManager
+
+        def down(client, model, prompt, config=None):
+            if "Answer (ON or OFF)" in prompt:
+                raise RuntimeError("503: the model is down")
+            return FakeGemini("Stonehenge: who raised it")(client, model, prompt, config)
+
+        self._patch("modules.topic_manager.generate_with_retry", new=down)
+        self.assertEqual(TopicManager(channel=chronos()).pick_topic(), "Stonehenge: who raised it")
+        statuses = [self.status(e).status for e in entries]
+        self.assertEqual(statuses, ["queued"] * 12)
+        self.assertEqual(self.rejected_events() and [e for e in self.rejected_events()
+                                                      if e["metadata"]["action"] == "reject"], [])
 
     def test_a_stale_entry_the_model_confirms_is_used(self):
         self.queue("The strange silence of the old lighthouse keepers", age_days=40,
@@ -517,9 +810,15 @@ class GateInTheManager(Base):
         entries = self.planner._load_all()
         entries[entry.entry_id].added_at = "garbled"
         self.planner._save_all(entries)
+        self.manager(chronos(), "OFF", "Stonehenge: who raised it").pick_topic()
+        self.assertEqual(self.status(entry).reject_reason, "stale")     # asked, not trusted as fresh
+        entry2 = self.queue("Another quiet lighthouse tale", source="content_opportunity:demand")
+        entries = self.planner._load_all()
+        entries[entry2.entry_id].added_at = "garbled"
+        self.planner._save_all(entries)
         with patch("modules.topic_manager.TOPIC_GATE_MODEL_CALLS", 0):
             self.manager(chronos(), "Stonehenge: who raised it").pick_topic()
-        self.assertEqual(self.status(entry).reject_reason, "stale")
+        self.assertEqual(self.status(entry2).status, "queued")           # and nothing to ask: kept
 
     def test_the_stale_limit_is_configurable_and_zero_turns_it_off(self):
         entry = self.queue("The strange silence of the old lighthouse keepers", age_days=40,
@@ -572,6 +871,27 @@ class GateInTheManager(Base):
         tm = self.manager(chronos(), "The singer accused of fraud and her lawsuit", "Stonehenge: who raised it")
         self.assertEqual(tm.pick_topic(), "Stonehenge: who raised it")
         self.assertEqual(self.rejected_events()[0]["metadata"]["reason"], "needs_human")
+
+    def test_the_ai_pick_naming_a_person_beside_an_entertainment_word_is_asked_once(self):
+        tm = self.manager(chronos(), "The dark history of Taylor Swift's 1989 album", "OFF",
+                          "The Antikythera Mechanism")
+        self.assertEqual(tm.pick_topic(), "The Antikythera Mechanism")
+        self.assertEqual(tm._gate_calls, 1)
+        (event,) = self.rejected_events()
+        self.assertEqual((event["metadata"]["reason"], event["metadata"]["check"], event["metadata"]["source"]),
+                         ("off_niche", "model", "ai"))
+
+    def test_that_question_unanswerable_accepts_the_ai_pick(self):
+        with patch("modules.topic_manager.TOPIC_GATE_MODEL_CALLS", 0):
+            tm = self.manager(chronos(), "The dark history of Taylor Swift's 1989 album")
+            self.assertEqual(tm.pick_topic(), "The dark history of Taylor Swift's 1989 album")
+
+    def test_a_queued_trend_the_model_waves_through_is_still_screened_first(self):
+        """Words before the model: a sensitive trend never reaches it."""
+        self.queue("Roman Reigns arrested")
+        tm = self.manager(chronos(), "Stonehenge: who raised it")
+        tm.pick_topic()
+        self.assertEqual(tm._gate_calls, 0)
 
     # -- autopilot --------------------------------------------------------
 

@@ -35,10 +35,12 @@ logger = logging.getLogger(__name__)
 
 MAX_TOPIC_ATTEMPTS = 3
 
-# How many queued entries one run may look at before it gives up on the queue
-# and asks the model. Each rejection is written to the planner, so the next run
-# starts further down; the cap only bounds one run's writes and log lines.
+# How many queued entries one run may REJECT or skip (each is a write to the
+# planner and a log line) before it gives up on the queue and asks the model; the
+# next run starts further down. Entries merely passed over this run (not
+# confirmed, nothing written) are bounded separately.
 MAX_QUEUE_CANDIDATES = 10
+MAX_QUEUE_LOOKED_AT = 50
 
 # A channel's own memory: how many of its past topics, and how far back, a new
 # topic is compared with (and how many are listed in the prompt). Topics older
@@ -714,11 +716,14 @@ class TopicManager:
            accepted. Neither makes a model call.
         2. Only if the words cannot place it AND the source is a trend or the
            entry is stale: one small model call, capped per run. An ON answer
-           accepts; OFF rejects (``off_niche``); no answer defers the entry for
-           this run (untouched in the queue), except a stale one, which expires.
+           accepts; OFF rejects (``off_niche``, or ``stale`` for a stale entry);
+           no answer defers the entry for this run, untouched in the queue - a
+           stale one too, so a model outage cannot empty the queue.
         3. The AI's own pick and audience-demand entries are accepted when the
            words are merely unsure - the model already chose them under the
-           niche rules.
+           niche rules - except a named person beside an entertainment, politics,
+           gossip or news word, which gets one question (and is accepted when
+           none can be asked).
 
         Every non-accept is logged with its reason and emitted as a
         ``topic.rejected`` event. This method writes nothing to the planner;
@@ -732,16 +737,25 @@ class TopicManager:
         stale = bool(queued) and topic_gate.is_stale(added_at, TOPIC_QUEUE_STALE_DAYS)
         verdict = topic_gate.evaluate(topic, profile, source=source, stale=stale)
         if verdict.action == topic_gate.ASK:
+            soft = verdict.soft
             answer = self._ask_on_niche(topic, niche)
             if answer is True:
                 verdict = topic_gate.Verdict(topic_gate.ACCEPT, detail="confirmed", check="model")
             elif answer is False:
-                verdict = topic_gate.Verdict(topic_gate.REJECT, topic_gate.REASON_OFF_NICHE,
+                # An explicit OFF on a stale entry expires it as "stale", which does not
+                # stop the same text being queued again; on a fresh one it is a verdict
+                # about the topic itself.
+                verdict = topic_gate.Verdict(topic_gate.REJECT,
+                                             topic_gate.REASON_STALE if stale else topic_gate.REASON_OFF_NICHE,
                                              detail="model", check="model")
-            elif stale:
-                verdict = topic_gate.Verdict(topic_gate.REJECT, topic_gate.REASON_STALE,
-                                             detail="unconfirmed", check="none")
+            elif soft:
+                # The AI's own pick, a named person the words could not place, and no
+                # answer to be had: its source already vouches for it.
+                verdict = topic_gate.Verdict(topic_gate.ACCEPT, detail="unverified", check="none")
             else:
+                # No answer (budget spent, the call failed, the reply was neither ON nor
+                # OFF): leave the entry exactly as it is, stale or not. An outage must
+                # not empty the queue.
                 verdict = topic_gate.Verdict(topic_gate.DEFER, detail="unconfirmed", check="none")
         if verdict.action != topic_gate.ACCEPT:
             self._report_gate(topic, verdict, source=source, entry_id=entry_id, stale=stale)
@@ -792,7 +806,10 @@ class TopicManager:
             return None
         niche = niche or self._resolve_niche(None)
         passed_over: set[str] = set()
-        for _ in range(MAX_QUEUE_CANDIDATES):
+        written = 0
+        for _ in range(MAX_QUEUE_LOOKED_AT):
+            if written >= MAX_QUEUE_CANDIDATES:
+                break
             entry = self.content_planner.next_topic(skip=passed_over)
             if entry is None:
                 return None
@@ -804,6 +821,7 @@ class TopicManager:
                     entry.topic, entry.entry_id, repeat,
                 )
                 self.content_planner.mark_skipped(entry.entry_id, reason="repeats a recent topic of this channel")
+                written += 1
                 continue
 
             result = self._safe_originality_check(entry.topic)
@@ -813,12 +831,14 @@ class TopicManager:
                     entry.topic, entry.entry_id, result.closest_match,
                 )
                 self.content_planner.mark_skipped(entry.entry_id, reason="hard-blocked as duplicate by originality check")
+                written += 1
                 continue
 
             verdict = self.vet_topic(entry.topic, niche, source=entry.source, added_at=entry.added_at,
                                      queued=True, entry_id=entry.entry_id)
             if verdict.action == topic_gate.REJECT:
                 self.content_planner.mark_rejected(entry.entry_id, verdict.reason)
+                written += 1
                 continue
             if verdict.action == topic_gate.DEFER:
                 passed_over.add(entry.entry_id)
@@ -835,8 +855,8 @@ class TopicManager:
             logger.info("Reserved queued topic from content planner: '%s' (entry %s, source=%s)",
                         entry.topic, entry.entry_id, entry.source)
             return entry.topic
-        logger.warning("[channel: %s] Looked at %d queued topics and none was usable - choosing a fresh one",
-                       self._history_channel, MAX_QUEUE_CANDIDATES)
+        logger.warning("[channel: %s] Looked through the queue (%d written, %d passed over) and none was usable - "
+                       "choosing a fresh one", self._history_channel, written, len(passed_over))
         return None
 
     def mark_queue_entry_rendered(self) -> None:

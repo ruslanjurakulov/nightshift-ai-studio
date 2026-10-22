@@ -243,8 +243,9 @@ GEMINI_STRUCTURED_OUTPUT = os.getenv("CHRONOS_GEMINI_STRUCTURED_OUTPUT", "").str
 #                                     logged on every use, never silent)
 #   CHRONOS_TOPIC_QUEUE_STALE_DAYS    a queued entry older than this is stale:
 #                                     it is used only if the words clearly place
-#                                     it in the niche or the model says so,
-#                                     otherwise it is expired. 0 = no age rule.
+#                                     it in the niche or the model says so; an
+#                                     explicit OFF expires it, no answer leaves
+#                                     it queued. 0 = no age rule.
 #   CHRONOS_TOPIC_GATE_MODEL_CALLS    at most this many small model calls per
 #                                     run, spent only on trend/stale candidates
 #                                     the words cannot place. 0 = never ask.
