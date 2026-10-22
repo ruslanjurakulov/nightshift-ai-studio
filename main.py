@@ -14,6 +14,7 @@ Nightshift YouTube Bot — Full Pipeline
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 import time
@@ -457,8 +458,12 @@ def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_r
         if summary.evidence is not None and summary.evidence.snippets:
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps(grounding.evidence_file(topic, summary.evidence, record),
-                                           indent=2, ensure_ascii=False))
+                # Atomically (a temp file, then replace): a reader never sees half a file. The original fetch
+                # time is carried through reuse, so the file cannot be kept alive by being reused.
+                tmp = path.with_name(path.name + ".tmp")
+                tmp.write_text(json.dumps(grounding.evidence_file(topic, summary.evidence, record),
+                                          indent=2, ensure_ascii=False), encoding="utf-8")
+                os.replace(tmp, path)
             except OSError as e:
                 logger.warning("Could not save grounding.json (%s) - the run is unaffected", type(e).__name__)
         return results, record

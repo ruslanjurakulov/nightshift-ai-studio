@@ -32,14 +32,19 @@ second, checkable opinion: passages from the English Wikipedia, a free, keyless,
 1. `fact_check_claims` runs exactly as before and never sees the evidence. Its verdicts are the baseline.
 2. `grounding` looks the topic and the names in the narration up: **three requests** for a normal video (a
    search for the topic, the full text of its best page, and ONE `titles=A|B|C` request for the names), on
-   `en.wikipedia.org` only. At most 15 requests including retries, no redirect followed, a 1 MB cap per answer, the body read in
-   8 KB chunks with the clock checked **between chunks** (a read that stalls inside one chunk is bounded by the
-   socket timeout of 10 s, and the whole lookup by a 90 s deadline checked between requests; there is no
-   wall-clock watchdog), one `User-Agent` that names the project, no secret. Disambiguation and missing pages are skipped, every page is cut into passages of at most 700
+   `en.wikipedia.org` only. At most 15 requests including retries, no redirect followed, a 1 MB cap per answer, one `User-Agent` that
+   names the project, no secret. **Time bounds, said plainly:** the body is read in 8 KB chunks with the clock
+   checked **between chunks**, and each `recv` has the 10 s socket timeout, so a server that sends *nothing* is
+   cut; a server that deliberately sends a byte every few seconds **is NOT bounded** (a chunk only completes when
+   8 KB have arrived, and the 90 s deadline is checked only between requests). There is no watchdog thread. The
+   whole lookup is a **best-effort** step: its failure or slowness cannot block publishing beyond what the
+   surrounding job timeout allows. Disambiguation and missing pages are skipped, every page is cut into passages of at most 700
    characters, and each claim is offered the (at most 3) passages that share words with it. The passages are
-   saved in `grounding.json` with a `fetched_at` time and **reused** when the same topic is run again within 24 hours (no
-   request). A file from an incomplete lookup records which steps failed (`failed_steps`); a re-run asks again for
-   those steps only. An older file, or one without a readable `fetched_at`, is ignored.
+   saved in `grounding.json` (written atomically, UTF-8) with a `fetched_at` time and **reused** when the same topic
+   is run again within 24 hours of the **first** fetch (no request; reuse and merging keep the oldest time, so a
+   file cannot be kept alive by being reused). A file from an incomplete lookup records which steps failed (`failed_steps`); a re-run asks again for
+   those steps only. An older file, one without a readable `fetched_at`, or one that says `complete: false` without naming
+   what failed (everything is asked again) is not trusted as complete.
 3. One model call per 15 claims (not per claim) matches the claims against the passages **only** and answers
    `supported` (snippet id and the exact words), `contradicted` (snippet id) or `not_found`. The call has a
    timeout and the whole matching phase has a deadline.

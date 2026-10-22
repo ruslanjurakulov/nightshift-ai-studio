@@ -370,7 +370,11 @@ class TheClientIsHardened(unittest.TestCase):
         client = client_for(lambda c, n: StreamedResponse([body[:50], body[50:]]), min_interval=0)
         self.assertEqual(client.get({"titles": "A"})["query"]["pages"][0]["title"], "A")
 
-    def test_a_slow_trickle_is_cut_by_a_total_timeout_not_a_per_read_one(self):
+    def test_the_clock_is_checked_between_chunks_of_a_body(self):
+        """A FAKE stream whose every chunk takes 3 s of fake clock: the check between chunks cuts it. This
+        does NOT show that a real slow trickle is cut: ``iter_content(8192)`` blocks until 8 KB have
+        arrived, the socket timeout applies to each recv, and nothing here interrupts a server that sends
+        one byte every few seconds (see the docs: that residual is documented, not fixed)."""
         clock = Clock()
         trickle = StreamedResponse([b"{"] * 50, on_chunk=lambda: setattr(clock, "t", clock.t + 3))
         client = client_for(lambda c, n: trickle, clock=clock, sleep=clock.sleep, min_interval=0)
@@ -658,6 +662,127 @@ class TheCacheGoesStaleAndMendsItself(unittest.TestCase):
         self.assertTrue(summary.reused)
 
 
+_REUSE_CHILD = r"""
+import json, sys, tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from types import SimpleNamespace
+sys.path.insert(0, sys.argv[1])
+import main
+from modules import grounding
+from modules.claim_extractor import Claim
+from modules.cost_ledger import CostLedger
+from modules.fact_checker import _make_result
+
+work = Path(tempfile.mkdtemp()); main.OUTPUT_DIR = work
+T0 = datetime(2026, 10, 22, 0, 0, 0, tzinfo=timezone.utc)
+now = [T0]
+grounding._utcnow = lambda: now[0]
+PAGE = {"pageid": 1, "ns": 0, "title": "Lantern Rock", "index": 1, "lastrevid": 5,
+        "extract": "FLAGME sank the Lantern Rock vessel in 1851 after a long chase through the strait.",
+        "fullurl": "https://en.wikipedia.org/wiki/Lantern_Rock", "canonicalurl": "https://en.wikipedia.org/wiki/Lantern_Rock"}
+alive, calls = [True], [0]
+class R:
+    def __init__(self, data=None, status=200):
+        self._d, self.status_code, self.headers = data, status, {}
+    def json(self):
+        return self._d
+class Http:
+    def get(self, url, params=None, headers=None, timeout=None, **kw):
+        calls[0] += 1
+        return R({"query": {"pages": [dict(PAGE)]}}) if alive[0] else R(None, 503)
+Orig = grounding.WikipediaClient
+grounding.WikipediaClient = lambda: Orig(Http(), sleep=lambda s: None, min_interval=0)
+grounding._default_generate = lambda prompt: SimpleNamespace(
+    text=json.dumps({"results": [{"index": 0, "status": "not_found"}]}), usage_metadata=None)
+ctx = SimpleNamespace(agent=SimpleNamespace(language="English"))
+text = "FLAGME sank the Lantern Rock vessel in 1851 after a long chase."
+sc = [Claim("c000-1", 0, text)]
+
+def run():
+    calls[0] = 0
+    _res, summ = main._ground_fact_results(ctx, CostLedger(), "Lantern Rock", "slug", [text], sc,
+                                           [_make_result(text, "unverifiable", "x")])
+    f = work / "slug" / "grounding.json"
+    return {"stamp": json.loads(f.read_text(encoding="utf-8"))["fetched_at"] if f.exists() else None,
+            "unavailable": summ.get("unavailable"), "reused": summ.get("reused"), "calls": calls[0],
+            "leftovers": sorted(p.name for p in (work / "slug").iterdir() if p.name != "grounding.json")}
+
+out = {"first": run()}
+alive[0] = False
+now[0] = T0 + timedelta(hours=23, minutes=59)
+out["second"] = run()
+now[0] = T0 + timedelta(hours=24, minutes=1)
+out["third"] = run()
+print("RESULT " + json.dumps(out))
+"""
+
+
+class TheCacheExpiresFromTheFirstFetch(unittest.TestCase):
+    """Through main's own write path, with a faked clock: a run that only REUSES the file must not renew it."""
+
+    @classmethod
+    def setUpClass(cls):
+        import subprocess
+        import tempfile
+        proc = subprocess.run([sys.executable, "-I", "-c", _REUSE_CHILD, str(ROOT)], capture_output=True, text=True,
+                              timeout=300, cwd=tempfile.gettempdir(),
+                              env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "x",
+                                   "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "s.db")})
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")), None)
+        assert line is not None, proc.stderr[-3000:]
+        cls.out = json.loads(line[len("RESULT "):])
+
+    def test_the_first_run_fetches_and_stamps_the_file(self):
+        first = self.out["first"]
+        self.assertTrue(first["stamp"].startswith("2026-10-22T00:00:00"))
+        self.assertGreater(first["calls"], 0)
+
+    def test_a_run_inside_24_hours_reuses_the_file_and_keeps_the_first_fetch_time(self):
+        second = self.out["second"]
+        self.assertEqual(second["calls"], 0)
+        self.assertTrue(second["reused"])
+        self.assertEqual(second["stamp"], self.out["first"]["stamp"])         # not renewed by being reused
+
+    def test_24_hours_after_the_first_fetch_the_file_is_ignored_however_often_it_was_reused(self):
+        third = self.out["third"]
+        self.assertGreater(third["calls"], 0)                                 # it asked Wikipedia again
+        self.assertFalse(third["reused"])
+        self.assertEqual(third["unavailable"], "http_503")                    # ... and the network was dead
+
+    def test_the_file_is_written_atomically_and_no_temporary_file_is_left(self):
+        for run in ("first", "second", "third"):
+            self.assertEqual(self.out[run]["leftovers"], [])
+
+    def test_the_file_is_written_and_read_as_utf_8_whatever_the_locale(self):
+        import ast
+        src = (ROOT / "main.py").read_text()
+        fn = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef) and n.name == "_ground_fact_results")
+        writes = [c for c in ast.walk(fn) if isinstance(c, ast.Call) and ast.unparse(c.func).endswith("write_text")]
+        self.assertTrue(writes)
+        for call in writes:
+            self.assertEqual({k.arg: ast.unparse(k.value) for k in call.keywords}.get("encoding"), "'utf-8'")
+        self.assertIn('read_text(encoding="utf-8")', (ROOT / "modules" / "grounding.py").read_text())
+
+    def test_a_merged_partial_lookup_keeps_the_oldest_time(self):
+        from datetime import datetime, timedelta, timezone
+        old = datetime.now(timezone.utc) - timedelta(hours=20)
+        ev = grounding.Evidence(snippets={"W1": Snippet("W1", "T", "https://en.wikipedia.org/wiki/T", "x" * 60)},
+                                failed_steps=["intros"], fetched_at=grounding.now_iso(old))
+        merged = grounding.gather_evidence("The Mary Celeste mystery", [CLAIM_ADRIFT, "Captain Morehouse of the Dei Gratia boarded her."],
+                                           client=client_for(mary_celeste_router, min_interval=0), seed=ev)
+        self.assertEqual(merged.fetched_at, ev.fetched_at)
+        self.assertEqual(grounding.evidence_file("The Mary Celeste mystery", merged, {})["fetched_at"], ev.fetched_at)
+
+    def test_a_fresh_lookup_is_stamped_now_and_a_file_says_incomplete_when_it_says_so(self):
+        ev = grounding.gather_evidence("The Mary Celeste mystery", [CLAIM_ADRIFT], client=client_for(mary_celeste_router, min_interval=0))
+        self.assertIsNone(ev.fetched_at)
+        rec = json.loads(json.dumps(grounding.evidence_file("The Mary Celeste mystery", ev, {})))
+        rec["complete"] = False                                   # no failed_steps listed: still not trusted as complete
+        cached = grounding.evidence_from_record(rec, "The Mary Celeste mystery")
+        self.assertEqual(sorted(cached.failed_steps), sorted(grounding.STEPS))
+
+
 class TheTimeoutWordsAreHonest(unittest.TestCase):
     def test_the_body_is_read_in_small_chunks_so_the_clock_is_looked_at_often(self):
         resp = StreamedResponse([json.dumps(api([page("A", "z" * 60)])).encode()])
@@ -670,10 +795,34 @@ class TheTimeoutWordsAreHonest(unittest.TestCase):
         self.assertNotIn("a timeout for the whole of each request", doc)
         self.assertIn("between chunks", doc)
         self.assertIn("socket timeout", doc)
+        self.assertIn("is NOT bounded", doc)                      # a deliberate slow trickle
+        self.assertIn("best-effort", doc)
+        self.assertIn("surrounding job timeout", doc)
+        read_doc = grounding.WikipediaClient._read.__doc__
+        self.assertNotIn("TOTAL time limit", read_doc)
+        self.assertIn("NOT bounded", read_doc)
         self.assertIn("residual", doc.lower())
         for shape in ("verb swap", "role reversal", "comparative"):
             self.assertIn(shape, doc)
         self.assertIn("false-accept rate", doc)
+
+
+class TheTwoMutantGaps(unittest.TestCase):
+    def test_an_era_just_outside_the_quote_but_in_its_sentence_blocks(self):
+        sentence = "The Battle of Actium was fought in 31 BC between Octavian and Antony."
+        ok, why = grounding.check_support("The Battle of Actium was fought in 31.", S(sentence),
+                                          "Battle of Actium was fought in 31")
+        self.assertEqual((ok, why), (False, "number_not_in_quote"))
+        ok, _ = grounding.check_support("The Battle of Actium was fought in 31 BC.", S(sentence),
+                                        "Battle of Actium was fought in 31 BC")
+        self.assertTrue(ok)
+
+    def test_the_sentence_slice_does_not_shift_for_letters_that_change_length_when_folded(self):
+        snippet = "Die Straße, die Maße und die Füße sind alt. Louis XIV were famous in Straße lore. Fin."
+        text, why = grounding.quote_context("Louis XIV were famous in Straße lore", snippet)
+        self.assertIsNone(why)
+        self.assertEqual(text.strip(), "Louis XIV were famous in Straße lore.")
+        self.assertEqual(len(grounding._fold(snippet)), len(grounding._keep(snippet)))
 
 
 class TheLastTwoSurvivors(unittest.TestCase):

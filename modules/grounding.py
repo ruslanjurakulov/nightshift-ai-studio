@@ -50,8 +50,9 @@ model has not been told the three verdict words and anything else it says is rea
 enforcement only becomes meaningful once real checker verdicts reach this module.
 
 Bounded: at most MAX_REQUESTS requests per video (retries included; a normal video needs 3), a
-socket timeout, a clock check between 8 KB chunks of a body (no wall-clock watchdog: a stall inside
-one chunk is the socket timeout's), a byte cap on each answer, no redirects, a deadline for the
+socket timeout (per recv), a clock check between 8 KB chunks of a body (no watchdog: a server that sends
+nothing is cut by the socket timeout, a deliberate slow trickle is NOT bounded; the lookup is best-effort and
+bounded only by the surrounding job timeout), a byte cap on each answer, no redirects, a deadline for the
 lookup (checked between requests) and one for the matching, a cap on time spent waiting for a rate limit, a stop after
 two failures in a row, and a cache so nothing is asked twice. The only host contacted is
 en.wikipedia.org. No secret is sent: the request carries a User-Agent that names the project,
@@ -185,6 +186,9 @@ class Evidence:
     failed_steps: list = field(default_factory=list)
     #: The topic's best page (the one whose full text is fetched), once a search has found it.
     best_title: Optional[str] = None
+    #: When the passages were first fetched (ISO, UTC), or None for a lookup made now. Reuse and merging
+    #: carry the OLDEST time forward, so a file cannot be kept alive by being reused.
+    fetched_at: Optional[str] = None
 
 
 def _clean(text: str) -> str:
@@ -283,9 +287,13 @@ class WikipediaClient:
 
     # -- reading one answer ---------------------------------------------------
     def _read(self, resp, started: float):
-        """The JSON of ``resp``. A streamed body is read in chunks against a TOTAL time limit for the
-        request (a slow trickle does not get a fresh timeout per read) and a byte cap; anything with
-        only ``.json()`` (a test double) is read as it is. Raises _Slow / _TooLarge / ValueError."""
+        """The JSON of ``resp``. A streamed body is read in 8 KB chunks, the clock is checked BETWEEN
+        chunks against the request's timeout, and a byte cap applies. What this does NOT do: ``iter_content``
+        blocks until a chunk has arrived and the socket timeout applies to each ``recv``, so a server that sends
+        nothing is cut by the socket timeout but one that sends a byte every few seconds is NOT bounded here
+        (there is no watchdog thread). The lookup is a best-effort step: its failure or slowness cannot block
+        publishing beyond what the surrounding job timeout allows. Anything with only ``.json()`` (a test
+        double) is read as it is. Raises _Slow / _TooLarge / ValueError."""
         chunks = getattr(resp, "iter_content", None)
         if not callable(chunks):
             return resp.json()
@@ -646,6 +654,7 @@ def gather_evidence(topic: str, claims, *, client: WikipediaClient, sources=None
     done: set = set()
     if seed is not None:
         ev.snippets, ev.pages, ev.best_title = dict(seed.snippets), seed.pages, seed.best_title
+        ev.fetched_at = seed.fetched_at
         seen_text = {re.sub(r"\W+", "", sn.text.casefold()) for sn in seed.snippets.values()}
         seen_titles = {sn.title.casefold() for sn in seed.snippets.values()}
         done = set(STEPS) - set(seed.failed_steps)
@@ -1261,7 +1270,8 @@ def _ground(topic, claims, results, sources, language, client, generate, on_resp
         if cached.failed_steps:
             evidence = gather_evidence(topic, claims, client=client, sources=sources, seed=cached)
         else:
-            evidence = Evidence(snippets=dict(cached.snippets), pages=cached.pages, best_title=cached.best_title)
+            evidence = Evidence(snippets=dict(cached.snippets), pages=cached.pages, best_title=cached.best_title,
+                                fetched_at=cached.fetched_at)
             _choose_candidates(evidence, claims)
     else:
         evidence = gather_evidence(topic, claims, client=client, sources=sources)
@@ -1358,10 +1368,16 @@ def evidence_record(evidence: Evidence) -> list:
             for s in evidence.snippets.values()]
 
 
-def now_iso(now=None) -> str:
+def _utcnow():
     from datetime import datetime, timezone
 
-    return (now or datetime.now(timezone.utc)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc)
+
+
+def now_iso(now=None) -> str:
+    from datetime import timezone
+
+    return (now or _utcnow()).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 #: A saved lookup older than this is not reused: pages change.
@@ -1372,7 +1388,7 @@ def evidence_file(topic: str, evidence: Evidence, summary: dict, now=None) -> di
     """What ``grounding.json`` holds: the topic, when the passages were fetched, whether the lookup was
     complete (and which steps failed if not, so a re-run asks again for those only), the summary and
     every passage."""
-    return {"topic": topic, "fetched_at": now_iso(now), "complete": not evidence.failed_steps,
+    return {"topic": topic, "fetched_at": evidence.fetched_at or now_iso(now), "complete": not evidence.failed_steps,
             "failed_steps": list(evidence.failed_steps), "best_title": evidence.best_title,
             "summary": summary, "passages": evidence_record(evidence)}
 
@@ -1393,7 +1409,7 @@ def evidence_from_record(record, topic: str, now=None) -> Optional[Evidence]:
         if not isinstance(stamp, str):
             return None
         fetched = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        age = ((now or datetime.now(timezone.utc)) - fetched).total_seconds()
+        age = ((now or _utcnow()) - fetched).total_seconds()
         if age > CACHE_MAX_AGE_S or age < -300:
             return None
         passages = record.get("passages")
@@ -1416,6 +1432,9 @@ def evidence_from_record(record, topic: str, now=None) -> Optional[Evidence]:
         if not isinstance(failed, list) or any(f not in STEPS for f in failed):
             return None
         ev.failed_steps = list(dict.fromkeys(failed))
+        if record.get("complete") is False and not ev.failed_steps:
+            ev.failed_steps = list(STEPS)           # "incomplete" without saying what: ask for everything again
+        ev.fetched_at = stamp
         best = record.get("best_title")
         ev.best_title = best[:200] if isinstance(best, str) and best else None
         return ev
