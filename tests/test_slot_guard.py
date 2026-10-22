@@ -230,9 +230,9 @@ class TheAttemptCap(unittest.TestCase):
         self.sync = FakeSupabase([self.chan])
 
     def go(self, **kw):
-        """One guard call, 50 minutes after the one before (the minimum gap between attempts is 45)."""
+        """One guard call, 65 minutes after the one before (the minimum gap between attempts is 60)."""
         self.calls = getattr(self, "calls", 0) + 1
-        return decide(self.sync, **{"now": at(20, 15, 10) + timedelta(minutes=50 * (self.calls - 1)), **kw})
+        return decide(self.sync, **{"now": at(20, 15, 10) + timedelta(minutes=65 * (self.calls - 1)), **kw})
 
     def test_the_first_two_attempts_go_and_the_third_does_not(self):
         self.assertEqual(self.go()[0], slot_guard.GO)
@@ -260,7 +260,7 @@ class TheAttemptCap(unittest.TestCase):
     def test_the_variable_sets_the_cap_between_one_and_four(self):
         for value, cap in (("1", 1), ("3", 3), ("4", 4), ("9", 4), ("0", 2), ("-1", 2), ("two", 2), ("", 2)):
             sync = FakeSupabase([self.chan])
-            gos = [decide(sync, now=at(20, 15, 10) + timedelta(minutes=50 * k),
+            gos = [decide(sync, now=at(20, 15, 10) + timedelta(minutes=65 * k),
                           env={schedule_catchup.ATTEMPT_ENV: value})[0] for k in range(6)]
             self.assertEqual(gos.count(slot_guard.GO), cap, value)
             self.assertEqual(gos[:cap], [slot_guard.GO] * cap, value)
@@ -294,7 +294,7 @@ class TheAttemptCap(unittest.TestCase):
         shop = chan("shop", hour=15)
         sync = FakeSupabase([self.chan, shop])
         for k in range(2):
-            decide(sync, registry_=registry(self.chan, shop), now=at(20, 15, 10) + timedelta(minutes=50 * k))
+            decide(sync, registry_=registry(self.chan, shop), now=at(20, 15, 10) + timedelta(minutes=65 * k))
         late = at(20, 17, 30)
         self.assertEqual(decide(sync, registry_=registry(self.chan, shop), now=late)[0], slot_guard.SKIP)
         self.assertEqual(decide(sync, registry_=registry(self.chan, shop), channel="shop", now=late)[0], slot_guard.GO)
@@ -319,7 +319,7 @@ class TheAttemptCap(unittest.TestCase):
     def test_a_denied_claim_stops_the_original_tick_even_when_the_evidence_is_unreadable(self):
         sync = FakeSupabase([self.chan], fail={"videos"})
         for k in range(2):
-            decide(sync, catchup=False, now=at(20, 15, 10) + timedelta(minutes=50 * k))
+            decide(sync, catchup=False, now=at(20, 15, 10) + timedelta(minutes=65 * k))
         self.assertEqual(decide(sync, catchup=False, now=at(20, 17, 30))[0], slot_guard.SKIP)
 
     def test_supabase_not_configured_runs_the_original_tick_and_never_a_catch_up(self):
@@ -346,12 +346,12 @@ class TheMinimumGapBetweenAttempts(unittest.TestCase):
         self.assertEqual(decide(self.sync, now=self.first)[0], slot_guard.GO)
 
     def test_a_second_attempt_waits_for_the_gap_and_claims_nothing_meanwhile(self):
-        for minutes in (0, 5, 15, 30, 44):
+        for minutes in (0, 5, 15, 30, 45, 59):
             rc, said = decide(self.sync, now=self.first + timedelta(minutes=minutes))
             self.assertEqual(rc, slot_guard.SKIP, minutes)
-        self.assertIn("less than 45 minutes ago", said)
+        self.assertIn("less than 60 minutes ago", said)
         self.assertEqual(len(attempt_rows(self.sync)), 1)                 # waiting used no attempt
-        self.assertEqual(decide(self.sync, now=self.first + timedelta(minutes=45))[0], slot_guard.GO)
+        self.assertEqual(decide(self.sync, now=self.first + timedelta(minutes=60))[0], slot_guard.GO)
         self.assertEqual(len(attempt_rows(self.sync)), 2)
 
     def test_it_holds_for_every_kind_of_run(self):
@@ -360,14 +360,15 @@ class TheMinimumGapBetweenAttempts(unittest.TestCase):
                              slot_guard.SKIP)
 
     def test_the_gap_is_measured_from_the_latest_attempt(self):
-        decide(self.sync, now=self.first + timedelta(minutes=50), env={schedule_catchup.ATTEMPT_ENV: "3"})
-        rc, _ = decide(self.sync, now=self.first + timedelta(minutes=80), env={schedule_catchup.ATTEMPT_ENV: "3"})
-        self.assertEqual(rc, slot_guard.SKIP)                       # 30 minutes after the second, 70 after the first
-        rc, _ = decide(self.sync, now=self.first + timedelta(minutes=95), env={schedule_catchup.ATTEMPT_ENV: "3"})
-        self.assertEqual(rc, slot_guard.GO)
+        env = {schedule_catchup.ATTEMPT_ENV: "3"}
+        self.assertEqual(decide(self.sync, now=self.first + timedelta(minutes=65), env=env)[0], slot_guard.GO)
+        rc, _ = decide(self.sync, now=self.first + timedelta(minutes=95), env=env)
+        self.assertEqual(rc, slot_guard.SKIP)                       # 30 minutes after the second, 95 after the first
+        rc, _ = decide(self.sync, now=self.first + timedelta(minutes=125), env=env)
+        self.assertEqual(rc, slot_guard.GO)                         # 60 after the second
 
     def test_the_variable_sets_the_gap_within_ten_and_one_hundred_eighty_minutes(self):
-        for value, minutes in (("10", 10), ("90", 90), ("180", 180), ("5", 10), ("999", 180), ("soon", 45), ("", 45)):
+        for value, minutes in (("10", 10), ("90", 90), ("180", 180), ("5", 10), ("999", 180), ("soon", 60), ("", 60)):
             said = []
             got = schedule_catchup.attempt_gap({schedule_catchup.GAP_ENV: value}, say=said.append)
             self.assertEqual(got, timedelta(minutes=minutes), value)

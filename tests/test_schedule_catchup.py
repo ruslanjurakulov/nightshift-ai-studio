@@ -580,7 +580,7 @@ class TheAttemptCapInTheResolver(unittest.TestCase):
 
 
 class TheGapInTheResolver(unittest.TestCase):
-    """A slot whose latest attempt is less than the minimum gap old (default 45 minutes) is not handed out yet."""
+    """A slot whose latest attempt is less than the minimum gap old (default 60 minutes) is not handed out yet."""
 
     SLOT = "2026-10-20T15:00:00Z"
 
@@ -593,19 +593,20 @@ class TheGapInTheResolver(unittest.TestCase):
     def test_nothing_is_handed_out_until_the_gap_has_passed(self):
         sync = self.sync(self.claimed(1, "2026-10-20T15:05:00Z"))
         rows = [chan("default", hour=15)]
-        for minute, backup in ((10, False), (15, True), (30, True), (49, True)):
+        for minute, backup in ((10, False), (15, True), (30, True), (45, True), (59, True)):
             out, err = run(15, rows, now=at(20, 15, minute), sync=sync, backup=backup)
             self.assertEqual(out, [], minute)
         self.assertIn("waiting before another", err)
-        self.assertEqual(ids(run(15, rows, now=at(20, 15, 50), sync=sync, backup=True)[0]), ["default"])
-        self.assertEqual(ids(run(16, rows, now=at(20, 16, 5), sync=sync)[0]), ["default"])
+        self.assertEqual(run(16, rows, now=at(20, 16, 4), sync=sync, backup=True)[0], [])     # 59 minutes
+        self.assertEqual(ids(run(16, rows, now=at(20, 16, 5), sync=sync, backup=True)[0]), ["default"])   # 60
 
     def test_the_latest_attempt_sets_the_gap(self):
         sync = self.sync(self.claimed(1, "2026-10-20T15:05:00Z"), self.claimed(2, "2026-10-20T16:00:00Z"))
         env = {schedule_catchup.ATTEMPT_ENV: "3"}
         rows = [chan("default", hour=15)]
         self.assertEqual(run(16, rows, now=at(20, 16, 30), sync=sync, env=env)[0], [])
-        self.assertEqual(ids(run(16, rows, now=at(20, 16, 45), sync=sync, env=env)[0]), ["default"])
+        self.assertEqual(run(16, rows, now=at(20, 16, 45), sync=sync, env=env)[0], [])        # 60 after the FIRST only
+        self.assertEqual(ids(run(17, rows, now=at(20, 17, 0), sync=sync, env=env)[0]), ["default"])
 
     def test_naive_and_z_timestamps_both_count_and_an_unreadable_one_counts_as_just_claimed(self):
         rows = [chan("default", hour=15)]

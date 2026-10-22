@@ -358,7 +358,7 @@ class TheAttemptCap(unittest.TestCase):
                         self.assertEqual(repeats(w), [])
 
     def test_a_slot_whose_every_run_dies_is_started_exactly_the_cap_times_when_the_window_has_room(self):
-        # The attempts are at least the minimum gap (45 minutes) apart, and one job of a slot runs at a time, so
+        # The attempts are at least the minimum gap (60 minutes) apart, and one job of a slot runs at a time, so
         # four attempts need more than the default three-hour window; a six-hour window has the room.
         for cap in (1, 2, 3, 4):
             for seed in range(10):
@@ -375,14 +375,15 @@ class TheAttemptCap(unittest.TestCase):
                     times = sorted(r[0] for r in runs)
                     with self.subTest(seed=seed, p_drop=p_drop, slot=key):
                         for a, b in zip(times, times[1:]):
-                            self.assertGreaterEqual(b - a, timedelta(minutes=45))
+                            self.assertGreaterEqual(b - a, timedelta(minutes=60))
 
-    def test_a_credential_fixed_within_the_gap_is_picked_up_by_the_second_attempt(self):
+    def test_a_credential_fixed_within_the_hour_is_picked_up_by_the_second_attempt(self):
         # Runs fail within minutes (a dead token) until the owner fixes it some time after the first attempt. With no
-        # gap the 15-minute ticks burned both attempts at once; with it the second attempt comes at least 45 minutes
-        # after the first (45-62 in the simulation), so a fix inside that time is always picked up in the window.
-        for fix_min in (30, 40, 45):
-            for seed in range(20):
+        # gap the 15-minute ticks burned both attempts at once; with the 60-minute gap the second attempt comes at
+        # least an hour after the first (60-77 in the simulation), so a fix inside that hour is always picked up, with
+        # the default three-hour window and the default cap of two.
+        for fix_min in (30, 45, 55, 60):
+            for seed in range(30):
                 w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=fix_min))
                 with self.subTest(fix_min=fix_min, seed=seed):
                     self.assertEqual(over_cap(w), [])
@@ -391,16 +392,16 @@ class TheAttemptCap(unittest.TestCase):
                         self.assertEqual(len(w.starts[(cid, start)]), 2)
 
     def test_a_slower_fix_needs_a_longer_gap_or_a_higher_cap_and_never_exceeds_the_cap(self):
-        env_gap = {schedule_catchup.GAP_ENV: "75"}
+        env_gap = {schedule_catchup.GAP_ENV: "90"}
         for seed in range(20):
             with mock.patch.dict(os.environ, env_gap):
-                w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=70))
+                w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=85))
             for cid, start in slots(w, 3):
                 self.assertTrue(has_video(w, cid, start), (seed, cid, start))     # the gap is the lever
             w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=100))
             self.assertEqual(over_cap(w), [])
             self.assertFalse(any(has_video(w, c, st) for c, st in slots(w, 3)))   # honest: both attempts spent by then
-            w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=95), cap=3, window=6)
+            w = simulate(seed, p_drop=0.0, max_delay=10, fix_after=timedelta(minutes=125), cap=3, window=6)
             for cid, start in slots(w, 3):
                 self.assertTrue(has_video(w, cid, start), (seed, cid, start))
 
@@ -464,8 +465,8 @@ class TheChecksHaveTeeth(unittest.TestCase):
 
     def test_without_the_concurrency_group_ticks_in_one_hour_overlap(self):
         at = D0 + timedelta(hours=22, minutes=10)
-        w = World([chan("default", hour=22)], [(at, PRIMARY), (at + timedelta(minutes=50), BACKUP)], seed=1,
-                  serialize=False, run_minutes=(60, 60)).run()
+        w = World([chan("default", hour=22)], [(at, PRIMARY), (at + timedelta(minutes=65), BACKUP)], seed=1,
+                  serialize=False, run_minutes=(75, 75)).run()
         self.assertTrue(repeats(w))
 
     def test_without_the_evidence_check_in_the_resolver_a_finished_slot_is_scheduled_again(self):

@@ -67,7 +67,7 @@ MAX_MAX_ATTEMPTS = 4
 #: a provider outage burns every attempt within one tick or two (ticks are 15 minutes apart) and the slot is dead
 #: before anyone can fix the cause; with it the attempts are spread across the catch-up window.
 GAP_ENV = "NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES"
-DEFAULT_ATTEMPT_GAP_MINUTES = 45
+DEFAULT_ATTEMPT_GAP_MINUTES = 60
 MIN_ATTEMPT_GAP_MINUTES, MAX_ATTEMPT_GAP_MINUTES = 10, 180
 CLAIMED, DENIED = "claimed", "denied"          # claim_attempt's answers; UNKNOWN is the third
 _ATTEMPT_KEY = re.compile(r"slot-attempt:(?P<channel>[a-z0-9][a-z0-9-]{1,38}):(?P<slot>[0-9TZ:-]{20}):(?P<n>[1-9])")
@@ -213,7 +213,7 @@ def attempt_key(channel_id: str, start: datetime, n: int) -> str:
 
 
 def attempt_gap(env=None, say=warn) -> timedelta:
-    """Minimum time between two attempts of one slot. Unset or empty is 45 minutes; a value that is not a whole number
+    """Minimum time between two attempts of one slot. Unset or empty is 60 minutes; a value that is not a whole number
     is the default with a warning that never echoes it; a number outside 10..180 is clamped to the nearest bound,
     also with a warning."""
     raw = str((os.environ if env is None else env).get(GAP_ENV, "") or "").strip()

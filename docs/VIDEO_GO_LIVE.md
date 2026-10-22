@@ -463,14 +463,16 @@ a video row is, an attempt is not, so a run that died stays retryable up to the 
   nothing (as for unreadable evidence). The original hourly tick's exact-hour run keeps its documented fail-open
   behaviour, and a denied claim stops it too. That is the one way a slot can exceed the cap: the original tick
   running at its exact hour while Supabase is unreadable, which is the existing owner choice.
-- **Minimum gap between attempts (`NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES`, default 45, 10-180).** A run that
+- **Minimum gap between attempts (`NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES`, default 60, 10-180).** A run that
   fails within minutes (a dead token, a provider outage) would otherwise burn every attempt within a tick or two
   (ticks are 15 minutes apart) and the slot would be dead before anyone could fix the cause. A slot whose latest
   attempt is less than the gap old is not handed out by the resolver, and the guard exits 3 WITHOUT claiming, so the
   attempt stays for a later tick. The gap is measured from the previous claim's time (`system_events.ts`, which
   mixes naive and `Z` UTC strings; both are read; an unreadable one counts as just claimed). In the simulation the
-  second attempt comes 45-62 minutes after the first, so a credential fixed within 45 minutes is always picked up
-  inside the window; for a slower fix raise the gap or the cap, or run it by hand.
+  second attempt comes 63-87 minutes after the first, so a credential fixed within an hour of the first attempt is
+  always picked up inside the default 3 h window; for a slower fix raise the gap or the cap, or run it by hand.
+  With the default cap of 2 the two attempts fit the window; a cap above 2 needs a longer window (4 attempts at
+  60+ minutes apart do not fit in 3 hours).
 - **Manual dispatches are exempt** (an explicit instruction, and they never ask the guard); they neither count nor
   are stopped. Beware that a manual run does not reset a used-up slot either, and a video it makes does end the slot.
 - **Dead-man alert.** When the last attempt recorded for a slot was its cap, the alert (its own key,

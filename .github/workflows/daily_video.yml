@@ -172,7 +172,7 @@ jobs:
           # warning. Manual runs are exempt. Also read by tools/slot_guard.py.
           NIGHTSHIFT_SLOT_MAX_ATTEMPTS: ${{ vars.NIGHTSHIFT_SLOT_MAX_ATTEMPTS }}
           # Minimum minutes between two attempts of one slot, so a dead credential
-          # cannot burn them all within a few ticks. Unset = 45, 10-180.
+          # cannot burn them all within a few ticks. Unset = 60, 10-180.
           NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES: ${{ vars.NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES }}
           # Which cron entry fired (empty on a manual run). Any entry other than
           # the original "0 * * * *" is a backup tick, which never starts a run
