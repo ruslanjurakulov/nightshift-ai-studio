@@ -391,6 +391,77 @@ class UnclassifiableNichesAreNeverOffNiche(unittest.TestCase):
         self.assertEqual((v.action, v.reason), (gate.REJECT, "needs_human"))
 
 
+class AnUnknownNichesOwnEntertainmentIsNotAPersonStory(unittest.TestCase):
+    """Re-review F5-residual: for a channel whose niche the tables do not know, a
+    bare 'trailer', 'box office', 'teaser', 'season' is its subject."""
+
+    OWN = ["Naruto movie trailer breakdown", "Demon Slayer box office record", "Top fantasy movie trailers",
+           "Game of Thrones season finale theories", "BTS comeback teaser"]
+    NICHES = ("anime", "Fantactik", "fantasy stories", "")
+
+    def test_the_channels_own_topics_are_not_held_from_any_source(self):
+        for niche in self.NICHES:
+            profile = gate.niche_profile(niche)
+            for source in (TREND, "ai"):
+                for topic in self.OWN:
+                    with self.subTest(niche=niche, source=source, topic=topic):
+                        self.assertNotEqual(gate.evaluate(topic, profile, source=source).action, gate.REJECT)
+
+    def test_a_cast_list_beside_an_entertainment_word_is_still_held(self):
+        for niche in self.NICHES:
+            with self.subTest(niche=niche):
+                v = gate.evaluate("Vijay Deverakonda Rashmika Mandanna teaser", gate.niche_profile(niche), source=TREND)
+                self.assertEqual((v.action, v.detail), (gate.REJECT, "living_person"))
+
+    def test_so_is_a_credit_list(self):
+        v = gate.evaluate("Pushpa 2 Teaser | Allu Arjun | Rashmika Mandanna", gate.niche_profile("anime"), source=TREND)
+        self.assertEqual((v.action, v.detail), (gate.REJECT, "living_person"))
+
+    def test_a_known_niche_is_screened_exactly_as_before(self):
+        """Chronos: one entertainment word is not a person, two are held, as in the first round."""
+        for topic in ("Taylor Swift new album teaser", "Dune Part Two trailer reaction"):
+            self.assertEqual(gate.evaluate(topic, HISTORY, source=TREND).reason, "off_niche")
+        v = gate.evaluate("Murder mystery movie trailer teaser", HISTORY, source=TREND)
+        self.assertNotEqual(v.action, gate.ACCEPT)
+
+    def test_the_ai_pick_of_such_a_channel_does_not_end_in_a_selection_error(self):
+        """The run used to stop (TopicSelectionError) on the channel's own topics."""
+        for topic in self.OWN:
+            self.assertNotEqual(gate.evaluate(topic, gate.niche_profile("anime"), source="ai").action, gate.REJECT)
+
+
+class NewsPhrasedAccusationsBesideAHistoricalName(unittest.TestCase):
+    """Re-review LOW1: a name from history does not make an arrest historical."""
+
+    HELD = ["Napoleon Dynamite actor arrested", "Celeste Ng accused", "Cleopatra film star accused",
+            "Atlantis resort lawsuit", "Ancient Aliens star accused of fraud"]
+
+    def test_these_are_held_from_any_source(self):
+        for source in (TREND, "ai"):
+            for topic in self.HELD:
+                with self.subTest(source=source, topic=topic):
+                    v = gate.evaluate(topic, HISTORY, source=source)
+                    self.assertEqual((v.action, v.reason), (gate.REJECT, "needs_human"))
+
+    def test_a_real_early_year_or_a_plain_era_still_exempts(self):
+        for topic in ("Joan of Arc accused of heresy 1431", "The Ancient Greeks accused Socrates of impiety",
+                      "The arrest of Joan of Arc in 1430"):
+            with self.subTest(topic=topic):
+                self.assertEqual(gate.evaluate(topic, HISTORY, source="ai").action, gate.ACCEPT)
+
+
+class SmallReadingFixes(unittest.TestCase):
+    def test_an_ordinal_is_not_a_year(self):
+        for topic in ("The 1000th goal", "His 1500th match", "The 1066th day", "The 1100st"):
+            self.assertEqual(gate._years(topic), [], topic)
+        self.assertEqual(gate._years("The year 1066"), [1066])
+
+    def test_a_hyphenated_term_matches_the_hyphenated_word(self):
+        self.assertEqual(gate.analyze("K-pop comeback stage").scores["entertainment"], 2)
+        self.assertEqual(gate.analyze("kpop comeback stage").scores["entertainment"], 2)
+        self.assertEqual(gate.niche_profile("K-pop").families, frozenset({"entertainment"}))
+
+
 class SharingAGenericWordProvesNothing(unittest.TestCase):
     """Review F6."""
 

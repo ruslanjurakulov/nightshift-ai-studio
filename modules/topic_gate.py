@@ -158,7 +158,7 @@ _FAMILIES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("film", "films", "movie", "movies", "cinema", "actor", "actors", "actress", "actresses", "singer",
          "rapper", "album*", "concert*", "tour", "cast", "premiere*", "sequel*", "franchise", "season",
          "episode*", "netflix", "hbo", "disney", "marvel", "influencer*", "youtuber*", "streamer*",
-         "tiktok*", "song", "songs", "lyrics", "fandom", "hollywood", "music", "tv",
+         "tiktok*", "song", "songs", "lyrics", "fandom", "hollywood", "music", "tv", "star",
          "фильм*", "кино", "сериал*", "актер*", "актриса", "певец", "певиц*", "голливуд*", "музык*",
          "kino", "film*", "serial*", "aktyor*", "xonanda*", "premyera*", "qo'shiq*", "musiqa*"),
     ),
@@ -266,7 +266,7 @@ _RECENCY_WORDS = (
 )
 # News-report phrasing: if present, a past-looking anchor does not switch the
 # minor / living-person screens off ("Rome: 12-year-old missing, police say").
-_NEWS_CUES = ("police", "accused", "arrested", "sued", "sues", "charged", "полиц*", "politsiya*")
+_NEWS_CUES = ("police", "accused", "arrested", "sued", "sues", "charged", "lawsuit*", "полиц*", "politsiya*")
 # Gossip verbs: a named person doing something now.
 _GOSSIP_CUES = ("visits", "slams", "reacts", "spotted", "responds", "reveals", "announces", "reunites")
 
@@ -284,7 +284,7 @@ _YEAR_RE = re.compile(r"(?<![\d,.$\u20ac\u00a3\u20b9])(1\d{3}|20\d{2})(?!\d)")
 _NOT_A_YEAR_AFTER = re.compile(
     r"(?:%|\s{0,2}(?:p|k|px|fps|hz|crores?|cr|lakhs?|views?|subs|subscribers|days?|goals?|likes|votes|"
     r"vs|mb|gb|tb|kg|km|mm|cm|usd|inr|rs|eur|dollars?|rupees|years?|yrs?|hours?|minutes?|episodes?|"
-    r"points?|runs|wickets|miles|metres|meters|feet|ft)\b)", re.IGNORECASE)
+    r"points?|runs|wickets|miles|metres|meters|feet|ft|th|st|nd|rd)\b)", re.IGNORECASE)
 # Whitespace between the digits and "year-old" is bounded: an unbounded \s* pair
 # is quadratic on "1" + 100k spaces.
 _AGE_RE = re.compile(r"(?<!\d)(\d{1,2})\s{0,3}-?\s{0,3}(?:year|yr|y)-?\s{0,3}old|(?<!\d)(\d{1,2})\s{0,3}(?:\u043b\u0435\u0442\u043d\w{0,10}|yosh\w{0,10})")
@@ -352,7 +352,8 @@ class _Lexicon:
         self.prefix: dict[str, str] = {}
         self.phrase: dict[str, str] = {}
         for raw in terms:
-            t = fold(raw).strip()
+            # A hyphen splits tokens ("k-pop" is "k", "pop"): a hyphenated term is a phrase.
+            t = fold(raw).replace("-", " ").strip()
             if not t:
                 continue
             if t.endswith("*"):
@@ -419,6 +420,7 @@ class Analysis:
     news: bool            # police, accused, arrested, sued ...
     gossip: bool          # visits, slams, reacts, spotted ...
     person_like: bool     # two adjacent Capitalised words that are no known term: a name
+    name_run: int         # the longest run of such Capitalised words ("Vijay Deverakonda Rashmika Mandanna" = 4)
     tokens: tuple
     padded: str
 
@@ -490,6 +492,22 @@ def _person_like(text: str) -> bool:
     return False
 
 
+def _name_run(text: str) -> int:
+    """The longest run of consecutive Capitalised words that are no stop word and
+    no vocabulary term. One pair is "Demon Slayer" or "Kim Kardashian"; four in a
+    row is a cast list."""
+    best = run = 0
+    for raw in str(text or "").split():
+        w = re.sub(r"[\u2019']s$", "", raw.strip(".,;:!?()[]\"'|-"))
+        if (len(w) >= 3 and w.isalpha() and w[0].isupper() and w[1:].islower()
+                and fold(w) not in _NAME_STOP and not _known_term(w)):
+            run += 1
+            best = max(best, run)
+        else:
+            run = 0
+    return best
+
+
 def _known_term(word: str) -> bool:
     folded = fold(word)
     tokens = tuple(_WORD_RE.findall(folded))
@@ -547,6 +565,7 @@ def analyze(topic: str) -> Analysis:
         news=bool(_LEX_NEWS.hits(tokens, padded)),
         gossip=bool(_LEX_GOSSIP.hits(tokens, padded)),
         person_like=person,
+        name_run=_name_run(text),
         tokens=tokens,
         padded=padded,
     )
@@ -676,13 +695,25 @@ def sensitive_category(topic: str, profile: NicheProfile | None = None, analysis
         return None
     tokens, padded = a.tokens, a.padded
 
-    # living people in entertainment or politics
+    # living people in entertainment or politics. For a channel whose niche the
+    # tables do not know ("anime", "K-pop"), a bare "trailer", "box office" or
+    # "season" is that channel's own subject, not a person: entertainment words
+    # count only with a credit list or a cast-list-sized run of names.
     if CAT_LIVING_PERSON not in waived:
-        if (a.scores.get("entertainment", 0) >= DECISIVE_SCORE or a.credits
-                or (a.scores.get("politics", 0) >= DECISIVE_SCORE and a.scores.get("history", 0) == 0)):
+        unknown = profile is not None and not profile.known
+        if unknown:
+            entertainment = a.credits or (a.name_run >= 3 and a.scores.get("entertainment", 0) >= 1)
+        else:
+            entertainment = a.scores.get("entertainment", 0) >= DECISIVE_SCORE or a.credits
+        if entertainment or (a.scores.get("politics", 0) >= DECISIVE_SCORE and a.scores.get("history", 0) == 0):
             return CAT_LIVING_PERSON
     # an accusation, a case, a lawsuit
-    if not historical and (_LEX_ACCUSATION.hits(tokens, padded) or len(_LEX_LEGAL_WEAK.hits(tokens, padded)) >= 2):
+    # A news-phrased accusation runs even beside a historical NAME ("Napoleon
+    # Dynamite actor arrested", "Atlantis resort lawsuit"), unless the topic has a
+    # real year up to 1945 or an era word with no entertainment word beside it.
+    run_crime = (not historical) or (a.news and not a.year_hist
+                                     and (not a.era or a.scores.get("entertainment", 0) >= 1))
+    if run_crime and (_LEX_ACCUSATION.hits(tokens, padded) or len(_LEX_LEGAL_WEAK.hits(tokens, padded)) >= 2):
         return CAT_CRIME_LEGAL
     # a minor
     ages = [int(x) for m in _AGE_RE.findall(clean(str(topic or "")[:MAX_TOPIC_READ])) for x in m if x]
