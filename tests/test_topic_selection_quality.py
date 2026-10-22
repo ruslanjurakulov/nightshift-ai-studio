@@ -59,6 +59,15 @@ def finance(**kw):
                           agent=AgentConfig(language="English"), **kw)
 
 
+def history_and_money(**kw):
+    """A second channel that may legitimately pick a history topic. The tests
+    about per-channel HISTORY use history titles for both channels; the niche
+    gate (tests/test_topic_gate.py) would - rightly - refuse "Why Rome fell"
+    on a personal-finance channel, which is not what they are about."""
+    return ChannelContext(channel_id="coin-notes", name="Coin Notes", niche="history of money",
+                          agent=AgentConfig(language="English"), **kw)
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -162,7 +171,7 @@ class NormaliserTests(unittest.TestCase):
 class PerChannelHistoryTests(Base):
     def test_a_topic_made_for_one_channel_does_not_block_another(self):
         self.write_history([session("The Fall of Rome", channel_id="chronos")])
-        tm = self.manager(finance(), "Why Rome fell")
+        tm = self.manager(history_and_money(), "Why Rome fell")
         # Same words, different channel: allowed.
         self.assertEqual(tm.pick_topic(), "Why Rome fell")
         self.assertEqual(len(self.gemini.prompts), 1)
@@ -184,14 +193,14 @@ class PerChannelHistoryTests(Base):
         # chronos now refuses it, coin-notes does not.
         again = self.manager(chronos(), "Why Rome fell", "Stonehenge: who raised it")
         self.assertEqual(again.pick_topic(), "Stonehenge: who raised it")
-        other = self.manager(finance(), "Why Rome fell")
+        other = self.manager(history_and_money(), "Why Rome fell")
         self.assertEqual(other.pick_topic(), "Why Rome fell")
 
     def test_rows_with_no_channel_id_count_for_every_channel(self):
         """Written before channel ids were recorded: whose they are is
         unknowable, and repeating an old video is the worse error."""
         self.write_history([session("The Fall of Rome")])
-        for ch in (chronos(), finance()):
+        for ch in (chronos(), history_and_money()):
             tm = self.manager(ch, "Why Rome fell", "Pompeii in an afternoon")
             self.assertEqual(tm.pick_topic(), "Pompeii in an afternoon")
 
@@ -438,13 +447,16 @@ class FailureBehaviourTests(Base):
         tm.pick_topic()
         self.assertIn('- niche: "history mysteries"', self.gemini.prompts[0])
 
-    def test_on_niche_vs_off_niche_is_not_decided_offline(self):
-        """Documents a limit instead of hiding it: a fluent off-niche answer is
-        accepted, because only a model (or a human) can tell. What the code does
-        is put the niche in the prompt and let the model decline with NO_TOPIC."""
-        tm = self.manager(chronos(), "Ten celebrity feuds you forgot about")
-        self.assertEqual(tm.pick_topic(), "Ten celebrity feuds you forgot about")
+    def test_on_niche_is_decided_by_words_only_where_the_words_are_clear(self):
+        """What the code can and cannot tell without a model (modules/topic_gate.py):
+        an answer that is plainly about another field is refused and asked for
+        again; a fluent answer the words cannot place is still accepted, because
+        only a model (or a human) can tell - the prompt put the niche in front of
+        the model and let it decline with NO_TOPIC."""
+        tm = self.manager(chronos(), "Ten celebrity feuds you forgot about", "A quiet harbour that swallowed fleets")
+        self.assertEqual(tm.pick_topic(), "A quiet harbour that swallowed fleets")
         self.assertIn('- niche: "history mysteries"', self.gemini.prompts[0])
+        self.assertIn("Ten celebrity feuds you forgot about", self.gemini.prompts[1])    # told not to repeat it
 
 
 class NormaliserHardeningTests(unittest.TestCase):

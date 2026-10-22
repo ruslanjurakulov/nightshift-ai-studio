@@ -128,18 +128,84 @@ class NothingElseMoved(unittest.TestCase):
         script = step("make-video", "Run Chronos bot")["run"]
         self.assertIn('--privacy "${YOUTUBE_PRIVACY:-private}"', script)
 
-    def test_the_cron_is_still_hourly(self):
-        doc = load()
-        self.assertEqual((doc.get(True) or doc.get("on"))["schedule"], [{"cron": "0 * * * *"}])
+    def test_the_original_hourly_cron_is_kept_first_and_backups_are_added(self):
+        # GitHub's cron is best effort (about one tick in four was delivered over seven weeks), so the hour has
+        # several ticks. The ORIGINAL entry stays exactly as it was: the resolver treats it, and only it, as the
+        # tick that may start the exact hour on an unreadable source (schedule_catchup.PRIMARY_CRON).
+        from modules import schedule_catchup
+
+        crons = [e["cron"] for e in (load().get(True) or load().get("on"))["schedule"]]
+        self.assertEqual(crons[0], "0 * * * *")
+        self.assertEqual(crons[0], schedule_catchup.PRIMARY_CRON)
+        self.assertEqual(crons[1:], ["15,30,45 * * * *"])
+        minutes = sorted(int(m) for c in crons for m in c.split()[0].split(","))
+        self.assertEqual(minutes, [0, 15, 30, 45])
+        for c in crons:
+            self.assertEqual(c.split()[1:], ["*", "*", "*", "*"], c)               # every hour, every day
+
+    def test_the_resolver_is_told_which_cron_fired_only_on_a_schedule_event(self):
+        env = step("resolve", "Pick due channels")["env"]
+        self.assertEqual(env["TICK_CRON"], "${{ github.event.schedule }}")
+        script = step("resolve", "Pick due channels")["run"]
+        self.assertIn('--due-hour "$(date -u +%-H)" --tick "${TICK_CRON:-}"', script)
+        self.assertEqual(script.count("--tick"), 1)                                # a manual run is never a "tick"
 
     def test_the_resolver_gets_the_window_from_a_repo_variable_and_the_pause_is_still_passed(self):
         env = step("resolve", "Pick due channels")["env"]
         self.assertEqual(env["NIGHTSHIFT_CATCHUP_HOURS"], "${{ vars.NIGHTSHIFT_CATCHUP_HOURS }}")
         self.assertEqual(env["NIGHTSHIFT_PIPELINE_PAUSED"], "${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}")
 
+    def test_the_attempt_cap_variable_reaches_both_the_resolver_and_the_guard(self):
+        want = "${{ vars.NIGHTSHIFT_SLOT_MAX_ATTEMPTS }}"
+        self.assertEqual(step("resolve", "Pick due channels")["env"]["NIGHTSHIFT_SLOT_MAX_ATTEMPTS"], want)
+        self.assertEqual(step("make-video", "Run Chronos bot")["env"]["NIGHTSHIFT_SLOT_MAX_ATTEMPTS"], want)
+        gap = "${{ vars.NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES }}"
+        self.assertEqual(step("resolve", "Pick due channels")["env"]["NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES"], gap)
+        self.assertEqual(step("make-video", "Run Chronos bot")["env"]["NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES"], gap)
+
     def test_the_scheduled_resolver_still_filters_by_the_current_hour(self):
         script = step("resolve", "Pick due channels")["run"]
         self.assertIn('python tools/list_channels.py --due-hour "$(date -u +%-H)"', script)
+        self.assertNotIn("--due-hour", script.split("elif")[0])                    # a named channel ignores the hour
+
+
+@unittest.skipUnless(BASH, "needs bash")
+class TheResolverStep(unittest.TestCase):
+    """The 'Pick due channels' script, run for real under bash with a stand-in python that records its argv."""
+
+    def go(self, *, event, channel="", tick=""):
+        script = step("resolve", "Pick due channels")["run"]
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            calls, out = d / "calls", d / "out"
+            fake = d / "bin"
+            fake.mkdir()
+            py = fake / "python"
+            py.write_text('#!/bin/sh\ncase "$1" in\n  tools/list_channels.py) echo "$@" >> "$CALLS"; echo \'{"include": []}\';;\n'
+                          '  *) cat >/dev/null; echo 0;;\nesac\n')
+            py.chmod(py.stat().st_mode | stat.S_IEXEC)
+            env = {"PATH": f"{fake}:{os.environ['PATH']}", "CALLS": str(calls), "GITHUB_OUTPUT": str(out),
+                   "EVENT_NAME": event, "INPUT_CHANNEL": channel, "TICK_CRON": tick}
+            proc = subprocess.run([BASH, "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+                                  env=env, capture_output=True, text=True, timeout=60)
+            return proc, calls.read_text().splitlines() if calls.exists() else []
+
+    def test_a_scheduled_tick_passes_the_hour_and_the_cron_that_fired(self):
+        proc, calls = self.go(event="schedule", tick="15,30,45 * * * *")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertRegex(calls[0], r"^tools/list_channels\.py --due-hour \d+ --tick 15,30,45 \* \* \* \*$")
+
+    def test_a_tick_with_no_cron_is_still_passed_so_it_counts_as_a_backup(self):
+        proc, calls = self.go(event="schedule", tick="")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertRegex(calls[0], r"--due-hour \d+ --tick $")
+
+    def test_manual_runs_never_carry_a_tick(self):
+        for event, channel, want in (("workflow_dispatch", "", "tools/list_channels.py"),
+                                     ("workflow_dispatch", "default", "tools/list_channels.py --only default")):
+            proc, calls = self.go(event=event, channel=channel, tick="")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(calls, [want])
 
 
 @unittest.skipUnless(BASH, "needs bash")

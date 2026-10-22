@@ -235,6 +235,23 @@ GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "60"))
 GEMINI_STRUCTURED_OUTPUT = os.getenv("CHRONOS_GEMINI_STRUCTURED_OUTPUT", "").strip().lower() in (
     "1", "true", "yes", "on",
 )
+# Topic selection gate (modules/topic_gate.py): every topic the SYSTEM chooses
+# (content-planner queue, trend feed, autopilot, the AI pick) is checked against
+# the channel's niche and a small sensitive-topic screen before it is used. A
+# topic given with --topic is an instruction and is never checked.
+#   CHRONOS_TOPIC_GATE=off            turn the gate off (a rollback switch; it is
+#                                     logged on every use, never silent)
+#   CHRONOS_TOPIC_QUEUE_STALE_DAYS    a queued entry older than this is stale:
+#                                     it is used only if the words clearly place
+#                                     it in the niche or the model says so; an
+#                                     explicit OFF expires it, no answer leaves
+#                                     it queued. 0 = no age rule.
+#   CHRONOS_TOPIC_GATE_MODEL_CALLS    at most this many small model calls per
+#                                     run, spent only on trend/stale candidates
+#                                     the words cannot place. 0 = never ask.
+TOPIC_GATE_ENABLED = os.getenv("CHRONOS_TOPIC_GATE", "").strip().lower() not in ("off", "0", "false", "no")
+TOPIC_QUEUE_STALE_DAYS = _count_env("CHRONOS_TOPIC_QUEUE_STALE_DAYS", 14, hi=3650)
+TOPIC_GATE_MODEL_CALLS = _count_env("CHRONOS_TOPIC_GATE_MODEL_CALLS", 2, hi=10)
 SCRIPT_LANGUAGE = os.getenv("SCRIPT_LANGUAGE", "English")
 VIDEO_DURATION_TARGET = int(os.getenv("VIDEO_DURATION_TARGET", "300"))  # seconds
 

@@ -249,10 +249,10 @@ Without a token it prints `SKIP` and does nothing.
 below before relying on it.
 
 **Pause.** Set the repository **Variable** `NIGHTSHIFT_PIPELINE_PAUSED` to `true`
-(Settings > Secrets and variables > Actions > Variables). From the next hourly run,
+(Settings > Secrets and variables > Actions > Variables). From the next scheduled tick,
 `daily_video.yml` resolves to an empty matrix and the `make-video` job is skipped; the
 run is green and the "Pick due channels" step logs
-`pipeline paused by NIGHTSHIFT_PIPELINE_PAUSED`. Read that step in the next hourly run
+`pipeline paused by NIGHTSHIFT_PIPELINE_PAUSED`. Read that step in the next scheduled run
 to confirm.
 
 **The value fails closed.** Only an empty value, `0`, `false`, `no` or `off` (any case,
@@ -264,7 +264,7 @@ whoever set it meant to stop something, and no video is the better failure.
 It is a Variable, not a secret and not a database flag, so it also works when Supabase
 is down.
 
-**Resume.** Delete the variable or set it to `false`. The next hourly run schedules
+**Resume.** Delete the variable or set it to `false`. The next scheduled tick schedules
 channels again, each at its own `publish_hour_utc`. A slot that passed while paused is
 made up only if you resume within the catch-up window (section 9) of that slot, and only
 if the slot has no run recorded; set `NIGHTSHIFT_CATCHUP_HOURS=0` if you want a resume to
@@ -339,21 +339,32 @@ GitHub-native way to stop the schedule altogether (it also stops the hourly reso
 
 ## 9. A late or repeated schedule: catch-up, once per slot, topic memory
 
-GitHub's cron is best effort: an hourly run can start late, or be dropped. Before this,
-`daily_video.yml` ran only the channels whose `publish_hour_utc` equals the current UTC hour,
-so a run delayed past the top of the hour skipped that channel's whole day, and nothing
-noticed except the dead-man alert (`docs/operator-bot.md`). Everything below is reliability
-only: it adds no publishing power, the schedule still passes `--privacy private`, and a run it
+**What GitHub guarantees: nothing.** Scheduled workflows are best effort. A tick can start late or be dropped,
+and this repository's own history shows how often: 268 scheduled runs of the old hourly cron over seven weeks is
+about one tick in four delivered (one every 4.4 hours on average), at random minutes, with gaps of up to a day.
+Counting, for every hour of those weeks, whether any delivered tick fell in the hour's catch-up window, a slot was
+reached 22% of the time at its exact hour, 45% with a one-hour window, 79% with three hours and 96% with six. A
+slot with no tick in its window is a lost video (2026-10-21: runs at 17:45 and 21:00, then 00:18, 2h18 after the 22:00
+slot, outside the one-hour window; the dead-man alert fired and was delivered, so the monitoring worked). Everything
+below is reliability only: it adds no publishing power, the schedule still passes `--privacy private`, and a run it
 starts is the same run the exact hour would have started.
+
+**Four ticks an hour.** `daily_video.yml` has two cron entries, `0 * * * *` (the original) and `15,30,45 * * * *`.
+Each tick resolves the channels due at the UTC hour it actually runs in, exactly as the single hourly tick did. More
+ticks mean more chances for a tick to land in a slot's window; they do not mean more runs (see "At most one run per
+slot" below). A tick with nothing due costs one ~15 second `resolve` job on a public repository. Whether GitHub
+delivers the extra entries at the same rate as the original one is not something this repository can know in
+advance; the rate is visible afterwards in the Actions list (the scheduled runs per day).
 
 **Catch-up window.** A channel is due when its slot hour passed within the last
 `NIGHTSHIFT_CATCHUP_HOURS` hours and its slot has no run recorded. Set it as a repository
-**Variable** (like `NIGHTSHIFT_PIPELINE_PAUSED`): unset = 1, `0` (or `off`) = no catch-up,
-1-6 = that many hours, above 6 = 6. A value that is not a whole number is the default (1)
-with a `::warning::` that never echoes it. One hour is what a late or dropped cron needs (the next
-hourly run is the catch-up); a wider window only buys more paid retries of a run that died without
-writing a row (see "A failed run" below), so widen it deliberately. The log line is
-`<channel> missed its <slot> UTC slot (<n>h ago) - catching up`.
+**Variable** (like `NIGHTSHIFT_PIPELINE_PAUSED`): **unset = 3**, `0` (or `off`) = no catch-up,
+1-6 = that many hours, above 6 = 6. A value that is not a whole number is the default (3)
+with a `::warning::` that never echoes it. Three hours means a slot is made up by any tick that lands
+from its hour until the end of the third hour after it (22:00 slot: ticks until 01:59). The downside of a
+wide window is a video that goes up at an odd hour (private first, so acceptable) and, for a run that died
+without writing a row, more retries (see "A failed run" below); lower it with the variable if that matters
+more to you than the lost day. The log line is `<channel> missed its <slot> UTC slot (<n>h ago) - catching up`.
 
 **What counts as "a run was recorded".** The dead-man switch's own evidence, read from
 Supabase through the same helpers (`modules/operator_bot/reliability.py`): a video row
@@ -366,8 +377,14 @@ channel that finishes after the slot began counts as that slot's evidence too: a
 
 **Fail safe.** If that evidence cannot be read (Supabase down, a source cut at its row
 limit, the channel not in the `channels` table) it is an unknown, and an unknown never starts
-a paid run: the exact hour runs exactly as it always did, a catch-up does not happen, and a
-`::warning::` names the channel. A registry that could not be read (the existing default-channel
+a paid run: the exact hour of the **original** `0 * * * *` tick runs exactly as it always did, a
+catch-up does not happen, a **backup** tick (`15,30,45`) hands out nothing, and a
+`::warning::` names the channel. The original tick keeps its old fail-open behaviour (the owner's
+documented choice: an outage must not cost the day's video by itself), so an outage cannot turn four
+ticks an hour into four runs. The workflow tells the resolver which cron entry fired
+(`github.event.schedule`, `--tick`); anything other than exactly `0 * * * *` counts as a backup, and
+a backup's row is marked `catchup: true`, which makes the guard in the run strict too. A backup tick at the exact hour also honours the dead-man's "never due" rule (as a catch-up does): a channel created or edited after its slot began, with nothing produced, gets no unplanned run from a backup tick. The first cron
+entry must therefore stay `0 * * * *` (`modules/schedule_catchup.PRIMARY_CRON`; a test pins it). A registry that could not be read (the existing default-channel
 fallback) also gets no catch-up. A channel that was created or edited after the slot began and
 has produced nothing was never due for that slot (the dead-man's rule), so changing a channel's
 hour or switching it on at 15:30 does not start the 14:00 slot.
@@ -404,14 +421,81 @@ before and a catch-up does not. Known cost: a skipped job has already run checko
 token steps before the guard, and saves an (unchanged) history cache entry; the install order is not
 changed here.
 
-**A failed run does not count as "worked", and is retried.** The evidence is a video, held or blocked
-row, a storyboard or a run event. A run that dies before it writes any of them (an OOM or timeout at
-render, a provider outage) leaves no evidence, so the next hourly run inside the window runs the slot
-again, up to the window (default 1, so one retry). That is a retry of paid work: the per-run and daily USD
-caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`) only bite when the `CHRONOS_PRICE_*` prices are set,
-and with none set the unpriced spend is not capped. The dead-man alert is the signal for a run that failed;
-`NIGHTSHIFT_CATCHUP_HOURS=0` switches the retry off. Follow-up idea, not in this change: have the run write a
-direct "slot claimed" row when it starts, so a started-and-failed run is distinguishable from a never-started one.
+**At most one run per channel and slot, however many ticks.** Three independent checks, each of which stops
+a second run on its own, and a test (`tests/test_cron_robustness_sim.py`) drives the real resolver and the real
+guard through simulated days of dropped and delayed ticks to prove it:
+
+1. *The resolver* hands out a slot only if the evidence shows no run for it.
+2. *The concurrency group* `nightshift-slot-<channel>-<slot date>` lets one job of a slot run at a time and queues
+   the rest (one pending job; a newer one replaces an older one). Two ticks that start in the same minute, or a tick
+   that arrives while the first run is still rendering, therefore queue behind it.
+3. *The guard in the run* (`tools/slot_guard.py`) asks again once the job holds the group, which is after the run
+   ahead of it has finished and written its video row, and stops with exit 3 and nothing spent.
+
+**Exposure.** A scheduled run carries no credit hold, so it spends the operator's money. The maximum for a slot
+is **the attempt cap**: at most `NIGHTSHIFT_SLOT_MAX_ATTEMPTS` (default 2, hard maximum 4) starts of the pipeline
+per operator channel and slot, and exactly one when the first one writes a video, held or blocked row (then nothing
+else starts). However many ticks GitHub delivers and whatever dies, a slot cannot buy more than that many runs,
+**with one exception that is the owner's existing fail-open choice: under a Supabase outage at the slot's exact
+hour the original `0 * * * *` tick still starts the run and cannot record its attempt, so the true bound there is
+cap + 1 (and one more if a delayed original tick of the previous hour lands in the same clock hour).** Backups and
+catch-ups never start on an outage. The per-run and daily USD caps (`CHRONOS_MAX_RUN_USD`, `CHRONOS_MAX_DAILY_USD`)
+still apply on top, but only when the `CHRONOS_PRICE_*` prices are set; unpriced spend is not capped by them, which
+is why the attempt cap exists. What the wider window changes is *when*: a missed slot is made up for up to three
+hours instead of one, so a day's video can appear at an odd hour (private until you publish it).
+
+**Attempt cap (`NIGHTSHIFT_SLOT_MAX_ATTEMPTS`).** An *attempt* is a scheduled run that got past the checks before
+anything is spent (the pipeline pause, the channel still scheduled, the slot still without a video) and reached the
+point of starting the pipeline: `tools/slot_guard.py` records it, in the run, just before `main.py`. The record is a
+row in `system_events` named `schedule.attempt` with the key `slot-attempt:<channel>:<slot start>:<n>`, inserted
+with PostgREST's ignore-duplicates, so exactly one job can ever hold attempt number `n` and two jobs racing cannot
+both start. Its only fields are the channel, the time, and the slot start, the number and the cap. It is written
+straight to Supabase (the run's own event log reaches Supabase once a day, too late) and it is not slot evidence:
+a video row is, an attempt is not, so a run that died stays retryable up to the cap.
+- **Enforced twice.** The resolver does not hand out a slot that has used its attempts (any tick, any hour of the
+  window), and the guard in the run claims the next number only if one is left; a refused claim stops the run before
+  anything is spent and says `used its N attempt(s)`.
+- **What counts.** Every run that reaches the claim counts, including one that then stopped for its own reasons
+  inside `main.py` (a credential preflight, exit 79 held before render, exit 78 spend ceiling). The distinction
+  "provably spent nothing" is not available at the claim, so it fails closed: it counts, and the log says so. A
+  job that fails earlier (token restore, install steps) never reaches the claim and uses no attempt.
+- **Unreadable.** If the attempt count or the claim cannot be read or written, a catch-up or a backup tick starts
+  nothing (as for unreadable evidence). The original hourly tick's exact-hour run keeps its documented fail-open
+  behaviour, and a denied claim stops it too. That is the one way a slot can exceed the cap: the original tick
+  running at its exact hour while Supabase is unreadable, which is the existing owner choice.
+- **Minimum gap between attempts (`NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES`, default 60, 10-180).** A run that
+  fails within minutes (a dead token, a provider outage) would otherwise burn every attempt within a tick or two
+  (ticks are 15 minutes apart) and the slot would be dead before anyone could fix the cause. A slot whose latest
+  attempt is less than the gap old is not handed out by the resolver, and the guard exits 3 WITHOUT claiming, so the
+  attempt stays for a later tick. The gap is measured from the previous claim's time (`system_events.ts`, which
+  mixes naive and `Z` UTC strings; both are read; an unreadable one counts as just claimed). In the simulation the
+  second attempt comes 63-87 minutes after the first, so a credential fixed within an hour of the first attempt is
+  always picked up inside the default 3 h window; for a slower fix raise the gap or the cap, or run it by hand.
+  With the default cap of 2 the two attempts fit the window; a cap above 2 needs a longer window (4 attempts at
+  60+ minutes apart do not fit in 3 hours).
+- **Manual dispatches are exempt** (an explicit instruction, and they never ask the guard); they neither count nor
+  are stopped. Beware that a manual run does not reset a used-up slot either, and a video it makes does end the slot.
+- **Dead-man alert.** When the last attempt recorded for a slot was its cap, the alert (its own key,
+  `deadman-capped:<channel>:<day>`, so an earlier plain alert cannot swallow it) says `the scheduler stopped after N
+  attempt(s) at it (its cap)` and gives the manual step.
+
+**A failed run does not count as "worked", and is retried up to the cap.** The evidence is a video, held or blocked
+row, a storyboard or a run event. A run that dies before it writes any of them (an OOM or timeout at render, a
+provider outage) leaves no evidence, so the next tick inside the window starts the slot again, until the attempt cap
+is used up. **The second attempt is a fresh run, not a resume.** The scheduled run does not pass `--resume`, so it
+picks a topic again, rewrites the script and pays for the voice, stills and clips again; the saved run state of the
+first attempt (checkpoint, paid-task ledger, upload-attempt ledger, script, kept in the Actions cache for seven days
+by `tools/run_state_cache.py`) is restored into `output/` but a fresh run does not read it (its ledgers belong to the first run's epoch). That is exactly why the number of attempts is capped. If a slot died after paying and you would
+rather continue than start over, run it by hand with `resume` ticked and the channel named: that reuses the saved
+script and polls the paid provider tasks instead of buying them again. `NIGHTSHIFT_CATCHUP_HOURS=0` switches the
+catch-up retry off, and `NIGHTSHIFT_SLOT_MAX_ATTEMPTS=1` makes every slot a single try.
+
+**When the window has passed: run it by hand.** The dead-man alert (default 3 h after the slot; a tick in the
+window's last hour can still make the slot up after it, and a "recovered" note follows) now ends with the
+step: GitHub Actions, workflow **Daily YouTube Video**, **Run workflow**, `channel` = the channel id (everything
+else empty; `privacy` is `private` by default). A manual run of a named channel always runs: it ignores the pause and
+the once-per-slot guard, so check the slot has no video first, or you will pay for a second one. The same can be done
+with the Command Center "Run now".
 
 **Topic memory survives a lost cache.** `history/topics.json` is only an Actions cache (evicted
 after 7 days). When a channel has no topics of its own locally, the run now rebuilds them from

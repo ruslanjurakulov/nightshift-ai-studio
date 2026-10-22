@@ -38,6 +38,11 @@ logger = logging.getLogger(__name__)
 # -- canonical event names --------------------------------------------------
 # System / heartbeat
 SYSTEM_STARTED = "system.started"
+# One scheduled attempt at a channel's slot (modules/schedule_catchup.py claim_attempt). Unlike every other event it
+# is written straight to Supabase, atomically, by tools/slot_guard.py before the pipeline starts: the run's local
+# event store reaches Supabase once a day, far too late to cap the attempts of a slot. Closed fields only: the
+# slot's start, the attempt number and the cap. Never evidence that a video exists (see reliability.Evidence).
+SLOT_ATTEMPT = "schedule.attempt"
 SYSTEM_HEARTBEAT = "system.heartbeat"
 # Agents (a logical worker: topic manager, script engine, poller, ...)
 AGENT_STARTED = "agent.started"
@@ -63,6 +68,12 @@ TOPIC_HISTORY_RESET = "topic.history_reset"
 # Not named `.failed` on purpose: command-center/lib/decisions.ts and the Errors
 # page treat ANY event name ending in `.failed` as a failure, whatever its status.
 TOPIC_HISTORY_WRITE_ERROR = "topic.history_write_error"
+# A topic the selection gate (modules/topic_gate.py) refused to use, or could
+# not confirm this time. Not named `.failed` for the reason above, and a warning
+# not a failure: the run carries on with the next candidate. Metadata is fixed
+# words and the gate's rule-set version; the topic is shortened to 100 characters
+# the way topic.selected carries it, so an operator can see WHAT was refused.
+TOPIC_REJECTED = "topic.rejected"
 RESEARCH_STARTED = "research.started"
 RESEARCH_COMPLETED = "research.completed"
 # Packaging is decided BEFORE the script (modules/title_planner.py): the title
