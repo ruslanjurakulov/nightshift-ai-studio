@@ -445,16 +445,20 @@ def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_r
     audited after the page has changed. Never raises: whatever fails, the results come back as the
     checker gave them and the summary says why."""
     try:
+        path = OUTPUT_DIR / slug / "grounding.json"
+        # A re-run of the same topic reuses the passages the earlier run saved: no request, and no
+        # rate limit to meet (the file is only read when it is for this exact topic).
         results, summary = grounding.ground_results(
             topic, claims, fact_results, sources=[c.source for c in section_claims],
-            language=getattr(ctx.agent, "language", None),
+            language=getattr(ctx.agent, "language", None), claim_ids=[c.claim_id for c in section_claims],
+            cached=grounding.load_cached_evidence(path, topic),
             on_response=lambda r: costs.add_gemini_usage(r, stage=grounding.STAGE))
         record = summary.to_dict()
         if summary.evidence is not None and summary.evidence.snippets:
             try:
-                path = OUTPUT_DIR / slug / "grounding.json"
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps({"summary": record, "passages": grounding.evidence_record(summary.evidence)},
+                path.write_text(json.dumps({"topic": topic, "summary": record,
+                                            "passages": grounding.evidence_record(summary.evidence)},
                                            indent=2, ensure_ascii=False))
             except OSError as e:
                 logger.warning("Could not save grounding.json (%s) - the run is unaffected", type(e).__name__)

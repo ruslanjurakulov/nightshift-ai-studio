@@ -4,36 +4,55 @@ Until now the fact-check re-asked the model that wrote the script (modules/fact_
 so it shared the writer's blind spots: a wrong date the writer "remembers" passes, and on an
 obscure topic the checker cannot confirm anything, so every claim is flagged (run 2026-10-22:
 28 of 28). This module adds a second opinion that is checkable: it retrieves passages from the
-English Wikipedia (MediaWiki API, free, keyless, citable), asks the model to MATCH each claim
-against those passages only, and applies the answer under rules that can only be strict.
+English Wikipedia (MediaWiki API, free, keyless, citable), asks a model to MATCH each claim
+against those passages only, and applies the answer conservatively.
 
-The rules (each is pinned by a test in tests/test_grounded_factcheck.py)
------------------------------------------------------------------------
-1. The checker's own verdicts are never touched by the evidence. ``fact_check_claims`` runs
-   first and exactly as before, without seeing a single snippet; this module then reads its
-   results. ``not_found`` therefore leaves today's verdict logic as it is.
-2. Evidence may UPGRADE a claim (``unverifiable`` -> ``likely_accurate``) only when ALL of
-   these hold, checked in code, not trusted from the model: the cited snippet is one that was
-   offered for that claim; the quote the model gave appears in that snippet's text (so a made-up
-   quote does not count); every number and date in the claim is in the quote (a wrong year
-   cannot pass); the quote shares content words with the claim; and the quote carries no hedge
-   ("allegedly", "legend", "according to ...") that the claim does not. A claim the checker
-   itself called ``likely_inaccurate`` is never upgraded.
-3. Evidence may ADD a flag: a ``contradicted`` answer that cites a snippet offered for the
-   claim turns the verdict into ``likely_inaccurate``. That is the restrictive direction, so a
-   quote is recorded when it checks out but is not required.
-4. Anything that goes wrong while retrieving (rate limit, timeout, an error page, nothing
-   found because the service refused) leaves every verdict exactly as the checker gave it,
-   is recorded as ``unavailable`` with a reason word, and is logged as a warning. It is never
-   read as support. A retrieval that worked and found nothing is "no evidence", not an outage.
+What the checks prove, and what they do not
+-------------------------------------------
+A verbatim quote proves that the PAGE says those words. Whether the words support the CLAIM is
+decided by a judge model, and the code-side checks below are guards, not proof: they refuse
+many wrong clearances (a quote that is not on the page, a different number, era or regnal
+number, a missing name, a hedge or a negation anywhere in the quote's sentence, too little of
+the claim covered, a quote used twice, too many clearances in one script) but a sentence can
+still be about something other than the claim and pass them. A person still reviews every video,
+and the review panel shows each clearance with its quote and source.
+
+The rules (each is pinned by a test in tests/test_grounded_factcheck*.py)
+------------------------------------------------------------------------
+1. The checker's own verdicts are the baseline. ``fact_check_claims`` runs first and exactly as
+   before, without seeing a single snippet; this module then reads its results. ``not_found``
+   leaves them as they are.
+2. A clearance (``unverifiable`` -> ``likely_accurate``) needs ALL of: a snippet offered for that
+   claim; a quote found in that snippet's text; the quote's pieces in one sentence; every number
+   (one group per number), era (BC/AD) and regnal numeral of the claim in the quote and none extra;
+   enough of the claim's content words in the quote; the claim's names in the quote's sentence; no
+   hedge and no negation in that sentence that the claim does not carry (and a negation the claim
+   carries must be there too); and room in the clearance budget (one claim per quote, two per
+   snippet, a fraction of the script). A result the checker itself called ``likely_inaccurate``
+   is never cleared, and neither is one whose verdict was CLAMPED (see below).
+3. Evidence may ADD a flag: a ``contradicted`` answer that cites a snippet offered for the claim
+   turns the verdict into ``likely_inaccurate``. That is the restrictive direction, so a quote is
+   recorded when it checks out but is not required.
+4. Anything that goes wrong while retrieving or matching (rate limit, timeout, an error page, a
+   failed model call) leaves every verdict as the checker gave it, is recorded as ``unavailable``
+   with a reason word and logged as a warning. A retrieval that worked and found nothing is "no
+   evidence", not an outage.
 5. Snippets are untrusted text (anyone can edit Wikipedia, and a page can say "ignore your
    instructions"). They travel only inside a JSON data block that the prompt declares to be
-   data, and the code-side checks in rule 2 mean text inside a snippet cannot talk a claim
-   into passing: it can at most add a flag.
+   data. Text inside a snippet can persuade the judge model, so the guards above are what stand
+   between it and a clearance; it can at most add a flag without them.
 
-Bounded by construction: at most MAX_REQUESTS requests per video (retries included), a
-timeout per request, a total deadline, a cap on time spent waiting for a rate limit, a stop
-after two failures in a row, and a cache so nothing is asked twice. The only host contacted is
+Clamped verdicts. FACT_CHECK_SYSTEM_PROMPT is defined in fact_checker.py but never sent, so the
+model has not been told the three verdict words and anything else it says is read as
+"unverifiable" (``FactCheckResult.clamped``). The word it really meant may have been
+"likely_inaccurate", so such a result is never cleared here. Until the checker's prompt is fixed
+(a separate, measured change) most clearances will therefore be refused, by design: the
+enforcement only becomes meaningful once real checker verdicts reach this module.
+
+Bounded: at most MAX_REQUESTS requests per video (retries included; a normal video needs 3), a
+timeout for the whole of each request, a byte cap on each answer, no redirects, a deadline for
+the lookup and one for the matching, a cap on time spent waiting for a rate limit, a stop after
+two failures in a row, and a cache so nothing is asked twice. The only host contacted is
 en.wikipedia.org. No secret is sent: the request carries a User-Agent that names the project,
 as Wikimedia's policy asks, and nothing else.
 
@@ -109,9 +128,13 @@ MAX_RETRY_AFTER_S = 20
 MAX_TOTAL_WAIT_S = 30
 DEADLINE_S = 90
 #: Names looked up besides the topic.
-MAX_ENTITY_QUERIES = 6
+MAX_ENTITY_QUERIES = 8
 SEARCH_HITS_TOPIC = 3
-SEARCH_HITS_ENTITY = 2
+#: The most an answer may weigh before it is refused (the longest articles are a few hundred KB).
+MAX_BODY_BYTES = 1_000_000
+#: The model call of the matching step: timeout of one call, and for all the calls together.
+JUDGE_TIMEOUT_S = 60
+JUDGE_DEADLINE_S = 150
 #: TextExtracts allows at most 1200 characters per page in an intro extract.
 INTRO_CHARS = 1200
 #: A full page is cut to this many characters before it is split.
@@ -124,6 +147,9 @@ JUDGE_BATCH = 15
 MIN_QUOTE_CHARS = 25
 MAX_QUOTE_CHARS = 300
 MIN_SHARED_WORDS = 2
+MAX_CLEARED_IN_SUMMARY = 20
+#: One snippet may clear at most this many claims of a script.
+MAX_CLEARANCES_PER_SNIPPET = 2
 MAX_SOURCES_IN_SUMMARY = 30
 MAX_REASONING_CHARS = 500
 
@@ -203,6 +229,8 @@ class WikipediaClient:
         self._started_at: Optional[float] = None
         self._waited = 0.0
         self._failed_in_a_row = 0
+        self._limit_wait: Optional[float] = None
+        self.second_chances = 0
 
     # -- plumbing -----------------------------------------------------------
     def _session(self):
@@ -246,6 +274,34 @@ class WikipediaClient:
             self._sleep(seconds)
         return True
 
+    # -- reading one answer ---------------------------------------------------
+    def _read(self, resp, started: float):
+        """The JSON of ``resp``. A streamed body is read in chunks against a TOTAL time limit for the
+        request (a slow trickle does not get a fresh timeout per read) and a byte cap; anything with
+        only ``.json()`` (a test double) is read as it is. Raises _Slow / _TooLarge / ValueError."""
+        chunks = getattr(resp, "iter_content", None)
+        if not callable(chunks):
+            return resp.json()
+        buf = bytearray()
+        for chunk in chunks(65536):
+            if self._clock() - started > self.timeout:
+                raise _Slow()
+            buf += chunk
+            if len(buf) > MAX_BODY_BYTES:
+                raise _TooLarge()
+        if self._clock() - started > self.timeout:
+            raise _Slow()
+        return json.loads(bytes(buf).decode("utf-8"))
+
+    @staticmethod
+    def _close(resp) -> None:
+        try:
+            close = getattr(resp, "close", None)
+            if callable(close):
+                close()
+        except Exception:
+            pass
+
     # -- the one call -------------------------------------------------------
     def get(self, params: dict) -> Optional[dict]:
         merged = {"action": "query", "format": "json", "formatversion": "2", "maxlag": "5", **params}
@@ -267,44 +323,81 @@ class WikipediaClient:
                 return None
             self._pace()
             self.requests_made += 1
+            began = self._clock()
+            resp = None
             try:
+                # No redirect is ever followed: the one host is enforced, and the API resolves page
+                # redirects itself (``redirects=1``).
                 resp = self._session().get(API_URL, params=merged, headers={"User-Agent": USER_AGENT},
-                                           timeout=self.timeout)
+                                           timeout=self.timeout, allow_redirects=False, stream=True)
+                status = getattr(resp, "status_code", 0)
+                if status == 200:
+                    try:
+                        data = self._read(resp, began)
+                    except _Slow:
+                        reason = "timeout"
+                        break
+                    except _TooLarge:
+                        # Not an outage: this one page is too big. It does not count toward stopping.
+                        self.failures.append("too_large")
+                        return None
+                    except Exception:
+                        data = None
+                    if not isinstance(data, dict):
+                        reason = "bad_response"
+                        break
+                    err = data.get("error")
+                    if isinstance(err, dict):
+                        code = re.sub(r"[^\w-]", "", str(err.get("code") or "error"))[:30]
+                        reason = f"api_error:{code}"
+                        if code == "maxlag" and attempt < self.retries and self._wait(self._retry_after(resp, 2)):
+                            continue
+                        break
+                    self.successes += 1
+                    self._failed_in_a_row = 0
+                    self._cache[key] = data
+                    return data
+                if status in (429, 502, 503, 504):
+                    reason = f"http_{status}"
+                    wait = self._retry_after(resp, 2 ** attempt)
+                    if status == 429:
+                        self._limit_wait = wait if wait <= MAX_RETRY_AFTER_S else None
+                    if attempt < self.retries and self._wait(wait):
+                        continue
+                    break
+                # 3xx (never followed), 403 (the User-Agent policy), other 4xx: asking again does not help.
+                self._fail(f"http_{status}", abort=True)
+                return None
             except Exception as exc:
                 reason = "timeout" if "timeout" in type(exc).__name__.lower() else "network_error"
                 if attempt < self.retries and self._wait(2 ** attempt):
                     continue
                 break
-            status = getattr(resp, "status_code", 0)
-            if status == 200:
-                try:
-                    data = resp.json()
-                except Exception:
-                    data = None
-                if not isinstance(data, dict):
-                    reason = "bad_response"
-                    break
-                err = data.get("error")
-                if isinstance(err, dict):
-                    code = re.sub(r"[^\w-]", "", str(err.get("code") or "error"))[:30]
-                    reason = f"api_error:{code}"
-                    if code == "maxlag" and attempt < self.retries and self._wait(self._retry_after(resp, 2)):
-                        continue
-                    break
-                self.successes += 1
-                self._failed_in_a_row = 0
-                self._cache[key] = data
-                return data
-            if status in (429, 502, 503, 504):
-                reason = f"http_{status}"
-                if attempt < self.retries and self._wait(self._retry_after(resp, 2 ** attempt)):
-                    continue
-                break
-            # 403 (the User-Agent policy), 4xx: asking again does not help.
-            self._fail(f"http_{status}", abort=True)
-            return None
+            finally:
+                self._close(resp)
         self._fail(reason)
         return None
+
+    def second_chance(self) -> bool:
+        """After a lookup that found nothing because Wikimedia was rate-limiting us (every failure a
+        429, each asking for a wait the caps allow): wait it out once and allow the lookup to start
+        again, inside the same request budget. False when the failures were anything else."""
+        if (not self.failures or self._limit_wait is None or self.requests_made >= self.max_requests
+                or any(f != "http_429" for f in self.failures)
+                or self.aborted not in (None, "repeated_failures")):
+            return False
+        self._sleep(min(self._limit_wait, MAX_RETRY_AFTER_S))
+        self.aborted, self._failed_in_a_row, self._started_at = None, 0, None
+        self.second_chances += 1
+        return True
+
+
+class _Slow(Exception):
+    """The whole of one request took longer than its timeout."""
+
+
+class _TooLarge(Exception):
+    """An answer weighed more than MAX_BODY_BYTES."""
 
 
 # ── passages ──────────────────────────────────────────────────────────────────
@@ -359,6 +452,7 @@ def _words(text: str) -> set:
     """Content words of ``text`` for matching: digits (2+), and words of 4+ letters cut to 6 so
     "vanished" and "vanishing" meet. Not a language model: names and numbers carry most of it."""
     text = unicodedata.normalize("NFKC", claim_extractor._ascii_digits(text or "")).casefold()
+    text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)          # 1,000,000 is one number
     out = set()
     for word in re.findall(r"\w+", text):
         if word in _STOP:
@@ -383,7 +477,7 @@ _NOT_NAMES = frozenset((
     "even just only also perhaps maybe nobody nothing everyone everything someone something nowhere never always "
     "monday tuesday wednesday thursday friday saturday sunday january february march april may june july august "
     "september october november december yes imagine picture consider listen look see remember think let welcome "
-    "chapter part").split())
+    "chapter part about over under around among through across several was were is are has have had").split())
 _EDGE_PUNCT = ".,;:!?()[]\"“”‘’—–"
 _BREAKS = tuple(",;:.!?)\"”")
 
@@ -468,6 +562,21 @@ def _search(client: WikipediaClient, query: str, hits: int) -> list:
     return [p for p in _pages(data) if _usable(p)]
 
 
+def _intros(client: WikipediaClient, names: list) -> list:
+    """The intro of every name that is an article title, in ONE request (``titles=A|B|C``): a name
+    that is no page is simply missing, a redirect is followed by the API, a disambiguation page is
+    dropped. Cheaper than a search per name, and an exact title cannot drift to another page."""
+    titles = [t for t in dict.fromkeys(_query_text(n, 80) for n in names) if t]
+    if not titles:
+        return []
+    data = client.get({
+        "titles": "|".join(titles), "prop": "extracts|info|pageprops", "exintro": "1", "explaintext": "1",
+        "exlimit": str(len(titles)), "exchars": str(INTRO_CHARS), "inprop": "url", "ppprop": "disambiguation",
+        "redirects": "1",
+    })
+    return [p for p in _pages(data) if _usable(p)]
+
+
 def _full_page(client: WikipediaClient, title: str) -> Optional[dict]:
     data = client.get({"titles": title, "prop": "extracts|info|pageprops", "explaintext": "1",
                        "inprop": "url", "ppprop": "disambiguation", "redirects": "1"})
@@ -543,12 +652,9 @@ def gather_evidence(topic: str, claims, *, client: WikipediaClient, sources=None
             ev.queries += 1
             if full is not None:
                 _add_passages(ev, full, full.get("extract") or "", seen_text)
-    for name in extract_entities(claims, topic, sources):
-        if client.aborted or client.budget_exhausted:
-            break
-        if name.casefold() in seen_titles:
-            continue
-        take(_search(client, name, SEARCH_HITS_ENTITY))
+    names = [n for n in extract_entities(claims, topic, sources) if n.casefold() not in seen_titles]
+    if names and not client.aborted and not client.budget_exhausted:
+        take(_intros(client, names))
         ev.queries += 1
     _choose_candidates(ev, claims)
     return ev
@@ -559,87 +665,267 @@ def gather_evidence(topic: str, claims, *, client: WikipediaClient, sources=None
 _PUNCT = str.maketrans({"“": '"', "”": '"', "„": '"', "‟": '"', "‘": "'", "’": "'", "‚": "'", "`": "'", "´": "'",
                         "–": "-", "—": "-", "‐": "-", "‑": "-", " ": " ", " ": " "})
 _ELLIPSIS = re.compile(r"\s*(?:\[\s*(?:\.\.\.|…)\s*\]|\.\.\.|…)\s*")
+#: A piece of a quote shorter than this cannot be one side of an ellipsis.
+MIN_QUOTE_PIECE = 12
 
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text or "").translate(_PUNCT)).strip().casefold()
 
 
-def verify_quote(quote, snippet_text: str) -> bool:
-    """Does ``quote`` appear in ``snippet_text``? Case, spacing, curly quotes and dashes do not
-    matter. ``...`` between pieces is allowed, the pieces must come in order. A quote under
-    MIN_QUOTE_CHARS or over MAX_QUOTE_CHARS never counts: a few common words would match any
-    snippet, and a quote that is the whole passage proves nothing."""
+def _locate(quote, snippet_text: str) -> Optional[list]:
+    """The ``(start, end)`` of each piece of ``quote`` in the normalised snippet text, in order, or None
+    when it is not there. Case, spacing, curly quotes and dashes do not matter. ``...`` between pieces
+    is allowed, the pieces must come in order. A quote under MIN_QUOTE_CHARS or over MAX_QUOTE_CHARS
+    never counts (a few common words would match any snippet; a quote that is the whole passage proves
+    nothing) and a piece under MIN_QUOTE_PIECE cannot ride along with a long one."""
     if not isinstance(quote, str):
-        return False
+        return None
     pieces = [_norm(p).strip(" \"'") for p in _ELLIPSIS.split(quote)]
     pieces = [p for p in pieces if p]
     total = sum(len(p) for p in pieces)
     if not pieces or total < MIN_QUOTE_CHARS or total > MAX_QUOTE_CHARS:
-        return False
-    haystack, pos = _norm(snippet_text), 0
+        return None
+    haystack, pos, found = _norm(snippet_text), 0, []
     for piece in pieces:
-        if len(piece) < 8:
-            return False
+        if len(piece) < MIN_QUOTE_PIECE:
+            return None
         at = haystack.find(piece, pos)
         if at < 0:
-            return False
+            return None
+        found.append((at, at + len(piece)))
         pos = at + len(piece)
-    return True
+    return found
+
+
+def verify_quote(quote, snippet_text: str) -> bool:
+    """Does ``quote`` appear in ``snippet_text``? See ``_locate``."""
+    return _locate(quote, snippet_text) is not None
+
+
+_ABBREVIATIONS = frozenset("mr mrs ms dr prof sr jr st vs etc fig vol gen rev gov sen rep capt col lt cmdr maj sgt "
+                           "no approx ca c b d r e g i".split())
+
+
+def _sentence_spans(text: str) -> list:
+    """``(start, end)`` of each sentence of the normalised ``text``. A full stop after an abbreviation, a
+    single letter or a number does not end one: wrongly joining two sentences only widens the text that
+    is read for hedges and negations, which is the safe way to be wrong."""
+    spans, start = [], 0
+    for m in re.finditer(r"[.!?][\"')\]]*\s+", text):
+        if m.group().startswith("."):
+            word = re.search(r"([\w]+)$", text[start:m.start()])
+            last = word.group(1) if word else ""
+            if last in _ABBREVIATIONS or len(last) == 1 or last.isdigit():
+                continue
+        spans.append((start, m.end()))
+        start = m.end()
+    spans.append((start, len(text)))
+    return spans
+
+
+def quote_context(quote, snippet_text: str) -> tuple:
+    """``(text, reason)``: the WHOLE sentence(s) of the snippet that the quote sits in, or ``(None,
+    reason)``. The pieces of a quote joined by ``...`` must all sit in one sentence: a ``...`` must not be
+    able to drop a "not"."""
+    pieces = _locate(quote, snippet_text)
+    if pieces is None:
+        return None, "quote_not_in_snippet"
+    text = _norm(snippet_text)
+    spans = _sentence_spans(text)
+
+    def sentences(a: int, b: int) -> tuple:
+        hit = [i for i, (s0, s1) in enumerate(spans) if s0 < b and a < s1]
+        return (hit[0], hit[-1]) if hit else (0, len(spans) - 1)
+
+    ranges = [sentences(a, b) for a, b in pieces]
+    if len(pieces) > 1 and not (len(set(ranges)) == 1 and ranges[0][0] == ranges[0][1]):
+        return None, "ellipsis_across_sentences"
+    first, last = min(r[0] for r in ranges), max(r[1] for r in ranges)
+    return text[spans[first][0]:spans[last][1]], None
 
 
 _ONE = re.compile(r"(?<![\w-])one(?![\w-])", re.IGNORECASE)
-_MULTIPLIED = re.compile(r"\d[\d.,\u00a0\u202f ]*\s*(?:thousand|million|billion)\b", re.IGNORECASE)
+_MULTIPLIED = re.compile(r"\d[\d.,   ]*\s*(?:thousand|million|billion)\b", re.IGNORECASE)
+#: BC / BCE and AD / CE, upper case only ("ad hoc" is not an era), with or without stops.
+_ERA = re.compile(r"(?<![\w.])(B\.?C\.?(?:E\.?)?|A\.?D\.?|C\.?E\.?)(?![\w])")
+_ROMAN = re.compile(r"(?<![\w])[IVXLCDM]{2,}(?![\w])")
+_ROMAN_VALID = re.compile(r"^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
+#: Valid as numerals and common as something else: not read as numerals.
+_NOT_ROMAN = frozenset("CD DC MD CM MC DI LI MI DM CC DD LC MM".split())
+
+
+def roman_numerals(text: str) -> set:
+    """Roman numerals of two or more capital letters ("XIV", "VIII"): regnal numbers and the like.
+    Upper case only: the word "mix" is not a numeral, and neither are CD or DC."""
+    return {m.group() for m in _ROMAN.finditer(text or "")
+            if _ROMAN_VALID.match(m.group()) and m.group() not in _NOT_ROMAN}
+
+
+def eras(text: str) -> set:
+    """``{"BC"}`` / ``{"AD"}`` for the era words of ``text`` (BCE reads as BC, CE as AD)."""
+    out = set()
+    for m in _ERA.finditer(text or ""):
+        out.add("BC" if m.group(1).upper().startswith("B") else "AD")
+    return out
+
+
+def _spoken_groups(text: str) -> list:
+    """Each run of English spelled-out number words ("three", "five hundred", "nineteen eighty-four") as
+    its OWN group of acceptable values, so two numbers in one claim are two things to find."""
+    words = re.findall(r"[a-z]+|[^a-z\s\-]", (text or "").lower())
+    groups, run, i = [], [], 0
+    cx = claim_extractor
+
+    def flush():
+        nonlocal run
+        if run:
+            groups.append(set(cx._spoken_run(run)))
+        run = []
+
+    while i < len(words):
+        w, nxt = words[i], (words[i + 1] if i + 1 < len(words) else "")
+        if w in cx._UNITS or w in cx._TENS or w in cx._MULTIPLIERS or w == "hundred":
+            run.append(w)
+        elif w == "and" and run and nxt == "a" and words[i + 2:i + 3] == ["half"]:
+            run.append("and_a_half")
+            i += 3
+            continue
+        elif w == "and" and run and (nxt in cx._UNITS or nxt in cx._TENS):
+            pass
+        elif w == "oh" and run and nxt in cx._UNITS and 1 <= cx._UNITS[nxt] <= 9:
+            run.append("oh")
+        else:
+            flush()
+        i += 1
+    flush()
+    return groups
 
 
 def _number_groups(text: str) -> list:
-    """Each number of ``text`` as the set of spellings that would carry it: digit tokens with their
-    grouped / multiplied forms, and the English spelled-out numbers (as one group: any spelling
-    of them matches). The bare word "one" is a pronoun more often than a figure and is skipped."""
+    """Each number of ``text`` as the set of spellings that would carry it: every digit token with its
+    grouped / multiplied forms, and every spelled-out number. ONE GROUP PER NUMBER, so a quote with
+    "three ships" does not back "three ships and five hundred men". The bare word "one" is a pronoun
+    more often than a figure and is skipped."""
     groups = [set(forms) for _tok, _s, _e, forms, _ord in claim_extractor._digit_tokens(text or "")]
     # "3.5 million" is one figure, already a digit group with its multiplied form: its "million" is not a second one
-    words = _MULTIPLIED.sub(" ", _ONE.sub(" ", text or ""))
-    spoken = claim_extractor._spoken_numbers(words)
-    if spoken:
-        groups.append(set(spoken))
+    groups += _spoken_groups(_MULTIPLIED.sub(" ", _ONE.sub(" ", text or "")))
     return groups
 
 
 def numbers_backed(claim: str, quote: str) -> bool:
-    """Every number or date in ``claim`` also appears in ``quote``, however it is written. A claim
-    that says 1415 is not backed by a sentence that says 1451."""
+    """Every number of ``claim`` also appears in ``quote``, however it is written; the era (BC / AD) is the
+    same; and the regnal numerals agree both ways ("Louis XIV" is not "Louis XV", "Napoleon" is not
+    "Napoleon III"). A claim that says 1415 is not backed by a sentence that says 1451."""
     known: set = set()
     for _tok, _s, _e, forms, _ord in claim_extractor._digit_tokens(quote or ""):
         known |= set(forms)
-    known |= set(claim_extractor._spoken_numbers(quote or ""))
-    return all(group & known for group in _number_groups(claim))
+    for group in _spoken_groups(quote or ""):
+        known |= group
+    if not all(group & known for group in _number_groups(claim)):
+        return False
+    if eras(claim) != eras(quote):
+        return False
+    return roman_numerals(claim) == roman_numerals(quote)
 
 
+# What a sentence can say that a bare quote does not: that it is doubted, or denied.
 _HEDGE = re.compile(
     r"(?<!\w)(alleg\w*|reportedly|supposed\w*|purported\w*|rumou?r\w*|legend\w*|myth\w*|folklore|accused|"
-    r"suspected|speculat\w*|hypothes\w*|theor(?:y|ies)|according to|claimed to|believed|believe[sd]?|"
-    r"thought to|said to|may have|might have|possibl\w*|probabl\w*|perhaps|unclear|uncertain|disputed|"
-    r"debated|unproven|unverified|apocryphal|some historians|some say|tradition)(?!\w)", re.IGNORECASE)
+    r"suspected|speculat\w*|hypothes\w*|theor(?:y|ies)|according to|claimed to|believed|believe[sd]?|belief|"
+    r"thought to|said to|may have|might have|possibl\w*|probabl\w*|perhaps|unclear|uncertain|disputed|dispute[sd]?|"
+    r"debated|unproven|unverified|apocryphal|some historians|some say|tradition|doubt\w*|dubious|spurious|"
+    r"unlikely|contrary|hoax\w*|false\w*|misattribut\w*|fabricat\w*|forg(?:ed|ery|eries)|erroneous\w*|"
+    r"mistaken\w*|incorrect\w*|inaccura\w*|untrue|bogus|debunk\w*|denied|deny|denies|rejected|refut\w*|disprov\w*)"
+    r"(?!\w)", re.IGNORECASE)
+#: Plain negation. Its PRESENCE has to be the same in the claim and in the sentence.
+_NEGATION = re.compile(r"(?<!\w)(not|never|no|none|nor|neither|without|cannot)(?!\w)|(?<=\w)n't(?!\w)", re.IGNORECASE)
 
 
 def hedge_markers(text: str) -> set:
     return {m.group(1).casefold() for m in _HEDGE.finditer(_norm(text))}
 
 
+def negation_markers(text: str) -> set:
+    return {(m.group(1) or "n't").casefold() for m in _NEGATION.finditer(_norm(text))}
+
+
+def polarity_markers(text: str) -> set:
+    """Every hedge and every negation word of ``text``."""
+    return hedge_markers(text) | negation_markers(text)
+
+
+def required_shared_words(claim_words: int) -> int:
+    """How many of the claim's content words the quote must share: at least three, or half of them for a
+    long claim; a claim with fewer words needs all of them."""
+    return min(claim_words, max(3, -(-claim_words // 2)))
+
+
+def claim_names(claim: str) -> set:
+    """The capitalised names of ``claim`` (cut to six letters so "Ottomans" meets "Ottoman"). Regnal
+    numerals are not names; they are compared on their own."""
+    out = set()
+    for token in _clean(claim).split():
+        word = re.sub(r"['’]s$", "", token.strip(_EDGE_PUNCT))
+        low = word.casefold()
+        if (len(word) >= 2 and word[0].isupper() and low not in _NOT_NAMES and low not in _CONNECTORS
+                and not (word.isupper() and word in roman_numerals(word))):
+            out.add(low[:6])
+    return out
+
+
+class ClearanceBudget:
+    """How many claims of one script the evidence may clear: a fraction of the script, one claim per
+    quote and two per snippet, so a single sentence about the topic cannot clear everything the
+    script says about it."""
+
+    def __init__(self, total: int):
+        self.total, self.used = total, 0
+        self._quotes: set = set()
+        self._by_snippet: dict = {}
+
+    def take(self, quote_key: str, snippet_id: str) -> Optional[str]:
+        """None when one more clearance is allowed (and counted), else the reason it is not."""
+        if quote_key in self._quotes:
+            return "quote_already_used"
+        if self._by_snippet.get(snippet_id, 0) >= MAX_CLEARANCES_PER_SNIPPET:
+            return "snippet_already_used_twice"
+        if self.used >= self.total:
+            return "clearance_cap"
+        self.used += 1
+        self._quotes.add(quote_key)
+        self._by_snippet[snippet_id] = self._by_snippet.get(snippet_id, 0) + 1
+        return None
+
+
+def clearance_cap(claims: int) -> int:
+    """At most 40% of a script's claims, and never more than 10 (at least 1)."""
+    return max(1, min(10, claims * 4 // 10))
+
+
 def check_support(claim: str, snippet: Optional[Snippet], quote) -> tuple:
-    """``(ok, reason)``: may this quote from this snippet back this claim? Everything here is
-    decided in code; the model's word that the claim is "supported" counts for nothing until it
-    passes."""
+    """``(ok, reason)``: may this quote from this snippet back this claim? Everything here is decided in
+    code; the judge model's word that the claim is "supported" counts for nothing until it passes. These
+    are guards, not proof: they refuse many wrong matches, and a person still reads what they let through."""
     if snippet is None:
         return False, "snippet_not_offered"
-    if not verify_quote(quote, snippet.text):
-        return False, "quote_not_in_snippet"
+    context, why = quote_context(quote, snippet.text)
+    if context is None:
+        return False, why
     if not numbers_backed(claim, quote):
         return False, "number_not_in_quote"
-    if len(_words(claim) & _words(quote)) < MIN_SHARED_WORDS:
+    wanted = _words(claim)
+    shared = wanted & _words(quote)
+    if not shared:
         return False, "quote_unrelated_to_claim"
-    if hedge_markers(quote) - hedge_markers(claim):
-        return False, "hedged_quote"
+    if len(shared) < required_shared_words(len(wanted)) or len(wanted) < MIN_SHARED_WORDS:
+        return False, "quote_covers_too_little"
+    if not claim_names(claim) <= {w[:6] for w in re.findall(r"\w+", context)}:
+        return False, "name_not_in_sentence"
+    if hedge_markers(context) - hedge_markers(claim):
+        return False, "hedged_in_sentence"
+    if bool(negation_markers(context)) != bool(negation_markers(claim)):
+        return False, "negation_differs"
     return True, "ok"
 
 
@@ -711,13 +997,21 @@ def _short(text: str, limit: int = MAX_REASONING_CHARS) -> str:
 def _with_grounding(result: FactCheckResult, record: dict) -> FactCheckResult:
     return FactCheckResult(claim=result.claim, verdict=result.verdict, reasoning=result.reasoning,
                            requires_human_review=result.requires_human_review, unresolved=result.unresolved,
-                           grounding=record)
+                           grounding=record, clamped=result.clamped, raw_verdict=result.raw_verdict)
 
 
-def apply_judgement(result: FactCheckResult, item: Optional[dict], evidence: Evidence, index: int) -> FactCheckResult:
+def _changed(result: FactCheckResult, verdict: str, reasoning: str, record: dict) -> FactCheckResult:
+    new = _make_result(result.claim, verdict, reasoning)
+    new.grounding = record
+    new.clamped, new.raw_verdict = result.clamped, result.raw_verdict      # what the checker really said stays on record
+    return new
+
+
+def apply_judgement(result: FactCheckResult, item: Optional[dict], evidence: Evidence, index: int,
+                    budget: Optional[ClearanceBudget] = None) -> FactCheckResult:
     """The result after the evidence has had its say. Returns ``result`` itself when there is
     nothing to say (an unresolved claim, or one with no candidate passage), so an unchanged claim is
-    the very object the checker produced."""
+    the very object the checker produced. ``budget`` limits how many claims may be cleared."""
     if result.unresolved:
         return result
     offered = evidence.candidates.get(index) or []
@@ -748,12 +1042,10 @@ def apply_judgement(result: FactCheckResult, item: Optional[dict], evidence: Evi
             record["reason"] = "already_flagged"
             return _with_grounding(result, record)
         record["effect"] = "flagged"
-        new = _make_result(result.claim, "likely_inaccurate", _short(
+        return _changed(result, "likely_inaccurate", _short(
             f"Evidence contradicts this claim ({snippet.title}, {snippet.id})"
             + (f": \"{record['quote']}\"" if record.get("quote") else "")
-            + f". The checker's own verdict was {result.verdict}: {result.reasoning}"))
-        new.grounding = record
-        return new
+            + f". The checker's own verdict was {result.verdict}: {result.reasoning}"), record)
 
     ok, reason = check_support(result.claim, snippet, quote)
     if snippet is not None:
@@ -766,15 +1058,23 @@ def apply_judgement(result: FactCheckResult, item: Optional[dict], evidence: Evi
     if result.verdict == "likely_accurate":
         record["reason"] = "already_accurate"
         return _with_grounding(result, record)
+    if result.clamped:
+        # The model's word was outside the three verdicts and was read as "unverifiable": what it meant
+        # may have been "likely_inaccurate", so there is no verdict here to upgrade.
+        record["reason"] = "checker_verdict_clamped"
+        return _with_grounding(result, record)
     if result.verdict != "unverifiable":
         record["reason"] = "checker_says_inaccurate"
         return _with_grounding(result, record)
+    if budget is not None:
+        why = budget.take(_norm(quote), snippet.id)
+        if why:
+            record["reason"] = why
+            return _with_grounding(result, record)
     record["effect"] = "upgraded"
-    new = _make_result(result.claim, "likely_accurate", _short(
+    return _changed(result, "likely_accurate", _short(
         f"Supported by Wikipedia ({snippet.title}, {snippet.id}): \"{record['quote']}\". "
-        f"The checker's own verdict was unverifiable: {result.reasoning}"))
-    new.grounding = record
-    return new
+        f"The checker's own verdict was unverifiable: {result.reasoning}"), record)
 
 
 def _norm_display(quote: str) -> str:
@@ -794,17 +1094,24 @@ class GroundingSummary:
     requests: int = 0
     failed_requests: int = 0
     budget_exhausted: bool = False
+    second_chance: bool = False
+    reused: bool = False
     snippets: int = 0
     pages: int = 0
     claims_with_evidence: int = 0
     supported: int = 0
     contradicted: int = 0
     upgraded: int = 0
+    upgrade_cap: int = 0
+    refused_by_cap: int = 0
     flagged_by_evidence: int = 0
     rejected_support: int = 0
+    clamped_verdicts: int = 0
     judge_calls: int = 0
     judge_failures: int = 0
     sources: list = field(default_factory=list)
+    #: Each claim the evidence cleared: its id, the page, and the exact words, so a person can audit it.
+    cleared: list = field(default_factory=list)
     #: The passages retrieved, kept for grounding.json; not part of ``to_dict`` (events carry counts).
     evidence: Optional[Evidence] = None
 
@@ -813,11 +1120,14 @@ class GroundingSummary:
             "enabled": self.enabled, "unavailable": self.unavailable, "wiki_language": self.wiki_language,
             "script_language": self.script_language, "requests": self.requests,
             "failed_requests": self.failed_requests, "budget_exhausted": self.budget_exhausted,
+            "second_chance": self.second_chance, "reused": self.reused,
             "snippets": self.snippets, "pages": self.pages, "claims_with_evidence": self.claims_with_evidence,
             "supported": self.supported, "contradicted": self.contradicted, "upgraded": self.upgraded,
+            "upgrade_cap": self.upgrade_cap, "refused_by_cap": self.refused_by_cap,
             "flagged_by_evidence": self.flagged_by_evidence, "rejected_support": self.rejected_support,
+            "clamped_verdicts": self.clamped_verdicts,
             "judge_calls": self.judge_calls, "judge_failures": self.judge_failures,
-            "sources": list(self.sources),
+            "sources": list(self.sources), "cleared": list(self.cleared),
         }
 
 
@@ -830,7 +1140,14 @@ def _default_generate(prompt: str):
     from config import GEMINI_MODEL
     from modules.gemini_client import generate_with_retry, make_client
 
-    return generate_with_retry(make_client(), GEMINI_MODEL, prompt)
+    config = None
+    try:
+        from google.genai import types
+
+        config = types.GenerateContentConfig(http_options=types.HttpOptions(timeout=JUDGE_TIMEOUT_S * 1000))
+    except Exception as exc:          # an SDK without per-call timeouts: the retry loop's own limits apply
+        logger.warning("Fact-check grounding: no per-call timeout for the model (%s)", type(exc).__name__)
+    return generate_with_retry(make_client(), GEMINI_MODEL, prompt, config)
 
 
 def _sources_of(results: list, evidence: Evidence) -> list:
@@ -849,20 +1166,25 @@ def _sources_of(results: list, evidence: Evidence) -> list:
 
 def ground_results(topic: str, claims, results, *, sources=None, language=None,
                    client: Optional[WikipediaClient] = None, generate: Optional[Callable] = None,
-                   on_response: Optional[Callable] = None) -> tuple:
+                   on_response: Optional[Callable] = None, claim_ids=None, cached: Optional[Evidence] = None,
+                   clock: Callable = time.monotonic) -> tuple:
     """``(results, summary)``: the checker's results after the evidence, and what happened.
 
     ``claims`` are the strings that were checked, aligned with ``results``; ``sources`` (optional)
-    says where each ships ("narration", "title", ...). ``generate(prompt)`` is the model call
-    (default: Gemini through generate_with_retry); ``on_response(response)`` is told about every
-    response, so its tokens can go into the cost ledger.
+    says where each ships ("narration", "title", ...); ``claim_ids`` names them in the summary.
+    ``generate(prompt)`` is the model call (default: Gemini through generate_with_retry);
+    ``on_response(response)`` is told about every response, so its tokens can go into the cost
+    ledger. ``cached`` is the evidence of an earlier run of the same topic (``load_cached_evidence``):
+    when given, nothing is requested from Wikipedia.
 
     Never raises. On any failure the ORIGINAL results come back unchanged, with the reason in
-    ``summary.unavailable``: the evidence can only ever have added to the checker's work."""
+    ``summary.unavailable``: a failure never clears a claim."""
     summary = GroundingSummary(script_language=str(language) if language else None)
     results = list(results or [])
+    summary.clamped_verdicts = sum(1 for r in results if getattr(r, "clamped", False))
     try:
-        return _ground(topic, list(claims or []), results, sources, language, client, generate, on_response, summary)
+        return _ground(topic, list(claims or []), results, sources, language, client, generate, on_response, summary,
+                       claim_ids, cached, clock)
     except Exception as exc:
         logger.warning("Fact-check grounding failed (%s) - every claim keeps the checker's own verdict",
                        type(exc).__name__)
@@ -870,7 +1192,7 @@ def ground_results(topic: str, claims, results, *, sources=None, language=None,
         return results, summary
 
 
-def _ground(topic, claims, results, sources, language, client, generate, on_response, summary):
+def _ground(topic, claims, results, sources, language, client, generate, on_response, summary, claim_ids, cached, clock):
     if not claims or len(claims) != len(results):
         summary.unavailable = None if not claims else "claims_misaligned"
         return results, summary
@@ -879,7 +1201,18 @@ def _ground(topic, claims, results, sources, language, client, generate, on_resp
                     "searched with the names as written, and claims it cannot match stay as the checker judged them",
                     language)
     client = client or WikipediaClient()
-    evidence = gather_evidence(topic, claims, client=client, sources=sources)
+    if cached is not None:
+        evidence = Evidence(snippets=dict(cached.snippets), pages=cached.pages)
+        _choose_candidates(evidence, claims)
+        summary.reused = True
+        logger.info("Fact-check grounding: reusing the %d passage(s) saved by an earlier run of this topic",
+                    len(evidence.snippets))
+    else:
+        evidence = gather_evidence(topic, claims, client=client, sources=sources)
+        if not evidence.snippets and client.second_chance():
+            summary.second_chance = True
+            logger.info("Fact-check grounding: rate-limited; trying the lookup once more after the wait")
+            evidence = gather_evidence(topic, claims, client=client, sources=sources)
     summary.evidence = evidence
     summary.requests = client.requests_made
     summary.failed_requests = len(client.failures)
@@ -900,11 +1233,17 @@ def _ground(topic, claims, results, sources, language, client, generate, on_resp
     summary.claims_with_evidence = len(todo)
     judged: dict = {}
     generate = generate or _default_generate
+    began = clock()
     for start in range(0, len(todo), JUDGE_BATCH):
         batch = todo[start:start + JUDGE_BATCH]
+        summary.judge_calls += 1
+        if clock() - began > JUDGE_DEADLINE_S:
+            logger.warning("Fact-check grounding: out of time for the evidence match; %d claim(s) keep the "
+                           "checker's own verdict", len(batch))
+            summary.judge_failures += 1
+            continue
         items = [(n, claims[i], evidence.candidates[i]) for n, i in enumerate(batch)]
         needed = {sid: evidence.snippets[sid] for _n, _t, ids in items for sid in ids}
-        summary.judge_calls += 1
         try:
             response = generate(build_judge_prompt(items, needed))
             if on_response is not None:
@@ -927,17 +1266,26 @@ def _ground(topic, claims, results, sources, language, client, generate, on_resp
         logger.warning("Fact-check grounding unavailable (judge_failed) - every claim keeps the checker's own verdict")
         return results, summary
 
+    budget = ClearanceBudget(clearance_cap(len(claims)))
+    summary.upgrade_cap = budget.total
+    ids = list(claim_ids) if claim_ids is not None and len(claim_ids) == len(claims) else [str(i) for i in range(len(claims))]
     out = []
     for i, result in enumerate(results):
-        out.append(apply_judgement(result, judged.get(i), evidence, i) if i in judged else result)
-    for r in out:
-        record = getattr(r, "grounding", None) or {}
+        new = apply_judgement(result, judged.get(i), evidence, i, budget) if i in judged else result
+        out.append(new)
+        record = getattr(new, "grounding", None) or {}
         summary.supported += record.get("status") == "supported"
         summary.contradicted += record.get("status") == "contradicted"
         summary.upgraded += record.get("effect") == "upgraded"
         summary.flagged_by_evidence += record.get("effect") == "flagged"
+        summary.refused_by_cap += record.get("reason") in ("clearance_cap", "quote_already_used",
+                                                          "snippet_already_used_twice")
         summary.rejected_support += record.get("status") == "supported" and record.get("effect") == "none" \
             and record.get("reason") not in (None, "already_accurate", "checker_says_inaccurate")
+        if record.get("effect") == "upgraded" and len(summary.cleared) < MAX_CLEARED_IN_SUMMARY:
+            src = record["sources"][0]
+            summary.cleared.append({"claim_id": str(ids[i])[:24], "title": src["title"], "url": src["url"],
+                                    "quote": record.get("quote", "")})
     summary.sources = _sources_of(out, evidence)
     return out, summary
 
@@ -952,3 +1300,47 @@ def evidence_record(evidence: Evidence) -> list:
     after the page has changed."""
     return [{"id": s.id, "title": s.title, "url": s.url, "revid": s.revid, "text": s.text}
             for s in evidence.snippets.values()]
+
+
+_SNIPPET_ID = re.compile(r"^W\d{1,3}$")
+
+
+def evidence_from_record(record, topic: str) -> Optional[Evidence]:
+    """Evidence rebuilt from a saved ``grounding.json`` (``{"topic": ..., "passages": [...]}``), or None
+    when it is for another topic or anything in it is not what this module writes: a damaged or tampered
+    file is not evidence."""
+    try:
+        if not isinstance(record, dict) or record.get("topic") != topic:
+            return None
+        passages = record.get("passages")
+        if not isinstance(passages, list) or not passages or len(passages) > MAX_PASSAGES:
+            return None
+        ev, titles = Evidence(), set()
+        for p in passages:
+            if not isinstance(p, dict) or not isinstance(p.get("id"), str) or not _SNIPPET_ID.match(p["id"]):
+                return None
+            title, url, text, revid = p.get("title"), p.get("url"), p.get("text"), p.get("revid")
+            if (not isinstance(title, str) or not isinstance(url, str) or not url.startswith("https://en.wikipedia.org/wiki/")
+                    or not isinstance(text, str) or not MIN_PASSAGE_CHARS <= len(text) <= 2 * PASSAGE_MAX_CHARS
+                    or not (revid is None or (isinstance(revid, int) and not isinstance(revid, bool)))
+                    or p["id"] in ev.snippets):
+                return None
+            ev.snippets[p["id"]] = Snippet(p["id"], _clean(title)[:200], url[:500], _clean(text), revid)
+            titles.add(title.casefold())
+        ev.pages = len(titles)
+        return ev
+    except Exception:
+        return None
+
+
+def load_cached_evidence(path, topic: str) -> Optional[Evidence]:
+    """The passages an earlier run of this topic saved in ``path`` (grounding.json), or None."""
+    try:
+        from pathlib import Path
+
+        p = Path(path)
+        if not p.is_file() or p.stat().st_size > 2_000_000:
+            return None
+        return evidence_from_record(json.loads(p.read_text(encoding="utf-8")), topic)
+    except Exception:
+        return None

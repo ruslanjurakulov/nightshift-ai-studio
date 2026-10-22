@@ -137,6 +137,10 @@ const GROUNDING = {
   unavailable: null,
   upgraded: 2,
   flagged_by_evidence: 1,
+  cleared: [
+    { claim_id: "c001-2", title: "Mary Celeste", url: WIKI, quote: "discovered adrift and deserted <b>in</b> the Atlantic" },
+    { claim_id: "c001-3", title: "Evil", url: "https://evil.example/wiki/x", quote: "x" },
+  ],
   sources: [
     { title: "Mary Celeste", url: WIKI, ids: ["W1"], claims: 2 },
     { title: "Evil", url: "https://evil.example/wiki/x", claims: 1 },
@@ -167,6 +171,26 @@ describe("the sources of the online check (modules/grounding.py)", () => {
     expect(parseEvidence({ sources: many })?.sources).toHaveLength(30);
   });
 
+  it("shows each cleared claim with its id, its source and its quote, as text, so a clearance can be audited", () => {
+    expect(parseEvidence(GROUNDING)?.cleared).toEqual([
+      { claimId: "c001-2", title: "Mary Celeste", url: WIKI, quote: "discovered adrift and deserted <b>in</b> the Atlantic" },
+    ]);
+    panel({} as never, "en", parseEvidence(GROUNDING));
+    const list = screen.getByTestId("evidence-cleared");
+    expect(list.querySelectorAll("li")).toHaveLength(1);
+    expect(list.textContent).toContain("c001-2");
+    expect(list.textContent).toContain("discovered adrift and deserted <b>in</b> the Atlantic");
+    expect(list.querySelector("b")).toBeNull();
+    expect((list.querySelector("a") as HTMLAnchorElement).getAttribute("href")).toBe(WIKI);
+  });
+
+  it("does not say the page proves the claim", () => {
+    for (const locale of ["en", "ru", "uz"] as const) {
+      expect(dictionaries[locale].review.sourcesNote).not.toMatch(/only when|только если|faqat .* boʻlsa/);
+    }
+    expect(dictionaries.en.review.sourcesNote).toContain("not proof");
+  });
+
   it("lists the pages as links that open safely, with the claims each backed", () => {
     panel({} as never, "en", parseEvidence(GROUNDING));
     const box = screen.getByTestId("evidence-sources");
@@ -175,7 +199,7 @@ describe("the sources of the online check (modules/grounding.py)", () => {
     expect(a.textContent).toBe("Mary Celeste");
     expect(a.getAttribute("rel")).toContain("noopener");
     expect(a.getAttribute("target")).toBe("_blank");
-    expect(box.querySelectorAll("a")).toHaveLength(1);
+    expect(box.querySelectorAll("a")).toHaveLength(2); // the source and the cleared claim's source, both Wikipedia
     expect(box.textContent).toContain("2 claim(s)");
   });
 
@@ -206,7 +230,7 @@ describe("the sources of the online check (modules/grounding.py)", () => {
   for (const locale of ["en", "ru", "uz"] as const) {
     it(`${locale}: the copy is complete`, () => {
       const r = dictionaries[locale].review;
-      for (const key of ["sourcesHeading", "sourcesNote", "sourcesOff", "sourcesUnavailable", "sourcesNone", "sourcesClaims"] as const) {
+      for (const key of ["sourcesHeading", "sourcesNote", "sourcesOff", "sourcesUnavailable", "sourcesNone", "sourcesClaims", "sourcesCleared"] as const) {
         expect(r[key], key).toBeTruthy();
       }
       expect(r.sourcesUnavailable).toContain("{reason}");

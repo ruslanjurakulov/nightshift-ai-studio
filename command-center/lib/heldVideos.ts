@@ -137,6 +137,8 @@ export function heldFlagged(v: { hold_detail?: unknown } | null | undefined): Fl
 
 /** What the online source check (modules/grounding.py: the English Wikipedia) did for one video. */
 export type EvidenceSource = { title: string; url: string; claims: number };
+/** One claim the online check cleared: its id in the storyboard, the page, and the exact words quoted from it. */
+export type ClearedClaim = { claimId: string; title: string; url: string; quote: string };
 export type EvidenceInfo = {
   /** False when the check was switched off for the run; null when the record does not say. */
   enabled: boolean | null;
@@ -145,6 +147,7 @@ export type EvidenceInfo = {
   upgraded: number;
   flaggedByEvidence: number;
   sources: EvidenceSource[];
+  cleared: ClearedClaim[];
 };
 
 const WIKIPEDIA_PAGE = /^https:\/\/en\.wikipedia\.org\/wiki\/[^\s"'<>]+$/;
@@ -158,7 +161,14 @@ function count(x: unknown): number {
  *  page link anywhere else; titles are rendered as text. Null when there is no record: an older video, or none. */
 export function parseEvidence(raw: unknown): EvidenceInfo | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const r = raw as { enabled?: unknown; unavailable?: unknown; upgraded?: unknown; flagged_by_evidence?: unknown; sources?: unknown };
+  const r = raw as {
+    enabled?: unknown;
+    unavailable?: unknown;
+    upgraded?: unknown;
+    flagged_by_evidence?: unknown;
+    sources?: unknown;
+    cleared?: unknown;
+  };
   const sources: EvidenceSource[] = [];
   if (Array.isArray(r.sources)) {
     for (const item of r.sources) {
@@ -172,12 +182,27 @@ export function parseEvidence(raw: unknown): EvidenceInfo | null {
       if (sources.length >= 30) break;
     }
   }
+  const cleared: ClearedClaim[] = [];
+  if (Array.isArray(r.cleared)) {
+    for (const item of r.cleared) {
+      const c = item as { claim_id?: unknown; title?: unknown; url?: unknown; quote?: unknown } | null;
+      if (!c || typeof c !== "object" || typeof c.url !== "string" || !WIKIPEDIA_PAGE.test(c.url)) continue;
+      cleared.push({
+        claimId: typeof c.claim_id === "string" ? c.claim_id.slice(0, 24) : "",
+        title: typeof c.title === "string" && c.title.trim() ? c.title.slice(0, 200) : c.url,
+        url: c.url.slice(0, 500),
+        quote: typeof c.quote === "string" ? c.quote.slice(0, 300) : "",
+      });
+      if (cleared.length >= 20) break;
+    }
+  }
   return {
     enabled: typeof r.enabled === "boolean" ? r.enabled : null,
     unavailable: typeof r.unavailable === "string" && /^[\w:.-]{1,40}$/.test(r.unavailable) ? r.unavailable : null,
     upgraded: count(r.upgraded),
     flaggedByEvidence: count(r.flagged_by_evidence),
     sources,
+    cleared,
   };
 }
 

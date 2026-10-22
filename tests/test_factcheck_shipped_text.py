@@ -320,7 +320,7 @@ _PAGE = {"pageid": 1, "ns": 0, "title": "Lantern Rock", "index": 1, "lastrevid":
          "extract": "FLAGME sank the Lantern Rock vessel in 1851 after a long chase through the strait.",
          "fullurl": "https://en.wikipedia.org/wiki/Lantern_Rock", "canonicalurl": "https://en.wikipedia.org/wiki/Lantern_Rock"}
 class _FakeHttp:
-    def get(self, url, params=None, headers=None, timeout=None):
+    def get(self, url, params=None, headers=None, timeout=None, **kw):
         out["http"].append([url, headers.get("User-Agent", "")[:20], timeout])
         if mode == "real_429":
             return _HttpResponse(None, 429)

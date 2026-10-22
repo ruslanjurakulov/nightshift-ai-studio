@@ -60,8 +60,9 @@ class FakeHttp:
     def __init__(self, handler):
         self.handler, self.calls = handler, []
 
-    def get(self, url, params=None, headers=None, timeout=None):
-        call = {"url": url, "params": dict(params or {}), "headers": dict(headers or {}), "timeout": timeout}
+    def get(self, url, params=None, headers=None, timeout=None, allow_redirects=True, stream=False):
+        call = {"url": url, "params": dict(params or {}), "headers": dict(headers or {}), "timeout": timeout,
+                "allow_redirects": allow_redirects, "stream": stream}
         self.calls.append(call)
         return self.handler(call, len(self.calls))
 
@@ -111,14 +112,14 @@ MC_FULL = ("Mary Celeste was a Canadian-built, American-registered, merchant bri
            "The Dei Gratia, a Canadian brigantine under Captain David Morehouse, found the Mary Celeste on "
            "December 4, 1872 and sailed her to Gibraltar for the salvage claim.\n"
            "According to legend, the crew was carried off by sea monsters that same night.\n"
-           "The cargo of 1,701 barrels of alcohol was found intact when the ship was boarded.\n")
+           "The cargo of 1,701 barrels of alcohol aboard the Mary Celeste was found intact when the ship was boarded.\n")
 DEI_INTRO = ("Dei Gratia was a Canadian brigantine that found the abandoned Mary Celeste in the Atlantic in "
              "December 1872 and claimed the salvage award at Gibraltar.")
 
 CLAIM_ADRIFT = "The Mary Celeste was found adrift in the Atlantic on December 4, 1872."
 QUOTE_ADRIFT = "discovered adrift and deserted in the Atlantic Ocean off the Azores on December 4, 1872"
 CLAIM_CARGO = "The Mary Celeste carried 1,701 barrels of alcohol."
-QUOTE_CARGO = "The cargo of 1,701 barrels of alcohol was found intact"
+QUOTE_CARGO = "The cargo of 1,701 barrels of alcohol aboard the Mary Celeste was found intact"
 CLAIM_MONSTERS = "Sea monsters carried off the crew of the Mary Celeste that same night."
 CLAIM_WRONG_YEAR = "The Mary Celeste was found adrift in the Atlantic on December 4, 1873."
 CLAIM_UNRELATED = "Napoleon was exiled to the island of Saint Helena after Waterloo."
@@ -136,6 +137,12 @@ def mary_celeste_router(call, n):
             return FakeResponse(api([page("Dei Gratia", DEI_INTRO, 1)]))
         return FakeResponse(api([]))
     if "titles" in p:
+        if "exintro" in p:                                       # the names, one request: intros of those that exist
+            known = {"Mary Celeste": MC_INTRO, "Dei Gratia": DEI_INTRO}
+            titles = p["titles"].split("|")
+            pages = [page(t, known[t], i + 1) for i, t in enumerate(titles) if t in known]
+            pages += [{"title": t, "missing": True} for t in titles if t not in known]
+            return FakeResponse(api(pages))
         return FakeResponse(api([page(p["titles"], MC_FULL, 1)]))
     return FakeResponse(api([]))
 
@@ -663,12 +670,12 @@ class NumbersMustBeInTheQuote(unittest.TestCase):
 class AHedgedQuoteDoesNotBackAClaim(unittest.TestCase):
     def test_a_legend_cannot_back_a_flat_statement(self):
         quote = "According to legend, the crew was carried off by sea monsters that same night"
-        out, _s, _c, _r = ground([CLAIM_MONSTERS], model=says("supported", quote))
+        out, _s, _c, _r = ground(["The crew was carried off by sea monsters that same night."], model=says("supported", quote))
         self.assertTrue(out[0].requires_human_review)
-        self.assertEqual(out[0].grounding["reason"], "hedged_quote")
+        self.assertEqual(out[0].grounding["reason"], "hedged_in_sentence")
 
     def test_a_claim_that_hedges_the_same_way_may_be_backed(self):
-        claim = "According to legend, the crew of the Mary Celeste was carried off by sea monsters that same night."
+        claim = "According to legend, the crew was carried off by sea monsters that same night."
         quote = "According to legend, the crew was carried off by sea monsters that same night"
         out, _s, _c, _r = ground([claim], model=says("supported", quote))
         self.assertFalse(out[0].requires_human_review)
@@ -974,7 +981,7 @@ class WhatIsRecorded(unittest.TestCase):
                                            {"index": 0, "status": "supported", "snippet_id": cl[0]["candidates"][0], "quote": QUOTE_ADRIFT}] +
                                            [{"index": c["index"], "status": "not_found"} for c in cl[1:]]))
         blob = json.dumps(summary.to_dict())
-        for text in (CLAIM_ADRIFT, CLAIM_CARGO, "Atlantic", "brigantine", QUOTE_ADRIFT):
+        for text in (CLAIM_ADRIFT, CLAIM_CARGO):            # the script's words; the cleared quote is Wikipedia's
             self.assertNotIn(text, blob)
         d = summary.to_dict()
         self.assertEqual(d["wiki_language"], "en")

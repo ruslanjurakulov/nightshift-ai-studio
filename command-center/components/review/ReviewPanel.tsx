@@ -380,6 +380,21 @@ export function ReviewPanel({
                   </li>
                 ))}
               </ul>
+              {evidence.cleared.length > 0 && (
+                <ul data-testid="evidence-cleared" className="mt-3 flex flex-col gap-2">
+                  {evidence.cleared.map((c) => (
+                    <li key={`${c.claimId}|${c.url}`} className="text-sm">
+                      <span className="text-[var(--color-muted)]">
+                        {t.review.sourcesCleared} {c.claimId} ·{" "}
+                      </span>
+                      <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="underline">
+                        {c.title}
+                      </a>
+                      <p className="m-0 mt-1 text-[var(--color-muted)]">{`\u201C${c.quote}\u201D`}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <p className="mt-2 text-xs text-[var(--color-muted)]">{t.review.sourcesNote}</p>
             </>
           )}

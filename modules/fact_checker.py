@@ -137,11 +137,30 @@ class FactCheckResult:
     #: the quote. Never set by the checker itself; the verdict above is the checker's own unless
     #: ``grounding["effect"]`` says otherwise.
     grounding: Optional[dict] = None
+    #: True when the model's verdict was NOT one of the three words and was read as
+    #: "unverifiable" (module docstring, point 2). The real verdict is then unknown: it may
+    #: have been "likely_inaccurate". The evidence lookup never upgrades such a result.
+    clamped: bool = False
+    #: A safe copy of that word (ASCII, at most RAW_VERDICT_CHARS characters), or None.
+    raw_verdict: Optional[str] = None
+
+
+#: How much of a clamped verdict word is kept.
+RAW_VERDICT_CHARS = 24
+
+
+def raw_verdict_word(value) -> str:
+    """A model-written verdict word made safe to store and log: ASCII letters, digits and a few
+    marks, everything else ``?``, cut to RAW_VERDICT_CHARS. A non-string reads as its type."""
+    text = value if isinstance(value, str) else ("None" if value is None else type(value).__name__)
+    return re.sub(r"[^A-Za-z0-9_.!?-]", "?", text.strip())[:RAW_VERDICT_CHARS]
 
 
 def _make_result(claim: str, verdict: str, reasoning: str, unresolved: bool = False) -> FactCheckResult:
     """Build a FactCheckResult, always computing requires_human_review here."""
-    if verdict not in VALID_VERDICTS:
+    clamped, raw = False, None
+    if not (isinstance(verdict, str) and verdict in VALID_VERDICTS):
+        clamped, raw = True, raw_verdict_word(verdict)
         verdict = "unverifiable"
     return FactCheckResult(
         claim=claim,
@@ -149,6 +168,8 @@ def _make_result(claim: str, verdict: str, reasoning: str, unresolved: bool = Fa
         reasoning=reasoning,
         requires_human_review=(verdict != "likely_accurate"),
         unresolved=unresolved,
+        clamped=clamped,
+        raw_verdict=raw,
     )
 
 
@@ -360,6 +381,29 @@ def _parse_batch_response(text: str, batch_len: int) -> dict[int, dict] | None:
     return None
 
 
+def _log_verdict_shape(by_index: dict, results: list) -> None:
+    """Measure, never fix (CLAUDE.md #8): how many verdict words fell outside the three, which words,
+    and which keys the model's items carried. FACT_CHECK_SYSTEM_PROMPT is defined but not sent, so
+    the model has never been told the vocabulary; this line is how the next real run proves or kills
+    the theory that its verdicts are clamped to "unverifiable". Structure only: verdict words are cut
+    and made ASCII (raw_verdict_word), keys are cut, no claim text and no reasoning text."""
+    from collections import Counter
+
+    words = Counter(r.raw_verdict if r.clamped else r.verdict for r in results)
+    keys = Counter(",".join(sorted(re.sub(r"[^A-Za-z0-9_]", "?", str(k))[:20] for k in item))[:120]
+                   for item in by_index.values())
+    clamped = sum(1 for r in results if r.clamped)
+    shape = "verdicts {%s}; item keys {%s}" % (
+        ", ".join(f"{w}={n}" for w, n in words.most_common(8)),
+        "; ".join(f"{k}={n}" for k, n in keys.most_common(4)))
+    if clamped:
+        logger.warning("Fact-checker returned a verdict outside the three known values for %d of %d claim(s) "
+                       "in a batch; they were read as 'unverifiable' and the evidence lookup will not upgrade them. %s",
+                       clamped, len(results), shape)
+    else:
+        logger.info("Fact-checker batch of %d: %s", len(results), shape)
+
+
 def _check_batch(client, batch: list[str], allow_split_retry: bool = True
                   ) -> list[FactCheckResult]:
     """Fact-check one batch of claims, with the split-and-retry fallback.
@@ -379,19 +423,12 @@ def _check_batch(client, batch: list[str], allow_split_retry: bool = True
 
     if by_index is not None:
         results = []
-        clamped = 0
         for i, claim in enumerate(batch):
             item = by_index[i]
             verdict = item.get("verdict")
             reasoning = str(item.get("reasoning", ""))
-            clamped += verdict not in VALID_VERDICTS
             results.append(_make_result(claim, verdict, reasoning))
-        if clamped:
-            # A measurement, not a fix: a verdict outside the three words is read as "unverifiable"
-            # (every such claim is then flagged). The count says whether that is why a run flagged
-            # most of its claims; the strings themselves are model output and are not logged.
-            logger.warning("Fact-checker returned a verdict outside the three known values for %d of %d "
-                           "claim(s) in a batch; they were read as 'unverifiable'", clamped, len(batch))
+        _log_verdict_shape(by_index, results)
         return results
 
     logger.warning(
