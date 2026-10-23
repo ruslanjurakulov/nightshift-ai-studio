@@ -28,9 +28,10 @@ said out loud: the first check of a run logs a warning naming the unpriced units
 ``planned`` lets the caller include what it is about to buy (the clips it is about
 to submit) so a cap stops the submit instead of noticing afterwards.
 
-NOT covered, said plainly: the avatar presenter clip itself (Higgsfield; it has no
-cost-ledger unit, so its price is not counted, only a stop before it on what was
-already spent), the advisory vision critic (it runs after the render; stopping
+NOT covered, said plainly: the Higgsfield presenter clip (no cost-ledger unit, so its
+price is not counted, only a stop before it on what was already spent; the fal
+presenter IS covered: it passes its worst-case USD as ``extra_usd`` and writes what
+it was billed to the ledger as an estimate), the advisory vision critic (it runs after the render; stopping
 there would throw away a finished video, so it keeps its own channel ceiling),
 scene regeneration jobs (tools/queue_worker -> main --regenerate-scene, paid by
 their own confirmed price and not through ``main.run``) and every Creative OS job
@@ -106,12 +107,15 @@ def stored_today_usd(store, now: Optional[datetime] = None) -> float:
     return spent
 
 
-def check(costs, stage: str, *, operators: bool = False, planned=None, store=None, env=None) -> None:
+def check(costs, stage: str, *, operators: bool = False, planned=None, extra_usd: float = 0.0,
+          store=None, env=None) -> None:
     """Raise :class:`SpendLimitExceeded` if running ``stage`` would go over a cap.
 
     ``costs`` is the run's CostLedger; ``planned`` is ``[(unit, quantity), ...]``
-    the stage is about to buy; ``operators`` is True for the operator's own
-    organisation (the only one the daily cap applies to). Reading the day's
+    the stage is about to buy; ``extra_usd`` is a figure the caller already priced
+    itself (the fal presenter's seconds x its own per-second price), added to
+    it; ``operators`` is True for the operator's own organisation (the only one
+    the daily cap applies to). Reading the day's
     spend can fail (no database): that is logged and the daily cap is skipped for
     this check, the per-run cap needs no database."""
     run_cap = limit(RUN_ENV, DEFAULT_MAX_RUN_USD, env)
@@ -119,6 +123,7 @@ def check(costs, stage: str, *, operators: bool = False, planned=None, store=Non
     if run_cap is None and day_cap is None:
         return
     planned_usd, planned_unpriced = _planned_usd(planned)
+    planned_usd = round(planned_usd + max(0.0, float(extra_usd or 0.0)), 6)
     unpriced = sorted(set(costs.unpriced_units()) | set(planned_unpriced))
     if unpriced and not getattr(costs, "guard_warned", False):
         costs.guard_warned = True

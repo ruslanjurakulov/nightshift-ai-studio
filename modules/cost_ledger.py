@@ -123,9 +123,14 @@ class CostLedger:
     #: nothing is recorded twice.
     flushed: int = 0
 
-    def add(self, unit: str, quantity, stage: str = "") -> None:
+    def add(self, unit: str, quantity, stage: str = "", *, estimated_usd=None) -> None:
         """Record one quantity. Never raises; a bad value is dropped with a
-        warning rather than propagating into the pipeline."""
+        warning rather than propagating into the pipeline.
+
+        ``estimated_usd`` is for a caller that holds its own price for what it just
+        bought (the fal presenter: seconds x its configured per-second price). It
+        is an estimate and is stored as one; without it the amount is priced only
+        from the operator's ``CHRONOS_PRICE_*`` rate, or left unpriced."""
         try:
             amount = float(quantity)
         except (TypeError, ValueError):
@@ -135,15 +140,15 @@ class CostLedger:
             logger.warning("Ignoring negative cost %s=%s", unit, amount)
             return
         price = unit_price(unit)
-        self.entries.append(
-            CostEntry(
-                unit=unit,
-                quantity=amount,
-                stage=stage,
-                # None when unpriced — deliberately not 0.0.
-                estimated_usd=round(amount * price, 6) if price is not None else None,
-            )
-        )
+        usd = round(amount * price, 6) if price is not None else None  # None when unpriced — deliberately not 0.0.
+        if estimated_usd is not None:
+            try:
+                given = float(estimated_usd)
+            except (TypeError, ValueError):
+                given = -1.0
+            if 0 <= given < float("inf"):
+                usd = round(given, 6)
+        self.entries.append(CostEntry(unit=unit, quantity=amount, stage=stage, estimated_usd=usd))
 
     def add_gemini_usage(self, response, stage: str = "script") -> None:
         """Record token usage from a Gemini response, if it reported any.

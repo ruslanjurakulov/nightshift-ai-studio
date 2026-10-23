@@ -348,9 +348,23 @@ class Compositor:
 
     # ------------------------------------------------------------------ Master render
 
-    def _build_presenter_clip(self, presenter_path: Path, total_duration: float):
+    def _build_presenter_clips(self, presenter, total_duration: float) -> list:
+        """The positioned presenter clips for whatever the pipeline holds (one clip
+        from 0 s, or the fal intro/outro segments); each one that can't be used is
+        left out on its own."""
+        from modules.avatar import presenter_segments
+
+        clips = []
+        for seg in presenter_segments(presenter):
+            clip = self._build_presenter_clip(seg.path, total_duration, start=seg.start)
+            if clip is not None:
+                clips.append(clip)
+        return clips
+
+    def _build_presenter_clip(self, presenter_path: Path, total_duration: float, start: float = 0.0):
         """Load the AITuber presenter clip and size/position it into a corner
-        inset. Returns a positioned VideoClip, or None if the file can't be used
+        inset, playing from `start` seconds. Returns a positioned VideoClip, or
+        None if the file can't be used
         — a bad presenter must degrade to a faceless render, never crash it or
         put a broken frame on screen. Its own audio is dropped so it can't
         displace the narration set on the final composite."""
@@ -367,13 +381,15 @@ class Compositor:
         try:
             layout = presenter_layout(self.width, self.height)
             src_dur = clip.duration or total_duration
-            dur = min(src_dur, total_duration)
+            dur = min(src_dur, total_duration - start)
+            if dur <= 0:
+                return None
             positioned = (
                 clip.subclip(0, dur)
                 .without_audio()
                 .resize(newsize=(layout["w"], layout["h"]))
                 .set_position((layout["x"], layout["y"]))
-                .set_start(0)
+                .set_start(start)
                 .set_duration(dur)
             )
             return positioned
@@ -463,9 +479,7 @@ class Compositor:
             presenter_layer = []
             if presenter_path is not None:
                 mark_stage("build presenter overlay")
-                presenter_clip = self._build_presenter_clip(presenter_path, total_duration)
-                if presenter_clip is not None:
-                    presenter_layer = [presenter_clip]
+                presenter_layer = self._build_presenter_clips(presenter_path, total_duration)
 
             mark_stage(f"composite {len(subtitle_clips) + len(presenter_layer) + 1} layer(s)")
             final = CompositeVideoClip([bg] + presenter_layer + subtitle_clips,
