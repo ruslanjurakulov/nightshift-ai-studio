@@ -67,6 +67,7 @@ from modules.video_review import VideoReview
 from modules import held_video
 from modules.fact_checker import fact_check_claims
 from modules import grounding
+from modules import packaging_repair
 from modules.media_fetcher import MediaFetcher, MediaUnavailable, require_media
 from modules import video_providers
 from modules import image_providers
@@ -439,7 +440,7 @@ def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
     spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned)
 
 
-def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_results) -> tuple:
+def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_results, save=True) -> tuple:
     """``(results, summary dict)``: the evidence lookup (modules/grounding.py) applied to the
     checker's results, its extra Gemini tokens in the cost ledger under their own stage, and the
     passages it used saved as ``grounding.json`` beside ``fact_check.json`` so a quote can be
@@ -455,7 +456,7 @@ def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_r
             cached=grounding.load_cached_evidence(path, topic),
             on_response=lambda r: costs.add_gemini_usage(r, stage=grounding.STAGE))
         record = summary.to_dict()
-        if summary.evidence is not None and summary.evidence.snippets:
+        if save and summary.evidence is not None and summary.evidence.snippets:
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 # Atomically (a temp file, then replace): a reader never sees half a file. The original fetch
@@ -473,7 +474,83 @@ def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_r
         return fact_results, {"enabled": True, "unavailable": f"error:{type(e).__name__}"}
 
 
-def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decision, costs, grounding_summary=None) -> None:
+def _repair_packaging(ctx, costs, topic, slug, script, research_brief, section_claims, fact_results, early,
+                      grounding_summary):
+    """One repair pass over the packaging texts when the early fact-check blocks on nothing else
+    (modules/packaging_repair.py): ``None`` when it is off or the hold is not repairable, else a
+    ``packaging_repair.Repair`` (``.passed`` only when the same early gate now allows the run). The calls it
+    makes are the run's own generator, fact-checker and grounding step; their cost lands in the ledger.
+    Never raises: whatever fails here, the run is held exactly as it would be without a repair."""
+    try:
+        return _repair_packaging_pass(ctx, costs, topic, slug, script, research_brief, section_claims,
+                                      fact_results, early, grounding_summary)
+    except Exception as e:
+        logger.warning("Packaging repair could not start (%s) - the run is held as without it", type(e).__name__)
+        return None
+
+
+def _repair_packaging_pass(ctx, costs, topic, slug, script, research_brief, section_claims, fact_results, early,
+                           grounding_summary):
+    if not packaging_repair.enabled():
+        return None
+    from modules.gemini_client import generate_with_retry, make_client
+    from modules.script_engine import _format_research_notes
+    from modules.structured_output import json_config
+    from config import GEMINI_MODEL
+
+    def generate(prompt):
+        response = generate_with_retry(
+            make_client(), GEMINI_MODEL, prompt, json_config(None, system_instruction=packaging_repair.REPAIR_SYSTEM))
+        costs.add_gemini_usage(response, stage=packaging_repair.STAGE)
+        return response
+
+    def ground(fresh, checked):
+        if not grounding.enabled():
+            return checked, None
+        checked, summary = _ground_fact_results(ctx, costs, topic, slug, [c.text for c in fresh], fresh, checked,
+                                                save=False)
+        return checked, held_video.grounding_detail(summary)
+
+    def evaluate(repaired, claims, results):
+        return publish_gate.evaluate_fact_check(
+            script=repaired, fact_results=results, channel=ctx,
+            narration_claims=sum(1 for c in claims if c.source == SOURCE_NARRATION), claims=claims,
+            language=getattr(ctx.agent, "language", None), grounding=grounding_summary)
+
+    return packaging_repair.repair_packaging(
+        script=script, claims=section_claims, results=fact_results, decision=early, topic=topic,
+        language=getattr(ctx.agent, "language", None), research_notes=_format_research_notes(research_brief),
+        generate=generate, check=fact_check_claims, ground=ground, extract=extract_shipped_claims, evaluate=evaluate)
+
+
+def _save_packaging_repair(slug, repair) -> None:
+    """``packaging_repair.json`` beside ``fact_check.json``: the first-round items, the rewrites and what the
+    re-check said, for a person to read whatever came of it. Never raises."""
+    try:
+        path = OUTPUT_DIR / slug / "packaging_repair.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(repair.record, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        logger.warning("Could not save packaging_repair.json (%s) - the run is unaffected", type(e).__name__)
+
+
+def _resave_after_packaging_repair(slug, script, script_file, section_claims, fact_results) -> None:
+    """The repaired texts are what ships, so the saved copies of this run carry them too: ``script.json`` (what a
+    resume or a storyboard reads) and ``fact_check.json`` (the claims the gate now stands on). A script loaded
+    from a file elsewhere is not written to a path it was never saved at. Never raises."""
+    try:
+        canonical = OUTPUT_DIR / slug / "script.json"
+        if not script_file or canonical.exists():
+            script.save(canonical)
+        (OUTPUT_DIR / slug / "fact_check.json").write_text(
+            json.dumps(claim_scenes.fact_check_records(section_claims, fact_results), indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.warning("Could not re-save the script after the packaging repair (%s) - the run goes on with the "
+                       "repaired texts in memory", type(e).__name__)
+
+
+def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decision, costs, grounding_summary=None,
+                        packaging_repair_record=None) -> None:
     """A run whose fact-check would block the publish gate ends here, owner-visibly,
     before the voice, stills and render are bought.
 
@@ -508,6 +585,9 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
         evidence = held_video.grounding_detail(grounding_summary)
         if evidence:
             detail["grounding"] = evidence
+        # A repair that was tried and did not clear the hold: the first-round items and the rewritten ones, both.
+        if packaging_repair_record:
+            detail["packaging_repair"] = packaging_repair_record
         # The row's key is channel + topic slug, so an earlier run of this topic may have left a cut on it that a
         # person is still reviewing (held, awaiting approval, blocked after its render). This hold has no video and
         # would replace that cut's text, scenes and verdict, so a row that holds one is left exactly as it is. A
@@ -535,6 +615,8 @@ def _hold_before_render(ctx, *, slug, topic, script, claims, fact_results, decis
                     channel_id=channel_id,
                     metadata={**decision.to_metadata(), "stage": "before_render", "slug": slug, "video_id": held_id,
                               "row": row, "flagged": flagged,
+                              **({"packaging_repair": packaging_repair_record.get("status")}
+                                 if packaging_repair_record else {}),
                               "claims_checked": len(fact_results), "claims_flagged": counts.get("flagged", 0)})
     except Exception as e:
         logger.warning("Could not emit the early-hold event (%s: %s) — the run still stops",
@@ -1065,6 +1147,7 @@ def run(
     section_claims = None
     narration_claim_count = None
     grounding_summary = None
+    packaging_repair_record = None
     try:
         # Each claim carries its section (claim_id c000-1, scene s000), so the
         # Storyboard can show which scene says what (modules/claim_scenes.py).
@@ -1111,10 +1194,26 @@ def run(
             script=script, fact_results=fact_results, channel=ctx,
             narration_claims=narration_claim_count, claims=section_claims,
             language=getattr(ctx.agent, "language", None), grounding=grounding_summary)
+        repair = None
+        if not early.allowed and approved_storyboard is None:
+            # A person-approved storyboard's texts are never rewritten.
+            repair = _repair_packaging(ctx, costs, topic, slug, script, research_brief, section_claims,
+                                       fact_results, early, grounding_summary)
+        if repair is not None:
+            packaging_repair_record = repair.record
+            _save_packaging_repair(slug, repair)
+            if repair.passed:
+                # What the gate re-checked is what ships: the rewritten texts go into the script itself, and the
+                # claims and results now describe it (the narration's own are carried over untouched).
+                for name, value in repair.fields.items():
+                    setattr(script, name, value)
+                section_claims, fact_results, early = repair.claims, repair.results, repair.decision
+                narration_claim_count = sum(1 for c in section_claims if c.source == SOURCE_NARRATION)
+                _resave_after_packaging_repair(slug, script, script_file, section_claims, fact_results)
         if not early.allowed:
             _hold_before_render(ctx, slug=slug, topic=topic, script=script, claims=section_claims,
                                 fact_results=fact_results, decision=early, costs=costs,
-                                grounding_summary=grounding_summary)
+                                grounding_summary=grounding_summary, packaging_repair_record=packaging_repair_record)
             raise publish_gate.HeldBeforeRender(", ".join(early.blocks))
 
     pipeline.advance(run_record.run_id, PipelineStage.HUMAN_APPROVAL)
@@ -1593,6 +1692,8 @@ def run(
                 ((gate_meta or {}).get("fact_check") or {}).get("grounding") if isinstance(gate_meta, dict) else None)
             if evidence:
                 detail["grounding"] = evidence
+            if packaging_repair_record:
+                detail["packaging_repair"] = packaging_repair_record
             held_video.record_held(
                 channel_id=channel_id,
                 slug=slug,

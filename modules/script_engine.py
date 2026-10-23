@@ -10,6 +10,7 @@ from google.genai import types as genai_types
 
 from config import GEMINI_MODEL, SCRIPT_LANGUAGE, VIDEO_DURATION_TARGET
 from modules.gemini_client import generate_with_retry, make_client
+from modules.packaging_repair import PACKAGING_CLAIM_RULE
 from modules.performance_analyzer import PerformanceAnalyzer
 from modules.research_engine import ResearchBrief
 
@@ -98,6 +99,8 @@ notes can switch them off):
   another says...") and leave an unresolved question open instead of announcing an answer.
 - The title, hook_ab, hook_sentence, description and thumbnail_overlay_text must be fully supported by the script
   itself: no number, name or claim there that the narration does not back up.
+
+""" + PACKAGING_CLAIM_RULE + """
 
 KEYWORDS RULE: Every section MUST include 2-3 "keywords" — literal, filmable
 stock-footage search terms for Pexels that match that section's mood. Describe

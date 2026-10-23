@@ -355,7 +355,9 @@ def child(code, env, *args):
                                # these runs are about the spend caps, not the host's free disk (main._preflight_disk)
                                "NIGHTSHIFT_MIN_FREE_DISK_GB": "0",
                                # nothing in these runs may reach Wikipedia (modules/grounding.py)
-                               "NIGHTSHIFT_GROUNDED_FACTCHECK": "off", **env})
+                               "NIGHTSHIFT_GROUNDED_FACTCHECK": "off",
+                               # nor may the packaging repair call the model (modules/packaging_repair.py)
+                               "NIGHTSHIFT_PACKAGING_REPAIR": "off", **env})
     line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
     assert line is not None, proc.stderr[-3000:]
     return json.loads(line[len("RESULT "):])

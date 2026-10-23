@@ -37,7 +37,7 @@ def _held_runner(**over):
         script=SimpleNamespace(full_narration=lambda: "the narration"),
         section_claims=[], fact_results=[], channel_id="news", slug="the-lost-city",
         topic="The lost city", published_title="The Lost City", ir_project=None,
-        video_path=Path("/out/final_video.mp4"),
+        video_path=Path("/out/final_video.mp4"), packaging_repair_record=None,
     )
     ns.update(over)
     exec(compile(ast.Module(body=[fn], type_ignores=[]), str(MAIN), "exec"), ns)

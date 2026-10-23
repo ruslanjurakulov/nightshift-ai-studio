@@ -390,6 +390,8 @@ def drive(patch_script, hook="A", env=None):
         env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
              "PEXELS_API_KEY": "not-a-real-key", "NIGHTSHIFT_MIN_FREE_DISK_GB": "0",
              "NIGHTSHIFT_GROUNDED_FACTCHECK": "off",
+             # nor may the packaging repair call the model (modules/packaging_repair.py)
+             "NIGHTSHIFT_PACKAGING_REPAIR": "off",
              "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"), **(env or {})})
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")), None)
     assert line is not None, proc.stderr[-3000:]
@@ -584,6 +586,8 @@ def _drive_row(patch_script, row, child=_CHILD):
         env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
              "PEXELS_API_KEY": "not-a-real-key", "NIGHTSHIFT_MIN_FREE_DISK_GB": "0",
              "NIGHTSHIFT_GROUNDED_FACTCHECK": "off",
+             # nor may the packaging repair call the model (modules/packaging_repair.py)
+             "NIGHTSHIFT_PACKAGING_REPAIR": "off",
              "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db")})
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")), None)
     assert line is not None, proc.stderr[-3000:]
