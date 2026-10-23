@@ -1,0 +1,79 @@
+name: Fact-check calibration
+
+# Measures the fact-checker against tools/factcheck_calibration_claims.json (40 labelled claims:
+# 15 true, 15 false, 10 obscure) with the real model, once, on demand. The pass criterion is that
+# NONE of the 15 false claims comes back `likely_accurate`; a run with any clamped or unresolved
+# verdict is INCONCLUSIVE, never a pass (tools/factcheck_calibration.py, docs/GROUNDED_FACTCHECK.md).
+#
+# COSTS A FEW CENTS AT MOST: about three batched Gemini requests, no other vendor, no database, no
+# upload. Manual only (Actions -> Fact-check calibration -> Run workflow), never on a push or a pull
+# request. The only secret is GEMINI_API_KEY, in step env; the tool never prints it.
+#
+# `ref` is the branch to measure (the tool and the claims file are read from it); the workflow file
+# itself only has to exist on the default branch for the dispatch to be accepted.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit that holds tools/factcheck_calibration.py"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factcheck-calibration
+  cancel-in-progress: false
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # The ref arrives through env and is checked against a plain ref pattern before it is used.
+      - name: Check the ref
+        env:
+          REF: ${{ github.event.inputs.ref }}
+        run: |
+          set -eu
+          if [[ ! "$REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]]; then
+            echo "::error::the ref input must be a plain branch, tag or commit name"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.ref }}
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -c constraints.txt -r requirements.txt
+
+      - name: Calibrate
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT: ${{ vars.NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT }}
+        run: |
+          set -eu
+          out="$RUNNER_TEMP/calibration.txt"
+          set +e
+          python tools/factcheck_calibration.py --live 2>&1 | tee "$out"
+          rc=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "### Fact-check calibration (exit $rc: 0 pass, 1 a false claim accepted, 2 inconclusive)"
+            echo
+            echo '```'
+            cat "$out"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
