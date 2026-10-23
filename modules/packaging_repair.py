@@ -39,12 +39,13 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from modules.claim_extractor import (
     SOURCE_DESCRIPTION, SOURCE_HOOK_AB, SOURCE_HOOK_SENTENCE, SOURCE_THUMBNAIL, SOURCE_TITLE, SOURCE_TITLE_AB,
-    Claim, _URL_WHOLE, _description_lines, _normalize, _split_sentences, _strip_cue_tags,
+    Claim, _HASHTAG_OR_URL_LINE, _TIMESTAMP_LINE, _URL_WHOLE, _normalize, _split_sentences, _strip_cue_tags,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,11 +142,11 @@ def flagged_packaging(decision, claims, results) -> tuple:
 # ── the generation prompt ─────────────────────────────────────────────────────
 
 _FIELD_STYLE = {
-    "title": "YouTube title, start with a number or a power word, max 80 characters.",
+    "title": "YouTube title, plain text, start with a number or a power word, max 80 characters.",
     "title_ab": "Alternative A/B test title, max 80 characters.",
-    "hook_ab": ("An ALTERNATE opening for the first section: the first 15-30 seconds, spoken narration with the "
-                "same [PAUSE]/[SFX]/[MUSIC] cues as before, still starting from the most gripping moment that "
-                "is true."),
+    "hook_ab": ("An ALTERNATE opening for the first section: the first 15-30 seconds of plain spoken narration "
+                "with NO [PAUSE]/[SFX]/[MUSIC]/[VOICE] tags (a rewrite containing a tag is not used), still "
+                "starting from the most gripping moment that is true."),
     "hook_sentence": "The 3-second hook sentence, from the most gripping moment that is true.",
     "thumbnail_overlay_text": "Short punchy text for the thumbnail, max 4 words.",
     "description": ("YouTube description: keep its paragraphs, hashtags and every line that was not flagged as "
@@ -208,6 +209,91 @@ def _parse_rewrites(text: str, asked: set) -> dict:
         if isinstance(value, str) and value.strip():
             out[name] = value.strip()
     return out
+
+
+#: Any tag-like cue, however it is spelled: the extractor strips ``[SFX:..]`` etc. before the checker sees a text,
+#: and nothing strips them before a title, a thumbnail or a description ships.
+_CUE_LIKE = re.compile(r"\[\s*(?:sfx|music|pause|voice)\b", re.IGNORECASE)
+#: Characters that are invisible or that change what is displayed or how lines break: format (zero-width, bidi
+#: controls, soft hyphen, tag characters), control, surrogate, private-use, unassigned, line and paragraph
+#: separators. None of them can be in a text the checker is shown as plain text.
+_HIDDEN_CATEGORIES = frozenset({"Cf", "Cc", "Cs", "Co", "Cn", "Zl", "Zp"})
+_SINGLE_LINE = ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence")
+
+
+def _canonical(name: str, value: str, original: str) -> Optional[str]:
+    """The exact string to ship AND to check for a rewrite, or ``None`` when normalising it before the checker
+    would hide something from the checker.
+
+    Everything the pipeline does to a text before the checker sees it (cue tags stripped, whitespace collapsed,
+    links stripped from a description, hashtag and chapter lines skipped, sentences without a letter or a digit
+    dropped) is either made impossible here or made visible to the checker, so what is shipped is what was
+    checked. Refused: any cue tag, however spelled or nested; invisible, bidi, control and separator characters;
+    ``<`` and ``>`` (HTML tags and comments; YouTube refuses them too); markdown link syntax; a link in a
+    description that the description did not already carry (the checker is not shown links). Whitespace runs are
+    collapsed (a description keeps its lines). The returned string is the one that is set on the script."""
+    if not isinstance(value, str):
+        return None
+    text = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if name in _SINGLE_LINE and "\n" in text:
+        return None
+    if any(unicodedata.category(ch) in _HIDDEN_CATEGORIES and ch not in "\n\t" for ch in text):
+        return None
+    if name == "description":
+        text = "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n"))
+    else:
+        text = " ".join(text.split())
+    if not text or _CUE_LIKE.search(text) or text != _strip_cue_tags(text):
+        return None
+    if "<" in text or ">" in text or re.search(r"\]\s*\(", text):
+        return None
+    if name == "description":
+        if any(m.group(0) not in original for m in _URL_WHOLE.finditer(text)):
+            return None
+    if not _fully_visible_to_the_checker(name, text):
+        return None
+    return text
+
+
+def _only_symbols(residue: str) -> bool:
+    """Nothing left but whitespace, punctuation and symbols (an emoji, a rule of dashes): no word, no number."""
+    return all(ch.isspace() or unicodedata.category(ch)[0] in "PS" for ch in residue)
+
+
+def _fully_visible_to_the_checker(name: str, text: str) -> bool:
+    """Every letter and digit of ``text`` is inside a unit the checker is sent (``_raw_units``)."""
+    if name == "description":
+        for line in text.split("\n"):
+            if line.strip() and not _TIMESTAMP_LINE.match(line):
+                units, stripped = _description_line_units(line)
+                if not _only_symbols(_leftover(stripped, units)):
+                    return False
+        return True
+    return _only_symbols(_leftover(" ".join(text.split()), _raw_units(name, text)))
+
+
+def _leftover(text: str, units: list) -> str:
+    """What is left of ``text`` after cutting out ``units`` in order; ``"\u0000"`` when a unit is not in it."""
+    rest, pos = [], 0
+    for unit in units:
+        i = text.find(unit, pos)
+        if i < 0:
+            return "x"
+        rest.append(text[pos:i])
+        pos = i + len(unit)
+    rest.append(text[pos:])
+    return "".join(rest)
+
+
+def _description_line_units(line: str) -> tuple:
+    """``(units, stripped line)`` of one description line: the line with its links cut out (links are not shown to
+    the checker; ``_canonical`` only lets through links the description already carried), as one unit when it is a
+    hashtag / link-only line, else split into sentences."""
+    stripped = " ".join(_URL_WHOLE.sub(" ", line).split())
+    if not stripped:
+        return [], stripped
+    pieces = [stripped] if _HASHTAG_OR_URL_LINE.match(line) else _split_sentences(stripped)
+    return [p.strip() for p in pieces if p and re.search(r"\w", p)], stripped
 
 
 def _acceptable(name: str, value: str) -> bool:
@@ -318,9 +404,15 @@ def _repair(script, claims, results, indexes, record, topic, language, research_
     proposals = {}
     for name, value in rewritten.items():
         before = str(getattr(script, name, "") or "")
-        if _normalize(value) == _normalize(before) or not _acceptable(name, value):
+        # What is set on the script is exactly what the checker is shown: the canonical string, or nothing.
+        canon = _canonical(name, value, before)
+        if canon is None:
+            record["rewrites"].append({"field": name, "before": _clip(before), "after": _clip(value),
+                                       "applied": False, "reason": "not_plain_text"})
             continue
-        proposals[name] = (before, value)
+        if _normalize(canon) == _normalize(before) or not _acceptable(name, canon):
+            continue
+        proposals[name] = (before, canon)
     if not proposals:
         record["status"] = "no_usable_rewrite"
         return Repair("no_usable_rewrite", record)
@@ -405,7 +497,8 @@ def _raw_units(name: str, text: str) -> list:
     if name in ("title", "title_ab", "thumbnail_overlay_text"):
         pieces = [text.strip()]
     elif name == "description":
-        pieces = [sent for line in _description_lines(text) for sent in _split_sentences(_URL_WHOLE.sub(" ", line))]
+        pieces = [unit for line in text.splitlines() if line.strip() and not _TIMESTAMP_LINE.match(line)
+                  for unit in _description_line_units(line)[0]]
     else:
         pieces = _split_sentences(text)
     return [p.strip() for p in pieces if p and re.search(r"\w", p)]

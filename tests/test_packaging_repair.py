@@ -699,7 +699,7 @@ class TheCheckerMustSeeWhatShips(unittest.TestCase):
         self.assertIn("The island was ruled by a keeper, historians say.", checked)
         self.assertIn("Subscribe because BADFACT was hidden there.", checked)      # a call to action: raw
         self.assertIn("Why?", checked)                                              # a question: raw
-        self.assertNotIn("#history #mystery", " ".join(checked))                    # a hashtag line carries no statement
+        self.assertIn("#history #mystery", checked)                                 # words in hashtags are checked too
         self.assertEqual(out.status, "still_flagged")
 
     def test_the_text_the_gate_stands_on_includes_what_was_checked_raw(self):
@@ -719,6 +719,169 @@ class TheCheckerMustSeeWhatShips(unittest.TestCase):
             "hook_ab": "Subscribe now. The old vault held the colony log for years.",
             "thumbnail_overlay_text": "STILL UNSOLVED"}, script)
         self.assertNotIn("Subscribe now.", probe.checked[0])
+
+
+class WhatShipsIsExactlyWhatWasChecked(unittest.TestCase):
+    """The pipeline normalises a text before the checker sees it: cue tags are stripped, whitespace collapsed,
+    links cut out of a description, hashtag lines skipped. A rewrite that hides its claim in what that
+    normalisation removes would ship unchecked. Such a rewrite is refused, and what is applied is the checked
+    string itself."""
+
+    CLEAN_HOOK = "Historians still disagree about where the colony went, and the map may not help."
+
+    def probe(self, rewrite, script=None, **kw):
+        probe = Probe(rewrite=rewrite, first=ROANOKE_FIRST, **kw)
+        return probe, probe.run(script or roanoke())[4]
+
+    def clean(self, **over):
+        return {"hook_ab": self.CLEAN_HOOK, "thumbnail_overlay_text": "STILL UNSOLVED", **over}
+
+    def test_the_reviewers_title_repro_is_not_used_and_the_tag_is_never_checked_or_shipped(self):
+        hostile = "Why Roanoke Still Puzzles Historians [SFX: secret map found]"
+        probe, out = self.probe(self.clean(title=hostile))
+        self.assertNotIn("title", out.fields)
+        self.assertEqual([r["reason"] for r in out.record["rewrites"] if r["field"] == "title"], ["not_plain_text"])
+        self.assertNotIn("[SFX", json.dumps(out.fields))
+        self.assertTrue(out.passed, "the clean fields are used; the title keeps its original text and warning")
+
+    def test_a_hostile_thumbnail_text_is_not_used_and_its_flagged_original_holds_the_run(self):
+        probe, out = self.probe({"hook_ab": self.CLEAN_HOOK, "thumbnail_overlay_text": "STILL UNSOLVED [MUSIC:secret map found]"})
+        self.assertFalse(out.passed)
+        self.assertEqual(out.status, "still_flagged")
+        self.assertEqual(out.fields, {})
+        self.assertFalse([t for batch in probe.checked for t in batch if "[MUSIC" in t])
+
+    def test_a_hostile_description_is_not_used(self):
+        script = roanoke(description="BADFACT ruled the island, historians say.")
+        probe, out = self.probe(self.clean(description="Historians still argue about the island. [PAUSE:3 secret map found]"),
+                                script)
+        self.assertEqual(out.status, "still_flagged")
+        self.assertNotIn("description", out.fields)
+
+    def test_every_cue_tag_type_and_spelling_is_refused_in_every_field(self):
+        tags = ["[SFX: x]", "[SFX:x]", "[MUSIC:story_low]", "[PAUSE:1.5]", "[VOICE:secondary]", "[sfx: x]",
+                "[ Music : x]", "[SFX:[x]]", "[PAUSE", "[VOICE:main] "]
+        for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence", "hook_ab", "description"):
+            for tag in tags:
+                with self.subTest(field=name, tag=tag):
+                    base = "Why the Roanoke colony still puzzles historians"
+                    self.assertIsNone(pr._canonical(name, f"{base} {tag}", ""))
+                    self.assertIsNone(pr._canonical(name, f"{tag} {base}", ""))
+        self.assertEqual(pr._canonical("title", "Why Roanoke still puzzles historians", ""),
+                         "Why Roanoke still puzzles historians")
+
+    def test_a_zero_width_character_inside_a_cue_tag_is_refused(self):
+        for name in ("title", "thumbnail_overlay_text", "hook_ab", "description"):
+            with self.subTest(field=name):
+                self.assertIsNone(pr._canonical(name, "Why Roanoke puzzles [SF​X: secret map found]", ""))
+                self.assertIsNone(pr._canonical(name, "Why Roanoke puzzles​ historians", ""))
+
+    def test_invisible_bidi_control_and_separator_characters_are_refused_everywhere(self):
+        hidden = ["​", "‌", "‍", "⁠", "﻿", "­", "᠎", "‮", "‪", "⁦",
+                  "⁩", "؜", "‏", "\U000e0041", "\x00", "\x07", "\x1b", "\x0b", "\x85", " ",
+                  " ", ""]
+        for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence", "hook_ab", "description"):
+            for ch in hidden:
+                with self.subTest(field=name, char=hex(ord(ch))):
+                    self.assertIsNone(pr._canonical(name, f"Why Roanoke still{ch} puzzles historians", ""))
+
+    def test_a_combining_mark_with_no_letter_is_not_a_way_to_hide_a_word(self):
+        self.assertIsNone(pr._canonical("hook_ab", "The map is old. ́́", ""))
+
+    def test_html_tags_and_comments_are_refused(self):
+        for name in ("title", "thumbnail_overlay_text", "hook_ab", "description"):
+            for text in ("Why Roanoke <!-- secret map found --> puzzles historians", "Why <b>Roanoke</b> puzzles",
+                         "Why Roanoke puzzles historians -->"):
+                with self.subTest(field=name, text=text):
+                    self.assertIsNone(pr._canonical(name, text, ""))
+
+    def test_markdown_link_text_checked_and_url_unchecked_is_refused(self):
+        hostile = "See [the Roanoke map](https://example.com/the-secret-map-was-found-and-solved) for more."
+        self.assertIsNone(pr._canonical("description", hostile, ""))
+        self.assertIsNone(pr._canonical("description", hostile, hostile), "markdown link syntax is refused outright")
+        self.assertIsNone(pr._canonical("hook_ab", "See [the map](the-secret-map-was-found) now", ""))
+
+    def test_a_link_the_description_did_not_carry_is_refused_and_one_it_carried_is_kept(self):
+        original = "Historians argue about Roanoke, source: https://example.org/roanoke-notes\\n\\n#history"
+        original = original.replace("\\n", "\n")
+        kept = "Historians still argue about Roanoke.\nSource: https://example.org/roanoke-notes\n\n#history"
+        self.assertEqual(pr._canonical("description", kept, original), kept)
+        self.assertIsNone(pr._canonical("description", kept.replace("roanoke-notes", "the-secret-map-was-found"), original))
+        self.assertIsNone(pr._canonical("description", kept + "\nhttps://example.com/new", original))
+
+    def test_the_applied_value_is_exactly_the_string_the_checker_was_sent(self):
+        probe, out = self.probe({"title": "Why  Roanoke Still   Puzzles\tHistorians ", "title_ab": "Roanoke:　A Map Historians Debate",
+                                 **self.clean()})
+        self.assertTrue(out.passed, out.record)
+        checked = [t for batch in probe.checked for t in batch]
+        for name in ("title", "title_ab", "thumbnail_overlay_text"):
+            self.assertIn(out.fields[name], checked, name)          # applied == checked, byte for byte
+        self.assertEqual(out.fields["title"], "Why Roanoke Still Puzzles Historians")
+        self.assertEqual(out.fields["title_ab"], "Roanoke: A Map Historians Debate")
+        opening = " ".join(c.text for c in out.claims if c.source == "hook_ab")
+        self.assertEqual(opening, out.fields["hook_ab"])
+
+    def test_every_sentence_of_an_applied_opening_was_checked_and_they_add_up_to_the_applied_text(self):
+        hook = "The map is old. Was it hidden? Nobody knows. Historians disagree about the colony and the map."
+        probe, out = self.probe(self.clean(hook_ab=hook))
+        self.assertEqual(out.fields["hook_ab"], hook)
+        sent = sorted(c.text for c in out.claims if c.source == "hook_ab")
+        self.assertEqual(sent, sorted(["The map is old.", "Was it hidden?", "Nobody knows.",
+                                       "Historians disagree about the colony and the map."]))
+        self.assertEqual(" ".join(pr._raw_units("hook_ab", hook)), hook)
+
+    def test_a_symbol_only_line_or_an_emoji_is_not_a_hidden_word(self):
+        desc = "Historians still argue about the island.\n———\nMore soon 🔥\n#history #mystery"
+        self.assertEqual(pr._canonical("description", desc, ""), desc)
+        self.assertEqual(pr._canonical("thumbnail_overlay_text", "STILL OPEN 🔥", ""), "STILL OPEN 🔥")
+
+    def test_a_chapter_line_is_stripped_by_the_uploader_so_it_needs_no_check_but_hashtags_are_checked(self):
+        desc = "Historians still argue.\n00:00 Intro [SFX: x]\n#SecretMapFound"
+        units = [u for line in desc.splitlines() if not pr._TIMESTAMP_LINE.match(line)
+                 for u in pr._description_line_units(line)[0]]
+        self.assertEqual(units, ["Historians still argue.", "#SecretMapFound"])
+
+    def test_a_new_hashtag_with_a_claim_in_it_goes_to_the_checker(self):
+        probe, out = self.probe(self.clean(description="Historians still argue about the island.\n#BADFACTmapfound"),
+                                roanoke(description="BADFACT ruled the island, historians say."))
+        self.assertIn("#BADFACTmapfound", [t for batch in probe.checked for t in batch])
+
+    def test_the_raw_unit_of_a_title_a_ab_title_and_thumbnail_is_the_whole_text_not_its_sentences(self):
+        """Pins the whole-text branch of ``_raw_units``: a second sentence in a title is one claim with the first."""
+        for name in ("title", "title_ab", "thumbnail_overlay_text"):
+            with self.subTest(field=name):
+                self.assertEqual(pr._raw_units(name, "Map found. Colony solved."), ["Map found. Colony solved."])
+        for name in ("hook_ab", "hook_sentence"):
+            with self.subTest(field=name):
+                self.assertEqual(pr._raw_units(name, "Map found. Colony solved."), ["Map found.", "Colony solved."])
+
+    def test_a_lone_angle_bracket_and_a_line_break_in_a_one_line_field_are_refused(self):
+        for name in ("title", "thumbnail_overlay_text", "hook_ab", "description"):
+            self.assertIsNone(pr._canonical(name, "Why <Roanoke still puzzles historians", ""), name)
+            self.assertIsNone(pr._canonical(name, "Why Roanoke> still puzzles historians", ""), name)
+        for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence"):
+            self.assertIsNone(pr._canonical(name, "Why Roanoke still\npuzzles historians", ""), name)
+        self.assertEqual(pr._canonical("description", "Why Roanoke still\npuzzles historians", ""),
+                         "Why Roanoke still\npuzzles historians")
+
+    def test_text_outside_every_unit_is_not_hidden_by_the_leftover_helper(self):
+        self.assertEqual(pr._leftover("abc def", ["abc", "def"]), " ")
+        self.assertNotEqual(pr._leftover("abc def", ["abc", "zzz"]).strip(), "", "a unit not in the text is a failure")
+        self.assertFalse(pr._only_symbols("a"))
+        self.assertTrue(pr._only_symbols(" — 🔥 ..."))
+
+    def test_chapter_lines_are_not_units_because_the_uploader_strips_them(self):
+        self.assertEqual(pr._raw_units("description", "Foo bar baz qux.\n00:00 Intro here now.\n- 1:02:03 More"),
+                         ["Foo bar baz qux."])
+
+    def test_the_prompt_tells_the_model_an_opening_with_a_tag_is_not_used(self):
+        prompt = pr.build_prompt("t", "English", "n", "", [{"field": "hook_ab", "current": "c", "flagged": []}])
+        self.assertIn("NO [PAUSE]/[SFX]/[MUSIC]/[VOICE] tags", prompt)
+
+    def test_an_unchanged_repair_text_is_never_applied_with_a_tag_even_when_the_original_had_one(self):
+        script = roanoke(hook_ab="[MUSIC:intro_high] " + ROANOKE["hook_ab"])
+        probe, out = self.probe(self.clean(hook_ab="[MUSIC:intro_high] " + self.CLEAN_HOOK), script)
+        self.assertNotIn("hook_ab", out.fields)
 
 
 class AnUnreadableReCheckIsNotARepair(unittest.TestCase):
@@ -894,6 +1057,26 @@ def first_round_batches() -> int:
     from modules.script_engine import ScriptEngine
     claims = claim_extractor.extract_shipped_claims(ScriptEngine._parse(data["topic"], data))
     return -(-len(claims) // 30)
+
+
+class RunNeverShipsTextHiddenInATag(unittest.TestCase):
+    def test_a_title_hiding_a_claim_in_a_cue_tag_keeps_its_original_and_ships_no_tag(self):
+        def flagged_title(data):
+            packaging_bad(data)
+            data["title"] = "FLAGME Is Why The Lighthouse Fell"          # unverifiable: flagged, a warning only
+        out = drive(flagged_title, rewrite={**GOOD, "title": "Why The Lighthouse Fell [SFX: secret map found]"})
+        self.assertTrue(out["voice_built"], out.get("tb"))
+        self.assertEqual(out["shipped"]["title"], "FLAGME Is Why The Lighthouse Fell")
+        packaging = {k: out["shipped"][k] for k in ("title", "title_ab", "thumbnail", "description", "hook_sentence")}
+        self.assertNotIn("secret map found", json.dumps(packaging))
+        self.assertNotIn("secret map found", json.dumps([c for batch in out["fact_check"] for c in batch]))
+        rewrites = out["files"]["packaging_repair.json"]["rewrites"]
+        self.assertEqual([r["reason"] for r in rewrites if r["field"] == "title"], ["not_plain_text"])
+
+    def test_a_thumbnail_hiding_a_claim_in_a_cue_tag_is_held(self):
+        out = drive(packaging_bad, rewrite={**GOOD, "thumbnail_overlay_text": "STILL LOCKED [MUSIC:secret map found]"})
+        self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
+        self.assertEqual(out["held"][0]["detail"]["packaging_repair"]["status"], "still_flagged")
 
 
 class RunStillHeldWhenTheRewriteIsStillFlagged(unittest.TestCase):

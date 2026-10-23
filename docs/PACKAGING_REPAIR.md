@@ -36,6 +36,16 @@ thumbnail text) and two warn (a title and an A/B title the checker cannot judge 
      text, every sentence of an opening, hook sentence or description statement line that the rewrite introduced.
      They enter the gate under the field's source, so an unverifiable opening sentence blocks and an unverifiable
      bare title stays the warning it always was.
+   * **What ships is exactly what was checked.** The pipeline normalises text before the checker sees it (cue tags
+     stripped, whitespace collapsed, links cut out of a description, hashtag and chapter lines skipped, sentences
+     with no letter or digit dropped), and nothing strips a cue tag from a title, thumbnail text or description
+     before upload. So a rewrite is used only if it is plain text: any cue tag (`[SFX:..]`, `[MUSIC:..]`,
+     `[PAUSE:..]`, `[VOICE:..]`, however spelled or nested; a repaired opening therefore has no cues), invisible,
+     zero-width, bidi, control and separator characters, `<` and `>` (HTML tags and comments), markdown link
+     syntax, a link the description did not already carry, or a stray combining mark refuses it
+     (`reason: "not_plain_text"`, the original stays). Whitespace runs are collapsed and the collapsed string is
+     what is set on the script and what the checker is sent; hashtag lines are checked as text; chapter lines are
+     the uploader's to strip.
    * **A re-check that could not be read is not a pass.** If any re-checked result is the checker's unresolved
      sentinel the repair stops (`recheck_unresolved`) and the run is held before the render, as today.
    * Passes: the run goes on with the rewritten texts in the script (they are what the voice, the A/B swap, the
@@ -71,7 +81,7 @@ extra.
           | "recheck_misaligned" | "error:<Type>" | "repaired",
   "first_round":   [{"source", "verdict", "reasoning", "text"}],      // what was flagged, as hold_detail.flagged
   "rewrites":      [{"field", "before", "after", "applied", "reason"?}], // each capped at 600 characters;
-                                                                       // applied=false: no checkable claim
+                                                                       // applied=false, reason: "no_checkable_claim" | "not_plain_text"
   "calls":         {"generation": 1, "fact_check": 0 | 1},
   "rechecked":     N,                                                  // claims re-checked (extracted + raw)
   "blocks_after":  ["..."],                                            // the gate's blocks on the repaired script
