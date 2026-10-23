@@ -223,7 +223,12 @@ human review but **never blocks** generation or upload. Persists:
 Since the grounded fact-check, `modules/grounding.py` then looks the claims up in the
 English Wikipedia and may clear a claim only with a quote verified in code, or add a flag on a
 contradiction; an outage changes nothing. See `docs/GROUNDED_FACTCHECK.md` (it also says how to
-switch it off: `NIGHTSHIFT_GROUNDED_FACTCHECK=off`).
+switch it off: `NIGHTSHIFT_GROUNDED_FACTCHECK=off`; the checker's system prompt has its own switch,
+`NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT`).
+When the early fact-check holds a run only for the wording of its packaging text (title, A/B title,
+alternate opening, hook sentence, description, thumbnail text), `modules/packaging_repair.py` rewrites
+those texts once and has the same checker re-check them; it never edits narration and never changes the gate.
+See `docs/PACKAGING_REPAIR.md` (switch: `NIGHTSHIFT_PACKAGING_REPAIR=off`).
 
 ### Pipeline-stage tracking (capture/tracking only — does NOT gate publishing)
 `main.py` constructs a `PipelineStateMachine`

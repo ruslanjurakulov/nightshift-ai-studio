@@ -19,12 +19,25 @@ thumbnail text) and two warn (a title and an A/B title the checker cannot judge 
    repair prompt: no claim of secrecy, discovery, resolution or proof in the title, A/B title, alternate opening,
    hook sentence, description or thumbnail text unless the research notes in the prompt support it; prefer a
    question or a hedged-but-true framing. This is a prompt change. Its effect on real model output has not been
-   measured.
+   measured. **The switch does NOT remove it:** `NIGHTSHIFT_PACKAGING_REPAIR=off` turns off the repair pass only;
+   the rule stays in the generation prompts unconditionally (it only narrows what the model is asked to claim, and
+   a prompt that changed with an environment variable would make two runs of one script incomparable).
 2. **One repair pass.** When the early fact-check (the stop before the voice, stills and render) blocks on
    `fact_check_flagged:N` and on nothing else, and every flagged claim ships in a packaging text, those texts are
    rewritten once. The rewrite gets the flagged text, the checker's own reasoning, the narration and the research
-   notes. The same fact-checker and the same grounding step then run on the rewritten claims only, and the same
-   early gate (`publish_gate.evaluate_fact_check`) decides on the repaired script.
+   notes (all fenced as JSON inside `<data>`, `<` and `>` escaped, as the grounding prompt does). The same
+   fact-checker and the same grounding step then run on the rewritten claims, and the same early gate
+   (`publish_gate.evaluate_fact_check`) decides on the repaired script.
+   * **The checker must see what ships.** The claim extractor deliberately skips a question, a sentence of three
+     words or fewer and a call to action. So (a) a rewritten field that held a flagged claim and now yields no
+     extracted claim is NOT used (its original text and verdict stay; if that claim was blocking the run is held
+     as before, status `unchecked_rewrite` when no field is usable); and (b) on top of the extracted claims, the raw
+     text of every rewritten field goes to the same checker: the whole text of a title, A/B title or thumbnail
+     text, every sentence of an opening, hook sentence or description statement line that the rewrite introduced.
+     They enter the gate under the field's source, so an unverifiable opening sentence blocks and an unverifiable
+     bare title stays the warning it always was.
+   * **A re-check that could not be read is not a pass.** If any re-checked result is the checker's unresolved
+     sentinel the repair stops (`recheck_unresolved`) and the run is held before the render, as today.
    * Passes: the run goes on with the rewritten texts in the script (they are what the voice, the A/B swap, the
      uploader and the final gate see). `script.json` (when a saved copy exists) and `fact_check.json` are
      re-saved, `packaging_repair.json` records the first round and the rewrites.
@@ -37,10 +50,16 @@ thumbnail text) and two warn (a title and an A/B title the checker cannot judge 
 * Edit narration, or run when any narration claim is flagged, any other block is present, or the checker could
   not read a batch.
 * Change a verdict: an unchanged text keeps the checker's first verdict; a rewritten text gets the checker's own.
-* Loosen or bypass the gate.
-* Loop. Budget: one generation call (`stage = packaging_repair` in the cost ledger), at most one fact-check batch
-  (only when the rewrite produced claims that were not already checked, at most 30), the grounding step once on
-  those claims. A person-approved storyboard is never rewritten.
+* Loosen or bypass the gate, or ship a rewritten text the checker did not see.
+* Loop. A person-approved storyboard is never rewritten.
+
+## Cost
+
+Per repairable hold: one generation call, one fact-check batch (30 claims at most, else no repair) and, with
+grounding on, one grounding judge call: about 3 Gemini calls. Worst case about 6, plus retries: the checker's
+own split-and-retry on an unreadable batch adds up to 2 fact-check calls. The Gemini daily quota is a known
+constraint; a run that is not repairable (any narration flagged, another block, the switch off) costs nothing
+extra.
 
 ## `hold_detail.packaging_repair`
 
@@ -48,11 +67,13 @@ thumbnail text) and two warn (a title and an A/B title the checker cannot judge 
 {
   "attempted": true,
   "status": "still_flagged" | "blocked_after_repair" | "generation_failed" | "unusable_rewrite"
-          | "no_usable_rewrite" | "too_many_claims" | "recheck_misaligned" | "error:<Type>" | "repaired",
+          | "no_usable_rewrite" | "unchecked_rewrite" | "recheck_unresolved" | "too_many_claims"
+          | "recheck_misaligned" | "error:<Type>" | "repaired",
   "first_round":   [{"source", "verdict", "reasoning", "text"}],      // what was flagged, as hold_detail.flagged
-  "rewrites":      [{"field", "before", "after"}],                    // each capped at 600 characters
+  "rewrites":      [{"field", "before", "after", "applied", "reason"?}], // each capped at 600 characters;
+                                                                       // applied=false: no checkable claim
   "calls":         {"generation": 1, "fact_check": 0 | 1},
-  "rechecked":     N,                                                  // claims re-checked
+  "rechecked":     N,                                                  // claims re-checked (extracted + raw)
   "blocks_after":  ["..."],                                            // the gate's blocks on the repaired script
   "still_flagged": [{"source", "verdict", "reasoning", "text"}],      // flagged after the rewrite
   "grounding":     {...}                                               // the re-check's evidence summary, when it ran
