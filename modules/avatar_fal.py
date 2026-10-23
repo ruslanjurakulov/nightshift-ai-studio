@@ -10,9 +10,21 @@ expensive, so this provider is built around not spending:
 * **A ceiling, checked first.** Seconds and USD are compared with their caps
   before the first request of any kind (the portrait included). Over a cap is
   ``AvatarUnavailable`` and nothing was sent.
-* **Ledgered.** What fal billed is written to the cost ledger as an explicit
-  estimate (``avatar_seconds``, stage ``avatar:fal``), so the run and daily USD
-  caps in ``modules/spend_guard.py`` see it.
+* **Ledgered before it can be lost.** The planned slice seconds are written to the
+  cost ledger as an explicit estimate (``avatar_seconds``, stage ``avatar:fal``) the
+  moment fal says a request is COMPLETED, before the result is fetched or the video
+  downloaded, so a failure after that point never leaves paid-for work unrecorded.
+  A request whose submit answer was lost, or that timed out while running, is
+  recorded at the planned amount under stage ``avatar:fal:unconfirmed`` (it may or
+  may not have been billed; counting it is the safe error). fal's reported
+  ``duration`` is never used for the ledger, so an odd value cannot inflate it.
+* **Resumable, never resubmitted.** The request id and its URLs are saved beside the
+  clip before polling starts. A rerun of the same run polls and fetches that request
+  instead of submitting (and paying for) another. Result fetch and download are
+  retried a few times with a short backoff.
+* **Contained.** Every URL the server hands back must be https on a fal host, the key
+  goes only to ``queue.fal.run`` and ``rest.fal.ai``, redirects are never followed, and
+  a download is capped at 200 MB.
 * **Synthetic only.** ``synthetic_only_guard`` runs before anything else. The
   portrait is generated from the character description; no photo is ever sent.
 
@@ -24,7 +36,17 @@ submit response, a failure also being ``COMPLETED`` (the result call carries the
 error), the result ``{"video": {"url"}, "duration"}``, the two-step CDN upload
 (``POST rest.fal.ai/storage/upload/initiate`` giving ``upload_url`` and
 ``file_url``, then a PUT of the bytes) and ``$0.0562`` per output second for the
-default model. Nothing here was run against the live service.
+default model. Follow-up URLs (status, result, cancel) use only ``owner/app``
+(``fal-ai/kling-video``): adding the endpoint path returns 405, so the fallback used
+when a submit answer omits them is built that way. Nothing here was run against the
+live service.
+
+fal's CDN is public by link. Every upload (the portrait and the narration slice, which
+is unpublished speech) is therefore sent with the documented
+``X-Fal-Object-Lifecycle-Preference`` header asking for an expiry of one hour, and the
+submit asks for the output to expire in a day. The header is from fal's file-access
+documentation; it has NOT been verified against the live service, so treat the files
+as link-public until it has been seen to work.
 """
 
 from __future__ import annotations
@@ -38,6 +60,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Optional, Tuple
+from urllib.parse import urlsplit
 
 from modules.avatar import (
     AvatarUnavailable,
@@ -54,6 +77,23 @@ DEFAULT_IMAGE_MODEL = "fal-ai/flux/schnell"
 
 QUEUE_BASE = "https://queue.fal.run"
 REST_BASE = "https://rest.fal.ai"
+
+#: The only hosts the FAL_KEY is ever sent to.
+KEY_HOSTS = ("queue.fal.run", "rest.fal.ai")
+#: Every host a server-supplied URL may name (the host itself or a subdomain of it).
+#: One place, kept small: the queue, the REST/storage API, and the CDN/run domains.
+FAL_HOSTS = KEY_HOSTS + ("fal.run", "fal.media")
+
+#: A downloaded presenter clip larger than this is refused (a 30 s clip is a few MB).
+MAX_VIDEO_BYTES = 200 * 1024 * 1024
+#: Result fetch and download are tried this many times, with a doubling backoff.
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_S = 2.0
+#: How long fal keeps what we upload / what it renders (documented lifecycle header).
+INPUT_EXPIRY_S = 3600
+OUTPUT_EXPIRY_S = 86400
+_LIFECYCLE_HEADER = "X-Fal-Object-Lifecycle-Preference"
+_TRANSIENT_STATUS = (429, 500, 502, 503, 504)
 
 #: Ledger unit for presenter seconds. Kept out of cost_ledger's priced units on
 #: purpose: the price is the avatar's own setting (below), not CHRONOS_PRICE_*.
@@ -77,6 +117,10 @@ DEFAULT_MAX_SECONDS = 30.0
 RUN_HARD_CAP_SECONDS = 60.0
 #: An estimate for fal's price per output second; the model page quotes $0.0562.
 DEFAULT_USD_PER_SECOND = 0.06
+#: The default model's published price: the ledger and the caps never use less for it.
+DEFAULT_MODEL_USD_PER_SECOND = 0.0562
+#: No avatar model costs less than this per output second; a lower setting is a mistake.
+MIN_USD_PER_SECOND = 0.01
 #: A generous upper bound for the one portrait (about $0.003 on the default model).
 PORTRAIT_USD = 0.01
 #: A slice shorter than this is not sent: fal's minimum audio length is not
@@ -116,6 +160,16 @@ def _number(env: Mapping[str, str], name: str, default: float, *, minimum: float
     return value
 
 
+_WARNED: set = set()
+
+
+def _warn_once(message: str) -> None:
+    """A loud warning, once per distinct message per process (settings are read many times)."""
+    if message not in _WARNED:
+        _WARNED.add(message)
+        logger.warning(message)
+
+
 @dataclass(frozen=True)
 class FalAvatarSettings:
     model: str
@@ -132,8 +186,21 @@ class FalAvatarSettings:
         max_seconds = _number(env, MAX_SECONDS_ENV, DEFAULT_MAX_SECONDS, minimum=0.0,
                               maximum=RUN_HARD_CAP_SECONDS)
         price = _number(env, PRICE_ENV, DEFAULT_USD_PER_SECOND, minimum=0.0)
+        model = str(env.get(MODEL_ENV, "") or "").strip().strip("/") or DEFAULT_MODEL
+        price_set = bool(str(env.get(PRICE_ENV, "") or "").strip())
+        if price < MIN_USD_PER_SECOND:
+            _warn_once(f"{PRICE_ENV}={price:g} is below any real price (floor ${MIN_USD_PER_SECOND:g}/s): the "
+                       f"floor is used. A price set too low makes the ledger and the USD caps understate real spend.")
+            price = MIN_USD_PER_SECOND
+        if model == DEFAULT_MODEL:
+            # The published price is a floor for its own model: a stale low setting cannot hide spend.
+            price = max(price, DEFAULT_MODEL_USD_PER_SECOND)
+        elif not price_set:
+            _warn_once(f"{MODEL_ENV}={model} is not the default model and {PRICE_ENV} is not set: the assumed "
+                       f"${price:g}/s is the default model's price, so the ledger and the USD caps may understate "
+                       f"real spend. Set {PRICE_ENV} to this model's price on fal.ai.")
         return FalAvatarSettings(
-            model=(str(env.get(MODEL_ENV, "") or "").strip().strip("/") or DEFAULT_MODEL),
+            model=model,
             image_model=(str(env.get(IMAGE_MODEL_ENV, "") or "").strip().strip("/") or DEFAULT_IMAGE_MODEL),
             intro_seconds=_number(env, INTRO_ENV, DEFAULT_SEGMENT_SECONDS, minimum=0.0,
                                   maximum=SEGMENT_HARD_CAP_SECONDS, allow_zero=True),
@@ -219,6 +286,40 @@ def _default_portrait(prompt: str, dest: Path, width: int, height: int, image_mo
         return client.generate(prompt, dest, width=width, height=height)
     except image_providers.ImageProviderUnavailable as e:
         raise AvatarUnavailable(f"The presenter portrait was refused: {e}") from e
+
+
+# -- URLs the server hands back ---------------------------------------------
+
+def checked_url(url, what: str, *, key_host: bool = False) -> str:
+    """A server-supplied URL, or ``AvatarUnavailable``. It must be https, on a fal host,
+    without credentials or an odd port. ``key_host`` (status, result, cancel) must be
+    exactly a host the FAL_KEY may be sent to. A link that points anywhere else is a
+    sign something is wrong, and the key (or the work) is not handed to it."""
+    try:
+        parts = urlsplit(url) if isinstance(url, str) else None
+        host = (parts.hostname or "").lower() if parts else ""
+        port = parts.port if parts else None
+        userinfo = bool(parts and (parts.username or parts.password))
+    except ValueError:
+        parts, host, port, userinfo = None, "", None, False
+    if key_host:
+        host_ok = host in KEY_HOSTS
+    else:
+        host_ok = any(host == h or host.endswith("." + h) for h in FAL_HOSTS)
+    if not (parts and parts.scheme == "https" and host_ok and port in (None, 443) and not userinfo):
+        raise AvatarUnavailable(
+            f"fal.ai returned a {what} that is not an https address on a fal.ai host "
+            f"({(host or 'unparsable')!r}); it was not used and no key was sent to it."
+        )
+    return url
+
+
+class _Network(AvatarUnavailable):
+    """The connection failed or timed out: the request may or may not have arrived."""
+
+
+class _Transient(Exception):
+    """A step that is worth trying again (retried by ``_retry``)."""
 
 
 # -- the provider -----------------------------------------------------------
@@ -307,49 +408,252 @@ class FalAvatarProvider:
         check_ceilings(settings, sum(seconds for _label, _start, seconds in plan))
 
         headers = {"Authorization": f"Key {self._key()}"}
-        width, height = frame_size
-        portrait = out_dir / "presenter_portrait.png"
-        if not (portrait.exists() and portrait.stat().st_size > 0):
-            description = (prompt or "").strip() or _DEFAULT_CHARACTER
-            made = self._portrait(_PORTRAIT_PROMPT.format(character=description), portrait, width, height,
-                                  settings.image_model, self._key())
-            if not made or not Path(made).exists() or Path(made).stat().st_size <= 0:
-                raise AvatarUnavailable("The presenter portrait could not be generated (fal.ai returned no image); "
-                                        "no presenter was generated.")
-            if on_spend:
-                on_spend("image_generations", 1.0, "image:fal", PORTRAIT_USD)
+        portrait = self._make_portrait(prompt, out_dir, frame_size, settings, on_spend)
         portrait_hash = hashlib.sha256(portrait.read_bytes()).hexdigest()
         portrait_url = None
 
         segments = []
         for name, start, seconds in plan:
             clip_path = out_dir / f"presenter_{name}.mp4"
-            audio_file = self.audio.cut(narration_path, start, start + seconds, out_dir / f"presenter_{name}.mp3")
-            audio_bytes = Path(audio_file).read_bytes()
+            audio_file = Path(self.audio.cut(narration_path, start, start + seconds, out_dir / f"presenter_{name}.mp3"))
+            audio_bytes = audio_file.read_bytes()
             key = hashlib.sha256(audio_bytes + portrait_hash.encode() + settings.model.encode()).hexdigest()
-            if self._cached(clip_path, key):
+            state = _load_state(clip_path, key)
+            if state.get("done") and clip_path.exists() and clip_path.stat().st_size > 0:
                 logger.info("Presenter %s reused from an earlier attempt (nothing billed)", name)
             else:
-                if portrait_url is None:
-                    portrait_url = self._upload(portrait.read_bytes(), "image/png", portrait.name, headers)
-                audio_url = self._upload(audio_bytes, "audio/mpeg", Path(audio_file).name, headers)
-                billed = self._render(settings, headers, portrait_url, audio_url, clip_path, seconds)
-                if on_spend:
-                    on_spend(AVATAR_SECONDS, billed, LEDGER_STAGE, round(billed * settings.usd_per_second, 6))
-                clip_path.with_suffix(".json").write_text(json.dumps({"key": key}), encoding="utf-8")
+                def inputs():
+                    nonlocal portrait_url
+                    if portrait_url is None:
+                        portrait_url = self._upload(portrait.read_bytes(), "image/png", portrait.name, headers)
+                    return portrait_url, self._upload(audio_bytes, "audio/mpeg", audio_file.name, headers)
+
+                self._make_clip(settings, headers, clip_path, state, seconds, inputs, on_spend)
             segments.append(PresenterSegment(path=clip_path, start=start, seconds=seconds))
         return segments
 
-    @staticmethod
-    def _cached(clip: Path, key: str) -> bool:
-        """A clip from an earlier attempt of this run is reused only when it was made from
-        this exact audio, portrait and model: a lip-sync for other words must never ship."""
+    def _make_portrait(self, prompt, out_dir: Path, frame_size, settings, on_spend) -> Path:
+        """The synthetic portrait. Reused only when it was made from this same character
+        description, model and frame shape: a changed character gets a new face."""
+        portrait = out_dir / "presenter_portrait.png"
+        width, height = frame_size
+        description = (prompt or "").strip() or _DEFAULT_CHARACTER
+        full_prompt = _PORTRAIT_PROMPT.format(character=description)
+        key = hashlib.sha256(f"{full_prompt}|{settings.image_model}|{width}x{height}".encode()).hexdigest()
+        if portrait.exists() and portrait.stat().st_size > 0 and _load_state(portrait, key).get("done"):
+            return portrait
+        made = self._portrait(full_prompt, portrait, width, height, settings.image_model, self._key())
+        if not made or not Path(made).exists() or Path(made).stat().st_size <= 0:
+            raise AvatarUnavailable("The presenter portrait could not be generated (fal.ai returned no image); "
+                                    "no presenter was generated.")
+        _save_state(portrait, {"key": key, "done": True})
+        if on_spend:
+            on_spend("image_generations", 1.0, "image:fal", PORTRAIT_USD)
+        return portrait
+
+    # one clip --------------------------------------------------------------
+    def _make_clip(self, settings, headers, clip_path: Path, state: dict, seconds: float, inputs, on_spend) -> None:
+        """Submit (or resume), wait, fetch, download. The spend is ledgered the moment fal says
+        COMPLETED, and the request is saved before polling, so no failure after paying
+        leaves the money unrecorded or makes a rerun pay again."""
+        req = state.get("request")
+        if req:
+            logger.info("Resuming fal.ai request %s from an earlier attempt (nothing is submitted again)",
+                        req.get("id"))
+        else:
+            image_url, audio_url = inputs()
+            req = self._submit(settings, headers, image_url, audio_url, seconds, on_spend)
+            state["request"], state["ledgered"] = req, False
+            _save_state(clip_path, state)  # BEFORE polling: a crash from here on can resume, not resubmit
+
+        self._wait(req, settings, headers, clip_path, state, seconds, on_spend)
+        if not state.get("ledgered"):
+            self._record(on_spend, settings, seconds)
+            state["ledgered"] = True
+            _save_state(clip_path, state)
+
         try:
-            if not (clip.exists() and clip.stat().st_size > 0):
-                return False
-            return json.loads(clip.with_suffix(".json").read_text(encoding="utf-8")).get("key") == key
-        except (OSError, ValueError):
-            return False
+            url = self._retry("result", lambda: self._fetch_result(req, headers))
+            self._retry("download", lambda: self._download(url, clip_path))
+        except _Final as e:
+            # The request itself is unusable (not a hiccup): a rerun must submit afresh.
+            state.pop("request", None)
+            state["ledgered"] = False
+            _save_state(clip_path, state)
+            raise AvatarUnavailable(str(e)) from None
+        state["done"] = True
+        _save_state(clip_path, state)
+
+    def _record(self, on_spend, settings, seconds: float, *, unconfirmed: bool = False) -> None:
+        if on_spend:
+            on_spend(AVATAR_SECONDS, seconds, LEDGER_STAGE + (":unconfirmed" if unconfirmed else ""),
+                     round(seconds * settings.usd_per_second, 6))
+
+    def _submit(self, settings, headers, image_url: str, audio_url: str, seconds: float, on_spend) -> dict:
+        body = {"image_url": image_url, "audio_url": audio_url, "prompt": _VIDEO_PROMPT}
+        lost = ("fal.ai submit got no usable answer, so the request MAY HAVE BEEN ACCEPTED AND BILLED "
+                f"(recorded in the cost ledger as unconfirmed, about {seconds:g} s). A rerun submits again.")
+        try:
+            resp = self._request("post", f"{QUEUE_BASE}/{settings.model}", "submit", json=body,
+                                 headers={**headers, _LIFECYCLE_HEADER: _lifecycle(OUTPUT_EXPIRY_S)}, timeout=30)
+        except _Network:
+            self._record(on_spend, settings, seconds, unconfirmed=True)
+            raise AvatarUnavailable(lost) from None
+        if resp.status_code >= 500:
+            self._record(on_spend, settings, seconds, unconfirmed=True)
+            raise AvatarUnavailable(f"{lost} (HTTP {resp.status_code})")
+        if not 200 <= resp.status_code < 300:
+            raise self._refused("submit", resp)  # a refusal: nothing was accepted, nothing was billed
+        try:
+            data = _json(resp, "submit")
+            request_id = data.get("request_id")
+            if not request_id or not isinstance(request_id, str):
+                raise AvatarUnavailable("fal.ai submit returned no request_id")
+            base = f"{QUEUE_BASE}/{'/'.join(settings.model.split('/')[:2])}/requests/{request_id}"
+            return {
+                "id": request_id,
+                "status_url": checked_url(data.get("status_url") or f"{base}/status", "status_url", key_host=True),
+                "response_url": checked_url(data.get("response_url") or base, "response_url", key_host=True),
+                "cancel_url": checked_url(data.get("cancel_url") or f"{base}/cancel", "cancel_url", key_host=True),
+            }
+        except AvatarUnavailable as e:
+            self._record(on_spend, settings, seconds, unconfirmed=True)
+            raise AvatarUnavailable(f"{e}. {lost}") from None
+
+    def _wait(self, req: dict, settings, headers, clip_path: Path, state: dict, seconds: float, on_spend) -> None:
+        deadline = self._monotonic() + self.timeout_s
+        failures = 0
+        last = ""
+        while True:
+            try:
+                poll = self._request("get", checked_url(req["status_url"], "status_url", key_host=True),
+                                     "status check", headers=headers, timeout=30)
+            except _Network:
+                # A dropped connection says nothing about a job that is already running (and billing).
+                if failures >= 3:
+                    raise
+                failures += 1
+                poll = None
+            if poll is None:
+                pass
+            elif 200 <= poll.status_code < 300:
+                failures = 0
+                try:
+                    data = _json(poll, "status check")
+                except AvatarUnavailable as e:
+                    self._abandon(req, headers, clip_path, state, settings, seconds, on_spend, last, str(e))
+                last = str(data.get("status") or "").upper()
+                if last == "COMPLETED":
+                    if data.get("error"):
+                        self._forget(clip_path, state)
+                        raise AvatarUnavailable(f"fal.ai request {req['id']} failed: {data.get('error')}")
+                    return
+            elif poll.status_code in _TRANSIENT_STATUS and failures < 3:
+                failures += 1
+            else:
+                if poll.status_code in (404, 410):
+                    self._forget(clip_path, state)  # gone (expired): a rerun submits a new one
+                raise self._refused("status check", poll)
+            if self._monotonic() >= deadline:
+                self._abandon(req, headers, clip_path, state, settings, seconds, on_spend, last,
+                              f"fal.ai request {req['id']} did not finish in {self.timeout_s:g} s")
+            self._sleep(self.poll_interval)
+
+    def _abandon(self, req, headers, clip_path, state, settings, seconds, on_spend, last_status, reason):
+        """Give up on a request: cancel it (best effort), count it as unconfirmed spend when it had
+        started running, forget it so a rerun starts clean, and stop with the reason."""
+        self._cancel(req["cancel_url"], headers)
+        started = last_status == "IN_PROGRESS"
+        if started:
+            self._record(on_spend, settings, seconds, unconfirmed=True)
+        self._forget(clip_path, state)
+        raise AvatarUnavailable(
+            f"{reason}; cancelled." + (" It had started, so it MAY STILL BE BILLED (recorded in the cost ledger "
+                                       "as unconfirmed)." if started else "") + " No presenter was generated."
+        )
+
+    @staticmethod
+    def _forget(clip_path: Path, state: dict) -> None:
+        state.pop("request", None)
+        state["ledgered"] = False
+        _save_state(clip_path, state)
+
+    def _fetch_result(self, req: dict, headers: dict) -> str:
+        try:
+            result = self._request("get", checked_url(req["response_url"], "response_url", key_host=True),
+                                   "result", headers=headers, timeout=30)
+        except _Network as e:
+            raise _Transient(str(e)) from None
+        if result.status_code in _TRANSIENT_STATUS:
+            raise _Transient(f"HTTP {result.status_code}")
+        if not 200 <= result.status_code < 300:
+            raise _Final(str(self._refused("result", result)))
+        try:
+            data = _json(result, "result")
+        except AvatarUnavailable as e:
+            raise _Final(str(e)) from None
+        video = data.get("video")
+        url = video.get("url") if isinstance(video, dict) else None
+        if not url:
+            raise _Final(f"fal.ai request {req['id']} finished with no video url")
+        try:
+            return checked_url(url, "video url")
+        except AvatarUnavailable as e:
+            raise _Final(str(e)) from None
+
+    def _download(self, url: str, dest: Path) -> None:
+        import requests
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        part = dest.with_name(dest.name + ".part")
+        try:
+            resp = self._request("get", url, "download", stream=True, timeout=120)
+        except _Network as e:
+            raise _Transient(str(e)) from None
+        if resp.status_code in _TRANSIENT_STATUS:
+            raise _Transient(f"HTTP {resp.status_code}")
+        if not 200 <= resp.status_code < 300:
+            raise _Final(str(self._refused("download", resp)))
+        try:
+            declared = int((getattr(resp, "headers", None) or {}).get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            declared = 0
+        if declared > MAX_VIDEO_BYTES:
+            raise _Final(f"fal.ai video is {declared} bytes, over the {MAX_VIDEO_BYTES} byte limit; not downloaded.")
+        size = 0
+        try:
+            with open(part, "wb") as fh:
+                for chunk in resp.iter_content(chunk_size=1 << 16):
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if size > MAX_VIDEO_BYTES:
+                        raise _Final(f"fal.ai video is over the {MAX_VIDEO_BYTES} byte limit; download stopped.")
+                    fh.write(chunk)
+        except requests.RequestException as e:
+            part.unlink(missing_ok=True)
+            raise _Transient(type(e).__name__) from None
+        except _Final:
+            part.unlink(missing_ok=True)
+            raise
+        if size <= 0:
+            part.unlink(missing_ok=True)
+            raise _Final("fal.ai returned an empty video file; no presenter was generated.")
+        os.replace(part, dest)
+
+    def _retry(self, what: str, attempt):
+        last = ""
+        for i in range(RETRY_ATTEMPTS):
+            try:
+                return attempt()
+            except _Transient as e:
+                last = str(e)
+                if i + 1 < RETRY_ATTEMPTS:
+                    self._sleep(RETRY_BACKOFF_S * (2 ** i))
+        raise AvatarUnavailable(
+            f"fal.ai {what} failed {RETRY_ATTEMPTS} times ({last}). The request had already completed and is "
+            "recorded in the cost ledger; a rerun of this run resumes it without paying again."
+        )
 
     # HTTP ------------------------------------------------------------------
     def _refused(self, what: str, resp) -> AvatarUnavailable:
@@ -365,109 +669,76 @@ class FalAvatarProvider:
         return AvatarUnavailable(f"fal.ai {what} failed (HTTP {status}): {detail}")
 
     def _request(self, method: str, url: str, what: str, **kw):
+        """One HTTP call. Redirects are never followed (a redirect would carry the key, or the
+        work, to a host that was not checked); a connection failure is ``_Network``."""
         import requests
 
         try:
-            resp = getattr(self.session, method)(url, **kw)
+            return getattr(self.session, method)(url, allow_redirects=False, **kw)
         except requests.RequestException as e:
-            raise AvatarUnavailable(f"fal.ai {what} failed ({type(e).__name__}); no presenter was generated.") from e
-        return resp
+            raise _Network(f"fal.ai {what} failed ({type(e).__name__})") from e
+
+    def _cancel(self, cancel_url: str, headers: dict) -> None:
+        try:
+            self.session.put(checked_url(cancel_url, "cancel_url", key_host=True), headers=headers, timeout=30,
+                             allow_redirects=False)
+        except Exception as e:  # best effort: the error that follows is the news
+            logger.warning("fal.ai cancel failed (%s)", type(e).__name__)
 
     def _upload(self, data: bytes, content_type: str, file_name: str, headers: dict) -> str:
         resp = self._request("post", f"{REST_BASE}/storage/upload/initiate?storage_type=fal-cdn-v3", "upload",
-                             json={"file_name": file_name, "content_type": content_type}, headers=headers, timeout=30)
+                             json={"file_name": file_name, "content_type": content_type},
+                             headers={**headers, _LIFECYCLE_HEADER: _lifecycle(INPUT_EXPIRY_S)}, timeout=30)
         if not 200 <= resp.status_code < 300:
             raise self._refused("upload", resp)
-        info = resp.json() if resp.content else {}
-        upload_url, file_url = info.get("upload_url"), info.get("file_url")
-        if not (upload_url and file_url):
-            raise AvatarUnavailable("fal.ai upload returned no upload_url/file_url; no presenter was generated.")
+        info = _json(resp, "upload")
+        upload_url = checked_url(info.get("upload_url"), "upload_url")
+        file_url = checked_url(info.get("file_url"), "file_url")
+        # The signed upload URL carries its own authority: no Authorization header goes with it.
         put = self._request("put", upload_url, "upload", data=data, headers={"Content-Type": content_type},
                             timeout=120)
         if not 200 <= put.status_code < 300:
             raise self._refused("upload", put)
         return file_url
 
-    def _render(self, settings: FalAvatarSettings, headers: dict, image_url: str, audio_url: str,
-                dest: Path, seconds: float) -> float:
-        """Submit, poll, fetch, download. Returns the output seconds fal reports (what it bills)."""
-        body = {"image_url": image_url, "audio_url": audio_url, "prompt": _VIDEO_PROMPT}
-        resp = self._request("post", f"{QUEUE_BASE}/{settings.model}", "submit", json=body, headers=headers,
-                             timeout=30)
-        if not 200 <= resp.status_code < 300:
-            raise self._refused("submit", resp)
-        submitted = resp.json() if resp.content else {}
-        request_id = submitted.get("request_id")
-        if not request_id:
-            raise AvatarUnavailable(f"fal.ai submit returned no request_id: {submitted!r}")
-        base = f"{QUEUE_BASE}/{settings.model}/requests/{request_id}"
-        status_url = submitted.get("status_url") or f"{base}/status"
-        response_url = submitted.get("response_url") or base
-        cancel_url = submitted.get("cancel_url") or f"{base}/cancel"
 
-        deadline = self._monotonic() + self.timeout_s
-        failures = 0
-        while True:
-            try:
-                poll = self._request("get", status_url, "status check", headers=headers, timeout=30)
-            except AvatarUnavailable:
-                # A dropped connection says nothing about a job that is already running (and billing).
-                if failures >= 3:
-                    raise
-                failures += 1
-                poll = None
-            if poll is None:
-                pass
-            elif 200 <= poll.status_code < 300:
-                failures = 0
-                state = poll.json() if poll.content else {}
-                if str(state.get("status") or "").upper() == "COMPLETED":
-                    if state.get("error"):
-                        raise AvatarUnavailable(f"fal.ai request {request_id} failed: {state.get('error')}")
-                    break
-            elif poll.status_code in (429, 500, 502, 503, 504) and failures < 3:
-                failures += 1
-            else:
-                raise self._refused("status check", poll)
-            if self._monotonic() >= deadline:
-                self._cancel(cancel_url, headers)
-                raise AvatarUnavailable(
-                    f"fal.ai request {request_id} did not finish in {self.timeout_s:g} s; cancelled (a request that "
-                    "had already started may still be billed). No presenter was generated."
-                )
-            self._sleep(self.poll_interval)
+class _Final(Exception):
+    """A step that failed for good (the request is unusable); its message is the reason."""
 
-        result = self._request("get", response_url, "result", headers=headers, timeout=30)
-        if not 200 <= result.status_code < 300:
-            raise self._refused("result", result)
-        data = result.json() if result.content else {}
-        video = data.get("video") if isinstance(data, dict) else None
-        url = video.get("url") if isinstance(video, dict) else None
-        if not url:
-            raise AvatarUnavailable(f"fal.ai request {request_id} finished with no video url")
-        self._download(url, dest)
-        billed = data.get("duration")
-        if isinstance(billed, bool) or not isinstance(billed, (int, float)) or not 0 < billed < float("inf"):
-            billed = seconds
-        return float(billed)
 
-    def _cancel(self, cancel_url: str, headers: dict) -> None:
-        try:
-            self.session.put(cancel_url, headers=headers, timeout=30)
-        except Exception as e:  # best effort: the timeout error that follows is the news
-            logger.warning("fal.ai cancel failed (%s)", type(e).__name__)
+def _lifecycle(expiry_s: int) -> str:
+    return json.dumps({"expiration_duration_seconds": expiry_s})
 
-    def _download(self, url: str, dest: Path) -> None:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        resp = self._request("get", url, "download", stream=True, timeout=120)
-        if not 200 <= resp.status_code < 300:
-            raise self._refused("download", resp)
-        with open(dest, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=1 << 16):
-                if chunk:
-                    fh.write(chunk)
-        if dest.stat().st_size <= 0:
-            raise AvatarUnavailable("fal.ai returned an empty video file; no presenter was generated.")
+
+def _json(resp, what: str) -> dict:
+    """The answer's JSON object, or ``AvatarUnavailable`` (never a raw ValueError)."""
+    try:
+        data = resp.json()
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        raise AvatarUnavailable(f"fal.ai {what} answered with something that is not a JSON object")
+    return data
+
+
+def _load_state(path: Path, key: str) -> dict:
+    """The sidecar of a clip or portrait: what was made, from which inputs, and which request is
+    in flight. A sidecar for other inputs (other words, character or model) is ignored."""
+    try:
+        data = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("key") == key:
+            return data
+    except (OSError, ValueError):
+        pass
+    return {"key": key}
+
+
+def _save_state(path: Path, state: dict) -> None:
+    """Atomically (a temp file, then replace): a crash never leaves half a sidecar."""
+    side = path.with_suffix(".json")
+    tmp = side.with_name(side.name + ".tmp")
+    tmp.write_text(json.dumps(state), encoding="utf-8")
+    os.replace(tmp, side)
 
 
 class _HttpError(Exception):

@@ -43,7 +43,7 @@ from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
     AvatarUnavailable, UnsafeAvatarRequest, describe_presenter, maybe_generate_presenter,
-    planned_presenter_usd, preflight_avatar, resolve_avatar_config,
+    planned_presenter_usd, preflight_avatar, presenter_narration, resolve_avatar_config,
 )
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
@@ -1402,10 +1402,9 @@ def run(
             # The fal presenter is driven by the clean narration (speech only, the same timeline as the
             # mix), and writes what it was billed to the ledger as it goes, so a failure half way keeps
             # the record of what was already paid for.
-            narration = OUTPUT_DIR / slug / "audio" / "narration.mp3"
             presenter_path = maybe_generate_presenter(
                 avatar_cfg, presenter_prompt, OUTPUT_DIR / slug / "presenter.mp4",
-                narration_path=narration if narration.exists() else audio_path,
+                narration_path=presenter_narration(OUTPUT_DIR / slug, audio_path),
                 frame_size=(render_fmt.width, render_fmt.height),
                 on_spend=lambda unit, qty, stage, usd: costs.add(unit, qty, stage=stage, estimated_usd=usd))
             events.emit(events.AVATAR_COMPLETED, agent="avatar", status=events.STATUS_COMPLETED,

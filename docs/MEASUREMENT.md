@@ -74,6 +74,12 @@ is added to the cap check before it is bought, and what fal reports it billed is
 written to the ledger as an estimate (`avatar_seconds`, stage `avatar:fal`). It also
 has its own ceilings, checked before any request: `NIGHTSHIFT_AVATAR_MAX_SECONDS`
 (default 30, never above 60) and `NIGHTSHIFT_AVATAR_MAX_USD`.
+The seconds are ledgered as soon as fal says the request is COMPLETED (before the result
+is fetched), so a failed download never leaves paid work unrecorded; a request whose
+submit answer was lost, or that timed out while running, is recorded at the planned
+amount with stage `avatar:fal:unconfirmed` (it may not have been billed). fal's CDN is
+public by link: uploads ask for a one-hour expiry via the documented lifecycle header,
+which has not been verified against the live service.
 
 **Not covered by the caps:** the Higgsfield presenter clip's own price (it
 has no ledger unit, so only a stop before it on earlier spend), the advisory vision

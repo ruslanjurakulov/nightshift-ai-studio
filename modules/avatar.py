@@ -396,6 +396,14 @@ def presenter_layout(video_w: int, video_h: int, *, corner: str = "bottom-right"
     return {"w": w, "h": h, "x": x, "y": y}
 
 
+def presenter_narration(slug_dir: Path, mixed_audio: Path) -> Path:
+    """The audio that drives a speaking presenter: the clean narration the mixer saved
+    (``<slug>/audio/narration.mp3``, speech only, same timeline as the mix), else the final
+    mix. Music under a lip-sync makes it worse, and the two files have the same length."""
+    clean = Path(slug_dir) / "audio" / "narration.mp3"
+    return clean if clean.exists() else Path(mixed_audio)
+
+
 def planned_presenter_usd(config: AvatarConfig) -> float:
     """What the presenter is about to cost at most, for the run's spend gate. Only the
     pay-per-second provider has a figure; Higgsfield's credits are not priced here."""

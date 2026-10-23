@@ -45,14 +45,15 @@ from modules.avatar_fal import (
 from modules.cost_ledger import CostLedger
 
 KEY = "fal-test-key-not-real"
-CDN = "https://cdn.example/files"
+CDN = "https://v3.fal.media/files"
 CHARACTER = "a friendly cartoon fox in a blue scarf"
 
 
 class Resp:
-    def __init__(self, status=200, body=None, text="", chunks=()):
+    def __init__(self, status=200, body=None, text="", chunks=(), headers=None):
         self.status_code = status
         self._body = body
+        self.headers = headers or {}
         self.text = text or (json.dumps(body) if body is not None else "")
         self.content = self.text.encode() if (body is not None or text) else b""
         self._chunks = list(chunks)
@@ -86,6 +87,9 @@ class FakeFal:
         self.submit_override = None
         self.result_override = None
         self.status_error = None
+        self.submit_exc = None
+        self.result_script = []
+        self.video_script = []
         self.uploads = 0
         self.submits = 0
 
@@ -95,8 +99,10 @@ class FakeFal:
         if "/storage/upload/initiate" in url:
             self.uploads += 1
             name = kw["json"]["file_name"]
-            return Resp(200, {"upload_url": f"https://upload.example/{self.uploads}", "file_url": f"{CDN}/{name}"})
+            return Resp(200, {"upload_url": f"https://v3.fal.media/upload/{self.uploads}", "file_url": f"{CDN}/{name}"})
         self.submits += 1
+        if self.submit_exc is not None:
+            raise self.submit_exc
         if self.submit_override is not None:
             return self.submit_override
         return Resp(200, {"request_id": "req-1", "status": "IN_QUEUE",
@@ -116,6 +122,8 @@ class FakeFal:
             status = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
             return Resp(200, {"status": status, "request_id": "req-1"})
         if url.endswith("/requests/req-1"):
+            if self.result_script:
+                return self.result_script.pop(0)
             if self.result_override is not None:
                 return self.result_override
             body = {"video": {"url": "https://v3.fal.media/files/out.mp4"}}
@@ -123,6 +131,8 @@ class FakeFal:
                 body["duration"] = self.duration
             return Resp(200, body)
         if url.endswith("out.mp4"):
+            if self.video_script:
+                return self.video_script.pop(0)
             return Resp(200, chunks=[self.video] if self.video else [])
         raise AssertionError(f"unexpected GET {url}")
 
@@ -355,7 +365,7 @@ class RequestShape(Case):
         self.assertEqual(len(submits), 2)  # intro and outro
         url, kw = submits[0]
         self.assertEqual(url, f"https://queue.fal.run/{DEFAULT_MODEL}")
-        self.assertEqual(kw["headers"], {"Authorization": f"Key {KEY}"})
+        self.assertEqual(kw["headers"]["Authorization"], f"Key {KEY}")
         self.assertEqual(set(kw["json"]), {"image_url", "audio_url", "prompt"})
         self.assertEqual(kw["json"]["image_url"], f"{CDN}/presenter_portrait.png")
         self.assertEqual(kw["json"]["audio_url"], f"{CDN}/presenter_intro.mp3")
@@ -371,7 +381,7 @@ class RequestShape(Case):
         self.assertEqual(initiates[0][0], "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3")
         self.assertEqual(initiates[0][1]["json"], {"file_name": "presenter_portrait.png", "content_type": "image/png"})
         self.assertEqual(initiates[1][1]["json"]["content_type"], "audio/mpeg")
-        puts = [kw for m, u, kw in self.fal.calls if m == "put" and u.startswith("https://upload.example")]
+        puts = [kw for m, u, kw in self.fal.calls if m == "put" and u.startswith("https://v3.fal.media/upload/")]
         self.assertEqual(puts[0]["data"], b"PNGDATA")
         self.assertEqual(puts[1]["data"], b"AUDIO:0.0-15.0")
 
@@ -420,7 +430,10 @@ class PollingAndResult(Case):
         self.fal.submit_override = Resp(200, {"request_id": "req-1"})
         self.fal.calls.clear()
         self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
-        self.assertIn(f"https://queue.fal.run/{DEFAULT_MODEL}/requests/req-1/status", self.fal.urls("get"))
+        # fal: follow-up URLs use only owner/app; the endpoint path in them returns 405
+        self.assertIn("https://queue.fal.run/fal-ai/kling-video/requests/req-1/status", self.fal.urls("get"))
+        self.assertIn("https://queue.fal.run/fal-ai/kling-video/requests/req-1", self.fal.urls("get"))
+        self.assertFalse([u for u in self.fal.urls("get") if "/ai-avatar/" in u])
 
     def test_a_failed_request_is_completed_with_an_error_and_ships_nothing(self):
         failing = FakeFal()
@@ -438,7 +451,6 @@ class PollingAndResult(Case):
         with self.assertRaises(AvatarUnavailable) as caught:
             self.run_it()
         self.assertIn("422", str(caught.exception))
-        self.assertFalse(any(unit == AVATAR_SECONDS for unit, *_ in self.spent))
 
     def test_a_result_without_a_video_url_stops_the_run(self):
         self.fal.result_override = Resp(200, {"duration": 15})
@@ -450,7 +462,7 @@ class PollingAndResult(Case):
         self.fal.video = b""
         with self.assertRaises(AvatarUnavailable):
             self.run_it()
-        self.assertFalse(any(unit == AVATAR_SECONDS for unit, *_ in self.spent))
+        self.assertFalse((self.dir / "presenter_intro.mp4").exists())
 
     def test_a_job_that_never_finishes_is_cancelled_and_reported(self):
         self.fal.statuses = ["IN_PROGRESS"]
@@ -537,16 +549,19 @@ class Refusals(Case):
 
 
 class Ledger(Case):
-    def test_the_billed_seconds_are_recorded_as_an_estimate_at_the_configured_price(self):
-        self.fal.duration = 14.5
+    def test_the_slice_seconds_are_recorded_as_an_estimate_at_the_configured_price(self):
         self.run_it(**{avatar_fal.PRICE_ENV: "0.0562"})
-        video = [s for s in self.spent if s[0] == AVATAR_SECONDS]
-        self.assertEqual(video, [(AVATAR_SECONDS, 14.5, "avatar:fal", round(14.5 * 0.0562, 6))] * 2)
+        video = [x for x in self.spent if x[0] == AVATAR_SECONDS]
+        self.assertEqual(video, [(AVATAR_SECONDS, 15.0, "avatar:fal", round(15.0 * 0.0562, 6))] * 2)
 
-    def test_without_a_reported_duration_the_slice_length_is_recorded(self):
-        self.fal.duration = None
-        self.run_it()
-        self.assertEqual([s[1] for s in self.spent if s[0] == AVATAR_SECONDS], [15.0, 15.0])
+    def test_a_huge_or_missing_duration_from_fal_cannot_inflate_the_ledger(self):
+        for duration in (9999, None, -3, "x"):
+            with self.subTest(duration=duration):
+                self.setUp()
+                self.fal.duration = duration
+                self.run_it()
+                self.assertEqual([x[1] for x in self.spent if x[0] == AVATAR_SECONDS], [15.0, 15.0])
+                self.assertEqual(sum(x[3] for x in self.spent if x[0] == AVATAR_SECONDS), 1.8)
 
     def test_the_portrait_is_recorded_as_an_fal_image(self):
         self.run_it()
@@ -574,12 +589,6 @@ class Ledger(Case):
             costs.add(AVATAR_SECONDS, 1, estimated_usd=bad)
         self.assertEqual([e.estimated_usd for e in costs.entries], [None, None, None])
 
-    def test_what_was_spent_stays_recorded_when_a_later_step_fails(self):
-        self.fal.result_override = Resp(500, text="boom")
-        with self.assertRaises(AvatarUnavailable):
-            self.run_it()
-        self.assertEqual([s[0] for s in self.spent], ["image_generations"])
-
 
 class Reuse(Case):
     def test_a_retry_of_the_same_run_buys_nothing_twice(self):
@@ -606,6 +615,428 @@ class Reuse(Case):
         submits = self.fal.submits
         self.run_it(**{avatar_fal.MODEL_ENV: "fal-ai/kling-video/ai-avatar/v2/pro"})
         self.assertEqual(self.fal.submits, submits + 2)
+
+
+class PaidWorkIsNeverLostOrRepaid(Case):
+    """B1: money fal already took must reach the ledger, and a rerun must pick the request up."""
+
+    def avatar_entries(self, stage="avatar:fal"):
+        return [x for x in self.spent if x[0] == AVATAR_SECONDS and x[2] == stage]
+
+    def test_a_failing_result_fetch_still_leaves_the_spend_in_the_ledger(self):
+        self.fal.result_override = Resp(500, text="boom")
+        with self.assertRaises(AvatarUnavailable) as caught:
+            self.run_it()
+        self.assertEqual(self.avatar_entries(), [(AVATAR_SECONDS, 15.0, "avatar:fal", 0.9)])
+        self.assertIn("resumes it without paying again", str(caught.exception))
+        self.assertEqual(self.fal.submits, 1)
+
+    def test_a_failing_download_still_leaves_the_spend_in_the_ledger(self):
+        self.fal.video_script = [Resp(503, text="down")] * 3
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(len(self.avatar_entries()), 1)
+
+    def test_the_rerun_after_a_failed_result_resumes_the_same_request_and_pays_nothing_more(self):
+        self.fal.result_override = Resp(500, text="boom")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.fal.result_override = None
+        submits = self.fal.submits
+        segments = self.run_it()
+        self.assertEqual(self.fal.submits, submits + 1, "only the OUTRO is submitted; the intro resumed")
+        self.assertEqual(len(self.avatar_entries()), 2, "intro once, outro once")
+        self.assertEqual(segments[0].path.read_bytes(), b"MP4DATA")
+
+    def test_the_rerun_after_a_failed_download_does_not_resubmit_or_double_ledger(self):
+        self.fal.video_script = [Resp(503, text="down")] * 3
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(self.fal.submits, 1)
+        self.run_it()
+        # one submit for the intro (resumed), one for the outro; each ledgered exactly once
+        self.assertEqual(self.fal.submits, 2)
+        self.assertEqual([x[1] for x in self.avatar_entries()], [15.0, 15.0])
+
+    def test_the_request_is_saved_before_polling_begins(self):
+        seen = {}
+        real_get = self.fal.get
+
+        def get(url, **kw):
+            if url.endswith("/status") and "side" not in seen:
+                side = self.dir / "presenter_intro.json"
+                seen["side"] = json.loads(side.read_text())
+            return real_get(url, **kw)
+
+        self.fal.get = get
+        self.run_it()
+        self.assertEqual(seen["side"]["request"]["id"], "req-1")
+        self.assertFalse(seen["side"]["ledgered"])
+        self.assertTrue(seen["side"]["request"]["status_url"].startswith("https://queue.fal.run/"))
+
+    def test_a_finished_clip_whose_file_was_deleted_is_fetched_again_without_resubmitting(self):
+        self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        clip = self.dir / "presenter_intro.mp4"
+        clip.unlink()
+        segments = self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertTrue(segments[0].path.exists())
+        self.assertEqual(self.fal.submits, 1)
+        self.assertEqual(len(self.avatar_entries()), 1)
+
+    def test_a_crash_while_polling_is_resumed_not_resubmitted(self):
+        self.fal.status_error = Resp(404, text="hmm")
+        real = self.fal.get
+        calls = {"n": 0}
+
+        def get(url, **kw):
+            if url.endswith("/status"):
+                calls["n"] += 1
+                if calls["n"] == 2:
+                    raise KeyboardInterrupt()  # the process dies mid-poll
+            return real(url, **kw)
+
+        self.fal.status_error = None
+        self.fal.get = get
+        with self.assertRaises(KeyboardInterrupt):
+            self.run_it()
+        self.fal.get = real
+        self.run_it()
+        self.assertEqual(self.fal.submits, 2, "intro submitted once (resumed after the crash), plus the outro")
+
+    def test_a_result_that_is_transiently_down_is_retried_with_a_backoff(self):
+        self.fal.result_script = [Resp(503, text="x"), Resp(502, text="x")]
+        self.fal.statuses = ["COMPLETED"]  # no poll waits, so the clock only moves for the backoff
+        segments = self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(self.fal.submits, 1)
+        self.assertEqual(self.clock.now, 2.0 + 4.0)
+
+    def test_a_download_that_is_transiently_down_is_retried(self):
+        self.fal.video_script = [Resp(503, text="x")]
+        segments = self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(segments[0].path.read_bytes(), b"MP4DATA")
+        self.assertEqual(len(self.avatar_entries()), 1)
+
+    def test_a_dropped_download_connection_is_retried(self):
+        import requests
+
+        real = self.fal.get
+        state = {"dropped": False}
+
+        def get(url, **kw):
+            if url.endswith("out.mp4") and not state["dropped"]:
+                state["dropped"] = True
+                raise requests.ConnectionError("reset")
+            return real(url, **kw)
+
+        self.fal.get = get
+        self.assertEqual(len(self.run_it(**{avatar_fal.OUTRO_ENV: "0"})), 1)
+
+    def test_a_result_that_says_the_request_is_unusable_makes_the_rerun_submit_afresh(self):
+        self.fal.result_override = Resp(422, {"detail": "bad"})
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(len(self.avatar_entries()), 1)  # recorded once: fal had said COMPLETED
+        self.fal.result_override = None
+        self.run_it()
+        self.assertEqual(self.fal.submits, 3, "a fresh intro request, then the outro")
+
+    def test_a_lost_submit_answer_is_said_to_be_possibly_billed_and_recorded_as_unconfirmed(self):
+        import requests
+
+        self.fal.submit_exc = requests.ReadTimeout("slow")
+        with self.assertRaises(AvatarUnavailable) as caught:
+            self.run_it()
+        self.assertIn("MAY HAVE BEEN ACCEPTED AND BILLED", str(caught.exception))
+        self.assertEqual(self.avatar_entries("avatar:fal:unconfirmed"),
+                         [(AVATAR_SECONDS, 15.0, "avatar:fal:unconfirmed", 0.9)])
+        self.assertEqual(self.avatar_entries(), [])
+        self.assertEqual(self.fal.submits, 1, "the outro must not be submitted after a lost intro")
+
+    def test_a_submit_server_error_is_unconfirmed_but_a_refusal_is_not(self):
+        self.fal.submit_override = Resp(502, text="bad gateway")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(len(self.avatar_entries("avatar:fal:unconfirmed")), 1)
+        self.setUp()
+        self.fal.submit_override = Resp(422, text='{"detail": "bad"}')
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(self.avatar_entries("avatar:fal:unconfirmed"), [])
+
+    def test_a_2xx_submit_answer_with_no_usable_request_id_is_unconfirmed(self):
+        self.fal.submit_override = Resp(200, {"status": "IN_QUEUE"})
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(len(self.avatar_entries("avatar:fal:unconfirmed")), 1)
+
+    def test_a_poll_timeout_after_the_job_started_is_cancelled_and_recorded_as_unconfirmed(self):
+        self.fal.statuses = ["IN_PROGRESS"]
+        with self.assertRaises(AvatarUnavailable) as caught:
+            self.run_it()
+        self.assertIn("MAY STILL BE BILLED", str(caught.exception))
+        self.assertIn("https://queue.fal.run/x/requests/req-1/cancel", self.fal.urls("put"))
+        self.assertEqual(self.avatar_entries("avatar:fal:unconfirmed"),
+                         [(AVATAR_SECONDS, 15.0, "avatar:fal:unconfirmed", 0.9)])
+        self.assertEqual(self.avatar_entries(), [])
+
+    def test_a_poll_timeout_while_still_queued_was_never_started_so_nothing_is_recorded(self):
+        self.fal.statuses = ["IN_QUEUE"]
+        with self.assertRaises(AvatarUnavailable) as caught:
+            self.run_it()
+        self.assertNotIn("MAY STILL BE BILLED", str(caught.exception))
+        self.assertEqual(self.avatar_entries("avatar:fal:unconfirmed"), [])
+        self.assertIn("https://queue.fal.run/x/requests/req-1/cancel", self.fal.urls("put"))
+
+    def test_after_a_cancelled_timeout_the_rerun_starts_a_new_request(self):
+        self.fal.statuses = ["IN_PROGRESS"]
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.fal.statuses = ["COMPLETED"]
+        self.run_it()
+        self.assertEqual(self.fal.submits, 3)
+
+    def test_a_request_fal_no_longer_knows_is_forgotten_not_polled_forever(self):
+        self.fal.result_override = Resp(500, text="boom")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.fal.result_override = None
+        self.fal.status_error = Resp(404, text="gone")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.fal.status_error = None
+        self.run_it()
+        self.assertGreaterEqual(self.fal.submits, 3, "a fresh request after the old one was gone")
+
+    def test_a_sidecar_for_other_words_is_never_resumed(self):
+        self.fal.result_override = Resp(500, text="boom")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.fal.result_override = None
+
+        def other_words(path, start, end, dest):
+            Path(dest).write_bytes(b"DIFFERENT")
+            return Path(dest)
+
+        self.audio.cut = other_words
+        submits = self.fal.submits
+        self.run_it()
+        self.assertEqual(self.fal.submits, submits + 2)
+
+
+class Hardening(Case):
+    def test_a_server_url_off_the_fal_hosts_is_refused_and_the_key_never_follows_it(self):
+        for field in ("status_url", "response_url", "cancel_url"):
+            with self.subTest(field=field):
+                self.setUp()
+                answer = {"request_id": "req-1", "status_url": "https://queue.fal.run/x/requests/req-1/status",
+                          "response_url": "https://queue.fal.run/x/requests/req-1",
+                          "cancel_url": "https://queue.fal.run/x/requests/req-1/cancel"}
+                answer[field] = "https://evil.example/steal"
+                self.fal.submit_override = Resp(200, answer)
+                with self.assertRaises(AvatarUnavailable):
+                    self.run_it()
+                self.assertFalse([u for u in self.fal.urls() if "evil.example" in u])
+
+    def test_checked_url_accepts_only_https_fal_hosts_without_credentials(self):
+        ok = ["https://queue.fal.run/a", "https://v3.fal.media/files/x.mp4", "https://v3b.fal.media/f",
+              "https://rest.fal.ai/s", "https://fal.media/f"]
+        for url in ok:
+            avatar_fal.checked_url(url, "x")
+        bad = ["http://queue.fal.run/a", "https://queue.fal.run.evil.com/a", "https://evilfal.media/a",
+               "https://fal.media.evil.com/a", "https://user:pw@queue.fal.run/a", "https://queue.fal.run:8443/a",
+               "ftp://queue.fal.run/a", "//queue.fal.run/a", "", None, 5, "https://storage.googleapis.com/x"]
+        for url in bad:
+            with self.assertRaises(AvatarUnavailable, msg=repr(url)):
+                avatar_fal.checked_url(url, "x")
+
+    def test_the_key_goes_only_to_the_queue_and_rest_hosts(self):
+        with self.assertRaises(AvatarUnavailable):
+            avatar_fal.checked_url("https://v3.fal.media/x", "status_url", key_host=True)
+        with self.assertRaises(AvatarUnavailable):
+            avatar_fal.checked_url("https://sub.queue.fal.run/x", "status_url", key_host=True)
+        avatar_fal.checked_url("https://queue.fal.run/x", "status_url", key_host=True)
+        self.run_it()
+        for method, url, kw in self.fal.calls:
+            has_key = "Authorization" in (kw.get("headers") or {})
+            host = url.split("/")[2]
+            self.assertEqual(has_key, host in ("queue.fal.run", "rest.fal.ai"), (method, url))
+
+    def test_an_upload_or_video_address_off_the_fal_hosts_is_refused(self):
+        original = self.fal.post
+
+        def post(url, **kw):
+            resp = original(url, **kw)
+            if "storage/upload" in url:
+                return Resp(200, {"upload_url": "https://evil.example/put", "file_url": f"{CDN}/x"})
+            return resp
+
+        self.fal.post = post
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertFalse([u for u in self.fal.urls() if "evil.example" in u])
+        self.setUp()
+        self.fal.result_override = Resp(200, {"video": {"url": "https://evil.example/v.mp4"}})
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertFalse([u for u in self.fal.urls("get") if "evil.example" in u])
+
+    def test_redirects_are_never_followed(self):
+        self.run_it()
+        for method, url, kw in self.fal.calls:
+            self.assertIs(kw.get("allow_redirects"), False, (method, url))
+
+    def test_a_redirect_answer_is_an_error_not_a_destination(self):
+        self.fal.submit_override = Resp(302, text="moved", headers={"Location": "https://evil.example"})
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertFalse([u for u in self.fal.urls() if "evil.example" in u])
+
+    def test_a_video_over_the_size_cap_is_refused_streamed_and_not_kept(self):
+        with mock.patch.object(avatar_fal, "MAX_VIDEO_BYTES", 10):
+            self.fal.video = b"x" * 11
+            with self.assertRaises(AvatarUnavailable) as caught:
+                self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertIn("limit", str(caught.exception))
+        self.assertFalse((self.dir / "presenter_intro.mp4").exists())
+        self.assertFalse((self.dir / "presenter_intro.mp4.part").exists())
+
+    def test_a_declared_size_over_the_cap_is_refused_before_reading(self):
+        with mock.patch.object(avatar_fal, "MAX_VIDEO_BYTES", 10):
+            self.fal.video_script = [Resp(200, chunks=[b"x"], headers={"Content-Length": "11"})]
+            with self.assertRaises(AvatarUnavailable):
+                self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+
+    def test_the_cap_is_200_mb(self):
+        self.assertEqual(avatar_fal.MAX_VIDEO_BYTES, 200 * 1024 * 1024)
+
+    def test_a_video_exactly_at_the_cap_is_kept(self):
+        with mock.patch.object(avatar_fal, "MAX_VIDEO_BYTES", 10):
+            self.fal.video = b"x" * 10
+            self.assertEqual(len(self.run_it(**{avatar_fal.OUTRO_ENV: "0"})), 1)
+
+    def test_a_non_json_status_answer_is_an_avatar_error_with_a_cancel(self):
+        self.fal.status_error = Resp(200, text="<html>proxy page</html>")
+        with self.assertRaises(AvatarUnavailable) as caught:
+            self.run_it()
+        self.assertIn("not a JSON", str(caught.exception))
+        self.assertIn("https://queue.fal.run/x/requests/req-1/cancel", self.fal.urls("put"))
+
+    def test_a_status_answer_whose_json_raises_valueerror_is_an_avatar_error_too(self):
+        class Bad(Resp):
+            def json(self):
+                raise ValueError("Expecting value")
+
+        self.fal.status_error = Bad(200, text="<html>")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+
+    def test_uploads_ask_fal_to_expire_the_narration_and_the_portrait(self):
+        self.run_it()
+        initiates = [kw for m, u, kw in self.fal.calls if "storage/upload/initiate" in u]
+        self.assertTrue(initiates)
+        for kw in initiates:
+            self.assertEqual(json.loads(kw["headers"]["X-Fal-Object-Lifecycle-Preference"]),
+                             {"expiration_duration_seconds": 3600})
+        submit = [kw for m, u, kw in self.fal.calls if "queue.fal.run/fal-ai" in u and m == "post"][0]
+        self.assertEqual(json.loads(submit["headers"]["X-Fal-Object-Lifecycle-Preference"]),
+                         {"expiration_duration_seconds": 86400})
+
+    def test_a_changed_character_gets_a_new_portrait_the_same_one_is_reused(self):
+        self.run_it(prompt="a friendly fox")
+        self.run_it(prompt="a friendly fox")
+        self.assertEqual(len(self.portrait.calls), 1)
+        self.run_it(prompt="a grumpy robot")
+        self.assertEqual(len(self.portrait.calls), 2)
+        self.assertIn("a grumpy robot", self.portrait.calls[1]["prompt"])
+        self.run_it(prompt="a grumpy robot", **{avatar_fal.IMAGE_MODEL_ENV: "fal-ai/flux/dev"})
+        self.assertEqual(len(self.portrait.calls), 3)
+
+    def test_the_portrait_is_regenerated_when_the_frame_shape_changes(self):
+        self.run_it()
+        self.provider().generate_segments(CHARACTER, None, self.out, narration_path=self.narration,
+                                          frame_size=(720, 1280))
+        self.assertEqual([c["size"] for c in self.portrait.calls], [(1280, 720), (720, 1280)])
+
+
+class PriceFloor(unittest.TestCase):
+    def setUp(self):
+        avatar_fal._WARNED.clear()
+
+    def test_the_default_model_never_prices_below_its_published_price(self):
+        s = FalAvatarSettings.from_env({avatar_fal.PRICE_ENV: "0.02"})
+        self.assertEqual(s.usd_per_second, 0.0562)
+
+    def test_a_higher_price_for_the_default_model_is_kept(self):
+        self.assertEqual(FalAvatarSettings.from_env({avatar_fal.PRICE_ENV: "0.09"}).usd_per_second, 0.09)
+
+    def test_a_price_below_the_floor_is_raised_and_warned_about(self):
+        with self.assertLogs("modules.avatar_fal", "WARNING") as logs:
+            s = FalAvatarSettings.from_env({avatar_fal.PRICE_ENV: "0.001", avatar_fal.MODEL_ENV: "fal-ai/x/y"})
+        self.assertEqual(s.usd_per_second, 0.01)
+        self.assertIn("understate", "\n".join(logs.output))
+
+    def test_another_model_without_a_price_override_warns_that_the_caps_may_understate(self):
+        with self.assertLogs("modules.avatar_fal", "WARNING") as logs:
+            s = FalAvatarSettings.from_env({avatar_fal.MODEL_ENV: "fal-ai/kling-video/ai-avatar/v2/pro"})
+        self.assertIn("understate", "\n".join(logs.output))
+        self.assertIn(avatar_fal.PRICE_ENV, "\n".join(logs.output))
+        self.assertEqual(s.usd_per_second, 0.06)
+
+    def test_another_model_with_its_own_price_does_not_warn_and_uses_it(self):
+        with self.assertNoLogs("modules.avatar_fal", "WARNING"):
+            s = FalAvatarSettings.from_env({avatar_fal.MODEL_ENV: "fal-ai/x/y", avatar_fal.PRICE_ENV: "0.11"})
+        self.assertEqual(s.usd_per_second, 0.11)
+
+    def test_the_default_model_at_the_default_price_is_quiet(self):
+        with self.assertNoLogs("modules.avatar_fal", "WARNING"):
+            FalAvatarSettings.from_env({})
+
+    def test_the_warning_is_not_repeated_on_every_read(self):
+        env = {avatar_fal.MODEL_ENV: "fal-ai/x/y"}
+        with self.assertLogs("modules.avatar_fal", "WARNING") as logs:
+            for _ in range(5):
+                FalAvatarSettings.from_env(env)
+        self.assertEqual(len(logs.output), 1)
+
+    def test_the_usd_ceiling_follows_the_floored_price(self):
+        s = FalAvatarSettings.from_env({avatar_fal.PRICE_ENV: "0.02"})
+        self.assertEqual(s.max_usd, round(30 * 0.0562 + 0.01, 6))
+
+
+class PollToleranceBoundary(Case):
+    def test_a_status_endpoint_is_given_exactly_three_retries_not_more(self):
+        self.fal.status_error = Resp(503, text="down")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(len([u for u in self.fal.urls("get") if u.endswith("/status")]), 4)
+
+    def test_dropped_connections_get_the_same_three_retries(self):
+        import requests
+
+        def get(url, **kw):
+            self.fal.calls.append(("get", url, kw))
+            raise requests.ConnectionError("down")
+
+        self.fal.get = get
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(len([u for u in self.fal.urls("get") if u.endswith("/status")]), 4)
+
+
+class NarrationChoice(unittest.TestCase):
+    def test_the_clean_narration_is_used_when_the_mixer_saved_it_else_the_mix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            slug = Path(tmp)
+            mix = slug / "audio" / "final_audio.mp3"
+            self.assertEqual(avatar.presenter_narration(slug, mix), mix)
+            (slug / "audio").mkdir()
+            (slug / "audio" / "narration.mp3").write_bytes(b"x")
+            self.assertEqual(avatar.presenter_narration(slug, mix), slug / "audio" / "narration.mp3")
+
+    def test_main_uses_that_choice(self):
+        text = (Path(__file__).resolve().parent.parent / "main.py").read_text()
+        self.assertIn("narration_path=presenter_narration(OUTPUT_DIR / slug, audio_path),", text)
 
 
 class SelectionAndOffByDefault(unittest.TestCase):
