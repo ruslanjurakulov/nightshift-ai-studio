@@ -109,6 +109,60 @@ consumer side of the feedback loop:
     for naming a person. A history channel's neighbours (true crime, science) are
     not "another field". A niche the word tables do not know is never called
     off-niche by words: the sensitive screen and the model decide.
+  - *Medical claims and live cases* (GATE_VERSION `2026-10-22.4`, held from every
+    source including the lenient AI pick, by words only: no model call, the model-ask
+    budget untouched, behind the same `CHRONOS_TOPIC_GATE` switch). Two gaps the first
+    version left: (1) an era word ("ancient") anchored a topic in the past and the
+    screen returned before it reached the medical branch, so "Ancient remedy for
+    COVID-19" or "Cure for cancer found in ancient herb" passed. Now, in a topic
+    anchored in the past, a medical term beside a STRONG claim word (cure, cures,
+    cured, heals, prevents, miracle ...) is held as `medical` unless the topic is
+    framed as the history of medicine (a year up to 1945, or "history of", physician,
+    papyrus, mummy, Hippocrates ...). "treatment", "remedy" and "cause" are claim
+    words only beside a modern-only condition (covid, coronavirus, autism, HIV), which
+    is held with any claim word whatever the frame: "Ancient Egyptian cancer
+    treatment" and "The cause of cancer in ancient Egypt" pass, "Ancient remedy for
+    COVID-19" and "Roman herb cures diabetes" are held. (2) A topic that OPENS with a
+    person's name (also "McCann", a title plus name: "King Charles", "Dr. Shipman")
+    beside a case word (trial, suspect, shooting, diagnosis, engagement, divorce,
+    antisemitism, "health secrets" ...) is a living person's current case: held as
+    `crime_legal` or `living_person` unless something says it is old: an era word, a
+    distinctive historical term, a year up to 1945, a regnal numeral after a name
+    ("King Louis XVI", "Richard III", "King Charles I"; not Charles III or Leo XIV), a
+    word that belongs to old cases (beheaded, gallows, posthumous, heresy, witch ...),
+    or a short list of famous old cases (`_HIST_CASES`: rare surnames such as Borden,
+    Lindbergh, Ripper, or the SAME name in full - "Queen Victoria", "Oscar Wilde",
+    "Warren Hastings" - never a bare name a living person also has, so "Victoria
+    Beckham trial" and "Reed Hastings trial" are held). A capitalised case word is not
+    half a name ("Tokyo Trials"). "conspiracy", "plot", "massacre", "execution" and
+    "dead" are deliberately NOT signs of an old case: living defendants have them
+    ("Lori Vallow conspiracy trial"). "Today's", "yesterday('s)" and "this morning" count
+    as a story as it breaks only when a disaster noun follows within three words
+    ("Today's crash of a Boeing plane"), never bare ("what today's science says").
+    A channel about entertainment or politics still waives `living_person` (not
+    `crime_legal`).
+  - *Residuals of that change* (a skipped topic is the cost; measured, not guessed).
+    The rule cannot tell a dead name from a live one: of 53 legitimate old
+    "<Name Name> trial / diagnosis / shooting / pregnancy" topics written AFTER the
+    tables were fixed (Aaron Burr trial, Mata Hari trial, Abraham Lincoln shooting,
+    Anne Neville pregnancy ...), 49 are held; the tables only cover the cases a review
+    found (see `HELD_OUT_OLD_CASES`). The remedy is a list that grows, or a model
+    question, which was not built. Also skipped: "Medieval cure for cancer", "Medieval
+    cancer cure that actually worked", "Alger Hiss trial", "Ted Bundy trial", "Frida
+    Kahlo health secrets". Still slipping through: the broad history-of-medicine frame
+    words (medicine, mummy, papyrus, archaeolog*, surgery, physician, skeleton) and
+    any year up to 1945 bypass the claim rule ("Miracle cure from ancient Egyptian
+    medicine" passes); case words that are not listed (a name beside health, cancer,
+    hospital, died, wedding); a name that does not open the topic ("Why the Luigi
+    Mangione trial matters"); a leading year; lower case, ALL CAPS or joined names;
+    single names; two-letter name parts ("Xi Jinping"); ru/uz live-case words and
+    inflected medical forms; a plain crash or shooting with no name and no marker. The
+    word "Sir" in the title list changes nothing (a three-letter capitalised word
+    already reads as a name). Nothing here knows who is alive. Pre-existing wrong holds, not
+    touched: "The Cure for Scurvy ...", "The Miracle Cure of Lourdes in 1858", "Snake
+    Oil: the history of miracle cures", "The Kidnapping of the Lindbergh Baby", "Prime
+    Minister Neville Chamberlain and Munich 1938" (`PRE_EXISTING_WRONG_HOLDS` in
+    `tests/topic_gate_probe_topics.py`).
   - *Known residuals* (a skipped topic, never a failed run): a news-phrased
     accusation beside a historical name with no year and no era word is held
     ("The Knights Templar were accused of heresy", "Socrates accused of corrupting
