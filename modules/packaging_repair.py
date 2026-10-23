@@ -45,7 +45,7 @@ from typing import Callable, Optional
 
 from modules.claim_extractor import (
     SOURCE_DESCRIPTION, SOURCE_HOOK_AB, SOURCE_HOOK_SENTENCE, SOURCE_THUMBNAIL, SOURCE_TITLE, SOURCE_TITLE_AB,
-    Claim, _HASHTAG_OR_URL_LINE, _TIMESTAMP_LINE, _URL_WHOLE, _normalize, _split_sentences, _strip_cue_tags,
+    Claim, _normalize, _split_sentences, _strip_cue_tags,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,14 +57,16 @@ _ON_WORDS = frozenset({"", "1", "true", "yes", "on", "enabled", "enable"})
 #: Cost-ledger stage of the one generation call.
 STAGE = "packaging_repair"
 
-#: The shipped texts a viewer reads before the video, as the claim extractor names their ``source``, and the
-#: ``Script`` field each one lives in. Narration (``SOURCE_NARRATION``) is deliberately absent.
+#: The shipped texts this pass may rewrite, as the claim extractor names their ``source``, and the ``Script``
+#: field each one lives in. Deliberately absent: narration (``SOURCE_NARRATION``), and the DESCRIPTION. The
+#: description is multi-line free text that three publishers read with three different line-stripping rules
+#: (the YouTube uploader, the social captions, the cross-post source), so that what is shipped is what was
+#: checked cannot be guaranteed cheaply there. A flagged description means no repair: the run is held as before.
 FIELD_OF_SOURCE = {
     SOURCE_HOOK_AB: "hook_ab",
     SOURCE_HOOK_SENTENCE: "hook_sentence",
     SOURCE_TITLE: "title",
     SOURCE_TITLE_AB: "title_ab",
-    SOURCE_DESCRIPTION: "description",
     SOURCE_THUMBNAIL: "thumbnail_overlay_text",
 }
 PACKAGING_SOURCES = frozenset(FIELD_OF_SOURCE)
@@ -72,7 +74,7 @@ SOURCE_OF_FIELD = {v: k for k, v in FIELD_OF_SOURCE.items()}
 
 #: At most this many new claims are re-checked: one fact-check batch (modules/fact_checker.MAX_BATCH_SIZE).
 MAX_RECHECKED_CLAIMS = 30
-#: The longest rewrite taken (a description is the longest packaging text), and the record's caps.
+#: The longest rewrite taken, and the record's caps.
 MAX_REWRITE_CHARS = 5000
 MAX_TITLE_CHARS = 100          # what YouTube accepts (publish_gate.MAX_TITLE_CHARS)
 MAX_THUMBNAIL_WORDS = 6        # the prompt says 4; a little slack, a runaway line is refused
@@ -134,7 +136,8 @@ def flagged_packaging(decision, claims, results) -> tuple:
         if not getattr(result, "requires_human_review", False):
             continue
         if getattr(claim, "source", "narration") not in PACKAGING_SOURCES:
-            return [], "narration_flagged"
+            return [], ("description_flagged" if getattr(claim, "source", "") == SOURCE_DESCRIPTION
+                        else "narration_flagged")
         indexes.append(i)
     return (indexes, "") if indexes else ([], "nothing_flagged_in_packaging")
 
@@ -149,9 +152,6 @@ _FIELD_STYLE = {
                 "starting from the most gripping moment that is true."),
     "hook_sentence": "The 3-second hook sentence, from the most gripping moment that is true.",
     "thumbnail_overlay_text": "Short punchy text for the thumbnail, max 4 words.",
-    "description": ("YouTube description: keep its paragraphs, hashtags and every line that was not flagged as "
-                    "they are; change only the flagged statements. Use no number or year the narration does "
-                    "not state."),
 }
 
 REPAIR_SYSTEM = (
@@ -211,27 +211,30 @@ def _parse_rewrites(text: str, asked: set) -> dict:
     return out
 
 
-#: Any tag-like cue, however it is spelled: the extractor strips ``[SFX:..]`` etc. before the checker sees a text,
-#: and nothing strips them before a title, a thumbnail or a description ships.
+#: Any tag-like cue, however it is spelled: the extractor strips ``[SFX:..]`` etc. before the checker sees a
+#: text, and nothing strips them before a title, a thumbnail or an opening ships.
 _CUE_LIKE = re.compile(r"\[\s*(?:sfx|music|pause|voice)\b", re.IGNORECASE)
 #: Characters that are invisible or that change what is displayed or how lines break: format (zero-width, bidi
 #: controls, soft hyphen, tag characters), control, surrogate, private-use, unassigned, line and paragraph
 #: separators. None of them can be in a text the checker is shown as plain text.
 _HIDDEN_CATEGORIES = frozenset({"Cf", "Cc", "Cs", "Co", "Cn", "Zl", "Zp"})
 _SINGLE_LINE = ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence")
+#: Names of characters that look like a letter or a digit without being one (circled, squared, parenthesized,
+#: regional indicators, Braille) and so would let a word through a check that looks for letters.
+_LETTERLIKE_NAMES = ("LETTER", "DIGIT", "CIRCLED", "SQUARED", "REGIONAL INDICATOR", "BRAILLE", "PARENTHESIZED",
+                     "NEGATIVE", "NUMERAL")
 
 
-def _canonical(name: str, value: str, original: str) -> Optional[str]:
+def _canonical(name: str, value: str) -> Optional[str]:
     """The exact string to ship AND to check for a rewrite, or ``None`` when normalising it before the checker
     would hide something from the checker.
 
     Everything the pipeline does to a text before the checker sees it (cue tags stripped, whitespace collapsed,
-    links stripped from a description, hashtag and chapter lines skipped, sentences without a letter or a digit
-    dropped) is either made impossible here or made visible to the checker, so what is shipped is what was
-    checked. Refused: any cue tag, however spelled or nested; invisible, bidi, control and separator characters;
-    ``<`` and ``>`` (HTML tags and comments; YouTube refuses them too); markdown link syntax; a link in a
-    description that the description did not already carry (the checker is not shown links). Whitespace runs are
-    collapsed (a description keeps its lines). The returned string is the one that is set on the script."""
+    sentences without a word dropped) is either made impossible here or made visible to the checker, so what is
+    shipped is what was checked. Refused: any cue tag, however spelled or nested; invisible, bidi, control and
+    separator characters; ``<`` and ``>`` (HTML tags and comments; YouTube refuses them too); markdown link
+    syntax; a line break in a one-line field. Whitespace runs are collapsed. The returned string is the one that
+    is set on the script."""
     if not isinstance(value, str):
         return None
     text = value.replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -239,41 +242,42 @@ def _canonical(name: str, value: str, original: str) -> Optional[str]:
         return None
     if any(unicodedata.category(ch) in _HIDDEN_CATEGORIES and ch not in "\n\t" for ch in text):
         return None
-    if name == "description":
-        text = "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n"))
-    else:
-        text = " ".join(text.split())
+    text = " ".join(text.split())
     if not text or _CUE_LIKE.search(text) or text != _strip_cue_tags(text):
         return None
     if "<" in text or ">" in text or re.search(r"\]\s*\(", text):
         return None
-    if name == "description":
-        if any(m.group(0) not in original for m in _URL_WHOLE.finditer(text)):
-            return None
     if not _fully_visible_to_the_checker(name, text):
         return None
     return text
 
 
+def _letterlike(ch: str) -> bool:
+    """A character that is, or looks like, a letter or a digit: it has an alphanumeric in its compatibility form
+    (circled, fullwidth, mathematical, superscript, ideograph-in-a-circle), is a number of any kind, or is named
+    for a letter, digit, circle, square, regional indicator, Braille pattern or parenthesis."""
+    if unicodedata.category(ch) in ("No", "Nl", "Nd"):
+        return True
+    if any(c.isalnum() for c in unicodedata.normalize("NFKC", ch)):
+        return True
+    name = unicodedata.name(ch, "")
+    return any(word in name for word in _LETTERLIKE_NAMES)
+
+
 def _only_symbols(residue: str) -> bool:
-    """Nothing left but whitespace, punctuation and symbols (an emoji, a rule of dashes): no word, no number."""
-    return all(ch.isspace() or unicodedata.category(ch)[0] in "PS" for ch in residue)
+    """Nothing left but whitespace, punctuation and symbols that are not letter-like (a currency sign, an emoji
+    pictograph): no word, no number, nothing that spells one."""
+    return all(ch.isspace() or unicodedata.category(ch)[0] == "P"
+               or (unicodedata.category(ch)[0] == "S" and not _letterlike(ch)) for ch in residue)
 
 
 def _fully_visible_to_the_checker(name: str, text: str) -> bool:
     """Every letter and digit of ``text`` is inside a unit the checker is sent (``_raw_units``)."""
-    if name == "description":
-        for line in text.split("\n"):
-            if line.strip() and not _TIMESTAMP_LINE.match(line):
-                units, stripped = _description_line_units(line)
-                if not _only_symbols(_leftover(stripped, units)):
-                    return False
-        return True
     return _only_symbols(_leftover(" ".join(text.split()), _raw_units(name, text)))
 
 
 def _leftover(text: str, units: list) -> str:
-    """What is left of ``text`` after cutting out ``units`` in order; ``"\u0000"`` when a unit is not in it."""
+    """What is left of ``text`` after cutting out ``units`` in order; ``"x"`` when a unit is not in it."""
     rest, pos = [], 0
     for unit in units:
         i = text.find(unit, pos)
@@ -283,17 +287,6 @@ def _leftover(text: str, units: list) -> str:
         pos = i + len(unit)
     rest.append(text[pos:])
     return "".join(rest)
-
-
-def _description_line_units(line: str) -> tuple:
-    """``(units, stripped line)`` of one description line: the line with its links cut out (links are not shown to
-    the checker; ``_canonical`` only lets through links the description already carried), as one unit when it is a
-    hashtag / link-only line, else split into sentences."""
-    stripped = " ".join(_URL_WHOLE.sub(" ", line).split())
-    if not stripped:
-        return [], stripped
-    pieces = [stripped] if _HASHTAG_OR_URL_LINE.match(line) else _split_sentences(stripped)
-    return [p.strip() for p in pieces if p and re.search(r"\w", p)], stripped
 
 
 def _acceptable(name: str, value: str) -> bool:
@@ -405,7 +398,7 @@ def _repair(script, claims, results, indexes, record, topic, language, research_
     for name, value in rewritten.items():
         before = str(getattr(script, name, "") or "")
         # What is set on the script is exactly what the checker is shown: the canonical string, or nothing.
-        canon = _canonical(name, value, before)
+        canon = _canonical(name, value)
         if canon is None:
             record["rewrites"].append({"field": name, "before": _clip(before), "after": _clip(value),
                                        "applied": False, "reason": "not_plain_text"})
@@ -489,19 +482,21 @@ def _repair(script, claims, results, indexes, record, topic, language, research_
     return Repair(record["status"], record)
 
 
+def _punctuation_only(piece: str) -> bool:
+    return all(ch.isspace() or unicodedata.category(ch)[0] == "P" for ch in piece)
+
+
 def _raw_units(name: str, text: str) -> list:
-    """Every piece of ``text`` that ships, skipped or not: the whole text of a title, A/B title or thumbnail
-    text; every sentence of an opening or hook sentence (cues stripped); every sentence of a description's
-    statement lines (chapter marks, hashtag-only and link-only lines carry no statement)."""
+    """Every piece of ``text`` that ships, skipped by the extractor or not: the whole text of a title, A/B title
+    or thumbnail text; every sentence of an opening or hook sentence (cues stripped). A piece is dropped only if
+    it is whitespace and punctuation alone; one with no \\w in it that is anything else (an emoji, a circled or
+    squared or Braille spelling of a word) goes to the checker like any other sentence."""
     text = _strip_cue_tags(text or "")
     if name in ("title", "title_ab", "thumbnail_overlay_text"):
         pieces = [text.strip()]
-    elif name == "description":
-        pieces = [unit for line in text.splitlines() if line.strip() and not _TIMESTAMP_LINE.match(line)
-                  for unit in _description_line_units(line)[0]]
     else:
         pieces = _split_sentences(text)
-    return [p.strip() for p in pieces if p and re.search(r"\w", p)]
+    return [p.strip() for p in pieces if p.strip() and (re.search(r"\w", p) or not _punctuation_only(p))]
 
 
 def _raw_claims(script, fields: dict, new_claims: list, known: dict) -> list:

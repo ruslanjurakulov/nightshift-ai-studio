@@ -226,7 +226,7 @@ contradiction; an outage changes nothing. See `docs/GROUNDED_FACTCHECK.md` (it a
 switch it off: `NIGHTSHIFT_GROUNDED_FACTCHECK=off`; the checker's system prompt has its own switch,
 `NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT`).
 When the early fact-check holds a run only for the wording of its packaging text (title, A/B title,
-alternate opening, hook sentence, description, thumbnail text), `modules/packaging_repair.py` rewrites
+alternate opening, hook sentence, thumbnail text; never the description), `modules/packaging_repair.py` rewrites
 those texts once and has the same checker re-check them; it never edits narration and never changes the gate.
 See `docs/PACKAGING_REPAIR.md` (switch: `NIGHTSHIFT_PACKAGING_REPAIR=off`).
 

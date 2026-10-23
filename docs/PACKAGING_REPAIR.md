@@ -23,8 +23,9 @@ thumbnail text) and two warn (a title and an A/B title the checker cannot judge 
    the rule stays in the generation prompts unconditionally (it only narrows what the model is asked to claim, and
    a prompt that changed with an environment variable would make two runs of one script incomparable).
 2. **One repair pass.** When the early fact-check (the stop before the voice, stills and render) blocks on
-   `fact_check_flagged:N` and on nothing else, and every flagged claim ships in a packaging text, those texts are
-   rewritten once. The rewrite gets the flagged text, the checker's own reasoning, the narration and the research
+   `fact_check_flagged:N` and on nothing else, and every flagged claim ships in a repairable packaging text (the
+   title, the A/B title, the alternate opening, the hook sentence, the thumbnail text), those texts are rewritten
+   once. The rewrite gets the flagged text, the checker's own reasoning, the narration and the research
    notes (all fenced as JSON inside `<data>`, `<` and `>` escaped, as the grounding prompt does). The same
    fact-checker and the same grounding step then run on the rewritten claims, and the same early gate
    (`publish_gate.evaluate_fact_check`) decides on the repaired script.
@@ -33,19 +34,20 @@ thumbnail text) and two warn (a title and an A/B title the checker cannot judge 
      extracted claim is NOT used (its original text and verdict stay; if that claim was blocking the run is held
      as before, status `unchecked_rewrite` when no field is usable); and (b) on top of the extracted claims, the raw
      text of every rewritten field goes to the same checker: the whole text of a title, A/B title or thumbnail
-     text, every sentence of an opening, hook sentence or description statement line that the rewrite introduced.
+     text, every sentence of an opening or hook sentence that the rewrite introduced.
      They enter the gate under the field's source, so an unverifiable opening sentence blocks and an unverifiable
      bare title stays the warning it always was.
    * **What ships is exactly what was checked.** The pipeline normalises text before the checker sees it (cue tags
-     stripped, whitespace collapsed, links cut out of a description, hashtag and chapter lines skipped, sentences
-     with no letter or digit dropped), and nothing strips a cue tag from a title, thumbnail text or description
-     before upload. So a rewrite is used only if it is plain text: any cue tag (`[SFX:..]`, `[MUSIC:..]`,
-     `[PAUSE:..]`, `[VOICE:..]`, however spelled or nested; a repaired opening therefore has no cues), invisible,
-     zero-width, bidi, control and separator characters, `<` and `>` (HTML tags and comments), markdown link
-     syntax, a link the description did not already carry, or a stray combining mark refuses it
-     (`reason: "not_plain_text"`, the original stays). Whitespace runs are collapsed and the collapsed string is
-     what is set on the script and what the checker is sent; hashtag lines are checked as text; chapter lines are
-     the uploader's to strip.
+     stripped, whitespace collapsed, sentences with no letter or digit dropped), and nothing strips a cue tag from
+     a title or a thumbnail text before upload. So a rewrite is used only if it is plain text: any cue tag
+     (`[SFX:..]`, `[MUSIC:..]`, `[PAUSE:..]`, `[VOICE:..]`, however spelled or nested; a repaired opening therefore
+     has no cues), invisible, zero-width, bidi, control and separator characters, `<` and `>` (HTML tags and
+     comments), markdown link syntax or a line break in a one-line field refuses it (`reason: "not_plain_text"`,
+     the original stays). Whitespace runs are collapsed and the collapsed string is what is set on the script and
+     what the checker is sent. A sentence of an opening or hook sentence is dropped from the check only if it is
+     whitespace and punctuation alone; anything else without a letter or digit (an emoji, circled, squared,
+     regional-indicator, Braille or parenthesized "spelling" of a word, a stray combining mark) is sent to the
+     checker like any other sentence, and no letter-like symbol is ever an acceptable leftover.
    * **A re-check that could not be read is not a pass.** If any re-checked result is the checker's unresolved
      sentinel the repair stops (`recheck_unresolved`) and the run is held before the render, as today.
    * Passes: the run goes on with the rewritten texts in the script (they are what the voice, the A/B swap, the
@@ -57,8 +59,16 @@ thumbnail text) and two warn (a title and an A/B title the checker cannot judge 
 
 ## What it never does
 
-* Edit narration, or run when any narration claim is flagged, any other block is present, or the checker could
-  not read a batch.
+* Edit narration or the description, or run when any narration or description claim is flagged, any other block
+  is present, or the checker could not read a batch.
+* Rewrite the description. It is multi-line free text consumed by three different publishers (the YouTube
+  uploader, the social captions, the cross-post source) with three different line-stripping rules (a
+  bullet-prefixed chapter line such as "- 0:00 A secret map was found" is skipped by the extractor and the
+  uploader but kept by the social captions, which read the description from `script.json`), so that what ships is
+  what was checked cannot be guaranteed cheaply. The real flagged items were the opening, the titles and the
+  thumbnail text. **A flagged description, alone or together with titles or openings, means no repair at all:** the
+  run is held exactly as before, with no extra call and no `packaging_repair` key (the repair is "not attempted",
+  like any other hold that is not repairable).
 * Change a verdict: an unchanged text keeps the checker's first verdict; a rewritten text gets the checker's own.
 * Loosen or bypass the gate, or ship a rewritten text the checker did not see.
 * Loop. A person-approved storyboard is never rewritten.
@@ -101,5 +111,6 @@ carries the same record on its row.
 * `thumbnail_prompt_a` / `thumbnail_prompt_b` are image prompts, not claim sources, and are not rewritten.
 * A rewritten opening is checked as the checker sees it (isolated sentences), exactly like the first.
 * `shipped_description_unsupported` is a different, warning-only finding: a number or year in the description
-  that the narration never says. The repair prompt forbids new figures in a rewritten description, and the gate
-  re-checks them, but the warning is not a packaging-claim problem and is left as it was.
+  that the narration never says. The description is not rewritten, and the warning is left as it was.
+* Emoji sequences joined with a zero-width joiner (family and profession emoji) are refused with the other
+  zero-width characters; single pictographs, with or without a variation selector, are accepted.

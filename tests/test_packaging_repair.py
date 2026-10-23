@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import unicodedata
 import sys
 import tempfile
 import unittest
@@ -242,12 +243,13 @@ class PackagingTextsAreClaimsWithTheseSourceNames(unittest.TestCase):
         self.assertTrue(any(s == "hook_ab" for s, _ in got))
         self.assertTrue(any(s == "hook_sentence" for s, _ in got))
         self.assertTrue(any(s == "description" for s, _ in got))
-        self.assertEqual({s for s, _ in got}, set(pr.PACKAGING_SOURCES))
+        self.assertEqual({s for s, _ in got}, set(pr.PACKAGING_SOURCES) | {"description"})
 
     def test_the_repair_covers_every_packaging_source_and_never_narration(self):
         self.assertEqual(pr.PACKAGING_SOURCES, {ce.SOURCE_HOOK_AB, ce.SOURCE_HOOK_SENTENCE, ce.SOURCE_TITLE,
-                                                ce.SOURCE_TITLE_AB, ce.SOURCE_DESCRIPTION, ce.SOURCE_THUMBNAIL})
+                                                ce.SOURCE_TITLE_AB, ce.SOURCE_THUMBNAIL})
         self.assertNotIn(ce.SOURCE_NARRATION, pr.PACKAGING_SOURCES)
+        self.assertNotIn(ce.SOURCE_DESCRIPTION, pr.PACKAGING_SOURCES, "the description is never rewritten")
         self.assertEqual(pr.FIELD_OF_SOURCE[ce.SOURCE_THUMBNAIL], "thumbnail_overlay_text")
 
 
@@ -511,10 +513,10 @@ class ThePass(unittest.TestCase):
         self.assertIn("shipped_text_unsupported", out.record["blocks_after"])
 
     def test_a_rewrite_with_more_new_claims_than_one_batch_is_not_checked_and_holds(self):
-        long_description = " ".join(f"The lighthouse keeper number {i} wrote the log in {1890 + i} alone." for i in range(40))
-        script = make_script(description="FLAGME " + long_description)
+        long_opening = " ".join(f"The lighthouse keeper number {i} wrote the log in {1890 + i} alone." for i in range(40))
+        script = make_script(hook_ab="FLAGME " + long_opening)
         revised = " ".join(f"Revised: keeper number {i} wrote the log in {1890 + i} alone." for i in range(40))
-        probe = Probe(rewrite={"description": revised})
+        probe = Probe(rewrite={"hook_ab": revised})
         claims = ce.extract_shipped_claims(script)
         first = [_make_result(c.text, "unverifiable" if "FLAGME" in c.text else "likely_accurate", "r") for c in claims]
         from modules import publish_gate
@@ -686,22 +688,6 @@ class TheCheckerMustSeeWhatShips(unittest.TestCase):
         self.assertIn(question, probe.checked[0])
         self.assertEqual(out.status, "still_flagged")
 
-    def test_every_sentence_of_a_rewritten_description_is_checked_extracted_or_raw(self):
-        script = roanoke(description="BADFACT ruled the island, historians say.")
-        first = dict(ROANOKE_FIRST)
-        rewrite = {"description": "The island was ruled by a keeper, historians say. Subscribe because BADFACT was "
-                                  "hidden there. Why?\n\n#history #mystery",
-                   "hook_ab": "Historians still disagree about where the colony went, and the map may not help.",
-                   "thumbnail_overlay_text": "STILL UNSOLVED"}
-        probe = Probe(rewrite=rewrite, first=first)
-        _, _, _, _, out = probe.run(script)
-        checked = probe.checked[0]
-        self.assertIn("The island was ruled by a keeper, historians say.", checked)
-        self.assertIn("Subscribe because BADFACT was hidden there.", checked)      # a call to action: raw
-        self.assertIn("Why?", checked)                                              # a question: raw
-        self.assertIn("#history #mystery", checked)                                 # words in hashtags are checked too
-        self.assertEqual(out.status, "still_flagged")
-
     def test_the_text_the_gate_stands_on_includes_what_was_checked_raw(self):
         rewrite = {"hook_ab": "The old vault held the colony log for years. Subscribe because the map is old.",
                    "thumbnail_overlay_text": "STILL UNSOLVED"}
@@ -751,63 +737,45 @@ class WhatShipsIsExactlyWhatWasChecked(unittest.TestCase):
         self.assertEqual(out.fields, {})
         self.assertFalse([t for batch in probe.checked for t in batch if "[MUSIC" in t])
 
-    def test_a_hostile_description_is_not_used(self):
-        script = roanoke(description="BADFACT ruled the island, historians say.")
-        probe, out = self.probe(self.clean(description="Historians still argue about the island. [PAUSE:3 secret map found]"),
-                                script)
-        self.assertEqual(out.status, "still_flagged")
-        self.assertNotIn("description", out.fields)
-
     def test_every_cue_tag_type_and_spelling_is_refused_in_every_field(self):
         tags = ["[SFX: x]", "[SFX:x]", "[MUSIC:story_low]", "[PAUSE:1.5]", "[VOICE:secondary]", "[sfx: x]",
                 "[ Music : x]", "[SFX:[x]]", "[PAUSE", "[VOICE:main] "]
-        for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence", "hook_ab", "description"):
+        for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence", "hook_ab"):
             for tag in tags:
                 with self.subTest(field=name, tag=tag):
                     base = "Why the Roanoke colony still puzzles historians"
-                    self.assertIsNone(pr._canonical(name, f"{base} {tag}", ""))
-                    self.assertIsNone(pr._canonical(name, f"{tag} {base}", ""))
-        self.assertEqual(pr._canonical("title", "Why Roanoke still puzzles historians", ""),
+                    self.assertIsNone(pr._canonical(name, f"{base} {tag}"))
+                    self.assertIsNone(pr._canonical(name, f"{tag} {base}"))
+        self.assertEqual(pr._canonical("title", "Why Roanoke still puzzles historians"),
                          "Why Roanoke still puzzles historians")
 
     def test_a_zero_width_character_inside_a_cue_tag_is_refused(self):
-        for name in ("title", "thumbnail_overlay_text", "hook_ab", "description"):
+        for name in ("title", "thumbnail_overlay_text", "hook_ab"):
             with self.subTest(field=name):
-                self.assertIsNone(pr._canonical(name, "Why Roanoke puzzles [SF​X: secret map found]", ""))
-                self.assertIsNone(pr._canonical(name, "Why Roanoke puzzles​ historians", ""))
+                self.assertIsNone(pr._canonical(name, "Why Roanoke puzzles [SF​X: secret map found]"))
+                self.assertIsNone(pr._canonical(name, "Why Roanoke puzzles​ historians"))
 
     def test_invisible_bidi_control_and_separator_characters_are_refused_everywhere(self):
         hidden = ["​", "‌", "‍", "⁠", "﻿", "­", "᠎", "‮", "‪", "⁦",
                   "⁩", "؜", "‏", "\U000e0041", "\x00", "\x07", "\x1b", "\x0b", "\x85", " ",
                   " ", ""]
-        for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence", "hook_ab", "description"):
+        for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence", "hook_ab"):
             for ch in hidden:
                 with self.subTest(field=name, char=hex(ord(ch))):
-                    self.assertIsNone(pr._canonical(name, f"Why Roanoke still{ch} puzzles historians", ""))
-
-    def test_a_combining_mark_with_no_letter_is_not_a_way_to_hide_a_word(self):
-        self.assertIsNone(pr._canonical("hook_ab", "The map is old. ́́", ""))
+                    self.assertIsNone(pr._canonical(name, f"Why Roanoke still{ch} puzzles historians"))
 
     def test_html_tags_and_comments_are_refused(self):
-        for name in ("title", "thumbnail_overlay_text", "hook_ab", "description"):
+        for name in ("title", "thumbnail_overlay_text", "hook_ab"):
             for text in ("Why Roanoke <!-- secret map found --> puzzles historians", "Why <b>Roanoke</b> puzzles",
                          "Why Roanoke puzzles historians -->"):
                 with self.subTest(field=name, text=text):
-                    self.assertIsNone(pr._canonical(name, text, ""))
+                    self.assertIsNone(pr._canonical(name, text))
 
     def test_markdown_link_text_checked_and_url_unchecked_is_refused(self):
         hostile = "See [the Roanoke map](https://example.com/the-secret-map-was-found-and-solved) for more."
-        self.assertIsNone(pr._canonical("description", hostile, ""))
-        self.assertIsNone(pr._canonical("description", hostile, hostile), "markdown link syntax is refused outright")
-        self.assertIsNone(pr._canonical("hook_ab", "See [the map](the-secret-map-was-found) now", ""))
-
-    def test_a_link_the_description_did_not_carry_is_refused_and_one_it_carried_is_kept(self):
-        original = "Historians argue about Roanoke, source: https://example.org/roanoke-notes\\n\\n#history"
-        original = original.replace("\\n", "\n")
-        kept = "Historians still argue about Roanoke.\nSource: https://example.org/roanoke-notes\n\n#history"
-        self.assertEqual(pr._canonical("description", kept, original), kept)
-        self.assertIsNone(pr._canonical("description", kept.replace("roanoke-notes", "the-secret-map-was-found"), original))
-        self.assertIsNone(pr._canonical("description", kept + "\nhttps://example.com/new", original))
+        self.assertIsNone(pr._canonical("hook_ab", hostile))
+        self.assertIsNone(pr._canonical("hook_ab", "See [the map](the-secret-map-was-found) now"))
+        self.assertIsNone(pr._canonical("title", "Roanoke [the map](x)"))
 
     def test_the_applied_value_is_exactly_the_string_the_checker_was_sent(self):
         probe, out = self.probe({"title": "Why  Roanoke Still   Puzzles\tHistorians ", "title_ab": "Roanoke:　A Map Historians Debate",
@@ -830,22 +798,6 @@ class WhatShipsIsExactlyWhatWasChecked(unittest.TestCase):
                                        "Historians disagree about the colony and the map."]))
         self.assertEqual(" ".join(pr._raw_units("hook_ab", hook)), hook)
 
-    def test_a_symbol_only_line_or_an_emoji_is_not_a_hidden_word(self):
-        desc = "Historians still argue about the island.\n———\nMore soon 🔥\n#history #mystery"
-        self.assertEqual(pr._canonical("description", desc, ""), desc)
-        self.assertEqual(pr._canonical("thumbnail_overlay_text", "STILL OPEN 🔥", ""), "STILL OPEN 🔥")
-
-    def test_a_chapter_line_is_stripped_by_the_uploader_so_it_needs_no_check_but_hashtags_are_checked(self):
-        desc = "Historians still argue.\n00:00 Intro [SFX: x]\n#SecretMapFound"
-        units = [u for line in desc.splitlines() if not pr._TIMESTAMP_LINE.match(line)
-                 for u in pr._description_line_units(line)[0]]
-        self.assertEqual(units, ["Historians still argue.", "#SecretMapFound"])
-
-    def test_a_new_hashtag_with_a_claim_in_it_goes_to_the_checker(self):
-        probe, out = self.probe(self.clean(description="Historians still argue about the island.\n#BADFACTmapfound"),
-                                roanoke(description="BADFACT ruled the island, historians say."))
-        self.assertIn("#BADFACTmapfound", [t for batch in probe.checked for t in batch])
-
     def test_the_raw_unit_of_a_title_a_ab_title_and_thumbnail_is_the_whole_text_not_its_sentences(self):
         """Pins the whole-text branch of ``_raw_units``: a second sentence in a title is one claim with the first."""
         for name in ("title", "title_ab", "thumbnail_overlay_text"):
@@ -856,23 +808,13 @@ class WhatShipsIsExactlyWhatWasChecked(unittest.TestCase):
                 self.assertEqual(pr._raw_units(name, "Map found. Colony solved."), ["Map found.", "Colony solved."])
 
     def test_a_lone_angle_bracket_and_a_line_break_in_a_one_line_field_are_refused(self):
-        for name in ("title", "thumbnail_overlay_text", "hook_ab", "description"):
-            self.assertIsNone(pr._canonical(name, "Why <Roanoke still puzzles historians", ""), name)
-            self.assertIsNone(pr._canonical(name, "Why Roanoke> still puzzles historians", ""), name)
+        for name in ("title", "thumbnail_overlay_text", "hook_ab"):
+            self.assertIsNone(pr._canonical(name, "Why <Roanoke still puzzles historians"), name)
+            self.assertIsNone(pr._canonical(name, "Why Roanoke> still puzzles historians"), name)
         for name in ("title", "title_ab", "thumbnail_overlay_text", "hook_sentence"):
-            self.assertIsNone(pr._canonical(name, "Why Roanoke still\npuzzles historians", ""), name)
-        self.assertEqual(pr._canonical("description", "Why Roanoke still\npuzzles historians", ""),
-                         "Why Roanoke still\npuzzles historians")
-
-    def test_text_outside_every_unit_is_not_hidden_by_the_leftover_helper(self):
-        self.assertEqual(pr._leftover("abc def", ["abc", "def"]), " ")
-        self.assertNotEqual(pr._leftover("abc def", ["abc", "zzz"]).strip(), "", "a unit not in the text is a failure")
-        self.assertFalse(pr._only_symbols("a"))
-        self.assertTrue(pr._only_symbols(" — 🔥 ..."))
-
-    def test_chapter_lines_are_not_units_because_the_uploader_strips_them(self):
-        self.assertEqual(pr._raw_units("description", "Foo bar baz qux.\n00:00 Intro here now.\n- 1:02:03 More"),
-                         ["Foo bar baz qux."])
+            self.assertIsNone(pr._canonical(name, "Why Roanoke still\npuzzles historians"), name)
+        self.assertEqual(pr._canonical("hook_ab", "Why Roanoke still\npuzzles historians"),
+                         "Why Roanoke still puzzles historians", "an opening is read aloud: a line break is a space")
 
     def test_the_prompt_tells_the_model_an_opening_with_a_tag_is_not_used(self):
         prompt = pr.build_prompt("t", "English", "n", "", [{"field": "hook_ab", "current": "c", "flagged": []}])
@@ -882,6 +824,156 @@ class WhatShipsIsExactlyWhatWasChecked(unittest.TestCase):
         script = roanoke(hook_ab="[MUSIC:intro_high] " + ROANOKE["hook_ab"])
         probe, out = self.probe(self.clean(hook_ab="[MUSIC:intro_high] " + self.CLEAN_HOOK), script)
         self.assertNotIn("hook_ab", out.fields)
+
+
+class TheDescriptionIsNeverRewritten(unittest.TestCase):
+    """The description is multi-line free text read by three publishers (the YouTube uploader, the social captions
+    and the cross-post source) with three different line-stripping rules, so that what ships is what was checked
+    cannot be guaranteed cheaply there. A flagged description means no repair at all: the run is held as before.
+    (Round 4: "- 0:00 A secret map was found" is skipped as a chapter line by the extractor and the uploader but
+    not by the social captions, which read the repaired description from script.json.)"""
+
+    HOSTILE = ("Historians still debate what happened to the colonists.\nScholars disagree about the colony.\n"
+               "- 0:00 A secret map was found")
+
+    def test_a_flagged_description_is_not_repairable_and_nothing_is_called(self):
+        script = roanoke(description="BADFACT ruled the island, historians say.")
+        probe = Probe(rewrite={"description": self.HOSTILE, **GOOD}, first=ROANOKE_FIRST)
+        _, _, _, early, out = probe.run(script)
+        self.assertFalse(early.allowed)
+        self.assertIsNone(out)
+        self.assertEqual((probe.generated, probe.checked, probe.grounded, probe.evaluated), ([], [], [], []))
+
+    def test_the_reason_is_a_fixed_word(self):
+        claims = [claim("hook_ab", "A"), claim("description", "D")]
+        rs = results(("A", "unverifiable"), ("D", "likely_inaccurate"))
+        self.assertEqual(pr.flagged_packaging(decision("fact_check_flagged:2"), claims, rs), ([], "description_flagged"))
+        claims = [claim("narration", "N"), claim("description", "D")]
+        rs = results(("N", "unverifiable"), ("D", "unverifiable"))
+        self.assertEqual(pr.flagged_packaging(decision("fact_check_flagged:2"), claims, rs)[1], "narration_flagged")
+
+    def test_a_flagged_description_next_to_flagged_titles_is_no_repair_at_all(self):
+        script = roanoke(description="BADFACT ruled the island, historians say.")
+        probe = Probe(rewrite={"title": "Why Roanoke Still Puzzles Historians", **GOOD}, first=ROANOKE_FIRST)
+        _, _, _, _, out = probe.run(script)
+        self.assertIsNone(out)
+        self.assertEqual(probe.generated, [])
+
+    def test_a_description_the_model_offers_unasked_is_ignored_and_never_applied(self):
+        probe = Probe(rewrite={**GOOD, "description": self.HOSTILE}, first=ROANOKE_FIRST)
+        script, _, _, _, out = probe.run(roanoke(description="A map has been catalogued for a long time."))
+        self.assertTrue(out.passed, out.record)
+        self.assertNotIn("description", out.fields)
+        self.assertNotIn("description", [r["field"] for r in out.record["rewrites"]])
+        self.assertNotIn("0:00", " ".join(t for batch in probe.checked for t in batch))
+
+    def test_the_repair_prompt_never_offers_or_describes_a_description(self):
+        self.assertNotIn("description", pr._FIELD_STYLE)
+        self.assertNotIn("description", pr.FIELD_OF_SOURCE.values())
+        prompt = pr.build_prompt("t", "English", "n", "", [{"field": "title", "current": "c", "flagged": []}])
+        self.assertNotIn("description", prompt.split("with exactly these keys:")[1])
+        self.assertNotIn("description", json.loads(prompt.split("<data>\n")[1].split("\n</data>")[0])["items"][0]["style"])
+
+
+class NothingThatSpellsAWordIsDroppedFromTheCheck(unittest.TestCase):
+    """Round 4: a sentence with no \\w used to be dropped from the units, and every symbol was an acceptable
+    leftover, so "Ⓢⓔⓒⓡⓔⓣ Ⓜⓐⓟ Ⓕⓞⓤⓝⓓ" (category So, no \\w) shipped in an opening without being sent."""
+
+    HONEST = "Historians still disagree about the colony and the map."
+    CIRCLED = "Ⓢⓔⓒⓡⓔⓣ Ⓜⓐⓟ Ⓕⓞⓤⓝⓓ"
+    LOOKALIKES = {
+        "circled": "ⓈⓔⓒⓡⓔⓣⒶ", "negative circled": "🅐🅑", "squared": "🄰🅂🆂", "regional indicators": "🇸🇪🇨🇷🇪🇹",
+        "braille": "⠎⠑⠉⠗⠑⠞", "circled ideograph": "㊙㊗", "parenthesized": "⒮⒠⒞", "enclosed numbers": "①②⑴⒈⓿❶",
+        "mathematical": "𝐒𝐞𝐜𝐫𝐞𝐭𝕊𝔖", "fullwidth": "Ｓｅｃｒｅｔ１", "superscripts": "²³ⁿ¹ᵃ", "subscripts": "₁₂ₐₑ",
+        "roman numerals": "ⅣⅩ", "trademark": "™", "per-mille letters": "℃℉№"}
+
+    def probe(self, hook, recheck=None, field="hook_ab"):
+        probe = Probe(rewrite={field: hook, "thumbnail_overlay_text": "STILL UNSOLVED"} if field == "hook_ab" else
+                      {"hook_ab": self.HONEST, "thumbnail_overlay_text": "STILL UNSOLVED"}, first=ROANOKE_FIRST,
+                      recheck=recheck)
+        return probe, probe.run(roanoke())[4]
+
+    def test_the_reviewers_repro_the_circled_sentence_is_sent_to_the_checker(self):
+        probe, out = self.probe(f"{self.HONEST}\n{self.CIRCLED}")
+        checked = [t for batch in probe.checked for t in batch]
+        self.assertIn(self.CIRCLED, checked)
+        self.assertIn(self.HONEST, checked)
+        self.assertEqual(" ".join(c.text for c in sorted(out.claims, key=lambda c: c.text != self.HONEST)
+                                  if c.source == "hook_ab"), f"{self.HONEST} {self.CIRCLED}")
+
+    def test_and_a_checker_that_reads_it_as_the_word_it_spells_holds_the_run(self):
+        flag = lambda t: _make_result(t, "likely_inaccurate" if "Ⓢ" in t else "likely_accurate", "spells Secret Map Found")  # noqa: E731
+        probe, out = self.probe(f"{self.HONEST}\n{self.CIRCLED}", recheck=flag)
+        self.assertFalse(out.passed, out.record)
+        self.assertEqual(out.status, "still_flagged")
+        self.assertIn(self.CIRCLED, [e["text"] for e in out.record["still_flagged"]])
+
+    def test_the_same_in_a_hook_sentence(self):
+        self.assertIn(self.CIRCLED, pr._raw_units("hook_sentence", f"{self.HONEST} {self.CIRCLED}"))
+
+    def test_every_letter_like_symbol_is_a_unit_for_the_checker_and_never_an_acceptable_leftover(self):
+        for label, chars in self.LOOKALIKES.items():
+            with self.subTest(label):
+                for ch in chars:
+                    self.assertTrue(pr._letterlike(ch), f"{label}: {ch!r} {hex(ord(ch))}")
+                    self.assertFalse(pr._only_symbols(ch), f"{label}: {ch!r}")
+                for field in ("hook_ab", "hook_sentence"):
+                    self.assertIn(chars, pr._raw_units(field, f"{self.HONEST} {chars}"), field)
+
+    def test_ordinary_emoji_and_currency_and_math_symbols_are_not_letter_like(self):
+        for ch in "🔥🗝🗺✅❤⭐🎬$€£¥+=∑∞≈→©":
+            with self.subTest(char=ch):
+                self.assertFalse(pr._letterlike(ch), hex(ord(ch)))
+                self.assertTrue(pr._only_symbols(ch))
+
+    def test_a_plain_emoji_sentence_is_still_accepted_and_is_checked_like_any_other(self):
+        probe, out = self.probe(f"{self.HONEST} 🔥🗝️")
+        self.assertTrue(out.passed, out.record)
+        self.assertIn("🔥🗝️", [t for batch in probe.checked for t in batch])
+        self.assertEqual(out.fields["hook_ab"], f"{self.HONEST} 🔥🗝️")
+
+    def test_a_pictograph_with_a_variation_selector_is_accepted_and_a_joined_sequence_is_refused(self):
+        self.assertEqual(pr._canonical("hook_ab", f"{self.HONEST} 🗝️"), f"{self.HONEST} 🗝️")
+        self.assertEqual(pr._canonical("thumbnail_overlay_text", "STILL OPEN 🗝️"), "STILL OPEN 🗝️")
+        self.assertIsNone(pr._canonical("hook_ab", f"{self.HONEST} 👩\u200d💻"))
+
+    def test_every_number_in_unicode_is_letter_like(self):
+        """Exhaustive: the No / Nl / Nd rule is belt and braces; the compatibility form or the name catches each."""
+        import sys
+        numbers = [chr(cp) for cp in range(sys.maxunicode + 1)
+                   if unicodedata.category(chr(cp)) in ("No", "Nl", "Nd")]
+        self.assertGreater(len(numbers), 1000)
+        self.assertEqual([hex(ord(ch)) for ch in numbers if not pr._letterlike(ch)], [])
+
+    def test_circled_operators_count_as_letter_like_by_name_too(self):
+        """Pins the name rule on its own: ⊕ has no letter in its compatibility form and is not a number."""
+        self.assertTrue(pr._letterlike("\u2295"))
+        self.assertFalse(pr._only_symbols("\u2295"))
+
+    def test_the_guard_refuses_a_text_the_unit_splitter_failed_to_cover(self):
+        """The guard against a future change to the splitter: a word outside every unit refuses the rewrite."""
+        from unittest import mock
+        with mock.patch.object(pr, "_raw_units", lambda name, text: ["abc"]):
+            self.assertFalse(pr._fully_visible_to_the_checker("hook_ab", "abc def"))
+            self.assertIsNone(pr._canonical("hook_ab", "abc def"))
+            self.assertTrue(pr._fully_visible_to_the_checker("hook_ab", "abc — !"))
+
+    def test_punctuation_only_pieces_are_handled_not_sent(self):
+        for junk in ("—", "...", "! ?", "…", "– – –"):
+            with self.subTest(junk=junk):
+                self.assertEqual(pr._raw_units("hook_ab", f"{self.HONEST} {junk}"), [self.HONEST])
+                self.assertEqual(pr._canonical("hook_ab", f"{self.HONEST} {junk}"), f"{self.HONEST} {junk}")
+                self.assertTrue(pr._only_symbols(junk))
+        self.assertEqual(pr._raw_units("title", "—"), [])
+
+    def test_a_stray_combining_mark_is_sent_to_the_checker_not_refused_and_not_dropped(self):
+        self.assertIn("\u0301\u0301", pr._raw_units("hook_ab", f"{self.HONEST} \u0301\u0301"))
+
+    def test_the_leftover_helper_pins_what_counts_as_text_outside_every_unit(self):
+        self.assertEqual(pr._leftover("abc def", ["abc", "def"]), " ")
+        self.assertNotEqual(pr._leftover("abc def", ["abc", "zzz"]).strip(), "", "a unit not in the text is a failure")
+        self.assertFalse(pr._only_symbols("a"))
+        self.assertFalse(pr._only_symbols("1"))
 
 
 class AnUnreadableReCheckIsNotARepair(unittest.TestCase):
@@ -1079,6 +1171,14 @@ class RunNeverShipsTextHiddenInATag(unittest.TestCase):
         self.assertEqual(out["held"][0]["detail"]["packaging_repair"]["status"], "still_flagged")
 
 
+class RunSendsEverySentenceOfTheRewrittenOpening(unittest.TestCase):
+    def test_a_circled_letter_sentence_in_the_opening_reaches_the_checker(self):
+        circled = "Ⓢⓔⓒⓡⓔⓣ Ⓜⓐⓟ Ⓕⓞⓤⓝⓓ"
+        out = drive(packaging_bad, rewrite={**GOOD, "hook_ab": f"{OPENING_GOOD}\n{circled}"})
+        self.assertIn(circled, out["fact_check"][-1])
+        self.assertEqual(out["shipped"]["hook_ab"], f"{OPENING_GOOD} {circled}", "what ships is what was sent")
+
+
 class RunStillHeldWhenTheRewriteIsStillFlagged(unittest.TestCase):
     STILL = {"hook_ab": "FLAGME killed forty thousand people in one other single night.",
              "thumbnail_overlay_text": THUMB_GOOD}
@@ -1176,6 +1276,23 @@ class RunNotRepaired(unittest.TestCase):
         self.assertEqual(out["generation"], [])
         self.assertEqual(len(out["fact_check"]), first_round_calls(out))
         self.assertNotIn("packaging_repair", out["held"][0]["detail"])
+
+    def test_a_flagged_description_is_held_as_before_with_no_repair_and_no_extra_call(self):
+        """Status: not attempted (the same as any other hold that is not repairable): no record, no key, no call."""
+        desc = "BADFACT ruled the island, historians say."
+        for label, patch in (("alone", lambda d: d.__setitem__("description", desc)),
+                             ("with the openings", lambda d: (packaging_bad(d), d.__setitem__("description", desc))),
+                             ("with titles", lambda d: (packaging_bad(d), d.__setitem__("description", desc),
+                                                        d.__setitem__("title", "BADFACT Killed The Whole Crew")))):
+            with self.subTest(label):
+                out = drive(patch)
+                self.assertEqual(out["raised"][0], "HeldBeforeRender", out.get("tb"))
+                self.assertFalse(out["voice_built"])
+                self.assertEqual(out["generation"], [])
+                self.assertEqual(len(out["fact_check"]), first_round_calls(out))
+                self.assertNotIn("packaging_repair", out["held"][0]["detail"])
+                self.assertNotIn("packaging_repair", [e for e in out["events"] if e[0] == "publish.blocked"][0][2])
+                self.assertNotIn("packaging_repair.json", out["files"])
 
     def test_a_clean_run_makes_no_repair_call(self):
         out = drive(lambda d: None)
