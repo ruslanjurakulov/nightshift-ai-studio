@@ -29,6 +29,10 @@ toward "make a human look at this":
      verdict="unverifiable", requires_human_review=True. It never defaults to
      "accurate" just because the model's response couldn't be understood.
 
+The system prompt (FACT_CHECK_SYSTEM_PROMPT) is sent with every request unless
+NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT is off; see ``_request_config``. Sending it changes what the model is
+told, not how its answer is read: the checks above are untouched.
+
 Grounding: this module judges from the model's own recall and never sees evidence. The
 evidence lookup (modules/grounding.py) runs AFTER it, reads these results, and may only
 upgrade an unverifiable claim with a quote verified in code or add a flag; see
@@ -48,12 +52,14 @@ part of this module.
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Optional
 
 from config import GEMINI_MODEL
 from modules.gemini_client import generate_with_retry, make_client
+from modules.structured_output import json_config
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +117,31 @@ to N-1 must appear exactly once, where N is the number of input claims:
 Do not omit any index. Do not add extra indices. Do not merge claims. Do not
 wrap the JSON in markdown code fences.
 """
+
+
+#: The switch for sending FACT_CHECK_SYSTEM_PROMPT (see ``system_prompt_enabled``).
+ENV_SYSTEM_PROMPT = "NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT"
+_OFF_WORDS = frozenset({"0", "false", "no", "off", "disabled", "disable", "none"})
+_ON_WORDS = frozenset({"", "1", "true", "yes", "on", "enabled", "enable"})
+
+
+def system_prompt_enabled(env=None) -> bool:
+    """Is the system prompt sent with each fact-check request? ON unless an explicit off word.
+
+    The deploy writes ``KEY=`` for every variable, so an empty value is the default (ON). An
+    unrecognised value keeps ON and says so without echoing it: the prompt only tells the model the
+    vocabulary and schema it must answer in, and the parser below reads the answer exactly as
+    strictly either way."""
+    raw = str((os.environ if env is None else env).get(ENV_SYSTEM_PROMPT, "") or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
+        raw = raw[1:-1]
+    raw = raw.strip().lower()
+    if raw in _OFF_WORDS:
+        return False
+    if raw not in _ON_WORDS:
+        logger.warning("%s has an unrecognised value - the fact-check system prompt stays ON. To switch it "
+                       "off write one of: %s", ENV_SYSTEM_PROMPT, ", ".join(sorted(_OFF_WORDS)))
+    return True
 
 
 @dataclass
@@ -383,9 +414,9 @@ def _parse_batch_response(text: str, batch_len: int) -> dict[int, dict] | None:
 
 def _log_verdict_shape(by_index: dict, results: list) -> None:
     """Measure, never fix (CLAUDE.md #8): how many verdict words fell outside the three, which words,
-    and which keys the model's items carried. FACT_CHECK_SYSTEM_PROMPT is defined but not sent, so
-    the model has never been told the vocabulary; this line is how the next real run proves or kills
-    the theory that its verdicts are clamped to "unverifiable". Structure only: verdict words are cut
+    and which keys the model's items carried. This line is what showed that FACT_CHECK_SYSTEM_PROMPT was
+    never sent (run 39749438994: booleans and an ``explanation`` key) and is how the first run with the
+    prompt proves or kills that diagnosis. Structure only: verdict words are cut
     and made ASCII (raw_verdict_word), keys are cut, no claim text and no reasoning text."""
     from collections import Counter
 
@@ -404,6 +435,23 @@ def _log_verdict_shape(by_index: dict, results: list) -> None:
         logger.info("Fact-checker batch of %d: %s", len(results), shape)
 
 
+def _request_config():
+    """The config of one fact-check request: JSON mode carrying FACT_CHECK_SYSTEM_PROMPT, or None when
+    the switch is off (the request as it was before the prompt was sent).
+
+    Why this exists: the prompt was defined and never sent, so the model answered in a schema of its own
+    (JSON booleans, an ``explanation`` key) and every claim was clamped (Actions run 39749438994). Sending
+    it changes the request only. The answer is read by exactly the same strict parser, and a boolean or an
+    unknown word is still clamped, so a model that ignores the prompt costs a flag, never a clearance."""
+    if not system_prompt_enabled():
+        return None
+    config = json_config(None, system_instruction=FACT_CHECK_SYSTEM_PROMPT)
+    if config is None:
+        logger.warning("The fact-check system prompt could not be attached (the genai types are not "
+                       "importable); this request goes without it and its verdicts will mostly be clamped")
+    return config
+
+
 def _check_batch(client, batch: list[str], allow_split_retry: bool = True
                   ) -> list[FactCheckResult]:
     """Fact-check one batch of claims, with the split-and-retry fallback.
@@ -416,7 +464,7 @@ def _check_batch(client, batch: list[str], allow_split_retry: bool = True
     raising.
     """
     prompt = _build_prompt(batch)
-    response = generate_with_retry(client, GEMINI_MODEL, prompt)
+    response = generate_with_retry(client, GEMINI_MODEL, prompt, config=_request_config())
     text = getattr(response, "text", "") or ""
 
     by_index = _parse_batch_response(text, len(batch))

@@ -1,0 +1,205 @@
+{
+ "about": "Labelled claims for tools/factcheck_calibration.py. 'true': clearly true. 'false': clearly false, many of them plausible-sounding falsehoods (one detail swapped, or a popular myth). 'obscure': true but little-known, where 'unverifiable' is a good answer; reported, never part of the pass criterion. Written from well-documented history; a human should re-read it before relying on a verdict.",
+ "claims": [
+  {
+   "id": "t01",
+   "label": "true",
+   "claim": "Mary Celeste was found abandoned in the Atlantic Ocean in December 1872."
+  },
+  {
+   "id": "t02",
+   "label": "true",
+   "claim": "The Roanoke colony was founded in 1587, and John White found it deserted when he returned in 1590."
+  },
+  {
+   "id": "t03",
+   "label": "true",
+   "claim": "The word CROATOAN was found carved into a post at the abandoned Roanoke settlement."
+  },
+  {
+   "id": "t04",
+   "label": "true",
+   "claim": "The Rosetta Stone was found in 1799 by French soldiers during Napoleon's campaign in Egypt."
+  },
+  {
+   "id": "t05",
+   "label": "true",
+   "claim": "The Great Fire of London began in September 1666 in a bakery on Pudding Lane."
+  },
+  {
+   "id": "t06",
+   "label": "true",
+   "claim": "The Antikythera mechanism is an ancient Greek device recovered from a shipwreck off the island of Antikythera."
+  },
+  {
+   "id": "t07",
+   "label": "true",
+   "claim": "Pompeii was buried by the eruption of Mount Vesuvius in AD 79."
+  },
+  {
+   "id": "t08",
+   "label": "true",
+   "claim": "Amelia Earhart disappeared in July 1937 while attempting to fly around the world."
+  },
+  {
+   "id": "t09",
+   "label": "true",
+   "claim": "The Voynich manuscript is held in the Beinecke Rare Book and Manuscript Library at Yale University."
+  },
+  {
+   "id": "t10",
+   "label": "true",
+   "claim": "Howard Carter discovered the tomb of Tutankhamun in the Valley of the Kings in 1922."
+  },
+  {
+   "id": "t11",
+   "label": "true",
+   "claim": "The Titanic sank in April 1912 after striking an iceberg on its maiden voyage."
+  },
+  {
+   "id": "t12",
+   "label": "true",
+   "claim": "The Dyatlov Pass incident took place in the Ural Mountains in February 1959."
+  },
+  {
+   "id": "t13",
+   "label": "true",
+   "claim": "The Piri Reis map was drawn in 1513 by the Ottoman admiral Piri Reis."
+  },
+  {
+   "id": "t14",
+   "label": "true",
+   "claim": "Stonehenge stands on Salisbury Plain in Wiltshire, England."
+  },
+  {
+   "id": "t15",
+   "label": "true",
+   "claim": "The Whitechapel murders attributed to Jack the Ripper took place in London in 1888."
+  },
+  {
+   "id": "f01",
+   "label": "false",
+   "claim": "Mary Celeste was found abandoned in the Pacific Ocean in December 1872."
+  },
+  {
+   "id": "f02",
+   "label": "false",
+   "claim": "John White found the Roanoke settlement deserted when he returned in 1595."
+  },
+  {
+   "id": "f03",
+   "label": "false",
+   "claim": "When John White reached Roanoke he found a Maltese cross carved beside the word CROATOAN, the agreed signal of distress."
+  },
+  {
+   "id": "f04",
+   "label": "false",
+   "claim": "The Rosetta Stone was discovered in 1822 by Jean-Francois Champollion."
+  },
+  {
+   "id": "f05",
+   "label": "false",
+   "claim": "The Great Fire of London began in September 1666 in a bakery on Fleet Street."
+  },
+  {
+   "id": "f06",
+   "label": "false",
+   "claim": "The Antikythera mechanism was recovered from a Roman shipwreck off the coast of Sicily."
+  },
+  {
+   "id": "f07",
+   "label": "false",
+   "claim": "Pompeii was destroyed in AD 79 by the eruption of Mount Etna."
+  },
+  {
+   "id": "f08",
+   "label": "false",
+   "claim": "Amelia Earhart disappeared in July 1947 while attempting to fly around the world."
+  },
+  {
+   "id": "f09",
+   "label": "false",
+   "claim": "The codebreaker William Friedman conclusively deciphered the Voynich manuscript in the 1940s."
+  },
+  {
+   "id": "f10",
+   "label": "false",
+   "claim": "Howard Carter discovered the tomb of Tutankhamun in the Valley of the Queens in 1922."
+  },
+  {
+   "id": "f11",
+   "label": "false",
+   "claim": "The Titanic sank in April 1912 on its return voyage from New York to Southampton."
+  },
+  {
+   "id": "f12",
+   "label": "false",
+   "claim": "The Dyatlov Pass incident took place in the Caucasus Mountains in February 1959."
+  },
+  {
+   "id": "f13",
+   "label": "false",
+   "claim": "The Piri Reis map was drawn in 1513 by a Portuguese navigator."
+  },
+  {
+   "id": "f14",
+   "label": "false",
+   "claim": "Emperor Nero played the fiddle while Rome burned in the Great Fire of AD 64."
+  },
+  {
+   "id": "f15",
+   "label": "false",
+   "claim": "The killer behind the Whitechapel murders of 1888 was identified and convicted at trial in 1891."
+  },
+  {
+   "id": "o01",
+   "label": "obscure",
+   "claim": "The Phaistos Disc, a clay disc stamped with undeciphered symbols, was found in 1908 at the Minoan palace of Phaistos on Crete."
+  },
+  {
+   "id": "o02",
+   "label": "obscure",
+   "claim": "Only the second of the three Beale ciphers is claimed to have been decoded."
+  },
+  {
+   "id": "o03",
+   "label": "obscure",
+   "claim": "The dancing plague of 1518 broke out in Strasbourg."
+  },
+  {
+   "id": "o04",
+   "label": "obscure",
+   "claim": "The Oak Island Money Pit is located in Nova Scotia, Canada."
+  },
+  {
+   "id": "o05",
+   "label": "obscure",
+   "claim": "The Zimmermann Telegram of 1917 was intercepted and decoded by British naval intelligence."
+  },
+  {
+   "id": "o06",
+   "label": "obscure",
+   "claim": "The Kensington Runestone was reported found in Minnesota in 1898."
+  },
+  {
+   "id": "o07",
+   "label": "obscure",
+   "claim": "The Tunguska event of 1908 took place over Siberia near the Podkamennaya Tunguska River."
+  },
+  {
+   "id": "o08",
+   "label": "obscure",
+   "claim": "The Codex Gigas, also called the Devil's Bible, is held at the National Library of Sweden in Stockholm."
+  },
+  {
+   "id": "o09",
+   "label": "obscure",
+   "claim": "The Wow! signal was detected in August 1977 by the Big Ear radio telescope of Ohio State University."
+  },
+  {
+   "id": "o10",
+   "label": "obscure",
+   "claim": "The Lead Masks Case of 1966 involved two men found dead on a hill near Niteroi in Brazil."
+  }
+ ]
+}

@@ -652,6 +652,8 @@ jobs:
           CHRONOS_MAX_DAILY_USD: ${{ vars.CHRONOS_MAX_DAILY_USD }}
           # Grounded fact-check (modules/grounding.py): empty = ON, `off` switches the Wikipedia lookup off.
           NIGHTSHIFT_GROUNDED_FACTCHECK: ${{ vars.NIGHTSHIFT_GROUNDED_FACTCHECK }}
+          # Fact-checker system prompt (modules/fact_checker.py): empty = ON, `off` restores the request without it.
+          NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT: ${{ vars.NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT }}
           # Topic selection gate (modules/topic_gate.py); empty = the default.
           CHRONOS_TOPIC_GATE: ${{ vars.CHRONOS_TOPIC_GATE }}
           CHRONOS_TOPIC_QUEUE_STALE_DAYS: ${{ vars.CHRONOS_TOPIC_QUEUE_STALE_DAYS }}

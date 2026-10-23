@@ -28,6 +28,10 @@
 # The premade ElevenLabs voice list (ids, names, styles — public data), read by
 # the Create page and tools/voice_previews.py.
 !command-center/lib/voices.json
+# The labelled claims tools/factcheck_calibration.py measures the fact-checker against: public history, no credentials.
+# Without this line the blanket rule above hides the file and CI fails the calibration tests
+# (tests/test_factcheck_calibration.py checks it is not ignored).
+!tools/factcheck_calibration_claims.json
 # The OpenAPI document's route is a DIRECTORY named openapi.json (Next's URL
 # is the folder name); the blanket rule hid its route.ts. Only that folder.
 !command-center/app/docs/api/openapi.json/
