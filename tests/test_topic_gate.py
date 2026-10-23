@@ -643,7 +643,9 @@ class MedicalClaimsAreNotExemptedByAnEraWord(unittest.TestCase):
     def test_a_health_claim_in_an_era_word_costume_is_held_from_every_source(self):
         for topic in ("Ancient remedy for COVID-19", "Cure for cancer found in ancient herb",
                       "Miracle cure from ancient Egypt", "Vaccines cause autism ancient proof",
-                      "Medieval cure for cancer", "Ancient treatment for depression"):
+                      "Medieval cure for cancer", "Ancient cure for COVID that doctors hide",
+                      "Pharaohs knew the cancer cure", "Roman herb cures diabetes",
+                      "Vaccines were invented by ancient Egyptians and cause autism"):
             for src in self.SOURCES:
                 with self.subTest(topic=topic, source=src):
                     v = gate.evaluate(topic, HISTORY, source=src)
@@ -750,6 +752,118 @@ class LiveCasesAreHeldFromEverySource(unittest.TestCase):
         self.assertFalse(gate.analyze("Madeleine McCann new suspect").person_like)   # still no vouching either way
 
 
+class SecondRound(unittest.TestCase):
+    """From an independent review of the first round: it wrongly held history that
+    only SOUNDED like the gaps. Every regression list is in tests/topic_gate_probe_topics.py."""
+
+    SOURCES = ("ai", TREND, "content_opportunity:queue", "content_opportunity:demand")
+
+    def held(self, topic, profile=HISTORY):
+        return {s: gate.evaluate(topic, profile, source=s) for s in self.SOURCES}
+
+    def assert_passes(self, topics):
+        for topic in topics:
+            for src, v in self.held(topic).items():
+                with self.subTest(topic=topic, source=src):
+                    self.assertNotEqual(v.action, gate.REJECT, (v.reason, v.detail))
+
+    def assert_held(self, topics):
+        for topic in topics:
+            for src, v in self.held(topic).items():
+                with self.subTest(topic=topic, source=src):
+                    self.assertEqual((v.action, v.reason), (gate.REJECT, "needs_human"))
+
+    # -- "today's" -----------------------------------------------------------
+    def test_todays_beside_science_or_records_is_not_a_breaking_story(self):
+        from tests.topic_gate_probe_topics import REVIEW_PASS_TODAY
+        self.assert_passes(REVIEW_PASS_TODAY)
+
+    def test_todays_yesterdays_and_this_mornings_beside_a_disaster_noun_are(self):
+        for topic in ("Today's crash of a Boeing plane", "Yesterday's plane crash near the airport",
+                      "Yesterday a plane crash closed the airport", "This morning's explosion downtown"):
+            with self.subTest(topic=topic):
+                self.assertEqual(gate.evaluate(topic, HISTORY, source="ai").detail, "active_tragedy")
+
+    def test_a_marker_far_from_the_noun_is_not_a_story_as_it_breaks(self):
+        self.assertFalse(gate.analyze("Today's engineers on the Tay Bridge collapse").hard_recent)
+        self.assertTrue(gate.analyze("Today's Boeing plane crash").hard_recent)
+
+    # -- old cases ------------------------------------------------------------
+    def test_the_reviewers_old_cases_pass(self):
+        from tests.topic_gate_probe_topics import REVIEW_PASS_NAMES
+        self.assert_passes(REVIEW_PASS_NAMES)
+
+    def test_a_case_word_that_is_itself_capitalised_is_not_half_a_name(self):
+        self.assertFalse(gate.analyze("Tokyo Trials").live_name)
+        self.assertFalse(gate.analyze("Wounded Shooting").live_name)
+
+    def test_a_regnal_numeral_is_a_sign_of_an_old_case_but_part_ii_is_not(self):
+        self.assert_passes(["King Louis XVI trial", "Richard III trial", "King Charles I trial", "Henry VIII diagnosis"])
+        self.assert_held(["Luigi Mangione trial Part II", "Luigi Mangione trial Season III"])
+
+    def test_the_living_king_and_pope_are_not_old_cases(self):
+        self.assert_held(["King Charles III cancer diagnosis", "Pope Leo XIV health scare"])
+
+    def test_conspiracy_massacre_execution_and_dead_are_not_signs_of_an_old_case(self):
+        """Living defendants have those too."""
+        self.assert_held(["Lori Vallow conspiracy trial", "Payton Gendron massacre trial", "Robert Roberson execution trial",
+                          "Lori Vallow dead husband trial"])
+
+    def test_an_old_case_is_the_same_name_in_full_not_a_bare_first_or_last_name(self):
+        from tests.topic_gate_probe_topics import REVIEW_HOLD_COLLISIONS
+        self.assert_held(REVIEW_HOLD_COLLISIONS)
+        self.assert_passes(["Queen Victoria's engagement to Albert", "Warren Hastings trial", "Oscar Wilde trial",
+                            "The Battle of Hastings suspect", "Ned Kelly trial"])
+        self.assert_held(["Reed Hastings trial", "Kelly Clarkson engagement", "Oscar Isaac engagement"])
+
+    def test_a_word_only_an_old_case_has_passes(self):
+        self.assert_passes(["John Wycliffe posthumous trial", "Gilles Rais heresy trial", "Thomas Muntzer hanged suspect",
+                            "Vlad Tepes gallows trial", "Thomas Fouquet guillotine trial", "Jan Hus martyr trial",
+                            "Charles Brandon regicide trial"])
+
+    def test_a_title_with_a_short_prefix_makes_a_name(self):
+        self.assert_held(["Dr. Harold Shipman trial", "Dr Phil trial", "Mr. Biden health scare", "Sir Keir Starmer trial",
+                          "Lady Gaga engagement"])
+
+    # -- the 1945 / 1946 boundary --------------------------------------------
+    def test_1945_is_old_and_1946_is_not(self):
+        self.assert_passes(["Lori Vallow trial 1945"])
+        self.assert_held(["Lori Vallow trial 1946"])
+
+    # -- medical ----------------------------------------------------------------
+    def test_history_of_medicine_without_a_frame_word_passes(self):
+        from tests.topic_gate_probe_topics import REVIEW_PASS_MEDICAL
+        self.assert_passes(REVIEW_PASS_MEDICAL)
+
+    def test_treatment_remedy_and_cause_are_claims_only_beside_a_modern_only_condition(self):
+        self.assert_held(["Ancient remedy for COVID-19", "Ancient treatment for coronavirus", "Pharaohs and what causes autism",
+                          "Ancient herb caused autism"])
+        self.assert_passes(["Ancient remedy for cancer", "Medieval treatment of diabetes", "What caused cancer in ancient Rome"])
+
+    def test_the_strong_claim_words_still_hold_an_era_anchored_topic(self):
+        self.assert_held(["Pharaohs knew the cancer cure", "Roman herb cures diabetes", "Ancient herb heals cancer", "Ancient herb cures diabetes",
+                          "Ancient herb prevents diabetes", "Ancient spice prevented cancer",
+                          "Medieval cancer cure that actually worked", "Ancient tumour cured by a herb"])
+
+    def test_a_year_up_to_1945_alone_frames_it_as_history(self):
+        self.assert_passes(["Cancer cure sold in 1890 as a miracle", "Ancient herb that cures cancer, 1348"])
+
+    def test_coronavirus_is_a_medical_term_everywhere(self):
+        self.assertEqual(gate.evaluate("Miracle cure for coronavirus", HISTORY, source="ai").detail, "medical")
+        self.assertEqual(gate.evaluate("Coronavirus cure doctors hide", HISTORY, source="ai").detail, "medical")
+
+    def test_a_modern_only_condition_with_a_frame_word_is_still_a_claim(self):
+        self.assert_held(["Vaccines cause autism: a physician's ancient proof",
+                          "Ancient papyrus proves a cure for COVID-19"])
+
+    def test_the_reviewers_bad_set_stays_held(self):
+        from tests.topic_gate_probe_topics import REVIEW_HOLD_BAD
+        self.assert_held(REVIEW_HOLD_BAD)
+
+    def test_a_name_shooting_alone_is_a_live_case(self):
+        self.assert_held(["Charlie Kirk shooting", "Taylor Swift shooting"])
+
+
 class ProbeTablesForTheMedicalAndLiveRules(unittest.TestCase):
     def wrong_holds(self, topics, profile=HISTORY):
         return {t for src in (TREND, "ai", "content_opportunity:demand", "content_opportunity:queue")
@@ -769,6 +883,10 @@ class ProbeTablesForTheMedicalAndLiveRules(unittest.TestCase):
         for src in ("ai", TREND, "content_opportunity:demand", "content_opportunity:queue"):
             missed = [t for t in HELD_MEDICAL_LIVE if gate.evaluate(t, HISTORY, source=src).action != gate.REJECT]
             self.assertEqual(missed, [], src)
+
+    def test_the_old_cases_nobody_listed_are_the_measured_cost_and_must_not_grow(self):
+        from tests.topic_gate_probe_topics import HELD_OUT_OLD_CASES
+        self.assertLessEqual(len(self.wrong_holds(HELD_OUT_OLD_CASES)), 49)   # of 53, measured
 
     def test_the_skipped_by_design_ones_really_are_held_so_the_cost_stays_visible(self):
         from tests.topic_gate_probe_topics import SKIPPED_BY_DESIGN

@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 #: Bump on ANY change to a word list or a threshold below. Logged with every
 #: rejection (and in the event), so "why was this topic rejected on that day"
 #: has an answer after the lists change.
-GATE_VERSION = "2026-10-22.3"
+GATE_VERSION = "2026-10-22.4"
 
 # -- the closed set of reasons --------------------------------------------
 #: The topic is outside the channel's niche (decided by words, or by the model).
@@ -244,14 +244,14 @@ _HARM = (
     "yoqol*", "oldir*", "qotil*", "zoravon*", "halok*", "qurbon*", "ogirla*",
 )
 _MEDICAL = (
-    "cancer", "diabetes", "diabetic", "vaccine*", "vaccination*", "covid*", "alzheimer*", "autism",
+    "cancer", "diabetes", "diabetic", "vaccine*", "vaccination*", "covid*", "coronavirus", "alzheimer*", "autism",
     "depression", "hiv", "tumor*", "tumour*", "heart disease", "blood pressure", "cholesterol",
     "рак", "вакцин*", "диабет*", "ковид*", "saraton", "emlash*",
 )
 _MEDICAL_CLAIM = (
     "cure", "cures", "cured", "heal", "heals", "healed", "reverse", "reverses", "prevent", "prevents",
     "cause", "causes", "causing", "miracle", "detox", "natural remedy", "remedy", "proven", "treat", "treats", "treatment",
-    "side effects", "излечи*", "лечени*", "исцел*", "davolash*", "shifo*", "davola*",
+    "prevented", "caused", "cured by", "side effects", "излечи*", "лечени*", "исцел*", "davolash*", "shifo*", "davola*",
 )
 _DISASTER = (
     "earthquake", "crash", "shooting", "attack", "explosion", "flood", "wildfire", "hurricane", "tsunami",
@@ -261,7 +261,7 @@ _DISASTER = (
 # "Latest research" and "what we know today" are said of Pompeii too, so the soft
 # words (today, latest, ongoing) are NOT recency. These are: a story as it breaks.
 _RECENCY_WORDS = (
-    "breaking", "tonight", "this week", "just in", "live updates", "todays", "this morning", "yesterday",
+    "breaking", "tonight", "this week", "just in", "live updates",
     "death toll", "срочно", "прямо сейчас", "shoshilinch",
 )
 # News-report phrasing: if present, a past-looking anchor does not switch the
@@ -272,11 +272,18 @@ _GOSSIP_CUES = ("visits", "slams", "reacts", "spotted", "responds", "reveals", "
 
 # -- a medical claim that is NOT history-of-medicine ------------------------
 # "Ancient remedy for COVID-19" is anchored in the past by one word and is still a
-# medical claim about today. A modern-only condition beside a claim word is always
-# held; for the rest, a claim word beside a medical term in a topic anchored only by
-# an era word ("Cure for cancer found in ancient herb") is held unless the topic is
-# framed as the history of medicine - a year up to 1945, or one of these.
+# medical claim about today. A modern-only condition beside any claim word is always
+# held. Otherwise, in a topic anchored only by an era word, a medical term beside a
+# STRONG claim word ("cure", "heals", "prevents", "miracle") is held unless the topic
+# is framed as the history of medicine - a year up to 1945, or one of the frame words.
+# "treatment", "remedy" and "cause" are claim words only beside a modern-only
+# condition: "Ancient Egyptian cancer treatment" and "The cause of cancer in ancient
+# Egypt" are history of medicine, "Roman herb cures diabetes" is a claim.
 _MODERN_HEALTH = ("covid*", "coronavirus", "autism", "hiv", "long covid")
+_STRONG_CLAIM = (
+    "cure", "cures", "cured", "cured by", "heal", "heals", "healed", "reverse", "reverses", "prevent", "prevents",
+    "prevented", "miracle", "detox", "natural remedy", "proven", "side effects", "doctors hide", "doctors hid",
+)
 _MED_HISTORY = (
     "history of", "origins of", "origin of", "medical history", "medicine", "myth*", "quack*", "snake oil",
     "debunk*", "papyrus", "papyri", "mummy", "mummies", "mummification", "physician*", "surgeon*", "surgery",
@@ -284,20 +291,43 @@ _MED_HISTORY = (
 )
 
 # -- a current case about a living person ------------------------------------
-# A person-like name pair beside one of these words, with nothing anchoring the topic
+# A topic that OPENS with a name, beside one of these words, with nothing anchoring it
 # in the past, is a live case ("Lori Vallow trial", "Joe Biden health secrets"). The
 # words never say WHO is alive, so this is about the shape: a name and a case word.
 _LIVE_CASE_LEGAL = ("trial", "trials", "suspect*", "sentencing", "testimony", "jury", "bail", "custody", "shooting")
 _LIVE_CASE_PERSONAL = ("diagnos*", "engagement", "engaged", "divorce*", "dating", "pregnan*", "health secrets",
                        "health scare", "health crisis", "health update", "hospitali*", "antisemit*")
-#: Famous old cases and figures, so a name pair beside "trial" or "suspect" in them is
-#: still history ("Lizzie Borden trial", "Jack the Ripper suspect Aaron Kosminski").
+#: Signs, in the topic itself, that a case is old. General, no list of names:
+#: a regnal numeral after a name ("King Louis XVI", "Richard III", "King Charles I"),
+#: or a word that belongs to old cases ("beheaded", "gallows", "posthumous", "heresy").
+#: "conspiracy", "plot", "massacre", "execution" and "dead" are NOT here: living
+#: defendants have those too ("Lori Vallow conspiracy trial", "Uvalde massacre trial").
+_OLD_CASE_WORDS = (
+    "beheaded", "hanged", "gallows", "guillotine*", "posthumous*", "martyr*", "heresy", "regicide", "witch*",
+)
+_REGNAL = re.compile(r"\b[A-Z][a-z]{2,}\s+(?:II|III|IV|VI|VII|VIII|IX|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX)\b"
+                     r"|\b(?:King|Queen|Pope|Emperor|Tsar|Prince)\s+[A-Z][a-z]{2,}\s+I\b")
+_NOT_REGNAL = frozenset(("part", "chapter", "season", "episode", "volume", "act", "book", "level", "phase", "war"))
+#: The two numerals that name someone living; they are not a sign of an old case.
+_LIVE_OFFICE = ("charles iii", "leo xiv")
+#: Famous old cases and figures that carry none of those signs. Each entry is a rare
+#: surname or the SAME name in full - never a bare first or last name that a living
+#: person also has (Victoria, Wilder, Hastings, Kelly, Smith): "Queen Victoria" is
+#: here, "Victoria Beckham trial" is held. Possessives are stripped before matching.
 #: Small on purpose: an old case that is not here is held, not guessed at.
-_HIST_CASES = ("borden*", "lindbergh*", "scopes", "dreyfus", "sacco", "vanzetti", "ripper*", "zodiac*", "dahlia",
-               "galileo*", "capone*", "dillinger*", "wilde*", "tut", "tuts", "boleyn*", "templar*", "hastings",
-               "surratt*", "victoria*")
-#: Titles that make a single capitalised word a name ("King Charles", "Pope Leo").
-_TITLES = frozenset(("king", "queen", "prince", "princess", "pope", "president", "duke", "duchess", "sir", "lady", "lord"))
+_HIST_CASES = (
+    "borden", "lindbergh", "scopes", "dreyfus", "sacco", "vanzetti", "ripper", "zodiac", "dahlia", "galileo",
+    "capone", "dillinger", "boleyn", "templar*", "surratt", "formosus", "boudica", "boadicea", "akhenaten",
+    "hitler", "fawkes", "maybrick", "gogh", "shirtwaist", "typhoid", "tut", "tutankhamun",
+    "queen victoria", "oscar wilde", "warren hastings", "battle of hastings", "marie antoinette",
+    "cadaver synod", "madeleine smith", "ned kelly", "wyatt earp", "wounded knee", "radium girls", "james lind",
+    "thomas more", "catherine howard", "lady jane grey", "walter raleigh", "king john", "thomas becket",
+    "boston massacre", "gunpowder plot", "harem conspiracy", "valentine day massacre",
+    "william rufus", "mary tudor", "queen anne", "charles darwin", "jane austen", "giordano bruno",
+)
+#: Titles that make a single capitalised word a name ("King Charles", "Dr Shipman").
+_TITLES = frozenset(("king", "queen", "prince", "princess", "pope", "president", "duke", "duchess", "sir", "lady",
+                     "lord", "mr", "mrs", "ms", "dr"))
 
 
 # =========================================================================
@@ -427,6 +457,9 @@ _LEX_MED_HISTORY = _Lexicon(_MED_HISTORY)
 _LEX_LIVE_LEGAL = _Lexicon(_LIVE_CASE_LEGAL)
 _LEX_LIVE_PERSONAL = _Lexicon(_LIVE_CASE_PERSONAL)
 _LEX_HIST_CASES = _Lexicon(_HIST_CASES)
+_LEX_STRONG_CLAIM = _Lexicon(_STRONG_CLAIM)
+_LEX_OLD_CASE = _Lexicon(_OLD_CASE_WORDS)
+_LEX_LIVE_OFFICE = _Lexicon(_LIVE_OFFICE)
 _LEX_GOSSIP = _Lexicon(_GOSSIP_CUES)
 _LEX_ERA = _Lexicon(_HIST_ERA)
 _LEX_DISTINCT = _Lexicon(_HIST_DISTINCT)
@@ -459,7 +492,7 @@ class Analysis:
     person_like: bool     # two adjacent Capitalised words that are no known term: a name
     live_name: bool       # the topic OPENS with a name (also "McCann", and a title + name: "King Charles")
     old_year: bool        # a real year up to 1945, whether or not a name is beside it
-    hist_case: bool       # names a famous old case or figure (borden, lindbergh, ripper ...)
+    hist_case: bool       # a sign the case is old: a listed old case, an old-case word, a regnal numeral
     name_run: int         # the longest run of such Capitalised words ("Vijay Deverakonda Rashmika Mandanna" = 4)
     tokens: tuple
     padded: str
@@ -515,15 +548,23 @@ def _words_of(text: str) -> list:
     return [re.sub(r"[\u2019']s$", "", w.strip(".,;:!?()[]\"'|-")) for w in str(text or "").split()]
 
 
+def _is_case_word(word: str) -> bool:
+    w = fold(word)
+    return bool(_LEX_LIVE_LEGAL.hits((w,), f" {w} ") or _LEX_LIVE_PERSONAL.hits((w,), f" {w} "))
+
+
 def _is_name_pair(first: str, second: str, opening: bool = False) -> bool:
     """Are two adjacent words a person's name: both Capitalised, neither a stop word
     nor a term of any family vocabulary? ``opening`` is the live-case rule's reading
     of the pair that OPENS a topic: it also takes "McCann" and a title with a name
     ("King Charles")."""
-    if not (len(first) >= 3 and len(second) >= 3):
+    title = opening and fold(first) in _TITLES
+    if not ((len(first) >= 3 or title) and len(second) >= 3):
         return False
     if fold(second) in _NAME_STOP or fold(first) in _NAME_STOP:
         return False
+    if opening and any(_is_case_word(w) for w in (first, second)):
+        return False        # "Tokyo Trials", "Boston Massacre Shooting": the case word is not a name
 
     def shaped(w):
         if w.isalpha() and w[0].isupper() and w[1:].islower():
@@ -532,7 +573,6 @@ def _is_name_pair(first: str, second: str, opening: bool = False) -> bool:
 
     if not (shaped(first) and shaped(second)):
         return False
-    title = opening and fold(first) in _TITLES
     return not any(_known_term(w) for w in ((second,) if title else (first, second)))
 
 
@@ -580,6 +620,38 @@ def _known_term(word: str) -> bool:
     return False
 
 
+#: "today's", "yesterday's", "this morning's" count as a story as it breaks ONLY when a
+#: disaster noun follows within a few words ("Today's crash of a Boeing plane"). Bare,
+#: they are said of Lisbon 1755 as well ("what today's science says").
+_NOW_MARKERS = frozenset(("todays", "yesterday", "yesterdays"))
+
+
+def _breaking_now(tokens) -> bool:
+    for i, tok in enumerate(tokens):
+        if tok in _NOW_MARKERS or (tok in ("morning", "mornings") and i > 0 and tokens[i - 1] == "this"):
+            for w in tokens[i + 1:i + 4]:
+                if _LEX_DISASTER.hits((w,), f" {w} "):
+                    return True
+    return False
+
+
+def _old_case(text: str) -> bool:
+    """Does the topic carry a sign that its case is old: a listed old case or figure, an
+    old-case word (execution, massacre ...), or a regnal numeral after a name?"""
+    plain = re.sub(r"[\u2019']s\b", "", clean(str(text or "")[:MAX_TOPIC_READ]))
+    folded = fold(plain)
+    tokens = tuple(_WORD_RE.findall(folded))
+    padded = " " + " ".join(tokens) + " "
+    if _LEX_HIST_CASES.hits(tokens, padded) or _LEX_OLD_CASE.hits(tokens, padded):
+        return True
+    for m in _REGNAL.finditer(plain):
+        if m.group(0).split()[0].casefold() in _NOT_REGNAL:
+            continue
+        if not _LEX_LIVE_OFFICE.hits(tokens, padded):
+            return True
+    return False
+
+
 def analyze(topic: str) -> Analysis:
     text = clean(str(topic or "")[:MAX_TOPIC_READ])
     folded = fold(text)
@@ -623,13 +695,13 @@ def analyze(topic: str) -> Analysis:
         year_hist=year_hist,
         late_year=any(y >= 1990 for y in years),
         recent_year=any(y >= now - 2 for y in years),
-        hard_recent=bool(_LEX_RECENCY.hits(tokens, padded)),
+        hard_recent=bool(_LEX_RECENCY.hits(tokens, padded)) or _breaking_now(tokens),
         news=bool(_LEX_NEWS.hits(tokens, padded)),
         gossip=bool(_LEX_GOSSIP.hits(tokens, padded)),
         person_like=person,
         live_name=_opens_with_name(text),
         old_year=any(y <= 1945 for y in years),
-        hist_case=bool(_LEX_HIST_CASES.hits(tokens, padded)),
+        hist_case=_old_case(text),
         name_run=_name_run(text),
         tokens=tokens,
         padded=padded,
@@ -743,15 +815,14 @@ _WAIVED_BY_NICHE = {
 def _anchored_medical_claim(a: Analysis) -> bool:
     """A medical claim inside a topic anchored in the past. Held when a modern-only
     condition (covid, autism, hiv) is beside a claim word, or when a medical term
-    and a claim word (or "miracle cure") appear with no sign that the topic is the
-    HISTORY of medicine: a year up to 1945, "history of", a physician, a papyrus ..."""
+    and a STRONG claim word (or "miracle cure") appear with no sign that the topic is
+    the HISTORY of medicine: a year up to 1945, "history of", a physician, a papyrus ..."""
     tokens, padded = a.tokens, a.padded
-    claim = bool(_LEX_MEDICAL_CLAIM.hits(tokens, padded))
-    if not ((claim and _LEX_MEDICAL.hits(tokens, padded)) or "miracle cure" in padded
-            or (claim and _LEX_MODERN_HEALTH.hits(tokens, padded))):
-        return False
-    if _LEX_MODERN_HEALTH.hits(tokens, padded):
+    if _LEX_MODERN_HEALTH.hits(tokens, padded) and _LEX_MEDICAL_CLAIM.hits(tokens, padded):
         return True
+    strong = bool(_LEX_STRONG_CLAIM.hits(tokens, padded))
+    if not ((strong and _LEX_MEDICAL.hits(tokens, padded)) or "miracle cure" in padded):
+        return False
     return not (a.old_year or _LEX_MED_HISTORY.hits(tokens, padded))
 
 

@@ -134,11 +134,53 @@ PRE_EXISTING_WRONG_HOLDS = [
 ]
 
 SKIPPED_BY_DESIGN = [
-    # a Capitalised name pair beside trial / suspect / diagnosis / health secrets, no year, no listed old case
-    "Alger Hiss trial", "King Richard III scoliosis diagnosis", "Ted Bundy trial", "Frida Kahlo health secrets",
-    "Harold Shipman suspect list",
-    # an era word beside a medical term and a claim word, with no history-of-medicine framing
-    "Ancient treatment for depression", "Medieval cure for cancer",
+    # a name pair beside trial / suspect / diagnosis / health secrets, no year, no old-case sign
+    "Alger Hiss trial", "Ted Bundy trial", "Frida Kahlo health secrets", "Harold Shipman suspect list",
+    # a strong claim word beside a medical term in an era-anchored topic, no history-of-medicine frame
+    "Medieval cure for cancer", "Medieval cancer cure that actually worked",
+]
+
+# Second round (GATE_VERSION 2026-10-22.4), from an independent review of the first.
+# Every one of these was newly held by the first round and must pass.
+REVIEW_PASS_TODAY = [
+    "Lisbon 1755 earthquake: what today's science says",
+    "Today's seismologists on the earthquake that destroyed Lisbon in 1755",
+    "Pompeii: today's volcanologists on the eruption and tsunami",
+    "Today's engineers on the Tay Bridge collapse of 1879",
+    "Halifax explosion 1917: what today's records show",
+    "What today's archaeologists found at the Roman massacre site",
+    "This morning in history: the Hindenburg crash",
+]
+REVIEW_PASS_NAMES = [
+    "Tokyo Trials", "Marie Antoinette trial", "King Louis XVI trial and execution", "King Charles I trial and execution",
+    "Pope Formosus trial", "Cadaver Synod: the trial of a dead pope", "Madeleine Smith trial", "Florence Maybrick trial",
+    "Ned Kelly trial", "Wyatt Earp trial", "Boston Massacre trial", "Boston Massacre shooting", "Wounded Knee shooting",
+    "Typhoid Mary trial", "Radium Girls trial", "Triangle Shirtwaist fire trial", "James Lind scurvy trial",
+    "Harem Conspiracy trial of Ramesses III", "Guy Fawkes trial", "Gunpowder Plot suspect", "Thomas More trial",
+    "Giordano Bruno trial", "Catherine Howard trial", "Lady Jane Grey trial", "Walter Raleigh trial", "King John trial",
+    "Thomas Becket trial", "King Richard III trial", "Queen Boudica's trial", "William Rufus shooting",
+    "Saint Valentine's Day massacre suspect", "Akhenaten Marfan syndrome diagnosis", "King George III porphyria diagnosis",
+    "Mary Tudor false pregnancy", "Queen Anne health and the seventeen pregnancies", "Hitler's Parkinson's diagnosis",
+    "Charles Darwin illness diagnosis", "Van Gogh's shooting", "Jane Austen's diagnosis",
+]
+REVIEW_PASS_MEDICAL = [
+    "Ancient Egyptian cancer treatment", "Ancient Roman diabetes treatment", "Ancient Greek remedy for depression",
+    "Ancient Egyptian remedy for tumors", "Bronze Age cancer treatment", "Medieval treatment of heart disease",
+    "Renaissance cancer treatment", "Ancient diabetes treatment by Sushruta", "Medieval diabetes treatment by Avicenna",
+    "The cause of cancer in ancient Egypt", "Pharaohs and the cause of cancer", "Ancient treatment for depression",
+]
+# Names a living person shares with an old case: the old-case entry is the SAME name in full, so these stay held.
+REVIEW_HOLD_COLLISIONS = [
+    "Victoria Beckham trial", "Deontay Wilder trial", "Gene Wilder trial", "Reed Hastings trial",
+    "Victoria Justice engagement",
+]
+# The reviewer's bad set, plus the live cases: must stay held.
+REVIEW_HOLD_BAD = [
+    "Ancient cure for COVID that doctors hide", "Pharaohs knew the cancer cure", "Roman herb cures diabetes",
+    "Vaccines were invented by ancient Egyptians and cause autism", "Luigi Mangione trial", "Lori Vallow trial",
+    "Joe Biden health secrets", "King Charles cancer diagnosis", "Kate Middleton cancer diagnosis",
+    "King Charles III cancer diagnosis", "Dr. Harold Shipman trial", "Sir Keir Starmer trial", "Charlie Kirk shooting",
+    "Yesterday's plane crash near the airport", "Lori Vallow conspiracy trial",
 ]
 
 LEGIT_MORE = [  # includes PRE_EXISTING_WRONG_HOLDS
@@ -222,4 +264,24 @@ LEGIT_MORE = [  # includes PRE_EXISTING_WRONG_HOLDS
     "Дело Дрейфуса: суд 1894 года", "Суд над Сократом", "Чума в Лондоне 1665 года", "Эпидемия испанки 1918 года",
     "Лекарство от чумы в Средние века", "Расстрел царской семьи: что известно", "Тайна гибели Пушкина", "Суд над Жанной д'Арк",
     "Qadimgi Misr tabobati", "Qora o'lim: 1348 yilgi vabo", "Sokrat sudi", "Ispan grippi 1918 yil", "Jeanna d'Ark sudi 1431 yil",
+]
+
+# Written AFTER the second round's tables were fixed, from nobody's list: legitimate old
+# "<Name> trial / diagnosis / shooting / pregnancy" topics with no year and no era word, to
+# measure what the tables do NOT cover. Many are held (a name beside a case word, nothing
+# to say it is old). The test pins the count so it cannot grow unseen; it is the measured
+# cost of a rule that cannot tell a dead name from a live one by words.
+HELD_OUT_OLD_CASES = [
+    "Anne Hutchinson trial", "Nathan Hale trial", "Aaron Burr trial", "John Brown trial", "Nat Turner trial",
+    "Dred Scott trial", "Susan B. Anthony trial", "Emile Zola trial", "Jacques de Molay trial", "Gilles de Rais trial",
+    "William Wallace trial", "Anne Askew trial", "Thomas Cromwell trial", "Mata Hari trial", "Roger Casement trial",
+    "Edith Cavell trial", "Eugene Debs trial", "Emma Goldman trial", "Leopold Loeb trial", "Harry Thaw trial",
+    "Roscoe Arbuckle trial", "Leo Frank trial", "Bruno Hauptmann trial", "Sophie Scholl trial", "Anne Frank diagnosis",
+    "Abraham Lincoln Marfan diagnosis", "Isaac Newton mercury poisoning diagnosis", "Nikola Tesla OCD diagnosis",
+    "Ludwig Beethoven deafness diagnosis", "Wolfgang Mozart kidney diagnosis", "Friedrich Nietzsche madness diagnosis",
+    "Elizabeth Woodville pregnancy", "Catherine Parr pregnancy", "Anne Neville pregnancy", "Jane Seymour pregnancy",
+    "Abraham Lincoln shooting", "James Garfield shooting", "Alexander Hamilton shooting", "Andrew Jackson shooting",
+    "William McKinley shooting", "Jesse James shooting", "Billy Kid shooting", "Doc Holliday shooting",
+    "Harry Houdini trial", "Marcus Garvey trial", "Joe Hill trial", "Tom Mooney trial", "Mary Surratt suspect",
+    "Lee Oswald suspect", "Sirhan Sirhan trial", "Jack Ruby trial", "James Earl Ray suspect", "Charles Manson trial",
 ]
