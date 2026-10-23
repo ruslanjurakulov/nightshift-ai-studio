@@ -383,6 +383,7 @@ jobs:
           WORKERENV_CHRONOS_TOPIC_GATE: ${{ vars.CHRONOS_TOPIC_GATE }}
           WORKERENV_CHRONOS_TOPIC_QUEUE_STALE_DAYS: ${{ vars.CHRONOS_TOPIC_QUEUE_STALE_DAYS }}
           WORKERENV_CHRONOS_TOPIC_GATE_MODEL_CALLS: ${{ vars.CHRONOS_TOPIC_GATE_MODEL_CALLS }}
+          WORKERENV_CHRONOS_HELD_TOPIC_COOLDOWN_DAYS: ${{ vars.CHRONOS_HELD_TOPIC_COOLDOWN_DAYS }}
         run: python3 deploy/build-worker-env.py "$PAYLOAD"
 
       # The customer Telegram sender (docs/NOTIFY_TELEGRAM_SETUP.md), only while

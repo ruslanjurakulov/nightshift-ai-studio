@@ -252,6 +252,13 @@ GEMINI_STRUCTURED_OUTPUT = os.getenv("CHRONOS_GEMINI_STRUCTURED_OUTPUT", "").str
 TOPIC_GATE_ENABLED = os.getenv("CHRONOS_TOPIC_GATE", "").strip().lower() not in ("off", "0", "false", "no")
 TOPIC_QUEUE_STALE_DAYS = _count_env("CHRONOS_TOPIC_QUEUE_STALE_DAYS", 14, hi=3650)
 TOPIC_GATE_MODEL_CALLS = _count_env("CHRONOS_TOPIC_GATE_MODEL_CALLS", 2, hi=10)
+# A run held before the render (the fact-check would block the gate) is never registered as a used topic, so the
+# picker proposed the same topic again and again. For this many days the channel's held-before-render topics count as
+# used when the system picks one (the AI's prompt lists them; a repeat or near-duplicate is skipped). They are not
+# published, are in no analytics, and an explicit --topic is never affected.
+#   CHRONOS_HELD_TOPIC_COOLDOWN_DAYS  default 14; 0 = off (no held-topic memory); more than 90 is capped at 90;
+#                                     text that is not a whole number >= 0 falls back to 14
+HELD_TOPIC_COOLDOWN_DAYS = _count_env("CHRONOS_HELD_TOPIC_COOLDOWN_DAYS", 14, hi=90)
 SCRIPT_LANGUAGE = os.getenv("SCRIPT_LANGUAGE", "English")
 VIDEO_DURATION_TARGET = int(os.getenv("VIDEO_DURATION_TARGET", "300"))  # seconds
 

@@ -92,3 +92,42 @@ def recent_topics(sync, channel_id: str, *, days: int, limit: int, now=None):
     newest = sorted(best.values(), key=lambda x: x[0])[-limit:]
     return [{"topic": t, "date": w.isoformat(), "video_id": v if isinstance(v, str) and v else None}
             for w, t, v in newest]
+
+
+#: ``hold_detail.stage`` main.py writes for a run the fact-check stopped before the voice and the render.
+BEFORE_RENDER = "before_render"
+
+
+def held_before_render_topics(sync, channel_id: str, *, days: int, now=None):
+    """This channel's topics of runs held before the render in the last ``days`` days, oldest first, distinct.
+
+    A run held there never reaches ``register_topic``, so its topic is in no history file and the picker would
+    propose it again. Its ``videos`` row (state ``blocked``, ``held_at``, ``hold_detail.stage``) already says so; this
+    only reads it. A row that has since been uploaded (``published_at`` set) is a published video, not a held one,
+    and is left to the published history. ``[]`` means none; ``None`` means Supabase is not configured or could not
+    be read (a database without migration 0016 reads this way too), which is not the same thing. Never raises."""
+    if days <= 0 or sync is None or not getattr(sync, "enabled", False):
+        return None
+    now = now or datetime.now(timezone.utc)
+    start = now - timedelta(days=days)
+    try:
+        raw = sync.select_strict("videos", {
+            "channel_id": f"eq.{channel_id}", "select": "video_id,topic,published_at,held_at,hold_detail",
+            "held_at": f"gte.{start.strftime('%Y-%m-%dT%H:%M:%SZ')}", "order": "held_at.desc", "limit": _ROW_LIMIT})
+    except Exception:  # noqa: BLE001 - the caller carries on without the cooldown
+        return None
+    best: dict = {}
+    for row in raw:
+        if not isinstance(row, dict) or row.get("published_at"):
+            continue
+        detail = row.get("hold_detail")
+        if not isinstance(detail, dict) or detail.get("stage") != BEFORE_RENDER:
+            continue
+        topic = _clean(row.get("topic"))
+        when = _when(row.get("held_at"))
+        if not topic or when is None or when < start:
+            continue
+        key = topic.casefold()
+        if key not in best or when > best[key][0]:
+            best[key] = (when, topic)
+    return [t for _, t in sorted(best.values(), key=lambda x: x[0])]

@@ -16,8 +16,8 @@ except ImportError:  # pragma: no cover
     fcntl = None
 
 from config import (
-    GEMINI_MODEL, SCRIPT_LANGUAGE, TOPIC_GATE_ENABLED, TOPIC_GATE_MODEL_CALLS, TOPIC_HISTORY_FILE,
-    TOPIC_QUEUE_STALE_DAYS, VIDEO_DURATION_TARGET,
+    GEMINI_MODEL, HELD_TOPIC_COOLDOWN_DAYS, SCRIPT_LANGUAGE, TOPIC_GATE_ENABLED, TOPIC_GATE_MODEL_CALLS,
+    TOPIC_HISTORY_FILE, TOPIC_QUEUE_STALE_DAYS, VIDEO_DURATION_TARGET,
 )
 from modules import topic_dedup, topic_gate, topic_seed
 from modules.channels import DEFAULT_CHANNEL_ID
@@ -143,6 +143,10 @@ class TopicManager:
         # marking it "published" the instant it was picked. See
         # _try_queued_topic and mark_queue_entry_* below.
         self._reserved_entry = None
+        # Topics of this channel's runs held before the render, still cooling down (load_held_topics). Empty until
+        # a caller loads them, so every other user of this class sees exactly the history it always did.
+        self._held: list[str] = []
+        self._held_engine = None
         self.history = self._load()
         self.client = make_client()
         # One vector store per channel: a topic made for channel A must not
@@ -484,9 +488,74 @@ class TopicManager:
                            "check stays empty; the word-level check still applies", self._history_channel,
                            type(e).__name__)
 
+    def load_held_topics(self, sync=None) -> int:
+        """Remember this channel's topics of runs held BEFORE the render, for ``HELD_TOPIC_COOLDOWN_DAYS`` days.
+        Returns how many. Call it only when the system is about to pick a topic: ``--topic`` is an instruction and
+        never needs it.
+
+        Why: such a run stops at the fact-check, before ``register_topic``, so its topic is in no history file and
+        the picker (a Gemini call each time) proposed it again - twice in a row for the same Roanoke topic. The
+        held run already has a ``videos`` row (``held_at``, ``hold_detail.stage``); this reads it, READ ONLY
+        (modules/topic_seed.py), and nothing is registered as used or published. The topics are then skipped by the
+        same repeat and similarity checks as any used topic and listed in the AI's "already used" block, for this
+        channel only. 0 days = off. Fails safe: Supabase unconfigured or unreadable means no cooldown this run (a
+        warning, counts only), never a stopped run. Topics are untrusted data and are not logged."""
+        self._held, self._held_engine = [], None
+        days = HELD_TOPIC_COOLDOWN_DAYS
+        if days <= 0:
+            return 0
+        try:
+            if sync is None:
+                from modules.supabase_sync import SupabaseSync
+
+                sync = SupabaseSync()
+            topics = topic_seed.held_before_render_topics(sync, self._history_channel, days=days)
+        except Exception:  # noqa: BLE001 - a memory is a safety net, never a reason to stop the run
+            topics = None
+        if topics is None:
+            if getattr(sync, "enabled", False):
+                logger.warning("[channel: %s] Topics held before render could not be read from Supabase - they are "
+                               "not skipped this run", self._history_channel)
+            return 0
+        self._held = topics
+        if topics:
+            logger.info("[channel: %s] %d topic(s) held before render in the last %d days will not be proposed "
+                        "again yet (CHRONOS_HELD_TOPIC_COOLDOWN_DAYS)", self._history_channel, len(topics), days)
+        return len(topics)
+
     def find_repeat(self, topic: str) -> str | None:
-        """The channel's own recent topic that ``topic`` repeats, or None."""
-        return topic_dedup.find_repeat(topic, self.own_topics())
+        """The channel's own recent topic (or a topic it holds before render) that ``topic`` repeats, or None."""
+        return topic_dedup.find_repeat(topic, self.own_topics() + self._held)
+
+    def _is_held_only(self, match: str | None) -> bool:
+        """Is ``match`` a topic that is only held before render, not one the channel made? Such a match is a
+        cooldown, not a verdict about the topic: a queued entry is left queued rather than written off."""
+        return bool(match) and match in self._held and match not in self.own_topics()
+
+    def _held_originality(self, candidate: str):
+        """The existing originality check (semantic and lexical), against the held topics only. They are never
+        registered in the channel's vector store: that store is permanent, a cooldown is not. None when there
+        are none, or the check could not run (the word rule over them still applies)."""
+        if not self._held or self._held_engine is False:
+            return None
+        try:
+            if self._held_engine is None:
+                threshold = getattr(self.originality, "hard_block_threshold", None)
+                flag = getattr(self.originality, "flag_threshold", None)
+                embedder = getattr(self.originality, "embedder", None)
+                kwargs = {"embedder": embedder} if callable(embedder) else {}
+                if isinstance(threshold, float) and isinstance(flag, float):
+                    kwargs.update(hard_block_threshold=threshold, flag_threshold=flag)
+                with tempfile.TemporaryDirectory() as scratch:  # rebuild() saves once; the engine then lives in memory
+                    engine = OriginalityEngine(vectors_path=Path(scratch) / "held.npz", tolerate_corrupt=True, **kwargs)
+                    engine.rebuild(self._held)
+                self._held_engine = engine
+            return self._held_engine.check(candidate)
+        except Exception as e:  # noqa: BLE001
+            self._held_engine = False
+            logger.warning("[channel: %s] Similarity check against held topics failed (%s) - only the word rule "
+                           "applies to them", self._history_channel, type(e).__name__)
+            return None
 
     def _safe_originality_check(self, candidate: str):
         """OriginalityEngine's default embedder downloads model2vec weights from
@@ -495,13 +564,18 @@ class TopicManager:
         failure, meaning "skip the check for this topic" rather than blocking.
         """
         try:
-            return self.originality.check(candidate)
+            result = self.originality.check(candidate)
         except Exception as e:
             logger.warning(
                 "OriginalityEngine.check failed (%s: %s) — skipping originality check for '%s'",
                 type(e).__name__, e, candidate,
             )
-            return None
+            result = None
+        held = self._held_originality(candidate)
+        if held is not None and (result is None or max(held.semantic_score, held.lexical_score)
+                                 > max(result.semantic_score, result.lexical_score)):
+            return held
+        return result
 
     def _is_hard_duplicate(self, candidate: str, result) -> bool:
         """Does the originality result block ``candidate``? Same as
@@ -579,6 +653,7 @@ class TopicManager:
 
     def _build_prompt(self, niche: str, rejected=()) -> str:
         used = self.own_topics()
+        used = used + [t for t in self._held if t not in used]
         used_block = "\n".join(f"- {_quote(t, 200)}" for t in used) if used else "None yet."
         prompt = (
             "You choose the next video topic for one YouTube channel.\n\n"
@@ -815,6 +890,11 @@ class TopicManager:
                 return None
 
             repeat = self.find_repeat(entry.topic)
+            if repeat is not None and self._is_held_only(repeat):
+                logger.info("Queued topic (entry %s) matches a topic held before render - leaving it queued until "
+                            "the cooldown ends", entry.entry_id)
+                passed_over.add(entry.entry_id)
+                continue
             if repeat is not None:
                 logger.warning(
                     "Queued topic '%s' (entry %s) repeats this channel's own '%s' — skipping it",
@@ -825,6 +905,11 @@ class TopicManager:
                 continue
 
             result = self._safe_originality_check(entry.topic)
+            if self._is_hard_duplicate(entry.topic, result) and self._is_held_only(result.closest_match):
+                logger.info("Queued topic (entry %s) is close to a topic held before render - leaving it queued "
+                            "until the cooldown ends", entry.entry_id)
+                passed_over.add(entry.entry_id)
+                continue
             if self._is_hard_duplicate(entry.topic, result):
                 logger.warning(
                     "Queued topic '%s' (entry %s) hard-blocked as duplicate of '%s' — skipping it",

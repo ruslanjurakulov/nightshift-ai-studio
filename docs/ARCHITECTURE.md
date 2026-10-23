@@ -185,6 +185,16 @@ consumer side of the feedback loop:
     Entries older than `CHRONOS_TOPIC_QUEUE_STALE_DAYS` (default 14; 0 = no age
     rule), or with an unreadable age, are re-validated at use time, never bulk
     deleted. `CHRONOS_TOPIC_GATE=off` is a logged rollback switch.
+- *Held topics.* A run the fact-check stops before the render never calls
+  `register_topic()`, so its topic was in no history file and the picker could
+  propose it again (two Roanoke runs in a row). `TopicManager.load_held_topics()`
+  (called by `main.py` only when the system picks) reads the channel's own
+  `videos` rows with `hold_detail.stage = before_render`, not uploaded, held in
+  the last `CHRONOS_HELD_TOPIC_COOLDOWN_DAYS` days (default 14; 0 = off; capped
+  at 90). Those topics are listed as "already used" in the AI prompt and skipped
+  by the same repeat and similarity checks; a queued entry that matches one stays
+  queued. Read only, per channel, never registered as used or published, and an
+  explicit `--topic` is never held back.
 - Otherwise `_generate_topic()` asks Gemini for a fresh topic, appending — as
   *optional inspiration, never a directive* — `TopicRecommender`'s trend/demand
   suggestions and `PerformanceAnalyzer`'s past-performance context (see §7).

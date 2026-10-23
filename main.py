@@ -936,6 +936,10 @@ def run(
     # history/ is only an Actions cache: after a long pause or a lost cache the channel has no memory of what it
     # made. Rebuild it (read only) from the channel's own videos in Supabase before any topic is chosen or checked.
     topic_mgr.seed_history_from_supabase()
+    # A run held before the render never registers its topic, so the picker would offer it again. Only when the
+    # system picks: an explicit --topic (a dispatch's `topic` input, a resume, a script file) is never held back.
+    if topic is None and not script_file:
+        topic_mgr.load_held_topics()
 
     if script_file:
         script = ScriptEngine.load(Path(script_file), topic)
