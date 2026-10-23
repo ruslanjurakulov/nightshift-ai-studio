@@ -13,6 +13,7 @@ maker are fakes, and ``requests.Session`` is patched to explode wherever a real 
 could have been built.
 """
 
+import errno
 import json
 import os
 import tempfile
@@ -1037,6 +1038,306 @@ class NarrationChoice(unittest.TestCase):
     def test_main_uses_that_choice(self):
         text = (Path(__file__).resolve().parent.parent / "main.py").read_text()
         self.assertIn("narration_path=presenter_narration(OUTPUT_DIR / slug, audio_path),", text)
+
+
+class UrlParsersMustAgree(Case):
+    """R1: a URL the allow-list reads one way and the HTTP library another is how bytes leave."""
+
+    SMUGGLED = [
+        "https://evil.com\\.fal.media/a",
+        "https://evil.com%5c.fal.media/a",
+        "https://evil.com%5C.fal.media/a",
+        "https://a.fal.media\\@evil.com/x",
+        "https://a.fal.media\t.evil.com/x",
+        "https://a.fal.media\n.evil.com/x",
+        "https://a.fal.media /x",
+        "https://a.fal.media/x y",
+        "https://a.fal.media/x\x00",
+        "https://a.fal.media/\u00e9",
+        "https://\u00e9vil.fal.media/x",
+        "https://a..fal.media/x",
+        "https://-a.fal.media/x",
+        "https://a.fal.media./x",
+        "https://.fal.media/x",
+    ]
+
+    def test_every_smuggled_form_is_refused(self):
+        for url in self.SMUGGLED:
+            for key_host in (False, True):
+                with self.assertRaises(AvatarUnavailable, msg=repr(url)):
+                    avatar_fal.checked_url(url, "x", key_host=key_host)
+
+    def test_a_backslash_anywhere_in_the_url_is_refused(self):
+        for url in ("https://v3.fal.media/files\\x.mp4", "https://v3.fal.media/x?a=\\b", "https://v3.fal.media/#\\"):
+            with self.assertRaises(AvatarUnavailable, msg=url):
+                avatar_fal.checked_url(url, "x")
+
+    def test_mixed_case_hosts_are_judged_by_their_lowercase_form(self):
+        avatar_fal.checked_url("https://V3.FAL.Media/files/x.mp4", "x")
+        avatar_fal.checked_url("https://Queue.FAL.run/x", "x", key_host=True)
+        with self.assertRaises(AvatarUnavailable):
+            avatar_fal.checked_url("https://EVIL.Example/x", "x")
+        with self.assertRaises(AvatarUnavailable):
+            avatar_fal.checked_url("https://Queue.FAL.run.EVIL.com/x", "x", key_host=True)
+
+    def test_the_earlier_host_cases_still_hold(self):
+        for url in ("https://queue.fal.run/a", "https://v3.fal.media/files/x.mp4", "https://v3b.fal.media/f",
+                    "https://rest.fal.ai/s", "https://fal.media/f"):
+            avatar_fal.checked_url(url, "x")
+        for url in ("http://queue.fal.run/a", "https://queue.fal.run.evil.com/a", "https://evilfal.media/a",
+                    "https://fal.media.evil.com/a", "https://user:pw@queue.fal.run/a",
+                    "https://queue.fal.run:8443/a", "ftp://queue.fal.run/a", "//queue.fal.run/a", "", None, 5,
+                    "https://storage.googleapis.com/x"):
+            with self.assertRaises(AvatarUnavailable, msg=repr(url)):
+                avatar_fal.checked_url(url, "x")
+
+    def test_a_host_the_http_library_would_read_differently_is_refused_even_if_it_looks_fine(self):
+        with mock.patch.object(avatar_fal, "_urllib3_host", return_value="evil.example"):
+            with self.assertRaises(AvatarUnavailable):
+                avatar_fal.checked_url("https://v3.fal.media/x", "x")
+        with mock.patch.object(avatar_fal, "_urllib3_host", return_value=None):
+            with self.assertRaises(AvatarUnavailable):
+                avatar_fal.checked_url("https://v3.fal.media/x", "x")
+
+    def test_the_two_parsers_really_do_agree_on_a_good_url(self):
+        self.assertEqual(avatar_fal._urllib3_host("https://V3.FAL.media/x"), "v3.fal.media")
+
+    def test_a_smuggled_upload_address_never_receives_the_bytes(self):
+        original = self.fal.post
+
+        def post(url, **kw):
+            if "storage/upload" in url:
+                self.fal.calls.append(("post", url, kw))
+                return Resp(200, {"upload_url": "https://evil.com\\.fal.media/put", "file_url": f"{CDN}/x"})
+            return original(url, **kw)
+
+        self.fal.post = post
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(self.fal.urls("put"), [])
+
+    def test_a_smuggled_video_address_is_never_fetched(self):
+        self.fal.result_override = Resp(200, {"video": {"url": "https://evil.com\\.fal.media/v.mp4"}})
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertFalse([u for u in self.fal.urls("get") if "evil" in u])
+
+
+class TheDiskCanFillUp(Case):
+    """R2: a sidecar that cannot be written must stop the run before money moves, or be paid for loudly."""
+
+    def failing_save(self, when):
+        real = avatar_fal._save_state
+
+        def save(path, state):
+            if when(path, state):
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return real(path, state)
+
+        return mock.patch.object(avatar_fal, "_save_state", side_effect=save)
+
+    def test_a_full_disk_before_the_submit_stops_the_run_before_any_upload_or_request(self):
+        with self.failing_save(lambda path, state: path.name == "presenter_intro.mp4"):
+            with self.assertRaises(AvatarUnavailable) as caught:
+                self.run_it()
+        self.assertIn("No space left", str(caught.exception))
+        self.assertEqual(self.fal.calls, [])
+        self.assertEqual(self.spent[-1][0], "image_generations")  # only the portrait, bought earlier
+
+    def test_a_full_disk_after_the_submit_is_ledgered_as_unconfirmed_cancelled_and_not_a_raw_oserror(self):
+        with self.failing_save(lambda path, state: "request" in state):
+            with self.assertRaises(AvatarUnavailable) as caught:
+                self.run_it()
+        self.assertIn("could not be saved", str(caught.exception))
+        self.assertIn("MAY STILL BE BILLED", str(caught.exception))
+        self.assertEqual([x for x in self.spent if x[0] == AVATAR_SECONDS],
+                         [(AVATAR_SECONDS, 15.0, "avatar:fal:unconfirmed", 0.9)])
+        self.assertIn("https://queue.fal.run/x/requests/req-1/cancel", self.fal.urls("put"))
+        self.assertEqual(self.fal.submits, 1)
+        self.assertNotIn(KEY, str(caught.exception))
+
+    def test_a_failed_save_of_the_ledgered_note_is_an_avatar_error_with_the_spend_recorded(self):
+        with self.failing_save(lambda path, state: state.get("ledgered") is True):
+            with self.assertRaises(AvatarUnavailable):
+                self.run_it()
+        self.assertEqual([x[3] for x in self.spent if x[0] == AVATAR_SECONDS and x[2] == "avatar:fal"], [0.9])
+
+    def test_a_failed_save_of_the_finished_note_is_an_avatar_error(self):
+        with self.failing_save(lambda path, state: path.name == "presenter_intro.mp4" and state.get("done") is True):
+            with self.assertRaises(AvatarUnavailable):
+                self.run_it()
+        self.assertEqual(self.fal.submits, 1, "the failure must come at the very end, after the work")
+        self.assertTrue((self.dir / "presenter_intro.mp4").exists())
+
+    def test_a_note_that_cannot_be_updated_while_dropping_a_dead_request_does_not_hide_the_real_error(self):
+        self.fal.result_override = Resp(422, {"detail": "bad"})
+        forgetting = lambda path, state: (path.name == "presenter_intro.mp4" and state.get("ledgered") is False
+                                          and "request" not in state)
+        with self.failing_save(forgetting):
+            with self.assertRaises(AvatarUnavailable) as caught:
+                self.run_it()
+        self.assertIn("422", str(caught.exception))
+
+    def test_a_full_disk_for_the_portrait_note_is_an_avatar_error(self):
+        with self.failing_save(lambda path, state: path.name == "presenter_portrait.png"):
+            with self.assertRaises(AvatarUnavailable):
+                self.run_it()
+        self.assertEqual(self.fal.submits, 0)
+
+    def test_a_read_only_output_folder_stops_before_the_portrait_is_bought(self):
+        with mock.patch("pathlib.Path.write_bytes", side_effect=OSError(errno.EROFS, "Read-only file system")):
+            with self.assertRaises(AvatarUnavailable) as caught:
+                self.run_it()
+        self.assertIn("Read-only", str(caught.exception))
+        self.assertIn("nothing was sent or spent", str(caught.exception))
+        self.assertNothingSent()
+
+    @unittest.skipIf(not hasattr(os, "geteuid") or os.geteuid() == 0, "root ignores directory permissions")
+    def test_a_really_read_only_folder_stops_before_anything_is_bought(self):
+        os.chmod(self.dir, 0o555)
+        self.addCleanup(os.chmod, self.dir, 0o755)
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertNothingSent()
+
+    def test_an_audio_slice_that_cannot_be_written_is_an_avatar_error(self):
+        def cut(path, start, end, dest):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        self.audio.cut = cut
+        with self.assertRaises(AvatarUnavailable) as caught:
+            self.run_it()
+        self.assertIn("audio slice", str(caught.exception))
+        self.assertEqual(self.fal.calls, [])
+
+    def test_a_portrait_that_cannot_be_written_is_an_avatar_error(self):
+        def portrait(*a, **k):
+            raise PermissionError(errno.EACCES, "Permission denied")
+
+        self.portrait = portrait
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        self.assertEqual(self.fal.calls, [])
+
+    def test_once_the_disk_is_fixed_the_run_goes_through(self):
+        with self.failing_save(lambda path, state: path.name == "presenter_intro.mp4"):
+            with self.assertRaises(AvatarUnavailable):
+                self.run_it()
+        self.assertEqual(len(self.run_it()), 2)
+
+
+class MalformedSidecars(Case):
+    """R6: a damaged or hand-edited sidecar is treated as no request at all."""
+
+    def leave_a_resumable_sidecar(self):
+        self.fal.result_override = Resp(500, text="boom")
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.fal.result_override = None
+        side = self.dir / "presenter_intro.json"
+        return side, json.loads(side.read_text())
+
+    def rewrite(self, side, data):
+        side.write_text(json.dumps(data))
+
+    GOOD = {"id": "req-1", "status_url": "https://queue.fal.run/x/requests/req-1/status",
+            "response_url": "https://queue.fal.run/x/requests/req-1",
+            "cancel_url": "https://queue.fal.run/x/requests/req-1/cancel"}
+
+    def test_a_valid_saved_request_is_still_resumed(self):
+        side, data = self.leave_a_resumable_sidecar()
+        self.assertEqual(data["request"], self.GOOD)
+        self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(self.fal.submits, 1)
+
+    def test_malformed_requests_are_resubmitted_not_crashed_on(self):
+        shapes = [
+            {"id": "x"},
+            "a string",
+            ["a", "list"],
+            5,
+            None,
+            {},
+            {**self.GOOD, "id": 7},
+            {**self.GOOD, "id": ""},
+            {**self.GOOD, "status_url": None},
+            {**self.GOOD, "cancel_url": ["x"]},
+            {**self.GOOD, "response_url": "https://evil.example/r"},
+            {**self.GOOD, "status_url": "https://evil.com\\.fal.media/s"},
+        ]
+        for shape in shapes:
+            with self.subTest(shape=shape):
+                self.setUp()
+                side, data = self.leave_a_resumable_sidecar()
+                data["request"] = shape
+                self.rewrite(side, data)
+                before = self.fal.submits
+                self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+                self.assertEqual(self.fal.submits, before + 1, "a fresh request was not submitted")
+                self.assertFalse([u for u in self.fal.urls() if "evil" in u])
+
+    def test_the_log_line_for_a_malformed_request_carries_no_secret_and_no_content(self):
+        side, data = self.leave_a_resumable_sidecar()
+        data["request"] = {"id": "SECRET-ID", "status_url": "https://evil.example/TOKEN"}
+        self.rewrite(side, data)
+        with self.assertLogs("modules.avatar_fal", "WARNING") as logs:
+            self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        text = "\n".join(logs.output)
+        self.assertIn("malformed saved fal.ai request", text)
+        for secret in (KEY, "SECRET-ID", "TOKEN", "evil.example"):
+            self.assertNotIn(secret, text)
+
+    def test_a_ledgered_flag_that_is_not_exactly_true_does_not_count(self):
+        side, data = self.leave_a_resumable_sidecar()
+        data["ledgered"] = "yes"
+        self.rewrite(side, data)
+        self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(len([x for x in self.spent if x[0] == AVATAR_SECONDS]), 2)
+
+    def test_a_done_flag_that_is_not_exactly_true_does_not_skip_the_work(self):
+        self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        side = self.dir / "presenter_intro.json"
+        data = json.loads(side.read_text())
+        data["done"] = "yes"
+        self.rewrite(side, data)
+        calls = len(self.fal.calls)
+        self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertGreater(len(self.fal.calls), calls, "a 'yes' is not done: the work is picked up again")
+        self.assertEqual(self.fal.submits, 1, "the request is resumed, not resubmitted")
+        self.assertEqual(len([x for x in self.spent if x[0] == AVATAR_SECONDS]), 1)
+
+    def test_a_sidecar_that_is_not_json_or_not_an_object_is_ignored(self):
+        self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        side = self.dir / "presenter_intro.json"
+        for junk in ("not json at all", "[1, 2]", "\"s\"", ""):
+            with self.subTest(junk=junk):
+                side.write_text(junk)
+                self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+
+
+class SmallGaps(Case):
+    def test_the_cancel_call_does_not_follow_redirects(self):
+        self.fal.statuses = ["IN_PROGRESS"]
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it()
+        cancels = [kw for m, u, kw in self.fal.calls if m == "put" and u.endswith("/cancel")]
+        self.assertTrue(cancels)
+        for kw in cancels:
+            self.assertIs(kw.get("allow_redirects"), False)
+
+    def test_an_empty_download_leaves_no_part_file_behind(self):
+        self.fal.video = b""
+        with self.assertRaises(AvatarUnavailable):
+            self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(sorted(p.name for p in self.dir.glob("*.part")), [])
+        self.assertFalse((self.dir / "presenter_intro.mp4").exists())
+
+    def test_an_oversize_download_leaves_no_part_file_behind(self):
+        with mock.patch.object(avatar_fal, "MAX_VIDEO_BYTES", 10):
+            self.fal.video = b"x" * 11
+            with self.assertRaises(AvatarUnavailable):
+                self.run_it(**{avatar_fal.OUTRO_ENV: "0"})
+        self.assertEqual(sorted(p.name for p in self.dir.glob("*.part")), [])
 
 
 class SelectionAndOffByDefault(unittest.TestCase):

@@ -56,6 +56,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -290,18 +291,41 @@ def _default_portrait(prompt: str, dest: Path, width: int, height: int, image_mo
 
 # -- URLs the server hands back ---------------------------------------------
 
+_SAFE_URL = re.compile(r"[\x21-\x5b\x5d-\x7e]+")  # printable ASCII, no space, no backslash
+_HOSTNAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
+
+
+def _urllib3_host(url: str) -> Optional[str]:
+    """The host urllib3 (what ``requests`` connects with) reads from ``url``."""
+    from urllib3.util import parse_url
+
+    try:
+        host = parse_url(url).host
+    except Exception:  # LocationParseError and friends: not a URL we can vouch for
+        return None
+    return host.lower() if host else None
+
+
 def checked_url(url, what: str, *, key_host: bool = False) -> str:
     """A server-supplied URL, or ``AvatarUnavailable``. It must be https, on a fal host,
     without credentials or an odd port. ``key_host`` (status, result, cancel) must be
     exactly a host the FAL_KEY may be sent to. A link that points anywhere else is a
     sign something is wrong, and the key (or the work) is not handed to it."""
-    try:
-        parts = urlsplit(url) if isinstance(url, str) else None
-        host = (parts.hostname or "").lower() if parts else ""
-        port = parts.port if parts else None
-        userinfo = bool(parts and (parts.username or parts.password))
-    except ValueError:
-        parts, host, port, userinfo = None, "", None, False
+    parts, host, port, userinfo = None, "", None, False
+    # Printable ASCII only, no whitespace, no backslash: those are exactly the characters on which
+    # two URL parsers disagree about the host (`https://evil.com\\.fal.media` is "evil.com" to the
+    # connection library and ".fal.media" to urlsplit), so they are refused outright.
+    if isinstance(url, str) and _SAFE_URL.fullmatch(url):
+        try:
+            parts = urlsplit(url)
+            host = (parts.hostname or "").lower()
+            port = parts.port
+            userinfo = bool(parts.username or parts.password)
+            # The host the HTTP library will really connect to must be the one just read.
+            if not _HOSTNAME.fullmatch(host) or _urllib3_host(url) != host:
+                parts, host = None, ""
+        except ValueError:
+            parts, host, port, userinfo = None, "", None, False
     if key_host:
         host_ok = host in KEY_HOSTS
     else:
@@ -407,6 +431,7 @@ class FalAvatarProvider:
         # 2) The ceiling, before the first request of any kind.
         check_ceilings(settings, sum(seconds for _label, _start, seconds in plan))
 
+        _require_writable(out_dir)  # a full or read-only disk stops the run before the portrait is bought
         headers = {"Authorization": f"Key {self._key()}"}
         portrait = self._make_portrait(prompt, out_dir, frame_size, settings, on_spend)
         portrait_hash = hashlib.sha256(portrait.read_bytes()).hexdigest()
@@ -415,11 +440,16 @@ class FalAvatarProvider:
         segments = []
         for name, start, seconds in plan:
             clip_path = out_dir / f"presenter_{name}.mp4"
-            audio_file = Path(self.audio.cut(narration_path, start, start + seconds, out_dir / f"presenter_{name}.mp3"))
-            audio_bytes = audio_file.read_bytes()
+            try:
+                audio_file = Path(self.audio.cut(narration_path, start, start + seconds,
+                                                 out_dir / f"presenter_{name}.mp3"))
+                audio_bytes = audio_file.read_bytes()
+            except OSError as e:
+                raise AvatarUnavailable(f"Could not write the {name} audio slice ({_why(e)}); nothing was "
+                                        "submitted.") from None
             key = hashlib.sha256(audio_bytes + portrait_hash.encode() + settings.model.encode()).hexdigest()
             state = _load_state(clip_path, key)
-            if state.get("done") and clip_path.exists() and clip_path.stat().st_size > 0:
+            if state.get("done") is True and clip_path.exists() and clip_path.stat().st_size > 0:
                 logger.info("Presenter %s reused from an earlier attempt (nothing billed)", name)
             else:
                 def inputs():
@@ -442,13 +472,17 @@ class FalAvatarProvider:
         key = hashlib.sha256(f"{full_prompt}|{settings.image_model}|{width}x{height}".encode()).hexdigest()
         if portrait.exists() and portrait.stat().st_size > 0 and _load_state(portrait, key).get("done"):
             return portrait
-        made = self._portrait(full_prompt, portrait, width, height, settings.image_model, self._key())
+        try:
+            made = self._portrait(full_prompt, portrait, width, height, settings.image_model, self._key())
+        except OSError as e:
+            raise AvatarUnavailable(f"Could not write the presenter portrait ({_why(e)}); nothing was "
+                                    "submitted.") from None
         if not made or not Path(made).exists() or Path(made).stat().st_size <= 0:
             raise AvatarUnavailable("The presenter portrait could not be generated (fal.ai returned no image); "
                                     "no presenter was generated.")
-        _save_state(portrait, {"key": key, "done": True})
         if on_spend:
             on_spend("image_generations", 1.0, "image:fal", PORTRAIT_USD)
+        _persist(portrait, {"key": key, "done": True}, "the portrait note")
         return portrait
 
     # one clip --------------------------------------------------------------
@@ -456,33 +490,50 @@ class FalAvatarProvider:
         """Submit (or resume), wait, fetch, download. The spend is ledgered the moment fal says
         COMPLETED, and the request is saved before polling, so no failure after paying
         leaves the money unrecorded or makes a rerun pay again."""
-        req = state.get("request")
+        req = _valid_request(state.get("request"))
+        if "request" in state and req is None:
+            # Whatever a damaged or hand-edited sidecar holds is not a request we can resume.
+            logger.warning("Ignoring a malformed saved fal.ai request for %s; a new one will be submitted",
+                           clip_path.name)
+            state.pop("request", None)
+            state["ledgered"] = False
         if req:
             logger.info("Resuming fal.ai request %s from an earlier attempt (nothing is submitted again)",
-                        req.get("id"))
+                        req["id"])
         else:
+            # A placeholder first: a full or read-only disk must stop the run BEFORE anything is
+            # uploaded or submitted, not after money is spent and the request id is lost.
+            _persist(clip_path, state, "the presenter state")
             image_url, audio_url = inputs()
             req = self._submit(settings, headers, image_url, audio_url, seconds, on_spend)
             state["request"], state["ledgered"] = req, False
-            _save_state(clip_path, state)  # BEFORE polling: a crash from here on can resume, not resubmit
+            try:
+                _save_state(clip_path, state)  # BEFORE polling: a crash from here on can resume, not resubmit
+            except OSError as e:
+                # Accepted, but its id cannot be kept: cancel it, count it as spent, and stop. Never a raw OSError.
+                self._cancel(req["cancel_url"], headers)
+                self._record(on_spend, settings, seconds, unconfirmed=True)
+                raise AvatarUnavailable(
+                    f"fal.ai accepted the request but its id could not be saved ({_why(e)}), so it cannot be "
+                    "resumed. It was cancelled and MAY STILL BE BILLED (recorded in the cost ledger as "
+                    "unconfirmed). Free disk space or fix the permissions, then rerun."
+                ) from None
 
         self._wait(req, settings, headers, clip_path, state, seconds, on_spend)
-        if not state.get("ledgered"):
+        if state.get("ledgered") is not True:
             self._record(on_spend, settings, seconds)
             state["ledgered"] = True
-            _save_state(clip_path, state)
+            _persist(clip_path, state, "the presenter state")
 
         try:
             url = self._retry("result", lambda: self._fetch_result(req, headers))
             self._retry("download", lambda: self._download(url, clip_path))
         except _Final as e:
             # The request itself is unusable (not a hiccup): a rerun must submit afresh.
-            state.pop("request", None)
-            state["ledgered"] = False
-            _save_state(clip_path, state)
+            self._forget(clip_path, state)
             raise AvatarUnavailable(str(e)) from None
         state["done"] = True
-        _save_state(clip_path, state)
+        _persist(clip_path, state, "the presenter state")
 
     def _record(self, on_spend, settings, seconds: float, *, unconfirmed: bool = False) -> None:
         if on_spend:
@@ -576,7 +627,10 @@ class FalAvatarProvider:
     def _forget(clip_path: Path, state: dict) -> None:
         state.pop("request", None)
         state["ledgered"] = False
-        _save_state(clip_path, state)
+        try:
+            _save_state(clip_path, state)
+        except OSError as e:  # the error being raised by the caller matters more than this note
+            logger.warning("Could not update the presenter state (%s); a rerun may find a stale request", _why(e))
 
     def _fetch_result(self, req: dict, headers: dict) -> str:
         try:
@@ -731,6 +785,46 @@ def _load_state(path: Path, key: str) -> dict:
     except (OSError, ValueError):
         pass
     return {"key": key}
+
+
+def _why(e: OSError) -> str:
+    """What went wrong with a file, without the path or any content."""
+    return e.strerror or type(e).__name__
+
+
+def _persist(path: Path, state: dict, what: str) -> None:
+    """``_save_state`` that can only fail as ``AvatarUnavailable`` (a full or read-only disk)."""
+    try:
+        _save_state(path, state)
+    except OSError as e:
+        raise AvatarUnavailable(f"Could not save {what} ({_why(e)}). Free disk space or fix the permissions of the "
+                                "output folder, then rerun.") from None
+
+
+def _require_writable(directory: Path) -> None:
+    """Prove the output folder takes a file, before any request is made."""
+    probe = Path(directory) / ".presenter_write_check"
+    try:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        probe.write_bytes(b"ok")
+        probe.unlink()
+    except OSError as e:
+        raise AvatarUnavailable(f"The output folder cannot be written ({_why(e)}); nothing was sent or spent. "
+                                "Free disk space or fix the permissions, then rerun.") from None
+
+
+def _valid_request(req) -> Optional[dict]:
+    """A saved request that can really be resumed, else None. Only the four fields are kept, and
+    each URL must still pass the host check: a sidecar is a file, and files get damaged or edited."""
+    if not isinstance(req, dict) or not isinstance(req.get("id"), str) or not req["id"]:
+        return None
+    try:
+        return {"id": req["id"],
+                "status_url": checked_url(req.get("status_url"), "saved status_url", key_host=True),
+                "response_url": checked_url(req.get("response_url"), "saved response_url", key_host=True),
+                "cancel_url": checked_url(req.get("cancel_url"), "saved cancel_url", key_host=True)}
+    except AvatarUnavailable:
+        return None
 
 
 def _save_state(path: Path, state: dict) -> None:
