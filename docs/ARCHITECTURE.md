@@ -109,6 +109,40 @@ consumer side of the feedback loop:
     for naming a person. A history channel's neighbours (true crime, science) are
     not "another field". A niche the word tables do not know is never called
     off-niche by words: the sensitive screen and the model decide.
+  - *Medical claims and live cases* (GATE_VERSION `2026-10-22.3`, held from every
+    source including the lenient AI pick, no model call, behind the same
+    `CHRONOS_TOPIC_GATE` switch). Two gaps the first version left: (1) an era word
+    ("ancient") anchored a topic in the past and the screen returned before it
+    reached the medical branch, so "Ancient remedy for COVID-19" or "Cure for cancer
+    found in ancient herb" passed. Now a medical term beside a claim word (or "miracle
+    cure") in a past-anchored topic is held as `medical` unless the topic is framed as
+    the history of medicine (a year up to 1945, "history of", physician, papyrus,
+    mummy, Hippocrates ...); a modern-only condition (covid, autism, HIV) beside a
+    claim word is held regardless. (2) A topic that OPENS with a person's name (also
+    "McCann", or a title plus name: "King Charles") beside a case word (trial,
+    suspect, shooting, diagnosis, engagement, divorce, antisemitism, "health
+    secrets" ...) is a living person's current case: held as `crime_legal` or
+    `living_person` unless the topic is anchored in the past, names a year up to
+    1945, or names a listed famous old case (Borden, Lindbergh, Ripper, Zodiac ...).
+    "Today's", "this morning" and "yesterday" now count as a story as it breaks, so
+    "Today's crash of a Boeing plane" is an `active_tragedy`. A channel about
+    entertainment or politics still waives `living_person` (not `crime_legal`).
+  - *Residuals of that change* (a skipped topic is the cost): old cases or figures
+    that are not in the small `_HIST_CASES` list and have no year or era word are
+    held when they open with a name beside a case word ("Alger Hiss trial", "Ted Bundy
+    trial", "King Richard III scoliosis diagnosis", "Frida Kahlo health secrets");
+    "Ancient treatment for depression" and "Medieval cure for cancer" are held
+    (a claim word, a medical term, no history-of-medicine framing); "Miracle cure from
+    ancient Egyptian medicine" passes (the frame word wins). Still slipping through:
+    a name that does not open the topic ("Why the Luigi Mangione trial matters",
+    "The Lori Vallow trial"), a live case with no case word, a name the shape test
+    cannot see (one word, lower case, non-Latin script), a plain crash or shooting
+    with no name and no "today", and a medical claim worded without a listed medical
+    term. Nothing here knows who is alive. Pre-existing wrong holds, not touched: "The
+    Cure for Scurvy ...", "The Miracle Cure of Lourdes in 1858", "Snake Oil: the history
+    of miracle cures", "The Kidnapping of the Lindbergh Baby", "Prime Minister Neville
+    Chamberlain and Munich 1938" (see `PRE_EXISTING_WRONG_HOLDS` in
+    `tests/topic_gate_probe_topics.py`).
   - *Known residuals* (a skipped topic, never a failed run): a news-phrased
     accusation beside a historical name with no year and no era word is held
     ("The Knights Templar were accused of heresy", "Socrates accused of corrupting
