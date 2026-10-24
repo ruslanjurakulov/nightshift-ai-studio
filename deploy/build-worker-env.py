@@ -176,7 +176,10 @@ def warnings(values: Mapping[str, str], example_text: str) -> List[str]:
     if on("CHRONOS_ENABLE_VIDIQ"):
         need("vidIQ research", (("VIDIQ_ACCESS_TOKEN",),), "CHRONOS_ENABLE_VIDIQ")
     if on("NIGHTSHIFT_AVATAR_ENABLED"):
-        need("the avatar", (("HIGGSFIELD_API_KEY_ID", "HIGGSFIELD_API_KEY_SECRET"),), "NIGHTSHIFT_AVATAR_ENABLED")
+        if get("NIGHTSHIFT_AVATAR_PROVIDER").lower() == "fal":
+            need("the avatar (fal.ai)", (("FAL_KEY",),), "NIGHTSHIFT_AVATAR_ENABLED")
+        else:
+            need("the avatar", (("HIGGSFIELD_API_KEY_ID", "HIGGSFIELD_API_KEY_SECRET"),), "NIGHTSHIFT_AVATAR_ENABLED")
     if not get("ELEVENLABS_API_KEY"):
         if get("TTS_PROVIDER").lower() == "elevenlabs":
             out.append("TTS_PROVIDER is elevenlabs but ELEVENLABS_API_KEY is empty: every run will stop at the voice check.")

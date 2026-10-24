@@ -23,9 +23,12 @@ credentials are set, generate() raises AvatarUnavailable with exactly what to
 set, the same "no silent fallback" posture as audio_mixer.verify_voice: a broken
 avatar must fail loudly, never quietly ship a wrong or empty presenter.
 
-Nothing here is wired into the render pipeline yet; enabling the presenter in a
-run is a later, gated change (behind AvatarConfig.enabled and the publish gate,
-which still decides every upload).
+`FalAvatarProvider` (modules/avatar_fal.py, ``NIGHTSHIFT_AVATAR_PROVIDER=fal``) is the
+pay-per-second alternative: audio-driven, intro and outro only, with a seconds and USD
+ceiling checked before any request.
+
+The presenter is wired into the render (main.py, stage 6b), behind AvatarConfig.enabled
+and the publish gate, which still decides every upload.
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ import re
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, Sequence, Union, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,36 @@ class AvatarProvider(Protocol):
 
     def generate(self, prompt: str, character_ref: Optional[str], out_path: Path) -> Path:
         ...
+
+
+@dataclass(frozen=True)
+class PresenterSegment:
+    """One presenter clip and where it plays: ``start`` seconds into the video (the
+    narration slice it was animated from began there). ``seconds`` is that slice's
+    length; ``None`` for a whole-video clip that simply starts at ``start``."""
+
+    path: Path
+    start: float = 0.0
+    seconds: Optional[float] = None
+
+
+#: What the render receives as ``presenter_path``: one clip from 0 s (Higgsfield), or
+#: several placed segments (fal: intro and outro).
+Presenter = Union[Path, Sequence[PresenterSegment]]
+
+
+def presenter_segments(presenter: Optional[Presenter]) -> list:
+    """The placed segments for whatever the pipeline holds: nothing, one clip, or a list."""
+    if presenter is None:
+        return []
+    if isinstance(presenter, (str, Path)):
+        return [PresenterSegment(path=Path(presenter))]
+    return list(presenter)
+
+
+def describe_presenter(presenter: Optional[Presenter]) -> list:
+    """The presenter files as strings, for events and logs."""
+    return [str(seg.path) for seg in presenter_segments(presenter)]
 
 
 # Markers that a reference is a real, identifiable person rather than a
@@ -254,9 +287,14 @@ def avatar_provider(config: AvatarConfig) -> Optional[AvatarProvider]:
     future provider can be selected by name without call sites changing."""
     if not config.enabled:
         return None
-    if config.provider == "higgsfield":
+    name = (config.provider or "").strip().lower()
+    if name == "higgsfield":
         return HiggsfieldAvatarProvider()
-    raise AvatarUnavailable(f"Unknown avatar provider {config.provider!r}")
+    if name == "fal":
+        from modules.avatar_fal import FalAvatarProvider  # local: pulls in the image router
+
+        return FalAvatarProvider()
+    raise AvatarUnavailable(f"Unknown avatar provider {config.provider!r} (use 'higgsfield' or 'fal')")
 
 
 def preflight_avatar(config: AvatarConfig) -> None:
@@ -358,15 +396,39 @@ def presenter_layout(video_w: int, video_h: int, *, corner: str = "bottom-right"
     return {"w": w, "h": h, "x": x, "y": y}
 
 
-def maybe_generate_presenter(config: AvatarConfig, prompt: str, out_path: Path) -> Optional[Path]:
-    """Generate a presenter clip for this run, or None when the run is faceless.
+def presenter_narration(slug_dir: Path, mixed_audio: Path) -> Path:
+    """The audio that drives a speaking presenter: the clean narration the mixer saved
+    (``<slug>/audio/narration.mp3``, speech only, same timeline as the mix), else the final
+    mix. Music under a lip-sync makes it worse, and the two files have the same length."""
+    clean = Path(slug_dir) / "audio" / "narration.mp3"
+    return clean if clean.exists() else Path(mixed_audio)
+
+
+def planned_presenter_usd(config: AvatarConfig) -> float:
+    """What the presenter is about to cost at most, for the run's spend gate. Only the
+    pay-per-second provider has a figure; Higgsfield's credits are not priced here."""
+    if not config.enabled or (config.provider or "").strip().lower() != "fal":
+        return 0.0
+    from modules.avatar_fal import FalAvatarSettings
+
+    return FalAvatarSettings.from_env().planned_usd()
+
+
+def maybe_generate_presenter(config: AvatarConfig, prompt: str, out_path: Path, *,
+                             narration_path: Optional[Path] = None,
+                             frame_size: Optional[tuple] = None,
+                             on_spend=None) -> Optional[Presenter]:
+    """Generate the presenter for this run, or None when the run is faceless.
 
     * Avatars off (the default) → ``None``: the run renders faceless, unchanged.
-    * On → the configured provider generates the clip. There is **no silent
+    * On → the configured provider generates it. There is **no silent
       fallback**: an enabled-but-unconfigured provider raises ``AvatarUnavailable``
       and an unsafe request raises ``UnsafeAvatarRequest``. The pipeline lets
       both stop the run (``main.py`` re-raises after recording the failure): a
       presenter that was asked for is never quietly dropped for a faceless cut.
+    * A provider with ``generate_segments`` (fal) is audio-driven: it is given the
+      narration, the frame size and ``on_spend`` (a ledger hook) and returns placed
+      ``PresenterSegment``s; any other provider returns one clip path.
     """
     if not config.enabled:
         return None
@@ -374,4 +436,11 @@ def maybe_generate_presenter(config: AvatarConfig, prompt: str, out_path: Path) 
     if provider is None:  # defensive: enabled but factory returned nothing
         return None
     character_prompt = (prompt or config.character_prompt or "").strip()
+    segmented = getattr(provider, "generate_segments", None)
+    if callable(segmented):
+        if narration_path is None:
+            raise AvatarUnavailable("This presenter is driven by the narration audio, and none was given.")
+        return segmented(character_prompt, config.character_ref or None, Path(out_path),
+                         narration_path=Path(narration_path), frame_size=frame_size or (1280, 720),
+                         on_spend=on_spend)
     return provider.generate(character_prompt, config.character_ref or None, Path(out_path))

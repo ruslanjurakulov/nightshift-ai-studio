@@ -584,6 +584,17 @@ jobs:
           HIGGSFIELD_API_KEY_ID: ${{ secrets.HIGGSFIELD_API_KEY_ID }}
           HIGGSFIELD_API_KEY_SECRET: ${{ secrets.HIGGSFIELD_API_KEY_SECRET }}
           HIGGSFIELD_AVATAR_ENDPOINT: ${{ vars.HIGGSFIELD_AVATAR_ENDPOINT }}
+          # The fal.ai presenter instead of Higgsfield: set NIGHTSHIFT_AVATAR_PROVIDER to fal (FAL_KEY below
+          # is the same secret the fal image provider uses). Intro and outro only; the ceilings are checked
+          # before any request (defaults in modules/avatar_fal.py).
+          NIGHTSHIFT_AVATAR_PROVIDER: ${{ vars.NIGHTSHIFT_AVATAR_PROVIDER }}
+          NIGHTSHIFT_AVATAR_FAL_MODEL: ${{ vars.NIGHTSHIFT_AVATAR_FAL_MODEL }}
+          NIGHTSHIFT_AVATAR_FAL_IMAGE_MODEL: ${{ vars.NIGHTSHIFT_AVATAR_FAL_IMAGE_MODEL }}
+          NIGHTSHIFT_AVATAR_INTRO_SECONDS: ${{ vars.NIGHTSHIFT_AVATAR_INTRO_SECONDS }}
+          NIGHTSHIFT_AVATAR_OUTRO_SECONDS: ${{ vars.NIGHTSHIFT_AVATAR_OUTRO_SECONDS }}
+          NIGHTSHIFT_AVATAR_MAX_SECONDS: ${{ vars.NIGHTSHIFT_AVATAR_MAX_SECONDS }}
+          NIGHTSHIFT_AVATAR_FAL_USD_PER_SECOND: ${{ vars.NIGHTSHIFT_AVATAR_FAL_USD_PER_SECOND }}
+          NIGHTSHIFT_AVATAR_MAX_USD: ${{ vars.NIGHTSHIFT_AVATAR_MAX_USD }}
           # --- Opt-in providers & agent (keys from the Command Center's -------
           # Providers board, forwarded here as Actions secrets). Every one is
           # OFF unless configured: an unset secret expands to "" (feature off),

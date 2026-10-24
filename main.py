@@ -42,8 +42,8 @@ from modules import video_qc
 from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
-    AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, preflight_avatar,
-    resolve_avatar_config,
+    AvatarUnavailable, UnsafeAvatarRequest, describe_presenter, maybe_generate_presenter,
+    planned_presenter_usd, preflight_avatar, presenter_narration, resolve_avatar_config,
 )
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
 from dataclasses import replace as _dc_replace
@@ -433,11 +433,12 @@ def _flush_costs_on_exit(fn):
     return wrapper
 
 
-def _guard_spend(ctx, costs, stage: str, planned=None) -> None:
+def _guard_spend(ctx, costs, stage: str, planned=None, extra_usd: float = 0.0) -> None:
     """Stop the run, loudly, before ``stage`` buys anything if the ledger so far
     is over CHRONOS_MAX_RUN_USD (or, for the operator's own organisation, the
     day is over CHRONOS_MAX_DAILY_USD). See modules/spend_guard.py."""
-    spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned)
+    spend_guard.check(costs, stage, operators=bool(getattr(ctx, "is_operators", False)), planned=planned,
+                      extra_usd=extra_usd)
 
 
 def _ground_fact_results(ctx, costs, topic, slug, claims, section_claims, fact_results, save=True) -> tuple:
@@ -1494,17 +1495,24 @@ def run(
     presenter_path = None
     avatar_cfg = resolve_avatar_config(ctx, series_obj)
     if avatar_cfg.enabled:
-        # The presenter clip is not in the cost ledger (no unit), so this only stops on what was spent before it.
-        _guard_spend(ctx, costs, "generating the presenter")
+        # The Higgsfield clip is not in the cost ledger (no unit), so for it this only stops on what was spent
+        # before it. The fal presenter brings its worst-case USD, so the run and day caps see it too.
+        _guard_spend(ctx, costs, "generating the presenter", extra_usd=planned_presenter_usd(avatar_cfg))
         events.emit(events.AVATAR_STARTED, agent="avatar", status=events.STATUS_RUNNING,
                     channel_id=channel_id, metadata={"provider": avatar_cfg.provider})
         try:
             presenter_prompt = avatar_cfg.character_prompt or (series_obj.visual_style if series_obj else "")
+            # The fal presenter is driven by the clean narration (speech only, the same timeline as the
+            # mix), and writes what it was billed to the ledger as it goes, so a failure half way keeps
+            # the record of what was already paid for.
             presenter_path = maybe_generate_presenter(
-                avatar_cfg, presenter_prompt, OUTPUT_DIR / slug / "presenter.mp4")
+                avatar_cfg, presenter_prompt, OUTPUT_DIR / slug / "presenter.mp4",
+                narration_path=presenter_narration(OUTPUT_DIR / slug, audio_path),
+                frame_size=(render_fmt.width, render_fmt.height),
+                on_spend=lambda unit, qty, stage, usd: costs.add(unit, qty, stage=stage, estimated_usd=usd))
             events.emit(events.AVATAR_COMPLETED, agent="avatar", status=events.STATUS_COMPLETED,
-                        channel_id=channel_id, metadata={"presenter_path": str(presenter_path)})
-            logger.info("Presenter generated: %s", presenter_path)
+                        channel_id=channel_id, metadata={"presenter_path": ", ".join(describe_presenter(presenter_path))})
+            logger.info("Presenter generated: %s", ", ".join(describe_presenter(presenter_path)))
         except (AvatarUnavailable, UnsafeAvatarRequest) as e:
             # A presenter was asked for: the run stops (CLAUDE.md #4) instead of
             # quietly going out faceless. The generated pieces stay in the
