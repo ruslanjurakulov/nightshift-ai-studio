@@ -142,6 +142,10 @@ PRIVACY_FORCED = "publish.privacy_forced"
 # quality/prediction score for a human to read; it never gates, blocks, or
 # permits anything — the gate above is the only thing that decides publishing.
 PUBLISH_SCORE = "publish.score"
+# Advisory title + thumbnail-text pairing lint (modules/packaging_lint.py): cut points, case, whether
+# the overlay repeats the title. Counts and closed reason words only, never the text. Like
+# publish.score it never gates, blocks, rewrites or permits anything.
+PACKAGING_LINT = "packaging.lint"
 # AI critic on rendered frames (modules/video_critic.py). Advisory and off by
 # default (CHRONOS_AI_CRITIC): per-scene issues a vision model saw on a contact
 # sheet of the render. Like publish.score it never blocks or permits anything.

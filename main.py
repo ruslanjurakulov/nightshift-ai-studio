@@ -38,6 +38,7 @@ from modules import gemini_stages
 from modules import run_slug
 from modules import log_redaction
 from modules import publish_gate
+from modules import packaging_lint
 from modules import publish_score
 from modules import video_critic
 from modules import video_qc
@@ -1682,6 +1683,20 @@ def run(
             "Publish score failed (%s: %s) — advisory only, the run is unaffected",
             type(e).__name__, e,
         )
+
+    # Advisory title + thumbnail pairing lint (modules/packaging_lint.py): is the title cut before
+    # its point, does the thumbnail text repeat it. Report only: it reads the title that will really
+    # ship and the script's overlay text, assigns nothing, and feeds neither the gate, the upload
+    # nor the privacy. Its own try, so a failure here can neither skip the score above nor fail a
+    # run that produced a video.
+    try:
+        pack_lint = packaging_lint.lint(
+            published_title, getattr(script, "thumbnail_overlay_text", None), getattr(ctx.agent, "language", None))
+        events.emit(events.PACKAGING_LINT, agent="packaging_lint", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id, metadata=pack_lint.to_metadata())
+        logger.info("[channel: %s] Packaging lint (advisory): %s", channel_id, pack_lint.counts())
+    except Exception as e:
+        logger.debug("Packaging lint failed (%s) - advisory only, the run is unaffected", type(e).__name__)
 
     if not gate.allowed:
         logger.error(
