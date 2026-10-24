@@ -12,10 +12,18 @@ Where this sits
 This module is read-side and configuration-only, mirroring
 ``modules/channels.py``: it turns the ``content_series`` rows the Command
 Center writes into immutable ``Series`` objects the rest of the system can
-consult. It is deliberately NOT wired into the pipeline run yet — resolving a
-run against a series (so topic/style/cadence come from the series rather than
-the channel) is a later, separate change. Adding the noun first, without
-touching how a run behaves today, keeps this safe and additive.
+consult.
+
+``main.run(series=...)`` does resolve a run against a series: its niche, visual
+style, voice style, avatar config and playlist shape that run (see the
+``effective_*`` helpers below). A run is only ever scoped when a series id is
+named, and only two entrances name one: ``main.py --series`` and the
+``series`` input of a manual ``daily_video.yml`` dispatch. The scheduler
+(``tools/list_channels.py``) and the queue/UI path (``render_jobs`` params, whose
+database whitelist does not list ``series`` yet) cannot carry one, so a series
+row the Command Center writes does not by itself make any scheduled video.
+A series that is not ACTIVE, is unknown, or belongs to another channel is
+refused by ``require_runnable_series`` before the run spends anything.
 
 Loading, like ``ChannelRegistry``, degrades rather than raises:
 ``content_series`` in Supabase → a local ``series.json`` → an empty list. A
@@ -349,6 +357,38 @@ def resolve_series(series_id, registry: Optional["SeriesRegistry"] = None) -> Op
             series_id, type(e).__name__, e,
         )
         return None
+
+
+class SeriesNotRunnable(RuntimeError):
+    """A series was asked for by name but the run cannot be scoped to it. Raised
+    by main.py before anything is spent (CLAUDE.md rules 4 and 6)."""
+
+
+def require_runnable_series(requested, series_obj: Optional[Series], channel_id) -> None:
+    """Refuse a run whose explicitly requested series cannot be honoured.
+
+    ``resolve_series`` deliberately never raises, so an unknown id, a failed
+    read and a PAUSED/ARCHIVED row all used to run as the plain channel — a paid
+    video in the wrong niche for someone who asked for a series (rule 4: no
+    silent fallback). Nothing is checked when no series was asked for."""
+    if not requested:
+        return
+    if series_obj is None:
+        raise SeriesNotRunnable(
+            f"Series {str(requested)!r} could not be found (unknown id, or the series list could not be "
+            "read). Run stopped; nothing was spent. Check the id on the Series page, or leave the series "
+            "empty to run the channel's own niche."
+        )
+    if not series_obj.is_active:
+        raise SeriesNotRunnable(
+            f"Series {series_obj.series_id!r} is {series_obj.status}, not ACTIVE. Run stopped; nothing was "
+            "spent. Activate it on the Series page, or leave the series empty."
+        )
+    if str(series_obj.channel_id) != str(channel_id):
+        raise SeriesNotRunnable(
+            f"Series {series_obj.series_id!r} belongs to channel {series_obj.channel_id!r}, not "
+            f"{str(channel_id)!r}. Run stopped; nothing was spent. Name that channel, or another series."
+        )
 
 
 def effective_niche(explicit: Optional[str], series_obj: Optional[Series], ctx_niche: Optional[str]) -> str:

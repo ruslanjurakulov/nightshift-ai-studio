@@ -32,7 +32,16 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Mapping, Optional, Tuple
 
-#: Every workflow_dispatch input except ``channel`` (a column on the job).
+from modules.series import validate_series_id
+
+#: Every workflow_dispatch input except ``channel`` (a column on the job) and
+#: ``series``. ``series`` is an Actions-only input for now: the queue/UI path
+#: cannot carry one until a migration redefines ``render_job_params_valid`` (the
+#: last definition is in supabase/migrations/0029_publish_targets.sql; 0111 only
+#: mentions it in a comment) with ``'series'`` in its ``allowed`` array and a
+#: series-id check, and this tuple then gains ``"series"`` in the same change
+#: (tests/test_queue_worker.py compares the two). Until then ``validate()``
+#: refuses a ``series`` param, exactly as the database would.
 ALLOWED_PARAMS = (
     "topic", "niche", "privacy", "duration", "language", "visual_style",
     "video_provider", "image_provider", "tts_model", "voice_id", "resume", "repair_scenes",
@@ -60,6 +69,22 @@ _CHANNEL_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 class InvalidRunRequest(ValueError):
     """The job asks for something the workflow would not accept. Raised before
     anything is spent; the message names the offending input, never a value."""
+
+
+def validate_series_arg(value) -> str:
+    """The ``--series`` value of a run, exactly as typed. Stricter than
+    ``modules.series.validate_series_id`` on purpose: that one strips whitespace,
+    but a workflow hands the shell exactly what was typed, so a padded id is
+    refused rather than quietly rewritten. The message never echoes the value
+    (a newline in it could forge a workflow command in the Actions log)."""
+    try:
+        if isinstance(value, str) and validate_series_id(value) == value:
+            return value
+    except ValueError:
+        pass
+    raise InvalidRunRequest(
+        "series is not a valid series id: use lowercase letters, digits, '.', '_' or '-' "
+        "(1-64 characters, starting with a letter or digit), with no spaces")
 
 
 def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
@@ -151,6 +176,10 @@ def build_main_args(channel_id: str, params: Mapping) -> List[str]:
         args += ["--language", params["language"]]
     if params.get("visual_style"):
         args += ["--visual-style", params["visual_style"]]
+    if params.get("series"):
+        # Only reachable by a caller that builds argv directly: validate() refuses a
+        # series param until the database whitelist carries it (see ALLOWED_PARAMS).
+        args += ["--series", validate_series_arg(params["series"])]
     if params.get("resume") is True:
         args += ["--resume"]
     if params.get("repair_scenes"):
