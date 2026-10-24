@@ -555,7 +555,7 @@ jobs:
           # Empty + an ElevenLabs channel without one = the run stops at preflight.
           ELEVENLABS_SECONDARY_VOICE_ID: ${{ vars.ELEVENLABS_SECONDARY_VOICE_ID }}
           # Strict custom-voice ownership check (modules/voice_gate.py): off while empty. The owner turns it on with the
-          # request_voice_clone grant; docs/CUSTOM_VOICE.md.
+          # grant that lets users clone a voice; docs/CUSTOM_VOICE.md.
           NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           SCRIPT_LANGUAGE: English
           # x264 encoder threads for the final render. The render has been

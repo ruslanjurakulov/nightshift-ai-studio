@@ -25,9 +25,9 @@ Two different failures, two different answers
 * The database COULD NOT ANSWER (unreachable, timeout, 429, 5xx, 401/403, a redirect, an unreadable or odd body, no Supabase
   configured): by default the run CONTINUES, with a closed-word warning in the log and a ``::warning::`` annotation on Actions. The
   repository's own rule for a Supabase outage is to degrade (the channel registry falls back, the slot guard fails open), and today
-  the gate protects nothing the outage could cost: ``request_voice_clone`` is granted to nobody, so no custom voice can exist.
+  the gate protects nothing the outage could cost: the clone request is granted to nobody, so no custom voice can exist.
   With ``NIGHTSHIFT_VOICE_GATE_STRICT`` on, "could not answer" stops the run instead (``VOICE_GATE_UNAVAILABLE_EXIT``), after more
-  tries. The owner turns the switch on TOGETHER WITH the ``request_voice_clone`` grant (docs/CUSTOM_VOICE.md): from then on a
+  tries. The owner turns the switch on TOGETHER WITH the grant that lets users clone a voice (docs/CUSTOM_VOICE.md): from then on a
   silent outage would be a way to use someone's voice unchecked.
 * "The function does not exist" (PostgREST ``PGRST202`` or Postgres ``42883``, and only those) means 0117 is not applied, so no
   profile can exist: the run continues, with a warning. Any other 404 is "could not answer".
@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 VOICE_GATE_EXIT = 82
 VOICE_GATE_UNAVAILABLE_EXIT = 83
 
-#: Off unless on (``on``/``1``/``true``/``yes``). The owner turns it on with the request_voice_clone grant (docs/CUSTOM_VOICE.md).
+#: Off unless on (``on``/``1``/``true``/``yes``). The owner turns it on with the grant that lets users clone a voice (docs/CUSTOM_VOICE.md).
 STRICT_ENV = "NIGHTSHIFT_VOICE_GATE_STRICT"
 
 NARRATOR_KEY = "elevenlabs_voice_id"
@@ -200,7 +200,7 @@ def _could_not_answer(channel_id, phrase: str, *, strict: bool, env: Mapping[str
             f"and {STRICT_ENV} is on. Nothing was spent, and no other voice is substituted. Check that Supabase is reachable from "
             "the runner (SUPABASE_URL and SUPABASE_SERVICE_KEY), then run again.", reason="unavailable")
     logger.warning("[channel: %s] Voice ownership check could NOT be completed (%s); continuing, because %s is off and no custom "
-                   "voice can exist until request_voice_clone is granted", channel_id, phrase, STRICT_ENV)
+                   "voice can exist until users are allowed to clone a voice", channel_id, phrase, STRICT_ENV)
     _annotate(env, "warning", "Custom voice check skipped",
               f"The custom-voice ownership check could not be completed ({phrase}) and was skipped; the run continues. "
               f"Set {STRICT_ENV} to stop runs instead.")
