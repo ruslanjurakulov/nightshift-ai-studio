@@ -156,6 +156,10 @@ SHORT_FAILED = "short.failed"
 # the paid Gemini generation). Advisory bookkeeping — it never changes what is
 # produced, only what gets re-paid-for.
 RUN_RESUMED = "run.resumed"
+# What a run asked of Gemini (modules/gemini_stages.py): one event at the end of a run that made any request,
+# with the requests per stage and model and the per-day quota errors seen. Counts and stage/model names only.
+# Not named `.failed` on purpose (a quota stop is a warning here; the run's own ending says it failed).
+GEMINI_USAGE = "gemini.usage"
 # Storyboard review (modules/storyboard_review.py, migration 0057). `storyboard.ready`
 # records a run that stopped after its script and scene plan, before anything
 # was spent on the render, and waits for a person; `storyboard.stopped` a run

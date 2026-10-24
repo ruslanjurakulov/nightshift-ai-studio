@@ -61,6 +61,9 @@ jobs:
       - name: Calibrate
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # The model under test is the one the fact-check uses: GEMINI_MODEL_FACTCHECK, else GEMINI_MODEL, else the default.
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL_FACTCHECK: ${{ vars.GEMINI_MODEL_FACTCHECK }}
           NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT: ${{ vars.NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT }}
         run: |
           set -eu

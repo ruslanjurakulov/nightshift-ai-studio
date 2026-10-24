@@ -349,6 +349,18 @@ class WorkerCase(unittest.TestCase):
         self.assertIn("running with key [redacted]", error)
         self.assertNotIn("gemini-secret-value-123", error)
 
+    def test_the_gemini_daily_quota_exit_fails_the_job_as_a_quota_with_nothing_charged(self):
+        """main.py exits 80 when Gemini's per-day quota is spent for a stage it cannot skip
+        (modules/gemini_stages.py): no traceback to read a class from, so the worker's own header
+        carries the code, and the job fails (its hold is released, not captured)."""
+        self.env["FAKE_RC"] = "80"
+        q = FakeQueue([job()])
+        self.worker(q).run_forever(once=True)
+        (_, _, status, error), = q.ends()
+        self.assertEqual(status, "failed")
+        self.assertTrue(error.startswith("[code:provider_quota] main.py exited with code 80: "), error[:120])
+        self.assertIn("nothing was charged", error)
+
     def test_failed_run_is_coded_from_its_last_exception(self):
         self.env["FAKE_RC"] = "1"
         self.env["FAKE_TRACE"] = ("Traceback (most recent call last):\n"

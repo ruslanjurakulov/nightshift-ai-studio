@@ -36,8 +36,8 @@ import json
 import logging
 from dataclasses import dataclass
 
-from config import GEMINI_MODEL
 from modules.gemini_client import generate_with_retry, make_client
+from modules.gemini_stages import model_for
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ def _classify_batch(client, batch: list[dict], allow_retry: bool = True) -> list
     prompt = _build_prompt(batch)
 
     try:
-        response = generate_with_retry(client, GEMINI_MODEL, prompt)
+        response = generate_with_retry(client, model_for("comment_intel"), prompt)
         text = response.text
     except Exception:
         logger.warning("Gemini call failed for a batch of %d comments.", len(batch))
