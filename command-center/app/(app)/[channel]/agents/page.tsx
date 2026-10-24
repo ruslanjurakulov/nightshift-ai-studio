@@ -14,6 +14,9 @@ import { AgentCard, type AgentSummary } from "@/components/agents/AgentCard";
 import { ScheduleEditor } from "@/components/agents/ScheduleEditor";
 import { CastEditor } from "@/components/agents/CastEditor";
 import { VoiceEditor } from "@/components/agents/VoiceEditor";
+import Link from "next/link";
+import { customVoiceEnabled } from "@/lib/custom-voice";
+import { getChannelPath } from "@/lib/channels-path-server";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
@@ -145,6 +148,15 @@ export default async function AgentsPage() {
         channelId={scopedChannel?.channel_id ?? null}
         agentConfig={scopedChannel?.agent_config ?? null}
       />
+
+      {/* Only while CUSTOM_VOICE_ENABLED=1: the page it opens is a 404 otherwise, so a link to it must not exist either. */}
+      {customVoiceEnabled() && (
+        <p>
+          <Link href={(await getChannelPath())("agents/voice")} className="g2-link">
+            {t.customVoice.title}
+          </Link>
+        </p>
+      )}
 
       <CastEditor
         channelId={scopedChannel?.channel_id ?? null}

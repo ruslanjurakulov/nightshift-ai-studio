@@ -226,8 +226,14 @@ class Dormant(unittest.TestCase):
             self.assertNotIn(needle, c)
 
     def test_nothing_in_the_application_calls_the_new_functions(self):
-        fns = ["request_voice_clone", "approve_voice", "attach_voice_to_channel", "detach_voice_from_channel", "delete_voice",
-               "claim_voice_job", "finish_voice_clone", "finish_voice_task", "purge_voice_records", "my_voice_ref", "voice_usable_by"]
+        # The owner's functions: named by ONE application file, the Custom Voice UI's module (slice V3, behind CUSTOM_VOICE_ENABLED and
+        # still unusable because request_voice_clone is granted to nobody). The internal ones are named by no application file at all.
+        owner_facing = ["request_voice_clone", "approve_voice", "attach_voice_to_channel", "detach_voice_from_channel", "delete_voice",
+                        "my_voice_ref"]
+        internal = ["claim_voice_job", "finish_voice_clone", "finish_voice_task", "purge_voice_records", "voice_usable_by"]
+        fns = owner_facing + internal
+        ui_caller = ROOT / "command-center" / "lib" / "custom-voice-api.ts"
+        self.assertTrue(ui_caller.is_file(), "the one module the UI calls the owner's functions from")
         provider_module = ROOT / "modules" / "voice_profiles.py"  # its delete_voice is the PROVIDER method, not the database function
         # The worker (slice V2) is the one caller allowed, behind NIGHTSHIFT_VOICE_CLONING, and only of the service role's side.
         worker_files = {ROOT / "modules" / "voice_worker.py", ROOT / "tools" / "voice_worker.py"}
@@ -245,7 +251,17 @@ class Dormant(unittest.TestCase):
                     continue
                 text = f.read_text(encoding="utf-8", errors="ignore")
                 for fn in fns:
-                    self.assertIsNone(re.search(rf"\b{fn}\b", text), f"{f.relative_to(ROOT)} mentions {fn}: the migration ships dormant")
+                    if f == ui_caller and fn in owner_facing:
+                        continue
+                    self.assertIsNone(re.search(rf"\b{fn}\b", text), f"{f.relative_to(ROOT)} mentions {fn}: only the UI's one module may name the owner's functions")
+
+    def test_the_custom_voice_ui_is_dark_by_default(self):
+        env = (ROOT / "deploy" / ".env.web.example").read_text(encoding="utf-8")
+        self.assertRegex(env, r"(?m)^CUSTOM_VOICE_ENABLED=$", "the flag ships empty (off)")
+        workflow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertIn("WEBENV_CUSTOM_VOICE_ENABLED: ${{ vars.CUSTOM_VOICE_ENABLED }}", workflow)
+        docs = (ROOT / "docs" / "CUSTOM_VOICE.md").read_text(encoding="utf-8")
+        self.assertIn("CUSTOM_VOICE_ENABLED", docs)
 
     def test_the_migration_declares_the_dormant_boundary(self):
         self.assertIn("FREE plan", TEXT)
