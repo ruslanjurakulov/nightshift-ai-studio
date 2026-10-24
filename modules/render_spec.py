@@ -104,6 +104,13 @@ from modules.shape_art import ShapeArt
 #: instead (render_backend.INTERMEDIATE_X264), so this is not paid twice.
 FINAL_X264: tuple = ("-preset", "medium", "-crf", "23")
 
+#: The container layout of a PIPELINE master: the index (moov) in front of the media data. Instagram's Reels page
+#: requires it ("moov atom at the front") and the social probe refuses a master without it as ``not_faststart``.
+#: It is a mux flag, not an encoder setting: the streams are the ones the encode wrote, byte for byte, and ffmpeg's
+#: mov muxer only moves the index to the front when it closes the file (tests/test_master_faststart_paths.py pins
+#: that). Not part of ``build_ffmpeg_command``: an editor export shares that command and its pinned argv.
+FASTSTART_MOVFLAGS: tuple = ("-movflags", "+faststart")
+
 
 def final_x264(spec: "RenderSpec") -> tuple:
     """FINAL_X264 for this render. A timeline whose frame is larger than
