@@ -1,5 +1,5 @@
 {
- "_about": "Shared by tests/test_series_planner.py (aggregate_quote) and command-center/tests/seriesQuote.test.ts (aggregateSeriesQuote): the two aggregations must agree. credits null = unpriced, with the named gap. total is null if ANY episode is null; partial is the sum of the priced ones only. A credits value that is not a number from 0 to 1e12 (NaN, Infinity, negative, a string, a boolean, too large) is invalid_estimate in both languages; the strings 'NaN', 'Infinity' and '-Infinity' stand for those float values because JSON cannot carry them.",
+ "_about": "Shared by tests/test_series_planner.py (aggregate_quote) and command-center/tests/seriesQuote.test.ts (aggregateSeriesQuote): the two aggregations must agree. credits null = unpriced, with the named gap. total is null if ANY episode is null; partial is the sum of the priced ones only. A credits value that is not a number from 0 to 1e12 (NaN, Infinity, negative, a string, a boolean, too large) is invalid_estimate in both languages; the strings 'NaN', 'Infinity' and '-Infinity' stand for those float values because JSON cannot carry them. A case may carry 'durations' (one per duration entry, default 300 per credits entry): when the two lists differ in length the unpaired entries are unpriced episodes with the gap count_mismatch in both languages (no entry is silently dropped), and the result is never complete.",
  "cases": [
   {
    "name": "all priced",
@@ -282,6 +282,63 @@
    "gaps_out": [
     "invalid_estimate",
     "no_history"
+   ]
+  },
+  {
+   "name": "more estimates than durations: the extra one is count_mismatch, never dropped, never complete",
+   "durations": [
+    300,
+    300,
+    300
+   ],
+   "credits": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "gaps": [
+    null,
+    null,
+    null,
+    null
+   ],
+   "total": null,
+   "partial": 30,
+   "complete": false,
+   "unknown": [
+    4
+   ],
+   "gaps_out": [
+    "count_mismatch"
+   ]
+  },
+  {
+   "name": "more durations than estimates: the unpaired duration is count_mismatch, never dropped, never complete",
+   "durations": [
+    300,
+    300,
+    300,
+    300
+   ],
+   "credits": [
+    10,
+    10,
+    10
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": null,
+   "partial": 30,
+   "complete": false,
+   "unknown": [
+    4
+   ],
+   "gaps_out": [
+    "count_mismatch"
    ]
   }
  ]
