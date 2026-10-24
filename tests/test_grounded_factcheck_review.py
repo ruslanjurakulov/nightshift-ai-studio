@@ -111,8 +111,8 @@ class AClampedVerdictIsNeverUpgraded(unittest.TestCase):
         measured it (run 39749438994: booleans and an `explanation` key) and sent it. The behaviour is
         pinned in tests/test_factcheck_system_prompt.py; this keeps the call site honest."""
         src = (ROOT / "modules" / "fact_checker.py").read_text()
-        self.assertNotIn("generate_with_retry(client, GEMINI_MODEL, prompt)", src)
-        self.assertIn("generate_with_retry(client, GEMINI_MODEL, prompt, config=_request_config())", src)
+        self.assertNotIn('generate_with_retry(client, model_for("fact_check"), prompt)', src)
+        self.assertIn('generate_with_retry(client, model_for("fact_check"), prompt, config=_request_config())', src)
 
 
 # ── 2 ───────────────────────────────────────────────────────────────────────────

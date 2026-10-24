@@ -1197,8 +1197,8 @@ def disabled_summary() -> dict:
 
 
 def _default_generate(prompt: str):
-    from config import GEMINI_MODEL
     from modules.gemini_client import generate_with_retry, make_client
+    from modules.gemini_stages import model_for
 
     config = None
     try:
@@ -1207,7 +1207,7 @@ def _default_generate(prompt: str):
         config = types.GenerateContentConfig(http_options=types.HttpOptions(timeout=JUDGE_TIMEOUT_S * 1000))
     except Exception as exc:          # an SDK without per-call timeouts: the retry loop's own limits apply
         logger.warning("Fact-check grounding: no per-call timeout for the model (%s)", type(exc).__name__)
-    return generate_with_retry(make_client(), GEMINI_MODEL, prompt, config)
+    return generate_with_retry(make_client(), model_for("grounding"), prompt, config)
 
 
 def _sources_of(results: list, evidence: Evidence) -> list:

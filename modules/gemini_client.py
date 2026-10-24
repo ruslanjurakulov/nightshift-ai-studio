@@ -4,7 +4,9 @@ The Gemini API fails in three distinct ways that matter here:
   503 UNAVAILABLE      — model overloaded, clears in seconds. Always retry.
   429 RESOURCE_EXHAUSTED with a per-minute quota — clears in ~a minute. Retry.
   429 RESOURCE_EXHAUSTED with a per-day quota — does not clear today. Give up
-                         immediately rather than burning minutes on doomed waits.
+                         immediately rather than burning minutes on doomed waits,
+                         and say so once, as GeminiDailyQuotaError (not the SDK's
+                         raw 429, which reached the log as a traceback).
 """
 
 import logging
@@ -16,6 +18,8 @@ from google import genai
 from google.genai import errors as genai_errors
 
 from config import GEMINI_API_KEY, GEMINI_MAX_RETRIES, GEMINI_RETRY_MAX_DELAY
+from modules import gemini_stages
+from modules.gemini_stages import GeminiDailyQuotaError
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +76,33 @@ def _backoff(exc: Exception, attempt: int) -> float:
     return min(delay, GEMINI_RETRY_MAX_DELAY)
 
 
+def _quota_model(exc: Exception, requested: str) -> str:
+    """The model Google says ran out (its quota dimensions), else the one this request named."""
+    for item in _error_details(exc):
+        if not isinstance(item, dict):
+            continue
+        for violation in item.get("violations", []) or []:
+            dims = violation.get("quotaDimensions") if isinstance(violation, dict) else None
+            model = dims.get("model") if isinstance(dims, dict) else None
+            if isinstance(model, str) and gemini_stages.MODEL_ID_RE.fullmatch(model):
+                return model
+    return requested
+
+
 def generate_with_retry(client: genai.Client, model: str, contents, config=None):
-    """client.models.generate_content, retried on transient failures."""
+    """client.models.generate_content, retried on transient failures.
+
+    ``model`` is normally ``gemini_stages.model_for(stage)``: the id of the model that stage uses, which
+    also tells the request counter the stage. Every real attempt is counted, retries included."""
     last_exc = None
+    stage = gemini_stages.stage_of(model)
+    model_id = str(model)
 
     for attempt in range(GEMINI_MAX_RETRIES):
+        gemini_stages.note_request(stage, model_id)
         try:
             return client.models.generate_content(
-                model=model,
+                model=model_id,
                 contents=contents,
                 config=config,
             )
@@ -91,11 +114,11 @@ def generate_with_retry(client: genai.Client, model: str, contents, config=None)
                 raise
 
             if code == 429 and _is_daily_quota(exc):
-                logger.error(
-                    "Gemini kunlik limit tugadi — ertaga qayta urinib ko'ring "
-                    "yoki https://aistudio.google.com da billing yoqing."
-                )
-                raise
+                spent = _quota_model(exc, model_id)
+                gemini_stages.note_daily_quota(stage, spent)
+                quota = GeminiDailyQuotaError(spent, _server_delay(exc), stage)
+                logger.error("%s", quota)
+                raise quota from exc
 
             if attempt == GEMINI_MAX_RETRIES - 1:
                 break

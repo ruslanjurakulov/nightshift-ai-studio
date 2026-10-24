@@ -222,6 +222,38 @@ TOPIC_HISTORY_FILE = HISTORY_DIR / "topics.json"
 # so a run set to 2.0 dies at the first script call, before it renders anything.
 # Override with the GEMINI_MODEL env var when Google ships the next one.
 GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or "gemini-3.6-flash")
+
+
+def _stage_model(name: str, raw) -> str:
+    """The model for one stage group: its variable when set to a plain model id, else GEMINI_MODEL.
+    Empty = GEMINI_MODEL, the way every other optional variable here behaves. Anything that is not a plain
+    id (a key pasted into the wrong variable, a URL, a sentence) also falls back, WITH a warning that names
+    the variable and never the value."""
+    value = (raw or "").strip()
+    if not value:
+        return GEMINI_MODEL
+    if re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", value):
+        return value
+    import logging
+    logging.getLogger(__name__).warning(
+        "%s is not a plain model id (lowercase letters, digits, '.', '_' and '-', at most 64 characters), "
+        "so GEMINI_MODEL is used for that stage instead.", name)
+    return GEMINI_MODEL
+
+
+# Per-stage models (modules/gemini_stages.py lists the stages in each group). Each is optional and empty means
+# GEMINI_MODEL, so with none of them set every stage uses the one model it always did. They exist so a free-tier
+# quota (per day, per model) can be spread over several models, or one stage moved to a stronger one, without
+# touching the others. This file does not choose any of them.
+GEMINI_STAGE_MODELS = {
+    "topic": _stage_model("GEMINI_MODEL_TOPIC", os.getenv("GEMINI_MODEL_TOPIC")),          # topic pick + niche check
+    "research": _stage_model("GEMINI_MODEL_RESEARCH", os.getenv("GEMINI_MODEL_RESEARCH")),
+    "script": _stage_model("GEMINI_MODEL_SCRIPT", os.getenv("GEMINI_MODEL_SCRIPT")),        # title plan + script
+    "factcheck": _stage_model("GEMINI_MODEL_FACTCHECK", os.getenv("GEMINI_MODEL_FACTCHECK")),
+    "grounding": _stage_model("GEMINI_MODEL_GROUNDING", os.getenv("GEMINI_MODEL_GROUNDING")),  # the evidence judge
+    "packaging": _stage_model("GEMINI_MODEL_PACKAGING", os.getenv("GEMINI_MODEL_PACKAGING")),  # packaging repair
+    "other": _stage_model("GEMINI_MODEL_OTHER", os.getenv("GEMINI_MODEL_OTHER")),          # comments, replies, critic
+}
 # Transient 503/429 retries. Daily-quota 429s are not retried — see gemini_client.
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "5"))
 GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "60"))

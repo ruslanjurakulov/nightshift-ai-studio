@@ -28,9 +28,10 @@ import json
 import logging
 import re
 
-from config import GEMINI_MODEL, GEMINI_STRUCTURED_OUTPUT
+from config import GEMINI_STRUCTURED_OUTPUT
 from dataclasses import dataclass, field
 from modules.gemini_client import generate_with_retry, make_client
+from modules.gemini_stages import model_for
 from modules.structured_output import json_config, parse_structured
 
 logger = logging.getLogger(__name__)
@@ -224,7 +225,7 @@ def research_topic(topic: str, niche: str = "history mysteries") -> ResearchBrie
         structured = False
         config = _system_config(RESEARCH_SYSTEM_PROMPT)
 
-    response = generate_with_retry(client, GEMINI_MODEL, prompt, config)
+    response = generate_with_retry(client, model_for("research"), prompt, config)
 
     try:
         data = parse_structured(response) if structured else _extract_json(response.text)

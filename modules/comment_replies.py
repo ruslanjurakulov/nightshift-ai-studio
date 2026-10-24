@@ -241,10 +241,10 @@ def gemini_drafter(prompt: str) -> str:
     """The default model call: the configured model only, no other model is
     tried when it fails (CLAUDE.md #4). Imported lazily so the module loads
     without the Google libraries."""
-    from config import GEMINI_MODEL  # noqa: PLC0415
     from modules.gemini_client import generate_with_retry, make_client  # noqa: PLC0415
+    from modules.gemini_stages import model_for  # noqa: PLC0415
 
-    response = generate_with_retry(make_client(), GEMINI_MODEL, prompt)
+    response = generate_with_retry(make_client(), model_for("comment_replies"), prompt)
     return response.text or ""
 
 
