@@ -83,10 +83,8 @@ jobs:
       # anything moderate or worse in what ships to production fails the job, and
       # so does any high or critical advisory in the dev tree unless it is named
       # in scripts/audit-allowlist.mjs with a reason and an expiry date (the
-      # allowed ones are still printed). braces <= 3.0.3 (GHSA-vfj7-8cjw-p6xm)
-      # has no patched release and sits behind eslint-config-next, so a bare
-      # `npm audit --audit-level=high` stayed red on every PR for a lint-time
-      # dependency. A new advisory can still turn this red on an unrelated PR;
+      # allowed ones are still printed; the list is empty today).
+      # A new advisory can still turn this red on an unrelated PR;
       # that is the point, and the fix is its own small dependency PR.
       - name: Dependency advisories
         if: ${{ !cancelled() }}

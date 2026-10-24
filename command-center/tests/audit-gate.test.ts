@@ -51,8 +51,8 @@ describe("Dependency advisories gate", () => {
     expect(evaluate(low, EMPTY, [], TODAY).failures).toEqual([]);
   });
 
-  it("ships an allowlist whose every entry is well formed and dated", () => {
-    expect(ALLOWLIST.length).toBeGreaterThan(0);
+  it("ships an allowlist whose every entry (if any) is well formed and dated", () => {
+    expect(Array.isArray(ALLOWLIST)).toBe(true);
     expect(evaluate(EMPTY, EMPTY, ALLOWLIST, TODAY).failures).toEqual([]);
   });
 });
