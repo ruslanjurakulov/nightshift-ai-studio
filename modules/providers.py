@@ -12,7 +12,7 @@ adapters below as unproven against a real run: the tests use fakes. If you
 migrate a call site behind these protocols, delete this paragraph.
 
 Each capability the pipeline depends on (research, images, video clips, voice,
-publishing, analytics) is expressed here as a small ``typing.Protocol``. The
+speech-to-text, keyword research, publishing, analytics) is expressed here as a small ``typing.Protocol``. The
 concrete modules that exist today satisfy these shapes, and a future provider
 (a different stock library, a different TTS, a different platform) only has to
 match the shape to drop in — nothing in the pipeline needs to name the vendor.
@@ -29,7 +29,9 @@ Design notes
   them lazily: ``GeminiResearchProvider`` around ``research_topic``, and
   ``AudioMixerVoiceProvider`` / ``YouTubeUploaderPublishingProvider`` /
   ``AnalyticsClientAnalyticsProvider`` around ``AudioMixer``, ``YouTubeUploader``
-  and ``AnalyticsClient`` (further down). They add no behaviour of their own.
+  and ``AnalyticsClient`` (further down), and ``WhisperSpeechToTextProvider`` /
+  ``VidIQKeywordResearchProvider`` around ``SubtitleGenerator.transcribe`` and
+  ``vidiq_client.keyword_research``. They add no behaviour of their own.
 
 Nothing here changes runtime behaviour, because nothing runs it (see STATUS).
 """
@@ -72,6 +74,38 @@ class VoiceProvider(Protocol):
     """
 
     def synthesize(self, text: str, out_path: Path) -> Path:
+        ...
+
+
+@runtime_checkable
+class SpeechToTextProvider(Protocol):
+    """Transcribes a local audio file into word-level timestamps.
+
+    Returns ``[{"word": str, "start": float, "end": float}, ...]`` in seconds —
+    the shape ``SubtitleGenerator.transcribe`` returns today and the one
+    captions, SRT and the word-by-word compositor already consume. An engine that
+    cannot give per-word times does not satisfy this contract; it must not
+    invent them (CLAUDE.md rule 5). The adapter over the local Whisper path is
+    WhisperSpeechToTextProvider below.
+    """
+
+    def transcribe(self, audio_path: Path) -> list[dict]:
+        ...
+
+
+@runtime_checkable
+class KeywordResearchProvider(Protocol):
+    """Looks up keyword opportunities for a seed phrase.
+
+    Returns raw row dicts (``term``, ``search_volume``, ``competition``,
+    ``related``), the shape ``VidIQHttpClient.keyword_research`` returns and
+    ``modules/vidiq.py`` coerces into ``Keyword``. A metric the source did not
+    give stays ``None``: an absent number is never a zero (CLAUDE.md rule 5).
+    ``[]`` means "nothing recommended", whether the source is off, failed or had
+    no rows. The adapter over vidIQ is VidIQKeywordResearchProvider below.
+    """
+
+    def keyword_research(self, seed: str) -> list:
         ...
 
 
@@ -213,6 +247,61 @@ class AnalyticsClientAnalyticsProvider:
         )
 
 
+class WhisperSpeechToTextProvider:
+    """SpeechToTextProvider over modules/subtitle_generator.SubtitleGenerator.
+
+    Delegates to the generator's own ``transcribe`` — the same local Whisper
+    ``base`` model and word timestamps a production run uses, so the seam cannot
+    drift from what the captions stage does. The generator is imported lazily
+    (``import whisper`` is heavy) and can be injected, so a test passes a fake.
+    Building the default generator creates its ``output/<slug>/subtitles``
+    directory, exactly as main.py does; nothing is loaded or downloaded until
+    ``transcribe`` is called.
+    """
+
+    def __init__(self, generator=None, *, slug: str = "stt"):
+        self._generator = generator
+        self._slug = slug
+
+    def _get_generator(self):
+        if self._generator is None:
+            from modules.subtitle_generator import SubtitleGenerator
+
+            self._generator = SubtitleGenerator(self._slug)
+        return self._generator
+
+    def transcribe(self, audio_path: Path) -> list[dict]:
+        return self._get_generator().transcribe(Path(audio_path))
+
+
+class VidIQKeywordResearchProvider:
+    """KeywordResearchProvider over modules/vidiq_client.VidIQHttpClient.
+
+    Delegates to the client's ``keyword_research``, which already returns ``[]``
+    on any failure and keeps an absent metric ``None``. With no client injected
+    it asks ``vidiq_client.make_client()``, which is ``None`` unless the operator
+    opted in (``config.VIDIQ_ENABLED`` and a token); in that case this returns
+    ``[]`` — the same "off means recommend nothing" the vidIQ researcher gives —
+    and makes no request. It never falls back to another source.
+    """
+
+    def __init__(self, client=None):
+        self._client = client
+
+    def _get_client(self):
+        if self._client is None:
+            from modules import vidiq_client
+
+            self._client = vidiq_client.make_client()
+        return self._client
+
+    def keyword_research(self, seed: str) -> list:
+        client = self._get_client()
+        if client is None:
+            return []
+        return client.keyword_research(seed)
+
+
 def voice_provider(channel=None, *, slug: str = "voice") -> VoiceProvider:
     """The default voice provider (a factory, so a future TTS can be swapped in
     without call sites changing)."""
@@ -227,3 +316,13 @@ def publishing_provider(channel=None) -> PublishingProvider:
 def analytics_provider(channel=None, *, lookback_days: int = 28) -> AnalyticsProvider:
     """The default analytics provider."""
     return AnalyticsClientAnalyticsProvider(channel=channel, lookback_days=lookback_days)
+
+
+def speech_to_text_provider(*, slug: str = "stt") -> SpeechToTextProvider:
+    """The default speech-to-text provider (local Whisper)."""
+    return WhisperSpeechToTextProvider(slug=slug)
+
+
+def keyword_research_provider() -> KeywordResearchProvider:
+    """The default keyword-research provider (vidIQ, off unless configured)."""
+    return VidIQKeywordResearchProvider()
