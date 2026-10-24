@@ -51,6 +51,7 @@ from modules.render_spec import (
     RenderSpec,
     XFADE_STYLES,
     Segment,
+    FASTSTART_MOVFLAGS,
     build_ffmpeg_command,
     cap_inputs,
     concat_list_lines,
@@ -1105,7 +1106,7 @@ def check_layers_fit(spec: RenderSpec) -> None:
 
 def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
            jobs: Optional[int] = None, timings: Optional[RenderTimings] = None,
-           timeout_s: Optional[float] = None) -> str:
+           timeout_s: Optional[float] = None, faststart: bool = False) -> str:
     """Render `spec` to `spec.output_path` via ffmpeg and return that path.
 
     Normalises every segment (``jobs`` at once; default ``render_jobs``),
@@ -1118,6 +1119,10 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
     shares one deadline, the one running when it passes is killed, the temp
     directory is removed, and RenderTimeout is raised. None = no limit (the
     pipeline's renders, unchanged).
+
+    ``faststart`` writes the index (moov) in front of the media data
+    (``render_spec.FASTSTART_MOVFLAGS``): the pipeline's master asks for it, an
+    editor export does not (default False: its command is unchanged).
     """
     problems = validate(spec)
     if problems:
@@ -1162,6 +1167,12 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
         cmd = build_ffmpeg_command(norm_spec, str(concat_path),
                                    str(overlay_path) if overlay_path else None)
         cmd[0] = ffmpeg  # the builder emits a literal "ffmpeg"; use the resolved binary
+        if faststart:
+            # An output option, so it goes right before the output file. Refuse rather than guess if the command
+            # is not shaped that way: the pipeline then renders with the compositor, which writes moov first.
+            if cmd[-1] != spec.output_path:
+                raise RenderBackendError("cannot place -movflags +faststart: the command does not end with the output")
+            cmd[-1:-1] = list(FASTSTART_MOVFLAGS)
         t0 = time.monotonic()
         if deadline is None:
             _run(cmd)

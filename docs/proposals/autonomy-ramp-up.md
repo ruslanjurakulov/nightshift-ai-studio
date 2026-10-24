@@ -337,7 +337,7 @@ So: "first 5 to 10 private, then auto-publish" is achievable as *private for 7 v
 - **Repairs and resumes.** A scene repair voids the approval (0112) and produces a new cut of the *same* run: one video in the window, judged on its final cut.
 - **Manual dispatch.** Someone with repository write access can dispatch a run with `privacy = public`. On a channel whose column `channels.auto_publish` is not plainly true (Chronos today) that is clamped to private (`channels.py:537-548`); where the column is on, it goes public. The ladder governs the bot, not people with repo access, and manual runs are not evidence. A test should keep pinning that the *schedule* can never request public.
 - **Shorts.** Excluded from evidence (`parent_video_id` set); they stay private (0116).
-- **YouTube API quota.** `videos.insert` ~1600 and `captions.insert` ~400 per video leave room for about 4 to 5 videos a day per OAuth project before any flip (50 each), thumbnails or comments (costs not in the repo table; unverified). One project, many channels, is a real ceiling for "an autonomous pipeline per channel".
+- **YouTube API quota.** The `videos.insert` ~1600 and `captions.insert` ~400 figures this paragraph was written with are outdated per YouTube's API revision history (entries dated 2025-12-04 and 2026-06-01) and UNVERIFIED: confirm the current costs in Google Cloud Console → Quotas before relying on the "4 to 5 videos a day" arithmetic (flips cost 50 each; thumbnails and comments costs are not in the repo table; unverified). One project, many channels, is a real ceiling for "an autonomous pipeline per channel".
 
 ---
 

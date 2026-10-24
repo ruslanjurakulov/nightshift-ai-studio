@@ -106,7 +106,7 @@ Real limits, discovered the hard way. Check against these before designing.
 | :-- | :-- | :-- |
 | Supabase free tier, per object | **50 MB** | The previews bucket holds a 480p review copy, never the master render |
 | Supabase free tier, total storage | 1 GB | Review copies per channel, pruned: 5 uploaded + 5 held (not uploaded) |
-| YouTube Data API | 10,000 units/day | `videos.insert` ~1600, `captions.insert` ~400 — count what you add |
+| YouTube Data API | 10,000 units/day (default) | **Per-method costs UNVERIFIED — confirm in Google Cloud Console → Quotas before designing on any number.** The old `videos.insert` ~1600 figure is outdated per YouTube's API revision history (entries dated 2025-12-04 and 2026-06-01; the later one reportedly puts `videos.insert` in its own quota bucket). `captions.insert` ~400 comes from the same old table and is equally unconfirmed. Count what you add |
 | GitHub Actions runner | 2 cores, ~7.9 GB | One render at a time (`max-parallel: 1`); the render has died at `exit 143` here |
 | Actions cache | evicted after 7 days unused | `history/` is not durable storage |
 | ElevenLabs voice ids | 20 alphanumeric chars | A number is not a voice id — pick from the account's list, never type one |
