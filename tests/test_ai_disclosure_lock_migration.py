@@ -254,6 +254,7 @@ class EveryWriterOfAgentConfigIsKnown(unittest.TestCase):
         "0056_channel_dna.sql": "set_channel_dna merges ONLY elevenlabs_voice_id and language into agent_config",
         "0086_channel_config_lock.sql": "create_channel (checked again in 0114), credential/status functions, the stamp trigger",
         "0114_ai_disclosure_admin_lock.sql": "this file replaces the guard and create_channel; it writes no row",
+        "0117_voice_profiles.sql": "attach_voice_to_channel (the owner of an approved custom voice, audited) is the ONE other definer that writes ai_disclosure_voice = own_clone; it writes only elevenlabs_voice_id / elevenlabs_secondary_voice_id and that key, never ai_disclosure (pinned in tests/test_voice_profiles_migration.py); it replaces the guard on 0114's body",
         "0116_visibility_requests.sql": "set_channel_publish_on_approve updates ONLY publish_on_approve and updated_at (pinned in tests/test_visibility_migration.py); it only READS agent_config, for the second-person requirement, and never writes it",
     }
 

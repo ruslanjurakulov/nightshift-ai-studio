@@ -62,7 +62,10 @@ OFFENDERS = (
 # The check that counts (the owner's primary verify): every policy on
 # storage.objects must be one this repo creates.
 ALLOWED = ("avatars_delete_own", "avatars_insert_own", "avatars_select_own", "avatars_update_own",
-           "previews_read", "previews_review_link_read", "voice_previews_read")
+           "previews_read", "previews_review_link_read", "voice_previews_read",
+           # 0117: the voice-samples bucket (one insert rule, four restrictive closers)
+           "voice_samples_closed_delete", "voice_samples_closed_insert", "voice_samples_closed_select",
+           "voice_samples_closed_update", "voice_samples_insert_own")
 ALLOWLIST = (
     "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects' "
     "and policyname not in ('" + "', '".join(ALLOWED) + "') order by policyname")
@@ -526,7 +529,9 @@ def test_the_review_link_policy_is_anon_select_only_and_limited_to_the_read_oper
     test_sec_review_links.py."""
     with as_superuser(conn, commit=False) as s:
         rows = s.rows("select policyname, cmd, roles::text, permissive, qual, with_check from pg_policies "
-                      "where schemaname = 'storage' and tablename = 'objects' and roles::text like '%anon%'")
+                      "where schemaname = 'storage' and tablename = 'objects' and roles::text like '%anon%' "
+                      # 0117's four RESTRICTIVE closers for the voice-samples bucket name anon too: they only ever narrow
+                      "and policyname not like 'voice\\_samples\\_closed\\_%'")
     assert rows == [("previews_review_link_read", "SELECT", "{anon}", "PERMISSIVE",
                      "(review_link_allows(bucket_id, name) AND storage.allow_any_operation("
                      "ARRAY['object.get_authenticated'::text, 'object.get_authenticated_info'::text]))", None)]

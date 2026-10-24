@@ -583,3 +583,8 @@ sec_operator_channel_token_0115.extend(TABLES, FUNCTIONS)
 import sec_visibility_0116  # noqa: E402
 
 sec_visibility_0116.extend(TABLES, FUNCTIONS)
+
+# Migration 0117 (Custom Voice: voice_profiles, consents, the voice-samples bucket, ownership): tests/security/sec_voice_profiles_0117.py
+import sec_voice_profiles_0117  # noqa: E402
+
+sec_voice_profiles_0117.extend(TABLES, FUNCTIONS)
