@@ -9,6 +9,7 @@ import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
 import { marketingRu } from "./marketing/ru";
+import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
@@ -33,6 +34,7 @@ export const ru: Dictionary = {
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
   marketing: marketingRu,
+  seriesPlan: seriesPlanRu,
   ownerTruth: ownerTruthRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,

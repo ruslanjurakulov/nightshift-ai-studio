@@ -1,8 +1,10 @@
 # Series Factory
 
 A series is 3 or 4 episodes of one channel, planned together, priced before anything is spent, and made one at a time.
-This page describes **slice S1** (a pure planner and a pure price preview) and **slice S2** (migration 0120: the tables, the functions
-that spend, and the queue kind; section "Slice S2" below). Nothing here runs yet: no worker job, no route, no UI.
+This page describes **slice S1** (a pure planner and a pure price preview), **slice S2** (migration 0120: the tables, the functions
+that spend, and the queue kind; section "Slice S2" below) and **slice S3** (the worker's planning job and the plan page; section "Slice S3"
+below). All of it is dark: the worker is off unless `NIGHTSHIFT_SERIES_PLANNER` is on, the page is off unless `SERIES_FACTORY_ENABLED` is
+on, and `request_series_plan` is still granted to nobody, so no customer can start a plan.
 
 ## What S1 is
 
@@ -19,8 +21,8 @@ and a fixture both read, `tests/fixtures/series_quote_cases.txt`, so the Python 
 
 ## What S1 is not
 
-- **Not wired.** Nothing in `main.py`, `tools/`, `modules/`, a route, a component or a workflow imports or names it.
-  `tests/test_series_planner.py::Unwired` fails if something does, so the PR that wires it has to change that test on purpose.
+- **Not wired in S1 alone.** (S3 wires it into exactly one place, the worker's handler `modules/series_plan_worker.py`;
+  `tests/test_series_planner.py::WiredOnlyByTheWorker` fails if anything else imports or names it.)
 - (S1 alone:) no migration, no table, no route, no UI, no workflow change, no live model call, no change to how a run behaves.
   Slice S2 added the migration and the tables, and nothing else of this list.
 - No quota API. `series_call_budget` only reports an estimate; it cannot refuse anything, because the repo cannot read the
@@ -317,7 +319,103 @@ No worker job (S3), no UI (S3), no Gemini call, no route. `request_series_plan` 
 override (owner decision 4) is not set by `start_series_episode`; the episode run is a plain queue run with an explicit topic until that
 decision is made. A migration cannot be fact-checked or measured: nothing here was run against a live database.
 
-## How it will be wired (S1 and S2 are done; S0's queue half is in 0120)
+## Slice S3: the worker and the page (no migration, dark by default)
+
+S3 adds **no migration and no grant**. `request_series_plan` is still granted to nobody (`tests/test_series_tables_migration.py::Dormant`
+fails if any migration grants it). The grant lets customers spend the shared Gemini key, so it is a separate owner decision.
+
+### The worker: `modules/series_plan_worker.py`, called from `tools/queue_worker.py`
+
+A `render_jobs` row of kind `series_plan` is not a run. `Worker.process` hands it to the planning service **before** `run_request.plan_run`
+(which still refuses the kind, so `main.py` can never be started for one). The service, in the worker's own process:
+
+1. reads the plan (`series_plans`, service key), refuses a plan that is not `requested`, a plan of another channel, a channel never confirmed
+   against YouTube, a server with no `GEMINI_API_KEY`, and a spent-quota cooldown, all **before** a model call;
+2. makes ONE call through `series_planner.plan_series` with `gemini_generate()` (`generate_with_retry`, stage `series_plan`), the channel's
+   `TopicManager` as the vet (history rebuilt from Supabase, held topics loaded), on a thread with a deadline;
+3. ends the plan with `finish_series_plan` (service key): `p_ok` true with the title, the report (the plan without its episodes), the quote and
+   one entry per episode (`topic`, `outline` = the episode's whole report, `usable`, `needs_confirmation` = usable and niche unconfirmed), or
+   `p_ok` false with a closed word and a fixed sentence.
+
+Hard limits: 3 or 4 episodes (anything else is refused before a call); the call budget `series_call_budget(n)["plan_calls"]` is 1 and a second
+`generate` is refused; at most `CHRONOS_TOPIC_GATE_MODEL_CALLS` (default 2) small niche questions on top; 300 s wall clock, after which no
+further call is made and the plan ends as `timeout`. **No credit hold**: planning is a platform cost, the customer is charged nothing on every
+path (the job has no `credit_ref`, and a test fails if a planning job touches the credits client). The quote stored with a plan carries the
+Gemini-call budget and the episode length and **no credits**: the price of an episode is `quote_series_episode`'s, computed when it is read.
+
+| Ending | Plan | Job |
+| :-- | :-- | :-- |
+| plan made | `ready` | `succeeded` |
+| `NIGHTSHIFT_SERIES_PLANNER` off | `failed` / `planner_not_enabled` | `failed` ("series planning failed (planner_not_enabled)"), as today, but the plan no longer sits `requested` for 2 h |
+| Gemini per-day quota spent (`GeminiDailyQuotaError`, main.py's exit 80) | `failed` / `gemini_quota` | `failed`, coded `provider_quota`, "nothing was charged"; further planning jobs end the same way for 30 to 60 minutes **without** calling the API |
+| the planner's own refusal (bad answer, no niche, ...) | `failed` / the planner's code | `failed` |
+| timeout / exception / answer too large to store | `failed` / `timeout`, `worker_error`, `result_too_large` | `failed` |
+| the database cannot be told | stays `requested` | put back in the queue; **on the last attempt** the plan is ended instead of releasing, because a release would fail the row and leave the plan `requested` |
+| job taken over by another worker (`lost`) | left to its new holder | left alone |
+| re-queued job whose plan already ended | unchanged | `succeeded` / `failed` to match, **no model call** (idempotent) |
+
+The words are pinned equal to the page's list (`WORKER_ERROR_CODES` in `command-center/lib/seriesPlan.ts`). Model text is stored as data only
+and never repeated in a log, an error or a job row; the error stored on a failed plan is one of our fixed sentences.
+
+The switch is `NIGHTSHIFT_SERIES_PLANNER` (`on` / `1` / `true` / `yes`; empty is off): `deploy/.env.worker.example`, `WORKERENV_` in
+`deploy_web.yml`, `tests/test_worker_env_allowlist.py`, `tests/test_switch_reachability.py`.
+
+### The page: `/{channel}/series/{plan id}` and "Plan a series" on `/{channel}/series`
+
+Behind the server flag `SERIES_FACTORY_ENABLED` (`on` / `1` / `true` / `yes`; read per request on the server, never `NEXT_PUBLIC_`; documented in
+`deploy/.env.web.example`, mapped by `WEBENV_` in `deploy_web.yml`). **Off: the plan page is the public 404 and makes no database call, and the
+series page is exactly as before** (no form, no read of `series_plans`). A path that is not a plan id is a 404 before the database is asked.
+
+- Outline cards with the hook and call-to-action variants, the open loop, the cliffhanger and the key facts. **Every outline carries "Not
+  fact-checked"** (the page, and again on each card), in en, ru and uz. Model text is cut to a bounded plain string and drawn only as a React
+  text node (tests render a hostile outline and assert no element, handler or link comes out of it).
+- Per-episode and total price from `quote_series_episode` (the database's). An episode with no price or an unreadable quote is "not priced" /
+  "price unavailable", and the total is then "not complete", never a smaller number and never 0. The operator's own organization reads
+  "Included", not "0 credits".
+- A status chip per episode (refused, needs your confirmation, ready, waiting, not priced, queued, running, storyboard waiting, video made,
+  run finished, failed, cancelled); the storyboard and video chips link to `/{channel}/videos/storyboard/{id}` and `/{channel}/videos/{id}`.
+- **Start episode** calls `start_series_episode(episode, price shown, 'se:<episode id>', confirmed)`. The database holds ITS price and refuses
+  (`price_changed`) unless the price shown is still the current one. An episode whose niche nobody confirmed (`needs_confirmation`) shows why in
+  the gate's words and cannot be started until the person ticks "I read this topic and confirm it is inside this channel's niche"
+  (`p_confirmed` true). The button is not drawn unless the database says the episode `startable` and the person `may_start` (an administrator).
+- Refusals are read out in the sheet, in words: `price_changed` (with the new price), insufficient credits (with the numbers),
+  `unpriced`, `earlier_episode_not_finished`, rate limited, the plan's parallel-run limit, `forbidden`, `series_not_runnable`, and the rest;
+  anything unknown is a generic "nothing was held". A stale page is refreshed when the refusal says it is stale.
+- States: loading (`loading.tsx`), being made (the page re-reads itself every 5 s; "taking longer than usual" after 10 minutes, and that
+  nothing is charged), failed (a sentence per code, "nothing was charged", a way to plan again), not found, migration not installed, read
+  failed with Retry, empty recent-plans list.
+- The "Plan a series" form sends the English name of the language (the database refuses `Русский` / `O'zbek`), a key that is stable for the same
+  request and new for a changed one, and no price. The database's refusal of the call while it is ungranted (`permission denied for function`,
+  or the function not found) is shown as **"not available yet; nothing was started and nothing was charged"**, never as a failure.
+
+### What the owner must do, in order
+
+1. Confirm migration 0120 is applied (it merged as #590).
+2. Merge S3 (this changes nothing visible: the worker is off, the page is off).
+3. Worker: set the repository variable `NIGHTSHIFT_SERIES_PLANNER=on` and run "Deploy web". Needs `GEMINI_API_KEY` in the worker env (it is
+   there for runs). With the grant still missing no plan can exist, so this is safe on its own.
+4. Web: set `SERIES_FACTORY_ENABLED=on` and run "Deploy web". The form appears; pressing it says "not available yet".
+5. **The grant**, in its own migration and PR, only after the conditions below: `grant execute on function public.request_series_plan(text, text,
+   integer, text, integer, text, text) to authenticated;`. Granting before step 3 is also safe (the job fails cleanly as `planner_not_enabled`),
+   but every plan then fails; granting it is what lets customers spend the shared Gemini key.
+
+### Conditions before the grant that S3 does NOT meet
+
+- **F4 (not met, needs a migration):** the cap is per organization and one account can have 10 organizations (50 plans a day on the shared key).
+  A per-user cap and/or a global daily cap in the database is required before the grant. S3 can only slow this down on the worker side (the
+  quota cooldown), not cap it.
+- **F5, met in code:** the handler now exists (a `series_plan` job is no longer failed as "invalid job"); the language sent is the English name;
+  `render_jobs_voice_guard` firing on the planning job's insert is surfaced as its own sentence ("this channel's configured voice isn't
+  available"). Not decided: whether planning should be exempt from that guard (it uses no voice); that needs a migration.
+- No restart of a failed or cancelled episode (still a later slice), no cancel, no per-run storyboard-review override (owner decision 4), no
+  semantic originality check on the episodes (the repeat check is the word rule only), and `held_topics_checked` is `true` only when some held
+  topics were found (the manager cannot tell "none held" from "could not be read"), otherwise the page says it may not have checked.
+- A quota hit while vetting an episode is swallowed by `TopicManager._ask_on_niche` (existing behaviour: an unanswered question defers the
+  episode), so such an episode shows as "not confirmed" instead of ending the plan.
+- Planning's Gemini calls are not in the cost ledger (a gap, not a zero); nothing was run against Gemini, Supabase or a browser: see
+  "Unmeasured and unverified".
+
+## How it will be wired (S1, S2 and S3 are done; S0's queue half is in 0120)
 
 Numbers follow the plan (`series-voice-plan.md`).
 
@@ -327,13 +425,13 @@ Numbers follow the plan (`series-voice-plan.md`).
    `start_series_episode` writes one (the Run now insert policy does not list the key). What remains of S0 is the Run now route
    reading a `series`, and the dangling `Series.playlist_id` and `series_id` (which `watch_next` filters on but no table stores).
 2. **S2**: done in migration 0120 (section above).
-3. **S3**: a worker job that calls `plan_series` with `gemini_generate` and a real `TopicManager` (after `load_held_topics()`),
+3. **S3 (done, see "Slice S3"; the grant of `request_series_plan` is NOT part of it)**: a worker job that calls `plan_series` with `gemini_generate` and a real `TopicManager` (after `load_held_topics()`),
    stores the plan, and a `/[channel]/series/[id]` page: outline cards labelled "not fact-checked", variants, per-episode and
    total price from `quoteSeries`, a status chip per episode linking to its storyboard and video, en/ru/uz strings, and the
    loading, empty, error, insufficient-credits and retry states. The page must make a person confirm each unconfirmed
-   episode before it can be started (above; `start_series_episode(..., p_confirmed => true)`). S3's migration grants
-   `request_series_plan` to `authenticated` and its worker answers with `finish_series_plan`. This PR must update `Unwired`
-   (and `tests/test_series_tables_migration.py::Dormant`).
+   episode before it can be started (above; `start_series_episode(..., p_confirmed => true)`). The worker answers with
+   `finish_series_plan`. The grant of `request_series_plan` to `authenticated` is a separate migration and an owner decision (it was planned
+   here and moved out: no migration in S3). S3 changed `Unwired` into `WiredOnlyByTheWorker` and `Dormant` into an allowlist of files.
    **Prerequisite, not in S1: a semantic originality check.** The repeat check here is the word rule only
    (`modules/topic_dedup`): a paraphrase ("The Roman Empire's collapse" vs "Why Rome fell") is not a repeat to it.
    `TopicManager.pick_topic` also runs the `OriginalityEngine` (embeddings, against used and held topics); a series

@@ -85,6 +85,13 @@ a quota refusal is recorded as ``quota_exceeded``). Nothing replies on its own.
 The step is OFF unless ``NIGHTSHIFT_COMMENT_INBOX=on`` (it spends YouTube quota and
 classifier calls for every connected channel, within the inbox's daily quota ceiling).
 
+Series planning (migration 0120, slice S3, ``modules/series_plan_worker.py``): a ``series_plan`` job is not a run. The worker plans in
+this process (one Gemini call through ``modules/series_planner.plan_series``, every episode topic vetted) and answers with the database
+function ``finish_series_plan``; no ``main.py``, no credit hold (planning is a platform cost, the customer is charged nothing), and a spent
+Gemini daily quota ends the plan and the job as a ``provider_quota`` failure, as exit 80 does for a run. It plans only with
+``NIGHTSHIFT_SERIES_PLANNER=on`` (off by default); off, the job still fails cleanly and its plan is ended with an error instead of
+sitting ``requested`` for two hours.
+
 Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
 to an organization other than the operator's own is paid for by the hold its
 ``credit_ref`` names (or, from the public API, its ``api_hold_ref``). The
@@ -145,6 +152,7 @@ from modules import visibility_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
 from modules import render_error  # noqa: E402
 from modules import repurpose  # noqa: E402
+from modules import series_plan_worker  # noqa: E402
 from modules.storyboard_review import PAUSED_EXIT as STORYBOARD_PAUSED_EXIT  # noqa: E402
 from modules.voice_gate import VOICE_GATE_EXIT, VOICE_GATE_UNAVAILABLE_EXIT  # noqa: E402
 
@@ -658,6 +666,7 @@ class Worker:
         repurposer=None,
         comments=None,
         visibility=None,
+        series_plans=None,
         cost_mirror: Optional[Callable[[str], object]] = None,
     ):
         self.client = client
@@ -704,6 +713,9 @@ class Worker:
         # Publish when approved (migration 0116): makes an approved video public on a channel that switched it on, between
         # render jobs. None = off (the default: NIGHTSHIFT_VISIBILITY_PUBLISH).
         self.visibility = visibility
+        # Series planning (migration 0120, modules/series_plan_worker.py): a ``series_plan`` job is planned here, in this process,
+        # and never reaches main.py. None = this worker does not know the kind (a worker built without it keeps the old refusal).
+        self.series_plans = series_plans
         # The service-key credits client and where a finished run's ledger is
         # read from. None = the worker cannot tell who pays for a job, so it
         # runs none (migration 0041: no unpaid fallback).
@@ -848,6 +860,9 @@ class Worker:
         if self.stop_requested.is_set():
             return self._release(job, started=False, why="worker stopping before the run started")
 
+        if str(job.get("kind") or "") == series_plan_worker.KIND and self.series_plans is not None:
+            return self._process_series_plan(job)
+
         try:
             argv, run_env, clean = run_request.plan_run(channel_id, str(job.get("kind") or ""),
                                                         job.get("params"), self.env)
@@ -941,6 +956,31 @@ class Worker:
         # belongs to whoever took the job. A job failed on its last attempt by
         # the stale sweep is released by expire_credit_reservations.
         return outcome
+
+    def _process_series_plan(self, job: Mapping) -> str:
+        """One series-planning job (modules/series_plan_worker.py): plan, answer the database, end the job. No credit hold is opened
+        or settled (planning is free to the customer), no cost mirror runs (no ledger row exists for a plan), and no child process
+        starts. The heartbeat runs while the model is called, as for a run."""
+        job_id = job["id"]
+        lost = threading.Event()
+        done = threading.Event()
+        hb = threading.Thread(target=self._heartbeat_loop, args=(job_id, lost, done), daemon=True)
+        hb.start()
+        last = int(job.get("attempts") or 1) >= int(job.get("max_attempts") or 3)
+        try:
+            out = self.series_plans.run(job, lost=lost, interrupted=self._must_interrupt,
+                                        resolve_channel=self.resolve_channel, last_attempt=last)
+        except Exception as e:  # noqa: BLE001 - the service never raises; if it did, the job still ends
+            logger.error("job %s: series planning raised %s", job_id, type(e).__name__)
+            out = series_plan_worker.Outcome("failed", "series planning stopped unexpectedly (nothing was charged)")
+        finally:
+            done.set()
+            hb.join(timeout=5)
+        if out.kind == "lost":
+            return "lost"                     # whoever took the job over owns its plan
+        if out.kind == "released":
+            return self._release(job, started=True, why=out.error or "series planning put back in the queue")
+        return self._finish(job, "succeeded" if out.kind == "succeeded" else "failed", out.error, code=out.code)
 
     #: How far back each job's cost mirror reaches: a send that failed (Supabase
     #: down, migration 0106 not applied yet) is retried by the next jobs for this
@@ -1485,7 +1525,7 @@ class Worker:
         return "released"
 
     def _finish(self, job: Mapping, status: str, error: Optional[str],
-                before: Optional[Callable[[], None]] = None) -> str:
+                before: Optional[Callable[[], None]] = None, code: Optional[str] = None) -> str:
         if before is not None:
             # The hold's settlement, ahead of the row: never raises past here.
             try:
@@ -1499,7 +1539,9 @@ class Worker:
                 # the customer reads a sentence for the code, the operator keeps
                 # the header and log tail that follow it.
                 lines = error.splitlines()
-                error = render_error.tag(render_error.classify(lines[0], lines[1:]), error)
+                # ``code``: a worker that already knows what ended the job (a spent Gemini quota in a planning job, which has no
+                # "main.py exited with code 80" header to read it from) names it.
+                error = render_error.tag(code or render_error.classify(lines[0], lines[1:]), error)
         # Confirmed only by an explicit True (the row is terminal and ours). None (no answer) and False
         # ("no longer ours": a stale sweep re-queued it while this worker was cut off) both leave the
         # result file in place: the re-queued attempt may need it to see that this run was paid for.
@@ -1606,6 +1648,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             url, key, worker_id=args.worker_id,
             credentials=lambda cid: youtube_publish_credentials(cid, os.environ, token_client))
         logger.info("publish when approved: ON (ceiling %s YouTube units a day)", visibility.ceiling)
+    # OFF by default: planning is a Gemini call on the platform's shared key, made on a customer's press. The service is built either way,
+    # so that a planning job is ended cleanly (and its plan with it) while the switch is off.
+    series_plans = series_plan_worker.build(url, key, os.environ)
+    logger.info("series planning: %s", "ON (NIGHTSHIFT_SERIES_PLANNER)" if series_plans.enabled else "off")
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds, job_timeout_seconds=args.job_timeout_seconds,
@@ -1619,6 +1665,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     cost_mirror=_cost_mirror(url, key),
                     repurposer=repurpose.RepurposeService(url, key, output_dir=REPO_DIR / "output",
                                                           worker_id=args.worker_id),
+                    series_plans=series_plans,
                     comments=comments,
                     visibility=visibility)
     worker.install_signal_handlers()

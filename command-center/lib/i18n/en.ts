@@ -9,6 +9,7 @@ import { ownerSafetyEn } from "./owner-safety/en";
 import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
 import { marketingEn } from "./marketing/en";
+import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
@@ -41,6 +42,7 @@ export const en = {
   confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,
   marketing: marketingEn,
+  seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
