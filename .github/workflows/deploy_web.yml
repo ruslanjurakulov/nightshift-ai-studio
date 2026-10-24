@@ -177,6 +177,8 @@ jobs:
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
           WEBENV_DEV_CLI_PAGE: ${{ vars.DEV_CLI_PAGE }}
+          # Custom voice page (docs/CUSTOM_VOICE.md): off unless this repository variable is exactly `1`. Empty = the page is a 404.
+          WEBENV_CUSTOM_VOICE_ENABLED: ${{ vars.CUSTOM_VOICE_ENABLED }}
           WEBENV_MCP_OAUTH_LIVE: ${{ vars.MCP_OAUTH_LIVE }}
           # Customer Telegram notifications: the bot's PUBLIC username, empty =
           # the Notifications panel stays hidden. Set it last, after the notify

@@ -4,8 +4,10 @@ Status: **database, pure code and a worker behind a switch** (migrations `0117_v
 `modules/voice_profiles.py`, `modules/voice_worker.py`, `tools/voice_worker.py`). Nothing live runs: the ElevenLabs account is on the **free plan**, which does not
 allow instant voice cloning. The worker is **off** unless the repository variable `NIGHTSHIFT_VOICE_CLONING` is `on` (the owner sets
 it; it is empty by default and reaches the worker env through `deploy_web.yml`), and **nothing starts it**: no service, cron entry or
-workflow runs `tools/voice_worker.py` (a test fails if one does). No screen calls any of the rest yet (a test fails if one starts to
-before this document is updated).
+workflow runs `tools/voice_worker.py` (a test fails if one does). **The UI exists but is dark** (slice V3, "The UI" below): a page behind
+the server-side flag `CUSTOM_VOICE_ENABLED` (off unless it is exactly `1`), which asks the database nothing while it is off. Only one
+application file names the owner's functions (`command-center/lib/custom-voice-api.ts`; a test fails if another does), and none names the
+internal ones.
 The run-time checks of the hard gate (`modules/voice_gate.py`, `lib/server/run-voice.ts`) call only the read-only function
 `channel_voice_config_problem` and change nothing for a run that uses no cloned voice. Migration 0121 (the gates G2 and G3 and the oracle
 below) is **live on apply** and touches no row; it grants nothing to anyone who had nothing, and does not grant `request_voice_clone`.
@@ -450,11 +452,69 @@ or knowingly accepted.
   on a real MediaRecorder `audio/webm` recording, and of `language="en"` for Uzbek and Russian speakers.
 - The grant of `request_voice_clone`, the UI, the Actions pre-flight ("Hard gate" above) and counsel's consent text are separate gates.
 
+## The UI (slice V3, dark)
+
+`/{channel}/agents/voice`, under the channel's agents area (`command-center/app/(app)/[channel]/agents/voice/page.tsx`). **No migration,
+no grant, nothing live.**
+
+**The switch.** `CUSTOM_VOICE_ENABLED`, a server-side environment variable (repository variable of the same name, mapped in
+`deploy_web.yml`, empty in `deploy/.env.web.example`). Only the literal `1` is on. Off, the page is the public 404 and no database
+client is created: the middleware answers before the auth gate (`customVoiceDecision`, `lib/custom-voice.ts`) and the page checks the flag
+as its first statement. The agents page links to it only while the flag is on. **The flag is not the grant**: with it on, the first call
+(`request_voice_clone`) is still refused by the database, and the page words that as "Not available yet" (nothing was recorded or sent).
+Setting the variable is the owner's act; it is read per request, a restart is enough.
+
+**What the page does**, all in the browser with the signed-in person's own session (no API route, no service key; the route list gains
+only the flagged page):
+
+1. Explains the flow and the honest limit ("this proves a live person read a phrase, not whose voice it is"), and says recording is live
+   only, in one take, with no file upload.
+2. **Consent**: a name and the five declarations the database requires (own voice, only speaker, over 18, recording goes to the voice
+   technology partner, no impersonation), each a required checkbox, and the consent text. **The consent text is a PLACEHOLDER marked
+   "counsel review required"; its version constant `CONSENT_TEXT_VERSION` is `v0`** (not `v1`: recording v1 for text nobody reviewed
+   would be a false record in the append-only trail). Counsel's text ships as `v1` with the change of that constant and of
+   `CONSENT_TEXT_IS_PLACEHOLDER`. The five declaration labels are short statements of the five facts and are for counsel to review with it.
+3. **The request** is the first call, because the phrase is the database's and only comes back from it. A browser that cannot record is
+   told before the request, so it does not spend one of the day's five.
+4. **Recording**: `MediaRecorder` only, a 30 to 60 second guard (shorter is discarded with the length said, longer is stopped at 60),
+   listen, record again, then the upload to `<user_id>/<profile_id>/sample.<ext>` of the private bucket with the person's own session,
+   using the prefix the database returned and the base content type (`audio/webm`, not with codecs). Microphone denied, no microphone,
+   an unsupported browser and a site-policy block each have their own sentence.
+5. **The list** (explicit columns only: no provider voice id, owner reference, hash or path is ever read into the screen), polled every
+   5 seconds for up to 10 minutes while a request is being checked. Every state has a card: pending (checking, or no recording received),
+   testing, approved, rejected (the closed reason word mapped to translated text; an unknown word reads "no reason could be shown"),
+   deleted ("deletion was requested", not "done": the removal at the provider and of the recording is the worker's, in the background).
+6. Approve, attach to and detach from the current channel (narrator slot), delete voice and delete recording, each behind the confirm sheet,
+   each answering with the database's own word mapped to a sentence.
+
+**The test step is a labelled stub.** The Studio speech tool is a priced job (quote, hold, capture) that needs the voice id, which this
+screen never holds; wiring it is its own change. The card says so ("Not connected yet", with a TODO) and makes no call. Consequence: until it
+exists, `approve_voice` answers `not_tested` and the page says so; **no voice can be approved from the UI**.
+
+**What must be switched on or granted (owner)**, in order: counsel's consent text (and the constants above); the gates below; the grant of
+`request_voice_clone` and the strict gate (see "Hard conditions"); then `CUSTOM_VOICE_ENABLED=1`. Nothing in this slice does any of them.
+
+**Open items this slice found (none is closed by it):**
+
+- **V3-G1, the Permissions-Policy blocks the microphone site-wide.** `next.config.ts` and `deploy/Caddyfile` both send `microphone=()`.
+  With that, `getUserMedia` is refused whatever the person clicks. The page detects it (`document.permissionsPolicy.allowsFeature`, where
+  the browser has it) and says "Recording is not enabled for this site yet", but does not change the headers: opening the microphone is a
+  deploy-header change to make on purpose, for this one path (`microphone=(self)` in both places, and the Caddy line must exclude the path,
+  because two policies are intersected). It is not made here (nothing live).
+- **V3-G2, a 30 to 60 second recording and the phrase check disagree.** The worker accepts at most the phrase plus 8 other words
+  (`MAX_EXTRA_WORDS`): about 14 words in all. Thirty seconds of normal speech is about 75 words and fails with `verification_failed`. The page
+  asks for the phrase once and for the recording to run to 30 seconds, which in practice means long pauses. Either the worker checks the
+  phrase against the start of the transcript (or windows), or the guard changes; the owner decides before any live test.
+- **V3-G3, no resume.** The phrase is shown once. A reload before the upload leaves a pending request with no recording: the card says so and
+  offers delete (which frees the slot); the request also lapses by itself after 2 hours. A recording cannot be replaced after the upload
+  (the bucket grants insert only), so re-recording is possible only before it is sent.
+- **V3-G4, translations.** ru and uz are machine drafts, flagged in `lib/i18n/custom-voice/*`.
+
 ## What is NOT built yet
 
-- the **UI**: recording, the phrase, the declarations, test, approve, attach, delete, and every state of them;
+- the **Studio test step** (a stub, above), so approval from the UI;
 - **`regenerate_line`** (re-voice one line of a finished video);
-- the **consent text** and the Privacy Policy / Terms changes;
+- the **consent text** (a placeholder, `v0`) and the Privacy Policy / Terms changes;
 - a **scheduled purge**, a **scheduled `--sweep`** with an alert, and a retention period for `purge_voice_records` (it is run by hand);
 - anything that **runs** the worker (a service, a cron entry, a workflow) and the grant of `request_voice_clone` (the run-time re-check of the
   hard gate is built: see "Hard gate");
