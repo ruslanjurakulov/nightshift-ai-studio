@@ -407,7 +407,9 @@ describe("consent", () => {
     fillConsent();
     expect(await screen.findByText(d().recUnsupported)).toBeTruthy();
     expect((screen.getByRole("button", { name: d().continue }) as HTMLButtonElement).disabled).toBe(true);
-    await submit();
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("button", { name: d().continue }).closest("form")!);
+    });
     expect(calls("request_voice_clone")).toEqual([]);
   });
 
@@ -494,6 +496,18 @@ describe("recording", () => {
     expect(screen.queryByRole("button", { name: d().stopRecording })).toBeNull();
   });
 
+  it("a tab that was throttled past the limit still yields at most 60 seconds", async () => {
+    await toRecording();
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: d().startRecording })));
+    await advance(5000);
+    // A background tab's timers stop; when they run again the clock has jumped.
+    vi.setSystemTime(Date.now() + 90_000);
+    await advance(250);
+    expect(screen.getByTestId("recorder-status").textContent).toContain(fmt(d().recReady, { seconds: 60 }));
+    expect(screen.getByRole("timer").textContent).toBe(fmt(d().timerValue, { seconds: 60, max: 60 }));
+  });
+
   it("record again discards the take (its URL is released) and starts clean", async () => {
     await toRecording();
     await record(35);
@@ -525,7 +539,9 @@ describe("recording", () => {
     expect(screen.queryByRole("button", { name: d().uploadRecording })).toBeNull();
     expect(document.querySelector("audio")).toBeNull();
     expect(media.tracksStopped).toBe(1);
-    // Nothing from the failed take is offered later by a stop.
+    // A late stop event from the dead recorder must not turn into a take.
+    await act(async () => void FakeRecorder.last?.onstop?.());
+    expect(screen.queryByRole("button", { name: d().uploadRecording })).toBeNull();
     await advance(30_000);
     expect(screen.queryByRole("button", { name: d().uploadRecording })).toBeNull();
   });
@@ -585,6 +601,9 @@ describe("upload", () => {
     [{ message: "The object exceeded the maximum allowed size", statusCode: "413" }, "uploadTooLarge"],
     [{ message: "Failed to fetch" }, "uploadNetwork"],
     [{ message: "who knows", statusCode: "500" }, "uploadFailed"],
+    [{ message: "nothing recognisable", statusCode: "409" }, "uploadExists"],
+    [{ message: "nothing recognisable", statusCode: "403" }, "uploadExpired"],
+    [{ message: "nothing recognisable", statusCode: "401" }, "uploadExpired"],
   ] as const)("a storage refusal (%j) is worded as %s and never raw", async (err, key) => {
     await recorded();
     db.uploadError = err;
@@ -661,11 +680,14 @@ describe("the voices, in every state", () => {
     expect(db.rpcCalls).toEqual([]);
 
     db.rpc.approve_voice = () => ({ data: { ok: true, already: false, status: "approved" } });
+    const readsBefore = db.reads;
     fireEvent.click(screen.getByRole("button", { name: d().approve }));
     expect(db.rpcCalls).toEqual([]); // asking first
     await act(async () => fireEvent.click(dialog().getByRole("button", { name: d().approve })));
     await waitFor(() => expect(calls("approve_voice")).toHaveLength(1));
     expect(calls("approve_voice")[0].args).toEqual({ p_profile: PID });
+    // A success reads the list again, so the card shows what the database now says, not what the button hoped.
+    await waitFor(() => expect(db.reads).toBe(readsBefore + 1));
   });
 
   it.each([

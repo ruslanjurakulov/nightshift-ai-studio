@@ -70,7 +70,7 @@ describe("which path is the page", () => {
     (p) => expect(isCustomVoicePath(p)).toBe(true),
   );
 
-  it.each(["/", "/chronos", "/chronos/agents", "/chronos/agents/voices", "/chronos/agents/voice/x", "/agents/voice", "/chronos/voice", "/chronos/agents/%zz"])(
+  it.each(["/", "/chronos", "/chronos/agents", "/chronos/agents/voices", "/chronos/agents/voice/x", "/chronos/other/voice", "/chronos/voice/voice", "/agents/voice", "/chronos/voice", "/chronos/agents/%zz"])(
     "%s is not the page",
     (p) => expect(isCustomVoicePath(p)).toBe(false),
   );
