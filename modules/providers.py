@@ -115,6 +115,10 @@ class PublishingProvider(Protocol):
 
     The adapter over modules/youtube_uploader.py is
     YouTubeUploaderPublishingProvider below.
+
+    This is the pipeline's own YouTube upload and stays unwired. Cross-posting to
+    a platform (Instagram, TikTok, another YouTube channel) goes through
+    ``modules/publishers.Publisher``, which IS wired (``social_publish.process_request``).
     """
 
     def upload(self, video_path: Path, script: object, **kwargs) -> dict:
