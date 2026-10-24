@@ -3,6 +3,7 @@ insert into public.credit_prices (unit, credits_per_unit, margin, note) values
   ('model_openai_gpt_image_2_image',             25,   1.5, 'OpenAI list: default quality ≈ $0.21–0.25 per 1024px image (token-billed).'),
   ('model_openai_gpt_image_2_5_flare_image',     25,   1.5, 'OpenAI list: same token rate as gpt-image-2; default quality.'),
   ('model_openai_gpt_image_2_5_sunburst_image',  25,   1.5, 'OpenAI list: same token rate as gpt-image-2; default quality.'),
+  ('model_gemini_2_5_flash_image_image',         3.9,  1.5, 'Gemini API list: $0.039 per image.'),
   ('model_gemini_3_1_flash_image_image',         6.7,  1.5, 'Gemini API list: $0.067 per 1K image (default size).'),
   ('model_gemini_3_1_flash_lite_image_image',    3.4,  1.5, 'Gemini API list: $0.034 per 1K image.'),
   ('model_gemini_3_pro_image_image',             13.4, 1.5, 'Gemini API list: $0.134 per 1K/2K image.'),
