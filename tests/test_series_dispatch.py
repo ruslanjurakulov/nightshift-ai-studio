@@ -7,10 +7,11 @@ no argv builder. This pins the Actions path:
 * ``daily_video.yml`` has an optional ``series`` input, read through the
   environment (``INPUT_SERIES``), validated before it can reach the command line,
   and appended as ``--series`` only when non-empty and valid;
-* ``modules.run_request.build_main_args`` builds the same argument, so a future
-  queue path that can carry it cannot drift (the queue/UI path cannot carry one
-  today: ``series`` is deliberately NOT in ``ALLOWED_PARAMS``, because the
-  database whitelist ``render_job_params_valid`` would refuse such a job);
+* ``modules.run_request.build_main_args`` builds the same argument, so the
+  queue path cannot drift from it. ``series`` is in ``ALLOWED_PARAMS`` since
+  migration 0118, which redefines the database whitelist
+  ``render_job_params_valid`` with it (only ``start_series_episode`` writes such
+  a job; the browser's insert policy does not list the key);
 * a series that is not ACTIVE, is unknown, or belongs to another channel stops
   ``main.run`` before anything is spent.
 
@@ -309,23 +310,34 @@ class ArgsBuilder(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(InvalidRunRequest):
                 run_request.build_main_args("news", {"series": bad})
 
-    def test_the_queue_path_cannot_carry_a_series_yet(self):
-        # render_job_params_valid (supabase/migrations/0029_publish_targets.sql, the last migration
-        # that defines it) refuses an unknown key, so a job with a series would be rejected by the
-        # database anyway. Accepting one here would make a job that validates in Python and fails in
-        # SQL; the whitelist moves together with a migration, not before it.
-        self.assertNotIn("series", run_request.ALLOWED_PARAMS)
-        with self.assertRaises(InvalidRunRequest):
-            run_request.validate("news", "daily", {"series": "alpha"})
-        with self.assertRaises(InvalidRunRequest):
-            run_request.plan_run("news", "daily", {"series": "alpha"}, {})
+    def test_the_queue_path_carries_a_validated_series(self):
+        # render_job_params_valid (supabase/migrations/0118_series_tables.sql, its latest definition) has 'series' in its allowed array and
+        # refuses anything but the slug modules.series accepts; ALLOWED_PARAMS moved with it, in the same change.
+        self.assertIn("series", run_request.ALLOWED_PARAMS)
+        self.assertEqual(run_request.validate("news", "daily", {"series": "alpha"}), {"series": "alpha"})
+        self.assertEqual(run_request.validate("news", "daily", {"series": ""}), {})
+        self.assertEqual(run_request.validate("news", "daily", {"series": None}), {})
+        plan = run_request.plan_run("news", "daily", {"series": "alpha"}, {})
+        self.assertEqual(plan[0][-2:], ["--series", "alpha"])
 
-    def test_the_comment_about_the_missing_migration_names_the_right_file(self):
+    def test_the_queue_path_refuses_every_invalid_id_as_the_database_does(self):
+        for label, bad in INVALID_IDS.items():
+            with self.subTest(case=label), self.assertRaises(InvalidRunRequest):
+                run_request.validate("news", "daily", {"series": bad})
+
+    def test_a_repair_job_names_no_series(self):
+        with self.assertRaises(InvalidRunRequest):
+            run_request.validate("news", "repair", {"series": "alpha", "repair_scenes": "3"})
+
+    def test_the_migration_that_carries_the_series_key_is_the_latest_definition(self):
         source = (ROOT / "modules" / "run_request.py").read_text()
-        self.assertIn("0029_publish_targets.sql", source)
+        self.assertIn("0118_series_tables.sql", source)
         migrations = sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
-        latest = [m.name for m in migrations if "function public.render_job_params_valid" in m.read_text()][-1]
-        self.assertEqual(latest, "0029_publish_targets.sql")
+        latest = [m.name for m in migrations if "create or replace function public.render_job_params_valid" in m.read_text()][-1]
+        self.assertEqual(latest, "0118_series_tables.sql")
+        sql = (ROOT / "supabase" / "migrations" / latest).read_text()
+        self.assertIn("'publish_hint','series'];", sql)
+        self.assertIn("!~ '^[a-z0-9][a-z0-9._-]{0,63}$'", sql)  # the slug modules/series.py accepts
 
     def test_a_series_id_the_validator_accepts_is_one_the_builder_accepts(self):
         for sid in VALID_IDS:

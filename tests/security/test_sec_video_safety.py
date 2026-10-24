@@ -39,6 +39,9 @@ from test_sec_mcp_oauth import KEY_A, ORG_A, ORG_B, UA, UB, UOP, connect, db, sh
 
 MIGRATION = REPO / "supabase" / "migrations" / "0111_video_safety.sql"
 ROLLBACK = REPO / "docs" / "sql" / "rollback_0111_video_safety.sql"
+# Later migrations that REDEFINE a function 0111 defines (render_jobs_payment_guard: 0118 adds a block to 0111's body). Replaying 0111 puts
+# its own text back, so a replay in these tests is "0111, then the later ones", the order a database sees them in.
+LATER = REPO / "supabase" / "migrations" / "0118_series_tables.sql"
 
 CUSTOMER = Actor("customer", "authenticated", UA, "a@d3.io")
 OPERATOR = Actor("operator", "authenticated", UOP, "op@d3.io")
@@ -399,8 +402,9 @@ def test_replay_changes_no_definition_and_no_privilege(conn):
     with as_superuser(conn, commit=False) as su:
         before = acls(su)
         defs = [su.value("select pg_get_functiondef(%s::regprocedure)", [s]) for s in (*CHANGED, HELPER)]
-        su.conn.execute(text)
-        su.conn.execute(text)
+        for _ in range(2):
+            su.conn.execute(text)
+            su.conn.execute(LATER.read_text(encoding="utf-8"))
         assert acls(su) == before
         assert [su.value("select pg_get_functiondef(%s::regprocedure)", [s]) for s in (*CHANGED, HELPER)] == defs
 
@@ -419,6 +423,7 @@ def test_the_migration_touches_no_other_function_and_no_table_policy_or_trigger(
                     su.rows("select table_name, column_name, data_type from information_schema.columns where table_schema = 'public' order by 1, 2"))
         before = snapshot()
         su.conn.execute(text)
+        su.conn.execute(LATER.read_text(encoding="utf-8"))
         assert snapshot() == before
 
 
@@ -427,7 +432,8 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     base = f"ns_vsafe_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0111_")])
+        # (0118 replaces 0111's guard and refuses to do so on a database that never had it: the base for "before 0111" stops short of it too)
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0118_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0]) for s in CHANGED}
@@ -445,7 +451,9 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
         for s in CHANGED:
             assert su.value("select pg_get_functiondef(%s::regprocedure)", [s]) == want[s][0], s
             assert su.value("select proacl::text from pg_proc where oid = %s::regprocedure", [s]) == want[s][1], s
-        assert {r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")} == base_fns
+        later_fns = set(re.findall(r"(?m)^create or replace function public\.(\w+)\(", LATER.read_text(encoding="utf-8")))
+        assert {r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")
+                if r[0] in base_fns or r[0].split("(")[0] not in later_fns} == base_fns
         assert su.rows("select p.oid::regprocedure::text, p.proacl::text from pg_proc p "
                        "where pronamespace = 'public'::regnamespace order by 1") == acl_before
         # a provider is accepted again, the raw error is returned again
@@ -455,6 +463,7 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
         # and the rollback replays, then 0111 applies again to exactly what it was
         su.conn.execute("\n".join(ln for ln in rollback.splitlines() if ln.strip() not in ("begin;", "commit;")))
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))
+        su.conn.execute(LATER.read_text(encoding="utf-8"))
         assert {s: su.value("select pg_get_functiondef(%s::regprocedure)", [s]) for s in (*CHANGED, HELPER)} == after_0111
 
 

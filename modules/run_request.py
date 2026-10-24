@@ -34,17 +34,13 @@ from typing import Dict, List, Mapping, Optional, Tuple
 
 from modules.series import validate_series_id
 
-#: Every workflow_dispatch input except ``channel`` (a column on the job) and
-#: ``series``. ``series`` is an Actions-only input for now: the queue/UI path
-#: cannot carry one until a migration redefines ``render_job_params_valid`` (the
-#: last definition is in supabase/migrations/0029_publish_targets.sql; 0111 only
-#: mentions it in a comment) with ``'series'`` in its ``allowed`` array and a
-#: series-id check, and this tuple then gains ``"series"`` in the same change
-#: (tests/test_queue_worker.py compares the two). Until then ``validate()``
-#: refuses a ``series`` param, exactly as the database would.
+#: Every workflow_dispatch input except ``channel`` (a column on the job) and ``credit_ref`` (a column too). ``series`` is a queue
+#: param since migration 0118_series_tables.sql, which redefines ``render_job_params_valid`` with ``'series'`` in its ``allowed`` array
+#: and the series-id check (tests/test_queue_worker.py compares the two, and tests/test_series_dispatch.py pins the rest). Only a
+#: database function of that migration writes one into a job: the browser's insert policy does not list the key.
 ALLOWED_PARAMS = (
     "topic", "niche", "privacy", "duration", "language", "visual_style",
-    "video_provider", "image_provider", "tts_model", "voice_id", "resume", "repair_scenes",
+    "video_provider", "image_provider", "tts_model", "voice_id", "resume", "repair_scenes", "series",
 )
 #: The workflow's choice lists (daily_video.yml `options:`).
 PRIVACY_CHOICES = ("private", "unlisted", "public")
@@ -89,8 +85,8 @@ def validate_series_arg(value) -> str:
 
 def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
     """Check a job and return its params normalised (strings stripped, empty
-    values dropped). Mirrors ``render_job_params_valid`` in migration 0017 and
-    the workflow's own repair validation."""
+    values dropped). Mirrors ``render_job_params_valid`` (its latest definition, migration 0118)
+    and the workflow's own repair validation."""
     if not isinstance(channel_id, str) or not _CHANNEL_RE.match(channel_id):
         raise InvalidRunRequest("channel_id is not a valid channel id")
     if kind not in KINDS:
@@ -130,6 +126,14 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
         if not isinstance(value, str) or value not in choices:
             raise InvalidRunRequest(f"{key} must be one of {', '.join(choices)}")
         out[key] = value
+
+    # The same slug the database function checks (migration 0118) and the workflow's validator accepts. A repair re-renders scenes of
+    # a run that already exists, so it names no series (the database refuses that combination too).
+    series = params.get("series")
+    if series not in (None, ""):
+        out["series"] = validate_series_arg(series)
+        if kind == "repair":
+            raise InvalidRunRequest("a repair job cannot name a series")
 
     voice = params.get("voice_id")
     if voice not in (None, ""):
@@ -177,8 +181,6 @@ def build_main_args(channel_id: str, params: Mapping) -> List[str]:
     if params.get("visual_style"):
         args += ["--visual-style", params["visual_style"]]
     if params.get("series"):
-        # Only reachable by a caller that builds argv directly: validate() refuses a
-        # series param until the database whitelist carries it (see ALLOWED_PARAMS).
         args += ["--series", validate_series_arg(params["series"])]
     if params.get("resume") is True:
         args += ["--resume"]

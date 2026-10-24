@@ -588,3 +588,8 @@ sec_visibility_0116.extend(TABLES, FUNCTIONS)
 import sec_voice_profiles_0117  # noqa: E402
 
 sec_voice_profiles_0117.extend(TABLES, FUNCTIONS)
+
+# Migration 0118 (Series Factory S2: series_plans, series_episodes, the series_plan queue kind): tests/security/sec_series_tables_0118.py
+import sec_series_tables_0118  # noqa: E402
+
+sec_series_tables_0118.extend(TABLES, FUNCTIONS)
