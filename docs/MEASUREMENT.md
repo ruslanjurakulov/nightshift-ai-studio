@@ -254,6 +254,48 @@ page:
 they belong to a video, so the page scopes them by the videos in the current
 selection rather than by weakening the query.
 
+## 7. Packaging lint (advisory, uncalibrated)
+
+`modules/packaging_lint.py` · event `packaging.lint` · no switch, no migration
+
+Reads the title that will really ship (`published_title`, so the B arm's title when B ships) and the
+script's `thumbnail_overlay_text`, and records one event per run. It changes nothing: not the title,
+the thumbnail, the gate, the upload or the privacy. A failure in it is logged at debug and the run
+carries on. The Command Center has no card for it yet; the event sits in `system_events` next to
+`publish.score`, which needs no registry entry.
+
+Each check is `ok`, `issue` or `not_checked`, with a reason from a closed list. The event carries
+counts and those words only, never the title or the overlay text.
+
+| Check | What it looks at | Language |
+| :-- | :-- | :-- |
+| `title_mobile_cut` | more than 40 visible characters (cut in a phone feed) | any |
+| `title_desktop_cut` | more than 60 visible characters (cut in desktop search) | any |
+| `title_hard_limit` | more than 100 characters, counted like the publish gate counts them | any |
+| `figure_position` | the first digit sits past the mobile or desktop cut, so the number is the part that is lost | any |
+| `title_caps` | more than 2 words of 3+ capital letters | any script with case |
+| `overlay_length` | thumbnail text over 4 words or 28 characters | any |
+| `overlay_echo` | at least half of the overlay's content words are already in the title | **English only** |
+
+* **What survives a cut** is the head: the first 40 (phone) or 60 (desktop) glyphs. `figure_position`
+  says whether the number is among them. "Visible characters" are glyphs, not code points, so an
+  emoji sequence, a combining accent or an Uzbek `o'` counts once; the 100 limit is the exception and
+  counts code points because that is what the gate (and the API) count.
+* **Unknown is not ok.** No overlay text (the script left it empty) makes both overlay checks
+  `not_checked: no_overlay` and their counts `null`, never 0. A title with nothing to measure, a title
+  with no letters that have a case, and an overlay of only function words are `not_checked` too.
+  Note that `main.py` still ships a placeholder word when the overlay is empty; the lint reports the
+  script's field, so it says "unknown", not that the placeholder was checked.
+* **Language gate.** `overlay_echo` needs a function-word list, which exists for English only. For
+  Russian, Uzbek, any other language, or none, it is `not_checked: language`, never `ok`. The event
+  states `word_checks: language` when that happened. The other checks read characters and run for every
+  language.
+* **Uncalibrated.** The 40/60/100 cut points are the commonly reported ones (the real cut is by pixel
+  width, so wide letters are cut earlier); the 2-caps, 4-word and 28-character budgets and the one-half
+  echo share were chosen by hand and not fitted to this channel's CTR. The event says
+  `basis: heuristic`, `calibrated: false`. Use it to see how many past titles are cut before changing a
+  prompt, not as a verdict. Acronyms of 3+ letters (NASA) count as capitals.
+
 ---
 
 # Shorts
