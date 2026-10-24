@@ -407,7 +407,7 @@ describe("17 custom 404 page", () => {
 // ── 19 favicon, 18 share image ──────────────────────────────────────────────
 
 describe("19 favicon and 18 share image files", () => {
-  it.each(["app/favicon.ico", "app/icon.svg", "app/icon.png", "app/apple-icon.png", "app/og.png/route.tsx"])("%s exists and is not empty", (f) => {
+  it.each(["app/favicon.ico", "app/icon.svg", "app/icon.png", "app/apple-icon.png", "app/og.png/route.tsx", "brand/og/og-card.png"])("%s exists and is not empty", (f) => {
     expect(existsSync(join(ROOT, f)), f).toBe(true);
     expect(statSync(join(ROOT, f)).size).toBeGreaterThan(100);
   });
