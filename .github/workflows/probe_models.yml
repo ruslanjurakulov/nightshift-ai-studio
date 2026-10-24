@@ -76,6 +76,7 @@ jobs:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
           LUMA_AGENTS_API_KEY: ${{ secrets.LUMA_AGENTS_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
           WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}

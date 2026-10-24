@@ -74,6 +74,17 @@ UNPRICED_ON_PURPOSE = {
     "model_generic_video_reframe_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_generic_video_remove_bg_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_assemblyai_universal_2_second": "registry: no price read, not sold (terms not reviewed)",
+    "model_grok_imagine_video_1_5_second": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_second_480p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_second_720p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_second_1080p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second_480p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second_720p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second_1080p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_image_2_0_image": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_image_2_0_image_low": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_image_2_0_image_medium": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
     "usd": "pricing a ledger unit changes run settlement (metered vs hold): owner policy",
     "gemini_input_tokens": "ledger unit: owner policy",
     "gemini_output_tokens": "ledger unit: owner policy",
@@ -233,7 +244,9 @@ class PriceDefaultsFile(unittest.TestCase):
         self.assertIn("'scene_regenerate_clip_' ||", (MIGRATIONS / "0076_scene_regenerate.sql").read_text())
 
     def test_quality_tiers_match_what_the_registry_sells(self):
-        tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)}
+        # A tier left unpriced on purpose (a gated model) is not one the registry SELLS.
+        tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)} \
+            - set(UNPRICED_ON_PURPOSE)
         self.assertEqual(len(tiers), 9)
         self.assertTrue(tiers <= {r["unit"] for r in self.rows})
 
