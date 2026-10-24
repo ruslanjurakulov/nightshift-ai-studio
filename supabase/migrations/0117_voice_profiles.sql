@@ -36,8 +36,12 @@
 --   RLS: a member reads ONLY their own rows (user_voice_refs, voice_profiles, voice_consents, voice_channel_attachments).
 --   NO API role (anon, authenticated, service_role) has INSERT, UPDATE or DELETE on any of these tables: every write is a
 --   SECURITY DEFINER function with a pinned search_path, EXECUTE revoked from public/anon and granted narrowly:
---     signed-in owner:  my_voice_ref, request_voice_clone, approve_voice, attach_voice_to_channel, detach_voice_from_channel,
+--     signed-in owner:  my_voice_ref, approve_voice, attach_voice_to_channel, detach_voice_from_channel,
 --                       delete_voice, delete_voice_sample
+--     NOBODY (dormant): request_voice_clone. It is created, revoked from every API role and NOT granted. Starting a clone is the one
+--                       entry into the feature, so the grant ships in the migration that ships the worker, the UI and the Actions
+--                       pre-flight (docs/CUSTOM_VOICE.md, "Hard gate"). Until then no signed-in user can create a profile, a queue
+--                       row, or (because the bucket's insert rule needs a waiting profile) a stored object.
 --     service role:     claim_voice_job, finish_voice_clone, finish_voice_task, purge_voice_records
 --     nobody (internal): voice_usable_by and the pure helpers
 --   channel_voice_config_problem is callable by signed-in users and the service role because the channels guard (a trigger that
@@ -111,6 +115,26 @@ begin
   if not exists (select 1 from pg_trigger
                   where tgrelid = 'public.channels'::regclass and tgname = 'channels_config_guard' and not tgisinternal) then
     raise exception '0117 found no channels_config_guard trigger on channels: re-apply 0086 first';
+  end if;
+end $$;
+
+-- The two functions this file replaces are replaced on the bodies the REPO says are latest (0114's channels_config_guard, 0116's
+-- audit_action_allowed). If the live database holds another body (something applied by hand after those migrations: the 0064/0103
+-- drift lesson), replacing it would silently undo that change, so the file refuses. Compared as md5 of the body (prosrc) with every run
+-- of white space read as one space, so line endings and indentation cannot cause a false alarm; the second hash of each pair is this
+-- file's own body, which is what a replay sees. tests/test_voice_profiles_migration.py recomputes all four from the migration files.
+do $$
+declare
+  g text;
+  a text;
+begin
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into g from pg_proc p where p.oid = 'public.channels_config_guard()'::regprocedure;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into a from pg_proc p where p.oid = 'public.audit_action_allowed(text)'::regprocedure;
+  if g is null or g <> all (array['44efc227d33d0c6564795f7a642489bf', 'b5cf70785cafdf71ec4cdc49bb393c9c']) then
+    raise exception '0117 found a channels_config_guard() that is neither 0114''s body nor 0117''s (md5 %): read the live body first', g;
+  end if;
+  if a is null or a <> all (array['a17cf1ea1cbd8da45905d4654dd0bf7b', 'd622e052a695fef125d3b2b621cdda27']) then
+    raise exception '0117 found an audit_action_allowed() that is neither 0116''s body nor 0117''s (md5 %): read the live body first', a;
   end if;
 end $$;
 
@@ -425,6 +449,11 @@ create trigger voice_consents_no_truncate
   before truncate on public.voice_consents
   for each statement execute function public.voice_append_only();
 
+-- ENABLE ALWAYS: the append-only triggers also fire when a session sets session_replication_role = replica (which skips ordinary
+-- triggers); only a superuser can set it, and this keeps even that from rewriting the trail.
+alter table public.voice_consents enable always trigger voice_consents_append_only;
+alter table public.voice_consents enable always trigger voice_consents_no_truncate;
+
 -- What survives a deletion: no user id, no name, no declarations. owner_ref is a pseudonym that resolves to a person only while
 -- user_voice_refs still has the row. Append-only, and never deletable (not even by the purge function).
 create table if not exists public.voice_deletion_records (
@@ -453,6 +482,9 @@ drop trigger if exists voice_deletion_records_no_truncate on public.voice_deleti
 create trigger voice_deletion_records_no_truncate
   before truncate on public.voice_deletion_records
   for each statement execute function public.voice_append_only();
+
+alter table public.voice_deletion_records enable always trigger voice_deletion_records_append_only;
+alter table public.voice_deletion_records enable always trigger voice_deletion_records_no_truncate;
 
 -- The worker's queue. Never readable through the API: the phrase of a pending verification is in it.
 create table if not exists public.voice_clone_jobs (
@@ -637,8 +669,16 @@ declare
   n jsonb := case when jsonb_typeof(p_new) = 'object' then p_new else '{}'::jsonb end;
 begin
   foreach k in array array['elevenlabs_voice_id', 'elevenlabs_secondary_voice_id'] loop
+    if (o -> k) is not distinct from (n -> k) or not n ? k or jsonb_typeof(n -> k) = 'null' then
+      continue;
+    end if;
+    -- A voice id is a JSON string. The reader would still turn a number (12345678901234567890 is a possible id) or a list into text
+    -- and use it, so any other type, SET by this write, is refused outright.
+    if jsonb_typeof(n -> k) <> 'string' then
+      return k;
+    end if;
     v := public.voice_id_norm(n -> k);
-    if v is null or (o -> k) is not distinct from (n -> k) then
+    if v is null then
       continue;
     end if;
     if not public.voice_usable_by(null, v, p_org, p_channel, 'use',
@@ -695,6 +735,10 @@ begin
   end if;
   if new.kind <> 'repair' and jsonb_typeof(cfg) = 'object' then
     foreach k in array array['elevenlabs_voice_id', 'elevenlabs_secondary_voice_id'] loop
+      if cfg ? k and jsonb_typeof(cfg -> k) not in ('string', 'null') then
+        raise exception 'voice_not_allowed: the channel''s voice setting is not a voice id'
+          using errcode = '42501', hint = 'voice_not_allowed';
+      end if;
       cv := public.voice_id_norm(cfg -> k);
       if cv is not null and not public.voice_usable_by(null, cv, org, new.channel_id, 'use',
            case k when 'elevenlabs_voice_id' then 'narrator' else 'secondary' end) then
@@ -1021,7 +1065,13 @@ begin
     end if;
     update public.channels
        set agent_config = coalesce(case when jsonb_typeof(agent_config) = 'object' then agent_config end, '{}'::jsonb)
-                          || jsonb_build_object(k, pr.provider_voice_id, 'ai_disclosure_voice', 'own_clone'),
+                          || jsonb_build_object(k, pr.provider_voice_id)
+                          -- A declaration that is not 'generic' or 'own_clone' (real_person, or a typo, which the reader reads as
+                          -- real_person) is the platform's or an administrator's stricter statement: it is kept, never lowered here.
+                          || case when agent_config ? 'ai_disclosure_voice'
+                                   and coalesce(public.ai_disclosure_norm(agent_config -> 'ai_disclosure_voice'), '') not in ('generic', 'own_clone')
+                                  then '{}'::jsonb
+                                  else jsonb_build_object('ai_disclosure_voice', 'own_clone') end,
            updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
      where channel_id = ch.channel_id;
   exception when unique_violation then
@@ -1033,7 +1083,8 @@ begin
           jsonb_build_object('profile_id', pr.id, 'channel_id', ch.channel_id, 'slot', p_slot, 'attachment_id', att_id),
           ch.channel_id);
   return jsonb_build_object('ok', true, 'attachment_id', att_id, 'channel_id', ch.channel_id, 'slot', p_slot,
-                            'ai_disclosure_voice', 'own_clone');
+                            'ai_disclosure_voice', (select c.agent_config -> 'ai_disclosure_voice' from public.channels c
+                                                     where c.channel_id = ch.channel_id));
 end
 $$;
 
@@ -1178,10 +1229,17 @@ begin
          finished_at = case when q.attempts < q.max_attempts then null else now() end,
          error_code = case when q.attempts < q.max_attempts then q.error_code else 'worker_lost' end
    where q.status = 'running' and q.heartbeat_at < now() - interval '30 minutes';
-  update public.voice_profiles p set status = 'rejected', reject_reason = 'worker_lost'
-   where p.status = 'pending_verification'
-     and exists (select 1 from public.voice_clone_jobs q
-                  where q.profile_id = p.id and q.kind = 'clone' and q.status = 'failed' and q.error_code = 'worker_lost');
+  -- A clone lost three times is rejected and its recording (a biometric sample) is queued for removal, never left behind.
+  with lost as (
+    update public.voice_profiles p set status = 'rejected', reject_reason = 'worker_lost', sample_state = 'purge_pending'
+     where p.status = 'pending_verification'
+       and exists (select 1 from public.voice_clone_jobs q
+                    where q.profile_id = p.id and q.kind = 'clone' and q.status = 'failed' and q.error_code = 'worker_lost')
+    returning p.id, p.user_id
+  )
+  insert into public.voice_clone_jobs (profile_id, user_id, kind)
+  select l.id, l.user_id, 'purge_sample' from lost l
+  on conflict (profile_id, kind) where status in ('queued', 'running') do nothing;
 
   select q.* into j
     from public.voice_clone_jobs q
@@ -1452,7 +1510,9 @@ revoke all on function public.purge_voice_records(uuid) from public, anon, authe
 -- The channels guard runs as the caller (security invoker, as in 0086), so the caller must be able to ask this one question.
 grant execute on function public.channel_voice_config_problem(text, uuid, jsonb, jsonb) to authenticated, service_role;
 grant execute on function public.my_voice_ref() to authenticated;
-grant execute on function public.request_voice_clone(text, jsonb, text, boolean, text, uuid) to authenticated;
+-- request_voice_clone(): deliberately NOT granted (B1 of the security review). The grant to `authenticated` ships in the migration that
+-- ships the worker and the UI; see docs/CUSTOM_VOICE.md, "Hard gate". Tests create profiles as the database owner carrying the
+-- person's claims.
 grant execute on function public.approve_voice(uuid) to authenticated;
 grant execute on function public.attach_voice_to_channel(uuid, text, text) to authenticated;
 grant execute on function public.detach_voice_from_channel(uuid, text) to authenticated;
@@ -1522,6 +1582,20 @@ on conflict (id) do update
       allowed_mime_types = array['audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/x-wav',
                                  'audio/aac', 'audio/flac'];
 
+-- May the caller put the (first and only) recording of this profile in the bucket? The profile is theirs and waiting, and no object
+-- exists for it yet. A definer, because the policy runs as the caller and the caller cannot see storage.objects (no SELECT policy:
+-- a subquery in the policy would always be empty). Defence in depth: the profile can be made only through request_voice_clone().
+create or replace function public.voice_sample_slot_free(p_profile text) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select auth.uid() is not null
+     and exists (select 1 from public.voice_profiles p
+                  where p.id::text = p_profile and p.user_id = auth.uid() and p.status = 'pending_verification')
+     and not exists (select 1 from storage.objects o
+                      where o.bucket_id = 'voice-samples' and o.name like auth.uid()::text || '/' || p_profile || '/%')
+$$;
+revoke all on function public.voice_sample_slot_free(text) from public, anon, authenticated, service_role;
+grant execute on function public.voice_sample_slot_free(text) to authenticated;
+
 -- The only grant: a signed-in person inserts <their user id>/<id of a profile of theirs that is waiting for its sample>/sample.<ext>.
 -- Nothing else is granted for this bucket, so there is no SELECT, UPDATE or DELETE for anon or authenticated: the worker reads and
 -- deletes with the service role, and delete_voice() / delete_voice_sample() ask it to.
@@ -1532,10 +1606,7 @@ create policy voice_samples_insert_own on storage.objects
     bucket_id = 'voice-samples'
     and (storage.foldername(name))[1] = (select auth.uid())::text
     and name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/sample\.(webm|ogg|mp3|m4a|mp4|wav|flac|aac)$'
-    and exists (select 1 from public.voice_profiles p
-                 where p.user_id = (select auth.uid()) and p.status = 'pending_verification'
-                   -- objects.name, not name: voice_profiles has a column called name, which would win inside the subquery.
-                   and p.id::text = (storage.foldername(objects.name))[2])
+    and public.voice_sample_slot_free((storage.foldername(objects.name))[2])
   );
 
 -- Policies on storage.objects are PERMISSIVE and ADD UP: a broad policy made by hand in the dashboard (docs: 0098 found one) would
@@ -1566,19 +1637,6 @@ create policy voice_samples_closed_insert on storage.objects
   );
 
 -- ───────────────────────────────────────────────────────────────────────────
--- Before applying (the drift lesson of 0064/0103: this file replaces two functions on the bodies the REPO says are latest)
--- ───────────────────────────────────────────────────────────────────────────
--- Compare the live bodies with the repo's: channels_config_guard() must be 0114's (it contains channel_label_lowering and no
--- 'voice'), audit_action_allowed() must be 0116's (it contains 'video.visibility_retry' and no 'voice.'). Expected: both true.
---   select position('channel_label_lowering' in pg_get_functiondef('public.channels_config_guard()'::regprocedure)) > 0
---          and position('voice' in pg_get_functiondef('public.channels_config_guard()'::regprocedure)) = 0 as guard_is_0114,
---          position('video.visibility_retry' in pg_get_functiondef('public.audit_action_allowed(text)'::regprocedure)) > 0
---          and position('voice.' in pg_get_functiondef('public.audit_action_allowed(text)'::regprocedure)) = 0 as audit_is_0116;
--- If either is false, STOP: something was applied by hand after the repo's last migration; read the live body first.
--- Also: the dashboard may hold storage policies that are in no migration (0098). The restrictive policies below close this bucket
--- regardless, but list them anyway (second query of the Verify block).
-
--- ───────────────────────────────────────────────────────────────────────────
 -- Verify (run as the SQL editor on the live project after applying; every column should read true)
 -- ───────────────────────────────────────────────────────────────────────────
 --   select
@@ -1604,7 +1662,8 @@ create policy voice_samples_closed_insert on storage.objects
 --     (select count(*) = 3 from pg_trigger t where not t.tgisinternal and t.tgrelid = 'public.voice_consents'::regclass) as consents_append_only,
 --     (select not public and file_size_limit = 52428800 from storage.buckets where id = 'voice-samples') as bucket_private_50mb,
 --     not has_function_privilege('anon', 'public.request_voice_clone(text,jsonb,text,boolean,text,uuid)', 'EXECUTE')
---       and has_function_privilege('authenticated', 'public.request_voice_clone(text,jsonb,text,boolean,text,uuid)', 'EXECUTE')
+--       and not has_function_privilege('authenticated', 'public.request_voice_clone(text,jsonb,text,boolean,text,uuid)', 'EXECUTE')
+--       and not has_function_privilege('service_role', 'public.request_voice_clone(text,jsonb,text,boolean,text,uuid)', 'EXECUTE')
 --       and not has_function_privilege('authenticated', 'public.finish_voice_clone(uuid,text,text,text,text,text,text)', 'EXECUTE')
 --       and has_function_privilege('service_role', 'public.finish_voice_clone(uuid,text,text,text,text,text,text)', 'EXECUTE')
 --       as function_grants,

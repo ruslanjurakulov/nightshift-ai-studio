@@ -8,6 +8,7 @@
 * the word list and the screening patterns in the file are the module's (modules/voice_profiles.py).
 """
 
+import hashlib
 import re
 import unittest
 from pathlib import Path
@@ -68,29 +69,48 @@ class ChannelsGuard(unittest.TestCase):
             self.assertNotIn(f"function public.{n}", c, n)
 
 
-class PreApplyCheck(unittest.TestCase):
-    def test_the_drift_check_in_the_file_is_true_of_the_repos_latest_bodies(self):
-        guard = function_body((MIG / "0114_ai_disclosure_admin_lock.sql").read_text(encoding="utf-8"), "channels_config_guard()")
-        audit = function_body((MIG / "0116_visibility_requests.sql").read_text(encoding="utf-8"), "audit_action_allowed(p_action text)")
-        self.assertIn("channel_label_lowering", guard)
-        self.assertNotIn("voice", guard)
-        self.assertIn("video.visibility_retry", audit)
-        self.assertNotIn("voice.", audit)
-        self.assertIn("guard_is_0114", TEXT)
-        self.assertIn("audit_is_0116", TEXT)
+class DriftGuard(unittest.TestCase):
+    """The file refuses to replace a live body it has not seen (the 0064/0103 lesson). The four md5 values in it are the repo's."""
+
+    @staticmethod
+    def body(sql, start):
+        i = sql.index(start)
+        a = sql.index("$$", i) + 2
+        return sql[a:sql.index("$$", a)]
+
+    @staticmethod
+    def h(b):
+        return hashlib.md5(re.sub(r"\s+", " ", b).encode()).hexdigest()
+
+    def test_the_hashes_in_the_file_are_those_of_0114_0116_and_0117s_own_bodies(self):
+        g = "create or replace function public.channels_config_guard() returns trigger"
+        a = "create or replace function public.audit_action_allowed(p_action text) returns boolean"
+        want = {
+            self.h(self.body((MIG / "0114_ai_disclosure_admin_lock.sql").read_text(encoding="utf-8"), g)),
+            self.h(self.body(TEXT, g)),
+            self.h(self.body((MIG / "0116_visibility_requests.sql").read_text(encoding="utf-8"), a)),
+            self.h(self.body(TEXT, a)),
+        }
+        found = set(re.findall(r"'([0-9a-f]{32})'", code(TEXT.split("1. Pure helpers", 1)[0])))
+        self.assertEqual(found, want)
+
+    def test_the_check_runs_before_anything_is_replaced_and_raises(self):
+        head = TEXT.split("1. Pure helpers", 1)[0]
+        self.assertIn("g <> all (array[", head)
+        self.assertIn("a <> all (array[", head)
+        self.assertEqual(head.count("that is neither"), 2)
+        self.assertLess(TEXT.index("0117 found a channels_config_guard"), TEXT.index("create or replace function public.channels_config_guard()"))
 
 
 class AttachWritesOnlyTheVoiceKeys(unittest.TestCase):
-    def test_attach_voice_to_channel_writes_two_keys_and_never_the_disclosure_mode(self):
+    def test_attach_voice_to_channel_writes_the_voice_key_and_only_ever_raises_the_voice_declaration(self):
         body = function_body(TEXT, "attach_voice_to_channel(")
-        build = re.findall(r"jsonb_build_object\(([^)]*)\)", body.split("update public.channels", 1)[1].split("where channel_id", 1)[0])
-        self.assertEqual(len(build), 1)
-        self.assertEqual(re.findall(r"'([a-z_]+)'", build[0]), ["ai_disclosure_voice", "own_clone"], "the keys written besides k")
-        self.assertIn("k := case p_slot when 'narrator' then 'elevenlabs_voice_id' else 'elevenlabs_secondary_voice_id' end;", body)
-        self.assertNotRegex(code(body), r"'ai_disclosure'")
-        # nothing else in the file updates channels
-        updates = re.findall(r"(?is)\bupdate\s+public\.channels\b", code(TEXT))
-        self.assertEqual(len(updates), 1)
+        upd = body.split("update public.channels", 1)[1].split("where channel_id", 1)[0]
+        self.assertIn("jsonb_build_object(k, pr.provider_voice_id)", upd)
+        self.assertIn("jsonb_build_object('ai_disclosure_voice', 'own_clone')", upd)
+        self.assertIn("not in ('generic', 'own_clone')", upd, "a stricter declaration is kept")
+        self.assertNotRegex(code(body), r"'ai_disclosure'(?!_)")
+        self.assertEqual(len(re.findall(r"(?is)\bupdate\s+public\.channels\b", code(TEXT))), 1)
 
 
 class AuditList(unittest.TestCase):
@@ -131,12 +151,18 @@ class Privileges(unittest.TestCase):
         grants = {(m.group(1), m.group(2)) for m in re.finditer(r"grant execute on function public\.(\w+)\([^)]*\) to ([a-z_, ]+);", c)}
         self.assertEqual(grants, {
             ("channel_voice_config_problem", "authenticated, service_role"),
-            ("my_voice_ref", "authenticated"), ("request_voice_clone", "authenticated"), ("approve_voice", "authenticated"),
+            ("my_voice_ref", "authenticated"), ("approve_voice", "authenticated"), ("voice_sample_slot_free", "authenticated"),
             ("attach_voice_to_channel", "authenticated"), ("detach_voice_from_channel", "authenticated"),
             ("delete_voice", "authenticated"), ("delete_voice_sample", "authenticated"),
             ("claim_voice_job", "service_role"), ("finish_voice_clone", "service_role"), ("finish_voice_task", "service_role"),
             ("purge_voice_records", "service_role"),
         })
+
+    def test_B1_request_voice_clone_is_granted_to_nobody(self):
+        c = code(TEXT)
+        self.assertRegex(c, r"revoke all on function public\.request_voice_clone\(")
+        self.assertNotRegex(c, r"grant execute on function public\.request_voice_clone")
+        self.assertIn("Hard gate", TEXT)
 
     def test_nothing_is_granted_to_anon_or_public(self):
         for m in re.finditer(r"(?i)grant [^;]*? to ([^;]*);", code(TEXT)):

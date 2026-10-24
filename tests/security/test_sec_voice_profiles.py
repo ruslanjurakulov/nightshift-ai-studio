@@ -92,8 +92,17 @@ def world(conn, sc):
 
 # ── building blocks: the owner's calls and the worker played by the test ──────────────────────────────────────────────────
 
+def become_claims(s, who):
+    """The database owner carrying a person's JWT claims: auth.uid() is theirs, but no API role is in force. Since B1 the browser cannot
+    call request_voice_clone() (the grant ships with the worker and the UI), so the tests create profiles the way a later server-side
+    caller would."""
+    s.conn.execute("reset role")
+    s.conn.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps(who.claims())])
+    return s
+
+
 def request(s, who, name="My own voice", *, keep=False, idem=None, org=None, decl=GOOD, version="v1"):
-    become(s, who)
+    (become if who in (ANON, SERVICE) else become_claims)(s, who)
     return s.run("select public.request_voice_clone(%s, %s::jsonb, %s, %s, %s, %s)",
                  [name, json.dumps(decl), version, keep, idem or f"i-{uuid.uuid4().hex}", org])
 
@@ -398,7 +407,7 @@ def test_a_consent_version_has_a_fixed_shape(conn, sc, world, version):
 
 def test_an_idempotency_key_is_required(conn, sc, world):
     s = world.su
-    become(s, world.vo)
+    become_claims(s, world.vo)
     out = s.run("select public.request_voice_clone('My voice', %s::jsonb, 'v1', false, null)", [json.dumps(GOOD)])
     assert not out.ok and out.sqlstate == "22023", out
     out = s.run("select public.request_voice_clone('My voice', %s::jsonb, 'v1', false, 'bad key!')", [json.dumps(GOOD)])
@@ -484,6 +493,42 @@ def test_anon_and_the_service_key_cannot_request(conn, sc, world):
     for who in (ANON, SERVICE):
         out = request(world.su, who)
         assert not out.ok and out.sqlstate == "42501", (who.name, out)
+
+
+def test_B1_the_feature_is_dormant_at_the_api_no_signed_in_user_can_start_a_clone(conn, sc, world):
+    """request_voice_clone() is granted to nobody until the migration that ships the worker and the UI (and the Actions pre-flight:
+    docs/CUSTOM_VOICE.md, 'Hard gate'). A signed-in browser cannot call it, and cannot make a pending profile by any other route."""
+    s = world.su
+    for who in (world.vo, world.alice, world.ed, world.operator, world.helper):
+        become(s, who)  # the REAL API role, not the owner-with-claims of request()
+        out = s.run("select public.request_voice_clone('My voice', %s::jsonb, 'v1', false, %s)", [json.dumps(GOOD), f"b1-{uuid.uuid4().hex}"])
+        assert not out.ok and out.sqlstate == "42501" and "permission denied" in out.error, (who.name, out)
+        out = s.run("insert into public.voice_profiles (user_id, org_id, owner_ref, name) values (%s, %s, repeat('a', 32), 'x')",
+                    [who.uid, world.org_a])
+        assert not out.ok and out.sqlstate == "42501", (who.name, out)
+        out = s.run("insert into public.voice_clone_jobs (profile_id, user_id, kind) values (gen_random_uuid(), %s, 'clone')", [who.uid])
+        assert not out.ok and out.sqlstate == "42501", (who.name, out)
+        out = s.run("insert into storage.objects (bucket_id, name) values ('voice-samples', %s)", [f"{who.uid}/{uuid.uuid4()}/sample.webm"])
+        assert not out.ok, (who.name, "no profile, so no upload")
+    become(s, None)
+    for role in ("anon", "authenticated", "service_role"):
+        assert s.value("select has_function_privilege(%s, 'public.request_voice_clone(text,jsonb,text,boolean,text,uuid)', 'EXECUTE')", [role]) is False, role
+    assert s.value("select count(*) from public.voice_profiles where user_id = %s", [world.vo.uid]) == 0, "nothing was created"
+
+
+def test_B1_a_waiting_profile_takes_exactly_one_recording(conn, sc, world):
+    """Defence in depth for the storage insert policy: once an object exists for the profile, no second one is accepted (the
+    policy cannot see storage.objects itself, so a definer helper answers)."""
+    s = world.su
+    r = requested(s, world.vo)
+    assert upload(s, world.vo, r["profile_id"], "webm").ok
+    for ext in ("webm", "ogg", "wav", "m4a"):
+        assert not upload(s, world.vo, r["profile_id"], ext).ok, ext
+    become(s, None)
+    assert s.value("select count(*) from storage.objects where bucket_id = 'voice-samples'") == 1
+    # a second profile of the same person still takes its own
+    r2 = requested(s, world.vo)
+    assert upload(s, world.vo, r2["profile_id"], "ogg").ok
 
 
 # ═══ 5. the worker ════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -644,7 +689,8 @@ def test_a_lost_worker_gives_the_job_back_and_then_fails_it(conn, sc, world):
         assert job and job["attempts"] == n
         become(s, None)
         s.conn.execute("update public.voice_clone_jobs set heartbeat_at = now() - interval '1 hour' where id = %s", [job["job_id"]])
-    assert claim(s) is None
+    swept = claim(s)  # the sweep fails the lost job and rejects the profile; what is handed out is the purge of its recording
+    assert swept and swept["kind"] == "purge_sample" and swept["profile_id"] == r["profile_id"]
     become(s, None)
     assert s.value("select status from public.voice_profiles where id = %s", [r["profile_id"]]) == "rejected"
 
@@ -1179,9 +1225,11 @@ def test_the_bucket_is_private_audio_only_and_50_mb(conn, sc, world):
 
 def test_the_owner_can_put_a_recording_in_their_own_prefix_for_a_waiting_profile(conn, sc, world):
     s = world.su
-    r = requested(s, world.vo)
     for ext in ("webm", "ogg", "wav", "m4a"):
+        r = requested(s, world.vo)
         assert upload(s, world.vo, r["profile_id"], ext).ok, ext
+        become(s, world.vo)
+        s.value("select public.delete_voice(%s)", [r["profile_id"]])
 
 
 def test_nobody_can_put_a_file_in_someone_elses_prefix_or_for_someone_elses_profile(conn, sc, world):
@@ -1405,3 +1453,217 @@ def test_the_rule_itself_answers_as_documented(conn, sc, world):
     assert ask(None, voice, world.org_a, "no-such-channel", "use", "narrator") is False
     assert ask(world.ed.uid, voice, None, None, "test", None) is False, "a test is the owner's"
     assert ask(world.vo.uid, voice, None, None, "test", None) is True
+
+
+# ═══ 14. the review's follow-ups ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_attach_never_lowers_a_stricter_voice_declaration(conn, sc, world):
+    s = world.su
+    pid, voice = make_approved(s, world.vo, world.org_a)
+    for before, kept in (("real_person", True), ("REAL_PERSON", True), ("some typo", True), (7, True), ("generic", False), (" Own_Clone ", False), (None, False)):
+        become(s, None)
+        s.conn.execute("update public.channels set agent_config = agent_config - 'elevenlabs_voice_id' - 'ai_disclosure_voice' where channel_id = %s", [world.chan_a])
+        if before is not None:
+            s.conn.execute("update public.channels set agent_config = agent_config || %s::jsonb where channel_id = %s",
+                           [json.dumps({"ai_disclosure_voice": before}), world.chan_a])
+        res = attach(s, world.vo, pid, world.chan_a)
+        assert res.ok and res.rows[0][0]["ok"], (before, res)
+        now = cfg(s, world.chan_a)["ai_disclosure_voice"]
+        assert (now == before) if kept else (now == "own_clone"), (before, now)
+        assert res.rows[0][0]["ai_disclosure_voice"] == now
+        become(s, world.vo)
+        s.value("select public.detach_voice_from_channel(%s, %s)", [pid, world.chan_a])
+
+
+def test_a_clone_lost_three_times_leaves_no_sample_behind(conn, sc, world):
+    s = world.su
+    r = requested(s, world.vo)
+    upload(s, world.vo, r["profile_id"])
+    for n in (1, 2, 3):
+        job = claim(s, f"w{n}")
+        become(s, None)
+        s.conn.execute("update public.voice_clone_jobs set heartbeat_at = now() - interval '1 hour' where id = %s", [job["job_id"]])
+    job = claim(s, "w9")  # the sweep fails the lost job, rejects the profile and queues the purge, which is handed out like any job
+    assert job and job["kind"] == "purge_sample" and job["profile_id"] == r["profile_id"]
+    become(s, None)
+    p = s.rows("select status, reject_reason, sample_state from public.voice_profiles where id = %s", [r["profile_id"]])[0]
+    assert tuple(p) == ("rejected", "worker_lost", "purge_pending")
+    assert claim(s) is None
+    # and a second sweep queues nothing new
+    become(s, None)
+    assert s.value("select count(*) from public.voice_clone_jobs where profile_id = %s and kind = 'purge_sample'", [r["profile_id"]]) == 1
+
+
+@pytest.mark.parametrize("key", KEYS)
+@pytest.mark.parametrize("value", [["x"], {"a": 1}, 12345678901234567890, True, 1.5])
+def test_channel_config_a_voice_setting_that_is_not_a_string_is_refused(conn, sc, world, key, value):
+    s = world.su
+    for who in (world.ed, SERVICE, None):
+        out = set_cfg(s, who, world.chan_a, {key: value})
+        assert blocked(out, key), (getattr(who, "name", None), value, out)
+
+
+def test_channel_config_a_number_that_reads_as_a_custom_voice_id_is_refused(conn, sc, world):
+    s = world.su
+    digits = "12345678901234567890"
+    pid, voice = make_approved(s, world.vo, world.org_a, voice=digits)
+    assert voice == digits
+    assert blocked(set_cfg(s, world.ed, world.chan_a, {"elevenlabs_voice_id": int(digits)}))
+    assert blocked(set_cfg(s, world.ed, world.chan_a, {"elevenlabs_secondary_voice_id": digits}))
+    # null means "not set" to the reader and stays allowed; so do the old string values
+    assert set_cfg(s, world.ed, world.chan_a, {"elevenlabs_voice_id": None}).ok
+    # a run on a channel that already holds a non-string voice setting is refused too
+    become(s, None)
+    s.conn.execute("alter table public.channels disable trigger channels_config_guard")
+    s.conn.execute("update public.channels set agent_config = agent_config || %s::jsonb where channel_id = %s",
+                   ['{"elevenlabs_voice_id": 12345678901234567890}', world.chan_a])
+    s.conn.execute("alter table public.channels enable trigger channels_config_guard")
+    assert blocked(run_job(s, world.chan_a, {}, by=world.ed))
+
+
+def test_the_append_only_triggers_also_fire_in_replica_mode(conn, sc, world):
+    s = world.su
+    r = requested(s, world.vo)
+    become(s, None)
+    s.conn.execute("set local session_replication_role = replica")
+    # control: an ordinary trigger IS skipped in this mode (so the test is not vacuous)
+    assert s.run("update public.voice_profiles set created_at = created_at + interval '1 second' where id = %s", [r["profile_id"]]).ok
+    for stmt in ("update public.voice_consents set consent_text_version = 'v9'", "delete from public.voice_consents", "truncate public.voice_consents",
+                 "update public.voice_deletion_records set event = 'purged'", "delete from public.voice_deletion_records",
+                 "truncate public.voice_deletion_records"):
+        out = s.run(stmt)
+        assert not out.ok and "append-only" in out.error, (stmt, out)
+    assert s.value("select count(*) from pg_trigger where tgrelid in ('public.voice_consents'::regclass, 'public.voice_deletion_records'::regclass) "
+                   "and not tgisinternal and tgenabled = 'A'") == 4
+
+
+def _swap_body(s, signature_def, body):
+    s.conn.execute(signature_def + " as $f$" + body + "$f$")
+
+
+def test_the_migration_refuses_a_live_body_it_has_not_seen_and_accepts_a_reformatted_one(conn, sc, world):
+    s = world.su
+    become(s, None)
+    text = MIGRATION.read_text(encoding="utf-8")
+    guard_def = "create or replace function public.channels_config_guard() returns trigger language plpgsql set search_path = public, pg_temp"
+    audit_def = "create or replace function public.audit_action_allowed(p_action text) returns boolean language sql immutable set search_path = public, pg_temp"
+    guard = s.value("select prosrc from pg_proc where oid = 'public.channels_config_guard()'::regprocedure")
+    audit = s.value("select prosrc from pg_proc where oid = 'public.audit_action_allowed(text)'::regprocedure")
+    # white space only: accepted (CRLF line ends, doubled blank lines, tabs)
+    _swap_body(s, guard_def, guard.replace("\n", "\r\n\n").replace("  ", "\t"))
+    _swap_body(s, audit_def, audit.replace("\n", "\r\n"))
+    assert s.run(text).ok
+    # a foreign guard body: refused, and nothing was replaced
+    foreign = guard.replace("'42501'", "'42502'", 1) if "'42501'" in guard else guard + " "
+    foreign = guard.replace("errcode = '42501'", "errcode = '42502'", 1)
+    assert foreign != guard
+    _swap_body(s, guard_def, foreign)
+    out = s.run(text)
+    assert not out.ok and out.sqlstate == "P0001" and "channels_config_guard" in out.error and "neither" in out.error, out
+    _swap_body(s, guard_def, guard)
+    # a foreign audit list: refused
+    _swap_body(s, audit_def, audit.replace("'agent.run'", "'agent.run', 'hand.made'", 1))
+    out = s.run(text)
+    assert not out.ok and "audit_action_allowed" in out.error and "neither" in out.error, out
+    _swap_body(s, audit_def, audit)
+    assert s.run(text).ok
+
+
+def test_the_hashes_in_the_file_match_what_the_database_computes(conn, sc, world):
+    s = world.su
+    become(s, None)
+    head = MIGRATION.read_text(encoding="utf-8").split("1. Pure helpers", 1)[0]
+    hashes = set(re.findall(r"'([0-9a-f]{32})'", head))
+    live = {s.value("select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc where oid = %s::regprocedure", [sig])
+            for sig in ("public.channels_config_guard()", "public.audit_action_allowed(text)")}
+    assert live <= hashes and len(hashes) == 4
+
+
+# -- the survivors of the first mutation run -----------------------------------------------------------------------------
+
+def test_purge_waits_for_the_provider_deletion_and_for_every_job(conn, sc, world):
+    s = world.su
+    pid, voice = make_approved(s, world.vo, world.org_a)
+    become(s, world.vo)
+    s.value("select public.delete_voice(%s)", [pid])
+    become(s, None)
+    # the sample is gone; the provider copy is not (its job failed, it did not succeed): the check that counts is the provider's
+    s.conn.execute("update public.voice_profiles set sample_state = 'purged' where id = %s", [pid])
+    s.conn.execute("update public.voice_clone_jobs set status = 'cancelled', finished_at = now() where profile_id = %s and kind = 'purge_sample'", [pid])
+    s.conn.execute("update public.voice_clone_jobs set status = 'failed', finished_at = now(), error_code = 'provider_down' where profile_id = %s and kind = 'delete_provider'", [pid])
+    become(s, SERVICE)
+    assert s.value("select public.purge_voice_records(%s)", [pid]) == {"ok": False, "error": "provider_delete_outstanding"}
+    become(s, None)
+    assert s.value("select count(*) from public.voice_profiles where id = %s", [pid]) == 1
+    # and a voice that never reached the provider, with a job still waiting, is not purged either
+    r = requested(s, world.ed)
+    become(s, world.ed)
+    s.value("select public.delete_voice(%s)", [r["profile_id"]])
+    become(s, None)
+    s.conn.execute("update public.voice_profiles set sample_state = 'purged' where id = %s", [r["profile_id"]])
+    s.conn.execute("update public.voice_clone_jobs set status = 'cancelled', finished_at = now() where profile_id = %s", [r["profile_id"]])
+    s.conn.execute("insert into public.voice_clone_jobs (profile_id, user_id, kind) values (%s, %s, 'clone')", [r["profile_id"], world.ed.uid])
+    become(s, SERVICE)
+    assert s.value("select public.purge_voice_records(%s)", [r["profile_id"]]) == {"ok": False, "error": "job_outstanding"}
+    become(s, None)
+    s.conn.execute("update public.voice_clone_jobs set status = 'cancelled', finished_at = now() where profile_id = %s", [r["profile_id"]])
+    become(s, SERVICE)
+    assert s.value("select public.purge_voice_records(%s)", [r["profile_id"]]) == {"ok": True}
+
+
+def test_an_attachment_made_in_another_organization_does_not_follow_the_channel(conn, sc, world):
+    """The owner is an administrator of BOTH organizations, so only the attachment's own organization can stop the channel's new one."""
+    s = world.su
+    pid, voice = make_approved(s, world.vo, world.org_a)
+    become(s, None)
+    s.conn.execute("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'admin')", [world.org_b, world.vo.uid, world.vo.email])
+    assert attach(s, world.vo, pid, world.chan_a).rows[0][0]["ok"]
+    assert run_job(s, world.chan_a, {}, by=world.ed).ok
+    become(s, None)
+    s.conn.execute("update public.channels set org_id = %s where channel_id = %s", [world.org_b, world.chan_a])
+    assert blocked(run_job(s, world.chan_a, {}, by=world.bob)), "attached in org A, the channel now belongs to org B"
+
+
+def test_a_deleted_twin_does_not_shadow_the_live_voice(conn, sc, world):
+    """Two profiles whose ids differ only in case (the rule reads ids case-insensitively): the live one is judged, not the deleted one."""
+    s = world.su
+    pid, voice = make_testing(s, world.vo, keep=True, voice="Ab" + "c" * 18)
+    become(s, world.vo)
+    s.value("select public.delete_voice(%s)", [pid])
+    become(s, None)
+    s.conn.execute("update public.voice_clone_jobs set status = 'cancelled', finished_at = now() where status = 'queued'")  # the next claim is the next clone
+    pid2, voice2 = make_testing(s, world.ed, keep=True, voice="AB" + "c" * 18)
+    become(s, None)
+    # one transaction gives both rows the same created_at: make the deleted twin the older one, as it would be in life
+    s.conn.execute("alter table public.voice_profiles disable trigger voice_profiles_guard")
+    s.conn.execute("update public.voice_profiles set created_at = now() - interval '1 hour' where id = %s", [pid])
+    s.conn.execute("alter table public.voice_profiles enable trigger voice_profiles_guard")
+    assert s.value("select public.voice_usable_by(%s, %s, null, null, 'test', null)", [world.ed.uid, voice2]) is True
+    assert s.value("select public.voice_usable_by(%s, %s, null, null, 'test', null)", [world.vo.uid, voice]) is False, "the deleted one's owner may not"
+
+
+def test_the_operators_roster_makes_an_administrator_of_the_default_organization_and_only_there(conn, sc, world):
+    s = world.su
+    become(s, None)
+    default = s.value("select public.default_org_id()")
+    q = "select public.voice_user_org_admin(%s, %s)"
+    assert s.value(q, [world.helper.uid, default]) is True, "a platform administrator on the roster"
+    assert s.value(q, [world.helper.uid, world.org_a]) is False, "and not an administrator of a customer's organization"
+    assert s.value(q, [world.vo.uid, default]) is False, "an organization admin is not on the roster"
+    assert s.value(q, [None, default]) is False and s.value(q, [world.helper.uid, None]) is False
+    s.conn.execute("update public.app_members set role = 'editor' where user_id = %s", [world.helper.uid])
+    assert s.value(q, [world.helper.uid, default]) is False, "a roster editor is not an administrator"
+
+
+def test_a_platform_administrators_voice_works_on_the_operators_own_channels(conn, sc, world):
+    s = world.su
+    default = "default"
+    become(s, None)
+    default_org = s.value("select public.default_org_id()")
+    pid, voice = make_approved(s, world.helper, str(default_org))
+    res = attach(s, world.helper, pid, default).rows[0][0]
+    assert res["ok"], res
+    assert run_job(s, default, {}, by=world.ed).ok, "attached on the operator's channel: a run by anyone who may run it"
+    become(s, None)
+    s.conn.execute("delete from public.app_members where user_id = %s", [world.helper.uid])
+    assert blocked(run_job(s, default, {}, by=world.ed)), "off the roster, no longer an administrator there"

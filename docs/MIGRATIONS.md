@@ -342,6 +342,10 @@ ever stops being true). The ElevenLabs account is on the free plan, which cannot
   apply, every voice id behaves exactly as before.
 - **Backfill.** One idempotent statement gives every existing user a random `owner_ref` (`user_voice_refs`). Row count after apply =
   `select count(*) from auth.users`.
+- **Dormant at the API.** `request_voice_clone` is granted to nobody; the grant ships with the worker, the UI and the Actions pre-flight
+  (`docs/CUSTOM_VOICE.md`, "Hard gate": the database rule does not cover the GitHub Actions backend).
+- **Drift guard in the file.** A `DO` block raises if the live `channels_config_guard()` or `audit_action_allowed()` is not the 0114 / 0116
+  body (md5 of the body with white space collapsed) or 0117's own.
 - **Is it working?** The verify block at the bottom of the file (every column true) and the storage-policy queries there.
 - **Replaced on their latest bodies:** `channels_config_guard()` (0114) and `audit_action_allowed()` (0116, plus eight `voice.*` names).
   Re-running 0114 or 0116 afterwards would put the old body back (the voice check on channels gone; the voice audit writes would fail

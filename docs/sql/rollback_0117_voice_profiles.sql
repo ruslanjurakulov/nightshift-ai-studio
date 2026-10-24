@@ -11,7 +11,8 @@
 --   2. Puts channels_config_guard() back to 0114's body, byte for byte (the trigger is neither dropped nor re-created: 0117 never touched it).
 --   3. Puts audit_action_allowed() back to 0116's body, byte for byte (the voice.* names go; an audit row already written stays).
 --   4. Drops every callable function 0117 added and the two trigger functions of step 1.
---   5. Drops the five voice_samples_* policies on storage.objects (nobody can upload a sample; the bucket and its files stay).
+--   5. Drops the five voice_samples_* policies on storage.objects and voice_sample_slot_free() (nobody can upload a sample; the
+--      bucket and its files stay).
 --
 -- WHAT IT KEEPS, on purpose: the six tables (user_voice_refs, voice_profiles, voice_consents, voice_deletion_records,
 -- voice_clone_jobs, voice_channel_attachments) with their rows and their append-only / immutability triggers, and the
@@ -136,6 +137,13 @@ $$;
 
 revoke all on function public.audit_action_allowed(text) from public, anon, authenticated, service_role;
 
+drop policy if exists voice_samples_insert_own on storage.objects;
+drop policy if exists voice_samples_closed_select on storage.objects;
+drop policy if exists voice_samples_closed_update on storage.objects;
+drop policy if exists voice_samples_closed_delete on storage.objects;
+drop policy if exists voice_samples_closed_insert on storage.objects;
+drop function if exists public.voice_sample_slot_free(text);
+
 drop function if exists public.creative_jobs_voice_guard();
 drop function if exists public.render_jobs_voice_guard();
 drop function if exists public.channel_voice_config_problem(text, uuid, jsonb, jsonb);
@@ -163,10 +171,5 @@ drop function if exists public.voice_name_problem(text);
 drop function if exists public.voice_name_norm(text);
 drop function if exists public.voice_real_person_patterns();
 
-drop policy if exists voice_samples_insert_own on storage.objects;
-drop policy if exists voice_samples_closed_select on storage.objects;
-drop policy if exists voice_samples_closed_update on storage.objects;
-drop policy if exists voice_samples_closed_delete on storage.objects;
-drop policy if exists voice_samples_closed_insert on storage.objects;
 
 commit;

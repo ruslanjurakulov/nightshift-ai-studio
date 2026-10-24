@@ -4,6 +4,11 @@ Status: **database and pure code only** (migration `0117_voice_profiles.sql`, `m
 the ElevenLabs account is on the **free plan**, which does not allow instant voice cloning. No worker, no screen, no workflow
 calls any of this yet (a test fails if one starts to before this document is updated).
 
+**It is also dormant at the API.** `request_voice_clone` is created and granted to **nobody** (not `authenticated`, not `service_role`):
+starting a clone is the one entry into the feature, so no signed-in user can create a profile, a queue row or (the bucket's insert rule
+needs a waiting profile) a stored object. The grant ships in the migration that ships the worker, the UI and the Actions pre-flight; see
+"Hard gate" below.
+
 ## The decisions this implements (the owner's)
 
 - Every **user** may clone **their own** voice, and **only that user** may use it.
@@ -30,13 +35,15 @@ the catalog).
 
 Status: `pending_verification` -> `testing` (the worker cloned it and the read-aloud check passed) -> `approved` (the owner heard it and
 approved) ; `rejected` and `deleted` are terminal. A usable status always has a provider voice behind it (a CHECK).
+`attach_voice_to_channel` keeps a stricter `ai_disclosure_voice` that is already set (`real_person`, or any value the reader would read as
+`real_person`): it only ever sets `own_clone` where the key is absent, `generic` or already `own_clone`.
 
 ### The functions
 
 | Function | Caller | What it does |
 | :-- | :-- | :-- |
 | `my_voice_ref()` | the user | their own `owner_ref` (made now if absent) |
-| `request_voice_clone(name, declarations, consent_version, keep_sample, idem, org?)` | the user | writes the profile, the consent row, one queue row, an audit row. **Calls no provider.** Returns the phrase to read, the upload prefix and when the request lapses (2 hours). Idempotent on `idem`; **5 requests per person per rolling day** and **3 live voices per person** |
+| `request_voice_clone(name, declarations, consent_version, keep_sample, idem, org?)` | **nobody yet** (see "Hard gate"); a person once granted | writes the profile, the consent row, one queue row, an audit row. **Calls no provider.** Returns the phrase to read, the upload prefix and when the request lapses (2 hours). Idempotent on `idem`; **5 requests per person per rolling day** and **3 live voices per person** |
 | `approve_voice(profile)` | the owner | `testing` -> `approved`, only after the worker's verification passed and the owner's own Studio `tts` clip made with this voice completed |
 | `attach_voice_to_channel(profile, channel, slot?)` | the owner, who must be a real administrator of the channel's organization | the attachment, the channel's voice key (`narrator` = `elevenlabs_voice_id`, `secondary` = `elevenlabs_secondary_voice_id`), and `ai_disclosure_voice = own_clone`; one audit row |
 | `detach_voice_from_channel(profile, channel)` | the owner | revokes the attachment; the id stays in the config and runs on it are refused (rule 4) |
@@ -48,7 +55,8 @@ approved) ; `rejected` and `deleted` are terminal. A usable status always has a 
 
 ## The unique `owner_ref`, and how a voice in the provider account traces to a user
 
-`user_voice_refs.owner_ref` is a **random** 32-hex value (a UUIDv4 without dashes: 122 random bits), one per user, unique by constraint,
+`user_voice_refs.owner_ref` is a **random** 32-hex value (a UUIDv4 without dashes: **122** random bits, not 128; the version and variant
+nibbles are fixed), one per user, unique by constraint,
 immutable (a trigger refuses any update, even from the database owner), created the first time a user touches a voice function and
 **backfilled for every existing user** by the migration (idempotent). Why random and not an HMAC of the user id: there is no secret to
 store, rotate or leak; it is unique by construction; it is not guessable; and it never exposes the auth user id. The repo has no trigger on
@@ -81,7 +89,8 @@ Now, **if a provider voice id is in `voice_profiles`**, it may be used only:
 
 A deleted, rejected or pending profile is never usable, by anyone. A voice that is in **no** profile (the operator's own premade and
 library voices) works exactly as before. A re-cased or whitespace-padded copy of an id is the same id (the reader strips the secondary
-voice id, so the check does too).
+voice id, so the check does too). A channel's voice setting that is not a JSON string (a number such as `12345678901234567890`, a list, an
+object, a boolean) is refused when a write sets it, because the reader would turn it into text and use it; `null` still means "not set".
 
 Where voice ids enter the system, in the database, for **every writer** (the service key, the definer functions and the SQL editor too):
 
@@ -132,6 +141,21 @@ for anyone who is not a platform administrator (0114's direct lock is unchanged)
   0098: storage policies add up). Upload with `contentType: 'audio/webm'` exactly: whether Storage accepts `audio/webm;codecs=opus`
   against the allow-list is unverified.
 
+## Hard gate: the database rule does not cover the GitHub Actions backend
+
+The ownership rule is enforced where a voice id enters **the database**. A run that goes through the GitHub Actions backend does not
+pass through `render_jobs` or `creative_jobs`:
+
+- the Run-now `voice_id` input (`command-center/app/api/agent/run/route.ts` -> the `daily_video.yml` dispatch -> `ELEVENLABS_RUN_VOICE_ID`)
+  reaches the pipeline without any row being inserted;
+- scheduled runs read `channels.agent_config` at run time. Entry point 3 stops a custom voice being **set** there unattached, but a voice
+  attached earlier and deleted or detached since is still in the config, and the config is read by Actions without any check.
+
+So **the migration that grants `request_voice_clone` MUST be preceded by**: the Run-now route and the Actions pre-flight (before any spend)
+calling a `voice_usable_by`-equivalent check (a service-side RPC that answers for the run's requester, the channel and the voice ids it
+will use) and refusing the run when it fails. Until that exists nothing can create a custom voice (the function is not granted), so the
+gap is empty today; **it must not be allowed to become real**. No code for it is in this PR.
+
 ## What is NOT built yet
 
 - the **worker**: the clone job (claim, read the sample with the service role, Whisper the phrase, call the provider, finish), the
@@ -142,7 +166,18 @@ for anyone who is not a platform administrator (0114's direct lock is unchanged)
 - **`regenerate_line`** (re-voice one line of a finished video);
 - the **consent text** and the Privacy Policy / Terms changes;
 - a **scheduled purge** and a retention period for `purge_voice_records` (it is run by hand);
-- an HTTP **Whisper** step (the checker takes a transcript).
+- an HTTP **Whisper** step (the checker takes a transcript);
+- the **Actions pre-flight** above (the hard gate).
+
+## Things the worker must do, because the database cannot
+
+- **Sniff the audio bytes.** The bucket's MIME allow-list checks the *declared* type only. The worker must identify the real container
+  (and refuse anything that is not audio) before it hashes, transcribes or sends the sample to the provider.
+- **Enforce the upload window.** The "2 hours" is enforced only by `claim_voice_job`'s expiry of a request nobody uploaded for. The
+  bucket's insert rule has no clock: until that sweep has rejected the profile, a late recording is still accepted (and then cloned like
+  any other); after it, the profile is no longer waiting and the rule refuses. If the window matters, the worker must check the
+  profile's age itself.
+- **Delete the object itself** for every `purge_sample` job (the database only asks).
 
 ## Live blockers (nothing here can be tested live until they are cleared)
 
@@ -157,6 +192,16 @@ for anyone who is not a platform administrator (0114's direct lock is unchanged)
 3. **Counsel.** The Privacy Policy and Terms (`command-center/lib/legal-docs`) say **nothing** about voice samples today. A voice sample
    may count as biometric data in some jurisdictions; the legal basis, the retention of consent and deletion records, and what a deletion
    request can remove are legal decisions. Nothing should be switched on for customers before they are made.
+
+## Deletion, retention, and what blocks what
+
+- **Deleting an auth user** is blocked by the foreign keys from `voice_profiles` until that user's voices are deleted (`delete_voice`) and
+  purged (`purge_voice_records`). **Deleting an organization** is blocked the same way (`voice_profiles.org_id` is `ON DELETE RESTRICT`). The
+  account- and organization-deletion procedures must include those two calls first.
+- **`voice_deletion_records` has no retention yet**: it is append-only, even `purge_voice_records` cannot remove its rows, and nothing
+  deletes them. How long to keep them is counsel's decision.
+- The consent trail and the deletion record are `ENABLE ALWAYS` triggers: they still fire when a session sets
+  `session_replication_role = replica`.
 
 ## Decisions for the owner
 
@@ -174,9 +219,11 @@ for anyone who is not a platform administrator (0114's direct lock is unchanged)
 ## How to apply and verify (owner)
 
 1. Merge only after the independent security review. The Supabase integration applies the file to the live database on merge.
-2. Before: `select count(*) from auth.users;` (the backfill creates this many rows in `user_voice_refs`), and the drift check at the top
-   of the migration's last comment block: the live `channels_config_guard()` must be 0114's and the live `audit_action_allowed()` 0116's
-   (0117 replaces both on those bodies; if either was changed by hand since, stop and read the live body first).
+2. Before: `select count(*) from auth.users;` (the backfill creates this many rows in `user_voice_refs`). The drift check is **in the
+   file**: a `DO` block at the top compares the md5 of the body of the live `channels_config_guard()` and `audit_action_allowed()` (with
+   white space read as one space, so line endings and indentation cannot cause a false alarm) with the 0114 / 0116 bodies in the repo (or
+   0117's own, which is what a replay sees) and **raises** if either differs: something was applied by hand since; read the live body
+   first.
 3. Apply `0117_voice_profiles.sql` (or let the integration). It is idempotent; running it twice changes nothing.
 4. Run the **Verify** block at the bottom of the migration file (every column must read `true`), then the two storage-policy queries
    (the second must return no row) and the two overdue/dangling queries (both must return no rows).

@@ -35,7 +35,8 @@ def extend(tables: dict, functions: dict) -> None:
     functions.update({
         # the owner's own session
         "my_voice_ref": USER,
-        "request_voice_clone": USER,
+        # B1: granted to nobody until the migration that ships the worker and the UI (a server-side caller, or the grant, comes then)
+        "request_voice_clone": SERVICE,
         "approve_voice": USER,
         "attach_voice_to_channel": USER,
         "detach_voice_from_channel": USER,
@@ -48,6 +49,8 @@ def extend(tables: dict, functions: dict) -> None:
         "purge_voice_records": SERVICE,
         # asked by channels_config_guard(), which runs as the caller; takes no user
         "channel_voice_config_problem": HELPER,
+        # asked by the storage insert policy, which runs as the caller (who cannot see storage.objects); takes no user
+        "voice_sample_slot_free": HELPER,
         # internal: the rule and its pure helpers; no API role
         "voice_usable_by": SERVICE,
         "voice_owner_ref_for": SERVICE,
