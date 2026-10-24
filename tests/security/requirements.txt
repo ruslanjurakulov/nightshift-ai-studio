@@ -6,3 +6,6 @@ psycopg[binary]>=3.2,<4
 # (modules/media_library.py): the lab needs the encoder, nothing that ships does.
 Pillow>=12.3.0  # same floor as requirements.txt (BR-S-006)
 pillow-heif>=0.20.0,<2
+# test_sec_channel_settings.py holds the SQL reading of a spend limit to the worker's own reader (modules/channels.py), which
+# imports config.py, which loads a .env with python-dotenv. Nothing else of the pipeline is imported.
+python-dotenv>=1.0.0  # same floor as requirements.txt

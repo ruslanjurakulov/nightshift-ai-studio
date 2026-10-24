@@ -247,19 +247,25 @@ describe("channel card: pause and resume", () => {
 
 describe("channel card: storyboard review", () => {
   it("turning it OFF removes a checkpoint, so it asks; turning it ON is one tap", async () => {
-    h.reads.channels = { agent_config: {} };
+    // written through patch_channel_agent_config (migration 0119), never as a table update
+    h.rpc.mockResolvedValue({ data: { ok: true, agent_config: {} }, error: null });
     card({ agent_config: { storyboard_review: true } as ChannelRow["agent_config"] });
     fireEvent.click(reviewSwitch());
-    expect(h.writes).toEqual([]);
+    expect(h.rpc).not.toHaveBeenCalled();
     expect(screen.getByRole("alertdialog").textContent).toContain(cs.reviewOffBody);
     fireEvent.click(confirmKey(cs.reviewOffConfirm));
-    await waitFor(() => expect(h.writes.length).toBe(1));
+    await waitFor(() =>
+      expect(h.rpc).toHaveBeenCalledWith("patch_channel_agent_config", { p_channel_id: "UC-chronos", p_patch: { storyboard_review: false } }),
+    );
     cleanup();
-    h.writes.length = 0;
+    h.rpc.mockClear();
     card();
     fireEvent.click(reviewSwitch());
-    await waitFor(() => expect(h.writes.length).toBe(1));
+    await waitFor(() =>
+      expect(h.rpc).toHaveBeenCalledWith("patch_channel_agent_config", { p_channel_id: "UC-chronos", p_patch: { storyboard_review: true } }),
+    );
     expect(dialog()).toBeNull();
+    expect(h.writes).toEqual([]);
   });
 });
 
