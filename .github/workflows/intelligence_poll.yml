@@ -43,8 +43,12 @@ jobs:
       - name: Install Python dependencies
         run: pip install -c constraints.txt -r requirements.txt
 
+      # Restore only; the one save is "Save history state" at the end. With the
+      # combined actions/cache action its post step tried to save the same key a
+      # second time and failed every day ("Unable to reserve cache with key
+      # chronos-history-<n>"), a warning that would hide a real save failure.
       - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
@@ -155,4 +159,6 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: history
-          key: chronos-history-${{ github.run_number }}
+          # "-poll": this workflow's run numbers are not daily_video's, so the
+          # bare number could one day name a cache that workflow already holds.
+          key: chronos-history-${{ github.run_number }}-poll
