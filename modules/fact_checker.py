@@ -57,8 +57,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from config import GEMINI_MODEL
 from modules.gemini_client import generate_with_retry, make_client
+from modules.gemini_stages import model_for
 from modules.structured_output import json_config
 
 logger = logging.getLogger(__name__)
@@ -464,7 +464,7 @@ def _check_batch(client, batch: list[str], allow_split_retry: bool = True
     raising.
     """
     prompt = _build_prompt(batch)
-    response = generate_with_retry(client, GEMINI_MODEL, prompt, config=_request_config())
+    response = generate_with_retry(client, model_for("fact_check"), prompt, config=_request_config())
     text = getattr(response, "text", "") or ""
 
     by_index = _parse_batch_response(text, len(batch))

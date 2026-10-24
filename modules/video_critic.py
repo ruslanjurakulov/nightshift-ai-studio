@@ -418,9 +418,9 @@ def _review(report: CriticReport, video_path, *, script, timeline, channel, cost
 
         client = make_client()
     if model is None:
-        import config
+        from modules.gemini_stages import model_for
 
-        model = config.GEMINI_MODEL
+        model = model_for("video_critic")
     report.model = model
 
     per_scene = max(len(v) for v in frames.values())

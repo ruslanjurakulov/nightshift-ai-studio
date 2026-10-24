@@ -202,7 +202,8 @@ consumer side of the feedback loop:
   repeats via model2vec embeddings + rapidfuzz, beyond the exact-string
   exclusion list of the last 80 used topics.
 
-Key dependency: **Gemini** (`GEMINI_MODEL`, via `modules/gemini_client.py`).
+Key dependency: **Gemini** (`GEMINI_MODEL`, via `modules/gemini_client.py`; per-stage
+overrides, the per-day quota stop and the request count: [GEMINI_QUOTA.md](GEMINI_QUOTA.md)).
 Persists: nothing yet at pick time; the chosen topic is registered to
 `history/topics.json` and the originality vector store only after the run, via
 `register_topic()`.

@@ -137,6 +137,7 @@ from modules import comment_replies  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
 from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
+from modules.gemini_stages import GEMINI_QUOTA_EXIT  # noqa: E402
 from modules.publish_gate import HELD_BEFORE_RENDER_EXIT  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
@@ -1349,6 +1350,13 @@ class Worker:
                 return end("failed", format_error(
                     f"main.py exited with code {rc}: the channel's spend ceiling stopped the run "
                     "before anything was spent; nothing was charged", tail, self._secrets))
+            if rc == GEMINI_QUOTA_EXIT:
+                # Gemini's per-day quota is spent for a stage the run cannot skip (modules/gemini_stages.py): the
+                # log tail names the model, the retry-after and the fix. No video, so the job fails and the hold
+                # is released.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: Gemini's daily request quota is used up; nothing was "
+                    "charged", tail, self._secrets))
             if rc == HELD_BEFORE_RENDER_EXIT:
                 # The fact-check would block the publish gate: the run stopped before
                 # the voice and the render were bought. No video, so the job fails

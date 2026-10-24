@@ -667,6 +667,15 @@ jobs:
           NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT: ${{ vars.NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT }}
           # Packaging repair (modules/packaging_repair.py): empty = ON, `off` restores today's hold with no rewrite.
           NIGHTSHIFT_PACKAGING_REPAIR: ${{ vars.NIGHTSHIFT_PACKAGING_REPAIR }}
+          # Gemini model per stage (modules/gemini_stages.py, config.GEMINI_STAGE_MODELS). Each is optional: empty =
+          # the one model every stage has always used. They spread a per-day, per-model quota over several models.
+          GEMINI_MODEL_TOPIC: ${{ vars.GEMINI_MODEL_TOPIC }}
+          GEMINI_MODEL_RESEARCH: ${{ vars.GEMINI_MODEL_RESEARCH }}
+          GEMINI_MODEL_SCRIPT: ${{ vars.GEMINI_MODEL_SCRIPT }}
+          GEMINI_MODEL_FACTCHECK: ${{ vars.GEMINI_MODEL_FACTCHECK }}
+          GEMINI_MODEL_GROUNDING: ${{ vars.GEMINI_MODEL_GROUNDING }}
+          GEMINI_MODEL_PACKAGING: ${{ vars.GEMINI_MODEL_PACKAGING }}
+          GEMINI_MODEL_OTHER: ${{ vars.GEMINI_MODEL_OTHER }}
           # Topic selection gate (modules/topic_gate.py); empty = the default.
           CHRONOS_TOPIC_GATE: ${{ vars.CHRONOS_TOPIC_GATE }}
           CHRONOS_TOPIC_QUEUE_STALE_DAYS: ${{ vars.CHRONOS_TOPIC_QUEUE_STALE_DAYS }}
@@ -763,6 +772,12 @@ jobs:
             echo "paused=true" >> "$GITHUB_OUTPUT"
             echo "Held before render by the fact-check — nothing was spent on the video."
             exit 0
+          fi
+          # Exit 80: Gemini's per-day request quota is spent for a stage the run cannot skip (the topic or the
+          # script; modules/gemini_stages.py). The step stays RED, unlike 75/78/79: no video was made and the owner
+          # has to act. The log above names the model and the retry-after; the settle step releases the hold.
+          if [ "$rc" -eq 80 ]; then
+            echo "::error title=Gemini daily quota::The Gemini API's per-day request quota is used up (the model and the retry-after are in the log above). Nothing was spent on a video. Enable billing in Google AI Studio, or set a GEMINI_MODEL_<STAGE> variable to a model that still has quota, then run again."
           fi
           exit "$rc"
 

@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover
     fcntl = None
 
 from config import (
-    GEMINI_MODEL, HELD_TOPIC_COOLDOWN_DAYS, SCRIPT_LANGUAGE, TOPIC_GATE_ENABLED, TOPIC_GATE_MODEL_CALLS,
+    HELD_TOPIC_COOLDOWN_DAYS, SCRIPT_LANGUAGE, TOPIC_GATE_ENABLED, TOPIC_GATE_MODEL_CALLS,
     TOPIC_HISTORY_FILE, TOPIC_QUEUE_STALE_DAYS, VIDEO_DURATION_TARGET,
 )
 from modules import topic_dedup, topic_gate, topic_seed
@@ -24,6 +24,7 @@ from modules.channels import DEFAULT_CHANNEL_ID
 from modules.content_planner import ContentPlanner
 from modules.feedback_engine import FeedbackEngine
 from modules.gemini_client import generate_with_retry, make_client
+from modules.gemini_stages import model_for
 from modules import event_log as events
 from modules.originality_engine import (
     DEFAULT_HARD_BLOCK_THRESHOLD, OriginalityEngine, _resolve_vectors_path, move_aside_corrupt,
@@ -704,7 +705,7 @@ class TopicManager:
     def _generate_topic(self, niche: str, rejected=()) -> str:
         """One model call; the raw text, "" when the response carries none (a
         blocked response has ``text`` None)."""
-        response = generate_with_retry(self.client, GEMINI_MODEL, self._build_prompt(niche, rejected))
+        response = generate_with_retry(self.client, model_for("topic_pick"), self._build_prompt(niche, rejected))
         text = getattr(response, "text", None)
         return text if isinstance(text, str) else ""
 
@@ -767,7 +768,7 @@ class TopicManager:
         prompt = topic_gate.build_niche_prompt(
             topic, niche, self._channel_name(), getattr(agent, "niche_rules", "") or "")
         try:
-            response = generate_with_retry(self.client, GEMINI_MODEL, prompt)
+            response = generate_with_retry(self.client, model_for("topic_gate"), prompt)
         except Exception as e:  # noqa: BLE001 - an unanswered question is a defer, never a crash
             logger.warning("[channel: %s] Niche check: the model call failed (%s) - the topic is not confirmed",
                            self._history_channel, type(e).__name__)
