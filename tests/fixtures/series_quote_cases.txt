@@ -1,0 +1,288 @@
+{
+ "_about": "Shared by tests/test_series_planner.py (aggregate_quote) and command-center/tests/seriesQuote.test.ts (aggregateSeriesQuote): the two aggregations must agree. credits null = unpriced, with the named gap. total is null if ANY episode is null; partial is the sum of the priced ones only. A credits value that is not a number from 0 to 1e12 (NaN, Infinity, negative, a string, a boolean, too large) is invalid_estimate in both languages; the strings 'NaN', 'Infinity' and '-Infinity' stand for those float values because JSON cannot carry them.",
+ "cases": [
+  {
+   "name": "all priced",
+   "credits": [
+    10,
+    10,
+    10.5
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": 30.5,
+   "partial": 30.5,
+   "complete": true,
+   "unknown": [],
+   "gaps_out": []
+  },
+  {
+   "name": "one unknown makes the total unknown, the partial sum stays separate",
+   "credits": [
+    10,
+    null,
+    10
+   ],
+   "gaps": [
+    null,
+    "no_history",
+    null
+   ],
+   "total": null,
+   "partial": 20,
+   "complete": false,
+   "unknown": [
+    2
+   ],
+   "gaps_out": [
+    "no_history"
+   ]
+  },
+  {
+   "name": "nothing priced: no total and no partial sum, never 0",
+   "credits": [
+    null,
+    null,
+    null,
+    null
+   ],
+   "gaps": [
+    "no_prices",
+    "no_prices",
+    "no_length",
+    "no_prices"
+   ],
+   "total": null,
+   "partial": null,
+   "complete": false,
+   "unknown": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "gaps_out": [
+    "no_length",
+    "no_prices"
+   ]
+  },
+  {
+   "name": "a price of zero is a price, not a gap",
+   "credits": [
+    0,
+    0,
+    0
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": 0,
+   "partial": 0,
+   "complete": true,
+   "unknown": [],
+   "gaps_out": []
+  },
+  {
+   "name": "float noise is rounded up to the cent like a hold",
+   "credits": [
+    0.1,
+    0.2,
+    0.3
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": 0.6,
+   "partial": 0.6,
+   "complete": true,
+   "unknown": [],
+   "gaps_out": []
+  },
+  {
+   "name": "last episode unknown",
+   "credits": [
+    1.25,
+    2.5,
+    3.75,
+    null
+   ],
+   "gaps": [
+    null,
+    null,
+    null,
+    "unpriced_history"
+   ],
+   "total": null,
+   "partial": 7.5,
+   "complete": false,
+   "unknown": [
+    4
+   ],
+   "gaps_out": [
+    "unpriced_history"
+   ]
+  },
+  {
+   "name": "NaN is an invalid estimate, not a price",
+   "credits": [
+    10,
+    "NaN",
+    10
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": null,
+   "partial": 20,
+   "complete": false,
+   "unknown": [
+    2
+   ],
+   "gaps_out": [
+    "invalid_estimate"
+   ]
+  },
+  {
+   "name": "Infinity and -Infinity are invalid estimates",
+   "credits": [
+    "Infinity",
+    "-Infinity",
+    5
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": null,
+   "partial": 5,
+   "complete": false,
+   "unknown": [
+    1,
+    2
+   ],
+   "gaps_out": [
+    "invalid_estimate"
+   ]
+  },
+  {
+   "name": "a negative amount is invalid, not a discount",
+   "credits": [
+    10,
+    -5,
+    10
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": null,
+   "partial": 20,
+   "complete": false,
+   "unknown": [
+    2
+   ],
+   "gaps_out": [
+    "invalid_estimate"
+   ]
+  },
+  {
+   "name": "a number no estimator could mean is invalid (1e307 and 1e13)",
+   "credits": [
+    1e+307,
+    10000000000000.0,
+    3
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": null,
+   "partial": 3,
+   "complete": false,
+   "unknown": [
+    1,
+    2
+   ],
+   "gaps_out": [
+    "invalid_estimate"
+   ]
+  },
+  {
+   "name": "a string or a boolean is not an amount",
+   "credits": [
+    "12",
+    true,
+    2
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": null,
+   "partial": 2,
+   "complete": false,
+   "unknown": [
+    1,
+    2
+   ],
+   "gaps_out": [
+    "invalid_estimate"
+   ]
+  },
+  {
+   "name": "exactly the ceiling is still a price",
+   "credits": [
+    1000000000000.0,
+    0,
+    0
+   ],
+   "gaps": [
+    null,
+    null,
+    null
+   ],
+   "total": 1000000000000.0,
+   "partial": 1000000000000.0,
+   "complete": true,
+   "unknown": [],
+   "gaps_out": []
+  },
+  {
+   "name": "an invalid estimate and a named gap together",
+   "credits": [
+    "NaN",
+    null,
+    4
+   ],
+   "gaps": [
+    null,
+    "no_history",
+    null
+   ],
+   "total": null,
+   "partial": 4,
+   "complete": false,
+   "unknown": [
+    1,
+    2
+   ],
+   "gaps_out": [
+    "invalid_estimate",
+    "no_history"
+   ]
+  }
+ ]
+}

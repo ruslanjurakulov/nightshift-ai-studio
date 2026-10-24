@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 #: Bump on ANY change to a word list or a threshold below. Logged with every
 #: rejection (and in the event), so "why was this topic rejected on that day"
 #: has an answer after the lists change.
-GATE_VERSION = "2026-10-22.4"
+GATE_VERSION = "2026-10-24.1"
 
 # -- the closed set of reasons --------------------------------------------
 #: The topic is outside the channel's niche (decided by words, or by the model).
@@ -93,7 +93,11 @@ OPERATOR_SOURCES = frozenset({"manual"})
 #: on the channel's own videos; neither is spent a model call. EVERY other
 #: source (a trend, a competitor, a source nobody has heard of) is "strict": a
 #: topic that the words cannot place needs a positive answer from the model.
-LENIENT_SOURCES = frozenset({"ai", "content_opportunity:demand"})
+#: "series" (modules/series_planner.py, not wired yet) is lenient on purpose: its episodes are one model call's
+#: outline of a person's own topic, told to stay in the niche like the AI pick; the words still reject an off-niche
+#: or sensitive episode, and a strict source would spend the per-run question budget (TOPIC_GATE_MODEL_CALLS) on
+#: the first episodes and defer the rest. Until this line, "series" was strict only because it was unknown.
+LENIENT_SOURCES = frozenset({"ai", "content_opportunity:demand", "series"})
 
 
 # =========================================================================

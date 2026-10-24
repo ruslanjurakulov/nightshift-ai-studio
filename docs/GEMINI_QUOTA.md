@@ -57,7 +57,7 @@ model gives it its own allowance.
 
 | Variable | Stages (the label in the request count) |
 | :-- | :-- |
-| `GEMINI_MODEL_TOPIC` | `topic_pick`, `topic_gate` (the AI's own topic, and the one small niche question) |
+| `GEMINI_MODEL_TOPIC` | `topic_pick`, `topic_gate` (the AI's own topic, and the one small niche question), `series_plan` (the one outline call of a series, `modules/series_planner.py`, not wired yet; it chooses episode topics, so it shares the topic group) |
 | `GEMINI_MODEL_RESEARCH` | `research` |
 | `GEMINI_MODEL_SCRIPT` | `script` (the title plan calls the script engine's `_gen`, so it is counted and modelled here too) |
 | `GEMINI_MODEL_FACTCHECK` | `fact_check` (one request per batch of 30 claims, plus the split retry) |
