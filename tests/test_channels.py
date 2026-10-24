@@ -1036,3 +1036,33 @@ class EachChannelUploadsToItsOwnAccount(unittest.TestCase):
         from tools.list_channels import _row
 
         self.assertTrue(_row(legacy_default_channel())["is_default"])
+
+
+class ChannelPlaylistDefaultTestCase(unittest.TestCase):
+    """agent_config.playlist_id is a channel's default playlist. It is typed by a
+    person, and a bad value must read as "none" rather than reach YouTube or raise."""
+
+    GOOD = "PLabcDEF1234567890abcDEF1234567890"
+
+    def test_unset_is_empty_so_behaviour_is_unchanged(self):
+        self.assertEqual(AgentConfig().playlist_id, "")
+        self.assertEqual(AgentConfig.from_dict({}).playlist_id, "")
+        self.assertEqual(AgentConfig.from_dict(None).playlist_id, "")
+
+    def test_a_playlist_id_round_trips(self):
+        agent = AgentConfig.from_dict({"playlist_id": f"  {self.GOOD} "})
+        self.assertEqual(agent.playlist_id, self.GOOD)
+        self.assertEqual(AgentConfig.from_dict(agent.to_dict()).playlist_id, self.GOOD)
+        self.assertEqual(agent.to_dict()["playlist_id"], self.GOOD)
+
+    def test_anything_that_is_not_a_playlist_id_becomes_empty_and_never_raises(self):
+        for bad in ("https://www.youtube.com/playlist?list=" + self.GOOD, "UCabcdefghijklmnopqrstuv",
+                    "PL", "PLshort", "PL" + "a" * 100, "PLabc def1234567890abcdef12", "PL../../etc/passwd1234",
+                    "abcDEF1234567890abcDEF1234567890ab", "PLabc\ndef1234567890abcDEF1234", "",
+                    None, 12345, ["PL" + "a" * 32], {"id": self.GOOD}, True):
+            with self.subTest(bad=bad):
+                self.assertEqual(AgentConfig.from_dict({"playlist_id": bad}).playlist_id, "")
+
+    def test_default_to_dict_carries_an_empty_playlist_id(self):
+        self.assertEqual(AgentConfig().to_dict()["playlist_id"], "")
+
