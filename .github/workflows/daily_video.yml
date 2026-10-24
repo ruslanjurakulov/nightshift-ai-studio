@@ -97,6 +97,10 @@ on:
         description: "Repair only these scenes of the channel's last unfinished run, e.g. 3,17 or s003,s017 (at most 5; needs 'channel'). Re-fetches their footage, re-renders them, holds the new cut for review — never uploads."
         required: false
         default: ""
+      series:
+        description: "Series id to run this video under (empty = none; needs 'channel'). The series must be ACTIVE and belong to that channel, else the run stops before spending anything."
+        required: false
+        default: ""
       credit_ref:
         description: "Credit reservation paying for this run (set by the Command Center when credits are enforced; leave empty)"
         required: false
@@ -146,6 +150,17 @@ jobs:
           REPAIR_CHANNEL: ${{ github.event.inputs.channel }}
           REPAIR_RESUME: ${{ github.event.inputs.resume }}
         run: python -m modules.scene_repair validate
+
+      # A series id is a slug that names a database row and a playlist target.
+      # Checked here, before any channel job starts or credit is claimed, so a
+      # typo costs seconds. Read from the environment by Python, never spliced
+      # into the shell (see the injection note in the run step below).
+      - name: Validate series
+        if: github.event.inputs.series != ''
+        env:
+          INPUT_SERIES: ${{ github.event.inputs.series }}
+          INPUT_CHANNEL: ${{ github.event.inputs.channel }}
+        run: python tools/validate_series_input.py --require-channel
 
       - name: Pick due channels
         id: pick
@@ -569,6 +584,9 @@ jobs:
           INPUT_DURATION: ${{ github.event.inputs.duration }}
           INPUT_LANGUAGE: ${{ github.event.inputs.language }}
           INPUT_VISUAL_STYLE: ${{ github.event.inputs.visual_style }}
+          # Empty on a schedule and on any dispatch that names no series. Checked
+          # again in the script before it is appended (the resolve job checked it first).
+          INPUT_SERIES: ${{ github.event.inputs.series }}
           # "true" only on a manual run with the resume box ticked; empty on a
           # schedule, so scheduled runs start a new video exactly as before.
           INPUT_RESUME: ${{ github.event.inputs.resume }}
@@ -764,6 +782,12 @@ jobs:
           fi
           if [ -n "${INPUT_VISUAL_STYLE:-}" ]; then
             args+=(--visual-style "$INPUT_VISUAL_STYLE")
+          fi
+          if [ -n "${INPUT_SERIES:-}" ]; then
+            # An invalid id prints an ::error and fails the step here, before main.py
+            # (and so before anything is spent). The value never touches the shell text.
+            python tools/validate_series_input.py || exit 1
+            args+=(--series "$INPUT_SERIES")
           fi
           if [ "${INPUT_RESUME:-}" = "true" ]; then
             args+=(--resume)

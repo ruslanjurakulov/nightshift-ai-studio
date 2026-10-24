@@ -83,8 +83,8 @@ from modules import run_checkpoint, upload_idempotency
 from modules import video_ir
 from modules.script_engine import ScriptEngine
 from modules.series import (
-    effective_cadence, effective_niche, effective_visual_style, effective_voice_style,
-    resolve_series, style_keywords,
+    SeriesNotRunnable, effective_cadence, effective_niche, effective_visual_style,
+    effective_voice_style, require_runnable_series, resolve_series, style_keywords,
 )
 from modules.state_store import StateStore
 from modules import storyboard_review
@@ -785,6 +785,14 @@ def run(
     # its style/cadence shape the run below. See modules/series.py; resolution
     # never raises.
     series_obj = resolve_series(series)
+    # resolve_series never raises, so an unknown, paused or foreign series would
+    # silently run as the plain channel. A series asked for by name is refused
+    # here, before the credential check or any paid call.
+    try:
+        require_runnable_series(series, series_obj, ctx.channel_id)
+    except SeriesNotRunnable as refusal:
+        logger.error("[channel: %s] %s", ctx.channel_id, refusal)
+        raise
     # effective_niche ends in "history mysteries"; remember whether the channel,
     # the series or the caller actually named a niche, so topic selection stops
     # for a channel that has none instead of quietly making history videos.
