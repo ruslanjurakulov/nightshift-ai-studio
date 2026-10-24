@@ -31,6 +31,11 @@ hands each to :func:`process_request`, which:
 
 Uploading costs the platforms nothing, so no credits are held or charged.
 
+The steps above are the same for every platform; what differs (connect, check,
+compose, publish) is a ``Publisher`` registered in ``modules/publishers.py``
+(``InstagramPublisher``, ``TiktokPublisher``, ``YoutubePublisher`` below). A
+platform that is not registered is refused as ``unknown_platform``.
+
 YouTube targets: the target must not be the video's own channel (the pipeline
 already uploaded it there — ``already_on_channel``), must be ACTIVE and
 connected (``publish_channel_connected``, the same rule as the account panel).
@@ -81,6 +86,7 @@ from types import SimpleNamespace
 from typing import Callable, Mapping, Optional
 
 from modules import ai_disclosure
+from modules import publishers
 from modules import social_captions
 from modules import social_probe
 from modules import social_tokens
@@ -738,10 +744,6 @@ class YoutubeAdapter:
 # ── one request ──────────────────────────────────────────────────────────────
 
 
-def _now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
 def _decide_disclosure(store, video: Mapping, channel: Optional[Mapping], rid) -> ai_disclosure.Decision:
     """The AI-disclosure decision for this request. Reading the recorded events
     (and, for a Short with no record of its own, its parent video and that
@@ -764,49 +766,139 @@ def _decide_disclosure(store, video: Mapping, channel: Optional[Mapping], rid) -
     return decision
 
 
-def _process_youtube(req: Mapping, video: Mapping, target: str, *, store: PublishStore, worker_id: str,
-                     output_dir: Path, youtube: Optional[YoutubeAdapter], heartbeat: Callable[[], None]) -> str:
-    """The YouTube half of process_request (raises PublishStop; the caller
-    records it). Uploads a NEW private video to ``target``."""
-    rid = req.get("id")
-    if not target:
-        raise refused("account_not_connected", "the request names no YouTube channel")
-    # The pipeline already put it on its own channel; this never touches that.
-    if target == str(video.get("channel_id") or ""):
-        raise refused("already_on_channel")
-    ch = store.channel(target)
-    if not ch or str(ch.get("status") or "").strip().upper() != "ACTIVE":
-        raise refused("account_not_connected", "the channel is paused")
-    if not store.channel_connected(target):
-        raise refused("account_not_connected")
-    if youtube is None:
-        raise failed("platform_error", "this worker is not set up to upload to YouTube")
+# ── the platforms, behind modules/publishers.py ──────────────────────────────
+#
+# Each class below moved, unchanged, the part of process_request that used to be an ``if platform ...`` branch.
+# tests/test_publisher_transcripts.py holds what the old code did; the order of every read and write is part of it.
 
-    path = resolve_master(video, output_dir)
-    if path is None:
-        raise refused("master_not_available",
-                      "the full-quality render is not on this worker (only the 480p review copy is "
-                      "kept); re-run the video on the queue worker to post it")
-    source = None
-    try:
-        source = store.channel(str(video.get("channel_id") or ""))
-    except Exception:
-        source = None
-    decision = _decide_disclosure(store, video, source, rid)
-    meta = social_captions.youtube_metadata(load_source_meta(video, source, output_dir),
-                                            fallback_title=str(video.get("video_id") or ""),
-                                            disclosure=decision.line)
-    store.update(rid, worker_id, {"status": "processing", "caption": social_captions.youtube_record(meta),
-                                  "privacy": YT_PRIVACY})
-    youtube.heartbeat = heartbeat
-    result = youtube.publish(target, path, meta, decision)
-    store.update(rid, worker_id, {
-        "status": "published", "reason": None, "error": None,
-        "result_id": result.get("result_id"), "result_url": result.get("result_url"),
-        "privacy": YT_PRIVACY, "finished_at": _now(),
-    })
-    logger.info("publish request %s: uploaded privately to YouTube channel %s", rid, target)
-    return "published"
+
+class _SocialAccountPublisher:
+    """What Instagram and TikTok share: a connected account whose token is read and refreshed, the same file probe
+    and the same duration / size / layout checks. A subclass names its platform and its adapter."""
+
+    platform = ""
+
+    def __init__(self, ctx: publishers.PublishContext):
+        self.ctx = ctx
+        self.tok: Optional[social_tokens.SocialToken] = None
+
+    def connect(self) -> None:
+        ctx = self.ctx
+        tok = ctx.tokens.read(str(ctx.request.get("account_id") or ""))
+        if tok is None:
+            raise refused("account_not_connected")
+        if tok.platform != self.platform:
+            raise refused("account_not_connected", "the account's platform changed")
+        try:
+            self.tok = social_tokens.ensure_fresh(tok, ctx.tokens, http=ctx.http, env=ctx.env)
+        except social_tokens.SocialTokenError as e:
+            raise failed("token_expired", str(e)) from None
+
+    def check(self, path: Path) -> None:
+        ctx = self.ctx
+        info = ctx.probe_fn(path)
+        short_id = None
+        if str(ctx.video.get("video_format") or "long") != "short":
+            try:
+                short_id = ctx.store.short_of(str(ctx.request.get("video_id") or ""))
+            except Exception:
+                short_id = None
+        self._check_format(info, short_id)
+        # Codec, frame rate, size and file layout, from the file itself: refused here, not after a staged upload.
+        try:
+            social_probe.check_media(self.platform, ctx.media_fn(path))
+        except social_probe.ProbeRefusal as e:
+            raise refused(e.reason, e.detail) from None
+
+    def _check_format(self, info: VideoInfo, short_id: Optional[str]) -> None:
+        check_format(self.platform, info, short_id=short_id)
+
+    def compose(self, meta: social_captions.SourceMeta, decision: ai_disclosure.Decision) -> publishers.PostSpec:
+        caption = social_captions.caption_for(self.platform, meta, disclosure=decision.line)
+        return publishers.PostSpec(caption=caption, ai_generated=decision.label)
+
+    def describe(self) -> str:
+        return f"published to {self.platform} account {self.ctx.request.get('account_id') or ''}"
+
+
+class InstagramPublisher(_SocialAccountPublisher):
+    platform = "instagram"
+
+    def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
+        ctx = self.ctx
+        staging = f"{ctx.request.get('org_id') or 'org'}/{ctx.request.get('id')}.mp4"
+        # PostSpec.ai_generated -> the container's ``is_ai_generated`` (InstagramAdapter sends it only when true).
+        return InstagramAdapter(ctx.http, ctx.store, sleep=ctx.sleep, heartbeat=ctx.heartbeat).publish(
+            self.tok, path, post.caption, staging, ai_generated=post.ai_generated)
+
+
+class TiktokPublisher(_SocialAccountPublisher):
+    platform = "tiktok"
+
+    def __init__(self, ctx: publishers.PublishContext):
+        super().__init__(ctx)
+        self.adapter = TiktokAdapter(ctx.http, sleep=ctx.sleep, heartbeat=ctx.heartbeat)
+        self.creator: dict = {}
+
+    def _check_format(self, info: VideoInfo, short_id: Optional[str]) -> None:
+        # TikTok's own limit for THIS creator comes from the platform, so it is asked for before the check.
+        self.creator = self.adapter.creator_info(self.tok)
+        check_format(self.platform, info, short_id=short_id,
+                     max_seconds=self.creator.get("max_video_post_duration_sec") or None)
+
+    def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
+        # PostSpec.ai_generated -> Direct Post's ``post_info.is_aigc`` (TiktokAdapter sends it only when true).
+        return self.adapter.publish(self.tok, path, post.caption, self.creator, ai_generated=post.ai_generated)
+
+
+class YoutubePublisher:
+    """Another channel of the organization, uploaded PRIVATE with the pipeline's own uploader."""
+
+    platform = "youtube"
+
+    def __init__(self, ctx: publishers.PublishContext):
+        self.ctx = ctx
+        self.target = str(ctx.request.get("target_channel_id") or "")
+
+    def connect(self) -> None:
+        ctx, target = self.ctx, self.target
+        if not target:
+            raise refused("account_not_connected", "the request names no YouTube channel")
+        # The pipeline already put it on its own channel; this never touches that.
+        if target == str(ctx.video.get("channel_id") or ""):
+            raise refused("already_on_channel")
+        ch = ctx.store.channel(target)
+        if not ch or str(ch.get("status") or "").strip().upper() != "ACTIVE":
+            raise refused("account_not_connected", "the channel is paused")
+        if not ctx.store.channel_connected(target):
+            raise refused("account_not_connected")
+        if ctx.youtube is None:
+            raise failed("platform_error", "this worker is not set up to upload to YouTube")
+
+    def check(self, path: Path) -> None:
+        """Nothing here: the uploader and ``video_qc`` own what YouTube accepts, as for the pipeline's own upload."""
+
+    def compose(self, meta: social_captions.SourceMeta, decision: ai_disclosure.Decision) -> publishers.PostSpec:
+        yt = social_captions.youtube_metadata(meta, fallback_title=str(self.ctx.video.get("video_id") or ""),
+                                              disclosure=decision.line)
+        return publishers.PostSpec(caption=social_captions.youtube_record(yt), ai_generated=decision.label,
+                                   privacy=YT_PRIVACY, payload=(yt, decision))
+
+    def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
+        yt, decision = post.payload
+        self.ctx.youtube.heartbeat = self.ctx.heartbeat
+        # PostSpec.ai_generated -> ``status.containsSyntheticMedia``: the uploader reads it from the decision, which is
+        # handed over only when it labels the video (an unlabelled upload calls the uploader exactly as before).
+        result = self.ctx.youtube.publish(self.target, path, yt, decision if post.ai_generated else None)
+        return {**result, "privacy": YT_PRIVACY}
+
+    def describe(self) -> str:
+        return f"uploaded privately to YouTube channel {self.target}"
+
+
+publishers.register(InstagramPublisher.platform, InstagramPublisher)
+publishers.register(TiktokPublisher.platform, TiktokPublisher)
+publishers.register(YoutubePublisher.platform, YoutubePublisher)
 
 
 def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.SocialTokenClient,
@@ -815,12 +907,13 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
                     probe_fn: Callable[[Path], VideoInfo] = probe,
                     youtube: Optional[YoutubeAdapter] = None,
                     media_fn: Callable[[Path], social_probe.MediaFacts] = social_probe.read_facts) -> str:
-    """Carry one claimed request to published | failed | refused. Never raises."""
+    """Carry one claimed request to published | failed | refused. Never raises.
+
+    The sequence is the same for every platform (modules/publishers.py lists it); the platform supplies connect,
+    check, compose and publish."""
     rid = req.get("id")
     platform = str(req.get("platform") or "")
     video_id = str(req.get("video_id") or "")
-    account_id = str(req.get("account_id") or "")
-    target_channel = str(req.get("target_channel_id") or "")
     http = http or store.http()
     env = os.environ if env is None else env
 
@@ -828,8 +921,9 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
         store.update(rid, worker_id, {"heartbeat_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
 
     try:
-        if platform not in ("instagram", "tiktok", "youtube"):
-            raise refused("unknown_platform")
+        factory = publishers.factory_for(platform)
+        if factory is None:
+            raise refused("unknown_platform")  # no default platform: nothing is read for a word we do not know
         # The gate + approvals, again, right before anything leaves this machine.
         why = store.refusal(video_id)
         if why:
@@ -837,46 +931,18 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
         video = store.video(video_id)
         if not video:
             raise refused("video_not_found")
-        if platform == "youtube":
-            return _process_youtube(req, video, target_channel, store=store, worker_id=worker_id,
-                                    output_dir=output_dir, youtube=youtube, heartbeat=heartbeat)
-
-        tok = tokens.read(account_id)
-        if tok is None:
-            raise refused("account_not_connected")
-        if tok.platform != platform:
-            raise refused("account_not_connected", "the account's platform changed")
-        try:
-            tok = social_tokens.ensure_fresh(tok, tokens, http=http, env=env)
-        except social_tokens.SocialTokenError as e:
-            raise failed("token_expired", str(e)) from None
+        publisher = factory(publishers.PublishContext(
+            request=req, video=video, store=store, tokens=tokens, worker_id=worker_id, output_dir=output_dir,
+            http=http, env=env, sleep=sleep, heartbeat=heartbeat, probe_fn=probe_fn, media_fn=media_fn,
+            youtube=youtube))
+        publisher.connect()
 
         path = resolve_master(video, output_dir)
         if path is None:
             raise refused("master_not_available",
                           "the full-quality render is not on this worker (only the 480p review copy is "
                           "kept); re-run the video on the queue worker to post it")
-        info = probe_fn(path)
-        short_id = None
-        if str(video.get("video_format") or "long") != "short":
-            try:
-                short_id = store.short_of(video_id)
-            except Exception:
-                short_id = None
-
-        tt_info: dict = {}
-        tiktok = TiktokAdapter(http, sleep=sleep, heartbeat=heartbeat)
-        if platform == "tiktok":
-            tt_info = tiktok.creator_info(tok)
-            check_format(platform, info, short_id=short_id,
-                         max_seconds=tt_info.get("max_video_post_duration_sec") or None)
-        else:
-            check_format(platform, info, short_id=short_id)
-        # Codec, frame rate, size and file layout, from the file itself: refused here, not after a staged upload.
-        try:
-            social_probe.check_media(platform, media_fn(path))
-        except social_probe.ProbeRefusal as e:
-            raise refused(e.reason, e.detail) from None
+        publisher.check(path)
 
         channel = None
         try:
@@ -884,16 +950,13 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
         except Exception:
             channel = None
         decision = _decide_disclosure(store, video, channel, rid)
-        caption = social_captions.caption_for(platform, load_source_meta(video, channel, output_dir),
-                                              disclosure=decision.line)
-        store.update(rid, worker_id, {"status": "processing", "caption": caption})
+        post = publisher.compose(load_source_meta(video, channel, output_dir), decision)
+        processing = {"status": "processing", "caption": post.caption}
+        if post.privacy is not None:
+            processing["privacy"] = post.privacy
+        store.update(rid, worker_id, processing)
 
-        if platform == "instagram":
-            staging = f"{req.get('org_id') or 'org'}/{rid}.mp4"
-            result = InstagramAdapter(http, store, sleep=sleep, heartbeat=heartbeat).publish(
-                tok, path, caption, staging, ai_generated=decision.label)
-        else:
-            result = tiktok.publish(tok, path, caption, tt_info, ai_generated=decision.label)
+        result = publisher.publish(path, post)
 
         store.update(rid, worker_id, {
             "status": "published", "reason": None, "error": None,
@@ -901,7 +964,7 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
             "privacy": result.get("privacy"),
             "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         })
-        logger.info("publish request %s: published to %s account %s", rid, platform, account_id)
+        logger.info("publish request %s: %s", rid, publisher.describe())
         return "published"
     except PublishStop as stop:
         store.update(rid, worker_id, {
@@ -957,4 +1020,5 @@ class SocialPublisher:
 __all__ = [
     "PublishStore", "SocialPublisher", "process_request", "check_format", "resolve_master",
     "load_source_meta", "tiktok_chunks", "InstagramAdapter", "TiktokAdapter", "YoutubeAdapter", "VideoInfo",
+    "InstagramPublisher", "TiktokPublisher", "YoutubePublisher",
 ]

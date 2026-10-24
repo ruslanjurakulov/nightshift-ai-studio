@@ -88,6 +88,11 @@ request it always was (pinned by tests).
 | Instagram Reels | `is_ai_generated=true` on the media container; the line in the caption | field absent |
 | TikTok Direct Post | `post_info.is_aigc: true` (still `SELF_ONLY`); the line in the title/caption | field absent |
 
+For a cross-post, the decision is made once, in `social_publish._decide_disclosure` (from this module's rule), and
+handed to the platform as `PostSpec.ai_generated` (`modules/publishers.py`). Each platform's `Publisher.publish` maps
+that one boolean to its field above and sends the field only when it is true; adding a platform adds a mapping, never
+a second decision (`tests/test_publisher_registry.py`: "sends the flag only when labelled", one test per platform).
+
 The line is appended after the creator's own text and **before** hashtags (captions) or the watch-next block
 (YouTube). When a limit forces a choice the creator's words are trimmed, not the line (captions; the YouTube cross-post
 description). On the pipeline's own YouTube upload the line is the one thing dropped when the description is already
