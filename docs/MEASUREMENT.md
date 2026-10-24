@@ -163,6 +163,49 @@ only with at least `MIN_CURVES` videos of scene data on the channel and
 `MIN_CURVES` distinct videos in that group. Nothing reaches a prompt until an
 admin approves it.
 
+### Diagnosis: which lever the curve points at
+
+`modules/retention_diagnosis.py` · fixture `samples/retention_diagnosis_cases.json`
+(shared with a future TypeScript twin)
+
+The analyzer says *how much* of the hook survives and the per-scene map says
+*where*; neither says what to change. The diagnosis reads one video's newest
+curve (`scene_retention.clean_curve` / `interpolate`, duration from
+`scene_retention.video_duration`) and routes to one lever. It is **read-only and
+not wired anywhere yet** — it feeds no prompt, no gate and no event. Wiring it
+(the poller does not have the manifest at the point it stores the curve) is a
+later PR; so is any change to `RetentionAnalyzer.as_prompt_text` or `HOOK_RATIO`,
+which needs its own measurement PR.
+
+| Finding | Definition |
+| :-- | :-- |
+| **Hook leak** | Audience lost over the first `HOOK_WINDOW_S = 30` **absolute** seconds (`HOOK_RATIO` is 10% of the video, so it means 60 s on a 10-minute video and 3 min on a 30-minute one). Reported as `hook_loss` (audience points) and `hook_loss_share` (the same loss as a share of viewers still watching where the window starts). Measured from the **first measured point** (`hook_from_s`; YouTube's curve starts at 1%, 6 s into a 10-minute video), never from an invented 100% at 0 s, so it is a lower bound when that point is later than 0 s. Unknown when the curve starts less than `MIN_HOOK_SPAN_S = 10` s before the window end or does not reach 30 s. |
+| **Cliffs** | Up to `TOP_CLIFFS = 5` steps between adjacent measured points that lose at least `CLIFF_MIN_DROP = 0.03` audience points **and** go at least `CLIFF_RATE_MULTIPLE = 4` times faster per minute than the curve's median step (so 100 points and 20 points give the same answer, and noise on a flat curve is not a cliff). Ranked by rate, then size, then earliest. Each carries its timestamp, size, retention before/after, a `zone` (`hook`, `mid`, `end` = last 20%), the Video IR scene holding the step's midpoint and an excerpt of that scene's narration. |
+| **Slide** | Average loss across the middle: `(R(30 s) - R(80% of the video)) / span`, an endpoint average, not a fit; negative when the curve rises. `slide_per_min` per minute and `slide_per_tenth` per 10% of the video's length. Thresholds read the per-tenth value: per minute a 60-minute video always looks flat beside a 5-minute one. Unknown when the span is under `MIN_SLIDE_SPAN_S = 30` s (videos under 75 s) or the curve does not cover it. |
+
+The excerpt is the **opening of the scene's narration**, not the exact words at
+the moment: the Video IR stores no word timings, and guessing a position inside
+a scene from character counts would be an assumption presented as a quote. It is
+text only (tags, `[DIRECTIVES]` and markdown punctuation removed, control
+characters and runs of whitespace collapsed), capped at `EXCERPT_MAX_CHARS = 120`
+including the ellipsis, in whatever language the narration is — no word lists.
+
+**Verdict**, a closed set, first rule that holds:
+
+| Verdict | When | Lever |
+| :-- | :-- | :-- |
+| `hook` | `hook_loss_share >= HOOK_STEEP_MIN_LOSS` (0.45) | rewrite the opening |
+| `pacing` | `slide_per_tenth >= SLIDE_STEADY_MIN` (0.05), or a cliff in the middle of the video | cut or repair the scene(s) the cliffs name |
+| `packaging` | hook known and `<= HOOK_HEALTHY_MAX_LOSS` (0.30), slide known and `<= SLIDE_FLAT_MAX` (0.02), no mid-video cliff | viewers who click stay: the title / thumbnail promise is the lever |
+| `healthy` | hook and slide known, nothing crossed a threshold, but not clean enough for `packaging` | none |
+| `insufficient_data` | no usable curve (under `MIN_POINTS`), no known duration, or a hook/slide that cannot be measured and nothing else decides | none — `reason` says which |
+
+A hook or slide that cannot be measured is never read as fine: a missing piece
+can never become `packaging`. Every unknown value is `None` (`cliffs` is `None`
+when they could not be looked for, `()` when none qualified), never 0. The
+thresholds are starting points of our own, not calibrated on this channel's
+history; they are module constants so a measurement PR can move them.
+
 ## 4. The pre-publish gate — **this changes publish behaviour**
 
 `modules/publish_gate.py` · events `publish.blocked`, `publish.allowed`
