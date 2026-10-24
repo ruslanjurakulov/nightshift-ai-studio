@@ -878,6 +878,8 @@ export const en = {
     runQueued: "Started — the run is queued on GitHub Actions. Follow it in Jobs.",
     runFailed: "Couldn't start — try again.",
     runUnauthorized: "GitHub rejected it — the forwarding token needs actions:write.",
+    runVoiceNotAllowed: "That voice isn't available for this channel. Choose another voice, or leave the voice to the channel's own setting.",
+    runVoiceCheckUnavailable: "Couldn't check that voice just now, so the run was not started. Try again in a moment, or leave the voice to the channel's own setting.",
     runNotConfigured: "On-demand runs aren't configured (set GITHUB_SECRETS_TOKEN and GITHUB_SECRETS_REPO).",
     runPickChannel: "Pick a single channel (top-left switcher) to run it on demand.",
     runNeedsAdmin: "Run now takes an owner or admin of this organization.",

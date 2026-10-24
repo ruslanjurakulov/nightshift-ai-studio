@@ -41,13 +41,14 @@ from modules import publish_gate
 from modules import publish_score
 from modules import video_critic
 from modules import video_qc
+from modules import voice_gate
 from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
     AvatarUnavailable, UnsafeAvatarRequest, describe_presenter, maybe_generate_presenter,
     planned_presenter_usd, preflight_avatar, presenter_narration, resolve_avatar_config,
 )
-from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
+from modules.audio_mixer import AudioMixer, VoiceUnavailable, narrator_voice, secondary_voice, verify_voice
 from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, effective_privacy, resolve_channel
 from modules.credential_health import (
@@ -938,6 +939,15 @@ def run(
     # finding out at the audio stage — after topic, research, script and
     # fact-check have been paid for. There is no fallback voice: see
     # audio_mixer.verify_voice for why a wrong-voice video is worse than none.
+    # The ownership rule for a custom (cloned) voice comes first and is its own refusal (docs/CUSTOM_VOICE.md, "Hard gate"):
+    # this run did not pass through the database rule that guards render_jobs, so it asks again, with its own voices, now.
+    try:
+        voice_gate.check_run(ctx, narrator_voice(ctx.agent), secondary_voice(ctx.agent))
+    except voice_gate.VoiceGateRefused as e:
+        # __main__ logs the one line; logging it here too would print it twice.
+        events.emit(events.AGENT_FAILED, agent="voice_gate", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": e.reason, "stage": "preflight"})
+        raise
     try:
         verify_voice(ctx)
     except VoiceUnavailable as e:
@@ -2211,6 +2221,12 @@ if __name__ == "__main__":
             # log line (model, retry-after, fix) was written where the 429 arrived. Not a traceback, and a
             # distinct code so the runners release the credit hold and say why (tools/queue_worker.py).
             sys.exit(gemini_stages.GEMINI_QUOTA_EXIT)
+        except voice_gate.VoiceGateRefused as refusal:
+            # A custom voice this run may not use, or an ownership check that could not be completed for a voice id that may be one.
+            # Nothing was spent; the message names the fix. One line, no traceback, and a distinct code so the runners release the
+            # hold and say why (.github/workflows/daily_video.yml, tools/queue_worker.py).
+            logger.error("Voice gate: %s", refusal)
+            sys.exit(voice_gate.VOICE_GATE_EXIT)
         except SeriesNotRunnable as refusal:
             # A series was named and cannot run (unknown, not ACTIVE, another channel's). Nothing was spent;
             # the message says which and the fix. One line, no traceback, and a distinct code so the Actions

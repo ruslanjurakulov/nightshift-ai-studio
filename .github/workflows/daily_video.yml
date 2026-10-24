@@ -836,6 +836,13 @@ jobs:
           if [ "$rc" -eq 81 ]; then
             echo "::error title=Series not runnable::The series named for this run cannot be run (unknown id, not ACTIVE, or it belongs to another channel; the log above says which). Nothing was spent. Correct the series input, or activate the series on the Series page, then run again."
           fi
+          # Exit 82: the run was given a custom (cloned) voice it may not use, or the ownership check for a voice id that may be
+          # one could not be completed (modules/voice_gate.py, docs/CUSTOM_VOICE.md "Hard gate"). Red like 80 and 81: nothing was
+          # spent, and no other voice is substituted (CLAUDE.md rule 4). The log above names which voice slot and the fix; the
+          # settle step releases the hold.
+          if [ "$rc" -eq 82 ]; then
+            echo "::error title=Custom voice not permitted::This run's narrator or quote voice is a custom voice that may not be used on this channel (it must be approved and attached to the channel by its owner, who must still administer the organization), or the ownership check could not be completed (the log above says which). Nothing was spent and no other voice was substituted. Ask the owner to attach the voice again or choose another voice, then run again."
+          fi
           exit "$rc"
 
       # Settle the hold claimed above: on success, charge what the run's cost

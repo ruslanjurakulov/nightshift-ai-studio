@@ -867,6 +867,8 @@ export const uz: Dictionary = {
     runQueued: "Boshlandi — ishga tushish GitHub Actions navbatiga qoʻyildi. Vazifalar boʻlimida kuzating.",
     runFailed: "Boshlab boʻlmadi — qayta urining.",
     runUnauthorized: "GitHub rad etdi — uzatuvchi token uchun actions:write kerak.",
+    runVoiceNotAllowed: "Bu ovoz ushbu kanal uchun mavjud emas. Boshqa ovoz tanlang yoki ovozni kanalning oʻz sozlamasiga qoldiring.",
+    runVoiceCheckUnavailable: "Bu ovozni hozir tekshirib boʻlmadi, shu sababli ishga tushirish boshlanmadi. Birozdan soʻng qayta urining yoki ovozni kanalning oʻz sozlamasiga qoldiring.",
     runNotConfigured: "Talab boʻyicha ishga tushirish sozlanmagan (GITHUB_SECRETS_TOKEN va GITHUB_SECRETS_REPO ni belgilang).",
     runPickChannel: "Talab boʻyicha ishga tushirish uchun bitta kanalni tanlang (chap-yuqoridagi almashtirgich).",
     runNeedsAdmin: "Ishga tushirish uchun ushbu tashkilotning egasi yoki administratori boʻlish kerak.",

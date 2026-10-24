@@ -1,13 +1,15 @@
 # Custom voice: a user clones THEIR OWN voice, and only that user uses it
 
-Status: **database and pure code only** (migration `0117_voice_profiles.sql`, `modules/voice_profiles.py`). Nothing live runs:
-the ElevenLabs account is on the **free plan**, which does not allow instant voice cloning. No worker, no screen, no workflow
-calls any of this yet (a test fails if one starts to before this document is updated).
+Status: **database and pure code only** (migration `0117_voice_profiles.sql`, `modules/voice_profiles.py`), plus the two run-time
+checks of the hard gate (`modules/voice_gate.py`, `lib/server/run-voice.ts`), which call the one read-only function
+`channel_voice_config_problem` and change nothing for a run that uses no cloned voice. Nothing live runs: the ElevenLabs account is on
+the **free plan**, which does not allow instant voice cloning. No worker, no screen, no workflow calls any other function of this
+feature (a test fails if one starts to before this document is updated).
 
 **It is also dormant at the API.** `request_voice_clone` is created and granted to **nobody** (not `authenticated`, not `service_role`):
 starting a clone is the one entry into the feature, so no signed-in user can create a profile, a queue row or (the bucket's insert rule
-needs a waiting profile) a stored object. The grant ships in the migration that ships the worker, the UI and the Actions pre-flight; see
-"Hard gate" below.
+needs a waiting profile) a stored object. The grant ships in the migration that ships the worker and the UI, and is a separate
+decision (the Actions pre-flight it waited on is built: see "Hard gate" below).
 
 ## The decisions this implements (the owner's)
 
@@ -151,23 +153,73 @@ pass through `render_jobs` or `creative_jobs`:
 - scheduled runs read `channels.agent_config` at run time. Entry point 3 stops a custom voice being **set** there unattached, but a voice
   attached earlier and deleted or detached since is still in the config, and the config is read by Actions without any check.
 
-So **the migration that grants `request_voice_clone` MUST be preceded by**: the Run-now route and the Actions pre-flight (before any spend)
-calling a `voice_usable_by`-equivalent check (a service-side RPC that answers for the run's requester, the channel and the voice ids it
-will use) and refusing the run when it fails. Until that exists nothing can create a custom voice (the function is not granted), so the
-gap is empty today; **it must not be allowed to become real**. No code for it is in this PR.
+### What is closed (this PR, no migration)
+
+Both checks ask the one voice function the migration already grants to the roles that need it, `channel_voice_config_problem(channel,
+org, old, new)` (granted to `authenticated` and `service_role`; it takes **no person**, so it answers for the **channel path** only):
+the voice must be `approved`; an **active attachment** to this channel must exist, **in the channel's current organization** and in the
+slot asked for (`narrator` for `elevenlabs_voice_id`, `secondary` for `elevenlabs_secondary_voice_id`); and the attaching owner must
+**still be an administrator** of that organization. A voice id in no profile answers "fine" and nothing about the run changes; the
+database compares ids lowercased and stripped, so a case or padding variant is the same voice. `voice_usable_by` itself is not
+executable by any API role, and the service role cannot read the voice tables (0117 revokes `SELECT` from it), so this function is the
+only door; the answer is one key or NULL, never a reason.
+
+1. **Run-now route** (`lib/server/run-voice.ts`, called from `app/api/agent/run/route.ts` for both backends). A `voice_id` shaped like
+   a provider voice id (20 letters and digits: all the dispatch and the queue row ever forward) is checked as the signed-in user,
+   **before** the credit hold, the dispatch or the insert. Refused: `403 voice_not_allowed`. **Fails closed**: a check that errors, throws,
+   answers in a shape nobody expects, or has no database client is `503 voice_check_unavailable`. The only error that lets the id through
+   is "the function does not exist" (PostgREST `PGRST202` / Postgres `42883`: 0117 is not applied, so no profile can exist). Both
+   messages are translated (en/ru/uz), say nothing was taken, and are the **same sentence for every reason**: they do not tell a stranger
+   whether the id is a clone, whose, or in what state. No `voice_id`, or one that is not shaped like a voice id: the database is not asked
+   and the answer is what it always was (pinned by a test).
+2. **Actions pre-flight** (`modules/voice_gate.py`, called in `main.run` as the first of the voice stages, before `verify_voice` and
+   before the first paid call). For an ElevenLabs run it asks about the voices the run will speak with: the narrator (the run's own
+   `ELEVENLABS_RUN_VOICE_ID`, else the channel's) in the narrator slot, and the quote voice in the secondary slot, in one call, with the
+   service key. Refused: `VoiceGateRefused` -> exit code **82**, one log line naming the slot and the fix, a red step with its own
+   annotation in `daily_video.yml`, and `tools/queue_worker.py` fails the job; as with 78-81, the non-zero exit makes the settle step
+   **release the credit hold**. It covers, by the database rule above: a detached attachment, a demoted or removed owner, a channel that
+   moved organization, a deleted, pending, rejected or merely `testing` profile, case and padding variants (including a number where a
+   string should be), and the secondary slot (a voice attached as narrator may not speak the quoted lines). **A voice id that could be a
+   profile's (20 letters and digits) and a database that cannot be asked** (network, timeout, 5xx after three tries, a refused key, an
+   answer of the wrong shape) **stops the run** with the remedy; it never becomes a silent stock voice (rule 4). Not asked, by design:
+   an Edge channel (it speaks no ElevenLabs voice), a value that is not shaped like a voice id, and a deployment with no
+   `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` (nothing can be a profile without the database; logged), and HTTP 404 from the function
+   (0117 not applied; logged as a warning).
+3. **Repair and scene regeneration** never reach the gate: they reuse the run's saved audio and buy no voice, which is why 0117 lets a
+   `repair` job through (`render_jobs_voice_guard`); `scene_repair` and `scene_regenerate` have their own entry in `main.py` and do not
+   call `run()`. A resumed run does narrate, and is gated.
+
+Behaviour for a run that uses no profile-backed voice is unchanged: the same stages in the same order, the same exit codes. The cost is
+one cheap RPC per ElevenLabs run (Python) and per Run-now that names a voice (route).
+
+### What remains
+
+- **The grant of `request_voice_clone` is a separate decision.** It is still granted to nobody, and this PR does not change that. It
+  also needs the worker, the UI and the consent text (below). The two checks above are what the grant was waiting on, not a reason to
+  make it.
+- **The Run-now voice is held to the same rule as every run: the narrator attachment.** The function has no person, so an owner who
+  approved a voice but has not attached it to the channel cannot use it for a Run-now on that channel (the database lets the owner use
+  it in a `render_jobs` row on the queue backend; the Actions backend cannot tell who asked, because the workflow dispatch carries no
+  requester). Attach it first. Making Run-now accept "the owner's own approved voice" needs a person-aware function (a migration)
+  and a requester on the dispatch; not done here, and refusing is the safe side.
+- **The route and the runner each ask once.** A voice detached between the click and the runner is caught by the runner (that is what
+  the second check is for); a voice attached **and then detached while the runner is already narrating** is not interrupted.
+- **`voice_previews.yml`** (the operator-only preview clip of a voice id, `app/api/voices/preview/route.ts`) is not gated: it can
+  synthesize a short fixed sample with any voice id the operator pastes, a clone included, and GET lets any signed-in user fetch a
+  stored clip by id. Closing it is its own change (it needs the same function with no channel, or a preview deny-list); a clone has no
+  UI and no way to exist yet.
+- **Not verified live.** The tests fake the database at the PostgREST call and model the SQL's channel path; the SQL itself is tested in
+  `tests/security/`. Nothing here has run against the live project, and no profile exists there.
 
 ## What is NOT built yet
 
 - the **worker**: the clone job (claim, read the sample with the service role, Whisper the phrase, call the provider, finish), the
-  provider deletion, the sample purge, and a run-time re-check of `voice_usable_by` for runs that do not go through `render_jobs`
-  (the GitHub Actions path reads the channel config at run time; the config guard and the deleted-voice provider 404 are what protect it
-  today);
+  provider deletion and the sample purge (the run-time re-check for runs that do not go through `render_jobs` is built: "Hard gate");
 - the **UI**: recording, the phrase, the declarations, test, approve, attach, delete, and every state of them;
 - **`regenerate_line`** (re-voice one line of a finished video);
 - the **consent text** and the Privacy Policy / Terms changes;
 - a **scheduled purge** and a retention period for `purge_voice_records` (it is run by hand);
-- an HTTP **Whisper** step (the checker takes a transcript);
-- the **Actions pre-flight** above (the hard gate).
+- an HTTP **Whisper** step (the checker takes a transcript).
 
 ## Things the worker must do, because the database cannot
 
