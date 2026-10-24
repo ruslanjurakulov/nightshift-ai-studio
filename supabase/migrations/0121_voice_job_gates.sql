@@ -38,19 +38,22 @@
 --         `deleted`, has a recorded voice id and has no succeeded deletion. So it can never resurrect work for a profile where that work must
 --         not run, and never deletes a live voice.
 --       * The report returns counts and ages in seconds, in closed fields, and no id, name or user of anyone.
---   ORACLE. channel_voice_config_problem(channel, org, old, new) was executable by every signed-in user and answers a key where the id is a
---       clone that cannot be used on that channel and NULL otherwise: a stranger could confirm that a 20-character id is somebody's clone.
+--   ORACLE (narrowed, NOT closed). channel_voice_config_problem(channel, org, old, new) was executable by every signed-in user and answers
+--       a key where the id is a clone that cannot be used on that channel and NULL otherwise: a stranger could confirm that a 20-character
+--       id is somebody's clone through this one function.
 --       0117's body is kept as channel_voice_config_problem_core (callable by nobody) and the function of the same name is now a wrapper
 --       that gives the exact answer to the service role (and to a session with no API claims), and to the channels guard (a write the caller
 --       is already making to a channel they can write), and to any other caller ONLY when the caller is a member of the channel's
 --       organization AND the voice is the caller's own or was requested in that same organization. For every other caller an id they cannot
---       see answers NULL, exactly as an id that is no voice does; the lookups run either way, so the work done is the same.
+--       see answers NULL, exactly as an id that is no voice does. The two voice keys are asked one at a time (the core is called once per
+--       key with only that key), so the answer for one key never depends on, or reveals, the other. No timing claim is made.
 --       The Run-now route (lib/server/run-voice.ts) calls it as the signed-in member and keeps working for the member's own and the
 --       organization's voices; the Actions pre-flight (modules/voice_gate.py) calls it with the service key and is unchanged.
 --       RESIDUAL (not closed here, by design): the entry guards of 0117 (a Studio tts job, a render job, a write of a channel's
---       agent_config) refuse a clone that the writer may not use, which is what makes them guards; anyone who can write to one of those
---       tables can therefore still test a KNOWN id by trying to use it. The ids are 62^20 values and are not listed anywhere; see
---       docs/CUSTOM_VOICE.md.
+--       agent_config) refuse a clone that the writer may not use, which is what makes them guards. Anyone who can write to one of those
+--       tables can therefore still test a KNOWN id by trying to use it, and that includes every signed-in user who made a workspace of
+--       their own (create_organization is open, and an editor can update channels.agent_config). So the oracle is narrowed to that path,
+--       not closed; whether that is acceptable is a decision for the migration that grants request_voice_clone (docs/CUSTOM_VOICE.md).
 --
 -- DRIFT GUARD. Both replaced functions are replaced on the bodies the REPO says are latest (0117's; no later migration redefines either).
 -- If the live database holds another body (something applied by hand since: the 0064/0103 lesson), replacing it would silently undo that
@@ -95,7 +98,7 @@ begin
   if c is null or c <> all (array['67507f43dda86e10823aaca82f5892d9', '099164c525a8f561e84b0c2bc21c7b1e']) then
     raise exception '0121 found a claim_voice_job() that is neither 0117''s body nor 0121''s (md5 %): read the live body first', c;
   end if;
-  if p is null or p <> all (array['70d9a82242920aa92d57faadde0f39c3', '09c300ba15b8ed7e339829f9d7be5d30']) then
+  if p is null or p <> all (array['70d9a82242920aa92d57faadde0f39c3', '0142910dd48a83e982e78016bc31ad9f']) then
     raise exception '0121 found a channel_voice_config_problem() that is neither 0117''s body nor 0121''s (md5 %): read the live body first', p;
   end if;
   -- The new names: absent, or already this file's own (a replay).
@@ -108,7 +111,7 @@ begin
   end if;
   if to_regprocedure('public.voice_requeue_overdue(interval)') is not null then
     select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into r from pg_proc x where x.oid = 'public.voice_requeue_overdue(interval)'::regprocedure;
-    if r <> '2dcc9a7acd6266526b1bc800350c1fa2' then
+    if r <> 'f0a0645292a6a5abe610e0f91da4bbab' then
       raise exception '0121 found a voice_requeue_overdue() that is not 0121''s body (md5 %): read the live body first', r;
     end if;
   end if;
@@ -165,17 +168,26 @@ $$;
 --     the channels table by a caller who already passed the table's policy for that row, or a definer function (create_channel,
 --     set_channel_dna, attach_voice_to_channel) that checked the caller itself. The guard must keep refusing a custom voice that is not
 --     attached whoever writes, so this answer is never masked; nothing a caller sends through the API can raise the trigger depth.
--- Anybody else (a signed-in user calling it through the API) is told the truth only when they are a member of the channel's
--- organization, found from the channel row and never from the p_org they pass, AND the voice named is one they may know exists: their
--- own, or one requested in that same organization. Otherwise the answer is NULL, which is also what an id that is no voice gets.
--- The two lookups run whatever the core said, so a masked answer costs the same as an unmasked one. A value that is not a JSON string
--- is refused by the core whoever asks (it says nothing about anyone's voices), and so is here.
+-- Anybody else (a signed-in user calling it through the API) is asked KEY BY KEY: the core is called once for each of the two voice
+-- keys with only that key in p_old and p_new, so the answer for one key never depends on the other (the core returns the first key that
+-- fails, and a masked first key must not swallow, or be revealed by, the refusal of the second). A key's refusal is told only when the
+-- caller is a member of the channel's organization, found from the channel row and never from the p_org they pass, AND the voice named
+-- is one they may know exists: their own, or one requested in that same organization. Otherwise that key reads as NULL, which is also
+-- what an id that is no voice gets. A value that is not a JSON string is refused by the core whoever asks and no profile can be behind
+-- it, so that refusal is told to everybody and is independent of every other key.
+-- No timing claim is made: a masked answer reads the profile and the membership for each key, but the work is not identical to the
+-- answer for an id that is no voice (a few tens of microseconds were measured in review).
 create or replace function public.channel_voice_config_problem(p_channel text, p_org uuid, p_old jsonb, p_new jsonb)
   returns text
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
-  k       text;
-  probe   text;
+  keys    constant text[] := array['elevenlabs_voice_id', 'elevenlabs_secondary_voice_id'];
+  key     text;
+  o       jsonb := case when jsonb_typeof(p_old) = 'object' then p_old else '{}'::jsonb end;
+  n       jsonb := case when jsonb_typeof(p_new) = 'object' then p_new else '{}'::jsonb end;
+  one_old jsonb;
+  one_new jsonb;
+  r       text;
   v       text;
   pr      public.voice_profiles;
   is_one  boolean;
@@ -183,24 +195,27 @@ declare
   member  boolean;
   visible boolean;
 begin
-  k := public.channel_voice_config_problem_core(p_channel, p_org, p_old, p_new);
   if public.credits_trusted_caller() or pg_trigger_depth() > 0 then
-    return k;
+    return public.channel_voice_config_problem_core(p_channel, p_org, p_old, p_new);
   end if;
-  probe := coalesce(k, 'elevenlabs_voice_id');
-  v := public.voice_id_norm(case when jsonb_typeof(p_new) = 'object' then p_new -> probe end);
-  select * into pr from public.voice_profiles
-   where lower(provider_voice_id) = v
-   order by (status = 'deleted'), created_at
-   limit 1;
-  is_one := found;
   select c.org_id into ch_org from public.channels c where c.channel_id = p_channel;
   member := public.voice_caller_member(ch_org, 'viewer');
-  visible := coalesce(is_one and member and (pr.user_id = auth.uid() or pr.org_id = ch_org), false);
-  if k is not null and is_one and not visible then
-    return null;
-  end if;
-  return k;
+  foreach key in array keys loop
+    one_old := case when o ? key then jsonb_build_object(key, o -> key) else '{}'::jsonb end;
+    one_new := case when n ? key then jsonb_build_object(key, n -> key) else '{}'::jsonb end;
+    r := public.channel_voice_config_problem_core(p_channel, p_org, one_old, one_new);
+    v := public.voice_id_norm(n -> key);
+    select * into pr from public.voice_profiles
+     where lower(provider_voice_id) = v
+     order by (status = 'deleted'), created_at
+     limit 1;
+    is_one := found;
+    visible := coalesce(is_one and member and (pr.user_id = auth.uid() or pr.org_id = ch_org), false);
+    if r is not null and not (is_one and not visible) then
+      return r;
+    end if;
+  end loop;
+  return null;
 end
 $$;
 
@@ -325,50 +340,70 @@ $$;
 
 -- Put purge_sample / delete_provider jobs that FAILED for good back in the queue with their attempts reset, so the 90-minute horizon of
 -- the worker's parking is not the last word. Bounded: at most 20 per call, oldest first, only those that failed more than p_older_than
--- ago (between 1 hour and 30 days). Never a clone job. Never where it must not run:
+-- ago (between 1 hour and 30 days, in days/hours/minutes/seconds only: no months or years). Never a clone job. Never where it must not run:
 --   purge_sample   only while the profile's sample_state is purge_pending and the profile is not waiting for its verification;
 --   delete_provider only for a profile that is deleted, has a recorded voice id, and has no succeeded deletion.
 -- Of the failed jobs of one (profile, kind) only the newest is put back, and not when a live job of that kind exists (the unique index
--- on live jobs would otherwise refuse the whole call). The error word stays as the reason it failed until the next answer replaces it.
+-- on live jobs refuses that row; a live job that appears between the list and the update, the owner deleting a voice or its sample at
+-- this moment, is skipped too, and neither aborts the rest of the call). The error word stays as the reason it failed until the next answer replaces it.
 -- Returns counts only: {requeued, purge_sample, delete_provider}.
 create or replace function public.voice_requeue_overdue(p_older_than interval default interval '3 hours') returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   cap     constant integer := 20;
-  n_purge integer;
-  n_prov  integer;
+  secs    double precision;
+  cutoff  timestamptz;
+  r       record;
+  n_purge integer := 0;
+  n_prov  integer := 0;
 begin
-  if p_older_than is null or p_older_than < interval '1 hour' or p_older_than > interval '30 days' then
-    raise exception 'voice_requeue_overdue: the age must be between 1 hour and 30 days' using errcode = '22023';
+  -- Months and years are not a length of time (an interval such as '-1 mon 31 days' reads as one day by its seconds and as about nothing by
+  -- the calendar), so only days, hours, minutes and seconds are accepted, and the bounds and the cutoff are the same number of seconds.
+  if p_older_than is null or extract(year from p_older_than) <> 0 or extract(month from p_older_than) <> 0 then
+    raise exception 'voice_requeue_overdue: the age must be between 1 hour and 30 days, in days, hours, minutes and seconds' using errcode = '22023';
   end if;
-  with newest as (
-    select distinct on (q.profile_id, q.kind) q.id, q.finished_at
-      from public.voice_clone_jobs q
-      join public.voice_profiles p on p.id = q.profile_id
-     where q.status = 'failed' and q.kind in ('purge_sample', 'delete_provider')
-       and q.finished_at < now() - p_older_than
-       and (   (q.kind = 'purge_sample' and p.sample_state = 'purge_pending' and p.status <> 'pending_verification')
-            or (q.kind = 'delete_provider' and p.status = 'deleted' and p.provider_voice_id is not null
-                and not exists (select 1 from public.voice_clone_jobs d
-                                 where d.profile_id = q.profile_id and d.kind = 'delete_provider' and d.status = 'succeeded')))
-       and not exists (select 1 from public.voice_clone_jobs l
-                        where l.profile_id = q.profile_id and l.kind = q.kind and l.status in ('queued', 'running'))
-     order by q.profile_id, q.kind, q.finished_at desc, q.id
-  ), picked as (
-    select j.id
-      from public.voice_clone_jobs j
-      join newest n on n.id = j.id
-     order by n.finished_at, j.id
-     limit cap
-       for update of j skip locked
-  ), done as (
-    update public.voice_clone_jobs j
-       set status = 'queued', attempts = 0, worker_id = null, heartbeat_at = null, finished_at = null
-     where j.id in (select id from picked) and j.status = 'failed'
-    returning j.kind
-  )
-  select count(*) filter (where kind = 'purge_sample'), count(*) filter (where kind = 'delete_provider')
-    into n_purge, n_prov from done;
+  secs := extract(epoch from p_older_than);
+  if secs < 3600 or secs > 2592000 then
+    raise exception 'voice_requeue_overdue: the age must be between 1 hour and 30 days, in days, hours, minutes and seconds' using errcode = '22023';
+  end if;
+  cutoff := now() - make_interval(secs => secs);
+  for r in
+    with newest as (
+      select distinct on (q.profile_id, q.kind) q.id, q.finished_at
+        from public.voice_clone_jobs q
+        join public.voice_profiles p on p.id = q.profile_id
+       where q.status = 'failed' and q.kind in ('purge_sample', 'delete_provider')
+         and q.finished_at < cutoff
+         and (   (q.kind = 'purge_sample' and p.sample_state = 'purge_pending' and p.status <> 'pending_verification')
+              or (q.kind = 'delete_provider' and p.status = 'deleted' and p.provider_voice_id is not null
+                  and not exists (select 1 from public.voice_clone_jobs d
+                                   where d.profile_id = q.profile_id and d.kind = 'delete_provider' and d.status = 'succeeded')))
+         and not exists (select 1 from public.voice_clone_jobs l
+                          where l.profile_id = q.profile_id and l.kind = q.kind and l.status in ('queued', 'running'))
+       order by q.profile_id, q.kind, q.finished_at desc, q.id
+    ), picked as (
+      select j.id, j.kind
+        from public.voice_clone_jobs j
+        join newest n on n.id = j.id
+       order by n.finished_at, j.id
+       limit cap
+         for update of j skip locked
+    )
+    select id, kind from picked
+  loop
+    -- A live job of the same kind may have been queued since the list was read (the owner deleting a voice or its sample at this moment):
+    -- the unique index refuses the second one. That row is skipped; it must not abort the rest of the sweep.
+    begin
+      update public.voice_clone_jobs j
+         set status = 'queued', attempts = 0, worker_id = null, heartbeat_at = null, finished_at = null
+       where j.id = r.id and j.status = 'failed';
+      if found then
+        if r.kind = 'purge_sample' then n_purge := n_purge + 1; else n_prov := n_prov + 1; end if;
+      end if;
+    exception when unique_violation then
+      null;
+    end;
+  end loop;
   return jsonb_build_object('requeued', n_purge + n_prov, 'purge_sample', n_purge, 'delete_provider', n_prov);
 end
 $$;

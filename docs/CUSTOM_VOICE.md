@@ -229,13 +229,15 @@ The grant is a separate decision, and the migration that makes it must not ship 
 1. **`NIGHTSHIFT_VOICE_GATE_STRICT` turned on** (repo variable, with the worker's) in the same release. Until then an outage of Supabase lets
    a run continue unchecked, which is acceptable only because no custom voice can exist; after the grant it would be a way to speak with
    someone's voice unchecked.
-2. **`channel_voice_config_problem` restricted** to members of the channel's organization and the service role. **Closed by migration
-   0121** (below, "The oracle on `channel_voice_config_problem`"), with the residual that section states in plain words. It was executable
+2. **`channel_voice_config_problem` restricted** to members of the channel's organization and the service role. **Narrowed by migration
+   0121, NOT closed** (below, "The oracle on `channel_voice_config_problem`"): the function itself no longer leaks, but the entry guards
+   still do for any signed-in user who made a workspace of their own, and whether that is acceptable is a decision for the migration that
+   grants `request_voice_clone`. The function was executable
    by every signed-in user (0117 grants it to `authenticated` so the channels guard can ask it), took any channel and any voice id, and
    answered a key rather than NULL for a clone: an **oracle** on other people's voices.
 3. The worker, the UI and the consent text (below).
 
-### The oracle on `channel_voice_config_problem` (closed by 0121)
+### The oracle on `channel_voice_config_problem` (narrowed by 0121, not closed)
 
 0117 granted the function to `authenticated` because the channels guard (a trigger that runs as the caller) asks it, and because the
 Run-now route calls it as the signed-in user. Called through the API with any channel and any 20-character id, it answered a key for an
@@ -254,21 +256,32 @@ the old name a wrapper. The exact answer goes to:
 Any **other signed-in caller** is told the truth only when both hold: they are a **member of the channel's organization** (looked up from
 the channel row, never from the `p_org` they pass), **and** the voice is **their own** or was **requested in that same organization**.
 Otherwise the answer is NULL, exactly as for an id that is no voice. The second condition matters: membership alone would leave the
-oracle open, because anyone can have a workspace and a channel of their own and ask about a stranger's id from there. A value that is
-not a JSON string is refused for everybody, as before (it says nothing about anyone's voices). The profile and membership lookups run
-whatever the core answered, so a masked answer does the same work as an unmasked one; no timing claim is made beyond that.
+function an oracle, because anyone can have a workspace and a channel of their own and ask about a stranger's id from there.
+
+**The two voice keys are asked one at a time.** The core returns the *first* key that fails. Asked about both keys at once, a masked first
+key used to swallow the refusal of a non-string second key (and a first key that is no voice let it through), which told a hidden clone from
+a non-voice. So for these callers the wrapper calls the core once per key with only that key in `p_old` and `p_new`, and masks per key: the
+answer for one key never depends on, or reveals, the other. A value that is not a JSON string is still refused for everybody (no profile can
+be behind it), and that refusal is independent of every other key. A member, the service role and the guard get exactly what the core gives
+for the whole request (tested with every pairing of a hidden clone, a non-voice and a non-string in both positions).
+
+**No timing claim is made.** A masked answer reads the profile and the membership, but it is not the same work as the answer for an id that
+is no voice (a difference of a few tens of microseconds was measured in review). The statement is about the answer, not the clock.
 
 What this changes for the two callers: the **Run-now route** (a signed-in member) keeps its early, friendly refusal for the voices of the
 caller's own organization and the caller's own voices; for any other id it now reads "fine", and the run is stopped where it always had to
 be: the Actions runner asks with the service key and gets the truth (exit 82, nothing spent), and on the queue backend the database
 refuses the `render_jobs` insert. `modules/voice_gate.py` is unchanged. `lib/server/run-voice.ts` only gained a comment.
 
-**Residual, not closed here, by design.** The three entry guards of 0117 refuse a clone that the writer may not use; that refusal is what
-makes them guards. Anyone who can write to one of those tables (a Studio `tts` job, a render job, the `agent_config` of a channel of
-their own) can therefore still *test a known id* by trying to use it and reading `voice_not_allowed`. A voice id is a 20-character
-alphanumeric string (62^20 values), is listed nowhere, and is never sent to a browser except the owner's; so what is left is confirming an
-id someone already holds, and the cost is a write attempt per question. Closing it would need every guard to refuse the same way for
-ids that are no voice, which cannot be done without refusing every unknown id.
+**Residual: narrowed, not closed.** The three entry guards of 0117 refuse a clone that the writer may not use; that refusal is what makes
+them guards. Anyone who can write to one of those tables can therefore still *test a known id* by trying to use it and reading
+`voice_not_allowed` (SQLSTATE 42501) instead of success. That is **every signed-in user who has a workspace of their own**: workspace
+creation (`create_organization`) is open, and an editor can update `channels.agent_config` of a channel in it, so a user of organization B
+gets `voice_not_allowed` for organization A's clone and success for an id that is no voice (reproduced in review). A voice id is a
+20-character alphanumeric string (62^20 values), is listed nowhere, and is never sent to a browser except the owner's; so what is left is
+confirming an id someone already holds, at the cost of a write attempt per question. Closing it would need every guard to refuse the same
+way for ids that are no voice, which cannot be done without refusing every unknown id. **It remains a decision for the migration that
+grants `request_voice_clone`** (accept it, rate-limit those writes, or change the guards' answer); 0121 does not make it.
 
 ### What remains
 
@@ -338,7 +351,7 @@ then when that job runs). A retry never makes a second voice: it looks for the v
 
 - `voice_requeue_overdue(p_older_than interval default '3 hours')` puts `purge_sample` and `delete_provider` jobs that **failed for good** back
   in the queue with `attempts = 0`. **Bounded**: at most 20 a call, oldest first, only jobs that failed more than `p_older_than` ago (between
-  1 hour and 30 days, else `22023`); one job per (profile, kind), the newest failure, and none where a live job of that kind exists.
+  1 hour and 30 days, in days, hours, minutes and seconds only: an interval with months or years is refused, else `22023`); one job per (profile, kind), the newest failure, and none where a live job of that kind exists (a live job that appears between the list and the update, because the owner deletes a voice or its sample at that moment, is skipped and does not abort the call).
   **Never a clone job.** **Never where the work must not run**: a purge only while the profile's `sample_state` is `purge_pending` and the
   profile is not waiting for its verification; a provider deletion only for a profile that is `deleted`, has a recorded voice id and has no
   succeeded deletion (so it can never delete a live voice). It returns counts only: `{requeued, purge_sample, delete_provider}`. It writes no
@@ -415,8 +428,8 @@ finished_at = now() where profile_id = '<profile_id>' and kind = 'purge_sample' 
 
 ## Gates before the owner may enable `NIGHTSHIFT_VOICE_CLONING`
 
-Two of these (G2, G3) and the oracle are closed by migration 0121, which becomes live when it is applied after the independent security
-review. Everything else is a **live verification** or a separate decision. Each is a hard gate: do not set the variable until it is closed
+Two of these (G2, G3) are closed, and the oracle is narrowed (not closed), by migration 0121, which becomes live when it is applied after
+the independent security review. Everything else is a **live verification** or a separate decision. Each is a hard gate: do not set the variable until it is closed
 or knowingly accepted.
 
 - **G1 (closed in code, kept as a rule): no keyless worker.** See above. A purge-only worker needs a kind filter in `claim_voice_job`.
@@ -436,8 +449,9 @@ or knowingly accepted.
   `voice_overdue_report()`** (0121) and `tools/voice_worker.py --sweep`, described under "The longer horizon". What stays open is the owner's
   decision to run `--sweep` on a schedule and to have a person told when it exits 1 or 2: **nothing starts it**. Until then the recurring SQL
   checks above are a human's daily duty.
-- **The oracle (closed by 0121 with the residual stated under "The oracle on `channel_voice_config_problem`")** is "Hard condition" 2 of
-  the migration that grants `request_voice_clone`.
+- **The oracle (narrowed by 0121, NOT closed; see "The oracle on `channel_voice_config_problem`")** is "Hard condition" 2 of the migration
+  that grants `request_voice_clone`. The function no longer leaks to a stranger; the entry guards still do for a user with a workspace.
+  Accept it, or close it, before that grant.
 - **Live verification of the free-plan answer shape.** Run the *ElevenLabs plan probe* workflow on the current (free) account and read
   whether the subscription carries `can_use_instant_voice_cloning: false` or no such field. If the field is absent, the free plan ends as
   `provider_plan_unknown` after about 90 minutes instead of `provider_not_enabled` at once, and the code or the copy must be decided.
@@ -624,7 +638,7 @@ select grantee, table_name, privilege_type from information_schema.role_table_gr
    `channel_voice_config_problem()` (both on 0117's bodies; no later migration redefines either) and adds three functions. It writes no row,
    alters no table, trigger or policy, and does not grant `request_voice_clone`.
 2. **Apply it as ONE transaction** (the SQL editor, `apply_migration`, or `psql --single-transaction -v ON_ERROR_STOP=1`). A half-applied file
-   (the oracle closed but the queue function not yet replaced, or the reverse) is not a state anyone designed for.
+   (the oracle narrowed but the queue function not yet replaced, or the reverse) is not a state anyone designed for.
 3. The drift check is in the file: a `DO` block at the top compares the md5 of the live `claim_voice_job()` and
    `channel_voice_config_problem()` bodies (white space read as one space) with 0117's and 0121's own, and **raises** if either is
    something else (applied by hand since: read the live body first). It also refuses if one of the three new names already exists with

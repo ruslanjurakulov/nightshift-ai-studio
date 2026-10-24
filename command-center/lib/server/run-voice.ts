@@ -15,8 +15,9 @@ import { isVoiceId } from "@/lib/ttsModels";
  *
  * Since migration 0121 the database tells a signed-in caller the truth only about voices that caller may know exist: the caller must
  * be a member of the channel's organization, and the voice must be the caller's own or one requested in that organization. For any
- * other id (a stranger's clone, an id that is no voice) it answers NULL, which this function reads as "fine" (that is the oracle it
- * closes: a user could otherwise confirm that a 20-character id is somebody's clone). That changes nothing here and costs nothing:
+ * other id (a stranger's clone, an id that is no voice) it answers NULL, which this function reads as "fine" (that narrows the oracle: a
+ * user could otherwise confirm through this function that a 20-character id is somebody's clone; the entry guards still can, see
+ * docs/CUSTOM_VOICE.md). That changes nothing here and costs nothing:
  * such a run is stopped by the runner's own check (modules/voice_gate.py asks with the service key and always gets the truth, exit
  * 82, nothing spent) and, on the queue backend, by the database when the job is inserted. This route is the early, friendly refusal
  * for the voices of the caller's own organization; the runner is the one that must not be bypassed.

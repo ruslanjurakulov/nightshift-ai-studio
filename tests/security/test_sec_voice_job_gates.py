@@ -224,6 +224,24 @@ def test_a_running_clone_whose_lease_has_not_run_out_is_left_to_its_worker(conn,
     assert purge(s, pid) == {"ok": True}
 
 
+@pytest.mark.parametrize("minutes,ended", [(29, False), (31, True)])
+def test_the_lease_boundary_is_thirty_minutes(conn, sc, world, minutes, ended):
+    """A worker that is 29 minutes quiet still holds the job; at 31 minutes the lease has run out and the gate ends it."""
+    s = world.su
+    r = requested(s, world.ed)
+    pid = r["profile_id"]
+    assert upload(s, world.ed, pid).ok
+    job = claim(s, "w1")
+    become(s, world.ed)
+    s.value("select public.delete_voice(%s)", [pid])
+    become(s, None)
+    s.conn.execute("update public.voice_clone_jobs set heartbeat_at = now() - make_interval(mins => %s) where id = %s", [minutes, job["job_id"]])
+    nxt = claim(s, "w2")
+    assert nxt and nxt["kind"] == "purge_sample"
+    row = jobs(s, pid, "clone")
+    assert row == ([("clone", "expired", 1, "profile_not_pending")] if ended else [("clone", "running", 1, None)]), row
+
+
 def test_a_clone_that_is_still_pending_is_handed_out_as_before(conn, sc, world):
     s = world.su
     r = requested(s, world.ed)
@@ -360,12 +378,31 @@ def test_a_job_that_failed_too_recently_is_left_and_the_age_is_the_callers(conn,
     assert job_row(s, jid)[0] == "queued"
 
 
-@pytest.mark.parametrize("age", [None, "0 seconds", "59 minutes", "31 days", "-3 hours"])
+@pytest.mark.parametrize("age", [None, "0 seconds", "59 minutes", "31 days", "-3 hours", "30 days 1 second", "-1 mon 31 days", "1 mon", "1 year",
+                                 "1 mon -29 days", "-1 mon 32 days", "1 year -360 days"])
 def test_the_age_must_be_between_one_hour_and_thirty_days(conn, sc, world, age):
     s = world.su
     become(s, SERVICE)
     out = s.run("select public.voice_requeue_overdue(%s::interval)", [age])
     assert not out.ok and out.sqlstate == "22023", (age, out)
+
+
+@pytest.mark.parametrize("age", ["1 hour", "60 minutes", "30 days", "720 hours", "29 days 23:59:59", "3 hours 30 minutes"])
+def test_the_bounds_are_exact_and_inclusive(conn, sc, world, age):
+    s = world.su
+    out = requeue(s, age)
+    assert out.ok and out.rows[0][0] == {"requeued": 0, "purge_sample": 0, "delete_provider": 0}, (age, out)
+
+
+def test_a_month_cannot_be_used_to_move_the_cutoff_to_now(conn, sc, world):
+    """'-1 mon 31 days' is 86400 seconds by its length and about 'now' by the calendar: it used to pass the bounds and re-queue a job that
+    failed a minute ago."""
+    s = world.su
+    pid = deleted_profile(s, world.ed)
+    jid = add_job(s, pid, world.ed.uid, "purge_sample", age="1 minute")
+    out = requeue(s, "-1 mon 31 days")
+    assert not out.ok and out.sqlstate == "22023", out
+    assert job_row(s, jid)[0] == "failed"
 
 
 def test_the_age_has_a_default_of_three_hours(conn, sc, world):
@@ -490,6 +527,61 @@ def test_the_requeue_writes_nothing_but_the_queue_rows(conn, sc, world):
 
 # ═══ G3: voice_overdue_report ═══════════════════════════════════════════════════════════════════════════════════════════════
 
+def test_a_requeue_racing_a_delete_skips_that_row_and_does_not_abort_the_sweep(conn, sc):
+    """The owner deletes a voice (a live purge job appears) while voice_requeue_overdue has already listed its failed purge job: the unique
+    index on live jobs refuses the second one. That used to abort the whole call (23505); the row is skipped and the others are put back.
+    Needs two real sessions, so it builds a scratch database and commits."""
+    import threading
+    import time
+
+    admin = sec_db.admin_dsn()
+    name = f"ns_voice_race_{uuid.uuid4().hex[:8]}"
+    dsn = sec_db.build(admin, name)
+    try:
+        with psycopg.connect(dsn, autocommit=True) as su:
+            org = su.execute("insert into public.organizations (name, slug) values ('Race', 'race-org') returning id").fetchone()[0]
+            ids = []
+            for n in range(2):
+                uid = str(uuid.uuid4())
+                su.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())", [uid, f"race{n}@x.test"])
+                ref = su.execute("select public.voice_owner_ref_for(%s)", [uid]).fetchone()[0]
+                pid = su.execute("insert into public.voice_profiles (user_id, org_id, owner_ref, name, status, deleted_at, sample_state) "
+                                 "values (%s, %s, %s, 'Race voice', 'deleted', now(), 'purge_pending') returning id", [uid, org, ref]).fetchone()[0]
+                jid = su.execute("insert into public.voice_clone_jobs (profile_id, user_id, kind, status, attempts, error_code, finished_at) "
+                                 "values (%s, %s, 'purge_sample', 'failed', 3, 'storage_http', now() - interval '5 hours') returning id", [pid, uid]).fetchone()[0]
+                ids.append((pid, uid, jid))
+            holder = psycopg.connect(dsn)                    # the owner's delete, still open
+            holder.execute("insert into public.voice_clone_jobs (profile_id, user_id, kind) values (%s, %s, 'purge_sample')", [ids[0][0], ids[0][1]])
+            result = {}
+
+            def sweep():
+                with psycopg.connect(dsn, autocommit=True) as c:
+                    try:
+                        result["out"] = c.execute("select public.voice_requeue_overdue('3 hours')").fetchone()[0]
+                    except psycopg.Error as e:
+                        result["err"] = e.sqlstate
+
+            th = threading.Thread(target=sweep)
+            th.start()
+            deadline = time.time() + 20
+            while time.time() < deadline and not su.execute(
+                    "select 1 from pg_stat_activity where datname = %s and wait_event_type = 'Lock'", [name]).fetchone():
+                time.sleep(0.05)
+            holder.commit()                                  # the delete commits: the sweep's update meets the live job
+            th.join(30)
+            holder.close()
+            assert not th.is_alive()
+            assert "err" not in result, result
+            assert result["out"] == {"requeued": 1, "purge_sample": 1, "delete_provider": 0}, result
+            states = {jid: su.execute("select status from public.voice_clone_jobs where id = %s", [jid]).fetchone()[0] for _, _, jid in ids}
+            assert states[ids[0][2]] == "failed", "the raced row was skipped"
+            assert states[ids[1][2]] == "queued", "and the other one was put back"
+            assert su.execute("select count(*) from public.voice_clone_jobs where profile_id = %s and kind = 'purge_sample' and status in ('queued', 'running')",
+                              [ids[0][0]]).fetchone()[0] == 1
+    finally:
+        sec_db.drop_database(admin, name)
+
+
 LINES = ("failed_purge_sample", "failed_delete_provider", "late_queued", "stranded_clone", "purge_without_job", "provider_without_job")
 
 
@@ -555,6 +647,22 @@ def test_a_failed_purge_whose_sample_is_already_gone_is_not_reported(conn, sc, w
     add_job(s, pid, world.ed.uid, "purge_sample")
     r = report(s)
     assert r["failed_purge_sample"] == {"count": 0, "oldest_seconds": None}, "the sample is purged: nothing is outstanding"
+
+
+def test_stranded_clone_counts_deleted_and_rejected_profiles_and_not_a_pending_one(conn, sc, world):
+    s = world.su
+    pend = requested(s, world.ed)["profile_id"]                     # pending, its clone job queued: waiting for the upload, not stranded
+    assert report(s)["stranded_clone"]["count"] == 0
+    rej = requested(s, world.vo)["profile_id"]
+    become(s, None)
+    s.conn.execute("update public.voice_profiles set status = 'rejected', reject_reason = 'worker_error' where id = %s", [rej])
+    r = report(s)["stranded_clone"]
+    assert r["count"] == 1 and r["oldest_seconds"] is not None, "a rejected profile's queued clone is stranded"
+    dele = deleted_profile(s, world.alice)
+    become(s, None)
+    s.conn.execute("insert into public.voice_clone_jobs (profile_id, user_id, kind, phrase) values (%s, %s, 'clone', 'apple river candle')", [dele, world.alice.uid])
+    assert report(s)["stranded_clone"]["count"] == 2
+    assert jobs(s, pend, "clone") == [("clone", "queued", 0, None)]
 
 
 def test_a_clone_a_worker_is_still_running_for_a_deleted_profile_is_not_stranded(conn, sc, world):
@@ -746,6 +854,90 @@ def test_the_answer_for_a_member_is_still_exact_in_every_state_of_the_voice(conn
     assert answer(ask(s, w.ed, w.chan_a, orc.voice)) == "elevenlabs_voice_id"
 
 
+H, N, X = "hidden", "nonvoice", "nonstring"
+
+
+def two_keys(orc, first, second):
+    pick = {H: orc.voice, N: "NonVoice" + "0" * 12, X: 12345}
+    return pick[first], pick[second]
+
+
+def ask_two(s, who, channel, v1, v2, *, org="own"):
+    become(s, who)
+    return s.run("select public.channel_voice_config_problem(%s, %s, '{}'::jsonb, %s::jsonb)",
+                 [channel, None if org == "own" else org,
+                  json.dumps({"elevenlabs_voice_id": v1, "elevenlabs_secondary_voice_id": v2})])
+
+
+COMBOS = [(a, b) for a in (H, N, X) for b in (H, N, X)]
+
+
+def test_two_keys_a_stranger_cannot_tell_a_hidden_clone_from_a_non_voice_in_either_position(conn, sc, orc):
+    """The reviewer's repro: the core returns the FIRST failing key, so a masked first key used to swallow the refusal of a non-string
+    second key (and a non-voice first key let it through), which told a hidden clone from a non-voice. The wrapper asks one key at a time."""
+    s, w = orc.s, orc.w
+    nobody_ws = w.nobody
+    callers = [w.stranger, nobody_ws, w.bob, w.operator, w.helper]
+    for who in callers:
+        for channel in ("x", w.chan_a, w.chan_a2, w.chan_b):
+            for org in ("own", w.org_a, w.org_b):
+                for first, second in COMBOS:
+                    if H not in (first, second):
+                        continue
+                    real = ask_two(s, who, channel, *two_keys(orc, first, second), org=org)
+                    # the same request with every hidden clone replaced by a non-voice
+                    ctl = ask_two(s, who, channel, *two_keys(orc, N if first == H else first, N if second == H else second), org=org)
+                    assert real.ok and ctl.ok, (who.name, channel, org, first, second, real, ctl)
+                    assert real.rows == ctl.rows, (who.name, channel, org, first, second, real.rows, ctl.rows)
+
+
+def test_two_keys_the_reviewers_repro_and_its_mirror_answer_the_same_for_a_stranger(conn, sc, orc):
+    s, w = orc.s, orc.w
+    for who in (w.stranger, w.nobody, w.bob):
+        assert answer(ask_two(s, who, "x", orc.voice, 12345)) == "elevenlabs_secondary_voice_id", who.name
+        assert answer(ask_two(s, who, "x", "NonVoice" + "0" * 12, 12345)) == "elevenlabs_secondary_voice_id", who.name
+        assert answer(ask_two(s, who, "x", 12345, orc.voice)) == "elevenlabs_voice_id", who.name
+        assert answer(ask_two(s, who, "x", orc.voice, orc.voice)) is None, who.name
+        assert answer(ask_two(s, who, "x", orc.voice, "NonVoice" + "0" * 12)) is None, who.name
+
+
+def test_two_keys_a_member_gets_the_same_answer_the_service_role_gets(conn, sc, orc):
+    s, w = orc.s, orc.w
+    for who in (w.ed, w.vo, w.viewer):
+        for channel in (w.chan_a, w.chan_a2):
+            for first, second in COMBOS:
+                v1, v2 = two_keys(orc, first, second)
+                got = ask_two(s, who, channel, v1, v2)
+                want = ask_two(s, SERVICE, channel, v1, v2)
+                assert got.ok and got.rows == want.rows, (who.name, channel, first, second, got.rows, want.rows)
+
+
+def test_two_keys_the_service_role_and_a_session_with_no_claims_get_the_cores_answer(conn, sc, orc):
+    s, w = orc.s, orc.w
+    become(s, None)
+    for who in (SERVICE, None):
+        for channel in (w.chan_a, w.chan_a2, "x"):
+            for first, second in COMBOS:
+                v1, v2 = two_keys(orc, first, second)
+                got = ask_two(s, who, channel, v1, v2)
+                become(s, None)
+                core = s.run("select public.channel_voice_config_problem_core(%s, null, '{}'::jsonb, %s::jsonb)",
+                             [channel, json.dumps({"elevenlabs_voice_id": v1, "elevenlabs_secondary_voice_id": v2})])
+                assert got.ok and core.ok and got.rows == core.rows, (getattr(who, "name", who), channel, first, second, got.rows, core.rows)
+
+
+def test_two_keys_the_channels_guard_refuses_a_hidden_clone_in_either_slot_whoever_writes(conn, sc, orc):
+    """Trigger depth: the guard is never masked, with two keys in one write as with one."""
+    s, w = orc.s, orc.w
+    n = "NonVoice" + "0" * 12
+    for who in (w.bob, SERVICE):
+        channel = w.chan_b
+        assert blocked(set_cfg(s, who, channel, {"elevenlabs_voice_id": orc.voice, "elevenlabs_secondary_voice_id": n}))
+        assert blocked(set_cfg(s, who, channel, {"elevenlabs_voice_id": n, "elevenlabs_secondary_voice_id": orc.voice}))
+        assert blocked(set_cfg(s, who, channel, {"elevenlabs_voice_id": orc.voice, "elevenlabs_secondary_voice_id": orc.voice}))
+        assert set_cfg(s, who, channel, {"elevenlabs_voice_id": n, "elevenlabs_secondary_voice_id": n}).ok
+
+
 def test_the_channels_guard_is_not_masked(conn, sc, orc):
     """The guard asks from inside its trigger and must keep refusing a custom voice that is not attached, whoever writes. Masking it
     would let anyone with a channel store another person's voice id in it."""
@@ -784,14 +976,15 @@ def test_the_pre_flight_style_call_with_the_service_key_is_unchanged_for_every_s
     assert answer(out) is None
 
 
-def test_the_wrapper_does_the_same_lookups_whatever_it_answers(conn, sc, orc):
-    """No timing difference is claimed that cannot be shown, but the work is the same: the masked and the unmasked answer both read
-    the profile and the membership. Pinned from the catalog, not the clock: the body asks before it decides."""
+def test_the_wrapper_asks_the_core_one_key_at_a_time_for_everyone_who_is_not_trusted(conn, sc, orc):
     s = orc.s
     become(s, None)
     body = s.value("select prosrc from pg_proc where oid = 'public.channel_voice_config_problem(text, uuid, jsonb, jsonb)'::regprocedure")
-    assert body.index("select * into pr") < body.index("if k is not null and is_one and not visible")
-    assert body.index("voice_caller_member") < body.index("if k is not null and is_one and not visible")
+    first_call = body.index("channel_voice_config_problem_core")
+    loop = body.index("foreach key in array keys loop")
+    assert first_call < loop, "the trusted path answers with the whole request"
+    assert body.count("channel_voice_config_problem_core") == 2
+    assert body.index("channel_voice_config_problem_core", loop) > loop, "and every other caller is asked inside the per-key loop"
 
 
 # ═══ the file itself: replay, drift guard, rollback ═════════════════════════════════════════════════════════════════════════
@@ -842,7 +1035,7 @@ def test_the_migration_refuses_a_live_body_it_has_not_seen_and_accepts_a_reforma
     assert not out.ok and out.sqlstate == "P0001" and "claim_voice_job" in out.error and "neither" in out.error, out
     _swap(s, claim_def, claim_src)
     # a foreign wrapper / 0117 body: refused
-    _swap(s, ccp_def, ccp_src.replace("return k;", "return null;", 1))
+    _swap(s, ccp_def, ccp_src.replace("return r;", "return null;", 1))
     out = s.run(text)
     assert not out.ok and "channel_voice_config_problem" in out.error and "neither" in out.error, out
     _swap(s, ccp_def, ccp_src)

@@ -32,7 +32,7 @@ begin
   if c is null or c <> all (array['67507f43dda86e10823aaca82f5892d9', '099164c525a8f561e84b0c2bc21c7b1e']) then
     raise exception 'rollback 0121 found a claim_voice_job() that is neither 0121''s body nor 0117''s (md5 %): read the live body first', c;
   end if;
-  if p is null or p <> all (array['70d9a82242920aa92d57faadde0f39c3', '09c300ba15b8ed7e339829f9d7be5d30']) then
+  if p is null or p <> all (array['70d9a82242920aa92d57faadde0f39c3', '0142910dd48a83e982e78016bc31ad9f']) then
     raise exception 'rollback 0121 found a channel_voice_config_problem() that is neither 0121''s body nor 0117''s (md5 %): read the live body first', p;
   end if;
 end $$;

@@ -102,12 +102,28 @@ class Oracle(unittest.TestCase):
 
     def test_the_exact_answer_goes_to_the_service_role_and_the_guard_only(self):
         c = code(body(function(TEXT, "channel_voice_config_problem(p_channel")))
-        self.assertIn("public.credits_trusted_caller() or pg_trigger_depth() > 0", c)
-        self.assertEqual(len(re.findall(r"return k;", c)), 2)
-        # the one masked return, and its condition
-        self.assertIn("if k is not null and is_one and not visible then\n    return null;", c)
+        trusted = c.index("public.credits_trusted_caller() or pg_trigger_depth() > 0")
+        loop = c.index("foreach key in array keys loop")
+        self.assertLess(trusted, loop)
+        # the trusted path hands the WHOLE request to the core and returns its answer; nothing else does
+        self.assertIn("return public.channel_voice_config_problem_core(p_channel, p_org, p_old, p_new);", c[trusted:loop])
+        self.assertEqual(c.count("channel_voice_config_problem_core("), 2)
+
+    def test_everybody_else_is_asked_one_key_at_a_time_and_masked_per_key(self):
+        c = code(body(function(TEXT, "channel_voice_config_problem(p_channel")))
+        loop = c[c.index("foreach key in array keys loop"):]
+        self.assertIn("keys    constant text[] := array['elevenlabs_voice_id', 'elevenlabs_secondary_voice_id'];", c)
+        # a single-key old and new, built only from keys that are present
+        self.assertIn("one_old := case when o ? key then jsonb_build_object(key, o -> key) else '{}'::jsonb end;", loop)
+        self.assertIn("one_new := case when n ? key then jsonb_build_object(key, n -> key) else '{}'::jsonb end;", loop)
+        self.assertIn("r := public.channel_voice_config_problem_core(p_channel, p_org, one_old, one_new);", loop)
+        # the profile of THIS key, and the one masked return
+        self.assertIn("v := public.voice_id_norm(n -> key);", loop)
+        self.assertIn("if r is not null and not (is_one and not visible) then\n      return r;", loop)
         self.assertIn("voice_caller_member(ch_org, 'viewer')", c)
-        self.assertIn("pr.user_id = auth.uid() or pr.org_id = ch_org", c)
+        self.assertIn("pr.user_id = auth.uid() or pr.org_id = ch_org", loop)
+        self.assertEqual(len(re.findall(r"return r;", c)), 1)
+        self.assertTrue(c.rstrip().endswith("return null;\nend"))
 
     def test_the_membership_is_the_channels_own_organization_never_the_one_the_caller_passes(self):
         c = code(body(function(TEXT, "channel_voice_config_problem(p_channel")))
@@ -217,7 +233,10 @@ class Dormant(unittest.TestCase):
         self.assertIn("skip locked", fn)
         self.assertIn("q.kind in ('purge_sample', 'delete_provider')", fn)
         self.assertNotIn("'clone'", fn)
-        self.assertIn("p_older_than < interval '1 hour' or p_older_than > interval '30 days'", fn)
+        self.assertIn("extract(year from p_older_than) <> 0 or extract(month from p_older_than) <> 0", fn)
+        self.assertIn("secs < 3600 or secs > 2592000", fn)
+        self.assertIn("cutoff := now() - make_interval(secs => secs);", fn)
+        self.assertIn("exception when unique_violation then", fn)
         self.assertIn("p.status = 'deleted' and p.provider_voice_id is not null", fn)
         self.assertIn("p.sample_state = 'purge_pending' and p.status <> 'pending_verification'", fn)
         self.assertEqual(len(re.findall(r"(?i)\bupdate public\.", fn)), 1)

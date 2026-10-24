@@ -432,13 +432,16 @@ trigger, policy or table grant, grants nothing to anyone who had nothing, and do
   body is not 0117's (md5 with white space collapsed) or 0121's own, or if one of the three new names already holds another body.
   Re-running 0117 afterwards puts 0117's two bodies back: re-apply 0121 after it (the lab tests that replay 0117 do).
 - **Added, service role only:** `voice_requeue_overdue(p_older_than interval default '3 hours')` (G3: failed purge and provider-deletion jobs
-  back in the queue with their attempts reset; at most 20 a call, never a clone, never where the work must not run) and
+  back in the queue with their attempts reset; at most 20 a call, 1 hour to 30 days in plain seconds (no months), never a clone, never where
+  the work must not run; a racing delete skips that row) and
   `voice_overdue_report()` (counts and ages in closed fields, no ids).
-- **The oracle.** A signed-in user could ask `channel_voice_config_problem` about any channel and any 20-character id and learn whether the id
-  is somebody's clone. The exact answer now goes to the service role (the Actions pre-flight) and to the channels guard; any other caller gets
-  the truth only as a member of the channel's organization and only about a voice that is theirs or was requested in that organization, and
-  otherwise the answer an id that is no voice gets. The residual (the entry guards still refuse a clone the writer may not use) is stated in
-  `docs/CUSTOM_VOICE.md`.
+- **The oracle, narrowed (not closed).** A signed-in user could ask `channel_voice_config_problem` about any channel and any 20-character id and
+  learn whether the id is somebody's clone. The exact answer now goes to the service role (the Actions pre-flight) and to the channels guard;
+  any other caller is asked one voice key at a time (so one key's answer never depends on, or reveals, the other) and gets the truth only as
+  a member of the channel's organization and only about a voice that is theirs or was requested in that organization; otherwise the answer an
+  id that is no voice gets. **Residual:** the entry guards (Studio tts, render jobs, `agent_config` writes) still refuse a clone the writer may
+  not use, so any signed-in user with a workspace of their own can still confirm a known id through them. It is a decision for the migration
+  that grants `request_voice_clone`; `docs/CUSTOM_VOICE.md` says so. No timing claim is made.
 - **Python moves with the database.** `tools/voice_worker.py --sweep` (exit 0 nothing overdue, 1 something is, 2 the database could not
   answer) is the one caller of the two new functions; **nothing starts it**. `purge_sample` also sweeps a deleted profile's labelled voices
   now. Both are harmless before the file is applied (`--sweep` exits 2 and says the functions are not available).
