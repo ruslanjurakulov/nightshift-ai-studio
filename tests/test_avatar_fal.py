@@ -1504,15 +1504,19 @@ class CompositorPlacesSegments(unittest.TestCase):
         clips = self.comp._build_presenter_clips([PresenterSegment(self.clip_path, 98.5, 3.0)], 100.0)
         self.assertEqual([round(c.duration, 1) for c in clips], [1.5])
 
-    def test_a_segment_that_starts_after_the_video_ends_is_left_out(self):
-        self.assertEqual(self.comp._build_presenter_clips([PresenterSegment(self.clip_path, 100.0, 3.0)], 100.0), [])
+    def test_a_segment_that_starts_after_the_video_ends_stops_the_render(self):
+        # Asked for and paid for, so not "left out": the run stops (CLAUDE.md #4).
+        with self.assertRaises(AvatarUnavailable):
+            self.comp._build_presenter_clips([PresenterSegment(self.clip_path, 100.0, 3.0)], 100.0)
 
-    def test_an_unreadable_segment_is_left_out_on_its_own(self):
+    def test_an_unreadable_segment_stops_the_render_instead_of_leaving_a_half_presenter(self):
         bad = Path(self._tmp.name) / "bad.mp4"
         bad.write_bytes(b"not a video")
-        clips = self.comp._build_presenter_clips(
-            [PresenterSegment(bad, 0.0, 3.0), PresenterSegment(self.clip_path, 50.0, 3.0)], 100.0)
-        self.assertEqual([c.start for c in clips], [50.0])
+        with self.assertRaises(AvatarUnavailable) as cm:
+            self.comp._build_presenter_clips(
+                [PresenterSegment(bad, 0.0, 3.0), PresenterSegment(self.clip_path, 50.0, 3.0)], 100.0)
+        self.assertIn("bad.mp4", str(cm.exception))
+        self.assertNotIn("p.mp4", str(cm.exception))
 
 
 if __name__ == "__main__":

@@ -17,7 +17,6 @@ are kept here as regression cases.
 from __future__ import annotations
 
 import json
-import logging
 import sys
 import unittest
 from pathlib import Path
@@ -29,9 +28,9 @@ sys.path.insert(0, str(ROOT))
 from modules import claim_scenes, fact_checker, grounding, held_video  # noqa: E402
 from modules.claim_extractor import Claim  # noqa: E402
 from modules.fact_checker import _make_result, _safe_default  # noqa: E402
-from modules.grounding import Evidence, Snippet  # noqa: E402
+from modules.grounding import Snippet  # noqa: E402
 from tests.test_grounded_factcheck import (  # noqa: E402
-    CLAIM_ADRIFT, QUOTE_ADRIFT, Clock, FakeHttp, FakeModel, FakeResponse, api, client_for, ground, mary_celeste_router,
+    CLAIM_ADRIFT, QUOTE_ADRIFT, Clock, FakeResponse, api, client_for, ground, mary_celeste_router,
     page, says, unchecked)
 
 
