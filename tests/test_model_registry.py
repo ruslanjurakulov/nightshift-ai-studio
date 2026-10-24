@@ -156,7 +156,7 @@ class CapabilityDetectionTests(unittest.TestCase):
     def test_a_setting_the_model_does_not_take_is_refused_not_ignored(self):
         e = self.r["flux-3-video"]            # no confirmed duration field
         self.assertTrue(any("duration" in p for p in e.problems(CapabilityRequest("t2v", "x", duration_s=5))))
-        g = self.r["gemini-2.5-flash-image"]  # no image sizes
+        g = self.r["gemini-3.1-flash-lite-image"]  # offers 1K only
         self.assertTrue(g.problems(CapabilityRequest("t2i", "x", image_size="4K")))
 
     def test_prompt_limit_counts_utf16_units(self):
