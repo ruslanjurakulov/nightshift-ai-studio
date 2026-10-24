@@ -102,6 +102,11 @@ class FakeSupabase:
         self.headers_seen = []
         self.redirect_on = None
         self.rpc_failures = {}   # rpc name -> list of exceptions raised before it is handled
+        self.rpc_payloads = []   # (rpc name, payload) in order
+        self.rpc_missing = set()  # rpc names that answer 404, as a function that is not there does
+        # the 0121 functions: what the database would answer (the SQL is tested in tests/security/test_sec_voice_job_gates.py)
+        self.requeue_answer = {"requeued": 0, "purge_sample": 0, "delete_provider": 0}
+        self.report_answer = {**{k: {"count": 0, "oldest_seconds": None} for k in vw.OVERDUE_LINES}, "total": 0}
         self._seq = itertools.count(1)
         self._ids = itertools.count(1)
 
@@ -262,8 +267,12 @@ class FakeSupabase:
             if self.rpc_failures.get(name):
                 raise self.rpc_failures[name].pop(0)
             a = kw["json"]
+            self.rpc_payloads.append((name, a))
+            if name in self.rpc_missing:
+                return Resp(404, {"code": "PGRST202", "message": "no such function"})
             out = {"claim_voice_job": lambda: self._claim(a["p_worker"]), "finish_voice_clone": lambda: self._finish_clone(a),
-                   "finish_voice_task": lambda: self._finish_task(a)}[name]()
+                   "finish_voice_task": lambda: self._finish_task(a), "voice_requeue_overdue": lambda: self.requeue_answer,
+                   "voice_overdue_report": lambda: self.report_answer}[name]()
             return Resp(200, out)
         if path == "/storage/v1/object/list/voice-samples":
             prefix = kw["json"]["prefix"].strip("/") + "/"
@@ -1575,8 +1584,21 @@ class Crashes(Harness):
         self.assertEqual([o.result for o in self.run_all()], ["purged"])
         self.assertEqual(sorted(self.el.voices), ["B" * 20, "C" * 20, "D" * 20])
 
+    def test_the_orphan_sweep_runs_for_a_deleted_profile_whose_parked_clone_may_have_made_a_voice(self):
+        """0121 ends the parked clone job of a deleted profile and queues the purge; that purge is the only provider sweep there is for a
+        voice created in an attempt whose answer was lost, so a deleted profile with no recorded voice is swept like a rejected one."""
+        for status in ("deleted", "rejected"):
+            with self.subTest(status=status):
+                self.setUp()
+                pid, other = self.rejected_with_purge()
+                self.profile(pid)["status"] = status
+                self.el.voices.update({"A" * 20: vp.provider_voice_name("ab" * 16, pid), "B" * 20: vp.provider_voice_name("ab" * 16, other)})
+                self.el.labels.update({"A" * 20: self.mine(pid), "B" * 20: self.mine(other)})
+                self.assertEqual([o.result for o in self.run_all()], ["purged"])
+                self.assertEqual(sorted(self.el.voices), ["B" * 20], "only the voice labelled for this profile goes")
+
     def test_the_orphan_sweep_does_not_run_for_a_profile_that_may_have_a_clone_in_flight(self):
-        for status in ("deleted", "pending_verification", "testing"):
+        for status in ("pending_verification", "testing", "approved"):
             with self.subTest(status=status):
                 self.setUp()
                 pid, other = self.rejected_with_purge()
@@ -1786,6 +1808,124 @@ class OtherJobs(Harness):
         kinds = [(o.kind, o.result) for o in self.run_all()]
         self.assertIn(("delete_provider", "deleted"), kinds)
         self.assertEqual(self.el.voices, {}, "the voice that was made while the owner deleted is removed")
+
+
+# ── the sweep (migration 0121) ───────────────────────────────────────────────
+
+class TheSweep(Harness):
+    """``tools/voice_worker.py --sweep``: re-queue what failed for good, say what is overdue, claim nothing, call nothing else."""
+
+    ENV = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": SUPABASE, "SUPABASE_SERVICE_KEY": SERVICE_KEY, "ELEVENLABS_API_KEY": EL_KEY}
+    RPC = ["/rest/v1/rpc/voice_requeue_overdue", "/rest/v1/rpc/voice_overdue_report"]
+
+    def sweep(self, env=None, argv=("--sweep",)):
+        from tools import voice_worker as cli
+
+        real = vw.VoiceStore
+        with mock.patch.dict(os.environ, self.ENV if env is None else env, clear=True), \
+                mock.patch.object(vw, "VoiceStore", lambda u, k: real(u, k, session=self.db)), \
+                mock.patch.object(vw, "VoiceWorker", side_effect=AssertionError("a sweep builds no worker")), \
+                mock.patch.object(vw, "sweep_stale_workdirs", side_effect=AssertionError("a sweep touches no work directory")):
+            return cli.main(list(argv))
+
+    def lines(self, needle=""):
+        return [(lv, ln) for lv, ln in zip(self.logs.levels, self.logs.lines) if needle in ln]
+
+    def test_nothing_overdue_exits_zero_asks_only_the_two_functions_and_says_so(self):
+        self.assertEqual(self.sweep(), 0)
+        self.assertEqual([p for _, p in self.db.calls], self.RPC)
+        self.assertEqual(self.db.rpc_payloads, [("voice_requeue_overdue", {"p_older_than": "3 hours"}), ("voice_overdue_report", {})])
+        self.assertEqual(self.el.calls, [], "no provider call")
+        self.assertEqual(self.logs.level_of("OVERDUE"), [])
+        self.assertTrue(self.lines("nothing is overdue"))
+        self.assertNothingLeaks()
+
+    def test_it_claims_nothing_so_a_job_waiting_in_the_queue_is_left_alone(self):
+        pid = self.ready()
+        self.assertEqual(self.sweep(), 0)
+        self.assertEqual(self.db.job(pid, "clone")["status"], "queued")
+        self.assertEqual(len(self.db.under(pid)), 1)
+
+    def test_what_is_overdue_is_logged_as_an_error_with_a_closed_word_and_two_numbers(self):
+        self.db.requeue_answer = {"requeued": 3, "purge_sample": 2, "delete_provider": 1}
+        self.db.report_answer["failed_purge_sample"] = {"count": 2, "oldest_seconds": 7200}
+        self.db.report_answer["stranded_clone"] = {"count": 1, "oldest_seconds": None}
+        self.db.report_answer["total"] = 3
+        self.assertEqual(self.sweep(), 1, "something is overdue")
+        over = self.lines("OVERDUE")
+        self.assertEqual([lv for lv, _ in over], [logging.ERROR, logging.ERROR], "an alert filters on it")
+        self.assertEqual([ln for _, ln in over], ["voice OVERDUE: failed_purge_sample count=2 oldest_seconds=7200",
+                                                   "voice OVERDUE: stranded_clone count=1 oldest_seconds=unknown"])
+        self.assertIn("requeued=3 purge_sample=2 delete_provider=1", "\n".join(self.logs.lines))
+        self.assertNothingLeaks()
+
+    def test_a_function_that_is_not_there_is_not_nothing_overdue(self):
+        for missing in ("voice_requeue_overdue", "voice_overdue_report"):
+            with self.subTest(missing=missing):
+                self.setUp()
+                self.db.rpc_missing = {missing}
+                self.assertEqual(self.sweep(), 2)
+                self.assertTrue(self.lines("0121"))
+                self.assertEqual(self.lines("nothing is overdue"), [])
+
+    def test_an_answer_in_a_shape_nobody_expected_is_unreadable_and_is_never_echoed(self):
+        shapes = [
+            ("requeue", {"requeued": BODY_SECRET, "purge_sample": 0, "delete_provider": 0}),
+            ("requeue", {"requeued": True, "purge_sample": 0, "delete_provider": 0}),
+            ("requeue", {"purge_sample": 0}),
+            ("report", {**{k: {"count": 0, "oldest_seconds": None} for k in vw.OVERDUE_LINES}, "failed_purge_sample": BODY_SECRET}),
+            ("report", {**{k: {"count": 0, "oldest_seconds": None} for k in vw.OVERDUE_LINES}, "late_queued": {"count": -1, "oldest_seconds": 5}}),
+            ("report", {**{k: {"count": 0, "oldest_seconds": None} for k in vw.OVERDUE_LINES}, "late_queued": {"count": BODY_SECRET}}),
+            ("report", {}),
+        ]
+        for which, answer in shapes:
+            with self.subTest(which=which, answer=str(answer)[:40]):
+                self.setUp()
+                if which == "requeue":
+                    self.db.requeue_answer = answer
+                else:
+                    self.db.report_answer = answer
+                self.assertEqual(self.sweep(), 2)
+                self.assertNotIn(BODY_SECRET, "\n".join(self.logs.lines))
+
+    def test_an_extra_line_in_the_report_is_not_logged_because_only_the_closed_words_are(self):
+        self.db.report_answer["somebody_elses_secret"] = {"count": 5, "oldest_seconds": 1}
+        self.assertEqual(self.sweep(), 0)
+        self.assertNotIn("somebody_elses_secret", "\n".join(self.logs.lines))
+
+    def test_a_database_that_cannot_be_reached_is_2_and_the_log_names_the_kind_of_failure_only(self):
+        self.db.rpc_failures["voice_requeue_overdue"] = [ConnectionError(BODY_SECRET)]
+        self.assertEqual(self.sweep(), 2)
+        self.assertNotIn(BODY_SECRET, "\n".join(self.logs.lines))
+        self.assertIn("ConnectionError", "\n".join(self.logs.lines))
+
+    def test_it_starts_under_the_same_conditions_as_the_loop(self):
+        self.assertEqual(self.sweep(env={**self.ENV, "NIGHTSHIFT_VOICE_CLONING": ""}), 0)
+        self.assertEqual(self.db.calls, [], "switch off: nothing contacted")
+        for missing in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "ELEVENLABS_API_KEY"):
+            with self.subTest(missing=missing):
+                self.assertEqual(self.sweep(env={k: v for k, v in self.ENV.items() if k != missing}), 2)
+                self.assertEqual(self.db.calls, [], "refused before anything was contacted, the provider key included")
+        for blank in ("", "   "):
+            self.assertEqual(self.sweep(env={**self.ENV, "ELEVENLABS_API_KEY": blank}), 2)
+        self.assertEqual(self.db.calls, [])
+
+    def test_sweep_and_once_are_different_runs(self):
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            self.sweep(argv=("--sweep", "--once"))
+        self.assertEqual(cm.exception.code, 2)
+        self.assertEqual(self.db.calls, [])
+
+    def test_the_store_asks_for_whole_hours_and_nothing_else(self):
+        store = vw.VoiceStore(SUPABASE, SERVICE_KEY, session=self.db)
+        store.requeue_overdue(3)
+        store.requeue_overdue(3.9)
+        self.assertEqual([a for _, a in self.db.rpc_payloads], [{"p_older_than": "3 hours"}, {"p_older_than": "3 hours"}])
+
+    def test_the_default_is_three_hours_and_the_names_are_the_reports(self):
+        self.assertEqual(vw.REQUEUE_AFTER_HOURS, 3)
+        sql = (ROOT / "supabase" / "migrations" / "0121_voice_job_gates.sql").read_text(encoding="utf-8")
+        self.assertEqual(set(re.findall(r"^    '([a-z_]+)',\s+jsonb_build_object\('count'", sql, re.M)), set(vw.OVERDUE_LINES))
 
 
 # ── Supabase over real HTTP: what a fake cannot show ─────────────────────────

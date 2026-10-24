@@ -3,6 +3,11 @@
 
     python tools/voice_worker.py --once     # claim at most one job, then exit
     python tools/voice_worker.py            # loop until SIGTERM / SIGINT
+    python tools/voice_worker.py --sweep    # re-queue purge / deletion jobs that failed for good, log what is overdue, exit (0121)
+
+``--sweep`` calls the two service-role functions of migration 0121 and nothing else (no claim, no provider call, no Storage call). It
+exits 0 when nothing is overdue, 1 when something is (each line logged as ``voice OVERDUE: <line> count=<n> oldest_seconds=<n>``) and 2 when
+the database could not answer. It starts under the same conditions as the loop: the switch is on and all three keys are set.
 
 NOTHING RUNS THIS. There is no service, cron entry or workflow for it, on purpose: it is started by hand, by the owner, after the
 steps in docs/CUSTOM_VOICE.md. It also does nothing unless the repository variable ``NIGHTSHIFT_VOICE_CLONING`` is ``on`` (the owner
@@ -43,8 +48,12 @@ POLL_SECONDS = 15.0
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Carry out voice_clone_jobs (migration 0117)")
     parser.add_argument("--once", action="store_true", help="Claim at most one job, run it, and exit")
+    parser.add_argument("--sweep", action="store_true",
+                        help="Re-queue purge / provider-deletion jobs that failed for good, report what is overdue, and exit (migration 0121)")
     parser.add_argument("--worker-id", default=os.environ.get("NIGHTSHIFT_WORKER_ID") or f"{socket.gethostname()}-{os.getpid()}")
     args = parser.parse_args(argv)
+    if args.sweep and args.once:
+        parser.error("--sweep and --once are different runs")
 
     logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(asctime)s voice_worker %(levelname)s %(message)s")
 
@@ -66,6 +75,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                      "it cannot carry out and burn their attempts. Nothing was claimed. A stranded recording is purged by hand: "
                      "docs/CUSTOM_VOICE.md.")
         return 2
+
+    if args.sweep:
+        return vw.sweep_overdue(vw.VoiceStore(url, key))
 
     vw.sweep_stale_workdirs()
     worker = vw.VoiceWorker(vw.VoiceStore(url, key), vw.SampleStorage(url, key), provider,

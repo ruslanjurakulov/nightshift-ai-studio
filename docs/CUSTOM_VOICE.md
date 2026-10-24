@@ -1,13 +1,14 @@
 # Custom voice: a user clones THEIR OWN voice, and only that user uses it
 
-Status: **database, pure code and a worker behind a switch** (migration `0117_voice_profiles.sql`, `modules/voice_profiles.py`,
-`modules/voice_worker.py`, `tools/voice_worker.py`). Nothing live runs: the ElevenLabs account is on the **free plan**, which does not
+Status: **database, pure code and a worker behind a switch** (migrations `0117_voice_profiles.sql` and `0121_voice_job_gates.sql`,
+`modules/voice_profiles.py`, `modules/voice_worker.py`, `tools/voice_worker.py`). Nothing live runs: the ElevenLabs account is on the **free plan**, which does not
 allow instant voice cloning. The worker is **off** unless the repository variable `NIGHTSHIFT_VOICE_CLONING` is `on` (the owner sets
 it; it is empty by default and reaches the worker env through `deploy_web.yml`), and **nothing starts it**: no service, cron entry or
 workflow runs `tools/voice_worker.py` (a test fails if one does). No screen calls any of the rest yet (a test fails if one starts to
 before this document is updated).
 The run-time checks of the hard gate (`modules/voice_gate.py`, `lib/server/run-voice.ts`) call only the read-only function
-`channel_voice_config_problem` and change nothing for a run that uses no cloned voice.
+`channel_voice_config_problem` and change nothing for a run that uses no cloned voice. Migration 0121 (the gates G2 and G3 and the oracle
+below) is **live on apply** and touches no row; it grants nothing to anyone who had nothing, and does not grant `request_voice_clone`.
 
 **It is also dormant at the API.** `request_voice_clone` is created and granted to **nobody** (not `authenticated`, not `service_role`):
 starting a clone is the one entry into the feature, so no signed-in user can create a profile, a queue row or (the bucket's insert rule
@@ -54,9 +55,11 @@ approved) ; `rejected` and `deleted` are terminal. A usable status always has a 
 | `detach_voice_from_channel(profile, channel)` | the owner | revokes the attachment; the id stays in the config and runs on it are refused (rule 4) |
 | `delete_voice(profile)` | the owner | marks it deleted (unusable at once), revokes attachments, queues the provider deletion and the sample purge, keeps a minimal record |
 | `delete_voice_sample(profile)` | the owner | for a kept sample: queues its purge |
-| `claim_voice_job(worker)` / `finish_voice_clone(...)` / `finish_voice_task(...)` | the service role | the worker's side (below) |
+| `claim_voice_job(worker)` / `finish_voice_clone(...)` / `finish_voice_task(...)` | the service role | the worker's side (below). Since 0121 `claim_voice_job` also **ends** a clone job whose profile is deleted or rejected and queues what that profile still needs (G2, below) |
+| `voice_requeue_overdue(older_than)` / `voice_overdue_report()` | the service role (0121) | put purge and provider-deletion jobs that failed for good back in the queue, bounded; report what is late as counts and ages (G3, below). `tools/voice_worker.py --sweep` is their one caller |
 | `purge_voice_records(profile)` | the service role | removes a **deleted** voice's rows once its provider copy and sample are gone; keeps `voice_deletion_records` |
 | `voice_usable_by(user, voice, org, channel)` | nobody (internal) | **the rule** |
+| `channel_voice_config_problem(channel, org, old, new)` | the service role; a signed-in user (0117, narrowed by 0121) | the channel-path question, **a wrapper since 0121** (the oracle, below). Its core, `channel_voice_config_problem_core`, is 0117's body unchanged and callable by nobody |
 
 ## The unique `owner_ref`, and how a voice in the provider account traces to a user
 
@@ -159,7 +162,8 @@ pass through `render_jobs` or `creative_jobs`:
 ### What is closed (this PR, no migration)
 
 Both checks ask the one voice function the migration already grants to the roles that need it, `channel_voice_config_problem(channel,
-org, old, new)` (granted to `authenticated` and `service_role`; it takes **no person**, so it answers for the **channel path** only):
+org, old, new)` (granted to `authenticated` and `service_role`; it takes **no person**, so it answers for the **channel path** only; since 0121 a signed-in
+caller is told the truth only about voices they may know exist, see "The oracle on `channel_voice_config_problem`" below):
 the voice must be `approved`; an **active attachment** to this channel must exist, **in the channel's current organization** and in the
 slot asked for (`narrator` for `elevenlabs_voice_id`, `secondary` for `elevenlabs_secondary_voice_id`); and the attaching owner must
 **still be an administrator** of that organization. A voice id in no profile answers "fine" and nothing about the run changes; the
@@ -223,17 +227,52 @@ The grant is a separate decision, and the migration that makes it must not ship 
 1. **`NIGHTSHIFT_VOICE_GATE_STRICT` turned on** (repo variable, with the worker's) in the same release. Until then an outage of Supabase lets
    a run continue unchecked, which is acceptable only because no custom voice can exist; after the grant it would be a way to speak with
    someone's voice unchecked.
-2. **`channel_voice_config_problem` restricted** to members of the channel's organization and the service role (it needs a migration;
-   none is written here). It is executable by every signed-in user (0117 grants it to `authenticated` so the channels guard can ask it), and
-   it takes any channel and any voice id: a stranger can learn that an id is a clone (it answers a key rather than NULL), which is an
-   **oracle** on other people's voices. Harmless while no clone exists; not acceptable after the grant.
+2. **`channel_voice_config_problem` restricted** to members of the channel's organization and the service role. **Closed by migration
+   0121** (below, "The oracle on `channel_voice_config_problem`"), with the residual that section states in plain words. It was executable
+   by every signed-in user (0117 grants it to `authenticated` so the channels guard can ask it), took any channel and any voice id, and
+   answered a key rather than NULL for a clone: an **oracle** on other people's voices.
 3. The worker, the UI and the consent text (below).
+
+### The oracle on `channel_voice_config_problem` (closed by 0121)
+
+0117 granted the function to `authenticated` because the channels guard (a trigger that runs as the caller) asks it, and because the
+Run-now route calls it as the signed-in user. Called through the API with any channel and any 20-character id, it answered a key for an
+id that is somebody's clone and NULL for an id that is no voice at all: a way to confirm that a known id is a clone.
+
+0121 keeps 0117's body as `channel_voice_config_problem_core` (character for character, callable by nobody) and makes the function of
+the old name a wrapper. The exact answer goes to:
+
+- the **service role**, and a session with **no API claims** (the Actions pre-flight `modules/voice_gate.py`, the SQL editor);
+- the **channels guard**, which asks from inside its own trigger (`pg_trigger_depth() > 0`). That is a write to the channels table by a
+  caller who already passed the table's policy for that row, or a definer function (`create_channel`, `set_channel_dna`,
+  `attach_voice_to_channel`) that checked the caller itself. The guard must keep refusing a custom voice that is not attached, whoever
+  writes; masking it would let anyone with a channel store another person's voice id in it. Nothing a caller sends through the API can
+  raise the trigger depth.
+
+Any **other signed-in caller** is told the truth only when both hold: they are a **member of the channel's organization** (looked up from
+the channel row, never from the `p_org` they pass), **and** the voice is **their own** or was **requested in that same organization**.
+Otherwise the answer is NULL, exactly as for an id that is no voice. The second condition matters: membership alone would leave the
+oracle open, because anyone can have a workspace and a channel of their own and ask about a stranger's id from there. A value that is
+not a JSON string is refused for everybody, as before (it says nothing about anyone's voices). The profile and membership lookups run
+whatever the core answered, so a masked answer does the same work as an unmasked one; no timing claim is made beyond that.
+
+What this changes for the two callers: the **Run-now route** (a signed-in member) keeps its early, friendly refusal for the voices of the
+caller's own organization and the caller's own voices; for any other id it now reads "fine", and the run is stopped where it always had to
+be: the Actions runner asks with the service key and gets the truth (exit 82, nothing spent), and on the queue backend the database
+refuses the `render_jobs` insert. `modules/voice_gate.py` is unchanged. `lib/server/run-voice.ts` only gained a comment.
+
+**Residual, not closed here, by design.** The three entry guards of 0117 refuse a clone that the writer may not use; that refusal is what
+makes them guards. Anyone who can write to one of those tables (a Studio `tts` job, a render job, the `agent_config` of a channel of
+their own) can therefore still *test a known id* by trying to use it and reading `voice_not_allowed`. A voice id is a 20-character
+alphanumeric string (62^20 values), is listed nowhere, and is never sent to a browser except the owner's; so what is left is confirming an
+id someone already holds, and the cost is a write attempt per question. Closing it would need every guard to refuse the same way for
+ids that are no voice, which cannot be done without refusing every unknown id.
 
 ### What remains
 
-- **The grant of `request_voice_clone` is a separate decision.** It is still granted to nobody, and this PR does not change that. It
-  also needs the worker, the UI and the consent text (below). The two checks above are what the grant was waiting on, not a reason to
-  make it.
+- **The grant of `request_voice_clone` is a separate decision.** It is still granted to nobody, and neither the Actions pre-flight nor
+  0121 changes that. It also needs the worker, the UI and the consent text (below). The checks above are what the grant was waiting on,
+  not a reason to make it. `NIGHTSHIFT_VOICE_GATE_STRICT` is untouched.
 - **The Run-now voice is held to the same rule as every run: the narrator attachment.** The function has no person, so an owner who
   approved a voice but has not attached it to the channel cannot use it for a Run-now on that channel (the database lets the owner use
   it in a `render_jobs` row on the queue backend; the Actions backend cannot tell who asked, because the workflow dispatch carries no
@@ -293,13 +332,29 @@ horizon the existing functions give. A worker that dies is the same thing (the l
 queued). Every path that ends a profile queues its purge, and the worker deletes the prefix twice (right after the answer is recorded,
 then when that job runs). A retry never makes a second voice: it looks for the voice labelled for the profile first.
 
-**What a longer horizon needs (not in this PR, and a migration).** A service-role definer function, for example
-`voice_requeue_overdue(p_older_than interval default '3 hours') returns integer`, that sets back to `queued` with `attempts = 0` any
-`purge_sample` / `delete_provider` job with `status = 'failed'` whose profile still has `sample_state = 'purge_pending'` (or is `deleted`
-with a provider voice and no succeeded `delete_provider`), plus a `voice_overdue_report()` returning the counts; the worker would call them
-on its own sweep. Until then the recurring check below is the safety net, and the fix for a job that failed for good is an operator's.
+**The longer horizon (migration 0121).** Two service-role functions and one command:
 
-**The recurring check (until that exists, run it at least daily, and whenever the worker logs `voice OVERDUE`).** In the SQL editor:
+- `voice_requeue_overdue(p_older_than interval default '3 hours')` puts `purge_sample` and `delete_provider` jobs that **failed for good** back
+  in the queue with `attempts = 0`. **Bounded**: at most 20 a call, oldest first, only jobs that failed more than `p_older_than` ago (between
+  1 hour and 30 days, else `22023`); one job per (profile, kind), the newest failure, and none where a live job of that kind exists.
+  **Never a clone job.** **Never where the work must not run**: a purge only while the profile's `sample_state` is `purge_pending` and the
+  profile is not waiting for its verification; a provider deletion only for a profile that is `deleted`, has a recorded voice id and has no
+  succeeded deletion (so it can never delete a live voice). It returns counts only: `{requeued, purge_sample, delete_provider}`. It writes no
+  audit row and no deletion record (the job rows are the trail).
+- `voice_overdue_report()` returns, for six fixed lines, a `count` and `oldest_seconds` (NULL when the count is 0: an age of 0 would read as
+  "just now") and a `total`, and nothing else: no id, name, user or error text. The lines: `failed_purge_sample`, `failed_delete_provider`,
+  `late_queued` (a purge or deletion queued or running for more than 3 hours), `stranded_clone` (a queued clone of a deleted or rejected
+  profile: `claim_voice_job` ends it, so it reads 0 once a worker runs), `purge_without_job` (a sample waiting to be purged with no purge
+  job queued, running or failed), `provider_without_job` (a deleted voice with a recorded id and no deletion queued, running, failed or done).
+- `python tools/voice_worker.py --sweep` calls both and logs **only** the integers and those six words: `voice sweep: requeued=N
+  purge_sample=N delete_provider=N`, and for every line with a count above 0, at ERROR, `voice OVERDUE: <line> count=<n> oldest_seconds=<n>`.
+  Exit 0: nothing is overdue. Exit 1: something is. Exit 2: the database could not answer (a function missing, an odd answer, an
+  unreachable host): nothing is known, which is not 0. It starts under the same conditions as the loop (the switch on; `SUPABASE_URL`,
+  `SUPABASE_SERVICE_KEY` and `ELEVENLABS_API_KEY` all set, otherwise exit 2 before anything is contacted), claims no job and calls no provider.
+  **Nothing starts it**: no service, cron entry or workflow (a test fails if one does); running it on a schedule and telling a person is the
+  owner's decision and the part of G3 that stays open.
+
+**The recurring check (until `--sweep` is scheduled, run it or this at least daily, and whenever the worker logs `voice OVERDUE`).** In the SQL editor:
 
 ```sql
 -- 1. samples still waiting to be removed (expected: none older than 3 hours once the worker runs)
@@ -314,8 +369,9 @@ select o.name, o.created_at from storage.objects o
  where o.bucket_id = 'voice-samples' and (p.id is null or p.sample_state = 'purged');
 ```
 
-To retry what query 2 lists, as the database owner: `update public.voice_clone_jobs set status = 'queued', attempts = 0, worker_id = null,
-finished_at = null where id = '<job>';` (the worker picks it up). Query 3 is a hand deletion of the object or a profile that was purged
+To retry what query 2 lists, call `voice_requeue_overdue('1 hour')` (service role; 20 at a time), or by hand as the database owner:
+`update public.voice_clone_jobs set status = 'queued', attempts = 0, worker_id = null, finished_at = null where id = '<job>';` (the worker
+picks it up). Query 3 is a hand deletion of the object or a profile that was purged
 with an object left behind: delete the object through the Storage API or the dashboard.
 
 **Adopting and deleting a provider voice.** A voice is the worker's to adopt or delete only if it carries the profile's name **and** the
@@ -325,8 +381,8 @@ label is a `provider_conflict`: the clone ends, and nothing is adopted, duplicat
 (no privilege on any voice table), so "this voice id belongs to another profile" is answered by the database's own UNIQUE: the worker
 records the id, and `voice_id_taken` means nothing is deleted and a person looks. An orphan is removed only after the database has *just
 rejected* the profile (an answer that was recorded: not `lost`, not `unrecorded`), or by a `purge_sample` of a profile whose status is
-`rejected`: any other state may have a clone in flight (the owner deleted it while it was being made), and its own `delete_provider`
-handles that voice.
+`rejected` or `deleted` with no voice recorded (0121): a pending or usable profile may have a clone in flight, and a clone that is still
+running for a deleted profile records its voice afterwards and gets its own `delete_provider` (a 404 is done).
 
 **Keep.** If the owner chose to keep the sample (`keep_sample`), the worker does **not** delete it after a successful clone: the database
 queued no purge and the profile says `stored`. It is deleted by `delete_voice_sample` or `delete_voice`, like the database says.
@@ -338,7 +394,9 @@ queued no purge and the profile says `stored`. It is deleted by `delete_voice_sa
   takes the job. The second adopts the labelled voice, the first's late answer is refused (`not_holder`) and it deletes nothing; but if the
   first was still *before* its create, two voices of one name could exist, and only the extra one labelled for the profile is removed later.
 - A voice created whose answer was lost, in an attempt that then ended for good, is removed by the `purge_sample` that follows, **if the
-  profile is `rejected`** (a `deleted` profile is not swept, see above) and the provider is reachable; otherwise find it by name (`ns-<owner_ref>-<profile8>`, above).
+  profile is `rejected` or `deleted` and has no recorded voice** (since 0121: it ends the parked clone job of a deleted profile and queues
+  that purge, and the worker sweeps a deleted profile like a rejected one) and the provider is reachable; otherwise find it by name
+  (`ns-<owner_ref>-<profile8>`, above).
 - The 2-hour upload window is the database's (`claim_voice_job` lapses a request that has no object). The worker does not know the
   profile's age, so a sample uploaded just before the window closes is cloned like any other.
 - `provider_not_enabled` (an explicit "no") rejects the request. There is no "wait for an upgrade" state in 0117; after the plan changes the person asks again.
@@ -355,19 +413,29 @@ finished_at = now() where profile_id = '<profile_id>' and kind = 'purge_sample' 
 
 ## Gates before the owner may enable `NIGHTSHIFT_VOICE_CLONING`
 
-None of these is closed by the code in the repository; each is either a **migration** to write and apply or a **live verification** to
-do, and each is a hard gate: do not set the variable until it is closed or knowingly accepted.
+Two of these (G2, G3) and the oracle are closed by migration 0121, which becomes live when it is applied after the independent security
+review. Everything else is a **live verification** or a separate decision. Each is a hard gate: do not set the variable until it is closed
+or knowingly accepted.
 
 - **G1 (closed in code, kept as a rule): no keyless worker.** See above. A purge-only worker needs a kind filter in `claim_voice_job`.
-- **G2 (migration): a clone job that was parked and whose profile the owner then deleted stays `queued` for ever.** `delete_voice` cancels
-  *queued* clone jobs, but a parked one is `running`; when its lease runs out it goes back to `queued`, and `claim_voice_job` hands out a
-  clone job only for a profile that is `pending_verification`, so a deleted profile's clone job is never claimed and never ended. Its live
-  `(profile, kind)` row blocks `purge_voice_records` (`job_outstanding`), and the sweep and the `delete_provider` that a finished clone would
-  have queued are never queued. Needed: `claim_voice_job` expires / cancels queued clone jobs of profiles that are no longer
-  `pending_verification`, and queues `purge_sample` (and `delete_provider` when a voice id is recorded) for them.
-- **G3 (migration plus a scheduled alert): `voice_requeue_overdue()` and `voice_overdue_report()`**, as described under "What a longer horizon
-  needs", with something that runs the report on a schedule and tells a person. Until then the recurring SQL checks above are a human's
-  daily duty, and a purge that fails for good stays failed until someone retries it.
+- **G2 (closed by 0121, migration): a clone job that was parked and whose profile the owner then deleted no longer stays `queued` for
+  ever.** The cause was: `delete_voice` cancels *queued* clone jobs, but a parked one is `running`; when its lease ran out it went back to
+  `queued`, and `claim_voice_job` hands out a clone job only for a profile that is `pending_verification`, so a deleted profile's clone job
+  was never claimed and never ended; its live `(profile, kind)` row blocked `purge_voice_records` (`job_outstanding`), and with it the
+  deletion of the account and of the organization, and the sweep a finished clone would have queued was never queued. Now `claim_voice_job`
+  ends such a job once (`cancelled` if it was never claimed, `expired` if it was; error word `profile_not_pending`), for a **deleted or
+  rejected** profile only, and queues `purge_sample` (when the job had been claimed, because a claimed attempt may have created a voice whose
+  answer was lost, or when the sample is not purged yet; for a profile with no recorded voice that purge is also the provider sweep) and
+  `delete_provider` (when a voice id is recorded). A running job whose lease has not run out is left to its worker. Proven in
+  `tests/security/test_sec_voice_job_gates.py`, including the control (0117's function leaves the purge at `job_outstanding`) and account
+  and organization deletion once the voices are purged. A stranded row already on the live database is ended by the first claim after the
+  file is applied.
+- **G3 (the migration and the command are built; the schedule and the alert are not): `voice_requeue_overdue()` and
+  `voice_overdue_report()`** (0121) and `tools/voice_worker.py --sweep`, described under "The longer horizon". What stays open is the owner's
+  decision to run `--sweep` on a schedule and to have a person told when it exits 1 or 2: **nothing starts it**. Until then the recurring SQL
+  checks above are a human's daily duty.
+- **The oracle (closed by 0121 with the residual stated under "The oracle on `channel_voice_config_problem`")** is "Hard condition" 2 of
+  the migration that grants `request_voice_clone`.
 - **Live verification of the free-plan answer shape.** Run the *ElevenLabs plan probe* workflow on the current (free) account and read
   whether the subscription carries `can_use_instant_voice_cloning: false` or no such field. If the field is absent, the free plan ends as
   `provider_plan_unknown` after about 90 minutes instead of `provider_not_enabled` at once, and the code or the copy must be decided.
@@ -387,7 +455,7 @@ do, and each is a hard gate: do not set the variable until it is closed or knowi
 - the **UI**: recording, the phrase, the declarations, test, approve, attach, delete, and every state of them;
 - **`regenerate_line`** (re-voice one line of a finished video);
 - the **consent text** and the Privacy Policy / Terms changes;
-- a **scheduled purge** and a retention period for `purge_voice_records` (it is run by hand);
+- a **scheduled purge**, a **scheduled `--sweep`** with an alert, and a retention period for `purge_voice_records` (it is run by hand);
 - anything that **runs** the worker (a service, a cron entry, a workflow) and the grant of `request_voice_clone` (the run-time re-check of the
   hard gate is built: see "Hard gate");
 
@@ -438,7 +506,8 @@ quiet under sentinel secrets on every path.
 ## Deletion, retention, and what blocks what
 
 - **Deleting an auth user** is blocked by the foreign keys from `voice_profiles` until that user's voices are deleted (`delete_voice`) and
-  purged (`purge_voice_records`). **Deleting an organization** is blocked the same way (`voice_profiles.org_id` is `ON DELETE RESTRICT`). The
+  purged (`purge_voice_records`; since 0121 a clone job a worker had parked no longer blocks it, and `tests/security/test_sec_voice_job_gates.py`
+  deletes a user and an organization after the purge). **Deleting an organization** is blocked the same way (`voice_profiles.org_id` is `ON DELETE RESTRICT`). The
   account- and organization-deletion procedures must include those two calls first.
 - **`voice_deletion_records` has no retention yet**: it is append-only, even `purge_voice_records` cannot remove its rows, and nothing
   deletes them. How long to keep them is counsel's decision.
@@ -488,3 +557,23 @@ select grantee, table_name, privilege_type from information_schema.role_table_gr
 
 6. Undo: `docs/sql/rollback_0117_voice_profiles.sql` (owner-applied). Read its header first: after it, a cloned voice id is protected by
    nothing again, so delete every clone first. It **keeps** the six tables, their rows and the bucket (the consent record).
+
+### Applying `0121_voice_job_gates.sql` (owner)
+
+1. Merge only after the independent security review: the file is **live on apply**. It replaces `claim_voice_job()` and
+   `channel_voice_config_problem()` (both on 0117's bodies; no later migration redefines either) and adds three functions. It writes no row,
+   alters no table, trigger or policy, and does not grant `request_voice_clone`.
+2. **Apply it as ONE transaction** (the SQL editor, `apply_migration`, or `psql --single-transaction -v ON_ERROR_STOP=1`). A half-applied file
+   (the oracle closed but the queue function not yet replaced, or the reverse) is not a state anyone designed for.
+3. The drift check is in the file: a `DO` block at the top compares the md5 of the live `claim_voice_job()` and
+   `channel_voice_config_problem()` bodies (white space read as one space) with 0117's and 0121's own, and **raises** if either is
+   something else (applied by hand since: read the live body first). It also refuses if one of the three new names already exists with
+   another body. Re-running 0117 afterwards puts 0117's two bodies back and would be refused by nothing: re-apply 0121 after it.
+4. Run the **Verify** block at the bottom of the file (every column `true`), then `select public.voice_overdue_report();` as the SQL editor
+   (every count 0 on a database with no voice yet).
+5. Undo: `docs/sql/rollback_0121_voice_job_gates.sql` (owner-applied; refuses a body it has not seen, restores 0117's two bodies byte for
+   byte and their grants, drops the three functions). It rewrites no row: a queue row that `claim_voice_job` already ended stays ended. After
+   it the oracle is open again and `--sweep` reports the functions as not available.
+6. Deploy order: the file first, then the code. `tools/voice_worker.py --sweep` on a database without 0121 exits 2 and says so; the rest of
+   the worker is unchanged. The worker's one other change (`purge_sample` sweeps a **deleted** profile's labelled voices as well as a
+   rejected one's) is harmless before the file.

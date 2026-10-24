@@ -146,6 +146,21 @@ def test_a_stranded_clone_of_a_rejected_profile_with_a_claimed_attempt_asks_for_
     assert s.value("select sample_state from public.voice_profiles where id = %s", [pid]) == "purged"
 
 
+def test_a_stored_sample_of_a_stranded_profile_is_marked_for_purging_with_its_job(conn, sc, world):
+    """sample_state follows the queue: when the gate queues the purge, the sample reads purge_pending (the report and
+    purge_voice_records read that state), not the 'stored' it was left in."""
+    s = world.su
+    r = requested(s, world.ed)
+    pid = r["profile_id"]
+    become(s, None)
+    s.conn.execute("update public.voice_profiles set status = 'rejected', reject_reason = 'worker_error', sample_state = 'stored' where id = %s", [pid])
+    s.conn.execute("update public.voice_clone_jobs set status = 'queued', attempts = 1 where profile_id = %s and kind = 'clone'", [pid])
+    job = claim(s, "w1")
+    assert job and job["kind"] == "purge_sample" and job["profile_id"] == pid
+    become(s, None)
+    assert s.value("select sample_state from public.voice_profiles where id = %s", [pid]) == "purge_pending"
+
+
 def test_a_never_claimed_clone_of_a_profile_whose_sample_is_already_purged_queues_nothing(conn, sc, world):
     s = world.su
     r = requested(s, world.ed)
@@ -532,6 +547,21 @@ def test_the_report_counts_what_is_late_and_nothing_else(conn, sc, world):
     assert claim(s, "w1") is not None and report(s)["stranded_clone"]["count"] == 0, "claim_voice_job ends it"
     r = report(s)
     assert r["total"] == sum(r[line]["count"] for line in LINES)
+
+
+def test_a_failed_purge_whose_sample_is_already_gone_is_not_reported(conn, sc, world):
+    s = world.su
+    pid = deleted_profile(s, world.ed, sample="purged")
+    add_job(s, pid, world.ed.uid, "purge_sample")
+    r = report(s)
+    assert r["failed_purge_sample"] == {"count": 0, "oldest_seconds": None}, "the sample is purged: nothing is outstanding"
+
+
+def test_a_clone_a_worker_is_still_running_for_a_deleted_profile_is_not_stranded(conn, sc, world):
+    s = world.su
+    pid = deleted_profile(s, world.ed)
+    add_job(s, pid, world.ed.uid, "clone", status="running", age="0 seconds", attempts=1)
+    assert report(s)["stranded_clone"] == {"count": 0, "oldest_seconds": None}, "its worker will answer it"
 
 
 def test_a_succeeded_deletion_and_a_purged_sample_are_not_reported(conn, sc, world):
