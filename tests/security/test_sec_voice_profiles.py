@@ -1401,7 +1401,7 @@ def test_the_rollback_puts_0114s_guard_and_0116s_audit_list_back_and_0117_applie
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.channels_config_guard()", "public.audit_action_allowed(text)")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0117_", "0119_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0117_", "0119_", "0121_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0])
@@ -1418,6 +1418,7 @@ def test_the_rollback_puts_0114s_guard_and_0116s_audit_list_back_and_0117_applie
             return {s: (su.value("select pg_get_functiondef(%s::regprocedure)", [s]),
                         su.value("select proacl::text from pg_proc where oid = %s::regprocedure", [s])) for s in sigs}
         sec_db.take_off_0119(su)      # 0119 sits on 0117's guard, and 0117 and its rollback refuse any other body: the chain is 0117 alone here
+        sec_db.take_off_0121(su)      # 0121 sits on 0117's claim_voice_job and channel_voice_config_problem and adds three functions
         applied = snapshot()
         rows_before = su.value("select count(*) from public.voice_profiles")
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))
