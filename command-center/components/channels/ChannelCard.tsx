@@ -15,6 +15,7 @@ import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
 import { ChannelTokenPanel, type ChannelTokenPanelProps } from "@/components/channels/ChannelTokenPanel";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { AiDisclosureSettings } from "@/components/channels/AiDisclosureSettings";
+import { ChannelRiskSettings } from "@/components/channels/ChannelRiskSettings";
 
 /**
  * One channel: identity, configuration, credential status and health.
@@ -425,6 +426,8 @@ export function ChannelCard({
             canEdit={canEdit}
             canLower={canLowerAiLabel}
           />
+          {/* Monthly spend limit, the comment under each upload and the watch-next link: editor-level keys, not controls. */}
+          <ChannelRiskSettings channelId={channel.channel_id} agent={channel.agent_config} canEdit={canEdit} />
         </div>
 
         <div className="flex flex-col gap-4">

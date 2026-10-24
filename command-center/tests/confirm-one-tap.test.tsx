@@ -143,7 +143,7 @@ describe("channel card: auto publish", () => {
     const key = confirmKey(cs.autoOnConfirm);
     expect(key.disabled).toBe(true);
     fireEvent.click(key);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publis" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publis" } });
     expect(confirmKey(cs.autoOnConfirm).disabled).toBe(true);
     fireEvent.click(confirmKey(cs.autoOnConfirm));
     await settle();
@@ -167,7 +167,7 @@ describe("channel card: auto publish", () => {
   it("with the word typed it writes once, even when the confirm key is hit twice", async () => {
     card();
     fireEvent.click(autoSwitch());
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publish" } });
     const key = confirmKey(cs.autoOnConfirm);
     fireEvent.click(key);
     fireEvent.click(key);
@@ -193,7 +193,7 @@ describe("channel card: auto publish", () => {
     });
     card();
     fireEvent.click(autoSwitch());
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publish" } });
     fireEvent.click(confirmKey(cs.autoOnConfirm));
     await waitFor(() => expect(h.writes.length).toBe(1));
     // the write has not come back: the pause key is not disabled by the auto-publish save, only the card's lock stops it
@@ -306,7 +306,7 @@ describe("usage: extra credits", () => {
     h.rpc.mockResolvedValue({ data: { use_extra_credits: true, changed: true }, error: null });
     usage(false);
     fireEvent.click(screen.getByRole("switch"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "spent" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "spent" } });
     fireEvent.click(confirmKey(cs.extraOnConfirm));
     await settle();
     expect(h.rpc).not.toHaveBeenCalled();
@@ -316,7 +316,7 @@ describe("usage: extra credits", () => {
     expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("false");
 
     fireEvent.click(screen.getByRole("switch"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "SPEND" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "SPEND" } });
     const key = confirmKey(cs.extraOnConfirm);
     fireEvent.click(key);
     fireEvent.click(key);
@@ -334,7 +334,7 @@ describe("usage: extra credits", () => {
     );
     usage(false);
     fireEvent.click(screen.getByRole("switch"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "SPEND" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "SPEND" } });
     fireEvent.click(confirmKey(cs.extraOnConfirm));
     await waitFor(() => expect(h.rpc).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("switch"));
