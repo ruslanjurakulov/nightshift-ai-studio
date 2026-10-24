@@ -36,6 +36,7 @@ def names(sql: str):
 
 class Numbering(unittest.TestCase):
     def test_the_number_is_unique(self):
+        # (It was the highest when it merged; later migrations are numbered above it, so only uniqueness is held.)
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0117"), 1)
 

@@ -1,8 +1,8 @@
 # Series Factory
 
 A series is 3 or 4 episodes of one channel, planned together, priced before anything is spent, and made one at a time.
-This page describes **slice S1**, which is the first and smallest piece: a pure planner and a pure price preview.
-Nothing here runs yet.
+This page describes **slice S1** (a pure planner and a pure price preview) and **slice S2** (migration 0120: the tables, the functions
+that spend, and the queue kind; section "Slice S2" below). Nothing here runs yet: no worker job, no route, no UI.
 
 ## What S1 is
 
@@ -21,11 +21,12 @@ and a fixture both read, `tests/fixtures/series_quote_cases.txt`, so the Python 
 
 - **Not wired.** Nothing in `main.py`, `tools/`, `modules/`, a route, a component or a workflow imports or names it.
   `tests/test_series_planner.py::Unwired` fails if something does, so the PR that wires it has to change that test on purpose.
-- No migration, no table, no route, no UI, no workflow change, no live model call, no change to how a run behaves.
+- (S1 alone:) no migration, no table, no route, no UI, no workflow change, no live model call, no change to how a run behaves.
+  Slice S2 added the migration and the tables, and nothing else of this list.
 - No quota API. `series_call_budget` only reports an estimate; it cannot refuse anything, because the repo cannot read the
   key's remaining daily quota.
-- No series-scoped run. That is slice S0 (PR #576 for the Actions path; the queue/UI path is still open, see "Verified
-  against the code" below), not this one.
+- No series-scoped run. That is slice S0 (PR #576 for the Actions path; the queue path is migration 0120, see "Slice S2"),
+  not this one.
 - Not a script. An outline is a title, an angle, hooks, an open loop, a cliffhanger and key facts. The full script,
   its fact-check, the grounding step and the storyboard review all still happen per episode, later, as they do today.
 
@@ -201,23 +202,138 @@ fact-check on resume). **None of it was measured on a real run, so every number 
 quote. The only measured fact is the one in PR #572's log: a free-tier model with a limit of 20 requests per day. A caller can
 compare `total_calls_low` and `total_calls_high` with its quota; the planner does not refuse anything itself.
 
-## How it will be wired (not in S1)
+## Slice S2: tables and functions (migration 0120)
+
+Owner approval and an independent security review come before the merge, because the merge applies the file live. The file is
+`supabase/migrations/0120_series_tables.sql`; its rollback is `docs/sql/rollback_0120_series_tables.sql`; the lab tests are
+`tests/security/test_sec_series_tables.py` (behaviour, with real concurrent transactions for the races) and
+`tests/test_series_tables_migration.py` (what the file itself must say). Slice S2 only stores and spends: it never calls Gemini and
+nothing in the application calls it yet.
+
+### What exists
+
+| Object | What it is |
+| :-- | :-- |
+| `series_plans` | one "plan a series" press: org, channel, optional series, topic, niche (from the series or the channel, never typed), language, `n_episodes` (3 or 4), `duration_s` (each episode), state `requested` / `ready` / `failed`, then the title, a `report` and a `quote` (the planner's words and preview), the queue row (`render_job_id`) and the press's idempotency key |
+| `series_episodes` | the 3 or 4 episodes of a ready plan: `topic`, `outline` (model text), `usable`, `needs_confirmation`, `duration_s`, state `planned` / `started`, and once started the hold (`credit_ref`, `credits_held`), the queued run (`render_job_id`) and who started it |
+| `render_jobs.kind = 'series_plan'`, `render_jobs.series_plan_id` | the queue row of a planning press; a planning job has its plan and no other job does (a CHECK) |
+| `render_job_params_valid` | 0029's body plus the optional `series` key (a slug, `^[a-z0-9][a-z0-9._-]{0,63}$`, never on a repair) and the rule for the new kind (a topic and a niche, optionally a language and a series, nothing a run takes) |
+| `render_jobs_payment_guard` | 0111's body plus one block: a job linked to a series plan must be exactly the job that plan queued, and is paid by nobody |
+
+Both replaced functions are the latest bodies in the repo, verbatim, plus marked additions; a DO block at the top of the migration
+refuses to replace a body it has not seen (the 0064 / 0103 drift lesson), and `tests/test_series_tables_migration.py` recomputes the
+four hashes from the migration files.
+
+### The functions (exact signatures)
+
+| Function | Who | Returns |
+| :-- | :-- | :-- |
+| `request_series_plan(p_channel text, p_topic text, p_n integer, p_language text, p_duration_s integer, p_series text, p_idem text) returns jsonb` | **nobody yet** (see below); editor or above once granted | `{id, status: 'requested', render_job_id, replayed}` |
+| `finish_series_plan(p_plan uuid, p_ok boolean, p_title text, p_report jsonb, p_quote jsonb, p_episodes jsonb, p_error_code text default null, p_error text default null) returns jsonb` | service role only | `{id, status: 'ready' or 'failed', replayed}` |
+| `quote_series_episode(p_episode uuid) returns jsonb` | any member of the organization (viewer or above) | `{episode_id, plan_id, n, status, duration_s, exempt, price_status: 'priced' / 'unpriced' / 'included', credits (or null), needs_confirmation, blocked_by (a word or null), may_start, startable}` |
+| `start_series_episode(p_episode uuid, p_max_credits numeric, p_idem text, p_confirmed boolean default false) returns jsonb` | an **admin** of the organization (a platform administrator in the operator's own organization) | `{id, plan_id, n, status: 'started', render_job_id, credit_ref, credits_held, started_at, replayed}` |
+
+Reading is by RLS: a member selects their organization's `series_plans` and `series_episodes`. There is no direct write for any API role,
+the service key included.
+
+Errors are SQLSTATE plus a fixed word (the message). The ones a UI maps: `not_found` (P0002; a missing id, another organization's id, a
+channel or series outside the caller's scope: one answer, no oracle), `forbidden` (42501; a viewer, or an editor starting an episode),
+`invalid_*` (22023; `invalid_topic`, `invalid_episode_count`, `invalid_duration`, `invalid_language`, `invalid_idempotency_key`,
+`no_niche`), `idempotency_conflict`, `plan_in_progress`, `earlier_episode_not_finished`, `episode_not_usable`, `plan_not_ready`,
+`already_started`, `series_not_runnable`, `price_changed` (all NS409; the current price is in the error detail, `credits=15.00`),
+`unpriced` and `confirmation_required` (NS400), `price_required` (22023), `insufficient credits` (NS402, as every hold), `rate_limited`
+(NS429, `limit=5 per 24 hours`), and `parallel run limit reached` (NS429, the plan's concurrency limit, from the existing hold trigger).
+
+### The money
+
+- **The database prices the episode.** `series_episode_price(seconds)` is the formula the payment guard already enforces for a queued run:
+  `max(job_minimum, video_minute x (1 + margin) x seconds / 60)` rounded up to the cent. The browser sends the price it saw
+  (`p_max_credits`); the function refuses (`price_changed`, in either direction) unless it equals the price as computed now, and the hold is
+  the database's number, never `p_max_credits`.
+- **Unpriced refuses, never 0.** No `video_minute` rate, or a zero one, is `unpriced`: nothing is held and nothing is queued. The operator's
+  own organization pays nothing (`included`, no hold) and needs no rate.
+- **One hold per episode, taken when it starts.** `reserve_credits(org, 'rj-se-<episode id without dashes>', price)`. The reference is derived
+  from the episode id, so no path holds twice for one episode (a released reference is burnt too). The run is an ordinary `daily` job that
+  carries that hold, so the payment guard checks it like any queued run and the worker captures or releases it like any run. Nothing is
+  held for an episode that has not started, so nothing waits on the 3 hour hold expiry. The hold counts against the plan's parallel-run
+  limit like any other.
+- **Idempotent.** The idempotency key of a start is `se:<episode id>`; `p_idem` must be exactly that. Pressing again (a retry, a second tab,
+  a second admin) answers the first start with `replayed: true` and holds nothing more. The same key with another confirmed price or flag is
+  `idempotency_conflict`.
+- **One episode at a time, in order.** Episode n starts only when every earlier episode was started and its run has `succeeded` (a run that
+  stops at its storyboard review ends `succeeded`, 0057). A failed, cancelled or running earlier episode blocks the later ones
+  (`earlier_episode_not_finished`). **An episode is started once**: a retry of a failed episode is a person's decision and belongs to a later
+  slice (it needs a fresh hold reference). A hold that expired un-started is not revived; the press answers as a replay and the episode
+  shows its run's real state.
+- **A series that cannot run stops the start before a hold**: the plan's series must still belong to the plan's channel and be `ACTIVE`
+  (`series_not_runnable`), as `main.py` would only discover after the hold.
+- **An unconfirmed episode does not start by accident.** An episode the planner accepted without confirming its niche
+  (`needs_confirmation`) starts only with `p_confirmed = true`, the S3 UI's explicit step; an episode the vetting refused (`usable = false`)
+  never starts. The database cannot know that a person read the "niche not confirmed" label; it only refuses the call that did not claim to.
+
+### Planning is free, capped, and DORMANT in this migration
+
+- `series_plan_daily_limit()` is 5 plans per organization per rolling 24 hours, a **placeholder for owner decision 3** (one function to
+  change). One plan in flight per channel; a plan never finished frees its channel after 2 hours and its queue row is cancelled if no
+  worker took it. The cap counts failed plans (a model call was spent) and is checked after the idempotency replay, under an advisory lock
+  per organization, so concurrent requests cannot both pass it.
+- **`request_series_plan` is granted to nobody**, as 0117 did with `request_voice_clone`: it writes a plan and one queue row, and the live
+  queue worker has no handler for the kind (`run_request.KINDS` is `daily` and `repair`; it would fail the job as "invalid job (nothing was
+  run)"). The grant ships in S3, with the worker and the UI. `start_series_episode` and `quote_series_episode` are granted, but an episode
+  exists only after `finish_series_plan`, which only the worker can call, so they have nothing to act on until then.
+- The queue row is paid by nobody: planning is not credit-priced in this slice. If owner decision 3 goes the other way, the guard block and
+  `request_series_plan` change together.
+
+### Hard conditions before `request_series_plan` may be granted (independent security review of #590)
+
+The review found migration 0120 safe to apply as it stands. These findings are the conditions that S3 (or whoever grants the function) must
+meet **before** `grant execute on function public.request_series_plan(...) to authenticated`. They are conditions, not suggestions; none is
+met by 0120, which is why the function is granted to nobody.
+
+- **F4: the cap is per organization, and one account can have many organizations.** `create_organization` allows 10 organizations per
+  account, so one person can make 10 x 5 = 50 planning requests a day (each one a model call on the platform's shared Gemini key). Add a
+  per-user cap and/or a global daily cap, in the database, before the grant.
+- **F5: what happens when the function is called before its worker exists, and what is not yet handled.**
+  - Until a handler exists, the queue worker fails a `series_plan` job as "invalid job (nothing was run)" (`run_request.KINDS` is `daily` and
+    `repair`) and the plan stays `requested`, blocking its channel, until the 2 hour expiry. S3 ships the handler with the grant, never the
+    grant alone.
+  - There is no restart path after a failed, cancelled or expired episode: the hold reference `rj-se-<episode id>` is derived from the episode
+    id, and `reserve_credits` refuses a reused reference even when released, and a failed earlier episode blocks every later one. A restart needs
+    a new reference scheme (an attempt number) and its own review.
+  - `render_jobs_voice_guard` (0117) is a `BEFORE INSERT` trigger on all of `render_jobs`, so it also runs on a `series_plan` job and checks the
+    channel's configured voices at queue time: a channel whose configured custom voice was detached or deleted would make planning fail. Decide
+    in S3 whether planning should be exempt (it uses no voice) or should fail early with a clear message (rule 6).
+  - `request_series_plan` accepts only ASCII language names (`^[A-Za-z][A-Za-z -]{0,39}$`): "Русский" or "O'zbek" are refused as
+    `invalid_language`. The S3 UI must send an English name or a language code, not the interface string.
+- **F1: apply the migration as ONE transaction.** `set local lock_timeout` and the drift guards assume it: the Supabase SQL editor,
+  `apply_migration`, or `psql --single-transaction -v ON_ERROR_STOP=1 -f supabase/migrations/0120_series_tables.sql`. A plain `psql -f` without
+  those flags runs every statement on its own and could leave the file half applied (for instance the tables created and the payment guard not
+  yet replaced) if one statement failed.
+
+### What S2 does not do
+
+No worker job (S3), no UI (S3), no Gemini call, no route. `request_series_plan` is not callable. No restart of a failed episode, no cancel.
+`storyboard_id` is not on the episode (S3 can add it; the storyboard is found by its topic and channel). The per-run storyboard-review
+override (owner decision 4) is not set by `start_series_episode`; the episode run is a plain queue run with an explicit topic until that
+decision is made. A migration cannot be fact-checked or measured: nothing here was run against a live database.
+
+## How it will be wired (S1 and S2 are done; S0's queue half is in 0120)
 
 Numbers follow the plan (`series-voice-plan.md`).
 
 1. **S0**: PR #576 puts a validated `series` input on the Actions path (`daily_video.yml`, `run_request.build_main_args`,
-   and a refusal of a series that is not runnable). What remains is the queue/UI path: `series` in the database's
-   `render_job_params_valid` whitelist (a migration) and `ALLOWED_PARAMS`, the Run now route, and the dangling
-   `Series.playlist_id` and `series_id` (which `watch_next` filters on but no table stores).
-2. **S2** (migration, owner approval and independent security review): `series_plans` and `series_episodes`, functions in the
-   `quote_workflow` / `start_workflow_run` style (`request_series_plan` rate-limited per org and idempotent,
-   `finish_series_plan` for the service role, `start_series_episode` that reserves and queues), `render_jobs` kind
-   `series_plan`, RLS with members reading and no direct writes.
+   and a refusal of a series that is not runnable). The queue half is migration 0120: `series` is in the database's
+   `render_job_params_valid` whitelist and in `run_request.ALLOWED_PARAMS`, in the same change, so a job can carry it; only
+   `start_series_episode` writes one (the Run now insert policy does not list the key). What remains of S0 is the Run now route
+   reading a `series`, and the dangling `Series.playlist_id` and `series_id` (which `watch_next` filters on but no table stores).
+2. **S2**: done in migration 0120 (section above).
 3. **S3**: a worker job that calls `plan_series` with `gemini_generate` and a real `TopicManager` (after `load_held_topics()`),
    stores the plan, and a `/[channel]/series/[id]` page: outline cards labelled "not fact-checked", variants, per-episode and
    total price from `quoteSeries`, a status chip per episode linking to its storyboard and video, en/ru/uz strings, and the
    loading, empty, error, insufficient-credits and retry states. The page must make a person confirm each unconfirmed
-   episode before it can be started (above). This PR must update `Unwired`.
+   episode before it can be started (above; `start_series_episode(..., p_confirmed => true)`). S3's migration grants
+   `request_series_plan` to `authenticated` and its worker answers with `finish_series_plan`. This PR must update `Unwired`
+   (and `tests/test_series_tables_migration.py::Dormant`).
    **Prerequisite, not in S1: a semantic originality check.** The repeat check here is the word rule only
    (`modules/topic_dedup`): a paraphrase ("The Roman Empire's collapse" vs "Why Rome fell") is not a repeat to it.
    `TopicManager.pick_topic` also runs the `OriginalityEngine` (embeddings, against used and held topics); a series
@@ -240,6 +356,7 @@ see `docs/GEMINI_QUOTA.md`. A spent per-day quota raises `GeminiDailyQuotaError`
 2. Series money: per-episode approval and hold (recommended, fits the 3 hour hold expiry), or one upfront series hold (changes
    reservation expiry, which is security-critical)?
 3. Is series planning free to the customer (the platform pays Gemini, with a per-org daily cap) or credit-priced? What are the cap numbers?
+   (Migration 0120 builds the free-with-a-cap answer with a placeholder of 5 per organization per 24 hours; it is dormant until S3.)
 4. Rule 3 (CLAUDE.md): confirm that a per-run storyboard-review override is acceptable (the browser writes a row and stops; the worker spends).
 5. Whether `series` should stay a lenient vet source (this slice's decision) once real plans have been seen.
 
@@ -266,8 +383,8 @@ see `docs/GEMINI_QUOTA.md`. A spent per-day quota raises `GeminiDailyQuotaError`
 - `main.run(series=...)` does use `modules/series.py` (niche, look, avatar, start metadata, playlist), so a series is wired
   into a run. When this slice was first written `--series` existed only on `main.py`'s command line; PR #576 (draft when this
   was written, and the owner of the `modules/series.py` docstring) adds it to the Actions path. This slice does not touch
-  `modules/series.py`, so the two cannot conflict. Whatever #576 covers, the **queue/UI path** is separate: the database
-  whitelist `render_job_params_valid` has no `series`, the Run now route does not read one, and scheduled runs name no series.
+  `modules/series.py`, so the two cannot conflict. Whatever #576 covers, the **queue/UI path** is separate: when S1 was written the database
+  whitelist `render_job_params_valid` had no `series` (migration 0120 adds it), the Run now route does not read one, and scheduled runs name no series.
 - `PACKAGING_CLAIM_RULE`, `TopicManager.vet_topic`, `find_repeat`, `load_held_topics` exist as the plan describes. Newly found:
   `series` was already a strict source by accident (the gate treats every unknown source as strict).
 - PR #572 (`modules/gemini_stages`) has merged; the first version of this slice did not know the stage table, and main's own

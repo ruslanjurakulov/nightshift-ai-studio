@@ -121,10 +121,11 @@ class WorkflowParity(unittest.TestCase):
 
     def test_whitelist_is_the_workflow_inputs(self):
         # credit_ref is who pays, not what runs: on the queue it is a column of
-        # render_jobs (0020), never a params key the pipeline sees. series is an
-        # Actions-only input until a migration lets render_job_params_valid carry it
-        # (see run_request.ALLOWED_PARAMS); tests/test_series_dispatch.py pins that.
-        self.assertEqual(set(self.inputs) - {"channel", "credit_ref", "series"}, set(run_request.ALLOWED_PARAMS))
+        # render_jobs (0020), never a params key the pipeline sees. series is a queue
+        # param since migration 0120 (render_job_params_valid carries it), so it is
+        # in ALLOWED_PARAMS like every other input; test_migration_whitelist_matches
+        # below holds the SQL list to the same set.
+        self.assertEqual(set(self.inputs) - {"channel", "credit_ref"}, set(run_request.ALLOWED_PARAMS))
 
     def test_choice_lists_match(self):
         self.assertEqual(tuple(self.inputs["privacy"]["options"]), run_request.PRIVACY_CHOICES)
@@ -147,8 +148,7 @@ class WorkflowParity(unittest.TestCase):
                 self.assertIn(flag, argv + argv_repair)
                 if env_name:
                     param = env_name[len("INPUT_"):].lower()
-                    # series: built by build_main_args but not yet a queue param (see above).
-                    self.assertIn(param, run_request.ALLOWED_PARAMS + ("series",))
+                    self.assertIn(param, run_request.ALLOWED_PARAMS)
         self.assertIn('args=(--channel "$CHANNEL_ID" --privacy "${YOUTUBE_PRIVACY:-private}")', script)
         self.assertIn('"${INPUT_RESUME:-}" = "true"', script)
 
