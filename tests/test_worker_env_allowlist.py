@@ -33,9 +33,8 @@ BUILD = ROOT / "deploy" / "build-worker-env.py"
 #: here that config.py stopped reading, or that is also in the allow-list, fails.
 NOT_DEPLOYED = {
     "BLAS_THREADS": "tuning for a laptop; the image sets sane thread pools",
-    "CHRONOS_ENABLE_REVENUE": "revenue experiments are an Actions-only opt-in",
-    "CHRONOS_GEMINI_STRUCTURED_OUTPUT": "a default-off spike (roadmap #50)",
-    "CHRONOS_THUMBNAIL_VARIANTS": "A/B width, not a provider setting",
+    "CHRONOS_ENABLE_REVENUE": "revenue tracking is an Actions-only opt-in: it reaches intelligence_poll.yml, which asks for "
+                              "the monetary scope; the worker never polls analytics",
     "ELEVENLABS_RUN_VOICE_ID": "per-run: tools/queue_worker passes it from the job's parameters",
     "GEMINI_MAX_RETRIES": "retry tuning; the code default is the tested one",
     "GEMINI_RETRY_MAX_DELAY": "retry tuning; the code default is the tested one",
@@ -351,6 +350,179 @@ class DeployWarnings(unittest.TestCase):
 
         self.assertEqual(set(self.mod.VIDEO_KEYS), set(video_providers._GENERIC_BUILDERS) | {"minimax"})
         self.assertEqual(self.mod.IMAGE_KEYS, image_providers.KEY_ATTRS)
+
+
+#: Switches whose code was finished but could not be set on the managed path (docs/ and
+#: tests/test_switch_reachability.py say why that matters). Every one reaches the worker.
+DORMANT_FOR_THE_WORKER = (
+    "CHRONOS_SCENE_RENDER", "CHRONOS_REMOTION", "CHRONOS_GRAPHIC_RECIPES",
+    "CHRONOS_SCENE_CACHE_MAX_MB", "CHRONOS_SCENE_CACHE_MAX_AGE_DAYS",
+    "NIGHTSHIFT_COMMENT_INBOX", "NIGHTSHIFT_INBOX_SYNC_SECONDS",
+    "NIGHTSHIFT_VISIBILITY_PUBLISH", "NIGHTSHIFT_VISIBILITY_DAILY_UNITS", "NIGHTSHIFT_VISIBILITY_ORG_PERCENT",
+    "NIGHTSHIFT_YT_QUOTA_PROJECT", "CHRONOS_THUMBNAIL_VARIANTS", "CHRONOS_GEMINI_STRUCTURED_OUTPUT",
+    "NIGHTSHIFT_AVATAR_CHARACTER_PROMPT", "NIGHTSHIFT_AVATAR_CHARACTER_REF",
+)
+#: The subset the pipeline itself reads, so the daily run needs it too. The rest is read by the
+#: queue worker only (the comment inbox, publish when approved).
+DORMANT_FOR_THE_DAILY_RUN = (
+    "CHRONOS_SCENE_RENDER", "CHRONOS_REMOTION", "CHRONOS_GRAPHIC_RECIPES",
+    "CHRONOS_SCENE_CACHE_MAX_MB", "CHRONOS_SCENE_CACHE_MAX_AGE_DAYS",
+    "CHRONOS_THUMBNAIL_VARIANTS", "CHRONOS_GEMINI_STRUCTURED_OUTPUT",
+    "NIGHTSHIFT_AVATAR_CHARACTER_PROMPT", "NIGHTSHIFT_AVATAR_CHARACTER_REF",
+)
+#: (name, kind) the intelligence poll reads; the two vidIQ ones already reach the daily run.
+DORMANT_FOR_THE_POLL = (
+    ("VIDIQ_ACCESS_TOKEN", "secrets"), ("CHRONOS_ENABLE_VIDIQ", "vars"),
+    ("CHRONOS_ENABLE_REVENUE", "vars"), ("CHRONOS_DAILY_UPLOAD_SLOTS", "vars"),
+)
+DAILY = ROOT / ".github" / "workflows" / "daily_video.yml"
+POLL = ROOT / ".github" / "workflows" / "intelligence_poll.yml"
+
+
+def _env_blocks(path: Path) -> list:
+    """Every ``env:`` mapping of a workflow, at any level."""
+    import yaml
+
+    out: list = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "env" and isinstance(value, dict):
+                    out.append(value)
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(yaml.safe_load(path.read_text()))
+    return out
+
+
+def _mapped(path: Path, name: str) -> list:
+    return [block[name] for block in _env_blocks(path) if name in block]
+
+
+class DormantSwitchesReachTheManagedPath(unittest.TestCase):
+    """The switches that read as "off" only because nothing could set them."""
+
+    def test_each_one_is_an_empty_worker_key_mapped_from_a_variable_of_the_same_name(self):
+        lines = EXAMPLE.read_text().splitlines()
+        flow = WORKFLOW.read_text()
+        for name in DORMANT_FOR_THE_WORKER:
+            with self.subTest(name=name):
+                self.assertIn(f"{name}=", lines, "an empty key: the repository sets no value")
+                self.assertIn(f"WORKERENV_{name}: ${{{{ vars.{name} }}}}", flow)
+
+    def test_the_pipeline_ones_also_reach_the_daily_run_as_variables(self):
+        for name in DORMANT_FOR_THE_DAILY_RUN:
+            with self.subTest(name=name):
+                self.assertEqual(_mapped(DAILY, name), [f"${{{{ vars.{name} }}}}"])
+
+    def test_the_poll_gets_the_vidiq_and_the_revenue_and_slot_switches_the_way_the_daily_run_does(self):
+        for name, kind in DORMANT_FOR_THE_POLL:
+            with self.subTest(name=name):
+                self.assertEqual(_mapped(POLL, name), [f"${{{{ {kind}.{name} }}}}"])
+        for name in ("VIDIQ_ACCESS_TOKEN", "CHRONOS_ENABLE_VIDIQ"):
+            self.assertEqual(_mapped(POLL, name), _mapped(DAILY, name), name)
+
+    def test_the_token_stays_a_secret_and_the_new_keys_are_variables(self):
+        secrets = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", EXAMPLE.read_text().split("# ─── Behaviour")[0], re.M))
+        self.assertIn("VIDIQ_ACCESS_TOKEN", secrets)
+        self.assertEqual(sorted(secrets & set(DORMANT_FOR_THE_WORKER)), [])
+
+    def test_the_repository_sets_no_value_for_any_of_them(self):
+        for name in set(DORMANT_FOR_THE_WORKER) | {n for n, _ in DORMANT_FOR_THE_POLL}:
+            for path in (DAILY, POLL):
+                for expr in _mapped(path, name):
+                    self.assertRegex(str(expr), rf"^\$\{{\{{ (vars|secrets)\.{name} \}}\}}$", f"{path.name}: {name}")
+        for line in EXAMPLE.read_text().splitlines():
+            key, _, value = line.partition("=")
+            if key in DORMANT_FOR_THE_WORKER:
+                self.assertEqual(value, "", f"{key} must ship empty")
+
+    def test_the_two_switches_the_old_list_called_not_deployed_are_deployed(self):
+        self.assertNotIn("CHRONOS_GEMINI_STRUCTURED_OUTPUT", NOT_DEPLOYED)
+        self.assertNotIn("CHRONOS_THUMBNAIL_VARIANTS", NOT_DEPLOYED)
+        # Revenue stays off the worker on purpose: it adds an OAuth scope and only the poll uses it.
+        self.assertIn("CHRONOS_ENABLE_REVENUE", NOT_DEPLOYED)
+        self.assertNotIn("CHRONOS_ENABLE_REVENUE", example_keys())
+
+
+class AnEmptyDormantSwitchLeavesTheFeatureOff(unittest.TestCase):
+    """The deploy writes KEY= for every key, so an empty value is what a repository that never set
+    the variable delivers. Each reader must read it as off / the default, and none may crash on it."""
+
+    ALL_EMPTY = {n: "" for n in set(DORMANT_FOR_THE_WORKER) | {n for n, _ in DORMANT_FOR_THE_POLL}}
+
+    def setUp(self):
+        import os
+        from unittest import mock
+
+        patcher = mock.patch.dict(os.environ, self.ALL_EMPTY)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_render_switches_are_off_and_the_remotion_knobs_take_their_defaults(self):
+        from modules import graphic_recipes, remotion_renderer, scene_cache_gc, scene_render
+
+        self.assertFalse(scene_render.is_enabled())
+        self.assertFalse(graphic_recipes.is_enabled())
+        self.assertFalse(remotion_renderer.enabled())
+        self.assertEqual(remotion_renderer._timeout_s(), remotion_renderer.DEFAULT_TIMEOUT_S)
+        self.assertIsNone(remotion_renderer._browser_executable())
+        self.assertEqual(scene_cache_gc.caps_from_env(), {"max_bytes": None, "max_age_s": None})
+
+    def test_the_queue_workers_switches_are_off_and_their_numbers_take_the_default(self):
+        import tools.queue_worker as qw
+        from modules import comment_replies, visibility_publish as vp
+
+        self.assertFalse(vp.enabled())
+        service = vp.VisibilityService("http://x", "k", worker_id="w", credentials=lambda cid: None, store=object())
+        self.assertEqual((service.project, service.ceiling, service.org_percent),
+                         ("default", vp.DEFAULT_DAILY_UNITS, vp.DEFAULT_ORG_PERCENT))
+        self.assertEqual(qw._int_env("NIGHTSHIFT_INBOX_SYNC_SECONDS", int(comment_replies.DEFAULT_SYNC_SECONDS)),
+                         int(comment_replies.DEFAULT_SYNC_SECONDS))
+        # The comment inbox's own gate is pinned in tests/test_comment_replies.py (empty is among its "off" values).
+
+    def test_the_presenter_stays_faceless_with_an_empty_character(self):
+        from modules import avatar
+
+        cfg = avatar.resolve_avatar_config()
+        self.assertFalse(cfg.enabled)
+        self.assertEqual((cfg.character_prompt, cfg.character_ref), ("", ""))
+
+    def test_the_poll_switches_are_off_and_the_slot_budget_is_one_per_channel(self):
+        from unittest.mock import MagicMock, patch
+
+        import tools.run_intelligence_poll as poll
+
+        channels = [MagicMock(channel_id=c) for c in ("ch1", "ch2", "ch3")]
+        registry = MagicMock()
+        registry.list.return_value = channels
+        seen = {}
+
+        def recommend(store, ids, total):
+            seen["total"] = total
+            return {}, {}
+
+        store_cm = MagicMock()
+        with patch.object(poll, "ChannelRegistry", return_value=registry), patch.object(poll, "StateStore", return_value=store_cm), \
+                patch("modules.quota_allocator.recommend_with_scores", recommend), \
+                patch("modules.quota_allocator.summarize", return_value={}), patch.object(poll.events, "emit"):
+            poll.allocate_upload_quota()
+        self.assertEqual(seen.get("total"), 3)
+
+    def test_config_reads_the_empty_values_as_off_and_the_default_arm_count(self):
+        proc = subprocess.run([sys.executable, "-I", "-c", _CONFIG_CHILD, str(ROOT), json.dumps(sorted(self.ALL_EMPTY))],
+                              capture_output=True, text=True, timeout=120, cwd=tempfile.gettempdir(),
+                              env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir()})
+        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
+        self.assertIsNotNone(line, proc.stderr[-2000:])
+        values = json.loads(line[len("RESULT "):])
+        self.assertEqual(values["THUMBNAIL_VARIANT_COUNT"], "2")
+        for name in ("GEMINI_STRUCTURED_OUTPUT", "REVENUE_TRACKING_ENABLED", "VIDIQ_ENABLED"):
+            self.assertEqual(values[name], "False", name)
 
 
 if __name__ == "__main__":

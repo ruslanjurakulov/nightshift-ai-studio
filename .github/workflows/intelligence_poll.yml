@@ -124,6 +124,15 @@ jobs:
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
           YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
           COMPETITOR_CHANNEL_IDS: ${{ vars.COMPETITOR_CHANNEL_IDS }}
+          # vidIQ keyword research for the poll (modules/intelligence_poller.py), advisory only: needs both
+          # the token and the flag, exactly as in daily_video.yml. Unset = no research, no fabricated numbers.
+          VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
+          CHRONOS_ENABLE_VIDIQ: ${{ vars.CHRONOS_ENABLE_VIDIQ }}
+          # Revenue tracking (config.py): adds the monetary analytics scope, so it also needs the channel
+          # re-consented (tools/connect_channel.py). Empty = off, the analytics poll keeps its narrower scopes.
+          CHRONOS_ENABLE_REVENUE: ${{ vars.CHRONOS_ENABLE_REVENUE }}
+          # The day's upload budget the quota allocator splits across channels (empty = one slot per channel).
+          CHRONOS_DAILY_UPLOAD_SLOTS: ${{ vars.CHRONOS_DAILY_UPLOAD_SLOTS }}
           # Optional — when set, the poll mirrors state to Supabase for the
           # Command Center. Unset = fully local, mirror is a no-op.
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

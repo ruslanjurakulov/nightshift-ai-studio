@@ -603,6 +603,10 @@ jobs:
           NIGHTSHIFT_AVATAR_MAX_SECONDS: ${{ vars.NIGHTSHIFT_AVATAR_MAX_SECONDS }}
           NIGHTSHIFT_AVATAR_FAL_USD_PER_SECOND: ${{ vars.NIGHTSHIFT_AVATAR_FAL_USD_PER_SECOND }}
           NIGHTSHIFT_AVATAR_MAX_USD: ${{ vars.NIGHTSHIFT_AVATAR_MAX_USD }}
+          # The presenter's look and a reference image URL (modules/avatar.py); empty = none. Used only when
+          # NIGHTSHIFT_AVATAR_ENABLED is on.
+          NIGHTSHIFT_AVATAR_CHARACTER_PROMPT: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_PROMPT }}
+          NIGHTSHIFT_AVATAR_CHARACTER_REF: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_REF }}
           # --- Opt-in providers & agent (keys from the Command Center's -------
           # Providers board, forwarded here as Actions secrets). Every one is
           # OFF unless configured: an unset secret expands to "" (feature off),
@@ -684,6 +688,18 @@ jobs:
           CHRONOS_HELD_TOPIC_COOLDOWN_DAYS: ${{ vars.CHRONOS_HELD_TOPIC_COOLDOWN_DAYS }}
           # GB of free disk a run needs before it starts (modules/disk_guard.py). Blank = the 5 GB default.
           NIGHTSHIFT_MIN_FREE_DISK_GB: ${{ vars.NIGHTSHIFT_MIN_FREE_DISK_GB }}
+          # Dormant features: every one is OFF while its variable is empty (deploy/.env.worker.example says what each does;
+          # tests/test_switch_reachability.py keeps the code and these lists in step).
+          # Scene-by-scene render, Remotion cards and designed graphic cards (modules/scene_render.py, remotion_renderer.py,
+          # graphic_recipes.py); the two caps bound the scene cache (empty = no cap).
+          CHRONOS_SCENE_RENDER: ${{ vars.CHRONOS_SCENE_RENDER }}
+          CHRONOS_REMOTION: ${{ vars.CHRONOS_REMOTION }}
+          CHRONOS_GRAPHIC_RECIPES: ${{ vars.CHRONOS_GRAPHIC_RECIPES }}
+          CHRONOS_SCENE_CACHE_MAX_MB: ${{ vars.CHRONOS_SCENE_CACHE_MAX_MB }}
+          CHRONOS_SCENE_CACHE_MAX_AGE_DAYS: ${{ vars.CHRONOS_SCENE_CACHE_MAX_AGE_DAYS }}
+          # Thumbnail A/B arms, 2-4 (empty = 2) and Gemini schema-constrained JSON in research (empty = off).
+          CHRONOS_THUMBNAIL_VARIANTS: ${{ vars.CHRONOS_THUMBNAIL_VARIANTS }}
+          CHRONOS_GEMINI_STRUCTURED_OUTPUT: ${{ vars.CHRONOS_GEMINI_STRUCTURED_OUTPUT }}
           # --- Per-channel publishing tokens -------------------------------
           # GitHub Actions secrets cannot be enumerated at runtime, so each
           # channel's token secret is listed here explicitly — one line per

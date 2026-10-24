@@ -140,6 +140,9 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # WORKER_STOP_GRACE_SECONDS=3300
 # WORKER_JOB_TIMEOUT_SECONDS=3300   # shu vaqtdan keyin ham tugamagan ish to'xtatiladi, topshiriq xato bilan tugaydi (hold qaytariladi)
 
+# Quyidagi ikki blokning (izohlar qutisi, tasdiqdan keyin nashr) kalitlari GitHub'da repository VARIABLE sifatida beriladi (xuddi shu nom bilan), so'ng
+# Actions -> "Deploy web": boshqariladigan deploy .env.worker ni har safar qayta yozadi, qo'lda tahrir saqlanmaydi.
+# Bo'sh qiymat = o'chiq / kodning sukut qiymati (deploy/.env.worker.example, tests/test_switch_reachability.py).
 # Izohlar qutisi (migration 0081, modules/comment_replies.py). DEFAULT: O'CHIQ.
 # NIGHTSHIFT_COMMENT_INBOX=on           # faqat "on" bo'lsa ishlaydi (0081 qo'llanganidan keyin)
 # NIGHTSHIFT_INBOX_SYNC_SECONDS=300     # har oraliqda bitta kanal, navbat bilan
