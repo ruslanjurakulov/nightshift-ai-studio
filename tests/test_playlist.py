@@ -45,6 +45,61 @@ class ResolvePlaylistTestCase(unittest.TestCase):
         self.assertEqual(resolve_playlist_id(Series(series_id="s1")), "")
 
 
+class _Ctx:
+    def __init__(self, agent):
+        self.agent = agent
+
+
+class ChannelDefaultPlaylistTestCase(unittest.TestCase):
+    """A channel-level default is the fallback, never an override: a series that
+    names its own playlist keeps it, and a channel that sets none changes nothing."""
+
+    CH = "PLchannelDEFAULT0123456789abcdefgh"
+
+    def _ctx(self, pid=CH):
+        from modules.channels import AgentConfig
+        return _Ctx(AgentConfig.from_dict({"playlist_id": pid}))
+
+    def test_series_playlist_wins_over_the_channel_default(self):
+        s = Series(series_id="s1", playlist_id="PLseries")
+        self.assertEqual(resolve_playlist_id(s, self._ctx()), "PLseries")
+
+    def test_channel_default_is_used_when_the_series_has_none(self):
+        self.assertEqual(resolve_playlist_id(Series(series_id="s1"), self._ctx()), self.CH)
+
+    def test_channel_default_is_used_when_the_run_has_no_series(self):
+        self.assertEqual(resolve_playlist_id(None, self._ctx()), self.CH)
+
+    def test_unset_channel_default_changes_nothing(self):
+        from modules.channels import AgentConfig
+        ctx = _Ctx(AgentConfig())
+        self.assertEqual(resolve_playlist_id(None, ctx), "")
+        self.assertEqual(resolve_playlist_id(Series(series_id="s1", playlist_id="PL123"), ctx), "PL123")
+
+    def test_a_context_without_an_agent_or_with_junk_never_raises(self):
+        self.assertEqual(resolve_playlist_id(None, object()), "")
+        self.assertEqual(resolve_playlist_id(None, _Ctx(None)), "")
+        self.assertEqual(resolve_playlist_id(None, _Ctx(type("A", (), {"playlist_id": 7})())), "")
+
+    def test_a_malformed_value_set_directly_on_the_config_is_not_used(self):
+        from modules.channels import AgentConfig
+        from dataclasses import replace
+        ctx = _Ctx(replace(AgentConfig(), playlist_id="not a playlist"))
+        self.assertEqual(resolve_playlist_id(None, ctx), "")
+
+    def test_old_single_argument_call_still_works(self):
+        self.assertEqual(resolve_playlist_id(Series(series_id="s1", playlist_id="PL1")), "PL1")
+
+
+class CallSiteTestCase(unittest.TestCase):
+    def test_main_passes_the_channel_context_or_the_default_is_dead_code(self):
+        # main.run() needs a whole pipeline to execute; pin the one line that
+        # makes agent_config.playlist_id reachable.
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+        self.assertIn("playlist.resolve_playlist_id(series_obj, ctx)", src)
+
+
 class AddToPlaylistTestCase(unittest.TestCase):
     def test_happy_path_returns_item_id(self):
         svc = _FakeService(result={"id": "PLI_1"})

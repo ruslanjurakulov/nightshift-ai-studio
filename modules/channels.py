@@ -51,6 +51,7 @@ from typing import Iterable, NewType, Optional
 
 import config as cfg
 from modules import ai_disclosure
+from modules.playlist import clean_playlist_id
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +278,11 @@ class AgentConfig:
     ai_disclosure_voice: str = "generic"
     ai_disclosure_line: bool = True
     ai_disclosure_text: str = ""
+    # Default YouTube playlist for this channel's videos when the run's series has
+    # none (modules/playlist.resolve_playlist_id). Empty means none: no call, no
+    # quota (playlistItems.insert is 50 units). Anything that is not a playlist id
+    # reads as empty. Stored in this blob — no migration.
+    playlist_id: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -304,6 +310,7 @@ class AgentConfig:
             "ai_disclosure_voice": self.ai_disclosure_voice,
             "ai_disclosure_line": self.ai_disclosure_line,
             "ai_disclosure_text": self.ai_disclosure_text,
+            "playlist_id": self.playlist_id,
         }
 
     @staticmethod
@@ -354,6 +361,7 @@ class AgentConfig:
             ai_disclosure_voice=ai_disclosure.normalize_voice(d.get("ai_disclosure_voice")),
             ai_disclosure_line=ai_disclosure.normalize_line_flag(d.get("ai_disclosure_line")),
             ai_disclosure_text=ai_disclosure.normalize_text(d.get("ai_disclosure_text")),
+            playlist_id=clean_playlist_id(d.get("playlist_id")),
         )
 
 

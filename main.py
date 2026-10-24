@@ -1897,11 +1897,11 @@ def run(
             # --resume can reuse the saved script instead of re-paying for it.
             run_checkpoint.clear(slug)
 
-            # If this run is scoped to a series with a playlist, add the freshly
-            # published video to it — a playlist keeps the series bingeable.
+            # If this run's series (else the channel's default) names a playlist,
+            # add the freshly published video to it — a playlist keeps the series bingeable.
             # Best-effort and downstream of a live video: a playlist error never
             # turns a successful publish into a failed run. See modules/playlist.py.
-            playlist_id = playlist.resolve_playlist_id(series_obj)
+            playlist_id = playlist.resolve_playlist_id(series_obj, ctx)
             if playlist_id:
                 item_id = playlist.add_video_to_playlist(uploader.service, playlist_id, video_id)
                 events.emit(

@@ -14,17 +14,37 @@ could double-add.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# A playlist a channel can add to is one it made: "PL" plus 16-64 URL-safe
+# characters (18 characters on old lists, 34 today). Anything else a person might
+# paste (a full URL, a channel id UC..., an auto-generated UU/LL list the API
+# will not insert into) is not an id; sending it only spends quota on a 404.
+_PLAYLIST_ID_RE = re.compile(r"PL[A-Za-z0-9_-]{16,64}")
 
-def resolve_playlist_id(series_obj=None) -> str:
-    """The playlist a run's video should join, or "" for none. Today that is the
-    series' own playlist_id; a channel-level default can be layered here later
-    without touching call sites."""
+
+def clean_playlist_id(value) -> str:
+    """`value` as a playlist id, or "" when it is not one. Never raises."""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    return value if _PLAYLIST_ID_RE.fullmatch(value) else ""
+
+
+def resolve_playlist_id(series_obj=None, channel_ctx=None) -> str:
+    """The playlist a run's video should join, or "" for none: the series' own
+    playlist_id first, else the channel's default (agent_config.playlist_id).
+    A channel default is a fallback and never overrides a series. Each add costs
+    50 YouTube quota units (playlistItems.insert), so unset means no call at all."""
     pid = getattr(series_obj, "playlist_id", "") if series_obj is not None else ""
-    return str(pid or "").strip()
+    pid = str(pid or "").strip()
+    if pid:
+        return pid
+    agent = getattr(channel_ctx, "agent", None)
+    return clean_playlist_id(getattr(agent, "playlist_id", ""))
 
 
 def add_video_to_playlist(service, playlist_id: str, video_id: str) -> Optional[str]:
