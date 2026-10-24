@@ -229,11 +229,19 @@ class Dormant(unittest.TestCase):
         fns = ["request_voice_clone", "approve_voice", "attach_voice_to_channel", "detach_voice_from_channel", "delete_voice",
                "claim_voice_job", "finish_voice_clone", "finish_voice_task", "purge_voice_records", "my_voice_ref", "voice_usable_by"]
         provider_module = ROOT / "modules" / "voice_profiles.py"  # its delete_voice is the PROVIDER method, not the database function
+        # The worker (slice V2) is the one caller allowed, behind NIGHTSHIFT_VOICE_CLONING, and only of the service role's side.
+        worker_files = {ROOT / "modules" / "voice_worker.py", ROOT / "tools" / "voice_worker.py"}
+        service_side = {"claim_voice_job", "finish_voice_clone", "finish_voice_task", "delete_voice"}  # delete_voice: the provider method
+        for f in worker_files:
+            text = f.read_text(encoding="utf-8")
+            for fn in fns:
+                if fn not in service_side:
+                    self.assertIsNone(re.search(rf"\b{fn}\b", text), f"{f.relative_to(ROOT)} mentions {fn}: a worker calls only the service role's functions")
         for base in ("command-center/app", "command-center/lib", "command-center/components", "tools", "modules", "main.py", ".github", "deploy"):
             p = ROOT / base
             files = [p] if p.is_file() else [f for f in p.rglob("*") if f.is_file() and f.suffix in (".ts", ".tsx", ".py", ".yml", ".yaml", ".sh", ".js")]
             for f in files:
-                if f == provider_module:
+                if f == provider_module or f in worker_files:
                     continue
                 text = f.read_text(encoding="utf-8", errors="ignore")
                 for fn in fns:

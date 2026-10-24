@@ -333,8 +333,11 @@ applied, and the worker that reads the queue (`tools/queue_worker.py`, `modules/
 ## Custom voice: profiles, consent trail, the voice-samples bucket, ownership of a voice id (0117)
 
 0117 (`0117_voice_profiles.sql`, `docs/CUSTOM_VOICE.md`) is **dormant**: it adds six tables, 29 functions (and replaces two), three guards and a private
-bucket, and nothing in the application, the worker or a workflow calls any of it (`tests/test_voice_profiles_migration.py` fails if that
-ever stops being true). The ElevenLabs account is on the free plan, which cannot clone, so nothing live can run.
+bucket, and nothing in the application or a workflow calls any of it (`tests/test_voice_profiles_migration.py` fails if that
+ever stops being true). The one caller is the voice worker (`modules/voice_worker.py`, `tools/voice_worker.py`): it is off unless the
+repository variable `NIGHTSHIFT_VOICE_CLONING` is `on` (the owner sets it), nothing starts it, and it calls only the service role's
+functions. The ElevenLabs account is on the free plan, which cannot clone, so nothing live can run: a clone job would end as
+`provider_not_enabled`.
 
 - **It is not dormant in one respect: the ownership rule.** Three entry points now refuse a provider voice id that is in `voice_profiles`
   unless it is its owner's (or attached to the channel by the owner): a `BEFORE INSERT` trigger on `creative_jobs`, one on `render_jobs`,

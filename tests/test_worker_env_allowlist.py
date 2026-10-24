@@ -360,7 +360,7 @@ DORMANT_FOR_THE_WORKER = (
     "NIGHTSHIFT_COMMENT_INBOX", "NIGHTSHIFT_INBOX_SYNC_SECONDS",
     "NIGHTSHIFT_VISIBILITY_PUBLISH", "NIGHTSHIFT_VISIBILITY_DAILY_UNITS", "NIGHTSHIFT_VISIBILITY_ORG_PERCENT",
     "NIGHTSHIFT_YT_QUOTA_PROJECT", "CHRONOS_THUMBNAIL_VARIANTS", "CHRONOS_GEMINI_STRUCTURED_OUTPUT",
-    "NIGHTSHIFT_AVATAR_CHARACTER_PROMPT", "NIGHTSHIFT_AVATAR_CHARACTER_REF",
+    "NIGHTSHIFT_AVATAR_CHARACTER_PROMPT", "NIGHTSHIFT_AVATAR_CHARACTER_REF", "NIGHTSHIFT_VOICE_CLONING",
 )
 #: The subset the pipeline itself reads, so the daily run needs it too. The rest is read by the
 #: queue worker only (the comment inbox, publish when approved).
@@ -475,9 +475,10 @@ class AnEmptyDormantSwitchLeavesTheFeatureOff(unittest.TestCase):
 
     def test_the_queue_workers_switches_are_off_and_their_numbers_take_the_default(self):
         import tools.queue_worker as qw
-        from modules import comment_replies, visibility_publish as vp
+        from modules import comment_replies, visibility_publish as vp, voice_worker
 
         self.assertFalse(vp.enabled())
+        self.assertFalse(voice_worker.enabled())   # custom voice cloning: the same empty-means-off rule
         service = vp.VisibilityService("http://x", "k", worker_id="w", credentials=lambda cid: None, store=object())
         self.assertEqual((service.project, service.ceiling, service.org_percent),
                          ("default", vp.DEFAULT_DAILY_UNITS, vp.DEFAULT_ORG_PERCENT))
