@@ -121,7 +121,7 @@ for anyone who is not a platform administrator (0114's direct lock is unchanged)
 ## Consent, verification and retention
 
 - `request_voice_clone` requires five declarations, all true: `own_voice`, `sole_speaker`, `over_18`, `voice_data_to_provider`,
-  `no_impersonation`; and a consent text version (`v1`...). The wording of the consent text is **not written** (counsel; below).
+  `no_impersonation`; and a consent text version (`v0` is the UI's placeholder, `v1` onward is counsel's text, once it exists). The wording of the consent text is **not written** (counsel; below).
   Coarse client info is the user agent only, never an IP address.
 - **The phrase** is six distinct random words from a fixed 128-word list, **made by the database** (the caller never supplies it, so a
   recording cannot be prepared in advance), stored in plain text only in the closed queue row and as a SHA-256 in the consent row.
@@ -421,7 +421,8 @@ only the flagged page):
 
 **The test step is a labelled stub.** The Studio speech tool is a priced job (quote, hold, capture) that needs the voice id, which this
 screen never holds; wiring it is its own change. The card says so ("Not connected yet", with a TODO) and makes no call. Consequence: until it
-exists, `approve_voice` answers `not_tested` and the page says so; **no voice can be approved from the UI**.
+exists the Approve button is **switched off** (`TEST_STEP_WIRED` in `lib/custom-voice.ts`, flipped by the change that wires the test), and its
+confirm text does not claim the voice was heard; **no voice can be approved from the UI**.
 
 **What must be switched on or granted (owner)**, in order: counsel's consent text (and the constants above); the gates below; the grant of
 `request_voice_clone` and the strict gate (see "Hard conditions"); then `CUSTOM_VOICE_ENABLED=1`. Nothing in this slice does any of them.
@@ -440,7 +441,13 @@ exists, `approve_voice` answers `not_tested` and the page says so; **no voice ca
 - **V3-G3, no resume.** The phrase is shown once. A reload before the upload leaves a pending request with no recording: the card says so and
   offers delete (which frees the slot); the request also lapses by itself after 2 hours. A recording cannot be replaced after the upload
   (the bucket grants insert only), so re-recording is possible only before it is sent.
-- **V3-G4, translations.** ru and uz are machine drafts, flagged in `lib/i18n/custom-voice/*`.
+- **V3-G4, translations.** ru and uz are machine drafts, flagged in `lib/i18n/custom-voice/*` and by a visible note at the top of the page.
+
+Hardening after review (hardening PR): a take that ran past 60 s (a paused tab) is discarded, not shown as 60 s; a storage refusal naming the
+format is its own message, a bare 400 is not read as "the request ended", and a 409 (a recording already there, e.g. after a lost answer)
+ends the flow and re-checks the request instead of stranding the person; focus moves to the heading of each step; the scan test guards
+`delete_voice_sample`, forbids `my_voice_ref` everywhere (it returns the owner reference to the browser) and also covers `middleware.ts` and
+`command-center/scripts`.
 
 ## What is NOT built yet
 

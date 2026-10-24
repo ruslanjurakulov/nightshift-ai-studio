@@ -86,7 +86,7 @@ export async function startVoiceRequest(
   return started ? { ok: true, started } : { ok: false, problem: "failed" };
 }
 
-export type UploadProblem = "expired" | "exists" | "tooLarge" | "network" | "failed";
+export type UploadProblem = "expired" | "exists" | "tooLarge" | "badType" | "network" | "failed";
 
 /**
  * Put the recording in the private bucket at the path the database returned, with the person's own session. The bucket accepts
@@ -108,8 +108,12 @@ export async function uploadSample(
     const message = error.message ?? "";
     if (status === 409 || /already exists|duplicate/i.test(message)) return { ok: false, problem: "exists" };
     if (status === 413 || /maximum allowed size|too large/i.test(message)) return { ok: false, problem: "tooLarge" };
-    // The bucket's rule refuses a profile that is no longer waiting (lapsed after 2 hours, rejected, deleted).
-    if (status === 400 || status === 401 || status === 403 || /row-level security|unauthorized|not authorized/i.test(message)) {
+    // The bucket's allow-list refused the format (415, or a message naming the mime type): the request is fine, this browser's
+    // recording format is not. Told apart from an ended request, which is a different remedy.
+    if (status === 415 || /mime|content.?type|not supported/i.test(message)) return { ok: false, problem: "badType" };
+    // The bucket's rule refuses a profile that is no longer waiting (lapsed after 2 hours, rejected, deleted). A bare 400 with no
+    // word of why is NOT read as that: it is "failed", so a person is not told a live request has ended.
+    if (status === 401 || status === 403 || /row-level security|unauthorized|not authorized/i.test(message)) {
       return { ok: false, problem: "expired" };
     }
     if (/failed to fetch|networkerror|load failed/i.test(message)) return { ok: false, problem: "network" };

@@ -228,9 +228,12 @@ class Dormant(unittest.TestCase):
     def test_nothing_in_the_application_calls_the_new_functions(self):
         # The owner's functions: named by ONE application file, the Custom Voice UI's module (slice V3, behind CUSTOM_VOICE_ENABLED and
         # still unusable because request_voice_clone is granted to nobody). The internal ones are named by no application file at all.
+        # delete_voice_sample is listed on its own: the word boundary of "delete_voice" does not match it, so it was unguarded.
         owner_facing = ["request_voice_clone", "approve_voice", "attach_voice_to_channel", "detach_voice_from_channel", "delete_voice",
-                        "my_voice_ref"]
-        internal = ["claim_voice_job", "finish_voice_clone", "finish_voice_task", "purge_voice_records", "voice_usable_by"]
+                        "delete_voice_sample"]
+        # my_voice_ref is forbidden everywhere, the UI's module included: it returns the owner_ref to the browser, which no screen needs.
+        internal = ["claim_voice_job", "finish_voice_clone", "finish_voice_task", "purge_voice_records", "voice_usable_by",
+                    "my_voice_ref"]
         fns = owner_facing + internal
         ui_caller = ROOT / "command-center" / "lib" / "custom-voice-api.ts"
         self.assertTrue(ui_caller.is_file(), "the one module the UI calls the owner's functions from")
@@ -243,9 +246,10 @@ class Dormant(unittest.TestCase):
             for fn in fns:
                 if fn not in service_side:
                     self.assertIsNone(re.search(rf"\b{fn}\b", text), f"{f.relative_to(ROOT)} mentions {fn}: a worker calls only the service role's functions")
-        for base in ("command-center/app", "command-center/lib", "command-center/components", "tools", "modules", "main.py", ".github", "deploy"):
+        for base in ("command-center/app", "command-center/lib", "command-center/components", "command-center/middleware.ts",
+                     "command-center/scripts", "tools", "modules", "main.py", ".github", "deploy"):
             p = ROOT / base
-            files = [p] if p.is_file() else [f for f in p.rglob("*") if f.is_file() and f.suffix in (".ts", ".tsx", ".py", ".yml", ".yaml", ".sh", ".js")]
+            files = [p] if p.is_file() else [f for f in p.rglob("*") if f.is_file() and f.suffix in (".ts", ".tsx", ".py", ".yml", ".yaml", ".sh", ".js", ".mjs")]
             for f in files:
                 if f == provider_module or f in worker_files:
                     continue

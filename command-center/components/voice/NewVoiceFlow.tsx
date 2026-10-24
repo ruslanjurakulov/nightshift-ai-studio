@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
@@ -65,9 +65,21 @@ export function NewVoiceFlow({ orgId, onSent, onClose }: { orgId: string | null;
   // Set on the first tap, before the next render: state alone lags, and a fast second tap would ask twice (two requests, or two
   // uploads of the one take).
   const lock = useRef(false);
+  // Where focus goes when the step changes: the heading of what is now shown. Without it the focused button disappears with its step
+  // and a keyboard or screen-reader user lands on the page's start.
+  const focusRef = useRef<HTMLElement | null>(null);
+  const anchor = (el: HTMLElement | null) => {
+    focusRef.current = el;
+  };
+  const [sentNote, setSentNote] = useState<"done" | "exists">("done");
 
   // A browser that cannot record must not spend one of the day's few requests to find out.
   const cannotRecord = rec.state === "unsupported" || rec.state === "blockedBySite";
+  const refused = problem === "notAvailable";
+  useEffect(() => {
+    focusRef.current?.focus();
+  }, [step, refused]);
+
   const trimmed = name.trim();
   const nameOk = trimmed.length >= NAME_MIN && trimmed.length <= NAME_MAX;
   const allChecked = DECLARATION_KEYS.every((k) => checked[k]);
@@ -104,11 +116,16 @@ export function NewVoiceFlow({ orgId, onSent, onClose }: { orgId: string | null;
     setUpload("sending");
     const res = await uploadSample(client, started, take.blob, { type: take.type, ext: take.ext });
     lock.current = false;
-    if (!res.ok) {
+    // "Exists" is the bucket saying a recording is already there for this request, which is what a lost answer to a send that DID
+    // arrive looks like on the retry. It is not a dead end: the request is looked at again, and the person sees where it stands.
+    if (!res.ok && res.problem !== "exists") {
       setUpload(res.problem);
       return;
     }
+    // Sent: the take is no longer needed, so its object URL and audio are released now, not when the person closes the panel.
+    rec.reset();
     setUpload("done");
+    setSentNote(res.ok ? "done" : "exists");
     setStep("sent");
     onSent();
   }
@@ -117,7 +134,7 @@ export function NewVoiceFlow({ orgId, onSent, onClose }: { orgId: string | null;
     return (
       <section className="ns-panel" data-tone="sunken" aria-labelledby={`${uid}-na`}>
         <div className="p-4 flex flex-col gap-3">
-          <h2 id={`${uid}-na`} className="g2-label">
+          <h2 id={`${uid}-na`} className="g2-label" ref={anchor} tabIndex={-1}>
             {d.notAvailableTitle}
           </h2>
           <p role="status">{d.notAvailableBody}</p>
@@ -135,7 +152,9 @@ export function NewVoiceFlow({ orgId, onSent, onClose }: { orgId: string | null;
     return (
       <section className="ns-panel" data-tone="sunken">
         <div className="p-4 flex flex-col gap-3">
-          <p role="status">{d.uploadDone}</p>
+          <p role="status" ref={anchor} tabIndex={-1}>
+            {sentNote === "exists" ? d.uploadExists : d.uploadDone}
+          </p>
           <div>
             <button type="button" className="btn-quiet" onClick={onClose}>
               {d.close}
@@ -154,7 +173,7 @@ export function NewVoiceFlow({ orgId, onSent, onClose }: { orgId: string | null;
     return (
       <section className="ns-panel" data-tone="sunken" aria-labelledby={`${uid}-rec`}>
         <div className="p-4 flex flex-col gap-4">
-          <h2 id={`${uid}-rec`} className="g2-label">
+          <h2 id={`${uid}-rec`} className="g2-label" ref={anchor} tabIndex={-1}>
             {d.recordTitle}
           </h2>
           <div>
@@ -190,7 +209,7 @@ export function NewVoiceFlow({ orgId, onSent, onClose }: { orgId: string | null;
                 onClick={() => void rec.start()}
                 disabled={rec.state === "requesting" || rec.state === "unsupported" || rec.state === "blockedBySite"}
               >
-                {rec.state === "tooShort" ? d.reRecord : d.startRecording}
+                {rec.state === "tooShort" || rec.state === "tooLong" ? d.reRecord : d.startRecording}
               </button>
             )}
             <button type="button" className="btn-quiet" onClick={onClose} disabled={sending}>
@@ -224,7 +243,7 @@ export function NewVoiceFlow({ orgId, onSent, onClose }: { orgId: string | null;
   return (
     <form className="ns-panel" data-tone="sunken" onSubmit={(e) => void submit(e)} aria-labelledby={`${uid}-consent`} noValidate>
       <div className="p-4 flex flex-col gap-4">
-        <h2 id={`${uid}-consent`} className="g2-label">
+        <h2 id={`${uid}-consent`} className="g2-label" ref={anchor} tabIndex={-1}>
           {d.consentTitle}
         </h2>
 
@@ -323,6 +342,8 @@ function recorderLine(
       return `${fmt(d.recReady, { seconds })}${hitMax ? ` ${fmt(d.recMaxReached, { max: MAX_RECORDING_SECONDS })}` : ""}`;
     case "tooShort":
       return fmt(d.recTooShort, { seconds: Math.floor(shortBy ?? 0), min: MIN_RECORDING_SECONDS });
+    case "tooLong":
+      return fmt(d.recTooLong, { max: MAX_RECORDING_SECONDS });
     case "unsupported":
       return d.recUnsupported;
     case "blockedBySite":
@@ -346,6 +367,8 @@ function uploadText(p: UploadProblem, d: D): string {
       return d.uploadExists;
     case "tooLarge":
       return d.uploadTooLarge;
+    case "badType":
+      return d.uploadBadType;
     case "network":
       return d.uploadNetwork;
     default:

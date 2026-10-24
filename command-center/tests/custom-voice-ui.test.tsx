@@ -378,6 +378,37 @@ describe("consent", () => {
     expect(screen.queryByTestId("phrase")).toBeNull();
   });
 
+  it("declarations the database does not recognise are not answered with 'tick every box'", async () => {
+    for (const hint of ["declarations_unknown", "declarations_shape"]) {
+      cleanup();
+      db.rpc.request_voice_clone = () => ({ error: { code: "22023", message: "x", hint } });
+      await openFlow();
+      fillConsent();
+      await submit();
+      expect((await screen.findByRole("alert")).textContent).toBe(d().errDeclarationsMismatch);
+      expect(d().errDeclarationsMismatch).not.toBe(d().errDeclarations);
+    }
+  });
+
+  it("a double submit asks once", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    db.rpc.request_voice_clone = async () => {
+      await gate;
+      return { data: started() };
+    };
+    await openFlow();
+    fillConsent();
+    const form = screen.getByRole("button", { name: d().continue }).closest("form")!;
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      release();
+      await gate;
+    });
+    expect(calls("request_voice_clone")).toHaveLength(1);
+  });
+
   it("a request that never arrived is a network message, and the form stays", async () => {
     db.rpc.request_voice_clone = () => {
       throw new TypeError("Failed to fetch");
@@ -496,7 +527,7 @@ describe("recording", () => {
     expect(screen.queryByRole("button", { name: d().stopRecording })).toBeNull();
   });
 
-  it("a tab that was throttled past the limit still yields at most 60 seconds", async () => {
+  it("a tab that was throttled past the limit yields no take at all: the longer audio is never shown as 60 seconds", async () => {
     await toRecording();
     vi.useFakeTimers();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: d().startRecording })));
@@ -504,8 +535,22 @@ describe("recording", () => {
     // A background tab's timers stop; when they run again the clock has jumped.
     vi.setSystemTime(Date.now() + 90_000);
     await advance(250);
-    expect(screen.getByTestId("recorder-status").textContent).toContain(fmt(d().recReady, { seconds: 60 }));
+    expect(screen.getByTestId("recorder-status").textContent).toContain(fmt(d().recTooLong, { max: 60 }));
+    expect(screen.queryByRole("button", { name: d().uploadRecording })).toBeNull();
+    expect(document.querySelector("audio")).toBeNull();
+    expect(media.tracksStopped).toBe(1);
+    expect(screen.getByRole("button", { name: d().reRecord })).toBeTruthy();
+  });
+
+  it("a take stopped by the limit a tick late (up to a second past 60) is still a take, shown as 60", async () => {
+    await toRecording();
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: d().startRecording })));
+    await advance(59_900);
+    vi.setSystemTime(Date.now() + 600); // 60.5 s on the clock when the tick fires
+    await advance(250);
     expect(screen.getByRole("timer").textContent).toBe(fmt(d().timerValue, { seconds: 60, max: 60 }));
+    expect(screen.getByRole("button", { name: d().uploadRecording })).toBeTruthy();
   });
 
   it("record again discards the take (its URL is released) and starts clean", async () => {
@@ -597,11 +642,14 @@ describe("upload", () => {
 
   it.each([
     [{ message: "new row violates row-level security policy", statusCode: "403" }, "uploadExpired"],
-    [{ message: "The resource already exists", statusCode: "409" }, "uploadExists"],
     [{ message: "The object exceeded the maximum allowed size", statusCode: "413" }, "uploadTooLarge"],
     [{ message: "Failed to fetch" }, "uploadNetwork"],
     [{ message: "who knows", statusCode: "500" }, "uploadFailed"],
-    [{ message: "nothing recognisable", statusCode: "409" }, "uploadExists"],
+    [{ message: "mime type audio/webm;codecs=opus is not supported", statusCode: "415" }, "uploadBadType"],
+    [{ message: "invalid_mime_type", statusCode: "400" }, "uploadBadType"],
+    [{ message: "nothing recognisable", statusCode: "415" }, "uploadBadType"],
+    // A bare 400 says nothing of why: it must not be told to the person as "your request has ended".
+    [{ message: "Bad Request", statusCode: "400" }, "uploadFailed"],
     [{ message: "nothing recognisable", statusCode: "403" }, "uploadExpired"],
     [{ message: "nothing recognisable", statusCode: "401" }, "uploadExpired"],
   ] as const)("a storage refusal (%j) is worded as %s and never raw", async (err, key) => {
@@ -610,6 +658,23 @@ describe("upload", () => {
     await send();
     expect((await screen.findByRole("alert")).textContent).toBe(d()[key]);
     expect(document.body.textContent).not.toMatch(/row-level|who knows|statusCode/);
+  });
+
+  it.each([
+    [{ message: "The resource already exists", statusCode: "409" }],
+    [{ message: "nothing recognisable", statusCode: "409" }],
+  ])("a 409 after a send whose answer was lost is not a dead end: the request is looked at again (%j)", async (err) => {
+    await recorded();
+    db.uploadError = err;
+    const before = db.reads;
+    db.profiles = [row({ sample_state: "stored" })];
+    await send();
+    expect(screen.getByText(d().uploadExists)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The flow is over and the list was read again, so the person sees where the request stands.
+    expect(screen.queryByTestId("phrase")).toBeNull();
+    await waitFor(() => expect(db.reads).toBeGreaterThan(before));
+    expect(await screen.findByText(d().statusPending)).toBeTruthy();
   });
 
   it("keeps the take after a failed send, so sending again needs no new recording", async () => {
@@ -671,7 +736,7 @@ describe("the voices, in every state", () => {
   });
 
   it("testing: the test step is a labelled stub that makes no call, and approve asks the database", async () => {
-    await show(row({ status: "testing", sample_state: "stored" }));
+    await show(row({ status: "testing", sample_state: "stored" }), { testStepWired: true });
     expect(screen.getByText(d().statusTesting)).toBeTruthy();
     expect(screen.getByTestId("test-stub").textContent).toContain(d().testStubLabel);
     expect(screen.getByTestId("test-stub").textContent).toMatch(/TODO/);
@@ -690,13 +755,39 @@ describe("the voices, in every state", () => {
     await waitFor(() => expect(db.reads).toBe(readsBefore + 1));
   });
 
+  it("with the test step not wired, Approve is switched off, says why, and asks the database nothing", async () => {
+    await show(row({ status: "testing" }));
+    const btn = screen.getByRole("button", { name: d().approve }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute("aria-describedby")).toBe(screen.getByTestId("test-stub").id);
+    fireEvent.click(btn);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(db.rpcCalls).toEqual([]);
+  });
+
+  it("the approve sheet does not claim the voice was heard", async () => {
+    await show(row({ status: "testing" }), { testStepWired: true });
+    fireEvent.click(screen.getByRole("button", { name: d().approve }));
+    for (const l of LOCALES) expect(dictionaries[l].customVoice.approveMessage).not.toMatch(/heard|eshitgan|услышали/);
+    expect(dialog().getByText(d().approveMessage)).toBeTruthy();
+  });
+
+  it("a delete refused because the function is not available says the ACTION is not available, not that creating a voice is off", async () => {
+    await show(row({ status: "approved" }));
+    db.rpc.delete_voice = () => ({ error: { code: "42501", message: "permission denied for function delete_voice" } });
+    fireEvent.click(screen.getByRole("button", { name: d().deleteVoice }));
+    await act(async () => fireEvent.click(dialog().getByRole("button", { name: d().deleteVoice })));
+    await waitFor(() => expect(dialog().getByRole("alert").textContent).toBe(d().actionNotAvailable));
+    expect(document.body.textContent).not.toContain(d().notAvailableBody);
+  });
+
   it.each([
     ["not_tested", "refNotTested"],
     ["not_verified", "refNotVerified"],
     ["not_testing", "refNotTesting"],
     ["something_new", "refUnknown"],
   ] as const)("approve refused with %s is shown in the sheet and nothing is claimed", async (word, key) => {
-    await show(row({ status: "testing" }));
+    await show(row({ status: "testing" }), { testStepWired: true });
     db.rpc.approve_voice = () => ({ data: { ok: false, error: word } });
     fireEvent.click(screen.getByRole("button", { name: d().approve }));
     await act(async () => fireEvent.click(dialog().getByRole("button", { name: d().approve })));
@@ -705,7 +796,7 @@ describe("the voices, in every state", () => {
   });
 
   it("an approve answer with no ok is not an approval", async () => {
-    await show(row({ status: "testing" }));
+    await show(row({ status: "testing" }), { testStepWired: true });
     db.rpc.approve_voice = () => ({ data: {} });
     fireEvent.click(screen.getByRole("button", { name: d().approve }));
     await act(async () => fireEvent.click(dialog().getByRole("button", { name: d().approve })));
@@ -923,7 +1014,87 @@ describe("waiting for the check", () => {
 });
 
 // =================================================================================================================================
+describe("focus follows the step", () => {
+  it("opens on the consent heading, moves to the record heading, and the not-available heading", async () => {
+    db.rpc.request_voice_clone = () => ({ data: started() });
+    await openFlow();
+    expect(document.activeElement?.textContent).toBe(d().consentTitle);
+    fillConsent();
+    await submit();
+    await screen.findByTestId("phrase");
+    expect(document.activeElement?.textContent).toBe(d().recordTitle);
+    expect(document.activeElement?.tagName).toBe("H2");
+  });
+
+  it("lands on the not-available heading when the database refuses", async () => {
+    db.rpc.request_voice_clone = () => ({ error: { code: "42501", message: "permission denied for function request_voice_clone" } });
+    await openFlow();
+    fillConsent();
+    await submit();
+    await screen.findByText(d().notAvailableTitle);
+    expect(document.activeElement?.textContent).toBe(d().notAvailableTitle);
+  });
+
+  it("lands on the sent message after the upload", async () => {
+    db.rpc.request_voice_clone = () => ({ data: started() });
+    await openFlow();
+    fillConsent();
+    await submit();
+    await screen.findByTestId("phrase");
+    await record(35);
+    vi.useRealTimers();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: d().uploadRecording })));
+    expect(document.activeElement?.textContent).toBe(d().uploadDone);
+  });
+});
+
+describe("leaving the page", () => {
+  it("a microphone prompt still pending when the page is left: the late stream is stopped and no recorder is made", async () => {
+    await toRecording();
+    let grant!: (s: unknown) => void;
+    media.getUserMedia.mockImplementationOnce(
+      () => new Promise((r) => (grant = r)),
+    );
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: d().startRecording })));
+    expect(screen.getByTestId("recorder-status").textContent).toContain(d().recRequesting);
+    cleanup(); // the page is left while the browser's prompt is still open
+    await act(async () => grant({ getTracks: () => [{ stop: () => void media.tracksStopped++ }] }));
+    expect(media.tracksStopped).toBe(1); // the microphone light does not stay on
+    expect(media.constructed).toBe(0);
+  });
+
+  it("the recording's object URL is released when the page is left", async () => {
+    await toRecording();
+    await record(35);
+    const url = (document.querySelector("audio") as HTMLAudioElement).getAttribute("src")!;
+    expect(revoked).not.toContain(url);
+    cleanup();
+    expect(revoked).toContain(url);
+  });
+
+  it("the object URL is released once the recording is sent and the flow closes", async () => {
+    await toRecording();
+    await record(35);
+    vi.useRealTimers();
+    const url = (document.querySelector("audio") as HTMLAudioElement).getAttribute("src")!;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: d().uploadRecording })));
+    expect(revoked).toContain(url);
+  });
+});
+
 describe("languages and layout", () => {
+  it("shows no machine-translation note in English and a visible one in ru and uz", async () => {
+    mount();
+    await screen.findByText(d().noVoices);
+    expect(screen.queryByTestId("machine-translation-note")).toBeNull();
+    for (const l of ["ru", "uz"] as Locale[]) {
+      cleanup();
+      mount({}, l);
+      await screen.findByText(d(l).noVoices);
+      expect(screen.getByTestId("machine-translation-note").textContent).toBe(d(l).machineTranslationNote);
+    }
+  });
+
   it.each(["ru", "uz"] as Locale[])("renders the list, a card and the consent form in %s", async (locale) => {
     db.profiles = [row({ status: "rejected", reject_reason: "verification_failed" })];
     mount({}, locale);

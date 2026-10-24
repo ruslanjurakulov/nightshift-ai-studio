@@ -22,6 +22,8 @@ export function problemText(problem: RpcProblem, d: D): string {
       return d.errNameLink;
     case "declarations":
       return d.errDeclarations;
+    case "declarationsMismatch":
+      return d.errDeclarationsMismatch;
     case "consentVersion":
       return d.errConsentVersion;
     case "forbidden":
