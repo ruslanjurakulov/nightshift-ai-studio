@@ -280,7 +280,9 @@ SRT, and builds word-by-word animated caption specs. Dependency: **Whisper**.
 ### Stage 6 — Thumbnails
 `modules/thumbnail_generator.py` → `ThumbnailGenerator.generate()`. Two A/B
 thumbnails via **Pillow** with a shock-text overlay (`thumbnail_overlay_text`),
-using fetched images as backgrounds. Dependency: **Pillow**.
+using fetched images as backgrounds. When the script has no overlay text, none
+is drawn and none is invented: the thumbnail carries the topic caption only and
+`thumbnail.completed` records `thumbnail_overlay: missing`. Dependency: **Pillow**.
 
 ### Stage 7 — Compositor
 `modules/compositor.py` → `Compositor.render()`. Assembles clips, Ken-Burns

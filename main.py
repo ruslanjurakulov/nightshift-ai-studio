@@ -92,7 +92,7 @@ from modules.state_store import StateStore
 from modules import storyboard_review
 from modules import strategy
 from modules.subtitle_generator import SubtitleGenerator
-from modules.thumbnail_generator import ThumbnailGenerator
+from modules.thumbnail_generator import ThumbnailGenerator, overlay_is_missing
 from modules import title_formulas
 from modules.title_planner import plan_titles
 from modules.topic_manager import TopicManager, TopicSelectionError
@@ -1502,7 +1502,7 @@ def run(
     thumb_gen = ThumbnailGenerator(slug)
     thumbs = thumb_gen.generate_variants(
         topic=script.topic,
-        overlay_text=script.thumbnail_overlay_text or "SHOCKING",
+        overlay_text=script.thumbnail_overlay_text,   # never defaulted: absent means no overlay
         variants=arms,
         backgrounds=backgrounds,
     )
@@ -1523,7 +1523,11 @@ def run(
     # crediting the A title with a video that went out under the B title.
     published_title = chosen_title or script.title
     logger.info("Thumbnails: %s | %s — shipping %s", thumb_a.name, thumb_b.name, chosen_thumb.name)
-    events.emit(events.THUMBNAIL_COMPLETED, agent="thumbnail_generator", status=events.STATUS_COMPLETED, channel_id=channel_id)
+    no_overlay = overlay_is_missing(script.thumbnail_overlay_text)
+    if no_overlay:
+        logger.warning("[channel: %s] The script has no thumbnail overlay text — thumbnails carry the topic caption only", channel_id)
+    events.emit(events.THUMBNAIL_COMPLETED, agent="thumbnail_generator", status=events.STATUS_COMPLETED, channel_id=channel_id,
+                metadata={"thumbnail_overlay": "missing"} if no_overlay else None)
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_THUMBNAILS,
                                 artifacts={"thumbnail_a": str(thumb_a), "thumbnail_b": str(thumb_b)})
 
