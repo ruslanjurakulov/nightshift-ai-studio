@@ -416,6 +416,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Publish when approved (0116): tests/security/sec_visibility_0116.py — one finished request per tenant, one ledger day.
     import sec_visibility_0116
     sec_visibility_0116.seed(conn, sc)
+    # Custom Voice (0117): tests/security/sec_voice_profiles_0117.py — Alice has an approved voice, Bob has none.
+    import sec_voice_profiles_0117
+    sec_voice_profiles_0117.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

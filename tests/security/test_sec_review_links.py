@@ -361,7 +361,9 @@ def test_a_signed_in_stranger_carrying_someone_elses_token_gains_nothing(conn, s
 
 def test_the_only_anon_policy_on_storage_is_the_one_read_for_review_links(conn, sc):
     rows = owner_sql(conn, "select policyname, cmd, permissive, qual, with_check from pg_policies "
-                           "where schemaname = 'storage' and tablename = 'objects' and (roles::text like '%anon%' or roles::text like '%public%')")
+                           "where schemaname = 'storage' and tablename = 'objects' and (roles::text like '%anon%' or roles::text like '%public%') "
+                           # 0117's four RESTRICTIVE closers for the voice-samples bucket name anon too: they only ever narrow
+                           "and policyname not like 'voice\\_samples\\_closed\\_%'")
     assert [r[:3] for r in rows] == [("previews_review_link_read", "SELECT", "PERMISSIVE")]
     assert rows[0][3] == POLICY_EXPR, rows[0][3]
     assert rows[0][4] is None

@@ -39,6 +39,8 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0112_approve_video_publish.s
 # back) as a pair: 0112 then 0116 going up, 0116 then 0112 going down.
 MIGRATION_0116 = sec_db.REPO / "supabase" / "migrations" / "0116_visibility_requests.sql"
 ROLLBACK_0116 = sec_db.REPO / "docs" / "sql" / "rollback_0116_visibility_requests.sql"
+MIGRATION_0117 = sec_db.REPO / "supabase" / "migrations" / "0117_voice_profiles.sql"   # replaces audit_action_allowed again: goes on top
+ROLLBACK_0117 = sec_db.REPO / "docs" / "sql" / "rollback_0117_voice_profiles.sql"
 
 APPROVE = "select public.approve_video_publish(%s, %s, %s::jsonb)"
 ACK = json.dumps({"rights_and_labels": True})
@@ -428,6 +430,7 @@ def test_applying_it_again_changes_nothing(conn):
         su.conn.execute(text)
         # 0112 alone puts back its own approve_video_publish and audit list; 0116 replaces both, so it goes on top again.
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # 0117 replaces the audit list once more
         assert snapshot(su) == before
 
 
@@ -453,7 +456,7 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     base_dsn = sec_db.create_database(admin, base)
     try:
         sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
-                                      if not f.name.startswith(("0112_", "0116_"))])
+                                      if not f.name.startswith(("0112_", "0116_", "0117_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -470,9 +473,12 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     body, body_0116 = sql_body(ROLLBACK), sql_body(ROLLBACK_0116)
     # 0116's rollback keeps (by design, see its header) the three internal functions its kept table and triggers need.
     kept = ["channels_publish_switch_guard()", "video_visibility_requests_guard()", "visibility_reason_words()"]
+    body_0117 = sql_body(ROLLBACK_0117)
+    kept += ["voice_profiles_guard()", "voice_append_only()", "user_voice_refs_immutable()"]  # 0117's rollback keeps its triggers' functions
     with as_superuser(conn, commit=False) as su:
         after = snapshot(su)
-        su.conn.execute(body_0116)                 # going down: 0116, then 0112
+        su.conn.execute(body_0117)                 # going down: 0117, then 0116, then 0112
+        su.conn.execute(body_0116)
         su.conn.execute(body)
         live = [r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
         assert sorted(live) == sorted([*fns, *kept])
@@ -487,4 +493,5 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
         su.conn.execute(body)
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))      # going up: 0112, then 0116
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))     # 0116, then 0117
         assert snapshot(su) == after

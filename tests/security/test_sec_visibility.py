@@ -32,7 +32,7 @@ import pytest
 import sec_db
 from sec_db import ANON, SERVICE, as_superuser
 from sec_scenario import DEFAULT_ORG
-from test_sec_approve_video import (ACK, CUT, MIGRATION, MIGRATION_0116, OTHER, ROLLBACK, ROLLBACK_0116, VID, acting,
+from test_sec_approve_video import (ACK, CUT, MIGRATION, MIGRATION_0116, MIGRATION_0117, OTHER, ROLLBACK, ROLLBACK_0116, ROLLBACK_0117, VID, acting,
                                     answer, approve, member, snapshot, uploaded)
 
 ALL = "00000000-0000-0000-0000-000000000000"      # the ledger's row for a project's whole day
@@ -1161,6 +1161,7 @@ def test_applying_it_again_changes_nothing(conn):
         before = snapshot(su)
         su.conn.execute(text)
         su.conn.execute(text)
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # 0117 replaces audit_action_allowed on top of 0116's
         assert snapshot(su) == before
 
 
@@ -1170,7 +1171,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
     base = f"ns_visibility_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0116_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0116_", "0117_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -1182,10 +1183,14 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
     assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
     body = "\n".join(ln for ln in rollback.splitlines() if ln.strip() not in ("begin;", "commit;"))
     kept = ["channels_publish_switch_guard()", "video_visibility_requests_guard()", "visibility_reason_words()"]
+    rollback_0117 = ROLLBACK_0117.read_text(encoding="utf-8")
+    body_0117 = "\n".join(ln for ln in rollback_0117.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    kept += ["voice_profiles_guard()", "voice_append_only()", "user_voice_refs_immutable()"]  # 0117's rollback keeps its triggers' functions
     with as_superuser(conn, commit=False) as su:
         rid = queued(su, bob)
         assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is True
         after = snapshot(su)
+        su.conn.execute(body_0117)                 # going down: 0117 (it sits on 0116's audit list), then 0116
         su.conn.execute(body)
         live = [r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
         assert sorted(live) == sorted([*fns, *kept])
@@ -1207,6 +1212,8 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         switch(su, bob.channel, False)
         su.conn.execute(body)                      # the rollback replays
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # going up: 0116, then 0117
         assert snapshot(su) == after
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))
         assert snapshot(su) == after

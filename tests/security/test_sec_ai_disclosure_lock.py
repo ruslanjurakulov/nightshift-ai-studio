@@ -305,7 +305,9 @@ def test_the_migration_replays_and_the_rollback_puts_0086s_two_functions_back(co
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.channels_config_guard()", "public.create_channel(text, uuid, text, text, jsonb, jsonb, jsonb, boolean)")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0114_")])
+        # 0117 replaces channels_config_guard() on 0114's body and needs 0114, so it is left out of both databases here:
+        # tests/security/test_sec_voice_profiles.py proves its own rollback and replay.
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0114_", "0117_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0])
@@ -316,6 +318,17 @@ def test_the_migration_replays_and_the_rollback_puts_0086s_two_functions_back(co
     rollback = ROLLBACK.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
     body = "\n".join(ln for ln in rollback.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    full = f"ns_ai_lock_full_{uuid.uuid4().hex[:8]}"
+    full_dsn = sec_db.create_database(admin, full)
+    try:
+        sec_db.apply_files(full_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0117_")])
+        with psycopg.connect(full_dsn, autocommit=True) as fconn:
+            _replay_and_rollback(fconn, sigs, want, fns, body)
+    finally:
+        sec_db.drop_database(admin, full)
+
+
+def _replay_and_rollback(conn, sigs, want, fns, body):
     with as_superuser(conn, commit=False) as su:
         def snapshot():
             return {s: (su.value("select pg_get_functiondef(%s::regprocedure)", [s]),

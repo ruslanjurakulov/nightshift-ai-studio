@@ -329,3 +329,26 @@ applied, and the worker that reads the queue (`tools/queue_worker.py`, `modules/
 - **Replay.** `add column if not exists`, `create table if not exists`, `create or replace` plus revoke then grant, drop-then-create for the
   triggers and policies: a replay leaves the same objects and keeps every row. Re-running 0112 afterwards puts 0112's `approve_video_publish`
   and audit list back (approving would queue nothing, and the request functions would fail loudly at their audit write): re-apply 0116 after it.
+
+## Custom voice: profiles, consent trail, the voice-samples bucket, ownership of a voice id (0117)
+
+0117 (`0117_voice_profiles.sql`, `docs/CUSTOM_VOICE.md`) is **dormant**: it adds six tables, 29 functions (and replaces two), three guards and a private
+bucket, and nothing in the application, the worker or a workflow calls any of it (`tests/test_voice_profiles_migration.py` fails if that
+ever stops being true). The ElevenLabs account is on the free plan, which cannot clone, so nothing live can run.
+
+- **It is not dormant in one respect: the ownership rule.** Three entry points now refuse a provider voice id that is in `voice_profiles`
+  unless it is its owner's (or attached to the channel by the owner): a `BEFORE INSERT` trigger on `creative_jobs`, one on `render_jobs`,
+  and `channels_config_guard()` (0114's body plus one block, for every writer). With no profile in the table, which is the state on
+  apply, every voice id behaves exactly as before.
+- **Backfill.** One idempotent statement gives every existing user a random `owner_ref` (`user_voice_refs`). Row count after apply =
+  `select count(*) from auth.users`.
+- **Is it working?** The verify block at the bottom of the file (every column true) and the storage-policy queries there.
+- **Replaced on their latest bodies:** `channels_config_guard()` (0114) and `audit_action_allowed()` (0116, plus eight `voice.*` names).
+  Re-running 0114 or 0116 afterwards would put the old body back (the voice check on channels gone; the voice audit writes would fail
+  loudly): re-apply 0117 after it. The 0086 trigger is not touched.
+- **Undo.** `docs/sql/rollback_0117_voice_profiles.sql` (owner-applied; the lab applies it to a database built from every other migration,
+  compares the two restored functions byte for byte, then re-applies 0117). It keeps the tables, their rows and the bucket.
+- **Replay.** `create ... if not exists`, `create or replace`, drop-then-create for triggers and policies, revoke then grant: a replay
+  keeps every row (`tests/security/test_sec_voice_profiles.py`).
+- **Review.** Needs the independent security review before merge: it adds a closed bucket, restrictive policies on `storage.objects`,
+  append-only tables and a rule on three hot paths.

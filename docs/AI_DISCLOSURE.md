@@ -139,6 +139,10 @@ so an organization-admin lock would stop nobody.
 | The service role (the pipeline, `supabase_sync`), the SQL editor | all | all | all (0086's convention: only the browser roles are held to the guard) |
 | Someone who cannot edit the channel | nothing | nothing | nothing |
 
+One more path writes `ai_disclosure_voice = own_clone` (migration 0117, `docs/CUSTOM_VOICE.md`): `attach_voice_to_channel()`, a database
+function the **owner of an approved, verified custom voice** calls to put that voice on a channel they administer. It is audited
+(`voice.attach`) and is the only way a non-platform administrator causes the value to be recorded; the direct write above stays locked.
+
 What each lock buys, plainly. Only `ai_disclosure: never` lowers the label itself. In `decide()`, `own_clone` and `generic`
 produce the same label: only `real_person` adds a label reason (`real_person_voice`). So locking `own_clone` does not stop a
 channel from sending less; anyone can already leave the voice key unset or `generic`. What the voice lock protects is the
