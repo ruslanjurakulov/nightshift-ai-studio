@@ -5,33 +5,29 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import {
-  MAX_SPEND_CEILING_USD,
-  ceilingChangeAllowed,
-  effectiveSpendCeiling,
-  flagIsOn,
-  formatUsd,
-  parseSpendCeiling,
-  withSpendCeiling,
-} from "@/lib/channelRisk";
+import { MAX_SPEND_CEILING_USD, effectiveSpendCeiling, flagIsOn, formatUsd, parseSpendCeiling } from "@/lib/channelRisk";
+import { patchChannelAgentConfig, type AgentConfigPatch } from "@/lib/channelPatch";
 import type { ChannelAgentConfig } from "@/lib/types";
 
-type Notice = { kind: "saved" } | { kind: "failed"; detail: string } | { kind: "notStored" } | { kind: "adminOnly" } | null;
-
-/** What a write is asked to do with the live config: the next config, or a reason to stop before writing. */
-type Change = { config: Record<string, unknown> } | { refused: "adminOnly" };
+type Notice =
+  | { kind: "saved" }
+  | { kind: "failed"; detail: string }
+  | { kind: "notStored" }
+  | { kind: "adminOnly" }
+  | { kind: "unavailable" }
+  | null;
 
 /**
- * Three channel settings that only hold things back or switch an extra off, written like the storyboard review switch: the
- * live agent_config is read, one key is merged in, and the whole object is written back (an unreadable config is not written).
- * `spend_ceiling_usd`, `pinned_comment` and `watch_next` are not among the keys channels_config_guard reserves for an
- * administrator (migration 0086/0114/0117), so an editor of the organization may write them; the page offers them to the same
- * people AiDisclosureSettings does.
+ * Three channel settings that only hold things back or switch an extra off. Each is sent as a one-key patch to the database
+ * function patch_channel_agent_config (migration 0119), which merges it into agent_config in a single statement: two writers at
+ * once cannot lose each other's keys, which the old read-the-object, merge, write-it-back could (and the page no longer reads
+ * the config to write it). `pinned_comment` and `watch_next` are plain editor switches.
  *
- * Who may raise a limit is ADVISORY, not a security boundary. An editor may set a limit where none exists and may lower one;
- * raising or removing an existing limit is offered to administrators only (`canRaise`), decided on the value read inside the
- * write, not on what the page was drawn with. The database still lets any editor write the key (a server-side guard needs a
- * migration, which is not part of this change), so a script with an editor's session is not stopped by this page.
+ * The limit is editor-level in ONE direction, and the DATABASE enforces it (channels_config_guard, migration 0119): an editor may
+ * set a limit where none is in force and may lower one; raising or removing a limit that is in force is an administrator's,
+ * for this page and for a script holding an editor's session alike. The page does not pre-judge it from the value it was drawn
+ * with (that may be stale): it sends the write and words the database's refusal (hint spend_ceiling_lock) in the person's
+ * language. `canRaise` only decides whether "Remove limit" is offered.
  *
  * The limit is saved only as a plain amount above 0 (lib/channelRisk.ts): the worker reads 0, a negative or a number it cannot
  * parse as "no limit", so the page refuses those and says why instead of showing a limit that is not enforced. The shown limit
@@ -47,7 +43,7 @@ export function ChannelRiskSettings({
   agent: ChannelAgentConfig | null | undefined;
   /** May the caller write the channel at all (an editor of its organization)? */
   canEdit: boolean;
-  /** May the caller raise or remove a limit that is already set (an administrator)? Advisory, see above. */
+  /** May the caller raise or remove a limit that is already set (an administrator)? Only decides whether "Remove limit" is offered. */
   canRaise: boolean;
 }) {
   const { t } = useI18n();
@@ -77,47 +73,24 @@ export function ChannelRiskSettings({
   const [notice, setNotice] = useState<Notice>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
-  /** Reads the live config, lets `change` produce the next one, writes it. Returns whether it was written. */
-  async function write(change: (live: Record<string, unknown>) => Change): Promise<boolean> {
+  /** Sends one patch. Returns whether it was stored; the database's answer, not the page's guess, is what is shown. */
+  async function write(patch: AgentConfigPatch): Promise<boolean> {
     const supabase = createClient();
     if (!supabase) return false;
     setBusy(true);
     setNotice(null);
-    const { data: current, error: readErr } = await supabase
-      .from("channels")
-      .select("agent_config")
-      .eq("channel_id", channelId)
-      .maybeSingle();
-    if (readErr) {
-      setBusy(false);
-      setNotice({ kind: "failed", detail: readErr.message });
-      return false;
-    }
-    // No error and no row is not "empty": the config is unknown, and writing a merge into {} would wipe it.
-    if (!current) {
-      setBusy(false);
-      setNotice({ kind: "notStored" });
-      return false;
-    }
-    const next = change((current.agent_config as Record<string, unknown> | null) ?? {});
-    if ("refused" in next) {
-      setBusy(false);
-      setNotice({ kind: next.refused });
-      return false;
-    }
-    // .select() so that an update row-level security filtered to nothing (it raises no error) is seen as not saved.
-    const { data: written, error } = await supabase
-      .from("channels")
-      .update({ agent_config: next.config, updated_at: new Date().toISOString() })
-      .eq("channel_id", channelId)
-      .select("agent_config");
+    const res = await patchChannelAgentConfig(supabase, channelId, patch);
     setBusy(false);
-    if (error) {
-      setNotice({ kind: "failed", detail: error.message });
-      return false;
-    }
-    if (!written || written.length === 0) {
-      setNotice({ kind: "notStored" });
+    if (!res.ok) {
+      setNotice(
+        res.reason === "spendLock"
+          ? { kind: "adminOnly" }
+          : res.reason === "notWritable"
+            ? { kind: "notStored" }
+            : res.reason === "unavailable"
+              ? { kind: "unavailable" }
+              : { kind: "failed", detail: res.message },
+      );
       return false;
     }
     setNotice({ kind: "saved" });
@@ -139,11 +112,8 @@ export function ChannelRiskSettings({
       return;
     }
     setProblem(null);
-    const done = await write((live) =>
-      ceilingChangeAllowed(live.spend_ceiling_usd, parsed.value, canRaise)
-        ? { config: withSpendCeiling(live, parsed.value) }
-        : { refused: "adminOnly" },
-    );
+    // null removes the key (no limit); the database refuses it, and any raise, for someone who may not.
+    const done = await write({ spend_ceiling_usd: parsed.value });
     if (done) {
       setCeiling(parsed.value);
       setTyped(parsed.value === null ? "" : String(parsed.value));
@@ -153,7 +123,7 @@ export function ChannelRiskSettings({
   async function toggle(key: "pinned_comment" | "watch_next") {
     if (busy || !canEdit) return;
     const next = !(key === "pinned_comment" ? pinned : watch);
-    if (await write((live) => ({ config: { ...live, [key]: next } }))) {
+    if (await write({ [key]: next })) {
       if (key === "pinned_comment") setPinned(next);
       else setWatch(next);
     }
@@ -255,6 +225,11 @@ export function ChannelRiskSettings({
       {notice?.kind === "notStored" && (
         <p className="g2-fail" role="alert">
           {r.notStored}
+        </p>
+      )}
+      {notice?.kind === "unavailable" && (
+        <p className="g2-fail" role="alert">
+          {r.unavailable}
         </p>
       )}
       {notice?.kind === "adminOnly" && (

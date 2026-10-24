@@ -589,6 +589,11 @@ import sec_voice_profiles_0117  # noqa: E402
 
 sec_voice_profiles_0117.extend(TABLES, FUNCTIONS)
 
+# Migration 0119 (a spend limit an editor cannot raise or remove; the card's settings in one atomic merge): tests/security/sec_channel_settings_0119.py
+import sec_channel_settings_0119  # noqa: E402
+
+sec_channel_settings_0119.extend(TABLES, FUNCTIONS)
+
 # Migration 0118 (Series Factory S2: series_plans, series_episodes, the series_plan queue kind): tests/security/sec_series_tables_0118.py
 import sec_series_tables_0118  # noqa: E402
 

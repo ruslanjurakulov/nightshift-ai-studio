@@ -27,4 +27,5 @@ export const channelRiskUz: ChannelRiskDictionary = {
   saved: "Saqlandi.",
   saveFailed: "Bu sozlamani saqlab boʻlmadi.",
   notStored: "Hech narsa saqlanmadi. Bu kanalni oʻzgartirishga ruxsatingiz boʻlmasligi mumkin. Sahifani yangilab, qayta urinib koʻring.",
+  unavailable: "Bu sozlamani hozir saqlab boʻlmaydi: xizmat yangilanmoqda. Keyinroq qayta urinib koʻring.",
 };

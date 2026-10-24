@@ -26,7 +26,16 @@ are the masters and everything else is rendered from them.
 - `components/site/BrandMark.tsx` draws the owner's tile (black square with the shaded white N, unique gradient ids per instance, hairline ring on a dark page), now only as the avatar of the demo chat's reply on the landing page. It also exports `MarkDefs` and `MarkBody`, the shaded N that the wordmark reuses. Pass `title` for an accessible name when it stands alone. Its numbers come from the generated `components/site/brandMarkArt.ts`.
 - `app/icon.png` (512) and `app/apple-icon.png` (180) are the owner's square picture itself. `app/icon.svg` and `app/favicon.ico` (16/32/48) are the browser-tab composition: same tile, the N set larger (72% of the tile) because at 37.9% it would be 6 px wide in a 16 px tab. Change `app_icon(512, 0.72, True)` in `tools/brand/build_logo.py` to 0.379 to make them exact too.
 - `public/pwa-{192,512}.png` (rounded tile, purpose any) and `public/pwa-maskable-{192,512}.png` (square tile) are the web app manifest's icons (`app/manifest.ts`), written by `tools/brand/build_rasters.mjs` and named in the `middleware.ts` matcher. There is deliberately no service worker.
-- `app/og.png/route.tsx` draws the social card: the bare N (`logo/nightshift-mark.svg`) and the lettering (`logo/nightshift-wordmark.svg`) as the header sets them, no tile. Pure function of the masters, Onest and `lib/i18n/en.ts`, so rebuilding it reproduces the file. File names of the favicon set are exempted from the auth gate by name in `middleware.ts`; do not rename them.
+- `app/og.png/route.tsx` serves `/og.png`, the link-preview image (`og:image` and `twitter:image`, 1200 x 630): the **owner-supplied picture** in `og/og-card.png` (the Nightshift wordmark centred on a black ground of white ribbon waves), read from the repository while the static route is built and sent as it is. Nothing is drawn any more. File names of the favicon set are exempted from the auth gate by name in `middleware.ts`; do not rename them. `/og.png` is skipped by the gate for the same reason (signed-out crawlers fetch it).
+
+## Replacing the link-preview picture
+
+`/og.png` is `brand/og/og-card.png`. To change it, overwrite that file and open a PR; the URL, the route and the metadata stay as they are.
+
+1. Start from the original (any size, wider than 1.91:1 is easiest). Resize to **1200 px wide**, then centre-crop to **630 px high**; keep the subject well inside the middle (the wordmark spans about 46% of the width, 15% of the height).
+2. Save an optimised PNG, **well under 600 KB** (Telegram, WhatsApp and X limit what they fetch; the current file is about 290 KB). For example, with `sharp`: `sharp(src).resize({ width: 1200 }).extract({ left: 0, top: Math.round((h1200 - 630) / 2), width: 1200, height: 630 }).png({ compressionLevel: 9, effort: 10 })`, adding `.grayscale()` for a black-and-white picture.
+3. `tests/pwa-manifest.test.ts` ("the social card") checks the signature, the 1200 x 630 size, the size limit and that the route serves the committed file. `lib/i18n` `landing.meta.ogAlt` (en, ru, uz) is the picture's alt text: update it if the picture changes what it shows.
+4. The route sends `Cache-Control: public, max-age=3600, stale-while-revalidate=86400`, not `immutable`, because the URL does not change when the picture does. A link preview that was already cached elsewhere (a messenger, a CDN) can still show the old picture until that service refreshes it; that is outside this repository.
 
 ## Regenerating
 

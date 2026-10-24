@@ -1,10 +1,11 @@
 """The per-channel risk settings the Command Center can write (spend ceiling, pinned comment, watch-next) are read by the
 worker exactly as the editor means them, and a hostile stored value neither crashes the load nor silently removes a limit.
 
-Why it matters: these three keys sit in agent_config, which any EDITOR of the organisation may write (they are not in
-channels_config_guard's list), so what the worker reads is whatever a browser, a script or a stale page stored. A ceiling
-the worker cannot read is "no ceiling", which is the most expensive way to be wrong; a value that makes from_dict raise
-takes the whole registry load down with it.
+Why it matters: these three keys sit in agent_config, which any EDITOR of the organisation may write, so what the worker
+reads is whatever a browser, a script or a stale page stored. A ceiling the worker cannot read is "no ceiling", which is the
+most expensive way to be wrong; a value that makes from_dict raise takes the whole registry load down with it. Since
+migration 0119 an editor can no longer raise or remove a ceiling that is in force (the worker's reading of it decides what
+"in force" means), and `changes` in the fixture is that rule, bound to the worker's own reader.
 
 The cases are command-center/tests/fixtures/channel-risk-cases.json, shared with channel-risk.test.ts.
 """
@@ -90,11 +91,36 @@ def function_body(sql: str, name: str) -> str:
     return sql[i:sql.index("\n$$;", i) + 4]
 
 
-class EditorMayWriteTheseKeys(unittest.TestCase):
-    """Pinned from the migrations: the three keys are editor-level. If a later migration puts one of them behind the
-    administrator lock, the editor in the Command Center would offer a switch that always fails, and this says so."""
+def editor_may_change(old_raw, new_raw) -> bool:
+    """The rule of migration 0119 stated with the WORKER's reader as the oracle (a missing key is None, which reads as no limit):
+    nothing in force -> anything goes; a limit in force -> the new one must be a limit as well and no larger."""
+    was = ceiling(old_raw)
+    now = ceiling(new_raw)
+    return was is None or (now is not None and now <= was)
 
-    KEYS = ("spend_ceiling_usd", "pinned_comment", "watch_next")
+
+class EditorMayLowerButNotRaise(unittest.TestCase):
+    def test_the_fixture_states_the_rule_the_worker_reader_implies(self):
+        self.assertGreater(len(CASES["changes"]), 30)
+        for case in CASES["changes"]:
+            with self.subTest(why=case["why"]):
+                want = "allowed" if editor_may_change(case.get("old"), case.get("new")) else "refused"
+                self.assertEqual(case["editor"], want)
+
+    def test_the_fixture_has_both_verdicts_and_the_hostile_spellings(self):
+        verdicts = {c["editor"] for c in CASES["changes"]}
+        self.assertEqual(verdicts, {"allowed", "refused"})
+        news = [json.dumps(c.get("new", "<absent>")) for c in CASES["changes"] if c["editor"] == "refused"]
+        for needle in ('"<absent>"', "null", '""', "0", "true", "[]", "{}", '"abc"', "Infinity", '"inf"'):
+            self.assertIn(needle, news)
+
+
+class EditorMayWriteTheseKeys(unittest.TestCase):
+    """Pinned from the migrations: pinned_comment and watch_next are editor-level; spend_ceiling_usd is editor-level in ONE
+    direction only (migration 0119: set and lower yes, raise and remove no). If a later migration puts one of the switches
+    behind the administrator lock, the editor in the Command Center would offer a switch that always fails, and this says so."""
+
+    KEYS = ("pinned_comment", "watch_next")
 
     def latest_guard(self) -> str:
         # The newest migration that defines channels_config_guard() is the live body.
@@ -112,6 +138,13 @@ class EditorMayWriteTheseKeys(unittest.TestCase):
                          ["auto_publish", "publish_gate", "require_two_person_publish", "storyboard_review"])
         for key in self.KEYS:
             self.assertNotIn(key, body)
+
+    def test_the_spend_limit_is_guarded_one_way_and_through_the_workers_reading(self):
+        body = self.latest_guard()
+        self.assertIn("public.channel_spend_ceiling(o -> 'spend_ceiling_usd')", body)
+        self.assertIn("public.channel_spend_ceiling(n -> 'spend_ceiling_usd')", body)
+        self.assertIn("(new_cap is null or new_cap > old_cap)", body)
+        self.assertIn("hint = 'spend_ceiling_lock'", body)
 
     def test_agent_config_is_a_column_an_editor_may_update(self):
         text = (MIG / "0086_channel_config_lock.sql").read_text(encoding="utf-8")

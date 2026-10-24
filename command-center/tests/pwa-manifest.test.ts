@@ -91,15 +91,37 @@ describe("the root layout", () => {
 });
 
 describe("the social card", () => {
-  it("is a 1200 x 630 PNG under 150 KB, drawn the same way every time", async () => {
+  // The owner-supplied picture, served as is. The limit is the smallest of the link-preview fetchers
+  // (WhatsApp, Telegram, X) that we have a number for, with headroom.
+  const LIMIT = 600 * 1024;
+  const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  it("is a valid 1200 x 630 PNG under 600 KB served as image/png", async () => {
     const { GET } = await import("@/app/og.png/route");
-    const a = Buffer.from(await (await GET()).arrayBuffer());
     const res = await GET();
-    const b = Buffer.from(await res.arrayBuffer());
+    const body = Buffer.from(await res.arrayBuffer());
+    expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
-    expect(a.subarray(1, 4).toString()).toBe("PNG");
-    expect([a.readUInt32BE(16), a.readUInt32BE(20)]).toEqual([1200, 630]);
-    expect(a.length).toBeLessThan(150 * 1024);
-    expect(b.equals(a)).toBe(true);
-  }, 30000);
+    expect(body.subarray(0, 8).equals(PNG_SIGNATURE)).toBe(true);
+    expect(body.subarray(12, 16).toString()).toBe("IHDR");
+    expect([body.readUInt32BE(16), body.readUInt32BE(20)]).toEqual([1200, 630]);
+    expect(body.length).toBeLessThan(LIMIT);
+    expect(body.length).toBeGreaterThan(10 * 1024);
+  });
+
+  it("is the committed file brand/og/og-card.png, byte for byte", async () => {
+    const { GET } = await import("@/app/og.png/route");
+    const served = Buffer.from(await (await GET()).arrayBuffer());
+    expect(served.equals(readFileSync(join(process.cwd(), "brand", "og", "og-card.png")))).toBe(true);
+  });
+
+  it("is not cached as immutable, so replacing the picture at the same URL reaches link previews", async () => {
+    const { GET } = await import("@/app/og.png/route");
+    const cc = (await GET()).headers.get("cache-control") ?? "";
+    expect(cc).toMatch(/\bpublic\b/);
+    expect(cc).not.toMatch(/immutable/);
+    const maxAge = Number(/max-age=(\d+)/.exec(cc)?.[1]);
+    expect(maxAge).toBeGreaterThan(0);
+    expect(maxAge).toBeLessThanOrEqual(24 * 3600);
+  });
 });

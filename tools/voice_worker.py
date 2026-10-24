@@ -9,9 +9,12 @@ steps in docs/CUSTOM_VOICE.md. It also does nothing unless the repository variab
 sets it; empty is off). With the switch off it exits 0 without reading the environment's keys or contacting anything.
 
 What a job does is ``modules/voice_worker.py``. This file only wires it to the environment: ``SUPABASE_URL`` and
-``SUPABASE_SERVICE_KEY`` (the queue functions and the private bucket) and ``ELEVENLABS_API_KEY`` (the provider). Without the
-ElevenLabs key it claims nothing: a job it cannot run must not be claimed and failed. On the free plan every clone job ends in the
-closed state ``provider_not_enabled`` and nothing is spent.
+``SUPABASE_SERVICE_KEY`` (the queue functions and the private bucket) and ``ELEVENLABS_API_KEY`` (the provider). **Without any of the
+three it refuses to start** (exit 2). That includes the ElevenLabs key: ``claim_voice_job`` hands out the oldest job of ANY kind and cannot
+be asked for a kind, so a worker that cannot reach the provider would claim every clone and every provider deletion, park them, use up their
+three claims and an hour later reject every outstanding clone and permanently fail every deletion. A recording stranded while the key is
+away is purged by hand (docs/CUSTOM_VOICE.md, "Purging a stranded sample by hand"). On the free plan every clone job ends in the closed
+state ``provider_not_enabled`` and nothing is spent.
 """
 
 from __future__ import annotations
@@ -58,10 +61,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         provider = vp.ElevenLabsVoiceProvider(requests.Session(), os.environ.get("ELEVENLABS_API_KEY", ""))
-    except vp.ProviderError as e:
-        logger.error("%s Claiming nothing.", e)
+    except vp.ProviderError:
+        logger.error("ELEVENLABS_API_KEY must be set: without the provider this worker would claim clone and provider-deletion jobs "
+                     "it cannot carry out and burn their attempts. Nothing was claimed. A stranded recording is purged by hand: "
+                     "docs/CUSTOM_VOICE.md.")
         return 2
 
+    vw.sweep_stale_workdirs()
     worker = vw.VoiceWorker(vw.VoiceStore(url, key), vw.SampleStorage(url, key), provider,
                             worker_id=args.worker_id, transcribe=vw.whisper_transcriber())
     stop = threading.Event()
@@ -78,10 +84,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         outcome = worker.run_once()
         if args.once:
             return 0
-        # Work found: look again at once. Nothing found, or a job put back for a retry: wait.
-        wait = POLL_SECONDS if outcome is None else worker.retry_wait(outcome)
-        if wait:
-            stop.wait(wait)
+        # Work found: look again at once. Nothing found: wait. (A parked job comes back by itself when its lease runs out.)
+        if outcome is None:
+            stop.wait(POLL_SECONDS)
     return 0
 
 

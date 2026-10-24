@@ -430,7 +430,9 @@ def test_applying_it_again_changes_nothing(conn):
         su.conn.execute(text)
         # 0112 alone puts back its own approve_video_publish and audit list; 0116 replaces both, so it goes on top again.
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
+        sec_db.take_off_0119(su)                                      # 0119 sits on 0117's guard: off, then 0117 again, then 0119 back
         su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # 0117 replaces the audit list once more
+        sec_db.put_back_0119(su)
         assert snapshot(su) == before
 
 
@@ -456,7 +458,7 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     base_dsn = sec_db.create_database(admin, base)
     try:
         sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
-                                      if not f.name.startswith(("0112_", "0116_", "0117_"))])
+                                      if not f.name.startswith(("0112_", "0116_", "0117_", "0119_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -477,7 +479,8 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     kept += ["voice_profiles_guard()", "voice_append_only()", "user_voice_refs_immutable()"]  # 0117's rollback keeps its triggers' functions
     with as_superuser(conn, commit=False) as su:
         after = snapshot(su)
-        su.conn.execute(body_0117)                 # going down: 0117, then 0116, then 0112
+        sec_db.take_off_0119(su)                   # going down: 0119, then 0117, then 0116, then 0112
+        su.conn.execute(body_0117)
         su.conn.execute(body_0116)
         su.conn.execute(body)
         live = [r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
@@ -493,5 +496,6 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
         su.conn.execute(body)
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))      # going up: 0112, then 0116
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
-        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))     # 0116, then 0117
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))     # 0116, then 0117, then 0119
+        sec_db.put_back_0119(su)
         assert snapshot(su) == after

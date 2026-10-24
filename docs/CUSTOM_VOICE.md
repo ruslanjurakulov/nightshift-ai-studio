@@ -159,30 +159,85 @@ calling a `voice_usable_by`-equivalent check (a service-side RPC that answers fo
 will use) and refusing the run when it fails. Until that exists nothing can create a custom voice (the function is not granted), so the
 gap is empty today; **it must not be allowed to become real**. No code for it is in this PR.
 
-## The worker (slice V2)
+## The worker (slice V2, hardened)
 
 `tools/voice_worker.py [--once]` carries out `voice_clone_jobs` with the service key, through `claim_voice_job`, `finish_voice_clone` and
 `finish_voice_task` only (it never calls `purge_voice_records`: that stays the operator's, after a retention period). It needs
-`SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `ELEVENLABS_API_KEY`; without the last it claims nothing.
+`SUPABASE_URL`, `SUPABASE_SERVICE_KEY` **and `ELEVENLABS_API_KEY`: without any of the three it refuses to start** (exit 2). There is no
+keyless mode, deliberately: `claim_voice_job(p_worker)` hands out the oldest job of *any* kind and cannot be asked for one, so a worker that
+could not reach the provider would claim every clone and every provider deletion, park them, use up their three claims, and about an hour
+later reject every outstanding clone and permanently fail every `delete_provider` job. (`VoiceWorker` itself refuses to be built without a
+provider.) A purge-only mode would need a kind filter in `claim_voice_job`, which is a migration; until then a recording stranded while
+the key is away is purged by hand, below. It sweeps `nsvoice-*` work directories left by a killed worker (SIGKILL, the OOM killer) when
+it starts.
 
 | Job | What it does | Ends as |
 | :-- | :-- | :-- |
-| `clone` | 1. asks the account's plan (`can_use_instant_voice_cloning` must be a real `true`) **before anything else**; 2. fetches the object with the service key (no redirect, stops at 50 MB); 3. sniffs the bytes (never the declared type), probes streams and length (audio only, at most 300 s); 4. Whisper (the pipeline's local one) must hear the phrase; 5. looks for a voice of the profile's own name and adopts it, otherwise creates one; 6. records the id and hash with `finish_voice_clone`; 7. only then deletes the whole `<user_id>/<profile_id>/` prefix (unless the owner chose to keep the sample) | `testing`, or `rejected` with a closed reason |
-| `delete_provider` | `DELETE /v1/voices/{id}`; 404 is done; needs no plan | done, or retried (3 attempts) then failed |
-| `purge_sample` | deletes the prefix, lists it again to confirm it is empty; for a profile that never got a voice recorded it also removes any voice of that profile's name from the provider (an orphan) | `sample_state = purged` |
+| `clone` | 1. asks the account's plan **before anything else** (`can_use_instant_voice_cloning`); 2. fetches the object with the service key (no redirect, stops at 50 MB); 3. sniffs the bytes (never the declared type) and decodes **once**; 4. Whisper (the pipeline's local one) must hear the phrase; 5. looks for a voice **labelled for this profile** and adopts it, otherwise creates one from the decoded wav; 6. records the id and hash with `finish_voice_clone`; 7. only then deletes the whole `<user_id>/<profile_id>/` prefix (unless the owner chose to keep the sample) | `testing`, or `rejected` with a closed reason |
+| `delete_provider` | `DELETE /v1/voices/{id}`; 404 is done; needs no plan | done, or parked (below), then failed and logged `voice OVERDUE` |
+| `purge_sample` | deletes the prefix, lists it again to confirm it is empty. For a **rejected** profile that never got a voice recorded it also removes voices labelled for that profile from the provider (an orphan) | `sample_state = purged`, or parked, then failed and logged `voice OVERDUE` |
 
-Reasons a profile is rejected (`reject_reason` / `error_code`, all closed words): `provider_not_enabled` (the plan, **what every clone ends
-as on the free plan: nothing was fetched, nothing created, nothing spent**), `provider_not_configured`, `provider_auth`,
-`provider_rejected`, `provider_redirect`, `provider_unavailable` (retried first), `provider_error`, `not_audio`, `unreadable_audio`,
-`sample_too_large`, `sample_too_long`, `sample_missing`, `storage_error`, `transcribe_failed`, `verification_failed` (the wrong phrase),
-`worker_error`, `worker_lost`, `bad_job`.
+**The decode.** The container's own statement of its length is never believed: an Ogg Opus file with 900 s of audio and a patched last-page
+granule reports 5 s (reproduced with ffmpeg 7.0.2 in review). The worker therefore decodes exactly once, to a mono 16 kHz 16-bit wav, **cut at
+301 s of audio** (`-t`), with the output size limited (`-fs`), and measures the length from the frames of *that* file: more than 300 s is
+`sample_too_long`. Exactly one audio stream and no video (`not_audio` otherwise). ffmpeg and ffprobe run with an **empty environment** (no
+service key, no ElevenLabs key), only the `file` protocol (`-protocol_whitelist file`), the demuxer the sniffed bytes named (`-f`, never
+auto-detection), a timeout, and rlimits on CPU (120 s), address space (3 GiB), file size and core dumps. Whisper is given the samples of
+that wav (read with the stdlib, so its own ffmpeg call never starts) under a 180 s deadline, and **the provider receives that wav too**
+(`audio/wav`, 16 kHz mono), never the upload. Consequence to know: a 16 kHz recording is a lower-fidelity sample for the provider than the
+original; if clone quality needs more, a second capped decode at a higher rate is a small change.
 
-**Retry and loss.** A failure that can pass (network, timeout, 5xx, 429, the transcriber) is reported as `transient`; the database puts the
-job back while `attempts < max_attempts` (3) and the worker reports the meaningful word on the third. The sample is kept between attempts
-and deleted at the end. A worker that dies leaves the job `running`; after 30 minutes `claim_voice_job` queues it again, and after three
-losses rejects the profile (`worker_lost`) and queues `purge_sample`. Every path that ends a profile queues its purge, and the worker
-deletes the prefix twice (right after the answer is recorded, then when the purge job runs). A retry never makes a second voice: it
-looks for the voice of the profile's own name first.
+**Who is at fault decides what happens.** The person's own faults end the request at once and purge the recording: `not_audio`,
+`unreadable_audio`, `sample_too_large`, `sample_too_long`, `sample_missing`, `verification_failed` (the wrong phrase), `provider_rejected`
+(a 422), `provider_error` (an HTTP answer that will not change), `provider_conflict`, `bad_job`, and **`provider_not_enabled` when the
+subscription explicitly says `can_use_instant_voice_cloning: false`** (the documented free plan: nothing fetched, created or spent). The
+operator's or the provider's faults are **parked, not answered**, so a recording is not burned for them: `provider_auth` (a bad key),
+`provider_not_configured`, `provider_plan_unknown` (a subscription that says nothing about cloning, which is an unverified shape, not a
+verdict), `provider_not_enabled` *after* a good probe, `provider_unavailable` (network, timeout, 5xx, 429), `provider_redirect`,
+`provider_error` with no usable id, `storage_error`, `transcribe_failed`, `transcribe_timeout`, `audio_tool_error`, `worker_error`.
+
+**Parking, and the real horizon.** The database allows three claims of a job (`max_attempts`) and nothing the service key can call raises
+that or re-queues a failed job. A parked job is simply not answered: it stays `running` and `claim_voice_job` returns it to the queue after
+its 30-minute lease. The wait between claims is therefore 30 minutes, about **90 minutes in all**; only the third claim answers, with the
+specific word (and a purge or delete that ends so is logged `voice OVERDUE` with the job kind and a closed word). That is the longest
+horizon the existing functions give. A worker that dies is the same thing (the lease; after three losses `worker_lost` with its purge
+queued). Every path that ends a profile queues its purge, and the worker deletes the prefix twice (right after the answer is recorded,
+then when that job runs). A retry never makes a second voice: it looks for the voice labelled for the profile first.
+
+**What a longer horizon needs (not in this PR, and a migration).** A service-role definer function, for example
+`voice_requeue_overdue(p_older_than interval default '3 hours') returns integer`, that sets back to `queued` with `attempts = 0` any
+`purge_sample` / `delete_provider` job with `status = 'failed'` whose profile still has `sample_state = 'purge_pending'` (or is `deleted`
+with a provider voice and no succeeded `delete_provider`), plus a `voice_overdue_report()` returning the counts; the worker would call them
+on its own sweep. Until then the recurring check below is the safety net, and the fix for a job that failed for good is an operator's.
+
+**The recurring check (until that exists, run it at least daily, and whenever the worker logs `voice OVERDUE`).** In the SQL editor:
+
+```sql
+-- 1. samples still waiting to be removed (expected: none older than 3 hours once the worker runs)
+select id, status, sample_state, created_at from public.voice_profiles
+ where sample_state = 'purge_pending' and (deleted_at is null or deleted_at < now() - interval '3 hours');
+-- 2. a purge or a provider deletion that failed for good (expected: none)
+select id, profile_id, kind, error_code, finished_at from public.voice_clone_jobs
+ where kind in ('purge_sample', 'delete_provider') and status = 'failed';
+-- 3. recordings in the bucket whose profile is gone or already purged (expected: none)
+select o.name, o.created_at from storage.objects o
+  left join public.voice_profiles p on p.id::text = split_part(o.name, '/', 2)
+ where o.bucket_id = 'voice-samples' and (p.id is null or p.sample_state = 'purged');
+```
+
+To retry what query 2 lists, as the database owner: `update public.voice_clone_jobs set status = 'queued', attempts = 0, worker_id = null,
+finished_at = null where id = '<job>';` (the worker picks it up). Query 3 is a hand deletion of the object or a profile that was purged
+with an object left behind: delete the object through the Storage API or the dashboard.
+
+**Adopting and deleting a provider voice.** A voice is the worker's to adopt or delete only if it carries the profile's name **and** the
+labels `nightshift_profile` = the profile's **full** id and `nightshift_owner_ref` = the owner's reference (the eight hex characters in
+the name are not enough). The listing's labels are read, or the voice by id when the listing has none. A voice with the name and any other
+label is a `provider_conflict`: the clone ends, and nothing is adopted, duplicated or deleted. The service key cannot read other profiles
+(no privilege on any voice table), so "this voice id belongs to another profile" is answered by the database's own UNIQUE: the worker
+records the id, and `voice_id_taken` means nothing is deleted and a person looks. An orphan is removed only after the database has *just
+rejected* the profile (an answer that was recorded: not `lost`, not `unrecorded`), or by a `purge_sample` of a profile whose status is
+`rejected`: any other state may have a clone in flight (the owner deleted it while it was being made), and its own `delete_provider`
+handles that voice.
 
 **Keep.** If the owner chose to keep the sample (`keep_sample`), the worker does **not** delete it after a successful clone: the database
 queued no purge and the profile says `stored`. It is deleted by `delete_voice_sample` or `delete_voice`, like the database says.
@@ -190,15 +245,53 @@ queued no purge and the profile says `stored`. It is deleted by `delete_voice_sa
 
 **Known gaps, none of which a test can close**
 
-- A worker that is alive but silent for 30 minutes (no heartbeat is sent; a job takes seconds) can lose its lease while a second worker
-  takes the job. The second adopts the voice by name, the first's late answer is refused (`not_holder`) and it deletes nothing; but if
-  the first was still *before* its create, two voices of one name could exist. The orphan sweep above removes the extra one only for a
-  profile that has no recorded voice.
-- A voice created whose answer was lost, in an attempt that then died three times, is removed by the `purge_sample` that follows. If the
-  provider is unreachable then, it stays; find it by name (`ns-<owner_ref>-<profile8>`, above).
+- A worker that is alive but silent for 30 minutes (no heartbeat function exists; a job takes seconds) can lose its lease while a second worker
+  takes the job. The second adopts the labelled voice, the first's late answer is refused (`not_holder`) and it deletes nothing; but if the
+  first was still *before* its create, two voices of one name could exist, and only the extra one labelled for the profile is removed later.
+- A voice created whose answer was lost, in an attempt that then ended for good, is removed by the `purge_sample` that follows, **if the
+  profile is `rejected`** (a `deleted` profile is not swept, see above) and the provider is reachable; otherwise find it by name (`ns-<owner_ref>-<profile8>`, above).
 - The 2-hour upload window is the database's (`claim_voice_job` lapses a request that has no object). The worker does not know the
   profile's age, so a sample uploaded just before the window closes is cloned like any other.
-- `provider_not_enabled` rejects the request. There is no "wait for an upgrade" state in 0117; after the plan changes the person asks again.
+- `provider_not_enabled` (an explicit "no") rejects the request. There is no "wait for an upgrade" state in 0117; after the plan changes the person asks again.
+
+**Purging a stranded sample by hand** (the worker is not running, or its key is away, or a purge failed for good). The recording is
+`<user_id>/<profile_id>/sample.<ext>` in the private bucket `voice-samples`. Delete it with the dashboard (Storage, `voice-samples`) or with
+the service key through the Storage API: `POST /storage/v1/object/list/voice-samples` with `{"prefix": "<user_id>/<profile_id>", "limit": 100,
+"offset": 0}` to list, then `DELETE /storage/v1/object/voice-samples` with `{"prefixes": ["<user_id>/<profile_id>/sample.webm", ...]}`;
+list again to confirm nothing is left (including any `.emptyFolderPlaceholder`). Direct `DELETE` on `storage.objects` from SQL does not remove
+the blob. Then, as the database owner in the SQL editor, `update public.voice_profiles set sample_state = 'purged' where id = '<profile_id>';`
+and, if a `purge_sample` job is left `queued`/`running`/`failed`, `update public.voice_clone_jobs set status = 'succeeded', error_code = null,
+finished_at = now() where profile_id = '<profile_id>' and kind = 'purge_sample' and status in ('queued', 'running', 'failed');` (read the
+`voice_profiles_guard` trigger first: **untested live**). Query 3 of the recurring check finds objects whose profile is gone.
+
+## Gates before the owner may enable `NIGHTSHIFT_VOICE_CLONING`
+
+None of these is closed by the code in the repository; each is either a **migration** to write and apply or a **live verification** to
+do, and each is a hard gate: do not set the variable until it is closed or knowingly accepted.
+
+- **G1 (closed in code, kept as a rule): no keyless worker.** See above. A purge-only worker needs a kind filter in `claim_voice_job`.
+- **G2 (migration): a clone job that was parked and whose profile the owner then deleted stays `queued` for ever.** `delete_voice` cancels
+  *queued* clone jobs, but a parked one is `running`; when its lease runs out it goes back to `queued`, and `claim_voice_job` hands out a
+  clone job only for a profile that is `pending_verification`, so a deleted profile's clone job is never claimed and never ended. Its live
+  `(profile, kind)` row blocks `purge_voice_records` (`job_outstanding`), and the sweep and the `delete_provider` that a finished clone would
+  have queued are never queued. Needed: `claim_voice_job` expires / cancels queued clone jobs of profiles that are no longer
+  `pending_verification`, and queues `purge_sample` (and `delete_provider` when a voice id is recorded) for them.
+- **G3 (migration plus a scheduled alert): `voice_requeue_overdue()` and `voice_overdue_report()`**, as described under "What a longer horizon
+  needs", with something that runs the report on a schedule and tells a person. Until then the recurring SQL checks above are a human's
+  daily duty, and a purge that fails for good stays failed until someone retries it.
+- **Live verification of the free-plan answer shape.** Run the *ElevenLabs plan probe* workflow on the current (free) account and read
+  whether the subscription carries `can_use_instant_voice_cloning: false` or no such field. If the field is absent, the free plan ends as
+  `provider_plan_unknown` after about 90 minutes instead of `provider_not_enabled` at once, and the code or the copy must be decided.
+- **Live verification that ElevenLabs accepts, and clones well from, a 16 kHz mono wav**, which is what the worker now sends. Compare a
+  clone made from it with one made from the original recording; if it is worse, add a second capped decode at a higher rate.
+- **Live verification of the labels format**: that `GET /v1/voices` returns `labels` as an object with the keys we set
+  (`nightshift_profile` = the full profile id, `nightshift_owner_ref`), or that `GET /v1/voices/{id}` does. A voice with the right name and
+  no labels anywhere is treated as a conflict (never adopted), so if labels are not returned, an adoption after a lost create answer ends as
+  `provider_conflict` instead of recovering.
+- **Live verification of the Storage request shapes** (download, list, delete with `prefixes`, a missing object answering 404 or 400
+  `statusCode` 404, and the object really gone afterwards), of the rlimits (3 GiB address space) with the worker image's ffmpeg, of Whisper
+  on a real MediaRecorder `audio/webm` recording, and of `language="en"` for Uzbek and Russian speakers.
+- The grant of `request_voice_clone`, the UI, the Actions pre-flight ("Hard gate" above) and counsel's consent text are separate gates.
 
 ## What is NOT built yet
 
@@ -214,8 +307,8 @@ queued no purge and the profile says `stored`. It is deleted by `delete_voice_sa
 ## Things the worker does because the database cannot
 
 - **Sniff the audio bytes.** The bucket's MIME allow-list checks the *declared* type only. The worker identifies the real container
-  (`sniff_audio`), refuses anything that is not audio, reads the streams and the length with ffprobe (a container with a video stream,
-  or without an audio one, is refused) and sends the provider the *sniffed* type.
+  (`sniff_audio`), refuses anything that is not audio, decodes once to a capped wav and measures that (see "The decode"); the provider
+  gets that wav.
 - **Enforce the upload window.** The "2 hours" is enforced only by `claim_voice_job`'s expiry of a request nobody uploaded for. The
   bucket's insert rule has no clock: until that sweep has rejected the profile, a late recording is still accepted (and then cloned like
   any other); after it, the profile is no longer waiting and the rule refuses. The worker is not told the profile's age and does not
@@ -224,22 +317,34 @@ queued no purge and the profile says `stored`. It is deleted by `delete_voice_sa
 
 ## Live blockers (nothing here can be tested live until they are cleared)
 
+**Closed by tests (fakes, and the real ffmpeg when the machine has it), not by a live call:** the header-duration bypass (the decoded
+length is what counts); one audio stream and no video; the provider and Whisper hear the same capped wav; ffmpeg runs with an empty
+environment, the `file` protocol only, a named demuxer, a timeout and rlimits; leftover work directories are swept; a worker without the
+ElevenLabs key refuses to start (it would otherwise burn every outstanding job's claims); purge and delete failures are parked for the full lease horizon and then logged `voice OVERDUE`; a voice is adopted or
+deleted only with the full profile id and owner label; a recording is not burned for a bad key, an unknown plan or an outage; the logs are
+quiet under sentinel secrets on every path.
+
+**Still open:**
+
 1. **The ElevenLabs plan is FREE**, which does not allow instant voice cloning. `ElevenLabsVoiceProvider.create_voice` refuses to run, and
-   says so, unless the read-only plan probe reports `can_use_instant_voice_cloning` is true (an answer without the field counts as no).
-   Run the manual workflow *ElevenLabs plan probe* after upgrading. Voice slots on the plan are the operator's, which is why a user is
-   limited to 3 live voices.
+   says so, unless the read-only plan probe reports `can_use_instant_voice_cloning` is true (an answer without the field counts as no;
+   the worker *parks* that case as `provider_plan_unknown` and rejects only an explicit `false`: **whether the real free-plan answer
+   carries an explicit `false` is unverified**, and until it is, a free-plan clone ends as `provider_plan_unknown` after about 90 minutes
+   instead of at once). Run the manual workflow *ElevenLabs plan probe* after upgrading. Voice slots on the plan are the operator's, which
+   is why a user is limited to 3 live voices.
 2. **Every ElevenLabs request shape in `modules/voice_profiles.py` is "from the public API as the planner knew it, UNVERIFIED live"**:
    `POST /v1/voices/add` (multipart `name`, `files`, `labels`), `DELETE /v1/voices/{id}`, `GET /v1/voices/{id}`, `GET /v1/voices` (the
-   worker's lookup of a voice by its exact name: the `voices` list with `name` and `voice_id`), the response field
-   `voice_id`, whether cloned voices work with `eleven_v3` / the Uzbek and Russian narration, commercial and sub-licensing terms for
-   customers' clones on the operator's account, and whether a clone costs characters.
+   worker's lookup: the `voices` list with `name`, `voice_id` and `labels`, or the labels from `GET /v1/voices/{id}`), the response field
+   `voice_id`, whether a 16 kHz wav is accepted and clones well, whether cloned voices work with `eleven_v3` / the Uzbek and Russian
+   narration, commercial and sub-licensing terms for customers' clones on the operator's account, and whether a clone costs characters.
 3. **The Storage API request shapes in `modules/voice_worker.py` are UNVERIFIED on the live project too**: `GET /storage/v1/object/voice-samples/<path>`
    with the service key (and that a missing object answers 404, or 400 with `statusCode` 404), `POST /storage/v1/object/list/voice-samples`
    (`prefix`, `limit`, `offset`; folders come back with `id: null`), `DELETE /storage/v1/object/voice-samples` (`prefixes`), and that the
-   object is really gone afterwards. Also unverified: a real Whisper and a real ffprobe on a MediaRecorder `audio/webm` recording (such a
-   file states no duration in its header; the worker decodes it once to measure it), and that Whisper hears a six-word English phrase
-   spoken by a Uzbek or Russian speaker with `language="en"`.
-4. **Counsel.** The Privacy Policy and Terms (`command-center/lib/legal-docs`) say **nothing** about voice samples today. A voice sample
+   object is really gone afterwards. Also unverified: a real Whisper on a MediaRecorder `audio/webm` recording (it has no duration in its
+   header; the decode measures it), the rlimits (3 GiB address space) with the worker image's ffmpeg, and that Whisper hears a six-word
+   English phrase spoken by a Uzbek or Russian speaker with `language="en"`.
+4. **A longer retry horizon than about 90 minutes needs a migration** (above). Until then the recurring check is a human's.
+5. **Counsel.** The Privacy Policy and Terms (`command-center/lib/legal-docs`) say **nothing** about voice samples today. A voice sample
    may count as biometric data in some jurisdictions; the legal basis, the retention of consent and deletion records, and what a deletion
    request can remove are legal decisions. Nothing should be switched on for customers before they are made.
 

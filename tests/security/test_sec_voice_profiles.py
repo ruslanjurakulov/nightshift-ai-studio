@@ -1332,6 +1332,7 @@ def test_applying_the_migration_again_changes_nothing_and_keeps_every_row(conn, 
     counts = {t: s.value(f"select count(*) from public.{t}") for t in TABLES}
     policies = s.value("select count(*) from pg_policies where schemaname = 'storage' and tablename = 'objects'")
     ref = s.value("select owner_ref from public.user_voice_refs where user_id = %s", [world.vo.uid])
+    sec_db.take_off_0119(s)       # 0119 sits on 0117's guard, and 0117 refuses any other body: off while 0117 replays
     s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
     become(s, None)
     # the first replay's backfill gives every user created since a reference (the scenario's users are newer than the file)
@@ -1400,7 +1401,7 @@ def test_the_rollback_puts_0114s_guard_and_0116s_audit_list_back_and_0117_applie
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.channels_config_guard()", "public.audit_action_allowed(text)")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0117_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0117_", "0119_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0])
@@ -1416,6 +1417,7 @@ def test_the_rollback_puts_0114s_guard_and_0116s_audit_list_back_and_0117_applie
         def snapshot():
             return {s: (su.value("select pg_get_functiondef(%s::regprocedure)", [s]),
                         su.value("select proacl::text from pg_proc where oid = %s::regprocedure", [s])) for s in sigs}
+        sec_db.take_off_0119(su)      # 0119 sits on 0117's guard, and 0117 and its rollback refuse any other body: the chain is 0117 alone here
         applied = snapshot()
         rows_before = su.value("select count(*) from public.voice_profiles")
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -1544,6 +1546,7 @@ def _swap_body(s, signature_def, body):
 def test_the_migration_refuses_a_live_body_it_has_not_seen_and_accepts_a_reformatted_one(conn, sc, world):
     s = world.su
     become(s, None)
+    sec_db.take_off_0119(s)       # 0119 sits on 0117's guard: off, so the live body here is 0117's
     text = MIGRATION.read_text(encoding="utf-8")
     guard_def = "create or replace function public.channels_config_guard() returns trigger language plpgsql set search_path = public, pg_temp"
     audit_def = "create or replace function public.audit_action_allowed(p_action text) returns boolean language sql immutable set search_path = public, pg_temp"
@@ -1572,6 +1575,7 @@ def test_the_migration_refuses_a_live_body_it_has_not_seen_and_accepts_a_reforma
 def test_the_hashes_in_the_file_match_what_the_database_computes(conn, sc, world):
     s = world.su
     become(s, None)
+    sec_db.take_off_0119(s)       # 0119 sits on 0117's guard: off, so the live body here is 0117's
     head = MIGRATION.read_text(encoding="utf-8").split("1. Pure helpers", 1)[0]
     hashes = set(re.findall(r"'([0-9a-f]{32})'", head))
     live = {s.value("select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc where oid = %s::regprocedure", [sig])
