@@ -174,3 +174,134 @@ class TheVariablesAreWired(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheStageModelSurvivesCopyingAndPickling(unittest.TestCase):
+    """``StageModel`` is a str that remembers its stage. It lands in data classes (``CriticReport.model``), which
+    ``dataclasses.asdict`` deep-copies, so copy, deepcopy and pickle must round-trip it."""
+
+    def setUp(self):
+        self.model = model_for("fact_check")
+
+    def check(self, clone):
+        self.assertEqual(clone, config.GEMINI_MODEL)
+        self.assertEqual(gemini_stages.stage_of(clone), "fact_check")
+
+    def test_copy(self):
+        import copy
+        self.check(copy.copy(self.model))
+
+    def test_deepcopy(self):
+        import copy
+        self.check(copy.deepcopy(self.model))
+
+    def test_pickle_every_protocol(self):
+        import pickle
+        for protocol in range(0, pickle.HIGHEST_PROTOCOL + 1):
+            with self.subTest(protocol=protocol):
+                self.check(pickle.loads(pickle.dumps(self.model, protocol)))
+
+    def test_dataclasses_asdict_of_the_critic_report(self):
+        import dataclasses
+
+        from modules import video_critic
+
+        report = video_critic.CriticReport(model=model_for("video_critic"))
+        self.assertEqual(dataclasses.asdict(report)["model"], config.GEMINI_MODEL)
+
+    def test_the_stage_has_a_default(self):
+        self.assertEqual(gemini_stages.stage_of(gemini_stages.StageModel("gemini-x")), gemini_stages.UNLABELLED)
+
+    def test_json_serialises_as_the_plain_id(self):
+        import json
+        self.assertEqual(json.dumps({"m": self.model}), json.dumps({"m": config.GEMINI_MODEL}))
+
+
+class DoctorProbesTheStageVariablesToo(unittest.TestCase):
+    """A typo in GEMINI_MODEL_SCRIPT used to surface as a 404 traceback at the script stage; the doctor probed only
+    GEMINI_MODEL. Same free models GET, only for a variable that is set to something other than the main model."""
+
+    def setUp(self):
+        from tests import test_doctor as td
+
+        self.td, self.d = td, td.d
+
+    def routes(self, **by_model):
+        base = "generativelanguage.googleapis.com/v1beta/models/"
+        return [("GET", base + m, self.td.Resp(code)) for m, code in by_model.items()]
+
+    def test_nothing_set_is_exactly_the_old_single_probe(self):
+        ctx = self.td.make_ctx(routes=self.routes(**{"gemini-3.6-flash": 200}))
+        out = self.d.check_gemini(ctx)
+        self.assertEqual([c.name for c in out], ["gemini"])
+        self.assertEqual(len(ctx.http.calls), 1)
+
+    def test_a_stage_variable_naming_a_model_that_does_not_exist_fails_with_its_name(self):
+        ctx = self.td.make_ctx({"GEMINI_MODEL_SCRIPT": "gemini-typo-flash"},
+                               self.routes(**{"gemini-3.6-flash": 200, "gemini-typo-flash": 404}))
+        out = {c.name: c for c in self.d.check_gemini(ctx)}
+        self.assertEqual(out["gemini"].status, self.td.PASS)
+        self.assertEqual(out["gemini script"].status, self.td.FAIL)
+        self.assertIn("GEMINI_MODEL_SCRIPT", out["gemini script"].detail + out["gemini script"].fix)
+
+    def test_a_good_stage_model_passes_and_one_equal_to_the_main_model_is_not_probed_twice(self):
+        ctx = self.td.make_ctx({"GEMINI_MODEL_TOPIC": "gemini-ok-flash", "GEMINI_MODEL_OTHER": "gemini-3.6-flash"},
+                               self.routes(**{"gemini-3.6-flash": 200, "gemini-ok-flash": 200}))
+        out = {c.name: c for c in self.d.check_gemini(ctx)}
+        self.assertEqual(sorted(out), ["gemini", "gemini topic"])
+        self.assertEqual(out["gemini topic"].status, self.td.PASS)
+        self.assertEqual(len(ctx.http.calls), 2)
+
+    def test_junk_is_a_warning_that_does_not_echo_it_and_is_never_sent(self):
+        junk = "AIzaSyD-pasted-in-the-wrong-box"
+        ctx = self.td.make_ctx({"GEMINI_MODEL_FACTCHECK": junk}, self.routes(**{"gemini-3.6-flash": 200}))
+        out = self.d.check_gemini(ctx)
+        warn = next(c for c in out if c.name == "gemini factcheck")
+        self.assertEqual(warn.status, self.td.WARN)
+        self.assertNotIn(junk, warn.detail + warn.fix)
+        self.assertEqual(len(ctx.http.calls), 1, "the junk value is not put in a URL")
+
+    def test_a_refused_key_is_reported_once_not_per_variable(self):
+        ctx = self.td.make_ctx({"GEMINI_MODEL_TOPIC": "gemini-ok-flash"}, [("GET", "generativelanguage", self.td.Resp(403))])
+        out = self.d.check_gemini(ctx)
+        self.assertEqual([c.name for c in out], ["gemini"])
+        self.assertEqual(len(ctx.http.calls), 1)
+
+    def test_the_stage_variables_are_scrubbed_like_gemini_model(self):
+        for name in VARIABLES.values():
+            self.assertIn(name, self.d.FREE_TEXT_VARS)
+        self.assertEqual(sorted(self.d.GEMINI_STAGE_VARS), sorted(VARIABLES.values()))
+
+
+class OneVariableMovesEverythingInActions(unittest.TestCase):
+    """``daily_video.yml`` never passed GEMINI_MODEL, so the repository variable moved only the worker. An empty
+    variable must stay the code default (``os.getenv(...) or default``)."""
+
+    FLOWS = ("daily_video.yml", "intelligence_poll.yml", "factcheck_calibration.yml")
+
+    def test_each_gemini_workflow_passes_the_variable_as_a_variable(self):
+        for flow in self.FLOWS:
+            text = (ROOT / ".github" / "workflows" / flow).read_text()
+            self.assertIn("GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}", text, flow)
+            self.assertNotIn("secrets.GEMINI_MODEL", text, flow)
+
+    def test_the_poll_and_the_calibration_also_pass_the_override_of_the_stage_they_run(self):
+        poll = (ROOT / ".github" / "workflows" / "intelligence_poll.yml").read_text()
+        cal = (ROOT / ".github" / "workflows" / "factcheck_calibration.yml").read_text()
+        self.assertIn("GEMINI_MODEL_OTHER: ${{ vars.GEMINI_MODEL_OTHER }}", poll)
+        self.assertIn("GEMINI_MODEL_FACTCHECK: ${{ vars.GEMINI_MODEL_FACTCHECK }}", cal)
+
+    def test_an_empty_variable_is_the_code_default_and_a_set_one_moves_every_stage(self):
+        # What Actions writes for an unset variable is the empty string.
+        cfg = reloaded_config(GEMINI_MODEL="")
+        self.assertEqual(cfg.GEMINI_MODEL, "gemini-3.6-flash")
+        self.assertTrue(all(m == "gemini-3.6-flash" for m in cfg.GEMINI_STAGE_MODELS.values()))
+        cfg = reloaded_config(GEMINI_MODEL="gemini-next-flash", GEMINI_MODEL_SCRIPT="")
+        self.assertTrue(all(m == "gemini-next-flash" for m in cfg.GEMINI_STAGE_MODELS.values()))
+        cfg = reloaded_config(GEMINI_MODEL="gemini-next-flash", GEMINI_MODEL_SCRIPT="gemini-big")
+        self.assertEqual(cfg.GEMINI_STAGE_MODELS["script"], "gemini-big")
+        self.assertEqual(cfg.GEMINI_STAGE_MODELS["topic"], "gemini-next-flash")
+        importlib.reload(config)
+
+    def test_config_reads_gemini_model_as_getenv_or_default(self):
+        self.assertIn('GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or "gemini-3.6-flash")', (ROOT / "config.py").read_text())

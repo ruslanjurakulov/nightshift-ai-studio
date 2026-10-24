@@ -35,11 +35,14 @@ what the request count below is for.
 * `generate_with_retry` raises `GeminiDailyQuotaError` (chained to the SDK's error) instead of the raw 429.
   A stage that already degrades on any model failure keeps degrading, because it catches `Exception`:
   the niche check defers, research continues without notes, the title plan falls back to a heuristic,
-  the fact-check goes to the gate as "did not run" (the gate then blocks it, as before), grounding and the packaging
-  repair leave the verdicts and the hold as they were, comment classification and replies release their work,
+  grounding and the packaging repair leave the verdicts and the hold as they were, comment classification and replies release their work,
   the frame critic skips the sheet.
-* The two stages that cannot be skipped, **the topic and the script**, let it reach `__main__`, which exits with
-  **80** and no traceback. 75 is the storyboard pause, 78 the spend ceiling, 79 the fact-check hold; 80 is the next
+* The stages that cannot be skipped, **the topic, the script and the fact-check**, let it reach `__main__`, which exits
+  with **80** and no traceback. The fact-check is one of them because its verdicts are what the gate stands on:
+  it used to be swallowed by a broad `except`, leaving `fact_results = None`, so the run bought the voice, stills,
+  AI clips and the render and was only then blocked as `fact_check_not_run`. Now the run stops before any of that
+  (the saved script is kept for `--resume`). Any other fact-check failure (not a quota) still goes on as before.
+  Grounding stays advisory and still degrades: the checker's own verdicts stand. 75 is the storyboard pause, 78 the spend ceiling, 79 the fact-check hold; 80 is the next
   free code.
 * The queue worker fails the job (`[code:provider_quota]`, "nothing was charged") and the hold is released.
   The Actions step stays **red** with an `::error` annotation: unlike 75/78/79 this is an outage the owner has to
@@ -66,9 +69,18 @@ URL, `models/...`) is ignored with a warning that names the variable and never t
 `GEMINI_MODEL`. They are repository **variables**: `daily_video.yml` reads them for the scheduled and dispatched
 runs, and `deploy_web.yml` writes them into the worker's env file (run **Deploy web** after changing one).
 
-`GEMINI_MODEL` itself is only wired for the worker (`deploy_web.yml`); `daily_video.yml` does not pass it, so
-scheduled Actions runs always use the code default unless a stage variable above is set. This change leaves that
-as it was.
+### Which variable to set
+
+* **One model for everything:** set the repository variable **`GEMINI_MODEL`** (Settings > Secrets and variables >
+  Actions > Variables). It is passed to the scheduled and dispatched runs (`daily_video.yml`), the intelligence poll
+  and the fact-check calibration, and to the worker (`deploy_web.yml`; run **Deploy web** after changing it).
+  Empty or unset means the code default, `gemini-3.6-flash`.
+* **A different model for one stage:** set that stage's `GEMINI_MODEL_*` variable as well; it overrides
+  `GEMINI_MODEL` for its stage only. (The poll reads `GEMINI_MODEL_OTHER`, the calibration `GEMINI_MODEL_FACTCHECK`.)
+* If the owner enables Gemini billing, nothing needs to change in the code: the same model then simply has a
+  higher quota. A model switch is only needed if a different model is wanted.
+* The doctor (`tools/doctor.py`) probes `GEMINI_MODEL` and every stage variable that is set, so a typo is reported
+  as "Gemini has no model ... (GEMINI_MODEL_SCRIPT)" before a run, not as a 404 at the script stage.
 
 ## The request count
 

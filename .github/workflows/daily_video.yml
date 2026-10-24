@@ -675,8 +675,11 @@ jobs:
           NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT: ${{ vars.NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT }}
           # Packaging repair (modules/packaging_repair.py): empty = ON, `off` restores today's hold with no rewrite.
           NIGHTSHIFT_PACKAGING_REPAIR: ${{ vars.NIGHTSHIFT_PACKAGING_REPAIR }}
-          # Gemini model per stage (modules/gemini_stages.py, config.GEMINI_STAGE_MODELS). Each is optional: empty =
-          # the one model every stage has always used. They spread a per-day, per-model quota over several models.
+          # The Gemini model for every stage (config.GEMINI_MODEL): empty = the code default, so an unset variable
+          # changes nothing. The same variable moves the worker (deploy_web.yml).
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          # Gemini model per stage (modules/gemini_stages.py, config.GEMINI_STAGE_MODELS). Each is optional and
+          # overrides GEMINI_MODEL for its stage only: empty = GEMINI_MODEL. They spread a per-day, per-model quota.
           GEMINI_MODEL_TOPIC: ${{ vars.GEMINI_MODEL_TOPIC }}
           GEMINI_MODEL_RESEARCH: ${{ vars.GEMINI_MODEL_RESEARCH }}
           GEMINI_MODEL_SCRIPT: ${{ vars.GEMINI_MODEL_SCRIPT }}

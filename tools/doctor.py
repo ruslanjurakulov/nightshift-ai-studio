@@ -212,7 +212,9 @@ _MODEL_ID = re.compile(r"(?:MiniMax-[A-Za-z0-9.]{1,20}(?:-[A-Za-z0-9.]{1,12}){0,
 #: Free-text variables whose value is read by the checks. Their values are never
 #: echoed unless they are a known id, and the scrubber removes them from all output.
 FREE_TEXT_VARS = ("CHRONOS_VIDEO_PROVIDER", "CHRONOS_IMAGE_PROVIDER", "TTS_PROVIDER", "MINIMAX_H3_MODEL",
-                  "GEMINI_MODEL", "CHRONOS_IMAGE_MODEL", "ELEVENLABS_MODEL_ID", "WAN_WORKSPACE_ID",
+                  "GEMINI_MODEL", "GEMINI_MODEL_TOPIC", "GEMINI_MODEL_RESEARCH", "GEMINI_MODEL_SCRIPT",
+                  "GEMINI_MODEL_FACTCHECK", "GEMINI_MODEL_GROUNDING", "GEMINI_MODEL_PACKAGING", "GEMINI_MODEL_OTHER",
+                  "CHRONOS_IMAGE_MODEL", "ELEVENLABS_MODEL_ID", "WAN_WORKSPACE_ID",
                   "MINIMAX_V2_QUERY_PATH")
 
 
@@ -574,10 +576,7 @@ def check_leonardo(ctx: Ctx) -> List[Check]:
     return [Check("providers", "leonardo", PASS, f"key accepted, {int(snap.remaining)} API tokens left")]
 
 
-def check_gemini(ctx: Ctx) -> List[Check]:
-    if not ctx.has("GEMINI_API_KEY"):
-        return []
-    model = ctx.get("GEMINI_MODEL") or "gemini-3.6-flash"
+def _check_gemini_main(ctx: Ctx, model: str) -> List[Check]:
     if known_id(model) == UNRECOGNISED:
         return [Check("providers", "gemini", WARN, f"GEMINI_MODEL holds {UNRECOGNISED} (not a Gemini model id), so the key was not tested",
                       "set the variable GEMINI_MODEL to a current Gemini model id (or clear it), then Deploy web")]
@@ -591,6 +590,51 @@ def check_gemini(ctx: Ctx) -> List[Check]:
         return [Check("providers", "gemini", FAIL, f"Gemini has no model {model}", "set the variable GEMINI_MODEL to a current model id (or clear it), then Deploy web")]
     word, remedy = _http_words(r)
     return [Check("providers", "gemini", WARN, f"models check: Gemini {word}", remedy)]
+
+
+#: The optional per-stage model variables (config.GEMINI_STAGE_MODELS). A typo in one is a 404 at the topic or the
+#: script stage, i.e. after the run has started, so it is probed here with the same free models GET.
+GEMINI_STAGE_VARS = tuple("GEMINI_MODEL_" + g for g in
+                          ("TOPIC", "RESEARCH", "SCRIPT", "FACTCHECK", "GROUNDING", "PACKAGING", "OTHER"))
+_PLAIN_MODEL_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
+
+
+def _check_gemini_stage_models(ctx: Ctx, main_model: str) -> List[Check]:
+    out: List[Check] = []
+    seen = {main_model}
+    for var in GEMINI_STAGE_VARS:
+        value = (ctx.get(var) or "").strip()
+        if not value or value in seen:
+            continue
+        name = "gemini " + var[len("GEMINI_MODEL_"):].lower()
+        if not _PLAIN_MODEL_ID.fullmatch(value):
+            out.append(Check("providers", name, WARN, f"{var} holds {UNRECOGNISED} (not a plain model id), so that stage uses GEMINI_MODEL",
+                             f"set the variable {var} to a current Gemini model id (or clear it), then Deploy web"))
+            continue
+        seen.add(value)
+        shown = value if known_id(value) != UNRECOGNISED else f"the model set in {var}"
+        r = ctx.http.get(f"https://generativelanguage.googleapis.com/v1beta/models/{value}",
+                         headers={"x-goog-api-key": ctx.get("GEMINI_API_KEY")})
+        if r.status == 200:
+            out.append(Check("providers", name, PASS, f"{shown} is visible ({var})"))
+        elif r.status == 404:
+            out.append(Check("providers", name, FAIL, f"Gemini has no model {shown} ({var})",
+                             f"set the variable {var} to a current model id (or clear it), then Deploy web"))
+        elif r.status not in (400, 401, 403):
+            word, remedy = _http_words(r)
+            out.append(Check("providers", name, WARN, f"models check for {var}: Gemini {word}", remedy))
+    return out
+
+
+def check_gemini(ctx: Ctx) -> List[Check]:
+    if not ctx.has("GEMINI_API_KEY"):
+        return []
+    model = ctx.get("GEMINI_MODEL") or "gemini-3.6-flash"
+    main = _check_gemini_main(ctx, model)
+    # A refused key makes every probe say the same thing; the stage variables are only worth a request once it works.
+    if main and main[0].status == FAIL:
+        return main
+    return main + _check_gemini_stage_models(ctx, model)
 
 
 #: provider id -> label in UNVERIFIED_PROVIDERS, for the ones the config selects.

@@ -218,6 +218,31 @@ class TheRunReport(Base):
         self.assertEqual(report.call_args.kwargs, {"channel_id": "news"})
 
 
+class TheEventNameIsPinned(unittest.TestCase):
+    """The Command Center counts any event whose name ends in `.failed` (or whose status is `failed`) as a
+    failure (command-center/lib/decisions.ts), and the operator bot's dead-man reads a fixed list of run events."""
+
+    def test_the_name_is_gemini_usage_and_never_reads_as_a_failure(self):
+        self.assertEqual(event_log.GEMINI_USAGE, "gemini.usage")
+        self.assertFalse(event_log.GEMINI_USAGE.endswith(".failed"))
+
+    def test_it_is_not_one_of_the_run_events_the_dead_mans_switch_reads(self):
+        from modules.operator_bot import sources
+
+        self.assertNotIn(event_log.GEMINI_USAGE, sources.RUN_EVENTS)
+
+    def test_neither_status_it_uses_is_failed(self):
+        for quota in (0, 2):
+            gemini_stages.reset()
+            gemini_stages.note_request("script", "gemini-3.6-flash")
+            for _ in range(quota):
+                gemini_stages.note_daily_quota("script", "gemini-3.6-flash")
+            with patch.object(event_log, "emit") as emit:
+                gemini_stages.report_run()
+            self.assertNotEqual(emit.call_args.kwargs["status"], event_log.STATUS_FAILED)
+        gemini_stages.reset()
+
+
 class NotInTheCostLedger(unittest.TestCase):
     def test_the_ledger_has_no_request_unit_and_an_unpriced_unit_would_unprice_the_run(self):
         ledger = cost_ledger.CostLedger()

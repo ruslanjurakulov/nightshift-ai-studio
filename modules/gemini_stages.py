@@ -71,10 +71,15 @@ class StageModel(str):
 
     stage: str = UNLABELLED
 
-    def __new__(cls, value: str, stage: str):
+    def __new__(cls, value: str, stage: str = UNLABELLED):
         obj = super().__new__(cls, value)
         obj.stage = stage
         return obj
+
+    def __getnewargs__(self):
+        # copy, deepcopy, pickle and dataclasses.asdict (a CriticReport holds the model) rebuild the object through
+        # __new__; without this they called it with the value alone and raised TypeError.
+        return (str(self), self.stage)
 
 
 def model_for(stage: str) -> str:

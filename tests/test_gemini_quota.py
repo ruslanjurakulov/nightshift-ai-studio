@@ -399,3 +399,45 @@ class TheRunEndsWithTheCodeTheRunnersRead(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── the fact-check is a gate input: its quota stop comes BEFORE anything is bought ──────────────────────────
+
+
+class AQuotaStopInTheFactCheckComesBeforeTheRenderSpend(unittest.TestCase):
+    """Evidence: the broad ``except Exception`` around the fact-check turned a quota error into
+    ``fact_results = None``, so the run bought the voice, stills, AI clips and the render and only then did the
+    final gate block it as ``fact_check_not_run``. The quota error now stops the run first (exit 80)."""
+
+    @staticmethod
+    def drive(marker):
+        from tests.test_factcheck_shipped_text import drive
+
+        def add(data):
+            data["sections"][1]["narration"] += f" {marker} was the real culprit all along, they say."
+        return drive(add)
+
+    def test_a_daily_quota_error_in_the_fact_check_stops_the_run_before_the_voice_and_any_provider_call(self):
+        out = self.drive("QUOTAME")
+        self.assertEqual(out["raised"][0], "GeminiDailyQuotaError", out.get("tb"))
+        self.assertFalse(out["voice_built"], "nothing may be bought after the checker's quota is spent")
+        self.assertEqual(out["fetcher_calls"], 0, "no footage provider call either")
+        self.assertEqual(out["held"], [], "a quota stop is not a held row")
+
+    def test_any_other_fact_check_failure_keeps_todays_behaviour_and_goes_on(self):
+        out = self.drive("CRASHME")
+        self.assertTrue(out["voice_built"], out.get("tb"))
+        self.assertIn("Fact-checker failed", out["tb"])
+        self.assertNotEqual((out["raised"] or [""])[0], "GeminiDailyQuotaError")
+
+    def test_grounding_stays_advisory_so_it_still_degrades(self):
+        from modules import grounding
+
+        results = [MagicMock(unresolved=False, clamped=False, verdict="unverifiable", requires_human_review=True)]
+        quota = GeminiDailyQuotaError("gemini-3.6-flash", 10.0, "grounding")
+        with patch.object(grounding, "_ground", side_effect=quota):
+            kept, summary = grounding.ground_results("t", ["a claim"], results)
+        self.assertEqual(kept, results, "the checker's own verdicts stand")
+        self.assertEqual(summary.unavailable, "error:GeminiDailyQuotaError")
+        src = (ROOT / "main.py").read_text()
+        self.assertIn('    except Exception as e:\n        logger.warning("Fact-check grounding failed', src)

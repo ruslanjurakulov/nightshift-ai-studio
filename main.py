@@ -1191,6 +1191,10 @@ def run(
             fc_path.write_text(json.dumps(claim_scenes.fact_check_records(section_claims, fact_results),
                                           indent=2, ensure_ascii=False))
             logger.info("Fact-check results saved: %s", fc_path)
+    except gemini_stages.GeminiDailyQuotaError:
+        # The checker's quota is spent for the day: going on would buy the voice, stills and render for a video the
+        # final gate blocks as fact_check_not_run. Stop now (exit 80); the saved script is reused by --resume.
+        raise
     except Exception as e:
         logger.warning("Fact-checker failed (%s: %s) — proceeding without fact-check results",
                         type(e).__name__, e)
