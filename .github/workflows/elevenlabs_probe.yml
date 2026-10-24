@@ -1,0 +1,85 @@
+name: ElevenLabs plan probe
+
+# Read-only. One GET to ElevenLabs' subscription endpoint with the repository's existing
+# ELEVENLABS_API_KEY secret, to answer: does this key's plan allow Instant Voice Cloning,
+# how many voice slots does it have and how many are used, and how many characters are left.
+# It creates nothing, clones nothing and spends no characters. Manual only (Actions ->
+# ElevenLabs plan probe -> Run workflow), never on a push or a pull request.
+#
+# Only a fixed list of plan fields is printed (tier, status, voice slots, cloning flags,
+# character counts). The key is passed through step env, never printed, and the rest of the
+# response is dropped. The log of this repository may be public: no account email, id or
+# billing detail is written to it.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elevenlabs-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Read the plan
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+
+          key = os.environ.get("ELEVENLABS_API_KEY", "")
+          if not key:
+              print("ELEVENLABS_API_KEY is not set in this repository: nothing was called.")
+              sys.exit(2)
+          req = urllib.request.Request(
+              "https://api.elevenlabs.io/v1/user/subscription",
+              headers={"xi-api-key": key, "Accept": "application/json"},
+              method="GET",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  body = resp.read(200_000)
+                  status = resp.status
+          except urllib.error.HTTPError as exc:
+              print(f"ElevenLabs answered HTTP {exc.code} (no body is printed).")
+              sys.exit(1)
+          except Exception as exc:  # network / TLS / timeout
+              print(f"Could not reach ElevenLabs: {type(exc).__name__}")
+              sys.exit(1)
+          try:
+              data = json.loads(body)
+          except ValueError:
+              print(f"HTTP {status} but the answer was not JSON.")
+              sys.exit(1)
+          if not isinstance(data, dict):
+              print(f"HTTP {status} but the answer was not an object.")
+              sys.exit(1)
+          wanted = (
+              "tier", "status", "billing_period", "character_count", "character_limit",
+              "voice_slots_used", "voice_limit", "professional_voice_slots_used",
+              "professional_voice_limit", "can_use_instant_voice_cloning",
+              "can_use_professional_voice_cloning", "can_extend_character_limit",
+              "allowed_to_extend_character_limit", "next_character_count_reset_unix",
+          )
+          lines = [f"HTTP {status}"]
+          for name in wanted:
+              if name in data:
+                  value = data[name]
+                  if isinstance(value, (str, int, float, bool)) or value is None:
+                      lines.append(f"{name}: {value}")
+          missing = [n for n in ("can_use_instant_voice_cloning", "voice_limit") if n not in data]
+          if missing:
+              lines.append("not in the answer: " + ", ".join(missing))
+          out = "\n".join(lines)
+          print(out)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("### ElevenLabs plan (read-only, no characters spent)\n\n```\n" + out + "\n```\n")
+          PY
