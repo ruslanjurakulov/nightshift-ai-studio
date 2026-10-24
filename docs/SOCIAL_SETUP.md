@@ -216,7 +216,10 @@ xabarlarda ko'rinmaydi.
      metama'lumotidan). Kanal ACTIVE va ulangan bo'lishi kerak; token render
      paytidagidek olinadi (Vault ulanishi yoki `CHRONOS_YT_TOKEN_<REF>`,
      standart kanal uchun `YOUTUBE_TOKEN_JSON`). YouTube API kvotasi
-     tugasa — `quota_exceeded` (har yuklash ~1600 birlik, kuniga 10 000).
+     tugasa — `quota_exceeded`. Eski «har yuklash ~1600 birlik, kuniga
+     10 000» raqami eskirgan (YouTube API o'zgarishlar tarixi, 2025-12-04 va
+     2026-06-01 yozuvlari); joriy qiymat **TEKSHIRILMAGAN** — Google Cloud
+     Console → Quotas sahifasida tasdiqlang.
    - TikTok'ga har doim **SELF_ONLY (shaxsiy)** joylanadi. Audit'dan o'tmagan
      ilova uchun TikTok postni faqat **shaxsiy (private) TikTok akkauntdan**
      qabul qiladi; akkaunt ochiq bo'lsa, so'rov `tiktok_unaudited` sababi
