@@ -35,7 +35,7 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from modules.series import validate_series_id
 
 #: Every workflow_dispatch input except ``channel`` (a column on the job) and ``credit_ref`` (a column too). ``series`` is a queue
-#: param since migration 0118_series_tables.sql, which redefines ``render_job_params_valid`` with ``'series'`` in its ``allowed`` array
+#: param since migration 0120_series_tables.sql, which redefines ``render_job_params_valid`` with ``'series'`` in its ``allowed`` array
 #: and the series-id check (tests/test_queue_worker.py compares the two, and tests/test_series_dispatch.py pins the rest). Only a
 #: database function of that migration writes one into a job: the browser's insert policy does not list the key.
 ALLOWED_PARAMS = (
@@ -85,7 +85,7 @@ def validate_series_arg(value) -> str:
 
 def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
     """Check a job and return its params normalised (strings stripped, empty
-    values dropped). Mirrors ``render_job_params_valid`` (its latest definition, migration 0118)
+    values dropped). Mirrors ``render_job_params_valid`` (its latest definition, migration 0120)
     and the workflow's own repair validation."""
     if not isinstance(channel_id, str) or not _CHANNEL_RE.match(channel_id):
         raise InvalidRunRequest("channel_id is not a valid channel id")
@@ -127,7 +127,7 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
             raise InvalidRunRequest(f"{key} must be one of {', '.join(choices)}")
         out[key] = value
 
-    # The same slug the database function checks (migration 0118) and the workflow's validator accepts. A repair re-renders scenes of
+    # The same slug the database function checks (migration 0120) and the workflow's validator accepts. A repair re-renders scenes of
     # a run that already exists, so it names no series (the database refuses that combination too).
     series = params.get("series")
     if series not in (None, ""):

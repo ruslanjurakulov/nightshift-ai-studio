@@ -1,4 +1,4 @@
--- rollback_0118_series_tables.sql — takes migration 0118 out again. OWNER-APPLY: paste into the Supabase SQL editor.
+-- rollback_0120_series_tables.sql — takes migration 0120 out again. OWNER-APPLY: paste into the Supabase SQL editor.
 -- Nothing in the app runs it.
 --
 -- WHEN YOU NEED IT. If the series functions or the new queue kind must be withdrawn. Nothing in the application calls them until slice S3, so
@@ -14,20 +14,20 @@
 --      series_episodes.render_job_id and by the run itself.
 --   2. Puts render_jobs_kind_check back to ('daily', 'repair') and drops render_jobs.series_plan_id with its check and index.
 --   3. Puts render_job_params_valid() back to 0029's body, and render_jobs_payment_guard() back to 0111's body, byte for byte.
---   4. Drops every callable function 0118 added.
+--   4. Drops every callable function 0120 added.
 --
 -- WHAT IT KEEPS, on purpose: the two tables (series_plans, series_episodes) with their rows, RLS, privileges and their immutability / no-delete
 -- triggers. They are the record of every plan and of every paid episode start (the hold's reference lives in series_episodes.credit_ref);
 -- dropping them is a decision about records, not a rollback. To remove them as well, drop the tables by hand.
 --
--- CHECK BEFORE YOU RUN IT: step 3 puts two functions back to the text they had before 0118. If a later migration has redefined either, running
--- this would silently undo that later change; the script therefore compares both live bodies with 0118's and refuses on any other text.
+-- CHECK BEFORE YOU RUN IT: step 3 puts two functions back to the text they had before 0120. If a later migration has redefined either, running
+-- this would silently undo that later change; the script therefore compares both live bodies with 0120's and refuses on any other text.
 -- Compare by hand too:
 --     select pg_get_functiondef('public.render_job_params_valid(jsonb,text)'::regprocedure);
 --     select pg_get_functiondef('public.render_jobs_payment_guard()'::regprocedure);
--- The only differences from this file's text should be the lines marked 0118.
+-- The only differences from this file's text should be the lines marked 0120.
 --
--- tests/security/test_sec_series_tables.py applies this file to a copy of the lab database and re-applies 0118.
+-- tests/security/test_sec_series_tables.py applies this file to a copy of the lab database and re-applies 0120.
 
 begin;
 set local lock_timeout = '5s';
@@ -41,15 +41,15 @@ begin
     from pg_proc p where p.oid = 'public.render_job_params_valid(jsonb, text)'::regprocedure;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into g
     from pg_proc p where p.oid = 'public.render_jobs_payment_guard()'::regprocedure;
-  if v is distinct from '0518e8198f65f86e62b762dd065ac378' then
-    raise exception 'rollback 0118: render_job_params_valid() is not 0118''s body (md5 %): a later change would be undone; read the live body first', v;
+  if v is distinct from 'f2ea81f1d5bd9a8632f421f2c3aefba6' then
+    raise exception 'rollback 0120: render_job_params_valid() is not 0120''s body (md5 %): a later change would be undone; read the live body first', v;
   end if;
-  if g is distinct from '4aba81ca04a52a6b03733bf925e4ed1c' then
-    raise exception 'rollback 0118: render_jobs_payment_guard() is not 0118''s body (md5 %): a later change would be undone; read the live body first', g;
+  if g is distinct from '40039657e1c139399ff866d45831f07f' then
+    raise exception 'rollback 0120: render_jobs_payment_guard() is not 0120''s body (md5 %): a later change would be undone; read the live body first', g;
   end if;
   if exists (select 1 from public.render_jobs
               where status in ('queued', 'running') and (kind = 'series_plan' or params ? 'series')) then
-    raise exception 'rollback 0118: a series_plan job or a run with a series is still queued or running: finish or cancel it first';
+    raise exception 'rollback 0120: a series_plan job or a run with a series is still queued or running: finish or cancel it first';
   end if;
 end $$;
 
@@ -306,7 +306,7 @@ $$;
 
 revoke all on function public.render_jobs_payment_guard() from public, anon, authenticated;
 
--- 4. The functions 0118 added (the three trigger functions of the kept tables stay with them).
+-- 4. The functions 0120 added (the three trigger functions of the kept tables stay with them).
 drop function if exists public.request_series_plan(text, text, integer, text, integer, text, text);
 drop function if exists public.finish_series_plan(uuid, boolean, text, jsonb, jsonb, jsonb, text, text);
 drop function if exists public.quote_series_episode(uuid);

@@ -1,4 +1,4 @@
-"""Migration 0118 (Series Factory S2), pinned from the file: what the security lab cannot see by running it.
+"""Migration 0120 (Series Factory S2), pinned from the file: what the security lab cannot see by running it.
 
 * the two replaced functions are the repo's latest bodies (0029's render_job_params_valid, 0111's render_jobs_payment_guard) with only the
   marked additions, and the drift guard in the file carries exactly the md5 of those bodies;
@@ -16,9 +16,9 @@ from modules import run_request
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-FILE = MIG / "0118_series_tables.sql"
+FILE = MIG / "0120_series_tables.sql"
 TEXT = FILE.read_text(encoding="utf-8")
-ROLLBACK = ROOT / "docs" / "sql" / "rollback_0118_series_tables.sql"
+ROLLBACK = ROOT / "docs" / "sql" / "rollback_0120_series_tables.sql"
 
 RJPV = "create or replace function public.render_job_params_valid(p jsonb, p_kind text)"
 GUARD = "create or replace function public.render_jobs_payment_guard() returns trigger"
@@ -56,20 +56,24 @@ def added_lines(old: str, new: str):
 
 
 class Numbering(unittest.TestCase):
-    def test_the_number_is_unique_and_after_0117(self):
+    def test_the_number_is_unique_and_after_everything_that_was_merged_first(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
-        self.assertEqual(numbers.count("0118"), 1)
-        self.assertIn("0117", numbers)
-        self.assertGreater("0118", "0117")
+        self.assertEqual(numbers.count("0120"), 1)
+        self.assertIn("0119", numbers)
+        self.assertGreater("0120", "0119")
+        self.assertNotIn("0118", numbers, "0118 is left unused: the file was renumbered to apply after 0119")
 
     def test_a_rollback_exists_and_is_one_transaction(self):
         rb = ROLLBACK.read_text(encoding="utf-8")
         self.assertRegex(rb, r"(?m)^begin;$")
         self.assertRegex(rb, r"(?m)^commit;$")
 
-    def test_the_channel_settings_number_is_not_used(self):
-        self.assertFalse(list(MIG.glob("0119_series*")))
-        self.assertNotIn("0119", code(TEXT))
+    def test_nothing_in_the_file_depends_on_0118_or_0119(self):
+        c = code(TEXT)
+        self.assertNotIn("0118", c)
+        self.assertNotIn("0119", c)
+        for name in ("channels_config_guard", "patch_channel_agent_config", "channel_spend_ceiling"):
+            self.assertNotIn(name, c)
 
 
 class ReplacedBodies(unittest.TestCase):
@@ -80,7 +84,7 @@ class ReplacedBodies(unittest.TestCase):
         self.assertEqual(old.count("'publish_hint'];"), 1)
         added = added_lines(old.replace("'publish_hint'];", "'publish_hint','series'];"), new)
         text = "\n".join(added)
-        self.assertEqual(text.count("-- 0118:"), 2)
+        self.assertEqual(text.count("-- 0120:"), 2)
         self.assertIn("p ->> 'series' !~ '^[a-z0-9][a-z0-9._-]{0,63}$'", text)
         self.assertIn("p_kind = 'repair'", text)
         self.assertIn("if p_kind = 'series_plan' then", text)
@@ -93,7 +97,7 @@ class ReplacedBodies(unittest.TestCase):
         new = body(TEXT, GUARD)
         added = added_lines(old, new)
         text = "\n".join(added)
-        self.assertEqual(text.count("-- 0118:"), 1)
+        self.assertEqual(text.count("-- 0120:"), 1)
         self.assertIn("sp      public.series_plans;", text)
         self.assertIn("if new.series_plan_id is not null then", text)
         self.assertIn("raise exception 'render job refused: it is not the job its series plan queued'", text)
@@ -126,13 +130,13 @@ class ReplacedBodies(unittest.TestCase):
         self.assertIn("v <> all (array[", head)
         self.assertIn("g <> all (array[", head)
         self.assertEqual(head.count("that is neither"), 2)
-        self.assertLess(TEXT.index("0118 found a render_jobs_payment_guard"), TEXT.index(GUARD))
-        self.assertLess(TEXT.index("0118 found a render_job_params_valid"), TEXT.index(RJPV))
+        self.assertLess(TEXT.index("0120 found a render_jobs_payment_guard"), TEXT.index(GUARD))
+        self.assertLess(TEXT.index("0120 found a render_job_params_valid"), TEXT.index(RJPV))
 
     def test_the_old_bodies_are_the_latest_definitions_in_the_repo(self):
         for fn, header, expected in (("render_job_params_valid", RJPV, "0029_publish_targets.sql"),
                                      ("render_jobs_payment_guard", GUARD, "0111_video_safety.sql")):
-            defs = [p.name for p in sorted(MIG.glob("*.sql")) if p.name < "0118" and f"create or replace function public.{fn}(" in p.read_text(encoding="utf-8")]
+            defs = [p.name for p in sorted(MIG.glob("*.sql")) if p.name < "0120" and f"create or replace function public.{fn}(" in p.read_text(encoding="utf-8")]
             self.assertEqual(defs[-1], expected, fn)
 
     def test_the_rollback_restores_the_old_bodies_byte_for_byte_and_guards_on_the_new_ones(self):

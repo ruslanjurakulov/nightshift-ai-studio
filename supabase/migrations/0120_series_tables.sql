@@ -1,4 +1,4 @@
--- 0118_series_tables.sql — Series Factory, slice S2: the database half of "plan a series, see it priced, start its episodes one at a time".
+-- 0120_series_tables.sql — Series Factory, slice S2: the database half of "plan a series, see it priced, start its episodes one at a time".
 -- (docs/SERIES_FACTORY.md; the pure planner and price preview are modules/series_planner.py and lib/credits.ts quoteSeries, already on main.)
 --
 -- WHAT THIS DOES NOT DO. Nothing here calls Gemini or any provider, and nothing in the application calls these functions yet: no UI, no route, no
@@ -8,8 +8,13 @@
 -- worker would only fail. And since an episode exists only after finish_series_plan() (the worker's function), start_series_episode() and
 -- quote_series_episode() — which ARE granted to signed-in users — have nothing to act on until then.
 --
--- NUMBER. 0118: the highest on main is 0117 (voice_profiles) and no open pull request adds a migration (checked with gh api, 2026-10-24). 0119 is
--- another builder's (channel settings): do not use it here.
+-- NUMBER. 0120: the highest on main is 0119 (channel settings, #589, merged first) and no open pull request adds a migration (checked with gh api,
+-- 2026-10-24). This file was written as 0118 and renumbered so that it applies AFTER 0119: the Supabase migration runner can refuse a migration
+-- older than the last one applied. Number 0118 is left unused on purpose. Nothing in this file depends on 0118 or on 0119: it replaces
+-- render_job_params_valid (0029's body) and render_jobs_payment_guard (0111's body), neither of which 0112..0119 redefine (the DO block checks).
+--
+-- APPLY AS ONE TRANSACTION: the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1. The lock_timeout below is
+-- `set local`, and a half-applied file (tables created, payment guard not yet replaced) is not a state anyone designed for.
 --
 -- WHAT IT ADDS
 --   series_plans        one row per "plan a series" press: the topic, the niche (taken from the SERIES or CHANNEL row, never from the browser),
@@ -65,7 +70,7 @@
 -- 0111, each their latest body verbatim plus marked additions) and the DO block that refuses to replace a body it has not seen.
 --
 -- Additive and idempotent: create ... if not exists, create or replace, drop trigger / policy then create, revoke then grant. No existing row is
--- rewritten. An applied migration is never edited. Rollback: docs/sql/rollback_0118_series_tables.sql.
+-- rewritten. An applied migration is never edited. Rollback: docs/sql/rollback_0120_series_tables.sql.
 -- REQUIRES 0018 (organizations, is_org_member), 0006 (content_series), 0017 (render_jobs), 0020/0034/0094 (reserve_credits, credit_account_lock,
 -- credit_prices), 0041/0076/0111 (render_jobs_payment_guard), 0029 (render_job_params_valid).
 
@@ -78,13 +83,13 @@ begin
      or to_regprocedure('public.is_org_member(uuid, text)') is null
      or to_regprocedure('public.is_platform_admin()') is null
      or to_regprocedure('public.channel_org(text)') is null then
-    raise exception '0118 needs the organization helpers: apply 0018_organizations.sql first';
+    raise exception '0120 needs the organization helpers: apply 0018_organizations.sql first';
   end if;
   if to_regclass('public.content_series') is null then
-    raise exception '0118 needs 0006_content_series.sql (content_series): apply it first';
+    raise exception '0120 needs 0006_content_series.sql (content_series): apply it first';
   end if;
   if to_regclass('public.render_jobs') is null or to_regprocedure('public.render_job_params_valid(jsonb, text)') is null then
-    raise exception '0118 needs 0017_render_jobs.sql (render_jobs, render_job_params_valid): apply it first';
+    raise exception '0120 needs 0017_render_jobs.sql (render_jobs, render_job_params_valid): apply it first';
   end if;
   if to_regclass('public.credit_prices') is null or to_regclass('public.credit_reservations') is null
      or to_regprocedure('public.reserve_credits(uuid, text, numeric)') is null
@@ -92,16 +97,16 @@ begin
      or to_regprocedure('public.credits_exempt(uuid)') is null
      or to_regprocedure('public.credits_round_up(numeric)') is null
      or to_regprocedure('public.credits_trusted_caller()') is null then
-    raise exception '0118 needs the credits migrations (0020, 0034, 0094: reserve_credits, credit_prices): apply them first';
+    raise exception '0120 needs the credits migrations (0020, 0034, 0094: reserve_credits, credit_prices): apply them first';
   end if;
   if to_regprocedure('public.render_jobs_payment_guard()') is null or to_regprocedure('public.render_jobs_terms_frozen()') is null
      or to_regclass('public.scene_regenerations') is null then
-    raise exception '0118 needs 0041, 0076 and 0111 (render_jobs_payment_guard): apply them first';
+    raise exception '0120 needs 0041, 0076 and 0111 (render_jobs_payment_guard): apply them first';
   end if;
   -- create or replace keeps a trigger bound; if the 0041 trigger is gone the payment rule would never run.
   if not exists (select 1 from pg_trigger
                   where tgrelid = 'public.render_jobs'::regclass and tgname = 'render_jobs_payment_guard' and not tgisinternal) then
-    raise exception '0118 found no render_jobs_payment_guard trigger on render_jobs: re-apply 0041/0076 first';
+    raise exception '0120 found no render_jobs_payment_guard trigger on render_jobs: re-apply 0041/0076 first';
   end if;
 end $$;
 
@@ -119,11 +124,11 @@ begin
     from pg_proc p where p.oid = 'public.render_job_params_valid(jsonb, text)'::regprocedure;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into g
     from pg_proc p where p.oid = 'public.render_jobs_payment_guard()'::regprocedure;
-  if v is null or v <> all (array['23acd245bca17f93913ee051de012b6d', '0518e8198f65f86e62b762dd065ac378']) then
-    raise exception '0118 found a render_job_params_valid() that is neither 0029''s body nor 0118''s (md5 %): read the live body first', v;
+  if v is null or v <> all (array['23acd245bca17f93913ee051de012b6d', 'f2ea81f1d5bd9a8632f421f2c3aefba6']) then
+    raise exception '0120 found a render_job_params_valid() that is neither 0029''s body nor 0120''s (md5 %): read the live body first', v;
   end if;
-  if g is null or g <> all (array['bcf669209b258a92379d2f0d7a2b3d07', '4aba81ca04a52a6b03733bf925e4ed1c']) then
-    raise exception '0118 found a render_jobs_payment_guard() that is neither 0111''s body nor 0118''s (md5 %): read the live body first', g;
+  if g is null or g <> all (array['bcf669209b258a92379d2f0d7a2b3d07', '40039657e1c139399ff866d45831f07f']) then
+    raise exception '0120 found a render_jobs_payment_guard() that is neither 0111''s body nor 0120''s (md5 %): read the live body first', g;
   end if;
 end $$;
 
@@ -157,7 +162,7 @@ create table if not exists public.series_plans (
 );
 
 comment on table public.series_plans is
-  'One "plan a series" press (migration 0118): what was asked, who asked, and what the planning run produced. Written only by request_series_plan / finish_series_plan. `report` and `quote` are the PLANNER''S words and preview: model text that nobody fact-checked, and a price estimate that start_series_episode never reads.';
+  'One "plan a series" press (migration 0120): what was asked, who asked, and what the planning run produced. Written only by request_series_plan / finish_series_plan. `report` and `quote` are the PLANNER''S words and preview: model text that nobody fact-checked, and a price estimate that start_series_episode never reads.';
 comment on column public.series_plans.niche is
   'Taken from the series or the channel by request_series_plan, never typed into the request.';
 comment on column public.series_plans.quote is
@@ -228,7 +233,7 @@ create table if not exists public.series_episodes (
 );
 
 comment on table public.series_episodes is
-  'The 3 or 4 episodes of a ready series plan (migration 0118). `outline` is model text, not fact-checked. Written only by finish_series_plan (creates them) and start_series_episode (starts one: its hold and its queued run).';
+  'The 3 or 4 episodes of a ready series plan (migration 0120). `outline` is model text, not fact-checked. Written only by finish_series_plan (creates them) and start_series_episode (starts one: its hold and its queued run).';
 
 alter table public.series_episodes drop constraint if exists series_episodes_shape_check;
 alter table public.series_episodes add constraint series_episodes_shape_check
@@ -373,7 +378,7 @@ alter table public.render_jobs drop constraint if exists render_jobs_series_plan
 alter table public.render_jobs add constraint render_jobs_series_plan_check
   check ((kind = 'series_plan') = (series_plan_id is not null));
 
--- render_job_params_valid: 0029's body (the latest definition) verbatim, plus the three blocks marked 0118. Still IMMUTABLE: it sits in the
+-- render_job_params_valid: 0029's body (the latest definition) verbatim, plus the three blocks marked 0120. Still IMMUTABLE: it sits in the
 -- render_jobs_params_check CHECK and in the api_* functions, so it cannot read a table; it checks only the SHAPE of `series` (a slug). That the
 -- series exists, belongs to the channel and is active is checked by start_series_episode() and by main.py (require_runnable_series).
 create or replace function public.render_job_params_valid(p jsonb, p_kind text)
@@ -445,7 +450,7 @@ begin
       or p ->> 'publish_hint' !~ '^(youtube|instagram|tiktok):[A-Za-z0-9._-]{1,128}$') then
     return false;
   end if;
-  -- 0118: which series an episode's run belongs to. A slug (the shape modules/series.py accepts), so it can name nothing else: no path, no
+  -- 0120: which series an episode's run belongs to. A slug (the shape modules/series.py accepts), so it can name nothing else: no path, no
   -- flag, no line break. Never on a repair, which re-renders scenes of a run that is already made.
   if p ? 'series' and (jsonb_typeof(p -> 'series') <> 'string'
                        or p ->> 'series' !~ '^[a-z0-9][a-z0-9._-]{0,63}$'
@@ -457,7 +462,7 @@ begin
   end if;
 
   has_repair := length(btrim(coalesce(p ->> 'repair_scenes', ''))) > 0;
-  -- 0118: a series-planning job is ONE model call about a topic. It carries the topic, the niche, the language and the series it is for, and
+  -- 0120: a series-planning job is ONE model call about a topic. It carries the topic, the niche, the language and the series it is for, and
   -- nothing a run takes (no length, provider, voice, resume or repair).
   if p_kind = 'series_plan' then
     return not has_repair
@@ -472,7 +477,7 @@ begin
 end
 $$;
 
--- render_jobs_payment_guard: 0111's body (the latest definition) verbatim, plus the block marked 0118. The trigger itself (before insert,
+-- render_jobs_payment_guard: 0111's body (the latest definition) verbatim, plus the block marked 0120. The trigger itself (before insert,
 -- 0041/0076) is not recreated: create or replace keeps it bound.
 create or replace function public.render_jobs_payment_guard() returns trigger
   language plpgsql security definer set search_path = public, pg_temp as $$
@@ -488,7 +493,7 @@ declare
   sr      public.scene_regenerations;
   sp      public.series_plans;
 begin
-  -- 0118: a job linked to a series plan is the one job its request queued -- a planning job (one model call, paid by nobody: planning is free
+  -- 0120: a job linked to a series plan is the one job its request queued -- a planning job (one model call, paid by nobody: planning is free
   -- to the customer and capped per organization per day) -- for every organization, the operator's included. Placed before the channel
   -- check below on purpose: an EDITOR requests a plan (request_series_plan checks that), and the browser's own insert policy admits only
   -- kind 'daily', so a signed-in browser cannot insert this row itself whatever it puts in the column.
@@ -1139,8 +1144,8 @@ grant execute on function public.start_series_episode(uuid, numeric, text, boole
 --       as function_grants,
 --     (select pg_get_constraintdef(oid) like '%series_plan%' from pg_constraint
 --       where conrelid = 'public.render_jobs'::regclass and conname = 'render_jobs_kind_check') as kind_allowed,
---     position('0118' in pg_get_functiondef('public.render_jobs_payment_guard()'::regprocedure)) > 0
---       and position('0118' in pg_get_functiondef('public.render_job_params_valid(jsonb,text)'::regprocedure)) > 0 as both_replaced,
+--     position('0120' in pg_get_functiondef('public.render_jobs_payment_guard()'::regprocedure)) > 0
+--       and position('0120' in pg_get_functiondef('public.render_job_params_valid(jsonb,text)'::regprocedure)) > 0 as both_replaced,
 --     public.render_job_params_valid('{"topic":"t","series":"my-series"}', 'daily')
 --       and not public.render_job_params_valid('{"topic":"t","series":"../x"}', 'daily')
 --       and not public.render_job_params_valid('{"topic":"t","series":"my-series"}', 'repair') as series_key_checked;

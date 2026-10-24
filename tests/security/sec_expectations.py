@@ -594,7 +594,7 @@ import sec_channel_settings_0119  # noqa: E402
 
 sec_channel_settings_0119.extend(TABLES, FUNCTIONS)
 
-# Migration 0118 (Series Factory S2: series_plans, series_episodes, the series_plan queue kind): tests/security/sec_series_tables_0118.py
-import sec_series_tables_0118  # noqa: E402
+# Migration 0120 (Series Factory S2: series_plans, series_episodes, the series_plan queue kind): tests/security/sec_series_tables_0120.py
+import sec_series_tables_0120  # noqa: E402
 
-sec_series_tables_0118.extend(TABLES, FUNCTIONS)
+sec_series_tables_0120.extend(TABLES, FUNCTIONS)

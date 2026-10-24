@@ -39,9 +39,9 @@ from test_sec_mcp_oauth import KEY_A, ORG_A, ORG_B, UA, UB, UOP, connect, db, sh
 
 MIGRATION = REPO / "supabase" / "migrations" / "0111_video_safety.sql"
 ROLLBACK = REPO / "docs" / "sql" / "rollback_0111_video_safety.sql"
-# Later migrations that REDEFINE a function 0111 defines (render_jobs_payment_guard: 0118 adds a block to 0111's body). Replaying 0111 puts
+# Later migrations that REDEFINE a function 0111 defines (render_jobs_payment_guard: 0120 adds a block to 0111's body). Replaying 0111 puts
 # its own text back, so a replay in these tests is "0111, then the later ones", the order a database sees them in.
-LATER = REPO / "supabase" / "migrations" / "0118_series_tables.sql"
+LATER = REPO / "supabase" / "migrations" / "0120_series_tables.sql"
 
 CUSTOMER = Actor("customer", "authenticated", UA, "a@d3.io")
 OPERATOR = Actor("operator", "authenticated", UOP, "op@d3.io")
@@ -432,8 +432,8 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     base = f"ns_vsafe_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        # (0118 replaces 0111's guard and refuses to do so on a database that never had it: the base for "before 0111" stops short of it too)
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0118_"))])
+        # (0120 replaces 0111's guard and refuses to do so on a database that never had it: the base for "before 0111" stops short of it too)
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0]) for s in CHANGED}

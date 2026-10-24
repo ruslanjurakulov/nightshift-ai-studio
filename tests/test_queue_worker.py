@@ -122,7 +122,7 @@ class WorkflowParity(unittest.TestCase):
     def test_whitelist_is_the_workflow_inputs(self):
         # credit_ref is who pays, not what runs: on the queue it is a column of
         # render_jobs (0020), never a params key the pipeline sees. series is a queue
-        # param since migration 0118 (render_job_params_valid carries it), so it is
+        # param since migration 0120 (render_job_params_valid carries it), so it is
         # in ALLOWED_PARAMS like every other input; test_migration_whitelist_matches
         # below holds the SQL list to the same set.
         self.assertEqual(set(self.inputs) - {"channel", "credit_ref"}, set(run_request.ALLOWED_PARAMS))

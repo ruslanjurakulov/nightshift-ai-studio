@@ -1,4 +1,4 @@
-"""Migration 0118 (Series Factory, slice S2): plans, episodes, and the one function that spends.
+"""Migration 0120 (Series Factory, slice S2): plans, episodes, and the one function that spends.
 
 The attackers are the people a browser can be: another member of the same organization (a viewer, an editor), a member of another
 organization, the anon key, and the service key where it should not reach. What must NOT change is checked beside every refusal: the
@@ -28,8 +28,8 @@ from psycopg import sql
 import sec_db
 from sec_db import ANON, SERVICE, acting, as_superuser, user
 
-MIGRATION = sec_db.REPO / "supabase" / "migrations" / "0118_series_tables.sql"
-ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0118_series_tables.sql"
+MIGRATION = sec_db.REPO / "supabase" / "migrations" / "0120_series_tables.sql"
+ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0120_series_tables.sql"
 
 # video_minute 6 credits/min with a 25% margin = 7.5/min: 120 s = 15.00, 30 s = 3.75 -> the 5.00 floor, 300 s = 37.50.
 PRICES = {"video_minute": (6, "0.25"), "job_minimum": (5, "0")}
@@ -1514,7 +1514,7 @@ def test_applying_the_migration_again_changes_nothing_and_keeps_every_row(conn, 
     assert refused(start(s, world.adm, eps[1]), "NS409", "earlier_episode_not_finished")
 
 
-def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0118_applies_again(conn, sc):
+def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies_again(conn, sc):
     """The rollback restores render_job_params_valid and render_jobs_payment_guard byte for byte, puts the kind check back, drops the link
     column and every callable function, KEEPS the two tables and their rows, and the migration applies again on top."""
     admin = sec_db.admin_dsn()
@@ -1522,7 +1522,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0118_applies
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.render_job_params_valid(jsonb,text)", "public.render_jobs_payment_guard()")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0118_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0120_")])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s_: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s_]).fetchone()[0],
                          b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s_]).fetchone()[0]) for s_ in sigs}
@@ -1552,8 +1552,8 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0118_applies
         assert su.value("select pg_get_constraintdef(oid) from pg_constraint where conname = 'render_jobs_kind_check'") == kind_def
         assert {r[0] for r in su.rows("select column_name from information_schema.columns where table_name = 'render_jobs'")} == cols
         assert not su.value("select public.render_job_params_valid('{\"topic\": \"t\", \"series\": \"a\"}', 'daily')"), "the key is refused again"
-        again = su.run(body)  # a second rollback finds the old bodies and refuses to "restore" what is not 0118's
-        assert not again.ok and "is not 0118's body" in again.error, again
+        again = su.run(body)  # a second rollback finds the old bodies and refuses to "restore" what is not 0120's
+        assert not again.ok and "is not 0120's body" in again.error, again
         su.conn.execute(MIGRATION.read_text(encoding="utf-8"))
         assert snapshot() == applied
 
@@ -1583,7 +1583,7 @@ def test_the_rollback_refuses_to_undo_a_later_change_to_either_function(conn, wo
     s.conn.execute(changed)
     body = "\n".join(ln for ln in ROLLBACK.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
     out = s.run(body)
-    assert not out.ok and f"{word}() is not 0118's body" in out.error, out
+    assert not out.ok and f"{word}() is not 0120's body" in out.error, out
     assert s.value("select position('a later change' in pg_get_functiondef(%s::regprocedure)) > 0", [sig]), "nothing was restored over it"
 
 

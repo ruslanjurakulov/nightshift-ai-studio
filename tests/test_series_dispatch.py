@@ -9,7 +9,7 @@ no argv builder. This pins the Actions path:
   and appended as ``--series`` only when non-empty and valid;
 * ``modules.run_request.build_main_args`` builds the same argument, so the
   queue path cannot drift from it. ``series`` is in ``ALLOWED_PARAMS`` since
-  migration 0118, which redefines the database whitelist
+  migration 0120, which redefines the database whitelist
   ``render_job_params_valid`` with it (only ``start_series_episode`` writes such
   a job; the browser's insert policy does not list the key);
 * a series that is not ACTIVE, is unknown, or belongs to another channel stops
@@ -311,7 +311,7 @@ class ArgsBuilder(unittest.TestCase):
                 run_request.build_main_args("news", {"series": bad})
 
     def test_the_queue_path_carries_a_validated_series(self):
-        # render_job_params_valid (supabase/migrations/0118_series_tables.sql, its latest definition) has 'series' in its allowed array and
+        # render_job_params_valid (supabase/migrations/0120_series_tables.sql, its latest definition) has 'series' in its allowed array and
         # refuses anything but the slug modules.series accepts; ALLOWED_PARAMS moved with it, in the same change.
         self.assertIn("series", run_request.ALLOWED_PARAMS)
         self.assertEqual(run_request.validate("news", "daily", {"series": "alpha"}), {"series": "alpha"})
@@ -331,10 +331,10 @@ class ArgsBuilder(unittest.TestCase):
 
     def test_the_migration_that_carries_the_series_key_is_the_latest_definition(self):
         source = (ROOT / "modules" / "run_request.py").read_text()
-        self.assertIn("0118_series_tables.sql", source)
+        self.assertIn("0120_series_tables.sql", source)
         migrations = sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
         latest = [m.name for m in migrations if "create or replace function public.render_job_params_valid" in m.read_text()][-1]
-        self.assertEqual(latest, "0118_series_tables.sql")
+        self.assertEqual(latest, "0120_series_tables.sql")
         sql = (ROOT / "supabase" / "migrations" / latest).read_text()
         self.assertIn("'publish_hint','series'];", sql)
         self.assertIn("!~ '^[a-z0-9][a-z0-9._-]{0,63}$'", sql)  # the slug modules/series.py accepts

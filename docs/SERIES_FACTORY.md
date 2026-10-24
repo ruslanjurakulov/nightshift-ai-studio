@@ -1,7 +1,7 @@
 # Series Factory
 
 A series is 3 or 4 episodes of one channel, planned together, priced before anything is spent, and made one at a time.
-This page describes **slice S1** (a pure planner and a pure price preview) and **slice S2** (migration 0118: the tables, the functions
+This page describes **slice S1** (a pure planner and a pure price preview) and **slice S2** (migration 0120: the tables, the functions
 that spend, and the queue kind; section "Slice S2" below). Nothing here runs yet: no worker job, no route, no UI.
 
 ## What S1 is
@@ -25,7 +25,7 @@ and a fixture both read, `tests/fixtures/series_quote_cases.txt`, so the Python 
   Slice S2 added the migration and the tables, and nothing else of this list.
 - No quota API. `series_call_budget` only reports an estimate; it cannot refuse anything, because the repo cannot read the
   key's remaining daily quota.
-- No series-scoped run. That is slice S0 (PR #576 for the Actions path; the queue path is migration 0118, see "Slice S2"),
+- No series-scoped run. That is slice S0 (PR #576 for the Actions path; the queue path is migration 0120, see "Slice S2"),
   not this one.
 - Not a script. An outline is a title, an angle, hooks, an open loop, a cliffhanger and key facts. The full script,
   its fact-check, the grounding step and the storyboard review all still happen per episode, later, as they do today.
@@ -202,10 +202,10 @@ fact-check on resume). **None of it was measured on a real run, so every number 
 quote. The only measured fact is the one in PR #572's log: a free-tier model with a limit of 20 requests per day. A caller can
 compare `total_calls_low` and `total_calls_high` with its quota; the planner does not refuse anything itself.
 
-## Slice S2: tables and functions (migration 0118)
+## Slice S2: tables and functions (migration 0120)
 
 Owner approval and an independent security review come before the merge, because the merge applies the file live. The file is
-`supabase/migrations/0118_series_tables.sql`; its rollback is `docs/sql/rollback_0118_series_tables.sql`; the lab tests are
+`supabase/migrations/0120_series_tables.sql`; its rollback is `docs/sql/rollback_0120_series_tables.sql`; the lab tests are
 `tests/security/test_sec_series_tables.py` (behaviour, with real concurrent transactions for the races) and
 `tests/test_series_tables_migration.py` (what the file itself must say). Slice S2 only stores and spends: it never calls Gemini and
 nothing in the application calls it yet.
@@ -284,6 +284,32 @@ channel or series outside the caller's scope: one answer, no oracle), `forbidden
 - The queue row is paid by nobody: planning is not credit-priced in this slice. If owner decision 3 goes the other way, the guard block and
   `request_series_plan` change together.
 
+### Hard conditions before `request_series_plan` may be granted (independent security review of #590)
+
+The review found migration 0120 safe to apply as it stands. These findings are the conditions that S3 (or whoever grants the function) must
+meet **before** `grant execute on function public.request_series_plan(...) to authenticated`. They are conditions, not suggestions; none is
+met by 0120, which is why the function is granted to nobody.
+
+- **F4: the cap is per organization, and one account can have many organizations.** `create_organization` allows 10 organizations per
+  account, so one person can make 10 x 5 = 50 planning requests a day (each one a model call on the platform's shared Gemini key). Add a
+  per-user cap and/or a global daily cap, in the database, before the grant.
+- **F5: what happens when the function is called before its worker exists, and what is not yet handled.**
+  - Until a handler exists, the queue worker fails a `series_plan` job as "invalid job (nothing was run)" (`run_request.KINDS` is `daily` and
+    `repair`) and the plan stays `requested`, blocking its channel, until the 2 hour expiry. S3 ships the handler with the grant, never the
+    grant alone.
+  - There is no restart path after a failed, cancelled or expired episode: the hold reference `rj-se-<episode id>` is derived from the episode
+    id, and `reserve_credits` refuses a reused reference even when released, and a failed earlier episode blocks every later one. A restart needs
+    a new reference scheme (an attempt number) and its own review.
+  - `render_jobs_voice_guard` (0117) is a `BEFORE INSERT` trigger on all of `render_jobs`, so it also runs on a `series_plan` job and checks the
+    channel's configured voices at queue time: a channel whose configured custom voice was detached or deleted would make planning fail. Decide
+    in S3 whether planning should be exempt (it uses no voice) or should fail early with a clear message (rule 6).
+  - `request_series_plan` accepts only ASCII language names (`^[A-Za-z][A-Za-z -]{0,39}$`): "Русский" or "O'zbek" are refused as
+    `invalid_language`. The S3 UI must send an English name or a language code, not the interface string.
+- **F1: apply the migration as ONE transaction.** `set local lock_timeout` and the drift guards assume it: the Supabase SQL editor,
+  `apply_migration`, or `psql --single-transaction -v ON_ERROR_STOP=1 -f supabase/migrations/0120_series_tables.sql`. A plain `psql -f` without
+  those flags runs every statement on its own and could leave the file half applied (for instance the tables created and the payment guard not
+  yet replaced) if one statement failed.
+
 ### What S2 does not do
 
 No worker job (S3), no UI (S3), no Gemini call, no route. `request_series_plan` is not callable. No restart of a failed episode, no cancel.
@@ -291,16 +317,16 @@ No worker job (S3), no UI (S3), no Gemini call, no route. `request_series_plan` 
 override (owner decision 4) is not set by `start_series_episode`; the episode run is a plain queue run with an explicit topic until that
 decision is made. A migration cannot be fact-checked or measured: nothing here was run against a live database.
 
-## How it will be wired (S1 and S2 are done; S0's queue half is in 0118)
+## How it will be wired (S1 and S2 are done; S0's queue half is in 0120)
 
 Numbers follow the plan (`series-voice-plan.md`).
 
 1. **S0**: PR #576 puts a validated `series` input on the Actions path (`daily_video.yml`, `run_request.build_main_args`,
-   and a refusal of a series that is not runnable). The queue half is migration 0118: `series` is in the database's
+   and a refusal of a series that is not runnable). The queue half is migration 0120: `series` is in the database's
    `render_job_params_valid` whitelist and in `run_request.ALLOWED_PARAMS`, in the same change, so a job can carry it; only
    `start_series_episode` writes one (the Run now insert policy does not list the key). What remains of S0 is the Run now route
    reading a `series`, and the dangling `Series.playlist_id` and `series_id` (which `watch_next` filters on but no table stores).
-2. **S2**: done in migration 0118 (section above).
+2. **S2**: done in migration 0120 (section above).
 3. **S3**: a worker job that calls `plan_series` with `gemini_generate` and a real `TopicManager` (after `load_held_topics()`),
    stores the plan, and a `/[channel]/series/[id]` page: outline cards labelled "not fact-checked", variants, per-episode and
    total price from `quoteSeries`, a status chip per episode linking to its storyboard and video, en/ru/uz strings, and the
@@ -330,7 +356,7 @@ see `docs/GEMINI_QUOTA.md`. A spent per-day quota raises `GeminiDailyQuotaError`
 2. Series money: per-episode approval and hold (recommended, fits the 3 hour hold expiry), or one upfront series hold (changes
    reservation expiry, which is security-critical)?
 3. Is series planning free to the customer (the platform pays Gemini, with a per-org daily cap) or credit-priced? What are the cap numbers?
-   (Migration 0118 builds the free-with-a-cap answer with a placeholder of 5 per organization per 24 hours; it is dormant until S3.)
+   (Migration 0120 builds the free-with-a-cap answer with a placeholder of 5 per organization per 24 hours; it is dormant until S3.)
 4. Rule 3 (CLAUDE.md): confirm that a per-run storyboard-review override is acceptable (the browser writes a row and stops; the worker spends).
 5. Whether `series` should stay a lenient vet source (this slice's decision) once real plans have been seen.
 
@@ -358,7 +384,7 @@ see `docs/GEMINI_QUOTA.md`. A spent per-day quota raises `GeminiDailyQuotaError`
   into a run. When this slice was first written `--series` existed only on `main.py`'s command line; PR #576 (draft when this
   was written, and the owner of the `modules/series.py` docstring) adds it to the Actions path. This slice does not touch
   `modules/series.py`, so the two cannot conflict. Whatever #576 covers, the **queue/UI path** is separate: when S1 was written the database
-  whitelist `render_job_params_valid` had no `series` (migration 0118 adds it), the Run now route does not read one, and scheduled runs name no series.
+  whitelist `render_job_params_valid` had no `series` (migration 0120 adds it), the Run now route does not read one, and scheduled runs name no series.
 - `PACKAGING_CLAIM_RULE`, `TopicManager.vet_topic`, `find_repeat`, `load_held_topics` exist as the plan describes. Newly found:
   `series` was already a strict source by accident (the gate treats every unknown source as strict).
 - PR #572 (`modules/gemini_stages`) has merged; the first version of this slice did not know the stage table, and main's own

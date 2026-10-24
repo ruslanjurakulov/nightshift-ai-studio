@@ -392,25 +392,27 @@ trigger, policy or table grant and rewrites no row (`tests/test_channel_settings
   cannot save its settings until the page change is reverted too.
 - **Review.** Needs the independent security review before merge: it changes the guard of the channels table, which every channel write meets.
 
-## Series Factory S2: series_plans, series_episodes, the series_plan queue kind (0118)
+## Series Factory S2: series_plans, series_episodes, the series_plan queue kind (0120)
 
-0118 (`0118_series_tables.sql`, `docs/SERIES_FACTORY.md`, "Slice S2") adds two tables, eight callable and internal functions, three trigger
+0120 (`0120_series_tables.sql`, `docs/SERIES_FACTORY.md`, "Slice S2") adds two tables, eight callable and internal functions, three trigger
 functions, the queue kind `series_plan` with its link column, and **replaces two live functions on their latest bodies**. Nothing in the
 application, the worker or a workflow calls any of it (`tests/test_series_tables_migration.py` fails if that ever stops being true).
 
 - **Replaced on their latest bodies, verbatim plus marked additions:** `render_job_params_valid()` (0029's; the optional `series` slug and the
   rule for the new kind) and `render_jobs_payment_guard()` (0111's; one block at the top: a job linked to a series plan must be exactly the job
-  that plan queued). A `DO` block at the top raises if either live body is not the repo's (md5 with white space collapsed) or 0118's own.
-  Re-running 0029 or 0111 afterwards would put the old body back: re-apply 0118 after it (the lab tests that replay 0111 do).
+  that plan queued). A `DO` block at the top raises if either live body is not the repo's (md5 with white space collapsed) or 0120's own.
+  Re-running 0029 or 0111 afterwards would put the old body back: re-apply 0120 after it (the lab tests that replay 0111 do).
 - **Dormant at the API.** `request_series_plan` is granted to nobody (the grant ships with the worker and the UI, S3): it queues a job the live
   worker has no handler for. `start_series_episode` and `quote_series_episode` are granted to signed-in users but have no episode to act on until
   the worker's `finish_series_plan` has run.
 - **Python moves with the database.** `modules/run_request.ALLOWED_PARAMS` gains `series` in the same change (`tests/test_queue_worker.py` and
   `tests/test_series_dispatch.py` compare it with the migration). A worker that knows `series` before the migration is applied is harmless: the
   database refuses such a job until then.
-- **Undo.** `docs/sql/rollback_0118_series_tables.sql` (owner-applied): refuses while a planning job or a run with a series is queued or running,
+- **Undo.** `docs/sql/rollback_0120_series_tables.sql` (owner-applied): refuses while a planning job or a run with a series is queued or running,
   deletes the finished planning rows, strips `series` from finished runs, puts both functions back byte for byte (and refuses to if a later
   change touched either), drops the callable functions, and KEEPS the two tables (the record of every plan and every paid start).
+- **Apply as ONE transaction** (SQL editor, `apply_migration`, or `psql --single-transaction -v ON_ERROR_STOP=1`). Numbered 0120 because 0119 merged first; 0118 is unused.
+- **Before `request_series_plan` is granted:** the conditions in `docs/SERIES_FACTORY.md` (per-user cap, a worker handler, voice-guard interplay, language names).
 - **Is it working?** The verify block at the bottom of the file (every column true).
 - **Review.** Needs the independent security review before merge: it replaces the payment guard every queued run passes through, and it adds a
   function that holds credits.

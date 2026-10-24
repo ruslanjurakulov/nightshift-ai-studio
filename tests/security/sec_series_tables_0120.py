@@ -1,11 +1,11 @@
-"""Security-lab contract for migration 0118 (Series Factory, slice S2: series_plans, series_episodes, the series queue kind).
+"""Security-lab contract for migration 0120 (Series Factory, slice S2: series_plans, series_episodes, the series queue kind).
 
 Wired in like the other per-migration files:
 
   * sec_expectations.py, at the bottom:
-        import sec_series_tables_0118; sec_series_tables_0118.extend(TABLES, FUNCTIONS)
+        import sec_series_tables_0120; sec_series_tables_0120.extend(TABLES, FUNCTIONS)
   * sec_scenario.build_scenario(), after the tenants are seeded:
-        sec_series_tables_0118.seed(conn, sc)
+        sec_series_tables_0120.seed(conn, sc)
 
 Two tables, both Org(): a member reads the rows of THEIR organization, and no API role writes either (the isolation tests then prove that
 Bob reads none of Alice's plans and cannot insert, update or delete any). Every function is declared:
