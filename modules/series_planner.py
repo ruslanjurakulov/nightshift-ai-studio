@@ -28,13 +28,18 @@ Vetting an episode topic
 Every episode topic goes through ``vet_topic(..., source="series")`` and through the channel's repeat check.
 ``--topic`` bypasses the niche gate by design ("a topic a person typed is an instruction"), and a series
 episode is an explicit topic that the MODEL wrote, so without this it would be the one path that reaches the
-pipeline unvetted. "series" is a LENIENT source (modules/topic_gate.LENIENT_SOURCES): the words still reject a
-clearly off-niche or sensitive topic (living people in live cases, medical claims, minors, and so on, for
-every source), but a topic the words merely cannot place is accepted WITHOUT a model call. Why not strict: a
+pipeline unvetted. "series" is a LENIENT source (modules/topic_gate.LENIENT_SOURCES): the words reject the
+off-niche and sensitive shapes they RECOGNISE (for every source; many live-person, crime and tragedy topics are
+not among them, docs/SERIES_FACTORY.md has the measured misses), and a topic the words merely cannot place is
+accepted WITHOUT a model call. Why not strict: a
 strict source asks the model about each such topic, the gate allows only TOPIC_GATE_MODEL_CALLS (default 2)
 questions per run, and the rest are deferred; a series of 4 would be judged by the order of the episodes, and
 every question is one more call against a free-tier day of 20. The acceptance is not hidden: the plan keeps
-the verdict's ``check`` and ``detail`` per episode, and ``niche_confirmed`` is False for it.
+the verdict's ``check`` and ``detail`` per episode, and ``niche_confirmed`` is False for it. A plan with such
+episodes says so at plan level (``unconfirmed_episodes``, ``requires_human_confirmation``, status
+``ready_unconfirmed``): usable means no rule said no, not safe. A channel with no niche cannot be planned at all
+(``no_niche``): the gate would do no off-niche screening. The repeat check is the word rule only; the semantic
+originality check that ``pick_topic`` runs is not part of S1.
 
 Each episode is reported on its own: usable, or not usable with the reasons. A rejected or repeated episode is
 never dropped and never replaced; the plan's ``status`` says which episodes are usable.
@@ -58,15 +63,17 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Callable, Iterable, Optional
 
-from modules import topic_dedup
+from modules import topic_dedup, topic_gate
 from modules.credits import round_up
+from modules.gemini_stages import GeminiDailyQuotaError, model_for
 from modules.packaging_repair import PACKAGING_CLAIM_RULE
 
 logger = logging.getLogger(__name__)
 
 #: The vet source for an episode topic. Lenient in modules/topic_gate.LENIENT_SOURCES (see the module docstring).
 SOURCE = "series"
-#: Cost-ledger / quota stage of the one planning call. A caller with per-stage models picks the model from it.
+#: The stage of the one planning call: the label in modules/gemini_stages.STAGE_GROUP (model group "topic", so
+#: GEMINI_MODEL_TOPIC moves it, and the request count and the ledger report it as series_plan).
 STAGE = "series_plan"
 
 MIN_EPISODES = 3
@@ -189,7 +196,10 @@ def build_prompt(topic: str, n_episodes: int, *, niche: str = "", channel_name: 
         f"{PACKAGING_CLAIM_RULE}\n\n"
         "Outline the series described in the data block below: exactly the number of episodes in `episodes`. "
         "Each episode is a video that can be watched on its own and that also moves the series forward. "
-        "Stay inside the channel's niche. Write every text field in the language named in `language`. "
+        "Stay inside the channel's niche: every episode must clearly belong to it. Avoid episodes about living "
+        "named people, active or recent criminal cases, current or recent tragedies and disasters, and health or "
+        "medical claims; choose documented subjects that are not live news. "
+        "Write every text field in the language named in `language`. "
         "The topics must be clearly different from each other. `topic` is the standalone subject of the "
         "episode as a short title-like phrase, with no episode number. `key_facts` are things the episode "
         "would need to establish; they are NOT checked yet, so state only what is well documented and invent "
@@ -211,10 +221,16 @@ def build_prompt(topic: str, n_episodes: int, *, niche: str = "", channel_name: 
 
 # ── the answer ────────────────────────────────────────────────────────────────
 
-_CUE_LIKE = re.compile(r"\[\s*(?:sfx|music|pause|voice)\b", re.IGNORECASE)
-_BRACKET_TAG = re.compile(r"\[[^\]\n]{0,40}:[^\]\n]*\]")
+#: Every screen below reads the text as a reader sees it (topic_gate.clean: NFKC, invisible characters dropped,
+#: look-alike letters in a mixed-script word turned back to Latin), not as it was typed: full-width "＜script＞",
+#: "［SFX: boom］", math-bold or Cyrillic-lookalike "ignore previous instructions" are what they look like.
+_CUE_LIKE = re.compile(r"\[\s*/?\s*(?:sfx|music|pause|voice|inst|sys)\b", re.IGNORECASE)
+_BRACKET = re.compile(r"\[[^\]\n]{0,60}\]")
 _ENTITY = re.compile(r"&(?:#\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,9});", re.IGNORECASE)
-_LINK = re.compile(r"\]\s*\(|https?:|www\.|\bjavascript:|\bdata:text|```", re.IGNORECASE)
+_LINK = re.compile(r"\]\s*\(|https?:|www\.|\bjavascript:|\bdata:text", re.IGNORECASE)
+#: Angle brackets (tags, comments, <|im_start|>, <<SYS>>), backticks (code fences), template braces and heading marks
+#: (### Instruction:) have no place in a title, an angle or a hook.
+_MARKUP = re.compile(r"[<>`]|\{\{|\}\}|\$\{|#{2,}")
 # Text that tries to instruct the next stage. Apostrophes are removed before matching (o'zbek / oʻzbek meet).
 _INJECTION = re.compile(
     r"\bignore\b.{0,40}\b(?:instruction|prompt|rule|above|previous|prior|earlier)"
@@ -222,7 +238,7 @@ _INJECTION = re.compile(
     r"|\b(?:system|developer)\s+(?:prompt|message|instruction)"
     r"|\byou\s+are\s+now\b|\bnew\s+instructions?\b|\bas\s+an?\s+(?:ai|language\s+model)\b"
     r"|\b(?:reveal|print|repeat|show)\b.{0,30}\b(?:prompt|instructions)"
-    r"|^(?:system|assistant|developer)\s*:|\bjailbreak"
+    r"|^(?:system|assistant|developer|user|human|instruction)s?\s*:|\bjailbreak"
     r"|\bигнорир\w*\b.{0,40}\b(?:инструкц|правил|промпт|выше|предыдущ)"
     r"|\bзабудь\b.{0,30}\b(?:инструкц|правил|предыдущ|все)|\bсистемн\w+\s+(?:промпт|сообщени|инструкц)"
     r"|\b(?:oldingi|yuqoridagi)\s+(?:korsatma|buyruq|yoriqnoma)|\bkorsatmalarni\s+(?:etiborsiz|unuting)"
@@ -244,11 +260,12 @@ def _text(value, path: str, limit: int) -> str:
         raise SeriesPlanError("bad_field", "is empty", field=path)
     if len(text) > limit:
         raise SeriesPlanError("too_long", f"is longer than {limit} characters", field=path)
-    if "<" in text or ">" in text or _ENTITY.search(text) or _LINK.search(text):
+    seen = topic_gate.clean(text)
+    if _MARKUP.search(seen) or _ENTITY.search(seen) or _LINK.search(seen):
         raise SeriesPlanError("markup", "contains markup, an entity or a link", field=path)
-    if _CUE_LIKE.search(text) or _BRACKET_TAG.search(text):
+    if _CUE_LIKE.search(seen) or _BRACKET.search(seen):
         raise SeriesPlanError("cue_tag", "contains a cue or bracket tag", field=path)
-    if _INJECTION.search(text.translate(_APOSTROPHES)):
+    if _INJECTION.search(seen.translate(_APOSTROPHES)):
         raise SeriesPlanError("injection", "contains text that addresses the next stage", field=path)
     return text
 
@@ -396,6 +413,8 @@ def _vet_one(vet, topic: str, niche: str) -> tuple:
         reason = str(getattr(verdict, "reason", "") or "")
         detail = str(getattr(verdict, "detail", "") or "")
         check = str(getattr(verdict, "check", "") or "")
+    except GeminiDailyQuotaError:
+        raise    # an outage the owner has to act on (exit 80 once wired), not a verdict about the episode
     except Exception as exc:  # noqa: BLE001 - a broken vet is a verdict of "not vetted", never a crash
         logger.warning("Series planner: the topic vet failed (%s); the episode is not usable", type(exc).__name__)
         return (REASON_VET_ERROR,), {"action": "error", "reason": REASON_VET_ERROR, "detail": type(exc).__name__,
@@ -429,9 +448,10 @@ def repeat_checker(used_topics: Iterable[str], held_topics: Iterable[str] = ()) 
 
 # ── the plan ──────────────────────────────────────────────────────────────────
 
-STATUS_READY = "ready"        # every episode is usable
-STATUS_PARTIAL = "partial"    # some are, some are not
-STATUS_BLOCKED = "blocked"    # none is
+STATUS_READY = "ready"                        # every episode is usable, and the model-free gate placed each in the niche
+STATUS_READY_UNCONFIRMED = "ready_unconfirmed"  # every episode is usable, but at least one was accepted unconfirmed
+STATUS_PARTIAL = "partial"                    # some are usable, some are not
+STATUS_BLOCKED = "blocked"                    # none is
 
 
 @dataclass(frozen=True)
@@ -451,15 +471,29 @@ class SeriesPlan:
         return tuple(e.outline.number for e in self.episodes if e.usable)
 
     @property
+    def unconfirmed_episodes(self) -> tuple:
+        """Numbers of the USABLE episodes whose niche nobody confirmed: the gate's words could not place them and
+        no model answered (``niche_confirmed`` False). Usable means "no gate said no", not "safe": the S3 UI must
+        make a person confirm each of these before the episode is started."""
+        return tuple(e.outline.number for e in self.episodes if e.usable and not e.niche_confirmed)
+
+    @property
+    def requires_human_confirmation(self) -> bool:
+        return bool(self.unconfirmed_episodes)
+
+    @property
     def status(self) -> str:
         usable = len(self.usable_episodes)
         if usable == len(self.episodes):
-            return STATUS_READY
+            return STATUS_READY_UNCONFIRMED if self.unconfirmed_episodes else STATUS_READY
         return STATUS_PARTIAL if usable else STATUS_BLOCKED
 
     def to_dict(self) -> dict:
         return {"topic": self.topic, "language": self.language, "series_title": self.series_title,
                 "status": self.status, "usable_episodes": list(self.usable_episodes),
+                "unconfirmed_episodes": list(self.unconfirmed_episodes),
+                "unconfirmed_count": len(self.unconfirmed_episodes),
+                "requires_human_confirmation": self.requires_human_confirmation,
                 "episodes": [e.to_dict() for e in self.episodes],
                 "fact_checked": self.fact_checked, "notice": self.notice,
                 "held_topics_checked": self.held_topics_checked,
@@ -479,10 +513,15 @@ def plan_series(topic, n_episodes, *, generate: Callable, vet, niche="", channel
     whether the held topics were loaded into that check (True / False / None = not known), recorded as given.
     ``stage`` is passed to ``generate`` so a later per-stage model choice needs no change here.
 
-    Only ``SeriesPlanError`` leaves this function."""
+    Only ``SeriesPlanError`` leaves this function, with one exception on purpose: ``GeminiDailyQuotaError`` is
+    re-raised unchanged (a spent daily quota is an outage the owner has to act on, not a bad plan)."""
     topic = _input_text(topic, "topic", MAX_TOPIC_INPUT, required=True)
     n_episodes = _count(n_episodes)
     niche = _input_text(niche, "niche", MAX_NICHE_INPUT, required=False)
+    if not niche:
+        # Without a niche the gate has no profile and does no off-niche screening at all, so every episode would
+        # pass: refuse before a call is spent (CLAUDE.md rule 6), as pick_topic refuses a channel with no niche.
+        raise SeriesPlanError("no_niche", "the channel has no niche; set one before planning a series", field="niche")
     channel_name = _input_text(channel_name, "channel_name", MAX_NAME_INPUT, required=False)
     language = _language(language)
     if not callable(generate):
@@ -499,7 +538,9 @@ def plan_series(topic, n_episodes, *, generate: Callable, vet, niche="", channel
     prompt = build_prompt(topic, n_episodes, niche=niche, channel_name=channel_name, language=language)
     try:
         raw = generate(prompt, stage=stage)
-    except Exception as exc:  # noqa: BLE001 - provider errors (quota, outage) become one clean error
+    except GeminiDailyQuotaError:
+        raise    # unchanged: it must reach __main__ and end the run with GEMINI_QUOTA_EXIT once this is wired
+    except Exception as exc:  # noqa: BLE001 - provider errors (outage, overload) become one clean error
         raise SeriesPlanError("generate_failed", f"the planning call failed ({type(exc).__name__})") from None
     series_title, outlines = parse_plan(raw, n_episodes)
 
@@ -512,14 +553,15 @@ def plan_series(topic, n_episodes, *, generate: Callable, vet, niche="", channel
                       stage=stage, held_topics_checked=held_topics_checked)
 
 
-def gemini_generate(client=None, model: Optional[str] = None, costs=None) -> Callable:
-    """The ``generate`` for the later worker job: ONE ``gemini_client.generate_with_retry`` call. ``model`` defaults
-    to ``config.GEMINI_MODEL``; ``costs`` is the run's cost ledger when there is one. Not used by S1's tests
-    except with a fake client; nothing calls it yet. Imports are lazy so this module loads without the SDK."""
+def gemini_generate(client=None, costs=None) -> Callable:
+    """The ``generate`` for the later worker job: ONE ``gemini_client.generate_with_retry`` call, on the model the
+    ``series_plan`` stage chose (``model_for``: ``GEMINI_MODEL_TOPIC`` if set, else ``GEMINI_MODEL``). ``costs`` is
+    the run's cost ledger when there is one. A spent daily quota raises ``GeminiDailyQuotaError``, which
+    ``plan_series`` passes on unchanged. Nothing calls this yet; tests use a fake client. Imports are lazy so this
+    module loads without the SDK."""
     def generate(prompt: str, *, stage: str = STAGE) -> str:
-        from config import GEMINI_MODEL
         from modules.gemini_client import generate_with_retry, make_client
-        response = generate_with_retry(client or make_client(), model or GEMINI_MODEL, prompt)
+        response = generate_with_retry(client or make_client(), model_for("series_plan"), prompt)
         if costs is not None:
             try:
                 costs.add_gemini_usage(response, stage=stage)
@@ -543,39 +585,62 @@ def series_call_budget(n_episodes: int) -> dict:
             "label": CALLS_LABEL}
 
 
+#: The most credits one episode can be quoted at. A number beyond it is a broken estimator, not a price; the same
+#: bound is SERIES_MAX_EPISODE_CREDITS in command-center/lib/credits.ts (the platform's own MAX_GRANT is 1e8).
+MAX_EPISODE_CREDITS = 1e12
+
+
 def _duration(value) -> Optional[float]:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return float(value) if math.isfinite(value) and value > 0 else None
+    try:
+        # comparisons, not math.isfinite: an int with 400 digits is a number that float() cannot hold
+        return float(value) if 0 < value < float("inf") else None
+    except OverflowError:
+        return None
+
+
+def _clean_estimate(meta) -> dict:
+    """One episode's estimate as ``{credits, basis, gap, floor_applied}``, validated the way the TypeScript twin
+    validates it: credits is None (with a named gap) or a number from 0 to MAX_EPISODE_CREDITS. A boolean, a
+    string, NaN, an infinity, a negative or a larger number is ``invalid_estimate``, never a quoted price and never
+    an exception."""
+    if not isinstance(meta, dict):
+        meta = {"credits": meta}
+    credits = meta.get("credits")
+    if credits is not None:
+        try:
+            valid = not isinstance(credits, bool) and isinstance(credits, (int, float)) \
+                and 0 <= credits <= MAX_EPISODE_CREDITS
+        except (TypeError, ValueError, OverflowError):
+            valid = False
+        if not valid:
+            return {"credits": None, "basis": "unknown", "gap": "invalid_estimate", "floor_applied": False}
+        return {"credits": float(credits), "basis": str(meta.get("basis") or "unknown"), "gap": None,
+                "floor_applied": bool(meta.get("floor_applied", False))}
+    return {"credits": None, "basis": "unknown", "gap": str(meta.get("gap") or "unknown"), "floor_applied": False}
 
 
 def _estimate(estimator: Callable, duration_s: Optional[float]) -> dict:
-    """One episode's estimate as ``{credits, basis, gap, floor_applied}``. ``estimator(duration_s)`` returns a
-    number, None, or a mapping like the TS ``CreditEstimate`` (``credits``, ``basis``, ``gap``, ``floor_applied``).
-    An estimator that raises, or an amount that is not a non-negative finite number, is a named gap, never 0."""
+    """One episode's estimate. ``estimator(duration_s)`` returns a number, None, or a mapping like the TS
+    ``CreditEstimate`` (``credits``, ``basis``, ``gap``, ``floor_applied``). An estimator that raises is a named
+    gap (``estimator_error``); an amount that is not valid is ``invalid_estimate`` (see ``_clean_estimate``)."""
     try:
         got = estimator(duration_s)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Series quote: the estimator failed (%s)", type(exc).__name__)
         return {"credits": None, "basis": "unknown", "gap": "estimator_error", "floor_applied": False}
-    meta = got if isinstance(got, dict) else {"credits": got}
-    credits = meta.get("credits")
-    if credits is not None and (isinstance(credits, bool) or not isinstance(credits, (int, float))
-                                or not math.isfinite(credits) or credits < 0):
-        return {"credits": None, "basis": "unknown", "gap": "invalid_estimate", "floor_applied": False}
-    gap = meta.get("gap")
-    return {"credits": None if credits is None else float(credits),
-            "basis": str(meta.get("basis") or "unknown") if credits is not None else "unknown",
-            "gap": None if credits is not None else str(gap or "unknown"),
-            "floor_applied": bool(meta.get("floor_applied", False)) and credits is not None}
+    return _clean_estimate(got)
 
 
 def aggregate_quote(durations_s: list, estimates: list) -> dict:
-    """The series quote from per-episode estimates (``{credits, basis, gap, floor_applied}``). The total is None
-    if ANY episode is None (never 0, never a partial sum presented as the total); the sum of the priced episodes
-    alone is ``partial_sum_priced_only``, and is None when no episode is priced. Mirrors
-    ``aggregateSeriesQuote`` in command-center/lib/credits.ts; tests/fixtures/series_quote_cases.txt pins both."""
-    episodes = [{"number": i + 1, "duration_s": d, **e} for i, (d, e) in enumerate(zip(durations_s, estimates))]
+    """The series quote from per-episode estimates (``{credits, basis, gap, floor_applied}``, each validated by
+    ``_clean_estimate``). The total is None if ANY episode is None (never 0, never a partial sum presented as the
+    total); the sum of the priced episodes alone is ``partial_sum_priced_only``, and is None when no episode is
+    priced. Mirrors ``aggregateSeriesQuote`` in command-center/lib/credits.ts; tests/fixtures/series_quote_cases.txt
+    pins both, invalid estimates included."""
+    cleaned = [_clean_estimate(e) for e in estimates]
+    episodes = [{"number": i + 1, "duration_s": d, **e} for i, (d, e) in enumerate(zip(durations_s, cleaned))]
     priced = [e["credits"] for e in episodes if e["credits"] is not None]
     unknown = [e["number"] for e in episodes if e["credits"] is None]
     complete = not unknown

@@ -95,7 +95,7 @@ describe("aggregateSeriesQuote (shared cases with the Python twin)", () => {
   const fixture = JSON.parse(readFileSync(join(__dirname, "../../tests/fixtures/series_quote_cases.txt"), "utf8")) as {
     cases: {
       name: string;
-      credits: (number | null)[];
+      credits: (number | string | boolean | null)[];
       gaps: (EstimateGap | null)[];
       total: number | null;
       partial: number | null;
@@ -104,14 +104,17 @@ describe("aggregateSeriesQuote (shared cases with the Python twin)", () => {
       gaps_out: string[];
     }[];
   };
+  // JSON cannot carry NaN or an infinity; the fixture spells them as strings (the Python test maps them too).
+  const SPECIAL: Record<string, number> = { NaN: Number.NaN, Infinity: Number.POSITIVE_INFINITY, "-Infinity": Number.NEGATIVE_INFINITY };
+  const raw = (v: number | string | boolean | null): number | null => (typeof v === "string" && v in SPECIAL ? SPECIAL[v] : (v as number | null));
 
-  it("has cases", () => expect(fixture.cases.length).toBeGreaterThanOrEqual(6));
+  it("has cases", () => expect(fixture.cases.length).toBeGreaterThanOrEqual(13));
 
   for (const c of fixture.cases) {
     it(c.name, () => {
       const q = aggregateSeriesQuote(
         c.credits.map(() => 300),
-        c.credits.map((cr, i) => estimate(cr, c.gaps[i])),
+        c.credits.map((cr, i) => estimate(raw(cr), c.gaps[i])),
       );
       expect(q.totalCredits).toBe(c.total);
       expect(q.partialSumPricedOnly).toBe(c.partial);

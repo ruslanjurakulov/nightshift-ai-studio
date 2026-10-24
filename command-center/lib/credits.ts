@@ -291,6 +291,9 @@ export const SERIES_PLAN_CALLS = 1;
 export const SERIES_EPISODE_CALLS_LOW = 5;
 export const SERIES_EPISODE_CALLS_HIGH = 12;
 export const SERIES_CALLS_LABEL = "estimate, unmeasured";
+/** The most credits one episode can be quoted at; a number beyond it is a broken estimate, not a price
+ *  (modules/series_planner.py MAX_EPISODE_CREDITS). */
+export const SERIES_MAX_EPISODE_CREDITS = 1e12;
 
 export interface SeriesGeminiCalls {
   planCalls: number;
@@ -308,8 +311,9 @@ export interface SeriesEpisodeQuote {
   /** Credits to hold for this episode, or null with `gap` saying why. */
   credits: number | null;
   basis: EstimateBasis;
-  /** An estimate gap, or "unknown" for an unpriced episode whose estimate named none. */
-  gap: EstimateGap | "unknown" | null;
+  /** An estimate gap, "unknown" for an unpriced episode whose estimate named none, or "invalid_estimate" for a
+   *  credits value that was NaN, infinite, negative, not a number or beyond SERIES_MAX_EPISODE_CREDITS. */
+  gap: EstimateGap | "unknown" | "invalid_estimate" | null;
   floorApplied: boolean;
 }
 
@@ -321,7 +325,7 @@ export interface SeriesQuote {
   partialSumPricedOnly: number | null;
   complete: boolean;
   unknownEpisodes: number[];
-  gaps: (EstimateGap | "unknown")[];
+  gaps: (EstimateGap | "unknown" | "invalid_estimate")[];
   geminiCalls: SeriesGeminiCalls;
 }
 
@@ -348,14 +352,19 @@ export function seriesCallBudget(n: number): SeriesGeminiCalls {
  * tests/fixtures/series_quote_cases.txt pins both.
  */
 export function aggregateSeriesQuote(durationsS: (number | null)[], estimates: CreditEstimate[]): SeriesQuote {
-  const episodes: SeriesEpisodeQuote[] = estimates.map((e, i) => ({
-    number: i + 1,
-    durationS: durationsS[i] ?? null,
-    credits: e.credits,
-    basis: e.basis,
-    gap: e.credits === null ? (e.gap ?? "unknown") : null,
-    floorApplied: e.credits !== null && e.floorApplied,
-  }));
+  const episodes: SeriesEpisodeQuote[] = estimates.map((e, i) => {
+    const raw: unknown = e.credits;
+    const durationS = durationsS[i] ?? null;
+    if (raw === null || raw === undefined) {
+      return { number: i + 1, durationS, credits: null, basis: "unknown", gap: e.gap ?? "unknown", floorApplied: false };
+    }
+    // The Python twin validates the same way (modules/series_planner.py _clean_estimate): a boolean, a string, NaN,
+    // an infinity, a negative or a huge number is a broken estimate, never a quoted price.
+    if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > SERIES_MAX_EPISODE_CREDITS) {
+      return { number: i + 1, durationS, credits: null, basis: "unknown", gap: "invalid_estimate", floorApplied: false };
+    }
+    return { number: i + 1, durationS, credits: raw, basis: e.basis, gap: null, floorApplied: Boolean(e.floorApplied) };
+  });
   const priced = episodes.flatMap((e) => (e.credits === null ? [] : [e.credits]));
   const unknownEpisodes = episodes.filter((e) => e.credits === null).map((e) => e.number);
   const complete = unknownEpisodes.length === 0;

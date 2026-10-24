@@ -42,6 +42,7 @@ GEMINI_QUOTA_EXIT = 80
 STAGE_GROUP = {
     "topic_pick": "topic",           # modules/topic_manager.py: the AI's own topic
     "topic_gate": "topic",           # modules/topic_manager.py: the one small niche question per topic
+    "series_plan": "topic",          # modules/series_planner.py: the one outline call of a series (not wired yet)
     "research": "research",          # modules/research_engine.py
     "script": "script",              # modules/script_engine.py (and the title plan that rides on its _gen)
     "fact_check": "factcheck",       # modules/fact_checker.py: one request per batch of claims
