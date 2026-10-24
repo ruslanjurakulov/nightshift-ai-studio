@@ -337,7 +337,7 @@ bucket, and nothing in the application or a workflow calls any of it (`tests/tes
 ever stops being true). The one caller is the voice worker (`modules/voice_worker.py`, `tools/voice_worker.py`): it is off unless the
 repository variable `NIGHTSHIFT_VOICE_CLONING` is `on` (the owner sets it), nothing starts it, and it calls only the service role's
 functions. The ElevenLabs account is on the free plan, which cannot clone, so nothing live can run: a clone job would end as
-`provider_not_enabled`.
+`provider_not_enabled` (if the subscription says so explicitly) or be parked as `provider_plan_unknown` (if it says nothing).
 
 - **It is not dormant in one respect: the ownership rule.** Three entry points now refuse a provider voice id that is in `voice_profiles`
   unless it is its owner's (or attached to the channel by the owner): a `BEFORE INSERT` trigger on `creative_jobs`, one on `render_jobs`,

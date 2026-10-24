@@ -1,39 +1,44 @@
 """Custom voice: the worker (migration 0117, docs/CUSTOM_VOICE.md). Off unless ``NIGHTSHIFT_VOICE_CLONING=on``.
 
 ``voice_clone_jobs`` is the queue; the 0117 functions ``claim_voice_job`` / ``finish_voice_clone`` / ``finish_voice_task`` are the only
-way this module reads or writes it (the service key has no table privilege on it). Three kinds of job:
+way this module reads or writes it (the service key has no privilege on any voice table). Three kinds of job:
 
 * ``clone``: capability, then bytes, then the read-aloud check, then the provider, then deletion of our copy. In this order and
   no other, because each step is cheaper and less irreversible than the next:
 
   1. **The account's plan is asked first**, before the sample is even fetched (``ensure_plan``: ``can_use_instant_voice_cloning``
-     must be a real ``True``). The account is on the FREE plan today, so in production this is where every clone job ends, in
+     must be a real ``True``). On the documented FREE plan the subscription says ``False`` and every clone job ends, at once, in
      the closed state ``provider_not_enabled``: the profile is rejected with that reason, the sample is purged, nothing was
-     spent and no create call was ever made. The adapter refuses on its own as well; this is the same rule asked earlier.
+     spent and no create call was made. A subscription that says NOTHING, a bad key, an outage are the operator's faults, not
+     the person's: those jobs are parked (below), not rejected.
   2. The object is fetched from the private bucket with the service key. A redirect is refused (the key must not follow one) and
      the read stops at the bucket's own size limit.
-  3. **The bytes are sniffed**, never the declared type: the bucket's MIME allow-list checks what the client SAID. The container
-     must be a known audio one, the probe must find an audio stream and no video stream, and the length is capped
-     (``MAX_SAMPLE_SECONDS``). Anything else is ``not_audio`` / ``sample_too_large`` / ``sample_too_long`` before the sample is
-     hashed into a record, transcribed or sent anywhere.
-  4. The phrase is read back with the local Whisper (injected: tests use a fake) and compared by
+  3. **The bytes are sniffed**, never the declared type. The container must be a known audio one; then ONE decode produces a
+     mono 16 kHz wav cut at ``MAX_DECODE_SECONDS`` of audio, by ffmpeg with an empty environment, only the ``file`` protocol,
+     the demuxer the bytes named, and time / CPU / memory / file-size limits. Exactly one audio stream and no video. The length is
+     measured on THAT wav, so a header that lies about its duration changes nothing, and more than ``MAX_SAMPLE_SECONDS`` is
+     ``sample_too_long``. Whisper hears that wav and the provider receives that wav: never the upload.
+  4. The phrase is read back with the local Whisper (injected: tests use a fake; a timeout applies) and compared by
      ``voice_profiles.check_transcript``. A wrong phrase is ``verification_failed`` and the provider is never called.
-  5. The provider is asked for a voice by the name ``ns-<owner_ref>-<profile8>`` FIRST and only created when there is none: a
-     create that timed out, or whose answer had no usable id, may have made the voice, and a retry (ours, or the lost-worker
-     rule's) must adopt it and never make a second one. Then the id is recorded with ``finish_voice_clone``.
+  5. The provider is asked for the voice labelled for THIS profile (full id and owner reference) FIRST and only created when
+     there is none: a create that timed out may have made the voice, and a retry must adopt it and never make a second one. A
+     voice with the profile's name but another label is a ``provider_conflict``: never adopted, never deleted. Then the id is
+     recorded with ``finish_voice_clone``.
   6. Only after the database has accepted that answer is our copy deleted: the whole ``<user_id>/<profile_id>/`` prefix, listed
      and verified empty, unless the owner chose to keep the sample. Only the hash and metadata survive.
 
 * ``delete_provider``: ``DELETE /v1/voices/{id}``; a 404 is "already gone" and counts as done (the adapter does that).
 * ``purge_sample``: delete the whole prefix, confirm it is empty, answer ``finish_voice_task``. Idempotent: an empty prefix is done.
-  For a profile that never got a voice recorded it also removes any voice of that profile's own name from the provider account
-  (the orphan of a create whose answer was lost), because nothing else would.
+  It needs no provider key. For a REJECTED profile that never got a voice recorded it also removes voices labelled for that
+  profile from the provider account (the orphan of a create whose answer was lost), because nothing else would.
 
-Retry and loss. A provider failure that may pass (network, timeout, 5xx, 429) is reported as ``transient``; the database puts the job
-back while ``attempts < max_attempts`` (3) and ends it after that, and the worker reports a meaningful word on the last attempt.
-A worker that dies mid-job leaves it ``running``; ``claim_voice_job`` returns it to the queue after 30 minutes of silence and ends
-it as ``worker_lost`` after three, rejecting the profile and queueing ``purge_sample``. The sample is therefore never left behind:
-every path that ends a profile queues its purge, and this module deletes it twice (right away, then again when that job runs).
+Parking. The database allows three claims of a job and nothing a service key can call raises that or re-queues a failed job. A
+failure that is the operator's or the provider's to fix (and a delete or purge that did not work) is therefore not answered: the
+job stays ``running`` and ``claim_voice_job`` returns it after its 30-minute lease, which is the longest wait the existing
+functions give (about 90 minutes over the three claims). Only the last claim answers, with the specific word, and a purge or
+delete that ends that way is logged as ``voice OVERDUE``. A worker that dies is the same thing: the lease, and after three
+losses ``worker_lost`` with its purge queued. Every path that ends a profile queues its purge, and the worker deletes the prefix
+twice (right after the answer is recorded, then when that job runs).
 
 Nothing here logs the key, the sample, the phrase or a voice id in full, and no response body is ever copied into an error: a
 closed word and an HTTP status are. A redirect from Supabase or ElevenLabs is refused. EVERY Storage and ElevenLabs request shape
@@ -42,13 +47,18 @@ is "as the planner knew it, UNVERIFIED live"; nothing in this file has run again
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import re
+import shutil
+import signal
 import subprocess
 import tempfile
+import threading
 import time
+import wave
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,10 +83,8 @@ BUCKET = "voice-samples"
 MAX_SAMPLE_BYTES = vp.MAX_SAMPLE_BYTES
 #: A read-aloud phrase and a little more; five minutes is far past what a clone needs and keeps Whisper's time bounded.
 MAX_SAMPLE_SECONDS = 300.0
-#: voice_clone_jobs.max_attempts (0117's default). The database owns the real number; this one only decides which word to send.
+#: voice_clone_jobs.max_attempts (0117's default). The database owns the real number; this one decides when to answer and when to park.
 MAX_ATTEMPTS = 3
-#: Seconds the loop waits after a job went back to the queue, by the attempt that just failed (the database requeues at once).
-BACKOFF_SECONDS = (30, 120, 600)
 #: The 2-hour upload window and the 30-minute lease are the database's (claim_voice_job); see docs/CUSTOM_VOICE.md.
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -120,22 +128,45 @@ def sniff_audio(head: bytes) -> Optional[Sniffed]:
     return None
 
 
+class AudioRefused(Exception):
+    """The sample is refused for a reason that is the recording's own. ``code``: not_audio | unreadable_audio | sample_too_long."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+class AudioToolError(RuntimeError):
+    """ffmpeg / ffprobe could not be run at all: the machine's fault, not the recording's (the job is retried)."""
+
+
 @dataclass(frozen=True)
-class AudioFacts:
-    audio_streams: int
-    video_streams: int
-    duration_s: Optional[float]
+class Normalised:
+    """The ONE decoded copy every later step uses: mono, 16 kHz, 16-bit wav, at most MAX_DECODE_SECONDS long. The recording as
+    uploaded is never given to Whisper or to the provider; its stated length is never believed."""
+    path: Path
+    seconds: float
 
 
-class ProbeError(RuntimeError):
-    """The probe could not read the file (the file is not decodable media). Carries no output of the tool."""
+#: The whole decode is cut at this many seconds of AUDIO whatever the file claims, so a header that says 5 s over 900 s of sound
+#: costs one extra second, not the whole file. Anything that reaches it is over MAX_SAMPLE_SECONDS and refused.
+MAX_DECODE_SECONDS = int(MAX_SAMPLE_SECONDS) + 1
+DECODE_RATE = 16000
+#: 16-bit mono at 16 kHz is 32,000 bytes a second: the capped output cannot exceed this (plus a header); the output size is limited to it.
+MAX_WAV_BYTES = MAX_DECODE_SECONDS * DECODE_RATE * 2 + 4096
+PROBE_TIMEOUT_S = 30
+DECODE_TIMEOUT_S = 120
+TRANSCRIBE_TIMEOUT_S = 180
+#: ffmpeg is told which demuxer to use from the sniffed bytes, so it never auto-detects a playlist or script format.
+_DEMUXER = {"webm": "matroska,webm", "ogg": "ogg", "flac": "flac", "wav": "wav", "m4a": "mov,mp4,m4a,3gp,3g2,mj2", "mp3": "mp3",
+            "aac": "aac"}
 
 
-def facts_from_ffprobe(doc: object, decoded_seconds: Optional[float] = None) -> AudioFacts:
-    """AudioFacts from ffprobe's JSON. A picture attached to an audio file (cover art) is not a video stream. The duration is
-    the container's when it states one; a live recording (MediaRecorder's webm) states none, so the decoded length is used."""
+def streams_from_ffprobe(doc: object) -> tuple:
+    """``(audio, video)`` stream counts from ffprobe's JSON. A picture attached to an audio file (cover art) is not a video
+    stream. The container's stated duration is deliberately not read: it is whatever the file says it is."""
     if not isinstance(doc, Mapping):
-        raise ProbeError("ffprobe answered something that is not an object")
+        raise AudioRefused("unreadable_audio")
     audio = video = 0
     for s in doc.get("streams") or []:
         if not isinstance(s, Mapping):
@@ -146,72 +177,161 @@ def facts_from_ffprobe(doc: object, decoded_seconds: Optional[float] = None) -> 
             audio += 1
         elif kind == "video" and not attached:
             video += 1
-    duration: Optional[float] = None
-    fmt = doc.get("format")
-    raw = fmt.get("duration") if isinstance(fmt, Mapping) else None
+    return audio, video
+
+
+def _child_limits() -> None:
+    """Run in the child between fork and exec: a hostile file gets bounded CPU, memory, output size and no core dump."""
+    import resource  # noqa: PLC0415
+
+    for which, value in ((resource.RLIMIT_CPU, 120), (resource.RLIMIT_AS, 3 << 30), (resource.RLIMIT_FSIZE, 2 * MAX_WAV_BYTES),
+                         (resource.RLIMIT_CORE, 0)):
+        try:
+            resource.setrlimit(which, (value, value))
+        except (ValueError, OSError):
+            pass
+
+
+def _tool_env(home: Path) -> dict:
+    """What ffmpeg and ffprobe are given: nothing of this process's environment (no service key, no ElevenLabs key)."""
+    return {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(home), "LANG": "C", "LC_ALL": "C"}
+
+
+def _run_tool(run, argv: list, home: Path, timeout: int):
+    kw = dict(capture_output=True, text=True, timeout=timeout, check=False, env=_tool_env(home), cwd=str(home), stdin=subprocess.DEVNULL)
+    if os.name == "posix":
+        kw["preexec_fn"] = _child_limits
     try:
-        value = float(raw)
-        if value > 0 and value != float("inf"):
-            duration = value
-    except (TypeError, ValueError):
-        pass
-    if duration is None and decoded_seconds is not None and decoded_seconds > 0:
-        duration = decoded_seconds
-    return AudioFacts(audio, video, duration)
-
-
-def decoded_seconds_from_progress(text: str) -> Optional[float]:
-    """The last ``out_time_us`` of ``ffmpeg -progress pipe:1`` output, in seconds."""
-    found = re.findall(r"^out_time_us=(\d+)$", text or "", re.M)
-    return int(found[-1]) / 1_000_000 if found else None
-
-
-def ffmpeg_probe(path: Path, *, run: Callable = subprocess.run) -> AudioFacts:
-    """The default probe: ffprobe for the streams, then (only when the container states no length) one decode pass for it.
-    Fixed argument lists, no shell; ``path`` is a file this process just wrote in its own private directory."""
-    p = str(path)
-    try:
-        proc = run(["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-show_format", p],
-                   capture_output=True, text=True, timeout=30, check=False)
+        return run(argv, **kw)
+    except subprocess.TimeoutExpired as e:
+        raise AudioRefused("unreadable_audio") from e   # a file that cannot be read in time is not one we can use
     except (OSError, subprocess.SubprocessError) as e:
-        raise ProbeError(f"ffprobe could not run ({type(e).__name__})") from e
+        raise AudioToolError(f"{Path(argv[0]).name} could not run ({type(e).__name__})") from e
+
+
+def ffmpeg_normalise(src: Path, sniffed: Sniffed, workdir: Path, *, run: Callable = subprocess.run,
+                     which: Callable = shutil.which) -> Normalised:
+    """Check the streams, then decode ONCE to a capped mono 16 kHz wav, and measure the length of THAT.
+
+    * ffprobe counts streams: exactly one audio stream and no video (a second audio stream would let Whisper and the provider
+      hear different things).
+    * ffmpeg decodes only that first audio stream, cut at MAX_DECODE_SECONDS of audio, with the output size limited, under a
+      time limit, CPU / memory / file-size rlimits, an empty environment, only the ``file`` protocol and the demuxer the bytes
+      named. A header that lies about the length changes nothing: the length is read from the file ffmpeg wrote.
+    """
+    probe_bin, ffmpeg_bin = which("ffprobe"), which("ffmpeg")
+    if not probe_bin or not ffmpeg_bin:
+        raise AudioToolError("ffmpeg / ffprobe are not installed")
+    fmt = _DEMUXER.get(sniffed.ext)
+    if fmt is None:
+        raise AudioRefused("not_audio")
+    proc = _run_tool(run, [probe_bin, "-v", "error", "-protocol_whitelist", "file", "-f", fmt, "-print_format", "json",
+                           "-show_streams", str(src)], workdir, PROBE_TIMEOUT_S)
     if proc.returncode != 0:
-        raise ProbeError("ffprobe could not read the file")
+        raise AudioRefused("unreadable_audio")
     try:
-        doc = json.loads(proc.stdout or "")
+        audio, video = streams_from_ffprobe(json.loads(proc.stdout or ""))
     except ValueError as e:
-        raise ProbeError("ffprobe answered something that is not JSON") from e
-    facts = facts_from_ffprobe(doc)
-    if facts.duration_s is not None or facts.audio_streams == 0:
-        return facts
-    try:
-        dec = run(["ffmpeg", "-v", "error", "-nostdin", "-nostats", "-progress", "pipe:1", "-i", p, "-vn", "-f", "null", "-"],
-                  capture_output=True, text=True, timeout=120, check=False)
-    except (OSError, subprocess.SubprocessError) as e:
-        raise ProbeError(f"ffmpeg could not run ({type(e).__name__})") from e
+        raise AudioRefused("unreadable_audio") from e
+    if video or audio != 1:
+        raise AudioRefused("not_audio")
+    out = workdir / "decoded.wav"
+    dec = _run_tool(run, [ffmpeg_bin, "-nostdin", "-v", "error", "-protocol_whitelist", "file", "-f", fmt, "-i", str(src),
+                          "-map", "0:a:0", "-vn", "-sn", "-dn", "-t", str(MAX_DECODE_SECONDS), "-ac", "1", "-ar", str(DECODE_RATE),
+                          "-c:a", "pcm_s16le", "-fs", str(MAX_WAV_BYTES), "-y", str(out)], workdir, DECODE_TIMEOUT_S)
     if dec.returncode != 0:
-        raise ProbeError("ffmpeg could not decode the file")
-    return facts_from_ffprobe(doc, decoded_seconds_from_progress(dec.stdout))
+        raise AudioRefused("unreadable_audio")
+    return measure_wav(out)
+
+
+def measure_wav(path: Path) -> Normalised:
+    """The length of the decoded wav, from its own frames. Refuses anything that is not the mono 16 kHz 16-bit file we asked for."""
+    try:
+        size = path.stat().st_size
+        if size > MAX_WAV_BYTES:
+            raise AudioRefused("sample_too_long")
+        with wave.open(str(path), "rb") as w:
+            if (w.getnchannels(), w.getframerate(), w.getsampwidth(), w.getcomptype()) != (1, DECODE_RATE, 2, "NONE"):
+                raise AudioRefused("unreadable_audio")
+            frames = w.getnframes()
+    except (OSError, EOFError, wave.Error) as e:
+        raise AudioRefused("unreadable_audio") from e
+    seconds = frames / DECODE_RATE
+    if seconds <= 0:
+        raise AudioRefused("unreadable_audio")
+    if seconds > MAX_SAMPLE_SECONDS:
+        raise AudioRefused("sample_too_long")
+    return Normalised(path, seconds)
+
+
+def sweep_stale_workdirs(root: Optional[str] = None, *, older_than_s: float = 3600.0, now: Callable[[], float] = time.time) -> int:
+    """Remove ``nsvoice-*`` directories a killed worker (SIGKILL, the OOM killer) left behind. Only real directories of ours,
+    only older than ``older_than_s`` (a second worker on the machine may be using a young one). Never raises."""
+    base = Path(root or tempfile.gettempdir())
+    removed = 0
+    try:
+        entries = list(base.glob("nsvoice-*"))
+    except OSError:
+        return 0
+    for p in entries:
+        try:
+            st = p.lstat()
+            if p.is_symlink() or not p.is_dir() or (hasattr(os, "getuid") and st.st_uid != os.getuid()) or now() - st.st_mtime < older_than_s:
+                continue
+            shutil.rmtree(p, ignore_errors=True)
+            removed += 1
+        except OSError:
+            continue
+    if removed:
+        logger.info("voice: removed %d stale work director%s of a worker that was killed", removed, "y" if removed == 1 else "ies")
+    return removed
+
+
+class TranscribeTimeout(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def _deadline(seconds: float):
+    """Raise ``TranscribeTimeout`` in this thread after ``seconds`` (SIGALRM; a no-op off the main thread or where it is missing)."""
+    if not hasattr(signal, "SIGALRM") or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def fire(signum, frame):
+        raise TranscribeTimeout()
+
+    previous = signal.signal(signal.SIGALRM, fire)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def whisper_transcriber() -> Callable[[Path], str]:
     """The pipeline's own local Whisper (``modules.subtitle_generator.WHISPER_MODEL``), loaded for one transcript and dropped.
-    The phrase is made of English words, so the language is fixed: a Whisper that guesses the language of a six-word clip
-    guesses wrong often enough to fail an honest speaker."""
+    It is given the samples of OUR decoded wav (read here with the stdlib), not a path: Whisper's own loader would start ffmpeg
+    with this process's environment. The phrase is English words, so the language is fixed."""
     def transcribe(path: Path) -> str:
+        import numpy as np  # noqa: PLC0415
         import whisper  # noqa: PLC0415 — heavy, and only the clone job needs it
 
         from modules.subtitle_generator import WHISPER_MODEL  # noqa: PLC0415
 
+        with wave.open(str(path), "rb") as w:
+            audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
         model = whisper.load_model(WHISPER_MODEL)
         try:
-            result = model.transcribe(str(path), language="en", fp16=False, verbose=None)
+            result = model.transcribe(audio, language="en", fp16=False, verbose=None)
         finally:
             del model
         text = result.get("text") if isinstance(result, Mapping) else None
         return text if isinstance(text, str) else ""
 
     return transcribe
+
 
 
 # ── Supabase: the queue functions and the private bucket (the service key) ──────────
@@ -223,6 +343,11 @@ def _guard_redirect(resp, what: str, error):
         # The service key rides in headers; a redirect would hand it to a host nobody checked.
         raise error("redirect", f"{what} answered a redirect (HTTP {status}); not followed.")
     return resp
+
+
+class StoreError(RuntimeError):
+    """A queue call that did not work. The message is built here from a function name, a status or a closed word: it is the only
+    kind of error whose text the worker ever logs."""
 
 
 class VoiceStore:
@@ -250,7 +375,7 @@ class VoiceStore:
                              headers={"apikey": self._key, "Authorization": f"Bearer {self._key}",
                                       "Content-Type": "application/json"},
                              timeout=self._timeout)
-        _guard_redirect(r, name, lambda code, msg: RuntimeError(f"{name}: {code}"))
+        _guard_redirect(r, name, lambda code, msg: StoreError(f"{name}: {code}"))
         if r.status_code == 404:
             if name not in self._warned_404:
                 self._warned_404.add(name)
@@ -258,7 +383,7 @@ class VoiceStore:
                                "cache is stale): nothing is carried out until it exists", name)
             return None
         if r.status_code >= 300:
-            raise RuntimeError(f"{name}: HTTP {r.status_code}")   # the status only, never the body
+            raise StoreError(f"{name}: HTTP {r.status_code}")   # the status only, never the body
         return r.json()
 
     def claim(self, worker_id: str) -> Optional[dict]:
@@ -415,7 +540,7 @@ class SampleStorage:
 @dataclass(frozen=True)
 class Outcome:
     kind: str
-    #: cloned | rejected | retry | failed | deleted | purged | lost | unrecorded | invalid
+    #: cloned | rejected | parked | failed | deleted | purged | lost | unrecorded | invalid
     result: str
     code: Optional[str] = None
     attempts: int = 0
@@ -433,6 +558,7 @@ class Job:
     sample_path: Optional[str]
     phrase: Optional[str]
     provider_voice_id: Optional[str]
+    profile_status: str
 
     @property
     def prefix(self) -> str:
@@ -458,7 +584,8 @@ class Job:
                   raw.get("keep_sample") is True,
                   raw.get("sample_path") if isinstance(raw.get("sample_path"), str) else None,
                   raw.get("phrase") if isinstance(raw.get("phrase"), str) else None,
-                  raw.get("provider_voice_id") if isinstance(raw.get("provider_voice_id"), str) else None)
+                  raw.get("provider_voice_id") if isinstance(raw.get("provider_voice_id"), str) else None,
+                  str(raw.get("status") or ""))
         if raw.get("sample_prefix") != job.prefix:
             raise ValueError("the sample prefix is not <user>/<profile>/")
         if job.sample_path is not None and not (job.sample_path.startswith(job.prefix)
@@ -472,13 +599,13 @@ def _mask(value: str) -> str:
     return f"{str(value)[:8]}…"
 
 
-#: ProviderError.code -> (closed word reported to the database, may a later attempt succeed?)
+#: ProviderError.code -> (closed word reported to the database, may a later attempt succeed?). "May succeed" covers everything
+#: that is the operator's or the provider's to fix (a key, the account, an outage): those jobs are parked, not rejected.
 _PROVIDER_WORDS = {
-    "plan_required": ("provider_not_enabled", False),
-    "not_configured": ("provider_not_configured", False),
-    "auth": ("provider_auth", False),
+    "plan_required": ("provider_not_enabled", True),   # the provider says so AFTER our probe said yes: not the documented state
+    "auth": ("provider_auth", True),
     "rejected": ("provider_rejected", False),
-    "redirect": ("provider_redirect", False),
+    "redirect": ("provider_redirect", True),
     "quota": ("provider_unavailable", True),
     "transient": ("provider_unavailable", True),
     "network": ("provider_unavailable", True),
@@ -487,21 +614,40 @@ _PROVIDER_WORDS = {
 }
 
 
+def classify_provider_error(e: vp.ProviderError) -> tuple:
+    """``(word, may_retry)``. ONLY a subscription that explicitly says instant cloning is not allowed (the documented free plan)
+    is a verdict on the request; a missing flag, a bad key, a refused plan after a good probe, an outage are the operator's."""
+    if isinstance(e, vp.PlanRequired):
+        return ("provider_not_enabled", False) if e.state is False else ("provider_plan_unknown", True)
+    word, retry = _PROVIDER_WORDS.get(e.code, ("provider_error", False))
+    if e.code == "unexpected" and e.status is not None:
+        retry = False  # an HTTP answer we do not know (a 400, a 402) will not change on the next try; "no usable id" will
+    return word, retry
+
+
 class VoiceWorker:
-    """Claims and processes at most one job per ``run_once``. Everything it touches is injected."""
+    """Claims and processes at most one job per ``run_once``. Everything it touches is injected.
+
+    **Parking.** The database allows three claims of a job (``max_attempts``) and nothing a service key can call raises that or
+    re-queues a failed job. A retry that is only worth trying later therefore does NOT answer the database: the job is left
+    ``running`` and ``claim_voice_job`` gives it back after its 30-minute lease, which is the longest wait the existing functions
+    offer (about 90 minutes over the three claims). The answer is given only on the last claim, with the specific word. A user's
+    own fault (a bad recording, the wrong phrase, the documented free plan) is answered at once."""
 
     def __init__(self, store, storage, provider, *, worker_id: str, transcribe: Callable[[Path], str],
-                 probe: Callable[[Path], AudioFacts] = ffmpeg_probe, env: Optional[Mapping[str, str]] = None,
-                 sleep: Callable[[float], None] = time.sleep, tmp_root: Optional[str] = None):
+                 normalise: Callable[..., Normalised] = ffmpeg_normalise, env: Optional[Mapping[str, str]] = None,
+                 sleep: Callable[[float], None] = time.sleep, tmp_root: Optional[str] = None,
+                 transcribe_timeout: float = TRANSCRIBE_TIMEOUT_S):
         self.store = store
         self.storage = storage
-        self.provider = provider
+        self.provider = provider   # None: no ElevenLabs key. Purging samples still works; anything that needs the provider is parked.
         self.worker_id = worker_id
         self.transcribe = transcribe
-        self.probe = probe
+        self.normalise = normalise
         self.env = os.environ if env is None else env
         self._sleep = sleep
         self._tmp_root = tmp_root
+        self._transcribe_timeout = transcribe_timeout
         self._warned = False
 
     # -- the loop's one step ---------------------------------------------------
@@ -513,7 +659,7 @@ class VoiceWorker:
             raw = self.store.claim(self.worker_id)
         except Exception as e:
             if not self._warned:
-                logger.warning("voice queue unavailable (%s)", str(e) if isinstance(e, RuntimeError) else type(e).__name__)
+                logger.warning("voice queue unavailable (%s)", str(e) if isinstance(e, StoreError) else type(e).__name__)
                 self._warned = True
             return None
         if not raw:
@@ -534,10 +680,6 @@ class VoiceWorker:
                     f" ({outcome.code})" if outcome.code else "")
         return outcome
 
-    def retry_wait(self, outcome: Outcome) -> float:
-        i = min(max(outcome.attempts, 1), len(BACKOFF_SECONDS)) - 1
-        return float(BACKOFF_SECONDS[i]) if outcome.result == "retry" else 0.0
-
     # -- recording an answer ---------------------------------------------------
     def _record(self, fn, *args) -> Optional[dict]:
         """Send an answer to the database, retrying a transport failure twice. None = it could not be recorded."""
@@ -545,22 +687,25 @@ class VoiceWorker:
             try:
                 return fn(*args)
             except Exception as e:
-                logger.warning("voice: recording an answer failed (%s)", str(e) if isinstance(e, RuntimeError) else type(e).__name__)
+                logger.warning("voice: recording an answer failed (%s)", str(e) if isinstance(e, StoreError) else type(e).__name__)
                 if i < 2:
                     self._sleep(1 + 2 * i)
         return None
 
-    def _word(self, job: Job, final: str) -> str:
-        """``transient`` while the database will still requeue the job, the meaningful word on the last attempt."""
-        return "transient" if job.attempts < MAX_ATTEMPTS else final
+    def _park(self, job: Job, word: str) -> Outcome:
+        """Answer nothing; the lease returns the job to the queue (see the class docstring)."""
+        logger.warning("voice %s job %s parked (%s), claim %d of %d: it is tried again when its lease runs out",
+                       job.kind, _mask(job.job_id), word, job.attempts, MAX_ATTEMPTS)
+        return Outcome(job.kind, "parked", word, job.attempts)
 
     def _unexpected(self, job: Job) -> Outcome:
-        code = self._word(job, "worker_error")
-        if job.kind == "clone":
-            res = self._record(self.store.finish_clone, job.job_id, self.worker_id, "failed", None, None, None, code)
-        else:
-            res = self._record(self.store.finish_task, job.job_id, self.worker_id, False, code)
-        return self._outcome_of(job, res, code)
+        try:
+            if job.kind == "clone":
+                return self._end_clone(job, "worker_error", retry=True)
+            return self._task_failed(job, "worker_error")
+        except Exception as e:  # nothing here may raise: the lease is the last resort
+            logger.error("voice job %s: could not even report the failure (%s)", _mask(job.job_id), type(e).__name__)
+            return Outcome(job.kind, "unrecorded", "worker_error", job.attempts)
 
     @staticmethod
     def _outcome_of(job: Job, res: Optional[dict], code: Optional[str]) -> Outcome:
@@ -569,7 +714,7 @@ class VoiceWorker:
         if res.get("ok") is not True:
             return Outcome(job.kind, "lost" if res.get("error") == "not_holder" else "unrecorded", code, job.attempts)
         if res.get("retry"):
-            return Outcome(job.kind, "retry", code, job.attempts)
+            return Outcome(job.kind, "parked", code, job.attempts)
         if job.kind == "clone":
             return Outcome(job.kind, "rejected" if res.get("status") in ("rejected", "deleted") else "cloned", code, job.attempts)
         return Outcome(job.kind, "failed", code, job.attempts)
@@ -586,29 +731,33 @@ class VoiceWorker:
             return False
 
     # -- clone -----------------------------------------------------------------
-    def _end_clone(self, job: Job, code: str, *, may_retry: bool = False, final: Optional[str] = None) -> Outcome:
-        word = self._word(job, final or code) if may_retry else code
+    def _end_clone(self, job: Job, word: str, *, retry: bool = False) -> Outcome:
+        """End the attempt with a closed word. ``retry``: park it while claims remain, answer only on the last."""
+        if retry and job.attempts < MAX_ATTEMPTS:
+            return self._park(job, word)
         res = self._record(self.store.finish_clone, job.job_id, self.worker_id, "failed", None, None, None, word)
         out = self._outcome_of(job, res, word)
-        if out.result in ("rejected", "failed"):
+        if out.result == "rejected":
             self._delete_our_copy(job)
         return out
 
     def _provider_stop(self, job: Job, e: vp.ProviderError, *, maybe_created: bool = False) -> Outcome:
-        word, retryable = _PROVIDER_WORDS.get(e.code, ("provider_error", False))
-        if e.code == "unexpected" and e.status is not None:
-            retryable = False  # an HTTP answer we do not know (a 400, a 402) will not change on the next try; "no usable id" will
-        out = self._end_clone(job, word, may_retry=retryable, final=word)
-        if maybe_created and out.result != "retry":
+        word, retry = classify_provider_error(e)
+        out = self._end_clone(job, word, retry=retry)
+        # Only a profile the database has just rejected may lose a voice: a worker that lost its lease, or whose answer was not
+        # recorded, must not delete what another worker may have adopted.
+        if maybe_created and out.result == "rejected":
             self._remove_orphans(job)
         return out
 
     def _remove_orphans(self, job: Job) -> None:
-        """The attempt ended for good after a create that may have worked: remove a voice of OUR name, so a rejected profile
-        does not leave a clone of someone's voice in the provider account. Best effort; a voice that survives this is found
-        by its name (``ns-<owner_ref>-<profile8>``, docs/CUSTOM_VOICE.md)."""
+        """Remove the voices labelled for THIS profile (full id and owner reference) from the provider account, so a rejected
+        profile does not leave a clone of someone's voice there. A voice with the name but another label is never touched.
+        Best effort; one that survives is found by its name (``ns-<owner_ref>-<profile8>``, docs/CUSTOM_VOICE.md)."""
+        if self.provider is None:
+            return
         try:
-            for voice_id in self.provider.find_voices_by_name(vp.provider_voice_name(job.owner_ref, job.profile_id)):
+            for voice_id in self.provider.find_voices_for_profile(job.owner_ref, job.profile_id).owned:
                 self.provider.delete_voice(voice_id)
         except Exception as e:
             logger.warning("voice job %s: a possibly created voice could not be removed (%s)", _mask(job.job_id),
@@ -617,6 +766,8 @@ class VoiceWorker:
     def _clone(self, job: Job) -> Outcome:
         if not vp.is_owner_ref(job.owner_ref) or not job.phrase:
             return self._end_clone(job, "bad_job")
+        if self.provider is None:
+            return self._end_clone(job, "provider_not_configured", retry=True)
         # 1. The account's capability, before the sample is fetched and long before any create call.
         try:
             self.provider.ensure_plan()
@@ -632,52 +783,56 @@ class VoiceWorker:
                 return self._end_clone(job, "sample_too_large")
             if e.code == "missing":
                 return self._end_clone(job, "sample_missing")
-            return self._end_clone(job, "storage_error", may_retry=e.code in ("network", "http", "redirect"))
+            return self._end_clone(job, "storage_error", retry=e.code in ("network", "http", "redirect"))
         if len(data) > MAX_SAMPLE_BYTES:
             return self._end_clone(job, "sample_too_large")
         sniffed = sniff_audio(data)
         if sniffed is None or sniffed.mime not in vp.SAMPLE_TYPES:
             return self._end_clone(job, "not_audio")
         sha = vp.sample_sha256(data)
-        # 3. The streams, the length, and the phrase. The only copy on this machine lives in a private directory that is
-        #    removed on every path out of this block.
+        # 3. ONE capped decode; its measured length, its transcript and its bytes are what everything after uses. The only
+        #    copies on this machine live in a private directory that is removed on every path out of this block.
         with tempfile.TemporaryDirectory(prefix="nsvoice-", dir=self._tmp_root) as tmp:
-            local = Path(tmp) / f"sample.{sniffed.ext}"
+            workdir = Path(tmp)
+            local = workdir / f"sample.{sniffed.ext}"
             local.write_bytes(data)
             try:
-                facts = self.probe(local)
-            except ProbeError:
-                return self._end_clone(job, "unreadable_audio")
-            if facts.video_streams or not facts.audio_streams:
-                return self._end_clone(job, "not_audio")
-            if facts.duration_s is None or facts.duration_s <= 0:
-                return self._end_clone(job, "unreadable_audio")
-            if facts.duration_s > MAX_SAMPLE_SECONDS:
-                return self._end_clone(job, "sample_too_long")
+                norm = self.normalise(local, sniffed, workdir)
+            except AudioRefused as e:
+                return self._end_clone(job, e.code)
+            except AudioToolError:
+                return self._end_clone(job, "audio_tool_error", retry=True)
             try:
-                transcript = self.transcribe(local)
+                with _deadline(self._transcribe_timeout):
+                    transcript = self.transcribe(norm.path)
+            except TranscribeTimeout:
+                return self._end_clone(job, "transcribe_timeout", retry=True)
             except Exception as e:
                 logger.warning("voice job %s: the transcript failed (%s)", _mask(job.job_id), type(e).__name__)
-                return self._end_clone(job, "transcribe_failed", may_retry=True)
+                return self._end_clone(job, "transcribe_failed", retry=True)
+            wav = norm.path.read_bytes()
         check = vp.check_transcript(job.phrase, transcript)
         if not check.passed:
             res = self._record(self.store.finish_clone, job.job_id, self.worker_id, "failed", None, None, sha, None)
             out = self._outcome_of(job, res, "verification_failed")
-            if out.result in ("rejected", "failed"):
+            if out.result == "rejected":
                 out = Outcome("clone", "rejected", "verification_failed", job.attempts)
                 self._delete_our_copy(job)
             return out
-        # 4. The provider: adopt a voice of our name if an earlier attempt made one, otherwise create it.
-        name = vp.provider_voice_name(job.owner_ref, job.profile_id)
+        # 4. The provider: adopt a voice labelled for THIS profile if an earlier attempt made one, otherwise create it. The
+        #    provider gets the normalised, capped wav, never the upload.
         try:
-            existing = self.provider.find_voices_by_name(name)
-            if existing:
-                voice_id = existing[0]
-                for extra in existing[1:]:
+            found = self.provider.find_voices_for_profile(job.owner_ref, job.profile_id)
+            if found.conflicting:
+                # Our name on a voice that is not labelled as ours: not ours to adopt, delete or duplicate.
+                return self._end_clone(job, "provider_conflict")
+            if found.owned:
+                voice_id = found.owned[0]
+                for extra in found.owned[1:]:
                     self.provider.delete_voice(extra)
             else:
-                voice_id = self.provider.create_voice(owner_ref=job.owner_ref, profile_id=job.profile_id, sample=data,
-                                                      content_type=sniffed.mime).voice_id
+                voice_id = self.provider.create_voice(owner_ref=job.owner_ref, profile_id=job.profile_id, sample=wav,
+                                                      content_type="audio/wav").voice_id
         except vp.ProviderError as e:
             return self._provider_stop(job, e, maybe_created=True)
         # 5. Record it; only an accepted answer lets go of the sample.
@@ -686,41 +841,52 @@ class VoiceWorker:
             return Outcome("clone", "unrecorded", None, job.attempts)  # the lease returns the job; the next attempt adopts the voice
         if res.get("ok") is not True:
             code = res.get("error") if isinstance(res.get("error"), str) else None
+            if code == "voice_id_taken":
+                # The service key cannot read other profiles, so the database's UNIQUE (provider, voice id) is the check that this
+                # voice is not another profile's. It said so: nothing is deleted, and the case is for a person.
+                logger.error("voice job %s: the database says this voice id belongs to another profile; nothing was changed",
+                             _mask(job.job_id))
             return Outcome("clone", "lost" if code == "not_holder" else "unrecorded", code, job.attempts)
         if res.get("status") in ("rejected", "deleted") or res.get("sample_purge_queued") is True:
             self._delete_our_copy(job)
         return Outcome("clone", "cloned" if res.get("status") == "testing" else "rejected", None, job.attempts)
 
-    # -- delete at the provider ------------------------------------------------
+    # -- the two kinds of task -------------------------------------------------
+    def _task_failed(self, job: Job, word: str) -> Outcome:
+        """A delete or a purge that did not work. Parked while claims remain; on the last claim it is answered, and then it is
+        over for the database: the overdue sample / voice is for a person (docs/CUSTOM_VOICE.md, 'the recurring check')."""
+        if job.attempts < MAX_ATTEMPTS:
+            return self._park(job, word)
+        res = self._record(self.store.finish_task, job.job_id, self.worker_id, False, word)
+        logger.error("voice OVERDUE: %s job %s failed for good after %d claims (%s); a sample or a provider voice may remain: "
+                     "run the overdue check in docs/CUSTOM_VOICE.md", job.kind, _mask(job.job_id), job.attempts, word)
+        return self._outcome_of(job, res, word)
+
     def _delete_provider(self, job: Job) -> Outcome:
         if not job.provider_voice_id:
-            res = self._record(self.store.finish_task, job.job_id, self.worker_id, False, "no_voice_id")
-            return self._outcome_of(job, res, "no_voice_id")
+            return self._task_failed(job, "no_voice_id")
+        if self.provider is None:
+            return self._task_failed(job, "provider_not_configured")
         try:
             gone = self.provider.delete_voice(job.provider_voice_id)  # a 404 is "already gone": True
         except vp.ProviderError as e:
-            word = _PROVIDER_WORDS.get(e.code, ("provider_error", False))[0]
-            res = self._record(self.store.finish_task, job.job_id, self.worker_id, False, word)
-            return self._outcome_of(job, res, word)
+            return self._task_failed(job, _PROVIDER_WORDS.get(e.code, ("provider_error", False))[0])
         if not gone:
-            res = self._record(self.store.finish_task, job.job_id, self.worker_id, False, "provider_error")
-            return self._outcome_of(job, res, "provider_error")
+            return self._task_failed(job, "provider_error")
         res = self._record(self.store.finish_task, job.job_id, self.worker_id, True, None)
         if res is None or res.get("ok") is not True:
             return self._outcome_of(job, res, None)
         return Outcome(job.kind, "deleted", None, job.attempts)
 
-    # -- purge the sample ------------------------------------------------------
     def _purge_sample(self, job: Job) -> Outcome:
         try:
             self.storage.delete_prefix(job.user_id, job.profile_id)
         except StorageError as e:
-            word = "storage_" + e.code
-            res = self._record(self.store.finish_task, job.job_id, self.worker_id, False, word)
-            return self._outcome_of(job, res, word)
-        if job.provider_voice_id is None and vp.is_owner_ref(job.owner_ref):
-            # No voice was ever recorded for this profile, so a voice of its name in the provider account is an orphan: a create
-            # whose answer was lost, in an attempt that then died for good. Its sample is gone; so is the clone it made.
+            return self._task_failed(job, "storage_" + e.code)
+        if job.provider_voice_id is None and job.profile_status == "rejected" and vp.is_owner_ref(job.owner_ref):
+            # A REJECTED profile never got a voice recorded (its clone job has ended), so a voice labelled for it in the provider
+            # account is an orphan: a create whose answer was lost in an attempt that then ended. Any other state may have a clone
+            # in flight (the owner deleted it while it was being made), and its own delete_provider job handles that voice.
             self._remove_orphans(job)
         res = self._record(self.store.finish_task, job.job_id, self.worker_id, True, None)
         if res is None or res.get("ok") is not True:
@@ -728,5 +894,6 @@ class VoiceWorker:
         return Outcome(job.kind, "purged", None, job.attempts)
 
 
-__all__ = ["enabled", "VoiceWorker", "VoiceStore", "SampleStorage", "StorageError", "Outcome", "Job", "AudioFacts",
-           "ProbeError", "sniff_audio", "ffmpeg_probe", "whisper_transcriber", "SWITCH_ENV"]
+__all__ = ["enabled", "VoiceWorker", "VoiceStore", "SampleStorage", "StorageError", "Outcome", "Job", "Normalised", "AudioRefused",
+           "AudioToolError", "sniff_audio", "ffmpeg_normalise", "measure_wav", "sweep_stale_workdirs", "whisper_transcriber",
+           "classify_provider_error", "SWITCH_ENV"]
