@@ -261,6 +261,15 @@ class DoctorProbesTheStageVariablesToo(unittest.TestCase):
         self.assertNotIn(junk, warn.detail + warn.fix)
         self.assertEqual(len(ctx.http.calls), 1, "the junk value is not put in a URL")
 
+    def test_a_plain_id_that_is_not_a_gemini_family_id_is_probed_but_never_echoed(self):
+        odd = "deadbeef0123456789abcdef"
+        for status in (200, 404):
+            ctx = self.td.make_ctx({"GEMINI_MODEL_SCRIPT": odd},
+                                   self.routes(**{"gemini-3.6-flash": 200, odd: status}))
+            check = next(c for c in self.d.check_gemini(ctx) if c.name == "gemini script")
+            self.assertNotIn(odd, check.detail + check.fix)
+            self.assertIn("GEMINI_MODEL_SCRIPT", check.detail)
+
     def test_a_refused_key_is_reported_once_not_per_variable(self):
         ctx = self.td.make_ctx({"GEMINI_MODEL_TOPIC": "gemini-ok-flash"}, [("GET", "generativelanguage", self.td.Resp(403))])
         out = self.d.check_gemini(ctx)
