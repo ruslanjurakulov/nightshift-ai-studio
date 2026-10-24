@@ -1583,8 +1583,26 @@ def test_the_rollback_refuses_to_undo_a_later_change_to_either_function(conn, wo
     s.conn.execute(changed)
     body = "\n".join(ln for ln in ROLLBACK.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
     out = s.run(body)
-    assert not out.ok and f"{word}() is not 0120's body" in out.error, out
+    assert not out.ok and f"rollback 0120: {word}() is not 0120's body" in out.error, out
     assert s.value("select position('a later change' in pg_get_functiondef(%s::regprocedure)) > 0", [sig]), "nothing was restored over it"
+
+
+@pytest.mark.parametrize("sig,word", [("public.render_job_params_valid(jsonb,text)", "render_job_params_valid"),
+                                     ("public.render_jobs_payment_guard()", "render_jobs_payment_guard")])
+def test_the_migration_refuses_to_replace_a_body_it_has_not_seen_and_replaces_nothing(conn, world, sig, word):
+    """The drift guard: a live body that is neither the repo's latest nor 0120's own (something applied by hand after it) is not overwritten."""
+    s = world.su
+    become(s, None)
+    ddl = s.value("select pg_get_functiondef(%s::regprocedure)", [sig])
+    changed = ddl.replace("begin\n", "begin\n  -- applied by hand, after the repo's migrations\n", 1)
+    assert changed != ddl
+    s.conn.execute(changed)
+    other = "public.render_jobs_payment_guard()" if word == "render_job_params_valid" else "public.render_job_params_valid(jsonb,text)"
+    other_before = s.value("select pg_get_functiondef(%s::regprocedure)", [other])
+    out = s.run(MIGRATION.read_text(encoding="utf-8"))
+    assert not out.ok and out.error.startswith(f"0120 found a {word}() that is neither"), out
+    assert s.value("select pg_get_functiondef(%s::regprocedure)", [sig]) == changed, "the foreign body is still there"
+    assert s.value("select pg_get_functiondef(%s::regprocedure)", [other]) == other_before
 
 
 def test_the_rollback_strips_the_series_key_from_finished_runs_so_the_old_validator_accepts_them(conn, world):
