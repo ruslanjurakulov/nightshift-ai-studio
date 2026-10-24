@@ -131,7 +131,7 @@ add a file and a second voice for nothing.
 * The wordmark is a drawing, not a font: the owner's lockup (the bare N and the
   wide rounded-square lettering) is an inline vector, `components/site/Wordmark.tsx`
   (the old inlined condensed face and `.ns-wordmark` are gone). The social card
-  (`/og.png`) is set in Onest and the earlier condensed wordmark, unchanged.
+  (`/og.png`) is the owner-supplied picture (`brand/og/og-card.png`); no text on it is set in a font.
 * Monospace is the system's (`ui-monospace, SF Mono, Menlo, Consolas`), no
   download, and only for real code: API keys, commands, JSON, a raw id, the
   unit's code name.
@@ -213,7 +213,7 @@ before over after. The tool's reports are in `docs/design/design-human/qa/`.
 * Tokens: `app/globals.css` (`@theme`, `:root`, both themes, the shared
   components), `app/fonts.css` (new), `components/site/site.css`,
   `components/studio/desk.css`, `components/models/ModelDiscovery.module.css`,
-  `components/concepts/concepts.css`, the social card `app/og.png/route.tsx`.
+  `components/concepts/concepts.css`.
 * Class-level sweep over the app's components (no capitals, no tracking, no
   `mono` for words and figures, 13 / 14 / 16px instead of 9–12px, card padding),
   done by script and then read; the few real-code spots keep `mono`.

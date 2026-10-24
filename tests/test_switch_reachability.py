@@ -183,6 +183,13 @@ class EverySwitchTheCodeReadsCanBeSet(unittest.TestCase):
             missing, [],
             HOW_TO_FIX.format(names="\n  ".join(f"{n}  (read at {self.names[n][0]})" for n in missing)))
 
+    def test_the_voice_cloning_switch_is_read_by_its_worker_and_can_be_set_from_github(self):
+        # Custom voice (0117): finished code behind a switch the OWNER sets. It must be settable (an unreachable switch reads as
+        # "off" for ever) and must not be in the allowlist of switches nobody should set.
+        self.assertTrue(any(w.startswith("modules/voice_worker.py:") for w in self.names["NIGHTSHIFT_VOICE_CLONING"]))
+        self.assertEqual(unreachable({"NIGHTSHIFT_VOICE_CLONING": ["modules/voice_worker.py:1"]}, self.paths), [])
+        self.assertNotIn("NIGHTSHIFT_VOICE_CLONING", INTENTIONALLY_UNREACHABLE)
+
     def test_the_allowlist_is_honest(self):
         reached = set().union(*self.paths.values())
         read = set(self.names)
@@ -197,7 +204,7 @@ class EverySwitchTheCodeReadsCanBeSet(unittest.TestCase):
         # A scan that silently found nothing would pass every other test.
         self.assertGreater(len(self.names), 60)
         for known in ("CHRONOS_SCENE_RENDER", "NIGHTSHIFT_COMMENT_INBOX", "NIGHTSHIFT_VISIBILITY_PUBLISH",
-                      "CHRONOS_MAX_RUN_USD", "NIGHTSHIFT_GROUNDED_FACTCHECK"):
+                      "CHRONOS_MAX_RUN_USD", "NIGHTSHIFT_GROUNDED_FACTCHECK", "NIGHTSHIFT_VOICE_CLONING"):
             self.assertIn(known, self.names)
         for place, names in self.paths.items():
             self.assertGreater(len(names), 5, place)

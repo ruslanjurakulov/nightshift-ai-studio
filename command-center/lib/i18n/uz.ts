@@ -3816,7 +3816,7 @@ export const uz: Dictionary = {
     meta: {
       title: "Nightshift — YouTube kanallari uchun avtonom studiya",
       description: "Mavzuni tayyor YouTube videoga aylantiring: ssenariy, ovoz, tasvir va montaj. Narx ishga tushirishdan oldin koʻrinadi, sizsiz hech narsa ommaga chiqmaydi.",
-      ogAlt: "Nightshift — mavzudan tayyor YouTube videogacha, sizsiz hech narsa ommaga chiqmaydi.",
+      ogAlt: "Nightshift logotipi oq rangda, oq silliq toʻlqinsimon lentalar tushirilgan qora fonda.",
     },
     nav: {
       label: "Asosiy",

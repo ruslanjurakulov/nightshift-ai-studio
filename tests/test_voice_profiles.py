@@ -521,7 +521,7 @@ class Module(unittest.TestCase):
     def test_the_documented_endpoints_are_the_only_paths_used(self):
         src = (ROOT / "modules" / "voice_profiles.py").read_text(encoding="utf-8")
         paths = set(re.findall(r'"(/(?:user|voices)[^"]*)"', src)) | set(re.findall(r'f"(/voices/\{voice_id\})"', src))
-        self.assertEqual(paths, {"/user/subscription", "/voices/add", "/voices/{voice_id}"})
+        self.assertEqual(paths, {"/user/subscription", "/voices", "/voices/add", "/voices/{voice_id}"})
 
 
 if __name__ == "__main__":
