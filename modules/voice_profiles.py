@@ -367,6 +367,10 @@ class VoiceProvider(Protocol):
 
     def get_voice(self, voice_id: str) -> Optional[Mapping]: ...
 
+    def ensure_plan(self) -> None: ...
+
+    def find_voices_by_name(self, name: str) -> list: ...
+
 
 def plan_allows_instant_cloning(subscription: object) -> Optional[bool]:
     """True/False from the subscription answer, or None when the answer does not say (unknown is not true)."""
@@ -394,6 +398,7 @@ class ElevenLabsVoiceProvider:
     * ``POST   /v1/voices/add``             multipart: ``name``, ``files`` (the sample), ``labels`` (JSON text)
     * ``DELETE /v1/voices/{voice_id}``
     * ``GET    /v1/voices/{voice_id}``
+    * ``GET    /v1/voices``                 the account's voices, read only to find a clone by its exact name (below)
 
     ``create_voice`` calls the plan probe first and refuses (``PlanRequired``) unless it reads true.
     """
@@ -521,6 +526,27 @@ class ElevenLabsVoiceProvider:
         except Exception as e:
             raise ProviderError("unexpected", "ElevenLabs voice lookup answered something that is not JSON.") from e
         return data if isinstance(data, Mapping) else None
+
+    def find_voices_by_name(self, name: str) -> list:
+        """Voice ids in the account whose name is EXACTLY ``name`` (a name made by ``provider_voice_name``), in the
+        order the provider lists them. This is what makes a retry safe: a create that timed out, or whose answer had
+        no usable id, may have made the voice anyway, and the next attempt must adopt it, never make a second one.
+        Read only, never needs the plan. UNVERIFIED live like the rest: the list endpoint and its ``voices`` /
+        ``name`` / ``voice_id`` fields are as the planner knew them."""
+        if parse_provider_voice_name(name) is None:
+            raise ValueError("only a name made by provider_voice_name is looked up")
+        resp = self._request("get", "/voices", "voice list")
+        if getattr(resp, "status_code", None) != 200:
+            raise self._failure(resp, "voice list")
+        try:
+            voices = resp.json().get("voices")
+        except Exception as e:
+            raise ProviderError("unexpected", "ElevenLabs voice list answered something that is not JSON.") from e
+        if not isinstance(voices, list):
+            raise ProviderError("unexpected", "ElevenLabs voice list answered something that is not a list of voices.")
+        return [v["voice_id"] for v in voices
+                if isinstance(v, Mapping) and v.get("name") == name and isinstance(v.get("voice_id"), str)
+                and VOICE_ID_RE.fullmatch(v["voice_id"]) is not None]
 
     @staticmethod
     def _check_voice_id(voice_id: object) -> None:
