@@ -71,6 +71,12 @@ class NothingSetChangesNothing(Restore):
         self.assertEqual(hash(model_for("script")), hash(config.GEMINI_MODEL))
         self.assertEqual(f"models/{model_for('script')}", f"models/{config.GEMINI_MODEL}")
 
+    def test_a_missing_or_empty_entry_in_the_table_still_resolves_to_gemini_model(self):
+        with patch.dict("config.GEMINI_STAGE_MODELS", {"script": ""}), patch("config.GEMINI_MODEL", "fallback-model"):
+            self.assertEqual(model_for("script"), "fallback-model")
+        with patch("config.GEMINI_STAGE_MODELS", {}), patch("config.GEMINI_MODEL", "fallback-model"):
+            self.assertEqual(model_for("topic_pick"), "fallback-model")
+
     def test_a_stage_the_table_does_not_know_still_gets_a_model(self):
         self.assertEqual(model_for("made_up_stage"), config.GEMINI_MODEL)
         self.assertEqual(gemini_stages.stage_of(model_for("made_up_stage")), gemini_stages.UNLABELLED)
