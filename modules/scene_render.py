@@ -80,7 +80,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Mapping, Optional
 
-from modules.render_spec import FINAL_X264, KIND_COLOR, KIND_IMAGE, KIND_VIDEO, RenderSpec, Segment
+from modules.render_spec import FASTSTART_MOVFLAGS, FINAL_X264, KIND_COLOR, KIND_IMAGE, KIND_VIDEO, RenderSpec, Segment
 
 logger = logging.getLogger(__name__)
 
@@ -508,7 +508,7 @@ def assemble(project, jobs: List[SceneJob], output_path: Path, *,
             if subs:
                 cmd += ["-vf", "subtitles='" + subs.replace("'", r"'\''") + "'"]
             cmd += ["-r", str(project.fps), "-c:v", "libx264", *FINAL_X264, "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-shortest", str(tmp_out)]
+                    "-c:a", "aac", "-shortest", *FASTSTART_MOVFLAGS, str(tmp_out)]
             t0 = time.monotonic()
             render_backend._run(cmd)
             logger.info("ffmpeg scene timing: scenes=%d assemble_s=%.2f", len(jobs),

@@ -232,10 +232,12 @@ xabarlarda ko'rinmaydi.
      kadr chastotasi, o'lcham, indeks boshida ekani) va platforma rad
      etadigan faylni darhol "RAD ETILDI" qiladi (`bad_codec`, `bad_audio`,
      `bad_framerate`, `too_wide`, `bad_resolution`, `not_faststart`,
-     `unreadable_video`). Fayl qayta kodlanmaydi. Diqqat: render fayli hozircha
-     `moov` indeksini oxirida yozadi, shuning uchun Instagram'ga barcha
-     postlar `not_faststart` bilan rad etiladi, to'g'rilanmaguncha
-     (`docs/AI_DISCLOSURE.md`, "Known consequence").
+     `unreadable_video`). Fayl qayta kodlanmaydi. Diqqat: `moov` indeksi
+     boshida bo'lmagan master Instagram'ga `not_faststart` bilan rad etiladi.
+     Yangi masterlar indeksni boshida yozadi; faqat #555 dan oldin render
+     qilingan videolar (va shu o'zgarishgacha ffmpeg/sahna backend'i)
+     rad etiladi, ular joyida o'zgartirilmaydi (`docs/AI_DISCLOSURE.md`,
+     "Which masters have `moov` first").
    - Kredit yechilmaydi (platformalarga yuklash bepul).
 5. Cheklovlar:
    - Worker to'liq sifatli (master) faylni o'z diskida (`output/`) topishi

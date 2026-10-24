@@ -229,13 +229,29 @@ A refusal is `status = refused` with the word and a plain sentence in en / ru / 
 (an approval binds to the exact cut's hash). Not checked, although the Instagram page lists them: edit lists, closed
 GOP, 4:2:0 chroma, 25 Mbps bitrate, 48 kHz audio sample rate.
 
-**Known consequence:** the compositor's `write_videofile` (`modules/compositor.py`) does not pass
-`-movflags +faststart`, so a master has `moov` at the end and **every Instagram post will now be refused as
-`not_faststart`** until the follow-up below. That is the check doing its job (Instagram documents the requirement),
-but it turns "tried and maybe failed after a staged upload" into "refused at once". TikTok is unaffected.
+### Which masters have `moov` first
 
-Follow-up (not in this PR): add `-movflags +faststart` to the master encode (`ffmpeg_params` in the compositor), or
-produce a stream-copy remux for Instagram (and re-hash the approval), instead of refusing.
+An earlier version of this page said the compositor did not write `moov` first and that every Instagram post would be
+refused as `not_faststart`. That was out of date the day it was written: the same change (#555, 2026-10-20) added
+`-movflags +faststart` to the compositor. Measured on the code, with the ffmpeg that ships with imageio-ffmpeg (box
+order of the output file; `tests/test_master_faststart.py`, `tests/test_master_faststart_paths.py`):
+
+| Writer of the master (`final_video.mp4`) | When it runs | `moov` first? |
+| :-- | :-- | :-- |
+| `modules/compositor.py`, moviepy `write_videofile` | the default (`CHRONOS_RENDER_BACKEND` empty) and the fallback when another backend fails | yes, since #555 (without `ffmpeg_params` moviepy writes `ftyp free mdat moov`; with it `ftyp moov free mdat`) |
+| `render_dispatch._render_ffmpeg` -> `render_backend.render(spec, faststart=True)` | `CHRONOS_RENDER_BACKEND=ffmpeg` | yes, from this change (before: `ftyp free mdat moov`) |
+| `scene_render.assemble` | `CHRONOS_SCENE_RENDER` on, and every scene repair or regeneration re-assembly | yes, from this change (before: `ftyp free mdat moov`) |
+| `shorts.py` (the Short's two encodes) | Shorts on | yes, since #555 |
+
+The flag is ffmpeg's standard `-movflags +faststart`, an output option: the video and audio packets are the ones the
+encode wrote (the tests compare their checksums with and without it) and the file has the same size; the mov muxer
+only moves the index to the front when it closes the file. Nothing is re-encoded or remuxed afterwards. An editor
+export shares `render_backend.render` but does not ask for the flag, so its command is unchanged. The cut's sha256 is
+taken after the render, so a new master is hashed as it ships.
+
+Still refused as `not_faststart`: a master rendered before #555 (or, until this change, by the ffmpeg or scene
+backend). Nothing remuxes an existing video in place, because an approval binds to the exact cut's hash. Re-render it,
+or accept the refusal.
 
 ## TikTok: unaudited app
 
@@ -249,7 +265,9 @@ TikTok account private until the app is audited. The post is still requested as 
 * That YouTube accepts `status.containsSyntheticMedia: true` on `videos.insert` for this app, shows the label, and
   returns it on `videos.list(part=status)` (needed for #543's `writable_status`).
 * That Instagram accepts `is_ai_generated` on a Reels container, and TikTok `is_aigc` on Direct Post, for these apps.
-* That a master with `moov` at the end is actually rejected by Instagram (the page says it must be at the front).
+* That a master with `moov` at the end is actually rejected by Instagram (the page says it must be at the front), and
+  that one with `moov` first is accepted: no Reel was posted. The tests read the box order of real files and the same
+  `social_probe` check the worker runs; they do not call Instagram.
 * The exact wording of the official pages beyond the quotes above (they were read through a page fetch on
   2026-10-19; the YouTube page is stated to be non-exhaustive).
 * The Russian and Uzbek disclosure lines and the new panel sentences are machine drafts.
@@ -265,8 +283,9 @@ TikTok account private until the app is audited. The post is still requested as 
    A fully animated channel that wants `never` asks the platform team.
 4. A fully animated / cartoon channel: set `never` per channel, or record a "non-photoreal style" setting that `auto`
    can honour (the page's "not realistic" exemption).
-5. Instagram refusal for `not_faststart`: keep it (honest, but blocks every Instagram post until the compositor
-   writes `+faststart`), or ship the follow-up first.
+5. Instagram refusal for `not_faststart`: kept. It now only fires for a master that was rendered before the writers
+   above put `moov` first (see "Which masters have `moov` first"). Instagram has no private mode, so the owner's tick
+   remains the only safety there: a master that Instagram can take is a master that can go public once ticked.
 6. ~~The default voice `generic` is an assumption.~~ **Decided 2026-10-20: the default stays `generic` and all three values
    stay available.** `own_clone` (which does not change the label, but is recorded as "a person chose this") is a platform administrator's to set; `real_person` is open to
    every editor of the channel. The pipeline still cannot hear a voice: a cloned or celebrity voice picked from the account's
