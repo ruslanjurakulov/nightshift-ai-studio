@@ -86,14 +86,14 @@ All of these are a `SeriesPlanError` with a fixed `code` and a field path, never
 | `bad_field`, `too_long` | a non-string, an empty string, a list of the wrong length or with a repeated item, a string over its limit |
 | `markup`, `cue_tag`, `hidden_characters` | `<` `>`, backticks, `{{ }}`, `${`, `##` marks, an entity or a link; any square-bracket tag (`[SFX: ...]`, `[INST]`, `[anything]`); control, bidi, zero-width, line-break and other invisible characters |
 | `injection` | a phrase that addresses the next stage ("ignore previous instructions", "system prompt", a leading `System:` / `User:` / `Instruction:`, ...; en, ru, uz). A phrase list, not a guarantee. A normal title that happens to contain one of these phrases will be refused, and that is accepted: the failure is closed and costs one retry |
+| `duplicate_topics` | two episodes are the same topic by `modules/topic_dedup.is_same_topic` |
 
-The markup, bracket and phrase screens read the text as a reader sees it (`topic_gate.clean`: NFKC, invisible characters
-removed, look-alike letters in a mixed-script word turned back to Latin), so full-width `＜script＞` and `［SFX: boom］`, math-bold
+The markup, bracket and phrase screens read the text as a reader sees it (combining marks removed, then `topic_gate.clean`: NFKC, invisible characters
+removed, look-alike letters in a mixed-script word turned back to Latin), so "ígnóré prévíóús ínstrúctíóns", full-width `＜script＞` and `［SFX: boom］`, math-bold
 and Cyrillic-look-alike "ignore previous instructions" are refused. The text that is kept is what the model wrote, not the
 folded form. A corpus of legitimate en, ru and uz titles (`tests/test_series_planner.py::Folding.LEGIT`) pins that the
 screens do not refuse ordinary titles, including "The Feudal System: Lords and Serfs" and Russian or Uzbek titles that
 contain words like "система" or "инструкция".
-| `duplicate_topics` | two episodes are the same topic by `modules/topic_dedup.is_same_topic` |
 
 ### Untrusted input is fenced
 
@@ -173,6 +173,9 @@ repeat-checked, only the episodes are.
   a number, or above 1e12 (`MAX_EPISODE_CREDITS` / `SERIES_MAX_EPISODE_CREDITS`); both languages validate it the same way
   and the shared fixture pins it (an estimator that returned 3e306 used to raise an `OverflowError` in Python and a
   TypeScript caller would have summed NaN or Infinity into a total).
+  `count_mismatch` is an episode with a length but no estimate, or an estimate but no length, when `aggregate_quote` /
+  `aggregateSeriesQuote` get lists of different lengths: it is kept as an unpriced episode (nothing is zipped short or
+  dropped), so the quote is not complete. The shared fixture pins it in both languages.
 - `total_credits`: `null` if **any** episode is `null`. Never 0, never a partial sum presented as the total. Rounded up to the
   cent, as a hold is.
 - `partial_sum_priced_only`: the sum of the priced episodes alone, under a name that says so; `null` when none is priced.

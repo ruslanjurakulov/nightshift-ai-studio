@@ -95,6 +95,7 @@ describe("aggregateSeriesQuote (shared cases with the Python twin)", () => {
   const fixture = JSON.parse(readFileSync(join(__dirname, "../../tests/fixtures/series_quote_cases.txt"), "utf8")) as {
     cases: {
       name: string;
+      durations?: (number | null)[];
       credits: (number | string | boolean | null)[];
       gaps: (EstimateGap | null)[];
       total: number | null;
@@ -108,12 +109,12 @@ describe("aggregateSeriesQuote (shared cases with the Python twin)", () => {
   const SPECIAL: Record<string, number> = { NaN: Number.NaN, Infinity: Number.POSITIVE_INFINITY, "-Infinity": Number.NEGATIVE_INFINITY };
   const raw = (v: number | string | boolean | null): number | null => (typeof v === "string" && v in SPECIAL ? SPECIAL[v] : (v as number | null));
 
-  it("has cases", () => expect(fixture.cases.length).toBeGreaterThanOrEqual(13));
+  it("has cases", () => expect(fixture.cases.length).toBeGreaterThanOrEqual(15));
 
   for (const c of fixture.cases) {
     it(c.name, () => {
       const q = aggregateSeriesQuote(
-        c.credits.map(() => 300),
+        c.durations ?? c.credits.map(() => 300),
         c.credits.map((cr, i) => estimate(raw(cr), c.gaps[i])),
       );
       expect(q.totalCredits).toBe(c.total);
@@ -132,5 +133,51 @@ describe("aggregateSeriesQuote (shared cases with the Python twin)", () => {
   it("an unpriced estimate that names no gap reads 'unknown', not a guessed gap", () => {
     const q = aggregateSeriesQuote([300], [{ ...estimate(null, null) }]);
     expect(q.episodes[0].gap).toBe("unknown");
+  });
+
+  it("credits that are undefined (a missing field) read 'unknown', never invalid_estimate", () => {
+    const missing = { ...estimate(null, null), credits: undefined } as unknown as CreditEstimate;
+    const q = aggregateSeriesQuote([300], [missing]);
+    expect(q.episodes[0]).toMatchObject({ credits: null, gap: "unknown", floorApplied: false });
+    expect(q.gaps).toEqual(["unknown"]);
+    // ... while a credits value that is present but broken IS invalid_estimate
+    const nan = aggregateSeriesQuote([300], [estimate(Number.NaN, null)]);
+    expect(nan.episodes[0].gap).toBe("invalid_estimate");
+    // ... and an undefined credits that names its gap keeps it
+    const named = aggregateSeriesQuote([300], [{ ...missing, gap: "no_history" }]);
+    expect(named.episodes[0].gap).toBe("no_history");
+  });
+
+  it("an invalid episode never reports a floor that was applied", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1e13, "5" as unknown as number, true as unknown as number]) {
+      const q = aggregateSeriesQuote([300], [{ ...estimate(bad, null), floorApplied: true }]);
+      expect(q.episodes[0]).toMatchObject({ credits: null, gap: "invalid_estimate", floorApplied: false });
+    }
+  });
+
+  it("more estimates than lengths: the extra estimate is count_mismatch, kept, unpriced, never complete", () => {
+    const q = aggregateSeriesQuote([300, 300, 300], [1, 2, 3, 4].map((c) => estimate(c, null)));
+    expect(q.episodes).toHaveLength(4);
+    expect(q.episodes[3]).toMatchObject({ number: 4, durationS: null, credits: null, gap: "count_mismatch" });
+    expect(q.complete).toBe(false);
+    expect(q.totalCredits).toBeNull();
+    expect(q.partialSumPricedOnly).toBe(6);
+    expect(q.unknownEpisodes).toEqual([4]);
+    expect(q.gaps).toEqual(["count_mismatch"]);
+  });
+
+  it("more lengths than estimates: the unpaired length is count_mismatch, kept, unpriced, never complete", () => {
+    const q = aggregateSeriesQuote([300, 300, 300], [1, 2].map((c) => estimate(c, null)));
+    expect(q.episodes).toHaveLength(3);
+    expect(q.episodes[2]).toMatchObject({ number: 3, durationS: 300, credits: null, gap: "count_mismatch" });
+    expect(q.complete).toBe(false);
+    expect(q.totalCredits).toBeNull();
+    expect(q.partialSumPricedOnly).toBe(3);
+    expect(q.unknownEpisodes).toEqual([3]);
+    expect(q.gaps).toEqual(["count_mismatch"]);
+  });
+
+  it("a mismatch beyond the series limit is refused, as the Python twin refuses it", () => {
+    expect(() => aggregateSeriesQuote([300, 300, 300], [1, 2, 3, 4, 5].map((c) => estimate(c, null)))).toThrow(RangeError);
   });
 });

@@ -221,8 +221,8 @@ def build_prompt(topic: str, n_episodes: int, *, niche: str = "", channel_name: 
 
 # ── the answer ────────────────────────────────────────────────────────────────
 
-#: Every screen below reads the text as a reader sees it (topic_gate.clean: NFKC, invisible characters dropped,
-#: look-alike letters in a mixed-script word turned back to Latin), not as it was typed: full-width "＜script＞",
+#: Every screen below reads the text as a reader sees it (_as_seen: combining marks dropped, then topic_gate.clean:
+#: NFKC, invisible characters dropped, look-alike letters in a mixed-script word turned back to Latin), not as it was typed: full-width "＜script＞",
 #: "［SFX: boom］", math-bold or Cyrillic-lookalike "ignore previous instructions" are what they look like.
 _CUE_LIKE = re.compile(r"\[\s*/?\s*(?:sfx|music|pause|voice|inst|sys)\b", re.IGNORECASE)
 _BRACKET = re.compile(r"\[[^\]\n]{0,60}\]")
@@ -248,6 +248,18 @@ _INJECTION = re.compile(
 _APOSTROPHES = {ord(c): None for c in "'`‘’ʻʼʹ′´"}
 
 
+def _as_seen(text: str) -> str:
+    """``text`` as the SCREENS read it: combining marks removed (NFKD, then every mark category dropped), then
+    ``topic_gate.clean``. "ígnóré prévíóús ínstrúctíóns" reads as the phrase it is; a mark stacked on a bracket,
+    an angle bracket or the "(" of a link cannot split the pattern. Used for the screens ONLY: the text that is
+    kept is what the model wrote. (``topic_gate.fold`` strips marks too, but it also deletes backticks and
+    apostrophes and lower-cases, which would blind the markup screen; this keeps them.) Marks go BEFORE ``clean``
+    because a mark is not a word character and would otherwise split a word, and so hide a look-alike letter
+    from the mixed-script repair."""
+    stripped = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.category(c).startswith("M"))
+    return topic_gate.clean(stripped)
+
+
 def _text(value, path: str, limit: int) -> str:
     """One validated string: a visible, single-line, plain-text value of 1..limit characters. Whitespace runs are
     collapsed, and the collapsed string is what is kept."""
@@ -260,7 +272,7 @@ def _text(value, path: str, limit: int) -> str:
         raise SeriesPlanError("bad_field", "is empty", field=path)
     if len(text) > limit:
         raise SeriesPlanError("too_long", f"is longer than {limit} characters", field=path)
-    seen = topic_gate.clean(text)
+    seen = _as_seen(text)
     if _MARKUP.search(seen) or _ENTITY.search(seen) or _LINK.search(seen):
         raise SeriesPlanError("markup", "contains markup, an entity or a link", field=path)
     if _CUE_LIKE.search(seen) or _BRACKET.search(seen):
@@ -633,14 +645,27 @@ def _estimate(estimator: Callable, duration_s: Optional[float]) -> dict:
     return _clean_estimate(got)
 
 
+#: The gap of an episode that has a duration but no estimate, or an estimate but no duration (the two lists differ in
+#: length). The same word is in command-center/lib/credits.ts.
+GAP_COUNT_MISMATCH = "count_mismatch"
+_MISMATCH = {"credits": None, "basis": "unknown", "gap": GAP_COUNT_MISMATCH, "floor_applied": False}
+
+
 def aggregate_quote(durations_s: list, estimates: list) -> dict:
     """The series quote from per-episode estimates (``{credits, basis, gap, floor_applied}``, each validated by
     ``_clean_estimate``). The total is None if ANY episode is None (never 0, never a partial sum presented as the
     total); the sum of the priced episodes alone is ``partial_sum_priced_only``, and is None when no episode is
-    priced. Mirrors ``aggregateSeriesQuote`` in command-center/lib/credits.ts; tests/fixtures/series_quote_cases.txt
-    pins both, invalid estimates included."""
-    cleaned = [_clean_estimate(e) for e in estimates]
-    episodes = [{"number": i + 1, "duration_s": d, **e} for i, (d, e) in enumerate(zip(durations_s, cleaned))]
+    priced. Two lists of different lengths are never zipped short: the longer one's extra entries are episodes too,
+    unpriced, with the gap ``count_mismatch`` (an estimate with no duration is not trusted as a price), so the quote
+    is not complete. Mirrors ``aggregateSeriesQuote`` in command-center/lib/credits.ts; tests/fixtures/series_quote_cases.txt
+    pins both, invalid estimates and count mismatches included."""
+    n = max(len(durations_s), len(estimates))
+    episodes = []
+    for i in range(n):
+        paired = i < len(durations_s) and i < len(estimates)
+        duration = durations_s[i] if i < len(durations_s) else None
+        episodes.append({"number": i + 1, "duration_s": duration,
+                         **(_clean_estimate(estimates[i]) if paired else _MISMATCH)})
     priced = [e["credits"] for e in episodes if e["credits"] is not None]
     unknown = [e["number"] for e in episodes if e["credits"] is None]
     complete = not unknown

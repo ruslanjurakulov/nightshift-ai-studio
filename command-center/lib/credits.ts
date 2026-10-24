@@ -311,9 +311,10 @@ export interface SeriesEpisodeQuote {
   /** Credits to hold for this episode, or null with `gap` saying why. */
   credits: number | null;
   basis: EstimateBasis;
-  /** An estimate gap, "unknown" for an unpriced episode whose estimate named none, or "invalid_estimate" for a
-   *  credits value that was NaN, infinite, negative, not a number or beyond SERIES_MAX_EPISODE_CREDITS. */
-  gap: EstimateGap | "unknown" | "invalid_estimate" | null;
+  /** An estimate gap, "unknown" for an unpriced episode whose estimate named none, "invalid_estimate" for a
+   *  credits value that was NaN, infinite, negative, not a number or beyond SERIES_MAX_EPISODE_CREDITS, or
+   *  "count_mismatch" for an episode that has a length but no estimate or an estimate but no length. */
+  gap: EstimateGap | "unknown" | "invalid_estimate" | "count_mismatch" | null;
   floorApplied: boolean;
 }
 
@@ -325,7 +326,7 @@ export interface SeriesQuote {
   partialSumPricedOnly: number | null;
   complete: boolean;
   unknownEpisodes: number[];
-  gaps: (EstimateGap | "unknown" | "invalid_estimate")[];
+  gaps: (EstimateGap | "unknown" | "invalid_estimate" | "count_mismatch")[];
   geminiCalls: SeriesGeminiCalls;
 }
 
@@ -352,9 +353,16 @@ export function seriesCallBudget(n: number): SeriesGeminiCalls {
  * tests/fixtures/series_quote_cases.txt pins both.
  */
 export function aggregateSeriesQuote(durationsS: (number | null)[], estimates: CreditEstimate[]): SeriesQuote {
-  const episodes: SeriesEpisodeQuote[] = estimates.map((e, i) => {
-    const raw: unknown = e.credits;
+  // Two lists of different lengths are never zipped short: the longer one's extra entries are episodes too, unpriced,
+  // with the gap "count_mismatch" (an estimate with no length is not trusted as a price). The Python twin does the same.
+  const count = Math.max(durationsS.length, estimates.length);
+  const episodes: SeriesEpisodeQuote[] = Array.from({ length: count }, (_, i): SeriesEpisodeQuote => {
     const durationS = durationsS[i] ?? null;
+    if (i >= durationsS.length || i >= estimates.length) {
+      return { number: i + 1, durationS, credits: null, basis: "unknown", gap: "count_mismatch", floorApplied: false };
+    }
+    const e = estimates[i];
+    const raw: unknown = e.credits;
     if (raw === null || raw === undefined) {
       return { number: i + 1, durationS, credits: null, basis: "unknown", gap: e.gap ?? "unknown", floorApplied: false };
     }
