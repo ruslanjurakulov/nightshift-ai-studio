@@ -12,10 +12,13 @@ Where this sits
 This module is read-side and configuration-only, mirroring
 ``modules/channels.py``: it turns the ``content_series`` rows the Command
 Center writes into immutable ``Series`` objects the rest of the system can
-consult. It is deliberately NOT wired into the pipeline run yet — resolving a
-run against a series (so topic/style/cadence come from the series rather than
-the channel) is a later, separate change. Adding the noun first, without
-touching how a run behaves today, keeps this safe and additive.
+consult. ``main.run(series=...)`` does use it: niche, visual style (biases the
+b-roll), voice style (recorded only), avatar config, the start metadata and
+the playlist all resolve against the series. What is NOT wired is
+the queue and UI path: ``--series`` exists only on main.py's command line,
+``modules/run_request.build_main_args`` never passes it, the daily workflow has
+no series input and the Command Center's Run now route does not read one, so
+scheduled and queued runs are never series-scoped yet.
 
 Loading, like ``ChannelRegistry``, degrades rather than raises:
 ``content_series`` in Supabase → a local ``series.json`` → an empty list. A

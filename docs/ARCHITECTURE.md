@@ -481,3 +481,10 @@ forbid `PUBLISH` without approval, but is intentionally **not** wired to gate th
 real upload (§2). `ContentPlanner` and `PipelineStateMachine` use placeholder
 JSON stores pending a possible move into `state_store`. These are documented
 follow-ups, not hidden gaps.
+
+`modules/series_planner.py` (Series Factory, slice S1) is also **unwired**: a pure planner that
+outlines 3-4 episodes with one injected model call, vets each episode topic as `source="series"`
+and against used and held topics, plus a pure price preview (`quote_series`, and `quoteSeries()`
+in `command-center/lib/credits.ts`). Its outline is not fact-checked and says so
+(`fact_checked: false`). No `main.py`, route, table or workflow uses it yet, and a test fails if one
+does. See [SERIES_FACTORY.md](SERIES_FACTORY.md).

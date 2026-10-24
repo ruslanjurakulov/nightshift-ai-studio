@@ -284,6 +284,112 @@ export function estimateRunCredits(input: {
   return finish(percentile(priced.map((p) => p.credits), 0.9), "history_video", priced.length, null);
 }
 
+/** The most episodes a series has (modules/series_planner.py MAX_EPISODES). */
+export const SERIES_MAX_EPISODES = 4;
+/** Gemini calls: the plan is exactly one; an episode made later is an ESTIMATE, unmeasured (modules/series_planner.py). */
+export const SERIES_PLAN_CALLS = 1;
+export const SERIES_EPISODE_CALLS_LOW = 5;
+export const SERIES_EPISODE_CALLS_HIGH = 12;
+export const SERIES_CALLS_LABEL = "estimate, unmeasured";
+
+export interface SeriesGeminiCalls {
+  planCalls: number;
+  episodes: number;
+  perEpisodeCallsLow: number;
+  perEpisodeCallsHigh: number;
+  totalCallsLow: number;
+  totalCallsHigh: number;
+  label: string;
+}
+
+export interface SeriesEpisodeQuote {
+  number: number;
+  durationS: number | null;
+  /** Credits to hold for this episode, or null with `gap` saying why. */
+  credits: number | null;
+  basis: EstimateBasis;
+  /** An estimate gap, or "unknown" for an unpriced episode whose estimate named none. */
+  gap: EstimateGap | "unknown" | null;
+  floorApplied: boolean;
+}
+
+export interface SeriesQuote {
+  episodes: SeriesEpisodeQuote[];
+  /** The series total; null if ANY episode is null. Never 0 for "unknown", never a partial sum. */
+  totalCredits: number | null;
+  /** The sum of the priced episodes ONLY. It is not the total; null when no episode is priced. */
+  partialSumPricedOnly: number | null;
+  complete: boolean;
+  unknownEpisodes: number[];
+  gaps: (EstimateGap | "unknown")[];
+  geminiCalls: SeriesGeminiCalls;
+}
+
+/** The Gemini-call budget of a series of n episodes; the quota itself is not readable here. */
+export function seriesCallBudget(n: number): SeriesGeminiCalls {
+  if (!Number.isInteger(n) || n < 1 || n > SERIES_MAX_EPISODES) {
+    throw new RangeError(`a series has 1 to ${SERIES_MAX_EPISODES} episodes`);
+  }
+  return {
+    planCalls: SERIES_PLAN_CALLS,
+    episodes: n,
+    perEpisodeCallsLow: SERIES_EPISODE_CALLS_LOW,
+    perEpisodeCallsHigh: SERIES_EPISODE_CALLS_HIGH,
+    totalCallsLow: SERIES_PLAN_CALLS + SERIES_EPISODE_CALLS_LOW * n,
+    totalCallsHigh: SERIES_PLAN_CALLS + SERIES_EPISODE_CALLS_HIGH * n,
+    label: SERIES_CALLS_LABEL,
+  };
+}
+
+/**
+ * A series quote from per-episode estimates. The total is null if ANY episode is null (never 0, never a partial
+ * sum shown as the total); the sum of the priced episodes alone is `partialSumPricedOnly`, null when none is
+ * priced. Rounded UP to the cent, as a hold is. The Python twin is aggregate_quote in modules/series_planner.py;
+ * tests/fixtures/series_quote_cases.txt pins both.
+ */
+export function aggregateSeriesQuote(durationsS: (number | null)[], estimates: CreditEstimate[]): SeriesQuote {
+  const episodes: SeriesEpisodeQuote[] = estimates.map((e, i) => ({
+    number: i + 1,
+    durationS: durationsS[i] ?? null,
+    credits: e.credits,
+    basis: e.basis,
+    gap: e.credits === null ? (e.gap ?? "unknown") : null,
+    floorApplied: e.credits !== null && e.floorApplied,
+  }));
+  const priced = episodes.flatMap((e) => (e.credits === null ? [] : [e.credits]));
+  const unknownEpisodes = episodes.filter((e) => e.credits === null).map((e) => e.number);
+  const complete = unknownEpisodes.length === 0;
+  const sum = priced.reduce((a, b) => a + b, 0);
+  const gaps = Array.from(new Set(episodes.flatMap((e) => (e.gap ? [e.gap] : [])))).sort();
+  return {
+    episodes,
+    totalCredits: complete ? roundUpCredits(sum) : null,
+    partialSumPricedOnly: priced.length > 0 ? roundUpCredits(sum) : null,
+    complete,
+    unknownEpisodes,
+    gaps,
+    geminiCalls: seriesCallBudget(episodes.length),
+  };
+}
+
+/**
+ * What a series costs before it starts: `estimateRunCredits` once per planned episode length (a null length is
+ * passed on as null, so a channel with history can still price it per video), then the aggregate above. Pure.
+ * Does not include the planning call (no credit price) or any voice. Throws a RangeError for 0 or more than
+ * SERIES_MAX_EPISODES episodes: the caller validates a series before it asks for a price.
+ */
+export function quoteSeries(input: {
+  prices: PriceMap;
+  durationsS: (number | null)[];
+  videos: Pick<VideoEconomics, "drivers" | "durationS">[];
+}): SeriesQuote {
+  const n = input.durationsS.length;
+  if (n < 1 || n > SERIES_MAX_EPISODES) throw new RangeError(`a series has 1 to ${SERIES_MAX_EPISODES} episodes`);
+  const durations = input.durationsS.map((d) => (typeof d === "number" && Number.isFinite(d) && d > 0 ? d : null));
+  const estimates = durations.map((durationS) => estimateRunCredits({ prices: input.prices, durationS, videos: input.videos }));
+  return aggregateSeriesQuote(durations, estimates);
+}
+
 /** One credit_accounts row, or a zero account when the org has none yet — no
  *  row means no credits were ever added, which is a fact, not an unknown. */
 export function coerceAccount(row: unknown): CreditAccount {

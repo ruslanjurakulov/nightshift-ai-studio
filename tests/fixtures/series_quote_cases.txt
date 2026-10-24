@@ -1,0 +1,17 @@
+{
+  "_about": "Shared by tests/test_series_planner.py (aggregate_quote) and command-center/tests/credits.test.ts (aggregateSeriesQuote): the two aggregations must agree. credits null = unpriced, with the named gap. total is null if ANY episode is null; partial is the sum of the priced ones only.",
+  "cases": [
+    {"name": "all priced", "credits": [10, 10, 10.5], "gaps": [null, null, null],
+     "total": 30.5, "partial": 30.5, "complete": true, "unknown": [], "gaps_out": []},
+    {"name": "one unknown makes the total unknown, the partial sum stays separate", "credits": [10, null, 10], "gaps": [null, "no_history", null],
+     "total": null, "partial": 20, "complete": false, "unknown": [2], "gaps_out": ["no_history"]},
+    {"name": "nothing priced: no total and no partial sum, never 0", "credits": [null, null, null, null], "gaps": ["no_prices", "no_prices", "no_length", "no_prices"],
+     "total": null, "partial": null, "complete": false, "unknown": [1, 2, 3, 4], "gaps_out": ["no_length", "no_prices"]},
+    {"name": "a price of zero is a price, not a gap", "credits": [0, 0, 0], "gaps": [null, null, null],
+     "total": 0, "partial": 0, "complete": true, "unknown": [], "gaps_out": []},
+    {"name": "float noise is rounded up to the cent like a hold", "credits": [0.1, 0.2, 0.3], "gaps": [null, null, null],
+     "total": 0.6, "partial": 0.6, "complete": true, "unknown": [], "gaps_out": []},
+    {"name": "last episode unknown", "credits": [1.25, 2.5, 3.75, null], "gaps": [null, null, null, "unpriced_history"],
+     "total": null, "partial": 7.5, "complete": false, "unknown": [4], "gaps_out": ["unpriced_history"]}
+  ]
+}
