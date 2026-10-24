@@ -359,3 +359,35 @@ functions. The ElevenLabs account is on the free plan, which cannot clone, so no
   keeps every row (`tests/security/test_sec_voice_profiles.py`).
 - **Review.** Needs the independent security review before merge: it adds a closed bucket, restrictive policies on `storage.objects`,
   append-only tables and a rule on three hot paths.
+
+## A spend limit an editor cannot raise or remove; the Channels page's settings in one atomic write (0119)
+
+0119 (`0119_channel_settings_guard.sql`; 0118 belongs to the series-tables builder) is **live on apply**: it changes who may write a channel's
+`agent_config.spend_ceiling_usd`, the one number that stops a channel spending. It adds two functions and replaces one; it alters no table,
+trigger, policy or table grant and rewrites no row (`tests/test_channel_settings_guard_migration.py` pins that).
+
+- **The rule.** `channels_config_guard()` (0117's body, character for character, plus ONE marked block) refuses a write by the browser roles
+  that raises or removes a limit that is in force, unless the caller administers the channel's organization. Setting a first limit, keeping it
+  and lowering it stay open to an editor. "In force" is the worker's reading on both sides (`channel_spend_ceiling(jsonb)` mirrors
+  `modules/channels._as_optional_float`), so text, 0, a boolean, a list, an overflow or Unicode digits are "no limit" and cannot be used to
+  dodge it. Refusal: SQLSTATE 42501, message `spend_ceiling_lock: ...`, hint `spend_ceiling_lock` (the page words it in en, ru and uz).
+  The service role, the SQL editor and the definer functions are not held to it, as for every other check of the guard.
+- **The function.** `patch_channel_agent_config(p_channel_id, p_patch)`, granted to signed-in users only, merges a patch of four keys
+  (`spend_ceiling_usd`, `pinned_comment`, `watch_next`, `storyboard_review`; a JSON null removes a key) in a single `UPDATE`, so concurrent
+  writers keep each other's keys. It is **security invoker on purpose**: it runs as the caller, so the guard above holds it to every rule
+  (storyboard review is still an administrator's), and it cannot become a way round the lock. Any other key, a non-object or empty patch, or
+  a value of the wrong kind is refused (SQLSTATE 22023, hint `invalid_patch`); a channel the caller cannot write reads the same whether it
+  exists or not (42501, hint `channel_not_writable`).
+- **Deploy order.** Apply 0119, then deploy the app: until the function exists the Channels page says the setting cannot be saved right now
+  (it never falls back to writing the whole blob). Before the app is deployed the old page keeps working and is simply held to the new rule.
+- **What changes for an editor.** The Voice, Cast and style-preset editors still write back the whole blob they loaded. If an administrator
+  lowered, set or removed a limit after such a page was drawn, its save is now refused (it would have undone the administrator's change
+  silently before); reload and save again.
+- **Drift guard in the file.** A `DO` block raises if the live `channels_config_guard()` is neither 0117's body nor 0119's own (md5 of the
+  body with white space collapsed). Re-running 0117 afterwards is refused for the same reason: re-apply 0119 on top of a fresh 0117 only.
+- **Is it working?** The verify block at the bottom of the file (every column true), and the query there that lists the channels that carry a
+  limit today with the number the worker enforces for each.
+- **Undo.** `docs/sql/rollback_0119_channel_settings_guard.sql` (owner-applied; puts 0117's body back byte for byte, drops the two functions,
+  refuses a body it has not seen; the lab applies it and re-applies 0119). After it an editor can raise or remove a limit again and the page
+  cannot save its settings until the page change is reverted too.
+- **Review.** Needs the independent security review before merge: it changes the guard of the channels table, which every channel write meets.

@@ -16,6 +16,7 @@ import { ChannelTokenPanel, type ChannelTokenPanelProps } from "@/components/cha
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { AiDisclosureSettings } from "@/components/channels/AiDisclosureSettings";
 import { ChannelRiskSettings } from "@/components/channels/ChannelRiskSettings";
+import { patchChannelAgentConfig } from "@/lib/channelPatch";
 
 /**
  * One channel: identity, configuration, credential status and health.
@@ -144,9 +145,10 @@ export function ChannelCard({
    * Storyboard review, per channel (migration 0057). On: every run of this
    * channel — scheduled ones too — stops after the script and scene plan and
    * waits for a person to approve the render at one price. Off (the default):
-   * runs go straight to the render, exactly as before. Merged into the live
-   * agent_config so no other setting is overwritten; an unreadable
-   * config is not merged into.
+   * runs go straight to the render, exactly as before. Written as a one-key
+   * patch through patch_channel_agent_config (migration 0119), which merges it
+   * under the row lock so no other setting is overwritten, and which is still
+   * an administrator's: the table's guard holds the function to the same rule.
    */
   async function toggleReview() {
     const supabase = createClient();
@@ -154,24 +156,10 @@ export function ChannelCard({
     setReviewBusy(true);
     setError(null);
     const next = !review;
-    const { data: current, error: readErr } = await supabase
-      .from("channels")
-      .select("agent_config")
-      .eq("channel_id", channel.channel_id)
-      .maybeSingle();
-    if (readErr) {
-      setReviewBusy(false);
-      setError(readErr.message);
-      return;
-    }
-    const merged = { ...((current?.agent_config as Record<string, unknown> | null) ?? {}), storyboard_review: next };
-    const { error: err } = await supabase
-      .from("channels")
-      .update({ agent_config: merged, updated_at: new Date().toISOString() })
-      .eq("channel_id", channel.channel_id);
+    const res = await patchChannelAgentConfig(supabase, channel.channel_id, { storyboard_review: next });
     setReviewBusy(false);
-    if (err) {
-      setError(err.message);
+    if (!res.ok) {
+      setError(res.message || t.channels.saveFailed);
       return;
     }
     setReview(next);
@@ -426,8 +414,9 @@ export function ChannelCard({
             canEdit={canEdit}
             canLower={canLowerAiLabel}
           />
-          {/* Monthly spend limit, the comment under each upload and the watch-next link: editor-level keys, not controls. Raising or removing an
-              existing limit is offered to administrators only (advisory: the database does not enforce it). */}
+          {/* Monthly spend limit, the comment under each upload and the watch-next link. The two switches are editor-level; an editor may set
+              a limit and lower it, but raising or removing one that is in force is an administrator's, and the database enforces that
+              (migration 0119), not only this page. */}
           <ChannelRiskSettings
             channelId={channel.channel_id}
             agent={channel.agent_config}

@@ -3,9 +3,10 @@
  * The channel card's spend limit, question-comment and watch-next editors (components/channels/ChannelRiskSettings.tsx).
  *
  * What would break without these: a limit typed as 0 or "1e5" written anyway (the worker reads it as no limit at all); a
- * write that replaces the whole config with just the one key (wiping the storyboard review, the publish gate, the voice); a
- * write after an unreadable read; a viewer able to save; a stored value the worker ignores shown as an active limit; the
- * three languages drifting; a provider or model name in the copy.
+ * write that replaces the whole config, or that reads it first and writes it back (two writers lose each other's keys: the page
+ * sends ONE key to patch_channel_agent_config and never reads); the database's refusal of a raise (migration 0119, hint
+ * spend_ceiling_lock) shown as a raw error or not at all; a viewer able to save; a stored value the worker ignores shown as an
+ * active limit; the three languages drifting; a provider or model name in the copy.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,47 +17,33 @@ import type { ReactNode } from "react";
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push: vi.fn() }), usePathname: () => "/chronos/channels" }));
 
-type Err = { message: string } | null;
+type Err = { message: string; code?: string; hint?: string } | null;
 const db: {
-  stored: Record<string, unknown> | null;
-  updates: Array<Record<string, unknown>>;
-  readErr: Err;
-  writeErr: Err;
-  /** RLS filtering an UPDATE to no rows: no error, nothing written. */
-  zeroRows: boolean;
-} = {
-  stored: {},
-  updates: [],
-  readErr: null,
-  writeErr: null,
-  zeroRows: false,
-};
+  /** Every patch_channel_agent_config call the page made. */
+  calls: Array<{ fn: string; args: { p_channel_id: string; p_patch: Record<string, unknown> } }>;
+  /** What the database answers: an error, or the stored config after the merge. */
+  error: Err;
+  data: unknown;
+  /** Anything the page tries to read or write through the table API. */
+  tableTouched: string[];
+} = { calls: [], error: null, data: undefined, tableTouched: [] };
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({ maybeSingle: () =>
-            Promise.resolve({ data: db.readErr || db.stored === null ? null : { agent_config: db.stored }, error: db.readErr }),
-        }),
-      }),
-      update: (payload: Record<string, unknown>) => ({
-        eq: () => ({
-          select: () => {
-            db.updates.push(payload);
-            return Promise.resolve({
-              data: db.writeErr ? null : db.zeroRows ? [] : [{ agent_config: payload.agent_config }],
-              error: db.writeErr,
-            });
-          },
-        }),
-      }),
-    }),
+    rpc: (fn: string, args: { p_channel_id: string; p_patch: Record<string, unknown> }) => {
+      db.calls.push({ fn, args });
+      return Promise.resolve({ data: db.error ? null : (db.data ?? { ok: true, agent_config: args.p_patch }), error: db.error });
+    },
+    from: (table: string) => {
+      db.tableTouched.push(table);
+      throw new Error("the page must not read or write the table: it patches through the function");
+    },
   }),
 }));
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { ChannelRiskSettings } from "@/components/channels/ChannelRiskSettings";
+import { isSpendCeilingLockRefusal } from "@/lib/channelRisk";
 import { channelRiskEn } from "@/lib/i18n/channel-risk/en";
 
 const ROOT = join(__dirname, "..");
@@ -70,14 +57,14 @@ const d = (locale: Locale = "en") => dictionaries[locale].channelRisk;
 const input = (locale: Locale = "en") => screen.getByLabelText(d(locale).ceilingLabel) as HTMLInputElement;
 const save = (locale: Locale = "en") => screen.getByRole("button", { name: d(locale).ceilingSave });
 const sw = (label: string) => screen.getByRole("switch", { name: label }) as HTMLButtonElement;
-const lastConfig = () => db.updates[db.updates.length - 1].agent_config as Record<string, unknown>;
+/** The patch of the last call: exactly what the database is asked to merge. */
+const lastPatch = () => db.calls[db.calls.length - 1].args.p_patch;
 
 beforeEach(() => {
-  db.stored = {};
-  db.updates = [];
-  db.readErr = null;
-  db.writeErr = null;
-  db.zeroRows = false;
+  db.calls = [];
+  db.error = null;
+  db.data = undefined;
+  db.tableTouched = [];
   refresh.mockClear();
 });
 afterEach(cleanup);
@@ -116,34 +103,31 @@ describe("what is shown", () => {
 });
 
 describe("the spend limit", () => {
-  it("saves the number merged into the live config, leaving every other key and the controls as they are", async () => {
-    db.stored = { language: "Russian", storyboard_review: true, publish_gate: { fact_check: true }, auto_publish: false };
-    card();
+  it("sends the number as a one-key patch to the function and reads nothing", async () => {
+    card({ agent: { language: "Russian", storyboard_review: true } });
     fireEvent.change(input(), { target: { value: "25,5" } });
     fireEvent.click(save());
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({ ...db.stored, spend_ceiling_usd: 25.5 });
+    await waitFor(() => expect(db.calls).toHaveLength(1));
+    expect(db.calls[0]).toEqual({ fn: "patch_channel_agent_config", args: { p_channel_id: "chronos", p_patch: { spend_ceiling_usd: 25.5 } } });
     await waitFor(() => expect(screen.getByText(d().saved)).toBeTruthy());
     expect(refresh).toHaveBeenCalled();
     expect(screen.getByText("Current limit: $25.50 a month.")).toBeTruthy();
+    expect(db.tableTouched).toEqual([]);
   });
 
-  it("an empty field removes the key (no limit), it does not store 0 or null", async () => {
-    db.stored = { language: "Uzbek", spend_ceiling_usd: 40 };
-    card({ agent: db.stored });
+  it("an empty field sends a JSON null (the function removes the key), not 0", async () => {
+    card({ agent: { language: "Uzbek", spend_ceiling_usd: 40 } });
     fireEvent.change(input(), { target: { value: "" } });
     fireEvent.click(save());
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({ language: "Uzbek" });
-    expect("spend_ceiling_usd" in lastConfig()).toBe(false);
+    await waitFor(() => expect(db.calls).toHaveLength(1));
+    expect(lastPatch()).toEqual({ spend_ceiling_usd: null });
   });
 
   it("Remove limit does the same", async () => {
-    db.stored = { spend_ceiling_usd: 40 };
-    card({ agent: db.stored });
+    card({ agent: { spend_ceiling_usd: 40 } });
     fireEvent.click(screen.getByRole("button", { name: d().ceilingRemove }));
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({});
+    await waitFor(() => expect(db.calls).toHaveLength(1));
+    expect(lastPatch()).toEqual({ spend_ceiling_usd: null });
     await waitFor(() => expect(screen.getByText(d().ceilingNone)).toBeTruthy());
   });
 
@@ -156,14 +140,14 @@ describe("the spend limit", () => {
     ["Infinity", "ceilingInvalid"],
     ["25.555", "ceilingInvalid"],
     ["1000000.01", "ceilingTooLarge"],
-  ] as const)("refuses '%s' with its own sentence and writes nothing", async (typed, key) => {
+  ] as const)("refuses '%s' with its own sentence and sends nothing", async (typed, key) => {
     card();
     fireEvent.change(input(), { target: { value: typed } });
     fireEvent.click(save());
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(key === "ceilingTooLarge" ? "$1,000,000.00" : d()[key].slice(0, 20));
     await new Promise((r) => setTimeout(r, 20));
-    expect(db.updates).toEqual([]);
+    expect(db.calls).toEqual([]);
     expect(input().getAttribute("aria-invalid")).toBe("true");
   });
 
@@ -172,21 +156,11 @@ describe("the spend limit", () => {
     fireEvent.change(input(), { target: { value: "5" } });
     fireEvent.submit(input().closest("form") as HTMLFormElement);
     await new Promise((r) => setTimeout(r, 20));
-    expect(db.updates).toEqual([]);
+    expect(db.calls).toEqual([]);
   });
 
-  it("a read that returns nothing, with no error, is not written to either", async () => {
-    db.stored = null;
-    card();
-    fireEvent.change(input(), { target: { value: "5" } });
-    fireEvent.click(save());
-    await screen.findByText(d().notStored);
-    expect(db.updates).toEqual([]);
-    expect(screen.getByText(d().ceilingNone)).toBeTruthy();
-  });
-
-  it("an update that matched no row (RLS filtered it, no error) says nothing was saved and does not show the new limit", async () => {
-    db.zeroRows = true;
+  it("an answer that is not a confirmation says nothing was saved and does not show the new limit", async () => {
+    db.data = { ok: false };
     card({ agent: { spend_ceiling_usd: 10 } });
     fireEvent.change(input(), { target: { value: "5" } });
     fireEvent.click(save());
@@ -196,8 +170,8 @@ describe("the spend limit", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it("a switch whose update matched no row stays where it was", async () => {
-    db.zeroRows = true;
+  it("a channel that is not the caller's (the database's 'not yours', hint channel_not_writable) says nothing was saved", async () => {
+    db.error = { message: "channel not found or not yours", code: "42501", hint: "channel_not_writable" };
     card();
     fireEvent.click(sw(d().watchLabel));
     await screen.findByText(d().notStored);
@@ -205,105 +179,98 @@ describe("the spend limit", () => {
     expect(screen.queryByText(d().saved)).toBeNull();
   });
 
-  it("an unreadable config is not written to", async () => {
-    db.readErr = { message: "permission denied" };
-    card();
+  it("before the migration is applied (the function is unknown) it says so plainly and keeps the old limit", async () => {
+    db.error = { message: "Could not find the function public.patch_channel_agent_config(p_channel_id, p_patch) in the schema cache", code: "PGRST202" };
+    card({ agent: { spend_ceiling_usd: 10 } });
     fireEvent.change(input(), { target: { value: "5" } });
     fireEvent.click(save());
-    await screen.findByText(/permission denied/);
-    expect(db.updates).toEqual([]);
-    expect(screen.getByText(d().ceilingNone)).toBeTruthy();
+    await screen.findByText(d().unavailable);
+    expect(screen.getByText("Current limit: $10.00 a month.")).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
-  it("a refused write says so, keeps the old limit on the page, and does not refresh", async () => {
-    db.writeErr = { message: "row-level security" };
+  it("any other refusal shows the database's message, keeps the old limit on the page, and does not refresh", async () => {
+    db.error = { message: "invalid_patch: spend_ceiling_usd is a number above 0", code: "22023", hint: "invalid_patch" };
     card({ agent: { spend_ceiling_usd: 10 } });
     fireEvent.change(input(), { target: { value: "99" } });
     fireEvent.click(save());
-    await screen.findByText(/row-level security/);
+    await screen.findByText(/invalid_patch/);
     expect(screen.getByText("Current limit: $10.00 a month.")).toBeTruthy();
     expect(refresh).not.toHaveBeenCalled();
   });
 });
 
-describe("who may raise or remove a limit that is already set (advisory, decided on the live value)", () => {
-  const lowerThan = (typed: string) => {
+describe("who may raise or remove a limit that is already set (the database decides, on the row as it is)", () => {
+  const send = (typed: string) => {
     fireEvent.change(input(), { target: { value: typed } });
     fireEvent.click(save());
   };
+  const lock = { message: "spend_ceiling_lock: only an administrator of this organization may raise or remove a spend limit that is already set", code: "42501", hint: "spend_ceiling_lock" };
 
-  it("an editor may set a first limit", async () => {
-    db.stored = { language: "Russian" };
-    card({ canRaise: false });
-    lowerThan("30");
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({ language: "Russian", spend_ceiling_usd: 30 });
-  });
-
-  it("an editor may lower one, equal included", async () => {
-    db.stored = { spend_ceiling_usd: 40 };
-    card({ canRaise: false, agent: db.stored });
-    lowerThan("10");
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({ spend_ceiling_usd: 10 });
-  });
-
-  it("an editor cannot raise one: nothing is written and the sentence says why", async () => {
-    db.stored = { spend_ceiling_usd: 40 };
-    card({ canRaise: false, agent: db.stored });
-    lowerThan("50");
+  it("an editor's raise is sent, and the database's refusal is worded in the page's language, with the old limit kept", async () => {
+    db.error = lock;
+    card({ canRaise: false, agent: { spend_ceiling_usd: 40 } });
+    send("50");
     await screen.findByText(d().ceilingAdminOnly);
-    await new Promise((r) => setTimeout(r, 20));
-    expect(db.updates).toEqual([]);
+    expect(lastPatch()).toEqual({ spend_ceiling_usd: 50 });
     expect(screen.getByText("Current limit: $40.00 a month.")).toBeTruthy();
+    expect(screen.queryByText(/spend_ceiling_lock/)).toBeNull();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
-  it("the live value decides, not what the page was drawn with: a page drawn with no limit cannot raise one set meanwhile", async () => {
-    db.stored = { spend_ceiling_usd: 40 };
+  it.each(LOCALES)("the refusal is worded in %s", async (loc) => {
+    db.error = lock;
+    card({ canRaise: false, agent: { spend_ceiling_usd: 40 } }, loc);
+    fireEvent.change(input(loc), { target: { value: "50" } });
+    fireEvent.click(save(loc));
+    await screen.findByText(d(loc).ceilingAdminOnly);
+    if (loc !== "en") expect(d(loc).ceilingAdminOnly).not.toBe(d("en").ceilingAdminOnly);
+  });
+
+  it("the refusal is recognised by its hint or by its message prefix, and by nothing else", () => {
+    expect(isSpendCeilingLockRefusal({ hint: "spend_ceiling_lock", message: "" })).toBe(true);
+    expect(isSpendCeilingLockRefusal({ message: "spend_ceiling_lock: only an administrator" })).toBe(true);
+    expect(isSpendCeilingLockRefusal({ code: "42501", message: "only an administrator of this organization may change: auto_publish" })).toBe(false);
+    expect(isSpendCeilingLockRefusal({ code: "42501", hint: "ai_disclosure_lock", message: "ai_disclosure_lock: x" })).toBe(false);
+    expect(isSpendCeilingLockRefusal(null)).toBe(false);
+    expect(isSpendCeilingLockRefusal(undefined)).toBe(false);
+  });
+
+  it("the page does not pre-judge from the value it was drawn with: a page drawn with no limit still sends, and one drawn with a limit may set one the database allows", async () => {
     card({ canRaise: false, agent: {} });
-    lowerThan("50");
-    await screen.findByText(d().ceilingAdminOnly);
-    expect(db.updates).toEqual([]);
-  });
-
-  it("and the other way: a page drawn with a limit may set one where the live config has none", async () => {
-    db.stored = {};
+    send("50");
+    await waitFor(() => expect(db.calls).toHaveLength(1));
+    cleanup();
+    db.calls = [];
     card({ canRaise: false, agent: { spend_ceiling_usd: 5 } });
-    lowerThan("50");
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({ spend_ceiling_usd: 50 });
+    send("50");
+    await waitFor(() => expect(db.calls).toHaveLength(1));
+    expect(lastPatch()).toEqual({ spend_ceiling_usd: 50 });
   });
 
-  it("an editor cannot remove one: the button is disabled and an empty field is refused", async () => {
-    db.stored = { spend_ceiling_usd: 40 };
-    card({ canRaise: false, agent: db.stored });
+  it("an editor is not offered Remove limit; an administrator is", () => {
+    card({ canRaise: false, agent: { spend_ceiling_usd: 40 } });
     expect((screen.getByRole("button", { name: d().ceilingRemove }) as HTMLButtonElement).disabled).toBe(true);
-    lowerThan("");
-    await screen.findByText(d().ceilingAdminOnly);
-    expect(db.updates).toEqual([]);
+    cleanup();
+    card({ canRaise: true, agent: { spend_ceiling_usd: 40 } });
+    expect((screen.getByRole("button", { name: d().ceilingRemove }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("an administrator may raise and remove", async () => {
-    db.stored = { spend_ceiling_usd: 40 };
-    card({ canRaise: true, agent: db.stored });
-    lowerThan("50");
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({ spend_ceiling_usd: 50 });
-    await waitFor(() => expect(screen.getByRole("button", { name: d().ceilingRemove })).toBeTruthy());
+  it("an administrator's raise and removal are sent as the same patches", async () => {
+    card({ canRaise: true, agent: { spend_ceiling_usd: 40 } });
+    send("50");
+    await waitFor(() => expect(db.calls).toHaveLength(1));
+    expect(lastPatch()).toEqual({ spend_ceiling_usd: 50 });
     await waitFor(() => expect(input().disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: d().ceilingRemove }));
-    await waitFor(() => expect(db.updates).toHaveLength(2));
-    expect(lastConfig()).toEqual({});
+    await waitFor(() => expect(db.calls).toHaveLength(2));
+    expect(lastPatch()).toEqual({ spend_ceiling_usd: null });
   });
 
-  it("the two switches are not held to it: an editor can switch either way", async () => {
+  it("the two switches are not held to it: an editor switches either way", async () => {
     card({ canRaise: false });
     fireEvent.click(sw(d().pinnedLabel));
-    await waitFor(() => expect(lastConfig()).toEqual({ pinned_comment: false }));
-  });
-
-  it.each(LOCALES)("the sentence exists in %s", (loc) => {
-    expect(d(loc).ceilingAdminOnly.length).toBeGreaterThan(10);
+    await waitFor(() => expect(lastPatch()).toEqual({ pinned_comment: false }));
   });
 });
 
@@ -340,27 +307,26 @@ describe("the page follows the stored value", () => {
 });
 
 describe("the two extras", () => {
-  it("switching the question comment off writes a real false and keeps the rest of the config", async () => {
-    db.stored = { storyboard_review: true, watch_next: false, language: "Russian" };
-    card({ agent: db.stored });
+  it("switching the question comment off sends a real false and only that key", async () => {
+    card({ agent: { storyboard_review: true, watch_next: false, language: "Russian" } });
     fireEvent.click(sw(d().pinnedLabel));
-    await waitFor(() => expect(db.updates).toHaveLength(1));
-    expect(lastConfig()).toEqual({ storyboard_review: true, watch_next: false, language: "Russian", pinned_comment: false });
+    await waitFor(() => expect(db.calls).toHaveLength(1));
+    expect(lastPatch()).toEqual({ pinned_comment: false });
     await waitFor(() => expect(sw(d().pinnedLabel).getAttribute("aria-checked")).toBe("false"));
   });
 
-  it("switching watch-next off and on again writes false, then true", async () => {
+  it("switching watch-next off and on again sends false, then true", async () => {
     card();
     fireEvent.click(sw(d().watchLabel));
-    await waitFor(() => expect(lastConfig()).toEqual({ watch_next: false }));
+    await waitFor(() => expect(lastPatch()).toEqual({ watch_next: false }));
     await waitFor(() => expect(sw(d().watchLabel).disabled).toBe(false));
     fireEvent.click(sw(d().watchLabel));
-    await waitFor(() => expect(db.updates).toHaveLength(2));
-    expect(lastConfig()).toEqual({ watch_next: true });
+    await waitFor(() => expect(db.calls).toHaveLength(2));
+    expect(lastPatch()).toEqual({ watch_next: true });
   });
 
   it("a refused write leaves the switch where it was", async () => {
-    db.writeErr = { message: "nope" };
+    db.error = { message: "nope" };
     card();
     fireEvent.click(sw(d().watchLabel));
     await screen.findByText(/nope/);
@@ -414,10 +380,19 @@ describe("where it sits", () => {
     expect(card_).toContain("canRaise={canControl}");
   });
 
-  it("it offers no Shorts setting and writes no key but the three", () => {
+  it("it offers no Shorts setting, writes no key but the three, and goes through the function, not the table", () => {
     const src = readFileSync(join(ROOT, "components/channels/ChannelRiskSettings.tsx"), "utf8");
     expect(src).not.toMatch(/shorts/i);
     expect(src).not.toMatch(/storyboard_review|auto_publish|publish_gate|require_two_person/);
     expect(src).toContain('"pinned_comment" | "watch_next"');
+    expect(src).toContain("patchChannelAgentConfig(");
+    expect(src).not.toMatch(/\.from\(|\.update\(|\.select\(/);
+    expect(src).not.toMatch(/advisory/i);
+  });
+
+  it("the storyboard switch on the card goes through the function too, and the card no longer calls the limit's check advisory", () => {
+    expect(card_).toContain("patchChannelAgentConfig(supabase, channel.channel_id, { storyboard_review: next })");
+    expect(card_).not.toMatch(/advisory/i);
+    expect(card_).not.toMatch(/\.update\(\{\s*agent_config/);
   });
 });

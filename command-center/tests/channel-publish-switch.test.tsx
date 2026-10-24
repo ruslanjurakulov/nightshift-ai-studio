@@ -301,3 +301,37 @@ describe("the component never writes the switch itself", () => {
     expect(page).not.toMatch(/publish_on_approve[^\n]*\.(update|insert|upsert|delete)\(/);
   });
 });
+
+describe("the storyboard review switch writes through patch_channel_agent_config (migration 0119)", () => {
+  const reviewSwitch = () => screen.getByRole("switch", { name: new RegExp(en.storyboardReview.toggleLabel) });
+
+  it("turning it on sends a one-key patch, reads nothing, writes nothing into the table, and refreshes", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: true, agent_config: { storyboard_review: true } }, error: null });
+    card({ agent_config: { language: "English" } as ChannelRow["agent_config"] });
+    expect(reviewSwitch().getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(reviewSwitch());
+    await waitFor(() =>
+      expect(h.rpc).toHaveBeenCalledWith("patch_channel_agent_config", { p_channel_id: "UC-chronos", p_patch: { storyboard_review: true } }),
+    );
+    await waitFor(() => expect(reviewSwitch().getAttribute("aria-checked")).toBe("true"));
+    expect(h.writes).toEqual([]);
+    expect(h.refresh).toHaveBeenCalled();
+  });
+
+  it("the database's refusal is shown and the switch stays where it was", async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "only an administrator of this organization may change: storyboard_review" } });
+    card({});
+    fireEvent.click(reviewSwitch());
+    await screen.findByText(/only an administrator of this organization/);
+    expect(reviewSwitch().getAttribute("aria-checked")).toBe("false");
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("an answer that does not confirm the write is an error, not a switch that looks saved", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: false }, error: null });
+    card({});
+    fireEvent.click(reviewSwitch());
+    await screen.findByText(new RegExp(en.channels.saveFailed));
+    expect(reviewSwitch().getAttribute("aria-checked")).toBe("false");
+  });
+});

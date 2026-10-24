@@ -11,18 +11,19 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   MAX_SPEND_CEILING_USD,
-  ceilingChangeAllowed,
+  SPEND_CEILING_LOCK_HINT,
   effectiveSpendCeiling,
   formatUsd,
   flagIsOn,
+  isSpendCeilingLockRefusal,
   parseSpendCeiling,
-  withSpendCeiling,
 } from "@/lib/channelRisk";
 
 const CASES = JSON.parse(readFileSync(join(__dirname, "fixtures/channel-risk-cases.json"), "utf8")) as {
   stored: { raw: unknown; worker: number | null }[];
   saveable: { typed: string; stored: number }[];
   refused: { typed: string; reason: string }[];
+  changes: { why: string; old?: unknown; new?: unknown; editor: "allowed" | "refused" }[];
 };
 
 describe("parseSpendCeiling", () => {
@@ -64,24 +65,6 @@ describe("effectiveSpendCeiling reads a stored value the way the worker does", (
   });
 });
 
-describe("withSpendCeiling merges one key into the live config", () => {
-  it("sets the number and leaves every other key, including the controls, exactly as read", () => {
-    const live = { storyboard_review: true, language: "Russian", publish_gate: { fact_check: true } };
-    expect(withSpendCeiling(live, 25)).toEqual({ ...live, spend_ceiling_usd: 25 });
-    expect(live).not.toHaveProperty("spend_ceiling_usd");
-  });
-
-  it("removes the key for no limit instead of storing null or 0", () => {
-    const out = withSpendCeiling({ spend_ceiling_usd: 25, language: "Uzbek" }, null);
-    expect(out).toEqual({ language: "Uzbek" });
-    expect("spend_ceiling_usd" in out).toBe(false);
-  });
-
-  it("the pure merge reads a missing config as empty; the card itself refuses to write when the live read returned nothing", () => {
-    expect(withSpendCeiling(null, 5)).toEqual({ spend_ceiling_usd: 5 });
-  });
-});
-
 describe("flagIsOn: absent is on, only a real false is off (modules/channels.py)", () => {
   it.each([
     [undefined, true],
@@ -96,26 +79,29 @@ describe("flagIsOn: absent is on, only a real false is off (modules/channels.py)
   });
 });
 
-describe("ceilingChangeAllowed: an editor may set a first limit or lower one; raising or removing is an administrator's", () => {
-  it.each([
-    // live, next, canRaise, allowed
-    [null, 25, false, true],
-    [undefined, 25, false, true],
-    ["abc", 25, false, true], // a stored value the worker ignores is no limit
-    [0, 25, false, true],
-    [40, 10, false, true],
-    [40, 40, false, true],
-    [40, 40.01, false, false],
-    [40, 50, false, false],
-    [40, null, false, false],
-    ["40", null, false, false],
-    [null, null, false, true], // nothing to remove
-    ["abc", null, false, true],
-    [40, 50, true, true],
-    [40, null, true, true],
-    [null, 25, true, true],
-  ])("live %j -> %j, administrator %s: %s", (live, next, canRaise, allowed) => {
-    expect(ceilingChangeAllowed(live, next as number | null, canRaise)).toBe(allowed);
+describe("the spend-limit lock (migration 0119): what the page can know about it", () => {
+  it("names the hint the database raises", () => {
+    expect(SPEND_CEILING_LOCK_HINT).toBe("spend_ceiling_lock");
+  });
+
+  // The database decides who may move a limit from what to what, against the worker's reading of both values; the page's part is
+  // to read the stored value as the worker does (the `stored` cases above) so that "in force" means the same on the screen. The
+  // fixture's `changes` are asserted against the database in tests/security/test_sec_channel_settings.py and against the worker's
+  // reader in tests/test_channel_risk_values.py; here they must be stated in terms of what the page shows.
+  it.each(CASES.changes.map((c) => [c.why, c] as const))("the fixture's verdict agrees with what the page shows as in force: %s", (_why, c) => {
+    const was = effectiveSpendCeiling(c.old);
+    const now = effectiveSpendCeiling(c.new);
+    const allowed = was === null || (now !== null && now <= was);
+    expect(c.editor).toBe(allowed ? "allowed" : "refused");
+  });
+
+  it("is recognised by the hint or by the prefix of the message, not by any other refusal", () => {
+    expect(isSpendCeilingLockRefusal({ hint: "spend_ceiling_lock", message: "" })).toBe(true);
+    expect(isSpendCeilingLockRefusal({ message: "spend_ceiling_lock: only an administrator" })).toBe(true);
+    expect(isSpendCeilingLockRefusal({ code: "42501", message: "only an administrator of this organization may change: auto_publish" })).toBe(false);
+    expect(isSpendCeilingLockRefusal({ code: "42501", hint: "ai_disclosure_lock", message: "ai_disclosure_lock: x" })).toBe(false);
+    expect(isSpendCeilingLockRefusal(null)).toBe(false);
+    expect(isSpendCeilingLockRefusal(undefined)).toBe(false);
   });
 });
 

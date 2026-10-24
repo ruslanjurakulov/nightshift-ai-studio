@@ -30,6 +30,7 @@ export const channelRiskEn = {
   saved: "Saved.",
   saveFailed: "Could not save this setting.",
   notStored: "Nothing was saved. You may not be allowed to change this channel. Reload the page and try again.",
+  unavailable: "This setting can't be saved right now because the service is being updated. Please try again later.",
 };
 
 export type ChannelRiskDictionary = typeof channelRiskEn;
