@@ -219,7 +219,20 @@ class Dormant(unittest.TestCase):
         self.assertNotRegex(c, r"grant execute on function public\.request_series_plan")
         self.assertIn("revoke all on function public.request_series_plan(", c)
 
-    def test_nothing_in_the_application_calls_the_functions_or_names_the_tables(self):
+    #: The files that wire the series tables and functions into the application (slice S3). Anything else naming one fails the test below.
+    WIRED = {
+        "modules/series_plan_worker.py",                                         # the worker: loads a plan, ends it (finish_series_plan)
+        "tools/queue_worker.py",                                                 # hands a series_plan job to it (self.series_plans)
+        "command-center/lib/seriesPlan.ts",                                      # pure logic and the closed words
+        "command-center/lib/server/series-factory.ts",                           # the server flag
+        "command-center/lib/server/seriesPlans.ts",                              # the reads: series_plans, series_episodes, quote_series_episode
+        "command-center/components/series/PlanSeriesPanel.tsx",                  # request_series_plan (the "Plan a series" button)
+        "command-center/components/series/SeriesPlanView.tsx",                   # start_series_episode (the "Start episode" button)
+        "command-center/app/(app)/[channel]/series/page.tsx",                    # the flagged entry point
+        "command-center/app/(app)/[channel]/series/[id]/page.tsx",               # the flagged plan page
+    }
+
+    def test_only_the_s3_files_name_the_functions_and_the_tables(self):
         needles = list(self.NAMES) + ["series_plans", "series_episodes", "series_plan_id"]
         roots = [ROOT / "modules", ROOT / "tools", ROOT / "main.py", ROOT / "command-center" / "app", ROOT / "command-center" / "lib",
                  ROOT / "command-center" / "components", ROOT / ".github" / "workflows"]
@@ -231,15 +244,47 @@ class Dormant(unittest.TestCase):
                 text = p.read_text(encoding="utf-8", errors="ignore")
                 for n in needles:
                     if re.search(rf"\b{n}\b", text):
-                        hits.append((str(p.relative_to(ROOT)), n))
-        self.assertEqual(hits, [], "the PR that wires a series function or table into the application changes this test on purpose")
+                        hits.append((p.relative_to(ROOT).as_posix(), n))
+        stray = sorted({f for f, _ in hits} - self.WIRED)
+        self.assertEqual(stray, [], "a file that wires a series function or table must be added to WIRED on purpose")
+        self.assertEqual([f for f in sorted(self.WIRED) if not (ROOT / f).is_file()], [], "WIRED names a file that does not exist")
 
-    def test_the_worker_has_no_handler_for_the_planning_kind_and_refuses_it_before_spending(self):
+    def test_each_database_function_is_called_from_exactly_one_place(self):
+        def callers(name: str, pattern: str):
+            out = set()
+            for base in (ROOT / "modules", ROOT / "tools", ROOT / "command-center" / "app", ROOT / "command-center" / "lib",
+                         ROOT / "command-center" / "components"):
+                for p in base.rglob("*"):
+                    if p.is_file() and p.suffix in (".py", ".ts", ".tsx") and "node_modules" not in p.parts:
+                        if re.search(pattern.format(name=name), p.read_text(encoding="utf-8", errors="ignore")):
+                            out.add(p.relative_to(ROOT).as_posix())
+            return out
+
+        # Called (an rpc / REST call carrying the name as a string literal), not merely mentioned in a comment.
+        call = r"""["'/]{name}["']"""
+        self.assertEqual(callers("request_series_plan", call), {"command-center/components/series/PlanSeriesPanel.tsx"})
+        self.assertEqual(callers("start_series_episode", call), {"command-center/components/series/SeriesPlanView.tsx"})
+        self.assertEqual(callers("quote_series_episode", call), {"command-center/lib/server/seriesPlans.ts"})
+        self.assertEqual(callers("finish_series_plan", r"""[/"']{name}"""), {"modules/series_plan_worker.py"},
+                         "the service-key function is the worker's and never reaches a browser bundle")
+
+    def test_no_migration_grants_request_series_plan_to_anyone(self):
+        """The grant is a separate owner decision (it lets customers spend the shared Gemini key); S3 ships no migration."""
+        for path in sorted((ROOT / "supabase" / "migrations").glob("*.sql")):
+            text = code(path.read_text(encoding="utf-8"))
+            self.assertNotRegex(text, r"grant\s+execute\s+on\s+function\s+public\.request_series_plan", path.name)
+
+    def test_the_worker_handles_the_planning_kind_itself_and_run_request_still_refuses_it(self):
+        # The kind never becomes a run: run_request refuses it (so main.py cannot be started for one), and the queue worker handles it
+        # before that call (modules/series_plan_worker.py; tests/test_series_plan_worker.py pins the behaviour).
         self.assertNotIn("series_plan", run_request.KINDS)
         with self.assertRaises(run_request.InvalidRunRequest):
             run_request.validate("news", "series_plan", {"topic": "t", "niche": "n"})
         with self.assertRaises(run_request.InvalidRunRequest):
             run_request.plan_run("news", "series_plan", {"topic": "t", "niche": "n"}, {})
+        worker = (ROOT / "tools" / "queue_worker.py").read_text(encoding="utf-8")
+        self.assertIn("series_plan_worker.KIND", worker)
+        self.assertLess(worker.index("series_plan_worker.KIND"), worker.index("run_request.plan_run(channel_id"))
 
     def test_the_python_whitelist_matches_the_migrations_allowed_array(self):
         b = body(TEXT, RJPV)

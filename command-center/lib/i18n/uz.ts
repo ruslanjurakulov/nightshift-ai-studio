@@ -8,6 +8,7 @@ import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
 import { marketingUz } from "./marketing/uz";
+import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
@@ -32,6 +33,7 @@ export const uz: Dictionary = {
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
   marketing: marketingUz,
+  seriesPlan: seriesPlanUz,
   ownerTruth: ownerTruthUz,
   connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,

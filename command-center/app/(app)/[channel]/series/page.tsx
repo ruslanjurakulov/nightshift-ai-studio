@@ -5,7 +5,11 @@ import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import "../../app-pages-g2.css";
 import { SeriesBoard } from "@/components/series/SeriesBoard";
-import type { SeriesRow } from "@/lib/series";
+import { PlanSeriesPanel, type RecentPlansView } from "@/components/series/PlanSeriesPanel";
+import { seriesStatus, type SeriesRow } from "@/lib/series";
+import { getChannelPath } from "@/lib/channels-path-server";
+import { seriesFactoryEnabled } from "@/lib/server/series-factory";
+import { readRecentPlans } from "@/lib/server/seriesPlans";
 import { getChannelContext } from "@/lib/channels-server";
 import { orgWide, scopeQuery } from "@/lib/channels";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
@@ -57,9 +61,34 @@ export default async function SeriesPage() {
   // Writing a series is an editor+ action in the organization being viewed.
   const canEdit = atLeast(await resolveCurrentOrgRole(), "editor");
 
+  // The Series Factory (docs/SERIES_FACTORY.md, slice S3) is behind a server flag, default off. Off, nothing below runs: no extra
+  // read, nothing new on the page. On, the "Plan a series" form and the organization's recent plans appear above the board.
+  let planPanel: React.ReactNode = null;
+  if (seriesFactoryEnabled()) {
+    const path = await getChannelPath();
+    let recent: RecentPlansView = { state: "failed" };
+    if (supabase) {
+      const read = await readRecentPlans(supabase, orgWide(ctx.scope));
+      recent =
+        read.state === "ok"
+          ? { state: "ok", plans: read.plans.map((p) => ({ id: p.id, href: path(`/series/${p.id}`), title: p.title, topic: p.topic, status: p.status, nEpisodes: p.nEpisodes })) }
+          : read;
+    }
+    planPanel = (
+      <PlanSeriesPanel
+        channels={channels}
+        series={series.filter((x) => seriesStatus(x) === "ACTIVE").map((x) => ({ series_id: x.series_id, channel_id: x.channel_id, name: x.name }))}
+        canEdit={canEdit}
+        planBase={path("/series")}
+        recent={recent}
+      />
+    );
+  }
+
   return (
     <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="series" title={t.series.title} subtitle={t.series.subtitle} />
+      {planPanel}
       <SeriesBoard
         series={series}
         channels={channels}

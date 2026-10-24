@@ -1375,8 +1375,13 @@ class GateVersion(unittest.TestCase):
 
 # ── unwired ───────────────────────────────────────────────────────────────────
 
-class Unwired(unittest.TestCase):
-    """S1 changes nothing a run does. The wiring PR (S3, the worker job) must change THIS test on purpose."""
+class WiredOnlyByTheWorker(unittest.TestCase):
+    """S3 wires the planner into exactly ONE place: the queue worker's handler for a ``series_plan`` job
+    (modules/series_plan_worker.py, behind NIGHTSHIFT_SERIES_PLANNER, off by default). Nothing else that runs may import or name it:
+    not main.py (a video run never plans a series), not a route, not a workflow, not the UI. This was ``Unwired`` in S1 and S2; the S3
+    PR changed it on purpose, and a second wiring must do the same."""
+
+    ALLOWED = ["modules/series_plan_worker.py"]
 
     def test_nothing_that_runs_imports_or_names_the_planner(self):
         roots = [ROOT / "main.py", ROOT / "tools", ROOT / "modules", ROOT / "config.py", ROOT / ".github" / "workflows",
@@ -1413,7 +1418,12 @@ class Unwired(unittest.TestCase):
                     hit = any("series_planner" in ln and not ln.strip().startswith(("#", "--")) for ln in text.splitlines())
                 if hit:
                     offenders.append(str(path.relative_to(ROOT)))
-        self.assertEqual(offenders, [], "series_planner is S1 and must stay unwired; update this test in the wiring PR")
+        self.assertEqual(sorted(offenders), self.ALLOWED,
+                         "series_planner is wired by the series planning worker and by nothing else; update this test on purpose")
+        worker = (ROOT / "modules" / "series_plan_worker.py").read_text(encoding="utf-8")
+        self.assertIn("from modules import series_planner", worker)
+        self.assertIn("series_planner.plan_series(", worker)
+        self.assertIn("series_planner.gemini_generate()", worker)
 
     def test_the_detector_does_see_an_import(self):
         tree = ast.parse("from modules import series_planner\nimport modules.series_planner as x\n")
