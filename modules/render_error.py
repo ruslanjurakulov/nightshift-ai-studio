@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
+from modules.gemini_stages import GEMINI_QUOTA_EXIT
 from modules.publish_gate import HELD_BEFORE_RENDER_EXIT
 
 CREDITS = "credits"
@@ -97,6 +98,9 @@ def classify(header: str = "", tail: Iterable[str] = ()) -> str:
         return CREDITS
     if first.startswith(f"main.py exited with code {HELD_BEFORE_RENDER_EXIT}:"):
         return HELD
+    if first.startswith(f"main.py exited with code {GEMINI_QUOTA_EXIT}:"):
+        # Clean exit, no traceback to read the class from: the worker's header is the evidence.
+        return PROVIDER_QUOTA
     if _TIMED_OUT.search(first):
         return TIMEOUT
     last = None

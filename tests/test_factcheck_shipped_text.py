@@ -288,6 +288,10 @@ class FakeMixer:
         raise RuntimeError("stop here: the voice is the first purchase after the check")
 def fake_check(claims):
     out["checked"] = list(claims)
+    if any("QUOTAME" in c for c in claims):
+        raise main.gemini_stages.GeminiDailyQuotaError("gemini-3.6-flash", 18573.0, "fact_check")
+    if any("CRASHME" in c for c in claims):
+        raise RuntimeError("the checker is down")
     if any("UNRESOLVED" in c for c in claims):
         return [_safe_default(c) for c in claims]
     verdict = lambda c: ("likely_inaccurate" if "BADFACT" in c else "unverifiable" if "FLAGME" in c else "likely_accurate")
@@ -369,6 +373,7 @@ try:
     out["rows"] = [[r["unit"], r["quantity"], r["stage"]] for r in StateStore(db).list_video_costs()]
 except Exception as e:
     out["rows"] = [repr(e)]
+out["fetcher_calls"] = len(fetcher.mock_calls)
 out["tb"] = out.get("tb", "") + " | warnings: " + " ; ".join(out["warnings"])[-1500:]
 print("RESULT " + json.dumps(out))
 """

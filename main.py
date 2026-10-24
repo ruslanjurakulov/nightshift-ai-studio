@@ -33,6 +33,7 @@ import config
 from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
 from modules import ai_disclosure
 from modules import event_log as events
+from modules import gemini_stages
 from modules import run_slug
 from modules import log_redaction
 from modules import publish_gate
@@ -398,6 +399,7 @@ def _flush_costs_on_exit(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         _RUN_COSTS.clear()
+        gemini_stages.reset()
         previous = None
         installed = False
         if threading.current_thread() is threading.main_thread():
@@ -415,6 +417,7 @@ def _flush_costs_on_exit(fn):
                     signal.signal(signal.SIGTERM, signal.SIG_IGN)
                 except (ValueError, OSError):
                     pass
+            ledgers = []
             try:
                 ledgers = list(_RUN_COSTS)
                 _RUN_COSTS.clear()
@@ -425,6 +428,8 @@ def _flush_costs_on_exit(fn):
                 logger.warning("Could not record costs on exit (%s) — the run's own outcome is unchanged",
                                type(e).__name__)
             finally:
+                # What the run asked of Gemini, per stage (one log line and one event; never raises).
+                gemini_stages.report_run(channel_id=getattr(next(iter(ledgers), None), "channel_id", None))
                 if installed:
                     try:
                         signal.signal(signal.SIGTERM, previous if previous is not None else signal.SIG_DFL)
@@ -495,13 +500,14 @@ def _repair_packaging_pass(ctx, costs, topic, slug, script, research_brief, sect
     if not packaging_repair.enabled():
         return None
     from modules.gemini_client import generate_with_retry, make_client
+    from modules.gemini_stages import model_for
     from modules.script_engine import _format_research_notes
     from modules.structured_output import json_config
-    from config import GEMINI_MODEL
 
     def generate(prompt):
         response = generate_with_retry(
-            make_client(), GEMINI_MODEL, prompt, json_config(None, system_instruction=packaging_repair.REPAIR_SYSTEM))
+            make_client(), model_for(packaging_repair.STAGE), prompt,
+            json_config(None, system_instruction=packaging_repair.REPAIR_SYSTEM))
         costs.add_gemini_usage(response, stage=packaging_repair.STAGE)
         return response
 
@@ -1185,6 +1191,10 @@ def run(
             fc_path.write_text(json.dumps(claim_scenes.fact_check_records(section_claims, fact_results),
                                           indent=2, ensure_ascii=False))
             logger.info("Fact-check results saved: %s", fc_path)
+    except gemini_stages.GeminiDailyQuotaError:
+        # The checker's quota is spent for the day: going on would buy the voice, stills and render for a video the
+        # final gate blocks as fact_check_not_run. Stop now (exit 80); the saved script is reused by --resume.
+        raise
     except Exception as e:
         logger.warning("Fact-checker failed (%s: %s) — proceeding without fact-check results",
                         type(e).__name__, e)
@@ -2173,3 +2183,8 @@ if __name__ == "__main__":
             # the console line above say so. A distinct code so the runners
             # release the hold (tools/queue_worker.py) instead of reading "0".
             sys.exit(budget.BUDGET_STOP_EXIT)
+        except gemini_stages.GeminiDailyQuotaError:
+            # Gemini's per-day quota is spent for a stage the run cannot skip (the topic, the script). The one
+            # log line (model, retry-after, fix) was written where the 429 arrived. Not a traceback, and a
+            # distinct code so the runners release the credit hold and say why (tools/queue_worker.py).
+            sys.exit(gemini_stages.GEMINI_QUOTA_EXIT)

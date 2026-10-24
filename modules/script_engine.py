@@ -8,8 +8,9 @@ from pathlib import Path
 
 from google.genai import types as genai_types
 
-from config import GEMINI_MODEL, SCRIPT_LANGUAGE, VIDEO_DURATION_TARGET
+from config import SCRIPT_LANGUAGE, VIDEO_DURATION_TARGET
 from modules.gemini_client import generate_with_retry, make_client
+from modules.gemini_stages import model_for
 from modules.packaging_repair import PACKAGING_CLAIM_RULE
 from modules.performance_analyzer import PerformanceAnalyzer
 from modules.research_engine import ResearchBrief
@@ -470,7 +471,7 @@ class ScriptEngine:
         config = genai_types.GenerateContentConfig(
             system_instruction=system,
         ) if system else None
-        response = generate_with_retry(self.client, GEMINI_MODEL, prompt, config)
+        response = generate_with_retry(self.client, model_for("script"), prompt, config)
         self.last_response = response
         return response.text
 

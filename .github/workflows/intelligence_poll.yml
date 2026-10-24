@@ -121,6 +121,9 @@ jobs:
       - name: Run intelligence poll
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # The poll classifies comments: GEMINI_MODEL_OTHER (empty = GEMINI_MODEL, empty = the code default).
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL_OTHER: ${{ vars.GEMINI_MODEL_OTHER }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
           YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
           COMPETITOR_CHANNEL_IDS: ${{ vars.COMPETITOR_CHANNEL_IDS }}
