@@ -11,14 +11,17 @@ PUBLISH without both (a) passing through every earlier stage in order, and
 (b) an explicit, separately-recorded human approval. Sequence order alone
 is never sufficient to reach PUBLISH — see `advance()` below.
 
+STATUS: this is the record of how far a run got, not the thing that stops an
+upload. main.py advances every run to HUMAN_APPROVAL and nothing calls
+`approve()` (tools/approve_run.py only records it by hand); the upload path
+never reads this state. What can hold or block a real upload is
+modules/publish_gate.py and, for a channel that requires two people,
+modules/publish_approval.py.
+
 PERSISTENCE NOTE: This module uses its own minimal JSON-file store
-(`PipelineStateMachine`) as a placeholder. A sibling in-progress module,
-`state_store`, is expected to provide a more robust shared persistence layer
-for the whole pipeline. Once `state_store` merges, this class's storage
-should be replaced with it — the public API (`start_run`, `advance`,
-`approve`, `get_run`, `list_runs`) is intended to remain stable across that
-swap. Deliberately NOT imported here since it does not yet exist on this
-branch.
+(`PipelineStateMachine`), not modules/state_store.py. The public API
+(`start_run`, `advance`, `approve`, `get_run`, `list_runs`) is intended to
+remain stable if the storage is ever moved there.
 """
 
 from __future__ import annotations

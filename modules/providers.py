@@ -1,5 +1,16 @@
 """Provider interfaces — the seam that keeps Nightshift free of vendor lock-in.
 
+STATUS: NOT WIRED. No production code imports this module; main.py, tools/,
+the queue worker and the other modules call the concrete modules (AudioMixer,
+YouTubeUploader, AnalyticsClient, research_topic, MediaFetcher and the image and
+video provider routers) directly. Only tests/test_providers.py imports it. It is
+kept on purpose as the documented target for a future provider swap (it is
+described as the "shape-only seams" in docs/CREATIVE_OS_PLAN.md and named in
+docs/ROADMAP_VIDEO_OS.md and config.py, modules/avatar.py,
+modules/video_providers.py), not because anything depends on it. Treat the
+adapters below as unproven against a real run: the tests use fakes. If you
+migrate a call site behind these protocols, delete this paragraph.
+
 Each capability the pipeline depends on (research, images, video clips, voice,
 publishing, analytics) is expressed here as a small ``typing.Protocol``. The
 concrete modules that exist today satisfy these shapes, and a future provider
@@ -13,18 +24,14 @@ Design notes
   ``ImageProvider`` and a ``VideoProvider`` because it has the right methods —
   no adapter, no edit to that module. That is the point of using Protocols:
   the abstraction is additive and imposes nothing on the code it describes.
-* This module holds NO API keys and makes NO network calls. It is types plus
-  one thin real adapter (``GeminiResearchProvider``) around the existing
-  ``research_topic`` function, whose only job is to give a module-level
-  function a class shape that satisfies ``ResearchProvider``.
-* Concrete adapters for voice / publishing / analytics are intentionally NOT
-  written yet: ``AudioMixer``, ``YouTubeUploader`` and ``AnalyticsClient``
-  carry richer constructors, and wrapping them faithfully is a follow-up. The
-  contracts are defined here so that work has a target to hit.
+* This module holds NO API keys and makes NO network calls of its own. It is
+  types plus thin adapters that delegate to the existing modules, importing
+  them lazily: ``GeminiResearchProvider`` around ``research_topic``, and
+  ``AudioMixerVoiceProvider`` / ``YouTubeUploaderPublishingProvider`` /
+  ``AnalyticsClientAnalyticsProvider`` around ``AudioMixer``, ``YouTubeUploader``
+  and ``AnalyticsClient`` (further down). They add no behaviour of their own.
 
-Nothing here changes runtime behaviour; the pipeline keeps calling the concrete
-modules directly until call sites are migrated behind these interfaces in a
-later change.
+Nothing here changes runtime behaviour, because nothing runs it (see STATUS).
 """
 
 from __future__ import annotations
@@ -61,8 +68,7 @@ class VideoProvider(Protocol):
 class VoiceProvider(Protocol):
     """Synthesises narration audio for a script/text to a local file.
 
-    Contract only for now — the concrete adapter over modules/audio_mixer.py is
-    a follow-up (its constructor takes channel context and mixing config).
+    The adapter over modules/audio_mixer.py is AudioMixerVoiceProvider below.
     """
 
     def synthesize(self, text: str, out_path: Path) -> Path:
@@ -73,8 +79,8 @@ class VoiceProvider(Protocol):
 class PublishingProvider(Protocol):
     """Publishes a rendered video to a platform, returning at least an id/url.
 
-    Contract only for now — the concrete adapter over
-    modules/youtube_uploader.py is a follow-up.
+    The adapter over modules/youtube_uploader.py is
+    YouTubeUploaderPublishingProvider below.
     """
 
     def upload(self, video_path: Path, script: object, **kwargs) -> dict:
@@ -85,8 +91,8 @@ class PublishingProvider(Protocol):
 class AnalyticsProvider(Protocol):
     """Reads back performance metrics for a published video.
 
-    Contract only for now — the concrete adapter over
-    modules/analytics_client.py is a follow-up.
+    The adapter over modules/analytics_client.py is
+    AnalyticsClientAnalyticsProvider below.
     """
 
     def fetch_metrics(self, video_id: str) -> dict:

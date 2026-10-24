@@ -1,12 +1,13 @@
 """Originality / anti-repetition engine.
 
-Today the only originality mechanism in this pipeline is TopicManager pasting
-the last 80 used topics into the Gemini prompt as an exact-string exclusion
-list (see modules/topic_manager.py). That catches nothing but literal repeats
-of the same title — a topic that is reworded, reordered, or paraphrased sails
-right through.
+TopicManager pastes the last 80 used topics into the Gemini prompt as an
+exact-string exclusion list (see modules/topic_manager.py). That catches nothing
+but literal repeats of the same title — a topic that is reworded, reordered, or
+paraphrased sails right through.
 
-This module adds a real similarity check with two independent signals:
+This module adds a real similarity check with two independent signals. It is in
+use: TopicManager checks and registers every topic through it, and the publish
+gate consults it again before an upload (modules/publish_gate.py).
 
   * Semantic similarity via `model2vec` (a light, distilled static-embedding
     library — no torch/sentence-transformers needed at inference time). We
@@ -176,10 +177,10 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 class OriginalityEngine:
     """Semantic + lexical duplicate/near-duplicate detector for topics.
 
-    Not wired into the pipeline by this module — TopicManager still does its
-    own exact-string exclusion. This is a standalone engine meant to
-    eventually replace/augment that (see module docstring and the PR that
-    introduced this file for the intended integration).
+    This class holds no pipeline logic of its own; its callers decide what a
+    verdict means. TopicManager (modules/topic_manager.py) uses it for topic
+    selection, alongside its exact-string exclusion, and the publish gate
+    (modules/publish_gate.py) uses it as a pre-upload duplicate check.
     """
 
     def __init__(

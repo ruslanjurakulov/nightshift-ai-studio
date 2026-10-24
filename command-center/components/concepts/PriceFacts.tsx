@@ -7,8 +7,8 @@ import type { MoneyAnchor } from "@/lib/landing";
 /**
  * The money a visitor can know before signing up, as one compact row for a
  * hero: what a video costs in the app, the smallest pack, the free grant. The
- * same facts and the same words as MoneyAnchor (components/site/MoneyAnchor.tsx,
- * lib/landing.ts moneyAnchor), nothing added: a price nobody published reads
+ * same facts and the same words as the pricing page's money anchor
+ * (lib/landing.ts moneyAnchor), nothing added: a price nobody published reads
  * "No price published yet", never a zero or a default (CLAUDE.md rule 5).
  */
 export function PriceFacts({

@@ -13,13 +13,11 @@ below `MIN_LIFT` relative difference.
 
 Scope note
 ----------
-This is the selection + readback layer. Making it live end-to-end also needs
-(a) a `hook_variant` column on the videos table (a migration), (b) the script
-engine producing a second opening, and (c) the render shipping the chosen hook —
-and a real render to validate. Those are a deliberate follow-up; this layer,
-pure and fully unit-tested, is shipped first (as broll_match and the quota
-allocator were), reusing the ab_testing thresholds so the two experiments stay
-in step.
+This is the selection + readback layer, pure and fully unit-tested, reusing the
+ab_testing thresholds so the two experiments stay in step. The rest lives in the
+callers: the script engine produces the alternate opening (`hook_ab`), main.py
+picks the arm and swaps the opening in before the audio is synthesized, and
+`videos.hook_variant` (modules/state_store.py) records what was shipped.
 """
 
 from __future__ import annotations

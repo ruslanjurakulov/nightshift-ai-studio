@@ -9,7 +9,6 @@ main records it as ``avatar.failed``. With no presenter requested nothing change
 Fake clips only: ``VideoFileClip`` is patched, no file is decoded.
 """
 
-import inspect
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -94,13 +93,36 @@ class PresenterMustBeWhole(unittest.TestCase):
 
 
 class NoPresenterIsUntouched(unittest.TestCase):
-    def test_render_only_builds_presenter_clips_when_one_was_requested(self):
-        src = inspect.getsource(Compositor.render)
-        self.assertIn(
-            "presenter_layer = []\n            if presenter_path is not None:\n"
-            '                mark_stage("build presenter overlay")\n'
-            "                presenter_layer = self._build_presenter_clips(presenter_path, total_duration)",
-            src)
+    """Drives Compositor.render itself with the moviepy classes and the heavy builders
+    patched, so what is pinned is what the render does, not how its source is spelled."""
+
+    def _render(self, presenter_path):
+        comp = Compositor.__new__(Compositor)
+        comp._readers, comp._text_clips = {}, {}
+        comp.slug, comp.width, comp.height = "t", 1280, 720
+        comp.out_dir = Path("out-not-written")
+        subtitles = [MagicMock(name="subtitle")]
+        presenter = [MagicMock(name="presenter")]
+        script = MagicMock(sections=[])  # no sections: the black-background path, no clip pool
+        with patch("modules.compositor.AudioFileClip") as audio_cls, \
+                patch("modules.compositor.ColorClip"), \
+                patch("modules.compositor.concatenate_videoclips") as concat, \
+                patch("modules.compositor.CompositeVideoClip") as composite, \
+                patch.object(comp, "_build_subtitle_clips", return_value=subtitles), \
+                patch.object(comp, "_build_presenter_clips", return_value=presenter) as build:
+            audio_cls.return_value.duration = TOTAL
+            comp.render(script, Path("a.wav"), [], [], [], [], presenter_path=presenter_path)
+        return build, concat.return_value.set_duration.return_value, composite, subtitles, presenter
+
+    def test_no_presenter_never_builds_presenter_clips_and_the_layers_are_unchanged(self):
+        build, bg, composite, subtitles, _ = self._render(None)
+        build.assert_not_called()
+        self.assertEqual(composite.call_args.args[0], [bg] + subtitles)
+
+    def test_a_requested_presenter_is_built_once_and_sits_between_footage_and_subtitles(self):
+        build, bg, composite, subtitles, presenter = self._render(Path("presenter.mp4"))
+        build.assert_called_once_with(Path("presenter.mp4"), TOTAL)
+        self.assertEqual(composite.call_args.args[0], [bg] + presenter + subtitles)
 
     def test_no_presenter_means_no_segments_to_demand(self):
         from modules.avatar import presenter_segments
