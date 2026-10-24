@@ -1,6 +1,7 @@
 import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { aiLabelEn } from "./ai-label/en";
+import { channelRiskEn } from "./channel-risk/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ownerSafetyEn } from "./owner-safety/en";
@@ -3091,6 +3092,7 @@ export const en = {
   },
   notifyChannels: notifyChannelsEn,
   aiLabel: aiLabelEn,
+  channelRisk: channelRiskEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",

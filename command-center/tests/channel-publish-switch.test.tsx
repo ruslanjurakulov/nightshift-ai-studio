@@ -193,7 +193,7 @@ describe("turning it on", () => {
     fireEvent.click(publishSwitch());
     const key = () => within(screen.getByRole("alertdialog")).getByRole("button", { name: cs.publishOnConfirm }) as HTMLButtonElement;
     expect(key().disabled).toBe(true);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publis" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publis" } });
     expect(key().disabled).toBe(true);
     fireEvent.click(key());
     await settle();
@@ -211,7 +211,7 @@ describe("turning it on", () => {
   it("with the word typed it calls the database function once, with the channel and on, writes no row, and refreshes", async () => {
     card({ publish_on_approve: false });
     fireEvent.click(publishSwitch());
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publish" } });
     const key = within(screen.getByRole("alertdialog")).getByRole("button", { name: cs.publishOnConfirm });
     fireEvent.click(key);
     fireEvent.click(key);
@@ -226,25 +226,25 @@ describe("turning it on", () => {
     h.rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "forbidden" } });
     card({ publish_on_approve: false });
     fireEvent.click(publishSwitch());
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publish" } });
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: cs.publishOnConfirm }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(en.channels.publishOnForbidden));
     expect(publishSwitch().getAttribute("aria-checked")).toBe("false");
     h.rpc.mockResolvedValue({ data: { ok: false, error: "rate_limited" }, error: null });
     fireEvent.click(publishSwitch());
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publish" } });
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: cs.publishOnConfirm }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(en.channels.publishOnRateLimited));
     // a channel that requires a second person to publish cannot have it turned on (the database says so in a closed word)
     h.rpc.mockResolvedValue({ data: { ok: false, error: "two_person_required" }, error: null });
     fireEvent.click(publishSwitch());
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publish" } });
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: cs.publishOnConfirm }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(en.channels.publishOnTwoPerson));
     expect(publishSwitch().getAttribute("aria-checked")).toBe("false");
     h.rpc.mockResolvedValue({ data: null, error: { code: "XX000", message: "internal: password=hunter2" } });
     fireEvent.click(publishSwitch());
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "publish" } });
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByRole("textbox"), { target: { value: "publish" } });
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: cs.publishOnConfirm }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(en.channels.publishOnFailed));
     expect(document.body.textContent).not.toContain("hunter2");

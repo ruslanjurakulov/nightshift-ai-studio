@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field, replace
@@ -108,17 +109,25 @@ def _env_competitor_ids() -> list[str]:
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
+_ASCII_NUMBER = re.compile(r"[ \t\n\r\f\v]*[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?[ \t\n\r\f\v]*", re.ASCII)
+
+
 def _as_optional_float(value) -> Optional[float]:
     """A positive float, or None. Empty / unset / non-numeric / non-positive all
     read as None (no ceiling) — a malformed ceiling must never silently become a
     small number that blocks every run."""
-    if value is None or value == "":
+    if value is None or value == "" or isinstance(value, bool):
+        return None                      # bool is an int: float(True) would be a $1 ceiling
+    # float() also accepts Unicode digits ("٢٥"), underscores ("1_000") and Unicode spaces. The Command Center reads only
+    # ASCII (lib/channelRisk.ts), so text outside that is no ceiling here too: both sides then agree on what is enforced.
+    if isinstance(value, str) and not _ASCII_NUMBER.fullmatch(value):
         return None
     try:
         f = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):   # a 400-digit integer literal is valid JSON
         return None
-    return f if f > 0 else None
+    # inf is "no ceiling" in everything but name, so it reads as none, said plainly.
+    return f if math.isfinite(f) and f > 0 else None
 
 
 def _clean_ids(value) -> tuple:

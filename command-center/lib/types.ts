@@ -261,6 +261,14 @@ export interface ChannelAgentConfig {
   ai_disclosure?: unknown;
   ai_disclosure_voice?: unknown;
   /**
+   * Editor-level risk settings (modules/channels.py reads them; lib/channelRisk.ts is the page's side of the same rules).
+   * `spend_ceiling_usd` is a monthly USD limit: read it through effectiveSpendCeiling, because anything but a finite number
+   * above 0 is "no limit" to the worker. `pinned_comment` and `watch_next` are ON unless they are a real false.
+   */
+  spend_ceiling_usd?: unknown;
+  pinned_comment?: boolean;
+  watch_next?: boolean;
+  /**
    * The channel's Character Bible / Elements Library: reusable characters,
    * locations and props kept consistent across videos (modules/elements.py).
    * The pipeline detects which appear in a scene and injects each one's
