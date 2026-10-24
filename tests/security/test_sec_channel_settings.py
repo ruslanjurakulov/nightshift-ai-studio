@@ -866,3 +866,26 @@ def test_the_rollback_puts_0117s_guard_back_and_0119_applies_again(conn, sc):
         su.conn.execute(_guard_0117().replace("hint = 'voice_not_allowed'", "hint = 'voice_not_allowed2'", 1))
         out = su.run(body)
         assert not out.ok and "neither" in out.error, out
+
+
+def test_the_functions_own_editor_check_does_not_lean_on_the_tables_policy(conn, sc, world):
+    """The table's update policy already keeps a viewer out; the function checks the role itself too, so loosening the policy one day
+    does not turn the function into a way for a viewer to write."""
+    become(world.su, None)
+    world.su.conn.execute("alter table public.channels disable row level security")
+    for who in (world.viewer, world.stranger, world.bob):
+        become(world.su, who)
+        out = world.su.run(RPC, [world.channel, '{"watch_next": false}'])
+        assert not out.ok and out.sqlstate == "42501" and "channel not found or not yours" in out.error, (who.name, out)
+    assert "watch_next" not in config(world.su, world.channel)
+    # and the editor still can with the policy off (the function's own check passes them)
+    become(world.su, world.editor)
+    assert world.su.run(RPC, [world.channel, '{"watch_next": false}']).ok
+
+
+def test_a_session_with_no_user_is_told_to_sign_in(conn, sc, world):
+    """The authenticated role with a token that names no user (auth.uid() is null)."""
+    nobody = sec_db.Actor("nobody", "authenticated")
+    become(world.su, nobody)
+    out = world.su.run(RPC, [world.channel, '{"watch_next": false}'])
+    assert not out.ok and out.sqlstate == "42501" and "sign in first" in out.error, out

@@ -24,9 +24,9 @@
 --   2. channels_config_guard(): 0117's body, character for character, plus ONE marked block before the final return. Held to it are
 --      the browser roles only (authenticated, anon), exactly like the other checks: the service role, the SQL editor and every
 --      SECURITY DEFINER function run as another role and pass (set_channel_dna and attach_voice_to_channel never touch the key;
---      create_channel INSERTS, where there is no earlier limit). On an UPDATE, if the limit in force before is not NULL, the write
---      is refused unless the caller administers the channel's organization when the limit in force after is NULL (removed, or
---      replaced by a value the worker would ignore) or LARGER. Setting a limit where none is in force, keeping it, and lowering it
+--      create_channel INSERTS, where there is no earlier limit). On an UPDATE, if a limit is in force before the write, the write
+--      is refused when the limit in force after it is NULL (removed, or replaced by a value the worker would ignore) or LARGER,
+--      unless the caller administers the channel's organization. Setting a limit where none is in force, keeping it, and lowering it
 --      stay open to an editor. Both sides are the EFFECTIVE limits, so no spelling dodges it: "25" to "26", 25 to true, 25 to
 --      "1e400", replacing the whole blob, deleting the key or jsonb_set all read as what they are.
 --      The refusal is SQLSTATE 42501, message prefix 'spend_ceiling_lock:', hint 'spend_ceiling_lock'. The Command Center maps
@@ -254,8 +254,8 @@ begin
     if jsonb_typeof(v) = 'null' then
       drops := drops || k;
     elsif k = 'spend_ceiling_usd' then
-      -- A JSON number only (text would be ignored by nobody's page but is a way to store a value the worker reads differently),
-      -- one the worker enforces, and no larger than the page offers.
+      -- A JSON number only (the page stores numbers; text is a second spelling that a reader could read differently), one the
+      -- worker enforces (above 0, finite), and no larger than the page offers.
       cap := case when jsonb_typeof(v) = 'number' then public.channel_spend_ceiling(v) end;
       if cap is null or cap > max_ceiling then
         raise exception 'invalid_patch: spend_ceiling_usd is a number above 0 and at most %', max_ceiling

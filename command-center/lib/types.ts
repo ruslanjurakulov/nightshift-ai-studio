@@ -263,7 +263,9 @@ export interface ChannelAgentConfig {
   /**
    * Editor-level risk settings (modules/channels.py reads them; lib/channelRisk.ts is the page's side of the same rules).
    * `spend_ceiling_usd` is a monthly USD limit: read it through effectiveSpendCeiling, because anything but a finite number
-   * above 0 is "no limit" to the worker. `pinned_comment` and `watch_next` are ON unless they are a real false.
+   * above 0 is "no limit" to the worker. An editor may set it where none is in force and lower it; raising or removing one
+   * that is in force is an administrator's, enforced by the database (migration 0119). `pinned_comment` and `watch_next`
+   * are ON unless they are a real false. All three are written through patch_channel_agent_config (lib/channelPatch.ts).
    */
   spend_ceiling_usd?: unknown;
   pinned_comment?: boolean;
