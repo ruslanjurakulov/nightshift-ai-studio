@@ -1162,8 +1162,10 @@ def test_applying_it_again_changes_nothing(conn):
         su.conn.execute(text)
         su.conn.execute(text)
         sec_db.take_off_0119(su)                                      # 0119 sits on 0117's guard: off, then 0117 again, then 0119 back
+        sec_db.take_off_0121(su)                                      # 0121 sits on 0117's two functions: off while 0117 replays
         su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # 0117 replaces audit_action_allowed on top of 0116's
         sec_db.put_back_0119(su)
+        sec_db.put_back_0121(su)
         assert snapshot(su) == before
 
 
@@ -1173,7 +1175,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
     base = f"ns_visibility_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0116_", "0117_", "0119_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0116_", "0117_", "0119_", "0121_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -1192,7 +1194,8 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         rid = queued(su, bob)
         assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is True
         after = snapshot(su)
-        sec_db.take_off_0119(su)                   # going down: 0119, then 0117 (it sits on 0116's audit list), then 0116
+        sec_db.take_off_0119(su)                   # going down: 0119, 0121, then 0117 (it sits on 0116's audit list), then 0116
+        sec_db.take_off_0121(su)
         su.conn.execute(body_0117)
         su.conn.execute(body)
         live = [r[0] for r in su.rows("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
@@ -1215,11 +1218,14 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         switch(su, bob.channel, False)
         su.conn.execute(body)                      # the rollback replays
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
-        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # going up: 0116, then 0117, then 0119
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # going up: 0116, then 0117, then 0119, then 0121
         sec_db.put_back_0119(su)
+        sec_db.put_back_0121(su)
         assert snapshot(su) == after
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
         sec_db.take_off_0119(su)
+        sec_db.take_off_0121(su)
         su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))
         sec_db.put_back_0119(su)
+        sec_db.put_back_0121(su)
         assert snapshot(su) == after

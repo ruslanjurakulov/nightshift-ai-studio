@@ -598,3 +598,8 @@ sec_channel_settings_0119.extend(TABLES, FUNCTIONS)
 import sec_series_tables_0120  # noqa: E402
 
 sec_series_tables_0120.extend(TABLES, FUNCTIONS)
+
+# Migration 0121 (Custom Voice: the queue gates G2 and G3, the oracle on channel_voice_config_problem): tests/security/sec_voice_job_gates_0121.py
+import sec_voice_job_gates_0121  # noqa: E402
+
+sec_voice_job_gates_0121.extend(TABLES, FUNCTIONS)

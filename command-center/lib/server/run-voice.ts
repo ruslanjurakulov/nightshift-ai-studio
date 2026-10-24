@@ -13,6 +13,15 @@ import { isVoiceId } from "@/lib/ttsModels";
  * goes on exactly as before. The pipeline asks again when the runner starts (modules/voice_gate.py), so a voice detached after the
  * click is still stopped, before anything is spent.
  *
+ * Since migration 0121 the database tells a signed-in caller the truth only about voices that caller may know exist: the caller must
+ * be a member of the channel's organization, and the voice must be the caller's own or one requested in that organization. For any
+ * other id (a stranger's clone, an id that is no voice) it answers NULL, which this function reads as "fine" (that narrows the oracle: a
+ * user could otherwise confirm through this function that a 20-character id is somebody's clone; the entry guards still can, see
+ * docs/CUSTOM_VOICE.md). That changes nothing here and costs nothing:
+ * such a run is stopped by the runner's own check (modules/voice_gate.py asks with the service key and always gets the truth, exit
+ * 82, nothing spent) and, on the queue backend, by the database when the job is inserted. This route is the early, friendly refusal
+ * for the voices of the caller's own organization; the runner is the one that must not be bypassed.
+ *
  * Failing closed (CLAUDE.md rules 4 and 6): a voice id that could be a profile's (20 letters and digits, which is all the
  * dispatch ever forwards) and a check that cannot be answered is refused with its own code, never run. The only answer that lets
  * the id through unchecked is "the function does not exist" (0117 not applied: no profile can exist). Nothing here says whether

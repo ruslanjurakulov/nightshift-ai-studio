@@ -416,3 +416,38 @@ application, the worker or a workflow calls any of it (`tests/test_series_tables
 - **Is it working?** The verify block at the bottom of the file (every column true).
 - **Review.** Needs the independent security review before merge: it replaces the payment guard every queued run passes through, and it adds a
   function that holds credits.
+
+## Custom voice gates: stranded clone jobs, the overdue sweep, the oracle on `channel_voice_config_problem` (0121)
+
+0121 (`0121_voice_job_gates.sql`, `docs/CUSTOM_VOICE.md`, "Gates before the owner may enable `NIGHTSHIFT_VOICE_CLONING`") is **live on apply**:
+it **replaces two live functions on their latest bodies, verbatim plus marked additions**, and adds three. It writes no row, alters no table,
+trigger, policy or table grant, grants nothing to anyone who had nothing, and does **not** grant `request_voice_clone` or touch
+`NIGHTSHIFT_VOICE_GATE_STRICT`. Numbered 0121 because 0119 and 0120 are merged and 0118 is unused (no open pull request adds a migration).
+
+- **Replaced on their latest bodies:** `claim_voice_job()` (0117's body, character for character, plus ONE marked block: **G2**, a clone job
+  whose profile is deleted or rejected is ended once as `cancelled` / `expired` with the word `profile_not_pending`, and its purge /
+  provider deletion is queued, so a job a worker parked and the owner then deleted can no longer stay queued and block
+  `purge_voice_records`, and with it the deletion of an account or an organization) and `channel_voice_config_problem()` (now a wrapper:
+  0117's body lives on unchanged as `channel_voice_config_problem_core`, callable by nobody). A `DO` block at the top raises if either live
+  body is not 0117's (md5 with white space collapsed) or 0121's own, or if one of the three new names already holds another body.
+  Re-running 0117 afterwards puts 0117's two bodies back: re-apply 0121 after it (the lab tests that replay 0117 do).
+- **Added, service role only:** `voice_requeue_overdue(p_older_than interval default '3 hours')` (G3: failed purge and provider-deletion jobs
+  back in the queue with their attempts reset; at most 20 a call, 1 hour to 30 days in plain seconds (no months), never a clone, never where
+  the work must not run; a racing delete skips that row) and
+  `voice_overdue_report()` (counts and ages in closed fields, no ids).
+- **The oracle, narrowed (not closed).** A signed-in user could ask `channel_voice_config_problem` about any channel and any 20-character id and
+  learn whether the id is somebody's clone. The exact answer now goes to the service role (the Actions pre-flight) and to the channels guard;
+  any other caller is asked one voice key at a time (so one key's answer never depends on, or reveals, the other) and gets the truth only as
+  a member of the channel's organization and only about a voice that is theirs or was requested in that organization; otherwise the answer an
+  id that is no voice gets. **Residual:** the entry guards (Studio tts, render jobs, `agent_config` writes) still refuse a clone the writer may
+  not use, so any signed-in user with a workspace of their own can still confirm a known id through them. It is a decision for the migration
+  that grants `request_voice_clone`; `docs/CUSTOM_VOICE.md` says so. No timing claim is made.
+- **Python moves with the database.** `tools/voice_worker.py --sweep` (exit 0 nothing overdue, 1 something is, 2 the database could not
+  answer) is the one caller of the two new functions; **nothing starts it**. `purge_sample` also sweeps a deleted profile's labelled voices
+  now. Both are harmless before the file is applied (`--sweep` exits 2 and says the functions are not available).
+- **Apply as ONE transaction** (SQL editor, `apply_migration`, or `psql --single-transaction -v ON_ERROR_STOP=1`).
+- **Undo.** `docs/sql/rollback_0121_voice_job_gates.sql` (owner-applied; refuses a body it has not seen, puts 0117's two bodies back byte for
+  byte with their grants, drops the three functions; a queue row already ended stays ended). The lab applies it and re-applies 0121.
+- **Is it working?** The verify block at the bottom of the file (every column true), and `select public.voice_overdue_report();`.
+- **Review.** Needs the independent security review before merge: it changes who may learn that a voice id exists, and it makes the queue
+  function every worker calls end rows on its own.

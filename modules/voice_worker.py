@@ -29,8 +29,10 @@ way this module reads or writes it (the service key has no privilege on any voic
 
 * ``delete_provider``: ``DELETE /v1/voices/{id}``; a 404 is "already gone" and counts as done (the adapter does that).
 * ``purge_sample``: delete the whole prefix, confirm it is empty, answer ``finish_voice_task``. Idempotent: an empty prefix is done.
-  For a REJECTED profile that never got a voice recorded it also removes voices labelled for that
-  profile from the provider account (the orphan of a create whose answer was lost), because nothing else would.
+  For a REJECTED or DELETED profile that never got a voice recorded it also removes voices labelled for that
+  profile from the provider account (the orphan of a create whose answer was lost), because nothing else would. Migration 0121 queues
+  that purge for a deleted profile whose parked clone job it has just ended (a claimed attempt may have created a voice), which is why a
+  deleted profile is swept now; a profile that is still pending or already usable never is.
 
 Parking. The database allows three claims of a job and nothing a service key can call raises that or re-queues a failed job. A
 failure that is the operator's or the provider's to fix (and a delete or purge that did not work) is therefore not answered: the
@@ -39,6 +41,10 @@ functions give (about 90 minutes over the three claims). Only the last claim ans
 delete that ends that way is logged as ``voice OVERDUE``. A worker that dies is the same thing: the lease, and after three
 losses ``worker_lost`` with its purge queued. Every path that ends a profile queues its purge, and the worker deletes the prefix
 twice (right after the answer is recorded, then when that job runs).
+
+``sweep_overdue`` is the other thing the command line does (``tools/voice_worker.py --sweep``, migration 0121): it asks the database
+to put purge and provider-deletion jobs that failed for good back in the queue (``voice_requeue_overdue``, bounded, never a clone) and
+reads ``voice_overdue_report``, and logs only counts, ages and a fixed set of words. It needs no provider and is still started by hand.
 
 Nothing here logs the key, the sample, the phrase or a voice id in full, and no response body is ever copied into an error: a
 closed word and an HTTP status are. A redirect from Supabase or ElevenLabs is refused. EVERY Storage and ElevenLabs request shape
@@ -379,7 +385,7 @@ class VoiceStore:
         if r.status_code == 404:
             if name not in self._warned_404:
                 self._warned_404.add(name)
-                logger.warning("voice: the database function %s answered 404 (migration 0117 not applied, or the API schema "
+                logger.warning("voice: the database function %s answered 404 (its migration, 0117 or 0121, is not applied, or the API schema "
                                "cache is stale): nothing is carried out until it exists", name)
             return None
         if r.status_code >= 300:
@@ -400,6 +406,16 @@ class VoiceStore:
     def finish_task(self, job_id: str, worker_id: str, ok: bool, error_code: Optional[str]) -> Optional[dict]:
         out = self._rpc("finish_voice_task", {"p_job": job_id, "p_worker": worker_id, "p_ok": bool(ok),
                                               "p_error_code": error_code})
+        return out if isinstance(out, dict) else None
+
+    def requeue_overdue(self, older_than_hours: int) -> Optional[dict]:
+        """0121: put purge / provider-deletion jobs that failed for good more than this many hours ago back in the queue (at most 20)."""
+        out = self._rpc("voice_requeue_overdue", {"p_older_than": f"{int(older_than_hours)} hours"})
+        return out if isinstance(out, dict) else None
+
+    def overdue_report(self) -> Optional[dict]:
+        """0121: counts and ages of what is late; no id of anyone."""
+        out = self._rpc("voice_overdue_report", {})
         return out if isinstance(out, dict) else None
 
 
@@ -882,10 +898,12 @@ class VoiceWorker:
             self.storage.delete_prefix(job.user_id, job.profile_id)
         except StorageError as e:
             return self._task_failed(job, "storage_" + e.code)
-        if job.provider_voice_id is None and job.profile_status == "rejected" and vp.is_owner_ref(job.owner_ref):
-            # A REJECTED profile never got a voice recorded (its clone job has ended), so a voice labelled for it in the provider
-            # account is an orphan: a create whose answer was lost in an attempt that then ended. Any other state may have a clone
-            # in flight (the owner deleted it while it was being made), and its own delete_provider job handles that voice.
+        if job.provider_voice_id is None and job.profile_status in ("rejected", "deleted") and vp.is_owner_ref(job.owner_ref):
+            # A REJECTED or DELETED profile with no voice recorded: a voice labelled for it in the provider account is an orphan, a
+            # create whose answer was lost in an attempt that then ended (0121 queues this purge for a deleted profile whose parked
+            # clone it ended). Deleting it is what the owner asked for, and a clone still running for a deleted profile that records
+            # its voice afterwards gets its own delete_provider job (a 404 is done). A pending or usable profile is never swept: its
+            # clone may be in flight and the voice is wanted.
             self._remove_orphans(job)
         res = self._record(self.store.finish_task, job.job_id, self.worker_id, True, None)
         if res is None or res.get("ok") is not True:
@@ -893,6 +911,54 @@ class VoiceWorker:
         return Outcome(job.kind, "purged", None, job.attempts)
 
 
+#: The lines of ``voice_overdue_report`` (migration 0121) and nothing else: a log line names one of these and two integers.
+OVERDUE_LINES = ("failed_purge_sample", "failed_delete_provider", "late_queued", "stranded_clone", "purge_without_job",
+                 "provider_without_job")
+#: ``voice_requeue_overdue`` looks at jobs that failed for good more than this many hours ago.
+REQUEUE_AFTER_HOURS = 3
+
+
+def _count(value) -> Optional[int]:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def sweep_overdue(store, *, older_than_hours: int = REQUEUE_AFTER_HOURS) -> int:
+    """Put failed purge / provider-deletion jobs back in the queue, then say what is still overdue. Exit code: 0 nothing is overdue,
+    1 something is (each line logged as ``voice OVERDUE: <line> count=<n> oldest_seconds=<n>``, an ERROR an alert can filter on),
+    2 the database could not answer (a function missing, an odd answer, an unreachable host): nothing is known, which is not 0.
+
+    Only integers and the words of ``OVERDUE_LINES`` are ever logged: an answer in any other shape is "unreadable", never printed.
+    The re-queue is the database's and is bounded there (20 a call; never a clone; never where the work must not run)."""
+    try:
+        requeued = store.requeue_overdue(older_than_hours)
+        report = store.overdue_report()
+    except Exception as e:
+        logger.error("voice sweep: the database could not be asked (%s)", str(e) if isinstance(e, StoreError) else type(e).__name__)
+        return 2
+    if requeued is None or report is None:
+        logger.error("voice sweep: the overdue functions are not available (migration 0121 not applied, or the API schema cache is stale)")
+        return 2
+    n = {w: _count(requeued.get(w)) for w in ("requeued", "purge_sample", "delete_provider")}
+    if None in n.values():
+        logger.error("voice sweep: the re-queue answered in a shape nobody expected (unreadable)")
+        return 2
+    logger.info("voice sweep: requeued=%d purge_sample=%d delete_provider=%d", n["requeued"], n["purge_sample"], n["delete_provider"])
+    overdue = 0
+    for line in OVERDUE_LINES:
+        entry = report.get(line)
+        count = _count(entry.get("count")) if isinstance(entry, dict) else None
+        if count is None:
+            logger.error("voice sweep: the report line %s is unreadable", line)
+            return 2
+        age = _count(entry.get("oldest_seconds"))
+        if count:
+            overdue += count
+            logger.error("voice OVERDUE: %s count=%d oldest_seconds=%s", line, count, "unknown" if age is None else str(age))
+    if not overdue:
+        logger.info("voice sweep: nothing is overdue")
+    return 1 if overdue else 0
+
+
 __all__ = ["enabled", "VoiceWorker", "VoiceStore", "SampleStorage", "StorageError", "Outcome", "Job", "Normalised", "AudioRefused",
            "AudioToolError", "sniff_audio", "ffmpeg_normalise", "measure_wav", "sweep_stale_workdirs", "whisper_transcriber",
-           "classify_provider_error", "SWITCH_ENV"]
+           "classify_provider_error", "SWITCH_ENV", "sweep_overdue", "OVERDUE_LINES", "REQUEUE_AFTER_HOURS"]
