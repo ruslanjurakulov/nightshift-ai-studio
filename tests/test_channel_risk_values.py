@@ -54,6 +54,14 @@ class SpendCeilingReading(unittest.TestCase):
         self.assertEqual(a.language, "Russian")
         self.assertFalse(a.pinned_comment)
 
+    def test_only_ascii_digits_and_ascii_whitespace_count(self):
+        # float() accepts a BOM-free Unicode space, Arabic-Indic digits and "1_000"; the page reads none of them, so the
+        # worker must not enforce a limit the page shows as "no limit" (or the other way round).
+        for raw in ("\ufeff25", "\u00a025", "25\u2003", "\u0662\u0665", "1_000", "2\u06f5"):
+            with self.subTest(raw=raw):
+                self.assertIsNone(ceiling(raw))
+        self.assertEqual(ceiling(" \t25\n"), 25.0)
+
     def test_it_round_trips_through_to_dict(self):
         a = AgentConfig.from_dict({"spend_ceiling_usd": "25,5".replace(",", ".")})
         self.assertEqual(AgentConfig.from_dict(a.to_dict()).spend_ceiling_usd, 25.5)

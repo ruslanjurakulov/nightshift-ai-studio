@@ -11,7 +11,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   MAX_SPEND_CEILING_USD,
+  ceilingChangeAllowed,
   effectiveSpendCeiling,
+  formatUsd,
   flagIsOn,
   parseSpendCeiling,
   withSpendCeiling,
@@ -75,7 +77,7 @@ describe("withSpendCeiling merges one key into the live config", () => {
     expect("spend_ceiling_usd" in out).toBe(false);
   });
 
-  it("an unreadable config is not turned into an empty one", () => {
+  it("the pure merge reads a missing config as empty; the card itself refuses to write when the live read returned nothing", () => {
     expect(withSpendCeiling(null, 5)).toEqual({ spend_ceiling_usd: 5 });
   });
 });
@@ -91,5 +93,47 @@ describe("flagIsOn: absent is on, only a real false is off (modules/channels.py)
     ["", true],
   ])("%s -> %s", (raw, on) => {
     expect(flagIsOn(raw)).toBe(on);
+  });
+});
+
+describe("ceilingChangeAllowed: an editor may set a first limit or lower one; raising or removing is an administrator's", () => {
+  it.each([
+    // live, next, canRaise, allowed
+    [null, 25, false, true],
+    [undefined, 25, false, true],
+    ["abc", 25, false, true], // a stored value the worker ignores is no limit
+    [0, 25, false, true],
+    [40, 10, false, true],
+    [40, 40, false, true],
+    [40, 40.01, false, false],
+    [40, 50, false, false],
+    [40, null, false, false],
+    ["40", null, false, false],
+    [null, null, false, true], // nothing to remove
+    ["abc", null, false, true],
+    [40, 50, true, true],
+    [40, null, true, true],
+    [null, 25, true, true],
+  ])("live %j -> %j, administrator %s: %s", (live, next, canRaise, allowed) => {
+    expect(ceilingChangeAllowed(live, next as number | null, canRaise)).toBe(allowed);
+  });
+});
+
+describe("formatUsd shows an amount the same way in every language", () => {
+  it.each([
+    [25, "$25.00"],
+    [25.5, "$25.50"],
+    [0.01, "$0.01"],
+    [1_000_000, "$1,000,000.00"],
+  ])("%s -> %s", (n, text) => {
+    expect(formatUsd(n)).toBe(text);
+  });
+});
+
+describe("typed text with an invisible mark in front", () => {
+  it("a left-to-right / right-to-left mark or a BOM is ignored, not an 'invalid amount'", () => {
+    expect(parseSpendCeiling("\u200f25")).toEqual({ ok: true, value: 25 });
+    expect(parseSpendCeiling("\u202b2\u202c5")).toEqual({ ok: true, value: 25 });
+    expect(parseSpendCeiling("\ufeff")).toEqual({ ok: true, value: null });
   });
 });

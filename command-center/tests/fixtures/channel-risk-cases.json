@@ -21,6 +21,11 @@
     { "raw": "inf", "worker": null },
     { "raw": "Infinity", "worker": null },
     { "raw": "0x10", "worker": null },
+    { "raw": "\ufeff25", "worker": null },
+    { "raw": "\u00a025", "worker": null },
+    { "raw": "\u0662\u0665", "worker": null },
+    { "raw": "1_000", "worker": null },
+    { "raw": "25\n", "worker": 25 },
     { "raw": 1e400, "worker": null },
     { "raw": true, "worker": null },
     { "raw": false, "worker": null },
@@ -34,6 +39,8 @@
     { "typed": "25,5", "stored": 25.5 },
     { "typed": "0.01", "stored": 0.01 },
     { "typed": "  25  ", "stored": 25 },
+    { "typed": "\u200f25", "stored": 25 },
+    { "typed": "\ufeff25\u200e", "stored": 25 },
     { "typed": "1000000", "stored": 1000000 }
   ],
   "refused": [

@@ -426,8 +426,14 @@ export function ChannelCard({
             canEdit={canEdit}
             canLower={canLowerAiLabel}
           />
-          {/* Monthly spend limit, the comment under each upload and the watch-next link: editor-level keys, not controls. */}
-          <ChannelRiskSettings channelId={channel.channel_id} agent={channel.agent_config} canEdit={canEdit} />
+          {/* Monthly spend limit, the comment under each upload and the watch-next link: editor-level keys, not controls. Raising or removing an
+              existing limit is offered to administrators only (advisory: the database does not enforce it). */}
+          <ChannelRiskSettings
+            channelId={channel.channel_id}
+            agent={channel.agent_config}
+            canEdit={canEdit}
+            canRaise={canControl}
+          />
         </div>
 
         <div className="flex flex-col gap-4">

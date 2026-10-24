@@ -7,14 +7,19 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import {
   MAX_SPEND_CEILING_USD,
+  ceilingChangeAllowed,
   effectiveSpendCeiling,
   flagIsOn,
+  formatUsd,
   parseSpendCeiling,
   withSpendCeiling,
 } from "@/lib/channelRisk";
 import type { ChannelAgentConfig } from "@/lib/types";
 
-type Notice = { kind: "saved" } | { kind: "failed"; detail: string } | null;
+type Notice = { kind: "saved" } | { kind: "failed"; detail: string } | { kind: "notStored" } | { kind: "adminOnly" } | null;
+
+/** What a write is asked to do with the live config: the next config, or a reason to stop before writing. */
+type Change = { config: Record<string, unknown> } | { refused: "adminOnly" };
 
 /**
  * Three channel settings that only hold things back or switch an extra off, written like the storyboard review switch: the
@@ -22,6 +27,11 @@ type Notice = { kind: "saved" } | { kind: "failed"; detail: string } | null;
  * `spend_ceiling_usd`, `pinned_comment` and `watch_next` are not among the keys channels_config_guard reserves for an
  * administrator (migration 0086/0114/0117), so an editor of the organization may write them; the page offers them to the same
  * people AiDisclosureSettings does.
+ *
+ * Who may raise a limit is ADVISORY, not a security boundary. An editor may set a limit where none exists and may lower one;
+ * raising or removing an existing limit is offered to administrators only (`canRaise`), decided on the value read inside the
+ * write, not on what the page was drawn with. The database still lets any editor write the key (a server-side guard needs a
+ * migration, which is not part of this change), so a script with an editor's session is not stopped by this page.
  *
  * The limit is saved only as a plain amount above 0 (lib/channelRisk.ts): the worker reads 0, a negative or a number it cannot
  * parse as "no limit", so the page refuses those and says why instead of showing a limit that is not enforced. The shown limit
@@ -31,11 +41,14 @@ export function ChannelRiskSettings({
   channelId,
   agent,
   canEdit,
+  canRaise,
 }: {
   channelId: string;
   agent: ChannelAgentConfig | null | undefined;
   /** May the caller write the channel at all (an editor of its organization)? */
   canEdit: boolean;
+  /** May the caller raise or remove a limit that is already set (an administrator)? Advisory, see above. */
+  canRaise: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -43,19 +56,29 @@ export function ChannelRiskSettings({
   const uid = useId();
   const r = t.channelRisk;
 
-  const [ceiling, setCeiling] = useState<number | null>(() => effectiveSpendCeiling(agent?.spend_ceiling_usd));
-  const [typed, setTyped] = useState(() => {
-    const c = effectiveSpendCeiling(agent?.spend_ceiling_usd);
-    return c === null ? "" : String(c);
-  });
-  const [pinned, setPinned] = useState(() => flagIsOn(agent?.pinned_comment));
-  const [watch, setWatch] = useState(() => flagIsOn(agent?.watch_next));
+  const storedCeiling = effectiveSpendCeiling(agent?.spend_ceiling_usd);
+  const storedPinned = flagIsOn(agent?.pinned_comment);
+  const storedWatch = flagIsOn(agent?.watch_next);
+  const [ceiling, setCeiling] = useState<number | null>(storedCeiling);
+  const [typed, setTyped] = useState(storedCeiling === null ? "" : String(storedCeiling));
+  const [pinned, setPinned] = useState(storedPinned);
+  const [watch, setWatch] = useState(storedWatch);
+  // Follow the stored values: after a refresh, or another administrator's change, the page shows what is stored now. Compared
+  // by value, so an unrelated re-render does not touch what the person is typing.
+  const [seen, setSeen] = useState({ storedCeiling, storedPinned, storedWatch });
+  if (seen.storedCeiling !== storedCeiling || seen.storedPinned !== storedPinned || seen.storedWatch !== storedWatch) {
+    setSeen({ storedCeiling, storedPinned, storedWatch });
+    setCeiling(storedCeiling);
+    setTyped(storedCeiling === null ? "" : String(storedCeiling));
+    setPinned(storedPinned);
+    setWatch(storedWatch);
+  }
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   /** Reads the live config, lets `change` produce the next one, writes it. Returns whether it was written. */
-  async function write(change: (live: Record<string, unknown>) => Record<string, unknown>): Promise<boolean> {
+  async function write(change: (live: Record<string, unknown>) => Change): Promise<boolean> {
     const supabase = createClient();
     if (!supabase) return false;
     setBusy(true);
@@ -70,14 +93,31 @@ export function ChannelRiskSettings({
       setNotice({ kind: "failed", detail: readErr.message });
       return false;
     }
-    const merged = change((current?.agent_config as Record<string, unknown> | null) ?? {});
-    const { error } = await supabase
+    // No error and no row is not "empty": the config is unknown, and writing a merge into {} would wipe it.
+    if (!current) {
+      setBusy(false);
+      setNotice({ kind: "notStored" });
+      return false;
+    }
+    const next = change((current.agent_config as Record<string, unknown> | null) ?? {});
+    if ("refused" in next) {
+      setBusy(false);
+      setNotice({ kind: next.refused });
+      return false;
+    }
+    // .select() so that an update row-level security filtered to nothing (it raises no error) is seen as not saved.
+    const { data: written, error } = await supabase
       .from("channels")
-      .update({ agent_config: merged, updated_at: new Date().toISOString() })
-      .eq("channel_id", channelId);
+      .update({ agent_config: next.config, updated_at: new Date().toISOString() })
+      .eq("channel_id", channelId)
+      .select("agent_config");
     setBusy(false);
     if (error) {
       setNotice({ kind: "failed", detail: error.message });
+      return false;
+    }
+    if (!written || written.length === 0) {
+      setNotice({ kind: "notStored" });
       return false;
     }
     setNotice({ kind: "saved" });
@@ -93,13 +133,18 @@ export function ChannelRiskSettings({
         parsed.reason === "not_positive"
           ? r.ceilingNotPositive
           : parsed.reason === "too_large"
-            ? fmt(r.ceilingTooLarge, { max: MAX_SPEND_CEILING_USD.toLocaleString("en-US") })
+            ? fmt(r.ceilingTooLarge, { max: formatUsd(MAX_SPEND_CEILING_USD) })
             : r.ceilingInvalid,
       );
       return;
     }
     setProblem(null);
-    if (await write((live) => withSpendCeiling(live, parsed.value))) {
+    const done = await write((live) =>
+      ceilingChangeAllowed(live.spend_ceiling_usd, parsed.value, canRaise)
+        ? { config: withSpendCeiling(live, parsed.value) }
+        : { refused: "adminOnly" },
+    );
+    if (done) {
       setCeiling(parsed.value);
       setTyped(parsed.value === null ? "" : String(parsed.value));
     }
@@ -108,7 +153,7 @@ export function ChannelRiskSettings({
   async function toggle(key: "pinned_comment" | "watch_next") {
     if (busy || !canEdit) return;
     const next = !(key === "pinned_comment" ? pinned : watch);
-    if (await write((live) => ({ ...live, [key]: next }))) {
+    if (await write((live) => ({ config: { ...live, [key]: next } }))) {
       if (key === "pinned_comment") setPinned(next);
       else setWatch(next);
     }
@@ -160,8 +205,8 @@ export function ChannelRiskSettings({
           {ceiling !== null && (
             <button
               type="button"
-              disabled={disabled}
-              title={noAccess}
+              disabled={disabled || !canRaise}
+              title={noAccess ?? (canRaise ? undefined : r.ceilingAdminOnly)}
               onClick={() => void saveCeiling("")}
               className="btn-quiet disabled:opacity-50"
             >
@@ -173,7 +218,7 @@ export function ChannelRiskSettings({
           {r.ceilingHint}
         </span>
         <span className="g2-note tnum">
-          {ceiling === null ? r.ceilingNone : fmt(r.ceilingNow, { amount: ceiling })}
+          {ceiling === null ? r.ceilingNone : fmt(r.ceilingNow, { amount: formatUsd(ceiling) })}
         </span>
         {problem && (
           <p className="g2-fail" role="alert">
@@ -207,6 +252,16 @@ export function ChannelRiskSettings({
         {busy && <span className="g2-note">{r.saving}</span>}
         {!busy && notice?.kind === "saved" && <span className="g2-ok">{r.saved}</span>}
       </div>
+      {notice?.kind === "notStored" && (
+        <p className="g2-fail" role="alert">
+          {r.notStored}
+        </p>
+      )}
+      {notice?.kind === "adminOnly" && (
+        <p className="g2-fail" role="alert">
+          {r.ceilingAdminOnly}
+        </p>
+      )}
       {notice?.kind === "failed" && (
         <p className="g2-fail tnum" role="alert">
           {r.saveFailed} {notice.detail}

@@ -16,9 +16,12 @@ export type SpendCeilingParse =
   | { ok: true; value: number | null }
   | { ok: false; reason: "invalid" | "not_positive" | "too_large" };
 
+/** Zero-width and bidirectional marks and the BOM: invisible, often pasted in from right-to-left text, never part of an amount. */
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+
 /** What a person typed -> the number to store (null = no limit, remove the key), or why not. A comma is accepted as the decimal mark. */
 export function parseSpendCeiling(input: string): SpendCeilingParse {
-  const text = input.trim();
+  const text = input.replace(INVISIBLE, "").trim();
   if (text === "") return { ok: true, value: null };
   if (/^-\d+([.,]\d+)?$/.test(text)) return { ok: false, reason: "not_positive" };
   if (!/^\d+([.,]\d{1,2})?$/.test(text)) return { ok: false, reason: "invalid" };
@@ -28,7 +31,9 @@ export function parseSpendCeiling(input: string): SpendCeilingParse {
   return { ok: true, value };
 }
 
-const NUMERIC_TEXT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+// ASCII only, on purpose: the worker reads text with the same pattern (modules/channels._ASCII_NUMBER). JS trim() would also strip
+// a BOM and Unicode spaces, which the worker does not, so the whitespace is spelled out.
+const NUMERIC_TEXT = /^[ \t\n\r\f\v]*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?[ \t\n\r\f\v]*$/;
 
 /**
  * The ceiling the worker enforces for a stored value, or null for none (modules/channels._as_optional_float): only a finite
@@ -37,7 +42,7 @@ const NUMERIC_TEXT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 export function effectiveSpendCeiling(raw: unknown): number | null {
   let n: number;
   if (typeof raw === "number") n = raw;
-  else if (typeof raw === "string" && NUMERIC_TEXT.test(raw.trim())) n = Number(raw.trim());
+  else if (typeof raw === "string" && NUMERIC_TEXT.test(raw)) n = Number(raw.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, ""));
   else return null;
   return Number.isFinite(n) && n > 0 ? n : null;
 }
@@ -52,4 +57,22 @@ export function withSpendCeiling(live: Record<string, unknown> | null | undefine
 /** `pinned_comment` / `watch_next`: absent is ON, only a real false is off (modules/channels.py). */
 export function flagIsOn(raw: unknown): boolean {
   return raw !== false;
+}
+
+/**
+ * May this write go ahead? An editor may set a limit where there is none and may lower one; raising or removing an existing
+ * limit is an administrator's (`canRaise`). `live` is the value just read from the database, not what the page was drawn
+ * with. ADVISORY: this is the page's rule only. The database lets any editor write the key (no migration here), so a script
+ * with an editor's session is not stopped by it.
+ */
+export function ceilingChangeAllowed(live: unknown, next: number | null, canRaise: boolean): boolean {
+  if (canRaise) return true;
+  const current = effectiveSpendCeiling(live);
+  if (current === null) return true;
+  return next !== null && next <= current;
+}
+
+/** "$25.50", the same in every language (a currency format would reorder the symbol in ru and uz). */
+export function formatUsd(amount: number): string {
+  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
