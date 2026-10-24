@@ -38,6 +38,7 @@ from typing import Iterable, Optional
 
 from modules.gemini_stages import GEMINI_QUOTA_EXIT
 from modules.publish_gate import HELD_BEFORE_RENDER_EXIT
+from modules.voice_gate import VOICE_GATE_EXIT, VOICE_GATE_UNAVAILABLE_EXIT
 
 CREDITS = "credits"
 VOICE = "voice"
@@ -101,6 +102,11 @@ def classify(header: str = "", tail: Iterable[str] = ()) -> str:
     if first.startswith(f"main.py exited with code {GEMINI_QUOTA_EXIT}:"):
         # Clean exit, no traceback to read the class from: the worker's header is the evidence.
         return PROVIDER_QUOTA
+    for exit_code in (VOICE_GATE_EXIT, VOICE_GATE_UNAVAILABLE_EXIT):
+        if first.startswith(f"main.py exited with code {exit_code}:"):
+            # The custom-voice gate (not permitted, or could not be verified in strict mode): a clean exit with no traceback, so the
+            # worker's header is the evidence. A voice problem, in the customer's words as well; the page never says which.
+            return VOICE
     if _TIMED_OUT.search(first):
         return TIMEOUT
     last = None

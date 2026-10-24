@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
 import { creditsEnforced, reserveRunCredits, runCreditRefFor } from "@/lib/server/credits";
 import { dispatchOutcome, insertOutcome, startFailureBody } from "@/lib/server/run-start";
+import { runVoiceProblem } from "@/lib/server/run-voice";
 import { IDEMPOTENCY_KEY_RE } from "@/lib/creative/operations";
 import { isCreditExempt } from "@/lib/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
@@ -190,6 +191,19 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     return NextResponse.json({ error: "provider_not_allowed" }, { status: 403 });
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
+
+  // A voice chosen for this run that is a custom (cloned) voice must be one this channel may use. The Actions dispatch inserts no
+  // database row, so migration 0117's guards never see it; ask the database function they use, as the signed-in user, before
+  // anything is held or dispatched. A stock voice (no profile) answers "fine" and nothing changes; an unanswered check on an id
+  // that could be a profile's is refused (docs/CUSTOM_VOICE.md, "Hard gate").
+  if (voiceId) {
+    const problem = await runVoiceProblem(await createClient(), channelId, access.orgId, voiceId);
+    if (problem) {
+      // Server side only, and only the closed code: never the voice id, who owns it or the user (the answer to the caller is as terse).
+      console.warn(`[agent-run] voice refused: ${problem}`);
+      return NextResponse.json({ error: problem }, { status: problem === "voice_not_allowed" ? 403 : 503 });
+    }
+  }
 
   // "Making this for:" — optional, and kept only when it names one of this
   // organization's own connected accounts (read with the caller's RLS).

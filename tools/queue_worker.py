@@ -146,6 +146,7 @@ from modules import paid_downloads  # noqa: E402
 from modules import render_error  # noqa: E402
 from modules import repurpose  # noqa: E402
 from modules.storyboard_review import PAUSED_EXIT as STORYBOARD_PAUSED_EXIT  # noqa: E402
+from modules.voice_gate import VOICE_GATE_EXIT, VOICE_GATE_UNAVAILABLE_EXIT  # noqa: E402
 
 logger = logging.getLogger("queue_worker")
 
@@ -1357,6 +1358,18 @@ class Worker:
                 return end("failed", format_error(
                     f"main.py exited with code {rc}: Gemini's daily request quota is used up; nothing was "
                     "charged", tail, self._secrets))
+            if rc == VOICE_GATE_EXIT:
+                # The database said a custom voice this run uses may not be used (modules/voice_gate.py): refused before
+                # anything was spent, and no other voice was substituted. No video, so the job fails and the hold is released.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: a custom voice this run may not use; nothing was spent and nothing was "
+                    "charged", tail, self._secrets))
+            if rc == VOICE_GATE_UNAVAILABLE_EXIT:
+                # Only with NIGHTSHIFT_VOICE_GATE_STRICT on: the ownership check could not be completed for a voice id that
+                # may be a custom voice. Not a refusal of the voice: the operator reads the log tail for why.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: the custom-voice ownership check could not be completed (strict mode); "
+                    "nothing was spent and nothing was charged", tail, self._secrets))
             if rc == HELD_BEFORE_RENDER_EXIT:
                 # The fact-check would block the publish gate: the run stopped before
                 # the voice and the render were bought. No video, so the job fails

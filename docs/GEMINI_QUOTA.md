@@ -43,8 +43,8 @@ what the request count below is for.
   AI clips and the render and was only then blocked as `fact_check_not_run`. Now the run stops before any of that
   (the saved script is kept for `--resume`). Any other fact-check failure (not a quota) still goes on as before.
   Grounding stays advisory and still degrades: the checker's own verdicts stand. 75 is the storyboard pause, 78 the spend ceiling, 79 the fact-check hold, 81 the series refusal
-  (`--series` names a series that is unknown, not ACTIVE or another channel's; red, nothing spent); 82 is the next
-  free code.
+  (`--series` names a series that is unknown, not ACTIVE or another channel's; red, nothing spent), 82 and 83 the custom-voice gate
+  (`modules/voice_gate.py`; red, nothing spent); 84 is the next free code.
 * The queue worker fails the job (`[code:provider_quota]`, "nothing was charged") and the hold is released.
   The Actions step stays **red** with an `::error` annotation: unlike 75/78/79 this is an outage the owner has to
   act on, not a deliberate hold, and the settle step releases the hold on any failure.

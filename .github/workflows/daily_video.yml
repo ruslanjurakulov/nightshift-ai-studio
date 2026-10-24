@@ -554,6 +554,9 @@ jobs:
           # The voice for the script's quoted lines; a channel's own choice wins.
           # Empty + an ElevenLabs channel without one = the run stops at preflight.
           ELEVENLABS_SECONDARY_VOICE_ID: ${{ vars.ELEVENLABS_SECONDARY_VOICE_ID }}
+          # Strict custom-voice ownership check (modules/voice_gate.py): off while empty. The owner turns it on with the
+          # grant that lets users clone a voice; docs/CUSTOM_VOICE.md.
+          NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           SCRIPT_LANGUAGE: English
           # x264 encoder threads for the final render. The render has been
           # OOM-killed at exit 143 with ffmpeg eating the 7.9 GB runner; set
@@ -835,6 +838,19 @@ jobs:
           # to correct the input. The log above says which of the three it was; the hold is released.
           if [ "$rc" -eq 81 ]; then
             echo "::error title=Series not runnable::The series named for this run cannot be run (unknown id, not ACTIVE, or it belongs to another channel; the log above says which). Nothing was spent. Correct the series input, or activate the series on the Series page, then run again."
+          fi
+          # Exit 82: the database said this run's custom (cloned) voice may not be used (modules/voice_gate.py, docs/CUSTOM_VOICE.md
+          # "Hard gate"). Red like 80 and 81: nothing was spent, and no other voice is substituted (CLAUDE.md rule 4). The log
+          # above names the voice slot; the settle step releases the hold. A scheduled run that ends here uses one slot attempt
+          # (the slot guard) and does not pause the channel.
+          if [ "$rc" -eq 82 ]; then
+            echo "::error title=Custom voice not permitted::This run's narrator or quote voice is a custom voice that may not be used on this channel (it must be approved and attached to the channel by its owner, who must still administer the organization). Nothing was spent and no other voice was substituted. Ask the owner to attach the voice again or choose another voice, then run again."
+          fi
+          # Exit 83: only with NIGHTSHIFT_VOICE_GATE_STRICT on. The ownership check could not be completed for a voice id that may
+          # be a custom voice (Supabase unreachable, or a refused key), so the run did not start. Nothing was spent. Without the
+          # switch the same condition is a warning annotation and the run goes on.
+          if [ "$rc" -eq 83 ]; then
+            echo "::error title=Custom voice could not be verified::The custom-voice ownership check could not be completed (the log above says why: Supabase unreachable or a refused key) and NIGHTSHIFT_VOICE_GATE_STRICT is on. Nothing was spent and no other voice was substituted. Check SUPABASE_URL and SUPABASE_SERVICE_KEY, then run again."
           fi
           exit "$rc"
 
