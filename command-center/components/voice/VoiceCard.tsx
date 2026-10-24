@@ -26,6 +26,7 @@ export function VoiceCard({
   channelId,
   attachedHere,
   attachedCount,
+  testStepWired,
   onChanged,
 }: {
   profile: VoiceProfileView;
@@ -33,6 +34,8 @@ export function VoiceCard({
   channelId: string | null;
   attachedHere: boolean;
   attachedCount: number;
+  /** Is the Studio test step wired? Until it is, Approve is off: the database would only answer "not tested". */
+  testStepWired: boolean;
   onChanged: () => void;
 }) {
   const { t } = useI18n();
@@ -43,7 +46,9 @@ export function VoiceCard({
   /** Turns an action's answer into what the confirm sheet needs: true, or the sentence to show. */
   function outcome(r: ActionResult): true | string {
     if (r.ok) return true;
-    return "refusal" in r ? refusalText(r.refusal, d) : problemText(r.problem, d);
+    if ("refusal" in r) return refusalText(r.refusal, d);
+    // Not the page's "creating a voice is not switched on" sentence: this is a button on a voice that exists.
+    return r.problem === "notAvailable" ? d.actionNotAvailable : problemText(r.problem, d);
   }
 
   function ask(opts: {
@@ -135,13 +140,15 @@ export function VoiceCard({
             </h4>
             {/* TODO(V3 test step): the Studio speech tool needs a priced job (quote, hold, capture) and the voice id, which this
                 screen never holds. Until that is wired there is deliberately no call here, and no button that looks like one. */}
-            <p className="g2-note" data-testid="test-stub">
+            <p className="g2-note" id={`${uid}-stub`} data-testid="test-stub">
               <strong>{d.testStubLabel}.</strong> {d.testStub}
             </p>
             <div>
               <button
                 type="button"
-                className="btn-primary"
+                className="btn-primary disabled:opacity-50"
+                disabled={!testStepWired}
+                aria-describedby={testStepWired ? undefined : `${uid}-stub`}
                 onClick={() =>
                   void ask({
                     title: d.approveTitle,

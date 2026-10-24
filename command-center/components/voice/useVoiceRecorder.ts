@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_RECORDING_SECONDS, MIN_RECORDING_SECONDS, sampleTypeFor } from "@/lib/custom-voice";
+import { MAX_RECORDING_SECONDS, MAX_RECORDING_TOLERANCE_SECONDS, MIN_RECORDING_SECONDS, sampleTypeFor } from "@/lib/custom-voice";
 
 /**
  * Live recording in the browser, and nothing else: no file picker, no drag and drop, no import (v1 takes a live recording only,
@@ -18,6 +18,7 @@ import { MAX_RECORDING_SECONDS, MIN_RECORDING_SECONDS, sampleTypeFor } from "@/l
  *  recording    the clock is running
  *  recorded     a take within the guard is ready to listen to and to send
  *  tooShort     the take was shorter than the guard; discarded
+ *  tooLong      the take ran past the limit (a paused or throttled tab); discarded, never shortened on screen with the longer audio kept
  *  denied       the person (or their browser settings) refused the microphone
  *  noDevice     no microphone found
  *  failed       anything else the recorder reported
@@ -30,6 +31,7 @@ export type RecorderState =
   | "recording"
   | "recorded"
   | "tooShort"
+  | "tooLong"
   | "denied"
   | "noDevice"
   | "failed";
@@ -71,7 +73,7 @@ export function useVoiceRecorder() {
   const [state, setState] = useState<RecorderState>("idle");
   const [seconds, setSeconds] = useState(0);
   const [take, setTake] = useState<Take | null>(null);
-  /** The length of the take that was thrown away for being too short, so the message can say how long it was. */
+  /** The length of a take that was thrown away for being too short or too long, so the message can say how long it was. */
   const [shortBy, setShortBy] = useState<number | null>(null);
   /** The take stopped because it reached the limit (told to the person; a longer one is never recorded). */
   const [hitMax, setHitMax] = useState(false);
@@ -137,7 +139,15 @@ export function useVoiceRecorder() {
         setState("tooShort");
         return;
       }
-      const clamped = Math.min(elapsed, MAX_RECORDING_SECONDS);
+      // The page's clock stops the take at 60 within one tick; anything well past that means the timers were paused (a background
+      // tab) while the recorder kept going. Showing "60 s" over a longer recording would be a measurement we did not make.
+      if (elapsed > MAX_RECORDING_SECONDS + MAX_RECORDING_TOLERANCE_SECONDS) {
+        setShortBy(elapsed);
+        setSeconds(0);
+        setState("tooLong");
+        return;
+      }
+      const clamped = Math.min(Math.floor(elapsed), MAX_RECORDING_SECONDS);
       const objectUrl = URL.createObjectURL(blob);
       url.current = objectUrl;
       setSeconds(clamped);

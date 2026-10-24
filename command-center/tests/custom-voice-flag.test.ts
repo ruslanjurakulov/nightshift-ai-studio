@@ -89,6 +89,8 @@ beforeEach(() => {
 });
 
 const PAGES = ["/chronos/agents/voice", "/all-channels/agents/voice", "/chronos/agents/voice/", "/chronos/agents/voice.rsc"];
+// Spellings with repeated slashes: the router reads them as the same page, so they are hidden too and never served.
+const SLASHY = ["//chronos/agents/voice", "/chronos//agents/voice", "/chronos/agents//voice", "//chronos//agents//voice"];
 
 describe("flag off (unset)", () => {
   it.each(PAGES)("%s is the public 404 for a signed-out visitor and creates no Supabase client", async (p) => {
@@ -108,6 +110,14 @@ describe("flag off (unset)", () => {
   it.each(["", "0", "true", "yes", " 1", "on"])("a flag set to %j is off too", async (v) => {
     vi.stubEnv("CUSTOM_VOICE_ENABLED", v);
     expect((await visit("/chronos/agents/voice")).notFound).toBe(true);
+    expect(auth.created).toBe(0);
+  });
+
+  it.each(SLASHY)("%s is the 404 as well, with no Supabase call", async (p) => {
+    auth.user = { id: "u1" };
+    const r = await visit(p);
+    expect(r.notFound).toBe(true);
+    expect(r.served).toBe(false);
     expect(auth.created).toBe(0);
   });
 

@@ -31,7 +31,9 @@ export function isCustomVoicePath(pathname: string): boolean {
     // An undecodable path is not this page; the router will not match it either.
     return false;
   }
-  const segments = path.replace(/\/+$/, "").toLowerCase().split("/").slice(1);
+  // Repeated slashes are one slash: //chan/agents/voice and /chan//agents//voice reach the same page for the router, so a hide that
+  // only knew the single-slash spelling would serve it with the flag off.
+  const segments = path.replace(/\/{2,}/g, "/").replace(/\/+$/, "").toLowerCase().split("/").slice(1);
   if (segments.length !== 3) return false;
   const last = segments[2].replace(/\.rsc$/, "");
   return segments[1] === "agents" && last === "voice";
@@ -57,7 +59,15 @@ export type DeclarationKey = (typeof DECLARATION_KEYS)[number];
 
 /** The recording guard: shorter or longer than this is not sent. The worker measures the real length again (it never believes this). */
 export const MIN_RECORDING_SECONDS = 30;
+/** How far past the limit a take may run before it is thrown away: the clock ticks every 250 ms, so a take stopped "at 60" is 60.0 to 60.5. */
+export const MAX_RECORDING_TOLERANCE_SECONDS = 1;
 export const MAX_RECORDING_SECONDS = 60;
+
+/**
+ * Is the Studio test step wired? While it is not, nothing can make the database accept an approval (it needs a completed test with
+ * this voice), so the Approve button is disabled rather than offered to fail. Flip it in the change that wires the test.
+ */
+export const TEST_STEP_WIRED = false;
 
 export const NAME_MIN = 2;
 export const NAME_MAX = 60;
@@ -214,6 +224,7 @@ export type RpcProblem =
   | "nameRealPerson"
   | "nameLink"
   | "declarations"
+  | "declarationsMismatch"
   | "consentVersion"
   | "keyReused"
   | "network"
@@ -227,8 +238,9 @@ const HINTS: Record<string, RpcProblem> = {
   name_characters: "nameCharacters",
   name_real_person: "nameRealPerson",
   name_link: "nameLink",
-  declarations_shape: "declarations",
-  declarations_unknown: "declarations",
+  // Not "tick every box": the form sent something the database does not recognise, and ticking will not help; reloading may.
+  declarations_shape: "declarationsMismatch",
+  declarations_unknown: "declarationsMismatch",
   declarations_incomplete: "declarations",
   consent_version: "consentVersion",
 };

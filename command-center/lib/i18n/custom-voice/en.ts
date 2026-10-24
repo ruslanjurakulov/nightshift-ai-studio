@@ -98,6 +98,7 @@ export const customVoiceEn = {
   errNameRealPerson: "A name that points to another person is not allowed. Name the voice anything that does not.",
   errNameLink: "A name cannot contain a link or symbols such as @ or /.",
   errDeclarations: "Every declaration must be ticked.",
+  errDeclarationsMismatch: "The form sent a declaration this service does not recognise. Reload the page and try again.",
   errConsentVersion: "The consent text on this page is out of date. Reload the page.",
   errForbidden: "You do not have permission to do this here.",
   errSignedOut: "You are signed out. Sign in again and retry.",
@@ -122,6 +123,7 @@ export const customVoiceEn = {
   recRequesting: "Waiting for your permission to use the microphone…",
   recTooShort: "That recording was {seconds} seconds. It must be at least {min} seconds. Record again.",
   recReady: "Recorded {seconds} seconds. Listen to it, then use it or record again.",
+  recTooLong: "That recording ran past the {max} second limit (the page may have been paused), so it was discarded. Record again.",
   recMaxReached: "The recording stopped at the {max} second limit.",
   listenLabel: "Listen to your recording",
   recUnsupported: "This browser cannot record audio here. Use a current version of Chrome, Edge, Firefox or Safari.",
@@ -135,6 +137,7 @@ export const customVoiceEn = {
   uploadDone: "Recording sent. It is now being checked.",
   uploadExpired: "This request has ended, so the recording was not accepted. Start a new one.",
   uploadExists: "A recording was already sent for this request.",
+  uploadBadType: "This browser's recording format was not accepted. Try another browser.",
   uploadTooLarge: "The recording is too large to send.",
   uploadNetwork: "The recording did not reach the server. Your take is kept: try sending it again.",
   uploadFailed: "The recording could not be sent. Try again.",
@@ -145,12 +148,12 @@ export const customVoiceEn = {
   testTitle: "Hear the voice",
   testStubLabel: "Not connected yet",
   testStub:
-    "Hearing a test sentence here is not connected yet. TODO: a short test through the Studio speech tool. Until it exists, a voice cannot be approved.",
+    "Hearing a test sentence here is not connected yet. TODO: a short test through the Studio speech tool. Until it exists, a voice cannot be approved, so Approve is switched off.",
 
   // Approve
   approve: "Approve this voice",
   approveTitle: "Approve this voice?",
-  approveMessage: "Approving says you have heard this voice and it is yours to use. You can still delete it at any time.",
+  approveMessage: "Approving makes this voice available to you and to the channels you attach it to. You can still delete it at any time.",
   approveDone: "Voice approved.",
   refNotTesting: "This voice is not ready to approve.",
   refNotVerified: "The recording check has not passed for this voice.",
@@ -186,6 +189,8 @@ export const customVoiceEn = {
   samplePurgePending: "Your raw recording is queued for deletion.",
   samplePurged: "Your raw recording has been deleted.",
   working: "Working…",
+  actionNotAvailable: "This action is not available yet. Nothing was changed.",
+  machineTranslationNote: "This text is a machine translation and has not been reviewed by a native speaker.",
 };
 
 export type CustomVoiceDictionary = typeof customVoiceEn;

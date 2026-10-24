@@ -65,7 +65,7 @@ describe("the switch", () => {
 });
 
 describe("which path is the page", () => {
-  it.each(["/chronos/agents/voice", "/all-channels/agents/voice", "/chronos/agents/voice/", "/Chronos/Agents/Voice", "/chronos/agents/voice.rsc", "/chronos/agents/%76oice"])(
+  it.each(["/chronos/agents/voice", "/all-channels/agents/voice", "/chronos/agents/voice/", "/Chronos/Agents/Voice", "/chronos/agents/voice.rsc", "/chronos/agents/%76oice", "//chronos/agents/voice", "/chronos//agents/voice", "/chronos/agents//voice", "///chronos///agents///voice///", "/chronos/agents/voice//"])(
     "%s is the page",
     (p) => expect(isCustomVoicePath(p)).toBe(true),
   );

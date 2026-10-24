@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { createClient } from "@/lib/supabase/client";
-import { isSettled, type ActiveAttachment, type RpcProblem, type VoiceProfileView } from "@/lib/custom-voice";
+import { TEST_STEP_WIRED, isSettled, type ActiveAttachment, type RpcProblem, type VoiceProfileView } from "@/lib/custom-voice";
 import { readAttachments, readProfiles, type VoiceClient } from "@/lib/custom-voice-api";
 import { NewVoiceFlow } from "./NewVoiceFlow";
 import { VoiceCard } from "./VoiceCard";
@@ -18,8 +18,17 @@ type Load = "loading" | "ready" | "failed" | "unavailable";
  * The custom voice page: what it is and what it does not prove, the person's voices, and the way to add one. The page that mounts
  * this is dark unless the owner switched CUSTOM_VOICE_ENABLED on (app/(app)/[channel]/agents/voice/page.tsx).
  */
-export function CustomVoice({ channelId, orgId }: { channelId: string | null; orgId: string | null }) {
-  const { t } = useI18n();
+export function CustomVoice({
+  channelId,
+  orgId,
+  testStepWired = TEST_STEP_WIRED,
+}: {
+  channelId: string | null;
+  orgId: string | null;
+  /** Overridable for tests; the real page always uses the constant. */
+  testStepWired?: boolean;
+}) {
+  const { t, locale } = useI18n();
   const d = t.customVoice;
   const [load, setLoad] = useState<Load>("loading");
   const [profiles, setProfiles] = useState<VoiceProfileView[]>([]);
@@ -87,6 +96,12 @@ export function CustomVoice({ channelId, orgId }: { channelId: string | null; or
 
   return (
     <div className="flex flex-col gap-6">
+      {locale !== "en" && (
+        // Visible, not only a comment in the source: the ru and uz sentences are machine drafts (docs/CUSTOM_VOICE.md, V3-G4).
+        <p className="g2-note" role="note" data-testid="machine-translation-note">
+          {d.machineTranslationNote}
+        </p>
+      )}
       <section className="ns-panel" aria-labelledby="cv-intro">
         <div className="p-4 flex flex-col gap-3">
           <h2 id="cv-intro" className="g2-label">
@@ -163,6 +178,7 @@ export function CustomVoice({ channelId, orgId }: { channelId: string | null; or
                   channelId={channelId}
                   attachedHere={here}
                   attachedCount={mine.filter((a) => a.channelId !== channelId).length}
+                  testStepWired={testStepWired}
                   onChanged={() => void refresh()}
                 />
               );
