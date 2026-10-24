@@ -331,7 +331,7 @@ A `render_jobs` row of kind `series_plan` is not a run. `Worker.process` hands i
 
 1. reads the plan (`series_plans`, service key), refuses a plan that is not `requested`, a plan of another channel, a channel never confirmed
    against YouTube, a server with no `GEMINI_API_KEY`, and a spent-quota cooldown, all **before** a model call;
-2. makes ONE call through `series_planner.plan_series` with `gemini_generate()` (`generate_with_retry`, stage `series_plan`), the channel's
+2. makes ONE `generate` through `series_planner.plan_series` with `gemini_generate()` (`generate_with_retry`, stage `series_plan`), the channel's
    `TopicManager` as the vet (history rebuilt from Supabase, held topics loaded), on a thread with a deadline;
 3. ends the plan with `finish_series_plan` (service key): `p_ok` true with the title, the report (the plan without its episodes), the quote and
    one entry per episode (`topic`, `outline` = the episode's whole report, `usable`, `needs_confirmation` = usable and niche unconfirmed), or
@@ -339,7 +339,16 @@ A `render_jobs` row of kind `series_plan` is not a run. `Worker.process` hands i
 
 Hard limits: 3 or 4 episodes (anything else is refused before a call); the call budget `series_call_budget(n)["plan_calls"]` is 1 and a second
 `generate` is refused; at most `CHRONOS_TOPIC_GATE_MODEL_CALLS` (default 2) small niche questions on top; 300 s wall clock, after which no
-further call is made and the plan ends as `timeout`. **No credit hold**: planning is a platform cost, the customer is charged nothing on every
+further call is made (the model call, and every vet and gate question, check the same cancel flag) and the plan ends as `timeout`.
+
+**How many HTTP requests that is, honestly.** "One call" is one `generate`, not one HTTP request: each `generate`, and each gate question, is
+`generate_with_retry`, which makes up to `GEMINI_MAX_RETRIES` (default 5) attempts when the API answers 429/5xx. So one attempt of a job is
+at most (1 + 2) x 5 = 15 requests, in a bad hour, and 1 to 3 in a good one. The service never goes back to the model for the same job:
+**once a `generate` has been started, a lost delivery of the ending or a shutdown ends the plan as failed (`worker_error`) instead of
+releasing the job**, so a job cannot make up to 3 `generate`s through re-queues (the choice made: no stored answer to resume from, because
+that needs a place to keep model text; the customer plans again, which counts against the daily cap). The one remaining way to a second
+`generate` for the same job is a worker that DIES (the stale sweep re-queues it, up to 3 attempts). **There is no per-user and no global
+cap on plans yet** (F4, below); the only cap is the per-organization one of 5 a day in migration 0120. **No credit hold**: planning is a platform cost, the customer is charged nothing on every
 path (the job has no `credit_ref`, and a test fails if a planning job touches the credits client). The quote stored with a plan carries the
 Gemini-call budget and the episode length and **no credits**: the price of an episode is `quote_series_episode`'s, computed when it is read.
 
@@ -347,10 +356,10 @@ Gemini-call budget and the episode length and **no credits**: the price of an ep
 | :-- | :-- | :-- |
 | plan made | `ready` | `succeeded` |
 | `NIGHTSHIFT_SERIES_PLANNER` off | `failed` / `planner_not_enabled` | `failed` ("series planning failed (planner_not_enabled)"), as today, but the plan no longer sits `requested` for 2 h |
-| Gemini per-day quota spent (`GeminiDailyQuotaError`, main.py's exit 80) | `failed` / `gemini_quota` | `failed`, coded `provider_quota`, "nothing was charged"; further planning jobs end the same way for 30 to 60 minutes **without** calling the API |
+| Gemini per-day quota spent (`GeminiDailyQuotaError`, main.py's exit 80) | `failed` / `gemini_quota` | `failed`, coded `provider_quota`, "nothing was charged"; further planning jobs end the same way for `max(30 min, min(retry-after or 30 min, 1 hour))` **without** calling the API (a short Google hint does not give a short pause) |
 | the planner's own refusal (bad answer, no niche, ...) | `failed` / the planner's code | `failed` |
 | timeout / exception / answer too large to store | `failed` / `timeout`, `worker_error`, `result_too_large` | `failed` |
-| the database cannot be told | stays `requested` | put back in the queue; **on the last attempt** the plan is ended instead of releasing, because a release would fail the row and leave the plan `requested` |
+| the database cannot be told | stays `requested` | put back in the queue only if no model call was made and it is not the last attempt; otherwise the job fails (a release would ask the model again, or fail the row and leave the plan `requested`) and the 2 hour expiry frees the channel |
 | job taken over by another worker (`lost`) | left to its new holder | left alone |
 | re-queued job whose plan already ended | unchanged | `succeeded` / `failed` to match, **no model call** (idempotent) |
 
@@ -367,7 +376,7 @@ Behind the server flag `SERIES_FACTORY_ENABLED` (`on` / `1` / `true` / `yes`; re
 series page is exactly as before** (no form, no read of `series_plans`). A path that is not a plan id is a 404 before the database is asked.
 
 - Outline cards with the hook and call-to-action variants, the open loop, the cliffhanger and the key facts. **Every outline carries "Not
-  fact-checked"** (the page, and again on each card), in en, ru and uz. Model text is cut to a bounded plain string and drawn only as a React
+  fact-checked"** (the page, whatever `report.fact_checked` says, and again on each card), in en, ru and uz. Model text is cut to a bounded plain string and drawn only as a React
   text node (tests render a hostile outline and assert no element, handler or link comes out of it).
 - Per-episode and total price from `quote_series_episode` (the database's). An episode with no price or an unreadable quote is "not priced" /
   "price unavailable", and the total is then "not complete", never a smaller number and never 0. The operator's own organization reads
@@ -381,8 +390,8 @@ series page is exactly as before** (no form, no read of `series_plans`). A path 
 - Refusals are read out in the sheet, in words: `price_changed` (with the new price), insufficient credits (with the numbers),
   `unpriced`, `earlier_episode_not_finished`, rate limited, the plan's parallel-run limit, `forbidden`, `series_not_runnable`, and the rest;
   anything unknown is a generic "nothing was held". A stale page is refreshed when the refusal says it is stale.
-- States: loading (`loading.tsx`), being made (the page re-reads itself every 5 s; "taking longer than usual" after 10 minutes, and that
-  nothing is charged), failed (a sentence per code, "nothing was charged", a way to plan again), not found, migration not installed, read
+- States: loading (`loading.tsx`), being made (the page re-reads itself every 5 s for 2 minutes, every 30 s until 10 minutes, then stops and offers
+  "Check again"; "taking longer than usual" after 10 minutes, and that nothing is charged), failed (a sentence per code, "nothing was charged", a way to plan again), not found, migration not installed, read
   failed with Retry, empty recent-plans list.
 - The "Plan a series" form sends the English name of the language (the database refuses `Русский` / `O'zbek`), a key that is stable for the same
   request and new for a changed one, and no price. The database's refusal of the call while it is ungranted (`permission denied for function`,

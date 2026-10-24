@@ -2,7 +2,7 @@
 
 A customer's "Plan a series" press writes one ``series_plans`` row and one ``render_jobs`` row of kind ``series_plan`` (migration 0120,
 ``request_series_plan``). This module is what the queue worker (``tools/queue_worker.py``) does with that job: it loads the plan, makes
-ONE model call through the pure planner (``modules/series_planner.plan_series``), vets every episode topic the way the planner does,
+one planning request through the pure planner (``modules/series_planner.plan_series``), vets every episode topic the way the planner does,
 and answers with ``finish_series_plan`` (service key). The whole thing is behind ``NIGHTSHIFT_SERIES_PLANNER`` (off by default).
 
 Why it is shaped this way
@@ -19,6 +19,12 @@ Why it is shaped this way
 * **A spent per-day Gemini quota is main.py's exit 80, as a job.** ``GeminiDailyQuotaError`` is the one error the planner re-raises
   unchanged; here it ends the plan as ``gemini_quota`` and the job as a ``provider_quota`` failure, and the worker then refuses further
   planning jobs for a while WITHOUT calling the API (each would only buy another 429).
+* **Requests, said honestly.** One plan makes ONE ``generate`` (the budget), plus at most ``CHRONOS_TOPIC_GATE_MODEL_CALLS`` (default 2) small
+  niche questions; each of those is ``generate_with_retry``, which makes up to ``GEMINI_MAX_RETRIES`` (default 5) HTTP attempts, so one attempt
+  of a job is at most (1 + 2) x 5 = 15 HTTP requests, and a transient-error storm is what spends them. A job is attempted up to 3 times ONLY
+  when its worker dies (the stale sweep re-queues it); this service itself never goes back to the model: once a ``generate`` was made, a delivery
+  failure or a shutdown ends the plan as failed instead of releasing the job (see ``_retry_or_end`` and ``_deliver``). There is no per-user or
+  global cap on plans yet; the only cap is the database's per-organization one (migration 0120).
 * **Hard limits.** 3 or 4 episodes (refused before a call), the planner's call budget (``series_call_budget(n)['plan_calls']``, one call:
   a second ``generate`` is refused), and a wall-clock timeout after which no further call is made and the plan ends as ``timeout``.
 * **The outline is model text and stays data.** Nothing here executes, formats into a command, or logs it; it is stored as JSON for the
@@ -49,9 +55,11 @@ SWITCH = "NIGHTSHIFT_SERIES_PLANNER"
 #: One model call and a few small gate questions: five minutes is far beyond a healthy plan, and short enough that a hung
 #: provider call does not hold the channel's queue slot for the job limit (3300 s).
 DEFAULT_TIMEOUT_SECONDS = 300.0
-#: After a spent daily quota, planning jobs end as ``gemini_quota`` without a call for this long when Google gave no retry-after, and
-#: never longer than the ceiling (the quota is per day; an hour of silence is cheap, a day of it would outlast a fixed quota).
+#: After a spent daily quota, planning jobs end as ``gemini_quota`` without a call for ``max(30 min, min(retry-after or 30 min, 1 hour))``:
+#: a short retry hint from Google (seconds) must not give a seconds-long cooldown (the quota is per day, so a hint says little), and a
+#: day-long hint is capped (an hour of silence is cheap, a day of it would outlast a fixed quota).
 DEFAULT_QUOTA_COOLDOWN_SECONDS = 1800.0
+MIN_QUOTA_COOLDOWN_SECONDS = 1800.0
 MAX_QUOTA_COOLDOWN_SECONDS = 3600.0
 #: Tries to deliver an ending to the database, and the pause before the n-th retry.
 DELIVERY_TRIES = 3
@@ -90,6 +98,9 @@ _ERROR_TEXT = {
     CODE_TOO_LARGE: "The planning model's answer was too large to store, so it was dropped. Nothing was charged. Try again.",
     CODE_WORKER: "Planning stopped unexpectedly. Nothing was charged. Try again.",
     "generate_failed": "The planning model did not answer. Nothing was charged. Try again.",
+    "bad_input": "The request could not be used as written (the topic is too long or has hidden characters). Change it and plan again. Nothing was charged.",
+    "bad_language": "The language could not be used. Choose another and plan again. Nothing was charged.",
+    "bad_count": "A series has 3 or 4 episodes. Choose one of them and plan again. Nothing was charged.",
     "no_niche": "This channel has no niche, so a series cannot be planned. Set the niche first. Nothing was charged.",
 }
 _GENERIC_PLANNER_TEXT = "The planning model's answer could not be used. Nothing was charged. Try again."
@@ -191,6 +202,26 @@ class CallBudgetExceeded(RuntimeError):
     """The planner asked for more model calls than the budget allows (series_call_budget plan_calls)."""
 
 
+class _GuardedVet:
+    """The vet, with the same cancel check as the model call: a plan whose attempt was stopped (timeout, lost job, shutdown) makes no niche
+    question either. The check is before each topic, so one already running is the only call that can still finish."""
+
+    def __init__(self, vet, cancelled: threading.Event):
+        self._vet = vet
+        self._cancelled = cancelled
+
+    def vet_topic(self, topic, niche, *, source):
+        if self._cancelled.is_set():
+            raise CallBudgetExceeded("planning was stopped")
+        method = getattr(self._vet, "vet_topic", None)
+        return method(topic, niche, source=source) if method is not None else self._vet(topic, niche, source=source)
+
+    def find_repeat(self, topic):
+        if self._cancelled.is_set():
+            raise CallBudgetExceeded("planning was stopped")
+        return self._vet.find_repeat(topic)
+
+
 class _Result:
     def __init__(self):
         self.done = threading.Event()
@@ -268,12 +299,15 @@ class SeriesPlanService:
         self.clock = clock
         self.sleep = sleep
         self._quota_until: Optional[float] = None
+        # The attempt in progress (one at a time): whether it has already asked the model, for _called.
+        self._result: Optional[_Result] = None
 
     # -- the one entry ------------------------------------------------------
 
     def run(self, job: Mapping, *, lost: threading.Event, interrupted: Callable[[], bool] = lambda: False,
             resolve_channel: Optional[Callable[[str], Mapping]] = None, last_attempt: bool = False) -> Outcome:
         plan_id = str(job.get("series_plan_id") or "")
+        self._result = None
         if not _UUID.match(plan_id):
             # No plan to end: nothing was run, and the job says so.
             return Outcome("failed", "series planning: the job names no plan (nothing was run)")
@@ -330,6 +364,7 @@ class SeriesPlanService:
             return self._end_failed(plan_id, exc.code, last_attempt=last_attempt)
 
         result = _Result()
+        self._result = result
         cancelled = threading.Event()
         worker = threading.Thread(target=self._plan, args=(plan, row, budget, cancelled, result), daemon=True,
                                   name=f"series-plan-{plan_id[:8]}")
@@ -368,6 +403,7 @@ class SeriesPlanService:
                 return generate(prompt, stage=stage)
 
             vet, held_checked, gate_calls = self.vet_factory(str(plan.get("channel_id") or ""))
+            vet = _GuardedVet(vet, cancelled)
             try:
                 result.plan = series_planner.plan_series(
                     plan.get("topic"), plan.get("n_episodes"), generate=budgeted, vet=vet, niche=plan.get("niche") or "",
@@ -395,9 +431,9 @@ class SeriesPlanService:
         if isinstance(error, GeminiDailyQuotaError):
             # main.py's exit 80, as a job: the plan ends, the customer is charged nothing (there is no hold), and the worker stops
             # asking Google until the quota can have moved. The one log line (model, retry-after, fix) was written where the 429 arrived.
-            wait = error.retry_after_s if isinstance(error.retry_after_s, (int, float)) and error.retry_after_s > 0 \
+            hint = error.retry_after_s if isinstance(error.retry_after_s, (int, float)) and error.retry_after_s > 0 \
                 else DEFAULT_QUOTA_COOLDOWN_SECONDS
-            self._quota_until = self.clock() + min(float(wait), MAX_QUOTA_COOLDOWN_SECONDS)
+            self._quota_until = self.clock() + max(MIN_QUOTA_COOLDOWN_SECONDS, min(float(hint), MAX_QUOTA_COOLDOWN_SECONDS))
             return self._end_failed(plan_id, CODE_QUOTA, code="provider_quota", last_attempt=last_attempt,
                                     job_error="series planning: Gemini's daily request quota is used up; nothing was charged")
         if isinstance(error, series_planner.SeriesPlanError):
@@ -416,8 +452,9 @@ class SeriesPlanService:
 
     def _deliver(self, plan_id: str, outcome: Outcome, last_attempt: bool, **finish) -> Outcome:
         """Record the ending in the database, retried. Recorded (or the database said the plan had already ended): ``outcome``. Refused: the
-        job fails with the plan untouched (retrying cannot help). Not reachable: the job goes back to the queue, unless it is on its last
-        attempt, where a release would fail it and leave the plan 'requested'; then it fails and the 2 hour expiry frees the channel."""
+        job fails with the plan untouched (retrying cannot help). Not reachable: the job goes back to the queue only if no model call was made
+        and it is not on its last attempt; otherwise it fails (a release would re-ask the model, or fail the row and leave the plan
+        'requested') and the 2 hour expiry frees the channel."""
         for attempt in range(DELIVERY_TRIES):
             answer = self.store.finish(plan_id, **finish)
             if answer == DONE:
@@ -426,20 +463,28 @@ class SeriesPlanService:
                 return Outcome("failed", "series planning: the database refused the plan's ending (check the logs)")
             if attempt + 1 < DELIVERY_TRIES:
                 self.sleep(DELIVERY_PAUSE_SECONDS * (attempt + 1))
-        if last_attempt:
-            # A release would fail the job here and leave the plan 'requested'; the database could not be told, so say so loudly.
-            logger.error("series plan %s: its ending could not be recorded, on the last attempt; the 2 hour expiry frees the channel",
-                         plan_id)
-            return Outcome("failed", "series planning: the plan's ending could not be recorded; no attempts left "
+        if last_attempt or self._called:
+            # A release would fail the job here and leave the plan 'requested' (last attempt), or send the next attempt back to the
+            # model for an answer this one already bought (a model call was made). Neither: the job fails, and the 2 hour expiry
+            # frees the channel. The database could not be told, so say so loudly.
+            logger.error("series plan %s: its ending could not be recorded (%s); the 2 hour expiry frees the channel", plan_id,
+                         "on the last attempt" if last_attempt else "and the model was already asked, so it is not asked again")
+            return Outcome("failed", "series planning: the plan's ending could not be recorded; it is not planned again "
                                      "(nothing was charged)")
         return Outcome("released", "the plan's ending could not be recorded")
 
     def _retry_or_end(self, plan_id: str, why: str, last_attempt: bool) -> Outcome:
-        """Put the job back in the queue for another attempt, unless this is the last one: then the plan ends now (a job released on its
-        last attempt would be failed by the queue and the plan left 'requested')."""
-        if last_attempt:
+        """Put the job back in the queue for another attempt, unless this is the last one (a job released on its last attempt would be
+        failed by the queue and the plan left 'requested') or the model was already asked (see ``_called``): then the plan ends now."""
+        if last_attempt or self._called:
             return self._end_failed(plan_id, CODE_WORKER, last_attempt=True)
         return Outcome("released", why)
+
+    @property
+    def _called(self) -> bool:
+        """Has this attempt already asked the model (a call counts the moment it is started, finished or not)? Then no path puts the
+        job back in the queue: the next attempt would ask again, and an unrecorded answer is not worth another request."""
+        return bool(self._result is not None and self._result.calls > 0)
 
 
 def build(url: str, service_key: str, env: Optional[Mapping[str, str]] = None) -> SeriesPlanService:

@@ -94,13 +94,22 @@ export const PLANNER_ERROR_CODES = [
   "expired",
 ] as const;
 
-export type PlanErrorKey = (typeof WORKER_ERROR_CODES)[number] | "no_niche" | "generate_failed" | "expired" | "unusable_answer" | "unknown";
+export type PlanErrorKey =
+  | (typeof WORKER_ERROR_CODES)[number]
+  | "no_niche"
+  | "generate_failed"
+  | "expired"
+  | "bad_input"
+  | "unusable_answer"
+  | "unknown";
 
 /** Which sentence a failed plan's `error_code` gets. A word nobody knows is `unknown`, never shown raw. */
 export function planErrorKey(code: unknown): PlanErrorKey {
   if (typeof code !== "string") return "unknown";
   if ((WORKER_ERROR_CODES as readonly string[]).includes(code)) return code as PlanErrorKey;
   if (code === "no_niche" || code === "generate_failed" || code === "expired") return code;
+  // The request itself could not be used (topic too long or hidden characters, language, count): the person changes it. Not "the answer".
+  if (code === "bad_input" || code === "bad_language" || code === "bad_count") return "bad_input";
   if ((PLANNER_ERROR_CODES as readonly string[]).includes(code)) return "unusable_answer";
   return "unknown";
 }
@@ -379,6 +388,15 @@ export function seriesTotal(items: { n: number; usable: boolean; quote: QuoteVie
   return { kind: "priced", credits: roundUpCredits(sum), episodes: usable.length };
 }
 
+/** What the series total counts, said in numbers: how many STARTED episodes it includes, and what is held for them (null when a started
+ *  episode's held amount is not a number, e.g. the operator's own organization holds nothing). */
+export function startedSummary(items: { usable: boolean; status: EpisodeStatus; creditsHeld: number | null }[]): { count: number; held: number | null } {
+  const started = items.filter((i) => i.usable && i.status === "started");
+  if (started.length === 0) return { count: 0, held: null };
+  const held = started.every((i) => i.creditsHeld !== null) ? roundUpCredits(started.reduce((a, i) => a + (i.creditsHeld ?? 0), 0)) : null;
+  return { count: started.length, held };
+}
+
 // ── the status chip ──────────────────────────────────────────────────────────
 
 export type ChipKey =
@@ -438,6 +456,21 @@ export function chipHref(path: (section: string) => string, chip: Chip): string 
   if (!chip.link) return null;
   if (chip.link.section === "storyboard") return isStoryboardLinkId(chip.link.id) ? path(`/videos/storyboard/${chip.link.id}`) : null;
   return isVideoLinkId(chip.link.id) ? path(`/videos/${chip.link.id}`) : null;
+}
+
+// ── how often a plan being made is looked at ─────────────────────────────────
+
+/** Every 5 seconds for the plan's first 2 minutes, then every 30 seconds, then not at all after 10 minutes (the person presses Check again). */
+export const POLL_FAST_MS = 5_000;
+export const POLL_SLOW_MS = 30_000;
+export const POLL_FAST_FOR_MS = 2 * 60_000;
+export const POLL_STOP_AFTER_MS = 10 * 60_000;
+
+/** The wait before the next look at a plan that is `ageMs` old, or null when the page should stop looking by itself. */
+export function nextPollDelay(ageMs: number): number | null {
+  if (!Number.isFinite(ageMs) || ageMs < 0) return POLL_FAST_MS;
+  if (ageMs >= POLL_STOP_AFTER_MS) return null;
+  return ageMs >= POLL_FAST_FOR_MS ? POLL_SLOW_MS : POLL_FAST_MS;
 }
 
 // ── what a refusal means ─────────────────────────────────────────────────────

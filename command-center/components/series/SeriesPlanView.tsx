@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { StateBlock } from "@/components/states/StateBlock";
@@ -12,10 +12,12 @@ import { formatCredits } from "@/lib/credits";
 import {
   blockedKey,
   confirmReason,
+  nextPollDelay,
   planErrorKey,
   reasonKey,
   seriesTotal,
   startError,
+  startedSummary,
   startKey,
   type ChipKey,
   type EpisodeView,
@@ -42,7 +44,8 @@ export interface SeriesPlanViewProps {
   ageMinutes: number | null;
 }
 
-/** A plan still being made is checked again this often (the page re-reads itself; it never polls the model). */
+/** A plan still being made is looked at again by re-reading the page (never by calling the model): every 5 s at first, every 30 s after 2
+ *  minutes, and not at all after 10 (lib/seriesPlan.ts nextPollDelay); then the person presses Check again. */
 export const PLANNING_POLL_MS = 5000;
 /** After this many minutes of "planning" the page says it is taking longer than usual. */
 export const SLOW_AFTER_MINUTES = 10;
@@ -99,12 +102,12 @@ function PlanFacts({ plan }: { plan: PlanView }) {
   ];
   return (
     <section className="section-card flex min-w-0 flex-col gap-4" aria-label={p.title}>
-      {plan.title ? <h2 className="m-0 break-words text-[22px] font-semibold leading-tight">{plan.title}</h2> : null}
+      {plan.title ? <h2 dir="auto" className="m-0 break-words text-[22px] font-semibold leading-tight">{plan.title}</h2> : null}
       <dl className="m-0 grid min-w-0 gap-x-6 gap-y-3 sm:grid-cols-2">
         {facts.map(([label, value]) => (
           <div key={label} className="min-w-0">
             <dt className="t-label">{label}</dt>
-            <dd className="m-0 mt-1 break-words text-[15px]">{value || t.common.dash}</dd>
+            <dd dir="auto" className="m-0 mt-1 break-words text-[15px]">{value || t.common.dash}</dd>
           </div>
         ))}
       </dl>
@@ -117,11 +120,29 @@ function Planning({ ageMinutes }: { ageMinutes: number | null }) {
   const s = t.seriesPlan.planning;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  // The page re-reads itself while the plan is being made. A cleanup stops it the moment the plan ends or the page is left.
+  // The plan's age when this page opened: the schedule counts from when the plan was asked for, not from when this tab was.
+  const startAge = useRef(ageMinutes);
+  const [stopped, setStopped] = useState(() => nextPollDelay((ageMinutes ?? 0) * 60_000) === null);
+  // The page re-reads itself while the plan is being made, with a growing pause, and stops for good after 10 minutes. A cleanup stops it
+  // the moment the plan ends or the page is left.
   useEffect(() => {
-    const id = setInterval(() => router.refresh(), PLANNING_POLL_MS);
-    return () => clearInterval(id);
-  }, [router]);
+    if (stopped) return;
+    const born = Date.now() - (startAge.current ?? 0) * 60_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const delay = nextPollDelay(Date.now() - born);
+      if (delay === null) {
+        setStopped(true);
+        return;
+      }
+      timer = setTimeout(() => {
+        router.refresh();
+        schedule();
+      }, delay);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [router, stopped]);
   const slow = ageMinutes !== null && ageMinutes >= SLOW_AFTER_MINUTES;
   return (
     <StateBlock
@@ -130,11 +151,11 @@ function Planning({ ageMinutes }: { ageMinutes: number | null }) {
       title={s.title}
       actions={
         <button type="button" className="btn-quiet min-h-11 px-4 text-sm" disabled={pending} onClick={() => startTransition(() => router.refresh())}>
-          {pending ? s.checking : s.checkNow}
+          {pending ? s.checking : stopped ? s.checkAgain : s.checkNow}
         </button>
       }
     >
-      {s.body}
+      {stopped ? s.stopped : s.body}
       {slow ? ` ${s.slow}` : ""}
     </StateBlock>
   );
@@ -184,10 +205,11 @@ function Ready({ plan, rows, linksFailed }: { plan: PlanView; rows: EpisodeRow[]
   const s = t.seriesPlan;
   const total = seriesTotal(rows.map((r) => ({ n: r.episode.n, usable: r.episode.usable, quote: r.quote })));
   const verdict = plan.report?.verdict ?? "unknown";
+  const started = startedSummary(rows.map((r) => ({ usable: r.episode.usable, status: r.episode.status, creditsHeld: r.episode.creditsHeld })));
   return (
     <>
-      {/* Always shown. `fact_checked` is read only to let a future checked plan say so; nothing sets it today. */}
-      {plan.report?.factChecked === true ? null : <NotFactChecked />}
+      {/* Always shown, whatever the report says: the label does not depend on a field a stored plan could carry (rule 5). */}
+      <NotFactChecked />
       <section className="flex min-w-0 flex-col gap-1 text-sm" aria-label={s.verdict[verdict]}>
         <p className="m-0 break-words">{s.verdict[verdict]}</p>
         <p className="m-0 break-words text-[var(--color-muted)]">{plan.report?.heldTopicsChecked === true ? s.repeats.held : s.repeats.unknown}</p>
@@ -203,6 +225,11 @@ function Ready({ plan, rows, linksFailed }: { plan: PlanView; rows: EpisodeRow[]
                 ? s.total.none
                 : s.total.incomplete}
         </p>
+        {started.count > 0 ? (
+          <p className="m-0 break-words text-sm" data-started-total>
+            {started.held !== null ? fmt(s.total.startedHeld, { n: started.count, credits: formatCredits(started.held, locale) }) : fmt(s.total.started, { n: started.count })}
+          </p>
+        ) : null}
         <p className="m-0 break-words text-sm text-[var(--color-muted)]">{s.total.note}</p>
       </section>
       {linksFailed ? <p className="m-0 break-words text-sm text-[var(--color-muted)]" role="status">{s.linksFailed}</p> : null}
@@ -224,7 +251,7 @@ function List({ label, items }: { label: string; items: string[] }) {
       <div className="t-label">{label}</div>
       <ul className="m-0 mt-1 flex list-disc flex-col gap-1 pl-5 text-[15px]">
         {items.map((item, i) => (
-          <li key={i} className="break-words">
+          <li key={i} dir="auto" className="break-words">
             {item}
           </li>
         ))}
@@ -238,7 +265,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <div className="t-label">{label}</div>
-      <p className="m-0 mt-1 break-words text-[15px]">{value}</p>
+      <p dir="auto" className="m-0 mt-1 break-words text-[15px]">{value}</p>
     </div>
   );
 }
@@ -356,7 +383,12 @@ function EpisodeCard({ row }: { row: EpisodeRow }) {
       <header className="flex min-w-0 flex-wrap items-center gap-2">
         <h3 id={`ep-${ep.n}-title`} className="m-0 min-w-0 flex-1 basis-48 break-words text-[18px] font-semibold leading-snug">
           {fmt(s.episode.heading, { n: ep.n })}
-          {o.workingTitle ? `: ${o.workingTitle}` : ""}
+          {o.workingTitle ? (
+            <>
+              {": "}
+              <span dir="auto">{o.workingTitle}</span>
+            </>
+          ) : null}
         </h3>
         <ChipView chip={row.chip} href={row.href} />
       </header>
@@ -366,7 +398,7 @@ function EpisodeCard({ row }: { row: EpisodeRow }) {
           <p className="m-0 text-sm font-semibold">{s.episode.refusedTitle}</p>
           <ul className="m-0 mt-1 flex list-disc flex-col gap-1 pl-5 text-sm">
             {reasons.map((r, i) => (
-              <li key={i} className="break-words">
+              <li key={i} dir="auto" className="break-words">
                 {r}
               </li>
             ))}

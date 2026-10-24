@@ -30,6 +30,8 @@ import {
   episodeChip,
   isSeriesId,
   isVideoLinkId,
+  nextPollDelay,
+  startedSummary,
   newPlanKey,
   parseEpisode,
   parseOutline,
@@ -189,6 +191,30 @@ describe("the price of the series (the database's, never a partial sum)", () => 
   });
 });
 
+describe("the poll schedule", () => {
+  it("is fast at first, slow after 2 minutes, and gone after 10", () => {
+    expect(nextPollDelay(0)).toBe(5000);
+    expect(nextPollDelay(119_999)).toBe(5000);
+    expect(nextPollDelay(120_000)).toBe(30_000);
+    expect(nextPollDelay(599_999)).toBe(30_000);
+    expect(nextPollDelay(600_000)).toBeNull();
+    expect(nextPollDelay(3_600_000)).toBeNull();
+    expect(nextPollDelay(-5)).toBe(5000);
+    expect(nextPollDelay(Number.NaN)).toBe(5000);
+  });
+});
+
+describe("what the total counts", () => {
+  it("counts the usable started episodes and sums what is held, or says it cannot", () => {
+    const e = (usable: boolean, status: "planned" | "started", creditsHeld: number | null) => ({ usable, status, creditsHeld });
+    expect(startedSummary([])).toEqual({ count: 0, held: null });
+    expect(startedSummary([e(true, "planned", null)])).toEqual({ count: 0, held: null });
+    expect(startedSummary([e(true, "started", 15), e(true, "started", 15.004), e(true, "planned", null)])).toEqual({ count: 2, held: 30.01 });
+    expect(startedSummary([e(true, "started", 15), e(true, "started", null)])).toEqual({ count: 2, held: null });
+    expect(startedSummary([e(false, "started", 15)])).toEqual({ count: 0, held: null });
+  });
+});
+
 describe("the chip", () => {
   const planned = { usable: true, needsConfirmation: false, status: "planned" as const };
   const started = { usable: true, needsConfirmation: false, status: "started" as const };
@@ -324,6 +350,11 @@ describe("closed words", () => {
     expect(planErrorKey("not_json")).toBe("unusable_answer");
     expect(planErrorKey("gemini_quota")).toBe("gemini_quota");
     expect(planErrorKey("totally_new")).toBe("unknown");
+  });
+
+  it("a bad request is its own sentence, not 'the answer could not be used'", () => {
+    for (const code of ["bad_input", "bad_language", "bad_count"]) expect(planErrorKey(code), code).toBe("bad_input");
+    expect(en.seriesPlan.failed.codes.bad_input).not.toBe(en.seriesPlan.failed.codes.unusable_answer);
   });
 
   it("the blocked words the database uses all have a sentence", () => {
