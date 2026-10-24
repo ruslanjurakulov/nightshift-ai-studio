@@ -295,8 +295,16 @@ jobs:
       - name: Install Python dependencies
         run: pip install -c constraints.txt -r requirements.txt
 
+      # Restore only: the one save of this job is "Save history state" at the end
+      # (key chronos-history-<run>-<channel>, it matches the prefix below). A
+      # combined actions/cache step would also save the same archive a second
+      # time under chronos-history-<run> in its post step. Which entry a run
+      # restores is the newest CREATED one under the prefix, whatever its number:
+      # intelligence_poll.yml and this workflow count runs separately and both
+      # save under the prefix, so the number is never an order
+      # (tests/test_history_cache_keys.py pins this).
       - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
