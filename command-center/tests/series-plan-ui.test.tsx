@@ -121,12 +121,14 @@ describe("the outline cards", () => {
     expect(document.querySelectorAll("[data-not-fact-checked]").length).toBe(1 + 3);
   });
 
-  it("the label cannot be switched off by the report, only a future checked report could say otherwise", () => {
-    view({ plan: plan({ report: { status: "ready", fact_checked: "yes" } }) });
-    expect(document.querySelectorAll("[data-not-fact-checked]").length).toBe(4);
-    cleanup();
-    view({ plan: plan({ report: null }) });
-    expect(document.querySelectorAll("[data-not-fact-checked]").length).toBe(4);
+  it("the label cannot be switched off by the report: not by a missing, a wrong-typed or even a true fact_checked", () => {
+    for (const report of [{ status: "ready", fact_checked: "yes" }, null, { status: "ready", fact_checked: true }, { status: "ready" }]) {
+      cleanup();
+      view({ plan: plan({ report }) });
+      // the page-level note AND the chip on each of the three outlines
+      expect(document.querySelectorAll("[data-not-fact-checked]").length, JSON.stringify(report)).toBe(4);
+      expect(document.querySelector('[role="note"][data-not-fact-checked]')).not.toBeNull();
+    }
   });
 
   it("the label is in Russian and Uzbek", () => {
@@ -201,7 +203,7 @@ describe("the prices", () => {
     view({ rows: [row(1, { quote: quote({ credits: 15 }) }), row(2, { quote: quote({ credits: 15.5, blockedBy: "earlier_episode_not_finished", startable: false }) }), row(3, { quote: quote({ credits: 15 }) })] });
     expect((document.querySelector('[data-episode="1"] [data-price]') as HTMLElement).textContent).toBe("15 credits");
     expect((document.querySelector('[data-episode="2"] [data-price]') as HTMLElement).textContent).toBe("15.5 credits");
-    expect((document.querySelector("[data-total]") as HTMLElement).textContent).toBe("45.5 credits for 3 episodes");
+    expect((document.querySelector("[data-total]") as HTMLElement).textContent).toBe("45.5 credits for 3 usable episodes (any already started are included)");
   });
 
   it("an episode with no price blocks the total (never a partial sum) and cannot be started", () => {
@@ -382,9 +384,9 @@ describe("Start episode", () => {
 });
 
 describe("a plan that is not ready", () => {
-  it("being made: says so, offers Check now, and re-reads itself until it is told otherwise", async () => {
+  it("being made: says so, offers Check now, re-reads itself every 5 s, then every 30 s after 2 minutes, and stops after 10", async () => {
     vi.useFakeTimers();
-    const { unmount } = view({ plan: plan({ status: "requested", title: null, report: null }), rows: [] });
+    const { unmount } = view({ plan: plan({ status: "requested", title: null, report: null }), rows: [], ageMinutes: 0 });
     expect(screen.getByRole("status").textContent).toContain(s.planning.body);
     expect(screen.getByRole("button", { name: s.planning.checkNow })).toBeTruthy();
     expect(h.refresh).not.toHaveBeenCalled();
@@ -392,12 +394,77 @@ describe("a plan that is not ready", () => {
       vi.advanceTimersByTime(PLANNING_POLL_MS * 2 + 10);
     });
     expect(h.refresh).toHaveBeenCalledTimes(2);
+    // up to the 2 minute mark: 5 s apart (24 refreshes in all); after it: 30 s apart
+    h.refresh.mockClear();
+    await act(async () => {
+      vi.advanceTimersByTime(2 * 60_000 - PLANNING_POLL_MS * 2 - 10);
+    });
+    expect(h.refresh.mock.calls.length).toBeGreaterThanOrEqual(21);
+    expect(h.refresh.mock.calls.length).toBeLessThanOrEqual(23);
+    h.refresh.mockClear();
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(h.refresh).toHaveBeenCalledTimes(4);
+    h.refresh.mockClear();
+    await act(async () => {
+      vi.advanceTimersByTime(6 * 60_000);
+    });
+    expect(h.refresh).toHaveBeenCalledTimes(12);
+    // past 10 minutes it has stopped by itself and says so, with a manual key
+    h.refresh.mockClear();
+    await act(async () => {
+      vi.advanceTimersByTime(5 * 60_000);
+    });
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toContain(s.planning.stopped);
+    fireEvent.click(screen.getByRole("button", { name: s.planning.checkAgain }));
+    expect(h.refresh).toHaveBeenCalledTimes(1);
     unmount();
     h.refresh.mockClear();
     await act(async () => {
       vi.advanceTimersByTime(PLANNING_POLL_MS * 3);
     });
     expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("leaving the page while it is still looking cancels the next look", async () => {
+    vi.useFakeTimers();
+    const { unmount } = view({ plan: plan({ status: "requested", title: null, report: null }), rows: [], ageMinutes: 0 });
+    await act(async () => {
+      vi.advanceTimersByTime(PLANNING_POLL_MS + 10);
+    });
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+    unmount();
+    h.refresh.mockClear();
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("a plan already past 10 minutes when the page opens does not poll at all and offers Check again", async () => {
+    vi.useFakeTimers();
+    view({ plan: plan({ status: "requested", title: null, report: null }), rows: [], ageMinutes: 25 });
+    await act(async () => {
+      vi.advanceTimersByTime(5 * 60_000);
+    });
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toContain(s.planning.stopped);
+    expect(screen.getByRole("button", { name: s.planning.checkAgain })).toBeTruthy();
+  });
+
+  it("a plan 3 minutes old when the page opens is looked at every 30 s, not every 5", async () => {
+    vi.useFakeTimers();
+    view({ plan: plan({ status: "requested", title: null, report: null }), rows: [], ageMinutes: 3 });
+    await act(async () => {
+      vi.advanceTimersByTime(29_000);
+    });
+    expect(h.refresh).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(h.refresh).toHaveBeenCalledTimes(1);
   });
 
   it("being made for a long time: says it is taking longer and that nothing is charged", () => {
@@ -436,6 +503,70 @@ describe("a plan that is not ready", () => {
       view({ plan: plan({ status: "failed", title: null, report: null, error_code: "timeout" }), rows: [] }, loc);
       expect(screen.getByRole("alert").textContent).toContain(dictionaries[loc].seriesPlan.failed.codes.timeout);
     }
+  });
+});
+
+describe("what the total counts, and the wording", () => {
+  it("the total says it counts usable episodes, and how many of them are already started and what is held", () => {
+    const started = (n: number, held: string | null) =>
+      row(n, { episode: { status: "started", credits_held: held, render_job_id: n, started_at: "x" }, chip: "running", quote: quote({ status: "started", startable: false, blockedBy: "already_started" }) });
+    view({ rows: [started(1, "15.00"), started(2, "15.50"), row(3)] });
+    expect(document.querySelector("[data-total]")!.textContent).toBe("45 credits for 3 usable episodes (any already started are included)");
+    expect(document.querySelector("[data-started-total]")!.textContent).toBe("2 already started; 30.5 credits are held for them.");
+    cleanup();
+    view({ rows: [started(1, null), row(2), row(3)] });
+    expect(document.querySelector("[data-started-total]")!.textContent).toBe("1 already started.");
+    cleanup();
+    view();
+    expect(document.querySelector("[data-started-total]")).toBeNull();
+  });
+
+  it("a refused episode is not counted as started or in the total", () => {
+    view({ rows: [row(1, { episode: { usable: false }, chip: "refused", quote: null }), row(2), row(3, { chip: "blocked" })] });
+    expect(document.querySelector("[data-total]")!.textContent).toBe("30 credits for 2 usable episodes (any already started are included)");
+  });
+
+  it("no customer sentence names a role or the database, in any language", () => {
+    const strings: string[] = [];
+    for (const d of Object.values(dictionaries)) {
+      const { page, ...rest } = d.seriesPlan;
+      JSON.stringify({ ...rest, page: { ...page, unsupported: "", notConfigured: "" } }, (_k, v) => (typeof v === "string" ? (strings.push(v), v) : v));
+    }
+    const hits = strings.filter((x) => /\beditors?\b|\badmin(istrators?)?\b|\bdatabase\b|редактор|администратор|муҳарр|muharrir|administrator|baza/i.test(x));
+    expect(hits.filter((x) => !/migration|migratsiya|миграци/i.test(x))).toEqual([]);
+  });
+
+  it("the plan and episode titles and the model's lists carry dir=auto, so a right-to-left title does not reorder our text", () => {
+    view();
+    expect(document.querySelector("h2")!.getAttribute("dir")).toBe("auto");
+    const heading = document.querySelector('[data-episode="1"] h3') as HTMLElement;
+    expect(heading.querySelector('[dir="auto"]')!.textContent).toBe("Title 1");
+    expect(heading.getAttribute("dir")).toBeNull();
+    const card = document.querySelector('[data-episode="1"]') as HTMLElement;
+    for (const li of Array.from(card.querySelectorAll("li"))) expect(li.getAttribute("dir")).toBe("auto");
+    expect(card.querySelectorAll('p[dir="auto"]').length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("a bad request gets its own sentence in the failed state", () => {
+    view({ plan: plan({ status: "failed", title: null, report: null, error_code: "bad_input" }), rows: [] });
+    expect(screen.getByRole("alert").textContent).toContain(s.failed.codes.bad_input);
+    expect(screen.getByRole("alert").textContent).not.toContain(s.failed.codes.unusable_answer);
+  });
+
+  it("the read-only notes say what the person can do, in plain words", () => {
+    view({ rows: [row(1, { quote: quote({ mayStart: false }) }), row(2, { chip: "blocked", quote: null }), row(3, { chip: "blocked", quote: null })] });
+    expect(screen.getByText(s.start.adminOnly)).toBeTruthy();
+    expect(s.start.adminOnly).toContain("You can view this plan but not start its episodes");
+    expect(s.entry.readOnly).toContain("You can view plans here but not make one");
+    expect(s.entry.errors.forbidden).toContain("Ask someone who manages this workspace");
+  });
+
+  it("the recent plans block is a labelled section, not a div with a label", () => {
+    panel();
+    const block = document.getElementById("recent-plans-title")!.parentElement!;
+    expect(block.tagName).toBe("SECTION");
+    expect(block.getAttribute("aria-labelledby")).toBe("recent-plans-title");
+    expect(document.querySelector('div[aria-labelledby]')).toBeNull();
   });
 });
 

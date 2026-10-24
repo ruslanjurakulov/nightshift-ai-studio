@@ -404,8 +404,19 @@ class NeverLeftRequested(NoNetwork):
         self.assertIn("does not exist", out.error)
         self.assertEqual((gone.finishes, gen2.calls), ([], []))
 
+    def test_a_bad_request_gets_its_own_sentence_not_the_generic_one(self):
+        generic = spw.error_text("not_json")
+        for code in ("bad_input", "bad_language", "bad_count"):
+            self.assertNotEqual(spw.error_text(code), generic, code)
+            self.assertIn("charged", spw.error_text(code))
+        svc, store, gen, _v = service(Store(plan_row(topic="x" * 250)))
+        run(svc)
+        self.assertEqual(store.finishes[0][1]["error_code"], "bad_input")
+        self.assertEqual(store.finishes[0][1]["error"], spw.error_text("bad_input"))
+        self.assertEqual(gen.calls, [])
+
     def test_every_ending_of_every_code_fits_the_databases_rules(self):
-        for code in spw.WORKER_CODES + ("generate_failed", "no_niche", "not_json", "bad_shape", "wrong_count"):
+        for code in spw.WORKER_CODES + ("generate_failed", "no_niche", "not_json", "bad_shape", "wrong_count", "bad_input", "bad_language", "bad_count"):
             text = spw.error_text(code)
             self.assertLessEqual(len(text), 500)
             self.assertRegex(code, r"^[a-z][a-z0-9_]{0,47}$")
@@ -437,7 +448,7 @@ class TheDailyQuota(NoNetwork):
 
     def test_the_next_plans_end_the_same_way_without_calling_the_api_until_the_cooldown_passes(self):
         now = [1000.0]
-        gen = Gen(error=self.quota(600))
+        gen = Gen(error=self.quota(600))      # Google's hint is shorter than the floor: the floor rules
         svc, store, _g, _v = service(gen=gen, clock=lambda: now[0])
         run(svc)
         self.assertEqual(len(gen.calls), 1)
@@ -446,11 +457,28 @@ class TheDailyQuota(NoNetwork):
             self.assertEqual((out.kind, out.code), ("failed", "provider_quota"))
         self.assertEqual(len(gen.calls), 1, "no further request while the quota is known to be spent")
         self.assertEqual([f[1]["error_code"] for f in store.finishes], ["gemini_quota"] * 4, "each plan still ends")
-        now[0] += 601
+        now[0] += 1799
+        run(svc)
+        self.assertEqual(len(gen.calls), 1, "still inside the 30 minute floor")
+        now[0] += 2
         gen.error = None
         gen.text = answer(3)
         self.assertEqual(run(svc).kind, "succeeded")
         self.assertEqual(len(gen.calls), 2)
+
+    def test_a_short_retry_hint_never_gives_a_short_cooldown(self):
+        for hint in (1, 5, 30, 0.5, None, 0, -3):
+            with self.subTest(hint=hint):
+                now = [100.0]
+                svc, _s, _g, _v = service(gen=Gen(error=self.quota(hint)), clock=lambda: now[0])
+                run(svc)
+                self.assertEqual(svc._quota_until - 100.0, spw.MIN_QUOTA_COOLDOWN_SECONDS)
+        for hint, wait in ((2400, 2400), (3600, 3600), (7200, 3600)):
+            now = [0.0]
+            svc, _s, _g, _v = service(gen=Gen(error=self.quota(hint)), clock=lambda: now[0])
+            run(svc)
+            self.assertEqual(svc._quota_until, wait)
+        self.assertEqual((spw.MIN_QUOTA_COOLDOWN_SECONDS, spw.MAX_QUOTA_COOLDOWN_SECONDS), (1800.0, 3600.0))
 
     def test_the_cooldown_is_capped_when_google_says_a_day(self):
         now = [0.0]
@@ -519,6 +547,42 @@ class HardLimits(NoNetwork):
         time.sleep(0.4)
         self.assertEqual(generated, [], "after the timeout the late planner is not allowed to spend a call")
         self.assertEqual(len(store.finishes), 1, "and does not end the plan a second time")
+
+    def test_a_generate_that_returns_after_the_timeout_makes_no_vet_or_gate_call(self):
+        release = threading.Event()
+        vet = Vet()
+        gate_asked = []
+
+        def generate():
+            def slow(prompt, *, stage):
+                release.wait(5)           # the model answers, but only after the deadline
+                return answer(3)
+            return slow
+
+        store = Store()
+        svc = spw.SeriesPlanService(store, enabled=True, env=KEY, generate_factory=generate,
+                                    vet_factory=lambda c: (vet, None, lambda: gate_asked.append(1) or 0),
+                                    timeout_seconds=0.3, sleep=lambda _s: None)
+        out = run(svc)
+        self.assertEqual(out.kind, "failed")
+        self.assertEqual(store.finishes[0][1]["error_code"], "timeout")
+        release.set()
+        time.sleep(0.5)
+        self.assertEqual(vet.calls, [], "the late planner asked no niche question")
+        self.assertEqual(len(store.finishes), 1)
+
+    def test_the_guarded_vet_refuses_every_method_once_cancelled_and_passes_through_before(self):
+        cancelled = threading.Event()
+        inner = Vet(repeats={"Rome": "Rome again"})
+        guarded = spw._GuardedVet(inner, cancelled)
+        self.assertEqual(guarded.vet_topic("Rome", "history", source="series").action, topic_gate.ACCEPT)
+        self.assertEqual(guarded.find_repeat("Rome"), "Rome again")
+        cancelled.set()
+        with self.assertRaises(spw.CallBudgetExceeded):
+            guarded.vet_topic("Rome", "history", source="series")
+        with self.assertRaises(spw.CallBudgetExceeded):
+            guarded.find_repeat("Rome")
+        self.assertEqual(len(inner.calls), 1)
 
     def test_a_job_another_worker_took_over_is_left_alone(self):
         lost = threading.Event()
@@ -590,18 +654,58 @@ class Idempotent(NoNetwork):
 # ── delivering the ending ────────────────────────────────────────────────────
 
 class Delivery(NoNetwork):
-    def test_an_ending_that_cannot_be_recorded_is_retried_then_the_job_goes_back_to_the_queue(self):
-        svc, store, gen, _v = service(Store(answers=[spw.UNREACHABLE] * 3))
+    def test_an_ending_that_cannot_be_recorded_before_any_model_call_is_retried_then_the_job_goes_back_to_the_queue(self):
+        svc, store, gen, _v = service(Store(answers=[spw.UNREACHABLE] * 3), env={})      # no key: the plan ends before any call
         out = run(svc)
         self.assertEqual(out.kind, "released")
         self.assertEqual(len(store.finishes), 3)
-        self.assertEqual(len(gen.calls), 1)
+        self.assertEqual(gen.calls, [])
+
+    def test_once_the_model_was_asked_a_lost_delivery_never_sends_the_job_back_to_ask_again(self):
+        # The amplification this closes: every release was a new generate (up to 3 per job) for an answer already bought.
+        for kwargs in ({}, {"gen": Gen(error=RuntimeError("503"))}, {"gen": Gen(text="not json")}):
+            with self.subTest(kwargs=list(kwargs)):
+                svc, store, gen, _v = service(Store(answers=[spw.UNREACHABLE] * 9), **kwargs)
+                out = run(svc)
+                self.assertEqual(out.kind, "failed")
+                self.assertIn("not planned again", out.error)
+                self.assertEqual(len(gen.calls), 1)
+                self.assertEqual(len(store.finishes), 3, "the delivery is still retried before giving up")
+
+    def test_what_one_job_did_never_leaks_into_the_next(self):
+        # One service runs many jobs: a job that asked the model must not make a LATER job (which asked nothing) fail instead of retry.
+        store = Store()
+        svc = spw.SeriesPlanService(store, enabled=True, env=dict(KEY), generate_factory=lambda: Gen(),
+                                    vet_factory=lambda c: (Vet(), None, lambda: 0), sleep=lambda _s: None)
+        self.assertEqual(run(svc).kind, "succeeded")
+        svc.env = {}                                   # the next job stops before any model call, and its ending cannot be recorded
+        store.answers = [spw.UNREACHABLE] * 3
+        self.assertEqual(run(svc).kind, "released")
+
+    def test_a_shutdown_after_the_model_was_asked_ends_the_plan_instead_of_releasing_the_job(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def generate():
+            def slow(prompt, *, stage):
+                started.set()
+                release.wait(5)
+                return answer(3)
+            return slow
+
+        store = Store()
+        svc = spw.SeriesPlanService(store, enabled=True, env=KEY, generate_factory=generate,
+                                    vet_factory=lambda c: (Vet(), None, lambda: 0), sleep=lambda _s: None)
+        out = run(svc, interrupted=started.is_set)
+        release.set()
+        self.assertEqual(out.kind, "failed")
+        self.assertEqual(store.finishes[0][1]["error_code"], "worker_error")
 
     def test_on_the_last_attempt_it_fails_rather_than_release_and_leave_the_plan_requested(self):
         svc, store, _g, _v = service(Store(answers=[spw.UNREACHABLE] * 3))
         out = run(svc, last=True)
         self.assertEqual(out.kind, "failed")
-        self.assertIn("no attempts left", out.error)
+        self.assertIn("not planned again", out.error)
 
     def test_an_ending_the_database_recovers_on_the_second_try_counts(self):
         svc, store, _g, _v = service(Store(answers=[spw.UNREACHABLE, spw.DONE]))
@@ -846,13 +950,22 @@ class InTheQueueWorker(NoNetwork):
         self.worker(q, svc).run_forever(once=True)
         self.assertGreaterEqual(len([c for c in q.calls if c[0] == "heartbeat"]), 2)
 
+    def test_the_heartbeat_stops_when_the_planning_job_ends(self):
+        svc, store, _g, _v = service()
+        q = Queue([job()])
+        w = self.worker(q, svc, heartbeat_seconds=0.02)
+        w.run_forever(once=True)
+        beats = len([c for c in q.calls if c[0] == "heartbeat"])
+        time.sleep(0.3)
+        self.assertEqual(len([c for c in q.calls if c[0] == "heartbeat"]), beats, "no heartbeat after the job ended")
+
     def test_an_unreachable_database_puts_the_job_back_with_its_attempt_counted_and_a_last_attempt_ends_the_plan(self):
-        svc, store, _g, _v = service(Store(answers=[spw.UNREACHABLE] * 3))
+        svc, store, _g, _v = service(Store(answers=[spw.UNREACHABLE] * 3), env={})      # no model call was made
         q = Queue([job(attempts=1)])
         self.worker(q, svc).run_forever(once=True)
         (kind, _id, status, attempts, _err), = q.ends()
         self.assertEqual((kind, status, attempts), ("release", "queued", 1))
-        svc, store, _g, _v = service(Store(answers=[spw.UNREACHABLE] * 3))
+        svc, store, _g, _v = service(Store(answers=[spw.UNREACHABLE] * 3), env={})
         q = Queue([job(attempts=3)])
         self.worker(q, svc).run_forever(once=True)
         (kind, _id, status, _error), = q.ends()
@@ -956,6 +1069,103 @@ class TheRealPlannerAgainstFakes(NoNetwork):
         self.assertTrue(all(isinstance(e["usable"], bool) and isinstance(e["needs_confirmation"], bool) for e in eps))
 
 
+class TheLiveCollaborators(NoNetwork):
+    """live_vet and live_generate are the only code that touches TopicManager and the Gemini client; they are tested against fakes of both."""
+
+    class Manager:
+        instances = []
+        held = 0
+
+        def __init__(self, channel=None, costs=None):
+            self.channel, self.order, self._gate_calls = channel, [], 2
+            type(self).instances.append(self)
+
+        def seed_history_from_supabase(self):
+            self.order.append("seed")
+            return 0
+
+        def load_held_topics(self):
+            self.order.append("held")
+            return type(self).held
+
+    class Registry:
+        asked = []
+
+        def get(self, channel_id):
+            type(self).asked.append(channel_id)
+            if channel_id == "gone":
+                raise KeyError(channel_id)
+            return {"channel": channel_id}
+
+    def live(self, held, channel="news"):
+        self.Manager.instances.clear()
+        self.Registry.asked.clear()
+        self.Manager.held = held
+        with patch("modules.topic_manager.TopicManager", self.Manager), patch("modules.channels.ChannelRegistry", self.Registry):
+            return spw.live_vet(channel)
+
+    def test_the_manager_is_the_channels_own_and_its_history_is_rebuilt_before_held_topics_are_loaded(self):
+        manager, _held, _calls = self.live(0)
+        self.assertEqual(self.Registry.asked, ["news"])
+        self.assertEqual(manager.channel, {"channel": "news"})
+        self.assertEqual(manager.order, ["seed", "held"])
+
+    def test_held_topics_checked_is_true_only_when_some_were_found_otherwise_unknown(self):
+        self.assertIs(self.live(3)[1], True)
+        self.assertIsNone(self.live(0)[1], "the manager cannot tell 'none held' from 'could not be read'")
+
+    def test_the_gate_calls_probe_reads_the_managers_counter_and_survives_its_absence(self):
+        manager, _h, calls = self.live(0)
+        self.assertEqual(calls(), 2)
+        manager._gate_calls = 5
+        self.assertEqual(calls(), 5)
+        del manager._gate_calls
+        self.assertEqual(calls(), 0)
+
+    def test_an_unknown_channel_is_an_error_the_service_turns_into_a_worker_error(self):
+        with self.assertRaises(KeyError):
+            self.live(0, channel="gone")
+        store = Store()
+        svc = spw.SeriesPlanService(store, enabled=True, env=KEY, generate_factory=lambda: Gen(),
+                                    vet_factory=lambda c: self.live(0, channel="gone"), sleep=lambda _s: None)
+        self.assertEqual(run(svc).kind, "failed")
+        self.assertEqual(store.finishes[0][1]["error_code"], "worker_error")
+
+    def test_live_generate_makes_one_request_on_the_series_plan_model_and_returns_its_text(self):
+        seen = []
+
+        class Response:
+            text = "the outline"
+
+        def fake_generate(client, model, prompt):
+            seen.append((client, str(model), getattr(model, "stage", None), prompt))
+            return Response()
+
+        with patch("modules.gemini_client.generate_with_retry", fake_generate), patch("modules.gemini_client.make_client", lambda: "CLIENT"):
+            generate = spw.live_generate()
+            self.assertEqual(generate("the prompt", stage="series_plan"), "the outline")
+        (client, model, stage, prompt), = seen
+        self.assertEqual((client, stage, prompt), ("CLIENT", "series_plan", "the prompt"))
+        self.assertTrue(model)
+
+    def test_live_generate_lets_the_daily_quota_through_unchanged(self):
+        def fake_generate(client, model, prompt):
+            raise GeminiDailyQuotaError("gemini-x", 5, "series_plan")
+
+        with patch("modules.gemini_client.generate_with_retry", fake_generate), patch("modules.gemini_client.make_client", lambda: "C"):
+            with self.assertRaises(GeminiDailyQuotaError):
+                spw.live_generate()("p", stage="series_plan")
+
+    def test_building_the_service_imports_neither_the_model_sdk_nor_the_manager(self):
+        code = ("import sys; import modules.series_plan_worker as m; "
+                "bad = [x for x in sys.modules if x.split('.')[0] in ('google',) or x in ('modules.topic_manager', 'modules.gemini_client')]; "
+                "print(bad); sys.exit(1 if bad else 0)")
+        import subprocess
+
+        done = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+
 class WiredByTheFiles(unittest.TestCase):
     def read(self, rel):
         return (ROOT / rel).read_text(encoding="utf-8")
@@ -971,6 +1181,18 @@ class WiredByTheFiles(unittest.TestCase):
         self.assertRegex(example, r"(?m)^NIGHTSHIFT_SERIES_PLANNER=$", "ships empty: the repository sets no value")
         self.assertIn("WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}",
                       self.read(".github/workflows/deploy_web.yml"))
+
+    def test_the_docs_and_the_env_comment_say_what_the_requests_are_and_that_no_per_user_cap_exists(self):
+        example = self.read("deploy/.env.worker.example")
+        block = example[example.index("# [var] Series planning"):example.index("NIGHTSHIFT_SERIES_PLANNER=")]
+        self.assertIn("NO per-user or global daily cap", block)
+        self.assertIn("up to 15 requests", block)
+        self.assertNotRegex(block, r"with a per-user and a global daily cap")
+        doc = self.read("docs/SERIES_FACTORY.md")
+        self.assertIn("at most (1 + 2) x 5 = 15 requests", doc)
+        self.assertIn("There is no per-user and no global\ncap on plans yet", doc)
+        self.assertIn("instead of\nreleasing the job", doc)
+        self.assertNotIn("ONE call through `series_planner.plan_series`", doc)
 
     def test_the_code_reads_one_switch_name_and_the_docstring_default_is_off(self):
         text = self.read("modules/series_plan_worker.py")

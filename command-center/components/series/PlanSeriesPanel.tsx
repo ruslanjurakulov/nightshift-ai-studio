@@ -257,7 +257,7 @@ export function PlanSeriesPanel({
         </button>
       </form>
 
-      <div className="mt-8 min-w-0" aria-labelledby="recent-plans-title">
+      <section className="mt-8 min-w-0" aria-labelledby="recent-plans-title">
         <h3 id="recent-plans-title" className="g2-h2 mb-3">
           {s.recent.title}
         </h3>
@@ -272,7 +272,7 @@ export function PlanSeriesPanel({
             {recent.plans.map((p) => (
               <li key={p.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-[var(--color-border)] py-2">
                 <div className="min-w-0 flex-1 basis-48">
-                  <p className="m-0 break-words text-sm font-medium">{p.title || p.topic || s.recent.untitled}</p>
+                  <p dir="auto" className="m-0 break-words text-sm font-medium">{p.title || p.topic || s.recent.untitled}</p>
                   <p className="m-0 break-words text-xs text-[var(--color-muted)]">
                     {fmt(s.recent.episodesCount, { n: p.nEpisodes })} ·{" "}
                     {(s.recent.status as Record<string, string>)[p.status] ?? p.status}
@@ -285,7 +285,7 @@ export function PlanSeriesPanel({
             ))}
           </ul>
         )}
-      </div>
+      </section>
     </section>
   );
 }
