@@ -2,6 +2,7 @@ import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { aiLabelUz } from "./ai-label/uz";
 import { channelRiskUz } from "./channel-risk/uz";
+import { customVoiceUz } from "./custom-voice/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
@@ -3083,6 +3084,7 @@ export const uz: Dictionary = {
   notifyChannels: notifyChannelsUz,
   aiLabel: aiLabelUz,
   channelRisk: channelRiskUz,
+  customVoice: customVoiceUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",
