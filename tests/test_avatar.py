@@ -188,6 +188,38 @@ class ResolveAvatarConfigTestCase(unittest.TestCase):
         with patch.dict(os.environ, {"NIGHTSHIFT_AVATAR_ENABLED": "true"}):
             self.assertTrue(resolve_avatar_config().enabled)
 
+    def test_a_blank_enabled_variable_is_unset_so_the_json_enabled_stands(self):
+        # An undefined Actions variable arrives as "" (or spaces). It used to read as "set to false" and
+        # silently switched off a presenter the NIGHTSHIFT_AVATAR JSON had enabled.
+        for blank in ("", " ", " \t\n"):
+            with self.subTest(blank=blank), patch.dict(
+                    os.environ, {"NIGHTSHIFT_AVATAR": '{"enabled": true, "provider": "fal"}',
+                                 "NIGHTSHIFT_AVATAR_ENABLED": blank}):
+                cfg = resolve_avatar_config()
+                self.assertTrue(cfg.enabled)
+                self.assertEqual(cfg.provider, "fal")
+
+    def test_a_blank_enabled_variable_alone_stays_off(self):
+        for blank in ("", "   "):
+            with self.subTest(blank=blank), patch.dict(os.environ, {"NIGHTSHIFT_AVATAR_ENABLED": blank}):
+                self.assertFalse(resolve_avatar_config().enabled)
+
+    def test_an_explicit_enabled_variable_still_overrides_the_json_either_way(self):
+        on_json = '{"enabled": true}'
+        off_json = '{"enabled": false}'
+        for value, json_env, expected in (
+                ("0", on_json, False), ("false", on_json, False), (" false ", on_json, False),
+                ("no", on_json, False), ("1", off_json, True), ("true", off_json, True),
+                (" 1 ", off_json, True), ("1", on_json, True), ("0", off_json, False)):
+            with self.subTest(value=value, json=json_env), patch.dict(
+                    os.environ, {"NIGHTSHIFT_AVATAR": json_env, "NIGHTSHIFT_AVATAR_ENABLED": value}):
+                self.assertIs(resolve_avatar_config().enabled, expected)
+
+    def test_the_channel_mapping_still_beats_a_blank_or_explicit_variable(self):
+        for value in ("", "1", "0"):
+            with self.subTest(value=value), patch.dict(os.environ, {"NIGHTSHIFT_AVATAR_ENABLED": value}):
+                self.assertFalse(resolve_avatar_config(_FakeCtx(avatar={"enabled": False})).enabled)
+
     def test_channel_mapping_overrides_env(self):
         with patch.dict(os.environ, {"NIGHTSHIFT_AVATAR_ENABLED": "true"}):
             cfg = resolve_avatar_config(_FakeCtx(avatar={"enabled": False}))

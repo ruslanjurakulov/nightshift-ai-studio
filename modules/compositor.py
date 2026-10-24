@@ -351,29 +351,44 @@ class Compositor:
     def _build_presenter_clips(self, presenter, total_duration: float) -> list:
         """The positioned presenter clips for whatever the pipeline holds (one clip
         from 0 s, or the fal intro/outro segments); each one that can't be used is
-        left out on its own."""
-        from modules.avatar import presenter_segments
+        left out here, and the render then stops (below)."""
+        from modules.avatar import AvatarUnavailable, presenter_segments
 
-        clips = []
-        for seg in presenter_segments(presenter):
+        segments = presenter_segments(presenter)
+        clips, unusable = [], []
+        for seg in segments:
             clip = self._build_presenter_clip(seg.path, total_duration, start=seg.start)
             if clip is not None:
                 clips.append(clip)
+            else:
+                unusable.append(Path(seg.path).name)
+        # A presenter was asked for (and paid for): CLAUDE.md #4. With the fal
+        # presenter the intro and outro are separate clips, so one that can't be
+        # placed would ship a half-presenter video with only a log line. Stop the
+        # run the way main.py already stops on AvatarUnavailable; the clips stay
+        # on disk, so the re-run does not buy them again.
+        if not segments or len(clips) != len(segments):
+            raise AvatarUnavailable(
+                f"The presenter was requested but {len(clips)} of {len(segments)} clip(s) could be "
+                f"placed in the video (unusable: {', '.join(unusable) or 'no clip was given'}); the "
+                "video was not rendered rather than shipped without the presenter that was asked for. "
+                "Check the presenter files in the run's output folder, or turn the presenter off "
+                "for this channel/series.")
         return clips
 
     def _build_presenter_clip(self, presenter_path: Path, total_duration: float, start: float = 0.0):
         """Load the AITuber presenter clip and size/position it into a corner
         inset, playing from `start` seconds. Returns a positioned VideoClip, or
-        None if the file can't be used
-        — a bad presenter must degrade to a faceless render, never crash it or
-        put a broken frame on screen. Its own audio is dropped so it can't
+        None if the file can't be used (never a broken frame on screen; the caller,
+        _build_presenter_clips, stops the run rather than render without it).
+        Its own audio is dropped so it can't
         displace the narration set on the final composite."""
         from modules.avatar import presenter_layout
 
         try:
             clip = VideoFileClip(str(presenter_path))
         except Exception as e:
-            logger.error("Could not open presenter clip %s (%s: %s) — rendering faceless",
+            logger.error("Could not open presenter clip %s (%s: %s)",
                          presenter_path, type(e).__name__, e)
             return None
         # Registered so the finally-block in render() closes its reader.
@@ -394,7 +409,7 @@ class Compositor:
             )
             return positioned
         except Exception as e:
-            logger.error("Could not place presenter clip (%s: %s) — rendering faceless",
+            logger.error("Could not place presenter clip (%s: %s)",
                          type(e).__name__, e)
             return None
 

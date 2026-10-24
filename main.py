@@ -12,6 +12,7 @@ Nightshift YouTube Bot — Full Pipeline
 """
 
 import argparse
+import contextlib
 import json
 import logging
 import os
@@ -705,6 +706,22 @@ def _preflight_disk(channel_id, free_fn=None) -> None:
     except OSError as e:
         logger.warning("[channel: %s] Free disk could not be measured (%s) - continuing without the check",
                        channel_id, type(e).__name__)
+
+
+@contextlib.contextmanager
+def _presenter_stop_recorded(channel_id):
+    """Record, then re-raise, the compositor's refusal to ship a half-presenter video.
+
+    The generation stage above already emits ``avatar.failed`` when the presenter cannot be made; the render
+    can refuse too (a clip that will not open or place, e.g. one of the fal intro/outro pair), and that stop
+    must reach the Command Center the same way instead of living only in the traceback (CLAUDE.md #4)."""
+    try:
+        yield
+    except AvatarUnavailable as e:
+        logger.error("[channel: %s] Presenter could not be placed in the render (%s) - stopping", channel_id, e)
+        events.emit(events.AVATAR_FAILED, agent="avatar", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}", "stage": "render"})
+        raise
 
 
 def _preflight_pictures(ctx, series_obj, channel_id) -> None:
@@ -1551,7 +1568,7 @@ def run(
     # config.RENDER_BACKEND picks the renderer (modules/render_dispatch.py):
     # "moviepy" (default) is the call below, unchanged; "ffmpeg" renders a
     # RenderSpec from the same inputs and falls back to this call on any failure.
-    with MemorySampler("render"):
+    with MemorySampler("render"), _presenter_stop_recorded(channel_id):
         render_result = render_dispatch.render_video(
             moviepy_render=lambda: comp.render(
                 script=script,
