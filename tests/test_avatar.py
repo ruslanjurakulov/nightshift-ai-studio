@@ -204,6 +204,21 @@ class ResolveAvatarConfigTestCase(unittest.TestCase):
             cfg = resolve_avatar_config(_FakeCtx(), _FakeSeries("a fox"))
         self.assertEqual(cfg.character_prompt, "a cartoon owl")
 
+    def test_a_whitespace_only_prompt_or_ref_is_unset_not_a_blank_description(self):
+        # A repository variable holding only spaces must behave like an empty one: the series' look still seeds the
+        # character, and a blank reference never reaches the synthetic-only guard.
+        env = {"NIGHTSHIFT_AVATAR_ENABLED": "true", "NIGHTSHIFT_AVATAR_CHARACTER_PROMPT": "   ",
+               "NIGHTSHIFT_AVATAR_CHARACTER_REF": " \t "}
+        with patch.dict(os.environ, env):
+            cfg = resolve_avatar_config(_FakeCtx(), _FakeSeries("a stylized 3D fox host"))
+        self.assertEqual(cfg.character_prompt, "a stylized 3D fox host")
+        self.assertEqual(cfg.character_ref, "")
+
+    def test_a_real_prompt_is_kept_without_its_surrounding_spaces(self):
+        with patch.dict(os.environ, {"NIGHTSHIFT_AVATAR_ENABLED": "true",
+                                     "NIGHTSHIFT_AVATAR_CHARACTER_PROMPT": "  a cartoon owl \n"}):
+            self.assertEqual(resolve_avatar_config().character_prompt, "a cartoon owl")
+
     def test_series_ignored_when_disabled(self):
         # A visual style must not turn the presenter on by itself.
         cfg = resolve_avatar_config(_FakeCtx(), _FakeSeries("a fox"))

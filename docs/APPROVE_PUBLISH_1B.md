@@ -120,7 +120,11 @@ Release, in this order, each step only after the one before:
    `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` to the release date and redeploy web (the policy changes what Google user data is used for;
    until it is changed the pages show the old date, or "not configured" when it was never set), and, if Google asks, re-verify the OAuth app.
 3. The live test below passed on a disposable channel (the three unverified answers recorded).
-4. Worker: `NIGHTSHIFT_VISIBILITY_PUBLISH=on` (+ ceiling and organization share if the defaults are wrong).
+4. Worker: set the repository variable `NIGHTSHIFT_VISIBILITY_PUBLISH` to `on` (+ `NIGHTSHIFT_VISIBILITY_DAILY_UNITS` and
+   `NIGHTSHIFT_VISIBILITY_ORG_PERCENT` if the defaults are wrong), then run Actions -> "Deploy web". These are keys of
+   `deploy/.env.worker.example`, mapped as `WORKERENV_<NAME>` in `deploy_web.yml`; the repository ships them empty, which is off,
+   and they must stay empty until the live test above has passed. A hand edit of `/opt/nightshift/.env.worker` does not last: the
+   next managed deploy rewrites that file from the variables.
 5. Web: repository variable `PUBLISH_ON_APPROVE_RELEASED=on`, then deploy web (it is a key of `deploy/.env.web.example`, mapped in
    `deploy_web.yml`; a restart is enough, it is read per request).
 6. Only then tell customers; each channel's administrators still opt in per channel.
@@ -130,7 +134,8 @@ Release, in this order, each step only after the one before:
 1. **Switch the channels off** (Channels page, one tap each, or the SQL in "Is it off?" of `docs/MIGRATIONS.md`): from that moment
    nothing new is queued and waiting requests are refused. Do this first, while the worker is still running, so a request whose
    write was already marked is still read back and recorded.
-2. Then unset `NIGHTSHIFT_VISIBILITY_PUBLISH` on the worker (and restart it).
+2. Then clear the repository variable `NIGHTSHIFT_VISIBILITY_PUBLISH` (empty is off) and run Actions -> "Deploy web", which rewrites the
+   worker's env file and recreates the worker. (If the file was hand-edited meanwhile, the deploy overwrites that too.)
 3. Only then unset the web flag. Even with it unset the Channels page keeps showing the switch of any channel that is still on, so
    it can always be turned off, and the video page keeps saying "Approve and publish" and showing the request for such a channel.
 
