@@ -356,7 +356,7 @@ def resolve_avatar_config(channel_ctx=None, series_obj=None) -> AvatarConfig:
     if os.getenv(_ENABLED_ENV) is not None:
         merged["enabled"] = _truthy(os.getenv(_ENABLED_ENV))
     for env_key, field in ((_PROVIDER_ENV, "provider"), (_PROMPT_ENV, "character_prompt"), (_REF_ENV, "character_ref")):
-        val = os.getenv(env_key)
+        val = (os.getenv(env_key) or "").strip()   # spaces only (a variable set to " ") is unset, not a blank value
         if val:
             merged[field] = val
 

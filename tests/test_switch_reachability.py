@@ -47,7 +47,7 @@ CI_ONLY_WORKFLOWS = ("tests.yml", "frontend.yml", "security.yml", "video-engine.
 INTENTIONALLY_UNREACHABLE = {
     # -- fixed by the deployment, not a setting ----------------------------------
     "NIGHTSHIFT_RUN_RESULT_FILE": "per-run: the queue worker names the file in the child's env (run_request.RESULT_FILE_ENV)",
-    "NIGHTSHIFT_WORKER_VERSION": "set by the image build for the media worker's probe, not by an operator",
+    "NIGHTSHIFT_WORKER_VERSION": "optional build label the media worker shows next to its status (tools/media_worker.py); nothing in the repository sets it",
     "NIGHTSHIFT_SERIES_FILE": "a local series.json path for a laptop run; the managed path keeps series in the database",
     "CHRONOS_SERIES_FILE": "the old name of NIGHTSHIFT_SERIES_FILE, same reason",
     "CHRONOS_CHANNELS_FILE": "a local channels.json path for a laptop run; the managed path reads the channels table",
