@@ -314,6 +314,7 @@ class FakeEleven:
         self.script = {}
         self.after_create = None
         self.labels = {}       # voice id -> labels (a voice put in `voices` by hand has none unless set here)
+        self.detail_labels = True  # does GET /voices/{id} carry a labels key at all?
         self.list_labels = True  # does the listing carry labels, or only GET /voices/{id}?
         self._n = itertools.count(1)
 
@@ -348,7 +349,9 @@ class FakeEleven:
                                          for v, n in self.voices.items()]})
         if method == "get" and path.startswith("/voices/") and path != "/voices/add":
             vid = path.rsplit("/", 1)[1]
-            return Resp(200, {"voice_id": vid, "name": self.voices[vid], "labels": self.labels.get(vid, {})}) if vid in self.voices else Resp(404, {})
+            if vid not in self.voices:
+                return Resp(404, {})
+            return Resp(200, dict({"voice_id": vid, "name": self.voices[vid]}, **({"labels": self.labels.get(vid, {})} if self.detail_labels else {})))
         if path == "/voices/add":
             vid = self._create(kw)
             if self.after_create:
@@ -407,9 +410,15 @@ class LogCatcher(logging.Handler):
     def __init__(self):
         super().__init__(logging.DEBUG)
         self.lines = []
+        self.levels = []
 
     def emit(self, record):
         self.lines.append(record.getMessage())
+        self.levels.append(record.levelno)
+
+    def level_of(self, needle):
+        """The levels of the lines that contain ``needle``."""
+        return [lv for lv, line in zip(self.levels, self.lines) if needle in line]
 
 
 class Harness(unittest.TestCase):
@@ -785,6 +794,9 @@ class StaleWorkdirs(unittest.TestCase):
             for p in (old, other, afile):
                 os.utime(p, (long_ago, long_ago))
             os.utime(r / "nsvoice-link", (long_ago, long_ago), follow_symlinks=False)
+            with mock.patch.object(vw.os, "getuid", return_value=os.getuid() + 1):
+                self.assertEqual(vw.sweep_stale_workdirs(root, older_than_s=3600), 0, "a directory of another user is never touched")
+            self.assertTrue(old.exists())
             self.assertEqual(vw.sweep_stale_workdirs(root, older_than_s=3600), 1)
             self.assertFalse(old.exists())
             for kept in (young, afile, other, r / "nsvoice-link"):
@@ -795,7 +807,7 @@ class StaleWorkdirs(unittest.TestCase):
     def test_the_command_line_sweeps_on_start(self):
         from tools import voice_worker as cli
 
-        env = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": "k"}
+        env = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": "k", "ELEVENLABS_API_KEY": "e"}
         worker = mock.Mock()
         worker.run_once.return_value = None
         with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(vw, "VoiceWorker", return_value=worker), \
@@ -838,23 +850,29 @@ class TheSwitch(Harness):
         from tools import voice_worker as cli
 
         base = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": "k", "ELEVENLABS_API_KEY": "e"}
-        for missing in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY"):
+        for missing in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "ELEVENLABS_API_KEY"):
             env = {k: v for k, v in base.items() if k != missing}
             with self.subTest(missing=missing), mock.patch.dict(os.environ, env, clear=True), \
-                    mock.patch.object(vw, "VoiceWorker", side_effect=AssertionError("started without " + missing)):
+                    mock.patch.object(vw, "VoiceWorker", side_effect=AssertionError("started without " + missing)), \
+                    mock.patch.object(vw, "VoiceStore", side_effect=AssertionError("built a store without " + missing)), \
+                    mock.patch.object(vw, "sweep_stale_workdirs", side_effect=AssertionError("did something without " + missing)):
                 self.assertEqual(cli.main(["--once"]), 2)
 
-    def test_without_the_elevenlabs_key_the_command_line_still_runs_but_with_no_provider(self):
+    def test_a_blank_elevenlabs_key_is_refused_too_and_the_message_names_the_remedy(self):
         from tools import voice_worker as cli
 
-        env = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": "k"}
-        worker = mock.Mock()
-        worker.run_once.return_value = None
-        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(vw, "VoiceWorker", return_value=worker) as made, \
-                mock.patch.object(vw, "whisper_transcriber", return_value=lambda p: ""), mock.patch.object(cli.signal, "signal"):
-            self.assertEqual(cli.main(["--once"]), 0)
-        self.assertIsNone(made.call_args.args[2], "no provider: purge_sample can still be carried out")
-        worker.run_once.assert_called_once_with()
+        for blank in ("", "   "):
+            env = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": "k", "ELEVENLABS_API_KEY": blank}
+            with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(vw, "VoiceWorker", side_effect=AssertionError("started")), \
+                    self.assertLogs("voice_worker", "ERROR") as cm:
+                self.assertEqual(cli.main(["--once"]), 2)
+            self.assertIn("docs/CUSTOM_VOICE.md", cm.output[0])
+
+    def test_a_worker_cannot_be_built_without_a_provider_because_it_cannot_choose_its_jobs(self):
+        with self.assertRaises(ValueError):
+            vw.VoiceWorker(vw.VoiceStore(SUPABASE, SERVICE_KEY, session=self.db), vw.SampleStorage(SUPABASE, SERVICE_KEY, session=self.db), None,
+                           worker_id="w", transcribe=self.tr, normalise=self.norm, env=ON)
+        self.assertEqual(self.db.calls, [], "and it never claimed anything")
 
     def test_the_loop_waits_only_when_there_was_nothing_to_do(self):
         from tools import voice_worker as cli
@@ -875,7 +893,7 @@ class TheSwitch(Harness):
                 waits.append(seconds)
                 self.flag = True
 
-        env = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": "k"}
+        env = {"NIGHTSHIFT_VOICE_CLONING": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": "k", "ELEVENLABS_API_KEY": "e"}
         worker = mock.Mock()
         worker.run_once.side_effect = [vw.Outcome("clone", "parked", "x", 1), None]
         with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(vw, "VoiceWorker", return_value=worker), \
@@ -1384,6 +1402,19 @@ class Provider(Harness):
         self.assertEqual((len(self.el.voices), len(self.el.posts())), (1, 1))
         self.assertIn(("get", "/voices/" + list(self.el.voices)[0]), [(m, p) for m, p, _ in self.el.calls])
 
+    def test_right_name_and_no_labels_anywhere_is_a_conflict_not_an_adoption(self):
+        # The listing carries no labels and the voice read by id has none either: nothing says it is ours.
+        self.el.list_labels = False
+        self.el.detail_labels = False
+        pid = self.ready()
+        self.el.voices["Z" * 20] = vp.provider_voice_name("ab" * 16, pid)
+        out = self.w.run_once()
+        self.assertEqual((out.result, out.code), ("rejected", "provider_conflict"))
+        self.assertEqual(list(self.el.voices), ["Z" * 20], "not deleted")
+        self.assertEqual(self.el.posts(), [], "and not duplicated")
+        self.assertIsNone(self.profile(pid)["voice_id"])
+        self.assertIn(("get", "/voices/" + "Z" * 20), [(m, p) for m, p, _ in self.el.calls], "the voice was asked about by id first")
+
     def test_a_voice_the_database_says_is_another_profiles_is_not_deleted(self):
         # The service key cannot read other profiles; the database's UNIQUE (provider, voice id) is the check, and it said no.
         pid = self.ready()
@@ -1414,20 +1445,6 @@ class Provider(Harness):
             self.assertNotIn(EL_KEY, str(kw.get("data")) + str(kw.get("files")))
         for headers in self.db.headers_seen:
             self.assertNotIn("xi-api-key", headers, "the Supabase calls never carry the ElevenLabs key")
-
-    def test_without_a_provider_a_clone_is_parked_and_nothing_is_fetched(self):
-        pid = self.ready()
-        w = self.worker("w1")
-        w.provider = None
-        out = w.run_once()
-        self.assertEqual((out.result, out.code), ("parked", "provider_not_configured"))
-        self.assertFalse([c for c in self.db.calls if c[0] == "get"])
-        self.assertEqual(len(self.db.under(pid)), 1)
-        outs = self.attempts(2, w)[1:]
-        self.assertEqual(outs[0].result, "parked")
-        self.assertEqual(self.again(w).result, "rejected", "the third claim says the specific word")
-        self.assertEqual(self.profile(pid)["reject_reason"], "provider_not_configured")
-
 
 # ── two workers, crashes, resumption ─────────────────────────────────────────
 
@@ -1665,6 +1682,7 @@ class OtherJobs(Harness):
         self.assertEqual(self.db.job(pid, "delete_provider")["error"], "provider_unavailable")
         self.assertIn("AbCdEfGhIjKlMnOpQrSt", self.el.voices, "and the voice is still there to be found, not forgotten")
         overdue = [l for l in self.logs.lines if "OVERDUE" in l]
+        self.assertEqual(self.logs.level_of("OVERDUE"), [logging.ERROR], "an overdue recording is an ERROR: it is what an alert filters on")
         self.assertEqual(len(overdue), 1)
         self.assertIn("delete_provider", overdue[0])
         self.assertNothingLeaks()
@@ -1687,25 +1705,6 @@ class OtherJobs(Harness):
         self.assertEqual([o.result for o in outs], ["parked", "parked", "failed"])
         self.assertEqual(self.db.job(pid, "delete_provider")["error"], "provider_error")
         self.assertNotEqual(self.db.job(pid, "delete_provider")["status"], "succeeded")
-
-    def test_without_a_provider_a_delete_is_parked_but_a_purge_is_carried_out(self):
-        pid = self.voiced()
-        self.db.owner_deletes(pid)
-        pid2 = self.ready()
-        self.profile(pid2).update(status="rejected", sample_state="purge_pending")
-        self.db.jobs[:] = [j for j in self.db.jobs if j["kind"] == "delete_provider"]
-        self.db._add_job(pid2, "purge_sample")
-        w = self.worker("w1")
-        w.provider = None
-        results = []
-        for _ in range(2):
-            out = w.run_once()
-            results.append((out.kind, out.result, out.code))
-        self.assertEqual(sorted(results), [("delete_provider", "parked", "provider_not_configured"), ("purge_sample", "purged", None)])
-        self.assertEqual(self.db.under(pid2), [], "the recording was purged without any ElevenLabs key")
-        self.assertEqual(self.profile(pid2)["sample_state"], "purged")
-        self.assertEqual(self.el.calls, [], "and nothing was asked of the provider")
-        self.assertNotIn("could not be removed", " ".join(self.logs.lines), "and no orphan sweep was even attempted")
 
     def test_a_purge_removes_the_whole_prefix_and_nothing_beside_it(self):
         pid = self.db.request_clone()
@@ -1743,7 +1742,7 @@ class OtherJobs(Harness):
         self.assertEqual([o.result for o in outs], ["parked", "parked", "failed"])
         self.assertEqual(self.db.job(pid, "purge_sample")["error"], "storage_not_deleted")
         self.assertNotEqual(self.profile(pid)["sample_state"], "purged", "never claims a deletion it could not confirm")
-        self.assertEqual(len([l for l in self.logs.lines if "OVERDUE" in l]), 1)
+        self.assertEqual(self.logs.level_of("OVERDUE"), [logging.ERROR])
 
     def test_a_purge_that_fails_once_is_carried_out_at_the_next_claim(self):
         pid = self.ready()
@@ -2056,6 +2055,23 @@ class AdapterBranches(unittest.TestCase):
                 self.assertEqual(ctx.exception.code, code)
                 self.assertNotIn(BODY_SECRET, str(ctx.exception))
 
+    def test_a_voice_with_the_right_name_and_no_labels_key_anywhere_is_conflicting(self):
+        pid = "abcdef01-0000-4000-8000-000000000000"
+        name = vp.provider_voice_name("ab" * 16, pid)
+        for by_id in (Resp(200, {"voice_id": "A" * 20, "name": name}), Resp(404, {}), Resp(200, {"labels": "not an object"})):
+            with self.subTest(by_id=by_id.status_code, body=by_id._body):
+                el = FakeEleven()
+                el.script["get:/voices"] = [Resp(200, {"voices": [{"voice_id": "A" * 20, "name": name}]})]   # no labels in the listing
+                el.script["get:/voices/{id}"] = [by_id]
+                got = vp.ElevenLabsVoiceProvider(el, EL_KEY).find_voices_for_profile("ab" * 16, pid)
+                self.assertEqual((got.owned, got.conflicting), ((), ("A" * 20,)))
+        el = FakeEleven()
+        el.script["get:/voices"] = [Resp(200, {"voices": [{"voice_id": "A" * 20, "name": name}]})]
+        el.script["get:/voices/{id}"] = [Resp(200, None)]   # not JSON at all: an error to retry, never a guess
+        with self.assertRaises(vp.ProviderError) as ctx:
+            vp.ElevenLabsVoiceProvider(el, EL_KEY).find_voices_for_profile("ab" * 16, pid)
+        self.assertEqual(ctx.exception.code, "unexpected")
+
     def test_labels_decide_ownership_and_only_the_full_profile_id_with_the_owner_counts(self):
         pid = "abcdef01-0000-4000-8000-000000000000"
         name = vp.provider_voice_name("ab" * 16, pid)
@@ -2101,6 +2117,14 @@ class TheLogsAreQuietWhateverHappens(Harness):
         scenario(lambda: setattr(self.db, "rpc_failures", {"claim_voice_job": [RuntimeError("SENTINEL-EXC")]}))
         scenario(lambda: setattr(self.db, "redirect_on", "/storage/v1/object/voice-samples/"))
         scenario(lambda: setattr(self.db, "_route", lambda m, u, kw, real=self.db._route: Resp(500, {"message": "SENTINEL-BODY"}) if m == "get" else real(m, u, kw)))
+        # A claim answer the worker refuses: every field carries a sentinel, none may be echoed when it is rejected.
+        for broken in ({"kind": "wipe"}, {"sample_prefix": "SENTINEL-SAMPLE/SENTINEL-EXC/"}, {"attempts": "SENTINEL-EXC"},
+                       {"user_id": "SENTINEL-SERVICE-KEY"}, {"sample_path": "SENTINEL-SAMPLE/../../x/sample.webm"}):
+            scenario(lambda broken=broken: setattr(self.db, "_claim", lambda w, broken=broken: dict({
+                "job_id": "00000001-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "kind": "clone", "attempts": 1,
+                "profile_id": "00000001-0000-4000-8000-000000000000", "user_id": USER, "owner_ref": "SENTINEL-EXC", "keep_sample": False,
+                "phrase": "SENTINEL-PHRASE SENTINEL-SAMPLE", "sample_prefix": f"{USER}/00000001-0000-4000-8000-000000000000/",
+                "sample_path": "SENTINEL-BODY", "provider_voice_id": "SENTINEL-EXC", "status": "SENTINEL-BODY"}, **broken)))
         for setup in scenarios:
             self.setUp()
             setup()

@@ -29,7 +29,7 @@ way this module reads or writes it (the service key has no privilege on any voic
 
 * ``delete_provider``: ``DELETE /v1/voices/{id}``; a 404 is "already gone" and counts as done (the adapter does that).
 * ``purge_sample``: delete the whole prefix, confirm it is empty, answer ``finish_voice_task``. Idempotent: an empty prefix is done.
-  It needs no provider key. For a REJECTED profile that never got a voice recorded it also removes voices labelled for that
+  For a REJECTED profile that never got a voice recorded it also removes voices labelled for that
   profile from the provider account (the orphan of a create whose answer was lost), because nothing else would.
 
 Parking. The database allows three claims of a job and nothing a service key can call raises that or re-queues a failed job. A
@@ -640,7 +640,12 @@ class VoiceWorker:
                  transcribe_timeout: float = TRANSCRIBE_TIMEOUT_S):
         self.store = store
         self.storage = storage
-        self.provider = provider   # None: no ElevenLabs key. Purging samples still works; anything that needs the provider is parked.
+        if provider is None:
+            # claim_voice_job cannot filter by kind, so a worker without a provider would still claim every clone and every
+            # provider deletion, park them, use up their three claims and, about an hour later, reject or permanently fail all of
+            # them. There is no keyless mode: the entry point refuses to start, and this refuses to be built.
+            raise ValueError("a VoiceWorker needs a provider: it cannot choose which kind of job it is given")
+        self.provider = provider
         self.worker_id = worker_id
         self.transcribe = transcribe
         self.normalise = normalise
@@ -668,7 +673,7 @@ class VoiceWorker:
             job = Job.parse(raw)
         except ValueError as e:
             # Not a job this worker can act on, and a path it must not build. The lease runs out and the database decides.
-            logger.error("voice: a claimed job was refused (%s); left to the lease", e)
+            logger.error("voice: a claimed job was refused (%s); left to the lease", str(e))  # Job.parse words only, never the answer
             return Outcome("unknown", "invalid")
         try:
             handler = {"clone": self._clone, "delete_provider": self._delete_provider, "purge_sample": self._purge_sample}[job.kind]
@@ -754,8 +759,6 @@ class VoiceWorker:
         """Remove the voices labelled for THIS profile (full id and owner reference) from the provider account, so a rejected
         profile does not leave a clone of someone's voice there. A voice with the name but another label is never touched.
         Best effort; one that survives is found by its name (``ns-<owner_ref>-<profile8>``, docs/CUSTOM_VOICE.md)."""
-        if self.provider is None:
-            return
         try:
             for voice_id in self.provider.find_voices_for_profile(job.owner_ref, job.profile_id).owned:
                 self.provider.delete_voice(voice_id)
@@ -766,8 +769,6 @@ class VoiceWorker:
     def _clone(self, job: Job) -> Outcome:
         if not vp.is_owner_ref(job.owner_ref) or not job.phrase:
             return self._end_clone(job, "bad_job")
-        if self.provider is None:
-            return self._end_clone(job, "provider_not_configured", retry=True)
         # 1. The account's capability, before the sample is fetched and long before any create call.
         try:
             self.provider.ensure_plan()
@@ -865,8 +866,6 @@ class VoiceWorker:
     def _delete_provider(self, job: Job) -> Outcome:
         if not job.provider_voice_id:
             return self._task_failed(job, "no_voice_id")
-        if self.provider is None:
-            return self._task_failed(job, "provider_not_configured")
         try:
             gone = self.provider.delete_voice(job.provider_voice_id)  # a 404 is "already gone": True
         except vp.ProviderError as e:
