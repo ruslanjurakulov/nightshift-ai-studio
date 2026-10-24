@@ -560,6 +560,17 @@ describe("Plan a series", () => {
     expect(screen.getByRole("button", { name: s.entry.submitting }).getAttribute("aria-busy")).toBe("true");
   });
 
+  it("pressing Enter twice in the topic while the request is out sends one request", async () => {
+    h.rpc.mockImplementation(() => new Promise(() => undefined));
+    panel();
+    write("Topic");
+    const form = topic().closest("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await settle();
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+  });
+
   it("the database's refusal of a call it does not allow yet is 'not available yet', in every language, and nothing is queued", async () => {
     for (const loc of ["en", "ru", "uz"] as const) {
       cleanup();

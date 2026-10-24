@@ -328,11 +328,16 @@ class NeverLeftRequested(NoNetwork):
         self.assertEndedOnce(store, "worker_error")
 
     def test_an_exception_anywhere_in_the_service_still_ends_the_plan(self):
-        svc, store, _g, _v = service()
-        with patch.object(spw.SeriesPlanService, "_finish_from", side_effect=ZeroDivisionError("boom")):
-            out = run(svc)
-        self.assertEqual(out.kind, "failed")
-        self.assertEndedOnce(store, "worker_error")
+        class Strange(Exception):
+            pass
+
+        for exc in (ZeroDivisionError("boom"), RuntimeError("boom"), KeyError("boom"), OSError("boom"), Strange("boom"), ValueError("boom")):
+            with self.subTest(exc=type(exc).__name__):
+                svc, store, _g, _v = service()
+                with patch.object(spw.SeriesPlanService, "_finish_from", side_effect=exc):
+                    out = run(svc)
+                self.assertEqual(out.kind, "failed")
+                self.assertEndedOnce(store, "worker_error")
 
     def test_a_planner_that_crashes_on_a_bug_is_a_worker_error(self):
         svc, store, _g, _v = service()

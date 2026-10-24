@@ -168,6 +168,8 @@ describe("the price of the series (the database's, never a partial sum)", () => 
       const t = seriesTotal(eps([quote(), bad, quote()]));
       expect(t).toEqual({ kind: "incomplete", unknownEpisodes: [2] });
     }
+    // every unknown is named, not only the first
+    expect(seriesTotal(eps([quote(), null, quote({ priceStatus: "unpriced", credits: null })]))).toEqual({ kind: "incomplete", unknownEpisodes: [2, 3] });
   });
 
   it("leaves a refused episode out (it never starts), and says 'none' when nothing can be made", () => {
