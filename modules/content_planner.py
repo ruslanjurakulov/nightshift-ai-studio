@@ -27,11 +27,10 @@ deliberately NOT a strict state machine — nothing here
 *enforces* the ordering, and callers advance an entry as far as their run
 actually got — just a durable list with dedup, a "give me the next thing to
 work on" accessor, and honest status: a run advances an entry to ``published``
-only on a real upload success, never the moment the topic is picked. Once a topic is pulled off this queue, it
-is expected to be handed to ``PipelineStateMachine.start_run()`` (or
-equivalent) to go through the real approval chain; wiring that hand-off up
-in ``topic_manager.py`` / ``main.py`` is a deliberate follow-up and is NOT
-done here (see this module's PR description).
+only on a real upload success, never the moment the topic is picked. Once a topic is pulled off this queue,
+``topic_manager.py`` checks it (dedup, niche gate) and reserves it, and
+``main.py`` hands the run to ``PipelineStateMachine.start_run()``; none of that
+hand-off lives in this module.
 
 Decoupling from ``content_opportunity.ContentOpportunity``
 ------------------------------------------------------------

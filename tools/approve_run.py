@@ -6,14 +6,15 @@ Check -> Human Approval by modules/pipeline_stages.py, but nothing calls
 PipelineStateMachine.approve() automatically — it is deliberately reserved
 for a human, run by hand.
 
-IMPORTANT: this tool is currently for REVIEW AND RECORD-KEEPING ONLY. Per an
-explicit product decision (see main.py's history and the PRs that wired
-research_engine/fact_checker/pipeline_stages), main.py's YouTube upload is
-NOT gated on approval yet — the bot still auto-publishes regardless of
-whether a run has been approved here. Calling --approve marks a run as
-reviewed and sets who/when for the audit trail; it does not, by itself,
-publish or block anything. Wiring an actual publish gate to this flag is a
-separate, deliberate follow-up decision for the repo owner.
+IMPORTANT: this tool is REVIEW AND RECORD-KEEPING ONLY. The state machine it
+edits (modules/pipeline_stages.py) is an audit trail, and nothing in the upload
+path reads it: main.py advances every run to HUMAN_APPROVAL and stops there.
+What actually stands between a finished video and a public upload is
+modules/publish_gate.py (and, for a channel that requires two people,
+modules/publish_approval.py), both of which main.py consults before uploading;
+uploads are also private unless a channel has turned auto-publish on. Calling
+--approve marks a run as reviewed and sets who/when for the audit trail; it
+neither publishes nor releases a held video.
 
 Usage:
   python tools/approve_run.py --list

@@ -12,9 +12,9 @@ Configuration (all optional — with nothing set, this still prints to stdout
 and logs via the always-on `log` channel):
   SLACK_WEBHOOK_URL   Post the summary to this Slack incoming webhook.
 
-Wiring this into a schedule (a new GitHub Actions workflow, or a step added
-to an existing one) is a deliberate follow-up decision for the repo owner —
-not done by this script or by adding it.
+It is scheduled by .github/workflows/check_pending_approvals.yml (every six
+hours). The runs it reports on are an audit trail (see tools/approve_run.py),
+not a gate on publishing.
 """
 
 import sys

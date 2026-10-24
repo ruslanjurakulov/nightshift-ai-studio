@@ -20,11 +20,10 @@ the ranking rather than ranked as the worst.
 Fetching is a seam
 ------------------
 `VidIQClient` is a Protocol so the fetch transport is injected. `VidIQResearcher`
-is off unless given a client (a `VIDIQ_ACCESS_TOKEN`-backed HTTP adapter, or an
-MCP-backed one) — with no client every method is a safe no-op, so an
-unconfigured deployment behaves exactly as before. Wiring a concrete transport
-is a deliberate follow-up, mirroring how the other advisory modules shipped
-their decision layer first.
+is off unless given a client — with no client every method is a safe no-op, so an
+unconfigured deployment behaves exactly as before. The concrete transport is
+`modules/vidiq_client.py` (a `VIDIQ_ACCESS_TOKEN`-backed HTTP adapter), which
+`IntelligencePoller.research_vidiq` injects only when vidIQ is enabled.
 """
 
 from __future__ import annotations

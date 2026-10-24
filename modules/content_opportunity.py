@@ -31,9 +31,10 @@ Both input lists may be empty (or contain a single item); the engine never
 divides by zero and simply returns an empty (or appropriately degenerate)
 result in those cases.
 
-Wiring this module to the real ``trend_detector`` / ``audience_demand``
-outputs and to ``topic_manager.pick_topic()`` is an explicit follow-up and
-is NOT done here — see the module's PR description for details.
+This module does not read ``trend_detector`` / ``audience_demand`` output
+itself. ``modules/topic_recommender.py`` feeds it persisted snapshots and
+``modules/topic_manager.py`` uses the ranking in the topic prompt; neither
+step lives here.
 """
 
 from __future__ import annotations

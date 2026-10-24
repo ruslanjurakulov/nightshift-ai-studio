@@ -6,13 +6,11 @@ Context
 -------
 `modules/analytics_client.py` (AnalyticsClient), `modules/competitor_monitor.py`
 (CompetitorMonitor), `modules/trend_detector.py` (TrendDetector), and
-`modules/state_store.py` (StateStore) all already exist and work, but nothing
-in the pipeline calls any of them on a schedule. This module is that missing
-piece: `IntelligencePoller.run_all()` is the single function a future
-scheduled job (cron, a GitHub Actions workflow, whatever the repo owner
-prefers) would call. Building that actual schedule/workflow is a deliberate
-follow-up decision, NOT made here — see the module docstring note in the PR
-this ships with.
+`modules/state_store.py` (StateStore) each do one job, and nothing in a video
+run calls any of them. This module is the piece that does, on a schedule:
+`IntelligencePoller.run_all()` is the single function the scheduled job calls
+(tools/run_intelligence_poll.py, run daily by
+.github/workflows/intelligence_poll.yml).
 
 Design: defensive per-sub-call, not defensive per-poll
 -------------------------------------------------------
@@ -525,9 +523,8 @@ class IntelligencePoller:
 
     def run_all(self, competitor_channel_ids: list | None = None) -> dict:
         """Runs all three polls and returns a small summary dict. This is
-        the single function a future scheduled job (cron, GitHub Action, or
-        otherwise) would call; wiring it into an actual schedule is a
-        deliberate follow-up decision not made by this module.
+        the single function the scheduled job calls (tools/run_intelligence_poll.py,
+        run by .github/workflows/intelligence_poll.yml).
         """
         own_metrics_written = self.poll_own_channel_metrics()
 

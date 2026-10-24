@@ -8,7 +8,8 @@ pinned here is what would otherwise break silently in one language:
 * the Latin file carries Uzbek's oʻ gʻ (U+02BB), the tutuq (U+02BC) and the
   curly apostrophes (U+2018/U+2019); the Cyrillic file carries all of Russian
   plus the Uzbek Cyrillic letters; tabular figures exist in the Latin file.
-  (Needs fontTools: skipped where it is not installed, as in the bot's CI image.)
+  (Needs fontTools AND brotli, which fontTools needs to read .woff2: skipped where
+  either is not installed, as in the bot's CI image.)
 * the licence text for every shipped face is in the repo.
 """
 
@@ -23,6 +24,9 @@ CSS = (APP / "app" / "fonts.css").read_text(encoding="utf-8")
 
 try:  # pragma: no cover - optional dependency
     from fontTools.ttLib import TTFont
+    # fontTools imports without brotli but cannot open a .woff2 without it, so
+    # the failure would surface inside a test instead of as a skip.
+    import brotli  # noqa: F401
 except ImportError:  # pragma: no cover
     TTFont = None
 
@@ -55,7 +59,7 @@ class FontFiles(unittest.TestCase):
             self.assertIn("SIL OPEN FONT LICENSE Version 1.1", text)
 
 
-@unittest.skipIf(TTFont is None, "fontTools is not installed")
+@unittest.skipIf(TTFont is None, "fontTools or brotli is not installed")
 class FontCoverage(unittest.TestCase):
     def test_uzbek_latin_letters_and_apostrophes(self):
         c = cmap("onest-latin-v1.woff2")

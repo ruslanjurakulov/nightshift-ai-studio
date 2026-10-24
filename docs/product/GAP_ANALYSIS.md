@@ -1,5 +1,14 @@
 # Nightshift: gap analysis against the Universal AI Content OS brief
 
+> **Superseded, see main.** This is a dated snapshot of `origin/main` at `c94620b`
+> (2026-10-02). Much of what it lists as missing, partial or "not wired" has since
+> been built, merged or changed, and its "ready-to-run briefs" (§4) and migration
+> numbers (§3-§5) are out of date. Do not plan from it: read the code on `main`, the
+> migrations in `supabase/migrations/`, and the current docs (for example
+> `docs/SERIES_FACTORY.md`, `docs/INTELLIGENCE.md`). It is kept
+> as a record of the gap analysis as it stood on that date, and of the reasoning
+> behind the briefs.
+
 Audited: `origin/main` at `c94620b` (2026-10-02), read from the code, migrations and
 tests. The README and the older plan documents were treated as claims to check,
 not as evidence. Where a document disagrees with the code, the code wins and the

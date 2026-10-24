@@ -64,10 +64,10 @@ that: any state-store failure is logged as a warning and degrades to the
 method's documented empty/zero value (`[]` or `0.0` or `""`), never
 propagates.
 
-Wiring this into `main.py` / `modules/topic_manager.py` /
-`modules/intelligence_poller.py` so it actually informs a real run is a
-deliberate follow-up done by hand elsewhere, NOT part of this module — same
-split as `topic_recommender.py`'s relationship to `topic_manager.py`.
+What informs a real run is done by the callers, not by this module:
+`modules/topic_manager.py` and `modules/script_engine.py` put
+`analyze_videos_as_prompt_text()` into their prompts — the same split as
+`topic_recommender.py`'s relationship to `topic_manager.py`.
 """
 
 from __future__ import annotations

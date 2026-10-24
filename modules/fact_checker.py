@@ -44,10 +44,10 @@ Input contract
 deliberate, loose-coupling choice: this module does not import any claim
 dataclass or extraction logic from another module (e.g. a future
 `research_engine` or `script_engine` claim-extraction helper), since those may
-live on sibling branches that don't exist in this checkout. Wiring this engine
-into the rest of the pipeline — extracting claims out of a generated script,
-and gating the Final Human Approval UI on these results — is a follow-up, not
-part of this module.
+live on sibling branches that don't exist in this checkout. The pipeline does
+the wiring around it: main.py extracts claims from the script
+(modules/claim_extractor.py), calls this engine, and hands the results to the
+publish gate (modules/publish_gate.py). None of that lives in this module.
 """
 
 import json

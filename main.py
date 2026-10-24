@@ -1097,9 +1097,9 @@ def run(
     # Human Approval so the record is honest about what actually happened at
     # each stage. It deliberately stops at Human Approval: approve() is never
     # called here, so the run never reaches Publish through this mechanism.
-    # Upload below proceeds exactly as before, independent of this state —
-    # wiring an actual approval requirement is a deliberate follow-up decision,
-    # not something this pipeline enforces yet.
+    # Upload below proceeds independent of this state: what can hold or block it
+    # is the publish gate and, per channel, the two-person approval further down
+    # (modules/publish_gate.py, modules/publish_approval.py), not this record.
     pipeline = PipelineStateMachine(channel_id=channel_id)
     run_record = pipeline.start_run(topic)
 

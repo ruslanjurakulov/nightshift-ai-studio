@@ -146,7 +146,7 @@ def run_durability_check(store, sync=None, *, snapshot_path=None,
     JSON snapshot (when `snapshot_path` is given), check the mirror, and emit one
     `durability.check`. Returns the report. Advisory and never raises — it does
     not touch `intelligence_poller.run_all`, so it stays independent of the
-    per-run poll. Wiring it into an actual schedule is a deliberate follow-up."""
+    per-run poll. The scheduled caller is tools/run_intelligence_poll.py."""
     report = check_mirrored(store, sync, channel_id=channel_id)
     backed_up = None
     if snapshot_path is not None:

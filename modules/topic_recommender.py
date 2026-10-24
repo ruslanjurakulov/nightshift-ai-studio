@@ -29,10 +29,9 @@ a direct, adapter-free way to let the engine score both sources on one
 consistent basis, and the ranked output's `rationale` explains *why* each
 entry scored the way it did regardless of which table it came from.
 
-Wiring this into `topic_manager.pick_topic()` — the actual "close the loop"
-step — is a deliberate follow-up done by hand elsewhere, NOT part of this
-module. This module only makes the read-and-rank capability exist and work
-correctly in isolation.
+`topic_manager.py` is what closes the loop: it builds a recommender and puts
+`suggest_topics_as_prompt_text()` into the topic prompt. None of that wiring
+lives in this module, which only provides the read-and-rank capability.
 
 Defensive posture
 ------------------
