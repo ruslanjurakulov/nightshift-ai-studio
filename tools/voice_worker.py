@@ -10,8 +10,10 @@ sets it; empty is off). With the switch off it exits 0 without reading the envir
 
 What a job does is ``modules/voice_worker.py``. This file only wires it to the environment: ``SUPABASE_URL`` and
 ``SUPABASE_SERVICE_KEY`` (the queue functions and the private bucket) and ``ELEVENLABS_API_KEY`` (the provider). Without the
-ElevenLabs key it claims nothing: a job it cannot run must not be claimed and failed. On the free plan every clone job ends in the
-closed state ``provider_not_enabled`` and nothing is spent.
+ElevenLabs key the worker still claims and carries out ``purge_sample`` jobs (purging a person's recording must not wait for a
+key); a clone or a provider deletion it claims is PARKED, not failed, and comes back when its 30-minute lease runs out (each claim
+uses one of the job's three attempts, so restore the key within the hour). On the free plan every clone job ends in the closed state
+``provider_not_enabled`` and nothing is spent.
 """
 
 from __future__ import annotations
@@ -56,12 +58,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     import requests  # noqa: PLC0415
 
+    provider = None
     try:
         provider = vp.ElevenLabsVoiceProvider(requests.Session(), os.environ.get("ELEVENLABS_API_KEY", ""))
-    except vp.ProviderError as e:
-        logger.error("%s Claiming nothing.", e)
-        return 2
+    except vp.ProviderError:
+        logger.warning("ELEVENLABS_API_KEY is not set: only purge_sample jobs can be carried out. A clone or a provider deletion "
+                       "that is claimed is parked, not failed, and uses one of its three attempts.")
 
+    vw.sweep_stale_workdirs()
     worker = vw.VoiceWorker(vw.VoiceStore(url, key), vw.SampleStorage(url, key), provider,
                             worker_id=args.worker_id, transcribe=vw.whisper_transcriber())
     stop = threading.Event()
@@ -78,10 +82,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         outcome = worker.run_once()
         if args.once:
             return 0
-        # Work found: look again at once. Nothing found, or a job put back for a retry: wait.
-        wait = POLL_SECONDS if outcome is None else worker.retry_wait(outcome)
-        if wait:
-            stop.wait(wait)
+        # Work found: look again at once. Nothing found: wait. (A parked job comes back by itself when its lease runs out.)
+        if outcome is None:
+            stop.wait(POLL_SECONDS)
     return 0
 
 

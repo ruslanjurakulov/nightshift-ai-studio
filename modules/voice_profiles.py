@@ -343,16 +343,27 @@ class ProviderError(RuntimeError):
 
 
 class PlanRequired(ProviderError):
-    """The ElevenLabs plan does not (or is not known to) allow instant voice cloning. Nothing was sent."""
+    """The ElevenLabs plan does not (or is not known to) allow instant voice cloning. Nothing was sent.
+    ``state`` is False when the subscription SAID so (the documented free plan) and None when it said nothing: the second is
+    an unverified answer, not a verdict, and a worker must not treat it as the first."""
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, state: Optional[bool] = None):
         super().__init__("plan_required", message)
+        self.state = state
 
 
 @dataclass(frozen=True)
 class ProviderVoice:
     provider: str
     voice_id: str
+
+
+@dataclass(frozen=True)
+class ProfileVoices:
+    """Voices in the provider account that carry one profile's name: ``owned`` are labelled with that profile's FULL id and its
+    owner reference (made by this system for it); ``conflicting`` carry the name but a different or missing label."""
+    owned: tuple = ()
+    conflicting: tuple = ()
 
 
 @runtime_checkable
@@ -369,7 +380,7 @@ class VoiceProvider(Protocol):
 
     def ensure_plan(self) -> None: ...
 
-    def find_voices_by_name(self, name: str) -> list: ...
+    def find_voices_for_profile(self, owner_ref: str, profile_id: str) -> "ProfileVoices": ...
 
 
 def plan_allows_instant_cloning(subscription: object) -> Optional[bool]:
@@ -398,7 +409,7 @@ class ElevenLabsVoiceProvider:
     * ``POST   /v1/voices/add``             multipart: ``name``, ``files`` (the sample), ``labels`` (JSON text)
     * ``DELETE /v1/voices/{voice_id}``
     * ``GET    /v1/voices/{voice_id}``
-    * ``GET    /v1/voices``                 the account's voices, read only to find a clone by its exact name (below)
+    * ``GET    /v1/voices``                 the account's voices, read only to find a profile's clone by name and labels (below)
 
     ``create_voice`` calls the plan probe first and refuses (``PlanRequired``) unless it reads true.
     """
@@ -476,7 +487,7 @@ class ElevenLabsVoiceProvider:
         flag = plan_allows_instant_cloning(self.subscription())
         if flag is not True:
             raise PlanRequired(_PLAN_NEEDED.format(
-                state="it is not allowed" if flag is False else "nothing about it (unknown is treated as not allowed)"))
+                state="it is not allowed" if flag is False else "nothing about it (unknown is treated as not allowed)"), flag)
 
     # -- the three calls --------------------------------------------------------
     def create_voice(self, *, owner_ref: str, profile_id: str, sample: bytes, content_type: str) -> ProviderVoice:
@@ -527,14 +538,15 @@ class ElevenLabsVoiceProvider:
             raise ProviderError("unexpected", "ElevenLabs voice lookup answered something that is not JSON.") from e
         return data if isinstance(data, Mapping) else None
 
-    def find_voices_by_name(self, name: str) -> list:
-        """Voice ids in the account whose name is EXACTLY ``name`` (a name made by ``provider_voice_name``), in the
-        order the provider lists them. This is what makes a retry safe: a create that timed out, or whose answer had
-        no usable id, may have made the voice anyway, and the next attempt must adopt it, never make a second one.
-        Read only, never needs the plan. UNVERIFIED live like the rest: the list endpoint and its ``voices`` /
-        ``name`` / ``voice_id`` fields are as the planner knew them."""
-        if parse_provider_voice_name(name) is None:
-            raise ValueError("only a name made by provider_voice_name is looked up")
+    def find_voices_for_profile(self, owner_ref: str, profile_id: str) -> ProfileVoices:
+        """The voices in the account named for this profile (``provider_voice_name``), split by their LABELS: ``owned`` carry
+        ``nightshift_profile`` equal to the profile's full id and ``nightshift_owner_ref`` equal to the owner's reference.
+        A voice with the name but another label (or none) is ``conflicting`` and is never adopted or deleted by the caller. This is
+        what makes a retry safe: a create that timed out, or whose answer had no usable id, may have made the voice, and the next
+        attempt must adopt it, never make a second one. Read only, never needs the plan. The list is read first; a voice whose
+        listing carries no labels is read by id. UNVERIFIED live like the rest: the list endpoint and its ``voices`` / ``name`` /
+        ``voice_id`` / ``labels`` fields are as the planner knew them."""
+        name = provider_voice_name(owner_ref, profile_id)  # validates both
         resp = self._request("get", "/voices", "voice list")
         if getattr(resp, "status_code", None) != 200:
             raise self._failure(resp, "voice list")
@@ -544,9 +556,19 @@ class ElevenLabsVoiceProvider:
             raise ProviderError("unexpected", "ElevenLabs voice list answered something that is not JSON.") from e
         if not isinstance(voices, list):
             raise ProviderError("unexpected", "ElevenLabs voice list answered something that is not a list of voices.")
-        return [v["voice_id"] for v in voices
-                if isinstance(v, Mapping) and v.get("name") == name and isinstance(v.get("voice_id"), str)
-                and VOICE_ID_RE.fullmatch(v["voice_id"]) is not None]
+        owned, conflicting = [], []
+        for v in voices:
+            if not (isinstance(v, Mapping) and v.get("name") == name and isinstance(v.get("voice_id"), str)
+                    and VOICE_ID_RE.fullmatch(v["voice_id"]) is not None):
+                continue
+            labels = v.get("labels")
+            if not isinstance(labels, Mapping):
+                detail = self.get_voice(v["voice_id"])
+                labels = detail.get("labels") if isinstance(detail, Mapping) else None
+            ours = (isinstance(labels, Mapping) and labels.get("nightshift_profile") == str(profile_id).lower()
+                    and labels.get("nightshift_owner_ref") == owner_ref)
+            (owned if ours else conflicting).append(v["voice_id"])
+        return ProfileVoices(tuple(owned), tuple(conflicting))
 
     @staticmethod
     def _check_voice_id(voice_id: object) -> None:
