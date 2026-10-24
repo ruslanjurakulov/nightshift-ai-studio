@@ -658,6 +658,9 @@ jobs:
           CHRONOS_TOPIC_GATE: ${{ vars.CHRONOS_TOPIC_GATE }}
           CHRONOS_TOPIC_QUEUE_STALE_DAYS: ${{ vars.CHRONOS_TOPIC_QUEUE_STALE_DAYS }}
           CHRONOS_TOPIC_GATE_MODEL_CALLS: ${{ vars.CHRONOS_TOPIC_GATE_MODEL_CALLS }}
+          # Days a topic of a run held before the render is not proposed again (main.py, modules/topic_manager.py);
+          # empty = 14, 0 = off.
+          CHRONOS_HELD_TOPIC_COOLDOWN_DAYS: ${{ vars.CHRONOS_HELD_TOPIC_COOLDOWN_DAYS }}
           # GB of free disk a run needs before it starts (modules/disk_guard.py). Blank = the 5 GB default.
           NIGHTSHIFT_MIN_FREE_DISK_GB: ${{ vars.NIGHTSHIFT_MIN_FREE_DISK_GB }}
           # --- Per-channel publishing tokens -------------------------------
