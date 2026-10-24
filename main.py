@@ -942,7 +942,7 @@ def run(
     # The ownership rule for a custom (cloned) voice comes first and is its own refusal (docs/CUSTOM_VOICE.md, "Hard gate"):
     # this run did not pass through the database rule that guards render_jobs, so it asks again, with its own voices, now.
     try:
-        voice_gate.check_run(ctx, narrator_voice(ctx.agent), secondary_voice(ctx.agent))
+        voice_gate.check_run_contained(ctx, narrator_voice, secondary_voice)
     except voice_gate.VoiceGateRefused as e:
         # __main__ logs the one line; logging it here too would print it twice.
         events.emit(events.AGENT_FAILED, agent="voice_gate", status=events.STATUS_FAILED,

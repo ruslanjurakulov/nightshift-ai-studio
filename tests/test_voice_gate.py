@@ -255,6 +255,12 @@ CANNOT_ANSWER = {
     "an unreadable answer": lambda: Resp(200, raises_on_json=True),
     "an odd body": lambda: Resp(200, {"unexpected": "shape"}),
     "a number": lambda: Resp(200, 7),
+    "a string that is not a key we asked about": lambda: Resp(200, "some error message"),
+    "an empty string": lambda: Resp(200, ""),
+    "the other slot's key when only the narrator was asked": lambda: Resp(200, "elevenlabs_secondary_voice_id"),
+    "a key with different case": lambda: Resp(200, "ELEVENLABS_VOICE_ID"),
+    "a key with padding": lambda: Resp(200, " elevenlabs_voice_id"),
+    "a list": lambda: Resp(200, ["elevenlabs_voice_id"]),
 }
 REFUSED_AT_ONCE = {
     "a 401": lambda: Resp(401),
@@ -299,7 +305,7 @@ class WhenTheDatabaseCannotBeAsked(unittest.TestCase):
         sleeps, _ = self.lenient(s)
         self.assertEqual(len(s.calls), 2)
         worst = sum(sleeps) + sum(c["timeout"] for c in s.calls)
-        self.assertLessEqual(worst, 6.0)
+        self.assertLessEqual(worst, 5.0)
 
     def test_every_kind_of_no_answer_continues_by_default_and_stops_under_strict(self):
         for name, make in {**CANNOT_ANSWER, **REFUSED_AT_ONCE}.items():
@@ -363,7 +369,7 @@ class WhenTheDatabaseCannotBeAsked(unittest.TestCase):
         call = s.calls[0]
         self.assertEqual(call["headers"], {"apikey": ENV["SUPABASE_SERVICE_KEY"], "Authorization": f"Bearer {ENV['SUPABASE_SERVICE_KEY']}",
                                            "Content-Type": "application/json"})
-        self.assertEqual(call["timeout"], 2.5)
+        self.assertEqual(call["timeout"], 2.0)
         self.assertIs(call["allow_redirects"], False)
         s = Session(approved_and_attached())
         gate(s, env=STRICT)
@@ -520,6 +526,174 @@ class NothingChangesWhenNoCloneIsUsed(unittest.TestCase):
         self.assertEqual(s.calls[0]["json"]["p_channel"], "chan-a")
 
 
+class TheWholeQuestionHasADeadline(unittest.TestCase):
+    """requests' timeouts are per socket read: a server that drips a byte a second outlasts them. The gate bounds the whole call."""
+
+    def blocking(self, seconds=30):
+        import threading  # noqa: PLC0415
+
+        release = threading.Event()
+
+        class Drip(Session):
+            def post(self_, *a, **kw):
+                self_.calls.append({})
+                release.wait(seconds)
+                return Resp(200, None)
+
+        return Drip(), release
+
+    def test_a_server_that_never_finishes_cannot_hold_a_lenient_run_past_the_deadline(self):
+        import time  # noqa: PLC0415
+
+        s, release = self.blocking()
+        try:
+            with mock.patch.object(voice_gate, "_LENIENT", ((0.0,), 5.0, 5.0, 0.4)), self.assertLogs("modules.voice_gate", level="WARNING") as logs:
+                started = time.monotonic()
+                gate(s)
+                took = time.monotonic() - started
+        finally:
+            release.set()
+        self.assertLess(took, 2.0)
+        self.assertIn("deadline", "\n".join(logs.output))
+
+    def test_and_it_stops_a_strict_run_with_83_at_the_deadline(self):
+        import time  # noqa: PLC0415
+
+        s, release = self.blocking()
+        try:
+            with mock.patch.object(voice_gate, "_STRICT", ((0.0, 0.0), 5.0, 5.0, 0.4)):
+                started = time.monotonic()
+                with self.assertRaises(VoiceGateRefused) as caught:
+                    gate(s, env=STRICT)
+                took = time.monotonic() - started
+        finally:
+            release.set()
+        self.assertLess(took, 2.0)
+        self.assertEqual(caught.exception.exit_code, 83)
+        self.assertEqual(len(s.calls), 1, "no second try once the deadline has passed")
+
+    def test_the_waits_between_tries_count_against_the_same_deadline(self):
+        s = Session(script=[OSError("down")] * 3)
+        sleeps = []
+        with mock.patch.object(voice_gate, "_LENIENT", ((9.0,), 1.0, 1.0, 0.3)), self.assertLogs("modules.voice_gate", level="WARNING"):
+            require_voices_usable("chan-a", CLONE, "narrator", env=ENV, session=s, sleep=sleeps.append, defaults=("", ""))
+        self.assertLessEqual(max(sleeps), 0.3, "a wait is cut to what is left of the budget")
+
+    def test_each_attempt_is_given_no_more_than_what_is_left(self):
+        s = Session(approved_and_attached())
+        with mock.patch.object(voice_gate, "_LENIENT", ((0.0,), 9.0, 9.0, 0.5)):
+            gate(s)
+        self.assertLessEqual(s.calls[0]["timeout"], 0.5)
+
+    def test_the_budgets_are_what_the_docs_say(self):
+        self.assertLessEqual(voice_gate._LENIENT[3], 5.0)
+        backoff, first, retry, total = voice_gate._STRICT
+        self.assertEqual(total, 24.0)
+        self.assertLessEqual(sum(backoff) + first + retry * len(backoff), total)
+        backoff, first, retry, total = voice_gate._LENIENT
+        self.assertLessEqual(sum(backoff) + first + retry * len(backoff), total)
+        self.assertIn("5 seconds", (ROOT / "docs" / "CUSTOM_VOICE.md").read_text(encoding="utf-8"))
+
+
+class OnlyTheKeysWeAskedAboutAreANo(unittest.TestCase):
+    def test_the_exact_key_is_a_no_and_only_for_a_slot_that_was_asked(self):
+        for body, kwargs in (("elevenlabs_voice_id", {}), ("elevenlabs_secondary_voice_id", {"narrator": STOCK, "secondary": CLONE})):
+            with self.subTest(body):
+                with self.assertRaises(VoiceGateRefused) as caught:
+                    gate(Session(script=[Resp(200, body)]), **kwargs)
+                self.assertEqual(caught.exception.exit_code, 82)
+
+    def test_any_other_string_is_not_an_answer_so_it_is_not_exit_82(self):
+        for body in ("", "error", "elevenlabs_secondary_voice_id", "ELEVENLABS_VOICE_ID", "not allowed"):
+            with self.subTest(body):
+                s = Session(script=[Resp(200, body)] * 2)
+                with self.assertLogs("modules.voice_gate", level="WARNING"):
+                    gate(s)                   # lenient: could not answer, the run goes on
+                with self.assertRaises(VoiceGateRefused) as caught:
+                    gate(Session(script=[Resp(200, body)] * 3), env=STRICT)
+                self.assertEqual(caught.exception.exit_code, 83)
+
+
+class ABugInsideTheGateIsContained(unittest.TestCase):
+    def ctx(self):
+        ctx = mock.MagicMock()
+        ctx.agent.tts_provider = "elevenlabs"
+        ctx.channel_id = "chan-a"
+        return ctx
+
+    def contained(self, boom, env=ENV, **kw):
+        with mock.patch.object(voice_gate, "check_run", side_effect=boom):
+            voice_gate.check_run_contained(self.ctx(), lambda a: CLONE, lambda a: "narrator", env=env, **kw)
+
+    def test_by_default_it_warns_with_the_exception_type_only_and_the_run_goes_on(self):
+        with self.assertLogs("modules.voice_gate", level="WARNING") as logs:
+            self.contained(RuntimeError("secret-detail-xyz"))
+        text = "\n".join(logs.output)
+        self.assertIn("RuntimeError", text)
+        self.assertNotIn("secret-detail-xyz", text)
+
+    def test_under_strict_it_is_could_not_verify_exit_83(self):
+        with self.assertRaises(VoiceGateRefused) as caught:
+            self.contained(KeyError("x"), env=STRICT)
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("unavailable", 83))
+        self.assertIn("KeyError", str(caught.exception))
+        self.assertNotIn("'x'", str(caught.exception), "the exception's own text is never copied")
+
+    def test_the_actions_annotation_is_printed(self):
+        import io  # noqa: PLC0415
+        from contextlib import redirect_stdout  # noqa: PLC0415
+
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertLogs("modules.voice_gate", level="WARNING"):
+            self.contained(ValueError("v"), env=dict(ENV, GITHUB_ACTIONS="true"))
+        self.assertTrue(out.getvalue().startswith("::warning title=Custom voice check skipped::"), out.getvalue())
+
+    def test_the_deliberate_refusals_and_system_exit_are_never_swallowed(self):
+        for env in (ENV, STRICT):
+            for exc in (VoiceGateRefused("no", reason="not_permitted"), VoiceGateRefused("no", reason="unavailable"), SystemExit(7), KeyboardInterrupt()):
+                with self.subTest(type(exc).__name__, strict=env is STRICT):
+                    with self.assertRaises(type(exc)):
+                        self.contained(exc, env=env)
+
+    def test_a_bug_in_resolving_the_voices_is_contained_too(self):
+        def bad(agent):
+            raise AttributeError("nope")
+
+        with self.assertLogs("modules.voice_gate", level="WARNING") as logs:
+            voice_gate.check_run_contained(self.ctx(), bad, lambda a: "narrator", env=ENV, session=Session(), defaults=("", ""))
+        self.assertIn("AttributeError", "\n".join(logs.output))
+
+    def test_a_normal_check_is_unchanged_through_it(self):
+        s = Session(approved_and_attached(status="revoked"))
+        with self.assertRaises(VoiceGateRefused) as caught:
+            voice_gate.check_run_contained(self.ctx(), lambda a: CLONE, lambda a: "narrator", env=ENV, session=s, defaults=("", ""))
+        self.assertEqual(caught.exception.exit_code, 82)
+        voice_gate.check_run_contained(self.ctx(), lambda a: CLONE, lambda a: "narrator", env=ENV,
+                                       session=Session(approved_and_attached()), defaults=("", ""))
+
+
+class TheNextStageSeesABugToo(unittest.TestCase):
+    """main.run: a bug in the gate is not a traceback and exit 1 by default."""
+
+    def test_run_goes_on_to_the_voice_check_when_the_gate_has_a_bug(self):
+        t = TheStageInTheRun("test_an_allowed_clone_goes_on_to_the_voice_check_as_before")
+        t.setUp()
+        try:
+            with mock.patch.object(voice_gate, "check_run", side_effect=RuntimeError("bug")), \
+                    mock.patch.dict(os.environ, {"NIGHTSHIFT_VOICE_GATE_STRICT": ""}):
+                raised, _, _, verify = t.run_with(approved_and_attached())
+            self.assertEqual(str(raised), "voice verified")
+            verify.assert_called_once()
+            with mock.patch.object(voice_gate, "check_run", side_effect=RuntimeError("bug")), \
+                    mock.patch.dict(os.environ, {"NIGHTSHIFT_VOICE_GATE_STRICT": "on"}):
+                raised, _, _, verify = t.run_with(approved_and_attached())
+            self.assertIsInstance(raised, VoiceGateRefused)
+            self.assertEqual(raised.exit_code, 83)
+            verify.assert_not_called()
+        finally:
+            t.tearDown()
+
+
 class TheStageInTheRun(unittest.TestCase):
     """main.run: the refusal comes before every paid call, ends in its own exit code, and a repair never reaches it."""
 
@@ -578,7 +752,7 @@ class TheStageInTheRun(unittest.TestCase):
     def outage(self, env):
         session = Session(approved_and_attached(), script=[OSError("down")] * 3)
         with mock.patch.dict(os.environ, env), mock.patch("requests.Session", return_value=session), \
-                mock.patch.object(voice_gate, "_LENIENT", ((0,), 0.1, 0.1)), mock.patch.object(voice_gate, "_STRICT", ((0, 0), 0.1, 0.1)), \
+                mock.patch.object(voice_gate, "_LENIENT", ((0,), 0.1, 0.1, 1.0)), mock.patch.object(voice_gate, "_STRICT", ((0, 0), 0.1, 0.1, 1.0)), \
                 mock.patch.object(self.main, "check_run_credentials", return_value=self.health()), \
                 mock.patch.object(self.main, "_preflight_disk"), mock.patch.object(self.main, "_guard_spend"), \
                 mock.patch.object(self.main, "ensure_assets", return_value=0), \
@@ -608,7 +782,7 @@ class TheStageInTheRun(unittest.TestCase):
     def test_the_gate_is_the_first_of_the_voice_stages_and_before_every_paid_call(self):
         body = (ROOT / "main.py").read_text()
         body = body[body.index("\ndef run("):]
-        gate_at = body.index("voice_gate.check_run(ctx, narrator_voice(ctx.agent), secondary_voice(ctx.agent))")
+        gate_at = body.index("voice_gate.check_run_contained(ctx, narrator_voice, secondary_voice)")
         self.assertGreater(gate_at, body.index("raise CredentialsMissing("))
         for later in ("verify_voice(ctx)", "video_providers.preflight()", "_preflight_pictures(ctx, series_obj, channel_id)",
                       "ScriptEngine(channel=ctx)"):
@@ -624,7 +798,7 @@ class TheStageInTheRun(unittest.TestCase):
         repair_branch = tail[tail.index("elif args.repair_scenes is not None:"):tail.index("    else:\n        try:\n            run(")]
         self.assertNotIn("voice_gate", repair_branch)
         self.assertNotIn("run(", repair_branch)
-        self.assertEqual(main_src.count("voice_gate.check_run("), 1, "the gate belongs to run() and nowhere else")
+        self.assertEqual(main_src.count("voice_gate.check_run"), 1, "the gate belongs to run() and nowhere else")
 
 
 class TheExitCode(unittest.TestCase):

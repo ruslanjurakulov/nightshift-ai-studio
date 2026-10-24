@@ -27,7 +27,9 @@ Two different failures, two different answers
   repository's own rule for a Supabase outage is to degrade (the channel registry falls back, the slot guard fails open), and today
   the gate protects nothing the outage could cost: the clone request is granted to nobody, so no custom voice can exist.
   With ``NIGHTSHIFT_VOICE_GATE_STRICT`` on, "could not answer" stops the run instead (``VOICE_GATE_UNAVAILABLE_EXIT``), after more
-  tries. The owner turns the switch on TOGETHER WITH the grant that lets users clone a voice (docs/CUSTOM_VOICE.md): from then on a
+  tries. Either way the whole question has a hard wall-clock deadline (about 5 seconds lenient, 24 strict), enforced around the request
+  itself because ``requests`` timeouts are per socket read and a server dripping a byte a second would outlast them. A bug inside the
+  gate is contained the same way (``check_run_contained``): a warning and the run goes on, or exit 83 under strict. The owner turns the switch on TOGETHER WITH the grant that lets users clone a voice (docs/CUSTOM_VOICE.md): from then on a
   silent outage would be a way to use someone's voice unchecked.
 * "The function does not exist" (PostgREST ``PGRST202`` or Postgres ``42883``, and only those) means 0117 is not applied, so no
   profile can exist: the run continues, with a warning. Any other 404 is "could not answer".
@@ -48,6 +50,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 import time
 from typing import Mapping, Optional
 
@@ -75,8 +78,11 @@ _FUNCTION_ABSENT = ("PGRST202", "42883")
 #: (waits before the 2nd, 3rd attempt; timeout of the 1st attempt; timeout of the retries). Lenient (the default): two tries and about
 #: five seconds at most, because an outage must not hold up a run that is not at risk. Strict: three tries, as the lookups of the
 #: channel token do.
-_LENIENT = ((0.5,), 2.5, 2.5)
-_STRICT = ((1.0, 3.0), 10.0, 5.0)
+#: The fourth number is the TOTAL wall-clock budget for the whole question, waits and tries together. ``requests`` timeouts are per
+#: socket read, so a server that sends a byte a second can hold a call open for minutes; the deadline below is what actually bounds the
+#: gate: about 5 seconds when lenient, the 24 seconds the strict schedule adds up to (10 + 1 + 5 + 3 + 5) when strict.
+_LENIENT = ((0.5,), 2.0, 2.0, 5.0)
+_STRICT = ((1.0, 3.0), 10.0, 5.0, 24.0)
 RETRY_BACKOFF = _STRICT[0]    # kept for callers and tests that name the strict schedule
 
 
@@ -142,23 +148,53 @@ def _annotate(env: Mapping[str, str], level: str, title: str, message: str) -> N
         print(f"::{level} title={title}::{message}", flush=True)
 
 
-def _ask(url: str, key: str, channel_id: str, new: dict, *, session, sleep, strict: bool) -> Optional[str]:
+def _post_within(session, seconds: float, url: str, **kwargs):
+    """``session.post`` with a hard wall-clock limit. The call runs on a daemon thread that is abandoned when the limit passes (its
+    own socket timeouts end it soon after), so a server that drips bytes cannot hold the run. Raises what the call raised, or
+    :class:`_CouldNotAnswer` on the deadline."""
+    box: dict = {}
+
+    def work():
+        try:
+            box["response"] = session.post(url, **kwargs)
+        except BaseException as e:  # noqa: BLE001 — handed to the caller, which keeps only its type
+            box["error"] = e
+
+    thread = threading.Thread(target=work, name="voice-gate-request", daemon=True)
+    thread.start()
+    thread.join(seconds)
+    if thread.is_alive():
+        raise _CouldNotAnswer("deadline")
+    if "error" in box:
+        raise box["error"]
+    return box["response"]
+
+
+def _ask(url: str, key: str, channel_id: str, new: dict, *, session, sleep, strict: bool, clock=time.monotonic) -> Optional[str]:
     """One question to the database, retried on a transient failure. Returns the refused key, or None when every voice is usable.
     A missing function raises ``_NotInstalled``; a question that cannot be answered raises ``_CouldNotAnswer``."""
-    backoff, first_timeout, retry_timeout = _STRICT if strict else _LENIENT
+    backoff, first_timeout, retry_timeout, total = _STRICT if strict else _LENIENT
+    deadline = clock() + total
     last = "no answer"
     for attempt in range(len(backoff) + 1):
         if attempt:
-            sleep(backoff[attempt - 1])
+            sleep(min(backoff[attempt - 1], max(0.0, deadline - clock())))
+        remaining = deadline - clock()
+        if remaining <= 0:
+            raise _CouldNotAnswer("deadline")
+        timeout = min(first_timeout if attempt == 0 else retry_timeout, remaining)
         try:
-            r = session.post(
+            r = _post_within(
+                session, remaining,
                 f"{url}/rest/v1/rpc/channel_voice_config_problem",
                 json={"p_channel": channel_id, "p_org": None, "p_old": {}, "p_new": new},
                 headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                timeout=first_timeout if attempt == 0 else retry_timeout,
+                timeout=timeout,
                 # A redirect would carry the service key to wherever it points, and a "null" from there would read as ALLOW.
                 allow_redirects=False,
             )
+        except _CouldNotAnswer:
+            raise
         except Exception as e:  # network, TLS, timeout: the type only, never the message
             last = type(e).__name__
             continue
@@ -186,8 +222,12 @@ def _ask(url: str, key: str, channel_id: str, new: dict, *, session, sleep, stri
         except Exception:
             last = "unreadable answer"
             continue
-        if answer is None or isinstance(answer, str):
-            return answer or None
+        if answer is None:
+            return None
+        # ONLY a key this call asked about is a "no". Any other string (empty, an error message, a key of something else) or shape is
+        # not an answer to the question.
+        if isinstance(answer, str) and answer in new:
+            return answer
         last = "unexpected answer"
     raise _CouldNotAnswer(last)
 
@@ -264,3 +304,23 @@ def check_run(ctx, narrator, secondary, **kw) -> None:
     if agent is None or getattr(agent, "tts_provider", "") != "elevenlabs":
         return
     require_voices_usable(str(getattr(ctx, "channel_id", "")), narrator, secondary, **kw)
+
+
+def contain_unexpected(channel_id, exc: BaseException, env: Optional[Mapping[str, str]] = None) -> None:
+    """A bug inside the gate (not a database failure, which :func:`require_voices_usable` already handles) must not turn a run into a
+    traceback and exit 1. Lenient: say so with the exception's type only, and let the run go on. Strict: it is "could not verify"."""
+    env = os.environ if env is None else env
+    _could_not_answer(channel_id, f"unexpected {type(exc).__name__} in the gate", strict=strict_on(env), env=env)
+
+
+def check_run_contained(ctx, narrator_fn, secondary_fn, **kw) -> None:
+    """:func:`check_run` for ``main.run``: resolves the run's voices with ``narrator_fn(agent)`` / ``secondary_fn(agent)``, and lets
+    only :class:`VoiceGateRefused` escape (a deliberate 82 or 83). ``SystemExit`` and ``KeyboardInterrupt`` are not ``Exception`` and
+    are never caught here."""
+    try:
+        agent = getattr(ctx, "agent", None)
+        check_run(ctx, narrator_fn(agent) if agent is not None else "", secondary_fn(agent) if agent is not None else "", **kw)
+    except VoiceGateRefused:
+        raise
+    except Exception as e:  # noqa: BLE001
+        contain_unexpected(str(getattr(ctx, "channel_id", "")), e, kw.get("env"))

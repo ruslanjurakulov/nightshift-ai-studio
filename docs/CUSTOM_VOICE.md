@@ -191,15 +191,21 @@ only door; the answer is one key or NULL, never a reason.
      the quoted lines). It never becomes a silent stock voice (rule 4).
    - **The database COULD NOT ANSWER** (unreachable, timeout, 429, 5xx, 401/403, a redirect, any other 4xx, an unreadable or odd body, or no
      `SUPABASE_URL`/`SUPABASE_SERVICE_KEY`): **by default the run goes on**, with a warning in the log and a `::warning::` annotation on
-     Actions, after two tries and about five seconds at most. This is the repository's rule for a Supabase outage (the channel registry
+     Actions, after two tries and at most 5 seconds in total. That total is a wall-clock deadline enforced around the request itself
+     (`requests` timeouts are per socket read, so a server that drips a byte a second would outlast them); the strict schedule's is 24
+     seconds. This is the repository's rule for a Supabase outage (the channel registry
      falls back, the slot guard fails open), and today the gate protects nothing the outage could cost, because no custom voice can
      exist. With **`NIGHTSHIFT_VOICE_GATE_STRICT`** on (repo variable, reaches the daily run and the worker; empty = off), "could not
      answer" stops the run instead: exit **83**, its own red annotation ("could not be verified", not "not permitted"), three tries, the
      queue job fails with the hold released. `render_error` classes both endings as `voice`, not `unknown`.
+   - Only the **exact keys asked about** (`elevenlabs_voice_id`, `elevenlabs_secondary_voice_id`) count as "not allowed"; HTTP 200 with any
+     other string or shape is "could not answer". A **bug inside the gate** is contained the same way: a warning and the run goes on, or exit
+     83 under strict; the deliberate 82/83 exits and `SystemExit` are never swallowed.
    - **"The function does not exist"** (only PostgREST `PGRST202` or Postgres `42883`; the same two the route accepts) means 0117 is not
      applied, so no profile can exist: the run goes on, with a warning and an annotation. Any other 404 is "could not answer".
    - Not asked, by design: an Edge channel (it speaks no ElevenLabs voice), a value that is not shaped like a voice id, and the
-     configured defaults above.
+     configured defaults above. That skip is sound only while a clone's id never equals the repo variable `ELEVENLABS_VOICE_ID` or
+     `ELEVENLABS_SECONDARY_VOICE_ID`: **the operator must never set a clone's id there** (those are the operator's own premade voices).
    - A scheduled run refused here (82, or 83 under strict) **consumes one slot-guard attempt** for its slot (`NIGHTSHIFT_SLOT_MAX_ATTEMPTS`,
      default 2, and `NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES`, default 60: `docs/VIDEO_GO_LIVE.md`) and **does not pause the channel**; the
      catch-up retry then tries again within those limits and is refused again until the voice is fixed.
