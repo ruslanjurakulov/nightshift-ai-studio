@@ -3826,7 +3826,7 @@ export const en = {
     meta: {
       title: "Nightshift — autonomous studio for YouTube channels",
       description: "Turn a topic into a finished YouTube video: script, voice, visuals and edit. See the price before every run; nothing goes public without you.",
-      ogAlt: "Nightshift — from a topic to a finished YouTube video, and nothing goes public without you.",
+      ogAlt: "The Nightshift logo in white on a black background of flowing white ribbon waves.",
     },
     nav: {
       label: "Main",
