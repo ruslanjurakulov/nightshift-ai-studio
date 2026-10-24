@@ -46,7 +46,7 @@ migration that lets ``publish_requests`` / ``social_accounts`` hold its name.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Protocol, Tuple, runtime_checkable
 
@@ -69,20 +69,23 @@ class PostSpec:
 class PublishContext:
     """Everything one request hands a publisher. Built once per request by ``process_request``."""
 
+    # repr=False on everything that can hold a secret or a client: ``env`` is the worker's whole environment (or the
+    # test's), the store and the HTTP session carry the service key, ``tokens`` reads platform tokens, and the YouTube
+    # adapter holds a credentials callable. A log line or traceback that prints the context must show none of it.
     request: Mapping
     video: Mapping
-    store: Any
-    tokens: Any
+    store: Any = field(repr=False)
+    tokens: Any = field(repr=False)
     worker_id: str
     output_dir: Path
-    http: Any
-    env: Mapping[str, str]
+    http: Any = field(repr=False)
+    env: Mapping[str, str] = field(repr=False)
     sleep: Callable[[float], None]
     heartbeat: Callable[[], None]
     probe_fn: Callable[[Path], Any]
     media_fn: Callable[[Path], Any]
     #: The YouTube adapter, or None on a worker with no YouTube setup (then a YouTube request fails clearly).
-    youtube: Any = None
+    youtube: Any = field(default=None, repr=False)
 
 
 @runtime_checkable

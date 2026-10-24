@@ -90,6 +90,19 @@ class RegistryTests(Scenario):
                 publishers.register(bad, lambda ctx: None)
         self.assertEqual(publishers.platforms(), ("instagram", "tiktok", "youtube"))
 
+    def test_the_context_never_prints_the_environment_a_store_a_token_or_a_client(self):
+        """A log line or traceback that prints the context must show no secret: ``env`` is the worker's whole
+        environment, the store and the HTTP session carry the service key, tokens read platform tokens."""
+        secret = "sk-live-env-secret-value"
+        ctx = self.ctx(env={"SUPABASE_SERVICE_KEY": secret}, tokens=SpyTokens("instagram", []),
+                       http=FakeHTTP({}), youtube=object())
+        text = repr(ctx) + str(ctx)
+        self.assertNotIn(secret, text)
+        self.assertNotIn("SUPABASE_SERVICE_KEY", text)
+        for hidden in ("DStore", "SpyTokens", "FakeHTTP", "object object"):
+            self.assertNotIn(hidden, text)
+        self.assertIn("worker_id='w1'", text)  # it still says which request this is
+
     def test_a_post_spec_cannot_be_edited_after_the_decision(self):
         spec = publishers.PostSpec(caption="c", ai_generated=True)
         with self.assertRaises(dataclasses.FrozenInstanceError):

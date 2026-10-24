@@ -286,9 +286,11 @@ class InTheWorker(Base):
         # A YouTube cross-post goes through the pipeline's own uploader; the platform file rules do not apply.
         # (The YouTube publisher's check step is empty; tests/test_publisher_transcripts.py records that a YouTube
         # request makes neither a probe nor a media read.)
-        names = sp.YoutubePublisher.check.__code__.co_names
-        self.assertNotIn("media_fn", names)
-        self.assertNotIn("probe_fn", names)
+        for step in ("connect", "check", "compose", "publish"):
+            names = getattr(sp.YoutubePublisher, step).__code__.co_names
+            self.assertNotIn("media_fn", names, step)
+            self.assertNotIn("probe_fn", names, step)
+            self.assertNotIn("check_media", names, step)
 
 
 def _ffmpeg_exe():
