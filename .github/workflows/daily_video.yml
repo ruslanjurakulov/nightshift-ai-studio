@@ -654,6 +654,8 @@ jobs:
           NIGHTSHIFT_GROUNDED_FACTCHECK: ${{ vars.NIGHTSHIFT_GROUNDED_FACTCHECK }}
           # Fact-checker system prompt (modules/fact_checker.py): empty = ON, `off` restores the request without it.
           NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT: ${{ vars.NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT }}
+          # Packaging repair (modules/packaging_repair.py): empty = ON, `off` restores today's hold with no rewrite.
+          NIGHTSHIFT_PACKAGING_REPAIR: ${{ vars.NIGHTSHIFT_PACKAGING_REPAIR }}
           # Topic selection gate (modules/topic_gate.py); empty = the default.
           CHRONOS_TOPIC_GATE: ${{ vars.CHRONOS_TOPIC_GATE }}
           CHRONOS_TOPIC_QUEUE_STALE_DAYS: ${{ vars.CHRONOS_TOPIC_QUEUE_STALE_DAYS }}

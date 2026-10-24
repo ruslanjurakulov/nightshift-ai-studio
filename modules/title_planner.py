@@ -25,13 +25,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from modules.packaging_repair import PACKAGING_CLAIM_RULE
+
 logger = logging.getLogger(__name__)
 
 _PLAN_SYSTEM = (
     "You are a YouTube packaging strategist. Given a topic, you write click-earning "
     "titles and one thumbnail concept. Titles are specific, curiosity-driven, and "
     "honest to the topic — never clickbait that the video can't pay off. Reply with "
-    "JSON only."
+    "JSON only.\n\n" + PACKAGING_CLAIM_RULE
 )
 
 
