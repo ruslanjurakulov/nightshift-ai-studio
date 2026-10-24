@@ -31,9 +31,10 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 #: main.py's exit code for "Gemini's per-day request quota is spent for a model this run needs, and the stage
-#: that hit it cannot be skipped". 75 is the storyboard pause, 78 the spend ceiling, 79 the fact-check hold;
-#: 80 is the next free one. Not a success: no video exists, so the queue worker fails the job and RELEASES its
-#: credit hold, and the Actions step stays red (an outage the owner has to act on, unlike a deliberate hold).
+#: that hit it cannot be skipped". 75 is the storyboard pause, 78 the spend ceiling, 79 the fact-check hold,
+#: 81 the series refusal (modules/series.py); this is 80, and 82 is the next free one. Not a success: no
+#: video exists, so the queue worker fails the job and RELEASES its credit hold, and the Actions step stays
+#: red (an outage the owner has to act on, unlike a deliberate hold).
 GEMINI_QUOTA_EXIT = 80
 
 #: Stage label -> the model group whose variable (``GEMINI_MODEL_<GROUP>``) picks its model. The labels are

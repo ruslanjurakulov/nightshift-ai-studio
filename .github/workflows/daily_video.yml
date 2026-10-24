@@ -830,6 +830,12 @@ jobs:
           if [ "$rc" -eq 80 ]; then
             echo "::error title=Gemini daily quota::The Gemini API's per-day request quota is used up (the model and the retry-after are in the log above). Nothing was spent on a video. Enable billing in Google AI Studio, or set a GEMINI_MODEL_<STAGE> variable to a model that still has quota, then run again."
           fi
+          # Exit 81: the series input names a series that cannot run (unknown id, not ACTIVE, or another channel's;
+          # modules/series.py SERIES_NOT_RUNNABLE_EXIT). Red like 80: nothing was spent, and the person has
+          # to correct the input. The log above says which of the three it was; the hold is released.
+          if [ "$rc" -eq 81 ]; then
+            echo "::error title=Series not runnable::The series named for this run cannot be run (unknown id, not ACTIVE, or it belongs to another channel; the log above says which). Nothing was spent. Correct the series input, or activate the series on the Series page, then run again."
+          fi
           exit "$rc"
 
       # Settle the hold claimed above: on success, charge what the run's cost

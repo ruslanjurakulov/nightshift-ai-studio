@@ -140,6 +140,9 @@ class WorkflowStructure(unittest.TestCase):
         validate = _step("resolve", "Validate series")
         self.assertLess(steps.index("Validate series"), steps.index("Pick due channels"))
         self.assertEqual(validate["env"]["INPUT_SERIES"], "${{ github.event.inputs.series }}")
+        # --require-channel reads the typed channel from here: without it the validator sees an empty
+        # channel and refuses every series (or, wired to the wrong input, lets a channel-less one through).
+        self.assertEqual(validate["env"]["INPUT_CHANNEL"], "${{ github.event.inputs.channel }}")
         self.assertIn(VALIDATOR, validate["run"])
         self.assertIn("--require-channel", validate["run"])
         self.assertNotIn("${{", validate["run"])
@@ -463,11 +466,12 @@ class MainRunRefusesBeforeSpending(unittest.TestCase):
                 mock.patch.object(self.main, "MediaFetcher", side_effect=AssertionError("fetched")):
             return self.main.run(channel=self.ctx, series=series, skip_upload=True)
 
-    def test_paused_series_is_refused_and_logged(self):
+    def test_paused_series_is_refused_with_the_status_named(self):
+        # The one console line is __main__'s (ExitCode81); run() only raises.
         reg = SeriesRegistry([_series(status=STATUS_PAUSED)])
-        with self.assertLogs(level="WARNING") as logs, self.assertRaises(SeriesNotRunnable):
+        with self.assertRaises(SeriesNotRunnable) as caught:
             self.run_with(reg, "alpha")
-        self.assertTrue(any("PAUSED" in m for m in logs.output))
+        self.assertIn("PAUSED", str(caught.exception))
 
     def test_archived_series_is_refused(self):
         with self.assertRaises(SeriesNotRunnable):
@@ -488,6 +492,132 @@ class MainRunRefusesBeforeSpending(unittest.TestCase):
     def test_no_series_is_unchanged(self):
         with self.assertRaises(self.Reached):
             self.run_with(SeriesRegistry([]), None)
+
+
+# -- the refusal ends the process with its own exit code ---------------------------------
+
+def run_main_block(side_effect, argv=("main.py", "--no-upload", "--series", "alpha")):
+    """Execute the real ``if __name__ == "__main__":`` block of main.py with ``run`` replaced.
+    Returns (exit code, captured stdout+stderr, log records of the ``main`` logger)."""
+    import io  # noqa: PLC0415
+    import logging  # noqa: PLC0415
+    from contextlib import redirect_stderr, redirect_stdout  # noqa: PLC0415
+
+    import main  # noqa: PLC0415
+
+    tail = (ROOT / "main.py").read_text()
+    tail = tail[tail.index('if __name__ == "__main__":'):]
+    namespace = dict(vars(main), __name__="__main__", run=mock.MagicMock(side_effect=side_effect))
+    out = io.StringIO()
+    records: list = []
+
+    class Grab(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = Grab(level=logging.DEBUG)
+    main.logger.addHandler(handler)
+    code = None
+    try:
+        with mock.patch.object(sys, "argv", list(argv)), redirect_stdout(out), redirect_stderr(out):
+            try:
+                exec(compile(tail, str(ROOT / "main.py"), "exec"), namespace)
+            except SystemExit as exit_:
+                code = exit_.code
+    finally:
+        main.logger.removeHandler(handler)
+    return code, out.getvalue(), records
+
+
+class ExitCode81(unittest.TestCase):
+    def test_the_code_is_distinct_from_every_other_ending(self):
+        from modules import budget, gemini_stages, publish_gate, storyboard_review  # noqa: PLC0415
+        from modules.series import SERIES_NOT_RUNNABLE_EXIT  # noqa: PLC0415
+
+        self.assertEqual(SERIES_NOT_RUNNABLE_EXIT, 81)
+        taken = {0, 1, 2, 3, 4, 254, storyboard_review.PAUSED_EXIT, budget.BUDGET_STOP_EXIT,
+                 publish_gate.HELD_BEFORE_RENDER_EXIT, gemini_stages.GEMINI_QUOTA_EXIT}
+        self.assertNotIn(SERIES_NOT_RUNNABLE_EXIT, taken)
+
+    def test_main_exits_81_with_one_clean_line_and_no_traceback(self):
+        refusal = SeriesNotRunnable("Series 'alpha' is PAUSED, not ACTIVE. Run stopped; nothing was spent.")
+        code, output, records = run_main_block(refusal)
+        self.assertEqual(code, 81)
+        self.assertNotIn("Traceback", output)
+        lines = [r.getMessage() for r in records if r.levelname == "ERROR"]
+        printed = [ln for ln in output.splitlines() if ln.strip()]
+        # Exactly one line says it, wherever it is written (the logger writes to stdout and run.log).
+        self.assertEqual(len(lines) + len(printed), 1, (lines, printed))
+        self.assertIn("PAUSED", (lines + printed)[0])
+
+    def test_other_exceptions_are_not_turned_into_81(self):
+        with self.assertRaises(RuntimeError):
+            run_main_block(RuntimeError("something else"))
+
+    def test_run_itself_still_raises_the_refusal_and_logs_nothing_twice(self):
+        # The one line is __main__'s; run() must not also log the same refusal, or the console
+        # would show it twice (the unit of the old behaviour: logger.error, then a traceback).
+        main_src = (ROOT / "main.py").read_text()
+        start = main_src.index("require_runnable_series(series, series_obj, ctx.channel_id)")
+        self.assertNotIn("logger.error", main_src[start:start + 400])
+
+    def test_the_actions_step_stays_red_with_a_titled_annotation(self):
+        script = _step("make-video", "Run Chronos bot")["run"]
+        marker = 'if [ "$rc" -eq 81 ]; then'
+        self.assertIn(marker, script)
+        block = script[script.index(marker):script.index('exit "$rc"', script.index(marker))]
+        self.assertIn("::error title=Series not runnable::", block)
+        self.assertIn("nothing was spent", block.lower())
+        self.assertNotIn("paused=true", block, "a refused series is the owner's mistake to fix: not a green hold")
+        self.assertNotIn("exit 0", block)
+        self.assertTrue(script.rstrip().endswith('exit "$rc"'))
+
+    def test_the_step_really_exits_81_and_prints_the_annotation(self):
+        tmp = Path(tempfile.mkdtemp(prefix="series-81-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (tmp / "bin").mkdir()
+        fake = tmp / "bin" / "python"
+        fake.write_text(FAKE_PYTHON)
+        fake.chmod(0o755)
+        script = tmp / "step.sh"
+        script.write_text(_step("make-video", "Run Chronos bot")["run"])
+        env = {
+            "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "HOME": str(tmp), "REAL_PYTHON": sys.executable,
+            "ARGV_OUT": str(tmp / "argv.txt"), "GITHUB_OUTPUT": str(tmp / "gh_output"), "FAKE_MAIN_RC": "81",
+            "CHANNEL_ID": "news", "YOUTUBE_PRIVACY": "private", "EVENT_NAME": "workflow_dispatch",
+            "SLOT_START": "2026-10-24T15:00:00Z", "INPUT_SERIES": "alpha",
+            "INPUT_TOPIC": "", "INPUT_NICHE": "", "INPUT_DURATION": "", "INPUT_LANGUAGE": "",
+            "INPUT_VISUAL_STYLE": "", "INPUT_RESUME": "", "INPUT_REPAIR_SCENES": "",
+        }
+        proc = subprocess.run(["bash", "-e", str(script)], cwd=ROOT, env=env, capture_output=True,
+                              text=True, timeout=60)
+        self.assertEqual(proc.returncode, 81, proc.stderr)
+        self.assertIn("::error title=Series not runnable::", proc.stdout)
+        gh_output = tmp / "gh_output"
+        self.assertNotIn("paused=true", gh_output.read_text() if gh_output.exists() else "")
+
+    def test_the_code_is_documented_next_to_the_others(self):
+        doc = (ROOT / "docs" / "GEMINI_QUOTA.md").read_text()
+        self.assertIn("81 the series refusal", doc)
+        self.assertNotIn("80 is the next", doc)
+        self.assertIn("81 the series refusal", (ROOT / "modules" / "gemini_stages.py").read_text())
+
+
+class ResolveSeriesWordingDoesNotContradictTheRefusal(unittest.TestCase):
+    def test_an_unknown_series_is_not_logged_as_running_without_one(self):
+        from modules.series import resolve_series  # noqa: PLC0415
+
+        with self.assertLogs("modules.series", level="DEBUG") as logs:
+            self.assertIsNone(resolve_series("typo", SeriesRegistry([_series()])))
+        text = " ".join(logs.output)
+        self.assertIn("typo", text)
+        self.assertNotIn("running without a series", text)
+        self.assertIn("require_runnable_series", text)
+
+    def test_the_docstring_points_at_the_check_that_refuses(self):
+        from modules.series import resolve_series  # noqa: PLC0415
+
+        self.assertIn("require_runnable_series", resolve_series.__doc__)
 
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ from modules import run_checkpoint, upload_idempotency
 from modules import video_ir
 from modules.script_engine import ScriptEngine
 from modules.series import (
-    SeriesNotRunnable, effective_cadence, effective_niche, effective_visual_style,
+    SERIES_NOT_RUNNABLE_EXIT, SeriesNotRunnable, effective_cadence, effective_niche, effective_visual_style,
     effective_voice_style, require_runnable_series, resolve_series, style_keywords,
 )
 from modules.state_store import StateStore
@@ -788,11 +788,9 @@ def run(
     # resolve_series never raises, so an unknown, paused or foreign series would
     # silently run as the plain channel. A series asked for by name is refused
     # here, before the credential check or any paid call.
-    try:
-        require_runnable_series(series, series_obj, ctx.channel_id)
-    except SeriesNotRunnable as refusal:
-        logger.error("[channel: %s] %s", ctx.channel_id, refusal)
-        raise
+    # SeriesNotRunnable propagates to __main__, which prints the one line and exits
+    # SERIES_NOT_RUNNABLE_EXIT.
+    require_runnable_series(series, series_obj, ctx.channel_id)
     # effective_niche ends in "history mysteries"; remember whether the channel,
     # the series or the caller actually named a niche, so topic selection stops
     # for a channel that has none instead of quietly making history videos.
@@ -2196,3 +2194,9 @@ if __name__ == "__main__":
             # log line (model, retry-after, fix) was written where the 429 arrived. Not a traceback, and a
             # distinct code so the runners release the credit hold and say why (tools/queue_worker.py).
             sys.exit(gemini_stages.GEMINI_QUOTA_EXIT)
+        except SeriesNotRunnable as refusal:
+            # A series was named and cannot run (unknown, not ACTIVE, another channel's). Nothing was spent;
+            # the message says which and the fix. One line, no traceback, and a distinct code so the Actions
+            # step stays red with its own annotation (.github/workflows/daily_video.yml).
+            logger.error("Series not runnable: %s", refusal)
+            sys.exit(SERIES_NOT_RUNNABLE_EXIT)

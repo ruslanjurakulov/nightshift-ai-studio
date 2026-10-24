@@ -341,9 +341,12 @@ class SeriesRegistry:
 
 def resolve_series(series_id, registry: Optional["SeriesRegistry"] = None) -> Optional[Series]:
     """Resolve a Series by id, or None when none is asked for or it can't be
-    found. Never raises: a series is an optional overlay on a channel, so a
-    missing or misconfigured one must not stop a run — it just runs unscoped.
-    `registry` is injectable for tests."""
+    found. Never raises, so it cannot tell "no series wanted" from "wanted but
+    unavailable" by itself: a caller that was asked for a series by name must
+    pass the result to ``require_runnable_series``, which refuses the run (an
+    unknown id, a failed read, a PAUSED/ARCHIVED row, another channel's series)
+    instead of letting it run as the plain channel. `registry` is injectable
+    for tests."""
     if not series_id:
         return None
     try:
@@ -352,16 +355,27 @@ def resolve_series(series_id, registry: Optional["SeriesRegistry"] = None) -> Op
         logger.info("Run scoped to series %s (%s)", series.series_id, series.name)
         return series
     except Exception as e:
+        # Not "running without a series": a series was asked for by name, and the caller
+        # (require_runnable_series) decides whether the run may go on. For main.py it does not.
         logger.warning(
-            "Could not resolve series %r (%s: %s) — running without a series",
+            "Could not resolve series %r (%s: %s) — no series applies; require_runnable_series decides "
+            "whether the run goes on",
             series_id, type(e).__name__, e,
         )
         return None
 
 
+#: main.py's exit code for "a series was asked for by name and the run cannot be scoped to it". 75 is the
+#: storyboard pause, 78 the spend ceiling, 79 the fact-check hold, 80 the Gemini daily quota; this is the next.
+#: No video exists, so the queue worker (should a queue path ever carry a series) would fail the job and release
+#: its hold, and the Actions step stays red: the person typed something that cannot run and has to fix it.
+SERIES_NOT_RUNNABLE_EXIT = 81
+
+
 class SeriesNotRunnable(RuntimeError):
     """A series was asked for by name but the run cannot be scoped to it. Raised
-    by main.py before anything is spent (CLAUDE.md rules 4 and 6)."""
+    by main.py before anything is spent (CLAUDE.md rules 4 and 6); ``__main__``
+    turns it into ``SERIES_NOT_RUNNABLE_EXIT`` with one line and no traceback."""
 
 
 def require_runnable_series(requested, series_obj: Optional[Series], channel_id) -> None:
