@@ -588,3 +588,8 @@ sec_visibility_0116.extend(TABLES, FUNCTIONS)
 import sec_voice_profiles_0117  # noqa: E402
 
 sec_voice_profiles_0117.extend(TABLES, FUNCTIONS)
+
+# Migration 0119 (a spend limit an editor cannot raise or remove; the card's settings in one atomic merge): tests/security/sec_channel_settings_0119.py
+import sec_channel_settings_0119  # noqa: E402
+
+sec_channel_settings_0119.extend(TABLES, FUNCTIONS)

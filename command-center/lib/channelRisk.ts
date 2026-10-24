@@ -1,6 +1,7 @@
 /**
- * Per-channel risk settings an EDITOR may write into `channels.agent_config` (not in channels_config_guard's list, so no
- * administrator lock): `spend_ceiling_usd`, `pinned_comment`, `watch_next`. The worker reads them in
+ * Per-channel risk settings an EDITOR may write into `channels.agent_config`: `spend_ceiling_usd`, `pinned_comment`, `watch_next`.
+ * Two are plain editor switches; the limit is editor-level in one direction only: since migration 0119 the database refuses an
+ * editor who RAISES or REMOVES a limit that is in force (setting a first one and lowering stay open). The worker reads them in
  * modules/channels.py (AgentConfig.from_dict); both sides are held to command-center/tests/fixtures/channel-risk-cases.json
  * so a value this page saves is a value the worker honours. Client-safe and pure.
  *
@@ -47,29 +48,22 @@ export function effectiveSpendCeiling(raw: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** The live config with the ceiling set, or removed for null. Every other key is kept exactly as it was read. */
-export function withSpendCeiling(live: Record<string, unknown> | null | undefined, value: number | null): Record<string, unknown> {
-  const { spend_ceiling_usd: _old, ...rest } = live ?? {};
-  void _old;
-  return value === null ? rest : { ...rest, spend_ceiling_usd: value };
-}
-
 /** `pinned_comment` / `watch_next`: absent is ON, only a real false is off (modules/channels.py). */
 export function flagIsOn(raw: unknown): boolean {
   return raw !== false;
 }
 
+/** The hint migration 0119's refusal carries (and the prefix of its message). */
+export const SPEND_CEILING_LOCK_HINT = "spend_ceiling_lock";
+
 /**
- * May this write go ahead? An editor may set a limit where there is none and may lower one; raising or removing an existing
- * limit is an administrator's (`canRaise`). `live` is the value just read from the database, not what the page was drawn
- * with. ADVISORY: this is the page's rule only. The database lets any editor write the key (no migration here), so a script
- * with an editor's session is not stopped by it.
+ * Is this a PostgREST / RPC error the spend-limit lock raised: an editor tried to raise or remove a limit that is in force? The
+ * database decides, on the row as it is when the write runs (not on what the page was drawn with, which may be stale), so the
+ * page does not pre-judge: it sends the write and words this refusal in the person's language.
  */
-export function ceilingChangeAllowed(live: unknown, next: number | null, canRaise: boolean): boolean {
-  if (canRaise) return true;
-  const current = effectiveSpendCeiling(live);
-  if (current === null) return true;
-  return next !== null && next <= current;
+export function isSpendCeilingLockRefusal(err: { code?: string | null; message?: string | null; hint?: string | null } | null | undefined): boolean {
+  if (!err) return false;
+  return err.hint === SPEND_CEILING_LOCK_HINT || (typeof err.message === "string" && err.message.includes(SPEND_CEILING_LOCK_HINT));
 }
 
 /** "$25.50", the same in every language (a currency format would reorder the symbol in ru and uz). */

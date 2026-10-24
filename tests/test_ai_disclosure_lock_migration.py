@@ -255,6 +255,7 @@ class EveryWriterOfAgentConfigIsKnown(unittest.TestCase):
         "0086_channel_config_lock.sql": "create_channel (checked again in 0114), credential/status functions, the stamp trigger",
         "0114_ai_disclosure_admin_lock.sql": "this file replaces the guard and create_channel; it writes no row",
         "0117_voice_profiles.sql": "attach_voice_to_channel (the owner of an approved custom voice, audited) is the ONE other definer that writes ai_disclosure_voice = own_clone; it writes only elevenlabs_voice_id / elevenlabs_secondary_voice_id and that key, never ai_disclosure (pinned in tests/test_voice_profiles_migration.py); it replaces the guard on 0114's body",
+        "0119_channel_settings_guard.sql": "patch_channel_agent_config is a SECURITY INVOKER function: its one UPDATE runs as the caller, so the guard (which sees the browser role) holds it to every rule, the AI label's included, and it accepts four keys that are none of the label's (pinned in tests/test_channel_settings_guard_migration.py); it replaces the guard on 0117's body",
         "0116_visibility_requests.sql": "set_channel_publish_on_approve updates ONLY publish_on_approve and updated_at (pinned in tests/test_visibility_migration.py); it only READS agent_config, for the second-person requirement, and never writes it",
     }
 

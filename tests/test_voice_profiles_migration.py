@@ -35,9 +35,8 @@ def names(sql: str):
 
 
 class Numbering(unittest.TestCase):
-    def test_it_is_the_highest_migration_and_the_number_is_unique(self):
+    def test_the_number_is_unique(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
-        self.assertEqual(numbers[-1], "0117")
         self.assertEqual(numbers.count("0117"), 1)
 
     def test_a_rollback_exists(self):
