@@ -154,9 +154,18 @@ def _style_for(variant: str) -> dict:
     return _VARIANT_STYLE[_VARIANT_ORDER[idx]]
 
 
+def overlay_is_missing(overlay_text) -> bool:
+    """True when there is no overlay text to put on a thumbnail (None, empty, or only whitespace).
+
+    A thumbnail without it is rendered without it. No word is invented in its place: the script
+    is the owner's, and a default such as "SHOCKING" is text the owner never saw on a picture the
+    audience does (CLAUDE.md #4, #5). The caller reports it (`thumbnail_overlay: missing`)."""
+    return not str(overlay_text or "").strip()
+
+
 def _make_thumbnail(
     background_path: Path | None,
-    overlay_text: str,
+    overlay_text: "str | None",
     topic: str,
     out_path: Path,
     variant: str = "A",
@@ -182,7 +191,7 @@ def _make_thumbnail(
     shock_font = _load_font(shock_font_size)
     shock_color = style["shock_color"]
 
-    shock_lines = wrap_capped(overlay_text.upper(), width=12, max_lines=3)
+    shock_lines = wrap_capped((overlay_text or "").upper(), width=12, max_lines=3)
     shock_y = 40
     for line in shock_lines:
         bbox = draw.textbbox((0, 0), line, font=shock_font)
@@ -230,7 +239,7 @@ class ThumbnailGenerator:
     def generate(
         self,
         topic: str,
-        overlay_text: str,
+        overlay_text: "str | None",
         background_a: Path | None = None,
         background_b: Path | None = None,
     ) -> tuple[Path, Path]:
@@ -242,7 +251,7 @@ class ThumbnailGenerator:
     def generate_variants(
         self,
         topic: str,
-        overlay_text: str,
+        overlay_text: "str | None",
         variants: "list[str] | tuple[str, ...]" = ("A", "B"),
         backgrounds: "list[Path | None] | None" = None,
     ) -> dict:
