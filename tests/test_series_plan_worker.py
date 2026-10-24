@@ -672,6 +672,16 @@ class Delivery(NoNetwork):
                 self.assertEqual(len(gen.calls), 1)
                 self.assertEqual(len(store.finishes), 3, "the delivery is still retried before giving up")
 
+    def test_what_one_job_did_never_leaks_into_the_next(self):
+        # One service runs many jobs: a job that asked the model must not make a LATER job (which asked nothing) fail instead of retry.
+        store = Store()
+        svc = spw.SeriesPlanService(store, enabled=True, env=dict(KEY), generate_factory=lambda: Gen(),
+                                    vet_factory=lambda c: (Vet(), None, lambda: 0), sleep=lambda _s: None)
+        self.assertEqual(run(svc).kind, "succeeded")
+        svc.env = {}                                   # the next job stops before any model call, and its ending cannot be recorded
+        store.answers = [spw.UNREACHABLE] * 3
+        self.assertEqual(run(svc).kind, "released")
+
     def test_a_shutdown_after_the_model_was_asked_ends_the_plan_instead_of_releasing_the_job(self):
         started = threading.Event()
         release = threading.Event()

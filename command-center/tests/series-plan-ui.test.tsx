@@ -428,6 +428,21 @@ describe("a plan that is not ready", () => {
     expect(h.refresh).not.toHaveBeenCalled();
   });
 
+  it("leaving the page while it is still looking cancels the next look", async () => {
+    vi.useFakeTimers();
+    const { unmount } = view({ plan: plan({ status: "requested", title: null, report: null }), rows: [], ageMinutes: 0 });
+    await act(async () => {
+      vi.advanceTimersByTime(PLANNING_POLL_MS + 10);
+    });
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+    unmount();
+    h.refresh.mockClear();
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
   it("a plan already past 10 minutes when the page opens does not poll at all and offers Check again", async () => {
     vi.useFakeTimers();
     view({ plan: plan({ status: "requested", title: null, report: null }), rows: [], ageMinutes: 25 });
