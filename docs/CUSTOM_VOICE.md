@@ -166,7 +166,9 @@ only door; the answer is one key or NULL, never a reason.
 
 1. **Run-now route** (`lib/server/run-voice.ts`, called from `app/api/agent/run/route.ts` for both backends). A `voice_id` shaped like
    a provider voice id (20 letters and digits: all the dispatch and the queue row ever forward) is checked as the signed-in user,
-   **before** the credit hold, the dispatch or the insert. Refused: `403 voice_not_allowed`. **Fails closed**: a check that errors, throws,
+   **before** the credit hold, the dispatch or the insert. Refused: `403 voice_not_allowed` (logged server-side as the code alone, never the
+   voice id). **Fails closed here**, unlike the runner (a Run-now already needs Supabase for its sign-in and its hold, and a person is
+   waiting to be told): a check that errors, throws,
    answers in a shape nobody expects, or has no database client is `503 voice_check_unavailable`. The only error that lets the id through
    is "the function does not exist" (PostgREST `PGRST202` / Postgres `42883`: 0117 is not applied, so no profile can exist). Both
    messages are translated (en/ru/uz), say nothing was taken, and are the **same sentence for every reason**: they do not tell a stranger
@@ -175,22 +177,48 @@ only door; the answer is one key or NULL, never a reason.
 2. **Actions pre-flight** (`modules/voice_gate.py`, called in `main.run` as the first of the voice stages, before `verify_voice` and
    before the first paid call). For an ElevenLabs run it asks about the voices the run will speak with: the narrator (the run's own
    `ELEVENLABS_RUN_VOICE_ID`, else the channel's) in the narrator slot, and the quote voice in the secondary slot, in one call, with the
-   service key. Refused: `VoiceGateRefused` -> exit code **82**, one log line naming the slot and the fix, a red step with its own
-   annotation in `daily_video.yml`, and `tools/queue_worker.py` fails the job; as with 78-81, the non-zero exit makes the settle step
-   **release the credit hold**. It covers, by the database rule above: a detached attachment, a demoted or removed owner, a channel that
-   moved organization, a deleted, pending, rejected or merely `testing` profile, case and padding variants (including a number where a
-   string should be), and the secondary slot (a voice attached as narrator may not speak the quoted lines). **A voice id that could be a
-   profile's (20 letters and digits) and a database that cannot be asked** (network, timeout, 5xx after three tries, a refused key, an
-   answer of the wrong shape) **stops the run** with the remedy; it never becomes a silent stock voice (rule 4). Not asked, by design:
-   an Edge channel (it speaks no ElevenLabs voice), a value that is not shaped like a voice id, and a deployment with no
-   `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` (nothing can be a profile without the database; logged), and HTTP 404 from the function
-   (0117 not applied; logged as a warning).
+   service key (`allow_redirects=False`: a redirect would carry the key elsewhere, and any 3xx is "could not answer"). A voice equal to
+   the deployment's configured default (`config.ELEVENLABS_VOICE_ID` / `ELEVENLABS_SECONDARY_VOICE_ID`) is **not asked about**: a clone's
+   id comes from a clone request, so it can never be one of them, and the built-in narrator is on every run.
+   - **The database ANSWERED "not allowed"** -> `VoiceGateRefused` -> exit code **82**, in every mode: one log line naming the slot and
+     the fix, a red step with its own annotation in `daily_video.yml`, and `tools/queue_worker.py` fails the job; as with 78-81, the
+     non-zero exit makes the settle step **release the credit hold**. It covers, by the database rule above: a detached attachment, a
+     demoted or removed owner, a channel that moved organization, a deleted, pending, rejected or merely `testing` profile, case and
+     padding variants (including a number where a string should be), and the secondary slot (a voice attached as narrator may not speak
+     the quoted lines). It never becomes a silent stock voice (rule 4).
+   - **The database COULD NOT ANSWER** (unreachable, timeout, 429, 5xx, 401/403, a redirect, any other 4xx, an unreadable or odd body, or no
+     `SUPABASE_URL`/`SUPABASE_SERVICE_KEY`): **by default the run goes on**, with a warning in the log and a `::warning::` annotation on
+     Actions, after two tries and about five seconds at most. This is the repository's rule for a Supabase outage (the channel registry
+     falls back, the slot guard fails open), and today the gate protects nothing the outage could cost, because no custom voice can
+     exist. With **`NIGHTSHIFT_VOICE_GATE_STRICT`** on (repo variable, reaches the daily run and the worker; empty = off), "could not
+     answer" stops the run instead: exit **83**, its own red annotation ("could not be verified", not "not permitted"), three tries, the
+     queue job fails with the hold released. `render_error` classes both endings as `voice`, not `unknown`.
+   - **"The function does not exist"** (only PostgREST `PGRST202` or Postgres `42883`; the same two the route accepts) means 0117 is not
+     applied, so no profile can exist: the run goes on, with a warning and an annotation. Any other 404 is "could not answer".
+   - Not asked, by design: an Edge channel (it speaks no ElevenLabs voice), a value that is not shaped like a voice id, and the
+     configured defaults above.
+   - A scheduled run refused here (82, or 83 under strict) **consumes one slot-guard attempt** for its slot (`NIGHTSHIFT_SLOT_MAX_ATTEMPTS`,
+     default 2, and `NIGHTSHIFT_SLOT_MIN_ATTEMPT_GAP_MINUTES`, default 60: `docs/VIDEO_GO_LIVE.md`) and **does not pause the channel**; the
+     catch-up retry then tries again within those limits and is refused again until the voice is fixed.
 3. **Repair and scene regeneration** never reach the gate: they reuse the run's saved audio and buy no voice, which is why 0117 lets a
    `repair` job through (`render_jobs_voice_guard`); `scene_repair` and `scene_regenerate` have their own entry in `main.py` and do not
    call `run()`. A resumed run does narrate, and is gated.
 
 Behaviour for a run that uses no profile-backed voice is unchanged: the same stages in the same order, the same exit codes. The cost is
-one cheap RPC per ElevenLabs run (Python) and per Run-now that names a voice (route).
+one cheap RPC per ElevenLabs run that speaks a voice other than the configured defaults (Python), and per Run-now that names a voice (route).
+
+### Hard conditions for the migration that grants `request_voice_clone`
+
+The grant is a separate decision, and the migration that makes it must not ship without all of these:
+
+1. **`NIGHTSHIFT_VOICE_GATE_STRICT` turned on** (repo variable, with the worker's) in the same release. Until then an outage of Supabase lets
+   a run continue unchecked, which is acceptable only because no custom voice can exist; after the grant it would be a way to speak with
+   someone's voice unchecked.
+2. **`channel_voice_config_problem` restricted** to members of the channel's organization and the service role (it needs a migration;
+   none is written here). It is executable by every signed-in user (0117 grants it to `authenticated` so the channels guard can ask it), and
+   it takes any channel and any voice id: a stranger can learn that an id is a clone (it answers a key rather than NULL), which is an
+   **oracle** on other people's voices. Harmless while no clone exists; not acceptable after the grant.
+3. The worker, the UI and the consent text (below).
 
 ### What remains
 

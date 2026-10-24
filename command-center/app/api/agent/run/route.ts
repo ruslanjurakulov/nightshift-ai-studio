@@ -198,7 +198,11 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // that could be a profile's is refused (docs/CUSTOM_VOICE.md, "Hard gate").
   if (voiceId) {
     const problem = await runVoiceProblem(await createClient(), channelId, access.orgId, voiceId);
-    if (problem) return NextResponse.json({ error: problem }, { status: problem === "voice_not_allowed" ? 403 : 503 });
+    if (problem) {
+      // Server side only, and only the closed code: never the voice id, who owns it or the user (the answer to the caller is as terse).
+      console.warn(`[agent-run] voice refused: ${problem}`);
+      return NextResponse.json({ error: problem }, { status: problem === "voice_not_allowed" ? 403 : 503 });
+    }
   }
 
   // "Making this for:" — optional, and kept only when it names one of this

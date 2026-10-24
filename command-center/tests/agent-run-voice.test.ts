@@ -254,6 +254,33 @@ describe("runVoiceProblem", () => {
   });
 });
 
+describe("the refusal is logged on the server with its code only", () => {
+  it("a 403 and a 503 each leave one line with the closed code and no voice id, channel or user", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await post({ voice_id: CLONE });
+      h.rpcOverride = async () => ({ data: null, error: { code: "57014" } });
+      await post({ voice_id: STOCK });
+      expect(warn.mock.calls).toEqual([["[agent-run] voice refused: voice_not_allowed"], ["[agent-run] voice refused: voice_check_unavailable"]]);
+      const text = JSON.stringify(warn.mock.calls);
+      for (const secret of [CLONE, STOCK, "ch-a", "u-me", "org-a"]) expect(text).not.toContain(secret);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("an allowed voice and a run with no voice log nothing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await post({ voice_id: STOCK });
+      await post({});
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe("the screen's sentence", () => {
   const read = (status: number, error: string, locale: "en" | "ru" | "uz") =>
     readRunAnswer({ ok: false, status }, { error }, dictionaries[locale], locale);

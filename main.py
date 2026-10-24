@@ -2222,11 +2222,11 @@ if __name__ == "__main__":
             # distinct code so the runners release the credit hold and say why (tools/queue_worker.py).
             sys.exit(gemini_stages.GEMINI_QUOTA_EXIT)
         except voice_gate.VoiceGateRefused as refusal:
-            # A custom voice this run may not use, or an ownership check that could not be completed for a voice id that may be one.
-            # Nothing was spent; the message names the fix. One line, no traceback, and a distinct code so the runners release the
+            # A custom voice this run may not use (82), or, only with NIGHTSHIFT_VOICE_GATE_STRICT on, an ownership check that could
+            # not be completed for a voice id that may be one (83). Nothing was spent; the message names the fix. One line, no traceback, and a distinct code so the runners release the
             # hold and say why (.github/workflows/daily_video.yml, tools/queue_worker.py).
             logger.error("Voice gate: %s", refusal)
-            sys.exit(voice_gate.VOICE_GATE_EXIT)
+            sys.exit(refusal.exit_code)
         except SeriesNotRunnable as refusal:
             # A series was named and cannot run (unknown, not ACTIVE, another channel's). Nothing was spent;
             # the message says which and the fix. One line, no traceback, and a distinct code so the Actions

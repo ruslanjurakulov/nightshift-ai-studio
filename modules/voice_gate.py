@@ -18,10 +18,24 @@ answers for the CHANNEL path only. That is the rule for every run, whoever start
 attachment as well. The Run-now route asks the same function before it dispatches (command-center/app/api/agent/run/route.ts), so
 the two agree; this module is the part that still holds when the voice was detached between the click and the runner.
 
-CLAUDE.md rule 4 shapes the failure modes. A voice that may not be used stops the run (``VOICE_GATE_EXIT``); it is never swapped for
-a stock voice. When the database cannot be asked, a voice id that could be a profile's (20 letters and digits) stops the run with the
-remedy; only "no database configured" (nothing can be a profile without one) and "0117 is not applied" (HTTP 404: the function does
-not exist, so no profile does) let it through, and each says so in the log. Rule 6: this runs before the first paid call.
+Two different failures, two different answers
+---------------------------------------------
+* The database ANSWERED "not allowed": the run stops, always (``VOICE_GATE_EXIT``). It is never swapped for a stock voice
+  (CLAUDE.md rule 4).
+* The database COULD NOT ANSWER (unreachable, timeout, 429, 5xx, 401/403, a redirect, an unreadable or odd body, no Supabase
+  configured): by default the run CONTINUES, with a closed-word warning in the log and a ``::warning::`` annotation on Actions. The
+  repository's own rule for a Supabase outage is to degrade (the channel registry falls back, the slot guard fails open), and today
+  the gate protects nothing the outage could cost: ``request_voice_clone`` is granted to nobody, so no custom voice can exist.
+  With ``NIGHTSHIFT_VOICE_GATE_STRICT`` on, "could not answer" stops the run instead (``VOICE_GATE_UNAVAILABLE_EXIT``), after more
+  tries. The owner turns the switch on TOGETHER WITH the ``request_voice_clone`` grant (docs/CUSTOM_VOICE.md): from then on a
+  silent outage would be a way to use someone's voice unchecked.
+* "The function does not exist" (PostgREST ``PGRST202`` or Postgres ``42883``, and only those) means 0117 is not applied, so no
+  profile can exist: the run continues, with a warning. Any other 404 is "could not answer".
+
+A voice id equal to the deployment's configured defaults (``config.ELEVENLABS_VOICE_ID`` / ``ELEVENLABS_SECONDARY_VOICE_ID``) is not
+asked about at all: a clone's id comes from a clone request, so it can never be one of them, and the default narrator is on every run.
+
+Rule 6: this runs before the first paid call.
 
 A repair or a scene regeneration never reaches this module: they reuse the run's saved audio and buy no voice (0117 allows them for
 the same reason, ``kind = 'repair'``).
@@ -39,9 +53,14 @@ from typing import Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
-#: A distinct exit code so the runners release the credit hold and say why (workflow, tools/queue_worker.py), and so the step is red
-#: with its own annotation. 75, 78, 79, 80 and 81 are taken (storyboard, budget, held, Gemini quota, series).
+#: Distinct exit codes so the runners release the credit hold and say why (workflow, tools/queue_worker.py, render_error), and so the
+#: step is red with its own annotation. 82: the database said "not allowed". 83: it could not be asked (only with the strict switch
+#: on). 75, 78, 79, 80 and 81 are taken (storyboard, budget, held, Gemini quota, series).
 VOICE_GATE_EXIT = 82
+VOICE_GATE_UNAVAILABLE_EXIT = 83
+
+#: Off unless on (``on``/``1``/``true``/``yes``). The owner turns it on with the request_voice_clone grant (docs/CUSTOM_VOICE.md).
+STRICT_ENV = "NIGHTSHIFT_VOICE_GATE_STRICT"
 
 NARRATOR_KEY = "elevenlabs_voice_id"
 SECONDARY_KEY = "elevenlabs_secondary_voice_id"
@@ -49,19 +68,41 @@ SECONDARY_KEY = "elevenlabs_secondary_voice_id"
 #: An ElevenLabs voice id is 20 letters and digits (CLAUDE.md, known ceilings). Anything else cannot be a profile's.
 _VOICE_ID = re.compile(r"[A-Za-z0-9]{20}")
 
-#: Waits before the 2nd and 3rd attempt; the retries use a shorter timeout, so the added delay stays bounded.
-RETRY_BACKOFF = (1.0, 3.0)
-TIMEOUT = 10.0
-RETRY_TIMEOUT = 5.0
+#: The answers that mean "this function does not exist here" (PostgREST's PGRST202, Postgres's 42883), the same two the Run-now route
+#: accepts. Any other error, a 404 included, is "could not answer".
+_FUNCTION_ABSENT = ("PGRST202", "42883")
+
+#: (waits before the 2nd, 3rd attempt; timeout of the 1st attempt; timeout of the retries). Lenient (the default): two tries and about
+#: five seconds at most, because an outage must not hold up a run that is not at risk. Strict: three tries, as the lookups of the
+#: channel token do.
+_LENIENT = ((0.5,), 2.5, 2.5)
+_STRICT = ((1.0, 3.0), 10.0, 5.0)
+RETRY_BACKOFF = _STRICT[0]    # kept for callers and tests that name the strict schedule
 
 
 class VoiceGateRefused(RuntimeError):
-    """This run may not use the voice it was given, or the question could not be answered. The message names the remedy."""
+    """This run may not use the voice it was given (``not_permitted``), or, with the strict switch on, the question could not be
+    answered (``unavailable``). The message names the remedy."""
 
     def __init__(self, message: str, *, reason: str):
         super().__init__(message)
-        #: "not_permitted" (the database said no) or "unavailable" (it could not be asked).
         self.reason = reason
+
+    @property
+    def exit_code(self) -> int:
+        return VOICE_GATE_UNAVAILABLE_EXIT if self.reason == "unavailable" else VOICE_GATE_EXIT
+
+
+class _CouldNotAnswer(Exception):
+    """Internal: the database was not able to say. ``phrase`` is a closed word or an HTTP status, never a body."""
+
+    def __init__(self, phrase: str):
+        super().__init__(phrase)
+        self.phrase = phrase
+
+
+class _NotInstalled(Exception):
+    pass
 
 
 def _as_id(value) -> str:
@@ -80,39 +121,66 @@ def could_be_profile_voice(value) -> bool:
     return bool(_VOICE_ID.fullmatch(_as_id(value).strip()))
 
 
+def strict_on(env: Optional[Mapping[str, str]] = None) -> bool:
+    return str((os.environ if env is None else env).get(STRICT_ENV) or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _defaults() -> tuple:
+    """The voices the deployment itself configures (repo variables, else the built-in narrator): never a clone's id."""
+    import config  # noqa: PLC0415 — only when a run asks
+
+    return (getattr(config, "ELEVENLABS_VOICE_ID", ""), getattr(config, "ELEVENLABS_SECONDARY_VOICE_ID", ""))
+
+
 def _config_from_env(env: Mapping[str, str]) -> tuple[str, str]:
     return (env.get("SUPABASE_URL") or "").strip().rstrip("/"), (env.get("SUPABASE_SERVICE_KEY") or "").strip()
 
 
-def _ask(url: str, key: str, channel_id: str, new: dict, *, session, sleep) -> Optional[str]:
+def _annotate(env: Mapping[str, str], level: str, title: str, message: str) -> None:
+    """A GitHub Actions workflow command, so the skip shows on the run's summary and not only in its log. Fixed text, one line."""
+    if str(env.get("GITHUB_ACTIONS") or "").strip().lower() == "true":
+        print(f"::{level} title={title}::{message}", flush=True)
+
+
+def _ask(url: str, key: str, channel_id: str, new: dict, *, session, sleep, strict: bool) -> Optional[str]:
     """One question to the database, retried on a transient failure. Returns the refused key, or None when every voice is usable.
-    A missing function (HTTP 404) raises ``_NotInstalled``; a question that cannot be answered raises :class:`VoiceGateRefused`."""
+    A missing function raises ``_NotInstalled``; a question that cannot be answered raises ``_CouldNotAnswer``."""
+    backoff, first_timeout, retry_timeout = _STRICT if strict else _LENIENT
     last = "no answer"
-    for attempt in range(len(RETRY_BACKOFF) + 1):
+    for attempt in range(len(backoff) + 1):
         if attempt:
-            sleep(RETRY_BACKOFF[attempt - 1])
+            sleep(backoff[attempt - 1])
         try:
             r = session.post(
                 f"{url}/rest/v1/rpc/channel_voice_config_problem",
                 json={"p_channel": channel_id, "p_org": None, "p_old": {}, "p_new": new},
                 headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                timeout=TIMEOUT if attempt == 0 else RETRY_TIMEOUT,
+                timeout=first_timeout if attempt == 0 else retry_timeout,
+                # A redirect would carry the service key to wherever it points, and a "null" from there would read as ALLOW.
+                allow_redirects=False,
             )
         except Exception as e:  # network, TLS, timeout: the type only, never the message
             last = type(e).__name__
             continue
         status = getattr(r, "status_code", 0)
-        if status == 404:
-            raise _NotInstalled()
-        if status in (408, 429) or status >= 500:
-            last = f"HTTP {status}"
-            continue
-        if status >= 300:
-            # 401/403 (a wrong key, or the function not granted to the service role) will not heal by retrying.
-            raise VoiceGateRefused(
-                f"The voice ownership check was refused by the database (HTTP {status}). Check that SUPABASE_SERVICE_KEY is the "
-                "service-role key and that migration 0117 is applied; then run again. Nothing was spent, and no other voice is "
-                "substituted.", reason="unavailable")
+        if 300 <= status < 400:
+            raise _CouldNotAnswer(f"HTTP {status} redirect")
+        if status >= 400:
+            code = ""
+            try:
+                body = r.json()
+                code = str(body.get("code") or "") if isinstance(body, dict) else ""
+            except Exception:
+                pass
+            if code in _FUNCTION_ABSENT:
+                raise _NotInstalled()
+            if status in (408, 429) or status >= 500:
+                last = f"HTTP {status}"
+                continue
+            # 401/403 (a wrong key, or the function not granted to the service role) and any other 4xx will not heal by retrying.
+            raise _CouldNotAnswer(f"HTTP {status}")
+        if status != 200:
+            raise _CouldNotAnswer(f"HTTP {status}")
         try:
             answer = r.json()
         except Exception:
@@ -121,48 +189,60 @@ def _ask(url: str, key: str, channel_id: str, new: dict, *, session, sleep) -> O
         if answer is None or isinstance(answer, str):
             return answer or None
         last = "unexpected answer"
-    raise VoiceGateRefused(
-        f"The voice ownership check could not be completed ({last}) and this run uses a voice id that may be a custom voice. "
-        "Nothing was spent, and no other voice is substituted. Check that Supabase is reachable from the runner "
-        "(SUPABASE_URL and SUPABASE_SERVICE_KEY), then run again.", reason="unavailable")
+    raise _CouldNotAnswer(last)
 
 
-class _NotInstalled(Exception):
-    pass
+def _could_not_answer(channel_id, phrase: str, *, strict: bool, env: Mapping[str, str]) -> None:
+    """Strict: stop. Otherwise say so loudly and let the run go on."""
+    if strict:
+        raise VoiceGateRefused(
+            f"The voice ownership check could not be completed ({phrase}) and this run uses a voice id that may be a custom voice, "
+            f"and {STRICT_ENV} is on. Nothing was spent, and no other voice is substituted. Check that Supabase is reachable from "
+            "the runner (SUPABASE_URL and SUPABASE_SERVICE_KEY), then run again.", reason="unavailable")
+    logger.warning("[channel: %s] Voice ownership check could NOT be completed (%s); continuing, because %s is off and no custom "
+                   "voice can exist until request_voice_clone is granted", channel_id, phrase, STRICT_ENV)
+    _annotate(env, "warning", "Custom voice check skipped",
+              f"The custom-voice ownership check could not be completed ({phrase}) and was skipped; the run continues. "
+              f"Set {STRICT_ENV} to stop runs instead.")
 
 
 def require_voices_usable(channel_id: str, narrator, secondary, *, env: Optional[Mapping[str, str]] = None,
-                          session=None, sleep=time.sleep) -> None:
+                          session=None, sleep=time.sleep, defaults: Optional[tuple] = None) -> None:
     """Raise :class:`VoiceGateRefused` unless the voices this run will speak with may be used on this channel.
 
     ``narrator`` is the voice the narration will use (the run's own choice, else the channel's), ``secondary`` the voice for the
     script's quoted lines (``"narrator"``, empty, or an id). Anything that cannot be a provider voice id is not asked about: it is
-    not a profile's, and the existing checks (audio_mixer.verify_voice) judge it as before.
+    not a profile's, and the existing checks (audio_mixer.verify_voice) judge it as before. Nor is a voice equal to a configured
+    default (``defaults``, else config's): see the module docstring.
     """
+    env = os.environ if env is None else env
+    configured = {_as_id(d).strip().lower() for d in (defaults if defaults is not None else _defaults()) if _as_id(d).strip()}
     new: dict = {}
-    nid = _as_id(narrator)
-    if could_be_profile_voice(nid):
-        new[NARRATOR_KEY] = nid
-    sid = _as_id(secondary)
-    if could_be_profile_voice(sid):
-        new[SECONDARY_KEY] = sid
+    for key, value in ((NARRATOR_KEY, narrator), (SECONDARY_KEY, secondary)):
+        vid = _as_id(value)
+        if could_be_profile_voice(vid) and vid.strip().lower() not in configured:
+            new[key] = vid
     if not new:
         return
-    url, key = _config_from_env(os.environ if env is None else env)
+    strict = strict_on(env)
+    url, key = _config_from_env(env)
     if not url or not key:
-        # Profiles live in this database; without one nothing can be a profile. Said in the log, because it is a choice made here.
-        logger.info("[channel: %s] Voice ownership check skipped: no Supabase configured, so no custom voice can exist here",
-                    channel_id)
+        _could_not_answer(channel_id, "no Supabase configured", strict=strict, env=env)
         return
     if session is None:
         import requests  # noqa: PLC0415 — keep imports light for callers that never ask
 
         session = requests.Session()
     try:
-        refused = _ask(url, key, str(channel_id), new, session=session, sleep=sleep)
+        refused = _ask(url, key, str(channel_id), new, session=session, sleep=sleep, strict=strict)
     except _NotInstalled:
         logger.warning("[channel: %s] Voice ownership check skipped: channel_voice_config_problem is not available "
                        "(migration 0117 is not applied), so no custom voice can exist yet", channel_id)
+        _annotate(env, "warning", "Custom voice check skipped",
+                  "channel_voice_config_problem does not exist (migration 0117 is not applied), so no custom voice can exist yet.")
+        return
+    except _CouldNotAnswer as e:
+        _could_not_answer(channel_id, e.phrase, strict=strict, env=env)
         return
     if refused is None:
         return
