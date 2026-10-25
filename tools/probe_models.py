@@ -163,9 +163,11 @@ class RegistryDB:
 # ── one probe ───────────────────────────────────────────────────────────────
 class ProbeResult:
     def __init__(self, model: str, ok: bool, code: Optional[str] = None, message: str = "",
-                 latency_ms: int = 0, output_bytes: Optional[int] = None, task_id: Optional[str] = None):
+                 latency_ms: int = 0, output_bytes: Optional[int] = None, task_id: Optional[str] = None, note: str = ""):
         self.model, self.ok, self.code, self.message = model, ok, code, message
         self.latency_ms, self.output_bytes, self.task_id = latency_ms, output_bytes, task_id
+        #: Something an adapter wants printed beside an OK (Vidu's reported credits). Logged, never recorded as an error.
+        self.note = note
 
 
 def probe_image(dest: Path, *, end: bool = False) -> Path:
@@ -278,8 +280,9 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
         if not files or not all(_looks_real(f) for f in files):
             raise AdapterError(E_BAD_RESPONSE, "the output is not a media file")
         size = sum(f.stat().st_size for f in files)
+        noter = getattr(adapter, "probe_note", None)
         return ProbeResult(entry.id, True, latency_ms=int((clock() - started) * 1000),
-                           output_bytes=size, task_id=task.task_id)
+                           output_bytes=size, task_id=task.task_id, note=noter(task) if callable(noter) else "")
     except AdapterError as e:
         return ProbeResult(entry.id, False, e.code, e.message, int((clock() - started) * 1000),
                            task_id=task.task_id if task else None)
@@ -410,7 +413,7 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
                     logger.info(f"ok {e.id}" if res.ok else f"failed {e.id} {code}")
                     failures += 0 if res.ok else 1
                 elif res.ok:
-                    logger.info(f"OK   {e.id}: {res.output_bytes} bytes in {res.latency_ms} ms")
+                    logger.info(f"OK   {e.id}: {res.output_bytes} bytes in {res.latency_ms} ms" + (f" - {res.note}" if res.note else ""))
                 else:
                     failures += 1
                     tail = f" (vendor task {res.task_id} may still finish and bill)" if res.code == "timeout" else ""
