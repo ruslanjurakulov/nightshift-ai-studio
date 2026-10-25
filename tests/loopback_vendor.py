@@ -65,12 +65,14 @@ class Req:
 class Resp:
     def __init__(self, status: int = 200, body=None, *, headers: Optional[Dict[str, str]] = None,
                  raw: Optional[bytes] = None, declared_length: Optional[int] = None,
-                 drop: bool = False, hang_s: float = 0.0, chunks=None):
+                 drop: bool = False, hang_s: float = 0.0, chunks=None, drip_s: float = 0.0):
         """``body`` is JSON-encoded; ``raw`` is sent as is. ``declared_length`` lies about
         Content-Length (a stream cut short); ``drop`` closes the connection without an
         answer; ``hang_s`` waits before answering; ``chunks`` streams an iterable of bytes
         with no Content-Length."""
         self.status, self.headers = status, dict(headers or {})
+        #: ``drip_s``: send the (Content-Length announced) body one byte at a time, waiting this long between bytes.
+        self.drip_s = drip_s
         self.raw = raw if raw is not None else (json.dumps(body).encode() if body is not None else b"")
         self.declared_length, self.drop, self.hang_s, self.chunks = declared_length, drop, hang_s, chunks
 
@@ -128,6 +130,12 @@ class FakeVendor:
                 length = len(resp.raw) if resp.declared_length is None else resp.declared_length
                 self.send_header("Content-Length", str(length))
                 self.end_headers()
+                if resp.drip_s:
+                    for i in range(len(resp.raw)):
+                        self.wfile.write(resp.raw[i:i + 1])
+                        self.wfile.flush()
+                        time.sleep(resp.drip_s)
+                    return
                 self.wfile.write(resp.raw)
                 if resp.declared_length is not None and resp.declared_length > len(resp.raw):
                     self.wfile.flush()
